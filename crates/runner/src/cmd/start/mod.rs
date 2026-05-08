@@ -462,6 +462,8 @@ pub async fn run_start(
         orphan_reap_process_discovery: None,
         #[cfg(test)]
         outer_job_panic: None,
+        #[cfg(test)]
+        test_probes: StartLoopTestProbes::default(),
     };
 
     run(config).await
@@ -502,6 +504,8 @@ struct RunConfig {
     signal_source: SignalSource,
     #[cfg(test)]
     outer_job_panic: Option<OuterJobPanicPoint>,
+    #[cfg(test)]
+    test_probes: StartLoopTestProbes,
 }
 
 enum SignalSource {
@@ -513,6 +517,25 @@ enum SignalSource {
     /// below; non-test code matches on it but never builds it.
     #[cfg_attr(not(test), allow(dead_code))]
     Override(SignalController),
+}
+
+#[cfg(test)]
+#[derive(Clone, Default)]
+struct StartLoopTestProbes {
+    budget_exhausted_reactor: Arc<tokio::sync::Notify>,
+}
+
+#[cfg(test)]
+impl StartLoopTestProbes {
+    fn notify_budget_exhausted_reactor(&self) {
+        self.budget_exhausted_reactor.notify_one();
+    }
+
+    async fn wait_budget_exhausted_reactor(&self, timeout: Duration) {
+        tokio::time::timeout(timeout, self.budget_exhausted_reactor.notified())
+            .await
+            .expect("runner did not enter budget-exhausted reactor within timeout");
+    }
 }
 
 #[cfg(test)]
@@ -562,6 +585,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         signal_source,
         #[cfg(test)]
         outer_job_panic,
+        #[cfg(test)]
+        test_probes,
     } = config;
 
     let mut factories =
@@ -753,6 +778,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         } else {
             false
         };
+        #[cfg(test)]
+        if matches!(mode, RunnerMode::Running) && !can_discover {
+            test_probes.notify_budget_exhausted_reactor();
+        }
         tokio::select! {
             // Job discovery via provider (Ably wakeups + HTTP poll).
             // The future is pinned outside the loop so heartbeat/cleanup

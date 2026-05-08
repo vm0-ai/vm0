@@ -33,6 +33,7 @@ pub(super) struct MockRunEnv {
     pub(super) idle_pool: SharedIdlePool,
     pub(super) lifecycle: LifecycleController,
     pub(super) parking_gate: ParkingGate,
+    pub(super) start_probes: StartLoopTestProbes,
     pub(super) mode_tx: tokio::sync::watch::Sender<RunnerMode>,
     pub(super) cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
     pub(super) cancel: CancellationToken,
@@ -148,6 +149,7 @@ pub(super) fn build_mock_run_config_with_runtime(
     let (mode_tx, mode_rx) = tokio::sync::watch::channel(RunnerMode::Running);
     let parking_gate = ParkingGate::new_open();
     let lifecycle = LifecycleController::new(mode_tx, parking_gate.clone());
+    let start_probes = StartLoopTestProbes::default();
     let cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
         Arc::new(tokio::sync::Mutex::new(HashMap::new()));
 
@@ -224,6 +226,7 @@ pub(super) fn build_mock_run_config_with_runtime(
             handler_abort: None,
         }),
         outer_job_panic: None,
+        test_probes: start_probes.clone(),
     };
 
     let env = MockRunEnv {
@@ -232,6 +235,7 @@ pub(super) fn build_mock_run_config_with_runtime(
         idle_pool,
         lifecycle: lifecycle.clone(),
         parking_gate,
+        start_probes,
         mode_tx: lifecycle.mode_tx().clone(),
         cancel_tokens,
         cancel,
@@ -567,6 +571,11 @@ struct StatusSnapshot {
 }
 
 #[derive(serde::Deserialize)]
+struct StatusModeSnapshot {
+    mode: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
 struct ActiveRunSnapshot {
     run_id: String,
 }
@@ -598,6 +607,45 @@ pub(super) async fn status_idle_sessions_and_active_runs(
 
 pub(super) async fn status_idle_sessions(status_path: &std::path::Path) -> Vec<String> {
     status_idle_sessions_and_active_runs(status_path).await.0
+}
+
+pub(super) async fn status_mode_if_exists(status_path: &std::path::Path) -> Option<Option<String>> {
+    match tokio::fs::try_exists(status_path).await {
+        Ok(true) => {
+            let raw = tokio::fs::read_to_string(status_path).await.unwrap();
+            let status: StatusModeSnapshot = serde_json::from_str(&raw).unwrap();
+            Some(status.mode)
+        }
+        Ok(false) => None,
+        Err(err) => panic!(
+            "failed to check status file {}: {err}",
+            status_path.display()
+        ),
+    }
+}
+
+pub(super) async fn wait_status_mode(
+    status_path: &std::path::Path,
+    expected: &str,
+    timeout: Duration,
+) {
+    wait_for_probe(timeout, || async {
+        match status_mode_if_exists(status_path).await {
+            Some(Some(mode)) if mode == expected => WaitProbe::Ready(()),
+            Some(Some(mode)) => WaitProbe::Pending(format!(
+                "status mode did not reach {expected:?} within {timeout:?} (actual: {mode:?})",
+            )),
+            Some(None) => WaitProbe::Pending(format!(
+                "status file {} did not contain mode within {timeout:?}",
+                status_path.display(),
+            )),
+            None => WaitProbe::Pending(format!(
+                "status file {} was not written within {timeout:?}",
+                status_path.display(),
+            )),
+        }
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -754,4 +802,16 @@ pub(super) async fn wait_cancel_token_removed(
         }
     })
     .await;
+}
+
+pub(super) async fn wait_discover_entered(env: &MockRunEnv, timeout: Duration) {
+    tokio::time::timeout(timeout, env.handle.discover_entered.notified())
+        .await
+        .expect("run() did not enter discover_fut select! within timeout");
+}
+
+pub(super) async fn wait_budget_exhausted_reactor(env: &MockRunEnv, timeout: Duration) {
+    env.start_probes
+        .wait_budget_exhausted_reactor(timeout)
+        .await;
 }

@@ -184,21 +184,32 @@ async fn discover_survives_heartbeat_ticks() {
         Duration::from_secs(20), // poll delay: 20s
     );
     let run_handle = tokio::spawn(run(config));
+    assert!(
+        env.handle
+            .wait_discover_poll_started(Duration::from_secs(5))
+            .await,
+        "discover poll delay should start before virtual time advances"
+    );
 
     // Push job immediately — it's in the channel, waiting for
     // discover to finish its poll delay and read it.
     let run_id = RunId::new_v4();
     push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
-    // Advance past the 20s poll delay. Heartbeat fires at 10s but
-    // must NOT restart the delay (because discover_fut is pinned).
-    tokio::time::sleep(Duration::from_secs(25)).await;
-
-    // Heartbeat should have fired during the wait.
+    // Advance to the first heartbeat while the 20s discover delay is still
+    // pending, then let the runner task observe the ready timer.
+    tokio::time::advance(HEARTBEAT_PERIOD).await;
+    tokio::task::yield_now().await;
     assert!(
-        env.handle.heartbeat_count() > 0,
+        env.handle
+            .wait_heartbeat_past(0, Duration::from_secs(1))
+            .await,
         "heartbeat should fire while discover poll delay is running"
     );
+
+    // Advance past the rest of the 20s poll delay. If discover was cancelled
+    // and recreated at t=10s, the delay restarts and this is still too early.
+    tokio::time::advance(Duration::from_secs(15)).await;
 
     // Job should have been discovered and completed.
     // If discover was cancelled and recreated at t=10s, the 20s delay
@@ -234,8 +245,8 @@ async fn shutdown_completes_without_deadlock() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let run_handle = tokio::spawn(run(config));
 
-    // Let the main loop start and enter select!.
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    // Let the main loop start and enter the discover select arm.
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
 
     // Only send Draining — do NOT cancel. The Draining path sees
     // `jobs.is_empty()` immediately (no active jobs), breaks to
@@ -266,6 +277,7 @@ async fn drain_then_resume_keeps_jobs_running() {
         Arc::clone(&gate),
     ));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+    let status_path = env._temp_dir.path().join("status.json");
     let run_handle = tokio::spawn(run(config));
 
     // Claim a job and let it reach the gated wait.
@@ -275,11 +287,11 @@ async fn drain_then_resume_keeps_jobs_running() {
 
     // Enter Draining. The job keeps running; no cancellation is fired.
     env.drain();
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_status_mode(&status_path, "draining", Duration::from_secs(5)).await;
 
     // Resume. Job is still alive in the executor.
     env.resume();
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_status_mode(&status_path, "running", Duration::from_secs(5)).await;
 
     // Release the gated job so it completes normally.
     gate.notify_one();
@@ -400,6 +412,7 @@ async fn heartbeat_fires_while_draining() {
         Arc::clone(&gate),
     ));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+    let status_path = env._temp_dir.path().join("status.json");
     let run_handle = tokio::spawn(run(config));
 
     // Claim a gated job so Draining mode has an active job to wait
@@ -409,13 +422,10 @@ async fn heartbeat_fires_while_draining() {
     push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
     let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
 
-    // Enter Draining before the first heartbeat tick fires. The sleep
-    // lets the runner observe `mode_rx.changed()` and re-enter the
-    // reactor with Draining-mode guards. There is no production-side
-    // notifier for "Draining mode entered", so this
-    // synchronization has to be time-based.
+    // Enter Draining before the first heartbeat tick fires. `status.json`
+    // is updated only after the main loop observes the mode transition.
     env.drain();
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_status_mode(&status_path, "draining", Duration::from_secs(5)).await;
     assert_eq!(*env.mode_tx.borrow(), RunnerMode::Draining);
     let before = env.handle.heartbeat_count();
 
@@ -458,10 +468,8 @@ async fn heartbeat_fires_while_budget_exhausted() {
     push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
     // Wait for the reservation — after this, the next loop iteration
     // enters the budget-exhausted wait state at the can_afford check.
-    // The sleep yields to the runner so it reaches the reactor `select!`
-    // before the time advance below.
     wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_budget_exhausted_reactor(&env, Duration::from_secs(5)).await;
     let before = env.handle.heartbeat_count();
 
     // Advance past the first tick while the runner is budget-exhausted.
@@ -494,7 +502,7 @@ async fn drain_without_active_jobs_exits_promptly() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let run_handle = tokio::spawn(run(config));
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
     env.drain();
 
     match tokio::time::timeout(Duration::from_secs(2), run_handle).await {
@@ -515,7 +523,6 @@ async fn resume_on_running_is_noop() {
     // SIGUSR2 while already Running — state guard blocks the send,
     // leaving mode unchanged and discovery uninterrupted.
     env.resume();
-    tokio::time::sleep(Duration::from_millis(50)).await;
 
     // Runner is still claiming jobs.
     let run_id = RunId::new_v4();
@@ -578,6 +585,7 @@ async fn drain_then_hard_shutdown_upgrades() {
         gate,
     ));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+    let status_path = env._temp_dir.path().join("status.json");
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
@@ -586,7 +594,7 @@ async fn drain_then_hard_shutdown_upgrades() {
 
     // Draining. Without hard shutdown, this would wait up to JOB_TIMEOUT = 2h.
     env.drain();
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_status_mode(&status_path, "draining", Duration::from_secs(5)).await;
 
     // Upgrade to hard shutdown.
     env.trigger_stopping().await;
@@ -768,8 +776,8 @@ async fn drain_with_jobs_transitions_to_stopping_when_empty() {
         .wait_completion(run_id, Duration::from_secs(5))
         .await;
 
-    // Give the main loop a moment to clean up the jobset, then drain.
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    // Wait for the main loop to reap the completed job, then drain.
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
     env.drain();
 
     // Draining mode should observe jobs.is_empty() and self-send
@@ -830,6 +838,7 @@ async fn draining_auto_stop_preserves_concurrent_resume() {
         Arc::clone(&gate),
     ));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+    let status_path = env._temp_dir.path().join("status.json");
     let run_handle = tokio::spawn(run(config));
 
     // Claim a job and hold it at the gate so Draining mode has
@@ -840,7 +849,7 @@ async fn draining_auto_stop_preserves_concurrent_resume() {
     let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
 
     env.drain();
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    wait_status_mode(&status_path, "draining", Duration::from_secs(5)).await;
     assert_eq!(*env.mode_tx.borrow(), RunnerMode::Draining);
 
     // Silently flip to Running — the `false` return suppresses
@@ -860,7 +869,8 @@ async fn draining_auto_stop_preserves_concurrent_resume() {
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
         .await;
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_status_mode(&status_path, "running", Duration::from_secs(5)).await;
 
     assert_eq!(
         *env.mode_tx.borrow(),
@@ -943,6 +953,8 @@ async fn unknown_profile_skipped() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let run_handle = tokio::spawn(run(config));
 
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
     // Push a job with a profile that doesn't exist in the profiles map.
     // The main loop should log a warning and continue without claiming.
     let bad_id = RunId::new_v4();
@@ -953,8 +965,8 @@ async fn unknown_profile_skipped() {
         Some(minimal_context(bad_id)),
     );
 
-    // Give main loop time to skip the bad job.
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // The next discover wait proves the bad job was consumed and skipped.
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
 
     // Push a valid job — it should succeed despite the earlier bad one.
     let good_id = RunId::new_v4();
@@ -989,15 +1001,22 @@ async fn unknown_profile_skipped() {
 async fn duplicate_discovery_deduplicated() {
     // Budget for 2 jobs — enough for the duplicate to pass the budget
     // check and reach the cancel_tokens dedup logic.
-    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let gate = Arc::new(tokio::sync::Notify::new());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+        Arc::clone(&gate),
+    ));
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
     let budget = Arc::clone(&config.budget);
     let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
 
     let run_id = RunId::new_v4();
     push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
-    // Wait for job to be claimed and executing (cancel_tokens now has run_id).
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // Wait for the original job to be claimed and blocked at the sandbox gate.
+    let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
 
     // Push the same run_id again (simulates duplicate discovery).
     // Budget has room, but cancel_tokens already contains this run_id →
@@ -1006,8 +1025,10 @@ async fn duplicate_discovery_deduplicated() {
         .discover_tx
         .send((run_id, "vm0/default".into()))
         .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
 
     // Wait for the original job to complete.
+    gate.notify_one();
     let completion = env
         .handle
         .wait_completion(run_id, Duration::from_secs(5))

@@ -70,6 +70,10 @@ pub struct MockJobProvider {
     /// Event-driven waiting eliminates the polling loop whose wall-clock
     /// deadline was racing coverage-CI slowdown (see #10146).
     completion_notify: Arc<Notify>,
+    /// Fired after `discover()` has been polled and its optional poll delay is
+    /// about to start. Paused-time tests use this to avoid advancing virtual
+    /// time before the discover timer exists.
+    discover_poll_started: Arc<Notify>,
     /// Fired by `heartbeat()` after a state is appended to `heartbeats`.
     /// `wait_heartbeat_past` uses the same subscribe-then-check pattern as
     /// `wait_completion` so a heartbeat that lands mid-check is still observed.
@@ -85,6 +89,8 @@ pub struct MockProviderHandle {
     pub discover_entered: Arc<Notify>,
     /// See [`MockJobProvider::completion_notify`].
     completion_notify: Arc<Notify>,
+    /// See [`MockJobProvider::discover_poll_started`].
+    discover_poll_started: Arc<Notify>,
     /// See [`MockJobProvider::heartbeat_notify`].
     heartbeat_notify: Arc<Notify>,
 }
@@ -113,6 +119,7 @@ impl MockJobProvider {
         let heartbeats = Arc::new(StdMutex::new(Vec::new()));
         let discover_entered = Arc::new(Notify::new());
         let completion_notify = Arc::new(Notify::new());
+        let discover_poll_started = Arc::new(Notify::new());
         let heartbeat_notify = Arc::new(Notify::new());
         let provider = Arc::new(Self {
             discovery: Mutex::new(rx),
@@ -123,6 +130,7 @@ impl MockJobProvider {
             cancel,
             discover_entered: Arc::clone(&discover_entered),
             completion_notify: Arc::clone(&completion_notify),
+            discover_poll_started: Arc::clone(&discover_poll_started),
             heartbeat_notify: Arc::clone(&heartbeat_notify),
         });
         let handle = MockProviderHandle {
@@ -131,6 +139,7 @@ impl MockJobProvider {
             heartbeats,
             discover_entered,
             completion_notify,
+            discover_poll_started,
             heartbeat_notify,
         };
         (provider, handle)
@@ -176,6 +185,14 @@ impl MockProviderHandle {
                 return None;
             }
         }
+    }
+
+    /// Wait until `discover()` has been polled at least once and its optional
+    /// poll-delay timer has been created.
+    pub async fn wait_discover_poll_started(&self, timeout: Duration) -> bool {
+        tokio::time::timeout(timeout, self.discover_poll_started.notified())
+            .await
+            .is_ok()
     }
 
     /// Return the number of heartbeats recorded so far.
@@ -228,6 +245,7 @@ impl JobProvider for MockJobProvider {
     ///   the Mutex deadlocks — exactly reproducing the production bug.
     async fn discover(&self) -> Option<(RunId, String)> {
         let mut rx = self.discovery.lock().await;
+        self.discover_poll_started.notify_one();
         if let Some(delay) = self.poll_delay {
             tokio::time::sleep(delay).await;
         }
