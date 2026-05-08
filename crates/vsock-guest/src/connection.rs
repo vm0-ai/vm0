@@ -5,8 +5,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
-use vsock_proto::{self, MSG_EXEC, MSG_EXEC_RESULT, MSG_READY, MSG_SPAWN_WATCH};
+use vsock_proto::{self, MSG_BOUNDED_EXEC, MSG_EXEC, MSG_EXEC_RESULT, MSG_READY, MSG_SPAWN_WATCH};
 
+use crate::bounded_exec::{BoundedExecWorkerRequest, spawn_bounded_exec_worker};
 use crate::error::to_io_error;
 use crate::handlers::{MessageOutcome, handle_exec, handle_message};
 use crate::log::log;
@@ -137,7 +138,7 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
             .decode(buf.get(..n).unwrap_or_default())
             .map_err(to_io_error)?
         {
-            // MSG_EXEC and MSG_SPAWN_WATCH run in background threads to avoid
+            // Command-style messages run in background threads to avoid
             // blocking the event loop. A blocking child process (e.g. reading a
             // pipe fd) would otherwise stall all subsequent messages.
             if msg.msg_type == MSG_SPAWN_WATCH {
@@ -155,6 +156,18 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                         stdout_log_path: d.stdout_log_path,
                     },
                     msg.seq,
+                    writer.clone(),
+                    connection_cancel.clone(),
+                )?;
+            } else if msg.msg_type == MSG_BOUNDED_EXEC {
+                log(
+                    "INFO",
+                    &format!("Received: type=0x{:02X} seq={}", msg.msg_type, msg.seq),
+                );
+                let decoded =
+                    vsock_proto::decode_bounded_exec(&msg.payload).map_err(to_io_error)?;
+                spawn_bounded_exec_worker(
+                    BoundedExecWorkerRequest::from_decoded(msg.seq, decoded),
                     writer.clone(),
                     connection_cancel.clone(),
                 )?;

@@ -623,6 +623,29 @@ pub(crate) fn spawn_with_pipes(
     Ok(SpawnedCommand { child, env_script })
 }
 
+/// Spawn `command` for bounded exec with stdout/stderr piped and caller-selected
+/// stdin behavior. Existing legacy exec/spawn_watch keep using
+/// [`spawn_with_pipes`] so their stdin semantics stay unchanged.
+pub(crate) fn spawn_bounded_exec_command(
+    command: &str,
+    env: &[(&str, &str)],
+    sudo: bool,
+    pipe_stdin: bool,
+) -> io::Result<SpawnedCommand> {
+    let PreparedExecCommand {
+        mut command,
+        env_script,
+    } = build_exec_command_with_env(command, env, sudo)?;
+    if pipe_stdin {
+        command.stdin(Stdio::piped());
+    } else {
+        command.stdin(Stdio::null());
+    }
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let child = spawn_in_own_process_group(&mut command)?;
+    Ok(SpawnedCommand { child, env_script })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

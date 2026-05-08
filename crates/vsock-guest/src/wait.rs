@@ -92,9 +92,31 @@ pub(crate) fn wait_with_kill_timeout(mut child: Child, timeout_ms: u32) -> WaitO
 /// work tied to a disconnected host connection cannot outlive that connection
 /// indefinitely.
 pub(crate) fn wait_with_kill_timeout_or_cancelled(
-    mut child: Child,
+    child: Child,
     timeout_ms: u32,
     cancel: &AtomicBool,
+) -> WaitOutcome {
+    wait_with_kill_timeout_or_cancelled_by(child, timeout_ms, || cancel.load(Ordering::Acquire))
+}
+
+/// Like [`wait_with_kill_timeout_or_cancelled`], but observes either cancel
+/// flag. Used by bounded exec, which has both connection-level cancellation
+/// and local cancellation from stream write failures.
+pub(crate) fn wait_with_kill_timeout_or_cancelled_either(
+    child: Child,
+    timeout_ms: u32,
+    first_cancel: &AtomicBool,
+    second_cancel: &AtomicBool,
+) -> WaitOutcome {
+    wait_with_kill_timeout_or_cancelled_by(child, timeout_ms, || {
+        first_cancel.load(Ordering::Acquire) || second_cancel.load(Ordering::Acquire)
+    })
+}
+
+fn wait_with_kill_timeout_or_cancelled_by(
+    mut child: Child,
+    timeout_ms: u32,
+    is_cancelled: impl Fn() -> bool + Copy + Send + Sync,
 ) -> WaitOutcome {
     let child_id = child.id();
     let deadline = if timeout_ms > 0 {
@@ -110,7 +132,7 @@ pub(crate) fn wait_with_kill_timeout_or_cancelled(
     thread::scope(|scope| {
         let (done_tx, done_rx) = mpsc::channel::<()>();
         let watchdog = match spawn_scoped_named(scope, THREAD_WAIT_WATCHDOG, move || {
-            wait_for_done_timeout_or_cancelled(done_rx, deadline, cancel, child_id)
+            wait_for_done_timeout_or_cancelled(done_rx, deadline, is_cancelled, child_id)
         }) {
             Ok(watchdog) => watchdog,
             Err(e) => {
@@ -148,7 +170,7 @@ pub(crate) fn wait_with_kill_timeout_or_cancelled(
 fn wait_for_done_timeout_or_cancelled(
     done_rx: mpsc::Receiver<()>,
     deadline: Option<Instant>,
-    cancel: &AtomicBool,
+    is_cancelled: impl Fn() -> bool,
     child_id: u32,
 ) -> Option<WatchdogKill> {
     let poll_interval = Duration::from_millis(WATCHDOG_CANCEL_POLL_INTERVAL_MS);
@@ -170,7 +192,7 @@ fn wait_for_done_timeout_or_cancelled(
             None => poll_interval,
         };
 
-        if cancel.load(Ordering::Acquire) {
+        if is_cancelled() {
             return kill_child_unless_done(&done_rx, child_id, KillReason::Cancelled);
         }
 
@@ -513,7 +535,7 @@ mod tests {
         let outcome = wait_for_done_timeout_or_cancelled(
             done_rx,
             Some(Instant::now()),
-            &cancel,
+            || cancel.load(Ordering::Acquire),
             i32::MAX as u32,
         );
 
@@ -526,7 +548,12 @@ mod tests {
         let (done_tx, done_rx) = mpsc::channel::<()>();
         done_tx.send(()).unwrap();
 
-        let outcome = wait_for_done_timeout_or_cancelled(done_rx, None, &cancel, i32::MAX as u32);
+        let outcome = wait_for_done_timeout_or_cancelled(
+            done_rx,
+            None,
+            || cancel.load(Ordering::Acquire),
+            i32::MAX as u32,
+        );
 
         assert!(outcome.is_none());
     }
