@@ -13,6 +13,11 @@
 // after #12138 ships the table.
 
 import {
+  INPUT_AUDIO_TRANSCRIPTION_CONFIG,
+  TALKER_MODEL,
+} from "@vm0/core/voice-chat/session-config";
+
+import {
   parseBrowserEvent,
   type BrowserEvent,
   type ParsedOpenAiEvent,
@@ -30,9 +35,6 @@ import {
   type RelayLogger,
 } from "./relay-logger";
 import type { RelaySessionRepository } from "./relay-session-repository";
-
-const TALKER_MODEL = "gpt-realtime-2";
-const TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
 
 // `terminateError` / `terminateGracefully` / `terminateAborted` already swallow
 // internal failures via try/catch; `fireAndForget` exists to satisfy
@@ -256,7 +258,7 @@ export async function runRelay(opts: RunRelayOptions): Promise<void> {
     orgId: opts.orgId,
     userId: opts.userId,
     model: TALKER_MODEL,
-    transcriptionModel: TRANSCRIPTION_MODEL,
+    transcriptionModel: INPUT_AUDIO_TRANSCRIPTION_CONFIG.model,
   });
 
   const logCtx: RelayLogContext = {

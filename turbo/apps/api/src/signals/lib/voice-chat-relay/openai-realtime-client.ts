@@ -18,7 +18,11 @@ import {
   type NoiseReduction,
 } from "@vm0/core/voice-chat/session-config";
 
+import { logger } from "../../../lib/log";
+
 import { parseOpenAiEvent, type ParsedOpenAiEvent } from "./event-types";
+
+const log = logger("zero:voice-chat:realtime-relay:openai-client");
 
 const OPENAI_REALTIME_WS_URL =
   "wss://api.openai.com/v1/realtime?model=gpt-realtime-2";
@@ -105,9 +109,17 @@ export function createOpenAiRealtimeClient(
     if (eventHandler !== null) {
       const result = eventHandler(event);
       if (result instanceof Promise) {
-        result.catch(() => {
-          // Handler errors are caller's responsibility; the relay-loop wraps
-          // its handler in try/catch already.
+        result.catch((error: unknown) => {
+          // Surface unexpected handler rejections to the logger so they reach
+          // production telemetry. Routing through `errorHandler` would
+          // tear down the relay session for a handler-side bug, which is too
+          // destructive — the relay-loop already wraps its own handler with
+          // a defensive log; this catch is the safety net for any future
+          // direct callers.
+          log.error("openai client event handler rejected", {
+            errorMessage:
+              error instanceof Error ? error.message : "unknown handler error",
+          });
         });
       }
     }
