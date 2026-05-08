@@ -516,7 +516,7 @@ function ConnectorsPopoverButton({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5"
+                className="inline-flex h-11 min-w-11 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5"
                 aria-label="Connectors"
               >
                 <ConnectorTriggerIcons connectors={agentConnectors} />
@@ -674,8 +674,8 @@ function MicButton({
             className={cn(
               "inline-flex shrink-0 items-center justify-center rounded-lg transition-colors",
               recording || transcribing
-                ? "gap-[3px] h-9 w-[52px] bg-[#2E9E9F] text-white hover:bg-[#279394]"
-                : "h-9 w-9 text-muted-foreground hover:bg-accent hover:text-foreground",
+                ? "gap-[3px] h-11 w-[60px] sm:h-9 sm:w-[52px] bg-[#2E9E9F] text-white hover:bg-[#279394]"
+                : "h-11 w-11 sm:h-9 sm:w-9 text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
             onClick={handleClick}
             disabled={transcribing}
@@ -1239,13 +1239,13 @@ export function ZeroChatComposer({
               onPaste={handlePaste}
             />
             <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
-              <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
+              <div className="flex items-center gap-0.5 text-muted-foreground sm:gap-1.5">
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        className="rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]"
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9"
                         aria-label="Attach"
                         onClick={handleFileSelect}
                       >
@@ -1267,11 +1267,11 @@ export function ZeroChatComposer({
                   onToggle={handleToggle}
                 />
               </div>
-              <div className="flex items-center gap-1 sm:gap-2">
+              <div className="flex items-center gap-0.5 sm:gap-2">
                 {actionsLoading ? (
                   <Skeleton
                     className={cn(
-                      "h-9 rounded-md",
+                      "h-11 rounded-md sm:h-9",
                       modelPicker ? "w-[184px]" : "w-20",
                     )}
                   />
@@ -1285,7 +1285,7 @@ export function ZeroChatComposer({
                         onChange={handleModelPickerChange}
                         placeholder="Default"
                         triggerClassName={cn(
-                          "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
+                          "h-11 w-11 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:h-9 sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
                           "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
                           "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
                         )}
@@ -1313,7 +1313,7 @@ export function ZeroChatComposer({
                       <Button
                         size="sm"
                         variant="destructive"
-                        className="rounded-lg h-9 w-9 p-0 shrink-0"
+                        className="rounded-lg h-11 w-11 sm:h-9 sm:w-9 p-0 shrink-0"
                         onClick={onCancel}
                         aria-label="Stop"
                       >
@@ -1322,7 +1322,7 @@ export function ZeroChatComposer({
                     ) : (
                       <Button
                         size="sm"
-                        className="rounded-lg h-9 w-9 p-0 shrink-0"
+                        className="rounded-lg h-11 w-11 sm:h-9 sm:w-9 p-0 shrink-0"
                         onClick={handleSend}
                         disabled={!canSend || !!sending}
                         aria-label="Send"
