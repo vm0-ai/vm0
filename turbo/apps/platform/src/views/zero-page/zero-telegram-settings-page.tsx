@@ -17,7 +17,7 @@ import {
   IconPlus,
   IconRefresh,
   IconRobot,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import {
   type TelegramBot,
   type TelegramBotStatus,

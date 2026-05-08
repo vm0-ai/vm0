@@ -6,7 +6,7 @@ import {
   IconEye,
   IconFileMusic,
   IconLoader2,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import type { Computed } from "ccstate";
 import { jsonParseOr } from "../../signals/utils.ts";

@@ -8,7 +8,7 @@ import {
   IconArrowLeft,
   IconChevronRight,
   IconCoins,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   billingStatusAsync$,

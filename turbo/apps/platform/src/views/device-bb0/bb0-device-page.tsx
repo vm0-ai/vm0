@@ -8,7 +8,7 @@ import {
   IconPlugConnected,
   IconRefresh,
   IconWifi,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import { Button } from "@vm0/ui/components/ui/button";
 import { Input } from "@vm0/ui/components/ui/input";
 import { detach, Reason } from "../../signals/utils.ts";

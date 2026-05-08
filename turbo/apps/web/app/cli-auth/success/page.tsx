@@ -2,7 +2,7 @@
 
 import { useTheme } from "../../components/ThemeProvider";
 import Image from "next/image";
-import { IconCheck } from "@tabler/icons-react";
+import { IconCheck } from "@vm0/ui/icons";
 
 export default function CliAuthSuccessPage(): React.JSX.Element {
   const { theme, toggleTheme } = useTheme();

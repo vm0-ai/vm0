@@ -9,7 +9,7 @@ import {
   IconKeyboard,
   IconLoader2,
   IconBug,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import { Switch } from "@vm0/ui/components/ui/switch";
 import { cn } from "@vm0/ui";

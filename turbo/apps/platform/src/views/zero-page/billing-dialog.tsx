@@ -17,7 +17,7 @@ import {
   DialogDescription,
 } from "@vm0/ui/components/ui/dialog";
 import { Input, Switch } from "@vm0/ui";
-import { IconCheck } from "@tabler/icons-react";
+import { IconCheck } from "@vm0/ui/icons";
 import {
   type BillingTier,
   apiTierToBillingTier,

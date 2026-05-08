@@ -5,7 +5,7 @@ import {
   IconCircleX,
   IconClockExclamation,
   IconBan,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import type { LogStatus } from "../../../../signals/zero-page/log-types.ts";
 
 interface StatusBadgeConfig {

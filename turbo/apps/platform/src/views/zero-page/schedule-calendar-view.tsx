@@ -1,11 +1,7 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import { useGet, useSet } from "ccstate-react";
-import {
-  IconChevronLeft,
-  IconChevronRight,
-  IconPencil,
-} from "@tabler/icons-react";
+import { IconChevronLeft, IconChevronRight, IconPencil } from "@vm0/ui/icons";
 import {
   cn,
   Tooltip,

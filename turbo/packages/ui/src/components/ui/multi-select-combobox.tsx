@@ -1,12 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  IconChevronDown,
-  IconCheck,
-  IconX,
-  IconSearch,
-} from "@tabler/icons-react";
+import { IconChevronDown, IconCheck, IconX, IconSearch } from "@vm0/ui/icons";
 
 import { cn } from "../../lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";

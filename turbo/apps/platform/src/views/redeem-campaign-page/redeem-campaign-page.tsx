@@ -6,7 +6,7 @@ import {
   IconLoader2,
   IconLock,
   IconX,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import { Button } from "@vm0/ui";
 import type { RedeemResponse } from "@vm0/api-contracts/contracts/zero-billing";
 import {

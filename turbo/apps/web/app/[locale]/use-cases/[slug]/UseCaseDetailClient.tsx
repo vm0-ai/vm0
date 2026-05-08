@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { IconArrowUpRight } from "@tabler/icons-react";
+import { IconArrowUpRight } from "@vm0/ui/icons";
 import { useTranslations } from "next-intl";
 import { Link } from "../../../../navigation";
 import { Footer } from "../../../components/Footer";

@@ -17,7 +17,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconDice,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import type { AvatarSvgConfig } from "./avatar-svg-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import {

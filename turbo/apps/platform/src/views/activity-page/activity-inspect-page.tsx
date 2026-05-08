@@ -1,7 +1,7 @@
 import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { IconSearch, IconChartLine, IconUpload } from "@tabler/icons-react";
+import { IconSearch, IconChartLine, IconUpload } from "@vm0/ui/icons";
 import { Button, Input, Tabs, TabsList, TabsTrigger } from "@vm0/ui";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type {

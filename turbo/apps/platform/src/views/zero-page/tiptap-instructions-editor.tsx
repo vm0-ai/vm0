@@ -20,7 +20,7 @@ import {
   IconListNumbers,
   IconBlockquote,
   IconCode,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import "highlight.js/styles/github.css";
 
 function getLowlight() {

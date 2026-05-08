@@ -16,7 +16,7 @@ import {
   IconSettings,
   IconPlus,
   IconMail,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import { clerk$, currentOrgInfo$ } from "../../signals/auth.ts";
 import {
   bestEffort,

@@ -1,6 +1,6 @@
 "use client";
 
-import { IconArrowRight } from "@tabler/icons-react";
+import { IconArrowRight } from "@vm0/ui/icons";
 import { useTranslations } from "next-intl";
 import { Link } from "../../../../navigation";
 import { Footer } from "../../../components/Footer";

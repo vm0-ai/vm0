@@ -91,15 +91,14 @@ vi.mock("next/image", () => {
   };
 });
 
-// External: @tabler/icons-react (used by Navbar)
-vi.mock("@tabler/icons-react", () => {
+// External: @vm0/ui/icons (used by Navbar)
+vi.mock("@vm0/ui/icons", () => {
   const Icon = () => {
     return <span />;
   };
   return {
     IconArrowRight: Icon,
     IconArrowUpRight: Icon,
-    IconBrandGithub: Icon,
     IconChevronDown: Icon,
   };
 });

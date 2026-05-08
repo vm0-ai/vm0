@@ -3,7 +3,7 @@ import {
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import emptyInsightsImg from "../zero-page/assets/empty-insights.webp";
 import {
   Skeleton,

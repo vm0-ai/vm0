@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./components/ui/*": "./src/components/ui/*.tsx",
+    "./icons": "./src/icons.tsx",
     "./lib/utils": "./src/lib/utils.ts",
     "./styles/globals.css": "./src/styles/globals.css"
   },
@@ -46,7 +47,8 @@
     "@radix-ui/react-slot": "^1.1.2",
     "@radix-ui/react-switch": "^1.1.2",
     "@radix-ui/react-tooltip": "^1.2.8",
-    "@tabler/icons-react": "^3.31.0",
+    "@hugeicons/core-free-icons": "^4.1.2",
+    "@hugeicons/react": "^1.1.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "react": "^19.1.2",

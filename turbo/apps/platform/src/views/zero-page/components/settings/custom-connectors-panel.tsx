@@ -1,5 +1,5 @@
 import { useGet, useLastResolved, useSet } from "ccstate-react";
-import { IconDotsVertical } from "@tabler/icons-react";
+import { IconDotsVertical } from "@vm0/ui/icons";
 import {
   Button,
   DropdownMenu,

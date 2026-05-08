@@ -40,7 +40,7 @@ import {
 } from "../../signals/connectors-page/directed-connect-type.ts";
 import { authorizeConnector$ } from "../../signals/connectors-page/directed-authorize-type.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { IconCheck, IconLoader2 } from "@tabler/icons-react";
+import { IconCheck, IconLoader2 } from "@vm0/ui/icons";
 import { Vm0LogoLink, GoogleOAuthNotice } from "./zero-directed-shared.tsx";
 
 function runDirectedConnect(params: {

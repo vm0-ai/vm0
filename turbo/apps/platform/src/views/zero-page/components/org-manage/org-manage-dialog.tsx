@@ -22,7 +22,7 @@ import {
   IconCoins,
   IconFileInvoice,
   IconWorldWww,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 
 import { OrgGeneralTab } from "./org-general-tab.tsx";
 import { OrgProvidersTab } from "./org-providers-tab.tsx";

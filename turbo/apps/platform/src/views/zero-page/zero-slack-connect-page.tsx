@@ -7,7 +7,7 @@ import {
   IconAlertCircle,
   IconCircleCheck,
   IconArrowLeft,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import { Button } from "@vm0/ui";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";

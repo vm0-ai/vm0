@@ -1,11 +1,7 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import { useGet, useLastResolved, useSet } from "ccstate-react";
-import {
-  IconArrowUpRight,
-  IconMessageCircle,
-  IconSearch,
-} from "@tabler/icons-react";
+import { IconArrowUpRight, IconMessageCircle, IconSearch } from "@vm0/ui/icons";
 import { Card, CardContent, cn, Input } from "@vm0/ui";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { getCategories } from "./zero-ideation-data.ts";

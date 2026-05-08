@@ -17,7 +17,7 @@ import {
   IconPlayerStop,
   IconPlug,
   IconPlus,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import {
   Dialog,
   DialogContent,

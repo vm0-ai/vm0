@@ -1,7 +1,7 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import { useLoadable, useGet, useSet } from "ccstate-react";
-import { IconUpload } from "@tabler/icons-react";
+import { IconUpload } from "@vm0/ui/icons";
 import {
   Input,
   Button,

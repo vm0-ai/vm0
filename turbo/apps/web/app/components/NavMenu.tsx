@@ -3,7 +3,7 @@
 import * as React from "react";
 import Image from "next/image";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
-import { IconArrowUpRight, IconChevronDown } from "@tabler/icons-react";
+import { IconArrowUpRight, IconChevronDown } from "@vm0/ui/icons";
 import { Link } from "../../navigation";
 
 export interface NavMenuItem {

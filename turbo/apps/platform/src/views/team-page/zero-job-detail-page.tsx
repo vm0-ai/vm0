@@ -20,7 +20,7 @@ import {
   IconX,
   IconMessageCircle,
   IconWand,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import {
   Button,
   Tabs,

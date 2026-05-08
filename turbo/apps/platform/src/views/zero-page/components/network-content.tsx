@@ -3,7 +3,7 @@ import {
   IconChevronDown,
   IconFilter,
   IconLoader2,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import { useGet, useSet } from "ccstate-react";
 import {
   DropdownMenu,

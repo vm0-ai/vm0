@@ -3,7 +3,7 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { IconList, IconLayoutGrid, IconPlus } from "@tabler/icons-react";
+import { IconList, IconLayoutGrid, IconPlus } from "@vm0/ui/icons";
 import {
   Tabs,
   TabsList,

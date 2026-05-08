@@ -11,7 +11,7 @@ import {
   IconLoader2,
   IconDownload,
   IconChartLine,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import {
   Button,
   Input,

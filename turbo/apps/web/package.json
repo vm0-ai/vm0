@@ -32,7 +32,6 @@
     "@sentry/nextjs": "^10.38.0",
     "@slack/web-api": "^7.13.0",
     "@t3-oss/env-nextjs": "^0.13.8",
-    "@tabler/icons-react": "^3.36.1",
     "@team-plain/typescript-sdk": "^5.12.1",
     "@ts-rest/core": "3.53.0-rc.1",
     "@ts-rest/serverless": "3.53.0-rc.1",

@@ -15,7 +15,7 @@ import {
   IconPin,
   IconPlus,
   IconUserPlus,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import {
   Button,

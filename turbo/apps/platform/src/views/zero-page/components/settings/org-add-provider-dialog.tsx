@@ -1,5 +1,5 @@
 import { useLastResolved, useSet } from "ccstate-react";
-import { IconPlus } from "@tabler/icons-react";
+import { IconPlus } from "@vm0/ui/icons";
 import {
   Dialog,
   DialogContent,

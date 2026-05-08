@@ -2,7 +2,7 @@
 
 import { useTheme } from "../../components/ThemeProvider";
 import Image from "next/image";
-import { IconCheck, IconX } from "@tabler/icons-react";
+import { IconCheck, IconX } from "@vm0/ui/icons";
 import { useSearchParams } from "next/navigation";
 import { use } from "react";
 

@@ -22,7 +22,7 @@ import {
   deletingSchedule$,
   setDeletingSchedule$,
 } from "../../signals/zero-page/schedule-card.ts";
-import { IconPlus, IconList, IconLayoutGrid } from "@tabler/icons-react";
+import { IconPlus, IconList, IconLayoutGrid } from "@vm0/ui/icons";
 import {
   Card,
   CardContent,

@@ -6,12 +6,7 @@ import {
   useLastResolved,
   useResolved,
 } from "ccstate-react";
-import {
-  IconMenu2,
-  IconPlus,
-  IconUserPlus,
-  IconVolume2,
-} from "@tabler/icons-react";
+import { IconMenu2, IconPlus, IconUserPlus, IconVolume2 } from "@vm0/ui/icons";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { cn } from "@vm0/ui";

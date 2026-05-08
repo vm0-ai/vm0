@@ -19,7 +19,7 @@ import {
   Switch,
   cn,
 } from "@vm0/ui";
-import { IconTrash } from "@tabler/icons-react";
+import { IconTrash } from "@vm0/ui/icons";
 import {
   type Tone,
   TONE_OPTIONS,

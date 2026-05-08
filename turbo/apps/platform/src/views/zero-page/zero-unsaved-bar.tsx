@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { IconPencil, IconLoader2 } from "@tabler/icons-react";
+import { IconPencil, IconLoader2 } from "@vm0/ui/icons";
 import { Button } from "@vm0/ui";
 
 interface ZeroUnsavedBarProps {

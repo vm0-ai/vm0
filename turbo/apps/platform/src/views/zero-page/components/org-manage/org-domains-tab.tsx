@@ -11,7 +11,7 @@ import {
   IconDots,
   IconShieldCheck,
   IconShieldOff,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import {
   cn,
   Button,

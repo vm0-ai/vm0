@@ -7,7 +7,7 @@ import {
   IconDotsVertical,
   IconDownload,
   IconSettings,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import { Button } from "@vm0/ui";
 import {
   Popover,

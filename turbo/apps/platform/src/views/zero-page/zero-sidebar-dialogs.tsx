@@ -9,7 +9,7 @@ import {
   IconPin,
   IconLoader2,
   IconCrown,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import {
   DndContext,
   closestCenter,

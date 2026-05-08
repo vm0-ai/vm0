@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { IconCopy, IconCheck } from "@tabler/icons-react";
+import { IconCopy, IconCheck } from "@vm0/ui/icons";
 import { cn } from "../../lib/utils";
 import {
   Tooltip,

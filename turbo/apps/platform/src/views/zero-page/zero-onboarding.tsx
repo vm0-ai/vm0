@@ -62,7 +62,7 @@ import {
   IconCircleCheckFilled,
   IconLoader,
   IconSearch,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AccountDropdown } from "./zero-sidebar.tsx";
 import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";

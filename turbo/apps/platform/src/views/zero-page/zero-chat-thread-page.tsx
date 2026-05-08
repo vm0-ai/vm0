@@ -31,7 +31,7 @@ import {
   IconLink,
   IconLoader2,
   IconPackage,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import {
   cn,
   isEditableTarget,

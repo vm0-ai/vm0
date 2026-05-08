@@ -5,7 +5,7 @@ import {
   IconCheck,
   IconLoader2,
   IconX,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   reportErrorRun$,

@@ -10,7 +10,7 @@ import {
   IconArrowRight,
   IconArrowUpRight,
   IconChevronDown,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import { ThemeToggle } from "./ThemeToggle";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { NavMenu, type NavMenuItem } from "./NavMenu";

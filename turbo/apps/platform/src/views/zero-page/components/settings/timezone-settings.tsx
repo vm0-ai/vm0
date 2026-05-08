@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from "@vm0/ui/components/ui/select";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
-import { IconClock, IconLoader2 } from "@tabler/icons-react";
+import { IconClock, IconLoader2 } from "@vm0/ui/icons";
 import {
   userPreferences$,
   updateUserPreference$,

@@ -1,5 +1,5 @@
 import { useLastLoadable } from "ccstate-react";
-import { IconCircleCheck, IconDownload } from "@tabler/icons-react";
+import { IconCircleCheck, IconDownload } from "@vm0/ui/icons";
 import {
   cn,
   Tooltip,

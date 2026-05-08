@@ -6,7 +6,7 @@ import {
   IconPlus,
   IconPlayerPlay,
   IconDotsVertical,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import {
   Button,
   cn,

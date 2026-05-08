@@ -4,7 +4,7 @@ import {
   IconTool,
   IconRobot,
   IconTerminal,
-} from "@tabler/icons-react";
+} from "@vm0/ui/icons";
 import { Markdown } from "../../../components/markdown.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "@vm0/ui";
 

@@ -8,7 +8,7 @@ import {
   SheetTitle,
   Button,
 } from "@vm0/ui";
-import { IconCrown } from "@tabler/icons-react";
+import { IconCrown } from "@vm0/ui/icons";
 import {
   queueDrawerOpen$,
   setQueueDrawerOpen$,
