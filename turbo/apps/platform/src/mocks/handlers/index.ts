@@ -32,6 +32,10 @@ import {
   resetMockOrgModelProviders,
 } from "./api-org-model-providers.ts";
 import {
+  apiOrgModelPoliciesHandlers,
+  resetMockOrgModelPolicies,
+} from "./api-org-model-policies.ts";
+import {
   apiPersonalModelProvidersHandlers,
   resetMockPersonalModelProviders,
 } from "./api-personal-model-providers.ts";
@@ -88,6 +92,7 @@ export const handlers = [
   ...apiUsageHandlers,
   ...apiUsageInsightHandlers,
   ...apiOrgModelProvidersHandlers,
+  ...apiOrgModelPoliciesHandlers,
   ...apiPersonalModelProvidersHandlers,
   ...apiSecretsHandlers,
   ...apiVariablesHandlers,
@@ -120,6 +125,7 @@ export function resetAllMockHandlers(): void {
   resetMockTelegramIntegration();
   resetMockUserPreferences();
   resetMockOrgModelProviders();
+  resetMockOrgModelPolicies();
   resetMockPersonalModelProviders();
   resetMockBilling();
   resetMockSlackConnect();

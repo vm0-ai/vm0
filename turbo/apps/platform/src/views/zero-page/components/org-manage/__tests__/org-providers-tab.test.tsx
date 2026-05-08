@@ -11,6 +11,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { server } from "../../../../../mocks/server.ts";
@@ -25,6 +26,7 @@ import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
 } from "../../../../../mocks/handlers/api-org-model-providers.ts";
+import { setMockFeatureSwitches } from "../../../../../mocks/handlers/api-feature-switches.helpers.ts";
 import { setCodexPasteDialogState$ } from "../../../../../signals/zero-page/settings/org-model-providers.ts";
 
 vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
@@ -70,6 +72,7 @@ function makeFreshProvider(): ModelProviderResponse {
 
 beforeEach(() => {
   resetMockOrgModelProviders();
+  setMockFeatureSwitches({});
   vi.mocked(toast.error).mockClear();
   vi.mocked(toast.success).mockClear();
 });
@@ -97,6 +100,29 @@ function findReconnectDialogTitle(): HTMLElement | null {
 }
 
 describe("org-providers-tab — stale banner reconnect", () => {
+  it("keeps legacy default provider controls when model-first is off", async () => {
+    await openProvidersPage();
+
+    await expect(
+      screen.findByText("Default provider"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Workspace default:")).not.toBeInTheDocument();
+  });
+
+  it("shows model policies instead of legacy default provider when model-first is on", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+
+    await openProvidersPage();
+
+    await expect(
+      screen.findByText("Workspace default:"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Claude Opus 4.7")).toBeInTheDocument();
+    expect(screen.queryByText("Default provider")).not.toBeInTheDocument();
+  });
+
   it("opens the paste dialog in reconnect mode when Re-paste button is clicked", async () => {
     setMockOrgModelProviders([makeStaleProvider()]);
     await openProvidersPage();

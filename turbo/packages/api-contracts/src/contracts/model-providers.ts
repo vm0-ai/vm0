@@ -1370,3 +1370,59 @@ export const updateModelRequestSchema = z.object({
 });
 
 export type UpdateModelRequest = z.infer<typeof updateModelRequestSchema>;
+
+export const orgModelPolicyRouteStatusSchema = z.enum([
+  "valid",
+  "missing_provider",
+  "invalid",
+]);
+
+export type OrgModelPolicyRouteStatus = z.infer<
+  typeof orgModelPolicyRouteStatusSchema
+>;
+
+export const orgModelPolicySchema = z.object({
+  id: z.uuid(),
+  model: supportedRunModelSchema,
+  modelLabel: z.string(),
+  enabled: z.boolean(),
+  sortOrder: z.number().int(),
+  defaultProviderType: modelProviderTypeSchema,
+  credentialScope: modelProviderCredentialScopeSchema,
+  modelProviderId: z.uuid().nullable(),
+  routeStatus: orgModelPolicyRouteStatusSchema,
+  routeStatusReason: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type OrgModelPolicy = z.infer<typeof orgModelPolicySchema>;
+
+export const updateOrgModelPolicySchema = z.object({
+  model: supportedRunModelSchema,
+  enabled: z.boolean(),
+  sortOrder: z.number().int().nonnegative(),
+  defaultProviderType: modelProviderTypeSchema,
+  credentialScope: modelProviderCredentialScopeSchema,
+  modelProviderId: z.uuid().nullable(),
+});
+
+export type UpdateOrgModelPolicy = z.infer<typeof updateOrgModelPolicySchema>;
+
+export const orgModelPoliciesResponseSchema = z.object({
+  policies: z.array(orgModelPolicySchema),
+  workspaceDefaultModel: supportedRunModelSchema.nullable(),
+  workspaceDefaultPolicyId: z.uuid().nullable(),
+});
+
+export type OrgModelPoliciesResponse = z.infer<
+  typeof orgModelPoliciesResponseSchema
+>;
+
+export const updateOrgModelPoliciesRequestSchema = z.object({
+  policies: z.array(updateOrgModelPolicySchema),
+});
+
+export type UpdateOrgModelPoliciesRequest = z.infer<
+  typeof updateOrgModelPoliciesRequestSchema
+>;

@@ -21,6 +21,7 @@ import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { loadFeatureSwitchOverrides } from "../user/feature-switches-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
+import { ensureOrgModelPolicies } from "./org-model-policy-service";
 import {
   getModelProviderById,
   type ModelProviderInfo,
@@ -189,6 +190,7 @@ async function loadPolicyByModel(
   orgId: string,
   selectedModel: SupportedRunModel,
 ): Promise<OrgModelPolicyRow | undefined> {
+  await ensureOrgModelPolicies(orgId);
   const [policy] = await globalThis.services.db
     .select()
     .from(orgModelPolicies)
@@ -220,6 +222,7 @@ async function resolveRouteFromPolicy(
 async function resolveDefaultRoute(
   orgId: string,
 ): Promise<ModelFirstRouteDescriptor> {
+  await ensureOrgModelPolicies(orgId);
   const policies = await globalThis.services.db
     .select()
     .from(orgModelPolicies)

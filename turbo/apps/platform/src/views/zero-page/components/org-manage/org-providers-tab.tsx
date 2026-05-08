@@ -39,15 +39,23 @@ import { OrgDeleteProviderDialog } from "../settings/org-delete-provider-dialog.
 import { CodexAuthPasteDialog } from "../settings/codex-auth-paste-dialog.tsx";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { modelFirstModelProviderEnabled$ } from "../../../../signals/external/feature-switch.ts";
+import { OrgModelPoliciesSection } from "./org-model-policies-section.tsx";
 
 export function OrgProvidersTab() {
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
+  const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
 
   return (
     <div className="flex flex-col gap-8">
-      {isAdmin && <DefaultProviderSection />}
+      {isAdmin &&
+        (modelFirstEnabled ? (
+          <OrgModelPoliciesSection />
+        ) : (
+          <DefaultProviderSection />
+        ))}
       <StaleBannerSection />
       <ProviderListSection isAdmin={isAdmin} />
       <OrgDeleteProviderDialog />
