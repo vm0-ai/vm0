@@ -262,6 +262,27 @@ function ChatThreadDeleteButton({
   );
 }
 
+function MenuTriggerIcon({
+  label,
+  className,
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className={className}>{children}</span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        <p className="text-xs">{label}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function ChatThreadMenu({
   threadId,
   isPinned,
@@ -324,38 +345,23 @@ function ChatThreadMenu({
           >
             {isPinned ? (
               <>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="block md:group-hover:hidden">
-                      <IconPin size={16} stroke={2} />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    <p className="text-xs">Pinned</p>
-                  </TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="hidden md:group-hover:block">
-                      <IconDots size={16} stroke={2} />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    <p className="text-xs">More</p>
-                  </TooltipContent>
-                </Tooltip>
+                <MenuTriggerIcon
+                  label="Pinned"
+                  className="block md:group-hover:hidden"
+                >
+                  <IconPin size={16} stroke={2} />
+                </MenuTriggerIcon>
+                <MenuTriggerIcon
+                  label="More"
+                  className="hidden md:group-hover:block"
+                >
+                  <IconDots size={16} stroke={2} />
+                </MenuTriggerIcon>
               </>
             ) : (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span>
-                    <IconDots size={16} stroke={2} />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p className="text-xs">More</p>
-                </TooltipContent>
-              </Tooltip>
+              <MenuTriggerIcon label="More">
+                <IconDots size={16} stroke={2} />
+              </MenuTriggerIcon>
             )}
           </button>
         </DropdownMenuTrigger>
