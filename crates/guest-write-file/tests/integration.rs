@@ -197,6 +197,21 @@ fn create_mode_without_create_parents_does_not_create_missing_parents() {
 }
 
 #[test]
+fn create_parents_fails_when_parent_component_is_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let parent = dir.path().join("not-a-dir");
+    std::fs::write(&parent, b"file").unwrap();
+    let path = parent.join("out.txt");
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&["--create-parents", path_str], b"hello");
+
+    assert!(!output.status.success());
+    assert!(parent.is_file());
+    assert!(!path.exists());
+}
+
+#[test]
 fn create_mode_rejects_directory_target() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("target");
@@ -207,6 +222,15 @@ fn create_mode_rejects_directory_target() {
 
     assert!(!output.status.success());
     assert!(path.is_dir());
+}
+
+#[cfg(unix)]
+#[test]
+fn create_mode_rejects_character_device_target() {
+    let output = run_helper(&["/dev/null"], b"hello");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("not a regular file"));
 }
 
 #[cfg(unix)]
