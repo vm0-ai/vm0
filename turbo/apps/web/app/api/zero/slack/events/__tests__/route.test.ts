@@ -1,5 +1,6 @@
 import { createHmac } from "crypto";
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   testContext,
   uniqueId,
@@ -78,7 +79,9 @@ describe("POST /api/zero/slack/events", () => {
     context.setupMocks();
     user = await context.setupUser();
     reloadEnv();
-    mockIsFeatureEnabled.mockReturnValue(true);
+    mockIsFeatureEnabled.mockImplementation((key) => {
+      return key !== FeatureSwitchKey.ModelFirstModelProvider;
+    });
   });
 
   describe("url_verification", () => {
