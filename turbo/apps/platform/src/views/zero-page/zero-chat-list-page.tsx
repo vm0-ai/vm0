@@ -422,13 +422,13 @@ function ThreadKindIcon({
     >
       <span
         className={cn(
-          "flex h-14 w-14 items-center justify-center rounded-full",
+          "flex h-10 w-10 items-center justify-center rounded-full",
           kind === "draft"
             ? "bg-amber-100 text-amber-700"
-            : "bg-muted text-foreground/80",
+            : "bg-gray-100 text-foreground/80",
         )}
       >
-        <Icon size={26} stroke={1.6} />
+        <Icon size={20} stroke={1.6} />
       </span>
       {(isUnread || isRunning) && (
         <span
@@ -540,7 +540,7 @@ function ChatListItem({
           onSelect(session.id);
         }}
         className={cn(
-          "flex items-center gap-3 py-3 text-left transition-transform no-underline bg-background",
+          "flex items-center gap-3 py-2.5 text-left transition-transform no-underline bg-background",
           isOpen ? "-translate-x-20" : "translate-x-0",
           isSelected ? "text-accent-foreground" : "text-foreground",
         )}
@@ -549,20 +549,20 @@ function ChatListItem({
         <span className="min-w-0 flex-1 flex flex-col gap-0.5">
           <span
             className={cn(
-              "truncate text-[16px] max-md:text-[17px] leading-snug",
+              "truncate text-[15px] leading-5",
               isUnread ? "font-semibold" : "font-medium",
             )}
           >
             {session.title ?? "New chat"}
           </span>
           {secondary && (
-            <span className="truncate text-xs max-md:text-[16px] text-muted-foreground">
+            <span className="truncate text-[13px] leading-[18px] text-muted-foreground">
               {secondary}
             </span>
           )}
         </span>
         {dateLabel && (
-          <span className="shrink-0 self-start mt-0.5 text-xs max-md:text-[14px] text-muted-foreground tabular-nums">
+          <span className="shrink-0 self-start mt-0.5 text-[12px] leading-4 text-muted-foreground tabular-nums">
             {dateLabel}
           </span>
         )}

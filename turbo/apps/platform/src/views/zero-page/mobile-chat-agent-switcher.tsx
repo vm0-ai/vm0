@@ -31,7 +31,7 @@ export function MobileChatAgentSwitcher() {
 
   return (
     <div
-      className="md:hidden -mx-4 px-4 py-2 flex gap-4 overflow-x-auto snap-x"
+      className="md:hidden -mx-4 px-4 py-1.5 flex gap-4 overflow-x-auto snap-x"
       data-testid="mobile-chat-agent-switcher"
       aria-label="Pinned teammates"
     >
@@ -48,12 +48,12 @@ export function MobileChatAgentSwitcher() {
             aria-pressed={active}
             aria-label={`Switch to ${label}`}
             data-testid={`mobile-chat-agent-${agent.id}`}
-            className="flex flex-col items-center gap-1 shrink-0 snap-start text-[14px] font-medium"
+            className="flex flex-col items-center gap-1.5 shrink-0 snap-start text-[12px] font-medium"
           >
             <span
               className={cn(
-                "flex h-14 w-14 items-center justify-center rounded-full transition-colors",
-                active ? "bg-muted" : "bg-transparent",
+                "flex h-12 w-12 items-center justify-center rounded-full transition-colors",
+                active ? "bg-gray-100" : "bg-transparent",
               )}
             >
               <AvatarFromUrl
@@ -84,8 +84,8 @@ export function MobileChatAgentSwitcher() {
         data-testid="mobile-new-session-chip"
         className="flex flex-col items-center gap-1 shrink-0 snap-start text-[14px] font-medium"
       >
-        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-muted text-muted-foreground">
-          <IconPlus size={26} stroke={1.8} />
+        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-muted-foreground">
+          <IconPlus size={22} stroke={1.8} />
         </span>
         <span className="max-w-[64px] truncate text-muted-foreground">
           New
