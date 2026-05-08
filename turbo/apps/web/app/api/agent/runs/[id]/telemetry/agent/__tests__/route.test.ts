@@ -4,6 +4,7 @@ import {
   createTestRequest,
   createTestCompose,
   createTestRun,
+  completeTestRun,
 } from "../../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -11,6 +12,7 @@ import {
 } from "../../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
+import { reloadEnv } from "../../../../../../../../src/env";
 
 // Only mock external services
 vi.mock("@clerk/nextjs/server");
@@ -318,6 +320,41 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledWith(
         expect.stringContaining(`where sequenceNumber > ${sinceSequence}`),
       );
+    });
+
+    it("should wait only for the current asc page terminal watermark target", async () => {
+      vi.stubEnv("AXIOM_TOKEN_SESSIONS", "test-sessions-token");
+      reloadEnv();
+      context.mocks.axiom.queryAxiom
+        .mockResolvedValueOnce([{ sequenceNumber: 0 }])
+        .mockResolvedValueOnce([
+          createAxiomAgentEvent(
+            "2024-01-01T00:00:00Z",
+            0,
+            "event0",
+            { type: "event0" },
+            testRunId,
+          ),
+        ]);
+
+      await completeTestRun(user.userId, testRunId, undefined, {
+        lastEventSequence: 50,
+      });
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/agent?order=asc&limit=1`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledTimes(2);
+      const visibilityApl = context.mocks.axiom.queryAxiom.mock.calls[0]![0];
+      expect(visibilityApl).toContain("project sequenceNumber");
+      expect(visibilityApl).toContain("sequenceNumber > -1");
+      const eventsApl = context.mocks.axiom.queryAxiom.mock.calls[1]![0];
+      expect(eventsApl).toContain("order by sequenceNumber asc");
+      expect(eventsApl).toContain("limit 2");
     });
   });
 

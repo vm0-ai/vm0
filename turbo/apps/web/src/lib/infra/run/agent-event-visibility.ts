@@ -48,6 +48,23 @@ interface AgentEventVisibilityResult {
   error?: unknown;
 }
 
+export function getAgentEventPageWatermarkTarget(
+  lastEventSequence: number | null,
+  since: number | undefined,
+  limit: number,
+): number | null {
+  if (lastEventSequence === null || limit <= 0) {
+    return null;
+  }
+
+  const cursor = Math.max(-1, Math.floor(since ?? -1));
+  if (cursor >= lastEventSequence) {
+    return null;
+  }
+
+  return Math.min(lastEventSequence, cursor + limit);
+}
+
 function getInitializedDb(): typeof globalThis.services.db | undefined {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, "services");
   if (!descriptor) {

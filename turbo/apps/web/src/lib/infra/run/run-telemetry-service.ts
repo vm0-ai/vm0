@@ -9,7 +9,10 @@ import {
 } from "../../shared/axiom";
 import { notFound } from "@vm0/api-services/errors";
 import { extractFrameworkFromCompose } from "../framework/framework-config";
-import { waitForRunEventWatermarkVisible } from "./agent-event-visibility";
+import {
+  getAgentEventPageWatermarkTarget,
+  waitForRunEventWatermarkVisible,
+} from "./agent-event-visibility";
 
 interface AxiomAgentEvent {
   _time: string;
@@ -35,6 +38,27 @@ interface AgentEventsResult {
   }>;
   hasMore: boolean;
   framework: string;
+}
+
+function getAgentEventsVisibilityTarget(
+  lastEventSequence: number | null,
+  since: number | undefined,
+  limit: number,
+  order: "asc" | "desc",
+): number | null {
+  if (lastEventSequence === null) {
+    return null;
+  }
+
+  if (order === "asc") {
+    return getAgentEventPageWatermarkTarget(lastEventSequence, since, limit);
+  }
+
+  if (since !== undefined && since >= lastEventSequence) {
+    return null;
+  }
+
+  return lastEventSequence;
 }
 
 /**
@@ -93,14 +117,14 @@ export async function getRunAgentEvents(
   const sinceFilter =
     since !== undefined ? `| where sequenceNumber > ${since}` : "";
 
-  if (
-    runWithCompose.lastEventSequence !== null &&
-    (since === undefined || since < runWithCompose.lastEventSequence)
-  ) {
-    await waitForRunEventWatermarkVisible(
-      runId,
-      runWithCompose.lastEventSequence,
-    );
+  const watermarkTarget = getAgentEventsVisibilityTarget(
+    runWithCompose.lastEventSequence,
+    since,
+    limit,
+    order,
+  );
+  if (watermarkTarget !== null) {
+    await waitForRunEventWatermarkVisible(runId, watermarkTarget);
   }
 
   const apl = `['${dataset}']

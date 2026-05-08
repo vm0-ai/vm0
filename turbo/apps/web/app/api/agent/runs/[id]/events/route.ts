@@ -23,7 +23,10 @@ import type {
 } from "../../../../../../src/lib/infra/run/types";
 import { extractFrameworkFromCompose } from "../../../../../../src/lib/infra/framework/framework-config";
 import { filterConsecutiveEvents, type AxiomAgentEvent } from "./filter-events";
-import { waitForRunEventWatermarkVisible } from "../../../../../../src/lib/infra/run/agent-event-visibility";
+import {
+  getAgentEventPageWatermarkTarget,
+  waitForRunEventWatermarkVisible,
+} from "../../../../../../src/lib/infra/run/agent-event-visibility";
 
 const router = tsr.router(runEventsContract, {
   getEvents: async ({ params, query, headers }) => {
@@ -91,14 +94,13 @@ const router = tsr.router(runEventsContract, {
         >[0],
       ) ?? "claude-code";
 
-    if (
-      runWithCompose.lastEventSequence !== null &&
-      since < runWithCompose.lastEventSequence
-    ) {
-      await waitForRunEventWatermarkVisible(
-        params.id,
-        runWithCompose.lastEventSequence,
-      );
+    const watermarkTarget = getAgentEventPageWatermarkTarget(
+      runWithCompose.lastEventSequence,
+      since,
+      limit,
+    );
+    if (watermarkTarget !== null) {
+      await waitForRunEventWatermarkVisible(params.id, watermarkTarget);
     }
 
     // Build APL query for Axiom
