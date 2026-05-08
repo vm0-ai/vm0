@@ -87,9 +87,10 @@ const internalWakeLock$ = state<WakeLockSentinel | null>(null);
 
 // Plan D (Epic #12128): browser self-reports `response.done` and
 // `transcription.completed` usage to /api/zero/voice-chat/:id/usage. The
-// reporter buffers events, retries with backoff, and flushes via fetch
-// keepalive on `pagehide` / `visibilitychange === "hidden"`. The relay
-// session id is the audit row created by /session-started; null means the
+// reporter is fire-and-drop per event (no retry; option 2 — accepted
+// operational overhead per the Epic body) plus a fetch-keepalive flush of
+// every payload sent so far on `pagehide`. The relay session id is the
+// audit row created by /session-started; null means the
 // VoiceChatRealtimeBilling switch is OFF (server returns `id: null` no-op).
 const internalUsageReporter$ = state<UsageReporter | null>(null);
 const internalRelaySessionId$ = state<string | null>(null);
