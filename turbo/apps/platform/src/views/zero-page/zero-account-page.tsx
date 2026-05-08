@@ -54,7 +54,7 @@ function AppearanceSettings() {
       <p className="text-sm max-md:text-[16px] text-muted-foreground">
         Choose how the interface looks.
       </p>
-      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
+      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border max-md:flex-wrap max-md:gap-3">
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
             <IconPalette
@@ -66,11 +66,14 @@ function AppearanceSettings() {
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
           <div className="text-sm max-md:text-[17px] font-medium text-foreground">Theme</div>
-          <div className="text-sm max-md:text-[16px] text-muted-foreground">
+          <div className="text-sm max-md:text-[16px] text-muted-foreground max-md:leading-snug">
             Your preferred color scheme
           </div>
         </div>
-        <div className="flex gap-2 shrink-0">
+        {/* Mobile: `basis-full` forces the segmented control to wrap to its
+            own row so 3 buttons split the card width into thirds instead of
+            crowding the description. */}
+        <div className="flex gap-2 shrink-0 max-md:basis-full max-md:gap-2">
           {THEME_OPTIONS.map(({ value, label, icon: Icon }) => {
             return (
               <button
@@ -82,6 +85,7 @@ function AppearanceSettings() {
                 }}
                 className={cn(
                   "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  "max-md:flex-1 max-md:justify-center max-md:h-10 max-md:px-2 max-md:text-[14px]",
                   currentPref === value
                     ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
                     : "zero-chip text-muted-foreground hover:text-foreground",
@@ -120,7 +124,7 @@ function SendModeSettings() {
       <p className="text-sm max-md:text-[16px] text-muted-foreground">
         Choose how to send messages in chat.
       </p>
-      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
+      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border max-md:flex-wrap max-md:gap-3">
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
             <IconKeyboard
@@ -134,13 +138,15 @@ function SendModeSettings() {
           <div className="text-sm max-md:text-[17px] font-medium text-foreground">
             Send message with
           </div>
-          <div className="text-sm max-md:text-[16px] text-muted-foreground">
+          <div className="text-sm max-md:text-[16px] text-muted-foreground max-md:leading-snug">
             {(saving ?? current) === "enter"
               ? "Press Enter to send, Shift+Enter for new line"
               : "Press ⌘/Ctrl+Enter to send, Enter for new line"}
           </div>
         </div>
-        <div className="flex gap-2 shrink-0">
+        {/* Mobile: segmented control wraps below the icon+text row and the
+            two buttons split the width 50/50. */}
+        <div className="flex gap-2 shrink-0 max-md:basis-full max-md:gap-2">
           {SEND_OPTIONS.map(({ value, label }) => {
             const isActive =
               saving === value ? true : saving === null && current === value;
@@ -155,6 +161,7 @@ function SendModeSettings() {
                 }}
                 className={cn(
                   "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  "max-md:flex-1 max-md:justify-center max-md:h-10 max-md:px-2 max-md:text-[14px]",
                   isActive
                     ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
                     : "zero-chip text-muted-foreground hover:text-foreground",
