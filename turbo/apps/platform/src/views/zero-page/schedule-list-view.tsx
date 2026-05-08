@@ -276,46 +276,6 @@ function shortenScheduleTime(timeStr: string): string {
   return timeStr;
 }
 
-function formatNextRunLabel(iso: string, now: Date): string | null {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) {
-    return null;
-  }
-  const diffMs = d.getTime() - now.getTime();
-  if (diffMs <= 0) {
-    return "Next run any moment";
-  }
-  const diffMin = Math.round(diffMs / 60_000);
-  if (diffMin < 1) {
-    return "Next run any moment";
-  }
-  if (diffMin < 60) {
-    return `Next run in ${diffMin}m`;
-  }
-  const diffHour = Math.round(diffMin / 60);
-  if (diffHour < 24) {
-    return `Next run in ${diffHour}h`;
-  }
-  const startOfDay = (date: Date) => {
-    return new Date(
-      date.getFullYear(),
-      date.getMonth(),
-      date.getDate(),
-    ).getTime();
-  };
-  const dayDiff = Math.round((startOfDay(d) - startOfDay(now)) / 86_400_000);
-  if (dayDiff === 1) {
-    return "Next run tomorrow";
-  }
-  if (dayDiff < 7) {
-    return `Next run in ${dayDiff} days`;
-  }
-  if (d.getFullYear() === now.getFullYear()) {
-    return `Next run ${d.getMonth() + 1}/${d.getDate()}`;
-  }
-  return `Next run ${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
-}
-
 function ScheduleListCard<T extends ScheduleEntry>({
   entry,
   toggling,
@@ -339,9 +299,6 @@ function ScheduleListCard<T extends ScheduleEntry>({
     subtitleParts.push(shortTimezoneLabel(entry.timezone));
   }
   const subtitle = subtitleParts.join(" ");
-  const nextRunLabel = entry.nextRunAt
-    ? formatNextRunLabel(entry.nextRunAt, new Date())
-    : null;
   const title = entry.description || entry.prompt;
 
   return (
@@ -364,11 +321,6 @@ function ScheduleListCard<T extends ScheduleEntry>({
       )}
       {/* Left: text content — pointer-events disabled so clicks pass through to the Link overlay */}
       <div className="min-w-0 flex-1 flex flex-col gap-0.5 pointer-events-none">
-        {showAgent && (
-          <span className="block text-[14px] font-medium text-muted-foreground truncate">
-            {agentLabel}
-          </span>
-        )}
         <span
           className={cn(
             "block text-[17px] font-semibold text-foreground leading-snug truncate",
@@ -383,18 +335,16 @@ function ScheduleListCard<T extends ScheduleEntry>({
             dimmed && "text-muted-foreground/80",
           )}
         >
+          {showAgent && agentLabel && (
+            <>
+              <span className="font-semibold text-foreground">
+                {agentLabel}
+              </span>
+              {" · "}
+            </>
+          )}
           {subtitle}
         </span>
-        {nextRunLabel && (
-          <span
-            className={cn(
-              "text-[14px] text-muted-foreground/80 truncate",
-              dimmed && "text-muted-foreground/60",
-            )}
-          >
-            {nextRunLabel}
-          </span>
-        )}
       </div>
 
       {/* Right: toggle — sits above the link overlay so taps don't bubble to the row link */}
