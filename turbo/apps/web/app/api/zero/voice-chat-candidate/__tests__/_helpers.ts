@@ -3,6 +3,7 @@ import { uniqueId } from "../../../../../src/__tests__/test-helpers";
 import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
 import {
   createTestOrg,
+  insertOrgModelPolicy,
   insertOrgDefaultModelProvider,
 } from "../../../../../src/__tests__/db-test-seeders/org";
 import {
@@ -23,11 +24,19 @@ export async function setupCandidateOrg(userId: string): Promise<{
   await createTestOrg(slug);
   // POST /:id/tasks tests spawn zero runs; createZeroRun asserts an org-default
   // model provider exists. Seeding here keeps per-test setup lean.
-  await insertOrgDefaultModelProvider(
+  const modelProviderId = await insertOrgDefaultModelProvider(
     orgId,
     "anthropic-api-key",
     "claude-3-5-sonnet-20241022",
   );
+  await insertOrgModelPolicy({
+    orgId,
+    model: "claude-sonnet-4-6",
+    sortOrder: 1,
+    defaultProviderType: "anthropic-api-key",
+    credentialScope: "org",
+    modelProviderId,
+  });
   return { orgId, slug };
 }
 

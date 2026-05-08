@@ -213,7 +213,7 @@ export async function insertOrgDefaultModelProvider(
   orgId: string,
   type: string,
   selectedModel?: string,
-): Promise<void> {
+): Promise<string> {
   initServices();
   await globalThis.services.db
     .update(modelProviders)
@@ -225,13 +225,18 @@ export async function insertOrgDefaultModelProvider(
         eq(modelProviders.isDefault, true),
       ),
     );
-  await globalThis.services.db.insert(modelProviders).values({
-    type,
-    userId: ORG_SENTINEL_USER_ID,
-    orgId,
-    isDefault: true,
-    selectedModel: selectedModel ?? null,
-  });
+  const [row] = await globalThis.services.db
+    .insert(modelProviders)
+    .values({
+      type,
+      userId: ORG_SENTINEL_USER_ID,
+      orgId,
+      isDefault: true,
+      selectedModel: selectedModel ?? null,
+    })
+    .returning({ id: modelProviders.id });
+  if (!row) throw new Error("insertOrgDefaultModelProvider: insert failed");
+  return row.id;
 }
 
 /**
