@@ -233,11 +233,11 @@ function shortTimezoneLabel(tz: string): string {
 }
 
 // Compress the verbose schedule string into an iOS-style frequency phrase.
-// "Every day at 9:00 AM"   → "Daily • 9:00 AM"
-// "Every weekday at 8:30 AM" → "Weekdays • 8:30 AM"
-// "Every week on Monday at X" → "Mondays • X"
-// "Every month on day 1 at X" → "Monthly • X"
-// "Once on YYYY-MM-DD at X" → "Once • X"
+// "Every day at 9:00 AM"   → "Daily · 9:00 AM"
+// "Every weekday at 8:30 AM" → "Weekdays · 8:30 AM"
+// "Every week on Monday at X" → "Mondays · X"
+// "Every month on day 1 at X" → "Monthly · X"
+// "Once on YYYY-MM-DD at X" → "Once · X"
 // "Every N minutes"        → "Every N min"
 function shortenScheduleTime(timeStr: string): string {
   if (timeStr === "Now") {
@@ -249,15 +249,15 @@ function shortenScheduleTime(timeStr: string): string {
   }
   const onceMatch = timeStr.match(/^Once on \d{4}-\d{2}-\d{2} at (.+)$/);
   if (onceMatch) {
-    return `Once • ${onceMatch[1]}`;
+    return `Once · ${onceMatch[1]}`;
   }
   const everyDay = timeStr.match(/^Every day at (.+)$/);
   if (everyDay) {
-    return `Daily • ${everyDay[1]}`;
+    return `Daily · ${everyDay[1]}`;
   }
   const everyWeekday = timeStr.match(/^Every weekday at (.+)$/);
   if (everyWeekday) {
-    return `Weekdays • ${everyWeekday[1]}`;
+    return `Weekdays · ${everyWeekday[1]}`;
   }
   const weeklyOn = timeStr.match(/^Every week on (.+) at (.+)$/);
   if (weeklyOn) {
@@ -267,11 +267,11 @@ function shortenScheduleTime(timeStr: string): string {
         return d.endsWith("s") ? d : `${d}s`;
       })
       .join(", ");
-    return `${days} • ${weeklyOn[2]}`;
+    return `${days} · ${weeklyOn[2]}`;
   }
   const monthly = timeStr.match(/^Every month(?: on day \d+)? at (.+)$/);
   if (monthly) {
-    return `Monthly • ${monthly[1]}`;
+    return `Monthly · ${monthly[1]}`;
   }
   return timeStr;
 }
