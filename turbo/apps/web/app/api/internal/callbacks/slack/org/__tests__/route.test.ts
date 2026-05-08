@@ -22,6 +22,7 @@ import { POST } from "../route";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 import { seedUserFeatureSwitches } from "../../../../../../../src/__tests__/db-test-seeders/feature-switches";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { reloadEnv } from "../../../../../../../src/env";
 
 const context = testContext();
 
@@ -203,12 +204,22 @@ describe("POST /api/internal/callbacks/slack/org", () => {
   });
 
   it("posts completion message to Slack thread", async () => {
+    vi.stubEnv("AXIOM_TOKEN_SESSIONS", "test-sessions-token");
+    reloadEnv();
+
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
     const { runId } = await seedTestRun(user.userId, composeId, {
       prompt: "Test prompt",
     });
-    await completeTestRun(user.userId, runId);
+    context.mocks.axiom.queryAxiom
+      .mockResolvedValueOnce([{ sequenceNumber: 0 }])
+      .mockResolvedValueOnce([
+        { eventData: { result: "HELLO_FROM_CALLBACK" } },
+      ]);
+    await completeTestRun(user.userId, runId, undefined, {
+      lastEventSequence: 0,
+    });
 
     const channelId = uniqueId("C-ch");
     const threadTs = uniqueId("ts");
@@ -245,9 +256,15 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     expect(mockClient.chat.postMessage).toHaveBeenCalled();
     const call = (
       mockClient.chat.postMessage as ReturnType<typeof import("vitest").vi.fn>
-    ).mock.calls[0]![0] as { channel: string; thread_ts: string };
+    ).mock.calls[0]![0] as {
+      channel: string;
+      thread_ts: string;
+      text: string;
+    };
     expect(call.channel).toBe(channelId);
     expect(call.thread_ts).toBe(threadTs);
+    expect(call.text).toContain("HELLO_FROM_CALLBACK");
+    expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledTimes(2);
   });
 
   it("posts Codex agent_message output instead of the completion fallback", async () => {

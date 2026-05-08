@@ -1,9 +1,15 @@
 import { eq, and } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
-import { queryAxiom, getDatasetName, DATASETS } from "../../shared/axiom";
+import {
+  queryAxiom,
+  getDatasetName,
+  DATASETS,
+  escapeAplString,
+} from "../../shared/axiom";
 import { notFound } from "@vm0/api-services/errors";
 import { extractFrameworkFromCompose } from "../framework/framework-config";
+import { waitForRunEventWatermarkVisible } from "./agent-event-visibility";
 
 interface AxiomAgentEvent {
   _time: string;
@@ -46,6 +52,7 @@ export async function getRunAgentEvents(
   const [runWithCompose] = await db
     .select({
       id: agentRuns.id,
+      lastEventSequence: agentRuns.lastEventSequence,
       composeContent: agentComposeVersions.content,
     })
     .from(agentRuns)
@@ -85,8 +92,19 @@ export async function getRunAgentEvents(
   // integer `sequenceNumber` avoids any precision loss.
   const sinceFilter =
     since !== undefined ? `| where sequenceNumber > ${since}` : "";
+
+  if (
+    runWithCompose.lastEventSequence !== null &&
+    (since === undefined || since < runWithCompose.lastEventSequence)
+  ) {
+    await waitForRunEventWatermarkVisible(
+      runId,
+      runWithCompose.lastEventSequence,
+    );
+  }
+
   const apl = `['${dataset}']
-| where runId == "${runId}"
+| where runId == "${escapeAplString(runId)}"
 ${sinceFilter}
 | order by sequenceNumber ${order}
 | limit ${limit + 1}`;

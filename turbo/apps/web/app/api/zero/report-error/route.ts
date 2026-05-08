@@ -41,6 +41,7 @@ const router = tsr.router(zeroReportErrorContract, {
         createdAt: agentRuns.createdAt,
         startedAt: agentRuns.startedAt,
         completedAt: agentRuns.completedAt,
+        lastEventSequence: agentRuns.lastEventSequence,
         agentComposeVersionId: agentRuns.agentComposeVersionId,
         runnerGroup: agentRuns.runnerGroup,
         continuedFromSessionId: agentRuns.continuedFromSessionId,

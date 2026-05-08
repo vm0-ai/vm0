@@ -28,7 +28,9 @@ import {
   flushAxiom,
   getDatasetName,
   DATASETS,
+  escapeAplString,
 } from "../../../../../src/lib/shared/axiom";
+import { waitForRunEventWatermarkVisible } from "../../../../../src/lib/infra/run/agent-event-visibility";
 import type { ChatCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../src/lib/shared/logger";
 
@@ -83,9 +85,11 @@ async function queryChatOutputEvents(runId: string): Promise<{
   assistantItems: AssistantEventItem[];
   resultFallback: ResultEventItem | null;
 }> {
+  await waitForRunEventWatermarkVisible(runId);
+
   const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
   const apl = `['${dataset}']
-| where runId == "${runId}"
+| where runId == "${escapeAplString(runId)}"
 | where eventType == "assistant" or eventType == "result" or eventType == "item.completed"
 | order by sequenceNumber asc
 | limit 200`;

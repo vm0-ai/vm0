@@ -14,6 +14,7 @@ import {
   queryAxiom,
   getDatasetName,
   DATASETS,
+  escapeAplString,
 } from "../../../../../../src/lib/shared/axiom";
 import type {
   RunStatus,
@@ -22,6 +23,7 @@ import type {
 } from "../../../../../../src/lib/infra/run/types";
 import { extractFrameworkFromCompose } from "../../../../../../src/lib/infra/framework/framework-config";
 import { filterConsecutiveEvents, type AxiomAgentEvent } from "./filter-events";
+import { waitForRunEventWatermarkVisible } from "../../../../../../src/lib/infra/run/agent-event-visibility";
 
 const router = tsr.router(runEventsContract, {
   getEvents: async ({ params, query, headers }) => {
@@ -89,10 +91,20 @@ const router = tsr.router(runEventsContract, {
         >[0],
       ) ?? "claude-code";
 
+    if (
+      runWithCompose.lastEventSequence !== null &&
+      since < runWithCompose.lastEventSequence
+    ) {
+      await waitForRunEventWatermarkVisible(
+        params.id,
+        runWithCompose.lastEventSequence,
+      );
+    }
+
     // Build APL query for Axiom
     const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
     const apl = `['${dataset}']
-| where runId == "${params.id}"
+| where runId == "${escapeAplString(params.id)}"
 | where sequenceNumber > ${since}
 | order by sequenceNumber asc
 | limit ${limit}`;
