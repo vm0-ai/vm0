@@ -17,6 +17,8 @@ use vsock_proto::{
 
 const EXIT_CODE_TIMEOUT: i32 = 124;
 const DRAIN_DEADLINE_SECS: u64 = 5;
+const LARGE_ENV_COMMAND: &str =
+    "printf '%s:%s:%s:%s:%s\\n' \"$SMALL\" \"${#BIG_A}\" \"${#BIG_B}\" \"${#BIG_C}\" \"${#BIG_D}\"";
 
 struct TempPathGuard(String);
 
@@ -54,6 +56,32 @@ fn unique_socket_path(label: &str) -> TempPathGuard {
 
 fn unique_pid_path(label: &str) -> TempPathGuard {
     unique_tmp_path(label, ".pid")
+}
+
+fn large_env_values() -> [String; 4] {
+    [
+        "A".repeat(40 * 1024),
+        "B".repeat(40 * 1024),
+        "C".repeat(40 * 1024),
+        "D".repeat(40 * 1024),
+    ]
+}
+
+fn large_env_entries(values: &[String; 4]) -> [(&'static str, &str); 5] {
+    [
+        ("SMALL", "ok"),
+        ("BIG_A", values[0].as_str()),
+        ("BIG_B", values[1].as_str()),
+        ("BIG_C", values[2].as_str()),
+        ("BIG_D", values[3].as_str()),
+    ]
+}
+
+fn assert_large_env_stdout(stdout: &[u8]) {
+    assert_eq!(
+        String::from_utf8_lossy(stdout),
+        "ok:40960:40960:40960:40960\n"
+    );
 }
 
 struct OrphanProcessGuard {
@@ -254,17 +282,8 @@ fn exec_returns_correct_result() {
 fn exec_large_env_payload_succeeds() {
     use std::os::unix::net::UnixStream as StdUnixStream;
 
-    let big_a = "A".repeat(40 * 1024);
-    let big_b = "B".repeat(40 * 1024);
-    let big_c = "C".repeat(40 * 1024);
-    let big_d = "D".repeat(40 * 1024);
-    let env = [
-        ("SMALL", "ok"),
-        ("BIG_A", big_a.as_str()),
-        ("BIG_B", big_b.as_str()),
-        ("BIG_C", big_c.as_str()),
-        ("BIG_D", big_d.as_str()),
-    ];
+    let values = large_env_values();
+    let env = large_env_entries(&values);
 
     let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
     let mut host_writer = host_stream.try_clone().unwrap();
@@ -282,16 +301,13 @@ fn exec_large_env_payload_succeeds() {
         &mut host_writer,
         &mut host_reader,
         1,
-        "printf '%s:%s:%s:%s:%s\\n' \"$SMALL\" \"${#BIG_A}\" \"${#BIG_B}\" \"${#BIG_C}\" \"${#BIG_D}\"",
+        LARGE_ENV_COMMAND,
         5000,
         &env,
     );
 
     assert_eq!(code, 0, "stderr: {}", String::from_utf8_lossy(&stderr));
-    assert_eq!(
-        String::from_utf8_lossy(&stdout),
-        "ok:40960:40960:40960:40960\n"
-    );
+    assert_large_env_stdout(&stdout);
 
     drop(host_writer);
     drop(host_reader);
@@ -590,17 +606,8 @@ fn streaming_monitor_normal_exit() {
 fn streaming_spawn_watch_large_env_payload_succeeds() {
     use std::os::unix::net::UnixStream as StdUnixStream;
 
-    let big_a = "A".repeat(40 * 1024);
-    let big_b = "B".repeat(40 * 1024);
-    let big_c = "C".repeat(40 * 1024);
-    let big_d = "D".repeat(40 * 1024);
-    let env = [
-        ("SMALL", "ok"),
-        ("BIG_A", big_a.as_str()),
-        ("BIG_B", big_b.as_str()),
-        ("BIG_C", big_c.as_str()),
-        ("BIG_D", big_d.as_str()),
-    ];
+    let values = large_env_values();
+    let env = large_env_entries(&values);
 
     let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
     let handle = thread::spawn(move || {
@@ -611,21 +618,11 @@ fn streaming_spawn_watch_large_env_payload_succeeds() {
         .set_read_timeout(Some(Duration::from_secs(5)))
         .unwrap();
 
-    send_spawn_watch_with_env(
-        &mut host_stream,
-        1,
-        "printf '%s:%s:%s:%s:%s\\n' \"$SMALL\" \"${#BIG_A}\" \"${#BIG_B}\" \"${#BIG_C}\" \"${#BIG_D}\"",
-        &env,
-        None,
-        5000,
-    );
+    send_spawn_watch_with_env(&mut host_stream, 1, LARGE_ENV_COMMAND, &env, None, 5000);
     let (_pid, stdout_data, exit_code, stderr) = read_streaming_result(&mut host_stream, 1);
 
     assert_eq!(exit_code, 0, "stderr: {}", String::from_utf8_lossy(&stderr));
-    assert_eq!(
-        String::from_utf8_lossy(&stdout_data),
-        "ok:40960:40960:40960:40960\n"
-    );
+    assert_large_env_stdout(&stdout_data);
 
     drop(host_stream);
     let _ = handle.join();
@@ -886,8 +883,18 @@ fn send_spawn_watch_buffered(
     command: &str,
     timeout_ms: u32,
 ) {
+    send_spawn_watch_buffered_with_env(stream, seq, command, &[], timeout_ms);
+}
+
+fn send_spawn_watch_buffered_with_env(
+    stream: &mut impl std::io::Write,
+    seq: u32,
+    command: &str,
+    env: &[(&str, &str)],
+    timeout_ms: u32,
+) {
     let payload =
-        vsock_proto::encode_spawn_watch(timeout_ms, command, &[], false, false, None).unwrap();
+        vsock_proto::encode_spawn_watch(timeout_ms, command, env, false, false, None).unwrap();
     let msg = vsock_proto::encode(MSG_SPAWN_WATCH, seq, &payload).unwrap();
     stream.write_all(&msg).unwrap();
 }
@@ -1163,6 +1170,32 @@ fn spawn_watch_buffered_timeout_zero_silent_child_is_cancelled_on_host_disconnec
     drop(host_stream);
     let _ = handle.join();
     wait_for_pid_exit(pid, "buffered spawn_watch host disconnect");
+}
+
+#[test]
+fn buffered_spawn_watch_large_env_payload_succeeds() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    let values = large_env_values();
+    let env = large_env_entries(&values);
+
+    let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+    read_and_discard_message(&mut host_stream); // MSG_READY
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    send_spawn_watch_buffered_with_env(&mut host_stream, 1, LARGE_ENV_COMMAND, &env, 5000);
+    let (_pid, code, stdout, stderr) = read_buffered_spawn_watch_result(&mut host_stream, 1);
+
+    assert_eq!(code, 0, "stderr: {}", String::from_utf8_lossy(&stderr));
+    assert_large_env_stdout(&stdout);
+
+    drop(host_stream);
+    let _ = handle.join();
 }
 
 /// Regression for #11077: when the host drops the vsock connection

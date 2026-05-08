@@ -186,13 +186,35 @@ fn validate_env_keys(env: &[(&str, &str)]) -> io::Result<()> {
     Ok(())
 }
 
+fn validate_env_values(env: &[(&str, &str)]) -> io::Result<()> {
+    for (key, value) in env {
+        if value.as_bytes().contains(&0) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "environment variable value contains NUL bytes: {}",
+                    format_env_key_for_log(key)
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn build_env_script_content(
     script_dir: &Path,
     script_path: &Path,
     command: &str,
     env: &[(&str, &str)],
 ) -> io::Result<String> {
+    if command.as_bytes().contains(&0) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "command contains NUL bytes",
+        ));
+    }
     validate_env_keys(env)?;
+    validate_env_values(env)?;
     let script_dir = script_dir.to_str().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -578,6 +600,33 @@ mod tests {
             err.to_string()
                 .contains("invalid environment variable name")
         );
+    }
+
+    #[test]
+    fn env_script_content_rejects_nul_command() {
+        let dir = Path::new("/run/vm0-exec/vm0-env-test");
+        let path = dir.join("run.sh");
+        let err = build_env_script_content(dir, &path, "echo before\0after", &[("FOO", "x")])
+            .unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("command contains NUL bytes"));
+    }
+
+    #[test]
+    fn env_script_content_rejects_nul_env_value() {
+        let dir = Path::new("/run/vm0-exec/vm0-env-test");
+        let path = dir.join("run.sh");
+        let err = build_env_script_content(dir, &path, "echo hi", &[("SECRET", "before\0after")])
+            .unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(
+            err.to_string()
+                .contains("environment variable value contains NUL bytes: SECRET")
+        );
+        assert!(!err.to_string().contains("before"));
+        assert!(!err.to_string().contains("after"));
     }
 
     #[test]
