@@ -103,10 +103,8 @@ async fn successful_job_parks_in_idle_pool() {
     assert!(completion.is_some(), "job should complete");
     assert_eq!(completion.unwrap().exit_code, 0);
 
-    // Give park notification time to propagate.
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
     // VM should be parked in idle pool, holding budget.
+    wait_idle_pool_sessions(&idle_pool, &["sess-park"], Duration::from_secs(5)).await;
     {
         let pool = idle_pool.lock().await;
         assert_eq!(pool.len(), 1, "VM should be parked");
@@ -164,11 +162,13 @@ async fn park_triggers_immediate_heartbeat() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let run_handle = tokio::spawn(run(config));
 
-    // Snapshot the heartbeat count before pushing a job. The first
-    // interval tick is now deferred by one period (`interval_at`), so
-    // `before` is typically 0; the 100 ms settle time just lets the
-    // main loop reach its idle select state.
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // Snapshot the heartbeat count once the provider is parked in discovery.
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        env.handle.discover_entered.notified(),
+    )
+    .await
+    .expect("runner should enter discovery before the heartbeat baseline is captured");
     let before = env.handle.heartbeat_count();
 
     let run_id = RunId::new_v4();
@@ -185,12 +185,11 @@ async fn park_triggers_immediate_heartbeat() {
         .await;
     assert!(completion.is_some(), "job should complete");
 
-    // Give park notification time to trigger heartbeat.
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    let after = env.handle.heartbeat_count();
     assert!(
-        after > before,
-        "park should trigger at least one heartbeat (before={before}, after={after})"
+        env.handle
+            .wait_heartbeat_past(before, Duration::from_secs(5))
+            .await,
+        "park should trigger at least one heartbeat after baseline={before}",
     );
 
     shutdown(&env, run_handle).await;
@@ -240,9 +239,8 @@ async fn session_affinity_reuses_idle_vm() {
         "reused completion should carry the seeded sandbox id"
     );
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
     // After reuse + re-park: pool should still have 1 entry, budget count=1.
+    wait_idle_pool_sessions(&idle_pool, &["sess-reuse"], Duration::from_secs(5)).await;
     {
         let pool = idle_pool.lock().await;
         assert_eq!(pool.len(), 1, "VM should be re-parked after reuse");
@@ -658,10 +656,17 @@ async fn shutdown_clears_idle_vms_in_status_json() {
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
         .await;
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_idle_pool_sessions(&idle_pool, &["sess-status-clean"], Duration::from_secs(5)).await;
     assert_eq!(idle_pool.lock().await.len(), 1, "VM parked");
 
     // Pre-shutdown sanity: status.json lists the idle VM.
+    wait_status_idle_sessions_and_active_runs(
+        &status_path,
+        &["sess-status-clean"],
+        &[],
+        Duration::from_secs(5),
+    )
+    .await;
     let pre: serde_json::Value =
         serde_json::from_str(&tokio::fs::read_to_string(&status_path).await.unwrap()).unwrap();
     let pre_len = pre
@@ -724,7 +729,7 @@ async fn sequential_same_session_reuse_cycle() {
         .wait_completion(id1, Duration::from_secs(5))
         .await;
     assert!(c1.is_some(), "job 1 should complete");
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_idle_pool_sessions(&idle_pool, &["sess-seq"], Duration::from_secs(5)).await;
     assert_eq!(idle_pool.lock().await.len(), 1, "job 1 VM should be parked");
 
     // Job 2: same session → take → reuse → re-park.
@@ -740,7 +745,12 @@ async fn sequential_same_session_reuse_cycle() {
         .wait_completion(id2, Duration::from_secs(5))
         .await;
     assert!(c2.is_some(), "job 2 should complete");
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(
+        c2.unwrap().reuse_result,
+        Some(SandboxReuseResult::Reused),
+        "job 2 should reuse the first job's parked VM",
+    );
+    wait_idle_pool_sessions(&idle_pool, &["sess-seq"], Duration::from_secs(5)).await;
 
     assert_eq!(
         idle_pool.lock().await.len(),
@@ -835,9 +845,7 @@ async fn reuse_cycle_invokes_park_and_unpark_symmetrically() {
             .await
             .is_some()
     );
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    assert_eq!(counter.park_call_count(), 1);
-    assert_eq!(counter.unpark_call_count(), 0);
+    wait_sandbox_lifecycle_counts(&counter, 1, 0, Duration::from_secs(5)).await;
 
     // Job 2: same session → take (unpark) → run → re-park.
     let id2 = RunId::new_v4();
@@ -853,7 +861,7 @@ async fn reuse_cycle_invokes_park_and_unpark_symmetrically() {
             .await
             .is_some()
     );
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_sandbox_lifecycle_counts(&counter, 2, 1, Duration::from_secs(5)).await;
     assert_eq!(
         counter.park_call_count(),
         2,
@@ -893,10 +901,8 @@ async fn park_called_when_vm_enters_idle_pool() {
         .await;
     assert!(c.is_some(), "job should complete");
 
-    // Park notification + park() are called from the post-job task; give
-    // them a moment to run before asserting.
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
+    wait_sandbox_lifecycle_counts(&counter, 1, 0, Duration::from_secs(5)).await;
+    wait_idle_pool_sessions(&idle_pool, &["sess-park-hook"], Duration::from_secs(5)).await;
     assert_eq!(
         counter.park_call_count(),
         1,

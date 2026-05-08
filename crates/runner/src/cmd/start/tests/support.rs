@@ -498,6 +498,49 @@ pub(super) async fn wait_idle_pool_len(pool: &SharedIdlePool, expected: usize, t
     .await;
 }
 
+pub(super) async fn wait_idle_pool_sessions(
+    pool: &SharedIdlePool,
+    expected: &[&str],
+    timeout: Duration,
+) {
+    let mut expected: Vec<String> = expected
+        .iter()
+        .map(|session| (*session).to_string())
+        .collect();
+    expected.sort_unstable();
+    wait_for_probe(timeout, || async {
+        let actual = pool.lock().await.held_sessions();
+        if actual == expected {
+            WaitProbe::Ready(())
+        } else {
+            WaitProbe::Pending(format!(
+                "idle pool sessions did not reach {expected:?} within {timeout:?} (actual: {actual:?})",
+            ))
+        }
+    })
+    .await;
+}
+
+pub(super) async fn wait_sandbox_lifecycle_counts(
+    overrides: &sandbox_mock::MockSandboxOverrides,
+    expected_park: u32,
+    expected_unpark: u32,
+    timeout: Duration,
+) {
+    wait_for_probe(timeout, || async {
+        let actual_park = overrides.park_call_count();
+        let actual_unpark = overrides.unpark_call_count();
+        if actual_park == expected_park && actual_unpark == expected_unpark {
+            WaitProbe::Ready(())
+        } else {
+            WaitProbe::Pending(format!(
+                "sandbox lifecycle counts did not reach park={expected_park} unpark={expected_unpark} within {timeout:?} (actual park={actual_park} unpark={actual_unpark})",
+            ))
+        }
+    })
+    .await;
+}
+
 /// Poll until the idle pool parking state reaches `expected`.
 pub(super) async fn wait_parking_state(
     pool: &SharedIdlePool,
