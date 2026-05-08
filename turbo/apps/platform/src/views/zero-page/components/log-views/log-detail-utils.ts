@@ -91,6 +91,514 @@ interface GroupingEventData {
   is_error?: boolean;
 }
 
+interface CodexUsage {
+  input_tokens?: number;
+  cached_input_tokens?: number;
+  output_tokens?: number;
+  reasoning_output_tokens?: number;
+}
+
+interface CodexFileChange {
+  kind?: string;
+  path?: string;
+}
+
+interface CodexItem {
+  id?: string;
+  type?: string;
+  status?: string;
+  command?: string;
+  exit_code?: number;
+  output?: string;
+  aggregated_output?: string;
+  text?: string;
+  title?: string;
+  name?: string;
+  query?: string;
+  url?: string;
+  path?: string;
+  diff?: string;
+  changes?: CodexFileChange[];
+}
+
+interface CodexEventData {
+  type?: string;
+  thread_id?: string;
+  usage?: CodexUsage;
+  item?: CodexItem;
+  error?: string;
+  message?: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getStringField(
+  record: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = record[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function getNumberField(
+  record: Record<string, unknown>,
+  key: string,
+): number | undefined {
+  const value = record[key];
+  return typeof value === "number" ? value : undefined;
+}
+
+function parseCodexUsage(value: unknown): CodexUsage | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  return {
+    input_tokens: getNumberField(value, "input_tokens"),
+    cached_input_tokens: getNumberField(value, "cached_input_tokens"),
+    output_tokens: getNumberField(value, "output_tokens"),
+    reasoning_output_tokens: getNumberField(value, "reasoning_output_tokens"),
+  };
+}
+
+function parseCodexChanges(value: unknown): CodexFileChange[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value.filter(isRecord).map((change) => {
+    return {
+      kind: getStringField(change, "kind"),
+      path: getStringField(change, "path"),
+    };
+  });
+}
+
+function parseCodexItem(value: unknown): CodexItem | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  return {
+    id: getStringField(value, "id"),
+    type: getStringField(value, "type"),
+    status: getStringField(value, "status"),
+    command: getStringField(value, "command"),
+    exit_code: getNumberField(value, "exit_code"),
+    output: getStringField(value, "output"),
+    aggregated_output: getStringField(value, "aggregated_output"),
+    text: getStringField(value, "text"),
+    title: getStringField(value, "title"),
+    name: getStringField(value, "name"),
+    query: getStringField(value, "query"),
+    url: getStringField(value, "url"),
+    path: getStringField(value, "path"),
+    diff: getStringField(value, "diff"),
+    changes: parseCodexChanges(value.changes),
+  };
+}
+
+function parseCodexEventData(value: unknown): CodexEventData | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  return {
+    type: getStringField(value, "type"),
+    thread_id: getStringField(value, "thread_id"),
+    usage: parseCodexUsage(value.usage),
+    item: parseCodexItem(value.item),
+    error: getStringField(value, "error"),
+    message: getStringField(value, "message"),
+  };
+}
+
+function isCodexEventType(eventType: string): boolean {
+  return (
+    eventType === "thread.started" ||
+    eventType === "turn.started" ||
+    eventType === "turn.completed" ||
+    eventType === "turn.failed" ||
+    eventType === "error" ||
+    eventType.startsWith("item.")
+  );
+}
+
+function makeCodexSystemEvent(
+  event: AgentEvent,
+  codexEvent: CodexEventData,
+): AgentEvent {
+  return {
+    ...event,
+    eventType: "system",
+    eventData: {
+      subtype: "init",
+      framework: "codex",
+      session_id: codexEvent.thread_id ?? null,
+      tools: [],
+      agents: [],
+      slash_commands: [],
+      codex_event_type: codexEvent.type,
+    },
+  };
+}
+
+function makeCodexResultEvent(params: {
+  event: AgentEvent;
+  success: boolean;
+  result: string;
+  usage?: CodexUsage;
+}): AgentEvent {
+  const { event, success, result, usage } = params;
+  return {
+    ...event,
+    eventType: "result",
+    eventData: {
+      type: "result",
+      is_error: !success,
+      result,
+      num_turns: 1,
+      modelUsage: usage
+        ? {
+            codex: {
+              inputTokens: usage.input_tokens ?? null,
+              outputTokens: usage.output_tokens ?? null,
+            },
+          }
+        : undefined,
+      codex_usage: usage,
+    },
+  };
+}
+
+function makeCodexAssistantTextEvent(
+  event: AgentEvent,
+  text: string,
+): AgentEvent {
+  return {
+    ...event,
+    eventType: "assistant",
+    eventData: {
+      message: {
+        content: [{ type: "text", text }],
+      },
+    },
+  };
+}
+
+function makeCodexToolUseEvent(params: {
+  event: AgentEvent;
+  item: CodexItem;
+  toolName: string;
+  input: Record<string, unknown>;
+}): AgentEvent {
+  const { event, item, toolName, input } = params;
+  return {
+    ...event,
+    eventType: "assistant",
+    eventData: {
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: item.id,
+            name: toolName,
+            input,
+          },
+        ],
+      },
+    },
+  };
+}
+
+function makeCodexToolResultEvent(params: {
+  event: AgentEvent;
+  item: CodexItem;
+  content: string;
+  isError?: boolean;
+}): AgentEvent {
+  const { event, item, content, isError = false } = params;
+  return {
+    ...event,
+    eventType: "user",
+    eventData: {
+      message: {
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: item.id,
+            content,
+            is_error: isError,
+          },
+        ],
+      },
+    },
+  };
+}
+
+function formatCodexFileChanges(changes: CodexFileChange[]): string {
+  if (changes.length === 0) {
+    return "[files] Files changed";
+  }
+
+  const lines = changes.map((change) => {
+    const kind = change.kind ?? "change";
+    const path = change.path ?? "unknown path";
+    return `- ${kind} ${path}`;
+  });
+
+  return ["[files] Files changed:", ...lines].join("\n");
+}
+
+function formatGenericCodexItem(
+  eventType: string,
+  item: CodexItem | undefined,
+): string {
+  if (!item) {
+    return `Codex ${eventType}`;
+  }
+
+  const label = item.type ?? "item";
+  const details: string[] = [];
+
+  if (item.status) {
+    details.push(`status: ${item.status}`);
+  }
+  if (item.id) {
+    details.push(`id: ${item.id}`);
+  }
+
+  const readable =
+    item.text ??
+    item.title ??
+    item.name ??
+    item.command ??
+    item.query ??
+    item.url ??
+    item.path ??
+    item.diff ??
+    item.output;
+  const suffix = readable ? `\n${readable}` : "";
+
+  return `Codex ${label} (${eventType}${details.length > 0 ? `, ${details.join(", ")}` : ""})${suffix}`;
+}
+
+function normalizeCodexRunEvent(
+  event: AgentEvent,
+  codexType: string,
+  codexEvent: CodexEventData | undefined,
+): AgentEvent | null {
+  switch (codexType) {
+    case "thread.started": {
+      return makeCodexSystemEvent(event, codexEvent ?? { type: codexType });
+    }
+    case "turn.started": {
+      return null;
+    }
+    case "turn.completed": {
+      return makeCodexResultEvent({
+        event,
+        success: true,
+        result: "",
+        usage: codexEvent?.usage,
+      });
+    }
+    case "turn.failed": {
+      return makeCodexResultEvent({
+        event,
+        success: false,
+        result: codexEvent?.error ?? "Turn failed",
+        usage: codexEvent?.usage,
+      });
+    }
+    case "error": {
+      return makeCodexResultEvent({
+        event,
+        success: false,
+        result: codexEvent?.message ?? codexEvent?.error ?? "Codex error",
+        usage: codexEvent?.usage,
+      });
+    }
+    default: {
+      return event;
+    }
+  }
+}
+
+function normalizeCodexCommandEvent(
+  event: AgentEvent,
+  codexType: string,
+  item: CodexItem,
+): AgentEvent | null {
+  if (codexType === "item.started" && item.command) {
+    return makeCodexToolUseEvent({
+      event,
+      item,
+      toolName: "Bash",
+      input: { command: item.command },
+    });
+  }
+
+  if (codexType === "item.completed") {
+    return makeCodexToolResultEvent({
+      event,
+      item,
+      content: item.aggregated_output ?? item.output ?? "",
+      isError:
+        typeof item.exit_code === "number" ? item.exit_code !== 0 : false,
+    });
+  }
+
+  return null;
+}
+
+function normalizeCodexFileMutationEvent(
+  event: AgentEvent,
+  codexType: string,
+  item: CodexItem,
+): AgentEvent | null {
+  const toolName = item.type === "file_edit" ? "Edit" : "Write";
+  if (codexType === "item.started" && item.path) {
+    return makeCodexToolUseEvent({
+      event,
+      item,
+      toolName,
+      input: { file_path: item.path },
+    });
+  }
+
+  if (codexType === "item.completed") {
+    return makeCodexToolResultEvent({
+      event,
+      item,
+      content: item.diff ?? "File operation completed",
+    });
+  }
+
+  return null;
+}
+
+function normalizeCodexFileReadEvent(
+  event: AgentEvent,
+  codexType: string,
+  item: CodexItem,
+): AgentEvent | null {
+  if (codexType === "item.started" && item.path) {
+    return makeCodexToolUseEvent({
+      event,
+      item,
+      toolName: "Read",
+      input: { file_path: item.path },
+    });
+  }
+
+  if (codexType === "item.completed") {
+    return makeCodexToolResultEvent({
+      event,
+      item,
+      content: item.output ?? "File read completed",
+    });
+  }
+
+  return null;
+}
+
+function normalizeCodexItemEvent(
+  event: AgentEvent,
+  codexType: string,
+  item: CodexItem | undefined,
+): AgentEvent | null {
+  if (!item) {
+    return makeCodexAssistantTextEvent(
+      event,
+      formatGenericCodexItem(codexType, undefined),
+    );
+  }
+
+  switch (item.type) {
+    case "agent_message": {
+      return item.text
+        ? makeCodexAssistantTextEvent(event, item.text)
+        : makeCodexAssistantTextEvent(
+            event,
+            formatGenericCodexItem(codexType, item),
+          );
+    }
+    case "reasoning": {
+      return item.text
+        ? makeCodexAssistantTextEvent(event, `[thinking] ${item.text}`)
+        : makeCodexAssistantTextEvent(
+            event,
+            formatGenericCodexItem(codexType, item),
+          );
+    }
+    case "command_execution": {
+      return (
+        normalizeCodexCommandEvent(event, codexType, item) ??
+        makeCodexAssistantTextEvent(
+          event,
+          formatGenericCodexItem(codexType, item),
+        )
+      );
+    }
+    case "file_edit":
+    case "file_write": {
+      return (
+        normalizeCodexFileMutationEvent(event, codexType, item) ??
+        makeCodexAssistantTextEvent(
+          event,
+          formatGenericCodexItem(codexType, item),
+        )
+      );
+    }
+    case "file_read": {
+      return (
+        normalizeCodexFileReadEvent(event, codexType, item) ??
+        makeCodexAssistantTextEvent(
+          event,
+          formatGenericCodexItem(codexType, item),
+        )
+      );
+    }
+    case "file_change": {
+      return codexType === "item.completed"
+        ? makeCodexAssistantTextEvent(
+            event,
+            formatCodexFileChanges(item.changes ?? []),
+          )
+        : makeCodexAssistantTextEvent(
+            event,
+            formatGenericCodexItem(codexType, item),
+          );
+    }
+    default: {
+      return makeCodexAssistantTextEvent(
+        event,
+        formatGenericCodexItem(codexType, item),
+      );
+    }
+  }
+}
+
+function normalizeCodexEventForGrouping(event: AgentEvent): AgentEvent | null {
+  const codexEvent = parseCodexEventData(event.eventData);
+  const codexType = isCodexEventType(event.eventType)
+    ? event.eventType
+    : codexEvent?.type;
+
+  if (!codexType || !isCodexEventType(codexType)) {
+    return event;
+  }
+
+  if (codexType.startsWith("item.")) {
+    return normalizeCodexItemEvent(event, codexType, codexEvent?.item);
+  }
+
+  return normalizeCodexRunEvent(event, codexType, codexEvent);
+}
+
 /**
  * Shape of task-related system event data (task_started, task_notification, task_progress).
  */
@@ -627,7 +1135,11 @@ export function groupEventsIntoMessages(
     taskByToolUseId: new Map(),
   };
 
-  for (const event of deduped) {
+  for (const rawEvent of deduped) {
+    const event = normalizeCodexEventForGrouping(rawEvent);
+    if (!event) {
+      continue;
+    }
     const eventData = event.eventData as GroupingEventData;
 
     if (event.eventType === "system") {
