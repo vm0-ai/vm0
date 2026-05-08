@@ -8,6 +8,7 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
+  createTestVolume,
   enablePersonalModelProviderForUser,
   findMostRecentRunForUser,
   findTestRunnerJobEntry,
@@ -32,9 +33,11 @@ import {
   clearComposeHeadVersion,
   setTestZeroAgentPreferPersonalProvider,
 } from "../../../../../../src/__tests__/db-test-seeders/agents";
+import { bindCustomSkillToAgent } from "../../../../../../src/__tests__/db-test-seeders/skills";
 import { insertTestUserModelProviderSecret } from "../../../../../../src/__tests__/db-test-seeders/secrets";
 import { reloadEnv } from "../../../../../../src/env";
 import { nextAfterArgForms } from "../../../../../../src/__tests__/next-after-hooks";
+import { getCustomSkillStorageName } from "@vm0/core/storage-names";
 
 vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
   const actual =
@@ -414,6 +417,9 @@ describe("POST /api/zero/slack/events", () => {
         "claude-opus-4-7",
       );
       await setTestZeroAgentPreferPersonalProvider(agentId, true);
+      const skillName = uniqueId("personal-codex-skill");
+      await bindCustomSkillToAgent(agentId, skillName);
+      await createTestVolume(getCustomSkillStorageName(skillName));
 
       await enablePersonalModelProviderForUser(user.orgId, user.userId);
       await insertUserMultiAuthModelProvider(
@@ -479,6 +485,18 @@ describe("POST /api/zero/slack/events", () => {
       expect(job!.executionContext.environment).toMatchObject({
         OPENAI_MODEL: "gpt-5.5",
       });
+      expect(job!.executionContext.storageManifest!.storages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            mountPath: `/home/user/.codex/skills/${skillName}`,
+          }),
+        ]),
+      );
+      expect(
+        job!.executionContext.storageManifest!.storages.some((storage) => {
+          return storage.mountPath === `/home/user/.claude/skills/${skillName}`;
+        }),
+      ).toBe(false);
     });
   });
 

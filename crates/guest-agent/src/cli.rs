@@ -11,6 +11,8 @@ use crate::timing;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
 use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 use tokio::io::AsyncBufReadExt;
@@ -291,6 +293,12 @@ pub fn setup_codex() -> Result<(), AgentError> {
     let codex_home = format!("{}/.codex", env::home_dir());
     std::fs::create_dir_all(&codex_home)?;
     log_info!(LOG_TAG, "Codex home directory: {codex_home}");
+    if let Err(error) = ensure_codex_resource_fallbacks(Path::new(&env::home_dir())) {
+        log_warn!(
+            LOG_TAG,
+            "failed to mirror legacy Claude resources into Codex home (non-fatal): {error}"
+        );
+    }
 
     let api_key = env::openai_api_key();
     if api_key.is_empty() {
@@ -336,6 +344,12 @@ pub fn setup_codex() -> Result<(), AgentError> {
 fn setup_codex_chatgpt() -> Result<(), AgentError> {
     let setup_start = Instant::now();
     let home = std::path::PathBuf::from(env::home_dir());
+    if let Err(error) = ensure_codex_resource_fallbacks(&home) {
+        log_warn!(
+            LOG_TAG,
+            "failed to mirror legacy Claude resources into Codex home (non-fatal): {error}"
+        );
+    }
     let result = crate::codex_auth::setup_codex_chatgpt_inner(&home, chrono::Utc::now());
 
     let success = result.is_ok();
@@ -351,6 +365,66 @@ fn setup_codex_chatgpt() -> Result<(), AgentError> {
         log_info!(LOG_TAG, "Codex ChatGPT-OAuth auth.json written");
     }
     result
+}
+
+fn ensure_codex_resource_fallbacks(home: &Path) -> std::io::Result<()> {
+    let claude_home = home.join(".claude");
+    let codex_home = home.join(".codex");
+
+    let claude_instructions = claude_home.join("CLAUDE.md");
+    let codex_instructions = codex_home.join("AGENTS.md");
+    if claude_instructions.is_file() && !codex_instructions.exists() {
+        fs::create_dir_all(&codex_home)?;
+        fs::copy(&claude_instructions, &codex_instructions)?;
+        log_info!(
+            LOG_TAG,
+            "Mirrored legacy ~/.claude/CLAUDE.md to ~/.codex/AGENTS.md"
+        );
+    }
+
+    let claude_skills = claude_home.join("skills");
+    let codex_skills = codex_home.join("skills");
+    if claude_skills.is_dir() {
+        copy_missing_dir_entries(&claude_skills, &codex_skills)?;
+    }
+
+    Ok(())
+}
+
+fn copy_missing_dir_entries(source: &Path, destination: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(destination)?;
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        if destination_path.exists() {
+            continue;
+        }
+
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            copy_dir_recursive(&source_path, &destination_path)?;
+        } else if file_type.is_file() {
+            fs::copy(&source_path, &destination_path)?;
+        }
+    }
+    Ok(())
+}
+
+fn copy_dir_recursive(source: &Path, destination: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(destination)?;
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            copy_dir_recursive(&source_path, &destination_path)?;
+        } else if file_type.is_file() {
+            fs::copy(&source_path, &destination_path)?;
+        }
+    }
+    Ok(())
 }
 
 struct PreparedEvent {
@@ -902,6 +976,65 @@ mod tests {
     fn build_claude_command_for_test(use_mock: bool) -> Vec<String> {
         disable_system_log();
         build_claude_command(use_mock)
+    }
+
+    #[test]
+    fn ensure_codex_resource_fallbacks_mirrors_legacy_instructions_and_skills() {
+        disable_system_log();
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path();
+
+        let claude_home = home.join(".claude");
+        std::fs::create_dir_all(claude_home.join("skills/github")).unwrap();
+        std::fs::write(claude_home.join("CLAUDE.md"), "legacy instructions").unwrap();
+        std::fs::write(claude_home.join("skills/github/SKILL.md"), "github skill").unwrap();
+
+        let codex_home = home.join(".codex");
+        std::fs::create_dir_all(codex_home.join("skills/.system")).unwrap();
+        std::fs::write(codex_home.join("skills/.system/SKILL.md"), "system").unwrap();
+
+        ensure_codex_resource_fallbacks(home).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(codex_home.join("AGENTS.md")).unwrap(),
+            "legacy instructions"
+        );
+        assert_eq!(
+            std::fs::read_to_string(codex_home.join("skills/github/SKILL.md")).unwrap(),
+            "github skill"
+        );
+        assert_eq!(
+            std::fs::read_to_string(codex_home.join("skills/.system/SKILL.md")).unwrap(),
+            "system"
+        );
+    }
+
+    #[test]
+    fn ensure_codex_resource_fallbacks_preserves_existing_codex_resources() {
+        disable_system_log();
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path();
+
+        let claude_home = home.join(".claude");
+        std::fs::create_dir_all(claude_home.join("skills/github")).unwrap();
+        std::fs::write(claude_home.join("CLAUDE.md"), "legacy instructions").unwrap();
+        std::fs::write(claude_home.join("skills/github/SKILL.md"), "legacy github").unwrap();
+
+        let codex_home = home.join(".codex");
+        std::fs::create_dir_all(codex_home.join("skills/github")).unwrap();
+        std::fs::write(codex_home.join("AGENTS.md"), "codex instructions").unwrap();
+        std::fs::write(codex_home.join("skills/github/SKILL.md"), "codex github").unwrap();
+
+        ensure_codex_resource_fallbacks(home).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(codex_home.join("AGENTS.md")).unwrap(),
+            "codex instructions"
+        );
+        assert_eq!(
+            std::fs::read_to_string(codex_home.join("skills/github/SKILL.md")).unwrap(),
+            "codex github"
+        );
     }
 
     /// Assert prompt is last and preceded by "--" separator.
