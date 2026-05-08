@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { IconX } from "@tabler/icons-react";
 import {
   Button,
+  cn,
   Input,
   Select,
   SelectContent,
@@ -617,7 +618,13 @@ function ScheduleFormDialogInner({
   return (
     <>
       <DialogContent
-        className="w-[calc(100vw-2rem)] sm:max-w-lg gap-6 [&>button[aria-label=Close]:last-child]:hidden"
+        className={cn(
+          "w-[calc(100vw-2rem)] sm:max-w-lg gap-6 [&>button[aria-label=Close]:last-child]:hidden",
+          // Mobile: full-page view. Switch from the primitive's `grid`
+          // auto-rows to flex column so the form body can scroll and the
+          // footer can pin to the bottom edge.
+          "max-md:!inset-0 max-md:!left-0 max-md:!top-0 max-md:!w-screen max-md:!max-w-none max-md:!h-[100dvh] max-md:!max-h-[100dvh] max-md:!translate-x-0 max-md:!translate-y-0 max-md:!rounded-none max-md:!border-0 max-md:!shadow-none max-md:!p-0 max-md:!gap-0 max-md:flex max-md:flex-col",
+        )}
         onEscapeKeyDown={(e) => {
           e.preventDefault();
           requestClose();
@@ -629,14 +636,14 @@ function ScheduleFormDialogInner({
       >
         <button
           type="button"
-          className="absolute right-4 top-4 flex items-center justify-center size-9 rounded-lg transition-colors opacity-70 hover:opacity-100 hover:bg-accent focus:outline-none"
+          className="absolute right-4 top-4 flex items-center justify-center size-9 rounded-lg transition-colors opacity-70 hover:opacity-100 hover:bg-accent focus:outline-none max-md:right-3 max-md:top-[max(env(safe-area-inset-top),0.75rem)] max-md:size-10 z-10"
           aria-label="Close"
           onClick={requestClose}
         >
           <IconX size={20} className="text-foreground" />
         </button>
 
-        <DialogHeader>
+        <DialogHeader className="max-md:shrink-0 max-md:px-5 max-md:pt-[max(env(safe-area-inset-top),1.25rem)] max-md:pb-3 max-md:pr-14 max-md:border-b max-md:border-border/60">
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
             {mode === "edit"
@@ -645,7 +652,7 @@ function ScheduleFormDialogInner({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 max-md:flex-1 max-md:overflow-y-auto max-md:px-5 max-md:py-4 max-md:gap-5">
           {/* Agent selector (create-on-page only) */}
           {agents && (
             <div className="flex flex-col gap-2">
@@ -661,7 +668,10 @@ function ScheduleFormDialogInner({
                   return updateForm({ agentId: v });
                 }}
               >
-                <SelectTrigger id="schedule-dialog-agent" className="h-9">
+                <SelectTrigger
+                  id="schedule-dialog-agent"
+                  className="h-9 max-md:h-12 max-md:text-[16px]"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -693,7 +703,7 @@ function ScheduleFormDialogInner({
               }}
               placeholder="Describe your task and instruction"
               rows={5}
-              className="w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[120px]"
+              className="w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[120px] max-md:text-[16px] max-md:min-h-[140px]"
             />
           </div>
 
@@ -716,7 +726,7 @@ function ScheduleFormDialogInner({
                   return updateForm({ description: e.target.value });
                 }}
                 placeholder="Leave blank to auto-generate"
-                className="h-9"
+                className="h-9 max-md:h-12 max-md:text-[16px]"
               />
             </div>
           )}
@@ -808,11 +818,11 @@ function ScheduleFormDialogInner({
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="max-md:shrink-0 max-md:!flex-row max-md:gap-2 max-md:px-5 max-md:pt-3 max-md:pb-[max(env(safe-area-inset-bottom),1.25rem)] max-md:border-t max-md:border-border/60 max-md:!space-x-0">
           <Button
             type="button"
             variant="outline"
-            className="zero-btn-morandi"
+            className="zero-btn-morandi max-md:flex-1 max-md:h-12 max-md:text-[16px]"
             onClick={requestClose}
           >
             Cancel
@@ -823,6 +833,7 @@ function ScheduleFormDialogInner({
             disabled={
               !form.prompt.trim() || (agents ? !form.agentId : false) || saving
             }
+            className="max-md:flex-1 max-md:h-12 max-md:text-[16px]"
           >
             {saveLabel}
           </Button>

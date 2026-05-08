@@ -316,6 +316,62 @@ function CreateTeammateDialog({
   );
 }
 
+function CreateTeammateAvatarBand({
+  avatarUrl,
+  setAvatarUrl,
+}: {
+  avatarUrl: string;
+  setAvatarUrl: (url: string) => void;
+}) {
+  return (
+    <div className="flex flex-col items-center pt-10 pb-6 bg-muted/30 max-md:pt-8 max-md:pb-8 max-md:bg-muted/20">
+      <AvatarMaker
+        onConfirm={(cfg) => {
+          setAvatarUrl(serializeAvatarSvgConfig(cfg));
+          return Promise.resolve();
+        }}
+        trigger={(openMaker) => {
+          return (
+            <button
+              type="button"
+              onClick={openMaker}
+              className="relative rounded-full transition-transform duration-200 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              aria-label="Customize avatar"
+            >
+              <AvatarFromUrl
+                avatarUrl={avatarUrl}
+                alt="New agent"
+                className="h-16 w-16 max-md:h-24 max-md:w-24 rounded-full object-cover object-top"
+              />
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="absolute -right-0.5 -bottom-0.5 flex h-5 w-5 max-md:h-7 max-md:w-7 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border">
+                      <IconWand
+                        size={10}
+                        stroke={1.5}
+                        className="max-md:hidden"
+                      />
+                      <IconWand
+                        size={14}
+                        stroke={1.5}
+                        className="hidden max-md:block"
+                      />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">Customize avatar</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </button>
+          );
+        }}
+      />
+    </div>
+  );
+}
+
 function CreateTeammateDialogContent({
   newName,
   onNameChange,
@@ -333,58 +389,53 @@ function CreateTeammateDialogContent({
   const setAvatarUrl = useSet(setJobsAvatarUrl$);
 
   return (
-    <DialogContent className="sm:max-w-[480px] p-0 gap-0 overflow-hidden">
+    <DialogContent
+      className={cn(
+        // Desktop: centered modal with hero band.
+        "sm:max-w-[480px] p-0 gap-0 overflow-hidden",
+        // Mobile: full-page view — flex column so the footer can pin to the
+        // bottom while the body grows to fill remaining height. `!` overrides
+        // the primitive's centered-modal positioning at the < md breakpoint.
+        "max-md:!inset-0 max-md:!left-0 max-md:!top-0 max-md:!w-screen max-md:!max-w-none max-md:!h-[100dvh] max-md:!max-h-[100dvh] max-md:!translate-x-0 max-md:!translate-y-0 max-md:!rounded-none max-md:!border-0 max-md:!shadow-none max-md:flex max-md:flex-col",
+      )}
+    >
       <DialogHeader className="sr-only">
         <DialogTitle>Create a new agent</DialogTitle>
       </DialogHeader>
 
-      {/* Avatar preview */}
-      <div className="flex flex-col items-center pt-10 pb-6 bg-muted/30">
-        <AvatarMaker
-          onConfirm={(cfg) => {
-            setAvatarUrl(serializeAvatarSvgConfig(cfg));
-            return Promise.resolve();
-          }}
-          trigger={(openMaker) => {
-            return (
-              <button
-                type="button"
-                onClick={openMaker}
-                className="relative rounded-full transition-transform duration-200 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                aria-label="Customize avatar"
-              >
-                <AvatarFromUrl
-                  avatarUrl={avatarUrl}
-                  alt="New agent"
-                  className="h-16 w-16 rounded-full object-cover object-top"
-                />
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="absolute -right-0.5 -bottom-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border">
-                        <IconWand size={10} stroke={1.5} />
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      <p className="text-xs">Customize avatar</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </button>
-            );
-          }}
-        />
+      {/* Mobile-only page header — title + subtitle, with right padding so
+          the title never crashes into the primitive close X. */}
+      <div className="hidden max-md:flex max-md:flex-col max-md:shrink-0 max-md:px-6 max-md:pt-[max(env(safe-area-inset-top),1.25rem)] max-md:pb-2 max-md:pr-14">
+        <h1 className="text-[20px] font-semibold leading-7 text-foreground">
+          Create a new agent
+        </h1>
+        <p className="text-[15px] text-muted-foreground mt-1 leading-snug">
+          Tap the avatar to customize, then give your agent a name.
+        </p>
       </div>
 
-      {/* Content */}
-      <div className="flex flex-col items-center gap-4 px-6 py-6">
-        <div className="text-center">
+      <CreateTeammateAvatarBand
+        avatarUrl={avatarUrl}
+        setAvatarUrl={setAvatarUrl}
+      />
+
+      {/* Body — desktop centers content; mobile lets it grow so the footer
+          docks to the bottom edge. */}
+      <div className="flex flex-col items-center gap-4 px-6 py-6 max-md:flex-1 max-md:items-stretch max-md:px-5 max-md:pt-6 max-md:pb-4 max-md:gap-3 max-md:overflow-y-auto">
+        <div className="text-center max-md:hidden">
           <p className="text-base font-semibold">Create a new agent</p>
           <p className="text-sm text-muted-foreground mt-0.5">
             Name your agent to get started.
           </p>
         </div>
+        <label
+          htmlFor="create-agent-name"
+          className="hidden max-md:block text-[13px] font-medium text-muted-foreground uppercase tracking-wide"
+        >
+          Name
+        </label>
         <Input
+          id="create-agent-name"
           value={newName}
           onChange={(e) => {
             return onNameChange(e.target.value);
@@ -397,12 +448,22 @@ function CreateTeammateDialogContent({
           placeholder="e.g. Research Assistant"
           autoFocus
           disabled={creating}
+          // 16px font-size on mobile prevents iOS Safari's auto-zoom on
+          // focus; 48px height matches the rest of the mobile-native chrome.
+          className="max-md:h-12 max-md:text-[16px]"
         />
       </div>
 
-      {/* Footer */}
-      <div className="flex justify-center gap-3 px-6 pt-4 pb-8">
-        <Button variant="outline" onClick={onCancel} disabled={creating}>
+      {/* Footer — desktop: centered button pair; mobile: full-width primary
+          docked to the bottom with safe-area inset. Cancel collapses into
+          the close X (top-right) on mobile to keep the action surface clean. */}
+      <div className="flex justify-center gap-3 px-6 pt-4 pb-8 max-md:shrink-0 max-md:flex-col-reverse max-md:gap-2 max-md:px-5 max-md:pt-3 max-md:pb-[max(env(safe-area-inset-bottom),1.25rem)] max-md:border-t max-md:border-border/60">
+        <Button
+          variant="outline"
+          onClick={onCancel}
+          disabled={creating}
+          className="max-md:hidden"
+        >
           Cancel
         </Button>
         <Button
@@ -410,6 +471,7 @@ function CreateTeammateDialogContent({
             return onConfirm(avatarUrl);
           }}
           disabled={!newName.trim() || creating}
+          className="max-md:w-full max-md:h-12 max-md:text-[16px]"
         >
           {creating ? (
             <span className="inline-flex items-center gap-1.5">
