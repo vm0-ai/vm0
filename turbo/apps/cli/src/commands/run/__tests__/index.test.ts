@@ -1631,8 +1631,10 @@ describe("run command", () => {
     });
 
     it("should exit with error when run fails (status: failed)", async () => {
+      let pollCount = 0;
       server.use(
         http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
           // Return no events with "failed" status and error message
           return HttpResponse.json({
             events: [],
@@ -1652,6 +1654,32 @@ describe("run command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Run failed"),
       );
+      expect(pollCount).toBe(1);
+    });
+
+    it("should exit immediately when run is cancelled without terminal watermark", async () => {
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            nextSequence: -1,
+            run: { status: "cancelled" },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Run cancelled"),
+      );
+      expect(pollCount).toBe(1);
     });
 
     it("should exit with error when run times out (status: timeout)", async () => {

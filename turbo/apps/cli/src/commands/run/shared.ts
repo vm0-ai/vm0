@@ -422,6 +422,13 @@ function shouldReturnTerminalRunResult(
     return false;
   }
 
+  if (
+    !hasTerminalWatermark(run) &&
+    (run.status === "failed" || run.status === "cancelled")
+  ) {
+    return true;
+  }
+
   if (!hasTerminalWatermark(run) && !response.hasMore && madeSequenceProgress) {
     return hasResultEvent(response);
   }
