@@ -333,10 +333,18 @@ pub struct BoundedExecRequest<'a> {
     pub stdin: Option<&'a [u8]>,
     pub stdout_limit_bytes: u32,
     pub stderr_limit_bytes: u32,
+    /// Whether stdout should be emitted through request-scoped
+    /// `MSG_BOUNDED_EXEC_OUTPUT_CHUNK` messages.
     pub stream_stdout: bool,
+    /// Whether stderr should be emitted through request-scoped
+    /// `MSG_BOUNDED_EXEC_OUTPUT_CHUNK` messages.
     pub stream_stderr: bool,
     pub stream_chunk_limit_bytes: u32,
+    /// Maximum emitted stdout bytes when `stream_stdout` is enabled.
+    /// Execution layers should ignore this field when stdout streaming is off.
     pub stdout_stream_limit_bytes: u32,
+    /// Maximum emitted stderr bytes when `stream_stderr` is enabled.
+    /// Execution layers should ignore this field when stderr streaming is off.
     pub stderr_stream_limit_bytes: u32,
 }
 
@@ -427,6 +435,10 @@ pub fn encode_bounded_exec_result(
 }
 
 /// Encode bounded_exec_output_chunk payload.
+///
+/// This message is scoped to a bounded exec request: callers should send it
+/// with the same non-zero `seq` as the request it belongs to. It is not a
+/// pid-scoped `MSG_STDOUT_CHUNK` replacement.
 pub fn encode_bounded_exec_output_chunk(
     stream: BoundedExecStream,
     sequence: u32,
@@ -964,6 +976,19 @@ fn decode_bounded_exec_termination(
     }
 }
 
+fn validate_bounded_exec_termination_tag(tag: u8) -> Result<(), ProtocolError> {
+    match tag {
+        BOUNDED_EXEC_TERMINATION_EXITED
+        | BOUNDED_EXEC_TERMINATION_TIMED_OUT
+        | BOUNDED_EXEC_TERMINATION_CANCELLED
+        | BOUNDED_EXEC_TERMINATION_START_FAILED
+        | BOUNDED_EXEC_TERMINATION_WAIT_FAILED => Ok(()),
+        _ => Err(ProtocolError::InvalidPayload(
+            "bounded_exec_result invalid termination tag",
+        )),
+    }
+}
+
 fn decode_bounded_exec_stream(tag: u8) -> Result<BoundedExecStream, ProtocolError> {
     match tag {
         BOUNDED_EXEC_STREAM_STDOUT => Ok(BoundedExecStream::Stdout),
@@ -1080,6 +1105,7 @@ pub fn decode_bounded_exec_result(
         BOUNDED_EXEC_RESULT_KNOWN_FLAGS,
         "bounded_exec_result unknown flags",
     )?;
+    validate_bounded_exec_termination_tag(termination_tag)?;
     let exit_code = read_i32_cursor(
         payload,
         &mut offset,
@@ -1134,6 +1160,7 @@ pub fn decode_bounded_exec_output_chunk(
         BOUNDED_EXEC_OUTPUT_CHUNK_KNOWN_FLAGS,
         "bounded_exec_output_chunk unknown flags",
     )?;
+    let stream = decode_bounded_exec_stream(stream_tag)?;
     let sequence = read_u32_cursor(
         payload,
         &mut offset,
@@ -1148,7 +1175,7 @@ pub fn decode_bounded_exec_output_chunk(
     ensure_no_trailing_bytes(payload, offset, "bounded_exec_output_chunk trailing bytes")?;
 
     Ok(DecodedBoundedExecOutputChunk {
-        stream: decode_bounded_exec_stream(stream_tag)?,
+        stream,
         sequence,
         chunk,
         truncated: flags & BOUNDED_EXEC_OUTPUT_CHUNK_FLAG_TRUNCATED != 0,
@@ -1481,6 +1508,18 @@ mod tests {
     }
 
     #[test]
+    fn decode_bounded_exec_rejects_truncated_stdin() {
+        let mut payload = encode_bounded_exec(&full_bounded_exec_request()).unwrap();
+        payload.pop();
+
+        let err = decode_bounded_exec(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec stdin truncated")
+        ));
+    }
+
+    #[test]
     fn decode_bounded_exec_rejects_unknown_flags() {
         let mut payload = encode_bounded_exec(&full_bounded_exec_request()).unwrap();
         payload[4] |= 0x80;
@@ -1575,6 +1614,29 @@ mod tests {
     }
 
     #[test]
+    fn decode_bounded_exec_rejects_invalid_utf8_env_value() {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&1_u32.to_be_bytes());
+        payload.push(0);
+        for _ in 0..5 {
+            payload.extend_from_slice(&0_u32.to_be_bytes());
+        }
+        payload.extend_from_slice(&0_u32.to_be_bytes()); // empty command
+        payload.extend_from_slice(&1_u32.to_be_bytes()); // one env pair
+        payload.extend_from_slice(&1_u32.to_be_bytes()); // key len
+        payload.push(b'K');
+        payload.extend_from_slice(&1_u32.to_be_bytes()); // value len
+        payload.push(0xFF);
+        payload.extend_from_slice(&0_u32.to_be_bytes()); // no stdin
+
+        let err = decode_bounded_exec(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("invalid UTF-8 in bounded_exec env value")
+        ));
+    }
+
+    #[test]
     fn decode_bounded_exec_rejects_oversized_env_count_without_large_allocation() {
         let mut payload = Vec::new();
         payload.extend_from_slice(&1_u32.to_be_bytes());
@@ -1629,6 +1691,27 @@ mod tests {
     }
 
     #[test]
+    fn bounded_exec_result_truncation_flags_roundtrip_independently() {
+        for (stdout_truncated, stderr_truncated) in
+            [(false, false), (true, false), (false, true), (true, true)]
+        {
+            let payload = encode_bounded_exec_result(
+                BoundedExecTermination::Exited { exit_code: 0 },
+                1,
+                b"out",
+                b"err",
+                stdout_truncated,
+                stderr_truncated,
+            )
+            .unwrap();
+            let d = decode_bounded_exec_result(&payload).unwrap();
+
+            assert_eq!(d.stdout_truncated, stdout_truncated);
+            assert_eq!(d.stderr_truncated, stderr_truncated);
+        }
+    }
+
+    #[test]
     fn bounded_exec_result_roundtrip_non_exit_terminations() {
         for termination in [
             BoundedExecTermination::TimedOut,
@@ -1658,6 +1741,15 @@ mod tests {
         payload[0] = 0xFF;
 
         let err = decode_bounded_exec_result(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec_result invalid termination tag")
+        ));
+    }
+
+    #[test]
+    fn decode_bounded_exec_result_rejects_invalid_termination_tag_before_body() {
+        let err = decode_bounded_exec_result(&[0xFF, 0]).unwrap_err();
         assert!(matches!(
             err,
             ProtocolError::InvalidPayload("bounded_exec_result invalid termination tag")
@@ -1755,6 +1847,15 @@ mod tests {
         payload[0] = 0xFF;
 
         let err = decode_bounded_exec_output_chunk(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec_output_chunk invalid stream tag")
+        ));
+    }
+
+    #[test]
+    fn decode_bounded_exec_output_chunk_rejects_invalid_stream_tag_before_body() {
+        let err = decode_bounded_exec_output_chunk(&[0xFF, 0]).unwrap_err();
         assert!(matches!(
             err,
             ProtocolError::InvalidPayload("bounded_exec_output_chunk invalid stream tag")
