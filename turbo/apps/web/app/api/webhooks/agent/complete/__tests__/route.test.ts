@@ -624,6 +624,78 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(data.status).toBe("completed");
     });
 
+    it("should persist a late lastEventSequence for already completed run", async () => {
+      await completeTestRun(user.userId, testRunId);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 0,
+            lastEventSequence: 7,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const run = await findTestRunRecord(testRunId);
+      expect(run!.lastEventSequence).toBe(7);
+      expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
+    });
+
+    it("should not lower an existing lastEventSequence on duplicate complete", async () => {
+      await completeTestRun(user.userId, testRunId);
+
+      const higherRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 0,
+            lastEventSequence: 7,
+          }),
+        },
+      );
+
+      const firstResponse = await POST(higherRequest);
+      expect(firstResponse.status).toBe(200);
+
+      const lowerRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 0,
+            lastEventSequence: 3,
+          }),
+        },
+      );
+
+      const response = await POST(lowerRequest);
+
+      expect(response.status).toBe(200);
+      const run = await findTestRunRecord(testRunId);
+      expect(run!.lastEventSequence).toBe(7);
+    });
+
     it("should return success without processing for already failed run", async () => {
       // Fail the run first
       const failRequest = createTestRequest(

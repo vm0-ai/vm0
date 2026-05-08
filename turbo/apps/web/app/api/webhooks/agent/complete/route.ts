@@ -8,7 +8,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import {
   transitionRunStatus,
   dispatchTerminalSideEffects,
@@ -77,6 +77,19 @@ function buildRunResult(
   return result;
 }
 
+async function persistLastEventSequence(
+  runId: string,
+  userId: string,
+  lastEventSequence: number,
+): Promise<void> {
+  await globalThis.services.db
+    .update(agentRuns)
+    .set({
+      lastEventSequence: sql<number>`greatest(coalesce(${agentRuns.lastEventSequence}, -1), ${lastEventSequence})`,
+    })
+    .where(and(eq(agentRuns.id, runId), eq(agentRuns.userId, userId)));
+}
+
 const router = tsr.router(webhookCompleteContract, {
   complete: async ({ body, headers }) => {
     initServices();
@@ -117,6 +130,14 @@ const router = tsr.router(webhookCompleteContract, {
       };
     }
 
+    if (body.lastEventSequence !== undefined) {
+      await persistLastEventSequence(
+        body.runId,
+        userId,
+        body.lastEventSequence,
+      );
+    }
+
     // Idempotency check: if run is already completed/failed, return early
     if (run.status === "completed" || run.status === "failed") {
       log.debug(
@@ -149,9 +170,6 @@ const router = tsr.router(webhookCompleteContract, {
             status: "failed",
             completedAt: new Date(),
             error: "Checkpoint for run not found",
-            ...(body.lastEventSequence !== undefined
-              ? { lastEventSequence: body.lastEventSequence }
-              : {}),
             sandboxId: body.sandboxId,
             sandboxReuseResult: body.sandboxReuseResult,
           },
@@ -220,9 +238,6 @@ const router = tsr.router(webhookCompleteContract, {
           status: "completed",
           completedAt: new Date(),
           result,
-          ...(body.lastEventSequence !== undefined
-            ? { lastEventSequence: body.lastEventSequence }
-            : {}),
           sandboxId: body.sandboxId,
           sandboxReuseResult: body.sandboxReuseResult,
         },
@@ -264,9 +279,6 @@ const router = tsr.router(webhookCompleteContract, {
           status: "failed",
           completedAt: new Date(),
           error: errorMessage,
-          ...(body.lastEventSequence !== undefined
-            ? { lastEventSequence: body.lastEventSequence }
-            : {}),
           sandboxId: body.sandboxId,
           sandboxReuseResult: body.sandboxReuseResult,
         },
