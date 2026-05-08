@@ -140,12 +140,14 @@ async fn cleanup_tick_evicts_expired_entries() {
     assert_eq!(budget.allocated().2, 1, "seeded entry holds budget");
 
     let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
 
-    // Advance past the first cleanup tick (every 10s).
-    // The tick interval fires once immediately (at t=0), but the entry
-    // was just inserted so it may not be expired yet from Instant::now()'s
-    // perspective. Advance 11s to ensure at least one full tick fires.
-    tokio::time::sleep(Duration::from_secs(11)).await;
+    // Advance to the first cleanup tick, then synchronize on the loop's
+    // cleanup event instead of using the fixed sleep as the assertion gate.
+    tokio::time::advance(Duration::from_secs(11)).await;
+    let expired_count =
+        wait_idle_cleanup_processed_with_expired_entries(&env, Duration::from_secs(5)).await;
+    assert_eq!(expired_count, 1, "cleanup should process the expired entry");
 
     // Eviction spawns a destroy_task that releases the idle entry lease.
     // Poll until it completes.
