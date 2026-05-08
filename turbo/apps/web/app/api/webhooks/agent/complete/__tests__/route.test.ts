@@ -582,6 +582,31 @@ describe("POST /api/webhooks/agent/complete", () => {
       const data = await response.json();
       expect(data.error.message).toContain("Checkpoint");
     });
+
+    it("should persist lastEventSequence when checkpoint is missing", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 0,
+            lastEventSequence: 4,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(404);
+      const run = await findTestRunRecord(testRunId);
+      expect(run!.status).toBe("failed");
+      expect(run!.lastEventSequence).toBe(4);
+    });
   });
 
   describe("Idempotency", () => {

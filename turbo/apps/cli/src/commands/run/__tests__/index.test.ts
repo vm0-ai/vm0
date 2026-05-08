@@ -1421,6 +1421,46 @@ describe("run command", () => {
       );
     });
 
+    it("should bound terminal drain when terminal watermark never becomes visible", async () => {
+      vi.useFakeTimers();
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            nextSequence: -1,
+            run: {
+              status: "completed",
+              lastEventSequence: 0,
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      const commandPromise = runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+      ]);
+      await vi.advanceTimersByTimeAsync(4000);
+      await commandPromise;
+
+      expect(pollCount).toBeGreaterThan(2);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Run completed successfully"),
+      );
+    });
+
     it("should render the latest terminal status after drain", async () => {
       let pollCount = 0;
       server.use(
