@@ -180,7 +180,7 @@ impl ChunkedWriteCleanupGuard {
 
     async fn cleanup_now(&mut self) {
         if let Some(shared) = self.shared.as_ref() {
-            let _ = exec_on_shared(
+            let _ = exec_cleanup_on_shared(
                 shared,
                 &self.command,
                 VsockHost::CLEANUP_EXEC_TIMEOUT_MS,
@@ -203,7 +203,7 @@ impl Drop for ChunkedWriteCleanupGuard {
         let sudo = self.sudo;
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
-                let _ = exec_on_shared(
+                let _ = exec_cleanup_on_shared(
                     &shared,
                     &command,
                     VsockHost::CLEANUP_EXEC_TIMEOUT_MS,
@@ -496,6 +496,37 @@ async fn exec_on_shared(
     env: &[(&str, &str)],
     sudo: bool,
 ) -> io::Result<ExecResult> {
+    let request_timeout = Duration::from_millis(timeout_ms as u64 + 5000);
+    exec_on_shared_with_request_timeout(shared, command, timeout_ms, env, sudo, request_timeout)
+        .await
+}
+
+async fn exec_cleanup_on_shared(
+    shared: &Arc<Shared>,
+    command: &str,
+    timeout_ms: u32,
+    env: &[(&str, &str)],
+    sudo: bool,
+) -> io::Result<ExecResult> {
+    exec_on_shared_with_request_timeout(
+        shared,
+        command,
+        timeout_ms,
+        env,
+        sudo,
+        Duration::from_millis(timeout_ms as u64),
+    )
+    .await
+}
+
+async fn exec_on_shared_with_request_timeout(
+    shared: &Arc<Shared>,
+    command: &str,
+    timeout_ms: u32,
+    env: &[(&str, &str)],
+    sudo: bool,
+    request_timeout: Duration,
+) -> io::Result<ExecResult> {
     if timeout_ms == 0 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -503,9 +534,7 @@ async fn exec_on_shared(
         ));
     }
     let payload = vsock_proto::encode_exec(timeout_ms, command, env, sudo);
-    // Add 5s buffer for network latency
-    let timeout = Duration::from_millis(timeout_ms as u64 + 5000);
-    let resp = request_on_shared(shared, MSG_EXEC, &payload, timeout).await?;
+    let resp = request_on_shared(shared, MSG_EXEC, &payload, request_timeout).await?;
 
     if resp.msg_type == MSG_ERROR {
         let msg = vsock_proto::decode_error(&resp.payload)

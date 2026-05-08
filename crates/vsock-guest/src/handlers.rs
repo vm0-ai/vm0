@@ -328,12 +328,12 @@ mod tests {
     fn write_file_command_starts_as_process_group_leader() {
         let _guard = TEST_HELPER_EXEC.lock().unwrap();
         let _helper = install_sleeping_write_file_helper();
-        let mut child = spawn_write_file_command("/tmp/out.txt", false, false).unwrap();
+        let child = spawn_write_file_command("/tmp/out.txt", false, false).unwrap();
         let pid = child.id();
 
         let pgid = unsafe { libc::getpgid(pid as libc::pid_t) };
         let _ = unsafe { crate::process::kill_process_tree(pid) };
-        let _ = child.wait();
+        let _ = wait_with_kill_timeout(child, 100);
 
         assert_eq!(pgid, pid as libc::pid_t);
     }
@@ -365,7 +365,7 @@ mod tests {
         let content = vec![b'x'; 1024 * 1024];
 
         let (success, error) =
-            wait_write_file_child_with_timeout(child, &content, 100, SystemThreadSpawner);
+            wait_write_file_child_with_timeout(child, &content, 10, SystemThreadSpawner);
 
         assert!(!success);
         assert_eq!(error, "write timed out");
