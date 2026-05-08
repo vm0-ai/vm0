@@ -1873,5 +1873,50 @@ describe("POST /api/internal/callbacks/chat", () => {
         null,
       );
     });
+
+    it("should not auto-send when the pending message was recalled before the run terminates", async () => {
+      // Simulates the Stop-with-queue interaction: the user recalls the
+      // queued message (clearing pending columns) then cancels the run.
+      // The cancel surfaces as a "failed" callback. Auto-send must be a
+      // no-op because the pending columns are already empty.
+      const { threadId, runId, secret } = await setupRunAndThread({
+        status: "failed",
+      });
+
+      // Queue a message…
+      await setTestChatThreadPendingMessage(threadId, {
+        content: "recalled before cancel",
+        attachments: null,
+      });
+      // …then recall it (user clicked Stop, recall fired optimistically).
+      await setTestChatThreadPendingMessage(threadId, null);
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "failed",
+            error: "Run cancelled by user",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+      expect(response.status).toBe(200);
+
+      // No additional user message row should have been created.
+      const messages = await getTestChatMessagesByThread(threadId);
+      const userMessages = messages.filter((m) => {
+        return m.role === "user" && m.content === "recalled before cancel";
+      });
+      expect(userMessages).toHaveLength(0);
+
+      // No pending-message-change signal since there was nothing to claim.
+      expect(mockAblyPublish).not.toHaveBeenCalledWith(
+        `chatThreadPendingMessageChanged:${threadId}`,
+        null,
+      );
+    });
   });
 });

@@ -153,7 +153,12 @@ interface ZeroChatComposerProps {
   onQueue?: (message: string) => void;
   sending?: boolean;
   queueWhileSending?: boolean;
-  /** Cancel the active run. When provided, a stop button replaces the send button while sending. */
+  /**
+   * Cancel the active run. When provided, a stop button is shown while
+   * sending with an empty input. When the input has content (canSend=true),
+   * the send button is shown instead so the user can queue the message;
+   * clicking Stop while a queue exists recalls the queued text to draft.
+   */
   onCancel?: () => void;
   displayName: string;
   className?: string;
@@ -1088,6 +1093,16 @@ export function ZeroChatComposer({
     onSend(input.trim());
   };
 
+  // Routes a button click to queue (while an active run exists and the
+  // queue feature is on) or to the normal send path.
+  const handleButtonSend = () => {
+    if (sending && queueWhileSending && onQueue) {
+      onQueue(input.trim());
+    } else {
+      handleSend();
+    }
+  };
+
   const handleKeyboardSend = () => {
     const handlers: Record<KeyboardSendAction, (() => void) | undefined> = {
       none: undefined,
@@ -1309,7 +1324,7 @@ export function ZeroChatComposer({
                         onDraftChange?.();
                       }}
                     />
-                    {sending && onCancel ? (
+                    {sending && !canSend && onCancel ? (
                       <Button
                         size="sm"
                         variant="destructive"
@@ -1323,8 +1338,12 @@ export function ZeroChatComposer({
                       <Button
                         size="sm"
                         className="rounded-lg h-9 w-9 p-0 shrink-0"
-                        onClick={handleSend}
-                        disabled={!canSend || !!sending}
+                        onClick={handleButtonSend}
+                        disabled={
+                          !canSend ||
+                          (!!sending &&
+                            !(queueWhileSending && onQueue !== undefined))
+                        }
                         aria-label="Send"
                       >
                         <IconArrowUp size={18} stroke={2} />
