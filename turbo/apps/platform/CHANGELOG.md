@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.335.0](https://github.com/vm0-ai/vm0/compare/app-v0.334.1...app-v0.335.0) (2026-05-08)
+
+
+### Features
+
+* **voice-chat:** upgrade Talker model from gpt-realtime-mini to gpt-realtime-2 ([#12106](https://github.com/vm0-ai/vm0/issues/12106)) ([aec0f27](https://github.com/vm0-ai/vm0/commit/aec0f275dd01e43aa2de53f7e5f8f5c97b6b673b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.0.2
+    * @vm0/core bumped to 8.261.2
+
 ## [0.334.1](https://github.com/vm0-ai/vm0/compare/app-v0.334.0...app-v0.334.1) (2026-05-07)
 
 

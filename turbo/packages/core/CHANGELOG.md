@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.261.2](https://github.com/vm0-ai/vm0/compare/core-v8.261.1...core-v8.261.2) (2026-05-08)
+
+
+### Bug Fixes
+
+* refresh personal codex oauth providers ([#12120](https://github.com/vm0-ai/vm0/issues/12120)) ([b4e727d](https://github.com/vm0-ai/vm0/commit/b4e727da0dc4a1fbb0df6d8ef3aececa9460b5a7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.0.2
+
 ## [8.261.1](https://github.com/vm0-ai/vm0/compare/core-v8.261.0...core-v8.261.1) (2026-05-07)
 
 

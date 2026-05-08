@@ -1,5 +1,28 @@
 # Changelog
 
+## [12.342.0](https://github.com/vm0-ai/vm0/compare/web-v12.341.1...web-v12.342.0) (2026-05-08)
+
+
+### Features
+
+* **voice-chat:** upgrade Talker model from gpt-realtime-mini to gpt-realtime-2 ([#12106](https://github.com/vm0-ai/vm0/issues/12106)) ([aec0f27](https://github.com/vm0-ai/vm0/commit/aec0f275dd01e43aa2de53f7e5f8f5c97b6b673b))
+
+
+### Bug Fixes
+
+* refresh personal codex oauth providers ([#12120](https://github.com/vm0-ai/vm0/issues/12120)) ([b4e727d](https://github.com/vm0-ai/vm0/commit/b4e727da0dc4a1fbb0df6d8ef3aececa9460b5a7))
+* reject codex oauth authorize requests ([#12118](https://github.com/vm0-ai/vm0/issues/12118)) ([130dde3](https://github.com/vm0-ai/vm0/commit/130dde3769a8dca39d21f25127776c34af84b407))
+* validate compose ids before lookup ([#12122](https://github.com/vm0-ai/vm0/issues/12122)) ([26b865a](https://github.com/vm0-ai/vm0/commit/26b865ad78297f58feacf175dac6f07b794dd471))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.0.2
+    * @vm0/core bumped to 8.261.2
+    * @vm0/db bumped to 1.0.2
+
 ## [12.341.1](https://github.com/vm0-ai/vm0/compare/web-v12.341.0...web-v12.341.1) (2026-05-07)
 
 

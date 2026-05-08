@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.9.7...vsock-proto-v0.10.0) (2026-05-08)
+
+
+### Features
+
+* **vsock:** add bounded exec protocol messages ([#12119](https://github.com/vm0-ai/vm0/issues/12119)) ([2050fb2](https://github.com/vm0-ai/vm0/commit/2050fb27348cbccfbdd8747b26772c907b55cbc8))
+
 ## [0.9.7](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.9.6...vsock-proto-v0.9.7) (2026-05-05)
 
 

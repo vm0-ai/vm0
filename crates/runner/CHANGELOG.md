@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.9...runner-rs-v0.100.10) (2026-05-08)
+
+
+### Bug Fixes
+
+* refresh personal codex oauth providers ([#12120](https://github.com/vm0-ai/vm0/issues/12120)) ([b4e727d](https://github.com/vm0-ai/vm0/commit/b4e727da0dc4a1fbb0df6d8ef3aececa9460b5a7))
+
 ## [0.100.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.8...runner-rs-v0.100.9) (2026-05-07)
 
 
