@@ -103,7 +103,18 @@ fn send_exec_and_read_result(
     command: &str,
     timeout_ms: u32,
 ) -> (i32, Vec<u8>, Vec<u8>) {
-    let payload = vsock_proto::encode_exec(timeout_ms, command, &[], false);
+    send_exec_and_read_result_with_env(writer, reader, seq, command, timeout_ms, &[])
+}
+
+fn send_exec_and_read_result_with_env(
+    writer: &mut impl std::io::Write,
+    reader: &mut impl std::io::Read,
+    seq: u32,
+    command: &str,
+    timeout_ms: u32,
+    env: &[(&str, &str)],
+) -> (i32, Vec<u8>, Vec<u8>) {
+    let payload = vsock_proto::encode_exec(timeout_ms, command, env, false);
     let msg = vsock_proto::encode(MSG_EXEC, seq, &payload).unwrap();
     writer.write_all(&msg).unwrap();
 
@@ -233,6 +244,54 @@ fn exec_returns_correct_result() {
         send_exec_and_read_result(&mut host_writer, &mut host_reader, 1, "echo hello", 5000);
     assert_eq!(code, 0);
     assert_eq!(String::from_utf8_lossy(&stdout).trim(), "hello");
+
+    drop(host_writer);
+    drop(host_reader);
+    let _ = handle.join();
+}
+
+#[test]
+fn exec_large_env_payload_succeeds() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    let big_a = "A".repeat(40 * 1024);
+    let big_b = "B".repeat(40 * 1024);
+    let big_c = "C".repeat(40 * 1024);
+    let big_d = "D".repeat(40 * 1024);
+    let env = [
+        ("SMALL", "ok"),
+        ("BIG_A", big_a.as_str()),
+        ("BIG_B", big_b.as_str()),
+        ("BIG_C", big_c.as_str()),
+        ("BIG_D", big_d.as_str()),
+    ];
+
+    let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
+    let mut host_writer = host_stream.try_clone().unwrap();
+    let mut host_reader = host_stream;
+
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+    read_and_discard_message(&mut host_reader); // MSG_READY
+    host_reader
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    let (code, stdout, stderr) = send_exec_and_read_result_with_env(
+        &mut host_writer,
+        &mut host_reader,
+        1,
+        "printf '%s:%s:%s:%s:%s\\n' \"$SMALL\" \"${#BIG_A}\" \"${#BIG_B}\" \"${#BIG_C}\" \"${#BIG_D}\"",
+        5000,
+        &env,
+    );
+
+    assert_eq!(code, 0, "stderr: {}", String::from_utf8_lossy(&stderr));
+    assert_eq!(
+        String::from_utf8_lossy(&stdout),
+        "ok:40960:40960:40960:40960\n"
+    );
 
     drop(host_writer);
     drop(host_reader);
@@ -430,8 +489,19 @@ fn send_spawn_watch(
     log_path: Option<&str>,
     timeout_ms: u32,
 ) {
+    send_spawn_watch_with_env(stream, seq, command, &[], log_path, timeout_ms);
+}
+
+fn send_spawn_watch_with_env(
+    stream: &mut impl std::io::Write,
+    seq: u32,
+    command: &str,
+    env: &[(&str, &str)],
+    log_path: Option<&str>,
+    timeout_ms: u32,
+) {
     let payload =
-        vsock_proto::encode_spawn_watch(timeout_ms, command, &[], false, true, log_path).unwrap();
+        vsock_proto::encode_spawn_watch(timeout_ms, command, env, false, true, log_path).unwrap();
     let msg = vsock_proto::encode(MSG_SPAWN_WATCH, seq, &payload).unwrap();
     stream.write_all(&msg).unwrap();
 }
@@ -511,6 +581,51 @@ fn streaming_monitor_normal_exit() {
     assert!(pid > 0);
     assert_eq!(exit_code, 0);
     assert_eq!(String::from_utf8_lossy(&stdout_data).trim(), "hello");
+
+    drop(host_stream);
+    let _ = handle.join();
+}
+
+#[test]
+fn streaming_spawn_watch_large_env_payload_succeeds() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    let big_a = "A".repeat(40 * 1024);
+    let big_b = "B".repeat(40 * 1024);
+    let big_c = "C".repeat(40 * 1024);
+    let big_d = "D".repeat(40 * 1024);
+    let env = [
+        ("SMALL", "ok"),
+        ("BIG_A", big_a.as_str()),
+        ("BIG_B", big_b.as_str()),
+        ("BIG_C", big_c.as_str()),
+        ("BIG_D", big_d.as_str()),
+    ];
+
+    let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+    read_and_discard_message(&mut host_stream); // MSG_READY
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    send_spawn_watch_with_env(
+        &mut host_stream,
+        1,
+        "printf '%s:%s:%s:%s:%s\\n' \"$SMALL\" \"${#BIG_A}\" \"${#BIG_B}\" \"${#BIG_C}\" \"${#BIG_D}\"",
+        &env,
+        None,
+        5000,
+    );
+    let (_pid, stdout_data, exit_code, stderr) = read_streaming_result(&mut host_stream, 1);
+
+    assert_eq!(exit_code, 0, "stderr: {}", String::from_utf8_lossy(&stderr));
+    assert_eq!(
+        String::from_utf8_lossy(&stdout_data),
+        "ok:40960:40960:40960:40960\n"
+    );
 
     drop(host_stream);
     let _ = handle.join();

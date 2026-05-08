@@ -8,7 +8,7 @@ use vsock_proto::{self, MSG_ERROR, MSG_PROCESS_EXIT, MSG_SPAWN_WATCH_RESULT, MSG
 
 use crate::drain::{drain_into_vec_cancellable, drain_until_eof_or_cancelled};
 use crate::error::to_io_error;
-use crate::exec::{prepend_env, spawn_with_pipes, truncate_preview};
+use crate::exec::{EnvScriptGuard, format_env_diagnostics, spawn_with_pipes, truncate_preview};
 use crate::log::log;
 use crate::process::{ChildReapGuard, kill_and_reap_child};
 use crate::threading::{SystemThreadSpawner, ThreadSpawner};
@@ -29,6 +29,7 @@ struct StreamingMonitorRequest {
     timeout_ms: u32,
     stdout_pipe: Option<ChildStdout>,
     log_path: Option<String>,
+    env_script: Option<EnvScriptGuard>,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
 }
@@ -37,6 +38,7 @@ struct BufferedMonitorRequest {
     pid: u32,
     child: Child,
     timeout_ms: u32,
+    env_script: Option<EnvScriptGuard>,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
 }
@@ -48,6 +50,7 @@ struct StreamingSetupFailure {
     drain_done_tx: std::sync::mpsc::Sender<()>,
     stderr_handle: Option<JoinHandle<Vec<u8>>>,
     stdout_handle: Option<JoinHandle<()>>,
+    env_script: Option<EnvScriptGuard>,
     writer: GuestWriter,
     error: String,
 }
@@ -97,25 +100,31 @@ where
     log(
         "INFO",
         &format!(
-            "spawn_watch: {} (timeout={}ms, sudo={}, env_count={}, stream={})",
+            "spawn_watch: {} (timeout={}ms, sudo={}, stream={}, {})",
             truncate_preview(request.command),
             request.timeout_ms,
             request.sudo,
-            request.env.len(),
             request.stream_stdout,
+            format_env_diagnostics(request.command, request.env),
         ),
     );
-    let command = prepend_env(request.command, request.env);
 
-    let mut child = match spawn_with_pipes(&command, request.sudo) {
+    let spawned = match spawn_with_pipes(request.command, request.env, request.sudo) {
         Ok(c) => c,
         Err(e) => {
-            let payload = vsock_proto::encode_error(&format!("Failed to spawn: {e}"));
+            let payload = vsock_proto::encode_error(&format!(
+                "Failed to spawn: {e} ({})",
+                format_env_diagnostics(request.command, request.env)
+            ));
             let response = vsock_proto::encode(MSG_ERROR, seq, &payload).map_err(to_io_error)?;
             writer.write_frame(&response)?;
             return Ok(());
         }
     };
+    let crate::exec::SpawnedCommand {
+        mut child,
+        env_script,
+    } = spawned;
 
     let pid = child.id();
     log("INFO", &format!("spawn_watch: started pid={pid}"));
@@ -153,6 +162,7 @@ where
                 timeout_ms: request.timeout_ms,
                 stdout_pipe,
                 log_path: request.stdout_log_path.map(str::to_owned),
+                env_script,
                 writer,
                 connection_cancel,
             },
@@ -171,6 +181,7 @@ where
                 pid,
                 child,
                 timeout_ms: request.timeout_ms,
+                env_script,
                 writer,
                 connection_cancel,
             },
@@ -222,6 +233,7 @@ where
         timeout_ms,
         stdout_pipe,
         log_path,
+        env_script,
         writer,
         connection_cancel,
     } = request;
@@ -245,6 +257,7 @@ where
                     timeout_ms,
                     stdout_pipe,
                     log_path,
+                    env_script,
                     writer,
                     connection_cancel,
                 },
@@ -274,9 +287,11 @@ where
         timeout_ms,
         stdout_pipe,
         log_path,
+        env_script,
         writer,
         connection_cancel,
     } = request;
+    let _env_script = env_script;
     let cancel = Arc::new(AtomicBool::new(false));
     let (drain_done_tx, drain_done_rx) = std::sync::mpsc::channel::<()>();
 
@@ -307,6 +322,7 @@ where
                     drain_done_tx,
                     stderr_handle: None,
                     stdout_handle: None,
+                    env_script: _env_script,
                     writer,
                     error: format!("Failed to spawn stderr drain thread: {e}"),
                 });
@@ -386,6 +402,7 @@ where
                     drain_done_tx,
                     stderr_handle,
                     stdout_handle: None,
+                    env_script: _env_script,
                     writer,
                     error: format!("Failed to spawn stdout drain thread: {e}"),
                 });
@@ -452,9 +469,11 @@ fn finish_streaming_setup_failure(failure: StreamingSetupFailure) {
         drain_done_tx,
         stderr_handle,
         stdout_handle,
+        env_script,
         writer,
         error,
     } = failure;
+    let _env_script = env_script;
     cancel.store(true, Ordering::Release);
     drop(drain_done_tx);
     kill_and_reap_child(child);
@@ -487,6 +506,7 @@ where
         pid,
         child,
         timeout_ms,
+        env_script,
         writer,
         connection_cancel,
     } = request;
@@ -524,6 +544,7 @@ where
             );
 
             send_process_exit(pid, exit_code, &stdout, &stderr, &writer);
+            drop(env_script);
         }),
     );
     if let Err(e) = &result {

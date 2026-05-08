@@ -11,7 +11,8 @@ use vsock_proto::{
 use crate::drain::drain_into_vec_cancellable;
 use crate::error::to_io_error;
 use crate::exec::{
-    build_exec_command, prepend_env, spawn_in_own_process_group, spawn_with_pipes, truncate_preview,
+    build_exec_command, format_env_diagnostics, spawn_in_own_process_group, spawn_with_pipes,
+    truncate_preview,
 };
 use crate::log::log;
 use crate::process::{extract_exit_code, kill_and_reap_child};
@@ -41,25 +42,32 @@ pub(crate) fn handle_exec(
     log(
         "INFO",
         &format!(
-            "exec: {} (timeout={}ms, sudo={}, env_count={})",
+            "exec: {} (timeout={}ms, sudo={}, {})",
             truncate_preview(command),
             timeout_ms,
             sudo,
-            env.len(),
+            format_env_diagnostics(command, env),
         ),
     );
-    let command = prepend_env(command, env);
 
-    let child = match spawn_with_pipes(&command, sudo) {
+    let spawned = match spawn_with_pipes(command, env, sudo) {
         Ok(c) => c,
         Err(e) => {
             return (
                 1,
                 Vec::new(),
-                format!("Failed to execute: {e}").into_bytes(),
+                format!(
+                    "Failed to execute: {e} ({})",
+                    format_env_diagnostics(command, env)
+                )
+                .into_bytes(),
             );
         }
     };
+    let crate::exec::SpawnedCommand {
+        child,
+        env_script: _env_script,
+    } = spawned;
 
     let (outcome, stdout, stderr_buf) =
         wait_with_drain_and_timeout_or_cancelled(child, timeout_ms, connection_cancel);
