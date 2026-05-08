@@ -308,7 +308,11 @@ function ChatThreadMenu({
         <button
           type="button"
           onClick={handleMenuTriggerClick}
-          className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md visible md:invisible md:group-hover:visible md:data-[state=open]:visible transition-opacity duration-150 ${
+          className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-opacity duration-150 ${
+            isPinned
+              ? "visible"
+              : "visible md:invisible md:group-hover:visible md:data-[state=open]:visible"
+          } ${
             isHighlighted
               ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
               : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
@@ -318,7 +322,18 @@ function ChatThreadMenu({
           data-pinned={isPinned ? "true" : "false"}
         >
           {isPinned ? (
-            <IconPin size={16} stroke={2} />
+            <>
+              <IconPin
+                size={16}
+                stroke={2}
+                className="block md:group-hover:hidden"
+              />
+              <IconDots
+                size={16}
+                stroke={2}
+                className="hidden md:group-hover:block"
+              />
+            </>
           ) : (
             <IconDots size={16} stroke={2} />
           )}
