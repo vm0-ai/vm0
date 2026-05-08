@@ -124,6 +124,11 @@ const connectorSearchResponseSchema = z.object({
   connectors: z.array(connectorSearchItemSchema),
 });
 
+export type ConnectorSearchItem = z.infer<typeof connectorSearchItemSchema>;
+export type ConnectorSearchResponse = z.infer<
+  typeof connectorSearchResponseSchema
+>;
+
 /**
  * Zero contract for GET /api/zero/connectors/search
  * Returns all available connector type definitions with optional keyword search

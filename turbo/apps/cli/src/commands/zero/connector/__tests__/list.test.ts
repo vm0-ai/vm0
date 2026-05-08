@@ -64,6 +64,21 @@ function stubUserConnectors(id: string, enabledTypes: string[]) {
   );
 }
 
+function stubAvailableConnectors(types: string[]) {
+  return http.get("http://localhost:3000/api/zero/connectors/search", () => {
+    return HttpResponse.json({
+      connectors: types.map((type) => {
+        return {
+          id: type,
+          label: type,
+          description: type,
+          authMethods: ["oauth"],
+        };
+      }),
+    });
+  });
+}
+
 describe("zero connector list command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -260,6 +275,15 @@ describe("zero connector list command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       // mercury has api-token auth and no strictFeatureFlag so it is always visible
       expect(logCalls).toContain("mercury");
+    });
+
+    it("uses the server-visible catalog for feature-gated oauth connectors", async () => {
+      server.use(stubConnectors([]), stubAvailableConnectors(["google-ads"]));
+
+      await listCommand.parseAsync(["node", "cli"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("google-ads");
     });
   });
 

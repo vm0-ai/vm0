@@ -65,6 +65,21 @@ function stubUserConnectors(id: string, enabledTypes: string[]) {
   );
 }
 
+function stubAvailableConnectors(types: string[]) {
+  return http.get("http://localhost:3000/api/zero/connectors/search", () => {
+    return HttpResponse.json({
+      connectors: types.map((type) => {
+        return {
+          id: type,
+          label: type,
+          description: type,
+          authMethods: ["oauth"],
+        };
+      }),
+    });
+  });
+}
+
 function findDataRows(lines: readonly string[]): string[] {
   return lines.filter((line) => {
     const trimmed = line.trim();
@@ -389,6 +404,16 @@ describe("zero connector search command", () => {
       });
       // mercury has api-token auth and no strictFeatureFlag so it is always visible
       expect(types).toContain("mercury");
+    });
+
+    it("uses the server-visible catalog for feature-gated oauth connectors", async () => {
+      server.use(stubConnectors([]), stubAvailableConnectors(["google-ads"]));
+
+      await searchCommand.parseAsync(["node", "cli", "google ads"]);
+
+      const lines = mockConsoleLog.mock.calls.flat() as string[];
+      const dataRows = findDataRows(lines);
+      expect(dataRows[0]).toMatch(/^google-ads\s/);
     });
   });
 

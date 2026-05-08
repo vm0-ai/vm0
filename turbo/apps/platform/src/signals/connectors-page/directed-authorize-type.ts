@@ -5,6 +5,7 @@ import { accept } from "../../lib/accept.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agents$ } from "../agent.ts";
+import { reloadAgentConnectorAuthorizations$ } from "../zero-page/agent-connector-authorizations.ts";
 
 /**
  * Connector type extracted from `/connectors/:type/authorize` route params.
@@ -94,5 +95,6 @@ export const authorizeConnector$ = command(
     set(internalAuthorized$, (prev) => {
       return new Set([...prev, connectorType]);
     });
+    set(reloadAgentConnectorAuthorizations$);
   },
 );

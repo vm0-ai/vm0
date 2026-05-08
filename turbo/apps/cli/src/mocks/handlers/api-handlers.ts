@@ -1,4 +1,26 @@
 import { http, HttpResponse } from "msw";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+} from "@vm0/connectors/connectors";
+
+function defaultAvailableConnectors() {
+  return (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
+    .filter((type) => {
+      const config = CONNECTOR_TYPES[type];
+      const hasApiToken = "api-token" in config.authMethods;
+      return !config.featureFlag || (hasApiToken && !config.strictFeatureFlag);
+    })
+    .map((type) => {
+      const config = CONNECTOR_TYPES[type];
+      return {
+        id: type,
+        label: config.label,
+        description: config.helpText,
+        authMethods: Object.keys(config.authMethods),
+      };
+    });
+}
 
 export const apiHandlers = [
   // GET /api/agent/composes - getComposeByName
@@ -56,6 +78,14 @@ export const apiHandlers = [
   http.get("http://localhost:3000/api/zero/connectors", () => {
     return HttpResponse.json(
       { connectors: [], configuredTypes: [], connectorProvidedSecretNames: [] },
+      { status: 200 },
+    );
+  }),
+
+  // GET /api/zero/connectors/search - searchZeroConnectors
+  http.get("http://localhost:3000/api/zero/connectors/search", () => {
+    return HttpResponse.json(
+      { connectors: defaultAvailableConnectors() },
       { status: 200 },
     );
   }),

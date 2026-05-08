@@ -7,6 +7,7 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { zeroClient$ } from "../../api-client.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../../lib/accept.ts";
+import { reloadAgentConnectorAuthorizations$ } from "../agent-connector-authorizations.ts";
 
 // ---------------------------------------------------------------------------
 // Agent selection
@@ -47,7 +48,7 @@ export const setPermissionDialogSearch$ = command(({ set }, v: string) => {
 
 export const confirmPermissionDialog$ = command(
   async (
-    { get },
+    { get, set },
     connectorType: ConnectorType,
     onClose: () => void,
     signal: AbortSignal,
@@ -89,6 +90,7 @@ export const confirmPermissionDialog$ = command(
     toast.success(
       `${config.label} enabled for ${selected.size} agent${selected.size > 1 ? "s" : ""}`,
     );
+    set(reloadAgentConnectorAuthorizations$);
     onClose();
   },
 );
