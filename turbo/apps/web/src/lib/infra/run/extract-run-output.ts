@@ -33,11 +33,7 @@ interface RunOutputQueryOptions {
   knownLastEventSequence?: number | null;
 }
 
-type RunOutputOptionsInput =
-  | RunOutputQueryOptions
-  | number
-  | null
-  | undefined;
+type RunOutputOptionsInput = RunOutputQueryOptions | number | null | undefined;
 
 // ---------------------------------------------------------------------------
 // Axiom query
@@ -60,7 +56,9 @@ const OUTPUT_EVENT_FILTER = `eventType == "result" or (eventType == "item.comple
 const OUTPUT_QUERY_ATTEMPTS = 4;
 const OUTPUT_QUERY_RETRY_MS = 500;
 
-function normalizeOptions(input?: RunOutputOptionsInput): RunOutputQueryOptions {
+function normalizeOptions(
+  input?: RunOutputOptionsInput,
+): RunOutputQueryOptions {
   if (typeof input === "number" || input === null) {
     return { knownLastEventSequence: input };
   }
