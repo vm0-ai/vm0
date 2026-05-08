@@ -203,6 +203,31 @@ describe("GET /api/agent/runs/:id/events", () => {
       expect(data.hasMore).toBe(false);
       expect(data.nextSequence).toBe(2);
     });
+
+    it("should include terminal lastEventSequence watermark when present", async () => {
+      context.mocks.axiom.queryAxiom
+        .mockResolvedValueOnce([
+          { sequenceNumber: 0 },
+          { sequenceNumber: 1 },
+          { sequenceNumber: 2 },
+        ])
+        .mockResolvedValueOnce([]);
+
+      await completeTestRun(user.userId, testRunId, undefined, {
+        lastEventSequence: 2,
+      });
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.run.status).toBe("completed");
+      expect(data.run.lastEventSequence).toBe(2);
+    });
   });
 
   // ============================================

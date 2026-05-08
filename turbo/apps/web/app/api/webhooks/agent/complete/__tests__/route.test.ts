@@ -332,6 +332,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(response.status).toBe(200);
       const run = await findTestRunRecord(testRunId);
       expect(run!.status).toBe("completed");
+      expect(run!.lastEventSequence).toBe(2);
       expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledTimes(2);
       expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledWith(
         expect.stringContaining(`runId == "${testRunId}"`),
@@ -562,6 +563,8 @@ describe("POST /api/webhooks/agent/complete", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(200);
+      const run = await findTestRunRecord(runId);
+      expect(run!.lastEventSequence).toBe(0);
       expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
     });
   });

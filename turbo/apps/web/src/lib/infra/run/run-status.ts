@@ -23,6 +23,7 @@ export async function transitionRunStatus(
     lastHeartbeatAt?: Date;
     error?: string;
     result?: RunResult;
+    lastEventSequence?: number;
     sandboxId?: string;
     sandboxReuseResult?: SandboxReuseResult;
   },

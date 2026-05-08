@@ -304,6 +304,11 @@ export interface PollResult {
 type RunState = GetEventsResponse["run"];
 type TerminalRunStatus = "completed" | "failed" | "timeout" | "cancelled";
 type TerminalRunState = RunState & { status: TerminalRunStatus };
+interface TerminalDrainState {
+  runState?: TerminalRunState;
+  seenAt: number;
+  lastProgressAt: number;
+}
 
 const TERMINAL_RUN_STATUSES: readonly TerminalRunStatus[] = [
   "completed",
@@ -348,6 +353,19 @@ function hasResultEvent(response: GetEventsResponse): boolean {
   });
 }
 
+function hasTerminalWatermark(run: TerminalRunState): boolean {
+  return run.lastEventSequence !== undefined;
+}
+
+function hasReachedTerminalWatermark(
+  run: TerminalRunState,
+  nextSequence: number,
+): boolean {
+  return (
+    run.lastEventSequence !== undefined && nextSequence >= run.lastEventSequence
+  );
+}
+
 function shouldCompleteTerminalDrain(
   terminalSeenAt: number,
   lastTerminalProgressAt: number,
@@ -359,6 +377,60 @@ function shouldCompleteTerminalDrain(
   return (
     terminalElapsedMs >= TERMINAL_DRAIN_MAX_MS ||
     (!blockedByGap && terminalIdleMs >= TERMINAL_DRAIN_IDLE_MS)
+  );
+}
+
+function updateTerminalDrainState(
+  state: TerminalDrainState,
+  run: RunState,
+  madeSequenceProgress: boolean,
+  now: number,
+): void {
+  if (isTerminalRunState(run)) {
+    if (!state.runState) {
+      state.seenAt = now;
+      state.lastProgressAt = now;
+    } else if (madeSequenceProgress) {
+      state.lastProgressAt = now;
+    }
+    state.runState = run;
+    return;
+  }
+
+  if (state.runState && madeSequenceProgress) {
+    state.lastProgressAt = now;
+  }
+}
+
+function isBlockedByTerminalWatermark(
+  run: TerminalRunState,
+  nextSequence: number,
+): boolean {
+  return (
+    hasTerminalWatermark(run) && !hasReachedTerminalWatermark(run, nextSequence)
+  );
+}
+
+function shouldReturnTerminalRunResult(
+  state: TerminalDrainState,
+  response: GetEventsResponse,
+  nextSequence: number,
+  madeSequenceProgress: boolean,
+): boolean {
+  const run = state.runState;
+  if (!run) {
+    return false;
+  }
+
+  if (!hasTerminalWatermark(run) && !response.hasMore && madeSequenceProgress) {
+    return hasResultEvent(response);
+  }
+
+  return shouldCompleteTerminalDrain(
+    state.seenAt,
+    state.lastProgressAt,
+    isBlockedBySequenceGap(response, madeSequenceProgress) ||
+      isBlockedByTerminalWatermark(run, nextSequence),
   );
 }
 
@@ -410,9 +482,10 @@ export async function pollEvents(
   const renderer = new EventRenderer({ verbose: options?.verbose });
 
   let nextSequence = -1;
-  let terminalRunState: TerminalRunState | undefined;
-  let terminalSeenAt = 0;
-  let lastTerminalProgressAt = 0;
+  const terminalDrain: TerminalDrainState = {
+    seenAt: 0,
+    lastProgressAt: 0,
+  };
 
   for (;;) {
     const previousSequence = nextSequence;
@@ -438,45 +511,41 @@ export async function pollEvents(
       nextSequence = response.nextSequence;
     }
 
-    // Check run status for completion (replaces vm0_result/vm0_error events)
-    if (isTerminalRunState(response.run)) {
-      if (!terminalRunState) {
-        terminalSeenAt = now;
-        lastTerminalProgressAt = now;
-      } else if (madeSequenceProgress) {
-        lastTerminalProgressAt = now;
-      }
-      terminalRunState = response.run;
-    } else if (terminalRunState && madeSequenceProgress) {
-      lastTerminalProgressAt = now;
+    updateTerminalDrainState(
+      terminalDrain,
+      response.run,
+      madeSequenceProgress,
+      now,
+    );
+
+    if (
+      terminalDrain.runState &&
+      hasReachedTerminalWatermark(terminalDrain.runState, nextSequence)
+    ) {
+      return renderTerminalRunResult(runId, terminalDrain.runState);
     }
 
     if (shouldDrainNextEventPage(response, madeSequenceProgress)) {
       continue;
     }
 
+    const terminalRunState = terminalDrain.runState;
     if (
       terminalRunState &&
-      !response.hasMore &&
-      madeSequenceProgress &&
-      hasResultEvent(response)
-    ) {
-      return renderTerminalRunResult(runId, terminalRunState);
-    }
-
-    if (
-      terminalRunState &&
-      shouldCompleteTerminalDrain(
-        terminalSeenAt,
-        lastTerminalProgressAt,
-        isBlockedBySequenceGap(response, madeSequenceProgress),
+      shouldReturnTerminalRunResult(
+        terminalDrain,
+        response,
+        nextSequence,
+        madeSequenceProgress,
       )
     ) {
       return renderTerminalRunResult(runId, terminalRunState);
     }
 
     await sleep(
-      terminalRunState ? TERMINAL_DRAIN_POLL_INTERVAL_MS : POLL_INTERVAL_MS,
+      terminalDrain.runState
+        ? TERMINAL_DRAIN_POLL_INTERVAL_MS
+        : POLL_INTERVAL_MS,
     );
   }
 }

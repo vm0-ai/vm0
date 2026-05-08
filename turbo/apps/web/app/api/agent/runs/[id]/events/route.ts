@@ -51,6 +51,7 @@ const router = tsr.router(runEventsContract, {
         status: agentRuns.status,
         result: agentRuns.result,
         error: agentRuns.error,
+        lastEventSequence: agentRuns.lastEventSequence,
         composeContent: agentComposeVersions.content,
       })
       .from(agentRuns)
@@ -122,6 +123,10 @@ const router = tsr.router(runEventsContract, {
     // Include error if failed
     if (runWithCompose.status === "failed" && runWithCompose.error) {
       runState.error = runWithCompose.error;
+    }
+
+    if (runWithCompose.lastEventSequence !== null) {
+      runState.lastEventSequence = runWithCompose.lastEventSequence;
     }
 
     return {

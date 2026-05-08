@@ -5,6 +5,7 @@ import {
   text,
   jsonb,
   timestamp,
+  integer,
   index,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
@@ -62,6 +63,7 @@ export const agentRuns = pgTable(
     sandboxReuseResult: varchar("sandbox_reuse_result", { length: 50 }),
     result: jsonb("result"),
     error: text("error"),
+    lastEventSequence: integer("last_event_sequence"),
     orgId: text("org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     startedAt: timestamp("started_at"),

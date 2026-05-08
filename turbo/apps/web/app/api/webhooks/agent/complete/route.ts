@@ -149,6 +149,9 @@ const router = tsr.router(webhookCompleteContract, {
             status: "failed",
             completedAt: new Date(),
             error: "Checkpoint for run not found",
+            ...(body.lastEventSequence !== undefined
+              ? { lastEventSequence: body.lastEventSequence }
+              : {}),
             sandboxId: body.sandboxId,
             sandboxReuseResult: body.sandboxReuseResult,
           },
@@ -217,6 +220,9 @@ const router = tsr.router(webhookCompleteContract, {
           status: "completed",
           completedAt: new Date(),
           result,
+          ...(body.lastEventSequence !== undefined
+            ? { lastEventSequence: body.lastEventSequence }
+            : {}),
           sandboxId: body.sandboxId,
           sandboxReuseResult: body.sandboxReuseResult,
         },
@@ -258,6 +264,9 @@ const router = tsr.router(webhookCompleteContract, {
           status: "failed",
           completedAt: new Date(),
           error: errorMessage,
+          ...(body.lastEventSequence !== undefined
+            ? { lastEventSequence: body.lastEventSequence }
+            : {}),
           sandboxId: body.sandboxId,
           sandboxReuseResult: body.sandboxReuseResult,
         },

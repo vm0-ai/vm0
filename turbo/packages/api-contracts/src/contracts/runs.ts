@@ -165,6 +165,7 @@ const runStateSchema = z.object({
   status: runStatusSchema,
   result: runResultSchema.optional(),
   error: z.string().optional(),
+  lastEventSequence: z.number().int().nonnegative().optional(),
 });
 
 /**

@@ -47,6 +47,7 @@ export interface RunState {
   status: RunStatus;
   result?: RunResult; // Present when status = 'completed'
   error?: string; // Present when status = 'failed'
+  lastEventSequence?: number; // Highest event sequence reported by terminal webhook
 }
 
 /**
