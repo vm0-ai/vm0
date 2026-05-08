@@ -617,7 +617,7 @@ function MobileTopBar() {
       )}
       style={{
         paddingTop: mobileNativeOn
-          ? "max(env(safe-area-inset-top), 12px)"
+          ? "calc(env(safe-area-inset-top) + 12px)"
           : "env(safe-area-inset-top)",
       }}
     >
