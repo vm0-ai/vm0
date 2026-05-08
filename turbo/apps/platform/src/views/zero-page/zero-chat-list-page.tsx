@@ -549,20 +549,20 @@ function ChatListItem({
         <span className="min-w-0 flex-1 flex flex-col gap-0.5">
           <span
             className={cn(
-              "truncate text-[15px] leading-5",
+              "truncate text-[16px] leading-[22px]",
               isUnread ? "font-semibold" : "font-medium",
             )}
           >
             {session.title ?? "New chat"}
           </span>
           {secondary && (
-            <span className="truncate text-[13px] leading-[18px] text-muted-foreground">
+            <span className="truncate text-[14px] leading-5 text-muted-foreground">
               {secondary}
             </span>
           )}
         </span>
         {dateLabel && (
-          <span className="shrink-0 self-start mt-0.5 text-[12px] leading-4 text-muted-foreground tabular-nums">
+          <span className="shrink-0 self-start mt-0.5 text-[13px] leading-[18px] text-muted-foreground tabular-nums">
             {dateLabel}
           </span>
         )}
