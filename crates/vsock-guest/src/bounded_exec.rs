@@ -28,8 +28,6 @@ const THREAD_BOUNDED_STDOUT: &str = "vsock-bounded-stdout";
 const THREAD_BOUNDED_STDERR: &str = "vsock-bounded-stderr";
 const THREAD_BOUNDED_STDIN: &str = "vsock-bounded-stdin";
 
-const MIN_STREAM_CHUNK_LIMIT_BYTES: usize = 1024;
-
 pub(crate) struct BoundedExecWorkerRequest {
     pub(crate) seq: u32,
     pub(crate) timeout_ms: u32,
@@ -442,10 +440,11 @@ fn validate_request(request: &BoundedExecWorkerRequest) -> Result<(), String> {
 
     if request.stream_stdout || request.stream_stderr {
         let stream_chunk_limit = request.stream_chunk_limit_bytes as usize;
-        if stream_chunk_limit < MIN_STREAM_CHUNK_LIMIT_BYTES {
+        if stream_chunk_limit < vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES {
             return Err(format!(
                 "bounded exec stream chunk limit below minimum: {} < {}",
-                request.stream_chunk_limit_bytes, MIN_STREAM_CHUNK_LIMIT_BYTES
+                request.stream_chunk_limit_bytes,
+                vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES
             ));
         }
         if stream_chunk_limit > vsock_proto::MAX_BOUNDED_EXEC_OUTPUT_CHUNK_BYTES {

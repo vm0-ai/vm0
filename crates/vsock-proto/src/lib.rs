@@ -60,6 +60,8 @@ pub const MAX_BOUNDED_EXEC_RESULT_OUTPUT_BYTES: usize =
 /// Maximum chunk bytes that fit in one bounded_exec_output_chunk frame.
 pub const MAX_BOUNDED_EXEC_OUTPUT_CHUNK_BYTES: usize =
     MAX_MESSAGE_SIZE - MIN_BODY_SIZE - BOUNDED_EXEC_OUTPUT_CHUNK_FIXED_PAYLOAD_BYTES;
+/// Minimum stream chunk limit accepted by bounded exec implementations.
+pub const MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES: usize = 1024;
 
 // Message type constants.
 pub const MSG_READY: u8 = 0x00;

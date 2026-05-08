@@ -360,9 +360,9 @@ fn bounded_exec_broken_pipe_stdin_keeps_child_exit_status() {
 fn bounded_exec_streams_stdout_before_final_result() {
     let (handle, mut host_stream) = start_guest_connection();
 
-    let mut request = bounded_request("printf login-url; sleep 0.2; printf done", &[], None);
+    let mut request = bounded_request("printf login-url; printf done", &[], None);
     request.stream_stdout = true;
-    request.stream_chunk_limit_bytes = 1024;
+    request.stream_chunk_limit_bytes = vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32;
     request.stdout_stream_limit_bytes = 64;
     send_bounded_exec(&mut host_stream, 15, &request);
     let (chunks, result) = read_bounded_exec_result(&mut host_stream, 15);
@@ -395,7 +395,7 @@ fn bounded_exec_streams_stdout_and_stderr_independently() {
     let mut request = bounded_request("printf out; printf err >&2", &[], None);
     request.stream_stdout = true;
     request.stream_stderr = true;
-    request.stream_chunk_limit_bytes = 1024;
+    request.stream_chunk_limit_bytes = vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32;
     send_bounded_exec(&mut host_stream, 16, &request);
     let (chunks, result) = read_bounded_exec_result(&mut host_stream, 16);
 
