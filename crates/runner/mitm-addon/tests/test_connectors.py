@@ -1279,6 +1279,7 @@ class TestGetFirewallHeaders:
             None,
             None,
             None,
+            None,
             force_refresh=False,
         )
 
