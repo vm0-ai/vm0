@@ -465,6 +465,13 @@ fn emit_bounded_exec_events(request: &BoundedExecRequest<'_>, events: Vec<Bounde
         return;
     };
     for event in events {
+        let requested = match event.stream {
+            BoundedExecStream::Stdout => stream.stdout,
+            BoundedExecStream::Stderr => stream.stderr,
+        };
+        if !requested {
+            continue;
+        }
         let _ = stream.event_tx.send(event);
     }
 }
@@ -1022,12 +1029,20 @@ mod tests {
     async fn sandbox_queued_bounded_exec_response_emits_stream_events() {
         let sandbox = MockSandbox::new("test-1");
         sandbox.push_bounded_exec_response(BoundedExecResponse {
-            events: vec![BoundedExecOutputEvent {
-                stream: BoundedExecStream::Stdout,
-                sequence: 7,
-                chunk: b"chunk".to_vec(),
-                truncated: true,
-            }],
+            events: vec![
+                BoundedExecOutputEvent {
+                    stream: BoundedExecStream::Stdout,
+                    sequence: 7,
+                    chunk: b"chunk".to_vec(),
+                    truncated: true,
+                },
+                BoundedExecOutputEvent {
+                    stream: BoundedExecStream::Stderr,
+                    sequence: 8,
+                    chunk: b"ignored".to_vec(),
+                    truncated: false,
+                },
+            ],
             result: Ok(BoundedExecResult {
                 termination: BoundedExecTermination::TimedOut,
                 duration: Duration::from_millis(25),
@@ -1074,6 +1089,10 @@ mod tests {
                 truncated: true,
             }
         );
+        assert!(matches!(
+            event_rx.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ));
         assert_eq!(
             sandbox.bounded_exec_calls(),
             vec![BoundedExecCall {
