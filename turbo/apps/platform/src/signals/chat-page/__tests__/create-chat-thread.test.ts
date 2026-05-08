@@ -319,6 +319,129 @@ describe("fetchNextPage$ cursor", () => {
     expect(capturedSinceId).toBe("server-msg-2");
   });
 
+  it("issues a no-cursor fetch when initialPage is empty", async () => {
+    // Brand-new thread scenario: the swap-time `initialPage$` fetch returns
+    // empty because the send POST has not yet persisted the user row. With
+    // no anchor, `fetchNextPage$` must still query the server (sinceId is
+    // optional in the contract — passing it as undefined returns the latest
+    // page) and ingest whatever lands. Without this, every Ably-triggered
+    // refetch exits early and the rendered list stays stuck on the thinking
+    // indicator until the user manually refreshes.
+    const threadId = "thread-cursor-no-anchor";
+    const userMessageId = "11111111-1111-4111-8111-111111111111";
+    const assistantMessageId = "22222222-2222-4222-8222-222222222222";
+    const serverMessages: PagedChatMessage[] = [
+      {
+        id: userMessageId,
+        role: "user",
+        content: "hi",
+        createdAt: "2026-05-01T00:00:00Z",
+      },
+      {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "hello back",
+        createdAt: "2026-05-01T00:00:01Z",
+      },
+    ];
+
+    const capturedSinceIds: (string | undefined)[] = [];
+
+    const mockDataSource: ChatThreadDataSource = {
+      getThread$: computed(() => {
+        return Promise.resolve({
+          id: threadId,
+          title: null,
+          agentId: "agent-1",
+          latestSessionId: null,
+          lastReadMessageId: null,
+          latestSessionProviderType: null,
+          activeRunIds: [],
+          activeRuns: [],
+          isLegacySession: false,
+          draftContent: null,
+          draftAttachments: null,
+          pendingMessage: null,
+          modelProviderId: null,
+          selectedModel: null,
+        });
+      }),
+      reloadThread$: command(() => {}),
+      initialPage$: computed(() => {
+        return Promise.resolve({
+          messages: [],
+          hasHistoryBefore: false,
+        });
+      }),
+      patchDraft$: command(
+        (_ctx, _args: PatchDraftArgs, _signal: AbortSignal) => {
+          return Promise.resolve();
+        },
+      ),
+      appendPendingMessage$: command(
+        (_ctx, _args: AppendPendingMessageArgs, _signal: AbortSignal) => {
+          return Promise.resolve(createEmptyPendingMessage());
+        },
+      ),
+      recallPendingMessage$: command(() => {
+        return Promise.resolve({
+          draftContent: null,
+          draftAttachments: null,
+        });
+      }),
+      listMessagesAfter$: command((_ctx, args) => {
+        capturedSinceIds.push(args.sinceId);
+        // First call (no anchor): return the full page the server has now.
+        // Second call (cursor advanced to assistant id): nothing new.
+        if (args.sinceId === undefined) {
+          return Promise.resolve({
+            messages: serverMessages,
+            reachedEnd: true,
+          });
+        }
+        return Promise.resolve({ messages: [], reachedEnd: true });
+      }),
+      listMessagesBefore$: command(() => {
+        return Promise.resolve({ messages: [], hasMore: false });
+      }),
+      cancelRuns$: command(
+        (_ctx, _args: CancelRunsArgs, _signal: AbortSignal) => {
+          return Promise.resolve();
+        },
+      ),
+      markRead$: command(() => {
+        return Promise.resolve(null);
+      }),
+      subscribeRealtime$: command(
+        (_ctx, _args: SubscribeRealtimeArgs, _signal: AbortSignal) => {
+          return Promise.resolve();
+        },
+      ),
+    };
+
+    const { draft } = context.store.set(ensureDraft$, threadId);
+    const thread = createChatThreadSignals(threadId, draft, mockDataSource);
+
+    await context.store.set(thread.fetchNextPage$, context.signal);
+
+    expect(capturedSinceIds[0]).toBeUndefined();
+
+    const groups = await context.store.get(thread.groupedChatMessages$);
+    const ids = groups.flatMap((g) => {
+      return g.messages.map((m) => {
+        return m.id;
+      });
+    });
+    expect(ids).toContain(userMessageId);
+    expect(ids).toContain(assistantMessageId);
+
+    // Subsequent calls advance the cursor to the last server-validated id.
+    await context.store.set(thread.fetchNextPage$, context.signal);
+    expect(capturedSinceIds[capturedSinceIds.length - 1]).toBe(
+      assistantMessageId,
+    );
+  });
+
   it("loops until reachedEnd when a single page is not enough", async () => {
     const threadId = "thread-drain-loop";
 
