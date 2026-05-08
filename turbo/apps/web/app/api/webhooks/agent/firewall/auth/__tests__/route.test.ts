@@ -8,6 +8,7 @@ import {
   createTestSandboxToken,
   insertTestConnectorSecret,
   findTestConnectorTokenExpiresAt,
+  findTestConnectorSecret,
   findTestModelProviderTokenState,
   setTestModelProviderTokenExpiresAt,
   insertUserMultiAuthModelProvider,
@@ -21,7 +22,6 @@ import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../../../src/mocks/server";
 import { encryptSecretsMap } from "../../../../../../../src/lib/shared/crypto/secrets-encryption";
 import { insertTestUserModelProviderSecret } from "../../../../../../../src/__tests__/db-test-seeders/secrets";
-import { getSecretValue } from "../../../../../../../src/lib/zero/secret/secret-service";
 
 const context = testContext();
 
@@ -1582,22 +1582,26 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     }
 
     async function readChatgptRefreshTokenSecret(): Promise<string | null> {
-      return getSecretValue(
-        user.orgId,
-        ORG_SENTINEL_USER_ID,
-        "CHATGPT_REFRESH_TOKEN",
-        "model-provider",
+      return (
+        (await findTestConnectorSecret(
+          user.orgId,
+          "CHATGPT_REFRESH_TOKEN",
+          "model-provider",
+          ORG_SENTINEL_USER_ID,
+        )) ?? null
       );
     }
 
     async function readPersonalChatgptRefreshTokenSecret(): Promise<
       string | null
     > {
-      return getSecretValue(
-        user.orgId,
-        user.userId,
-        "CHATGPT_REFRESH_TOKEN",
-        "model-provider",
+      return (
+        (await findTestConnectorSecret(
+          user.orgId,
+          "CHATGPT_REFRESH_TOKEN",
+          "model-provider",
+          user.userId,
+        )) ?? null
       );
     }
 
