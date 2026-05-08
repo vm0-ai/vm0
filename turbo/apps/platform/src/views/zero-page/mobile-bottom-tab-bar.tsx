@@ -143,30 +143,41 @@ export function MobileBottomTabBar() {
     return activeId !== null && tab.activeKeys.includes(activeId);
   })?.id;
 
-  // Flat 6px gap below the dock on every device. We deliberately ignore
-  // env(safe-area-inset-bottom) — in PWA standalone mode it returns the
-  // full ~34pt home-indicator inset and stranded the dock high above the
-  // screen edge. The home indicator is a translucent system overlay and
-  // won't be obscured at this short distance (matches Apple's floating
-  // mini-player + Camera Roll docks).
+  // Dock pinned to the physical screen edge via position:fixed bottom:0,
+  // so in iOS PWA standalone the home-indicator translucent overlay sits
+  // on top of the dock's bottom strip — matches Apple's floating dock
+  // pattern (mini-player, Camera Roll). A sibling spacer reserves the
+  // dock's height inside the flex column so page content scrolls above
+  // it instead of behind it.
   return (
-    <nav
-      className="md:hidden shrink-0 px-3 pt-2 pb-1.5 z-10"
-      aria-label="Primary"
-      data-testid="mobile-bottom-tab-bar"
-    >
-      <div className="flex items-stretch gap-0.5 p-1.5 rounded-full border border-border/60 bg-card/70 backdrop-blur-xl shadow-[0_4px_20px_-4px_rgb(0_0_0/0.06)]">
-        {MOBILE_TABS.map((tab) => {
-          return (
-            <MobileTabLink
-              key={tab.id}
-              tab={tab}
-              active={matchedTabId === tab.id}
-            />
-          );
-        })}
-        <MoreTab active={matchedTabId === undefined} />
-      </div>
-    </nav>
+    <>
+      <div
+        aria-hidden="true"
+        className="md:hidden shrink-0"
+        style={{ height: DOCK_FLOW_HEIGHT }}
+      />
+      <nav
+        className="md:hidden fixed inset-x-0 bottom-0 px-3 pt-2 pb-1.5 z-10"
+        aria-label="Primary"
+        data-testid="mobile-bottom-tab-bar"
+      >
+        <div className="flex items-stretch gap-0.5 p-1.5 rounded-full border border-border/60 bg-card/70 backdrop-blur-xl shadow-[0_4px_20px_-4px_rgb(0_0_0/0.06)]">
+          {MOBILE_TABS.map((tab) => {
+            return (
+              <MobileTabLink
+                key={tab.id}
+                tab={tab}
+                active={matchedTabId === tab.id}
+              />
+            );
+          })}
+          <MoreTab active={matchedTabId === undefined} />
+        </div>
+      </nav>
+    </>
   );
 }
+
+// nav padding (pt-2 + pb-1.5 = 14) + pill padding (p-1.5 ×2 = 12) +
+// tab content (icon 24 + gap-1 4 + label 14 + py-2 ×2 16 = 58) = 84
+const DOCK_FLOW_HEIGHT = 84;
