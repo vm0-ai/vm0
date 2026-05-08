@@ -10,6 +10,7 @@ import {
   findTestConnectorTokenExpiresAt,
   findTestModelProviderTokenState,
   setTestModelProviderTokenExpiresAt,
+  insertUserMultiAuthModelProvider,
   ORG_SENTINEL_USER_ID,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -19,6 +20,8 @@ import {
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../../../src/mocks/server";
 import { encryptSecretsMap } from "../../../../../../../src/lib/shared/crypto/secrets-encryption";
+import { insertTestUserModelProviderSecret } from "../../../../../../../src/__tests__/db-test-seeders/secrets";
+import { getSecretValue } from "../../../../../../../src/lib/zero/secret/secret-service";
 
 const context = testContext();
 
@@ -1548,11 +1551,6 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       const accessToken = opts.accessToken ?? "old-personal-chatgpt-at";
       const refreshToken = opts.refreshToken ?? "personal-chatgpt-rt";
 
-      const { insertUserMultiAuthModelProvider } =
-        await import("../../../../../../../src/__tests__/db-test-seeders/org");
-      const { insertTestUserModelProviderSecret } =
-        await import("../../../../../../../src/__tests__/db-test-seeders/secrets");
-
       await insertUserMultiAuthModelProvider(
         user.orgId,
         user.userId,
@@ -1584,8 +1582,6 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     }
 
     async function readChatgptRefreshTokenSecret(): Promise<string | null> {
-      const { getSecretValue } =
-        await import("../../../../../../../src/lib/zero/secret/secret-service");
       return getSecretValue(
         user.orgId,
         ORG_SENTINEL_USER_ID,
@@ -1597,8 +1593,6 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     async function readPersonalChatgptRefreshTokenSecret(): Promise<
       string | null
     > {
-      const { getSecretValue } =
-        await import("../../../../../../../src/lib/zero/secret/secret-service");
       return getSecretValue(
         user.orgId,
         user.userId,
