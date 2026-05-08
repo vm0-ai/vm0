@@ -59,7 +59,7 @@ describe("extractRunOutput", () => {
   });
 
   it("returns the result from the single event returned by the limit-1 query", async () => {
-    // queryResultEvent uses `limit 1 + order by desc` so Axiom returns only the latest event
+    // queryOutputEventsDesc orders newest-first, so the first output event wins.
     mockQuery.mockResolvedValue(
       axiomResponse([{ eventData: { result: "latest" } }]),
     );
@@ -67,6 +67,91 @@ describe("extractRunOutput", () => {
     const output = await extractRunOutput("run-1");
 
     expect(output.result).toBe("latest");
+  });
+
+  it("limits the single-output query after filtering to publishable events", async () => {
+    mockQuery.mockResolvedValue(axiomResponse([]));
+
+    await extractRunOutput("run-1");
+
+    const apl = mockQuery.mock.calls[0]![0] as string;
+    expect(apl).toContain('eventType == "result"');
+    expect(apl).toContain("['eventData.item.type'] == \"agent_message\"");
+    expect(apl).not.toContain("eventData.item.type ==");
+    expect(apl).toContain("| limit 1");
+  });
+
+  it("returns Codex agent_message text from item.completed events", async () => {
+    mockQuery.mockResolvedValue(
+      axiomResponse([
+        {
+          eventType: "item.completed",
+          eventData: {
+            item: {
+              type: "agent_message",
+              text: "Codex completed text",
+            },
+          },
+        },
+      ]),
+    );
+
+    const output = await extractRunOutput("run-1");
+
+    expect(output.result).toBe("Codex completed text");
+  });
+
+  it("retries briefly when the latest output event is not searchable yet", async () => {
+    mockQuery
+      .mockResolvedValueOnce(axiomResponse([]))
+      .mockResolvedValueOnce(
+        axiomResponse([{ eventData: { result: "eventually indexed" } }]),
+      );
+
+    const output = await extractRunOutput("run-1");
+
+    expect(output.result).toBe("eventually indexed");
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("can skip waiting for output visibility", async () => {
+    mockQuery.mockResolvedValue(axiomResponse([]));
+
+    const output = await extractRunOutput("run-1", null, {
+      waitForOutput: false,
+    });
+
+    expect(output.result).toBeNull();
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips newer Codex non-message items when finding the latest output", async () => {
+    mockQuery.mockResolvedValue(
+      axiomResponse([
+        {
+          eventType: "item.completed",
+          eventData: {
+            item: {
+              type: "command_execution",
+              output: "README.md",
+            },
+          },
+        },
+        {
+          eventType: "item.completed",
+          eventData: {
+            item: {
+              type: "agent_message",
+              text: "Latest agent text",
+            },
+          },
+        },
+      ]),
+    );
+
+    const output = await extractRunOutput("run-1");
+
+    expect(output.result).toBe("Latest agent text");
   });
 
   it("passes error through", async () => {
@@ -122,6 +207,48 @@ describe("extractAllRunOutputs", () => {
     ).toEqual(["step 1 done", "step 2 done", "final summary"]);
   });
 
+  it("returns one output per Codex agent_message in order", async () => {
+    mockQuery.mockResolvedValue(
+      axiomResponse([
+        {
+          eventType: "item.completed",
+          eventData: {
+            item: {
+              type: "agent_message",
+              text: "first codex answer",
+            },
+          },
+        },
+        {
+          eventType: "item.completed",
+          eventData: {
+            item: {
+              type: "command_execution",
+              output: "ignored command output",
+            },
+          },
+        },
+        {
+          eventType: "item.completed",
+          eventData: {
+            item: {
+              type: "agent_message",
+              text: "second codex answer",
+            },
+          },
+        },
+      ]),
+    );
+
+    const outputs = await extractAllRunOutputs("run-1");
+
+    expect(
+      outputs.map((o) => {
+        return o.result;
+      }),
+    ).toEqual(["first codex answer", "second codex answer"]);
+  });
+
   it("handles events with missing result gracefully", async () => {
     mockQuery.mockResolvedValue(
       axiomResponse([
@@ -162,5 +289,25 @@ describe("getAllRunOutputTexts", () => {
     const texts = await getAllRunOutputTexts("run-1");
 
     expect(texts).toEqual(["first result", "second result"]);
+  });
+
+  it("returns Codex agent_message text", async () => {
+    mockQuery.mockResolvedValue(
+      axiomResponse([
+        {
+          eventType: "item.completed",
+          eventData: {
+            item: {
+              type: "agent_message",
+              text: "codex text",
+            },
+          },
+        },
+      ]),
+    );
+
+    const texts = await getAllRunOutputTexts("run-1");
+
+    expect(texts).toEqual(["codex text"]);
   });
 });
