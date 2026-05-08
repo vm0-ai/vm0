@@ -164,12 +164,11 @@ export default [
       "ccstate/no-direct-local-storage": "off",
     },
   },
-  // Allow new Promise() in the dedicated helper that wraps a one-shot
-  // browser DOM event pair (<img> load/error). No ambient signal exists at
-  // the DOM layer; isolating the pattern to a single-purpose file keeps the
-  // rule active for the rest of org-general-tab.tsx.
+  // Allow new Promise() in dedicated infrastructure helpers that wrap browser
+  // primitives. App code should continue using createDeferredPromise().
   {
     files: [
+      "src/polyfill.ts",
       "src/views/zero-page/components/org-manage/read-image-dimensions.ts",
     ],
     rules: {
