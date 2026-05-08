@@ -779,6 +779,43 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(data.success).toBe(true);
       expect(data.status).toBe("failed");
     });
+
+    it("should return failed when completion loses the transition race to cancellation", async () => {
+      await createCheckpoint();
+      const cancelled = await transitionRunStatus(
+        testRunId,
+        {
+          status: "cancelled",
+          completedAt: new Date(),
+        },
+        ["pending", "running"],
+      );
+      expect(cancelled).toBe(true);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 0,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+      expect(data.status).toBe("failed");
+      const run = await findTestRunRecord(testRunId);
+      expect(run!.status).toBe("cancelled");
+    });
   });
 
   describe("Callback Dispatch", () => {

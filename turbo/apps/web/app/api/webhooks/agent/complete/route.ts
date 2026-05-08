@@ -89,6 +89,22 @@ async function persistLastEventSequence(
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.userId, userId)));
 }
 
+async function readCompletionResponseStatus(
+  runId: string,
+  userId: string,
+): Promise<"completed" | "failed"> {
+  const [currentRun] = await globalThis.services.db
+    .select({ status: agentRuns.status })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), eq(agentRuns.userId, userId)))
+    .limit(1);
+
+  if (currentRun?.status === "completed") {
+    return "completed";
+  }
+  return "failed";
+}
+
 const router = tsr.router(webhookCompleteContract, {
   complete: async ({ body, headers }) => {
     initServices();
@@ -175,9 +191,9 @@ const router = tsr.router(webhookCompleteContract, {
           ["pending", "running", "timeout"],
         );
 
-        // Dispatch callbacks so the user gets notified about the failure
-        // (previously this path returned without dispatching)
         if (transitioned) {
+          // Dispatch callbacks so the user gets notified about the failure
+          // (previously this path returned without dispatching)
           await publishRunChangedForUserSafely(run.userId, body.runId, {
             status: "failed",
           });
@@ -187,15 +203,22 @@ const router = tsr.router(webhookCompleteContract, {
             run.orgId,
             "Checkpoint for run not found",
           );
+          return {
+            status: 404 as const,
+            body: {
+              error: {
+                message: "Checkpoint for run not found",
+                code: "NOT_FOUND",
+              },
+            },
+          };
         }
 
         return {
-          status: 404 as const,
+          status: 200 as const,
           body: {
-            error: {
-              message: "Checkpoint for run not found",
-              code: "NOT_FOUND",
-            },
+            success: true,
+            status: await readCompletionResponseStatus(body.runId, userId),
           },
         };
       }
@@ -230,7 +253,10 @@ const router = tsr.router(webhookCompleteContract, {
         );
         return {
           status: 200 as const,
-          body: { success: true, status: "completed" as const },
+          body: {
+            success: true,
+            status: await readCompletionResponseStatus(body.runId, userId),
+          },
         };
       }
 
@@ -271,7 +297,10 @@ const router = tsr.router(webhookCompleteContract, {
         );
         return {
           status: 200 as const,
-          body: { success: true, status: "failed" as const },
+          body: {
+            success: true,
+            status: await readCompletionResponseStatus(body.runId, userId),
+          },
         };
       }
 
