@@ -1424,6 +1424,66 @@ describe("run command", () => {
       );
     });
 
+    it("should return when terminal watermark was already reached before completion", async () => {
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          if (pollCount === 1) {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 0,
+                  eventType: "assistant",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      role: "assistant",
+                      content: [
+                        { type: "text", text: "already visible before done" },
+                      ],
+                    },
+                  },
+                  createdAt: "2025-01-01T00:00:00Z",
+                },
+              ],
+              hasMore: true,
+              nextSequence: 0,
+              run: { status: "running" },
+              framework: "claude-code",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              lastEventSequence: 0,
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+
+      expect(pollCount).toBe(2);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("already visible before done"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Run completed successfully"),
+      );
+    });
+
     it("should drain visible terminal pages before rendering completion", async () => {
       let pollCount = 0;
       server.use(
