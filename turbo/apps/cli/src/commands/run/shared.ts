@@ -417,10 +417,16 @@ function shouldReturnTerminalRunResult(
   }
 
   if (!hasTerminalWatermark(run) && run.status !== "completed") {
+    if (
+      run.status === "timeout" &&
+      shouldDrainNextEventPage(response, madeSequenceProgress)
+    ) {
+      return false;
+    }
     return true;
   }
 
-  if (!hasTerminalWatermark(run) && !response.hasMore && seenResultEvent) {
+  if (!hasTerminalWatermark(run) && seenResultEvent) {
     return true;
   }
 
@@ -532,10 +538,6 @@ export async function pollEvents(
       return renderTerminalRunResult(runId, terminalDrain.runState);
     }
 
-    if (shouldDrainNextEventPage(response, madeSequenceProgress)) {
-      continue;
-    }
-
     const terminalRunState = terminalDrain.runState;
     if (
       terminalRunState &&
@@ -548,6 +550,10 @@ export async function pollEvents(
       )
     ) {
       return renderTerminalRunResult(runId, terminalRunState);
+    }
+
+    if (shouldDrainNextEventPage(response, madeSequenceProgress)) {
+      continue;
     }
 
     await sleep(

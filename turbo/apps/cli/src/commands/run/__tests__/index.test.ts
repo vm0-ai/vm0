@@ -1236,6 +1236,57 @@ describe("run command", () => {
       );
     });
 
+    it("should not drain additional pages after result is visible without watermark", async () => {
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "result",
+                eventData: {
+                  type: "result",
+                  subtype: "success",
+                  is_error: false,
+                  duration_ms: 1000,
+                  num_turns: 1,
+                  result: "Done",
+                  session_id: "test",
+                  total_cost_usd: 0,
+                  usage: {},
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+            ],
+            hasMore: true,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+
+      expect(pollCount).toBe(1);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Agent Completed"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Run completed successfully"),
+      );
+    });
+
     it("should not idle drain after codex result is visible before completion", async () => {
       let pollCount = 0;
       server.use(
@@ -1774,6 +1825,47 @@ describe("run command", () => {
         expect.stringContaining("Run failed"),
       );
       expect(pollCount).toBe(1);
+    });
+
+    it("should not drain additional pages after failed status without watermark", async () => {
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "assistant",
+                eventData: {
+                  type: "assistant",
+                  message: {
+                    role: "assistant",
+                    content: [{ type: "text", text: "failure context" }],
+                  },
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+            ],
+            hasMore: true,
+            nextSequence: 0,
+            run: { status: "failed", error: "Agent crashed" },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(pollCount).toBe(1);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("failure context"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Run failed"),
+      );
     });
 
     it("should wait for terminal watermark before rendering failed run", async () => {
