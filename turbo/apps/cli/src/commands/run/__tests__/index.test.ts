@@ -120,7 +120,6 @@ describe("run command", () => {
   });
 
   afterEach(() => {
-    vi.useRealTimers();
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
@@ -1090,7 +1089,6 @@ describe("run command", () => {
     });
 
     it("should drain terminal events that become visible after completion", async () => {
-      vi.useFakeTimers();
       let pollCount = 0;
       server.use(
         http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
@@ -1148,14 +1146,7 @@ describe("run command", () => {
         }),
       );
 
-      const commandPromise = runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-      ]);
-      await vi.advanceTimersByTimeAsync(500);
-      await commandPromise;
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
 
       expect(pollCount).toBe(2);
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -1173,7 +1164,7 @@ describe("run command", () => {
       });
       expect(resultIndex).toBeGreaterThan(-1);
       expect(completionIndex).toBeGreaterThan(resultIndex);
-    });
+    }, 5_000);
 
     it("should not idle drain after result is visible before completion", async () => {
       let pollCount = 0;
@@ -1445,7 +1436,6 @@ describe("run command", () => {
     });
 
     it("should wait for terminal watermark instead of exiting on idle", async () => {
-      vi.useFakeTimers();
       let pollCount = 0;
       server.use(
         http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
@@ -1505,14 +1495,7 @@ describe("run command", () => {
         }),
       );
 
-      const commandPromise = runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-      ]);
-      await vi.advanceTimersByTimeAsync(1500);
-      await commandPromise;
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
 
       expect(pollCount).toBe(4);
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -1521,7 +1504,7 @@ describe("run command", () => {
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Run completed successfully"),
       );
-    });
+    }, 6_000);
 
     it("should return when terminal watermark was already reached before completion", async () => {
       let pollCount = 0;
@@ -1678,7 +1661,6 @@ describe("run command", () => {
     });
 
     it("should bound terminal drain when a sequence gap never fills", async () => {
-      vi.useFakeTimers();
       let pollCount = 0;
       server.use(
         http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
@@ -1732,14 +1714,7 @@ describe("run command", () => {
         }),
       );
 
-      const commandPromise = runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-      ]);
-      await vi.advanceTimersByTimeAsync(4000);
-      await commandPromise;
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
 
       expect(pollCount).toBeGreaterThan(2);
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -1748,10 +1723,9 @@ describe("run command", () => {
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Run completed successfully"),
       );
-    });
+    }, 7_000);
 
     it("should bound terminal drain when terminal watermark never becomes visible", async () => {
-      vi.useFakeTimers();
       let pollCount = 0;
       server.use(
         http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
@@ -1775,20 +1749,13 @@ describe("run command", () => {
         }),
       );
 
-      const commandPromise = runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-      ]);
-      await vi.advanceTimersByTimeAsync(4000);
-      await commandPromise;
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
 
       expect(pollCount).toBeGreaterThan(2);
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Run completed successfully"),
       );
-    });
+    }, 7_000);
 
     it("should render the latest terminal status after drain", async () => {
       let pollCount = 0;
@@ -2028,7 +1995,6 @@ describe("run command", () => {
     });
 
     it("should wait for terminal watermark before rendering failed run", async () => {
-      vi.useFakeTimers();
       let pollCount = 0;
       server.use(
         http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
@@ -2077,7 +2043,6 @@ describe("run command", () => {
       const commandPromise = expect(
         runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]),
       ).rejects.toThrow("process.exit called");
-      await vi.advanceTimersByTimeAsync(500);
       await commandPromise;
 
       expect(pollCount).toBe(2);
@@ -2087,7 +2052,7 @@ describe("run command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Run failed"),
       );
-    });
+    }, 5_000);
 
     it("should exit immediately when run is cancelled without terminal watermark", async () => {
       let pollCount = 0;
@@ -2141,7 +2106,6 @@ describe("run command", () => {
     });
 
     it("should bound terminal drain when completed has no result event or watermark", async () => {
-      vi.useFakeTimers();
       let pollCount = 0;
       server.use(
         http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
@@ -2164,14 +2128,7 @@ describe("run command", () => {
         }),
       );
 
-      const commandPromise = runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-      ]);
-      await vi.advanceTimersByTimeAsync(1000);
-      await commandPromise;
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
 
       expect(pollCount).toBeGreaterThan(1);
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -2180,7 +2137,7 @@ describe("run command", () => {
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Checkpoint:"),
       );
-    });
+    }, 5_000);
   });
 
   describe("org error handling", () => {

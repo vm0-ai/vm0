@@ -1,4 +1,12 @@
-import { queryAxiom, getDatasetName, DATASETS } from "../../shared/axiom";
+import "server-only";
+
+import {
+  queryAxiom,
+  getDatasetName,
+  DATASETS,
+  escapeAplString,
+} from "../../shared/axiom";
+import { waitForRunEventWatermarkVisible } from "./agent-event-visibility";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -18,7 +26,20 @@ interface RunOutputQueryOptions {
    * background summaries can opt out.
    */
   waitForOutput?: boolean;
+  /**
+   * Terminal event sequence already read with the run row. Passing it avoids
+   * an extra DB lookup before waiting for Axiom visibility.
+   */
+  knownLastEventSequence?: number | null;
+  /**
+   * Override only the legacy output-query retry delay. Production callers use
+   * the default; tests set this to zero to exercise retry behavior without
+   * fake timers or slow sleeps.
+   */
+  outputRetryDelayMs?: number;
 }
+
+type RunOutputOptionsInput = RunOutputQueryOptions | number | null | undefined;
 
 // ---------------------------------------------------------------------------
 // Axiom query
@@ -40,35 +61,51 @@ interface RunOutputEvent {
 const OUTPUT_EVENT_FILTER = `eventType == "result" or (eventType == "item.completed" and ['eventData.item.type'] == "agent_message")`;
 const OUTPUT_QUERY_ATTEMPTS = 4;
 const OUTPUT_QUERY_RETRY_MS = 500;
+const FRESH_AXIOM_QUERY_OPTIONS = { noCache: true } as const;
 
-function waitForOutputRetry(): Promise<void> {
+function normalizeOptions(
+  input?: RunOutputOptionsInput,
+): RunOutputQueryOptions {
+  if (typeof input === "number" || input === null) {
+    return { knownLastEventSequence: input };
+  }
+  return input ?? {};
+}
+
+function waitForOutputRetry(delayMs: number): Promise<void> {
   return new Promise((resolve) => {
-    setTimeout(resolve, OUTPUT_QUERY_RETRY_MS);
+    setTimeout(resolve, delayMs);
   });
 }
 
 async function queryOutputEventsDesc(runId: string): Promise<RunOutputEvent[]> {
   const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
   const apl = `['${dataset}']
-| where runId == "${runId}"
+| where runId == "${escapeAplString(runId)}"
 | where ${OUTPUT_EVENT_FILTER}
 | order by sequenceNumber desc
 | limit 1`;
 
-  return queryAxiom<RunOutputEvent>(apl);
+  return queryAxiom<RunOutputEvent>(apl, FRESH_AXIOM_QUERY_OPTIONS);
 }
 
 async function queryLatestOutputEvent(
   runId: string,
   options: RunOutputQueryOptions = {},
 ): Promise<RunOutputEvent | undefined> {
-  const attempts = options.waitForOutput === false ? 1 : OUTPUT_QUERY_ATTEMPTS;
+  const attempts =
+    options.waitForOutput === false ||
+    typeof options.knownLastEventSequence === "number"
+      ? 1
+      : OUTPUT_QUERY_ATTEMPTS;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     const event = (await queryOutputEventsDesc(runId)).find(isOutputEvent);
     if (event || attempt === attempts) {
       return event;
     }
-    await waitForOutputRetry();
+    await waitForOutputRetry(
+      options.outputRetryDelayMs ?? OUTPUT_QUERY_RETRY_MS,
+    );
   }
   return undefined;
 }
@@ -76,11 +113,21 @@ async function queryLatestOutputEvent(
 async function queryAllOutputEvents(runId: string): Promise<RunOutputEvent[]> {
   const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
   const apl = `['${dataset}']
-| where runId == "${runId}"
+| where runId == "${escapeAplString(runId)}"
 | where ${OUTPUT_EVENT_FILTER}
 | order by sequenceNumber asc`;
 
-  return queryAxiom<RunOutputEvent>(apl);
+  return queryAxiom<RunOutputEvent>(apl, FRESH_AXIOM_QUERY_OPTIONS);
+}
+
+async function waitForVisibleOutput(
+  runId: string,
+  options: RunOutputQueryOptions,
+): Promise<number | undefined> {
+  if (options.waitForOutput === false) {
+    return undefined;
+  }
+  return waitForRunEventWatermarkVisible(runId, options.knownLastEventSequence);
 }
 
 // ---------------------------------------------------------------------------
@@ -99,9 +146,17 @@ async function queryAllOutputEvents(runId: string): Promise<RunOutputEvent[]> {
 export async function extractRunOutput(
   runId: string,
   error?: string | null,
-  options?: RunOutputQueryOptions,
+  optionsInput?: RunOutputOptionsInput,
 ): Promise<RunOutput> {
-  const event = await queryLatestOutputEvent(runId, options);
+  const options = normalizeOptions(optionsInput);
+  const resolvedLastEventSequence = await waitForVisibleOutput(runId, options);
+  const queryOptions =
+    options.knownLastEventSequence === undefined &&
+    typeof resolvedLastEventSequence === "number"
+      ? { ...options, knownLastEventSequence: resolvedLastEventSequence }
+      : options;
+
+  const event = await queryLatestOutputEvent(runId, queryOptions);
 
   if (!event) {
     return {
@@ -123,7 +178,11 @@ export async function extractRunOutput(
 export async function extractAllRunOutputs(
   runId: string,
   error?: string | null,
+  optionsInput?: RunOutputOptionsInput,
 ): Promise<RunOutput[]> {
+  const options = normalizeOptions(optionsInput);
+  await waitForVisibleOutput(runId, options);
+
   const events = (await queryAllOutputEvents(runId)).filter(isOutputEvent);
 
   if (events.length === 0) {
@@ -189,8 +248,11 @@ function buildRunOutput(
  *
  * Convenience wrapper for channels that post each output as a separate message.
  */
-export async function getAllRunOutputTexts(runId: string): Promise<string[]> {
-  const outputs = await extractAllRunOutputs(runId);
+export async function getAllRunOutputTexts(
+  runId: string,
+  optionsInput?: RunOutputOptionsInput,
+): Promise<string[]> {
+  const outputs = await extractAllRunOutputs(runId, undefined, optionsInput);
   const texts: string[] = [];
 
   for (const output of outputs) {
@@ -209,8 +271,8 @@ export async function getAllRunOutputTexts(runId: string): Promise<string[]> {
  */
 export async function getRunOutputText(
   runId: string,
-  options?: RunOutputQueryOptions,
+  optionsInput?: RunOutputOptionsInput,
 ): Promise<string | undefined> {
-  const output = await extractRunOutput(runId, undefined, options);
+  const output = await extractRunOutput(runId, undefined, optionsInput);
   return output.result ?? undefined;
 }

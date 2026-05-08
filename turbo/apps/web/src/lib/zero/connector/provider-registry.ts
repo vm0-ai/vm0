@@ -397,5 +397,5 @@ export function getConfiguredConnectorTypes(currentEnv: Env): ConnectorType[] {
     configured.push("computer");
   }
 
-  return configured;
+  return configured.sort();
 }

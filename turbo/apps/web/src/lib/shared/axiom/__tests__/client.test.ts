@@ -1,4 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../../mocks/server";
 
 // Mock @axiomhq/js at the package boundary.
 const mockQuery = vi.fn();
@@ -44,11 +46,6 @@ beforeEach(() => {
   mockQuery.mockReset();
   mockIngest.mockReset();
   mockFlush.mockReset();
-  vi.useFakeTimers();
-});
-
-afterEach(() => {
-  vi.useRealTimers();
 });
 
 function axiomResponse(events: Array<Record<string, unknown>>) {
@@ -169,30 +166,24 @@ describe("queryAxiom", () => {
 
   it("retries on rate limit error and succeeds", async () => {
     mockQuery
-      .mockRejectedValueOnce(new Error("429 rate limit"))
+      .mockRejectedValueOnce(new Error("429 rate limit, try again in 0m0s"))
       .mockResolvedValueOnce(axiomResponse([{ eventType: "result" }]));
 
-    const promise = queryAxiom(apl);
-    await vi.advanceTimersByTimeAsync(2000);
-    const results = await promise;
+    const results = await queryAxiom(apl);
 
     expect(results).toHaveLength(1);
     expect(mockQuery).toHaveBeenCalledTimes(2);
   });
 
   it("throws after exhausting retries on persistent rate limit", async () => {
-    mockQuery.mockRejectedValue(new Error("429 rate limit"));
+    mockQuery.mockRejectedValue(new Error("429 rate limit, try again in 0m0s"));
 
-    // Attach catch immediately to prevent unhandled rejection
-    const promise = queryAxiom(apl).catch((e: unknown) => {
+    const error = await queryAxiom(apl).catch((e: unknown) => {
       return e;
     });
-    // Advance through all 3 retry backoffs: 2s + 4s + 8s = 14s
-    await vi.advanceTimersByTimeAsync(20_000);
 
-    const error = await promise;
     expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toBe("429 rate limit");
+    expect((error as Error).message).toBe("429 rate limit, try again in 0m0s");
     // 1 initial + 3 retries = 4 total attempts
     expect(mockQuery).toHaveBeenCalledTimes(4);
   });
@@ -211,5 +202,49 @@ describe("queryAxiom", () => {
       "429 rate limit",
     );
     expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes Axiom query options through to the SDK", async () => {
+    mockQuery.mockResolvedValue(axiomResponse([{ eventType: "result" }]));
+
+    await queryAxiom(apl, {
+      maxRetries: 0,
+      noCache: true,
+      streamingDuration: "1s",
+    });
+
+    expect(mockQuery).toHaveBeenCalledWith(apl, {
+      noCache: true,
+      streamingDuration: "1s",
+    });
+  });
+
+  it("uses an abortable direct query when timeoutMs is provided", async () => {
+    let capturedRequest: Request | undefined;
+    server.use(
+      http.post("https://api.axiom.co/v1/datasets/_apl", ({ request }) => {
+        capturedRequest = request;
+        return HttpResponse.json(axiomResponse([{ eventType: "result" }]));
+      }),
+    );
+
+    const results = await queryAxiom(apl, {
+      maxRetries: 0,
+      noCache: true,
+      streamingDuration: "1s",
+      timeoutMs: 2_000,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(capturedRequest).toBeDefined();
+    expect(capturedRequest!.url).toContain(
+      "https://api.axiom.co/v1/datasets/_apl?",
+    );
+    expect(capturedRequest!.url).toContain("nocache=true");
+    expect(capturedRequest!.url).toContain("streaming-duration=1s");
+    expect(capturedRequest!.method).toBe("POST");
+    expect(capturedRequest!.cache).toBe("no-store");
+    expect(capturedRequest!.signal).toBeInstanceOf(AbortSignal);
   });
 });

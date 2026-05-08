@@ -14,6 +14,7 @@ import {
   queryAxiom,
   getDatasetName,
   DATASETS,
+  escapeAplString,
 } from "../../../../../../../src/lib/shared/axiom";
 
 const router = tsr.router(runNetworkLogsContract, {
@@ -65,7 +66,7 @@ const router = tsr.router(runNetworkLogsContract, {
       ? `| where _time > datetime("${new Date(since).toISOString()}")`
       : "";
     const apl = `['${dataset}']
-| where runId == "${params.id}"
+| where runId == "${escapeAplString(params.id)}"
 ${sinceFilter}
 | order by _time ${order}
 | limit ${limit + 1}`;

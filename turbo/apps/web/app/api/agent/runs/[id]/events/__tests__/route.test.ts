@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { GET } from "../route";
 import {
   createTestRequest,
@@ -14,6 +14,7 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
+import { reloadEnv } from "../../../../../../../src/env";
 
 // Only mock external services
 
@@ -264,6 +265,62 @@ describe("GET /api/agent/runs/:id/events", () => {
       const data = await response.json();
       expect(data.run.status).toBe("completed");
       expect(data.run.lastEventSequence).toBe(0);
+    });
+
+    it("should not wait for terminal watermark when since already reached it", async () => {
+      context.mocks.axiom.queryAxiom.mockResolvedValue([]);
+
+      await completeTestRun(user.userId, testRunId, undefined, {
+        lastEventSequence: 2,
+      });
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events?since=2`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledTimes(1);
+      const apl = context.mocks.axiom.queryAxiom.mock.calls[0]![0];
+      expect(apl).toContain("sequenceNumber > 2");
+      expect(apl).not.toContain("project sequenceNumber");
+    });
+
+    it("should wait only for the current page terminal watermark target", async () => {
+      vi.stubEnv("AXIOM_TOKEN_SESSIONS", "test-sessions-token");
+      reloadEnv();
+      context.mocks.axiom.queryAxiom
+        .mockResolvedValueOnce([{ sequenceNumber: 0 }])
+        .mockResolvedValueOnce([
+          createAxiomAgentEvent({
+            runId: testRunId,
+            sequenceNumber: 0,
+            eventType: "assistant",
+            eventData: { type: "assistant" },
+          }),
+        ]);
+
+      await completeTestRun(user.userId, testRunId, undefined, {
+        lastEventSequence: 50,
+      });
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events?since=-1&limit=1`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledTimes(2);
+      const visibilityApl = context.mocks.axiom.queryAxiom.mock.calls[0]![0];
+      expect(visibilityApl).toContain("project sequenceNumber");
+      expect(visibilityApl).toContain("sequenceNumber > -1");
+      const eventsApl = context.mocks.axiom.queryAxiom.mock.calls[1]![0];
+      expect(context.mocks.axiom.queryAxiom.mock.calls[1]![1]).toMatchObject({
+        noCache: true,
+      });
+      expect(eventsApl).toContain("limit 1");
     });
   });
 

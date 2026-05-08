@@ -1,7 +1,13 @@
 import type { AxiomNetworkEvent } from "@vm0/api-contracts/contracts/runs";
-import { queryAxiom, getDatasetName, DATASETS } from "../../shared/axiom";
+import {
+  queryAxiom,
+  getDatasetName,
+  DATASETS,
+  escapeAplString,
+} from "../../shared/axiom";
 import { queryRunContext } from "./run-context-service";
 import { logger } from "../../shared/logger";
+import { waitForRunEventWatermarkVisible } from "./agent-event-visibility";
 
 const log = logger("service:activity-log");
 
@@ -22,6 +28,7 @@ export interface RunMeta {
   createdAt: Date;
   startedAt: Date | null;
   completedAt: Date | null;
+  lastEventSequence: number | null;
   runnerGroup: string | null;
   continuedFromSessionId: string | null;
   result: unknown;
@@ -30,6 +37,10 @@ export interface RunMeta {
 interface AgentMeta {
   displayName?: string | null;
   composeContent?: unknown;
+}
+
+interface AssembleActivityLogOptions {
+  waitForAgentEventWatermark?: boolean;
 }
 
 /**
@@ -43,9 +54,11 @@ export async function assembleActivityLog(
   runId: string,
   run: RunMeta,
   agent: AgentMeta,
+  options: AssembleActivityLogOptions = {},
 ): Promise<Record<string, unknown>> {
+  const waitForAgentEventWatermark = options.waitForAgentEventWatermark ?? true;
   const [events, networkLogs, runContext] = await Promise.all([
-    queryAgentEvents(runId),
+    queryAgentEvents(runId, run.lastEventSequence, waitForAgentEventWatermark),
     queryNetworkLogs(runId),
     queryRunContext(runId).catch((err) => {
       log.warn("Failed to collect run context", { error: String(err) });
@@ -152,13 +165,21 @@ function mapNetworkLogs(logs: AxiomNetworkEvent[]): Record<string, unknown>[] {
   });
 }
 
-async function queryAgentEvents(runId: string): Promise<AxiomAgentEvent[]> {
+async function queryAgentEvents(
+  runId: string,
+  lastEventSequence: number | null,
+  waitForAgentEventWatermark: boolean,
+): Promise<AxiomAgentEvent[]> {
+  if (waitForAgentEventWatermark && lastEventSequence !== null) {
+    await waitForRunEventWatermarkVisible(runId, lastEventSequence);
+  }
+
   const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
   const apl = `['${dataset}']
-| where runId == "${runId}"
+| where runId == "${escapeAplString(runId)}"
 | order by _time asc, sequenceNumber asc
 | limit 5000`;
-  return queryAxiom<AxiomAgentEvent>(apl).catch((err) => {
+  return queryAxiom<AxiomAgentEvent>(apl, { noCache: true }).catch((err) => {
     log.warn("Failed to collect agent telemetry", { error: String(err) });
     return [];
   });
@@ -167,7 +188,7 @@ async function queryAgentEvents(runId: string): Promise<AxiomAgentEvent[]> {
 async function queryNetworkLogs(runId: string): Promise<AxiomNetworkEvent[]> {
   const dataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_NETWORK);
   const apl = `['${dataset}']
-| where runId == "${runId}"
+| where runId == "${escapeAplString(runId)}"
 | order by _time asc
 | limit 5000`;
   return queryAxiom<AxiomNetworkEvent>(apl).catch((err) => {

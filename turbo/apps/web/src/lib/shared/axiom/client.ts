@@ -1,5 +1,9 @@
 import "server-only";
-import type { Axiom } from "@axiomhq/js";
+import type {
+  Axiom,
+  QueryOptions as AxiomQueryOptions,
+  QueryResult,
+} from "@axiomhq/js";
 import { Entry } from "@axiomhq/js";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import { env } from "../../../env";
@@ -117,6 +121,9 @@ const QUERY_BACKOFF_BASE_MS = 2000;
 
 export interface QueryAxiomOptions {
   maxRetries?: number;
+  noCache?: AxiomQueryOptions["noCache"];
+  streamingDuration?: AxiomQueryOptions["streamingDuration"];
+  timeoutMs?: number;
 }
 
 function isRateLimitError(error: unknown): boolean {
@@ -153,19 +160,38 @@ export async function queryAxiom<T = Record<string, unknown>>(
 ): Promise<T[]> {
   const dataset = extractDatasetFromApl(apl);
   // If we can't determine the dataset, default to telemetry client (broader scope)
-  const client = dataset
-    ? getClientForDataset(dataset)
-    : getTelemetryInstance(env().AXIOM_TOKEN_TELEMETRY);
-  if (!client) {
+  const client =
+    options.timeoutMs === undefined
+      ? dataset
+        ? getClientForDataset(dataset)
+        : getTelemetryInstance(env().AXIOM_TOKEN_TELEMETRY)
+      : null;
+  if (options.timeoutMs === undefined && !client) {
     log.debug("Axiom not configured, skipping query");
     return [];
   }
 
   const maxRetries = options.maxRetries ?? MAX_QUERY_RETRIES;
+  const axiomQueryOptions: AxiomQueryOptions = {};
+  if (options.noCache !== undefined) {
+    axiomQueryOptions.noCache = options.noCache;
+  }
+  if (options.streamingDuration !== undefined) {
+    axiomQueryOptions.streamingDuration = options.streamingDuration;
+  }
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const result = await client.query(apl);
+      let result: QueryResult;
+      if (options.timeoutMs === undefined) {
+        if (!client) {
+          log.debug("Axiom not configured, skipping query");
+          return [];
+        }
+        result = (await client.query(apl, axiomQueryOptions)) as QueryResult;
+      } else {
+        result = await queryAxiomWithTimeout(apl, dataset, options);
+      }
       // Axiom stores _time separately from data, merge them for the response
       return (
         result.matches?.map((m: Entry) => {
@@ -192,6 +218,103 @@ export async function queryAxiom<T = Record<string, unknown>>(
   throw new Error(
     "queryAxiom: unreachable — retry loop exited without return or throw",
   );
+}
+
+async function queryAxiomWithTimeout(
+  apl: string,
+  dataset: string | null,
+  options: QueryAxiomOptions,
+): Promise<QueryResult> {
+  const token = dataset
+    ? isSessionsDataset(dataset)
+      ? env().AXIOM_TOKEN_SESSIONS
+      : env().AXIOM_TOKEN_TELEMETRY
+    : env().AXIOM_TOKEN_TELEMETRY;
+  if (!token) {
+    log.debug("Axiom not configured, skipping query");
+    return emptyQueryResult(dataset);
+  }
+
+  const timeoutMs = Math.max(1, options.timeoutMs ?? 1);
+  const params = new URLSearchParams({ format: "legacy" });
+  if (options.noCache !== undefined) {
+    params.set("nocache", String(options.noCache));
+  }
+  if (options.streamingDuration !== undefined) {
+    params.set("streaming-duration", options.streamingDuration);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    const response = await fetch(
+      `https://api.axiom.co/v1/datasets/_apl?${params.toString()}`,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ apl }),
+        signal: controller.signal,
+        cache: "no-store",
+      },
+    );
+
+    if (response.status === 429) {
+      throw new Error("429 rate limit");
+    }
+    if (response.status === 401) {
+      throw new Error("forbidden");
+    }
+    if (response.status >= 400) {
+      const payload = (await response.json().catch(() => {
+        return {};
+      })) as { message?: string };
+      throw new Error(
+        payload.message ?? `Axiom query failed: ${response.status}`,
+      );
+    }
+
+    return (await response.json()) as QueryResult;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Axiom query timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function emptyQueryResult(dataset: string | null): QueryResult {
+  const epoch = "1970-01-01T00:00:00.000Z";
+  return {
+    request: {
+      startTime: epoch,
+      endTime: epoch,
+      resolution: "auto",
+    },
+    buckets: {},
+    datasetNames: dataset ? [dataset] : [],
+    matches: [],
+    status: {
+      blocksExamined: 0,
+      elapsedTime: 0,
+      isPartial: false,
+      maxBlockTime: epoch,
+      minBlockTime: epoch,
+      numGroups: 0,
+      rowsExamined: 0,
+      rowsMatched: 0,
+      maxCursor: "",
+      minCursor: "",
+    },
+  };
 }
 
 interface RequestLogEntry {
