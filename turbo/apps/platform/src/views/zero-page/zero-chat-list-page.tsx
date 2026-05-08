@@ -62,10 +62,16 @@ import { MobileChatAgentSwitcher } from "./mobile-chat-agent-switcher.tsx";
 
 export function ZeroChatListPage() {
   const recentSessionsLoadable = useLastLoadable(chatThreads$);
-  const recentSessions =
+  const liveSessions =
     recentSessionsLoadable.state === "hasData"
       ? recentSessionsLoadable.data
       : [];
+  // ?demo=1 swaps in a fixed fixture set so the mobile redesign rows can be
+  // reviewed in the preview without a populated account. Pure presentation —
+  // delete/select on a demo row will hit the API and 404, which is fine.
+  const isDemoMode =
+    typeof window !== "undefined" && window.location.search.includes("demo=1");
+  const recentSessions = isDemoMode ? buildDemoSessions() : liveSessions;
   const loading = recentSessionsLoadable.state === "loading";
   const error =
     recentSessionsLoadable.state === "hasError"
@@ -569,4 +575,102 @@ function ChatListItem({
       </Link>
     </div>
   );
+}
+
+// Mobile redesign preview data. Activated by `?demo=1` so the chat list rows
+// can be reviewed in the preview deploy with a representative mix of states
+// (unread, draft, scheduled, long titles, older dates).
+function buildDemoSessions(): ChatThreadListItem[] {
+  const now = Date.now();
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const iso = (offset: number) => {
+    return new Date(now - offset).toISOString();
+  };
+  const agent = { id: "demo-agent", avatarUrl: null };
+  return [
+    {
+      id: "demo-1",
+      title: "Tomorrow's design review prep",
+      agent,
+      createdAt: iso(2 * hour),
+      updatedAt: iso(8 * minute),
+      isRead: false,
+      isArchived: false,
+      running: false,
+    },
+    {
+      id: "demo-2",
+      title: "Q2 launch copy — landing hero",
+      agent,
+      createdAt: iso(5 * hour),
+      updatedAt: iso(45 * minute),
+      isRead: true,
+      isArchived: false,
+      running: false,
+      hasDraft: true,
+    },
+    {
+      id: "demo-3",
+      title: "Weekly competitor scan",
+      agent,
+      createdAt: iso(3 * day),
+      updatedAt: iso(2 * hour),
+      isRead: true,
+      isArchived: false,
+      running: true,
+    },
+    {
+      id: "demo-4",
+      title:
+        "Untangling the auth middleware migration plan with a much longer title",
+      agent,
+      createdAt: iso(2 * day),
+      updatedAt: iso(20 * hour),
+      isRead: false,
+      isArchived: false,
+      running: false,
+    },
+    {
+      id: "demo-5",
+      title: "Onboarding flow copy edits",
+      agent,
+      createdAt: iso(4 * day),
+      updatedAt: iso(1 * day + 4 * hour),
+      isRead: true,
+      isArchived: false,
+      running: false,
+    },
+    {
+      id: "demo-6",
+      title: "Pricing page A/B test results",
+      agent,
+      createdAt: iso(7 * day),
+      updatedAt: iso(2 * day),
+      isRead: true,
+      isArchived: false,
+      running: false,
+    },
+    {
+      id: "demo-7",
+      title: "Customer call notes — Acme",
+      agent,
+      createdAt: iso(10 * day),
+      updatedAt: iso(5 * day),
+      isRead: true,
+      isArchived: false,
+      running: false,
+    },
+    {
+      id: "demo-8",
+      title: null,
+      agent,
+      createdAt: iso(14 * day),
+      updatedAt: iso(12 * day),
+      isRead: true,
+      isArchived: false,
+      running: false,
+    },
+  ];
 }
