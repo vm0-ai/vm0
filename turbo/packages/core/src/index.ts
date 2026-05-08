@@ -791,7 +791,6 @@ export {
   type VoiceChatTaskResultEntry,
   type VoiceChatTokenBody,
   type VoiceChatTokenResponse,
-  type RelayBootstrapResponse,
   type CreateVoiceChatSessionBody,
   type AppendVoiceChatItemBody,
   type CreateVoiceChatTaskBody,

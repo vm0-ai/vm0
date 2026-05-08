@@ -29,7 +29,6 @@ export const voiceChatTokenBodySchema = z.object({
   sessionId: z.uuid(),
   noiseReduction: z.enum(["near_field", "far_field"]).optional(),
 });
-export type VoiceChatTokenBody = z.infer<typeof voiceChatTokenBodySchema>;
 
 type SessionRow = typeof voiceChatSessions.$inferSelect;
 type ItemRow = typeof voiceChatItems.$inferSelect;

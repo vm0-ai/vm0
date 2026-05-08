@@ -28,7 +28,6 @@
     "check-types": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/node": "^24.3.0",
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "eslint": "^9.34.0",

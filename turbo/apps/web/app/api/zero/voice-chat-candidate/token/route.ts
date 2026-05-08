@@ -1,19 +1,15 @@
 import { NextResponse } from "next/server";
 import { isApiError } from "@vm0/api-services/errors";
-import { signRelayToken } from "@vm0/core/voice-chat/relay-token";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
-import type { AuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../src/lib/init-services";
 import { checkOrgCredits } from "../../../../../src/lib/zero/credit/check-org-credits";
 import { getVoiceChatCandidateSession } from "../../../../../src/lib/zero/voice-chat-candidate/session-service";
-import type { VoiceChatCandidateSessionRow } from "../../../../../src/lib/zero/voice-chat-candidate/session-service";
 import { buildTalkerPayload } from "../../../../../src/lib/zero/voice-chat-candidate/talker-instructions";
 import {
   createEphemeralToken,
   isOpenAiTokenError,
 } from "../../../../../src/lib/zero/voice-chat-candidate/openai-token";
-import { loadRealtimeBillingPricing } from "../../../../../src/lib/zero/voice-chat/realtime-relay/load-pricing";
-import { env } from "../../../../../src/env";
+import { loadRealtimeBillingPricing } from "../../../../../src/lib/zero/voice-chat/load-realtime-pricing";
 import { logger } from "../../../../../src/lib/shared/logger";
 import {
   badRequestResponse,
@@ -23,7 +19,6 @@ import {
   unauthorizedResponse,
   voiceChatTokenBodySchema,
 } from "../_support";
-import type { VoiceChatTokenBody } from "../_support";
 
 const log = logger("api:zero:voice-chat-candidate:token");
 
@@ -57,24 +52,31 @@ async function handlePost(request: Request): Promise<Response> {
     return notFoundResponse("Voice-chat-candidate session not found");
   }
 
-  if (!gates.realtimeBillingEnabled) {
-    return legacyMint(parsed.data, session);
+  if (gates.realtimeBillingEnabled) {
+    await checkOrgCredits(
+      session.orgId,
+      authCtx.userId,
+      globalThis.services.db,
+    );
+    const { missing } = await loadRealtimeBillingPricing();
+    if (missing.length > 0) {
+      return NextResponse.json(
+        {
+          error: {
+            message: `Voice-chat realtime pricing is not configured: ${missing.join(", ")}`,
+            code: "NOT_CONFIGURED",
+          },
+        },
+        { status: 503 },
+      );
+    }
   }
-  return relayBootstrap(parsed.data, session, authCtx);
-}
 
-// Legacy branch — unchanged behaviour, narrow catch over upstream OpenAI
-// failures only. Any other exception propagates to the framework error
-// handler per the project's "avoid defensive programming" rule.
-async function legacyMint(
-  body: VoiceChatTokenBody,
-  session: VoiceChatCandidateSessionRow,
-): Promise<Response> {
   const { talkerInstructions } = await buildTalkerPayload(session);
   try {
     const result = await createEphemeralToken({
       instructions: talkerInstructions,
-      noiseReduction: body.noiseReduction,
+      noiseReduction: parsed.data.noiseReduction,
     });
     return NextResponse.json(result);
   } catch (error) {
@@ -92,66 +94,6 @@ async function legacyMint(
     }
     throw error;
   }
-}
-
-// Relay branch — credit + pricing admission, then sign and return a
-// short-lived HMAC bootstrap token for the apps/api relay endpoint
-// (#12139). No OpenAI client_secret is ever returned on this branch.
-async function relayBootstrap(
-  body: VoiceChatTokenBody,
-  session: VoiceChatCandidateSessionRow,
-  authCtx: AuthContext,
-): Promise<Response> {
-  await checkOrgCredits(session.orgId, authCtx.userId, globalThis.services.db);
-
-  const { missing } = await loadRealtimeBillingPricing();
-  if (missing.length > 0) {
-    return NextResponse.json(
-      {
-        error: {
-          message: `Voice-chat realtime pricing is not configured: ${missing.join(", ")}`,
-          code: "NOT_CONFIGURED",
-        },
-      },
-      { status: 503 },
-    );
-  }
-
-  const secret = env().VOICE_CHAT_RELAY_TOKEN_SECRET;
-  const apiUrl = env().VM0_API_URL;
-  if (!secret || !apiUrl) {
-    log.warn("Voice-chat relay bootstrap requested without secret/url", {
-      hasSecret: !!secret,
-      hasApiUrl: !!apiUrl,
-    });
-    return NextResponse.json(
-      {
-        error: {
-          message: "Voice-chat relay is not configured",
-          code: "NOT_CONFIGURED",
-        },
-      },
-      { status: 503 },
-    );
-  }
-
-  const { token, expiresAt } = signRelayToken(
-    {
-      voiceChatSessionId: session.id,
-      userId: authCtx.userId,
-      orgId: authCtx.orgId,
-      noiseReduction: body.noiseReduction,
-    },
-    secret,
-  );
-
-  return NextResponse.json({
-    relayUrl: `${apiUrl}/api/zero/voice-chat/relay`,
-    relayToken: token,
-    expiresAt,
-    sessionId: session.id,
-    transport: "websocket" as const,
-  });
 }
 
 export async function POST(request: Request): Promise<Response> {

@@ -24,10 +24,3 @@ vi.stubEnv("AXIOM_TOKEN_SESSIONS", "xaat-test-sessions");
 vi.stubEnv("AXIOM_TOKEN_TELEMETRY", "xaat-test-telemetry");
 vi.stubEnv("AXIOM_DATASET_SUFFIX", "dev");
 vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_dummy_for_unit_tests");
-// 32-byte hex secret for the voice-chat realtime relay token verifier.
-// Same format apps/web's env-stub uses (`length(64).optional()` in both env
-// schemas). Sign+verify in tests must use the same hex string.
-vi.stubEnv(
-  "VOICE_CHAT_RELAY_TOKEN_SECRET",
-  "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
-);

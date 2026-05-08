@@ -80,39 +80,12 @@ export const voiceChatTaskSchema = z.object({
 });
 export type VoiceChatTask = z.infer<typeof voiceChatTaskSchema>;
 
-const legacyTokenResponseSchema = z.object({
+const tokenResponseSchema = z.object({
   client_secret: z.object({
     value: z.string(),
     expires_at: z.number(),
   }),
 });
-export type VoiceChatLegacyTokenResponse = z.infer<
-  typeof legacyTokenResponseSchema
->;
-
-/**
- * Relay bootstrap response shape used by the VM0 server realtime relay
- * landed by Epic #12128. Returned by the `token` endpoint when
- * FeatureSwitchKey.VoiceChatRealtimeBilling is ON (admission path
- * landed by #12140); otherwise the endpoint returns the legacy
- * `client_secret` shape.
- */
-export const relayBootstrapResponseSchema = z.object({
-  relayUrl: z.url(),
-  relayToken: z.string(),
-  expiresAt: z.number(),
-  sessionId: z.uuid(),
-  transport: z.enum(["websocket"]),
-  minimumCreditsRequired: z.number().int().nonnegative().optional(),
-});
-export type RelayBootstrapResponse = z.infer<
-  typeof relayBootstrapResponseSchema
->;
-
-const tokenResponseSchema = z.union([
-  legacyTokenResponseSchema,
-  relayBootstrapResponseSchema,
-]);
 export type VoiceChatTokenResponse = z.infer<typeof tokenResponseSchema>;
 
 const createSessionBodySchema = z.object({ agentId: z.uuid() });
@@ -278,10 +251,7 @@ export const zeroVoiceChatContract = c.router({
       500: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary:
-      "Mint a voice-chat token. Returns either the legacy OpenAI " +
-      "client_secret or, when VoiceChatRealtimeBilling is ON, a VM0 relay " +
-      "bootstrap (relayUrl + HMAC relayToken).",
+    summary: "Mint an ephemeral OpenAI realtime token for voice-chat",
   },
 });
 

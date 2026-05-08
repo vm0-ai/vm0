@@ -26,13 +26,6 @@ const SCHEMA = {
   AXIOM_TOKEN_TELEMETRY: z.string().min(1),
   AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]),
   STRIPE_SECRET_KEY: z.string().min(1),
-  // Shared HMAC secret for the voice-chat realtime relay token. Hex-encoded
-  // 32-byte secret (64 hex chars) — same format apps/web validates with
-  // `z.string().length(64).optional()`. The mint side (apps/web, #12140) and
-  // the verify side (this app's WS upgrade) MUST read the same value in
-  // production. Optional in the schema so deployments that don't run the
-  // relay can omit it; the relay route fails closed (WS close 1011) if unset.
-  VOICE_CHAT_RELAY_TOKEN_SECRET: z.string().length(64).optional(),
 } as const;
 
 const baseEnv = createEnv<undefined, typeof SCHEMA>({

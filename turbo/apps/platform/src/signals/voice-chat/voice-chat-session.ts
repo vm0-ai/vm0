@@ -870,17 +870,6 @@ export const startVoiceChat$ = command(
       return;
     }
 
-    // Sub-issue #12142 will rewire the client onto the relay branch. Until
-    // then this client only understands the legacy OpenAI shape; the relay
-    // shape only ships when VoiceChatRealtimeBilling is ON for this user.
-    if (!("client_secret" in tokenRes.body)) {
-      set(
-        internalError$,
-        "Voice-chat relay is not supported by this client yet",
-      );
-      set(internalStatus$, "error");
-      return;
-    }
     const { client_secret: clientSecret } = tokenRes.body;
 
     let stream: MediaStream;

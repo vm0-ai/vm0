@@ -5,7 +5,7 @@ import {
   REALTIME_TOKEN_CATEGORIES,
   TRANSCRIPTION_PROVIDER,
   TRANSCRIPTION_TOKEN_CATEGORIES,
-} from "../../billing/model-usage-categories";
+} from "../billing/model-usage-categories";
 
 const REALTIME_KIND = "model";
 

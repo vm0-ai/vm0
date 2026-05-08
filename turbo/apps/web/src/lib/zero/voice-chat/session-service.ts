@@ -1,8 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { voiceChatSessions } from "@vm0/db/schema/voice-chat";
 
-export type VoiceChatSessionRow = typeof voiceChatSessions.$inferSelect;
-type SessionRow = VoiceChatSessionRow;
+type SessionRow = typeof voiceChatSessions.$inferSelect;
 
 /**
  * Get-or-create: return the most recent session for this (userId, agentId),

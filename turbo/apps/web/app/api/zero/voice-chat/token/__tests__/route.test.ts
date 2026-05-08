@@ -14,7 +14,6 @@ import {
   setupVoiceChatOrg,
 } from "../../__tests__/_helpers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { verifyRelayToken } from "@vm0/core/voice-chat/relay-token";
 import {
   REALTIME_PROVIDER,
   REALTIME_TOKEN_CATEGORIES,
@@ -34,9 +33,6 @@ vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
 vi.hoisted(() => {
   vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
 });
-
-const RELAY_SECRET = "ab".repeat(32);
-const RELAY_API_URL = "https://api.example.test";
 
 const { isFeatureEnabled } = await import("@vm0/core/feature-switch");
 const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
@@ -102,8 +98,6 @@ describe("POST /api/zero/voice-chat/token", () => {
     orgId = seeded.orgId;
     setFlags({ [FeatureSwitchKey.Trinity]: true });
     vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
-    vi.stubEnv("VOICE_CHAT_RELAY_TOKEN_SECRET", RELAY_SECRET);
-    vi.stubEnv("VM0_API_URL", RELAY_API_URL);
     reloadEnv();
 
     const { agentId } = await seedVoiceChatAgent(userId, orgId);
@@ -237,7 +231,10 @@ describe("POST /api/zero/voice-chat/token", () => {
     });
   });
 
-  describe("relay branch (VoiceChatRealtimeBilling = ON)", () => {
+  // Plan D: realtime-billing ON keeps the credit + pricing admission gate
+  // but still mints a legacy OpenAI ephemeral token (the WS relay scaffolding
+  // is retired in #12190).
+  describe("admission gates (VoiceChatRealtimeBilling = ON)", () => {
     beforeEach(async () => {
       setFlags({
         [FeatureSwitchKey.Trinity]: true,
@@ -254,42 +251,20 @@ describe("POST /api/zero/voice-chat/token", () => {
       expect(body.error.code).toBe("INSUFFICIENT_CREDITS");
     });
 
-    it("returns 503 NOT_CONFIGURED when the relay secret is missing", async () => {
+    it("mints a legacy ephemeral token after the credit + pricing admission passes", async () => {
       await setOrgCredits(orgId, 1000);
-      vi.stubEnv("VOICE_CHAT_RELAY_TOKEN_SECRET", "");
-      reloadEnv();
+      server.use(
+        http.post("https://api.openai.com/v1/realtime/sessions", () => {
+          return HttpResponse.json({
+            client_secret: { value: "ek_admitted", expires_at: 9999999999 },
+          });
+        }),
+      );
       const response = await POST(tokenRequest({ sessionId }));
       const body = await response.json();
-      expect(response.status).toBe(503);
-      expect(body.error.code).toBe("NOT_CONFIGURED");
-      expect(body.error.message).toBe("Voice-chat relay is not configured");
-    });
-
-    it("returns a relay bootstrap with no client_secret and a verifiable token", async () => {
-      await setOrgCredits(orgId, 1000);
-      const response = await POST(
-        tokenRequest({ sessionId, noiseReduction: "near_field" }),
-      );
       expect(response.status).toBe(200);
-      const body = await response.json();
-      expect(body).not.toHaveProperty("client_secret");
-      expect(body.relayUrl).toBe(`${RELAY_API_URL}/api/zero/voice-chat/relay`);
-      expect(body.transport).toBe("websocket");
-      expect(body.sessionId).toBe(sessionId);
-      expect(typeof body.relayToken).toBe("string");
-      expect(typeof body.expiresAt).toBe("number");
-
-      const verified = verifyRelayToken(body.relayToken, RELAY_SECRET);
-      expect(verified.ok).toBe(true);
-      if (!verified.ok) throw new Error("expected ok");
-      expect(verified.claims.voiceChatSessionId).toBe(sessionId);
-      expect(verified.claims.userId).toBe(userId);
-      expect(verified.claims.orgId).toBe(orgId);
-      expect(verified.claims.noiseReduction).toBe("near_field");
-      expect(verified.claims.exp).toBe(body.expiresAt);
-      expect(verified.claims.exp - verified.claims.iat).toBe(60);
-      const nowSeconds = Math.floor(Date.now() / 1000);
-      expect(Math.abs(verified.claims.iat - nowSeconds)).toBeLessThan(5);
+      expect(body.client_secret.value).toBe("ek_admitted");
+      expect(body).not.toHaveProperty("relayToken");
     });
   });
 });
