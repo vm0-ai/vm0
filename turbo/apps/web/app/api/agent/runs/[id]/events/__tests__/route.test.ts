@@ -439,6 +439,45 @@ describe("GET /api/agent/runs/:id/events", () => {
       const apl = context.mocks.axiom.queryAxiom.mock.calls[0]![0];
       expect(apl).toContain("limit 100");
     });
+
+    it("should reject since below the event cursor floor", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events?since=-2`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("since");
+      expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
+    });
+
+    it("should reject since outside the database integer range", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events?since=2147483648`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("since");
+      expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
+    });
+
+    it("should reject limit above the event page cap", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events?limit=1000`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("limit");
+      expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
+    });
   });
 
   // ============================================

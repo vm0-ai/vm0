@@ -15,6 +15,16 @@ export const eventSequenceNumberSchema = z
   .int()
   .nonnegative()
   .max(MAX_EVENT_SEQUENCE_NUMBER);
+const eventSequenceCursorSchema = z
+  .number()
+  .int()
+  .min(-1)
+  .max(MAX_EVENT_SEQUENCE_NUMBER);
+const eventSequenceCursorQuerySchema = z.coerce
+  .number()
+  .int()
+  .min(-1)
+  .max(MAX_EVENT_SEQUENCE_NUMBER);
 
 /**
  * All valid run status values
@@ -183,7 +193,7 @@ const runStateSchema = z.object({
 const eventsResponseSchema = z.object({
   events: z.array(runEventSchema),
   hasMore: z.boolean(),
-  nextSequence: z.number(),
+  nextSequence: eventSequenceCursorSchema,
   run: runStateSchema,
   framework: z.string(),
 });
@@ -336,8 +346,8 @@ export const runEventsContract = c.router({
       id: z.uuid("Run ID must be a valid UUID"),
     }),
     query: z.object({
-      since: z.coerce.number().default(-1),
-      limit: z.coerce.number().default(100),
+      since: eventSequenceCursorQuerySchema.default(-1),
+      limit: z.coerce.number().int().min(1).max(100).default(100),
     }),
     responses: {
       200: eventsResponseSchema,

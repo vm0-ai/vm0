@@ -1236,6 +1236,64 @@ describe("run command", () => {
       );
     });
 
+    it("should not idle drain after codex result is visible before completion", async () => {
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          if (pollCount === 1) {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 0,
+                  eventType: "turn.completed",
+                  eventData: {
+                    type: "turn.completed",
+                    usage: {
+                      input_tokens: 10,
+                      cached_input_tokens: 5,
+                      output_tokens: 3,
+                    },
+                  },
+                  createdAt: "2025-01-01T00:00:01Z",
+                },
+              ],
+              hasMore: false,
+              nextSequence: 0,
+              run: { status: "running" },
+              framework: "codex",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            framework: "codex",
+          });
+        }),
+      );
+
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+
+      expect(pollCount).toBe(2);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Agent Completed"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Run completed successfully"),
+      );
+    });
+
     it("should wait for terminal watermark instead of exiting on idle", async () => {
       vi.useFakeTimers();
       let pollCount = 0;
@@ -1603,7 +1661,7 @@ describe("run command", () => {
               {
                 sequenceNumber: 0,
                 eventType: "unknown",
-                eventData: { type: "unknown", data: "something" },
+                eventData: null,
                 createdAt: "2025-01-01T00:00:00Z",
               },
               {

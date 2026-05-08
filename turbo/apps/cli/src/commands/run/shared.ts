@@ -346,13 +346,6 @@ function isBlockedBySequenceGap(
   return response.hasMore && !madeSequenceProgress;
 }
 
-function hasResultEvent(response: GetEventsResponse): boolean {
-  return response.events.some((event) => {
-    const eventData = event.eventData as Record<string, unknown>;
-    return eventData.type === "result";
-  });
-}
-
 function hasTerminalWatermark(run: TerminalRunState): boolean {
   return run.lastEventSequence !== undefined;
 }
@@ -500,6 +493,7 @@ export async function pollEvents(
     });
     const now = Date.now();
     const madeSequenceProgress = response.nextSequence > previousSequence;
+    let pageHasResultEvent = false;
 
     // Render agent events (use appropriate renderer based on framework from API)
     if (madeSequenceProgress) {
@@ -509,12 +503,15 @@ export async function pollEvents(
         const parsed = parseEvent(eventData, response.framework);
         if (parsed) {
           renderer.render(parsed);
+          if (parsed.type === "result") {
+            pageHasResultEvent = true;
+          }
         }
       }
     }
 
     if (madeSequenceProgress) {
-      if (hasResultEvent(response)) {
+      if (pageHasResultEvent) {
         seenResultEvent = true;
       }
 
