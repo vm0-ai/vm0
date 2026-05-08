@@ -40,6 +40,13 @@ import {
   PendingInvitationsBadge,
 } from "./zero-org-switcher.tsx";
 
+// Mobile drawer rows align to the mobile-more-sheet rhythm:
+// - 40px avatar (OrgAvatar size="lg") next to a 16px primary / 14px secondary
+//   text pair — keeps the touch target tall enough without inflating density.
+// - rounded-xl row, hover:bg-muted/40 active:bg-muted/60 tap feedback.
+// - active workspace gets bg-gray-200 (the unified neutral surface used by
+//   the bottom-tab active pill, pinned-agent ring, and thread avatar).
+
 function CurrentWorkspaceRow({ onClose }: { onClose: () => void }) {
   const currentOrg = useLastResolved(currentOrgInfo$);
   const orgData = useLastResolved(org$);
@@ -54,14 +61,18 @@ function CurrentWorkspaceRow({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="flex items-center gap-3 px-2 py-2 rounded-lg bg-muted/40">
-      <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} />
+    <div className="flex items-center gap-3 px-3 py-3 rounded-xl bg-gray-200">
+      <OrgAvatar
+        name={orgName}
+        imageUrl={currentOrg?.imageUrl}
+        size="lg"
+      />
       <div className="min-w-0 flex-1">
-        <p className="text-[17px] font-medium leading-tight truncate text-foreground">
+        <p className="text-[16px] font-semibold leading-tight truncate text-foreground">
           {orgName}
         </p>
         {orgSlug && (
-          <p className="text-[16px] text-muted-foreground truncate mt-0.5">
+          <p className="mt-0.5 text-[14px] text-muted-foreground truncate">
             {orgSlug}
           </p>
         )}
@@ -69,9 +80,9 @@ function CurrentWorkspaceRow({ onClose }: { onClose: () => void }) {
       <button
         type="button"
         onClick={handleManage}
-        className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-[14px] font-medium text-muted-foreground border border-[hsl(var(--gray-400))] hover:text-foreground hover:bg-accent transition-colors"
+        className="shrink-0 flex items-center gap-1 px-2.5 h-8 rounded-md text-[13px] font-medium text-muted-foreground border border-border bg-background hover:text-foreground hover:bg-accent transition-colors"
       >
-        <IconSettings size={13} />
+        <IconSettings size={14} stroke={1.8} />
         Manage
       </button>
     </div>
@@ -98,7 +109,7 @@ function OtherWorkspacesList({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col">
       {otherMemberships.map((membership) => {
         return (
           <button
@@ -107,13 +118,14 @@ function OtherWorkspacesList({ onClose }: { onClose: () => void }) {
             onClick={() => {
               handleSwitchOrg(membership.organization.id);
             }}
-            className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-left"
+            className="flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-colors hover:bg-muted/40 active:bg-muted/60"
           >
             <OrgAvatar
               name={membership.organization.name}
               imageUrl={membership.organization.imageUrl}
+              size="lg"
             />
-            <span className="text-[17px] truncate flex-1">
+            <span className="min-w-0 flex-1 text-[16px] font-medium truncate text-foreground">
               {membership.organization.name}
             </span>
           </button>
@@ -154,21 +166,22 @@ function InvitationRow({
   };
 
   return (
-    <div className="flex items-center gap-3 px-2 py-2">
+    <div className="flex items-center gap-3 px-3 py-3 rounded-xl">
       <OrgAvatar
         name={invitation.publicOrganizationData.name}
         imageUrl={invitation.publicOrganizationData.imageUrl}
+        size="lg"
       />
-      <span className="min-w-0 flex-1 text-[17px] truncate">
+      <span className="min-w-0 flex-1 text-[16px] font-medium truncate text-foreground">
         {invitation.publicOrganizationData.name}
       </span>
       <button
         type="button"
         disabled={isAccepting}
         onClick={handleAccept}
-        className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-[14px] font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
+        className="shrink-0 flex items-center gap-1 px-2.5 h-8 rounded-md text-[13px] font-medium text-muted-foreground border border-border bg-background hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
       >
-        <IconMail size={13} />
+        <IconMail size={14} stroke={1.8} />
         {isAccepting ? "Joining…" : "Join"}
       </button>
     </div>
@@ -181,7 +194,7 @@ function PendingInvitationsList() {
     return null;
   }
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col">
       {pendingInvitations.map((invitation) => {
         return <InvitationRow key={invitation.id} invitation={invitation} />;
       })}
@@ -226,14 +239,12 @@ function CreateWorkspaceButton({ onClose }: { onClose: () => void }) {
       type="button"
       onClick={handleCreateOrg}
       disabled={creatingOrg}
-      className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-left disabled:opacity-50 disabled:pointer-events-none"
+      className="flex w-full items-center gap-3 px-3 py-3 rounded-xl text-left transition-colors hover:bg-muted/40 active:bg-muted/60 disabled:opacity-50 disabled:pointer-events-none"
     >
-      <IconPlus
-        size={18}
-        stroke={1.5}
-        className="shrink-0 text-muted-foreground"
-      />
-      <span className="text-[17px]">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-200 text-muted-foreground">
+        <IconPlus size={20} stroke={1.8} />
+      </span>
+      <span className="text-[16px] font-medium text-foreground">
         {creatingOrg ? "Creating…" : "Create workspace"}
       </span>
     </button>
@@ -242,7 +253,7 @@ function CreateWorkspaceButton({ onClose }: { onClose: () => void }) {
 
 function SectionLabel({ children }: { children: string }) {
   return (
-    <p className="px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+    <p className="px-3 text-[12px] font-medium text-muted-foreground">
       {children}
     </p>
   );
@@ -274,7 +285,7 @@ export function MobileWorkspaceDrawer() {
             />
             <PendingInvitationsBadge />
           </span>
-          <span className="min-w-0 truncate text-[17px] font-semibold">
+          <span className="min-w-0 truncate text-[15px] font-semibold">
             {orgName}
           </span>
         </button>
@@ -282,7 +293,7 @@ export function MobileWorkspaceDrawer() {
       <SheetContent
         side="left"
         data-testid="mobile-workspace-drawer"
-        className="gap-5 px-4 py-5"
+        className="gap-4 p-4"
         hideClose
       >
         <SheetTitle className="sr-only">Workspaces</SheetTitle>
@@ -291,11 +302,13 @@ export function MobileWorkspaceDrawer() {
         </SheetDescription>
         <div className="flex flex-col gap-2">
           <SectionLabel>Workspaces</SectionLabel>
-          <CurrentWorkspaceRow onClose={close} />
-          <OtherWorkspacesList onClose={close} />
+          <div className="flex flex-col">
+            <CurrentWorkspaceRow onClose={close} />
+            <OtherWorkspacesList onClose={close} />
+          </div>
         </div>
         <PendingInvitationsList />
-        <div className="mt-auto pt-4 border-t border-border/60">
+        <div className="mt-auto pt-3 border-t border-border/60">
           <CreateWorkspaceButton onClose={close} />
         </div>
       </SheetContent>
