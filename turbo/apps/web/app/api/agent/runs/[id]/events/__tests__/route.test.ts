@@ -207,9 +207,28 @@ describe("GET /api/agent/runs/:id/events", () => {
     it("should include terminal lastEventSequence watermark when present", async () => {
       context.mocks.axiom.queryAxiom
         .mockResolvedValueOnce([
-          { sequenceNumber: 0 },
-          { sequenceNumber: 1 },
-          { sequenceNumber: 2 },
+          createAxiomAgentEvent({
+            runId: testRunId,
+            sequenceNumber: 0,
+            eventType: "assistant",
+            eventData: { type: "assistant" },
+          }),
+          createAxiomAgentEvent({
+            runId: testRunId,
+            sequenceNumber: 1,
+            eventType: "assistant",
+            eventData: { type: "assistant" },
+          }),
+          createAxiomAgentEvent({
+            runId: testRunId,
+            sequenceNumber: 2,
+            eventType: "result",
+            eventData: {
+              type: "result",
+              subtype: "success",
+              is_error: false,
+            },
+          }),
         ])
         .mockResolvedValueOnce([]);
 
