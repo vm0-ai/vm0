@@ -26,7 +26,6 @@ interface FakeBrowser {
 function fakeBrowserSocket(): FakeBrowser {
   let onMessage: ((data: string) => void) | null = null;
   let onClose: ((code: number, reason: string) => void) | null = null;
-  let onError: ((err: Error) => void) | null = null;
   const received: string[] = [];
   return {
     socket: {
@@ -44,9 +43,8 @@ function fakeBrowserSocket(): FakeBrowser {
       onClose: (handler) => {
         onClose = handler;
       },
-      onError: (handler) => {
-        onError = handler;
-      },
+      // No-op: tests don't drive socket errors. Required by BrowserSocketLike.
+      onError: () => {},
     },
     received: () => {
       return received;
@@ -61,12 +59,7 @@ function fakeBrowserSocket(): FakeBrowser {
         onClose(1000, "browser closed");
       }
     },
-    emitError: (err: Error) => {
-      if (onError !== null) {
-        onError(err);
-      }
-    },
-  } satisfies FakeBrowser & { emitError: (err: Error) => void } as FakeBrowser;
+  };
 }
 
 interface FakeOpenAi {
