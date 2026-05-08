@@ -114,6 +114,26 @@ describe("extractRunOutput", () => {
     expect(mockQuery).toHaveBeenCalledTimes(2);
   });
 
+  it("does not retry output query after terminal watermark is visible", async () => {
+    mockQuery
+      .mockResolvedValueOnce(axiomResponse([{ sequenceNumber: 0 }]))
+      .mockResolvedValueOnce(axiomResponse([]));
+
+    const output = await extractRunOutput(
+      "550e8400-e29b-41d4-a716-446655440000",
+      null,
+      0,
+    );
+
+    expect(output.result).toBeNull();
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(mockQuery.mock.calls[0]![0]).toContain("project sequenceNumber");
+    expect(mockQuery.mock.calls[1]![0]).toContain('eventType == "result"');
+    expect(mockQuery.mock.calls[1]![0]).toContain(
+      "['eventData.item.type'] == \"agent_message\"",
+    );
+  });
+
   it("can skip waiting for output visibility", async () => {
     mockQuery.mockResolvedValue(axiomResponse([]));
 

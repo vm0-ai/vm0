@@ -86,7 +86,11 @@ async function queryLatestOutputEvent(
   runId: string,
   options: RunOutputQueryOptions = {},
 ): Promise<RunOutputEvent | undefined> {
-  const attempts = options.waitForOutput === false ? 1 : OUTPUT_QUERY_ATTEMPTS;
+  const attempts =
+    options.waitForOutput === false ||
+    typeof options.knownLastEventSequence === "number"
+      ? 1
+      : OUTPUT_QUERY_ATTEMPTS;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     const event = (await queryOutputEventsDesc(runId)).find(isOutputEvent);
     if (event || attempt === attempts) {
