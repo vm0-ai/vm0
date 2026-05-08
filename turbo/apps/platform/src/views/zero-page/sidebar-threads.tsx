@@ -303,76 +303,97 @@ function ChatThreadMenu({
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          onClick={handleMenuTriggerClick}
-          className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-opacity duration-150 ${
-            isPinned
-              ? "visible"
-              : "visible md:invisible md:group-hover:visible md:data-[state=open]:visible"
-          } ${
-            isHighlighted
-              ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
-              : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
-          }`}
-          aria-label="Open chat menu"
-          data-testid="chat-thread-menu-trigger"
-          data-pinned={isPinned ? "true" : "false"}
-        >
-          {isPinned ? (
-            <>
-              <IconPin
-                size={16}
-                stroke={2}
-                className="block md:group-hover:hidden"
-              />
-              <IconDots
-                size={16}
-                stroke={2}
-                className="hidden md:group-hover:block"
-              />
-            </>
-          ) : (
-            <IconDots size={16} stroke={2} />
-          )}
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-40">
-        {pinEnabled && (
-          <DropdownMenuItem onSelect={handleTogglePin}>
+    <TooltipProvider delayDuration={200}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            onClick={handleMenuTriggerClick}
+            className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-opacity duration-150 ${
+              isPinned
+                ? "visible"
+                : "visible md:invisible md:group-hover:visible md:data-[state=open]:visible"
+            } ${
+              isHighlighted
+                ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
+                : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
+            }`}
+            aria-label="Open chat menu"
+            data-testid="chat-thread-menu-trigger"
+            data-pinned={isPinned ? "true" : "false"}
+          >
             {isPinned ? (
               <>
-                <IconPinnedOff size={16} stroke={2} className="mr-2" />
-                Unpin chat
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="block md:group-hover:hidden">
+                      <IconPin size={16} stroke={2} />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">Pinned</p>
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="hidden md:group-hover:block">
+                      <IconDots size={16} stroke={2} />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">More</p>
+                  </TooltipContent>
+                </Tooltip>
               </>
             ) : (
-              <>
-                <IconPin size={16} stroke={2} className="mr-2" />
-                Pin chat
-              </>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <IconDots size={16} stroke={2} />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">More</p>
+                </TooltipContent>
+              </Tooltip>
             )}
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-40">
+          {pinEnabled && (
+            <DropdownMenuItem onSelect={handleTogglePin}>
+              {isPinned ? (
+                <>
+                  <IconPinnedOff size={16} stroke={2} className="mr-2" />
+                  Unpin chat
+                </>
+              ) : (
+                <>
+                  <IconPin size={16} stroke={2} className="mr-2" />
+                  Pin chat
+                </>
+              )}
+            </DropdownMenuItem>
+          )}
+          {renameEnabled && (
+            <DropdownMenuItem onSelect={openRenameDialog}>
+              <IconPencil size={16} stroke={2} className="mr-2" />
+              Rename chat
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault();
+              setPendingDeleteThreadId(threadId);
+            }}
+            className="text-destructive focus:text-destructive"
+          >
+            <IconTrash size={16} stroke={2} className="mr-2" />
+            Delete chat
           </DropdownMenuItem>
-        )}
-        {renameEnabled && (
-          <DropdownMenuItem onSelect={openRenameDialog}>
-            <IconPencil size={16} stroke={2} className="mr-2" />
-            Rename chat
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuItem
-          onSelect={(e) => {
-            e.preventDefault();
-            setPendingDeleteThreadId(threadId);
-          }}
-          className="text-destructive focus:text-destructive"
-        >
-          <IconTrash size={16} stroke={2} className="mr-2" />
-          Delete chat
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </TooltipProvider>
   );
 }
 
