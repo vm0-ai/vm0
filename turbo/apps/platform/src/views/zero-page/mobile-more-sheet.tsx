@@ -47,7 +47,7 @@ function SectionLink({
       data-testid={testId}
       className="flex w-full items-center gap-3 px-3 py-3 rounded-xl text-left transition-colors hover:bg-muted/40 active:bg-muted/60"
     >
-      <Icon size={22} stroke={1.6} className="shrink-0 text-foreground" />
+      <Icon size={22} stroke={1.6} className="shrink-0 text-muted-foreground" />
       <span className="flex-1 min-w-0">
         <span className="block text-[16px] font-semibold truncate text-foreground">
           {label}
@@ -83,7 +83,7 @@ export function MobileMoreSheet() {
         // the first row's chevron. The grabber bar + tap-overlay-to-close
         // cover the same affordance without the visual collision.
         hideClose
-        className="rounded-t-2xl min-h-[45vh] max-h-[85vh] overflow-y-auto p-0 shadow-[0_-12px_32px_-12px_rgba(0,0,0,0.18)] dark:shadow-[0_-16px_48px_-12px_rgba(0,0,0,0.55)]"
+        className="rounded-t-2xl max-h-[85vh] overflow-y-auto p-0 shadow-[0_-12px_32px_-12px_rgba(0,0,0,0.18)] dark:shadow-[0_-16px_48px_-12px_rgba(0,0,0,0.55)]"
         data-testid="mobile-more-sheet"
       >
         <SheetHeader className="sr-only">
@@ -98,7 +98,7 @@ export function MobileMoreSheet() {
             className="h-1 w-10 rounded-full bg-[hsl(var(--gray-300))]"
           />
         </div>
-        <div className="flex flex-col gap-2 p-4 pb-10">
+        <div className="flex flex-col gap-2 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
           <SectionLink
             icon={IconSparkles}
             label="Insights"
