@@ -32,6 +32,14 @@
 //! | 0x0E | G→H       | bounded_exec_result | `[1B termination][1B flags][4B exit_code][8B duration_ms][4B stdout_len][stdout][4B stderr_len][stderr]` |
 //! | 0x0F | G→H       | bounded_exec_output_chunk | `[1B stream][1B flags][4B sequence][4B chunk_len][chunk]` |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
+//!
+//! Bounded exec output chunks are request-scoped: they use the same non-zero
+//! `seq` as the bounded exec request. They are separate from pid-scoped
+//! `MSG_STDOUT_CHUNK` messages used by `spawn_watch`.
+//!
+//! Bounded exec stream tags are `0 = stdout` and `1 = stderr`. Termination
+//! tags are `0 = exited`, `1 = timed_out`, `2 = cancelled`,
+//! `3 = start_failed`, and `4 = wait_failed`.
 
 /// Header size (4-byte length prefix).
 pub const HEADER_SIZE: usize = 4;
@@ -324,6 +332,27 @@ fn append_len_prefixed_bytes(
     Ok(())
 }
 
+fn add_payload_capacity(
+    capacity: &mut usize,
+    field: &'static str,
+    amount: usize,
+) -> Result<(), ProtocolError> {
+    *capacity = capacity
+        .checked_add(amount)
+        .ok_or(ProtocolError::PayloadTooLarge(field, usize::MAX))?;
+    Ok(())
+}
+
+fn add_len_prefixed_capacity(
+    capacity: &mut usize,
+    field: &'static str,
+    bytes: &[u8],
+) -> Result<(), ProtocolError> {
+    checked_u32_len(field, bytes.len())?;
+    add_payload_capacity(capacity, field, 4)?;
+    add_payload_capacity(capacity, field, bytes.len())
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct BoundedExecRequest<'a> {
     pub timeout_ms: u32,
@@ -355,8 +384,23 @@ pub struct BoundedExecRequest<'a> {
 /// `[4B stream_chunk_limit][4B stdout_stream_limit][4B stderr_stream_limit]`
 /// `[4B cmd_len][command][4B env_count]([4B key_len][key][4B val_len][value])*`
 /// `[4B stdin_len][stdin]`.
+///
+/// This encoder preserves protocol fields as provided. Execution policy, such
+/// as whether non-zero stream limits are valid when a stream flag is disabled,
+/// belongs in the host/guest execution layers.
 pub fn encode_bounded_exec(request: &BoundedExecRequest<'_>) -> Result<Vec<u8>, ProtocolError> {
-    let mut p = Vec::new();
+    let command = request.command.as_bytes();
+    let stdin = request.stdin.unwrap_or_default();
+    let mut capacity = 25;
+    add_len_prefixed_capacity(&mut capacity, "command", command)?;
+    add_payload_capacity(&mut capacity, "env", 4)?;
+    for (key, val) in request.env {
+        add_len_prefixed_capacity(&mut capacity, "env key", key.as_bytes())?;
+        add_len_prefixed_capacity(&mut capacity, "env value", val.as_bytes())?;
+    }
+    add_len_prefixed_capacity(&mut capacity, "stdin", stdin)?;
+
+    let mut p = Vec::with_capacity(capacity);
     p.extend_from_slice(&request.timeout_ms.to_be_bytes());
     let mut flags = 0u8;
     if request.sudo {
@@ -377,13 +421,13 @@ pub fn encode_bounded_exec(request: &BoundedExecRequest<'_>) -> Result<Vec<u8>, 
     p.extend_from_slice(&request.stream_chunk_limit_bytes.to_be_bytes());
     p.extend_from_slice(&request.stdout_stream_limit_bytes.to_be_bytes());
     p.extend_from_slice(&request.stderr_stream_limit_bytes.to_be_bytes());
-    append_len_prefixed_bytes(&mut p, "command", request.command.as_bytes())?;
+    append_len_prefixed_bytes(&mut p, "command", command)?;
     p.extend_from_slice(&checked_u32_len("env", request.env.len())?.to_be_bytes());
     for (key, val) in request.env {
         append_len_prefixed_bytes(&mut p, "env key", key.as_bytes())?;
         append_len_prefixed_bytes(&mut p, "env value", val.as_bytes())?;
     }
-    append_len_prefixed_bytes(&mut p, "stdin", request.stdin.unwrap_or_default())?;
+    append_len_prefixed_bytes(&mut p, "stdin", stdin)?;
     Ok(p)
 }
 
@@ -424,7 +468,11 @@ pub fn encode_bounded_exec_result(
         flags |= BOUNDED_EXEC_RESULT_FLAG_STDERR_TRUNCATED;
     }
 
-    let mut p = Vec::new();
+    let mut capacity = 14;
+    add_len_prefixed_capacity(&mut capacity, "stdout", stdout)?;
+    add_len_prefixed_capacity(&mut capacity, "stderr", stderr)?;
+
+    let mut p = Vec::with_capacity(capacity);
     p.push(termination_tag);
     p.push(flags);
     p.extend_from_slice(&exit_code.to_be_bytes());
@@ -445,7 +493,10 @@ pub fn encode_bounded_exec_output_chunk(
     chunk: &[u8],
     truncated: bool,
 ) -> Result<Vec<u8>, ProtocolError> {
-    let mut p = Vec::new();
+    let mut capacity = 6;
+    add_len_prefixed_capacity(&mut capacity, "chunk", chunk)?;
+
+    let mut p = Vec::with_capacity(capacity);
     p.push(bounded_exec_stream_tag(stream));
     p.push(if truncated {
         BOUNDED_EXEC_OUTPUT_CHUNK_FLAG_TRUNCATED
