@@ -4,19 +4,18 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, SystemTime};
 
-use std::os::fd::AsRawFd;
-use std::os::unix::ffi::OsStrExt;
+use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 
 /// Maximum length for command preview in logs
 const COMMAND_PREVIEW_MAX_LEN: usize = 100;
 #[cfg(not(debug_assertions))]
 const SANDBOX_USER: &str = "user";
-const SANDBOX_UID: libc::uid_t = 1000;
 const SANDBOX_GID: libc::gid_t = 1000;
 const ENV_SCRIPT_PREFIX: &str = "vm0-env-";
 const ENV_SCRIPT_SUFFIX: &str = ".sh";
 const ENV_SCRIPT_STALE_AFTER: Duration = Duration::from_secs(60 * 60);
+const CHOWN_UNCHANGED_UID: libc::uid_t = !0;
 
 fn get_exec_user() -> Option<&'static str> {
     #[cfg(debug_assertions)]
@@ -252,7 +251,7 @@ fn build_env_script_content(
     script.push_str("script_path=");
     script.push_str(&shell_escape_value(script_path));
     script.push('\n');
-    script.push_str("rm -f -- \"$script_path\"\n");
+    script.push_str("rm -f -- \"$script_path\" 2>/dev/null || true\n");
     script.push_str("rmdir -- \"$script_dir\" 2>/dev/null || true\n");
     for (key, value) in env {
         script.push_str("export ");
@@ -328,14 +327,10 @@ fn ensure_env_script_dir(dir: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn chown_path(path: &Path, uid: libc::uid_t, gid: libc::gid_t) -> io::Result<()> {
-    let path = std::ffi::CString::new(path.as_os_str().as_bytes()).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "env script path must not contain NUL bytes",
-        )
-    })?;
-    let ret = unsafe { libc::chown(path.as_ptr(), uid, gid) };
+fn fchown_group(fd: RawFd, gid: libc::gid_t) -> io::Result<()> {
+    // SAFETY: `fd` comes from an open file/directory descriptor and `-1`
+    // as uid asks fchown to leave the owner unchanged.
+    let ret = unsafe { libc::fchown(fd, CHOWN_UNCHANGED_UID, gid) };
     if ret != 0 {
         return Err(io::Error::last_os_error());
     }
@@ -443,14 +438,19 @@ fn create_env_script_in_dir(
         let result = (|| -> io::Result<()> {
             file.write_all(script.as_bytes())?;
             if effective_uid() == 0 && !sudo && get_exec_user().is_some() {
-                file.set_permissions(fs::Permissions::from_mode(0o000))?;
-                chown_path(&script_dir, SANDBOX_UID, SANDBOX_GID)?;
-                let ret = unsafe { libc::fchown(file.as_raw_fd(), SANDBOX_UID, SANDBOX_GID) };
-                if ret != 0 {
-                    return Err(io::Error::last_os_error());
-                }
+                // Keep the per-run directory and script root-owned. The
+                // sandbox user only gets group read/traverse access; if it
+                // owned either path, an existing same-UID process could
+                // chmod/replace run.sh after the path appears in argv but
+                // before bash opens it.
+                let script_dir_file = File::open(&script_dir)?;
+                fchown_group(file.as_raw_fd(), SANDBOX_GID)?;
+                file.set_permissions(fs::Permissions::from_mode(0o440))?;
+                fchown_group(script_dir_file.as_raw_fd(), SANDBOX_GID)?;
+                fs::set_permissions(&script_dir, fs::Permissions::from_mode(0o710))?;
+            } else {
+                file.set_permissions(fs::Permissions::from_mode(0o400))?;
             }
-            file.set_permissions(fs::Permissions::from_mode(0o400))?;
             Ok(())
         })();
 
@@ -626,7 +626,8 @@ mod tests {
         assert!(rm_pos < export_pos);
         assert!(script.contains("script_dir='/run/vm0-exec/vm0-env-test'"));
         assert!(script.contains("script_path='/run/vm0-exec/vm0-env-test/run.sh'"));
-        assert!(script.contains("rmdir -- \"$script_dir\""));
+        assert!(script.contains("rm -f -- \"$script_path\" 2>/dev/null || true"));
+        assert!(script.contains("rmdir -- \"$script_dir\" 2>/dev/null || true"));
         assert!(script.contains("export FOO='it'\\''s a \"test\"'"));
         assert!(script.contains("exec /bin/bash -c 'echo \"$FOO\"'"));
     }
