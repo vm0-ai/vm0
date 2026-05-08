@@ -4,6 +4,9 @@ version = "0.1.0"
 edition.workspace = true
 description = "Write guest files from stdin without shell startup overhead"
 
+[dependencies]
+libc.workspace = true
+
 [dev-dependencies]
 tempfile.workspace = true
 

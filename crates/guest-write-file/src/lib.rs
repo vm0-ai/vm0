@@ -63,15 +63,28 @@ fn run(args: Args, mut stdin: impl Read) -> io::Result<()> {
         fs::create_dir_all(parent)?;
     }
 
-    let mut file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .append(args.append)
-        .truncate(!args.append)
-        .open(&args.path)?;
+    let mut file = output_options(args.append).open(&args.path)?;
 
     io::copy(&mut stdin, &mut file)?;
     file.flush()
+}
+
+fn output_options(append: bool) -> OpenOptions {
+    let mut options = OpenOptions::new();
+    options
+        .create(true)
+        .write(true)
+        .append(append)
+        .truncate(!append);
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+
+        options.custom_flags(libc::O_NONBLOCK);
+    }
+
+    options
 }
 
 pub fn run_cli<I>(args: I, stdin: impl Read, mut stderr: impl Write) -> i32

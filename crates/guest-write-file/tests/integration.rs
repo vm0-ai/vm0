@@ -2,6 +2,7 @@
 
 use std::io::{ErrorKind, Write};
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 const BIN: &str = env!("CARGO_BIN_EXE_guest-write-file");
 
@@ -26,7 +27,22 @@ fn run_helper(args: &[&str], stdin: &[u8]) -> std::process::Output {
             }
         })
         .expect("write stdin");
-    child.wait_with_output().expect("wait guest-write-file")
+    wait_with_timeout(child, Duration::from_secs(5))
+}
+
+fn wait_with_timeout(mut child: std::process::Child, timeout: Duration) -> std::process::Output {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if child.try_wait().expect("poll guest-write-file").is_some() {
+            return child.wait_with_output().expect("wait guest-write-file");
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("guest-write-file did not exit within {timeout:?}");
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }
 
 #[test]
@@ -90,4 +106,28 @@ fn create_mode_without_create_parents_does_not_create_missing_parents() {
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("No such file"));
     assert!(!path.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn create_mode_fails_fast_for_fifo_without_reader() {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("fifo");
+    let c_path = CString::new(path.as_os_str().as_bytes()).unwrap();
+    let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
+    assert_eq!(
+        result,
+        0,
+        "mkfifo failed: {}",
+        std::io::Error::last_os_error()
+    );
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&[path_str], b"");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("guest-write-file"));
 }
