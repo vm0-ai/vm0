@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use vsock_guest::{handle_connection, run};
 use vsock_proto::{
-    self, MSG_EXEC, MSG_EXEC_RESULT, MSG_PROCESS_EXIT, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
+    self, MSG_ERROR, MSG_EXEC, MSG_EXEC_RESULT, MSG_PROCESS_EXIT, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
     MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK,
 };
 
@@ -308,6 +308,43 @@ fn exec_large_env_payload_succeeds() {
 
     assert_eq!(code, 0, "stderr: {}", String::from_utf8_lossy(&stderr));
     assert_large_env_stdout(&stdout);
+
+    drop(host_writer);
+    drop(host_reader);
+    let _ = handle.join();
+}
+
+#[test]
+fn exec_invalid_env_payload_returns_error_without_leaking_value() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
+    let mut host_writer = host_stream.try_clone().unwrap();
+    let mut host_reader = host_stream;
+
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+    read_and_discard_message(&mut host_reader); // MSG_READY
+    host_reader
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    let secret = "do-not-print-this-secret";
+    let (code, stdout, stderr) = send_exec_and_read_result_with_env(
+        &mut host_writer,
+        &mut host_reader,
+        1,
+        "echo should-not-run",
+        5000,
+        &[("BAD;KEY", secret)],
+    );
+    let stderr = String::from_utf8_lossy(&stderr);
+
+    assert_eq!(code, 1);
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("invalid environment variable name"));
+    assert!(!stderr.contains(secret));
 
     drop(host_writer);
     drop(host_reader);
@@ -623,6 +660,40 @@ fn streaming_spawn_watch_large_env_payload_succeeds() {
 
     assert_eq!(exit_code, 0, "stderr: {}", String::from_utf8_lossy(&stderr));
     assert_large_env_stdout(&stdout_data);
+
+    drop(host_stream);
+    let _ = handle.join();
+}
+
+#[test]
+fn streaming_spawn_watch_invalid_env_payload_returns_error_without_leaking_value() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+    read_and_discard_message(&mut host_stream); // MSG_READY
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    let secret = "do-not-print-this-secret";
+    send_spawn_watch_with_env(
+        &mut host_stream,
+        1,
+        "echo should-not-run",
+        &[("BAD;KEY", secret)],
+        None,
+        5000,
+    );
+
+    let msg = read_message(&mut host_stream);
+    assert_eq!(msg.msg_type, MSG_ERROR);
+    assert_eq!(msg.seq, 1);
+    let error = vsock_proto::decode_error(&msg.payload).unwrap();
+    assert!(error.contains("invalid environment variable name"));
+    assert!(!error.contains(secret));
 
     drop(host_stream);
     let _ = handle.join();
