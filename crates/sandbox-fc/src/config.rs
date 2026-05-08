@@ -1,9 +1,15 @@
+//! Configuration types for the Firecracker sandbox backend.
+
 use std::path::PathBuf;
 
+/// Configuration used to create Firecracker sandbox factories.
 #[derive(Debug, Clone)]
 pub struct FirecrackerConfig {
+    /// Path to the Firecracker executable.
     pub binary_path: PathBuf,
+    /// Path to the kernel image used to boot the microVM.
     pub kernel_path: PathBuf,
+    /// Path to the rootfs image used as the microVM drive.
     pub rootfs_path: PathBuf,
     /// Base directory for runtime data (workspaces, COW devices, etc.).
     pub base_dir: PathBuf,
@@ -17,6 +23,7 @@ pub struct FirecrackerConfig {
     pub snapshot: Option<SnapshotConfig>,
 }
 
+/// Snapshot restore artifacts and bind-path metadata for Firecracker.
 #[derive(Debug, Clone)]
 pub struct SnapshotConfig {
     /// Path to the snapshot state file.
