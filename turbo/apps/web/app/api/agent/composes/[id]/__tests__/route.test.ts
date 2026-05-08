@@ -126,6 +126,20 @@ describe("GET /api/agent/composes/[id]", () => {
     testComposeId = composeId;
   });
 
+  it("should return 400 for malformed compose id", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/composes/91fc0bd84bba673393d9adfc1a0f4dec",
+      { method: "GET" },
+    );
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error.code).toBe("BAD_REQUEST");
+    expect(data.error.message).toContain("valid UUID");
+  });
+
   describe("Cross-User Access Control", () => {
     // Note: API returns 404 (not 403) for unauthorized access to prevent
     // information leakage about existence of private agents

@@ -347,10 +347,11 @@ export const composesByIdContract = c.router({
     path: "/api/agent/composes/:id",
     headers: authHeadersSchema,
     pathParams: z.object({
-      id: z.string().min(1, "Compose ID is required"),
+      id: z.string().uuid("Compose ID must be a valid UUID"),
     }),
     responses: {
       200: composeResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -508,10 +509,11 @@ export const composesInstructionsContract = c.router({
     path: "/api/agent/composes/:id/instructions",
     headers: authHeadersSchema,
     pathParams: z.object({
-      id: z.string().min(1, "Compose ID is required"),
+      id: z.string().uuid("Compose ID must be a valid UUID"),
     }),
     responses: {
       200: composeInstructionsResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,

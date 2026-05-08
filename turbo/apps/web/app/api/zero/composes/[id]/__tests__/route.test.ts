@@ -54,10 +54,24 @@ describe("GET /api/zero/composes/:id", () => {
     expect(response.status).toBe(404);
   });
 
+  it("should return 400 for malformed compose id", async () => {
+    const userId = uniqueId("zcompid-bad-id");
+    await setupOrg(userId);
+
+    const response = await GET(
+      createTestRequest(composeIdUrl("91fc0bd84bba673393d9adfc1a0f4dec")),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error.code).toBe("BAD_REQUEST");
+    expect(data.error.message).toContain("valid UUID");
+  });
+
   it("should return 401 when not authenticated", async () => {
     mockClerk({ userId: null });
 
-    const response = await GET(createTestRequest(composeIdUrl("some-id")));
+    const response = await GET(createTestRequest(composeIdUrl(randomUUID())));
     expect(response.status).toBe(401);
   });
 });
