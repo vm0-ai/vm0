@@ -11,6 +11,7 @@ import type {
   Firewalls,
   NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
+import type { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   getModelProviderFirewall,
   type ModelProviderType,
@@ -57,6 +58,7 @@ import {
   checkFrameworkCompatibility,
   applyResolutionDefaults,
 } from "./context/resolve-source";
+import { loadFeatureSwitchOverrides } from "./user/feature-switches-service";
 
 // Re-exports for API compatibility
 export {
@@ -224,6 +226,8 @@ interface BuildZeroContextParams {
   allowedCustomConnectorIds?: string[];
   // Pre-fetched user timezone from Phase 1 — skips getUserPreferences() when provided
   preloadedUserTimezone?: string;
+  // Pre-fetched Lab feature switch overrides from Phase 1.
+  featureSwitchOverrides?: Partial<Record<FeatureSwitchKey, boolean>>;
   // Origin of the run request, injected into the sandbox as VM0_RUN_SOURCE.
   triggerSource?: string;
 }
@@ -666,6 +670,7 @@ interface ResolvedCliContext {
   firewalls?: Firewalls;
   networkPolicies?: NetworkPolicies;
   userTimezone?: string;
+  featureSwitchOverrides?: Partial<Record<FeatureSwitchKey, boolean>>;
 
   // Model provider metadata (for zero_runs upsert)
   resolvedModelProvider?: ModelProviderType;
@@ -782,7 +787,12 @@ export async function resolveCliRunContext(
 
   // Step 4: Resolve secrets, user preferences in parallel.
   const resolveSecretsStart = Date.now();
-  const [secretsResult, userPrefs, originalModelProvider] = await Promise.all([
+  const [
+    secretsResult,
+    userPrefs,
+    featureSwitchOverrides,
+    originalModelProvider,
+  ] = await Promise.all([
     resolveSecretsAndEnvironment(
       params.orgId,
       agentCompose,
@@ -799,6 +809,7 @@ export async function resolveCliRunContext(
       params.preferPersonalProvider,
     ),
     getUserPreferences(params.orgId, params.userId),
+    loadFeatureSwitchOverrides(params.orgId, params.userId),
     // Fetch previous run's model provider for compatibility check
     resolution?.previousRunId
       ? globalThis.services.db
@@ -858,6 +869,7 @@ export async function resolveCliRunContext(
     firewalls: permissionResult?.firewalls,
     networkPolicies: permissionResult?.networkPolicies,
     userTimezone,
+    featureSwitchOverrides,
     resolvedModelProvider,
     modelProviderId,
     modelProviderCredentialScope,
@@ -1077,6 +1089,7 @@ export async function buildZeroExecutionContext(
       additionalVolumes,
       environment: runtimeEnvironment,
       userTimezone,
+      featureSwitchOverrides: params.featureSwitchOverrides,
       firewalls: permissionResult?.firewalls,
       networkPolicies: permissionResult?.networkPolicies,
       disallowedTools: params.disallowedTools,

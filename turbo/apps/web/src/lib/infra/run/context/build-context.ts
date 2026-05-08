@@ -1,4 +1,5 @@
 import { expandEnvironmentFromCompose } from "../environment/expand-environment";
+import type { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type {
   ContextArtifact,
   ExecutionContext,
@@ -29,6 +30,7 @@ interface BuildInfraContextParams {
   additionalVolumes?: AdditionalVolume[];
   environment?: Record<string, string>;
   userTimezone?: string;
+  featureSwitchOverrides?: Partial<Record<FeatureSwitchKey, boolean>>;
   firewalls?: Firewalls;
   networkPolicies?: NetworkPolicies;
   disallowedTools?: string[];
@@ -87,6 +89,7 @@ export function buildInfraExecutionContext(
     additionalVolumes: params.additionalVolumes,
     environment,
     userTimezone: params.userTimezone,
+    featureSwitchOverrides: params.featureSwitchOverrides,
     firewalls: params.firewalls,
     networkPolicies: params.networkPolicies,
     disallowedTools: params.disallowedTools,

@@ -637,6 +637,7 @@ export async function dispatchQueuedZeroRun(
     sandboxToken,
     agentCompose: composeContent,
     runId,
+    featureSwitchOverrides: overrides,
     apiStartTime,
   });
   // Tag the context so the downstream api_to_executor span records

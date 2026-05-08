@@ -859,6 +859,7 @@ async function dispatchZeroRun(
       agentCompose: record.composeContent,
       agentName: runParams.agentName,
       preloadedUserTimezone: result.userTimezone,
+      featureSwitchOverrides: overrides,
       apiStartTime: record.apiStartTime,
     });
 

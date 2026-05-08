@@ -1,4 +1,5 @@
 import type { AdditionalVolume } from "../storage/types";
+import type { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type {
   Firewalls,
   NetworkPolicies,
@@ -94,6 +95,9 @@ export interface ExecutionContext {
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   // Injected as TZ environment variable in sandbox if not already set in environment
   userTimezone?: string;
+
+  // Per-user Lab feature switch overrides loaded by the caller.
+  featureSwitchOverrides?: Partial<Record<FeatureSwitchKey, boolean>>;
 
   // Firewall for proxy-side token replacement
   firewalls?: Firewalls;
