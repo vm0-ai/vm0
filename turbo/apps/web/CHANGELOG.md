@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.342.1](https://github.com/vm0-ai/vm0/compare/web-v12.342.0...web-v12.342.1) (2026-05-08)
+
+
+### Bug Fixes
+
+* tolerate stale chat callbacks ([#12125](https://github.com/vm0-ai/vm0/issues/12125)) ([0063be8](https://github.com/vm0-ai/vm0/commit/0063be8ba59a2f27500b3fd97164dd11ec1118d5))
+
 ## [12.342.0](https://github.com/vm0-ai/vm0/compare/web-v12.341.1...web-v12.342.0) (2026-05-08)
 
 
