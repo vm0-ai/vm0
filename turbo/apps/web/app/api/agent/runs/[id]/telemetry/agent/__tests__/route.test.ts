@@ -366,6 +366,55 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       expect(eventsApl).toContain("order by sequenceNumber asc");
       expect(eventsApl).toContain("limit 2");
     });
+
+    it("should wait for terminal watermark before default desc pagination", async () => {
+      vi.stubEnv("AXIOM_TOKEN_SESSIONS", "test-sessions-token");
+      reloadEnv();
+      context.mocks.axiom.queryAxiom
+        .mockResolvedValueOnce(
+          Array.from({ length: 51 }, (_, sequenceNumber) => {
+            return { sequenceNumber };
+          }),
+        )
+        .mockResolvedValueOnce([
+          createAxiomAgentEvent(
+            "2024-01-01T00:00:50Z",
+            50,
+            "result",
+            { type: "result" },
+            testRunId,
+          ),
+          createAxiomAgentEvent(
+            "2024-01-01T00:00:49Z",
+            49,
+            "assistant",
+            { type: "assistant" },
+            testRunId,
+          ),
+        ]);
+
+      await completeTestRun(user.userId, testRunId, undefined, {
+        lastEventSequence: 50,
+      });
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/agent?limit=1`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.events).toHaveLength(1);
+      expect(data.events[0].sequenceNumber).toBe(50);
+      expect(data.hasMore).toBe(true);
+      expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledTimes(2);
+      const visibilityApl = context.mocks.axiom.queryAxiom.mock.calls[0]![0];
+      expect(visibilityApl).toContain("project sequenceNumber");
+      const eventsApl = context.mocks.axiom.queryAxiom.mock.calls[1]![0];
+      expect(eventsApl).toContain("order by sequenceNumber desc");
+      expect(eventsApl).toContain("limit 2");
+    });
   });
 
   describe("Event Data", () => {
