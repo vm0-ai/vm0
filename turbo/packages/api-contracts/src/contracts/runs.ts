@@ -7,6 +7,15 @@ import { orgTierSchema } from "./orgs";
 
 const c = initContract();
 
+// Stored in Postgres `integer` columns. Keep request validation aligned with
+// the DB range so malformed sandbox payloads fail as 400s instead of DB errors.
+export const MAX_EVENT_SEQUENCE_NUMBER = 2_147_483_647;
+export const eventSequenceNumberSchema = z
+  .number()
+  .int()
+  .nonnegative()
+  .max(MAX_EVENT_SEQUENCE_NUMBER);
+
 /**
  * All valid run status values
  */
@@ -141,7 +150,7 @@ const getRunResponseSchema = z.object({
  * Run event schema
  */
 const runEventSchema = z.object({
-  sequenceNumber: z.number(),
+  sequenceNumber: eventSequenceNumberSchema,
   eventType: z.string(),
   eventData: z.unknown(),
   createdAt: z.string(),
@@ -165,7 +174,7 @@ const runStateSchema = z.object({
   status: runStatusSchema,
   result: runResultSchema.optional(),
   error: z.string().optional(),
-  lastEventSequence: z.number().int().nonnegative().optional(),
+  lastEventSequence: eventSequenceNumberSchema.optional(),
 });
 
 /**

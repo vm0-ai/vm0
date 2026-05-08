@@ -195,6 +195,30 @@ describe("POST /api/webhooks/agent/complete", () => {
       const data = await response.json();
       expect(data.error.message).toContain("lastEventSequence");
     });
+
+    it("should reject lastEventSequence outside the database integer range", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 0,
+            lastEventSequence: 2_147_483_648,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("lastEventSequence");
+    });
   });
 
   describe("Authorization", () => {
