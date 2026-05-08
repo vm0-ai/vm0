@@ -2211,6 +2211,76 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_cancel_during_bounded_exec_frame_write_cleans_up_registrations() {
+        let (host_stream, mut guest) = make_pair();
+        set_send_buffer(&host_stream, 4096).unwrap();
+
+        let frame_started = std::sync::Arc::new(Notify::new());
+        let release_guest = std::sync::Arc::new(Notify::new());
+
+        let guest_task = {
+            let frame_started = std::sync::Arc::clone(&frame_started);
+            let release_guest = std::sync::Arc::clone(&release_guest);
+            tokio::spawn(async move {
+                let mut decoder = Decoder::new();
+                mock_handshake(&mut guest, &mut decoder).await;
+
+                let mut buf = [0u8; 1024];
+                let mut n = 0usize;
+                while n < vsock_proto::HEADER_SIZE {
+                    let read = guest.read(&mut buf[n..]).await.unwrap();
+                    assert_ne!(read, 0, "connection closed before frame header arrived");
+                    n += read;
+                }
+                let frame_body_len =
+                    u32::from_be_bytes(buf[..vsock_proto::HEADER_SIZE].try_into().unwrap())
+                        as usize;
+                assert!(
+                    frame_body_len + vsock_proto::HEADER_SIZE > n,
+                    "guest should observe only a partial frame before it stops reading",
+                );
+                frame_started.notify_one();
+
+                release_guest.notified().await;
+            })
+        };
+
+        let host = std::sync::Arc::new(host_from_stream(host_stream).await.unwrap());
+        let task_host = std::sync::Arc::clone(&host);
+        let task = tokio::spawn(async move {
+            let (tx, _rx) = mpsc::unbounded_channel();
+            let stdin = vec![b'x'; 8 * 1024 * 1024];
+            let request = BoundedExecRequest {
+                command: "large-stdin",
+                timeout_ms: 5000,
+                env: &[],
+                sudo: false,
+                stdin: Some(&stdin),
+                stdout_limit_bytes: 1024,
+                stderr_limit_bytes: 1024,
+                stream: Some(bounded_stream_request(tx)),
+            };
+            task_host.bounded_exec(&request).await
+        });
+
+        tokio::time::timeout(Duration::from_secs(5), frame_started.notified())
+            .await
+            .expect("guest should receive the beginning of the bounded exec frame");
+
+        assert_eq!(registration_counts(&host), (1, 0, 0, 1));
+        task.abort();
+        let _ = task.await;
+
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
+        assert_eq!(registration_counts(&host), (0, 0, 0, 0));
+
+        release_guest.notify_one();
+        guest_task.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn test_bounded_exec_connection_close_cleans_up_registrations() {
         let (host_stream, mut guest) = make_pair();
         let request_seen = std::sync::Arc::new(Notify::new());
