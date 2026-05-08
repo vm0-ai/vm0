@@ -177,6 +177,60 @@ export const setDeleteConfirm$ = command(({ set }, value: string) => {
 });
 
 // ---------------------------------------------------------------------------
+// org-general-tab: mobile-only UI state — which field's edit sheet is open,
+// and whether the destructive Leave/Delete confirmation dialogs are open.
+// Lifted out of component-local React state because the codebase restricts
+// `useState` (see no-restricted-imports for "react") and uses ccstate signals
+// for all stateful logic.
+// ---------------------------------------------------------------------------
+
+export type GeneralEditingField = "name" | "slug" | null;
+
+const internalGeneralEditingField$ = state<GeneralEditingField>(null);
+
+export const generalEditingField$ = computed((get) => {
+  return get(internalGeneralEditingField$);
+});
+
+export const setGeneralEditingField$ = command(
+  ({ set }, value: GeneralEditingField) => {
+    set(internalGeneralEditingField$, value);
+  },
+);
+
+const internalLeaveDialogOpen$ = state(false);
+
+export const leaveDialogOpen$ = computed((get) => {
+  return get(internalLeaveDialogOpen$);
+});
+
+export const setLeaveDialogOpen$ = command(({ set }, value: boolean) => {
+  set(internalLeaveDialogOpen$, value);
+});
+
+const internalDeleteDialogOpen$ = state(false);
+
+export const deleteDialogOpen$ = computed((get) => {
+  return get(internalDeleteDialogOpen$);
+});
+
+export const setDeleteDialogOpen$ = command(({ set }, value: boolean) => {
+  set(internalDeleteDialogOpen$, value);
+});
+
+// Draft for whichever mobile field is currently being edited. Reset on each
+// sheet open so a previously-cancelled edit doesn't leak into the next one.
+const internalGeneralEditDraft$ = state("");
+
+export const generalEditDraft$ = computed((get) => {
+  return get(internalGeneralEditDraft$);
+});
+
+export const setGeneralEditDraft$ = command(({ set }, value: string) => {
+  set(internalGeneralEditDraft$, value);
+});
+
+// ---------------------------------------------------------------------------
 // org-billing-tab: sub-page
 // ---------------------------------------------------------------------------
 
