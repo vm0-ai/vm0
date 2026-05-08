@@ -1657,6 +1657,68 @@ describe("run command", () => {
       expect(pollCount).toBe(1);
     });
 
+    it("should wait for terminal watermark before rendering failed run", async () => {
+      vi.useFakeTimers();
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          if (pollCount === 1) {
+            return HttpResponse.json({
+              events: [],
+              hasMore: false,
+              nextSequence: -1,
+              run: {
+                status: "failed",
+                error: "Agent crashed",
+                lastEventSequence: 0,
+              },
+              framework: "claude-code",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "assistant",
+                eventData: {
+                  type: "assistant",
+                  message: {
+                    role: "assistant",
+                    content: [{ type: "text", text: "failure context" }],
+                  },
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 0,
+            run: {
+              status: "failed",
+              error: "Agent crashed",
+              lastEventSequence: 0,
+            },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      const commandPromise = expect(
+        runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]),
+      ).rejects.toThrow("process.exit called");
+      await vi.advanceTimersByTimeAsync(500);
+      await commandPromise;
+
+      expect(pollCount).toBe(2);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("failure context"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Run failed"),
+      );
+    });
+
     it("should exit immediately when run is cancelled without terminal watermark", async () => {
       let pollCount = 0;
       server.use(
