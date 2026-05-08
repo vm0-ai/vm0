@@ -46,12 +46,14 @@ export async function updateOrgStripeFields(
     cancelAtPeriodEnd?: boolean;
     lastProcessedInvoiceId?: string | null;
     tier?: string;
+    updatedAt?: Date;
   },
 ): Promise<void> {
   initServices();
+  const { updatedAt, ...billingFields } = fields;
   await globalThis.services.db
     .update(orgMetadata)
-    .set({ ...fields, updatedAt: new Date() })
+    .set({ ...billingFields, updatedAt: updatedAt ?? new Date() })
     .where(eq(orgMetadata.orgId, orgId));
 }
 

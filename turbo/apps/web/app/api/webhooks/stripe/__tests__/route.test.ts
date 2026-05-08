@@ -520,7 +520,7 @@ describe("POST /api/webhooks/stripe", () => {
   });
 
   describe("customer.subscription.updated", () => {
-    it("syncs status and tier", async () => {
+    it("syncs failed payment status without restoring paid entitlement from price", async () => {
       const cusId = uniqueId("cus-update");
       const subId = uniqueId("sub-update");
 
@@ -542,7 +542,7 @@ describe("POST /api/webhooks/stripe", () => {
 
       const billing = await getOrgBillingFields(user.orgId);
       expect(billing?.subscriptionStatus).toBe("past_due");
-      expect(billing?.tier).toBe("team");
+      expect(billing?.tier).toBe("pro");
     });
 
     it("downgrades tier from team to pro when price changes", async () => {
@@ -641,6 +641,72 @@ describe("POST /api/webhooks/stripe", () => {
 
       const billing = await getOrgBillingFields(user.orgId);
       expect(billing?.cancelAtPeriodEnd).toBe(false);
+    });
+
+    it("refreshes current period end for active subscriptions", async () => {
+      const cusId = uniqueId("cus-period-refresh");
+      const subId = uniqueId("sub-period-refresh");
+      const periodEnd = Math.floor(Date.now() / 1000) + 30 * 86400;
+
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "active",
+        tier: "pro",
+      });
+
+      const response = await sendWebhookEvent("customer.subscription.updated", {
+        id: subId,
+        status: "active",
+        cancel_at_period_end: false,
+        items: {
+          data: [
+            { price: { id: TEST_PRICE_PRO }, current_period_end: periodEnd },
+          ],
+        },
+      });
+
+      expect(response.status).toBe(200);
+
+      const billing = await getOrgBillingFields(user.orgId);
+      expect(billing?.currentPeriodEnd).toEqual(new Date(periodEnd * 1000));
+    });
+
+    it("does not extend paid-through from a failed payment update", async () => {
+      const cusId = uniqueId("cus-past-due-period");
+      const subId = uniqueId("sub-past-due-period");
+      const paidThrough = new Date(Date.now() + 7 * 86400 * 1000);
+      const subscriptionItemPeriodEnd =
+        Math.floor(Date.now() / 1000) + 30 * 86400;
+
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "active",
+        currentPeriodEnd: paidThrough,
+        tier: "pro",
+      });
+
+      const response = await sendWebhookEvent("customer.subscription.updated", {
+        id: subId,
+        status: "past_due",
+        cancel_at_period_end: false,
+        items: {
+          data: [
+            {
+              price: { id: TEST_PRICE_PRO },
+              current_period_end: subscriptionItemPeriodEnd,
+            },
+          ],
+        },
+      });
+
+      expect(response.status).toBe(200);
+
+      const billing = await getOrgBillingFields(user.orgId);
+      expect(billing?.tier).toBe("pro");
+      expect(billing?.subscriptionStatus).toBe("past_due");
+      expect(billing?.currentPeriodEnd).toEqual(paidThrough);
     });
   });
 
