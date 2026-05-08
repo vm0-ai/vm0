@@ -17,7 +17,7 @@ use crate::exec::{
     format_env_diagnostics, spawn_in_own_process_group, spawn_with_pipes, truncate_preview,
 };
 use crate::log::log;
-use crate::process::{extract_exit_code, kill_and_reap_child};
+use crate::process::{extract_exit_code, kill_and_reap_child, kill_process_tree};
 use crate::shutdown::handle_shutdown;
 use crate::threading::{SystemThreadSpawner, ThreadSpawner, spawn_scoped_named};
 use crate::user::apply_write_file_identity;
@@ -129,6 +129,7 @@ fn wait_write_file_child_with_timeout<S>(
 where
     S: ThreadSpawner,
 {
+    let child_pid = child.id();
     let stdin_pipe = match child.stdin.take() {
         Some(p) => p,
         None => {
@@ -175,9 +176,12 @@ where
     };
 
     std::thread::scope(|scope| {
+        let (stdin_done_tx, stdin_done_rx) = std::sync::mpsc::channel::<()>();
         let stdin_handle = match spawn_scoped_named(scope, THREAD_WRITE_STDIN, move || {
             let mut stdin = stdin_pipe;
-            stdin.write_all(content)
+            let result = stdin.write_all(content);
+            let _ = stdin_done_tx.send(());
+            result
         }) {
             Ok(handle) => handle,
             Err(e) => {
@@ -190,6 +194,18 @@ where
         };
 
         let outcome = wait_with_kill_timeout(child, timeout_ms);
+        if matches!(outcome, WaitOutcome::Exited(_) | WaitOutcome::WaitFailed(_))
+            && matches!(
+                stdin_done_rx.try_recv(),
+                Err(std::sync::mpsc::TryRecvError::Empty)
+            )
+        {
+            // The direct helper exited, but a descendant may still hold the
+            // stdin pipe open without reading from it. Kill the helper's
+            // process group before joining the writer, otherwise write_all()
+            // can block forever on a full pipe.
+            let _ = unsafe { kill_process_tree(child_pid) };
+        }
         let stdin_result = match stdin_handle.join() {
             Ok(result) => result,
             Err(panic) => std::panic::resume_unwind(panic),
@@ -369,6 +385,31 @@ mod tests {
 
         assert!(!success);
         assert_eq!(error, "write timed out");
+        assert!(!pid_alive(pid), "child pid {pid} should have been reaped");
+    }
+
+    #[test]
+    fn write_file_kills_lingering_process_group_after_parent_exit() {
+        let _guard = TEST_HELPER_EXEC.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("guest-write-file");
+        std::fs::write(&path, "#!/bin/sh\nsleep 60 <&0 &\nexit 0\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        set_debug_guest_write_file_path(path).unwrap();
+
+        let child = spawn_write_file_command("/tmp/out.txt", false, false).unwrap();
+        let pid = child.id();
+        let content = vec![b'x'; 1024 * 1024];
+
+        let (success, error) =
+            wait_write_file_child_with_timeout(child, &content, 30_000, SystemThreadSpawner);
+
+        assert!(!success);
+        assert!(error.contains("Failed to write to stdin"), "got: {error}");
         assert!(!pid_alive(pid), "child pid {pid} should have been reaped");
     }
 }
