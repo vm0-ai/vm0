@@ -87,8 +87,7 @@ export function ZeroChatListPage() {
   const setSearchTerm = useSet(setChatListQuery$);
 
   const features = useLastResolved(featureSwitch$);
-  const mobileNativeOn =
-    features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
+  const mobileNativeOn = features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
   const isMobile = useGet(isMobileViewport$);
   // The mobile redesign chrome is mobile-only — the chat list page on
   // desktop keeps the always-visible search bar and the regular new-chat
@@ -278,7 +277,11 @@ function ChatList({
   }
 
   if (error) {
-    return <p className="px-3 py-4 text-sm max-md:text-[16px] text-destructive">{error}</p>;
+    return (
+      <p className="px-3 py-4 text-sm max-md:text-[16px] text-destructive">
+        {error}
+      </p>
+    );
   }
 
   if (sessions.length === 0) {
@@ -410,11 +413,7 @@ function ThreadKindIcon({
         ? IconCalendarClock
         : IconMessage;
   const label =
-    kind === "draft"
-      ? "Draft"
-      : kind === "schedule"
-        ? "Scheduled"
-        : "Chat";
+    kind === "draft" ? "Draft" : kind === "schedule" ? "Scheduled" : "Chat";
   return (
     <span
       aria-label={label}
@@ -431,16 +430,10 @@ function ThreadKindIcon({
       >
         <Icon size={26} stroke={1.6} />
       </span>
-      {isRunning && (
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-0 rounded-full bg-blue-500/30 animate-ping"
-        />
-      )}
       {(isUnread || isRunning) && (
         <span
           aria-hidden
-          className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-blue-500 ring-2 ring-background"
+          className="absolute top-1 right-1 h-2.5 w-2.5 rounded-full bg-blue-500 ring-2 ring-background"
         />
       )}
     </span>
@@ -549,16 +542,10 @@ function ChatListItem({
         className={cn(
           "flex items-center gap-3 py-3 text-left transition-transform no-underline bg-background",
           isOpen ? "-translate-x-20" : "translate-x-0",
-          isSelected
-            ? "text-accent-foreground"
-            : "text-foreground",
+          isSelected ? "text-accent-foreground" : "text-foreground",
         )}
       >
-        <ThreadKindIcon
-          kind={kind}
-          isUnread={isUnread}
-          isRunning={isRunning}
-        />
+        <ThreadKindIcon kind={kind} isUnread={isUnread} isRunning={isRunning} />
         <span className="min-w-0 flex-1 flex flex-col gap-0.5">
           <span
             className={cn(
