@@ -81,11 +81,14 @@ interface ResultEventItem {
  * source; a result event is kept only as a fallback for result-only CLI
  * outputs such as Claude Code slash-command messages.
  */
-async function queryChatOutputEvents(runId: string): Promise<{
+async function queryChatOutputEvents(
+  runId: string,
+  lastEventSequence: number | null,
+): Promise<{
   assistantItems: AssistantEventItem[];
   resultFallback: ResultEventItem | null;
 }> {
-  await waitForRunEventWatermarkVisible(runId);
+  await waitForRunEventWatermarkVisible(runId, lastEventSequence);
 
   const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
   const apl = `['${dataset}']
@@ -260,13 +263,17 @@ async function handleCompleted(
   prompt: string,
   threadId: string,
   userId: string,
+  lastEventSequence: number | null,
 ): Promise<void> {
   // Final sweep: re-query Axiom and insert any assistant output the live
   // consumer missed. Result-only CLI output is inserted only when no assistant
   // output exists for the run. Inserts are idempotent via the
   // `(run_id, sequence_number)` unique index, so concurrent writes from the
   // consumer and this sweep cannot produce duplicates.
-  const { assistantItems, resultFallback } = await queryChatOutputEvents(runId);
+  const { assistantItems, resultFallback } = await queryChatOutputEvents(
+    runId,
+    lastEventSequence,
+  );
   if (assistantItems.length > 0) {
     await insertAssistantEventMessages(runId, threadId, userId, assistantItems);
   }
@@ -398,6 +405,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .select({
       prompt: agentRuns.prompt,
       error: agentRuns.error,
+      lastEventSequence: agentRuns.lastEventSequence,
     })
     .from(agentRuns)
     .where(eq(agentRuns.id, runId))
@@ -431,6 +439,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       run.prompt,
       chatThread.chatThreadId,
       chatThread.userId,
+      run.lastEventSequence,
     );
   } else if (status === "failed") {
     const errorMessage = error ?? run.error ?? "Run failed";

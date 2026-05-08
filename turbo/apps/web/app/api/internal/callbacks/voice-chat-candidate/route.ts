@@ -29,26 +29,31 @@ function parsePayload(payload: unknown): VoiceChatCallbackPayload | null {
   return { taskId: p.taskId };
 }
 
-async function readRunAgentId(runId: string): Promise<string> {
+async function readRunInfo(
+  runId: string,
+): Promise<{ agentId: string; lastEventSequence: number | null }> {
   const [run] = await globalThis.services.db
-    .select({ vars: agentRuns.vars })
+    .select({
+      vars: agentRuns.vars,
+      lastEventSequence: agentRuns.lastEventSequence,
+    })
     .from(agentRuns)
     .where(eq(agentRuns.id, runId))
     .limit(1);
 
   if (!run) {
     log.warn("run not found while resolving ZERO_AGENT_ID", { runId });
-    return "";
+    return { agentId: "", lastEventSequence: null };
   }
 
   const vars = run.vars as { ZERO_AGENT_ID?: unknown } | null;
   const zeroAgentId = vars?.ZERO_AGENT_ID;
   if (typeof zeroAgentId !== "string" || zeroAgentId.length === 0) {
     log.warn("vars.ZERO_AGENT_ID absent on run", { runId });
-    return "";
+    return { agentId: "", lastEventSequence: run.lastEventSequence };
   }
 
-  return zeroAgentId;
+  return { agentId: zeroAgentId, lastEventSequence: run.lastEventSequence };
 }
 
 /**
@@ -78,14 +83,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true });
   }
 
-  const agentId = await readRunAgentId(runId);
+  const run = await readRunInfo(runId);
 
   const resultText =
     status === "completed"
-      ? await getRunOutputText(runId).catch((err: unknown) => {
-          log.warn("Failed to extract run output text", { runId, err });
-          return undefined;
-        })
+      ? await getRunOutputText(runId, run.lastEventSequence).catch(
+          (err: unknown) => {
+            log.warn("Failed to extract run output text", { runId, err });
+            return undefined;
+          },
+        )
       : undefined;
   const errorText = status === "failed" ? (error ?? "Run failed") : null;
 
@@ -97,7 +104,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       taskId: payload.taskId,
       result: resultText ?? null,
       error: errorText,
-      agentId,
+      agentId: run.agentId,
     });
     sessionId = outcome.session.id;
     userId = outcome.session.userId;

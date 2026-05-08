@@ -31,13 +31,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Only generate summary on successful completion
   if (status === "completed") {
     const [run] = await globalThis.services.db
-      .select({ prompt: agentRuns.prompt })
+      .select({
+        prompt: agentRuns.prompt,
+        lastEventSequence: agentRuns.lastEventSequence,
+      })
       .from(agentRuns)
       .where(eq(agentRuns.id, runId))
       .limit(1);
 
     if (run) {
-      const resultText = await getRunOutputText(runId);
+      const resultText = await getRunOutputText(runId, run.lastEventSequence);
       await saveRunSummary(runId, "agent", run.prompt, resultText ?? "");
     }
   }

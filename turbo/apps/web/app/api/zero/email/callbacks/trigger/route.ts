@@ -147,15 +147,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Get run output and session ID
   const logsUrl = await resolveEmailAuditLogsUrl({ orgId, userId, runId });
-  const rawOutput =
-    status === "completed" ? await getRunOutputText(runId) : null;
-  const output = formatOutput(status, rawOutput, error);
-
   const [run] = await globalThis.services.db
-    .select({ result: agentRuns.result, prompt: agentRuns.prompt })
+    .select({
+      result: agentRuns.result,
+      prompt: agentRuns.prompt,
+      lastEventSequence: agentRuns.lastEventSequence,
+    })
     .from(agentRuns)
     .where(eq(agentRuns.id, runId))
     .limit(1);
+  const rawOutput =
+    status === "completed"
+      ? await getRunOutputText(runId, run?.lastEventSequence)
+      : null;
+  const output = formatOutput(status, rawOutput, error);
 
   const agentSessionId = extractAgentSessionId(run?.result);
 

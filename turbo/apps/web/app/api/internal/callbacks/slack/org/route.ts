@@ -306,17 +306,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   );
   const client = createSlackClient(botToken);
 
-  const allOutputs = await extractAllRunOutputs(runId, error);
-
   const [runContext] = await globalThis.services.db
     .select({
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
       prompt: agentRuns.prompt,
+      lastEventSequence: agentRuns.lastEventSequence,
     })
     .from(agentRuns)
     .where(eq(agentRuns.id, runId))
     .limit(1);
+
+  const allOutputs = await extractAllRunOutputs(
+    runId,
+    error,
+    runContext?.lastEventSequence,
+  );
 
   const selectedModel = await resolveSelectedModel(runId);
 

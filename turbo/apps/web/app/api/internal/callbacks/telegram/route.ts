@@ -200,6 +200,17 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   // Send typing indicator while building response
   await sendChatAction(client, chatId, "typing");
 
+  const [run] = await globalThis.services.db
+    .select({
+      userId: agentRuns.userId,
+      orgId: agentRuns.orgId,
+      createdAt: agentRuns.createdAt,
+      lastEventSequence: agentRuns.lastEventSequence,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+
   // Query Axiom for the agent's output
   if (status === "failed") {
     log.error("Agent run failed", {
@@ -209,17 +220,11 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
       error,
     });
   }
-  const runOutput = await extractRunOutput(runId, error);
-
-  const [run] = await globalThis.services.db
-    .select({
-      userId: agentRuns.userId,
-      orgId: agentRuns.orgId,
-      createdAt: agentRuns.createdAt,
-    })
-    .from(agentRuns)
-    .where(eq(agentRuns.id, runId))
-    .limit(1);
+  const runOutput = await extractRunOutput(
+    runId,
+    error,
+    run?.lastEventSequence,
+  );
 
   // Build response text
   const logsUrl = run
