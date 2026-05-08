@@ -7,6 +7,13 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
+  enablePersonalModelProviderForUser,
+  findMostRecentRunForUser,
+  findTestRunnerJobEntry,
+  findTestZeroRun,
+  insertOrgDefaultModelProvider,
+  insertUserMultiAuthModelProvider,
+  setTestZeroAgentModelProvider,
   updateOrgDefaultAgent,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -18,10 +25,13 @@ import {
   countSlackOrgConnections,
   seedSlackUserAgentPreference,
 } from "../../../../../../src/__tests__/db-test-assertions/slack";
+import { getTestModelProviderIdByType } from "../../../../../../src/__tests__/db-test-assertions/org";
 import {
   seedOrphanCompose,
   clearComposeHeadVersion,
+  setTestZeroAgentPreferPersonalProvider,
 } from "../../../../../../src/__tests__/db-test-seeders/agents";
+import { insertTestUserModelProviderSecret } from "../../../../../../src/__tests__/db-test-seeders/secrets";
 import { reloadEnv } from "../../../../../../src/env";
 import { nextAfterArgForms } from "../../../../../../src/__tests__/next-after-hooks";
 
@@ -376,6 +386,96 @@ describe("POST /api/zero/slack/events", () => {
       const { WebClient } = await import("@slack/web-api");
       const mockClient = new WebClient();
       expect(mockClient.chat.postMessage).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("app_mention — personal model provider", () => {
+    it("uses the connected user's personal Codex provider instead of the agent default", async () => {
+      const { agentId } = await createTestCompose(
+        uniqueId("slack-personal-provider"),
+        { noEnvironmentBlock: true },
+      );
+      await updateOrgDefaultAgent(user.orgId, agentId);
+      await insertOrgDefaultModelProvider(
+        user.orgId,
+        "anthropic-api-key",
+        "claude-opus-4-7",
+      );
+      const orgProviderId = await getTestModelProviderIdByType(
+        user.orgId,
+        "anthropic-api-key",
+      );
+      await setTestZeroAgentModelProvider(
+        agentId,
+        orgProviderId,
+        "claude-opus-4-7",
+      );
+      await setTestZeroAgentPreferPersonalProvider(agentId, true);
+
+      await enablePersonalModelProviderForUser(user.orgId, user.userId);
+      await insertUserMultiAuthModelProvider(
+        user.orgId,
+        user.userId,
+        "codex-oauth-token",
+        "auth_json",
+      );
+      for (const [name, value] of [
+        ["CHATGPT_ACCESS_TOKEN", "personal-access"],
+        ["CHATGPT_REFRESH_TOKEN", "personal-refresh"],
+        ["CHATGPT_ACCOUNT_ID", "personal-account"],
+        ["CHATGPT_ID_TOKEN", "personal-id"],
+      ] as const) {
+        await insertTestUserModelProviderSecret({
+          orgId: user.orgId,
+          userId: user.userId,
+          name,
+          value,
+        });
+      }
+
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+      await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+
+      const response = await POST(
+        createSlackEventRequest({
+          type: "event_callback",
+          team_id: workspaceId,
+          event: {
+            type: "app_mention",
+            user: slackUserId,
+            text: "<@U-bot> use my personal codex subscription",
+            ts: "1500.001",
+            channel: "C-test",
+            event_ts: "1500.001",
+          },
+          event_id: uniqueId("evt"),
+          event_time: Date.now(),
+        }),
+      );
+      expect(response.status).toBe(200);
+
+      await context.mocks.flushAfter();
+
+      const run = await findMostRecentRunForUser(user.userId, user.orgId);
+      expect(run).toBeDefined();
+      const zeroRun = await findTestZeroRun(run!.id);
+      expect(zeroRun).toBeDefined();
+      expect(zeroRun!.triggerSource).toBe("slack");
+      expect(zeroRun!.modelProvider).toBe("codex-oauth-token");
+      expect(zeroRun!.selectedModel).toBe("gpt-5.5");
+
+      const job = await findTestRunnerJobEntry(run!.id);
+      expect(job).toBeDefined();
+      expect(job!.executionContext.cliAgentType).toBe("codex");
+      expect(job!.executionContext.environment).toMatchObject({
+        OPENAI_MODEL: "gpt-5.5",
+      });
     });
   });
 
