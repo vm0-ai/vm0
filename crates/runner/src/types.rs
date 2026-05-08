@@ -195,6 +195,8 @@ pub struct GuestDownloadManifest {
 pub struct GuestDownloadStorageEntry {
     pub mount_path: String,
     pub archive_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions_target_filename: Option<String>,
     /// Whether this entry is cached from a previous turn (fingerprint matched).
     /// When true, `archive_url` is intentionally `None` — the guest should
     /// preserve existing files at this mount path during cleanup.
@@ -224,6 +226,7 @@ impl From<&StorageManifest> for GuestDownloadManifest {
                 .map(|storage| GuestDownloadStorageEntry {
                     mount_path: storage.mount_path.clone(),
                     archive_url: Some(storage.archive_url.clone()),
+                    instructions_target_filename: storage.instructions_target_filename.clone(),
                     cached: false,
                     vas_storage_name: storage.vas_storage_name.clone(),
                     vas_version_id: storage.vas_version_id.clone(),
@@ -727,6 +730,7 @@ mod tests {
                 archive_url: "https://example.com/workspace.tar.gz".into(),
                 vas_storage_name: "workspace".into(),
                 vas_version_id: "v1".into(),
+                instructions_target_filename: Some("AGENTS.md".into()),
             }],
             artifacts: vec![ArtifactEntry {
                 mount_path: "/artifacts".into(),
@@ -746,6 +750,12 @@ mod tests {
             guest_manifest.storages[0].archive_url.as_deref(),
             Some("https://example.com/workspace.tar.gz")
         );
+        assert_eq!(
+            guest_manifest.storages[0]
+                .instructions_target_filename
+                .as_deref(),
+            Some("AGENTS.md")
+        );
         assert!(!guest_manifest.artifacts[0].cached);
         assert_eq!(
             guest_manifest.artifacts[0].archive_url.as_deref(),
@@ -762,6 +772,7 @@ mod tests {
                 archive_url: "https://example.com/workspace.tar.gz".into(),
                 vas_storage_name: "workspace".into(),
                 vas_version_id: "v1".into(),
+                instructions_target_filename: None,
             }],
             artifacts: vec![ArtifactEntry {
                 mount_path: "/artifacts".into(),

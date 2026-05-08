@@ -190,6 +190,7 @@ fn generated_storage_manifest_deserializes_web_claim_shape() {
             "mountPath": "/workspace",
             "vasStorageName": "workspace-volume",
             "vasVersionId": "version-1",
+            "instructionsTargetFilename": "AGENTS.md",
             "archiveUrl": "https://storage.example/workspace.tar.gz",
         }],
         "artifacts": [{
@@ -206,6 +207,10 @@ fn generated_storage_manifest_deserializes_web_claim_shape() {
     assert_eq!(manifest.storages[0].name, "workspace");
     assert_eq!(manifest.storages[0].mount_path, "/workspace");
     assert_eq!(manifest.storages[0].vas_storage_name, "workspace-volume");
+    assert_eq!(
+        manifest.storages[0].instructions_target_filename.as_deref(),
+        Some("AGENTS.md")
+    );
     assert_eq!(manifest.artifacts[0].vas_storage_id, "storage-id-1");
     assert_eq!(
         manifest.artifacts[0].manifest_url.as_deref(),
@@ -221,6 +226,7 @@ fn generated_storage_manifest_serializes_without_absent_manifest_url() {
             mount_path: "/workspace".to_string(),
             vas_storage_name: "workspace-volume".to_string(),
             vas_version_id: "version-1".to_string(),
+            instructions_target_filename: None,
             archive_url: "https://storage.example/workspace.tar.gz".to_string(),
         }],
         artifacts: vec![runner_storage::ArtifactEntry {

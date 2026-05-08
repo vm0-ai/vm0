@@ -7,6 +7,7 @@ import type {
   StorageDriver,
 } from "./types";
 import {
+  getInstructionsFilename,
   getValidatedFramework,
   type SupportedFramework,
 } from "@vm0/core/frameworks";
@@ -215,12 +216,14 @@ function resolveInstructions(
     if (agentName) {
       const storageName = getInstructionsStorageName(agentName);
       const instructionsMountPath = getInstructionsMountPath(framework);
+      const instructionsTargetFilename = getInstructionsFilename(framework);
       volumes.push({
         name: storageName,
         driver: "vas",
         mountPath: instructionsMountPath,
         vasStorageName: storageName,
         vasVersion: "latest",
+        instructionsTargetFilename,
       });
     }
   }

@@ -18,6 +18,8 @@ export interface ResolvedVolume {
   mountPath: string;
   vasStorageName: string;
   vasVersion: string; // Version hash or "latest"
+  /** Canonical instructions filename expected at runtime for this mount */
+  instructionsTargetFilename?: string;
   /** When true, skip mounting without error if volume doesn't exist */
   optional?: boolean;
   /** When true, resolve SYSTEM_ORG first, agent org as fallback */
@@ -86,6 +88,8 @@ export interface ManifestStorage {
   mountPath: string;
   vasStorageName: string;
   vasVersionId: string;
+  /** Canonical instructions filename expected at runtime for this mount */
+  instructionsTargetFilename?: string;
   /** Presigned URL for downloading archive.tar.gz */
   archiveUrl: string;
 }
