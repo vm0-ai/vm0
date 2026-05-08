@@ -111,11 +111,43 @@ fn create_mode_without_create_parents_does_not_create_missing_parents() {
 #[cfg(unix)]
 #[test]
 fn create_mode_fails_fast_for_fifo_without_reader() {
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("fifo");
+    mkfifo(&path);
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&[path_str], b"");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("guest-write-file"));
+}
+
+#[cfg(unix)]
+#[test]
+fn create_mode_rejects_fifo_with_reader() {
+    use std::os::unix::fs::OpenOptionsExt;
 
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("fifo");
+    mkfifo(&path);
+    let _reader = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(&path)
+        .unwrap();
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&[path_str], b"");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("not a regular file"));
+}
+
+#[cfg(unix)]
+fn mkfifo(path: &std::path::Path) {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
     let c_path = CString::new(path.as_os_str().as_bytes()).unwrap();
     let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
     assert_eq!(
@@ -124,10 +156,4 @@ fn create_mode_fails_fast_for_fifo_without_reader() {
         "mkfifo failed: {}",
         std::io::Error::last_os_error()
     );
-    let path_str = path.to_str().unwrap();
-
-    let output = run_helper(&[path_str], b"");
-
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("guest-write-file"));
 }

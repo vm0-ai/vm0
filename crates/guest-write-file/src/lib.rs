@@ -1,8 +1,8 @@
 //! Direct guest file writer used by vsock-guest.
 
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Eq, PartialEq)]
 struct Args {
@@ -63,10 +63,16 @@ fn run(args: Args, mut stdin: impl Read) -> io::Result<()> {
         fs::create_dir_all(parent)?;
     }
 
-    let mut file = output_options(args.append).open(&args.path)?;
+    let mut file = open_output_file(&args.path, args.append)?;
 
     io::copy(&mut stdin, &mut file)?;
     file.flush()
+}
+
+fn open_output_file(path: &Path, append: bool) -> io::Result<File> {
+    let file = output_options(append).open(path)?;
+    prepare_output_file(&file)?;
+    Ok(file)
 }
 
 fn output_options(append: bool) -> OpenOptions {
@@ -85,6 +91,52 @@ fn output_options(append: bool) -> OpenOptions {
     }
 
     options
+}
+
+#[cfg(unix)]
+fn prepare_output_file(file: &File) -> io::Result<()> {
+    use std::os::unix::io::AsRawFd;
+
+    let fd = file.as_raw_fd();
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `stat` points to valid writable memory and `fd` comes from a
+    // live File. On success, fstat initializes the whole struct.
+    let result = unsafe { libc::fstat(fd, stat.as_mut_ptr()) };
+    if result != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: fstat succeeded and initialized `stat`.
+    let stat = unsafe { stat.assume_init() };
+    if stat.st_mode & libc::S_IFMT != libc::S_IFREG {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "target is not a regular file",
+        ));
+    }
+
+    // `O_NONBLOCK` is only used to keep opening FIFOs/special files from
+    // hanging. Regular-file writes should keep normal blocking semantics.
+    // SAFETY: `fd` comes from a live File and F_GETFL only reads descriptor
+    // status flags.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if flags & libc::O_NONBLOCK != 0 {
+        // SAFETY: `fd` comes from a live File. F_SETFL updates descriptor
+        // status flags and leaves the open file description otherwise intact.
+        let result = unsafe { libc::fcntl(fd, libc::F_SETFL, flags & !libc::O_NONBLOCK) };
+        if result < 0 {
+            return Err(io::Error::last_os_error());
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn prepare_output_file(_file: &File) -> io::Result<()> {
+    Ok(())
 }
 
 pub fn run_cli<I>(args: I, stdin: impl Read, mut stderr: impl Write) -> i32
