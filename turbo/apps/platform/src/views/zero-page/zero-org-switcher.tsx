@@ -65,7 +65,7 @@ export function OrgAvatar({
 
   return (
     <div
-      className={`${dim} rounded-full bg-[hsl(var(--gray-200))] text-[hsl(var(--primary-700))] flex items-center justify-center ${textSize} font-bold shrink-0`}
+      className={`${dim} rounded-full bg-muted text-[hsl(var(--primary-700))] flex items-center justify-center ${textSize} font-bold shrink-0`}
     >
       {initial}
     </div>

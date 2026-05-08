@@ -470,8 +470,8 @@ describe("chat sidebar", () => {
     await waitFor(() => {
       expect(screen.getByText("Primary thread answer")).toBeInTheDocument();
       expect(screen.getByText("Sidebar thread answer")).toBeInTheDocument();
-      expect(chatThreadLink("Main conversation")).toHaveClass("bg-gray-200");
-      expect(chatThreadLink("Sidebar conversation")).toHaveClass("bg-gray-200");
+      expect(chatThreadLink("Main conversation")).toHaveClass("bg-muted");
+      expect(chatThreadLink("Sidebar conversation")).toHaveClass("bg-muted");
     });
 
     fireEvent.click(chatThreadLink("Sidebar conversation"));

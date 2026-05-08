@@ -69,7 +69,7 @@ describe("pinned agent switch (#6897)", () => {
     });
 
     // Alpha Bot should be highlighted in the sidebar
-    expect(getPinnedLink("Alpha Bot").className).toContain("bg-gray-200");
+    expect(getPinnedLink("Alpha Bot").className).toContain("bg-muted");
 
     // Click Beta Bot pinned agent in sidebar
     click(getPinnedLink("Beta Bot"));
@@ -81,9 +81,9 @@ describe("pinned agent switch (#6897)", () => {
 
     // Beta Bot should now be highlighted, Alpha Bot should not
     await waitFor(() => {
-      expect(getPinnedLink("Beta Bot").className).toContain("bg-gray-200");
+      expect(getPinnedLink("Beta Bot").className).toContain("bg-muted");
     });
-    expect(getPinnedLink("Alpha Bot").className).not.toContain("bg-gray-200");
+    expect(getPinnedLink("Alpha Bot").className).not.toContain("bg-muted");
   });
 
   it("should highlight the switched-to pinned agent when switching back", async () => {
@@ -102,14 +102,14 @@ describe("pinned agent switch (#6897)", () => {
     // Switch to Beta
     click(getPinnedLink("Beta Bot"));
     await waitFor(() => {
-      expect(getPinnedLink("Beta Bot").className).toContain("bg-gray-200");
+      expect(getPinnedLink("Beta Bot").className).toContain("bg-muted");
     });
 
     // Switch back to Alpha
     click(getPinnedLink("Alpha Bot"));
     await waitFor(() => {
-      expect(getPinnedLink("Alpha Bot").className).toContain("bg-gray-200");
+      expect(getPinnedLink("Alpha Bot").className).toContain("bg-muted");
     });
-    expect(getPinnedLink("Beta Bot").className).not.toContain("bg-gray-200");
+    expect(getPinnedLink("Beta Bot").className).not.toContain("bg-muted");
   });
 });

@@ -255,7 +255,7 @@ function SidebarNavContent() {
             onSelect(id);
           }}
           className={`gap-2 px-2 py-1.5 rounded-md ${
-            isActive ? "bg-gray-200 text-gray-900" : ""
+            isActive ? "bg-muted text-foreground" : ""
           }`}
         >
           <Icon size={16} className="shrink-0" />
@@ -292,7 +292,7 @@ function SidebarNavContent() {
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground"
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-muted hover:text-sidebar-foreground"
                     onClick={onCollapse}
                     aria-label="Expand sidebar"
                   >
@@ -340,7 +340,7 @@ function SidebarNavContent() {
                             }}
                             className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
                               isActive
-                                ? "bg-gray-200 text-gray-900"
+                                ? "bg-muted text-foreground"
                                 : "text-sidebar-foreground hover:bg-sidebar-accent"
                             }`}
                           >
@@ -370,7 +370,7 @@ function SidebarNavContent() {
                             type="button"
                             className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
                               isGatedActive
-                                ? "bg-gray-200 text-gray-900"
+                                ? "bg-muted text-foreground"
                                 : "text-sidebar-foreground hover:bg-sidebar-accent"
                             }`}
                           >
@@ -422,7 +422,7 @@ function SidebarNavContent() {
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-muted transition-colors"
                     onClick={onCollapse}
                     aria-label="Collapse sidebar"
                   >
@@ -489,7 +489,7 @@ function SidebarNavContent() {
                         aria-current={isActive ? "page" : undefined}
                         className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                           isActive
-                            ? "bg-gray-200 text-gray-900 font-medium"
+                            ? "bg-muted text-foreground font-medium"
                             : "text-sidebar-foreground hover:bg-sidebar-accent"
                         }`}
                       >
@@ -554,7 +554,7 @@ function SidebarNavContent() {
                     }}
                     className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                       isActive
-                        ? "bg-gray-200 text-gray-900 font-medium"
+                        ? "bg-muted text-foreground font-medium"
                         : "text-sidebar-foreground hover:bg-sidebar-accent"
                     }`}
                   >
@@ -589,7 +589,7 @@ function SidebarNavContent() {
                     type="button"
                     className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                       isGatedActive
-                        ? "bg-gray-200 text-gray-900 font-medium"
+                        ? "bg-muted text-foreground font-medium"
                         : "text-sidebar-foreground hover:bg-sidebar-accent"
                     }`}
                   >

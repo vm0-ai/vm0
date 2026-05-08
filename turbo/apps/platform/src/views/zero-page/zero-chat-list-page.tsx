@@ -425,7 +425,7 @@ function ThreadKindIcon({
           "flex h-14 w-14 items-center justify-center rounded-full",
           kind === "draft"
             ? "bg-amber-100 text-amber-700"
-            : "bg-gray-200 text-foreground/80",
+            : "bg-muted text-foreground/80",
         )}
       >
         <Icon size={26} stroke={1.6} />

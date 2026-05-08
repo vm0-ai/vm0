@@ -97,7 +97,7 @@ function AccountIdentityCard() {
           className="h-12 w-12 rounded-full object-cover shrink-0"
         />
       ) : (
-        <div className="h-12 w-12 rounded-full bg-[hsl(var(--gray-200))] text-[hsl(var(--primary-700))] flex items-center justify-center text-lg font-bold shrink-0">
+        <div className="h-12 w-12 rounded-full bg-muted text-[hsl(var(--primary-700))] flex items-center justify-center text-lg font-bold shrink-0">
           {initial}
         </div>
       )}

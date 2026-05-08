@@ -291,7 +291,7 @@ function HeaderAccountAvatar() {
       {imageUrl ? (
         <img src={imageUrl} alt="" className="h-full w-full object-cover" />
       ) : (
-        <span className="flex h-full w-full items-center justify-center bg-[hsl(var(--gray-200))] text-sm font-semibold text-[hsl(var(--primary-700))]">
+        <span className="flex h-full w-full items-center justify-center bg-muted text-sm font-semibold text-[hsl(var(--primary-700))]">
           {initial}
         </span>
       )}

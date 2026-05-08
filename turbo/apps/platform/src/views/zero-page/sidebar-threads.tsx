@@ -247,7 +247,7 @@ function ChatThreadDeleteButton({
             className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
               isHighlighted
                 ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
-                : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
+                : "text-sidebar-foreground/80 hover:text-foreground hover:bg-muted"
             }`}
             aria-label="Delete chat"
           >
@@ -311,7 +311,7 @@ function ChatThreadMenu({
           className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md visible md:invisible md:group-hover:visible md:data-[state=open]:visible transition-opacity duration-150 ${
             isHighlighted
               ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
-              : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
+              : "text-sidebar-foreground/80 hover:text-foreground hover:bg-muted"
           }`}
           aria-label="Open chat menu"
           data-testid="chat-thread-menu-trigger"
@@ -501,7 +501,7 @@ function ChatThreadItemLink({
       }}
       className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors ${
         state.isHighlighted
-          ? "bg-gray-200 text-gray-900 font-medium"
+          ? "bg-muted text-foreground font-medium"
           : state.isUnread
             ? "text-sidebar-foreground font-medium hover:bg-sidebar-accent"
             : "text-sidebar-foreground hover:bg-sidebar-accent"
@@ -766,7 +766,7 @@ function ChatThreadsTitle() {
                   e.stopPropagation();
                   setSearchOpen(true);
                 }}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-muted transition-colors"
                 aria-label="Search chats"
               >
                 <IconSearch size={15} stroke={2.5} />
@@ -787,7 +787,7 @@ function ChatThreadsTitle() {
                   onNewChat(e.altKey ? "sidebar" : "main");
                 }}
                 disabled={newChatDisabled}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors disabled:opacity-50"
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-muted transition-colors disabled:opacity-50"
                 aria-label={newChatAriaLabel}
               >
                 <IconPlus size={15} stroke={2.5} />

@@ -44,7 +44,7 @@ import {
 // - 40px avatar (OrgAvatar size="lg") next to a 16px primary / 14px secondary
 //   text pair — keeps the touch target tall enough without inflating density.
 // - rounded-xl row, hover:bg-muted/40 active:bg-muted/60 tap feedback.
-// - active workspace gets bg-gray-200 (the unified neutral surface used by
+// - active workspace gets bg-muted (the unified neutral surface used by
 //   the bottom-tab active pill, pinned-agent ring, and thread avatar).
 
 function CurrentWorkspaceRow({ onClose }: { onClose: () => void }) {
@@ -61,7 +61,7 @@ function CurrentWorkspaceRow({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="flex items-center gap-3 px-3 py-3 rounded-xl bg-gray-200">
+    <div className="flex items-center gap-3 px-3 py-3 rounded-xl bg-muted">
       <OrgAvatar
         name={orgName}
         imageUrl={currentOrg?.imageUrl}
@@ -241,7 +241,7 @@ function CreateWorkspaceButton({ onClose }: { onClose: () => void }) {
       disabled={creatingOrg}
       className="flex w-full items-center gap-3 px-3 py-3 rounded-xl text-left transition-colors hover:bg-muted/40 active:bg-muted/60 disabled:opacity-50 disabled:pointer-events-none"
     >
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-200 text-muted-foreground">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
         <IconPlus size={20} stroke={1.8} />
       </span>
       <span className="text-[16px] font-medium text-foreground">
