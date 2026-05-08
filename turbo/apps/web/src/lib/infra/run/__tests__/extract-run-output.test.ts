@@ -110,25 +110,18 @@ describe("extractRunOutput", () => {
   });
 
   it("retries briefly when the latest output event is not searchable yet", async () => {
-    vi.useFakeTimers();
     mockQuery
       .mockResolvedValueOnce(axiomResponse([]))
       .mockResolvedValueOnce(
         axiomResponse([{ eventData: { result: "eventually indexed" } }]),
       );
 
-    try {
-      const outputPromise = extractRunOutput("run-1");
-      await vi.advanceTimersByTimeAsync(0);
-      expect(mockQuery).toHaveBeenCalledTimes(1);
-      await vi.advanceTimersByTimeAsync(500);
-      const output = await outputPromise;
+    const output = await extractRunOutput("run-1", undefined, {
+      outputRetryDelayMs: 0,
+    });
 
-      expect(output.result).toBe("eventually indexed");
-      expect(mockQuery).toHaveBeenCalledTimes(2);
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(output.result).toBe("eventually indexed");
+    expect(mockQuery).toHaveBeenCalledTimes(2);
   });
 
   it("does not retry output query after terminal watermark is visible", async () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 
@@ -46,11 +46,6 @@ beforeEach(() => {
   mockQuery.mockReset();
   mockIngest.mockReset();
   mockFlush.mockReset();
-  vi.useFakeTimers();
-});
-
-afterEach(() => {
-  vi.useRealTimers();
 });
 
 function axiomResponse(events: Array<Record<string, unknown>>) {
@@ -171,30 +166,24 @@ describe("queryAxiom", () => {
 
   it("retries on rate limit error and succeeds", async () => {
     mockQuery
-      .mockRejectedValueOnce(new Error("429 rate limit"))
+      .mockRejectedValueOnce(new Error("429 rate limit, try again in 0m0s"))
       .mockResolvedValueOnce(axiomResponse([{ eventType: "result" }]));
 
-    const promise = queryAxiom(apl);
-    await vi.advanceTimersByTimeAsync(2000);
-    const results = await promise;
+    const results = await queryAxiom(apl);
 
     expect(results).toHaveLength(1);
     expect(mockQuery).toHaveBeenCalledTimes(2);
   });
 
   it("throws after exhausting retries on persistent rate limit", async () => {
-    mockQuery.mockRejectedValue(new Error("429 rate limit"));
+    mockQuery.mockRejectedValue(new Error("429 rate limit, try again in 0m0s"));
 
-    // Attach catch immediately to prevent unhandled rejection
-    const promise = queryAxiom(apl).catch((e: unknown) => {
+    const error = await queryAxiom(apl).catch((e: unknown) => {
       return e;
     });
-    // Advance through all 3 retry backoffs: 2s + 4s + 8s = 14s
-    await vi.advanceTimersByTimeAsync(20_000);
 
-    const error = await promise;
     expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toBe("429 rate limit");
+    expect((error as Error).message).toBe("429 rate limit, try again in 0m0s");
     // 1 initial + 3 retries = 4 total attempts
     expect(mockQuery).toHaveBeenCalledTimes(4);
   });

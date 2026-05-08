@@ -31,6 +31,12 @@ interface RunOutputQueryOptions {
    * an extra DB lookup before waiting for Axiom visibility.
    */
   knownLastEventSequence?: number | null;
+  /**
+   * Override only the legacy output-query retry delay. Production callers use
+   * the default; tests set this to zero to exercise retry behavior without
+   * fake timers or slow sleeps.
+   */
+  outputRetryDelayMs?: number;
 }
 
 type RunOutputOptionsInput = RunOutputQueryOptions | number | null | undefined;
@@ -66,9 +72,9 @@ function normalizeOptions(
   return input ?? {};
 }
 
-function waitForOutputRetry(): Promise<void> {
+function waitForOutputRetry(delayMs: number): Promise<void> {
   return new Promise((resolve) => {
-    setTimeout(resolve, OUTPUT_QUERY_RETRY_MS);
+    setTimeout(resolve, delayMs);
   });
 }
 
@@ -97,7 +103,9 @@ async function queryLatestOutputEvent(
     if (event || attempt === attempts) {
       return event;
     }
-    await waitForOutputRetry();
+    await waitForOutputRetry(
+      options.outputRetryDelayMs ?? OUTPUT_QUERY_RETRY_MS,
+    );
   }
   return undefined;
 }
