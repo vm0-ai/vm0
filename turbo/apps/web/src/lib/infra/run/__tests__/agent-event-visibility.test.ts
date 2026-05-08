@@ -46,6 +46,11 @@ describe("waitForAgentEventPrefixVisible", () => {
       reason: "visible",
     });
     expect(queryAxiomFn).toHaveBeenCalledTimes(2);
+    expect(queryAxiomFn).toHaveBeenCalledWith(expect.any(String), {
+      maxRetries: 0,
+      noCache: true,
+      streamingDuration: "1s",
+    });
   });
 
   it("uses only sequenceNumber and does not require result events", async () => {

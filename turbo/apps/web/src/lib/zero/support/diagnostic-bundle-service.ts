@@ -28,6 +28,7 @@ import { logger } from "../../shared/logger";
 const log = logger("service:diagnostic-bundle");
 
 const DOWNLOAD_EXPIRY_SECONDS = 72 * 60 * 60;
+const AGENT_EVENT_WATERMARK_WAIT_CONCURRENCY = 4;
 
 interface ZipEntry {
   path: string;
@@ -448,11 +449,7 @@ async function collectAgentEvents(
     return run.lastEventSequence !== null;
   });
   if (terminalRuns.length > 0) {
-    await Promise.all(
-      terminalRuns.map((run) => {
-        return waitForRunEventWatermarkVisible(run.id, run.lastEventSequence);
-      }),
-    );
+    await waitForAgentEventWatermarks(terminalRuns);
   }
 
   const runIdList = sessionRunIds
@@ -471,4 +468,24 @@ async function collectAgentEvents(
     });
     return [] as ChatHistoryEvent[];
   });
+}
+
+async function waitForAgentEventWatermarks(
+  terminalRuns: RunMeta[],
+): Promise<void> {
+  for (
+    let offset = 0;
+    offset < terminalRuns.length;
+    offset += AGENT_EVENT_WATERMARK_WAIT_CONCURRENCY
+  ) {
+    const batch = terminalRuns.slice(
+      offset,
+      offset + AGENT_EVENT_WATERMARK_WAIT_CONCURRENCY,
+    );
+    await Promise.all(
+      batch.map((run) => {
+        return waitForRunEventWatermarkVisible(run.id, run.lastEventSequence);
+      }),
+    );
+  }
 }

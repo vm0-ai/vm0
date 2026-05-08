@@ -1,5 +1,9 @@
 import "server-only";
-import type { Axiom } from "@axiomhq/js";
+import type {
+  Axiom,
+  QueryOptions as AxiomQueryOptions,
+  QueryResult,
+} from "@axiomhq/js";
 import { Entry } from "@axiomhq/js";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import { env } from "../../../env";
@@ -117,6 +121,8 @@ const QUERY_BACKOFF_BASE_MS = 2000;
 
 export interface QueryAxiomOptions {
   maxRetries?: number;
+  noCache?: AxiomQueryOptions["noCache"];
+  streamingDuration?: AxiomQueryOptions["streamingDuration"];
 }
 
 function isRateLimitError(error: unknown): boolean {
@@ -162,10 +168,20 @@ export async function queryAxiom<T = Record<string, unknown>>(
   }
 
   const maxRetries = options.maxRetries ?? MAX_QUERY_RETRIES;
+  const axiomQueryOptions: AxiomQueryOptions = {};
+  if (options.noCache !== undefined) {
+    axiomQueryOptions.noCache = options.noCache;
+  }
+  if (options.streamingDuration !== undefined) {
+    axiomQueryOptions.streamingDuration = options.streamingDuration;
+  }
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const result = await client.query(apl);
+      const result = (await client.query(
+        apl,
+        axiomQueryOptions,
+      )) as QueryResult;
       // Axiom stores _time separately from data, merge them for the response
       return (
         result.matches?.map((m: Entry) => {

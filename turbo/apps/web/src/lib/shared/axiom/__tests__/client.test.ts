@@ -212,4 +212,19 @@ describe("queryAxiom", () => {
     );
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
+
+  it("passes Axiom query options through to the SDK", async () => {
+    mockQuery.mockResolvedValue(axiomResponse([{ eventType: "result" }]));
+
+    await queryAxiom(apl, {
+      maxRetries: 0,
+      noCache: true,
+      streamingDuration: "1s",
+    });
+
+    expect(mockQuery).toHaveBeenCalledWith(apl, {
+      noCache: true,
+      streamingDuration: "1s",
+    });
+  });
 });

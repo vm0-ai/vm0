@@ -217,7 +217,11 @@ export async function waitForAgentEventPrefixVisible(
       let events: AxiomAgentEventSequence[];
       try {
         events = await withTimeout(
-          queryAxiomFn<AxiomAgentEventSequence>(apl, { maxRetries: 0 }),
+          queryAxiomFn<AxiomAgentEventSequence>(apl, {
+            maxRetries: 0,
+            noCache: true,
+            streamingDuration: "1s",
+          }),
           remainingMs,
         );
         lastQueryError = undefined;
