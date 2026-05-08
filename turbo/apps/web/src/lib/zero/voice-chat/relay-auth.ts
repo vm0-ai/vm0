@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { verifyRelayToken } from "@vm0/core/voice-chat/relay-token";
 import { env } from "../../../env";
 
-export interface RelayAuthContext {
+interface RelayAuthContext {
   userId: string;
   orgId: string;
   voiceChatSessionId: string;
