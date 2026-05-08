@@ -113,6 +113,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.19.14
         version: 1.19.14(hono@4.12.16)
+      '@hono/node-ws':
+        specifier: ^1.3.1
+        version: 1.3.1(@hono/node-server@1.19.14(hono@4.12.16))(hono@4.12.16)
       '@hono/otel':
         specifier: ^1.1.1
         version: 1.1.1(hono@4.12.16)
@@ -183,6 +186,9 @@ importers:
       '@types/pg':
         specifier: ^8.20.0
         version: 8.20.0
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       '@typescript-eslint/rule-tester':
         specifier: ^8.59.1
         version: 8.59.1(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
@@ -207,6 +213,9 @@ importers:
       oxlint-tsgolint:
         specifier: 0.21.1
         version: 0.21.1
+      signal-timers:
+        specifier: ^1.0.4
+        version: 1.0.4
       tsx:
         specifier: ^4.19.0
         version: 4.21.0
@@ -219,6 +228,9 @@ importers:
       vitest:
         specifier: ^4.1.5
         version: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.5)(@vitest/coverage-v8@4.1.5)(@vitest/ui@4.1.5)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))
+      ws:
+        specifier: ^8.20.0
+        version: 8.20.0
 
   apps/cli:
     dependencies:
@@ -1996,6 +2008,13 @@ packages:
     engines: {node: '>=18.14.1'}
     peerDependencies:
       hono: ^4
+
+  '@hono/node-ws@1.3.1':
+    resolution: {integrity: sha512-vo/MwCnpJAVHBkGzWjCJ28wF45fYHAfbPZcH2rodZODHtch2GHA94KtMfusmVycTUtsLAsaNsHhtY6P8X3RQsA==}
+    engines: {node: '>=18.14.1'}
+    peerDependencies:
+      '@hono/node-server': ^1.19.11
+      hono: ^4.6.0
 
   '@hono/otel@1.1.1':
     resolution: {integrity: sha512-zmTMS0uMMzwjO8f4IG0eFoDlr5D7XwJgiCFSHEa5MMZJRHwuSrRI78SLjn5XdFedttSlSgDwHUsf91hly16MSQ==}
@@ -10553,6 +10572,15 @@ snapshots:
   '@hono/node-server@1.19.14(hono@4.12.16)':
     dependencies:
       hono: 4.12.16
+
+  '@hono/node-ws@1.3.1(@hono/node-server@1.19.14(hono@4.12.16))(hono@4.12.16)':
+    dependencies:
+      '@hono/node-server': 1.19.14(hono@4.12.16)
+      hono: 4.12.16
+      ws: 8.20.0
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
 
   '@hono/otel@1.1.1(hono@4.12.16)':
     dependencies:

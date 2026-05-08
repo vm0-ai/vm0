@@ -1,3 +1,4 @@
+import { createNodeWebSocket, type NodeWebSocket } from "@hono/node-ws";
 import { httpInstrumentationMiddleware } from "@hono/otel";
 import { context as otelContext, propagation } from "@opentelemetry/api";
 import * as Sentry from "@sentry/node";
@@ -17,6 +18,14 @@ import { waitUntil } from "./signals/context/wait-until";
 import { honoSignalHandler } from "./signals/context/route";
 import { ROUTES, type RouteEntry } from "./signals/route";
 import { isAbortError } from "./signals/utils";
+import {
+  registerVoiceChatRelayRoute,
+  type RegisterVoiceChatRelayRouteOptions,
+} from "./signals/lib/voice-chat-relay/voice-chat-relay-route";
+import {
+  createInMemoryRelaySessionRepository,
+  type RelaySessionRepository,
+} from "./signals/lib/voice-chat-relay/relay-session-repository";
 
 const L = logger("App");
 
@@ -185,9 +194,76 @@ function handleError(error: Error, context: Context): Response {
 interface CreateAppOptions {
   readonly signal: AbortSignal;
   readonly routes?: readonly RouteEntry[];
+  // Hook for registering routes that don't fit the ts-rest `RouteEntry`
+  // pattern (currently only the WS upgrade endpoint at
+  // `/api/zero/voice-chat/relay`). Runs *before* the ts-rest routes so
+  // literal paths win over ts-rest contracts that use wildcards (e.g.
+  // `/api/zero/voice-chat/:id` would otherwise capture `:id="relay"`).
+  // Also runs before `app.notFound(...)`, so the WS path is matched ahead
+  // of the legacy-web proxy fallback.
+  readonly registerExtraRoutes?: (app: Hono) => void;
 }
 
-export function createApp({ routes = ROUTES, signal }: CreateAppOptions): Hono {
+interface CreateAppWithWebSocketOptions extends CreateAppOptions {
+  // Test seam: lets the WS integration test inject an in-memory repository
+  // it can introspect and a `ws://127.0.0.1:<port>` OpenAI URL.
+  readonly relayRepository?: RelaySessionRepository;
+  readonly relayOpenAiUrl?: string;
+}
+
+interface AppWithWebSocket {
+  readonly app: Hono;
+  readonly injectWebSocket: NodeWebSocket["injectWebSocket"];
+}
+
+// `createAppWithWebSocket` wires WebSocket support around the standard Hono
+// app. Registered WS endpoints (currently only `/api/zero/voice-chat/relay`)
+// live outside the ts-rest `ROUTES` array because a WS upgrade does not fit
+// the request/response contract validation pattern.
+//
+// `injectWebSocket` must be called once on the Node HTTP server returned by
+// `serve()` in `server.ts`; it attaches a `ws.WebSocketServer` to the
+// `upgrade` event so HTTP requests with the WebSocket upgrade header are
+// promoted into a WS connection.
+export function createAppWithWebSocket(
+  options: CreateAppWithWebSocketOptions,
+): AppWithWebSocket {
+  // The Hono+@hono/node-ws upgrade helper needs the app instance up front
+  // (so it can attach the WS upgrade listener via `injectWebSocket` later
+  // against the matching ws.WebSocketServer). createApp's `registerExtraRoutes`
+  // callback gives us a hook point that runs *before* `notFound` so the WS
+  // path wins over the legacy-web proxy fallback.
+  let injectWebSocket: NodeWebSocket["injectWebSocket"] | null = null;
+  const app = createApp({
+    ...options,
+    registerExtraRoutes: (a) => {
+      const helpers = createNodeWebSocket({ app: a });
+      injectWebSocket = helpers.injectWebSocket;
+      const repository =
+        options.relayRepository ?? createInMemoryRelaySessionRepository();
+      const relayOptions: RegisterVoiceChatRelayRouteOptions = {
+        app: a,
+        upgradeWebSocket: helpers.upgradeWebSocket,
+        signal: options.signal,
+        repository,
+        ...(options.relayOpenAiUrl !== undefined && {
+          openAiUrl: options.relayOpenAiUrl,
+        }),
+      };
+      registerVoiceChatRelayRoute(relayOptions);
+    },
+  });
+  if (injectWebSocket === null) {
+    throw new Error("createAppWithWebSocket: injectWebSocket missing");
+  }
+  return { app, injectWebSocket };
+}
+
+export function createApp({
+  routes = ROUTES,
+  signal,
+  registerExtraRoutes,
+}: CreateAppOptions): Hono {
   const app = new Hono();
   app.onError(handleError);
 
@@ -209,6 +285,16 @@ export function createApp({ routes = ROUTES, signal }: CreateAppOptions): Hono {
     await next();
     waitUntil(flushLogs());
   });
+
+  // Hook for non-ts-rest routes (currently the WS upgrade endpoint).
+  // Registered *before* the ts-rest routes so literal paths win over
+  // wildcard ts-rest contracts (e.g. `/api/zero/voice-chat/:id` would
+  // otherwise capture `:id="relay"` and route a WS upgrade to the HTTP
+  // session-detail handler). Also registered before `notFound` so the
+  // legacy-web proxy fallback can't claim these paths.
+  if (registerExtraRoutes !== undefined) {
+    registerExtraRoutes(app);
+  }
 
   for (const { route, handler } of routes) {
     app.on(route.method, route.path, honoSignalHandler(handler, route, signal));

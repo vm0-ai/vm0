@@ -1,16 +1,17 @@
-import { env } from "../../../env";
 import {
   DEFAULT_NOISE_REDUCTION,
   INPUT_AUDIO_TRANSCRIPTION_CONFIG,
   SESSION_MODALITIES,
   SESSION_TOOLS,
+  TALKER_MODEL,
+  TALKER_VOICE,
   TURN_DETECTION_CONFIG,
   type NoiseReduction,
-} from "./session-config";
+} from "@vm0/core/voice-chat/session-config";
+
+import { env } from "../../../env";
 
 const OPENAI_REALTIME_URL = "https://api.openai.com/v1/realtime/sessions";
-
-const TALKER_MODEL = "gpt-realtime-2";
 
 interface EphemeralTokenResponse {
   client_secret: {
@@ -67,7 +68,7 @@ export async function createEphemeralToken(options: {
     },
     body: JSON.stringify({
       model: TALKER_MODEL,
-      voice: "verse",
+      voice: TALKER_VOICE,
       modalities: SESSION_MODALITIES,
       instructions: options.instructions,
       input_audio_transcription: INPUT_AUDIO_TRANSCRIPTION_CONFIG,

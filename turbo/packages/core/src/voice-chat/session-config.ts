@@ -1,6 +1,13 @@
-// Static session configuration pushed to OpenAI when minting an ephemeral
-// token. Keeping this server-side (not shipped to the browser) means clients
-// can't tamper with the Talker's tool surface or VAD settings.
+// Static session configuration pushed to OpenAI when configuring the Realtime
+// Talker session. Lives in @vm0/core because two server runtimes consume it:
+//
+//   1. apps/web's createEphemeralToken() — legacy browser-direct path.
+//   2. apps/api's voice-chat-relay openai-realtime-client — server-relayed path.
+//
+// Bytewise equality of the resulting `session.update` (and the legacy REST body)
+// is load-bearing for the realtime-billing rollout: both paths must configure
+// the Talker identically so OpenAI usage events line up across the cutover.
+// Do not duplicate this file — both consumers must import from here.
 
 const TOOL_PROMPT_PARAM = {
   type: "object",
@@ -73,10 +80,17 @@ export const INPUT_AUDIO_TRANSCRIPTION_CONFIG = {
 } as const;
 
 // Noise-reduction mode is resolved per-connection on the client (see
-// platform `resolveAudioConfig`); the server threads the client hint into
-// the ephemeral token. Default mirrors the historical far_field behaviour
-// for clients that don't supply a hint (SDK downgrades, older tests).
+// platform `resolveAudioConfig`); the server threads the client hint into the
+// session config. Default mirrors the historical far_field behaviour for
+// clients that don't supply a hint (SDK downgrades, older tests).
 export type NoiseReduction = "near_field" | "far_field";
 export const DEFAULT_NOISE_REDUCTION: NoiseReduction = "far_field";
 
 export const SESSION_MODALITIES = ["text", "audio"] as const;
+
+// Talker model and assistant voice are part of the bytewise-equal contract
+// between the legacy ephemeral-token REST body and the relay's `session.update`
+// frame. Both consumers read these constants instead of inlining string
+// literals — ensures a single rename / version-bump touches one place.
+export const TALKER_MODEL = "gpt-realtime-2";
+export const TALKER_VOICE = "verse";
