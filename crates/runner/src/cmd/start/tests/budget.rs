@@ -12,23 +12,29 @@ use super::support::*;
 
 #[tokio::test(start_paused = true)]
 async fn budget_full_skips_then_resumes() {
+    let gate = Arc::new(tokio::sync::Notify::new());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+        Arc::clone(&gate),
+    ));
     // Budget for exactly 1 job (2 vcpu, 4096 MB).
-    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, overrides);
+    let budget = Arc::clone(&config.budget);
     let run_handle = tokio::spawn(run(config));
 
     // First job: claims the entire budget.
     let id1 = RunId::new_v4();
     push_job(&env, id1, "vm0/default", Some(minimal_context(id1)));
 
-    // Wait for job 1 to be claimed (budget now full).
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    let _token_1 = wait_cancel_token(&env.cancel_tokens, id1, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
 
-    // Second job: pushed while budget is full. try_reserve fails →
-    // the job is skipped without claim. But it remains in the channel.
+    // Second job: pushed while budget is full. It must remain queued until
+    // the first job releases its budget lease.
     let id2 = RunId::new_v4();
     push_job(&env, id2, "vm0/default", Some(minimal_context(id2)));
 
-    // Job 1 completes (MockSandbox is instant) → budget freed.
+    // Job 1 completes after the gate opens → budget freed.
+    gate.notify_one();
     let c1 = env
         .handle
         .wait_completion(id1, Duration::from_secs(5))
@@ -37,6 +43,8 @@ async fn budget_full_skips_then_resumes() {
 
     // After budget is freed, the main loop re-enters the normal select!
     // and discovers job 2 from the channel.
+    let _token_2 = wait_cancel_token(&env.cancel_tokens, id2, Duration::from_secs(5)).await;
+    gate.notify_one();
     let c2 = env
         .handle
         .wait_completion(id2, Duration::from_secs(5))
