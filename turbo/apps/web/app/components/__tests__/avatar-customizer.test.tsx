@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
-import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { AvatarCustomizer } from "../AvatarCustomizer";
@@ -27,14 +27,6 @@ vi.mock("next-intl", () => {
   };
 });
 
-vi.mock("next/image", () => {
-  return {
-    default: ({ alt, src }: { alt: string; src: string }) => {
-      return <span data-alt={alt} data-src={src} />;
-    },
-  };
-});
-
 vi.mock("@tabler/icons-react", () => {
   const Icon = () => {
     return <span aria-hidden="true" />;
@@ -46,7 +38,23 @@ vi.mock("@tabler/icons-react", () => {
   };
 });
 
+const mockAvatarSvg = `<svg viewBox="0 0 480 480" xmlns="http://www.w3.org/2000/svg"><path d="M1 1h1v1H1z"/></svg>`;
+
 describe("AvatarCustomizer", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return {
+          ok: true,
+          text: async () => {
+            return mockAvatarSvg;
+          },
+        };
+      }),
+    );
+  });
+
   it("keeps the default hero avatar selected on first render", () => {
     render(<AvatarCustomizer />);
 
@@ -58,6 +66,20 @@ describe("AvatarCustomizer", () => {
       "aria-pressed",
       "false",
     );
+  });
+
+  it("renders composite svg inline instead of png assets", async () => {
+    render(<AvatarCustomizer />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("hero-avatar-2").querySelector("svg"),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByTestId("hero-avatar-2").querySelector("img"),
+    ).not.toBeInTheDocument();
   });
 
   it("moves the selected state when another avatar is picked", async () => {

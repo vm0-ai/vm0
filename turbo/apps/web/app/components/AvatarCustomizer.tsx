@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import Image from "next/image";
 import {
   IconChevronLeft,
   IconChevronRight,
@@ -19,7 +18,7 @@ type Step =
 
 type Intensity = "d" | "m" | "h";
 
-interface AvatarConfig {
+interface AvatarSvgConfig {
   rotation: number;
   skin: number;
   hairStyle: number;
@@ -45,13 +44,13 @@ const INTENSITY_LABEL_KEYS: Record<Intensity, string> = {
   h: "hyped",
 };
 
-const AVATAR_BASE = "/assets/avatar";
+const AVATAR_SVG_BASE = "/assets/avatar-svg";
 const DEFAULT_SELECTED_INDEX = 2;
 const CENTER_AVATAR_POSITION = 2;
 const CENTER_AVATAR_SIZE = 112;
 const SIDE_AVATAR_SIZE = 48;
 
-const PLATFORM_AVATAR_PRESETS: readonly AvatarConfig[] = [
+const PLATFORM_AVATAR_PRESETS: readonly AvatarSvgConfig[] = [
   {
     rotation: 1,
     skin: 0,
@@ -95,6 +94,7 @@ const PLATFORM_AVATAR_PRESETS: readonly AvatarConfig[] = [
 ];
 
 const HERO_AVATAR_ORDER: readonly number[] = [0, 1, 2, 3, 4];
+const compositeAvatarSvgInnerCache = new Map<string, Promise<string>>();
 
 function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
@@ -113,63 +113,118 @@ function getClampedPopoverAnchor(target: HTMLButtonElement) {
   };
 }
 
-function headSrc(rotation: number, skin: number) {
-  return `${AVATAR_BASE}/head-r${rotation}-s${skin + 1}.png`;
+function avatarSvgAssetSrc(filename: string) {
+  return `${AVATAR_SVG_BASE}/${filename}`;
 }
 
-function hairSrc(rotation: number, style: number, color: number) {
-  return `${AVATAR_BASE}/hair-r${rotation}-h${style}-c${color}.png`;
+function serializeAvatarSvgConfig(config: AvatarSvgConfig) {
+  return `r${config.rotation}s${config.skin}h${config.hairStyle}c${config.hairColor}f${config.expression}${config.intensity}`;
 }
 
-function faceSrc(rotation: number, expression: number, intensity: string) {
-  return `${AVATAR_BASE}/face-r${rotation}-f${expression}-${intensity}.png`;
+async function loadSvgAsset(filename: string) {
+  const response = await fetch(avatarSvgAssetSrc(filename));
+  if (!response.ok) {
+    throw new Error(`Missing avatar SVG asset: ${filename}`);
+  }
+  return response.text();
 }
 
-function AvatarPreview({
+function extractSvgInner(raw: string) {
+  const open = raw.indexOf(">", raw.indexOf("<svg"));
+  const close = raw.lastIndexOf("</svg>");
+  if (open === -1 || close === -1) {
+    return "";
+  }
+  return raw.slice(open + 1, close);
+}
+
+async function loadCompositeAvatarSvgInner(config: AvatarSvgConfig) {
+  const [head, face, hair] = await Promise.all([
+    loadSvgAsset(`head-r${config.rotation}-s${config.skin}.svg`),
+    loadSvgAsset(
+      `face-r${config.rotation}-f${config.expression}-${config.intensity}.svg`,
+    ),
+    loadSvgAsset(
+      `hair-r${config.rotation}-h${config.hairStyle}-c${config.hairColor}.svg`,
+    ),
+  ]);
+  return extractSvgInner(head) + extractSvgInner(face) + extractSvgInner(hair);
+}
+
+function getCompositeAvatarSvgInner(config: AvatarSvgConfig) {
+  const key = serializeAvatarSvgConfig(config);
+  const existing = compositeAvatarSvgInnerCache.get(key);
+  if (existing) {
+    return existing;
+  }
+  const promise = loadCompositeAvatarSvgInner(config);
+  compositeAvatarSvgInnerCache.set(key, promise);
+  return promise;
+}
+
+function AvatarSvgPreview({
   config,
   size,
   className,
 }: {
-  config: AvatarConfig;
+  config: AvatarSvgConfig;
   size: number;
   className?: string;
 }) {
-  const imageClass = "absolute inset-0 h-full w-full object-cover";
-  const sizes = `${size}px`;
+  const [svgInner, setSvgInner] = useState<string | null>(null);
+  const { rotation, skin, hairStyle, hairColor, expression, intensity } =
+    config;
+
+  useEffect(() => {
+    let active = true;
+    const nextConfig: AvatarSvgConfig = {
+      rotation,
+      skin,
+      hairStyle,
+      hairColor,
+      expression,
+      intensity,
+    };
+
+    setSvgInner(null);
+    getCompositeAvatarSvgInner(nextConfig)
+      .then((nextSvgInner) => {
+        if (active) {
+          setSvgInner(nextSvgInner);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setSvgInner(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [rotation, skin, hairStyle, hairColor, expression, intensity]);
 
   return (
     <div
       className={cx("relative overflow-hidden rounded-full", className)}
       style={{ width: size, height: size }}
     >
-      <div className="absolute inset-0 scale-[1.25]">
-        <Image
-          alt=""
-          src={headSrc(config.rotation, config.skin)}
-          className={imageClass}
-          fill
-          sizes={sizes}
-        />
-        <Image
-          alt=""
-          src={hairSrc(config.rotation, config.hairStyle, config.hairColor)}
-          className={imageClass}
-          fill
-          sizes={sizes}
-        />
-        <Image
-          alt=""
-          src={faceSrc(config.rotation, config.expression, config.intensity)}
-          className={imageClass}
-          fill
-          sizes={sizes}
-        />
-      </div>
+      {svgInner && (
+        <div className="absolute inset-0 scale-[1.25]">
+          <svg
+            viewBox="0 0 480 480"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-full w-full object-cover"
+            dangerouslySetInnerHTML={{ __html: svgInner }}
+          />
+        </div>
+      )}
     </div>
   );
 }
 
-function randomAvatarConfig(): AvatarConfig {
+function randomAvatarConfig(): AvatarSvgConfig {
   const randomInt = (min: number, max: number) => {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   };
@@ -190,7 +245,7 @@ function HeroAvatar({
   size,
   onClick,
 }: {
-  config: AvatarConfig;
+  config: AvatarSvgConfig;
   avatarIndex: number;
   selected: boolean;
   size: number;
@@ -217,7 +272,7 @@ function HeroAvatar({
         }}
       >
         <span className="block transition-transform duration-200 group-hover:scale-110">
-          <AvatarPreview config={config} size={size} />
+          <AvatarSvgPreview config={config} size={size} />
         </span>
       </span>
     </button>
@@ -367,7 +422,7 @@ function StepOptions({
   onSelect,
 }: {
   step: Step;
-  config: AvatarConfig;
+  config: AvatarSvgConfig;
   justPicked: string | null;
   onSelect: (field: Step, value: number | Intensity) => void;
 }) {
@@ -395,7 +450,7 @@ function StepOptions({
             onSelect("intensity", value);
           }}
         >
-          <AvatarPreview config={preview} size={56} />
+          <AvatarSvgPreview config={preview} size={56} />
           <span className="text-[10px] text-[#525b68]">
             {t(`intensityLabels.${INTENSITY_LABEL_KEYS[value]}`)}
           </span>
@@ -432,7 +487,7 @@ function StepOptions({
           onSelect(step, value);
         }}
       >
-        <AvatarPreview config={preview as AvatarConfig} size={56} />
+        <AvatarSvgPreview config={preview as AvatarSvgConfig} size={56} />
       </button>
     );
   });
@@ -454,7 +509,7 @@ function AvatarEditorPopover({
 }: {
   avatarIndex: number;
   anchor: { left: number; top: number };
-  current: AvatarConfig;
+  current: AvatarSvgConfig;
   step: Step;
   stepIdx: number;
   justPicked: string | null;
@@ -483,7 +538,7 @@ function AvatarEditorPopover({
             justPicked || shuffling ? "scale-110" : "scale-100",
           )}
         >
-          <AvatarPreview config={current} size={96} />
+          <AvatarSvgPreview config={current} size={96} />
           <Sparkles active={showSparkles} />
           <button
             type="button"
@@ -578,7 +633,7 @@ export function AvatarCustomizer() {
   );
 
   const updateAvatar = useCallback(
-    (updater: (currentAvatar: AvatarConfig) => AvatarConfig) => {
+    (updater: (currentAvatar: AvatarSvgConfig) => AvatarSvgConfig) => {
       if (editingIndex === null) {
         return;
       }
