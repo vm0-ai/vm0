@@ -393,7 +393,11 @@ mod tests {
         let _guard = TEST_HELPER_EXEC.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("guest-write-file");
-        std::fs::write(&path, "#!/bin/sh\nsleep 60 <&0 &\nexit 0\n").unwrap();
+        std::fs::write(
+            &path,
+            "#!/bin/sh\nsleep 60 <&0 >/dev/null 2>/dev/null &\nexit 0\n",
+        )
+        .unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -406,7 +410,7 @@ mod tests {
         let content = vec![b'x'; 1024 * 1024];
 
         let (success, error) =
-            wait_write_file_child_with_timeout(child, &content, 30_000, SystemThreadSpawner);
+            wait_write_file_child_with_timeout(child, &content, 1_000, SystemThreadSpawner);
 
         assert!(!success);
         assert!(error.contains("Failed to write to stdin"), "got: {error}");
