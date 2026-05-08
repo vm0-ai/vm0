@@ -2,9 +2,13 @@ use std::io;
 #[cfg(any(test, not(debug_assertions)))]
 use std::path::PathBuf;
 use std::process::Command;
+#[cfg(not(debug_assertions))]
+use std::sync::OnceLock;
 
 #[cfg(not(debug_assertions))]
 const SANDBOX_USER: &str = "user";
+#[cfg(not(debug_assertions))]
+static SANDBOX_USER_CREDENTIALS: OnceLock<UserCredentials> = OnceLock::new();
 
 #[cfg(any(test, not(debug_assertions)))]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -46,7 +50,8 @@ fn target_identity(sudo: bool) -> io::Result<TargetIdentity> {
 
     #[cfg(not(debug_assertions))]
     {
-        system_user_credentials(SANDBOX_USER).map(TargetIdentity::User)
+        cached_system_user_credentials()
+            .map(|credentials| TargetIdentity::User(credentials.clone()))
     }
 }
 
@@ -106,6 +111,19 @@ fn system_user_credentials(username: &str) -> io::Result<UserCredentials> {
     let passwd = std::fs::read_to_string("/etc/passwd")?;
     let group = std::fs::read_to_string("/etc/group")?;
     parse_user_credentials(&passwd, &group, username)
+}
+
+#[cfg(not(debug_assertions))]
+fn cached_system_user_credentials() -> io::Result<&'static UserCredentials> {
+    if let Some(credentials) = SANDBOX_USER_CREDENTIALS.get() {
+        return Ok(credentials);
+    }
+
+    let credentials = system_user_credentials(SANDBOX_USER)?;
+    let _ = SANDBOX_USER_CREDENTIALS.set(credentials);
+    SANDBOX_USER_CREDENTIALS
+        .get()
+        .ok_or_else(|| io::Error::other("sandbox user credential cache unavailable"))
 }
 
 #[cfg(any(test, not(debug_assertions)))]

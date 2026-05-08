@@ -1,6 +1,6 @@
 #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::process::{Command, Stdio};
 
 const BIN: &str = env!("CARGO_BIN_EXE_guest-write-file");
@@ -18,6 +18,13 @@ fn run_helper(args: &[&str], stdin: &[u8]) -> std::process::Output {
         .take()
         .expect("stdin pipe")
         .write_all(stdin)
+        .or_else(|e| {
+            if e.kind() == ErrorKind::BrokenPipe {
+                Ok(())
+            } else {
+                Err(e)
+            }
+        })
         .expect("write stdin");
     child.wait_with_output().expect("wait guest-write-file")
 }
