@@ -45,6 +45,11 @@
         "crates/ably-subscriber": {
             "release-type": "rust"
         },
+        "crates/api-contracts": {
+            "release-type": "rust",
+            "component": "api-contracts-rs",
+            "skip-changelog": true
+        },
         "crates/nbd-cow": {
             "release-type": "rust"
         },
@@ -81,6 +86,10 @@
         },
         "crates/sandbox-fc": {
             "release-type": "rust"
+        },
+        "crates/sandbox-mock": {
+            "release-type": "rust",
+            "skip-changelog": true
         },
         "crates/vsock-guest": {
             "release-type": "rust"
