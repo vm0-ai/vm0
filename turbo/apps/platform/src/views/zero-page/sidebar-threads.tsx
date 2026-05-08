@@ -383,8 +383,7 @@ function ChatThreadSideDecorator({
   renameEnabled: boolean;
   indicatorState: IndicatorState | null;
 }) {
-  const showPin = pinEnabled && isPinned;
-  if (indicatorState === "draft" && !showPin) {
+  if (indicatorState === "draft") {
     return (
       <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
         <span className="flex items-center justify-center">
@@ -395,7 +394,11 @@ function ChatThreadSideDecorator({
   }
   return (
     <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
-      {showPin ? (
+      {indicatorState !== null ? (
+        <span className="flex items-center justify-center group-hover:invisible">
+          <SessionStateIndicator state={indicatorState} />
+        </span>
+      ) : pinEnabled && isPinned ? (
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -412,13 +415,7 @@ function ChatThreadSideDecorator({
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
-      ) : (
-        indicatorState !== null && (
-          <span className="flex items-center justify-center group-hover:invisible">
-            <SessionStateIndicator state={indicatorState} />
-          </span>
-        )
-      )}
+      ) : null}
       {pinEnabled || renameEnabled ? (
         <ChatThreadMenu
           threadId={threadId}
