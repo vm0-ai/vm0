@@ -299,17 +299,8 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(data.status).toBe("completed");
     });
 
-    it("should wait for the lastEventSequence prefix before successful completion", async () => {
+    it("should persist lastEventSequence without waiting for Axiom visibility", async () => {
       await createCheckpoint();
-      context.mocks.axiom.queryAxiom
-        .mockResolvedValueOnce([
-          { _time: "2026-01-01T00:00:00.000Z", sequenceNumber: 0 },
-          { _time: "2026-01-01T00:00:00.000Z", sequenceNumber: 2 },
-        ])
-        .mockResolvedValueOnce([
-          { _time: "2026-01-01T00:00:00.000Z", sequenceNumber: 1 },
-          { _time: "2026-01-01T00:00:00.000Z", sequenceNumber: 2 },
-        ]);
 
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
@@ -333,14 +324,10 @@ describe("POST /api/webhooks/agent/complete", () => {
       const run = await findTestRunRecord(testRunId);
       expect(run!.status).toBe("completed");
       expect(run!.lastEventSequence).toBe(2);
-      expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledTimes(2);
-      expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledWith(
-        expect.stringContaining(`runId == "${testRunId}"`),
-        { maxRetries: 0 },
-      );
+      expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
     });
 
-    it("should fail open when Axiom visibility query fails", async () => {
+    it("should complete when Axiom query would fail", async () => {
       await createCheckpoint();
       context.mocks.axiom.queryAxiom.mockRejectedValueOnce(
         new Error("axiom unavailable"),
@@ -367,9 +354,11 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(response.status).toBe(200);
       const run = await findTestRunRecord(testRunId);
       expect(run!.status).toBe("completed");
+      expect(run!.lastEventSequence).toBe(0);
+      expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
     });
 
-    it("should skip the Axiom visibility barrier when watermark is absent", async () => {
+    it("should not query Axiom when watermark is absent", async () => {
       await createCheckpoint();
 
       const request = createTestRequest(
