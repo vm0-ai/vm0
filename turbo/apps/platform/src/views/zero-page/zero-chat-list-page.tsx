@@ -66,11 +66,12 @@ export function ZeroChatListPage() {
     recentSessionsLoadable.state === "hasData"
       ? recentSessionsLoadable.data
       : [];
-  // ?demo=1 swaps in a fixed fixture set so the mobile redesign rows can be
-  // reviewed in the preview without a populated account. Pure presentation —
-  // delete/select on a demo row will hit the API and 404, which is fine.
-  const isDemoMode =
-    typeof window !== "undefined" && window.location.search.includes("demo=1");
+  // Preview-only fixture toggle. ?demo=1 also writes sessionStorage so the
+  // flag survives the auth redirect (which strips query params). Toggle
+  // straight from devtools:
+  //   sessionStorage.setItem("vm0:chatlist-demo", "1"); location.reload();
+  //   sessionStorage.removeItem("vm0:chatlist-demo"); location.reload();
+  const isDemoMode = readChatListDemoFlag();
   const recentSessions = isDemoMode ? buildDemoSessions() : liveSessions;
   const loading = recentSessionsLoadable.state === "loading";
   const error =
@@ -577,9 +578,24 @@ function ChatListItem({
   );
 }
 
-// Mobile redesign preview data. Activated by `?demo=1` so the chat list rows
-// can be reviewed in the preview deploy with a representative mix of states
-// (unread, draft, scheduled, long titles, older dates).
+const CHAT_LIST_DEMO_KEY = "vm0:chatlist-demo";
+
+function readChatListDemoFlag(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  // ?demo=1 promotes itself into sessionStorage so the flag survives the
+  // Clerk redirect (and any later route changes).
+  if (window.location.search.includes("demo=1")) {
+    window.sessionStorage.setItem(CHAT_LIST_DEMO_KEY, "1");
+    return true;
+  }
+  return window.sessionStorage.getItem(CHAT_LIST_DEMO_KEY) === "1";
+}
+
+// Mobile redesign preview data. Toggle via `?demo=1` or sessionStorage so the
+// chat list rows can be reviewed in the preview deploy with a representative
+// mix of states (unread, draft, scheduled, long titles, older dates).
 function buildDemoSessions(): ChatThreadListItem[] {
   const now = Date.now();
   const minute = 60_000;
