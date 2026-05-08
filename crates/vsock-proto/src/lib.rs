@@ -1535,6 +1535,18 @@ mod tests {
     }
 
     #[test]
+    fn bounded_exec_payload_roundtrip_with_empty_env_value() {
+        let request = BoundedExecRequest {
+            env: &[("EMPTY", "")],
+            ..full_bounded_exec_request()
+        };
+        let payload = encode_bounded_exec(&request).unwrap();
+        let d = decode_bounded_exec(&payload).unwrap();
+
+        assert_eq!(d.env, vec![("EMPTY", "")]);
+    }
+
+    #[test]
     fn bounded_exec_payload_distinguishes_explicit_empty_stdin() {
         let request = BoundedExecRequest {
             stdin: Some(b""),
@@ -1567,6 +1579,24 @@ mod tests {
         assert!(matches!(
             err,
             ProtocolError::InvalidPayload("bounded_exec stdin truncated")
+        ));
+    }
+
+    #[test]
+    fn decode_bounded_exec_rejects_missing_stdin_len_after_env() {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&1_u32.to_be_bytes());
+        payload.push(0);
+        for _ in 0..5 {
+            payload.extend_from_slice(&0_u32.to_be_bytes());
+        }
+        payload.extend_from_slice(&0_u32.to_be_bytes()); // empty command
+        payload.extend_from_slice(&0_u32.to_be_bytes()); // empty env
+
+        let err = decode_bounded_exec(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec stdin_len truncated")
         ));
     }
 
@@ -1742,6 +1772,30 @@ mod tests {
     }
 
     #[test]
+    fn bounded_exec_result_empty_output_roundtrip() {
+        let payload = encode_bounded_exec_result(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            0,
+            b"",
+            b"",
+            false,
+            false,
+        )
+        .unwrap();
+        let d = decode_bounded_exec_result(&payload).unwrap();
+
+        assert_eq!(
+            d.termination,
+            BoundedExecTermination::Exited { exit_code: 0 }
+        );
+        assert_eq!(d.duration_ms, 0);
+        assert!(d.stdout.is_empty());
+        assert!(d.stderr.is_empty());
+        assert!(!d.stdout_truncated);
+        assert!(!d.stderr_truncated);
+    }
+
+    #[test]
     fn bounded_exec_result_truncation_flags_roundtrip_independently() {
         for (stdout_truncated, stderr_truncated) in
             [(false, false), (true, false), (false, true), (true, true)]
@@ -1822,6 +1876,32 @@ mod tests {
     }
 
     #[test]
+    fn decode_bounded_exec_result_rejects_truncated_exit_code() {
+        let payload = [BOUNDED_EXEC_TERMINATION_EXITED, 0, 0, 0, 0];
+
+        let err = decode_bounded_exec_result(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec_result exit_code truncated")
+        ));
+    }
+
+    #[test]
+    fn decode_bounded_exec_result_rejects_truncated_duration() {
+        let mut payload = Vec::new();
+        payload.push(BOUNDED_EXEC_TERMINATION_EXITED);
+        payload.push(0);
+        payload.extend_from_slice(&0_i32.to_be_bytes());
+        payload.extend_from_slice(&0_u64.to_be_bytes()[..7]);
+
+        let err = decode_bounded_exec_result(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec_result duration_ms truncated")
+        ));
+    }
+
+    #[test]
     fn decode_bounded_exec_result_rejects_truncated_stdout() {
         let mut payload = Vec::new();
         payload.push(BOUNDED_EXEC_TERMINATION_EXITED);
@@ -1892,6 +1972,18 @@ mod tests {
     }
 
     #[test]
+    fn bounded_exec_output_chunk_empty_chunk_roundtrip() {
+        let payload =
+            encode_bounded_exec_output_chunk(BoundedExecStream::Stdout, 0, b"", false).unwrap();
+        let d = decode_bounded_exec_output_chunk(&payload).unwrap();
+
+        assert_eq!(d.stream, BoundedExecStream::Stdout);
+        assert_eq!(d.sequence, 0);
+        assert!(d.chunk.is_empty());
+        assert!(!d.truncated);
+    }
+
+    #[test]
     fn decode_bounded_exec_output_chunk_rejects_invalid_stream_tag() {
         let mut payload =
             encode_bounded_exec_output_chunk(BoundedExecStream::Stdout, 0, b"", false).unwrap();
@@ -1923,6 +2015,17 @@ mod tests {
         assert!(matches!(
             err,
             ProtocolError::InvalidPayload("bounded_exec_output_chunk unknown flags")
+        ));
+    }
+
+    #[test]
+    fn decode_bounded_exec_output_chunk_rejects_truncated_sequence() {
+        let payload = [BOUNDED_EXEC_STREAM_STDOUT, 0, 0, 0, 0];
+
+        let err = decode_bounded_exec_output_chunk(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec_output_chunk sequence truncated")
         ));
     }
 
