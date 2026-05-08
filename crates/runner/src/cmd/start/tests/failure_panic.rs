@@ -901,10 +901,12 @@ async fn unpark_failure_destroys_idle_entry_and_falls_through() {
         "completion must tag the unpark-failure branch",
     );
 
-    // After the dust settles:
-    //   - unpark called exactly once (the failed take-side call);
-    //   - park called exactly once (the fresh-create's successful park).
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // Wait for resource ownership to settle: the failed idle entry has been
+    // destroyed and the fresh-create VM is parked as the single idle lease.
+    // `idle_pool.len() == 1` is true before the job starts, so budget must be
+    // the first terminal-state probe.
+    wait_budget_count(&budget, 1, Duration::from_secs(2)).await;
+    wait_idle_pool_len(&idle_pool, 1, Duration::from_secs(2)).await;
     assert_eq!(
         counter.unpark_call_count(),
         1,
@@ -914,6 +916,11 @@ async fn unpark_failure_destroys_idle_entry_and_falls_through() {
         counter.park_call_count(),
         1,
         "expected exactly one park (the fresh-create's)"
+    );
+    assert_eq!(
+        counter.destroy_call_count(),
+        1,
+        "expected failed idle entry to be destroyed"
     );
 
     shutdown(&env, run_handle).await;
