@@ -38,14 +38,23 @@ interface SandboxAuthContext {
   readonly runId: string;
 }
 
-export interface ZeroAuthContext {
-  readonly tokenType: "zero";
-  readonly userId: string;
-  readonly orgId: string;
-  readonly orgRole?: ApiOrgRole;
-  readonly runId: string;
-  readonly capabilities: readonly ZeroCapability[];
-}
+export type ZeroAuthContext =
+  | {
+      readonly tokenType: "zero";
+      readonly userId: string;
+      readonly orgId: string;
+      readonly orgRole?: ApiOrgRole;
+      readonly runId: string;
+      readonly capabilities: readonly ZeroCapability[];
+    }
+  | {
+      readonly tokenType: "zero";
+      readonly userId: string;
+      readonly runId: string;
+      readonly orgId?: undefined;
+      readonly orgRole?: undefined;
+      readonly capabilities?: undefined;
+    };
 
 export type AuthContext =
   | SessionAuthContext

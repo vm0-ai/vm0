@@ -647,7 +647,7 @@ describe("GET /health/auth", () => {
       });
     });
 
-    it("omits orgRole when the zero user is no longer an org member", async () => {
+    it("omits orgId, orgRole, and capabilities when the zero user is no longer an org member", async () => {
       const userId = `user_${randomUUID()}`;
       const orgId = `org_${randomUUID()}`;
       const nowSeconds = currentSecond();
@@ -675,10 +675,8 @@ describe("GET /health/auth", () => {
 
       expect(response.body).toStrictEqual({
         userId,
-        orgId,
-        runId: "run_zero",
-        capabilities: ["file:read"],
         tokenType: "zero",
+        runId: "run_zero",
       });
     });
   });

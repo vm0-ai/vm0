@@ -155,7 +155,11 @@ const zeroAuth$ = command(
       signal,
     );
     if (!membership) {
-      return result;
+      return {
+        tokenType: "zero" as const,
+        userId: result.userId,
+        runId: result.runId,
+      };
     }
 
     return { ...result, orgRole: membership.role };
