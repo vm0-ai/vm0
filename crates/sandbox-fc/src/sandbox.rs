@@ -8,15 +8,22 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use sandbox::{
-    ExecRequest, ExecResult, ProcessExit, Sandbox, SandboxConfig, SandboxError,
-    SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
-    SpawnHandle,
+    BoundedExecOutputEvent, BoundedExecRequest, BoundedExecResult, BoundedExecStream,
+    BoundedExecTermination, ExecRequest, ExecResult, ProcessExit, Sandbox, SandboxConfig,
+    SandboxError, SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation,
+    SandboxOperationReason, SpawnHandle,
 };
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, trace, warn};
-use vsock_host::VsockHost;
+use vsock_host::{
+    BoundedExecOutputEvent as HostBoundedExecOutputEvent,
+    BoundedExecRequest as HostBoundedExecRequest, BoundedExecResult as HostBoundedExecResult,
+    BoundedExecStream as HostBoundedExecStream,
+    BoundedExecStreamRequest as HostBoundedExecStreamRequest,
+    BoundedExecTermination as HostBoundedExecTermination, VsockHost,
+};
 
 use crate::api::ApiError;
 use nbd_cow::PooledNbdCowDevice;
@@ -1101,6 +1108,47 @@ fn monitor_process_with_log_readers(
     ProcessMonitorHandle { kill_tx, task }
 }
 
+fn host_bounded_stream_to_sandbox(stream: HostBoundedExecStream) -> BoundedExecStream {
+    match stream {
+        HostBoundedExecStream::Stdout => BoundedExecStream::Stdout,
+        HostBoundedExecStream::Stderr => BoundedExecStream::Stderr,
+    }
+}
+
+fn host_bounded_event_to_sandbox(event: HostBoundedExecOutputEvent) -> BoundedExecOutputEvent {
+    BoundedExecOutputEvent {
+        stream: host_bounded_stream_to_sandbox(event.stream),
+        sequence: event.sequence,
+        chunk: event.chunk,
+        truncated: event.truncated,
+    }
+}
+
+fn host_bounded_termination_to_sandbox(
+    termination: HostBoundedExecTermination,
+) -> BoundedExecTermination {
+    match termination {
+        HostBoundedExecTermination::Exited { exit_code } => {
+            BoundedExecTermination::Exited { exit_code }
+        }
+        HostBoundedExecTermination::TimedOut => BoundedExecTermination::TimedOut,
+        HostBoundedExecTermination::Cancelled => BoundedExecTermination::Cancelled,
+        HostBoundedExecTermination::StartFailed => BoundedExecTermination::StartFailed,
+        HostBoundedExecTermination::WaitFailed => BoundedExecTermination::WaitFailed,
+    }
+}
+
+fn host_bounded_result_to_sandbox(result: HostBoundedExecResult) -> BoundedExecResult {
+    BoundedExecResult {
+        termination: host_bounded_termination_to_sandbox(result.termination),
+        duration: Duration::from_millis(result.duration_ms),
+        stdout: result.stdout,
+        stderr: result.stderr,
+        stdout_truncated: result.stdout_truncated,
+        stderr_truncated: result.stderr_truncated,
+    }
+}
+
 #[async_trait]
 impl Sandbox for FirecrackerSandbox {
     // -- identity --
@@ -1355,6 +1403,73 @@ impl Sandbox for FirecrackerSandbox {
                 Err(Self::backend_crashed_error(operation))
             }
         }
+    }
+
+    async fn bounded_exec(
+        &self,
+        request: &BoundedExecRequest<'_>,
+    ) -> sandbox::Result<BoundedExecResult> {
+        let operation = SandboxOperation::BoundedExec;
+        let guest = self.operation_guest(operation).await?;
+
+        let (bridge_task, host_stream) = if let Some(stream) = &request.stream
+            && (stream.stdout || stream.stderr)
+        {
+            let (host_tx, mut host_rx) = mpsc::unbounded_channel();
+            let sandbox_tx = stream.event_tx.clone();
+            let task = tokio::spawn(async move {
+                while let Some(event) = host_rx.recv().await {
+                    if sandbox_tx
+                        .send(host_bounded_event_to_sandbox(event))
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            });
+            (
+                Some(task),
+                Some(HostBoundedExecStreamRequest {
+                    event_tx: host_tx,
+                    stdout: stream.stdout,
+                    stderr: stream.stderr,
+                    chunk_limit_bytes: stream.chunk_limit_bytes,
+                    stdout_limit_bytes: stream.stdout_limit_bytes,
+                    stderr_limit_bytes: stream.stderr_limit_bytes,
+                }),
+            )
+        } else {
+            (None, None)
+        };
+
+        let host_request = HostBoundedExecRequest {
+            command: request.cmd,
+            timeout_ms: request.timeout_ms(),
+            env: request.env,
+            sudo: request.sudo,
+            stdin: request.stdin,
+            stdout_limit_bytes: request.stdout_limit_bytes,
+            stderr_limit_bytes: request.stderr_limit_bytes,
+            stream: host_stream,
+        };
+
+        let result = tokio::select! {
+            result = guest.bounded_exec(&host_request) => {
+                result
+                    .map(host_bounded_result_to_sandbox)
+                    .map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))
+            }
+            () = wait_for_backend_crash(self.state_tx.subscribe()) => {
+                Err(Self::backend_crashed_error(operation))
+            }
+        };
+
+        drop(host_request);
+        if let Some(task) = bridge_task {
+            let _ = task.await;
+        }
+
+        result
     }
 
     async fn write_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
@@ -1881,6 +1996,7 @@ mod tests {
     fn operation_error_classifies_observed_backend_crash_for_all_operations() {
         for operation in [
             SandboxOperation::Exec,
+            SandboxOperation::BoundedExec,
             SandboxOperation::WriteFile,
             SandboxOperation::SpawnWatch,
             SandboxOperation::WaitExit,
@@ -1899,6 +2015,7 @@ mod tests {
     fn unavailable_guest_classifies_observed_backend_crash_for_all_operations() {
         for operation in [
             SandboxOperation::Exec,
+            SandboxOperation::BoundedExec,
             SandboxOperation::WriteFile,
             SandboxOperation::SpawnWatch,
             SandboxOperation::WaitExit,
