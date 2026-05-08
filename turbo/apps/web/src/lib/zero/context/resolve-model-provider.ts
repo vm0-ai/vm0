@@ -146,6 +146,16 @@ function resolveEnvironmentMapping(
   return result;
 }
 
+export interface ResolveModelProviderSecretTimings {
+  personalEligibility: number;
+  defaultProviderLookup: number;
+  matchingProviderLookup: number;
+  vm0ProviderResolution?: number;
+  multiAuthSecretResolution?: number;
+  singleSecretFetch?: number;
+  environmentMapping?: number;
+}
+
 /**
  * Result of model provider secret resolution
  */
@@ -178,6 +188,7 @@ interface ModelProviderSecretResult {
    *  The firewall refresh path uses this to refresh personal providers under
    *  the provider row owner instead of the org sentinel. */
   secretConnectorMetadataMap?: Record<string, SecretConnectorMetadata>;
+  timings?: ResolveModelProviderSecretTimings;
 }
 
 /**
@@ -455,6 +466,11 @@ export async function resolveModelProviderSecrets(
   preferPersonalProvider?: boolean,
 ): Promise<ModelProviderSecretResult> {
   const secrets: Record<string, string> | undefined = undefined;
+  const timings: ResolveModelProviderSecretTimings = {
+    personalEligibility: 0,
+    defaultProviderLookup: 0,
+    matchingProviderLookup: 0,
+  };
 
   // Skip if compose already declares the framework's auth env var directly.
   // Framework-agnostic: codex with explicit OPENAI_API_KEY short-circuits here
@@ -465,6 +481,7 @@ export async function resolveModelProviderSecrets(
       injectedEnvironment: undefined,
       resolvedModelProvider: undefined,
       framework,
+      timings,
     };
   }
 
@@ -478,11 +495,15 @@ export async function resolveModelProviderSecrets(
   // framework wins" rule at the dispatch boundary: an org with only a codex
   // provider still resolves secrets for a claude-code compose; the
   // provider's framework propagates downstream via `resolvedFramework`.
+  const personalEligibilityStart = Date.now();
   const personalEligible = await isPersonalTierEligible(
     orgId,
     userId,
     preferPersonalProvider,
   );
+  timings.personalEligibility = Date.now() - personalEligibilityStart;
+
+  const defaultProviderStart = Date.now();
   const defaultProvider = await resolveDefaultProviderRow({
     orgId,
     userId,
@@ -490,6 +511,7 @@ export async function resolveModelProviderSecrets(
     modelProviderId,
     personalEligible,
   });
+  timings.defaultProviderLookup = Date.now() - defaultProviderStart;
 
   const providerType = resolveProviderType(
     defaultProvider,
@@ -511,6 +533,7 @@ export async function resolveModelProviderSecrets(
   // their own secret + selectedModel even when their default is org-tier
   // (Epic #11868). Falls back to undefined when no row exists, in which case
   // `resolveEnvironmentMapping` uses `getDefaultModel(providerType)`.
+  const matchingProviderStart = Date.now();
   const matchingProvider = await resolveMatchingProviderForType({
     orgId,
     userId,
@@ -520,6 +543,7 @@ export async function resolveModelProviderSecrets(
     modelProviderId,
     personalEligible,
   });
+  timings.matchingProviderLookup = Date.now() - matchingProviderStart;
   // Derive `secretUserId` from the row whose secret we're about to fetch
   // (`matchingProvider`), not blindly from `defaultProvider`. They diverge
   // in the explicit-type-override path: an explicit `openai-api-key`
@@ -550,13 +574,17 @@ export async function resolveModelProviderSecrets(
     if (!selectedModel) {
       throw badRequest("VM0 provider requires a selected model");
     }
-    return resolveVm0Provider(selectedModel);
+    const vm0ProviderStart = Date.now();
+    const resolved = await resolveVm0Provider(selectedModel);
+    timings.vm0ProviderResolution = Date.now() - vm0ProviderStart;
+    return { ...resolved, timings };
   }
 
   const resolvedFramework = getFrameworkForType(providerType);
 
   // Handle multi-auth providers (like aws-bedrock)
   if (hasAuthMethods(providerType)) {
+    const multiAuthStart = Date.now();
     const resolved = await resolveMultiAuthProviderSecrets(
       orgId,
       secretUserId,
@@ -564,15 +592,17 @@ export async function resolveModelProviderSecrets(
       matchingProvider?.authMethod,
       selectedModel,
     );
-    return (
-      resolved ?? {
-        secrets,
-        injectedEnvironment: undefined,
-        resolvedModelProvider: providerType,
-        framework: resolvedFramework,
-        selectedModel,
-      }
-    );
+    timings.multiAuthSecretResolution = Date.now() - multiAuthStart;
+    return resolved
+      ? { ...resolved, timings }
+      : {
+          secrets,
+          injectedEnvironment: undefined,
+          resolvedModelProvider: providerType,
+          framework: resolvedFramework,
+          selectedModel,
+          timings,
+        };
   }
 
   // Handle single-secret providers
@@ -584,15 +614,18 @@ export async function resolveModelProviderSecrets(
       resolvedModelProvider: providerType,
       framework: resolvedFramework,
       selectedModel,
+      timings,
     };
   }
 
+  const secretFetchStart = Date.now();
   const secretValue = await getSecretValue(
     orgId,
     secretUserId,
     secretName,
     "model-provider",
   );
+  timings.singleSecretFetch = Date.now() - secretFetchStart;
 
   if (!secretValue) {
     return {
@@ -601,15 +634,18 @@ export async function resolveModelProviderSecrets(
       resolvedModelProvider: providerType,
       framework: resolvedFramework,
       selectedModel,
+      timings,
     };
   }
 
   // Resolve environment mapping as template references
+  const environmentMappingStart = Date.now();
   const injectedEnvironment = resolveEnvironmentMapping(
     providerType,
     secretName,
     selectedModel,
   );
+  timings.environmentMapping = Date.now() - environmentMappingStart;
 
   log.debug(
     `Resolved model provider env: ${Object.keys(injectedEnvironment).join(", ")}`,
@@ -621,5 +657,6 @@ export async function resolveModelProviderSecrets(
     resolvedModelProvider: providerType,
     framework: resolvedFramework,
     selectedModel,
+    timings,
   };
 }

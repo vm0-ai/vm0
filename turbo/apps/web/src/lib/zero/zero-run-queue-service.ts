@@ -660,6 +660,7 @@ export async function dispatchQueuedZeroRun(
       token: tokenTime,
       resolveSourceDuration: contextResult.timings.resolveSourceAndOrg,
       resolveSecretsDuration: contextResult.timings.resolveSecrets,
+      diagnosticSpans: contextResult.timings.diagnosticSpans,
     },
   });
 }

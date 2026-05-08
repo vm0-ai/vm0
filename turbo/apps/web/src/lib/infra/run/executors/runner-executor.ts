@@ -21,6 +21,23 @@ import type { PreparedContext, ExecutorResult } from "./types";
 
 const log = logger("executor:runner");
 
+function recordRunnerDispatchSpan(attrs: {
+  runId: string;
+  actionType: string;
+  durationMs: number;
+  success?: boolean;
+  dimensions?: Record<string, unknown>;
+}): void {
+  recordSandboxOperation({
+    sandboxType: "runner",
+    actionType: attrs.actionType,
+    durationMs: attrs.durationMs,
+    success: attrs.success ?? true,
+    runId: attrs.runId,
+    dimensions: attrs.dimensions,
+  });
+}
+
 /**
  * Queue an agent run for execution by a self-hosted runner
  *
@@ -60,14 +77,27 @@ export async function executeRunnerJob(
     throw forbidden("Only vm0/* runner groups are supported");
   }
 
+  const buildStoredContextStart = Date.now();
   const storedContext = buildStoredContext(context, profile);
+  recordRunnerDispatchSpan({
+    runId: context.runId,
+    actionType: "api_dispatch_build_stored_context",
+    durationMs: Date.now() - buildStoredContextStart,
+  });
 
   // Ingest sanitized context snapshot to Axiom for debugging
+  const ingestContextSnapshotStart = Date.now();
   ingestRunContext(buildRunContextSnapshot(context));
+  recordRunnerDispatchSpan({
+    runId: context.runId,
+    actionType: "api_dispatch_ingest_context_snapshot",
+    durationMs: Date.now() - ingestContextSnapshotStart,
+  });
 
   // Insert into runner job queue
   // TTL: 2 hours for job expiration
   const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000);
+  const insertRunnerJobStart = Date.now();
   await globalThis.services.db.insert(runnerJobQueue).values({
     runId: context.runId,
     runnerGroup,
@@ -76,23 +106,45 @@ export async function executeRunnerJob(
     executionContext: storedContext,
     expiresAt,
   });
+  recordRunnerDispatchSpan({
+    runId: context.runId,
+    actionType: "api_dispatch_insert_runner_job",
+    durationMs: Date.now() - insertRunnerJobStart,
+  });
 
   // Store runner group on agent_runs for cancel routing (runner_job_queue
   // is deleted after claim, so we need a durable reference).
+  const updateRunnerGroupStart = Date.now();
   await globalThis.services.db
     .update(agentRuns)
     .set({ runnerGroup })
     .where(eq(agentRuns.id, context.runId));
+  recordRunnerDispatchSpan({
+    runId: context.runId,
+    actionType: "api_dispatch_update_runner_group",
+    durationMs: Date.now() - updateRunnerGroupStart,
+  });
 
   log.debug(`Run ${context.runId} queued for runner group: ${runnerGroup}`);
 
   // Notify runners via Ably with optional targeted dispatch
-  await notifyRunners(
+  const notifyRunnersStart = Date.now();
+  const notifyResult = await notifyRunners(
     runnerGroup,
     context.runId,
     profile,
     context.resumeSession?.sessionId ?? null,
   );
+  recordRunnerDispatchSpan({
+    runId: context.runId,
+    actionType: "api_dispatch_notify_runners",
+    durationMs: Date.now() - notifyRunnersStart,
+    dimensions: {
+      notification_published: notifyResult.published,
+      targeted_runner: notifyResult.targetRunnerId !== null,
+      find_best_runner_failed: notifyResult.findBestRunnerFailed,
+    },
+  });
 
   return {
     runId: context.runId,
@@ -111,24 +163,53 @@ async function notifyRunners(
   runId: string,
   profile: string,
   sessionId: string | null,
-): Promise<void> {
+): Promise<{
+  targetRunnerId: string | null;
+  published: boolean;
+  findBestRunnerFailed: boolean;
+}> {
   let targetRunnerId: string | null = null;
+  let findBestRunnerFailed = false;
+  const findBestRunnerStart = Date.now();
   try {
     const target = await findBestRunner(runnerGroup, profile, sessionId);
     targetRunnerId = target?.runnerId ?? null;
   } catch (e) {
+    findBestRunnerFailed = true;
     log.warn(`findBestRunner failed for run ${runId}, using broadcast`, e);
+  } finally {
+    recordRunnerDispatchSpan({
+      runId,
+      actionType: "api_dispatch_find_best_runner",
+      durationMs: Date.now() - findBestRunnerStart,
+      success: !findBestRunnerFailed,
+      dimensions: {
+        targeted_runner: targetRunnerId !== null,
+        session_resume: sessionId !== null,
+      },
+    });
   }
 
+  const publishJobNotificationStart = Date.now();
   const published = await publishJobNotification(
     runnerGroup,
     runId,
     profile,
     targetRunnerId,
   );
+  recordRunnerDispatchSpan({
+    runId,
+    actionType: "api_dispatch_publish_job_notification",
+    durationMs: Date.now() - publishJobNotificationStart,
+    dimensions: {
+      notification_published: published,
+      targeted_runner: targetRunnerId !== null,
+    },
+  });
   if (published) {
     log.debug(`Job notification published for run ${runId}`);
   }
+  return { targetRunnerId, published, findBestRunnerFailed };
 }
 
 /**

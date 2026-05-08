@@ -183,4 +183,11 @@ export interface DispatchTimings {
   token: number;
   resolveSourceDuration?: number;
   resolveSecretsDuration?: number;
+  diagnosticSpans?: DispatchDiagnosticSpan[];
+}
+
+export interface DispatchDiagnosticSpan {
+  op: string;
+  ms: number;
+  dimensions?: Record<string, unknown>;
 }

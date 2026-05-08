@@ -19,6 +19,7 @@ import { executeRunnerJob } from "./executors/runner-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
 import type {
   ContextArtifact,
+  DispatchDiagnosticSpan,
   ExecutionContext,
   DispatchTimings,
 } from "./types";
@@ -347,7 +348,7 @@ export async function buildAndDispatchRun(opts: {
     // below start from timings.authorize because the route-entry → authorize
     // segment covers many heterogeneous call paths (auth, resolve, pre-flight)
     // whose aggregate is not a meaningful single metric.
-    const steps = [
+    const steps: DispatchDiagnosticSpan[] = [
       {
         op: "api_step_validate_and_insert",
         ms: timings.transaction - timings.authorize,
@@ -424,6 +425,7 @@ export async function buildAndDispatchRun(opts: {
         op: "api_prepare_storage_manifest",
         ms: prepareResult.timings.storageManifest,
       },
+      ...(timings.diagnosticSpans ?? []),
     ];
     for (const step of steps) {
       recordSandboxOperation({
@@ -432,6 +434,7 @@ export async function buildAndDispatchRun(opts: {
         durationMs: step.ms,
         success: true,
         runId,
+        dimensions: step.dimensions,
       });
     }
 
