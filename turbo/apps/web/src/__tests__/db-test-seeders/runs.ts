@@ -95,6 +95,7 @@ type CreateRunDirectOptions = {
   startedAt?: Date;
   completedAt?: Date;
   result?: Record<string, unknown>;
+  lastEventSequence?: number;
   additionalVolumes?: Array<{
     name: string;
     version?: string;
@@ -120,6 +121,7 @@ async function createRunDirect(
     startedAt,
     completedAt,
     result,
+    lastEventSequence,
     additionalVolumes = null,
   } = options;
   const sessionId = await ensureTestAgentSession({
@@ -142,6 +144,7 @@ async function createRunDirect(
       ...(startedAt ? { startedAt } : {}),
       ...(completedAt ? { completedAt } : {}),
       ...(result ? { result } : {}),
+      ...(lastEventSequence !== undefined ? { lastEventSequence } : {}),
     })
     .returning({ id: agentRuns.id });
 
@@ -180,6 +183,7 @@ export async function seedTestRun(
     startedAt?: Date;
     completedAt?: Date;
     result?: Record<string, unknown>;
+    lastEventSequence?: number;
     additionalVolumes?: Array<{
       name: string;
       version?: string;
@@ -235,6 +239,7 @@ export async function seedTestRun(
       startedAt: options?.startedAt,
       completedAt: options?.completedAt,
       result: options?.result,
+      lastEventSequence: options?.lastEventSequence,
       additionalVolumes: options?.additionalVolumes,
     },
   );

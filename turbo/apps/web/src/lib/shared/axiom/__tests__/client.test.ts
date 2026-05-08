@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../../mocks/server";
 
 // Mock @axiomhq/js at the package boundary.
 const mockQuery = vi.fn();
@@ -229,35 +231,31 @@ describe("queryAxiom", () => {
   });
 
   it("uses an abortable direct query when timeoutMs is provided", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(
-        new Response(JSON.stringify(axiomResponse([{ eventType: "result" }])), {
-          status: 200,
-        }),
-      );
+    let capturedRequest: Request | undefined;
+    server.use(
+      http.post("https://api.axiom.co/v1/datasets/_apl", ({ request }) => {
+        capturedRequest = request;
+        return HttpResponse.json(axiomResponse([{ eventType: "result" }]));
+      }),
+    );
 
-    try {
-      const results = await queryAxiom(apl, {
-        maxRetries: 0,
-        noCache: true,
-        streamingDuration: "1s",
-        timeoutMs: 2_000,
-      });
+    const results = await queryAxiom(apl, {
+      maxRetries: 0,
+      noCache: true,
+      streamingDuration: "1s",
+      timeoutMs: 2_000,
+    });
 
-      expect(results).toHaveLength(1);
-      expect(mockQuery).not.toHaveBeenCalled();
-      const [url, init] = fetchSpy.mock.calls[0]!;
-      expect(String(url)).toContain("https://api.axiom.co/v1/datasets/_apl?");
-      expect(String(url)).toContain("nocache=true");
-      expect(String(url)).toContain("streaming-duration=1s");
-      expect(init).toMatchObject({
-        method: "POST",
-        cache: "no-store",
-      });
-      expect((init as RequestInit).signal).toBeInstanceOf(AbortSignal);
-    } finally {
-      fetchSpy.mockRestore();
-    }
+    expect(results).toHaveLength(1);
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(capturedRequest).toBeDefined();
+    expect(capturedRequest!.url).toContain(
+      "https://api.axiom.co/v1/datasets/_apl?",
+    );
+    expect(capturedRequest!.url).toContain("nocache=true");
+    expect(capturedRequest!.url).toContain("streaming-duration=1s");
+    expect(capturedRequest!.method).toBe("POST");
+    expect(capturedRequest!.cache).toBe("no-store");
+    expect(capturedRequest!.signal).toBeInstanceOf(AbortSignal);
   });
 });

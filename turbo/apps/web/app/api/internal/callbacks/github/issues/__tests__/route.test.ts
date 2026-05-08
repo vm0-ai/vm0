@@ -89,6 +89,7 @@ async function givenGitHubCallbackSetup(overrides?: {
 
   const { runId } = await seedTestRun(userId, composeId, {
     prompt: "Test GitHub prompt",
+    lastEventSequence: 0,
   });
   const installation = await insertTestGitHubInstallation(composeId);
 
@@ -260,6 +261,7 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       expect(capturedComments[0]!.issueNumber).toBe("42");
       expect(capturedComments[0]!.body).not.toContain("Audit");
       expect(capturedComments[0]!.body).not.toContain(`/activities/${runId}`);
+      expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledTimes(1);
     });
 
     it("should include audit link when AuditLink switch is on", async () => {

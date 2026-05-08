@@ -216,15 +216,15 @@ export async function waitForAgentEventPrefixVisible(
 
       let events: AxiomAgentEventSequence[];
       try {
-        events = await withTimeout(
-          queryAxiomFn<AxiomAgentEventSequence>(apl, {
-            maxRetries: 0,
-            noCache: true,
-            streamingDuration: "1s",
-            timeoutMs: remainingMs,
-          }),
-          remainingMs,
-        );
+        const queryPromise = queryAxiomFn<AxiomAgentEventSequence>(apl, {
+          maxRetries: 0,
+          noCache: true,
+          streamingDuration: "1s",
+          timeoutMs: remainingMs,
+        });
+        events = options.queryAxiomFn
+          ? await withTimeout(queryPromise, remainingMs)
+          : await queryPromise;
         lastQueryError = undefined;
       } catch (error) {
         lastQueryError = error;
@@ -295,9 +295,9 @@ export async function waitForAgentEventPrefixVisible(
 export async function waitForRunEventWatermarkVisible(
   runId: string,
   knownTargetSequence?: number | null,
-): Promise<void> {
+): Promise<number | undefined> {
   if (knownTargetSequence === null) {
-    return;
+    return undefined;
   }
 
   let targetSequence: number | undefined;
@@ -311,11 +311,11 @@ export async function waitForRunEventWatermarkVisible(
       runId,
       error,
     });
-    return;
+    return undefined;
   }
 
   if (targetSequence === undefined) {
-    return;
+    return undefined;
   }
 
   const visibility = await waitForAgentEventPrefixVisible(
@@ -323,7 +323,7 @@ export async function waitForRunEventWatermarkVisible(
     targetSequence,
   );
   if (visibility.visible || visibility.reason === "not_configured") {
-    return;
+    return targetSequence;
   }
 
   log.warn("Reading run Axiom events before terminal watermark is visible", {
@@ -335,4 +335,5 @@ export async function waitForRunEventWatermarkVisible(
     reason: visibility.reason,
     error: visibility.error,
   });
+  return targetSequence;
 }

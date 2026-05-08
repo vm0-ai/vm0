@@ -52,7 +52,9 @@ describe("extractRunOutput", () => {
   it("returns empty output when no events found", async () => {
     mockQuery.mockResolvedValue(axiomResponse([]));
 
-    const output = await extractRunOutput("run-1");
+    const output = await extractRunOutput("run-1", undefined, {
+      waitForOutput: false,
+    });
 
     expect(output).toEqual({
       result: null,
@@ -66,7 +68,9 @@ describe("extractRunOutput", () => {
       axiomResponse([{ eventData: { result: "latest" } }]),
     );
 
-    const output = await extractRunOutput("run-1");
+    const output = await extractRunOutput("run-1", undefined, {
+      waitForOutput: false,
+    });
 
     expect(output.result).toBe("latest");
   });
@@ -74,7 +78,7 @@ describe("extractRunOutput", () => {
   it("limits the single-output query after filtering to publishable events", async () => {
     mockQuery.mockResolvedValue(axiomResponse([]));
 
-    await extractRunOutput("run-1");
+    await extractRunOutput("run-1", undefined, { waitForOutput: false });
 
     const apl = mockQuery.mock.calls[0]![0] as string;
     expect(apl).toContain('eventType == "result"');
@@ -98,22 +102,33 @@ describe("extractRunOutput", () => {
       ]),
     );
 
-    const output = await extractRunOutput("run-1");
+    const output = await extractRunOutput("run-1", undefined, {
+      waitForOutput: false,
+    });
 
     expect(output.result).toBe("Codex completed text");
   });
 
   it("retries briefly when the latest output event is not searchable yet", async () => {
+    vi.useFakeTimers();
     mockQuery
       .mockResolvedValueOnce(axiomResponse([]))
       .mockResolvedValueOnce(
         axiomResponse([{ eventData: { result: "eventually indexed" } }]),
       );
 
-    const output = await extractRunOutput("run-1");
+    try {
+      const outputPromise = extractRunOutput("run-1");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(500);
+      const output = await outputPromise;
 
-    expect(output.result).toBe("eventually indexed");
-    expect(mockQuery).toHaveBeenCalledTimes(2);
+      expect(output.result).toBe("eventually indexed");
+      expect(mockQuery).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not retry output query after terminal watermark is visible", async () => {
@@ -180,7 +195,9 @@ describe("extractRunOutput", () => {
       ]),
     );
 
-    const output = await extractRunOutput("run-1");
+    const output = await extractRunOutput("run-1", undefined, {
+      waitForOutput: false,
+    });
 
     expect(output.result).toBe("Latest agent text");
   });
@@ -188,7 +205,9 @@ describe("extractRunOutput", () => {
   it("passes error through", async () => {
     mockQuery.mockResolvedValue(axiomResponse([]));
 
-    const output = await extractRunOutput("run-1", "sandbox crashed");
+    const output = await extractRunOutput("run-1", "sandbox crashed", {
+      waitForOutput: false,
+    });
 
     expect(output.error).toBe("sandbox crashed");
     expect(output.result).toBeNull();
@@ -203,7 +222,9 @@ describe("extractAllRunOutputs", () => {
   it("returns one empty output when no events found", async () => {
     mockQuery.mockResolvedValue(axiomResponse([]));
 
-    const outputs = await extractAllRunOutputs("run-1");
+    const outputs = await extractAllRunOutputs("run-1", undefined, {
+      waitForOutput: false,
+    });
 
     expect(outputs).toHaveLength(1);
     expect(outputs[0]!.result).toBeNull();
@@ -213,7 +234,9 @@ describe("extractAllRunOutputs", () => {
   it("returns one empty output with error when no events found", async () => {
     mockQuery.mockResolvedValue(axiomResponse([]));
 
-    const outputs = await extractAllRunOutputs("run-1", "timeout");
+    const outputs = await extractAllRunOutputs("run-1", "timeout", {
+      waitForOutput: false,
+    });
 
     expect(outputs).toHaveLength(1);
     expect(outputs[0]!.error).toBe("timeout");
@@ -228,7 +251,9 @@ describe("extractAllRunOutputs", () => {
       ]),
     );
 
-    const outputs = await extractAllRunOutputs("run-1");
+    const outputs = await extractAllRunOutputs("run-1", undefined, {
+      waitForOutput: false,
+    });
 
     expect(outputs).toHaveLength(3);
     expect(
@@ -271,7 +296,9 @@ describe("extractAllRunOutputs", () => {
       ]),
     );
 
-    const outputs = await extractAllRunOutputs("run-1");
+    const outputs = await extractAllRunOutputs("run-1", undefined, {
+      waitForOutput: false,
+    });
 
     expect(
       outputs.map((o) => {
@@ -288,7 +315,9 @@ describe("extractAllRunOutputs", () => {
       ]),
     );
 
-    const outputs = await extractAllRunOutputs("run-1");
+    const outputs = await extractAllRunOutputs("run-1", undefined, {
+      waitForOutput: false,
+    });
 
     expect(outputs).toHaveLength(2);
     expect(outputs[0]!.result).toBeNull();
@@ -304,7 +333,9 @@ describe("getAllRunOutputTexts", () => {
   it("returns empty array when all events have no result", async () => {
     mockQuery.mockResolvedValue(axiomResponse([{ eventData: {} }]));
 
-    const texts = await getAllRunOutputTexts("run-1");
+    const texts = await getAllRunOutputTexts("run-1", {
+      waitForOutput: false,
+    });
 
     expect(texts).toEqual([]);
   });
@@ -317,7 +348,9 @@ describe("getAllRunOutputTexts", () => {
       ]),
     );
 
-    const texts = await getAllRunOutputTexts("run-1");
+    const texts = await getAllRunOutputTexts("run-1", {
+      waitForOutput: false,
+    });
 
     expect(texts).toEqual(["first result", "second result"]);
   });
@@ -337,7 +370,9 @@ describe("getAllRunOutputTexts", () => {
       ]),
     );
 
-    const texts = await getAllRunOutputTexts("run-1");
+    const texts = await getAllRunOutputTexts("run-1", {
+      waitForOutput: false,
+    });
 
     expect(texts).toEqual(["codex text"]);
   });

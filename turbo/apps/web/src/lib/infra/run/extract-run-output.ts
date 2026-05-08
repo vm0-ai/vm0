@@ -115,11 +115,11 @@ async function queryAllOutputEvents(runId: string): Promise<RunOutputEvent[]> {
 async function waitForVisibleOutput(
   runId: string,
   options: RunOutputQueryOptions,
-): Promise<void> {
+): Promise<number | undefined> {
   if (options.waitForOutput === false) {
-    return;
+    return undefined;
   }
-  await waitForRunEventWatermarkVisible(runId, options.knownLastEventSequence);
+  return waitForRunEventWatermarkVisible(runId, options.knownLastEventSequence);
 }
 
 // ---------------------------------------------------------------------------
@@ -141,9 +141,14 @@ export async function extractRunOutput(
   optionsInput?: RunOutputOptionsInput,
 ): Promise<RunOutput> {
   const options = normalizeOptions(optionsInput);
-  await waitForVisibleOutput(runId, options);
+  const resolvedLastEventSequence = await waitForVisibleOutput(runId, options);
+  const queryOptions =
+    options.knownLastEventSequence === undefined &&
+    typeof resolvedLastEventSequence === "number"
+      ? { ...options, knownLastEventSequence: resolvedLastEventSequence }
+      : options;
 
-  const event = await queryLatestOutputEvent(runId, options);
+  const event = await queryLatestOutputEvent(runId, queryOptions);
 
   if (!event) {
     return {
