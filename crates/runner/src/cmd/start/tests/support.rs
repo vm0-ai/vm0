@@ -559,35 +559,38 @@ pub(super) async fn seed_idle_pool_with_timing(
     assert!(matches!(result, ParkResult::Parked));
 }
 
+#[derive(serde::Deserialize)]
+struct StatusSnapshot {
+    active_runs: Vec<ActiveRunSnapshot>,
+    #[serde(default)]
+    idle_vms: Vec<IdleVmSnapshot>,
+}
+
+#[derive(serde::Deserialize)]
+struct ActiveRunSnapshot {
+    run_id: String,
+}
+
+#[derive(serde::Deserialize)]
+struct IdleVmSnapshot {
+    session_id: String,
+}
+
 pub(super) async fn status_idle_sessions_and_active_runs(
     status_path: &std::path::Path,
 ) -> (Vec<String>, Vec<String>) {
     let raw = tokio::fs::read_to_string(status_path).await.unwrap();
-    let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    let status: StatusSnapshot = serde_json::from_str(&raw).unwrap();
     let mut sessions: Vec<String> = status
-        .get("idle_vms")
-        .and_then(|v| v.as_array())
-        .map(|idle_vms| {
-            idle_vms
-                .iter()
-                .filter_map(|vm| {
-                    vm.get("session_id")
-                        .and_then(|session| session.as_str())
-                        .map(str::to_string)
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+        .idle_vms
+        .into_iter()
+        .map(|vm| vm.session_id)
+        .collect();
     sessions.sort_unstable();
-    let mut run_ids: Vec<String> = status["active_runs"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|run| {
-            run.get("run_id")
-                .and_then(|run_id| run_id.as_str())
-                .map(str::to_string)
-        })
+    let mut run_ids: Vec<String> = status
+        .active_runs
+        .into_iter()
+        .map(|run| run.run_id)
         .collect();
     run_ids.sort_unstable();
     (sessions, run_ids)
@@ -595,6 +598,33 @@ pub(super) async fn status_idle_sessions_and_active_runs(
 
 pub(super) async fn status_idle_sessions(status_path: &std::path::Path) -> Vec<String> {
     status_idle_sessions_and_active_runs(status_path).await.0
+}
+
+#[tokio::test]
+async fn status_parser_defaults_omitted_idle_vms_to_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("status.json");
+    tokio::fs::write(
+        &path,
+        r#"{"active_runs":[{"run_id":"run-b"},{"run_id":"run-a"}]}"#,
+    )
+    .await
+    .unwrap();
+
+    let (idle_sessions, active_runs) = status_idle_sessions_and_active_runs(&path).await;
+
+    assert!(idle_sessions.is_empty());
+    assert_eq!(active_runs, vec!["run-a", "run-b"]);
+}
+
+#[tokio::test]
+#[should_panic(expected = "missing field `active_runs`")]
+async fn status_parser_requires_active_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("status.json");
+    tokio::fs::write(&path, r#"{"idle_vms":[]}"#).await.unwrap();
+
+    let _ = status_idle_sessions_and_active_runs(&path).await;
 }
 
 pub(super) async fn wait_status_idle_sessions_and_active_runs(

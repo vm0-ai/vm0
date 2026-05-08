@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.336.0](https://github.com/vm0-ai/vm0/compare/app-v0.335.0...app-v0.336.0) (2026-05-08)
+
+
+### Features
+
+* **voice-chat:** replace openai token mint with vm0 relay bootstrap admission ([#12149](https://github.com/vm0-ai/vm0/issues/12149)) ([9d29183](https://github.com/vm0-ai/vm0/commit/9d29183e0fd556ab3ffb3dd74f53193863eab415)), closes [#12128](https://github.com/vm0-ai/vm0/issues/12128)
+
+
+### Bug Fixes
+
+* **platform:** polyfill promise withresolvers ([#12158](https://github.com/vm0-ai/vm0/issues/12158)) ([e0792d2](https://github.com/vm0-ai/vm0/commit/e0792d2d0f3498d479a039ef230227454e5efeda))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.1.0
+    * @vm0/connectors bumped to 1.1.0
+    * @vm0/core bumped to 8.262.0
+
 ## [0.335.0](https://github.com/vm0-ai/vm0/compare/app-v0.334.1...app-v0.335.0) (2026-05-08)
 
 

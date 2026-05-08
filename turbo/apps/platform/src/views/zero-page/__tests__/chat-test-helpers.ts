@@ -227,6 +227,12 @@ export function mockChatLifecycle(options?: {
    * the in-flight loading state before letting the request complete.
    */
   recallGate?: Promise<void>;
+  /**
+   * Promise the append handler awaits before responding. Lets a test observe
+   * the optimistic pending state (disabled Recall button) before the server
+   * round-trip completes.
+   */
+  appendGate?: Promise<void>;
   onRunCreate?: () => void;
 }): MockLifecycleControl {
   let threadId = options?.threadId ?? "thread-test-1";
@@ -381,8 +387,11 @@ export function mockChatLifecycle(options?: {
     }),
     mockApi(
       chatThreadPendingMessageAppendContract.append,
-      ({ body, respond }) => {
+      async ({ body, respond }) => {
         options?.onPendingMessageAppend?.(body);
+        if (options?.appendGate) {
+          await options.appendGate;
+        }
         const now = new Date().toISOString();
         const nextContent =
           body.content === undefined
