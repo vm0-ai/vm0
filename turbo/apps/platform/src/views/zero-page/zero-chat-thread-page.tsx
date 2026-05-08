@@ -2745,10 +2745,18 @@ function QueuedUserMessageRow({ thread }: { thread: ChatThreadSignals }) {
   // dedup-by-client-id check, so this row only renders while the queued
   // bubble has no real-message counterpart in the list.
   const pendingMessage = useLastResolved(thread.pendingMessage$) ?? null;
+  const isOptimistic =
+    useLastResolved(thread.pendingMessageIsOptimistic$) ?? false;
   if (!pendingMessage) {
     return null;
   }
-  return <QueuedUserMessage pendingMessage={pendingMessage} thread={thread} />;
+  return (
+    <QueuedUserMessage
+      pendingMessage={pendingMessage}
+      thread={thread}
+      isOptimistic={isOptimistic}
+    />
+  );
 }
 
 function persistedAttachmentsToResolved(
@@ -2779,9 +2787,11 @@ function persistedAttachmentsToResolved(
 function QueuedUserMessage({
   pendingMessage,
   thread,
+  isOptimistic,
 }: {
   pendingMessage: PendingMessage;
   thread: ChatThreadSignals;
+  isOptimistic: boolean;
 }) {
   const content = pendingMessage.content?.trim() ?? "";
   const attachments = persistedAttachmentsToResolved(
@@ -2826,7 +2836,8 @@ function QueuedUserMessage({
             <button
               type="button"
               onClick={handleRecall}
-              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              disabled={isOptimistic}
+              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
               aria-label="Recall queued message"
             >
               <IconArrowBackUp size={13} stroke={1.75} />
