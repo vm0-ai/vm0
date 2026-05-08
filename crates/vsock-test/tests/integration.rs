@@ -8,6 +8,7 @@
 
 use std::io;
 use std::ops::Deref;
+use std::path::Path;
 use std::sync::Once;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -48,6 +49,32 @@ fn retry_connect(path: &str) -> io::Result<std::os::unix::net::UnixStream> {
         }
     }
     unreachable!()
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn shell_quote_path(path: &Path) -> String {
+    shell_quote(path.to_str().expect("test path must be valid UTF-8"))
+}
+
+async fn wait_for_path(path: &Path, timeout: Duration) {
+    tokio::time::timeout(timeout, async {
+        loop {
+            if path.exists() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("timed out waiting for path {path:?}"));
+}
+
+#[test]
+fn shell_quote_escapes_single_quotes() {
+    assert_eq!(shell_quote("chunked'quote.bin"), "'chunked'\\''quote.bin'");
 }
 
 /// Test harness: creates temp dir, starts guest thread, connects host.
@@ -827,13 +854,17 @@ async fn test_spawn_watch_interleaved_output() {
 #[tokio::test]
 async fn test_concurrent_exec_not_blocked() {
     let h = Harness::new().await;
+    let ready_marker = h.dir.join("slow-exec-ready");
+    let slow_command = format!(
+        "rm -f {ready} && touch {ready} && sleep 5",
+        ready = shell_quote_path(&ready_marker)
+    );
 
-    // Launch a slow exec (sleep 5) and a fast exec (echo ok) concurrently.
-    // The fast one should complete within seconds despite the slow one running.
-    let slow = h.exec("sleep 5", 10000, &[], false);
+    // Launch a slow exec and wait until its guest-side shell has started
+    // before submitting the fast exec.
+    let slow = h.exec(&slow_command, 10000, &[], false);
     let fast = async {
-        // Small delay to ensure slow exec is dispatched first
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_for_path(&ready_marker, Duration::from_secs(3)).await;
         tokio::time::timeout(Duration::from_secs(3), h.exec("echo ok", 5000, &[], false))
             .await
             .expect("fast exec timed out — slow exec is blocking the event loop")
