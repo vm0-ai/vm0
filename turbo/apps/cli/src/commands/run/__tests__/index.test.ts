@@ -1683,8 +1683,10 @@ describe("run command", () => {
     });
 
     it("should exit with error when run times out (status: timeout)", async () => {
+      let pollCount = 0;
       server.use(
         http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
           // Return no events with "timeout" status - sandbox heartbeat expired
           return HttpResponse.json({
             events: [],
@@ -1703,6 +1705,7 @@ describe("run command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Run timed out"),
       );
+      expect(pollCount).toBe(1);
     });
 
     it("should handle completed status with result", async () => {

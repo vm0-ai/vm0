@@ -422,10 +422,7 @@ function shouldReturnTerminalRunResult(
     return false;
   }
 
-  if (
-    !hasTerminalWatermark(run) &&
-    (run.status === "failed" || run.status === "cancelled")
-  ) {
+  if (!hasTerminalWatermark(run) && run.status !== "completed") {
     return true;
   }
 
