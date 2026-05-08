@@ -231,6 +231,23 @@ export const setGeneralEditDraft$ = command(({ set }, value: string) => {
 });
 
 // ---------------------------------------------------------------------------
+// org-manage-dialog: mobile master/detail navigation. On phones the dialog
+// opens to a master list of all tabs (iOS Settings-style); selecting a row
+// pushes to the existing tab content as a sub-page. Defaults to `true` so a
+// newly-opened dialog lands on the master, not the previously-viewed tab.
+// ---------------------------------------------------------------------------
+
+const internalMobileMasterMode$ = state(true);
+
+export const mobileMasterMode$ = computed((get) => {
+  return get(internalMobileMasterMode$);
+});
+
+export const setMobileMasterMode$ = command(({ set }, value: boolean) => {
+  set(internalMobileMasterMode$, value);
+});
+
+// ---------------------------------------------------------------------------
 // org-billing-tab: sub-page
 // ---------------------------------------------------------------------------
 
