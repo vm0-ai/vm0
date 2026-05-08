@@ -232,6 +232,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Allow keyboard sends during an active chat thread run to append the draft to that thread's pending message queue.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatThreadPin]: {
     maintainer: "ethan@vm0.ai",
