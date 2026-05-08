@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::thread::JoinHandle;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use vsock_proto::{
     self, BoundedExecStream, BoundedExecTermination, MSG_BOUNDED_EXEC_OUTPUT_CHUNK,
@@ -27,6 +27,7 @@ const THREAD_BOUNDED_EXEC_WORKER: &str = "vsock-bounded-exec-worker";
 const THREAD_BOUNDED_STDOUT: &str = "vsock-bounded-stdout";
 const THREAD_BOUNDED_STDERR: &str = "vsock-bounded-stderr";
 const THREAD_BOUNDED_STDIN: &str = "vsock-bounded-stdin";
+const STREAM_CHUNK_WRITE_DEADLINE: Duration = Duration::from_secs(2);
 
 pub(crate) struct BoundedExecWorkerRequest {
     pub(crate) seq: u32,
@@ -662,7 +663,7 @@ fn send_bounded_exec_output_chunk(
         .map_err(to_io_error)?;
     let encoded =
         vsock_proto::encode(MSG_BOUNDED_EXEC_OUTPUT_CHUNK, seq, &payload).map_err(to_io_error)?;
-    writer.write_frame(&encoded)
+    writer.write_frame_with_deadline(&encoded, STREAM_CHUNK_WRITE_DEADLINE)
 }
 
 fn duration_ms(started: Instant) -> u64 {
