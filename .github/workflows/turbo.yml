@@ -1554,8 +1554,14 @@ jobs:
             sudo "${BIN_DIR}/runner" service stop --name "${RUNNER_NAME}" --force
           else
             sudo systemctl stop "${UNIT}" 2>/dev/null || true
-            sudo systemctl reset-failed "${UNIT}" 2>/dev/null || true
           fi
+
+          if sudo systemctl is-active --quiet "${UNIT}" 2>/dev/null; then
+            echo "runner service ${UNIT} is still active after stop" >&2
+            exit 1
+          fi
+
+          sudo systemctl reset-failed "${UNIT}" 2>/dev/null || true
           REMOTE_SCRIPT
             then
               return 1
