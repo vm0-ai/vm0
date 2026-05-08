@@ -1421,7 +1421,7 @@ jobs:
         run: |
           cd crates
           cargo build --release --target "$TARGET_TRIPLE" \
-            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed
+            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-write-file
 
       - name: Cross-compile runner with embedded guests for ARM64
         run: |
@@ -1432,6 +1432,7 @@ jobs:
           GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/release/guest-mock-claude" \
           GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/release/guest-mock-codex" \
           GUEST_RESEED_PATH="target/$TARGET_TRIPLE/release/guest-reseed" \
+          GUEST_WRITE_FILE_PATH="target/$TARGET_TRIPLE/release/guest-write-file" \
           cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
 
       - name: Setup SSH via Cloudflare Tunnel

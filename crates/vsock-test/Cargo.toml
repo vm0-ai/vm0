@@ -3,6 +3,9 @@ name = "vsock-test"
 version = "0.9.17"
 edition.workspace = true
 
+[dependencies]
+guest-write-file.workspace = true
+
 [dev-dependencies]
 vsock-guest.workspace = true
 vsock-host.workspace = true

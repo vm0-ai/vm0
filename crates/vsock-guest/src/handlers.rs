@@ -1,6 +1,9 @@
 use std::io::{self, Write};
-use std::process::{Child, Stdio};
+use std::path::PathBuf;
+use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
+#[cfg(debug_assertions)]
+use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
 
 use vsock_proto::{
@@ -11,13 +14,13 @@ use vsock_proto::{
 use crate::drain::drain_into_vec_cancellable;
 use crate::error::to_io_error;
 use crate::exec::{
-    build_exec_command, format_env_diagnostics, spawn_in_own_process_group, spawn_with_pipes,
-    truncate_preview,
+    format_env_diagnostics, spawn_in_own_process_group, spawn_with_pipes, truncate_preview,
 };
 use crate::log::log;
 use crate::process::{extract_exit_code, kill_and_reap_child};
 use crate::shutdown::handle_shutdown;
 use crate::threading::{SystemThreadSpawner, ThreadSpawner};
+use crate::user::apply_write_file_identity;
 use crate::wait::{
     WaitOutcome, await_drain_deadline, finalize_buffered_result,
     wait_with_drain_and_timeout_or_cancelled, wait_with_kill_timeout,
@@ -25,6 +28,9 @@ use crate::wait::{
 
 const THREAD_WRITE_STDERR: &str = "vsock-write-stderr";
 const WRITE_TIMEOUT_MS: u32 = 30_000;
+const GUEST_WRITE_FILE_PATH: &str = "/sbin/guest-write-file";
+#[cfg(debug_assertions)]
+static DEBUG_GUEST_WRITE_FILE_PATH: OnceLock<PathBuf> = OnceLock::new();
 
 pub(crate) enum MessageOutcome {
     Response(Vec<u8>),
@@ -98,35 +104,7 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -
         ),
     );
 
-    // Execute as 'user' (UID 1000) to match E2B sandbox behavior
-    // Use subprocess instead of direct fs::write to run as user
-    let escaped_path = path.replace('\'', "'\\''");
-
-    // Build the write command: tee for privileged writes (build_exec_command
-    // handles root elevation), cat for normal writes with parent dir creation.
-    let write_cmd = if use_sudo {
-        let tee_flag = if append { "-a " } else { "" };
-        format!("tee {tee_flag}'{escaped_path}'")
-    } else if append {
-        // Append mode: parent directory already exists from the first chunk.
-        format!("cat >> '{escaped_path}'")
-    } else {
-        // Create parent directory if needed, then write
-        if let Some(parent) = std::path::Path::new(path).parent() {
-            if !parent.as_os_str().is_empty() {
-                format!(
-                    "mkdir -p '{}' && cat > '{escaped_path}'",
-                    parent.display().to_string().replace('\'', "'\\''"),
-                )
-            } else {
-                format!("cat > '{escaped_path}'")
-            }
-        } else {
-            format!("cat > '{escaped_path}'")
-        }
-    };
-
-    let mut child = match spawn_write_file_command(&write_cmd, use_sudo) {
+    let mut child = match spawn_write_file_command(path, use_sudo, append) {
         Ok(c) => c,
         Err(e) => return (false, format!("Failed to spawn write command: {e}")),
     };
@@ -202,13 +180,41 @@ where
     }
 }
 
-fn spawn_write_file_command(write_cmd: &str, use_sudo: bool) -> io::Result<Child> {
-    let mut command = build_exec_command(write_cmd, use_sudo);
+fn spawn_write_file_command(path: &str, use_sudo: bool, append: bool) -> io::Result<Child> {
+    let mut command = Command::new(guest_write_file_path());
+    if append {
+        command.arg("--append");
+    } else if !use_sudo {
+        command.arg("--create-parents");
+    }
     command
+        .arg("--")
+        .arg(path)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
+    apply_write_file_identity(&mut command, use_sudo)?;
     spawn_in_own_process_group(&mut command)
+}
+
+fn guest_write_file_path() -> PathBuf {
+    #[cfg(debug_assertions)]
+    {
+        DEBUG_GUEST_WRITE_FILE_PATH
+            .get()
+            .cloned()
+            .unwrap_or_else(|| PathBuf::from(GUEST_WRITE_FILE_PATH))
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        PathBuf::from(GUEST_WRITE_FILE_PATH)
+    }
+}
+
+#[cfg(debug_assertions)]
+pub(crate) fn set_debug_guest_write_file_path(path: PathBuf) -> Result<(), PathBuf> {
+    DEBUG_GUEST_WRITE_FILE_PATH.set(path)
 }
 
 /// Handle incoming message and return the connection-loop outcome.
@@ -250,6 +256,24 @@ pub(crate) fn handle_message(msg: &RawMessage) -> io::Result<MessageOutcome> {
 mod tests {
     use super::*;
     use crate::threading::test_support::FailingThreadSpawner;
+    use std::sync::{Mutex, Once};
+
+    static TEST_HELPER: Once = Once::new();
+    static TEST_HELPER_EXEC: Mutex<()> = Mutex::new(());
+
+    fn install_sleeping_write_file_helper() {
+        TEST_HELPER.call_once(|| {
+            let path =
+                std::env::temp_dir().join(format!("vm0-guest-write-file-{}", std::process::id()));
+            std::fs::write(&path, "#!/bin/sh\nsleep 60\ncat >/dev/null\n").unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            }
+            set_debug_guest_write_file_path(path).unwrap();
+        });
+    }
 
     fn pid_alive(pid: u32) -> bool {
         // SAFETY: kill(pid, 0) is the standard process-existence check.
@@ -259,7 +283,9 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn write_file_command_starts_as_process_group_leader() {
-        let mut child = spawn_write_file_command("sleep 10", false).unwrap();
+        let _guard = TEST_HELPER_EXEC.lock().unwrap();
+        install_sleeping_write_file_helper();
+        let mut child = spawn_write_file_command("/tmp/out.txt", false, false).unwrap();
         let pid = child.id();
 
         let pgid = unsafe { libc::getpgid(pid as libc::pid_t) };
@@ -271,7 +297,9 @@ mod tests {
 
     #[test]
     fn write_file_stderr_drain_spawn_failure_kills_and_reaps_child() {
-        let child = spawn_write_file_command("sleep 60", false).unwrap();
+        let _guard = TEST_HELPER_EXEC.lock().unwrap();
+        install_sleeping_write_file_helper();
+        let child = spawn_write_file_command("/tmp/out.txt", false, false).unwrap();
         let pid = child.id();
 
         let (success, error) =

@@ -19,7 +19,8 @@
 #     --guest-init /path/to/guest-init \
 #     --guest-mock-claude /path/to/guest-mock-claude \
 #     --guest-mock-codex /path/to/guest-mock-codex \
-#     --guest-reseed /path/to/guest-reseed
+#     --guest-reseed /path/to/guest-reseed \
+#     --guest-write-file /path/to/guest-write-file
 
 set -euo pipefail
 
@@ -45,6 +46,7 @@ GUEST_INIT=""
 GUEST_MOCK_CLAUDE=""
 GUEST_MOCK_CODEX=""
 GUEST_RESEED=""
+GUEST_WRITE_FILE=""
 MOUNT_DIR=""
 CHROOT_TMP=""
 CHROOT_TMP_HOST=""
@@ -106,11 +108,12 @@ while [[ $# -gt 0 ]]; do
     --guest-mock-claude)  GUEST_MOCK_CLAUDE="$2";  shift 2 ;;
     --guest-mock-codex)   GUEST_MOCK_CODEX="$2";   shift 2 ;;
     --guest-reseed)       GUEST_RESEED="$2";       shift 2 ;;
+    --guest-write-file)   GUEST_WRITE_FILE="$2";   shift 2 ;;
     *) echo "error: unknown argument: $1" >&2; exit 1 ;;
   esac
 done
 
-for var in ROOTFS CA_DIR DNS_NAMESERVER GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE GUEST_MOCK_CODEX GUEST_RESEED; do
+for var in ROOTFS CA_DIR DNS_NAMESERVER GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE GUEST_MOCK_CODEX GUEST_RESEED GUEST_WRITE_FILE; do
   if [[ -z "${!var}" ]]; then
     echo "error: --$(echo "$var" | tr '_' '-' | tr '[:upper:]' '[:lower:]') is required" >&2
     exit 1
@@ -262,6 +265,7 @@ install_host_file "$GUEST_INIT" "/sbin/guest-init" 755
 install_host_file "$GUEST_MOCK_CLAUDE" "/usr/local/bin/guest-mock-claude" 755
 install_host_file "$GUEST_MOCK_CODEX" "/usr/local/bin/guest-mock-codex" 755
 install_host_file "$GUEST_RESEED" "/sbin/guest-reseed" 755
+install_host_file "$GUEST_WRITE_FILE" "/sbin/guest-write-file" 755
 
 install_host_file "$ca_cert" "/${CA_ROOTFS_DEST}" 644
 
