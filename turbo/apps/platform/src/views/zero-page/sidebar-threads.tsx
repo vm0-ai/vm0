@@ -262,27 +262,6 @@ function ChatThreadDeleteButton({
   );
 }
 
-function MenuTriggerIcon({
-  label,
-  className,
-  children,
-}: {
-  label: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className={className}>{children}</span>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">
-        <p className="text-xs">{label}</p>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
 function ChatThreadMenu({
   threadId,
   isPinned,
@@ -330,11 +309,7 @@ function ChatThreadMenu({
           <button
             type="button"
             onClick={handleMenuTriggerClick}
-            className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-opacity duration-150 ${
-              isPinned
-                ? "visible"
-                : "visible md:invisible md:group-hover:visible md:data-[state=open]:visible"
-            } ${
+            className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md visible md:invisible md:group-hover:visible md:data-[state=open]:visible transition-opacity duration-150 ${
               isHighlighted
                 ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
                 : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
@@ -343,26 +318,16 @@ function ChatThreadMenu({
             data-testid="chat-thread-menu-trigger"
             data-pinned={isPinned ? "true" : "false"}
           >
-            {isPinned ? (
-              <>
-                <MenuTriggerIcon
-                  label="Pinned"
-                  className="block md:group-hover:hidden"
-                >
-                  <IconPin size={16} stroke={2} />
-                </MenuTriggerIcon>
-                <MenuTriggerIcon
-                  label="More"
-                  className="hidden md:group-hover:block"
-                >
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
                   <IconDots size={16} stroke={2} />
-                </MenuTriggerIcon>
-              </>
-            ) : (
-              <MenuTriggerIcon label="More">
-                <IconDots size={16} stroke={2} />
-              </MenuTriggerIcon>
-            )}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">More</p>
+              </TooltipContent>
+            </Tooltip>
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-40">
@@ -418,7 +383,8 @@ function ChatThreadSideDecorator({
   renameEnabled: boolean;
   indicatorState: IndicatorState | null;
 }) {
-  if (indicatorState === "draft") {
+  const showPin = pinEnabled && isPinned;
+  if (indicatorState === "draft" && !showPin) {
     return (
       <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
         <span className="flex items-center justify-center">
@@ -429,10 +395,29 @@ function ChatThreadSideDecorator({
   }
   return (
     <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
-      {indicatorState !== null && (
-        <span className="flex items-center justify-center group-hover:invisible">
-          <SessionStateIndicator state={indicatorState} />
-        </span>
+      {showPin ? (
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                aria-label="Pinned"
+                data-testid="chat-thread-pinned-indicator"
+                className="flex items-center justify-center text-sidebar-foreground/70 group-hover:invisible"
+              >
+                <IconPin size={16} stroke={2} />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">Pinned</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : (
+        indicatorState !== null && (
+          <span className="flex items-center justify-center group-hover:invisible">
+            <SessionStateIndicator state={indicatorState} />
+          </span>
+        )
       )}
       {pinEnabled || renameEnabled ? (
         <ChatThreadMenu
