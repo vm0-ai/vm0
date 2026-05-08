@@ -52,6 +52,22 @@ describe("isFeatureEnabled", () => {
     );
   });
 
+  it("should keep model-first model provider off unless an org hash or override enables it", () => {
+    expect(isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, {})).toBe(
+      false,
+    );
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, {
+        orgId: "org_nonexistent",
+      }),
+    ).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, {
+        overrides: { [FeatureSwitchKey.ModelFirstModelProvider]: true },
+      }),
+    ).toBe(true);
+  });
+
   it("should return true when orgId matches even if userId does not", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.PlatformConnectors, {

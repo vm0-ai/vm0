@@ -12,8 +12,18 @@ import {
   getModelImageInputSupport,
   modelSupportsImageInput,
   getSelectableProviderTypes,
+  getCanonicalModelDisplayName,
+  getDefaultOrgModelPolicySeed,
+  getProviderRuntimeModel,
+  getProvidersForModel,
+  isModelSupportedByProvider,
+  isSupportedRunModel,
+  normalizeRunModelId,
   getAuthMethodsForType,
   getSecretsForAuthMethod,
+  modelProviderCredentialScopeSchema,
+  supportedRunModelSchema,
+  SUPPORTED_RUN_MODELS,
   VM0_MODEL_TO_PROVIDER,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   MODEL_PROVIDER_TYPES,
@@ -21,6 +31,116 @@ import {
   modelProviderFrameworkSchema,
   type ModelProviderType,
 } from "../model-providers";
+
+describe("model-first canonical catalog", () => {
+  it("exposes the curated flat model list only", () => {
+    expect(SUPPORTED_RUN_MODELS).toEqual([
+      "claude-opus-4-7",
+      "claude-opus-4-6",
+      "claude-sonnet-4-6",
+      "gpt-5.5",
+      "gpt-5.4",
+      "deepseek-v4-pro",
+      "kimi-k2.6",
+      "kimi-k2.5",
+      "glm-5.1",
+    ]);
+    expect(SUPPORTED_RUN_MODELS).not.toContain("MiniMax-M2.7");
+    expect(SUPPORTED_RUN_MODELS).not.toContain("deepseek-v4-flash");
+  });
+
+  it("validates canonical models and credential scopes", () => {
+    expect(supportedRunModelSchema.safeParse("gpt-5.5").success).toBe(true);
+    expect(supportedRunModelSchema.safeParse("gpt-5.3-codex").success).toBe(
+      false,
+    );
+    expect(modelProviderCredentialScopeSchema.safeParse("org").success).toBe(
+      true,
+    );
+    expect(modelProviderCredentialScopeSchema.safeParse("member").success).toBe(
+      true,
+    );
+    expect(
+      modelProviderCredentialScopeSchema.safeParse("personal").success,
+    ).toBe(false);
+  });
+
+  it("surfaces display labels for canonical models", () => {
+    expect(getCanonicalModelDisplayName("claude-opus-4-7")).toBe(
+      "Claude Opus 4.7",
+    );
+    expect(getCanonicalModelDisplayName("custom/model")).toBe("custom/model");
+  });
+
+  it("normalizes provider aliases without accepting unsupported models", () => {
+    expect(normalizeRunModelId("z-ai/glm-5.1")).toBe("glm-5.1");
+    expect(normalizeRunModelId("custom/model")).toBe("custom/model");
+    expect(isSupportedRunModel("glm-5.1")).toBe(true);
+    expect(isSupportedRunModel("deepseek-v4-flash")).toBe(false);
+  });
+
+  it("returns compatible provider types for canonical models", () => {
+    expect(getProvidersForModel("claude-opus-4-7")).toEqual([
+      "vm0",
+      "claude-code-oauth-token",
+      "anthropic-api-key",
+      "openrouter-api-key",
+    ]);
+    expect(getProvidersForModel("gpt-5.5")).toEqual([
+      "vm0",
+      "openai-api-key",
+      "codex-oauth-token",
+    ]);
+    expect(getProvidersForModel("deepseek/deepseek-v4-pro")).toContain(
+      "openrouter-api-key",
+    );
+    expect(getProvidersForModel("custom/model")).toEqual([]);
+  });
+
+  it("checks model/provider compatibility", () => {
+    expect(isModelSupportedByProvider("gpt-5.5", "openai-api-key")).toBe(true);
+    expect(isModelSupportedByProvider("gpt-5.5", "anthropic-api-key")).toBe(
+      false,
+    );
+    expect(isModelSupportedByProvider("anthropic/claude-opus-4.7", "vm0")).toBe(
+      true,
+    );
+  });
+
+  it("maps canonical models to provider runtime model ids", () => {
+    expect(getProviderRuntimeModel("openrouter-api-key", "glm-5.1")).toBe(
+      "z-ai/glm-5.1",
+    );
+    expect(getProviderRuntimeModel("openrouter-api-key", "kimi-k2.6")).toBe(
+      "moonshotai/kimi-k2.6",
+    );
+    expect(
+      getProviderRuntimeModel("anthropic-api-key", "claude-opus-4-7"),
+    ).toBe("claude-opus-4-7");
+    expect(getProviderRuntimeModel("vm0", "glm-5.1")).toBe("z-ai/glm-5.1");
+    expect(getProviderRuntimeModel("openai-api-key", "gpt-5.5")).toBe(
+      "gpt-5.5",
+    );
+    expect(getProviderRuntimeModel("openrouter-api-key", "custom/model")).toBe(
+      "custom/model",
+    );
+  });
+
+  it("builds the default org policy seed from the curated catalog", () => {
+    expect(getDefaultOrgModelPolicySeed()).toEqual(
+      SUPPORTED_RUN_MODELS.map((model, index) => {
+        return {
+          model,
+          enabled: true,
+          sortOrder: index,
+          defaultProviderType: "vm0",
+          credentialScope: "org",
+          modelProviderId: null,
+        };
+      }),
+    );
+  });
+});
 
 describe("getProviderBaseUrl", () => {
   it.each([

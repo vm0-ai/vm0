@@ -240,7 +240,10 @@ export {
   upsertModelProviderRequestSchema,
   upsertModelProviderResponseSchema,
   updateModelRequestSchema,
+  supportedRunModelSchema,
+  modelProviderCredentialScopeSchema,
   MODEL_PROVIDER_TYPES,
+  SUPPORTED_RUN_MODELS,
   getFrameworkForType,
   getSecretNameForType,
   getEnvironmentMapping,
@@ -249,9 +252,16 @@ export {
   hasModelSelection,
   allowsCustomModel,
   getCustomModelPlaceholder,
+  getDefaultOrgModelPolicySeed,
   // Provider compatibility
   getProviderBaseUrl,
   areProvidersCompatible,
+  getCanonicalModelDisplayName,
+  getProvidersForModel,
+  getProviderRuntimeModel,
+  isModelSupportedByProvider,
+  isSupportedRunModel,
+  normalizeRunModelId,
   // Selectable provider filtering
   getSelectableProviderTypes,
   // Multi-auth provider support
@@ -267,6 +277,9 @@ export {
   type UpsertModelProviderRequest,
   type UpsertModelProviderResponse,
   type UpdateModelRequest,
+  type SupportedRunModel,
+  type ModelProviderCredentialScope,
+  type DefaultOrgModelPolicySeed,
   // Multi-auth provider types
   type SecretFieldConfig,
   type AuthMethodConfig,

@@ -17,6 +17,7 @@ import * as agentRunQueueSchema from "./schema/agent-run-queue";
 import * as zeroAgentScheduleSchema from "./schema/zero-agent-schedule";
 import * as secretSchema from "./schema/secret";
 import * as modelProviderSchema from "./schema/model-provider";
+import * as orgModelPolicySchema from "./schema/org-model-policy";
 import * as modelStatSchema from "./schema/model-stat";
 import * as variableSchema from "./schema/variable";
 import * as composeJobSchema from "./schema/compose-job";
@@ -83,6 +84,7 @@ export const schema = {
   ...zeroAgentScheduleSchema,
   ...secretSchema,
   ...modelProviderSchema,
+  ...orgModelPolicySchema,
   ...modelStatSchema,
   ...slackOrgInstallationSchema,
   ...slackOrgConnectionSchema,

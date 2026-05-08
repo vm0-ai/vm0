@@ -46,6 +46,85 @@ export interface AuthMethodConfig {
 export const VM0_ORG_SLUG = "vm0";
 
 /**
+ * Canonical model-first catalog.
+ *
+ * This is intentionally separate from the legacy per-provider `models` arrays:
+ * provider-first selection keeps using those arrays while the
+ * `modelFirstModelProvider` feature switch is off. Follow-up work can use this
+ * flat list for org model policies and model-first pickers without changing the
+ * current provider-first UI/runtime behavior.
+ */
+export const SUPPORTED_RUN_MODELS = [
+  "claude-opus-4-7",
+  "claude-opus-4-6",
+  "claude-sonnet-4-6",
+  "gpt-5.5",
+  "gpt-5.4",
+  "deepseek-v4-pro",
+  "kimi-k2.6",
+  "kimi-k2.5",
+  "glm-5.1",
+] as const;
+
+export type SupportedRunModel = (typeof SUPPORTED_RUN_MODELS)[number];
+
+export const supportedRunModelSchema = z.enum(SUPPORTED_RUN_MODELS);
+
+export const modelProviderCredentialScopeSchema = z.enum(["org", "member"]);
+
+export type ModelProviderCredentialScope = z.infer<
+  typeof modelProviderCredentialScopeSchema
+>;
+
+export interface DefaultOrgModelPolicySeed {
+  model: SupportedRunModel;
+  enabled: true;
+  sortOrder: number;
+  defaultProviderType: "vm0";
+  credentialScope: "org";
+  modelProviderId: null;
+}
+
+const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
+  "claude-opus-4-7": "Claude Opus 4.7",
+  "claude-opus-4-6": "Claude Opus 4.6",
+  "claude-sonnet-4-6": "Claude Sonnet 4.6",
+  "gpt-5.5": "GPT-5.5",
+  "gpt-5.4": "GPT-5.4",
+  "deepseek-v4-pro": "DeepSeek V4 Pro",
+  "kimi-k2.6": "Kimi K2.6",
+  "kimi-k2.5": "Kimi K2.5",
+  "glm-5.1": "GLM 5.1",
+};
+
+const SUPPORTED_RUN_MODEL_SET: ReadonlySet<string> = new Set(
+  SUPPORTED_RUN_MODELS,
+);
+
+export function isSupportedRunModel(
+  model: string | null | undefined,
+): model is SupportedRunModel {
+  return typeof model === "string" && SUPPORTED_RUN_MODEL_SET.has(model);
+}
+
+export function getCanonicalModelDisplayName(model: string): string {
+  return isSupportedRunModel(model) ? SUPPORTED_RUN_MODEL_LABELS[model] : model;
+}
+
+export function getDefaultOrgModelPolicySeed(): DefaultOrgModelPolicySeed[] {
+  return SUPPORTED_RUN_MODELS.map((model, index) => {
+    return {
+      model,
+      enabled: true,
+      sortOrder: index,
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+      modelProviderId: null,
+    };
+  });
+}
+
+/**
  * Mapping from VM0 managed model names to their concrete provider type and vendor.
  * Used at build-context time to resolve the meta-provider to a real provider.
  *
@@ -614,6 +693,109 @@ export const MODEL_PROVIDER_TYPES = {
 
 export type ModelProviderType = keyof typeof MODEL_PROVIDER_TYPES;
 export type ModelProviderFramework = "claude-code" | "codex";
+
+const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
+  "claude-opus-4-7": [
+    "vm0",
+    "claude-code-oauth-token",
+    "anthropic-api-key",
+    "openrouter-api-key",
+  ],
+  "claude-opus-4-6": [
+    "vm0",
+    "claude-code-oauth-token",
+    "anthropic-api-key",
+    "openrouter-api-key",
+    "vercel-ai-gateway",
+  ],
+  "claude-sonnet-4-6": [
+    "vm0",
+    "claude-code-oauth-token",
+    "anthropic-api-key",
+    "openrouter-api-key",
+    "vercel-ai-gateway",
+  ],
+  "gpt-5.5": ["vm0", "openai-api-key", "codex-oauth-token"],
+  "gpt-5.4": ["vm0", "openai-api-key", "codex-oauth-token"],
+  "deepseek-v4-pro": ["vm0", "deepseek-api-key", "openrouter-api-key"],
+  "kimi-k2.6": [
+    "vm0",
+    "moonshot-api-key",
+    "openrouter-api-key",
+    "vercel-ai-gateway",
+  ],
+  "kimi-k2.5": [
+    "vm0",
+    "moonshot-api-key",
+    "openrouter-api-key",
+    "vercel-ai-gateway",
+  ],
+  "glm-5.1": ["vm0", "zai-api-key", "openrouter-api-key"],
+} as const satisfies Record<SupportedRunModel, readonly ModelProviderType[]>;
+
+const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
+  Record<ModelProviderType, Partial<Record<SupportedRunModel, string>>>
+> = {
+  "openrouter-api-key": {
+    "claude-opus-4-7": "anthropic/claude-opus-4.7",
+    "claude-opus-4-6": "anthropic/claude-opus-4.6",
+    "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
+    "deepseek-v4-pro": "deepseek/deepseek-v4-pro",
+    "kimi-k2.6": "moonshotai/kimi-k2.6",
+    "kimi-k2.5": "moonshotai/kimi-k2.5",
+    "glm-5.1": "z-ai/glm-5.1",
+  },
+  "vercel-ai-gateway": {
+    "claude-opus-4-6": "anthropic/claude-opus-4.6",
+    "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
+    "kimi-k2.6": "moonshotai/kimi-k2.6",
+    "kimi-k2.5": "moonshotai/kimi-k2.5",
+  },
+};
+
+const CANONICAL_RUN_MODEL_ALIASES: Readonly<Record<string, SupportedRunModel>> =
+  {
+    "anthropic/claude-opus-4.7": "claude-opus-4-7",
+    "anthropic/claude-opus-4.6": "claude-opus-4-6",
+    "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
+    "deepseek/deepseek-v4-pro": "deepseek-v4-pro",
+    "moonshotai/kimi-k2.6": "kimi-k2.6",
+    "moonshotai/kimi-k2.5": "kimi-k2.5",
+    "z-ai/glm-5.1": "glm-5.1",
+  };
+
+export function normalizeRunModelId(model: string): string {
+  return CANONICAL_RUN_MODEL_ALIASES[model] ?? model;
+}
+
+export function getProvidersForModel(model: string): ModelProviderType[] {
+  const canonical = normalizeRunModelId(model);
+  if (!isSupportedRunModel(canonical)) {
+    return [];
+  }
+  return [...MODEL_FIRST_PROVIDER_COMPATIBILITY[canonical]];
+}
+
+export function isModelSupportedByProvider(
+  model: string,
+  type: ModelProviderType,
+): boolean {
+  return getProvidersForModel(model).includes(type);
+}
+
+export function getProviderRuntimeModel(
+  type: ModelProviderType,
+  model: string,
+): string {
+  const canonical = normalizeRunModelId(model);
+  if (!isSupportedRunModel(canonical)) {
+    return model;
+  }
+  if (type === "vm0") {
+    return VM0_MODEL_TO_PROVIDER[canonical]?.apiModel ?? canonical;
+  }
+  return PROVIDER_RUNTIME_MODEL_ALIASES[type]?.[canonical] ?? canonical;
+}
 
 /**
  * Provider types hidden from user-facing selection UI.

@@ -337,6 +337,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ModelFirstModelProvider]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Gate the model-first model provider selection foundation. When off, " +
+      "all provider-first resolver, UI, CLI, and legacy model provider " +
+      "defaults remain unchanged. When on, follow-up work can use org model " +
+      "policies, canonical models, and member-scoped OAuth credentials.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

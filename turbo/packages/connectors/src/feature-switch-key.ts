@@ -58,4 +58,5 @@ export enum FeatureSwitchKey {
   CodexBeta = "codexBeta",
   CodexOauthProvider = "codexOauthProvider",
   PersonalModelProvider = "personalModelProvider",
+  ModelFirstModelProvider = "modelFirstModelProvider",
 }

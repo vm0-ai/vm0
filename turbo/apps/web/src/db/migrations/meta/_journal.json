@@ -2409,6 +2409,20 @@
       "when": 1778135064655,
       "tag": "0343_light_wonder_man",
       "breakpoints": true
+    },
+    {
+      "idx": 344,
+      "version": "7",
+      "when": 1778213421203,
+      "tag": "0344_aberrant_adam_destine",
+      "breakpoints": true
+    },
+    {
+      "idx": 345,
+      "version": "7",
+      "when": 1778213699774,
+      "tag": "0345_large_nextwave",
+      "breakpoints": true
     }
   ]
 }
