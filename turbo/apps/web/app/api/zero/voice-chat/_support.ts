@@ -29,6 +29,7 @@ export const voiceChatTokenBodySchema = z.object({
   sessionId: z.uuid(),
   noiseReduction: z.enum(["near_field", "far_field"]).optional(),
 });
+export type VoiceChatTokenBody = z.infer<typeof voiceChatTokenBodySchema>;
 
 type SessionRow = typeof voiceChatSessions.$inferSelect;
 type ItemRow = typeof voiceChatItems.$inferSelect;
@@ -102,6 +103,43 @@ export async function isVoiceChatEnabled(
     userId: authCtx.userId,
     overrides,
   });
+}
+
+interface VoiceChatGates {
+  /** FeatureSwitchKey.Trinity — top-level voice-chat gate (#10618). */
+  voiceChatEnabled: boolean;
+  /**
+   * FeatureSwitchKey.VoiceChatRealtimeBilling — when ON, the token route
+   * mints a VM0 relay-bootstrap instead of an OpenAI client_secret
+   * (Epic #12128). Default OFF; staff-org rollout.
+   */
+  realtimeBillingEnabled: boolean;
+}
+
+/**
+ * Resolve both voice-chat feature gates with a single overrides load.
+ * Use this in routes that need to make per-branch decisions; the older
+ * `isVoiceChatEnabled` is kept for callers that only need the Trinity
+ * gate.
+ */
+export async function loadVoiceChatGates(
+  authCtx: AuthContext,
+): Promise<VoiceChatGates> {
+  const overrides = await loadFeatureSwitchOverrides(
+    authCtx.orgId,
+    authCtx.userId,
+  );
+  const evalKey = (key: FeatureSwitchKey) => {
+    return isFeatureEnabled(key, {
+      orgId: authCtx.orgId,
+      userId: authCtx.userId,
+      overrides,
+    });
+  };
+  return {
+    voiceChatEnabled: evalKey(FeatureSwitchKey.Trinity),
+    realtimeBillingEnabled: evalKey(FeatureSwitchKey.VoiceChatRealtimeBilling),
+  };
 }
 
 export function unauthorizedResponse(): Response {

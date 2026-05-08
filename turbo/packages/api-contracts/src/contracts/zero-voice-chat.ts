@@ -80,20 +80,22 @@ export const voiceChatTaskSchema = z.object({
 });
 export type VoiceChatTask = z.infer<typeof voiceChatTaskSchema>;
 
-const tokenResponseSchema = z.object({
+const legacyTokenResponseSchema = z.object({
   client_secret: z.object({
     value: z.string(),
     expires_at: z.number(),
   }),
 });
-export type VoiceChatTokenResponse = z.infer<typeof tokenResponseSchema>;
+export type VoiceChatLegacyTokenResponse = z.infer<
+  typeof legacyTokenResponseSchema
+>;
 
 /**
- * Forward-compatible relay bootstrap response shape used by the VM0 server
- * realtime relay landed by Epic #12128. Not yet returned by the `token`
- * endpoint — the route still returns `tokenResponseSchema` until the relay
- * admission path (#12140) replaces it. Exported here so downstream code can
- * be built against the final shape.
+ * Relay bootstrap response shape used by the VM0 server realtime relay
+ * landed by Epic #12128. Returned by the `token` endpoint when
+ * FeatureSwitchKey.VoiceChatRealtimeBilling is ON (admission path
+ * landed by #12140); otherwise the endpoint returns the legacy
+ * `client_secret` shape.
  */
 export const relayBootstrapResponseSchema = z.object({
   relayUrl: z.url(),
@@ -106,6 +108,12 @@ export const relayBootstrapResponseSchema = z.object({
 export type RelayBootstrapResponse = z.infer<
   typeof relayBootstrapResponseSchema
 >;
+
+const tokenResponseSchema = z.union([
+  legacyTokenResponseSchema,
+  relayBootstrapResponseSchema,
+]);
+export type VoiceChatTokenResponse = z.infer<typeof tokenResponseSchema>;
 
 const createSessionBodySchema = z.object({ agentId: z.uuid() });
 export type CreateVoiceChatSessionBody = z.infer<
@@ -264,12 +272,16 @@ export const zeroVoiceChatContract = c.router({
       200: tokenResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
+      402: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
       500: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary: "Mint an ephemeral OpenAI realtime token for voice-chat",
+    summary:
+      "Mint a voice-chat token. Returns either the legacy OpenAI " +
+      "client_secret or, when VoiceChatRealtimeBilling is ON, a VM0 relay " +
+      "bootstrap (relayUrl + HMAC relayToken).",
   },
 });
 
