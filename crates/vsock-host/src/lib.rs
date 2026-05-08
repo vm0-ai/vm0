@@ -2106,7 +2106,7 @@ mod tests {
     async fn test_cancel_while_waiting_for_writer_lock_does_not_close_connection() {
         let (host_stream, mut guest) = make_pair();
 
-        tokio::spawn(async move {
+        let guest_task = tokio::spawn(async move {
             let mut decoder = Decoder::new();
             mock_handshake(&mut guest, &mut decoder).await;
 
@@ -2140,6 +2140,7 @@ mod tests {
         let result = host.exec("after-cancel", 5000, &[], false).await.unwrap();
         assert_eq!(result.exit_code, 0);
         assert_eq!(result.stdout, b"ok");
+        guest_task.await.unwrap();
     }
 
     #[tokio::test]
@@ -2150,7 +2151,7 @@ mod tests {
         let frame_started = std::sync::Arc::new(Notify::new());
         let release_guest = std::sync::Arc::new(Notify::new());
 
-        {
+        let guest_task = {
             let frame_started = std::sync::Arc::clone(&frame_started);
             let release_guest = std::sync::Arc::clone(&release_guest);
             tokio::spawn(async move {
@@ -2174,8 +2175,8 @@ mod tests {
                 frame_started.notify_one();
 
                 release_guest.notified().await;
-            });
-        }
+            })
+        };
 
         let host = std::sync::Arc::new(host_from_stream(host_stream).await.unwrap());
         let task_host = std::sync::Arc::clone(&host);
@@ -2205,6 +2206,7 @@ mod tests {
         assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
 
         release_guest.notify_one();
+        guest_task.await.unwrap();
     }
 
     #[tokio::test]
