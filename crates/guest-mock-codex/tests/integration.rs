@@ -4,7 +4,6 @@
 //! Cover the contract guest-agent will rely on: stdout JSONL shape, the
 //! on-disk session file path / format, and resume semantics.
 
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -54,10 +53,7 @@ fn run_with_env(
 }
 
 fn read_session_file(path: &Path) -> std::io::Result<Vec<Value>> {
-    let bytes = std::fs::read(path)?;
-    let mut decoder = zstd::Decoder::new(bytes.as_slice())?;
-    let mut decoded = String::new();
-    decoder.read_to_string(&mut decoded)?;
+    let decoded = std::fs::read_to_string(path)?;
     let mut out = Vec::new();
     for line in decoded.lines() {
         if line.is_empty() {
@@ -73,7 +69,7 @@ fn read_session_file(path: &Path) -> std::io::Result<Vec<Value>> {
 fn find_session_file(codex_home: &Path) -> Option<PathBuf> {
     let mut found = None;
     walk(&codex_home.join("sessions"), &mut |p| {
-        if p.extension().and_then(|s| s.to_str()) == Some("zst") {
+        if p.extension().and_then(|s| s.to_str()) == Some("jsonl") {
             found = Some(p.to_path_buf());
         }
     });
@@ -95,7 +91,7 @@ fn walk(dir: &Path, f: &mut dyn FnMut(&Path)) {
 }
 
 #[test]
-fn happy_path_emits_three_events_and_persists_zstd() {
+fn happy_path_emits_three_events_and_persists_jsonl() {
     let dir = TempDir::new().unwrap();
     let out = run(dir.path(), &["exec", "--json", "--", "hello"]).unwrap();
 

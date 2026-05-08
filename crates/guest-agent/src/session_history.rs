@@ -1,5 +1,5 @@
 //! Session-history reader — abstracts over Claude (literal jsonl path) and
-//! codex (`CODEX_SEARCH:{dir}:{id}` marker → recursive scan + zstd decode).
+//! codex (`CODEX_SEARCH:{dir}:{id}` marker → recursive scan + optional zstd decode).
 //!
 //! `events::extract_session_id` writes one of two payloads to
 //! `paths::session_history_path_file()`:
@@ -10,7 +10,7 @@
 //!   defer resolution until checkpoint time when the file is on disk.
 //!
 //! `read_session_history` is the single entry point used by `checkpoint.rs`.
-//! It returns the decompressed bytes regardless of the source format.
+//! It returns the history bytes, decompressing legacy `.zst` files when needed.
 //!
 //! See parent epic #11386, sub-issue #11419 for the design rationale.
 //!
@@ -112,7 +112,7 @@ where
     }
 }
 
-/// Read the bytes at `path`, decompressing zstd if the extension is `.zst`.
+/// Read the bytes at `path`, decompressing legacy zstd files if the extension is `.zst`.
 fn read_history_bytes(path: &Path) -> Result<Vec<u8>, AgentError> {
     let raw = std::fs::read(path).map_err(|e| {
         AgentError::Checkpoint(format!(

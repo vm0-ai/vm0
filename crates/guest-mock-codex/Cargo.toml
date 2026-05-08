@@ -8,7 +8,6 @@ chrono = { workspace = true, features = ["clock"] }
 clap = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 uuid = { workspace = true, features = ["v7"] }
-zstd.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

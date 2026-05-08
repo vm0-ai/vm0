@@ -1,8 +1,8 @@
 //! Mock Codex CLI for testing.
 //!
-//! Emits Codex `exec --json` protocol events on stdout and persists a
-//! zstd-compressed JSONL session file at the same path layout the real
-//! Codex CLI uses (`$CODEX_HOME/sessions/YYYY/MM/DD/<thread_id>.jsonl.zst`).
+//! Emits Codex `exec --json` protocol events on stdout and persists a JSONL
+//! session file at the same path layout the real Codex CLI uses
+//! (`$CODEX_HOME/sessions/YYYY/MM/DD/<thread_id>.jsonl`).
 //!
 //! Activated in guest VMs via `USE_MOCK_CODEX=true` (handled by guest-agent).
 //! This binary itself runs whenever it's invoked — the env-var dispatch lives
@@ -20,7 +20,7 @@
 //! synthetic 3-event sequence is replaced with a baked JSONL fixture by
 //! that name (see `FIXTURES`). The thread id is taken from the fixture's
 //! `thread.started` event; the fixture's bytes are written verbatim to
-//! stdout and to the zstd session file. Used by
+//! stdout and to the session file. Used by
 //! `e2e/tests/03-runner/t-codex-event-mapping.bats` to exercise the
 //! codex-event-parser branches that the synthetic sequence cannot reach.
 
@@ -28,7 +28,7 @@ use chrono::{NaiveDate, Utc};
 use clap::{Parser, Subcommand};
 use serde_json::{Value, json};
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
@@ -151,7 +151,7 @@ fn lookup_fixture(name: &str) -> Option<&'static str> {
 }
 
 /// Run a fixture: parse JSONL, extract thread id from `thread.started`,
-/// emit events to stdout, and persist the zstd session file under
+/// emit events to stdout, and persist the session file under
 /// `$CODEX_HOME` so checkpoint reads see the same content the CLI saw.
 fn run_fixture(content: &str) -> io::Result<()> {
     let events = parse_fixture_events(content)?;
@@ -216,7 +216,7 @@ fn codex_home() -> PathBuf {
 
 /// Build the session file path, with `today` injected for testability.
 ///
-/// Layout: `<codex_home>/sessions/YYYY/MM/DD/<thread_id>.jsonl.zst`
+/// Layout: `<codex_home>/sessions/YYYY/MM/DD/<thread_id>.jsonl`
 fn build_session_path(codex_home: &Path, today: NaiveDate, thread_id: &str) -> PathBuf {
     let yyyy = today.format("%Y").to_string();
     let mm = today.format("%m").to_string();
@@ -226,7 +226,7 @@ fn build_session_path(codex_home: &Path, today: NaiveDate, thread_id: &str) -> P
         .join(yyyy)
         .join(mm)
         .join(dd)
-        .join(format!("{thread_id}.jsonl.zst"))
+        .join(format!("{thread_id}.jsonl"))
 }
 
 /// Build the three-event sequence the mock emits for a single turn.
@@ -252,8 +252,8 @@ fn emit_events<W: Write>(out: &mut W, events: &[Value]) -> io::Result<()> {
     out.flush()
 }
 
-/// Encode events as zstd-compressed JSONL and atomically write to `path`,
-/// creating parent directories as needed.
+/// Encode events as JSONL and atomically write to `path`, creating parent
+/// directories as needed.
 fn write_session_file(path: &Path, events: &[Value]) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -262,19 +262,15 @@ fn write_session_file(path: &Path, events: &[Value]) -> io::Result<()> {
     for ev in events {
         writeln!(buf, "{ev}")?;
     }
-    let compressed = zstd::encode_all(buf.as_slice(), 3)?;
-    let tmp = path.with_extension("zst.tmp");
-    fs::write(&tmp, compressed)?;
+    let tmp = path.with_extension("jsonl.tmp");
+    fs::write(&tmp, buf)?;
     fs::rename(&tmp, path)
 }
 
-/// Read a zstd-compressed JSONL session file into parsed `Value` events.
+/// Read a JSONL session file into parsed `Value` events.
 /// Used both by `append_session_file` (read-modify-write) and tests.
 fn read_session_file(path: &Path) -> io::Result<Vec<Value>> {
-    let bytes = fs::read(path)?;
-    let mut decoder = zstd::Decoder::new(bytes.as_slice())?;
-    let mut decoded = String::new();
-    decoder.read_to_string(&mut decoded)?;
+    let decoded = fs::read_to_string(path)?;
     let mut out = Vec::new();
     for line in decoded.lines() {
         if line.is_empty() {
@@ -287,9 +283,9 @@ fn read_session_file(path: &Path) -> io::Result<Vec<Value>> {
     Ok(out)
 }
 
-/// Append `new_events` to an existing session file by reading, decompressing,
-/// extending, recompressing, and atomically renaming. If the file does not
-/// exist, falls back to `write_session_file` so the resume call does not fail.
+/// Append `new_events` to an existing session file by reading, extending, and
+/// atomically renaming. If the file does not exist, falls back to
+/// `write_session_file` so the resume call does not fail.
 fn append_session_file(path: &Path, new_events: &[Value]) -> io::Result<()> {
     let mut existing = match read_session_file(path) {
         Ok(events) => events,
@@ -350,7 +346,7 @@ mod tests {
         let p = build_session_path(home, day, "abc");
         assert_eq!(
             p,
-            PathBuf::from("/tmp/.codex/sessions/2026/01/05/abc.jsonl.zst")
+            PathBuf::from("/tmp/.codex/sessions/2026/01/05/abc.jsonl")
         );
     }
 
@@ -361,7 +357,7 @@ mod tests {
         let p = build_session_path(home, day, "xyz-uuid");
         assert_eq!(
             p,
-            PathBuf::from("/var/codex/sessions/2026/12/31/xyz-uuid.jsonl.zst")
+            PathBuf::from("/var/codex/sessions/2026/12/31/xyz-uuid.jsonl")
         );
     }
 
@@ -394,7 +390,7 @@ mod tests {
     #[test]
     fn write_then_read_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("nested/deep/file.jsonl.zst");
+        let path = dir.path().join("nested/deep/file.jsonl");
         let evs = build_events("rt-1", "hi");
         write_session_file(&path, &evs).unwrap();
         let read_back = read_session_file(&path).unwrap();
@@ -405,7 +401,7 @@ mod tests {
     #[test]
     fn append_to_missing_file_creates_it() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("appended.jsonl.zst");
+        let path = dir.path().join("appended.jsonl");
         let evs = build_events("a-1", "first");
         append_session_file(&path, &evs).unwrap();
         let read_back = read_session_file(&path).unwrap();
@@ -415,7 +411,7 @@ mod tests {
     #[test]
     fn append_to_existing_file_extends() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("extend.jsonl.zst");
+        let path = dir.path().join("extend.jsonl");
         let first = build_events("e-1", "turn-1");
         write_session_file(&path, &first).unwrap();
         let second = build_events("e-1", "turn-2");

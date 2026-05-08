@@ -56,6 +56,12 @@ pub struct SpawnWatchCall {
     pub guest_log_path: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WriteFileCall {
+    pub path: String,
+    pub content: Vec<u8>,
+}
+
 enum LifecycleBehavior {
     Result(Result<()>),
     Panic(String),
@@ -290,6 +296,7 @@ pub struct MockSandbox {
     source_ip: String,
     exec_results: Mutex<VecDeque<Result<ExecResult>>>,
     write_file_results: Mutex<VecDeque<Result<()>>>,
+    write_file_calls: Mutex<Vec<WriteFileCall>>,
     overrides: Option<Arc<MockSandboxOverrides>>,
     /// Holds the stdout channel sender alive when simulating a non-closing
     /// channel (e.g. wait_exit_error override). Without this, the sender is
@@ -304,6 +311,7 @@ impl MockSandbox {
             source_ip: "10.0.0.1".into(),
             exec_results: Mutex::new(VecDeque::new()),
             write_file_results: Mutex::new(VecDeque::new()),
+            write_file_calls: Mutex::new(Vec::new()),
             overrides: None,
             stdout_tx: Mutex::new(None),
         }
@@ -315,6 +323,7 @@ impl MockSandbox {
             source_ip: "10.0.0.1".into(),
             exec_results: Mutex::new(VecDeque::new()),
             write_file_results: Mutex::new(VecDeque::new()),
+            write_file_calls: Mutex::new(Vec::new()),
             overrides: Some(overrides),
             stdout_tx: Mutex::new(None),
         }
@@ -336,6 +345,10 @@ impl MockSandbox {
         self.write_file_results
             .lock_ignoring_poison()
             .push_back(result);
+    }
+
+    pub fn write_file_calls(&self) -> Vec<WriteFileCall> {
+        self.write_file_calls.lock_ignoring_poison().clone()
     }
 }
 
@@ -442,7 +455,13 @@ impl Sandbox for MockSandbox {
             .unwrap_or_else(|| Ok(default_exec_result()))
     }
 
-    async fn write_file(&self, _path: &str, _content: &[u8]) -> Result<()> {
+    async fn write_file(&self, path: &str, content: &[u8]) -> Result<()> {
+        self.write_file_calls
+            .lock_ignoring_poison()
+            .push(WriteFileCall {
+                path: path.to_string(),
+                content: content.to_vec(),
+            });
         self.write_file_results
             .lock_ignoring_poison()
             .pop_front()
