@@ -2,6 +2,10 @@ import { type Server, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 
 import { serve } from "@hono/node-server";
+import {
+  signRelayToken,
+  type SignInput,
+} from "@vm0/core/voice-chat/relay-token";
 import { delay } from "signal-timers";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { WebSocket as WsClient, WebSocketServer } from "ws";
@@ -9,13 +13,12 @@ import { WebSocket as WsClient, WebSocketServer } from "ws";
 import { now } from "../../../lib/time";
 import { createAppWithWebSocket } from "../../../app-factory";
 import { server as mswServer } from "../../../mocks/server";
-import {
-  signRelayTokenForTests,
-  type RelayTokenClaims,
-} from "../../lib/voice-chat-relay/local-relay-token";
 import { createInMemoryRelaySessionRepository } from "../../lib/voice-chat-relay/relay-session-repository";
 
-const SECRET = "test-relay-token-secret-32-bytes-min!!";
+// 32-byte hex secret (64 hex chars) matching the env-stub value the route
+// reads at upgrade time. Both sides must use this exact string.
+const SECRET =
+  "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
 
 interface FakeOpenAi {
   readonly url: string;
@@ -107,14 +110,12 @@ async function startApp(opts: {
   };
 }
 
-function freshClaims(
-  overrides: Partial<RelayTokenClaims> = {},
-): RelayTokenClaims {
+function freshClaims(overrides: Partial<SignInput> = {}): SignInput {
   return {
     voiceChatSessionId: "00000000-0000-0000-0000-000000000001",
     userId: "user_test",
     orgId: "org_test",
-    expiresAt: Math.floor(now() / 1000) + 60,
+    nowSeconds: Math.floor(now() / 1000),
     ...overrides,
   };
 }
@@ -144,7 +145,7 @@ describe("voice-chat relay route", () => {
     fakeOpenAi.autoSendSessionCreated("sess_abc");
     const repo = createInMemoryRelaySessionRepository();
     const conn = await startApp({ openAiUrl: fakeOpenAi.url, repo });
-    const token = signRelayTokenForTests(freshClaims(), SECRET);
+    const { token } = signRelayToken(freshClaims(), SECRET);
 
     const ws = new WsClient(`${conn.url}?token=${encodeURIComponent(token)}`);
     const firstFrame = await new Promise<string>((resolve, reject) => {
@@ -195,8 +196,10 @@ describe("voice-chat relay route", () => {
   it("rejects an expired token with WS close 4401", async () => {
     const repo = createInMemoryRelaySessionRepository();
     const conn = await startApp({ openAiUrl: fakeOpenAi.url, repo });
-    const token = signRelayTokenForTests(
-      freshClaims({ expiresAt: Math.floor(now() / 1000) - 1 }),
+    // Sign with a `nowSeconds` 60+ seconds in the past so the default
+    // RELAY_TOKEN_TTL_SECONDS=60 puts `exp` before the verifier's `now`.
+    const { token } = signRelayToken(
+      freshClaims({ nowSeconds: Math.floor(now() / 1000) - 120 }),
       SECRET,
     );
 
@@ -214,9 +217,11 @@ describe("voice-chat relay route", () => {
   it("rejects a wrong-signature token with WS close 4401", async () => {
     const repo = createInMemoryRelaySessionRepository();
     const conn = await startApp({ openAiUrl: fakeOpenAi.url, repo });
-    const token = signRelayTokenForTests(
+    // Sign with a different (still 32-byte hex) secret so the verifier sees
+    // a bad signature.
+    const { token } = signRelayToken(
       freshClaims(),
-      "different-secret-also-32-bytes-min-pad",
+      "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100",
     );
 
     const ws = new WsClient(`${conn.url}?token=${encodeURIComponent(token)}`);
