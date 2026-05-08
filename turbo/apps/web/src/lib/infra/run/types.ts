@@ -3,6 +3,7 @@ import type {
   Firewalls,
   NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
+import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 
 /**
  * Artifact entry on an ExecutionContext: a name, optional version
@@ -71,6 +72,7 @@ export interface ExecutionContext {
   vars?: Record<string, string>;
   secrets?: Record<string, string>; // Decrypted secrets for environment expansion
   secretConnectorMap?: Record<string, string>; // Secret name → connector type for OAuth refresh
+  secretConnectorMetadataMap?: Record<string, SecretConnectorMetadata>; // Secret name → refresh owner metadata
   sandboxToken: string;
 
   // Artifacts: unified list where every entry carries its own mountPath.

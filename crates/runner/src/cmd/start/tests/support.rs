@@ -264,6 +264,7 @@ pub(super) fn minimal_context(run_id: RunId) -> crate::types::ExecutionContext {
         secret_values: None,
         encrypted_secrets: None,
         secret_connector_map: None,
+        secret_connector_metadata_map: None,
         cli_agent_type: String::new(),
         debug_no_mock_claude: None,
         debug_no_mock_codex: None,

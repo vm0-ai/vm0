@@ -15,6 +15,7 @@ import {
   getModelProviderFirewall,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { badRequest, notFound } from "@vm0/api-services/errors";
 import { logger } from "../shared/logger";
@@ -81,6 +82,16 @@ function mergeSecretConnectorMaps(
   ...maps: (Record<string, string> | undefined)[]
 ): Record<string, string> | undefined {
   const merged: Record<string, string> = {};
+  for (const m of maps) {
+    if (m) Object.assign(merged, m);
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+function mergeSecretConnectorMetadataMaps(
+  ...maps: (Record<string, SecretConnectorMetadata> | undefined)[]
+): Record<string, SecretConnectorMetadata> | undefined {
+  const merged: Record<string, SecretConnectorMetadata> = {};
   for (const m of maps) {
     if (m) Object.assign(merged, m);
   }
@@ -214,6 +225,9 @@ async function resolveSecretsAndEnvironment(
   secrets: Record<string, string> | undefined;
   environment: Record<string, string> | undefined;
   secretConnectorMap: Record<string, string> | undefined;
+  secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined;
   resolvedModelProvider: ModelProviderType | undefined;
   resolvedFramework: string;
   modelProviderConfig: ExpandedFirewallConfig | undefined;
@@ -318,6 +332,9 @@ async function resolveSecretsAndEnvironment(
     filteredOauthMap,
     modelProviderResult.secretConnectorMap,
   );
+  const secretConnectorMetadataMap = mergeSecretConnectorMetadataMaps(
+    modelProviderResult.secretConnectorMetadataMap,
+  );
 
   // Auto-generate config entry for model provider (if applicable).
   // For meta-providers like "vm0", use the concrete provider type for lookup.
@@ -384,6 +401,7 @@ async function resolveSecretsAndEnvironment(
     secrets,
     environment,
     secretConnectorMap,
+    secretConnectorMetadataMap,
     resolvedModelProvider: modelProviderResult.resolvedModelProvider,
     // Provider-derived framework when resolution ran; otherwise the compose
     // framework. Source-of-truth for downstream framework-aware logic.
@@ -463,6 +481,7 @@ interface ResolvedCliContext {
   secrets?: Record<string, string>;
   environment?: Record<string, string>;
   secretConnectorMap?: Record<string, string>;
+  secretConnectorMetadataMap?: Record<string, SecretConnectorMetadata>;
   firewalls?: Firewalls;
   networkPolicies?: NetworkPolicies;
   userTimezone?: string;
@@ -614,6 +633,7 @@ export async function resolveCliRunContext(
     secrets,
     environment,
     secretConnectorMap,
+    secretConnectorMetadataMap,
     resolvedModelProvider,
     resolvedFramework,
     modelProviderConfig,
@@ -648,6 +668,7 @@ export async function resolveCliRunContext(
     secrets,
     environment,
     secretConnectorMap,
+    secretConnectorMetadataMap,
     firewalls: permissionResult?.firewalls,
     networkPolicies: permissionResult?.networkPolicies,
     userTimezone,
@@ -787,6 +808,7 @@ export async function buildZeroExecutionContext(
     secrets,
     environment,
     secretConnectorMap,
+    secretConnectorMetadataMap,
     resolvedModelProvider,
     resolvedFramework,
     modelProviderConfig,
@@ -833,6 +855,7 @@ export async function buildZeroExecutionContext(
       vars,
       secrets,
       secretConnectorMap,
+      secretConnectorMetadataMap,
       sandboxToken: params.sandboxToken,
       artifacts,
       volumeVersions,

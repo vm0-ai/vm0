@@ -266,6 +266,7 @@ impl JobProvider for LocalProvider {
             secret_values: None,
             encrypted_secrets: None,
             secret_connector_map: None,
+            secret_connector_metadata_map: None,
             cli_agent_type: req.cli_agent_type,
             debug_no_mock_claude: None,
             debug_no_mock_codex: None,

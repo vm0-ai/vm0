@@ -554,12 +554,17 @@ describe("POST /api/runners/jobs/:id/claim", () => {
         GMAIL_ACCESS_TOKEN: "gmail",
         GMAIL_TOKEN: "gmail",
       };
+      const secretConnectorMetadataMap = {
+        GMAIL_ACCESS_TOKEN: {
+          sourceType: "connector" as const,
+        },
+      };
 
       const { runId } = await createTestRunnerJob(
         user.userId,
         versionId,
         "vm0/default",
-        { encryptedSecrets, secretConnectorMap },
+        { encryptedSecrets, secretConnectorMap, secretConnectorMetadataMap },
       );
 
       const token = await createTestCliToken(user.userId);
@@ -580,6 +585,9 @@ describe("POST /api/runners/jobs/:id/claim", () => {
 
       const data = await response.json();
       expect(data.secretConnectorMap).toEqual(secretConnectorMap);
+      expect(data.secretConnectorMetadataMap).toEqual(
+        secretConnectorMetadataMap,
+      );
       expect(data.encryptedSecrets).toBe(encryptedSecrets);
     });
 

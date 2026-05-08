@@ -32,6 +32,7 @@ import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { MODEL_PROVIDER_HANDLER_KEY } from "../handler-key-bridge";
 import { PROVIDER_HANDLERS } from "../connector/provider-registry";
 import { isPersonalTierEligible } from "../personal-tier-gate";
+import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 
 const log = logger("zero:build-context");
 
@@ -173,6 +174,10 @@ interface ModelProviderSecretResult {
    *  runs — the filter would otherwise drop these because they also appear in
    *  `secrets`, but model-provider entries ARE the source, not an override target. */
   secretConnectorMap?: Record<string, string>;
+  /** Per-secret owner metadata for refresh-capable model-provider OAuth secrets.
+   *  The firewall refresh path uses this to refresh personal providers under
+   *  the provider row owner instead of the org sentinel. */
+  secretConnectorMetadataMap?: Record<string, SecretConnectorMetadata>;
 }
 
 /**
@@ -186,9 +191,15 @@ interface ModelProviderSecretResult {
  * The returned map is merged INTO the wire `secretConnectorMap` after
  * `filterSecretConnectorMap` runs; see `build-zero-context.ts`.
  */
-function buildModelProviderSecretConnectorMap(
+function buildModelProviderRefreshMaps(
   providerType: ModelProviderType,
-): Record<string, string> | undefined {
+  sourceUserId: string,
+):
+  | {
+      secretConnectorMap: Record<string, string>;
+      secretConnectorMetadataMap: Record<string, SecretConnectorMetadata>;
+    }
+  | undefined {
   const handlerKey = MODEL_PROVIDER_HANDLER_KEY[providerType];
   if (!handlerKey) return undefined;
 
@@ -211,7 +222,21 @@ function buildModelProviderSecretConnectorMap(
       }
     }
   }
-  return result;
+  return {
+    secretConnectorMap: result,
+    secretConnectorMetadataMap: Object.fromEntries(
+      Object.keys(result).map((key) => {
+        return [
+          key,
+          {
+            sourceType: "model-provider" as const,
+            sourceUserId,
+            metadataKey: providerType,
+          },
+        ];
+      }),
+    ),
+  };
 }
 
 /**
@@ -317,6 +342,7 @@ async function resolveMultiAuthProviderSecrets(
     selectedModel,
     new Set(Object.keys(forwardableSecrets)),
   );
+  const refreshMaps = buildModelProviderRefreshMaps(providerType, secretUserId);
 
   log.debug(
     `Resolved multi-auth model provider env: ${Object.keys(injectedEnvironment).join(", ")}`,
@@ -328,7 +354,8 @@ async function resolveMultiAuthProviderSecrets(
     resolvedModelProvider: providerType,
     framework: getFrameworkForType(providerType),
     selectedModel,
-    secretConnectorMap: buildModelProviderSecretConnectorMap(providerType),
+    secretConnectorMap: refreshMaps?.secretConnectorMap,
+    secretConnectorMetadataMap: refreshMaps?.secretConnectorMetadataMap,
   };
 }
 

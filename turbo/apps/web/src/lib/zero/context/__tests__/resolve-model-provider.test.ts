@@ -8,6 +8,7 @@ import {
   insertOrgNonDefaultModelProvider,
   insertOrgMultiAuthModelProvider,
   insertUserDefaultModelProvider,
+  insertUserMultiAuthModelProvider,
   insertUserNonDefaultModelProvider,
   enablePersonalModelProviderForUser,
   setTestModelProviderNeedsReconnect,
@@ -530,6 +531,55 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
 
     expect(result.secretConnectorMap).toEqual({
       CHATGPT_ACCESS_TOKEN: "codex-oauth",
+    });
+    expect(result.secretConnectorMetadataMap).toEqual({
+      CHATGPT_ACCESS_TOKEN: {
+        sourceType: "model-provider",
+        sourceUserId: ORG_SENTINEL_USER_ID,
+        metadataKey: "codex-oauth-token",
+      },
+    });
+  });
+
+  it("emits user-tier owner metadata for personal codex-oauth-token", async () => {
+    const userId = uniqueId("scm-chatgpt-personal");
+    const orgId = await setupOrg(userId);
+    await enablePersonalModelProviderForUser(orgId, userId);
+    await insertUserMultiAuthModelProvider(
+      orgId,
+      userId,
+      "codex-oauth-token",
+      "auth_json",
+    );
+    for (const [name, value] of [
+      ["CHATGPT_ACCESS_TOKEN", "personal-at"],
+      ["CHATGPT_REFRESH_TOKEN", "personal-rt"],
+      ["CHATGPT_ACCOUNT_ID", "personal-acc"],
+      ["CHATGPT_ID_TOKEN", "personal-id"],
+    ] as const) {
+      await insertTestUserModelProviderSecret({ orgId, userId, name, value });
+    }
+
+    const result = await resolveModelProviderSecrets(
+      orgId,
+      userId,
+      "codex",
+      false,
+      undefined,
+      undefined,
+      undefined,
+      true,
+    );
+
+    expect(result.secretConnectorMap).toEqual({
+      CHATGPT_ACCESS_TOKEN: "codex-oauth",
+    });
+    expect(result.secretConnectorMetadataMap).toEqual({
+      CHATGPT_ACCESS_TOKEN: {
+        sourceType: "model-provider",
+        sourceUserId: userId,
+        metadataKey: "codex-oauth-token",
+      },
     });
   });
 

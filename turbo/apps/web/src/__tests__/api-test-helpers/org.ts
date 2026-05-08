@@ -11,6 +11,7 @@ export {
   insertOrgNonDefaultModelProvider,
   insertOrgMultiAuthModelProvider,
   insertUserDefaultModelProvider,
+  insertUserMultiAuthModelProvider,
   insertUserNonDefaultModelProvider,
   enablePersonalModelProviderForUser,
   deleteTestModelProvider,

@@ -150,6 +150,7 @@ function buildStoredContext(
     resumeSession: context.resumeSession,
     encryptedSecrets,
     secretConnectorMap: context.secretConnectorMap,
+    secretConnectorMetadataMap: context.secretConnectorMetadataMap,
     cliAgentType: context.cliAgentType,
     firewalls: context.firewalls ?? undefined,
     networkPolicies: context.networkPolicies ?? undefined,
