@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.9.12...vsock-host-v0.10.0) (2026-05-08)
+
+
+### Features
+
+* **sandbox:** wire bounded exec through host and firecracker sandbox ([#12203](https://github.com/vm0-ai/vm0/issues/12203)) ([71602f2](https://github.com/vm0-ai/vm0/commit/71602f22f27413438b63fb6f830b1653497189b1))
+
 ## [0.9.12](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.9.11...vsock-host-v0.9.12) (2026-05-08)
 
 

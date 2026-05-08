@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.264.0](https://github.com/vm0-ai/vm0/compare/core-v8.263.0...core-v8.264.0) (2026-05-08)
+
+
+### Features
+
+* enable QueueMessage feature switch at org level for staff ([#12212](https://github.com/vm0-ai/vm0/issues/12212)) ([6e49a63](https://github.com/vm0-ai/vm0/commit/6e49a63882371a84c0fdfd43e15da75940b28f7e))
+
 ## [8.263.0](https://github.com/vm0-ai/vm0/compare/core-v8.262.0...core-v8.263.0) (2026-05-08)
 
 

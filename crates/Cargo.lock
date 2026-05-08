@@ -2556,7 +2556,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.100.13"
+version = "0.100.14"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2758,7 +2758,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.12.15"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "serde",
@@ -2770,7 +2770,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.27.22"
+version = "0.28.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -2798,7 +2798,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "async-trait",
  "sandbox",
@@ -3676,7 +3676,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.9.12"
+version = "0.10.0"
 dependencies = [
  "nix",
  "tokio",
@@ -3689,7 +3689,7 @@ version = "0.11.0"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.18"
+version = "0.9.19"
 dependencies = [
  "guest-write-file",
  "tokio",

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.15...sandbox-v0.13.0) (2026-05-08)
+
+
+### Features
+
+* **sandbox:** wire bounded exec through host and firecracker sandbox ([#12203](https://github.com/vm0-ai/vm0/issues/12203)) ([71602f2](https://github.com/vm0-ai/vm0/commit/71602f22f27413438b63fb6f830b1653497189b1))
+
 ## [0.12.15](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.14...sandbox-v0.12.15) (2026-05-08)
 
 

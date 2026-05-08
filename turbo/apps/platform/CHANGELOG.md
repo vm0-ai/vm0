@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.336.3](https://github.com/vm0-ai/vm0/compare/app-v0.336.2...app-v0.336.3) (2026-05-08)
+
+
+### Bug Fixes
+
+* keep codex activity final text ([#12221](https://github.com/vm0-ai/vm0/issues/12221)) ([9a7e420](https://github.com/vm0-ai/vm0/commit/9a7e42065f551e064784a740c84f84cf1bf265f7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.264.0
+
 ## [0.336.2](https://github.com/vm0-ai/vm0/compare/app-v0.336.1...app-v0.336.2) (2026-05-08)
 
 
