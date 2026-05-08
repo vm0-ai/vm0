@@ -282,8 +282,7 @@ function ChatThreadMenu({
   const setRenameDialogInput = useSet(setRenameDialogInput$);
   const pageSignal = useGet(pageSignal$);
 
-  function handleTogglePin(e: Event) {
-    e.preventDefault();
+  function handleTogglePin() {
     if (isPinned) {
       detach(unpinChatThread(threadId, pageSignal), Reason.DomCallback);
     } else {
@@ -296,8 +295,7 @@ function ChatThreadMenu({
     e.stopPropagation();
   }
 
-  function openRenameDialog(e: Event) {
-    e.preventDefault();
+  function openRenameDialog() {
     setRenameDialogInput("");
     setRenameDialogThreadId(threadId);
   }
@@ -353,8 +351,7 @@ function ChatThreadMenu({
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
-            onSelect={(e) => {
-              e.preventDefault();
+            onSelect={() => {
               setPendingDeleteThreadId(threadId);
             }}
             className="text-destructive focus:text-destructive"
