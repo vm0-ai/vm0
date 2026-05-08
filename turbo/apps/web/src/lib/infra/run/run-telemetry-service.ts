@@ -51,7 +51,11 @@ function getAgentEventsVisibilityTarget(
   }
 
   if (order === "asc") {
-    return getAgentEventPageWatermarkTarget(lastEventSequence, since, limit);
+    return getAgentEventPageWatermarkTarget(
+      lastEventSequence,
+      since,
+      limit + 1,
+    );
   }
 
   if (since !== undefined && since >= lastEventSequence) {

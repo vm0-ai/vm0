@@ -326,13 +326,20 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       vi.stubEnv("AXIOM_TOKEN_SESSIONS", "test-sessions-token");
       reloadEnv();
       context.mocks.axiom.queryAxiom
-        .mockResolvedValueOnce([{ sequenceNumber: 0 }])
+        .mockResolvedValueOnce([{ sequenceNumber: 0 }, { sequenceNumber: 1 }])
         .mockResolvedValueOnce([
           createAxiomAgentEvent(
             "2024-01-01T00:00:00Z",
             0,
             "event0",
             { type: "event0" },
+            testRunId,
+          ),
+          createAxiomAgentEvent(
+            "2024-01-01T00:00:01Z",
+            1,
+            "event1",
+            { type: "event1" },
             testRunId,
           ),
         ]);
@@ -348,6 +355,9 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       const response = await GET(request);
 
       expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.events).toHaveLength(1);
+      expect(data.hasMore).toBe(true);
       expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledTimes(2);
       const visibilityApl = context.mocks.axiom.queryAxiom.mock.calls[0]![0];
       expect(visibilityApl).toContain("project sequenceNumber");
