@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.28.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.28.2...guest-agent-v0.28.3) (2026-05-08)
+
+
+### Bug Fixes
+
+* **cli:** drain terminal run events ([#12154](https://github.com/vm0-ai/vm0/issues/12154)) ([1795a3c](https://github.com/vm0-ai/vm0/commit/1795a3c1a08f1337aa47ce95495bcac472a11d83))
+
+## [0.28.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.28.1...guest-agent-v0.28.2) (2026-05-08)
+
+
+### Bug Fixes
+
+* restore codex sessions as jsonl ([#12137](https://github.com/vm0-ai/vm0/issues/12137)) ([ab3dc5b](https://github.com/vm0-ai/vm0/commit/ab3dc5b5f35105709cc22d7caf9e571c59ec5a39))
+
+## [0.28.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.28.0...guest-agent-v0.28.1) (2026-05-07)
+
+
+### Bug Fixes
+
+* preserve real codex stderr through complete + telemetry pipelines ([#12082](https://github.com/vm0-ai/vm0/issues/12082)) ([748c737](https://github.com/vm0-ai/vm0/commit/748c737a1622716107888dcd228c4eccb29bc6c1))
+
+## [0.28.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.27.1...guest-agent-v0.28.0) (2026-05-07)
+
+
+### Features
+
+* pass codex append prompt as developer instructions ([#12063](https://github.com/vm0-ai/vm0/issues/12063)) ([8fb02a3](https://github.com/vm0-ai/vm0/commit/8fb02a3feab159db1fe5dfd35a50c481d267193b))
+
+
+### Bug Fixes
+
+* use lowercase codex auth mode ([#12075](https://github.com/vm0-ai/vm0/issues/12075)) ([0a1770e](https://github.com/vm0-ai/vm0/commit/0a1770e7b9cd27c298351c611b274c054dad8cd4))
+
 ## [0.27.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.27.0...guest-agent-v0.27.1) (2026-05-06)
 
 

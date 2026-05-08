@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.9](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.8...ably-subscriber-v0.7.9) (2026-05-07)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** require exact localhost match ([#12074](https://github.com/vm0-ai/vm0/issues/12074)) ([9195e5d](https://github.com/vm0-ai/vm0/commit/9195e5d47688054235b7b6acd5d0ebb1a11fb4f9))
+
 ## [0.7.8](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.7...ably-subscriber-v0.7.8) (2026-05-07)
 
 

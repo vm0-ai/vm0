@@ -54,7 +54,7 @@ describe("chat-d-056: file type icon renders based on getFileTypeIcon", () => {
     });
   });
 
-  it("renders a thumbnail preview block for unknown file extension", async () => {
+  it("renders a compact download chip for unknown file extension", async () => {
     mockChatLifecycle({
       chatMessages: [
         {
@@ -72,13 +72,12 @@ describe("chat-d-056: file type icon renders based on getFileTypeIcon", () => {
     });
 
     await waitFor(() => {
-      const link = document.querySelector('a[download="archive.zip"]');
+      const link = screen.getByLabelText("Download archive.zip");
       expect(link).toBeInTheDocument();
-      expect(link).toHaveAttribute("data-testid", "attachment-preview-file");
       expect(
-        within(link as HTMLElement).getByTestId("attachment-preview-file-icon"),
+        within(link).getByTestId("attachment-chip-file-icon"),
       ).toBeInTheDocument();
-      expect(within(link as HTMLElement).getByText("ZIP")).toBeInTheDocument();
+      expect(within(link).getByText("ZIP")).toBeInTheDocument();
     });
   });
 });

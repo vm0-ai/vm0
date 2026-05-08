@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import "../polyfill.ts";
 
 describe("abortSignal.any polyfill", () => {
@@ -90,5 +90,37 @@ describe("abortSignal.any polyfill", () => {
       expect(abortHandler).toHaveBeenCalledTimes(1);
       expect(combined.reason).toBe("first");
     });
+  });
+});
+
+describe("promise withResolvers polyfill", () => {
+  const originalWithResolvers = Promise.withResolvers;
+
+  afterEach(() => {
+    Object.defineProperty(Promise, "withResolvers", {
+      configurable: true,
+      value: originalWithResolvers,
+      writable: true,
+    });
+  });
+
+  it("should have Promise.withResolvers available", () => {
+    expect(typeof Promise.withResolvers).toBe("function");
+  });
+
+  it("should install a fallback when the browser lacks Promise.withResolvers", async () => {
+    Object.defineProperty(Promise, "withResolvers", {
+      configurable: true,
+      value: undefined,
+      writable: true,
+    });
+    vi.resetModules();
+
+    await import("../polyfill.ts");
+
+    const deferred = Promise.withResolvers<string>();
+    deferred.resolve("ok");
+
+    await expect(deferred.promise).resolves.toBe("ok");
   });
 });

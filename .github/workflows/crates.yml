@@ -73,6 +73,7 @@ jobs:
       guest-mock-claude-changed: ${{ steps.detect.outputs.guest-mock-claude-changed }}
       guest-mock-codex-changed: ${{ steps.detect.outputs.guest-mock-codex-changed }}
       guest-reseed-changed: ${{ steps.detect.outputs.guest-reseed-changed }}
+      guest-write-file-changed: ${{ steps.detect.outputs.guest-write-file-changed }}
       nbd-cow-changed: ${{ steps.detect.outputs.nbd-cow-changed }}
       metal-host: ${{ steps.host.outputs.host }}
       metal-job-ref: ${{ steps.host.outputs.job-ref }}
@@ -121,6 +122,7 @@ jobs:
           check_crate guest-mock-claude
           check_crate guest-mock-codex
           check_crate guest-reseed
+          check_crate guest-write-file
           check_crate nbd-cow
 
           # Aggregate: true if any crate or CI config changed
@@ -390,7 +392,8 @@ jobs:
         needs.detect.outputs.guest-agent-changed == 'true' ||
         needs.detect.outputs.guest-mock-claude-changed == 'true' ||
         needs.detect.outputs.guest-mock-codex-changed == 'true' ||
-        needs.detect.outputs.guest-reseed-changed == 'true'
+        needs.detect.outputs.guest-reseed-changed == 'true' ||
+        needs.detect.outputs.guest-write-file-changed == 'true'
       )
     timeout-minutes: 20
     env:
@@ -417,7 +420,7 @@ jobs:
         run: |
           cd crates
           cargo build --release --target "$TARGET_TRIPLE" \
-            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed
+            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-write-file
 
       - name: Cross-compile runner with embedded guests for ARM64
         run: |
@@ -428,6 +431,7 @@ jobs:
           GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/release/guest-mock-claude" \
           GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/release/guest-mock-codex" \
           GUEST_RESEED_PATH="target/$TARGET_TRIPLE/release/guest-reseed" \
+          GUEST_WRITE_FILE_PATH="target/$TARGET_TRIPLE/release/guest-write-file" \
           cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
 
       - id: short-sha

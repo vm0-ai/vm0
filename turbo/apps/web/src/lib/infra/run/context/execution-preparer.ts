@@ -225,6 +225,7 @@ function buildPreparedContext(
     environment: context.environment || null,
     secrets: context.secrets || null,
     secretConnectorMap: context.secretConnectorMap || null,
+    secretConnectorMetadataMap: context.secretConnectorMetadataMap || null,
     // Resume support
     resumeSession: context.resumeSession || null,
 

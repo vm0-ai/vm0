@@ -65,6 +65,9 @@ pub struct ExecutionContext {
     // Maps secret names to OAuth connector types for runtime token refresh
     #[serde(default)]
     pub secret_connector_map: Option<HashMap<String, String>>,
+    // Per-secret refresh metadata, forwarded to mitm-addon for owner-aware refresh
+    #[serde(default)]
+    pub secret_connector_metadata_map: Option<HashMap<String, SecretConnectorMetadata>>,
     pub cli_agent_type: String,
     #[serde(default)]
     pub debug_no_mock_claude: Option<bool>,
@@ -97,6 +100,16 @@ pub struct ExecutionContext {
     pub billable_firewalls: Vec<String>,
     #[serde(default)]
     pub model_usage_provider: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretConnectorMetadata {
+    pub source_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_user_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata_key: Option<String>,
 }
 
 /// A single firewall config with its name and API entries.
@@ -420,6 +433,13 @@ mod tests {
             "secretValues": ["s1", "s2"],
             "encryptedSecrets": "enc-blob",
             "secretConnectorMap": {"github": "oauth"},
+            "secretConnectorMetadataMap": {
+                "CHATGPT_ACCESS_TOKEN": {
+                    "sourceType": "model-provider",
+                    "sourceUserId": "user-123",
+                    "metadataKey": "codex-oauth-token"
+                }
+            },
             "debugNoMockClaude": true,
             "debugNoMockCodex": true,
             "apiStartTime": 1700000000000.0,
@@ -443,6 +463,11 @@ mod tests {
         assert_eq!(ctx.resume_session.as_ref().unwrap().session_id, "sess-1");
         assert_eq!(ctx.secret_values.as_ref().unwrap().len(), 2);
         assert_eq!(ctx.encrypted_secrets.as_deref(), Some("enc-blob"));
+        let metadata = ctx.secret_connector_metadata_map.as_ref().unwrap();
+        assert_eq!(
+            metadata["CHATGPT_ACCESS_TOKEN"].source_user_id.as_deref(),
+            Some("user-123")
+        );
         assert!(ctx.debug_no_mock_claude.unwrap());
         assert!(ctx.debug_no_mock_codex.unwrap());
         assert_eq!(ctx.firewalls.as_ref().unwrap()[0].name, "github");

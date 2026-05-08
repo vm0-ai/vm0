@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.12.15](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.14...sandbox-v0.12.15) (2026-05-08)
+
+
+### Performance Improvements
+
+* add guest write-file helper ([#12136](https://github.com/vm0-ai/vm0/issues/12136)) ([8795398](https://github.com/vm0-ai/vm0/commit/8795398ddd54bb6f7e4cade4c1d3a67a11bebd1b))
+
+## [0.12.14](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.13...sandbox-v0.12.14) (2026-05-07)
+
+
+### Refactoring
+
+* **runner:** split snapshot publish boundary ([#12044](https://github.com/vm0-ai/vm0/issues/12044)) ([b01e205](https://github.com/vm0-ai/vm0/commit/b01e205e530cb9a6ed5353294077d9a80b70da62))
+
 ## [0.12.13](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.12...sandbox-v0.12.13) (2026-05-07)
 
 

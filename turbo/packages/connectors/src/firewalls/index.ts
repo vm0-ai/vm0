@@ -90,6 +90,7 @@ import { gammaFirewall } from "./gamma.generated";
 import { garminConnectFirewall } from "./garmin-connect.generated";
 import { githubFirewall } from "./github.generated";
 import { gitlabFirewall } from "./gitlab.generated";
+import { googleAdsFirewall } from "./google-ads.generated";
 import { googleCalendarFirewall } from "./google-calendar.generated";
 import { googleDocsFirewall } from "./google-docs.generated";
 import { googleDriveFirewall } from "./google-drive.generated";
@@ -122,6 +123,7 @@ import { lineFirewall } from "./line.generated";
 import { linearFirewall } from "./linear.generated";
 import { loopsFirewall } from "./loops.generated";
 import { lumaFirewall } from "./luma.generated";
+import { lumaAiFirewall } from "./luma-ai.generated";
 import { mailchimpFirewall } from "./mailchimp.generated";
 import { makeFirewall } from "./make.generated";
 import { mailsacFirewall } from "./mailsac.generated";
@@ -136,7 +138,6 @@ import { mixpanelFirewall } from "./mixpanel.generated";
 import { mondayFirewall } from "./monday.generated";
 import { msg9Firewall } from "./msg9.generated";
 import { n8nFirewall } from "./n8n.generated";
-import { nanoBananaFirewall } from "./nano-banana.generated";
 import { neonFirewall } from "./neon.generated";
 import { notionFirewall } from "./notion.generated";
 import { onyxFirewall } from "./onyx.generated";
@@ -280,6 +281,7 @@ const CONNECTOR_FIREWALLS = {
   github: githubFirewall,
   gitlab: gitlabFirewall,
   gmail: gmailFirewall,
+  "google-ads": googleAdsFirewall,
   "google-calendar": googleCalendarFirewall,
   "google-docs": googleDocsFirewall,
   "google-drive": googleDriveFirewall,
@@ -312,6 +314,7 @@ const CONNECTOR_FIREWALLS = {
   linear: linearFirewall,
   loops: loopsFirewall,
   luma: lumaFirewall,
+  "luma-ai": lumaAiFirewall,
   mailchimp: mailchimpFirewall,
   make: makeFirewall,
   mailsac: mailsacFirewall,
@@ -326,7 +329,6 @@ const CONNECTOR_FIREWALLS = {
   monday: mondayFirewall,
   msg9: msg9Firewall,
   n8n: n8nFirewall,
-  "nano-banana": nanoBananaFirewall,
   neon: neonFirewall,
   notion: notionFirewall,
   onyx: onyxFirewall,

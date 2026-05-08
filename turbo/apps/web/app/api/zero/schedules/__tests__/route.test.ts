@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { HttpResponse } from "msw";
 import { POST, GET } from "../route";
 import {
   createTestRequest,
@@ -14,8 +15,12 @@ import {
   uniqueId,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { server } from "../../../../../src/mocks/server";
+import { http } from "../../../../../src/__tests__/msw";
+import { reloadEnv } from "../../../../../src/env";
 
 const context = testContext();
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 async function setupOrg(userId: string) {
   const slug = uniqueId("zsched");
@@ -31,6 +36,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
   let orgId: string;
   let testComposeId: string;
   let testZeroAgentId: string;
+  let testAgentName: string;
 
   beforeEach(async () => {
     context.setupMocks();
@@ -38,11 +44,11 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
     const { orgId: oid } = await setupOrg(user.userId);
     orgId = oid;
 
-    const agentName = `zero-sched-deploy-${Date.now()}`;
-    const { composeId } = await createTestCompose(agentName);
+    testAgentName = `zero-sched-deploy-${Date.now()}`;
+    const { composeId } = await createTestCompose(testAgentName);
     testComposeId = composeId;
-    await createTestZeroAgent(orgId, agentName, {});
-    testZeroAgentId = await getTestZeroAgentId(orgId, agentName);
+    await createTestZeroAgent(orgId, testAgentName, {});
+    testZeroAgentId = await getTestZeroAgentId(orgId, testAgentName);
   });
 
   it("should create schedule and return 201", async () => {
@@ -453,6 +459,46 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
 
     expect(response.status).toBe(201);
     expect(data.schedule.description).toBe("Custom description for schedule");
+  });
+
+  it("should create schedule with fallback description when OpenRouter is rate limited", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    reloadEnv();
+
+    const openRouterHandler = http.post(OPENROUTER_URL, () => {
+      return HttpResponse.json(
+        {
+          error: {
+            message: "Rate limit exceeded: @ratelimit/too-many-requests.",
+            code: 429,
+          },
+        },
+        { status: 429 },
+      );
+    });
+    server.use(openRouterHandler.handler);
+
+    const response = await POST(
+      createTestRequest(`http://localhost:3000/api/zero/schedules`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testZeroAgentId,
+          name: "openrouter-rate-limit",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Run despite description generation failing",
+        }),
+      }),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.created).toBe(true);
+    expect(data.schedule.description).toBe(
+      `${testAgentName} recurring task: Run despite description generation failing`,
+    );
+    expect(openRouterHandler.mocked).toHaveBeenCalledTimes(1);
   });
 });
 

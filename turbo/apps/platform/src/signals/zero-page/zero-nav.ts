@@ -149,6 +149,7 @@ export type ZeroAccountAction =
 
 export const handleZeroAccountAction$ = command(
   ({ set }, action: ZeroAccountAction) => {
+    set(internalSidebarExpanded$, false);
     if (action === "signout" || action === "manage") {
       return;
     }

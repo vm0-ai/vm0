@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { Axiom } from "@axiomhq/js";
 import { NextRequest } from "next/server";
 import { POST } from "../route";
 import {
@@ -11,10 +12,19 @@ import {
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { reloadEnv } from "../../../../../../src/env";
 import type { MockInstance } from "vitest";
 import type { ingestToAxiom } from "../../../../../../src/lib/shared/axiom/client";
 
 const context = testContext();
+
+// Persistent SDK-level `ingest` spy. `ingestSandboxOpLog` calls
+// `client.ingest(dataset, [...])` on the @axiomhq/js SDK instance returned
+// by the (globally mocked) Axiom constructor. We override that constructor
+// per-test with a regular function returning a stable object containing
+// this spy, so we can assert at the SDK boundary instead of mocking
+// internal vm0 code (AP-4).
+const mockSdkIngest = vi.fn();
 
 describe("POST /api/webhooks/agent/telemetry", () => {
   let user: UserContext;
@@ -22,9 +32,27 @@ describe("POST /api/webhooks/agent/telemetry", () => {
   let axiomIngestMock: MockInstance<typeof ingestToAxiom>;
 
   beforeEach(async () => {
+    // Stub the telemetry token so ingestSandboxOpLog runs end-to-end into
+    // the (mocked) Axiom SDK and we can assert at the SDK boundary.
+    vi.stubEnv("AXIOM_TOKEN_TELEMETRY", "test-telemetry-token");
+    reloadEnv();
+
     const mocks = context.setupMocks();
     user = await context.setupUser();
     axiomIngestMock = mocks.axiom.ingestToAxiom;
+
+    // setupMocks() installs an arrow-function impl on the global Axiom
+    // constructor, which can't be `new`'d. Override it here with a regular
+    // function so `new Axiom()` in instances.ts succeeds, and route the
+    // resulting client's `ingest` to our persistent spy.
+    mockSdkIngest.mockReset();
+    vi.mocked(Axiom).mockImplementation(function MockAxiom(this: object) {
+      return {
+        ingest: mockSdkIngest,
+        query: vi.fn().mockResolvedValue({ matches: [] }),
+        flush: vi.fn().mockResolvedValue(undefined),
+      } as unknown as Axiom;
+    });
 
     // Create compose for run creation (needs Clerk auth from setupUser)
     const { composeId } = await createTestCompose(
@@ -32,6 +60,35 @@ describe("POST /api/webhooks/agent/telemetry", () => {
     );
     testComposeId = composeId;
   });
+
+  /**
+   * Find the sandbox-sourced op event for a given runId in mockSdkIngest's
+   * call history. Filters to `vm0-sandbox-op-log-*` dataset calls whose
+   * event has `source: "sandbox"` and matching `run_id`. This separates
+   * runner-uploaded ops (from the route under test) from `source: "web"`
+   * ops emitted by upstream test setup paths.
+   */
+  function findSandboxOpEvent(runId: string): Record<string, unknown> {
+    for (const call of mockSdkIngest.mock.calls) {
+      const dataset = call[0];
+      if (
+        typeof dataset !== "string" ||
+        !dataset.startsWith("vm0-sandbox-op-log-")
+      ) {
+        continue;
+      }
+      const events = call[1] as Array<Record<string, unknown>>;
+      for (const event of events) {
+        if (event.source === "sandbox" && event.run_id === runId) {
+          return event;
+        }
+      }
+    }
+    throw new Error(
+      `No sandbox-sourced op-log event found for runId=${runId}. ` +
+        `Calls: ${JSON.stringify(mockSdkIngest.mock.calls)}`,
+    );
+  }
 
   /**
    * Helper to create a run and prepare it for webhook testing.
@@ -489,9 +546,70 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      // Sandbox operation recording goes via ingestSandboxOpLog → Axiom client.ingest().
-      // The route returned 200 successfully, which means recordSandboxInternalOperation
-      // was called without errors — the assertion on response.status covers this.
+      // Successful op forwarded all the way to the Axiom SDK boundary with
+      // success=true and no `error` key on the buffered event. `source:
+      // "sandbox"` distinguishes runner-uploaded ops from `source: "web"`
+      // ops emitted by upstream code paths during the same test (e.g.,
+      // run creation in setupUser/createTestRun).
+      const sandboxOpEvent = findSandboxOpEvent(runId);
+      expect(sandboxOpEvent).toMatchObject({
+        source: "sandbox",
+        op_type: "api_to_agent_start",
+        sandbox_type: "runner",
+        duration_ms: 1500,
+        success: true,
+        run_id: runId,
+      });
+      expect(sandboxOpEvent).not.toHaveProperty("error");
+    });
+
+    it("should forward op.error and op.success through to axiom (#12077)", async () => {
+      const { runId } = await createRunForWebhook(
+        testComposeId,
+        "Test runner run with stderr",
+      );
+      const testToken = await createTestSandboxToken(user.userId, runId);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/telemetry",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId,
+            sandboxOperations: [
+              {
+                ts: "2026-05-07T08:02:53.184Z",
+                action_type: "cli_execution",
+                duration_ms: 82,
+                success: false,
+                error: "codex exec exited with status 1",
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Both success=false AND the underlying error string must reach the
+      // Axiom SDK boundary in the `vm0-sandbox-op-log-*` dataset. Before
+      // #12077 the route dropped op.error on the floor, leaving prod codex
+      // failures un-debuggable from this dataset.
+      const sandboxOpEvent = findSandboxOpEvent(runId);
+      expect(sandboxOpEvent).toMatchObject({
+        source: "sandbox",
+        op_type: "cli_execution",
+        sandbox_type: "runner",
+        duration_ms: 82,
+        success: false,
+        run_id: runId,
+        error: "codex exec exited with status 1",
+      });
     });
   });
 

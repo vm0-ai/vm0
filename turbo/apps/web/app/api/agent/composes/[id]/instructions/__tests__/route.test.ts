@@ -30,11 +30,23 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     user = await context.setupUser();
   });
 
+  it("should return 400 for malformed compose id", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/composes/91fc0bd84bba673393d9adfc1a0f4dec/instructions",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error.code).toBe("BAD_REQUEST");
+    expect(data.error.message).toContain("valid UUID");
+  });
+
   it("should return 401 when not authenticated", async () => {
     mockClerk({ userId: null });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/agent/composes/some-id/instructions",
+      "http://localhost:3000/api/agent/composes/00000000-0000-0000-0000-000000000000/instructions",
     );
     const response = await GET(request);
     const data = await response.json();

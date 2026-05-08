@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.9](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.8...guest-download-v0.20.9) (2026-05-08)
+
+
+### Refactoring
+
+* **guest-download:** simplify main cleanup flow ([#12167](https://github.com/vm0-ai/vm0/issues/12167)) ([a39ca3c](https://github.com/vm0-ai/vm0/commit/a39ca3c8d77444b168c73e2bb8836b6326b8d1f1))
+
 ## [0.20.8](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.7...guest-download-v0.20.8) (2026-05-05)
 
 ## [0.20.7](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.6...guest-download-v0.20.7) (2026-05-03)

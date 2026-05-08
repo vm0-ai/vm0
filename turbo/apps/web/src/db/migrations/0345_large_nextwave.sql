@@ -1,0 +1,3 @@
+ALTER TABLE "org_model_policies" ADD CONSTRAINT "chk_org_model_policies_org_scope_provider_id" CHECK (credential_scope <> 'org' OR default_provider_type = 'vm0' OR model_provider_id IS NOT NULL);--> statement-breakpoint
+ALTER TABLE "org_model_policies" ADD CONSTRAINT "chk_org_model_policies_member_scope_oauth_provider" CHECK (credential_scope <> 'member' OR default_provider_type IN ('claude-code-oauth-token', 'codex-oauth-token'));--> statement-breakpoint
+ALTER TABLE "org_model_policies" ADD CONSTRAINT "chk_org_model_policies_oauth_provider_member_scope" CHECK (default_provider_type NOT IN ('claude-code-oauth-token', 'codex-oauth-token') OR credential_scope = 'member');

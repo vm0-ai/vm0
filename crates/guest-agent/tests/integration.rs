@@ -39,6 +39,35 @@ macro_rules! http_client {
     };
 }
 
+const MOCK_CALL_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const MOCK_CALL_TIMEOUT: Duration = Duration::from_secs(10);
+
+async fn wait_mock_calls(
+    mock_: &httpmock::Mock<'_>,
+    expected: usize,
+    timeout: Duration,
+    context: &str,
+) {
+    let mut observed = 0;
+
+    let result = tokio::time::timeout(timeout, async {
+        loop {
+            observed = mock_.calls_async().await;
+            if observed >= expected {
+                return;
+            }
+
+            tokio::time::sleep(MOCK_CALL_POLL_INTERVAL).await;
+        }
+    })
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "timed out waiting for {context}: expected at least {expected} mock calls, observed {observed} after {timeout:?}",
+    );
+}
+
 struct SystemLogOverrideGuard;
 
 impl SystemLogOverrideGuard {
@@ -169,12 +198,13 @@ async fn post_json_retry_then_succeed() {
 
     // Wait until the failure mock has been hit twice, then remove it so
     // the third attempt falls through to the success mock.
-    loop {
-        if fail_mock.calls_async().await >= 2 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    wait_mock_calls(
+        &fail_mock,
+        2,
+        MOCK_CALL_TIMEOUT,
+        "post_json_retry_then_succeed failure attempts",
+    )
+    .await;
     fail_mock.delete_async().await;
 
     let result = handle.await.unwrap();
@@ -338,12 +368,13 @@ async fn put_presigned_retry_then_succeed() {
             .await
     });
 
-    loop {
-        if fail_mock.calls_async().await >= 1 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    wait_mock_calls(
+        &fail_mock,
+        1,
+        MOCK_CALL_TIMEOUT,
+        "put_presigned_retry_then_succeed first failure",
+    )
+    .await;
     fail_mock.delete_async().await;
 
     let result = handle.await.unwrap();
@@ -484,12 +515,13 @@ async fn put_presigned_file_retry_then_succeed() {
             .await
     });
 
-    loop {
-        if fail_mock.calls_async().await >= 1 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    wait_mock_calls(
+        &fail_mock,
+        1,
+        MOCK_CALL_TIMEOUT,
+        "put_presigned_file_retry_then_succeed first failure",
+    )
+    .await;
     fail_mock.delete_async().await;
 
     let result = handle.await.unwrap();
@@ -526,12 +558,13 @@ async fn put_presigned_file_retry_fails_if_source_shrinks() {
             .await
     });
 
-    loop {
-        if fail_mock.calls_async().await >= 1 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    wait_mock_calls(
+        &fail_mock,
+        1,
+        MOCK_CALL_TIMEOUT,
+        "put_presigned_file_retry_fails_if_source_shrinks first failure",
+    )
+    .await;
     std::fs::write(&file_path, b"short").unwrap();
     fail_mock.delete_async().await;
 
@@ -570,12 +603,13 @@ async fn put_presigned_file_retry_uses_original_length_if_source_grows() {
             .await
     });
 
-    loop {
-        if fail_mock.calls_async().await >= 1 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    wait_mock_calls(
+        &fail_mock,
+        1,
+        MOCK_CALL_TIMEOUT,
+        "put_presigned_file_retry_uses_original_length_if_source_grows first failure",
+    )
+    .await;
     std::fs::write(&file_path, b"retry file data plus extra").unwrap();
     fail_mock.delete_async().await;
 
@@ -616,12 +650,13 @@ async fn put_presigned_file_retry_uses_original_handle_if_path_is_replaced() {
             .await
     });
 
-    loop {
-        if fail_mock.calls_async().await >= 1 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    wait_mock_calls(
+        &fail_mock,
+        1,
+        MOCK_CALL_TIMEOUT,
+        "put_presigned_file_retry_uses_original_handle_if_path_is_replaced first failure",
+    )
+    .await;
     std::fs::rename(&replacement_path, &file_path).unwrap();
     fail_mock.delete_async().await;
 
@@ -704,12 +739,13 @@ async fn heartbeat_first_success() {
     });
 
     // Wait for the first heartbeat to land, then shut down.
-    loop {
-        if mock.calls_async().await >= 1 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    wait_mock_calls(
+        &mock,
+        1,
+        MOCK_CALL_TIMEOUT,
+        "heartbeat_first_success initial heartbeat",
+    )
+    .await;
     shutdown.cancel();
 
     let result = handle.await.unwrap();
@@ -761,12 +797,13 @@ async fn heartbeat_consecutive_failures_fatal() {
     });
 
     // Wait for first successful heartbeat.
-    loop {
-        if success_mock.calls_async().await >= 1 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    wait_mock_calls(
+        &success_mock,
+        1,
+        MOCK_CALL_TIMEOUT,
+        "heartbeat_consecutive_failures_fatal initial heartbeat",
+    )
+    .await;
 
     // Switch to 401 responses — simulates server invalidating the runId.
     success_mock.delete_async().await;
@@ -827,12 +864,13 @@ async fn heartbeat_recovery_resets_counter() {
     });
 
     // Wait for first successful heartbeat.
-    loop {
-        if mock.calls_async().await >= 1 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    wait_mock_calls(
+        &mock,
+        1,
+        MOCK_CALL_TIMEOUT,
+        "heartbeat_recovery_resets_counter initial heartbeat",
+    )
+    .await;
 
     // Switch to failures (2 consecutive — below threshold).
     mock.delete_async().await;
@@ -843,12 +881,13 @@ async fn heartbeat_recovery_resets_counter() {
     });
 
     // Wait for 2 failed heartbeats.
-    loop {
-        if fail_mock.calls_async().await >= 2 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    wait_mock_calls(
+        &fail_mock,
+        2,
+        MOCK_CALL_TIMEOUT,
+        "heartbeat_recovery_resets_counter failed heartbeats",
+    )
+    .await;
 
     // Capture fail count before deleting (can't query after delete).
     let fail_total = fail_mock.calls_async().await;
@@ -861,12 +900,13 @@ async fn heartbeat_recovery_resets_counter() {
     });
 
     // Wait for a successful heartbeat after recovery.
-    loop {
-        if recovery_mock.calls_async().await >= 1 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    wait_mock_calls(
+        &recovery_mock,
+        1,
+        MOCK_CALL_TIMEOUT,
+        "heartbeat_recovery_resets_counter recovery heartbeat",
+    )
+    .await;
 
     // Clean up mocks before assertions.
     recovery_mock.delete_async().await;

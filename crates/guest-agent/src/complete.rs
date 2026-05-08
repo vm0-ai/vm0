@@ -52,8 +52,8 @@ fn as_optional(value: &str) -> Option<&str> {
 /// to omitting the field.
 ///
 /// `last_event_sequence` is the highest contiguous agent event sequence whose
-/// events webhook POST succeeded. The host uses it as a best-effort Axiom
-/// visibility watermark before marking the run completed.
+/// events webhook POST succeeded. The host persists it on the run, and clients
+/// use it as a terminal event-drain watermark after observing terminal status.
 ///
 /// Fire-and-forget. Returns `()` and never propagates errors — the runner's
 /// fallback call covers any failure here.

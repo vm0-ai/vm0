@@ -60,6 +60,8 @@ export async function autoSendPendingMessageOnRunComplete(input: {
       pendingMessageCreatedAt: chatThreads.pendingMessageCreatedAt,
       pendingMessageClientId: chatThreads.pendingMessageClientId,
       modelProviderId: chatThreads.modelProviderId,
+      modelProviderType: chatThreads.modelProviderType,
+      modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
       selectedModel: chatThreads.selectedModel,
     })
     .from(chatThreads)
@@ -122,7 +124,10 @@ export async function autoSendPendingMessageOnRunComplete(input: {
     appendSystemPrompt: buildWebChatPrompt(),
     callbacks: [chatCallback],
     chatThreadId: threadId,
+    modelProvider: thread.modelProviderType ?? undefined,
     modelProviderId: thread.modelProviderId ?? undefined,
+    modelProviderCredentialScope:
+      thread.modelProviderCredentialScope ?? undefined,
     selectedModelOverride: thread.selectedModel ?? undefined,
     preloadedAgent: agent,
   });

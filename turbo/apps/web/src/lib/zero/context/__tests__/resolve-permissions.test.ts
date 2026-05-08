@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 
+import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@vm0/api-contracts/contracts/model-providers";
 import type { ExpandedFirewallConfig } from "@vm0/connectors/firewall-types";
 
 import { mergePermissions } from "../resolve-permissions";
@@ -72,6 +73,21 @@ describe("mergePermissions — defaultPolicies on model-provider firewall", () =
       "a",
     ]);
     expect(result?.networkPolicies["model-provider:test"]?.ask).toEqual(["b"]);
+  });
+
+  it("allows codex-oauth-token API permission while keeping unknown endpoints denied", () => {
+    const firewall = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
+
+    const result = mergePermissions(firewall, []);
+
+    expect(result?.networkPolicies["model-provider:codex-oauth-token"]).toEqual(
+      {
+        allow: ["codex:api"],
+        deny: ["denied"],
+        ask: [],
+        unknownPolicy: "deny",
+      },
+    );
   });
 
   it("returns undefined when there are no firewalls at all", () => {

@@ -19,18 +19,22 @@ export async function findTestConnectorSecret(
   orgId: string,
   secretName: string,
   type: "connector" | "user" | "model-provider" = "connector",
+  userId?: string,
 ): Promise<string | undefined> {
   initServices();
+  const conditions = [
+    eq(secrets.orgId, orgId),
+    eq(secrets.name, secretName),
+    eq(secrets.type, type),
+  ];
+  if (userId) {
+    conditions.push(eq(secrets.userId, userId));
+  }
+
   const [storedSecret] = await globalThis.services.db
     .select()
     .from(secrets)
-    .where(
-      and(
-        eq(secrets.orgId, orgId),
-        eq(secrets.name, secretName),
-        eq(secrets.type, type),
-      ),
-    )
+    .where(and(...conditions))
     .limit(1);
 
   if (!storedSecret) return undefined;

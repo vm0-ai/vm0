@@ -178,7 +178,38 @@ fn build_claude_command(use_mock: bool) -> Vec<String> {
 /// Resume is a positional sub-subcommand (`codex exec resume <id> <prompt>`),
 /// not a `--resume <id>` flag. No `--` separator before the prompt: codex
 /// has no variadic flags here, so `--` would propagate as a literal arg.
-fn build_codex_args(working_dir: &str, model: &str, resume_id: &str, prompt: &str) -> Vec<String> {
+fn quote_toml_basic_string(value: &str) -> String {
+    let mut quoted = String::with_capacity(value.len() + 2);
+    quoted.push('"');
+    for ch in value.chars() {
+        match ch {
+            '"' => quoted.push_str("\\\""),
+            '\\' => quoted.push_str("\\\\"),
+            '\u{08}' => quoted.push_str("\\b"),
+            '\t' => quoted.push_str("\\t"),
+            '\n' => quoted.push_str("\\n"),
+            '\u{0C}' => quoted.push_str("\\f"),
+            '\r' => quoted.push_str("\\r"),
+            ch if ch.is_control() => quoted.push_str(&format!("\\u{:04X}", u32::from(ch))),
+            ch => quoted.push(ch),
+        }
+    }
+    quoted.push('"');
+    quoted
+}
+
+fn build_codex_developer_instructions_config(append_system_prompt: &str) -> String {
+    let value = quote_toml_basic_string(append_system_prompt);
+    format!("developer_instructions={value}")
+}
+
+fn build_codex_args(
+    working_dir: &str,
+    model: &str,
+    resume_id: &str,
+    append_system_prompt: &str,
+    prompt: &str,
+) -> Vec<String> {
     let mut args = vec![
         "exec".to_string(),
         "--json".to_string(),
@@ -192,6 +223,13 @@ fn build_codex_args(working_dir: &str, model: &str, resume_id: &str, prompt: &st
     if !model.is_empty() {
         args.push("-m".to_string());
         args.push(model.to_string());
+    }
+
+    if !append_system_prompt.is_empty() {
+        args.push("-c".to_string());
+        args.push(build_codex_developer_instructions_config(
+            append_system_prompt,
+        ));
     }
 
     if !resume_id.is_empty() {
@@ -220,6 +258,7 @@ fn build_codex_command(use_mock: bool) -> Vec<String> {
         env::working_dir(),
         env::openai_model(),
         env::resume_session_id(),
+        env::append_system_prompt(),
         env::prompt(),
     ));
     cmd
@@ -941,7 +980,18 @@ mod tests {
         prompt: &str,
     ) -> Vec<String> {
         disable_system_log();
-        build_codex_args(working_dir, model, resume_id, prompt)
+        build_codex_args(working_dir, model, resume_id, "", prompt)
+    }
+
+    fn build_codex_args_with_append_for_test(
+        working_dir: &str,
+        model: &str,
+        resume_id: &str,
+        append_system_prompt: &str,
+        prompt: &str,
+    ) -> Vec<String> {
+        disable_system_log();
+        build_codex_args(working_dir, model, resume_id, append_system_prompt, prompt)
     }
 
     fn build_codex_command_for_test(use_mock: bool) -> Vec<String> {
@@ -1006,6 +1056,63 @@ mod tests {
     fn build_codex_args_prompt_last_in_no_resume_path() {
         let args = build_codex_args_for_test("/wd", "gpt-5", "", "the prompt");
         assert_eq!(args.last().unwrap(), "the prompt");
+    }
+
+    #[test]
+    fn build_codex_args_with_append_system_prompt() {
+        let args = build_codex_args_with_append_for_test(
+            "/wd",
+            "",
+            "",
+            "Your name is Aria.",
+            "analyze this",
+        );
+        let c_idx = args.iter().position(|a| a == "-c").unwrap();
+        assert_eq!(
+            args[c_idx + 1],
+            r#"developer_instructions="Your name is Aria.""#
+        );
+        assert_eq!(args.last().unwrap(), "analyze this");
+    }
+
+    #[test]
+    fn build_codex_args_empty_append_system_prompt_omitted() {
+        let args = build_codex_args_with_append_for_test("/wd", "", "", "", "test");
+        assert!(!args.contains(&"-c".to_string()));
+        assert!(
+            !args
+                .iter()
+                .any(|arg| arg.starts_with("developer_instructions="))
+        );
+    }
+
+    #[test]
+    fn build_codex_args_resume_with_append_system_prompt_order() {
+        let args =
+            build_codex_args_with_append_for_test("/wd", "", "thread-abc", "Be concise.", "next");
+        let c_idx = args.iter().position(|a| a == "-c").unwrap();
+        let r_idx = args.iter().position(|a| a == "resume").unwrap();
+        assert!(c_idx < r_idx);
+        assert_eq!(args[c_idx + 1], r#"developer_instructions="Be concise.""#);
+        assert_eq!(args[r_idx + 1], "thread-abc");
+        assert_eq!(args[r_idx + 2], "next");
+        assert_eq!(args.len(), r_idx + 3);
+    }
+
+    #[test]
+    fn build_codex_args_quotes_append_system_prompt_for_config() {
+        let args = build_codex_args_with_append_for_test(
+            "/wd",
+            "",
+            "",
+            "Say \"hi\"\nPath C:\\tmp",
+            "prompt",
+        );
+        let c_idx = args.iter().position(|a| a == "-c").unwrap();
+        assert_eq!(
+            args[c_idx + 1],
+            r#"developer_instructions="Say \"hi\"\nPath C:\\tmp""#
+        );
     }
 
     #[test]

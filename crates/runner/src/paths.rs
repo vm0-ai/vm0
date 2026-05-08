@@ -147,6 +147,10 @@ impl HomePaths {
         self.root.join("locks")
     }
 
+    pub fn debootstrap_lock(&self) -> PathBuf {
+        self.debootstrap_dir().join(".lock")
+    }
+
     pub fn base_dir_lock(&self, base_dir: &Path) -> PathBuf {
         let hash = hex::encode(Sha256::digest(base_dir.as_os_str().as_encoded_bytes()));
         self.locks_dir().join(format!("base-dir-{hash}.lock"))
@@ -406,6 +410,8 @@ mod tests {
         assert!(template_lock.to_string_lossy().contains("template-def456"));
         let ca_lock = home.ca_lock();
         assert_eq!(ca_lock, PathBuf::from("/test/locks/ca.lock"));
+        let debootstrap_lock = home.debootstrap_lock();
+        assert_eq!(debootstrap_lock, PathBuf::from("/test/debootstrap/.lock"));
     }
 
     #[test]

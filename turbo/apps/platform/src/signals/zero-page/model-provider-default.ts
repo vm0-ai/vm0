@@ -1,5 +1,7 @@
 import {
+  allowsCustomModel,
   getDefaultModel,
+  getModels,
   type ModelProviderResponse,
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
@@ -12,6 +14,19 @@ interface AgentModelDefaultSource {
   preferPersonalProvider?: boolean;
 }
 
+function canProviderUseModel(
+  provider: ModelProviderResponse,
+  model: string | null | undefined,
+): model is string {
+  if (!model) {
+    return false;
+  }
+  if (allowsCustomModel(provider.type)) {
+    return true;
+  }
+  return getModels(provider.type)?.includes(model) ?? false;
+}
+
 function resolveProviderSelection(
   provider: ModelProviderResponse | undefined,
   fallbackSelectedModel?: string | null,
@@ -19,9 +34,15 @@ function resolveProviderSelection(
   if (!provider) {
     return null;
   }
+  const compatibleFallback = canProviderUseModel(
+    provider,
+    fallbackSelectedModel,
+  )
+    ? fallbackSelectedModel
+    : undefined;
   const selectedModel =
     provider.selectedModel ??
-    fallbackSelectedModel ??
+    compatibleFallback ??
     getDefaultModel(provider.type);
   if (!selectedModel) {
     return null;

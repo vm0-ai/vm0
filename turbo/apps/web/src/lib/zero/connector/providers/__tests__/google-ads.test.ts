@@ -1,0 +1,161 @@
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { HttpResponse } from "msw";
+import { server } from "../../../../../mocks/server";
+import { http } from "../../../../../__tests__/msw";
+import { testContext } from "../../../../../__tests__/test-helpers";
+import { reloadEnv } from "../../../../../env";
+import { injectPlatformEnvSecrets } from "../../../context/resolve-secrets";
+import { PROVIDER_HANDLERS } from "../../provider-registry";
+import { googleAdsHandler } from "../google-ads-handler";
+
+const context = testContext();
+const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const USER_INFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
+
+describe("connector/providers/google-ads", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  describe("googleAdsHandler", () => {
+    it("is registered in PROVIDER_HANDLERS under google-ads key", () => {
+      expect(PROVIDER_HANDLERS["google-ads"]).toBe(googleAdsHandler);
+    });
+
+    it("buildAuthUrl builds Google OAuth URL with Google Ads and userinfo scopes", () => {
+      const url = googleAdsHandler.buildAuthUrl(
+        "test-client",
+        "https://example.com/callback",
+        "test-state",
+      );
+      if (typeof url !== "string") {
+        throw new Error("Expected Google Ads auth URL to be a string");
+      }
+      const params = new URL(url).searchParams;
+      const scopes = new Set(params.get("scope")?.split(" ") ?? []);
+
+      expect(url).toContain("client_id=test-client");
+      expect(url).toContain(
+        "redirect_uri=" + encodeURIComponent("https://example.com/callback"),
+      );
+      expect(url).toContain("state=test-state");
+      expect(url).toContain("response_type=code");
+      expect(url).toContain("access_type=offline");
+      expect(url).toContain("prompt=consent");
+      expect(url).toContain("accounts.google.com/o/oauth2/v2/auth");
+      expect(scopes.has("https://www.googleapis.com/auth/adwords")).toBe(true);
+      expect(scopes.has("https://www.googleapis.com/auth/userinfo.email")).toBe(
+        true,
+      );
+    });
+
+    it("getClientId returns GOOGLE_OAUTH_CLIENT_ID from env", () => {
+      const env = {
+        GOOGLE_OAUTH_CLIENT_ID: "test-client-id",
+      } as Parameters<typeof googleAdsHandler.getClientId>[0];
+
+      expect(googleAdsHandler.getClientId(env)).toBe("test-client-id");
+    });
+
+    it("getClientSecret returns GOOGLE_OAUTH_CLIENT_SECRET from env", () => {
+      const env = {
+        GOOGLE_OAUTH_CLIENT_SECRET: "test-client-secret",
+      } as Parameters<typeof googleAdsHandler.getClientSecret>[0];
+
+      expect(googleAdsHandler.getClientSecret(env)).toBe("test-client-secret");
+    });
+
+    it("getSecretName returns GOOGLE_ADS_ACCESS_TOKEN", () => {
+      expect(googleAdsHandler.getSecretName()).toBe("GOOGLE_ADS_ACCESS_TOKEN");
+    });
+
+    it("getRefreshSecretName returns GOOGLE_ADS_REFRESH_TOKEN", () => {
+      expect(googleAdsHandler.getRefreshSecretName?.()).toBe(
+        "GOOGLE_ADS_REFRESH_TOKEN",
+      );
+    });
+
+    it("refreshToken is defined (uses shared Google token refresh)", () => {
+      expect(googleAdsHandler.refreshToken).toBeDefined();
+    });
+
+    it("exchangeCode maps Google token and user info response", async () => {
+      const { handler: tokenHandler } = http.post(TOKEN_URL, () => {
+        return HttpResponse.json({
+          access_token: "google-ads-access-token",
+          refresh_token: "google-ads-refresh-token",
+          expires_in: 3600,
+          scope:
+            "https://www.googleapis.com/auth/adwords https://www.googleapis.com/auth/userinfo.email",
+        });
+      });
+      const { handler: userInfoHandler } = http.get(USER_INFO_URL, () => {
+        return HttpResponse.json({
+          id: "google-user-123",
+          name: "Ada Lovelace",
+          email: "ada@example.com",
+        });
+      });
+      server.use(tokenHandler, userInfoHandler);
+
+      const result = await googleAdsHandler.exchangeCode(
+        "client-id",
+        "client-secret",
+        "auth-code",
+        "https://example.com/callback",
+      );
+
+      expect(result).toEqual({
+        accessToken: "google-ads-access-token",
+        refreshToken: "google-ads-refresh-token",
+        expiresIn: 3600,
+        scopes: [
+          "https://www.googleapis.com/auth/adwords",
+          "https://www.googleapis.com/auth/userinfo.email",
+        ],
+        userInfo: {
+          id: "google-user-123",
+          username: "Ada Lovelace",
+          email: "ada@example.com",
+        },
+      });
+    });
+
+    it("refreshToken delegates to the shared Google refresh flow", async () => {
+      const { handler } = http.post(TOKEN_URL, () => {
+        return HttpResponse.json({
+          access_token: "refreshed-google-ads-token",
+          expires_in: 3600,
+        });
+      });
+      server.use(handler);
+
+      const result = await googleAdsHandler.refreshToken?.(
+        "client-id",
+        "client-secret",
+        "refresh-token",
+      );
+
+      expect(result).toEqual({
+        accessToken: "refreshed-google-ads-token",
+        refreshToken: null,
+        expiresIn: 3600,
+      });
+    });
+
+    it("does not inject platform env secrets for unrelated connector contexts", () => {
+      expect(injectPlatformEnvSecrets(["github"])).toBeUndefined();
+    });
+
+    it("injects whitelisted platform env secrets for google ads contexts", () => {
+      vi.stubEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "developer-token");
+      vi.stubEnv("GOOGLE_ADS_LOGIN_CUSTOMER_ID", "1234567890");
+      reloadEnv();
+
+      expect(injectPlatformEnvSecrets(["google-ads"])).toEqual({
+        GOOGLE_ADS_DEVELOPER_TOKEN: "developer-token",
+        GOOGLE_ADS_LOGIN_CUSTOMER_ID: "1234567890",
+      });
+    });
+  });
+});

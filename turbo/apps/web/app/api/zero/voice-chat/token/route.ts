@@ -1,17 +1,20 @@
 import { NextResponse } from "next/server";
+import { isApiError } from "@vm0/api-services/errors";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../src/lib/init-services";
+import { checkOrgCredits } from "../../../../../src/lib/zero/credit/check-org-credits";
 import { getVoiceChatSession } from "../../../../../src/lib/zero/voice-chat/session-service";
 import { buildTalkerPayload } from "../../../../../src/lib/zero/voice-chat/talker-instructions";
 import {
   createEphemeralToken,
   isOpenAiTokenError,
 } from "../../../../../src/lib/zero/voice-chat/openai-token";
+import { loadRealtimeBillingPricing } from "../../../../../src/lib/zero/voice-chat/load-realtime-pricing";
 import { logger } from "../../../../../src/lib/shared/logger";
 import {
   badRequestResponse,
   forbiddenResponse,
-  isVoiceChatEnabled,
+  loadVoiceChatGates,
   notFoundResponse,
   unauthorizedResponse,
   voiceChatTokenBodySchema,
@@ -19,7 +22,7 @@ import {
 
 const log = logger("api:zero:voice-chat:token");
 
-export async function POST(request: Request): Promise<Response> {
+async function handlePost(request: Request): Promise<Response> {
   initServices();
 
   const authCtx = await getAuthContext(
@@ -27,9 +30,8 @@ export async function POST(request: Request): Promise<Response> {
   );
   if (!authCtx) return unauthorizedResponse();
 
-  if (!(await isVoiceChatEnabled(authCtx))) {
-    return forbiddenResponse();
-  }
+  const gates = await loadVoiceChatGates(authCtx);
+  if (!gates.voiceChatEnabled) return forbiddenResponse();
 
   const parsed = voiceChatTokenBodySchema.safeParse(
     await request.json().catch(() => {
@@ -50,12 +52,29 @@ export async function POST(request: Request): Promise<Response> {
     return notFoundResponse("Voice-chat session not found");
   }
 
-  const { talkerInstructions } = await buildTalkerPayload(session);
+  // Admission gate when realtime billing is on. Stays gated on the switch
+  // so OFF orgs keep the legacy unmetered behaviour.
+  if (gates.realtimeBillingEnabled) {
+    await checkOrgCredits(
+      session.orgId,
+      authCtx.userId,
+      globalThis.services.db,
+    );
+    const { missing } = await loadRealtimeBillingPricing();
+    if (missing.length > 0) {
+      return NextResponse.json(
+        {
+          error: {
+            message: `Voice-chat realtime pricing is not configured: ${missing.join(", ")}`,
+            code: "NOT_CONFIGURED",
+          },
+        },
+        { status: 503 },
+      );
+    }
+  }
 
-  // Narrow catch: only map upstream OpenAI failures to 500 with the documented
-  // error body. Any other exception (logic bug, unavailable service, etc.)
-  // propagates to the framework error handler — per project "avoid defensive
-  // programming" rule.
+  const { talkerInstructions } = await buildTalkerPayload(session);
   try {
     const result = await createEphemeralToken({
       instructions: talkerInstructions,
@@ -64,9 +83,7 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json(result);
   } catch (error) {
     if (isOpenAiTokenError(error)) {
-      log.error("OpenAI token request failed", {
-        status: error.status,
-      });
+      log.error("OpenAI token request failed", { status: error.status });
       return NextResponse.json(
         {
           error: {
@@ -75,6 +92,20 @@ export async function POST(request: Request): Promise<Response> {
           },
         },
         { status: 500 },
+      );
+    }
+    throw error;
+  }
+}
+
+export async function POST(request: Request): Promise<Response> {
+  try {
+    return await handlePost(request);
+  } catch (error) {
+    if (isApiError(error)) {
+      return NextResponse.json(
+        { error: { message: error.message, code: error.code } },
+        { status: error.statusCode },
       );
     }
     throw error;

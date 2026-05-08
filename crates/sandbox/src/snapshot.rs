@@ -81,18 +81,66 @@ pub enum SnapshotError {
     Io(#[from] std::io::Error),
 }
 
+/// Pending provider-side publish step for a created snapshot.
+///
+/// A pending publish means the provider finished all live runtime work needed
+/// to create the snapshot, but has not yet made the output reusable. Call
+/// [`commit`](Self::commit) to publish the provider-specific completion marker
+/// and return the output paths, or [`discard`](Self::discard) to abandon the
+/// uncommitted artifacts. Dropping this object without an explicit call must
+/// not publish a usable snapshot.
+///
+/// `discard` is the deterministic cleanup path. Callers that coordinate access
+/// to the output directory should call it before releasing that exclusivity.
+/// Implementations may intentionally keep `Drop` narrower than `discard` so a
+/// late drop cannot remove a snapshot published by a later owner of the same
+/// output directory.
+///
+/// `commit` takes `&mut self` so a failed publish can preserve provider-owned
+/// cleanup state. Callers may then call `discard` best-effort before treating
+/// the output as incomplete.
+#[async_trait]
+pub trait PendingSnapshotPublish: Send {
+    /// Make the snapshot reusable and return the stable output paths.
+    async fn commit(&mut self) -> Result<SnapshotOutput, SnapshotError>;
+
+    /// Abandon the uncommitted snapshot artifacts.
+    ///
+    /// This should be called while the caller still owns any output-directory
+    /// lock or equivalent coordination needed by the provider.
+    async fn discard(&mut self) -> Result<(), SnapshotError>;
+}
+
 /// Creates snapshots for fast sandbox boot.
 ///
 /// This is a lightweight, stateless trait — it does not require a
 /// [`SandboxRuntime`](crate::SandboxRuntime) instance.
 #[async_trait]
 pub trait SnapshotProvider: Send + Sync {
+    /// Create a snapshot and return a pending provider-side publish step.
+    ///
+    /// The pending object represents the boundary after provider runtime
+    /// resources have been cleaned up and before the snapshot is made reusable.
+    async fn create_uncommitted_snapshot(
+        &self,
+        config: SnapshotCreateConfig,
+    ) -> Result<Box<dyn PendingSnapshotPublish>, SnapshotError>;
+
     /// Create a snapshot by booting a temporary VM, configuring it, and
     /// capturing its state to the output directory.
     async fn create_snapshot(
         &self,
         config: SnapshotCreateConfig,
-    ) -> Result<SnapshotOutput, SnapshotError>;
+    ) -> Result<SnapshotOutput, SnapshotError> {
+        let mut pending = self.create_uncommitted_snapshot(config).await?;
+        match pending.commit().await {
+            Ok(output) => Ok(output),
+            Err(err) => {
+                let _ = pending.discard().await;
+                Err(err)
+            }
+        }
+    }
 
     /// Content hash of all internal configuration that affects snapshot output.
     ///

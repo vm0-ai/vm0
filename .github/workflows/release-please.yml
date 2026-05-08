@@ -1493,7 +1493,7 @@ jobs:
         run: |
           cd crates
           cargo build --release --target aarch64-unknown-linux-musl \
-            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed
+            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-write-file
 
       - name: Cross-compile runner with embedded guests for ARM64
         run: |
@@ -1504,6 +1504,7 @@ jobs:
           GUEST_MOCK_CLAUDE_PATH=target/aarch64-unknown-linux-musl/release/guest-mock-claude \
           GUEST_MOCK_CODEX_PATH=target/aarch64-unknown-linux-musl/release/guest-mock-codex \
           GUEST_RESEED_PATH=target/aarch64-unknown-linux-musl/release/guest-reseed \
+          GUEST_WRITE_FILE_PATH=target/aarch64-unknown-linux-musl/release/guest-write-file \
             cargo build --release --target aarch64-unknown-linux-musl -p runner
 
       - name: Upload runner binary to GitHub Release

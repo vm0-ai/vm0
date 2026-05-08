@@ -14,6 +14,6 @@ export const lumaHandler: ProviderHandler = {
     return undefined;
   },
   getSecretName: () => {
-    return "LUMA_TOKEN";
+    return "LUMA_API_KEY";
   },
 };

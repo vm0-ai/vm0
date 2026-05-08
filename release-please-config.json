@@ -30,6 +30,18 @@
         "turbo/apps/platform": {
             "release-type": "node"
         },
+        "turbo/packages/api-contracts": {
+            "release-type": "node",
+            "skip-changelog": true
+        },
+        "turbo/packages/connectors": {
+            "release-type": "node",
+            "skip-changelog": true
+        },
+        "turbo/packages/db": {
+            "release-type": "node",
+            "skip-changelog": true
+        },
         "crates/ably-subscriber": {
             "release-type": "rust"
         },
@@ -55,6 +67,9 @@
             "release-type": "rust"
         },
         "crates/guest-reseed": {
+            "release-type": "rust"
+        },
+        "crates/guest-write-file": {
             "release-type": "rust"
         },
         "crates/runner": {

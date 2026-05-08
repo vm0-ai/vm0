@@ -132,6 +132,21 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
     expect(sessionCookie).toBeUndefined();
   });
 
+  it("should return 400 for refresh-only codex-oauth connector", async () => {
+    await context.setupUser();
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/connectors/codex-oauth/authorize",
+    );
+    const response = await GET(request, {
+      params: Promise.resolve({ type: "codex-oauth" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toContain("auth.json paste flow");
+  });
+
   describe("Slack connector", () => {
     it("should redirect to Slack OAuth with correct parameters", async () => {
       await context.setupUser();

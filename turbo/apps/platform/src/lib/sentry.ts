@@ -72,6 +72,10 @@ export function initSentry(): void {
       "Insufficient credits",
       // Third-party scripts (we don't use axios — any AxiosError is external noise)
       "AxiosError",
+      // Ably SDK internal rejections — when the WebSocket connection closes
+      // during an in-flight channel attach, Ably's internal promises reject
+      // before our try/catch in realtime.ts can suppress them.
+      "Connection closed",
     ],
 
     // Filter out errors from browser extension and third-party scripts

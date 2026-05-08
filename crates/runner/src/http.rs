@@ -24,6 +24,14 @@ struct Inner {
 }
 
 impl HttpClient {
+    /// Create a shared API HTTP client using `api_url` as the base URL for generated routes.
+    ///
+    /// The client uses the runner's default request timeout and captures
+    /// `VERCEL_AUTOMATION_BYPASS_SECRET` at construction time. When present,
+    /// that value is attached as `x-vercel-protection-bypass` on authenticated
+    /// requests.
+    ///
+    /// Returns an error if the underlying HTTP client cannot be built.
     pub fn new(api_url: String) -> RunnerResult<Self> {
         let client = Client::builder()
             .timeout(DEFAULT_TIMEOUT)

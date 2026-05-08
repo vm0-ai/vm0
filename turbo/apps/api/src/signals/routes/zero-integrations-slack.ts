@@ -7,6 +7,14 @@ import {
 } from "@vm0/api-contracts/contracts/zero-integrations-slack";
 import { authHeadersSchema } from "@vm0/api-contracts/contracts/base";
 import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
+import { extractAndGroupVariables } from "@vm0/core/variable-expander";
+import { getConnectorProvidedSecretNames } from "@vm0/connectors/connector-utils";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "@vm0/db/schema/agent-compose";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -18,6 +26,9 @@ import {
 } from "../services/zero-slack-data.service";
 import { getFileInfo } from "../../lib/slack-client";
 import { fetchSlackFile } from "../external/slack-file-fetcher";
+import { db$ } from "../external/db";
+import { zeroConnectorList } from "../services/zero-connector-data.service";
+import { userSecrets, userVariables } from "../services/zero-user-data.service";
 import type { RouteEntry } from "../route";
 
 const c = initContract();
@@ -44,6 +55,90 @@ const slackDownloadFileContract = c.router({
   },
 });
 
+const getSlackEnvironment$ = computed(
+  async (get): Promise<z.infer<typeof slackOrgStatusSchema>["environment"]> => {
+    const auth = get(organizationAuthContext$);
+    const db = get(db$);
+
+    // Three sequential queries to resolve default-agent → compose → version
+    // (each depends on the prior result, so a single JOIN is not straightforward).
+    const [meta] = await db
+      .select({ defaultAgentId: orgMetadata.defaultAgentId })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, auth.orgId))
+      .limit(1);
+
+    if (!meta?.defaultAgentId) {
+      return undefined;
+    }
+
+    const [compose] = await db
+      .select({ headVersionId: agentComposes.headVersionId })
+      .from(agentComposes)
+      .where(eq(agentComposes.id, meta.defaultAgentId))
+      .limit(1);
+
+    if (!compose?.headVersionId) {
+      return undefined;
+    }
+
+    const [version] = await db
+      .select({ content: agentComposeVersions.content })
+      .from(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, compose.headVersionId))
+      .limit(1);
+
+    if (!version) {
+      return undefined;
+    }
+
+    const grouped = extractAndGroupVariables(version.content);
+    const requiredSecrets = grouped.secrets.map((s) => {
+      return s.name;
+    });
+    const requiredVars = grouped.vars.map((v) => {
+      return v.name;
+    });
+
+    const [userSecretList, userVarList, userConnectors] = await Promise.all([
+      get(userSecrets({ orgId: auth.orgId, userId: auth.userId })),
+      get(userVariables({ orgId: auth.orgId, userId: auth.userId })),
+      get(zeroConnectorList({ orgId: auth.orgId, userId: auth.userId })),
+    ]);
+
+    const connectorProvided = getConnectorProvidedSecretNames(
+      userConnectors.connectors.map((c) => {
+        return c.type;
+      }),
+    );
+    const existingSecretNames = new Set([
+      ...userSecretList.secrets.map((s) => {
+        return s.name;
+      }),
+      ...connectorProvided,
+    ]);
+    const existingVarNames = new Set(
+      userVarList.variables.map((v) => {
+        return v.name;
+      }),
+    );
+
+    const missingSecrets = requiredSecrets.filter((name) => {
+      return !existingSecretNames.has(name);
+    });
+    const missingVars = requiredVars.filter((name) => {
+      return !existingVarNames.has(name);
+    });
+
+    return {
+      requiredSecrets,
+      requiredVars,
+      missingSecrets,
+      missingVars,
+    };
+  },
+);
+
 const getSlackStatusInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const status = await get(
@@ -54,6 +149,10 @@ const getSlackStatusInner$ = computed(async (get) => {
     }),
   );
 
+  const environment = status.isConnected
+    ? await get(getSlackEnvironment$)
+    : undefined;
+
   const body: z.infer<typeof slackOrgStatusSchema> = {
     isConnected: status.isConnected,
     isInstalled: status.isInstalled,
@@ -63,6 +162,7 @@ const getSlackStatusInner$ = computed(async (get) => {
     connectUrl: status.connectUrl,
     defaultAgentName: status.defaultAgentName,
     agentOrgSlug: status.agentOrgSlug,
+    ...(environment !== undefined && { environment }),
   };
 
   return { status: 200 as const, body };

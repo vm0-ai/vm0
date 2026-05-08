@@ -12,9 +12,10 @@
 //! 1. `runner build` computes a `template_hash` for the shared R2 object and
 //!    a separate `rootfs_hash` for local images.
 //! 2. `--warm-rootfs-cache` ensures only the template R2 object exists.
-//! 3. Normal builds materialize the template object into `rootfs.ext4.staging`
-//!    (or build/upload it on miss), customize the staging image locally, verify
-//!    it, and then atomically commit the rootfs.
+//! 3. Normal builds materialize the template object into a per-attempt local
+//!    file (or build/upload it on miss), move the verified template into
+//!    `rootfs.ext4.staging`, customize the staging image locally, verify it,
+//!    and then atomically commit the rootfs.
 //!
 //! Atomicity guarantees:
 //! - Multipart upload is atomic from consumer POV (object only appears after
@@ -29,10 +30,12 @@
 //! fatal `PartialConfig` error — almost certainly a typo'd secret rotation, and
 //! silently disabling cache fleet-wide is worse than failing the deploy.
 //!
-//! Streaming: both upload and download avoid temp files entirely. Upload uses a
-//! `tokio::io::duplex` pipe to couple the sync tar+zstd producer (on a blocking
-//! thread) to the async multipart consumer. Download uses `SyncIoBridge` to
-//! adapt the async S3 body into a sync `Read` for the blocking unpack thread.
+//! Streaming: upload avoids temp files by using a `tokio::io::duplex` pipe to
+//! couple the sync tar+zstd producer (on a blocking thread) to the async
+//! multipart consumer. Download streams the S3 body through `SyncIoBridge` into
+//! a sibling staging directory, then renames the extracted `template.ext4` to
+//! the caller's destination. Callers that coordinate shared output paths should
+//! pass an attempt-scoped destination and perform their own final publish step.
 //! Memory peak per upload ≈ `(2 + CONCURRENCY + 1) × PART_SIZE` — duplex buffer,
 //! in-flight upload chunks, and the part being read — bounded regardless of
 //! image size. Currently ~112 MiB with `PART_SIZE` = 16 MiB and `CONCURRENCY` = 4.
@@ -71,11 +74,9 @@
 //!   `*.download.tmp/` directory beside the destination. The next download
 //!   removes it as the first action, so the leak is bounded to one stale dir
 //!   per destination and self-heals on next attempt.
-//! - **R2 multipart upload session**: a cancelled `upload` after
-//!   `create_multipart_upload` returned but before `Complete` runs leaks
-//!   the `upload_id` server-side (Drop can't `.await` to call
-//!   `abort_multipart_upload`). R2's default 7-day lifecycle cleans
-//!   abandoned segments, capping the wasted storage cost.
+//! - **R2 multipart upload session**: once `create_multipart_upload` returns,
+//!   an owned guard aborts the upload on normal errors and schedules a
+//!   best-effort abort if the upload future is cancelled before disarm.
 //! - **`spawn_blocking` pack / unpack tasks**: tokio cannot cancel
 //!   blocking tasks. After parent cancellation, the producer/consumer
 //!   thread runs until it hits BrokenPipe or natural EOF — wasted CPU for
@@ -92,7 +93,7 @@
 //!
 //! `cmd::build::run_build` defends by passing `force = true` to upload
 //! whenever template download classifies an object as invalid. That bypasses the
-//! dedup check and atomically overwrites the bad object in a single PUT.
+//! dedup check and atomically overwrites the bad object via multipart complete.
 //!
 //! ## Tar entry security
 //!
@@ -467,8 +468,8 @@ impl R2ImageCache {
     /// detecting a corrupt prior upload (download succeeded but template.ext4
     /// is missing). Going through `delete + dedup-upload` would deadlock the
     /// fleet's cache if `DeleteObject` permission is missing or transiently
-    /// failing — `force` is a single-round-trip atomic overwrite that doesn't
-    /// depend on `s3:DeleteObject`.
+    /// failing — `force` keeps the overwrite on the multipart upload path and
+    /// does not depend on `s3:DeleteObject`.
     ///
     /// The client is built from explicit R2 credentials, so it avoids AWS
     /// credential/endpoint discovery stalls. Outer call sites (CI/systemd)
@@ -507,21 +508,25 @@ impl R2ImageCache {
             .upload_id()
             .ok_or_else(|| R2Error::S3("create_multipart_upload: no upload_id".into()))?
             .to_string();
+        let mut upload_guard = MultipartUploadGuard::new(
+            self.client.clone(),
+            self.bucket.clone(),
+            key.to_string(),
+            upload_id,
+        );
 
         // Run the full pack→stream→complete pipeline, then abort if anything
         // failed (including Complete itself — server-side validation errors
         // can fail Complete after all parts uploaded successfully).
-        let result = self.do_multipart_upload(key, &upload_id, files).await;
+        let result = self
+            .do_multipart_upload(key, upload_guard.upload_id(), files)
+            .await;
         if result.is_err() {
-            // Best-effort abort; R2's 7-day default lifecycle catches misses.
-            let _ = self
-                .client
-                .abort_multipart_upload()
-                .bucket(&self.bucket)
-                .key(key)
-                .upload_id(&upload_id)
-                .send()
-                .await;
+            // Best-effort abort; the guard remains armed if this await is
+            // cancelled so Drop can still schedule a detached abort.
+            upload_guard.abort().await;
+        } else {
+            upload_guard.disarm();
         }
         result
     }
@@ -784,6 +789,92 @@ impl R2ImageCache {
     }
 }
 
+struct MultipartUploadGuard {
+    client: aws_sdk_s3::Client,
+    bucket: String,
+    key: String,
+    upload_id: String,
+    runtime: tokio::runtime::Handle,
+    armed: bool,
+}
+
+impl MultipartUploadGuard {
+    fn new(client: aws_sdk_s3::Client, bucket: String, key: String, upload_id: String) -> Self {
+        Self {
+            client,
+            bucket,
+            key,
+            upload_id,
+            runtime: tokio::runtime::Handle::current(),
+            armed: true,
+        }
+    }
+
+    fn upload_id(&self) -> &str {
+        &self.upload_id
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+
+    async fn abort(&mut self) {
+        if !self.armed {
+            return;
+        }
+        abort_multipart_upload(
+            self.client.clone(),
+            self.bucket.clone(),
+            self.key.clone(),
+            self.upload_id.clone(),
+            "failed multipart upload",
+        )
+        .await;
+        self.disarm();
+    }
+}
+
+impl Drop for MultipartUploadGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+
+        drop(self.runtime.spawn(abort_multipart_upload(
+            self.client.clone(),
+            self.bucket.clone(),
+            self.key.clone(),
+            self.upload_id.clone(),
+            "cancelled multipart upload",
+        )));
+    }
+}
+
+async fn abort_multipart_upload(
+    client: aws_sdk_s3::Client,
+    bucket: String,
+    key: String,
+    upload_id: String,
+    reason: &'static str,
+) {
+    if let Err(e) = client
+        .abort_multipart_upload()
+        .bucket(bucket)
+        .key(&key)
+        .upload_id(&upload_id)
+        .send()
+        .await
+    {
+        tracing::warn!(
+            error = %e,
+            key,
+            upload_id,
+            reason,
+            "failed to abort R2 multipart upload"
+        );
+    }
+}
+
 #[cfg(test)]
 fn key_for_hash(hash: &str) -> String {
     format!("{LEGACY_ROOTFS_KEY_PREFIX}{hash}.tar.zst")
@@ -1042,6 +1133,19 @@ mod tests {
     fn mock_cache(bucket: &str, rules: &[&Rule]) -> R2ImageCache {
         let client = mock_client!(aws_sdk_s3, RuleMode::MatchAny, rules);
         R2ImageCache::with_client(client, bucket.to_string())
+    }
+
+    async fn wait_for_rule_calls(rule: &Rule, expected: usize) {
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            loop {
+                if rule.num_calls() == expected {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("timed out waiting for {expected} mock call(s)"));
     }
 
     #[test]
@@ -1912,6 +2016,34 @@ mod tests {
         // even if the SDK retried `complete` internally — r2_cache issues
         // one best-effort abort per failed upload (not per retry).
         assert_eq!(abort.num_calls(), 1, "abort MUST run on Complete failure");
+    }
+
+    /// Dropping the upload future after `CreateMultipartUpload` must not leave
+    /// server-side multipart state behind until R2 lifecycle cleanup. The guard
+    /// schedules a detached abort on drop, which is the cancellation path that
+    /// normal error-return tests do not exercise.
+    #[tokio::test]
+    async fn multipart_upload_guard_aborts_on_drop() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::abort_multipart_upload::AbortMultipartUploadOutput;
+
+        let abort = mock!(Client::abort_multipart_upload)
+            .match_requests(|req| {
+                req.bucket() == Some("test-bucket")
+                    && req.key() == Some("runner-templates/abc.tar.zst")
+                    && req.upload_id() == Some("test-upload-id")
+            })
+            .then_output(|| AbortMultipartUploadOutput::builder().build());
+        let cache = mock_cache("test-bucket", &[&abort]);
+
+        drop(MultipartUploadGuard::new(
+            cache.client.clone(),
+            cache.bucket.clone(),
+            key_for_template_hash("abc"),
+            "test-upload-id".to_string(),
+        ));
+
+        wait_for_rule_calls(&abort, 1).await;
     }
 
     /// Missing `e_tag` on `upload_part` response → `R2Error::S3` with the

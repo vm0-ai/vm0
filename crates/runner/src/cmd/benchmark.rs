@@ -222,6 +222,7 @@ async fn run_sandbox(
         network_policies: None,
         encrypted_secrets: None,
         secret_connector_map: None,
+        secret_connector_metadata_map: None,
         vars: None,
         capture_network_bodies: false,
         billable_firewalls: &[],

@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.11.0](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.15...vsock-guest-v0.11.0) (2026-05-08)
+
+
+### Features
+
+* **vsock-guest:** implement bounded exec ([#12164](https://github.com/vm0-ai/vm0/issues/12164)) ([f2b85dd](https://github.com/vm0-ai/vm0/commit/f2b85dd4f73a0f4ba0032340b37e92857bd74e71))
+
+
+### Performance Improvements
+
+* add guest write-file helper ([#12136](https://github.com/vm0-ai/vm0/issues/12136)) ([8795398](https://github.com/vm0-ai/vm0/commit/8795398ddd54bb6f7e4cade4c1d3a67a11bebd1b))
+
+## [0.10.15](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.14...vsock-guest-v0.10.15) (2026-05-08)
+
+
+### Bug Fixes
+
+* **vsock-guest:** avoid env argv blowup ([#12127](https://github.com/vm0-ai/vm0/issues/12127)) ([4e41b39](https://github.com/vm0-ai/vm0/commit/4e41b39210f18119595869b6aee0a7b67eb75a09))
+
+## [0.10.14](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.13...vsock-guest-v0.10.14) (2026-05-08)
+
+## [0.10.13](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.12...vsock-guest-v0.10.13) (2026-05-07)
+
+
+### Refactoring
+
+* **vsock-guest:** handle thread spawn failures ([#12100](https://github.com/vm0-ai/vm0/issues/12100)) ([521365a](https://github.com/vm0-ai/vm0/commit/521365a5dd128f3e55a6d7f00bc42b7e9b248045))
+
+## [0.10.12](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.11...vsock-guest-v0.10.12) (2026-05-07)
+
+
+### Bug Fixes
+
+* remove vsock wait polling from fast exits ([#12088](https://github.com/vm0-ai/vm0/issues/12088)) ([062bee8](https://github.com/vm0-ai/vm0/commit/062bee8c932f550da0dd6e2a715fe3bed096db2d))
+
 ## [0.10.11](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.10...vsock-guest-v0.10.11) (2026-05-05)
 
 

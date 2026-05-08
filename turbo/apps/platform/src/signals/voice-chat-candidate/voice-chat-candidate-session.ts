@@ -32,7 +32,7 @@ type BargeInMode = "speech_started" | "transcript_confirmed";
 
 // Model used for the SDP exchange URL. Session config (tools / VAD / etc.) is
 // preset server-side in createEphemeralToken — keep this file free of it.
-const TALKER_MODEL = "gpt-realtime-mini";
+const TALKER_MODEL = "gpt-realtime-2";
 
 const OPENAI_REALTIME_BASE_URL = "https://api.openai.com/v1/realtime";
 

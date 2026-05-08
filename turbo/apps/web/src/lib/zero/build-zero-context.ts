@@ -15,11 +15,13 @@ import {
   getModelProviderFirewall,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { badRequest, notFound } from "@vm0/api-services/errors";
 import { logger } from "../shared/logger";
 import type {
   ContextArtifact,
+  DispatchDiagnosticSpan,
   ExecutionContext,
   ResumeSession,
 } from "../infra/run/types";
@@ -31,6 +33,7 @@ import { getUserPreferences } from "./user/user-preferences-service";
 import { getApiTokenConnectorTypes } from "./connector/connector-service";
 import {
   MODEL_PROVIDER_ENV_VARS,
+  type ResolveModelProviderSecretTimings,
   resolveModelProviderSecrets,
 } from "./context/resolve-model-provider";
 import { resolveOauthConnectorSecrets } from "./context/resolve-connectors";
@@ -39,6 +42,7 @@ import {
   fetchReferencedSecrets,
   filterDbSecretsByConnectorPermissions,
   fetchAndMergeVariables,
+  injectPlatformEnvSecrets,
 } from "./context/resolve-secrets";
 import {
   filterSecretConnectorMap,
@@ -62,6 +66,14 @@ export {
 
 const log = logger("zero:build-context");
 
+async function captureDuration<T>(
+  operation: () => Promise<T>,
+): Promise<{ value: T; durationMs: number }> {
+  const start = Date.now();
+  const value = await operation();
+  return { value, durationMs: Date.now() - start };
+}
+
 /**
  * Append the auto-memory artifact when this is a new run. On resume paths
  * (checkpoint, session, conversation continue) the resolver already emitted
@@ -80,6 +92,16 @@ function mergeSecretConnectorMaps(
   ...maps: (Record<string, string> | undefined)[]
 ): Record<string, string> | undefined {
   const merged: Record<string, string> = {};
+  for (const m of maps) {
+    if (m) Object.assign(merged, m);
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+function mergeSecretConnectorMetadataMaps(
+  ...maps: (Record<string, SecretConnectorMetadata> | undefined)[]
+): Record<string, SecretConnectorMetadata> | undefined {
+  const merged: Record<string, SecretConnectorMetadata> = {};
   for (const m of maps) {
     if (m) Object.assign(merged, m);
   }
@@ -118,6 +140,20 @@ function withRuntimeRunEnvironment(
     ...(environment ?? {}),
     VM0_RUN_SOURCE: triggerSource,
   };
+}
+
+interface ResolveSecretsAndEnvironmentTimings {
+  fetchReferencedSecrets: number;
+  resolveModelProvider: number;
+  resolveOauthConnectors: number;
+  getApiTokenConnectorTypes: number;
+  fetchAndMergeVariables: number;
+  resolveCustomConnectors: number;
+  filterSecretsAndMaps: number;
+  buildFirewallConfigs: number;
+  expandEnvironment: number;
+  billableFirewalls: number;
+  modelProvider?: ResolveModelProviderSecretTimings;
 }
 
 /**
@@ -163,6 +199,7 @@ interface BuildZeroContextParams {
   modelProvider?: string;
   // Per-agent or per-schedule model provider override (by provider ID + model)
   modelProviderId?: string;
+  modelProviderCredentialScope?: string;
   selectedModelOverride?: string;
   /**
    * Personal-tier preference (Epic #11868). Threaded into the resolver so
@@ -207,20 +244,27 @@ async function resolveSecretsAndEnvironment(
   allowedConnectorTypes?: ConnectorType[],
   allowedCustomConnectorIds?: string[],
   modelProviderId?: string,
+  modelProviderCredentialScope?: string,
   selectedModelOverride?: string,
   preferPersonalProvider?: boolean,
 ): Promise<{
   secrets: Record<string, string> | undefined;
   environment: Record<string, string> | undefined;
   secretConnectorMap: Record<string, string> | undefined;
+  secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined;
   resolvedModelProvider: ModelProviderType | undefined;
   resolvedFramework: string;
   modelProviderConfig: ExpandedFirewallConfig | undefined;
+  modelProviderId: string | null | undefined;
+  modelProviderCredentialScope: string | undefined;
   selectedModel: string | undefined;
   connectorPermissionConfigs: ExpandedFirewallConfig[];
   mergedVars: Record<string, string> | undefined;
   billableFirewalls: string[];
   modelUsageProvider: string | undefined;
+  timings: ResolveSecretsAndEnvironmentTimings;
 }> {
   // Model provider secret injection
   const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some((v) => {
@@ -232,30 +276,67 @@ async function resolveSecretsAndEnvironment(
   // The three resolve functions have independent DB queries (different secret types),
   // so there is no data dependency between them.
   const [
-    dbSecrets,
+    dbSecretsResult,
     modelProviderResult,
     oauthResult,
-    apiTokenTypes,
-    mergedVars,
+    apiTokenTypesResult,
+    mergedVarsResult,
     customConnectorResult,
   ] = await Promise.all([
-    fetchReferencedSecrets(orgId, userId, firstAgent?.environment),
-    resolveModelProviderSecrets(
-      orgId,
-      userId,
-      framework,
-      hasExplicitModelProviderConfig,
-      modelProvider,
-      modelProviderId,
-      selectedModelOverride,
-      preferPersonalProvider,
-    ),
-    resolveOauthConnectorSecrets(orgId, userId, allowedConnectorTypes),
-    getApiTokenConnectorTypes(orgId, userId),
-    fetchAndMergeVariables(orgId, userId, vars),
-    resolveCustomConnectorFirewalls(orgId, userId, allowedCustomConnectorIds),
+    captureDuration(() => {
+      return fetchReferencedSecrets(orgId, userId, firstAgent?.environment);
+    }),
+    captureDuration(() => {
+      return resolveModelProviderSecrets(
+        orgId,
+        userId,
+        framework,
+        hasExplicitModelProviderConfig,
+        modelProvider,
+        modelProviderId,
+        selectedModelOverride,
+        preferPersonalProvider,
+        modelProviderCredentialScope,
+      );
+    }),
+    captureDuration(() => {
+      return resolveOauthConnectorSecrets(orgId, userId, allowedConnectorTypes);
+    }),
+    captureDuration(() => {
+      return getApiTokenConnectorTypes(orgId, userId);
+    }),
+    captureDuration(() => {
+      return fetchAndMergeVariables(orgId, userId, vars);
+    }),
+    captureDuration(() => {
+      return resolveCustomConnectorFirewalls(
+        orgId,
+        userId,
+        allowedCustomConnectorIds,
+      );
+    }),
   ]);
+  const dbSecrets = dbSecretsResult.value;
+  const resolvedModelProviderResult = modelProviderResult.value;
+  const oauthConnectors = oauthResult.value;
+  const apiTokenTypes = apiTokenTypesResult.value;
+  const mergedVars = mergedVarsResult.value;
+  const customConnectors = customConnectorResult.value;
+  const timings: ResolveSecretsAndEnvironmentTimings = {
+    fetchReferencedSecrets: dbSecretsResult.durationMs,
+    resolveModelProvider: modelProviderResult.durationMs,
+    resolveOauthConnectors: oauthResult.durationMs,
+    getApiTokenConnectorTypes: apiTokenTypesResult.durationMs,
+    fetchAndMergeVariables: mergedVarsResult.durationMs,
+    resolveCustomConnectors: customConnectorResult.durationMs,
+    filterSecretsAndMaps: 0,
+    buildFirewallConfigs: 0,
+    expandEnvironment: 0,
+    billableFirewalls: 0,
+    modelProvider: resolvedModelProviderResult.timings,
+  };
 
+  const filterSecretsStart = Date.now();
   const rawApiTokenTypes = allowedConnectorTypes
     ? apiTokenTypes.filter((t) => {
         return allowedConnectorTypes.includes(t);
@@ -263,7 +344,7 @@ async function resolveSecretsAndEnvironment(
     : apiTokenTypes;
 
   const connectorTypes = [
-    ...new Set([...oauthResult.connectorTypes, ...rawApiTokenTypes]),
+    ...new Set([...oauthConnectors.connectorTypes, ...rawApiTokenTypes]),
   ];
 
   // Filter dbSecrets: strip env vars that belong to disallowed connectors.
@@ -279,20 +360,27 @@ async function resolveSecretsAndEnvironment(
   // Single secrets map with explicit priority (later overrides earlier).
   // Only mapped env vars from connectors are included — raw connector secrets
   // (including refresh tokens) are kept server-side and never sent to the runner.
+  // Platform env secrets (1Password → CI → process.env) for firewall templates.
+  // Injected only for connector contexts that need them. Platform env secrets
+  // override DB/custom values; CLI secrets still win.
+  const envSecrets = injectPlatformEnvSecrets(connectorTypes);
+
   const hasCustomConnectorSecrets =
-    Object.keys(customConnectorResult.secrets).length > 0;
+    Object.keys(customConnectors.secrets).length > 0;
   const hasSecrets =
-    oauthResult.resolvedSecrets ||
-    modelProviderResult.secrets ||
+    oauthConnectors.resolvedSecrets ||
+    resolvedModelProviderResult.secrets ||
     filteredDbSecrets ||
     cliSecrets ||
-    hasCustomConnectorSecrets;
+    hasCustomConnectorSecrets ||
+    envSecrets;
   const secrets: Record<string, string> | undefined = hasSecrets
     ? {
-        ...oauthResult.resolvedSecrets, // connector env mappings (e.g. GITHUB_TOKEN)
-        ...modelProviderResult.secrets, // model provider
+        ...oauthConnectors.resolvedSecrets, // connector env mappings (e.g. GITHUB_TOKEN)
+        ...resolvedModelProviderResult.secrets, // model provider
         ...filteredDbSecrets, // DB user secrets (connector secrets filtered)
-        ...customConnectorResult.secrets, // org custom connector per-user secrets
+        ...customConnectors.secrets, // org custom connector per-user secrets
+        ...envSecrets, // platform env secrets (e.g. GOOGLE_ADS_DEVELOPER_TOKEN)
         ...cliSecrets, // highest: CLI --secrets
       }
     : undefined;
@@ -303,19 +391,24 @@ async function resolveSecretsAndEnvironment(
   // filter because they share names with `modelProviderResult.secrets` — those secrets
   // ARE the source of the OAuth refresh, not an override target.
   const filteredOauthMap = filterSecretConnectorMap(
-    oauthResult.secretConnectorMap,
-    [modelProviderResult.secrets, dbSecrets, cliSecrets],
+    oauthConnectors.secretConnectorMap,
+    [resolvedModelProviderResult.secrets, dbSecrets, cliSecrets],
   );
   const secretConnectorMap = mergeSecretConnectorMaps(
     filteredOauthMap,
-    modelProviderResult.secretConnectorMap,
+    resolvedModelProviderResult.secretConnectorMap,
   );
+  const secretConnectorMetadataMap = mergeSecretConnectorMetadataMaps(
+    resolvedModelProviderResult.secretConnectorMetadataMap,
+  );
+  timings.filterSecretsAndMaps = Date.now() - filterSecretsStart;
 
+  const buildFirewallConfigsStart = Date.now();
   // Auto-generate config entry for model provider (if applicable).
   // For meta-providers like "vm0", use the concrete provider type for lookup.
   const modelProviderFirewallType =
-    modelProviderResult.concreteProviderType ??
-    modelProviderResult.resolvedModelProvider;
+    resolvedModelProviderResult.concreteProviderType ??
+    resolvedModelProviderResult.resolvedModelProvider;
   const modelProviderConfig = modelProviderFirewallType
     ? getModelProviderFirewall(modelProviderFirewallType)
     : undefined;
@@ -334,9 +427,11 @@ async function resolveSecretsAndEnvironment(
     ...connectorTypes.filter(isFirewallConnectorType).map((type) => {
       return { ...getConnectorFirewall(type) };
     }),
-    ...customConnectorResult.firewalls,
+    ...customConnectors.firewalls,
   ];
+  timings.buildFirewallConfigs = Date.now() - buildFirewallConfigsStart;
 
+  const expandEnvironmentStart = Date.now();
   // Expand environment variables from compose config.
   // All permission configs (model provider, connector) are passed via the
   // `firewalls` param for unified placeholder injection.
@@ -344,13 +439,15 @@ async function resolveSecretsAndEnvironment(
     agentCompose,
     mergedVars,
     secrets,
-    modelProviderResult.injectedEnvironment,
+    resolvedModelProviderResult.injectedEnvironment,
     [
       ...(modelProviderConfig ? [modelProviderConfig] : []),
       ...connectorPermissionConfigs,
     ],
   );
+  timings.expandEnvironment = Date.now() - expandEnvironmentStart;
 
+  const billableFirewallsStart = Date.now();
   // Billable firewalls feed flow.metadata["firewall_billable"] in mitm-addon,
   // gating platform-side billing webhooks and full-body response buffering:
   // - vm0 meta-provider: platform-paid model tokens (user didn't supply a key).
@@ -358,12 +455,13 @@ async function resolveSecretsAndEnvironment(
   //   where the platform covers the upstream cost and bills the user.
   const billableFirewalls: string[] = [];
   const vm0ManagedModelProviderConfig =
-    modelProviderResult.resolvedModelProvider === "vm0" && modelProviderConfig;
+    resolvedModelProviderResult.resolvedModelProvider === "vm0" &&
+    modelProviderConfig;
   if (vm0ManagedModelProviderConfig) {
     billableFirewalls.push(vm0ManagedModelProviderConfig.name);
   }
   const modelUsageProvider = vm0ManagedModelProviderConfig
-    ? modelProviderResult.selectedModel
+    ? resolvedModelProviderResult.selectedModel
     : undefined;
   const billableConnectorSet = new Set<string>(BILLABLE_CONNECTORS);
   for (const fw of connectorPermissionConfigs) {
@@ -371,27 +469,38 @@ async function resolveSecretsAndEnvironment(
       billableFirewalls.push(fw.name);
     }
   }
+  timings.billableFirewalls = Date.now() - billableFirewallsStart;
 
   return {
     secrets,
     environment,
     secretConnectorMap,
-    resolvedModelProvider: modelProviderResult.resolvedModelProvider,
+    secretConnectorMetadataMap,
+    resolvedModelProvider: resolvedModelProviderResult.resolvedModelProvider,
     // Provider-derived framework when resolution ran; otherwise the compose
     // framework. Source-of-truth for downstream framework-aware logic.
-    resolvedFramework: modelProviderResult.framework ?? framework,
+    resolvedFramework: resolvedModelProviderResult.framework ?? framework,
     modelProviderConfig,
-    selectedModel: modelProviderResult.selectedModel,
+    modelProviderId: resolvedModelProviderResult.modelProviderId,
+    modelProviderCredentialScope: resolvedModelProviderResult.credentialScope,
+    selectedModel: resolvedModelProviderResult.selectedModel,
     connectorPermissionConfigs,
     mergedVars,
     billableFirewalls,
     modelUsageProvider,
+    timings,
   };
 }
 
 interface BuildZeroContextTimings {
   resolveSourceAndOrg: number;
   resolveSecrets: number;
+  userPreferences: number;
+  previousRunModelProvider: number;
+  compatibilityChecks: number;
+  mergePermissions: number;
+  resolveSecretsDetails: ResolveSecretsAndEnvironmentTimings;
+  diagnosticSpans: DispatchDiagnosticSpan[];
 }
 
 interface BuildZeroContextResult {
@@ -399,10 +508,107 @@ interface BuildZeroContextResult {
   timings: BuildZeroContextTimings;
   /** The resolved model provider type, if provider resolution ran during context build. */
   resolvedModelProvider: ModelProviderType | undefined;
+  /** Org-scoped model provider row used by model-first API-key routes. */
+  modelProviderId: string | null | undefined;
+  /** Model-first credential scope, if provider resolution used model policy. */
+  modelProviderCredentialScope: string | undefined;
   /** Provider-derived framework, source-of-truth for downstream. */
   resolvedFramework: string;
   /** The logical model name selected by the user, for model usage billing. */
   selectedModel: string | undefined;
+}
+
+function optionalDiagnosticSpan(
+  op: string,
+  ms: number | undefined,
+): DispatchDiagnosticSpan[] {
+  return ms === undefined ? [] : [{ op, ms }];
+}
+
+function buildDiagnosticSpans(
+  timings: Omit<BuildZeroContextTimings, "diagnosticSpans">,
+): DispatchDiagnosticSpan[] {
+  const modelProvider = timings.resolveSecretsDetails.modelProvider;
+  return [
+    {
+      op: "api_build_resolve_secrets_fetch_secrets",
+      ms: timings.resolveSecretsDetails.fetchReferencedSecrets,
+    },
+    {
+      op: "api_build_resolve_secrets_model_provider",
+      ms: timings.resolveSecretsDetails.resolveModelProvider,
+    },
+    {
+      op: "api_build_resolve_secrets_oauth_connectors",
+      ms: timings.resolveSecretsDetails.resolveOauthConnectors,
+    },
+    {
+      op: "api_build_resolve_secrets_api_token_types",
+      ms: timings.resolveSecretsDetails.getApiTokenConnectorTypes,
+    },
+    {
+      op: "api_build_resolve_secrets_variables",
+      ms: timings.resolveSecretsDetails.fetchAndMergeVariables,
+    },
+    {
+      op: "api_build_resolve_secrets_custom_connectors",
+      ms: timings.resolveSecretsDetails.resolveCustomConnectors,
+    },
+    {
+      op: "api_build_resolve_secrets_maps",
+      ms: timings.resolveSecretsDetails.filterSecretsAndMaps,
+    },
+    {
+      op: "api_build_resolve_secrets_firewall_configs",
+      ms: timings.resolveSecretsDetails.buildFirewallConfigs,
+    },
+    {
+      op: "api_build_resolve_secrets_expand_environment",
+      ms: timings.resolveSecretsDetails.expandEnvironment,
+    },
+    {
+      op: "api_build_resolve_secrets_billable_firewalls",
+      ms: timings.resolveSecretsDetails.billableFirewalls,
+    },
+    { op: "api_build_user_preferences", ms: timings.userPreferences },
+    {
+      op: "api_build_previous_model_provider",
+      ms: timings.previousRunModelProvider,
+    },
+    {
+      op: "api_build_compatibility_checks",
+      ms: timings.compatibilityChecks,
+    },
+    { op: "api_build_merge_permissions", ms: timings.mergePermissions },
+    ...optionalDiagnosticSpan(
+      "api_build_model_provider_personal_eligibility",
+      modelProvider?.personalEligibility,
+    ),
+    ...optionalDiagnosticSpan(
+      "api_build_model_provider_default_lookup",
+      modelProvider?.defaultProviderLookup,
+    ),
+    ...optionalDiagnosticSpan(
+      "api_build_model_provider_matching_lookup",
+      modelProvider?.matchingProviderLookup,
+    ),
+    ...optionalDiagnosticSpan(
+      "api_build_model_provider_vm0_resolution",
+      modelProvider?.vm0ProviderResolution,
+    ),
+    ...optionalDiagnosticSpan(
+      "api_build_model_provider_multi_auth_resolution",
+      modelProvider?.multiAuthSecretResolution,
+    ),
+    ...optionalDiagnosticSpan(
+      "api_build_model_provider_single_secret_fetch",
+      modelProvider?.singleSecretFetch,
+    ),
+    ...optionalDiagnosticSpan(
+      "api_build_model_provider_environment_mapping",
+      modelProvider?.environmentMapping,
+    ),
+  ];
 }
 
 /**
@@ -429,6 +635,7 @@ interface ResolveCliRunContextParams {
   volumeVersions?: Record<string, string>;
   // Model provider selection
   modelProviderId?: string;
+  modelProviderCredentialScope?: string;
   selectedModelOverride?: string;
   /**
    * Personal-tier preference (Epic #11868). Mirrors `BuildZeroContextParams`
@@ -455,12 +662,15 @@ interface ResolvedCliContext {
   secrets?: Record<string, string>;
   environment?: Record<string, string>;
   secretConnectorMap?: Record<string, string>;
+  secretConnectorMetadataMap?: Record<string, SecretConnectorMetadata>;
   firewalls?: Firewalls;
   networkPolicies?: NetworkPolicies;
   userTimezone?: string;
 
   // Model provider metadata (for zero_runs upsert)
   resolvedModelProvider?: ModelProviderType;
+  modelProviderId?: string | null;
+  modelProviderCredentialScope?: string;
   selectedModel?: string;
 
   billableFirewalls: string[];
@@ -584,6 +794,7 @@ export async function resolveCliRunContext(
       params.allowedConnectorTypes,
       params.allowedCustomConnectorIds,
       params.modelProviderId,
+      params.modelProviderCredentialScope,
       params.selectedModelOverride,
       params.preferPersonalProvider,
     ),
@@ -606,9 +817,12 @@ export async function resolveCliRunContext(
     secrets,
     environment,
     secretConnectorMap,
+    secretConnectorMetadataMap,
     resolvedModelProvider,
     resolvedFramework,
     modelProviderConfig,
+    modelProviderId,
+    modelProviderCredentialScope,
     selectedModel,
     connectorPermissionConfigs,
     mergedVars,
@@ -640,10 +854,13 @@ export async function resolveCliRunContext(
     secrets,
     environment,
     secretConnectorMap,
+    secretConnectorMetadataMap,
     firewalls: permissionResult?.firewalls,
     networkPolicies: permissionResult?.networkPolicies,
     userTimezone,
     resolvedModelProvider,
+    modelProviderId,
+    modelProviderCredentialScope,
     selectedModel,
     billableFirewalls,
     modelUsageProvider,
@@ -741,47 +958,61 @@ export async function buildZeroExecutionContext(
   // When preloadedUserTimezone is provided (from Phase 1), skip getUserPreferences
   // to avoid the duplicate DB query.
   const resolveSecretsStart = Date.now();
-  const [secretsResult, userPrefs, originalModelProvider] = await Promise.all([
-    resolveSecretsAndEnvironment(
-      params.orgId,
-      agentCompose,
-      firstAgent,
-      vars,
-      params.secrets,
-      params.modelProvider,
-      params.userId,
-      params.allowedConnectorTypes,
-      params.allowedCustomConnectorIds,
-      params.modelProviderId,
-      params.selectedModelOverride,
-      params.preferPersonalProvider,
-    ),
-    params.preloadedUserTimezone !== undefined
-      ? Promise.resolve(null)
-      : params.userId
-        ? getUserPreferences(params.orgId, params.userId)
-        : Promise.resolve(null),
-    // Zero-layer concern: fetch previous run's model provider for compatibility check
-    resolution?.previousRunId
-      ? globalThis.services.db
-          .select({ modelProvider: zeroRuns.modelProvider })
-          .from(zeroRuns)
-          .where(eq(zeroRuns.id, resolution.previousRunId))
-          .limit(1)
-          .then(([row]) => {
-            return row?.modelProvider ?? undefined;
-          })
-      : Promise.resolve(undefined),
-  ]);
+  const [secretsResultTimed, userPrefsTimed, originalModelProviderTimed] =
+    await Promise.all([
+      captureDuration(() => {
+        return resolveSecretsAndEnvironment(
+          params.orgId,
+          agentCompose,
+          firstAgent,
+          vars,
+          params.secrets,
+          params.modelProvider,
+          params.userId,
+          params.allowedConnectorTypes,
+          params.allowedCustomConnectorIds,
+          params.modelProviderId,
+          params.modelProviderCredentialScope,
+          params.selectedModelOverride,
+          params.preferPersonalProvider,
+        );
+      }),
+      captureDuration(() => {
+        return params.preloadedUserTimezone !== undefined
+          ? Promise.resolve(null)
+          : params.userId
+            ? getUserPreferences(params.orgId, params.userId)
+            : Promise.resolve(null);
+      }),
+      // Zero-layer concern: fetch previous run's model provider for compatibility check
+      captureDuration(() => {
+        return resolution?.previousRunId
+          ? globalThis.services.db
+              .select({ modelProvider: zeroRuns.modelProvider })
+              .from(zeroRuns)
+              .where(eq(zeroRuns.id, resolution.previousRunId))
+              .limit(1)
+              .then(([row]) => {
+                return row?.modelProvider ?? undefined;
+              })
+          : Promise.resolve(undefined);
+      }),
+    ]);
   const resolveSecretsEnd = Date.now();
+  const secretsResult = secretsResultTimed.value;
+  const userPrefs = userPrefsTimed.value;
+  const originalModelProvider = originalModelProviderTimed.value;
 
   const {
     secrets,
     environment,
     secretConnectorMap,
+    secretConnectorMetadataMap,
     resolvedModelProvider,
     resolvedFramework,
     modelProviderConfig,
+    modelProviderId,
+    modelProviderCredentialScope,
     selectedModel,
     connectorPermissionConfigs,
     mergedVars,
@@ -801,16 +1032,30 @@ export async function buildZeroExecutionContext(
   //   framework's format; switching binaries mid-thread can't replay it.
   //   resolvedFramework is the source of truth (provider-derived since
   //   #11649); the compose's `framework` field is no longer authoritative.
+  const compatibilityChecksStart = Date.now();
   checkProviderCompatibility(originalModelProvider, resolvedModelProvider);
   checkFrameworkCompatibility(resolution?.sessionFramework, resolvedFramework);
+  const compatibilityChecksEnd = Date.now();
 
   // Build permission manifest (base + auth entries for the runner).
+  const mergePermissionsStart = Date.now();
   const permissionResult = mergePermissions(
     modelProviderConfig,
     connectorPermissionConfigs,
     params.permissionPolicies,
     mergedVars,
   );
+  const mergePermissionsEnd = Date.now();
+
+  const timingDetails: Omit<BuildZeroContextTimings, "diagnosticSpans"> = {
+    resolveSourceAndOrg: resolveEnd - resolveStart,
+    resolveSecrets: resolveSecretsEnd - resolveSecretsStart,
+    userPreferences: userPrefsTimed.durationMs,
+    previousRunModelProvider: originalModelProviderTimed.durationMs,
+    compatibilityChecks: compatibilityChecksEnd - compatibilityChecksStart,
+    mergePermissions: mergePermissionsEnd - mergePermissionsStart,
+    resolveSecretsDetails: secretsResult.timings,
+  };
 
   // Build final execution context
   return {
@@ -825,6 +1070,7 @@ export async function buildZeroExecutionContext(
       vars,
       secrets,
       secretConnectorMap,
+      secretConnectorMetadataMap,
       sandboxToken: params.sandboxToken,
       artifacts,
       volumeVersions,
@@ -856,10 +1102,12 @@ export async function buildZeroExecutionContext(
       resolvedFramework,
     },
     timings: {
-      resolveSourceAndOrg: resolveEnd - resolveStart,
-      resolveSecrets: resolveSecretsEnd - resolveSecretsStart,
+      ...timingDetails,
+      diagnosticSpans: buildDiagnosticSpans(timingDetails),
     },
     resolvedModelProvider,
+    modelProviderId,
+    modelProviderCredentialScope,
     resolvedFramework,
     selectedModel,
   };

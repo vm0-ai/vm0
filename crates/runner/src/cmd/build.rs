@@ -22,10 +22,16 @@ const GUEST_AGENT_DEST: &str = "/usr/local/bin/guest-agent";
 const GUEST_DOWNLOAD_DEST: &str = "/usr/local/bin/guest-download";
 const GUEST_INIT_DEST: &str = "/sbin/guest-init";
 const GUEST_RESEED_DEST: &str = "/sbin/guest-reseed";
+const GUEST_WRITE_FILE_DEST: &str = "/sbin/guest-write-file";
 const GUEST_MOCK_CLAUDE_DEST: &str = "/usr/local/bin/guest-mock-claude";
 const GUEST_MOCK_CODEX_DEST: &str = "/usr/local/bin/guest-mock-codex";
 const ROOTFS_DNS_NAMESERVER: &str = "8.8.8.8";
 const TEMPLATE_FILE: &str = "template.ext4";
+const TEMPLATE_DOWNLOAD_FILE: &str = "downloaded-template.ext4";
+const TEMPLATE_WARM_DIR_PREFIX: &str = "template-warm-";
+const TEMPLATE_WARM_ATTEMPT_DIR_PREFIX: &str = "attempt-";
+const TEMPLATE_BUILD_DIR_PREFIX: &str = "template-build-";
+const TEMPLATE_ATTEMPT_DIR_SUFFIX: &str = ".tmp";
 
 /// Bump to invalidate all shared template images in R2.
 ///
@@ -49,6 +55,7 @@ mod embedded {
     pub const GUEST_MOCK_CLAUDE: &[u8] = include_bytes!(env!("BUNDLED_GUEST_MOCK_CLAUDE"));
     pub const GUEST_MOCK_CODEX: &[u8] = include_bytes!(env!("BUNDLED_GUEST_MOCK_CODEX"));
     pub const GUEST_RESEED: &[u8] = include_bytes!(env!("BUNDLED_GUEST_RESEED"));
+    pub const GUEST_WRITE_FILE: &[u8] = include_bytes!(env!("BUNDLED_GUEST_WRITE_FILE"));
 }
 
 #[cfg(bundled_guests)]
@@ -60,6 +67,7 @@ fn bundled_guest(name: &str) -> Option<&'static [u8]> {
         "guest-mock-claude" => Some(embedded::GUEST_MOCK_CLAUDE),
         "guest-mock-codex" => Some(embedded::GUEST_MOCK_CODEX),
         "guest-reseed" => Some(embedded::GUEST_RESEED),
+        "guest-write-file" => Some(embedded::GUEST_WRITE_FILE),
         _ => None,
     }
 }
@@ -125,6 +133,15 @@ pub struct BuildArgs {
         arg(long, help = "Path to guest-reseed binary (required)")
     )]
     guest_reseed: Option<PathBuf>,
+    #[cfg_attr(
+        bundled_guests,
+        arg(long, help = "Path to guest-write-file binary [default: bundled]")
+    )]
+    #[cfg_attr(
+        not(bundled_guests),
+        arg(long, help = "Path to guest-write-file binary (required)")
+    )]
+    guest_write_file: Option<PathBuf>,
     /// Profile to build (determines VM resources and disk size)
     #[arg(long)]
     pub profile: String,
@@ -184,6 +201,81 @@ impl<'a> TemplateCache<'a> {
 
     fn is_disabled(self) -> bool {
         matches!(self, Self::Disabled)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TemplateUploadIntent {
+    Deduplicated,
+    ForceOverwriteInvalidRemote,
+}
+
+impl TemplateUploadIntent {
+    fn force(self) -> bool {
+        matches!(self, Self::ForceOverwriteInvalidRemote)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RemoteTemplateDecision {
+    UseDownloaded,
+    BuildAndUpload(TemplateUploadIntent),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TemplateMaterializationMode {
+    FullImage,
+    WarmRootfsCache,
+}
+
+impl TemplateMaterializationMode {
+    fn is_warm_cache(self) -> bool {
+        matches!(self, Self::WarmRootfsCache)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum TemplateMaterializationTarget<'a> {
+    RootfsStaging(&'a Path),
+    RemoteCacheOnly,
+}
+
+impl TemplateMaterializationTarget<'_> {
+    fn mode(self) -> TemplateMaterializationMode {
+        match self {
+            Self::RootfsStaging(_) => TemplateMaterializationMode::FullImage,
+            Self::RemoteCacheOnly => TemplateMaterializationMode::WarmRootfsCache,
+        }
+    }
+
+    fn materialize_downloaded(
+        self,
+        input: &TemplateInput<'_>,
+        downloaded_template: &Path,
+    ) -> RunnerResult<()> {
+        match self {
+            Self::RootfsStaging(staging) => {
+                move_file_sync(downloaded_template, staging, "materialize template")?;
+                tracing::info!(
+                    "[OK] template downloaded from R2 into staging: {}",
+                    staging.display()
+                );
+                Ok(())
+            }
+            Self::RemoteCacheOnly => {
+                tracing::info!("[OK] template already in R2: {}", input.template_hash);
+                Ok(())
+            }
+        }
+    }
+
+    fn materialize_built(self, built_template: &Path) -> RunnerResult<()> {
+        match self {
+            Self::RootfsStaging(staging) => {
+                move_file_sync(built_template, staging, "move template to staging")
+            }
+            Self::RemoteCacheOnly => Ok(()),
+        }
     }
 }
 
@@ -308,6 +400,7 @@ struct GuestBinaries {
     guest_mock_claude: PathBuf,
     guest_mock_codex: PathBuf,
     guest_reseed: PathBuf,
+    guest_write_file: PathBuf,
 }
 
 impl GuestBinaries {
@@ -329,6 +422,8 @@ impl GuestBinaries {
             resolve_guest(args.guest_mock_codex.take(), "guest-mock-codex", temp_path).await?;
         let guest_reseed =
             resolve_guest(args.guest_reseed.take(), "guest-reseed", temp_path).await?;
+        let guest_write_file =
+            resolve_guest(args.guest_write_file.take(), "guest-write-file", temp_path).await?;
 
         Ok(Self {
             _temp_dir: temp_dir,
@@ -338,15 +433,17 @@ impl GuestBinaries {
             guest_mock_claude,
             guest_mock_codex,
             guest_reseed,
+            guest_write_file,
         })
     }
 
-    fn hash_inputs(&self) -> [(&Path, &str); 6] {
+    fn hash_inputs(&self) -> [(&Path, &str); 7] {
         [
             (self.guest_agent.as_path(), GUEST_AGENT_DEST),
             (self.guest_download.as_path(), GUEST_DOWNLOAD_DEST),
             (self.guest_init.as_path(), GUEST_INIT_DEST),
             (self.guest_reseed.as_path(), GUEST_RESEED_DEST),
+            (self.guest_write_file.as_path(), GUEST_WRITE_FILE_DEST),
             (self.guest_mock_claude.as_path(), GUEST_MOCK_CLAUDE_DEST),
             (self.guest_mock_codex.as_path(), GUEST_MOCK_CODEX_DEST),
         ]
@@ -590,7 +687,7 @@ pub async fn run_build(mut args: BuildArgs, provider: &dyn SnapshotProvider) -> 
                 );
             }
 
-            let _snapshot_lock = lock::acquire(paths.snapshot_lock(snapshot_hash)).await?;
+            let snapshot_lock = lock::acquire(paths.snapshot_lock(snapshot_hash)).await?;
             if provider.is_complete(snapshot_dir).await.unwrap_or(false) {
                 tracing::info!(
                     "[OK] image already built: rootfs={rootfs_hash}, snapshot={snapshot_hash}"
@@ -607,6 +704,7 @@ pub async fn run_build(mut args: BuildArgs, provider: &dyn SnapshotProvider) -> 
                 snapshot_dir,
                 def,
                 provider,
+                snapshot_lock,
             )
             .await?;
 
@@ -625,6 +723,7 @@ async fn build_snapshot(
     snapshot_dir: &Path,
     def: &profile::ProfileDef,
     provider: &dyn SnapshotProvider,
+    snapshot_lock: Flock<File>,
 ) -> RunnerResult<()> {
     // Snapshot dir is nested under the rootfs dir:
     // <images>/<rootfs_hash>/snapshots/<snapshot_hash>/
@@ -642,7 +741,14 @@ async fn build_snapshot(
         memory_mb: def.memory_mb,
     };
 
-    let output = provider.create_snapshot(create_config).await?;
+    let pending = provider.create_uncommitted_snapshot(create_config).await?;
+    let output = shielded_snapshot_publish(
+        pending,
+        snapshot_lock,
+        snapshot_hash.to_string(),
+        snapshot_dir.to_path_buf(),
+    )
+    .await?;
 
     let (snapshot_sz, memory_sz, cow_sz) = tokio::join!(
         file_sizes(&output.snapshot_path),
@@ -660,6 +766,71 @@ async fn build_snapshot(
     );
 
     Ok(())
+}
+
+async fn shielded_snapshot_publish(
+    pending: Box<dyn sandbox::PendingSnapshotPublish>,
+    snapshot_lock: Flock<File>,
+    snapshot_hash: String,
+    snapshot_dir: PathBuf,
+) -> RunnerResult<sandbox::SnapshotOutput> {
+    let (result_tx, result_rx) =
+        tokio::sync::oneshot::channel::<Result<sandbox::SnapshotOutput, sandbox::SnapshotError>>();
+
+    tokio::spawn(async move {
+        let result =
+            commit_or_discard_pending_snapshot(pending, &snapshot_hash, &snapshot_dir).await;
+        drop(snapshot_lock);
+
+        if let Err(result) = result_tx.send(result) {
+            match result {
+                Ok(_) => {
+                    tracing::info!(
+                        snapshot_hash,
+                        snapshot_dir = %snapshot_dir.display(),
+                        "detached snapshot publish committed after caller cancellation"
+                    );
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        error = %err,
+                        snapshot_hash,
+                        snapshot_dir = %snapshot_dir.display(),
+                        "detached snapshot publish failed after caller cancellation"
+                    );
+                }
+            }
+        }
+    });
+
+    match result_rx.await {
+        Ok(Ok(output)) => Ok(output),
+        Ok(Err(err)) => Err(err.into()),
+        Err(err) => Err(RunnerError::Internal(format!(
+            "snapshot publish task ended before reporting completion: {err}"
+        ))),
+    }
+}
+
+async fn commit_or_discard_pending_snapshot(
+    mut pending: Box<dyn sandbox::PendingSnapshotPublish>,
+    snapshot_hash: &str,
+    snapshot_dir: &Path,
+) -> Result<sandbox::SnapshotOutput, sandbox::SnapshotError> {
+    match pending.commit().await {
+        Ok(output) => Ok(output),
+        Err(err) => {
+            if let Err(discard_err) = pending.discard().await {
+                tracing::warn!(
+                    error = %discard_err,
+                    snapshot_hash,
+                    snapshot_dir = %snapshot_dir.display(),
+                    "failed to discard uncommitted snapshot after publish failure"
+                );
+            }
+            Err(err)
+        }
+    }
 }
 
 async fn ensure_rootfs_under_lock(
@@ -707,7 +878,7 @@ async fn ensure_rootfs_under_lock(
 }
 
 async fn ensure_template_cached_under_lock(input: &TemplateInput<'_>) -> RunnerResult<()> {
-    let cache = input.cache.as_cache().ok_or_else(|| {
+    input.cache.as_cache().ok_or_else(|| {
         RunnerError::Internal("--warm-rootfs-cache requires R2 template cache".into())
     })?;
     let mut scripts = RootfsScripts::new();
@@ -715,66 +886,80 @@ async fn ensure_template_cached_under_lock(input: &TemplateInput<'_>) -> RunnerR
     // Keep warm-up staging on the runner image volume, not the system temp
     // filesystem. Even a cache hit downloads a full template for validation,
     // and /tmp may be much smaller than the runner data disk.
-    let warm_dir = warm_template_dir(input.paths, input.template_hash);
-    remove_path_if_exists(&warm_dir, "stale template warm dir").await?;
+    let warm_parent = template_warm_parent_dir(input.paths, input.template_hash);
+    cleanup_template_warm_parent(&warm_parent).await?;
+    let warm_dir = template_attempt_dir(&warm_parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX);
 
-    let result = async {
-        tokio::fs::create_dir_all(&warm_dir).await.map_err(|e| {
-            RunnerError::Internal(format!(
-                "create template warm dir {}: {e}",
-                warm_dir.display()
-            ))
-        })?;
-        let template = warm_dir.join(TEMPLATE_FILE);
-        let mut force_reupload = false;
-
-        match cache
-            .try_download_template_to_file(input.template_hash, &template)
-            .await
-        {
-            Ok(true) => match verify_template_file(&template, &work_dir_path).await {
-                Ok(()) => {
-                    tracing::info!("[OK] template already in R2: {}", input.template_hash);
-                    return Ok(());
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "R2 template object for {} failed warm validation ({e}) — \
-                         rebuilding locally and force-overwriting the bad object",
-                        input.template_hash
-                    );
-                    let _ = tokio::fs::remove_file(&template).await;
-                    force_reupload = true;
-                }
-            },
-            Ok(false) => {}
-            Err(e) if e.is_invalid_object() => {
-                tracing::warn!(
-                    "R2 template object for {} is invalid during warm ({e}) — \
-                     rebuilding locally and force-overwriting the bad object",
-                    input.template_hash
-                );
-                force_reupload = true;
-            }
-            Err(e) => {
-                return Err(RunnerError::Internal(format!(
-                    "R2 template download failed while warming cache: {e}"
-                )));
-            }
-        }
-
-        build_template_locally(input, &warm_dir, &work_dir_path).await?;
-        upload_template_to_r2(input, &template, force_reupload).await
-    }
+    let result = materialize_template_from_r2_or_build(
+        input,
+        &warm_dir,
+        &work_dir_path,
+        TemplateMaterializationTarget::RemoteCacheOnly,
+    )
     .await;
 
-    finish_temp_dir_result(&warm_dir, "template warm dir", result).await
+    finish_template_warm_dir_result(&warm_parent, &warm_dir, result).await
 }
 
-fn warm_template_dir(paths: &HomePaths, template_hash: &str) -> PathBuf {
+fn template_attempt_dir(parent: &Path, prefix: &str) -> PathBuf {
+    parent.join(format!(
+        "{prefix}{}{TEMPLATE_ATTEMPT_DIR_SUFFIX}",
+        uuid::Uuid::new_v4()
+    ))
+}
+
+fn template_warm_parent_dir(paths: &HomePaths, template_hash: &str) -> PathBuf {
     paths
         .images_dir()
-        .join(format!("template-{template_hash}.warm.tmp"))
+        .join(format!("{TEMPLATE_WARM_DIR_PREFIX}{template_hash}"))
+}
+
+fn is_template_attempt_dir_name(name: &str, prefix: &str) -> bool {
+    name.starts_with(prefix) && name.ends_with(TEMPLATE_ATTEMPT_DIR_SUFFIX)
+}
+
+async fn cleanup_stale_template_attempt_dirs(parent: &Path, prefix: &str) -> RunnerResult<()> {
+    let mut entries = match tokio::fs::read_dir(parent).await {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "read template attempt parent {}: {e}",
+                parent.display()
+            )));
+        }
+    };
+
+    while let Some(entry) = entries.next_entry().await.map_err(|e| {
+        RunnerError::Internal(format!(
+            "read template attempt entry in {}: {e}",
+            parent.display()
+        ))
+    })? {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if is_template_attempt_dir_name(name, prefix) {
+            remove_path_if_exists(&entry.path(), "stale template attempt dir").await?;
+        }
+    }
+
+    Ok(())
+}
+
+async fn cleanup_template_warm_parent(parent: &Path) -> RunnerResult<()> {
+    match tokio::fs::symlink_metadata(parent).await {
+        Ok(metadata) if metadata.is_dir() => {
+            cleanup_stale_template_attempt_dirs(parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX).await
+        }
+        Ok(_) => remove_path_if_exists(parent, "stale template warm parent").await,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(RunnerError::Internal(format!(
+            "stat template warm parent {}: {e}",
+            parent.display()
+        ))),
+    }
 }
 
 async fn remove_path_if_exists(path: &Path, label: &str) -> RunnerResult<()> {
@@ -806,17 +991,6 @@ async fn remove_dir_all_if_exists(path: &Path, label: &str) -> RunnerResult<()> 
     }
 }
 
-async fn remove_file_if_exists(path: &Path, label: &str) -> RunnerResult<()> {
-    match tokio::fs::remove_file(path).await {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(RunnerError::Internal(format!(
-            "remove {label} {}: {e}",
-            path.display()
-        ))),
-    }
-}
-
 async fn finish_temp_dir_result(
     path: &Path,
     label: &str,
@@ -837,86 +1011,180 @@ async fn finish_temp_dir_result(
     }
 }
 
+async fn finish_template_warm_dir_result(
+    parent: &Path,
+    attempt: &Path,
+    result: RunnerResult<()>,
+) -> RunnerResult<()> {
+    let result = finish_temp_dir_result(attempt, "template warm dir", result).await;
+    match remove_empty_dir_if_exists(parent).await {
+        Ok(()) => result,
+        Err(parent_err) => match result {
+            Ok(()) => Err(parent_err),
+            Err(original_err) => {
+                tracing::warn!(
+                    "failed to remove template warm parent {} after an earlier error: {parent_err}",
+                    parent.display()
+                );
+                Err(original_err)
+            }
+        },
+    }
+}
+
+async fn remove_empty_dir_if_exists(path: &Path) -> RunnerResult<()> {
+    match tokio::fs::remove_dir(path).await {
+        Ok(()) => Ok(()),
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
+            ) =>
+        {
+            Ok(())
+        }
+        Err(e) => Err(RunnerError::Internal(format!(
+            "remove empty template warm parent {}: {e}",
+            path.display()
+        ))),
+    }
+}
+
 async fn obtain_template_to_staging(
     input: &TemplateInput<'_>,
     rootfs_paths: &RootfsPaths,
     scripts: &mut RootfsScripts,
 ) -> RunnerResult<()> {
     let staging = rootfs_paths.rootfs_staging();
-    let build_dir = template_build_dir(rootfs_paths);
-    remove_path_if_exists(&build_dir, "stale template build dir").await?;
-    let mut force_reupload = false;
+    cleanup_stale_template_attempt_dirs(rootfs_paths.dir(), TEMPLATE_BUILD_DIR_PREFIX).await?;
+    let attempt_dir = template_attempt_dir(rootfs_paths.dir(), TEMPLATE_BUILD_DIR_PREFIX);
 
-    if let Some(cache) = input.cache.as_cache() {
-        match cache
-            .try_download_template_to_file(input.template_hash, &staging)
-            .await
-        {
-            Ok(true) => {
-                let work_dir_path = scripts.path().await?;
-                if let Err(e) = verify_template_file(&staging, &work_dir_path).await {
+    let result = async {
+        let work_dir_path = scripts.path().await?;
+        materialize_template_from_r2_or_build(
+            input,
+            &attempt_dir,
+            &work_dir_path,
+            TemplateMaterializationTarget::RootfsStaging(&staging),
+        )
+        .await
+    }
+    .await;
+
+    finish_temp_dir_result(&attempt_dir, "template build dir", result).await
+}
+
+async fn materialize_template_from_r2_or_build(
+    input: &TemplateInput<'_>,
+    attempt_dir: &Path,
+    work_dir: &Path,
+    target: TemplateMaterializationTarget<'_>,
+) -> RunnerResult<()> {
+    tokio::fs::create_dir_all(attempt_dir).await.map_err(|e| {
+        RunnerError::Internal(format!(
+            "create template attempt dir {}: {e}",
+            attempt_dir.display()
+        ))
+    })?;
+
+    let downloaded_template = attempt_dir.join(TEMPLATE_DOWNLOAD_FILE);
+    match resolve_remote_template(input, &downloaded_template, work_dir, target.mode()).await? {
+        RemoteTemplateDecision::UseDownloaded => {
+            target.materialize_downloaded(input, &downloaded_template)
+        }
+        RemoteTemplateDecision::BuildAndUpload(upload_intent) => {
+            build_template_locally(input, attempt_dir, work_dir).await?;
+            let built_template = attempt_dir.join(TEMPLATE_FILE);
+            upload_template_to_r2(input, &built_template, upload_intent.force()).await?;
+            target.materialize_built(&built_template)
+        }
+    }
+}
+
+async fn resolve_remote_template(
+    input: &TemplateInput<'_>,
+    downloaded_template: &Path,
+    work_dir: &Path,
+    mode: TemplateMaterializationMode,
+) -> RunnerResult<RemoteTemplateDecision> {
+    let Some(cache) = input.cache.as_cache() else {
+        return Ok(RemoteTemplateDecision::BuildAndUpload(
+            TemplateUploadIntent::Deduplicated,
+        ));
+    };
+
+    match cache
+        .try_download_template_to_file(input.template_hash, downloaded_template)
+        .await
+    {
+        Ok(true) => match verify_template_file(downloaded_template, work_dir).await {
+            Ok(()) => Ok(RemoteTemplateDecision::UseDownloaded),
+            Err(e) => {
+                if mode.is_warm_cache() {
+                    tracing::warn!(
+                        "R2 template object for {} failed warm validation ({e}) — \
+                         rebuilding locally and force-overwriting the bad object",
+                        input.template_hash
+                    );
+                } else {
                     tracing::warn!(
                         "R2 template object for {} failed validation ({e}) — \
                          rebuilding locally and force-overwriting the bad object",
                         input.template_hash
                     );
-                    let _ = tokio::fs::remove_file(&staging).await;
-                    force_reupload = true;
-                } else {
-                    tracing::info!(
-                        "[OK] template downloaded from R2 into staging: {}",
-                        staging.display()
-                    );
-                    return Ok(());
                 }
+                Ok(RemoteTemplateDecision::BuildAndUpload(
+                    TemplateUploadIntent::ForceOverwriteInvalidRemote,
+                ))
             }
-            Ok(false) => tracing::info!(
+        },
+        Ok(false) => {
+            tracing::info!(
                 "R2 template cache miss for {} — building locally",
                 input.template_hash
-            ),
-            Err(e) => {
-                if e.is_invalid_object() {
-                    tracing::warn!(
-                        "R2 template object for {} is invalid ({e}) — \
-                         rebuilding locally and force-overwriting the bad object",
-                        input.template_hash
-                    );
-                    force_reupload = true;
-                } else if input.cache.is_required() {
-                    return Err(RunnerError::Internal(format!(
-                        "R2 template download failed while warming cache: {e}"
-                    )));
-                } else {
-                    tracing::warn!(
-                        "R2 template download failed: {e} — falling back to local build"
-                    );
-                }
+            );
+            Ok(RemoteTemplateDecision::BuildAndUpload(
+                TemplateUploadIntent::Deduplicated,
+            ))
+        }
+        Err(e) if e.is_invalid_object() => {
+            if mode.is_warm_cache() {
+                tracing::warn!(
+                    "R2 template object for {} is invalid during warm ({e}) — \
+                     rebuilding locally and force-overwriting the bad object",
+                    input.template_hash
+                );
+            } else {
+                tracing::warn!(
+                    "R2 template object for {} is invalid ({e}) — \
+                     rebuilding locally and force-overwriting the bad object",
+                    input.template_hash
+                );
             }
+            Ok(RemoteTemplateDecision::BuildAndUpload(
+                TemplateUploadIntent::ForceOverwriteInvalidRemote,
+            ))
+        }
+        Err(e) if input.cache.is_required() => Err(RunnerError::Internal(format!(
+            "R2 template download failed while warming cache: {e}"
+        ))),
+        Err(e) => {
+            tracing::warn!("R2 template download failed: {e} — falling back to local build");
+            Ok(RemoteTemplateDecision::BuildAndUpload(
+                TemplateUploadIntent::Deduplicated,
+            ))
         }
     }
-
-    let work_dir_path = scripts.path().await?;
-    let result = async {
-        build_template_locally(input, &build_dir, &work_dir_path).await?;
-        let built_template = build_dir.join(TEMPLATE_FILE);
-        upload_template_to_r2(input, &built_template, force_reupload).await?;
-        tokio::fs::rename(&built_template, &staging)
-            .await
-            .map_err(|e| {
-                RunnerError::Internal(format!(
-                    "move template {} → {}: {e}",
-                    built_template.display(),
-                    staging.display()
-                ))
-            })
-    }
-    .await;
-
-    finish_temp_dir_result(&build_dir, "template build dir", result).await
 }
 
-fn template_build_dir(rootfs_paths: &RootfsPaths) -> PathBuf {
-    rootfs_paths.dir().join("template.tmp")
+fn move_file_sync(source: &Path, destination: &Path, label: &str) -> RunnerResult<()> {
+    std::fs::rename(source, destination).map_err(|e| {
+        RunnerError::Internal(format!(
+            "{label} {} → {}: {e}",
+            source.display(),
+            destination.display()
+        ))
+    })
 }
 
 struct RootfsScripts {
@@ -1023,6 +1291,8 @@ async fn build_template_locally(
     tokio::fs::create_dir_all(&debootstrap_dir)
         .await
         .map_err(|e| RunnerError::Internal(format!("create {}: {e}", debootstrap_dir.display())))?;
+    let debootstrap_lock_path = input.paths.debootstrap_lock();
+    drop(lock::open_lock_file(&debootstrap_lock_path)?);
     let disk_mb_str = input.disk_mb.to_string();
 
     let mut cmd = rootfs_script_command(&work_dir.join("build-template.sh"));
@@ -1030,6 +1300,8 @@ async fn build_template_locally(
         .arg(output_dir)
         .arg("--debootstrap-dir")
         .arg(&debootstrap_dir)
+        .arg("--debootstrap-lock")
+        .arg(&debootstrap_lock_path)
         .arg("--hash")
         .arg(input.template_hash)
         .arg("--disk-mb")
@@ -1154,7 +1426,9 @@ async fn customize_rootfs_staging(
         .arg("--guest-mock-codex")
         .arg(&input.guests.guest_mock_codex)
         .arg("--guest-reseed")
-        .arg(&input.guests.guest_reseed);
+        .arg(&input.guests.guest_reseed)
+        .arg("--guest-write-file")
+        .arg(&input.guests.guest_write_file);
     let status = run_rootfs_script(cmd, "customize-rootfs.sh").await?;
 
     if !status.success() {
@@ -1203,30 +1477,30 @@ impl LocalFilePublish {
     /// so any staging file is crash residue, not a live writer's in-progress
     /// file. Non-existence is the common case and not logged. Removal is best
     /// effort: a failure here leaves the next write step to fail or overwrite.
+    ///
+    /// Keep this synchronous while the caller owns the rootfs lock. A cancelled
+    /// Tokio fs operation can continue on the blocking pool after the lock is
+    /// dropped, which is not safe for the fixed staging path.
     async fn cleanup_stale_staging_best_effort(&self) {
-        match tokio::fs::try_exists(&self.staging).await {
-            Ok(true) => {
+        match std::fs::symlink_metadata(&self.staging) {
+            Ok(metadata) => {
                 tracing::warn!(
                     "removing stale rootfs staging file from a previous failed build: {}",
                     self.staging.display()
                 );
-                if let Err(e) = tokio::fs::remove_file(&self.staging).await {
-                    if e.kind() == std::io::ErrorKind::IsADirectory {
-                        if let Err(dir_err) = tokio::fs::remove_dir_all(&self.staging).await {
-                            tracing::warn!(
-                                "failed to remove stale staging directory {}: {dir_err}",
-                                self.staging.display()
-                            );
-                        }
-                    } else {
-                        tracing::warn!(
-                            "failed to remove stale staging file {}: {e}",
-                            self.staging.display()
-                        );
-                    }
+                let result = if metadata.file_type().is_dir() {
+                    std::fs::remove_dir_all(&self.staging)
+                } else {
+                    std::fs::remove_file(&self.staging)
+                };
+                if let Err(e) = result {
+                    tracing::warn!(
+                        "failed to remove stale staging path {}: {e}",
+                        self.staging.display()
+                    );
                 }
             }
-            Ok(false) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => {
                 tracing::warn!(
                     "check staging {}: {e} (continuing; any residue will be overwritten)",
@@ -1241,22 +1515,20 @@ impl LocalFilePublish {
     /// Same-filesystem rename is POSIX-atomic, so this is the single step
     /// that makes the published file visible to future presence checks.
     async fn commit(&self) -> RunnerResult<()> {
-        tokio::fs::rename(&self.staging, &self.stable)
-            .await
-            .map_err(|e| {
-                RunnerError::Internal(format!(
-                    "commit rootfs {} → {}: {e}",
-                    self.staging.display(),
-                    self.stable.display()
-                ))
-            })
+        std::fs::rename(&self.staging, &self.stable).map_err(|e| {
+            RunnerError::Internal(format!(
+                "commit rootfs {} → {}: {e}",
+                self.staging.display(),
+                self.stable.display()
+            ))
+        })
     }
 
     async fn finish_after_result(&self, result: RunnerResult<()>) -> RunnerResult<()> {
         match result {
             Ok(()) => Ok(()),
             Err(original_err) => {
-                match remove_file_if_exists(&self.staging, "failed rootfs staging file").await {
+                match remove_file_if_exists_sync(&self.staging, "failed rootfs staging file") {
                     Ok(()) => Err(original_err),
                     Err(cleanup_err) => {
                         tracing::warn!(
@@ -1268,6 +1540,17 @@ impl LocalFilePublish {
                 }
             }
         }
+    }
+}
+
+fn remove_file_if_exists_sync(path: &Path, label: &str) -> RunnerResult<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(RunnerError::Internal(format!(
+            "remove {label} {}: {e}",
+            path.display()
+        ))),
     }
 }
 
@@ -1414,6 +1697,11 @@ fn human_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aws_smithy_mocks::{Rule, RuleMode, mock, mock_client};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
 
     #[derive(clap::Parser)]
     struct TestBuildCli {
@@ -1421,7 +1709,7 @@ mod tests {
         args: BuildArgs,
     }
 
-    fn build_args() -> [&'static str; 15] {
+    fn build_args() -> [&'static str; 17] {
         [
             "runner-build",
             "--guest-agent",
@@ -1436,6 +1724,8 @@ mod tests {
             "/tmp/guest-mock-codex",
             "--guest-reseed",
             "/tmp/guest-reseed",
+            "--guest-write-file",
+            "/tmp/guest-write-file",
             "--profile",
             "vm0/default",
         ]
@@ -1463,6 +1753,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let guest = temp_dir.path().join("guest");
         std::fs::write(&guest, b"guest").unwrap();
+        let guest_write_file = guest.clone();
         GuestBinaries {
             _temp_dir: temp_dir,
             guest_agent: guest.clone(),
@@ -1471,7 +1762,388 @@ mod tests {
             guest_mock_claude: guest.clone(),
             guest_mock_codex: guest.clone(),
             guest_reseed: guest,
+            guest_write_file,
         }
+    }
+
+    fn template_input<'a>(home: &'a HomePaths, cache: TemplateCache<'a>) -> TemplateInput<'a> {
+        TemplateInput {
+            paths: home,
+            template_hash: "test-template-hash",
+            cache,
+            disk_mb: 128,
+        }
+    }
+
+    fn mock_r2_cache(rules: &[&Rule]) -> R2ImageCache {
+        let client = mock_client!(aws_sdk_s3, RuleMode::MatchAny, rules);
+        R2ImageCache::with_client(client, "test-bucket".to_string())
+    }
+
+    async fn fake_rootfs_scripts() -> (RootfsScripts, PathBuf) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let work_dir = temp_dir.path().to_path_buf();
+        tokio::fs::write(
+            work_dir.join("build-template.sh"),
+            r#"#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+output_dir=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir)
+      output_dir="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$output_dir" ]]; then
+  exit 2
+fi
+
+mkdir -p "$output_dir"
+printf built-template > "$output_dir/template.ext4"
+printf called > "$script_dir/build-template-called"
+"#,
+        )
+        .await
+        .unwrap();
+        tokio::fs::write(
+            work_dir.join("verify-rootfs.sh"),
+            r#"#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+rootfs=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --rootfs)
+      rootfs="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$rootfs" || ! -f "$rootfs" ]]; then
+  exit 2
+fi
+if [[ "$(cat "$rootfs")" == "verify-fail" ]]; then
+  exit 1
+fi
+
+printf called >> "$script_dir/verify-rootfs-called"
+"#,
+        )
+        .await
+        .unwrap();
+        tokio::fs::write(
+            work_dir.join("customize-rootfs.sh"),
+            "#!/usr/bin/env bash\n",
+        )
+        .await
+        .unwrap();
+
+        (
+            RootfsScripts {
+                temp_dir: Some(temp_dir),
+            },
+            work_dir,
+        )
+    }
+
+    async fn template_archive_bytes(content: &[u8]) -> Vec<u8> {
+        let content = content.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let encoder = zstd::stream::write::Encoder::new(Vec::new(), 1).unwrap();
+            let mut archive = tar::Builder::new(encoder);
+            let mut header = tar::Header::new_gnu();
+            header.set_size(u64::try_from(content.len()).unwrap());
+            header.set_mode(0o644);
+            header.set_cksum();
+            let mut reader = content.as_slice();
+            archive
+                .append_data(&mut header, TEMPLATE_FILE, &mut reader)
+                .unwrap();
+            archive.finish().unwrap();
+            let encoder = archive.into_inner().unwrap();
+            encoder.finish().unwrap()
+        })
+        .await
+        .unwrap()
+    }
+
+    async fn empty_template_archive_bytes() -> Vec<u8> {
+        tokio::task::spawn_blocking(move || {
+            let encoder = zstd::stream::write::Encoder::new(Vec::new(), 1).unwrap();
+            let mut archive = tar::Builder::new(encoder);
+            archive.finish().unwrap();
+            let encoder = archive.into_inner().unwrap();
+            encoder.finish().unwrap()
+        })
+        .await
+        .unwrap()
+    }
+
+    fn template_get_rule(body: Vec<u8>) -> Rule {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectOutput;
+        use aws_sdk_s3::primitives::ByteStream;
+
+        let body = Arc::new(body);
+        let body_for_closure = Arc::clone(&body);
+        mock!(Client::get_object)
+            .match_requests(|req| {
+                req.bucket() == Some("test-bucket")
+                    && req.key() == Some("runner-templates/test-template-hash.tar.zst")
+            })
+            .then_output(move || {
+                GetObjectOutput::builder()
+                    .body(ByteStream::from((*body_for_closure).clone()))
+                    .build()
+            })
+    }
+
+    fn template_get_miss_rule() -> Rule {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectError;
+        use aws_sdk_s3::types::error::NoSuchKey;
+
+        mock!(Client::get_object)
+            .then_error(|| GetObjectError::NoSuchKey(NoSuchKey::builder().build()))
+    }
+
+    fn template_head_miss_rule() -> Rule {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::head_object::HeadObjectError;
+        use aws_sdk_s3::types::error::NotFound;
+
+        mock!(Client::head_object)
+            .then_error(|| HeadObjectError::NotFound(NotFound::builder().build()))
+    }
+
+    fn multipart_success_rules() -> (Rule, Rule, Rule) {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::complete_multipart_upload::CompleteMultipartUploadOutput;
+        use aws_sdk_s3::operation::create_multipart_upload::CreateMultipartUploadOutput;
+        use aws_sdk_s3::operation::upload_part::UploadPartOutput;
+
+        let create = mock!(Client::create_multipart_upload).then_output(|| {
+            CreateMultipartUploadOutput::builder()
+                .upload_id("test-upload-id")
+                .build()
+        });
+        let upload_part = mock!(Client::upload_part)
+            .then_output(|| UploadPartOutput::builder().e_tag("\"etag-123\"").build());
+        let complete = mock!(Client::complete_multipart_upload)
+            .then_output(|| CompleteMultipartUploadOutput::builder().build());
+        (create, upload_part, complete)
+    }
+
+    struct RecordingPendingSnapshotPublish {
+        output_dir: PathBuf,
+        committed: Arc<AtomicBool>,
+    }
+
+    #[async_trait::async_trait]
+    impl sandbox::PendingSnapshotPublish for RecordingPendingSnapshotPublish {
+        async fn commit(&mut self) -> Result<sandbox::SnapshotOutput, sandbox::SnapshotError> {
+            self.committed.store(true, Ordering::SeqCst);
+            let output = sandbox::SnapshotOutput {
+                snapshot_path: self.output_dir.join("snapshot.bin"),
+                memory_path: self.output_dir.join("memory.bin"),
+                cow_path: self.output_dir.join("cow.img"),
+            };
+            tokio::fs::write(&output.snapshot_path, b"snapshot").await?;
+            tokio::fs::write(&output.memory_path, b"memory").await?;
+            tokio::fs::write(&output.cow_path, b"cow").await?;
+            Ok(output)
+        }
+
+        async fn discard(&mut self) -> Result<(), sandbox::SnapshotError> {
+            Ok(())
+        }
+    }
+
+    struct RecordingSnapshotProvider {
+        create_uncommitted_called: Arc<AtomicBool>,
+        create_snapshot_called: Arc<AtomicBool>,
+        committed: Arc<AtomicBool>,
+    }
+
+    #[async_trait::async_trait]
+    impl SnapshotProvider for RecordingSnapshotProvider {
+        async fn create_uncommitted_snapshot(
+            &self,
+            config: sandbox::SnapshotCreateConfig,
+        ) -> Result<Box<dyn sandbox::PendingSnapshotPublish>, sandbox::SnapshotError> {
+            self.create_uncommitted_called.store(true, Ordering::SeqCst);
+            Ok(Box::new(RecordingPendingSnapshotPublish {
+                output_dir: config.output_dir,
+                committed: Arc::clone(&self.committed),
+            }))
+        }
+
+        async fn create_snapshot(
+            &self,
+            _config: sandbox::SnapshotCreateConfig,
+        ) -> Result<sandbox::SnapshotOutput, sandbox::SnapshotError> {
+            self.create_snapshot_called.store(true, Ordering::SeqCst);
+            Err(sandbox::SnapshotError::Setup(
+                "build_snapshot should use create_uncommitted_snapshot".into(),
+            ))
+        }
+
+        fn config_hash(&self) -> String {
+            "recording-provider".into()
+        }
+
+        async fn is_complete(&self, _output_dir: &Path) -> Result<bool, sandbox::SnapshotError> {
+            Ok(false)
+        }
+    }
+
+    struct FailingPendingSnapshotPublish {
+        discarded: Arc<AtomicBool>,
+        discard_error: Option<&'static str>,
+    }
+
+    #[async_trait::async_trait]
+    impl sandbox::PendingSnapshotPublish for FailingPendingSnapshotPublish {
+        async fn commit(&mut self) -> Result<sandbox::SnapshotOutput, sandbox::SnapshotError> {
+            Err(sandbox::SnapshotError::Teardown("publish failed".into()))
+        }
+
+        async fn discard(&mut self) -> Result<(), sandbox::SnapshotError> {
+            self.discarded.store(true, Ordering::SeqCst);
+            match self.discard_error {
+                Some(message) => Err(sandbox::SnapshotError::Teardown(message.into())),
+                None => Ok(()),
+            }
+        }
+    }
+
+    struct FailingSnapshotProvider {
+        discarded: Arc<AtomicBool>,
+        discard_error: Option<&'static str>,
+    }
+
+    #[async_trait::async_trait]
+    impl SnapshotProvider for FailingSnapshotProvider {
+        async fn create_uncommitted_snapshot(
+            &self,
+            _config: sandbox::SnapshotCreateConfig,
+        ) -> Result<Box<dyn sandbox::PendingSnapshotPublish>, sandbox::SnapshotError> {
+            Ok(Box::new(FailingPendingSnapshotPublish {
+                discarded: Arc::clone(&self.discarded),
+                discard_error: self.discard_error,
+            }))
+        }
+
+        fn config_hash(&self) -> String {
+            "failing-provider".into()
+        }
+
+        async fn is_complete(&self, _output_dir: &Path) -> Result<bool, sandbox::SnapshotError> {
+            Ok(false)
+        }
+    }
+
+    enum ControlledCommitOutcome {
+        Success,
+        Failure,
+    }
+
+    struct ControlledPendingSnapshotPublish {
+        output_dir: PathBuf,
+        commit_outcome: ControlledCommitOutcome,
+        commit_entered: Option<tokio::sync::oneshot::Sender<()>>,
+        commit_release: Option<tokio::sync::oneshot::Receiver<()>>,
+        commit_done: Option<tokio::sync::oneshot::Sender<()>>,
+        discard_entered: Option<tokio::sync::oneshot::Sender<()>>,
+        discard_release: Option<tokio::sync::oneshot::Receiver<()>>,
+        discard_done: Option<tokio::sync::oneshot::Sender<()>>,
+    }
+
+    #[async_trait::async_trait]
+    impl sandbox::PendingSnapshotPublish for ControlledPendingSnapshotPublish {
+        async fn commit(&mut self) -> Result<sandbox::SnapshotOutput, sandbox::SnapshotError> {
+            if let Some(tx) = self.commit_entered.take() {
+                let _ = tx.send(());
+            }
+            if let Some(rx) = self.commit_release.take() {
+                let _ = rx.await;
+            }
+            if let Some(tx) = self.commit_done.take() {
+                let _ = tx.send(());
+            }
+
+            match self.commit_outcome {
+                ControlledCommitOutcome::Success => Ok(sandbox::SnapshotOutput {
+                    snapshot_path: self.output_dir.join("snapshot.bin"),
+                    memory_path: self.output_dir.join("memory.bin"),
+                    cow_path: self.output_dir.join("cow.img"),
+                }),
+                ControlledCommitOutcome::Failure => {
+                    Err(sandbox::SnapshotError::Teardown("publish failed".into()))
+                }
+            }
+        }
+
+        async fn discard(&mut self) -> Result<(), sandbox::SnapshotError> {
+            if let Some(tx) = self.discard_entered.take() {
+                let _ = tx.send(());
+            }
+            if let Some(rx) = self.discard_release.take() {
+                let _ = rx.await;
+            }
+            if let Some(tx) = self.discard_done.take() {
+                let _ = tx.send(());
+            }
+            Ok(())
+        }
+    }
+
+    async fn acquire_test_snapshot_lock(home: &HomePaths, snapshot_hash: &str) -> Flock<File> {
+        lock::acquire(home.snapshot_lock(snapshot_hash))
+            .await
+            .expect("acquire test snapshot lock")
+    }
+
+    async fn assert_lock_blocked(lock_path: PathBuf) {
+        let err = lock::try_acquire(lock_path)
+            .await
+            .expect_err("snapshot lock should still be held");
+        assert!(
+            err.to_string().contains("already held"),
+            "unexpected lock error: {err}"
+        );
+    }
+
+    async fn wait_until_lock_available(lock_path: PathBuf) {
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                match lock::try_acquire(lock_path.clone()).await {
+                    Ok(guard) => {
+                        drop(guard);
+                        break;
+                    }
+                    Err(err) if err.to_string().contains("already held") => {
+                        tokio::task::yield_now().await;
+                    }
+                    Err(err) => panic!("unexpected lock error: {err}"),
+                }
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("timed out waiting for snapshot lock to be released"));
     }
 
     struct ProcessGroupCleanup {
@@ -1652,6 +2324,7 @@ exit 1
         let guest_download = temp_dir.path().join("guest-download");
         let guest_init = temp_dir.path().join("guest-init");
         let guest_reseed = temp_dir.path().join("guest-reseed");
+        let guest_write_file = temp_dir.path().join("guest-write-file");
         let guest_mock_claude = temp_dir.path().join("guest-mock-claude");
         let guest_mock_codex = temp_dir.path().join("guest-mock-codex");
         let guests = GuestBinaries {
@@ -1662,6 +2335,7 @@ exit 1
             guest_mock_claude: guest_mock_claude.clone(),
             guest_mock_codex: guest_mock_codex.clone(),
             guest_reseed: guest_reseed.clone(),
+            guest_write_file: guest_write_file.clone(),
         };
 
         assert_eq!(
@@ -1671,6 +2345,7 @@ exit 1
                 (guest_download.as_path(), GUEST_DOWNLOAD_DEST),
                 (guest_init.as_path(), GUEST_INIT_DEST),
                 (guest_reseed.as_path(), GUEST_RESEED_DEST),
+                (guest_write_file.as_path(), GUEST_WRITE_FILE_DEST),
                 (guest_mock_claude.as_path(), GUEST_MOCK_CLAUDE_DEST),
                 (guest_mock_codex.as_path(), GUEST_MOCK_CODEX_DEST),
             ]
@@ -1691,6 +2366,233 @@ exit 1
 
         assert_eq!(resolved, tmp_dir.path().join("guest-agent"));
         assert_eq!(tokio::fs::read(&resolved).await.unwrap(), b"old-binary");
+    }
+
+    #[tokio::test]
+    async fn build_snapshot_uses_explicit_pending_publish_boundary() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let rootfs_paths = RootfsPaths::new(&home, "rootfs-hash");
+        tokio::fs::create_dir_all(rootfs_paths.dir()).await.unwrap();
+        tokio::fs::write(rootfs_paths.rootfs(), b"rootfs")
+            .await
+            .unwrap();
+        let snapshot_dir = dir.path().join("snapshot");
+        let create_uncommitted_called = Arc::new(AtomicBool::new(false));
+        let create_snapshot_called = Arc::new(AtomicBool::new(false));
+        let committed = Arc::new(AtomicBool::new(false));
+        let provider = RecordingSnapshotProvider {
+            create_uncommitted_called: Arc::clone(&create_uncommitted_called),
+            create_snapshot_called: Arc::clone(&create_snapshot_called),
+            committed: Arc::clone(&committed),
+        };
+        let def = profile::ProfileDef {
+            vcpu: 1,
+            memory_mb: 128,
+            disk_mb: 16,
+        };
+
+        build_snapshot(
+            &home,
+            &rootfs_paths,
+            "snapshot-hash",
+            &snapshot_dir,
+            &def,
+            &provider,
+            acquire_test_snapshot_lock(&home, "snapshot-hash").await,
+        )
+        .await
+        .unwrap();
+
+        assert!(create_uncommitted_called.load(Ordering::SeqCst));
+        assert!(committed.load(Ordering::SeqCst));
+        assert!(
+            !create_snapshot_called.load(Ordering::SeqCst),
+            "build_snapshot should not use the compatibility create_snapshot path"
+        );
+        assert!(snapshot_dir.join("snapshot.bin").exists());
+        assert!(snapshot_dir.join("memory.bin").exists());
+        assert!(snapshot_dir.join("cow.img").exists());
+    }
+
+    #[tokio::test]
+    async fn build_snapshot_discards_pending_publish_after_commit_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let rootfs_paths = RootfsPaths::new(&home, "rootfs-hash");
+        tokio::fs::create_dir_all(rootfs_paths.dir()).await.unwrap();
+        tokio::fs::write(rootfs_paths.rootfs(), b"rootfs")
+            .await
+            .unwrap();
+        let snapshot_dir = dir.path().join("snapshot");
+        let discarded = Arc::new(AtomicBool::new(false));
+        let provider = FailingSnapshotProvider {
+            discarded: Arc::clone(&discarded),
+            discard_error: None,
+        };
+        let def = profile::ProfileDef {
+            vcpu: 1,
+            memory_mb: 128,
+            disk_mb: 16,
+        };
+
+        let err = build_snapshot(
+            &home,
+            &rootfs_paths,
+            "snapshot-hash",
+            &snapshot_dir,
+            &def,
+            &provider,
+            acquire_test_snapshot_lock(&home, "snapshot-hash").await,
+        )
+        .await
+        .expect_err("snapshot publish should fail");
+
+        assert!(
+            matches!(err, RunnerError::Snapshot(sandbox::SnapshotError::Teardown(ref message)) if message == "publish failed"),
+            "got: {err:?}"
+        );
+        assert!(
+            discarded.load(Ordering::SeqCst),
+            "build_snapshot should explicitly discard after commit failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn build_snapshot_preserves_commit_error_when_discard_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let rootfs_paths = RootfsPaths::new(&home, "rootfs-hash");
+        tokio::fs::create_dir_all(rootfs_paths.dir()).await.unwrap();
+        tokio::fs::write(rootfs_paths.rootfs(), b"rootfs")
+            .await
+            .unwrap();
+        let snapshot_dir = dir.path().join("snapshot");
+        let discarded = Arc::new(AtomicBool::new(false));
+        let provider = FailingSnapshotProvider {
+            discarded: Arc::clone(&discarded),
+            discard_error: Some("discard failed"),
+        };
+        let def = profile::ProfileDef {
+            vcpu: 1,
+            memory_mb: 128,
+            disk_mb: 16,
+        };
+
+        let err = build_snapshot(
+            &home,
+            &rootfs_paths,
+            "snapshot-hash",
+            &snapshot_dir,
+            &def,
+            &provider,
+            acquire_test_snapshot_lock(&home, "snapshot-hash").await,
+        )
+        .await
+        .expect_err("snapshot publish should fail");
+
+        assert!(
+            matches!(err, RunnerError::Snapshot(sandbox::SnapshotError::Teardown(ref message)) if message == "publish failed"),
+            "discard failure must not mask the publish failure, got: {err:?}"
+        );
+        assert!(
+            discarded.load(Ordering::SeqCst),
+            "build_snapshot should still try discard after commit failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn shielded_snapshot_publish_keeps_lock_after_waiter_cancelled_until_commit_finishes() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let snapshot_hash = "snapshot-hash";
+        let snapshot_lock_path = home.snapshot_lock(snapshot_hash);
+        let snapshot_lock = lock::acquire(snapshot_lock_path.clone())
+            .await
+            .expect("acquire snapshot lock");
+        let snapshot_dir = dir.path().join("snapshot");
+        let (commit_entered_tx, commit_entered_rx) = tokio::sync::oneshot::channel();
+        let (commit_release_tx, commit_release_rx) = tokio::sync::oneshot::channel();
+        let (commit_done_tx, commit_done_rx) = tokio::sync::oneshot::channel();
+        let pending = ControlledPendingSnapshotPublish {
+            output_dir: snapshot_dir.clone(),
+            commit_outcome: ControlledCommitOutcome::Success,
+            commit_entered: Some(commit_entered_tx),
+            commit_release: Some(commit_release_rx),
+            commit_done: Some(commit_done_tx),
+            discard_entered: None,
+            discard_release: None,
+            discard_done: None,
+        };
+
+        let waiter = tokio::spawn(shielded_snapshot_publish(
+            Box::new(pending),
+            snapshot_lock,
+            snapshot_hash.to_string(),
+            snapshot_dir,
+        ));
+        commit_entered_rx.await.expect("commit should start");
+        waiter.abort();
+        assert!(waiter.await.unwrap_err().is_cancelled());
+
+        assert_lock_blocked(snapshot_lock_path.clone()).await;
+
+        commit_release_tx
+            .send(())
+            .expect("release commit waiter after cancellation");
+        commit_done_rx.await.expect("commit should finish");
+        wait_until_lock_available(snapshot_lock_path).await;
+    }
+
+    #[tokio::test]
+    async fn shielded_snapshot_publish_keeps_lock_after_waiter_cancelled_until_discard_finishes() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let snapshot_hash = "snapshot-hash";
+        let snapshot_lock_path = home.snapshot_lock(snapshot_hash);
+        let snapshot_lock = lock::acquire(snapshot_lock_path.clone())
+            .await
+            .expect("acquire snapshot lock");
+        let snapshot_dir = dir.path().join("snapshot");
+        let (commit_entered_tx, commit_entered_rx) = tokio::sync::oneshot::channel();
+        let (commit_release_tx, commit_release_rx) = tokio::sync::oneshot::channel();
+        let (discard_entered_tx, discard_entered_rx) = tokio::sync::oneshot::channel();
+        let (discard_release_tx, discard_release_rx) = tokio::sync::oneshot::channel();
+        let (discard_done_tx, discard_done_rx) = tokio::sync::oneshot::channel();
+        let pending = ControlledPendingSnapshotPublish {
+            output_dir: snapshot_dir.clone(),
+            commit_outcome: ControlledCommitOutcome::Failure,
+            commit_entered: Some(commit_entered_tx),
+            commit_release: Some(commit_release_rx),
+            commit_done: None,
+            discard_entered: Some(discard_entered_tx),
+            discard_release: Some(discard_release_rx),
+            discard_done: Some(discard_done_tx),
+        };
+
+        let waiter = tokio::spawn(shielded_snapshot_publish(
+            Box::new(pending),
+            snapshot_lock,
+            snapshot_hash.to_string(),
+            snapshot_dir,
+        ));
+        commit_entered_rx.await.expect("commit should start");
+        waiter.abort();
+        assert!(waiter.await.unwrap_err().is_cancelled());
+
+        assert_lock_blocked(snapshot_lock_path.clone()).await;
+
+        commit_release_tx
+            .send(())
+            .expect("release failing commit after cancellation");
+        discard_entered_rx.await.expect("discard should start");
+        assert_lock_blocked(snapshot_lock_path.clone()).await;
+
+        discard_release_tx
+            .send(())
+            .expect("release discard after cancellation");
+        discard_done_rx.await.expect("discard should finish");
+        wait_until_lock_available(snapshot_lock_path).await;
     }
 
     #[test]
@@ -1722,6 +2624,7 @@ exit 1
         assert!(cli.args.guest_mock_claude.is_none());
         assert!(cli.args.guest_mock_codex.is_none());
         assert!(cli.args.guest_reseed.is_none());
+        assert!(cli.args.guest_write_file.is_none());
     }
 
     #[test]
@@ -1770,6 +2673,310 @@ exit 1
         upload_template_to_r2(&input, &template, false)
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn full_image_r2_hit_materializes_without_local_build() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "r2-hit-rootfs");
+        let archive = template_archive_bytes(b"downloaded-template").await;
+        let get = template_get_rule(archive);
+        let cache = mock_r2_cache(&[&get]);
+        let input = template_input(&home, TemplateCache::BestEffort(&cache));
+        let (_scripts, work_dir) = fake_rootfs_scripts().await;
+        let attempt_dir = rootfs.dir().join("attempt.tmp");
+        let staging = rootfs.rootfs_staging();
+
+        materialize_template_from_r2_or_build(
+            &input,
+            &attempt_dir,
+            &work_dir,
+            TemplateMaterializationTarget::RootfsStaging(&staging),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            tokio::fs::read(&staging).await.unwrap(),
+            b"downloaded-template"
+        );
+        assert!(
+            !work_dir.join("build-template-called").exists(),
+            "valid R2 hit must not rebuild locally"
+        );
+        assert_eq!(get.num_calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn full_image_download_request_failure_falls_back_to_local_build() {
+        use aws_sdk_s3::Client;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "r2-download-fallback-rootfs");
+        let get = mock!(Client::get_object)
+            .sequence()
+            .http_status(
+                500,
+                Some("<Error><Code>InternalError</Code></Error>".into()),
+            )
+            .build();
+        let head = template_head_miss_rule();
+        let (create, upload_part, complete) = multipart_success_rules();
+        let cache = mock_r2_cache(&[&get, &head, &create, &upload_part, &complete]);
+        let input = template_input(&home, TemplateCache::BestEffort(&cache));
+        let (_scripts, work_dir) = fake_rootfs_scripts().await;
+        let attempt_dir = rootfs.dir().join("attempt.tmp");
+        let staging = rootfs.rootfs_staging();
+
+        materialize_template_from_r2_or_build(
+            &input,
+            &attempt_dir,
+            &work_dir,
+            TemplateMaterializationTarget::RootfsStaging(&staging),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(tokio::fs::read(&staging).await.unwrap(), b"built-template");
+        assert!(work_dir.join("build-template-called").exists());
+        assert!(
+            get.num_calls() >= 1,
+            "SDK may retry request failures before best-effort fallback"
+        );
+        assert_eq!(head.num_calls(), 1, "force=false should consult head");
+        assert_eq!(create.num_calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn full_image_upload_failure_is_nonfatal_after_cache_miss() {
+        use aws_sdk_s3::Client;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "r2-upload-best-effort-rootfs");
+        let get = template_get_miss_rule();
+        let head = mock!(Client::head_object)
+            .sequence()
+            .http_status(
+                500,
+                Some("<Error><Code>InternalError</Code></Error>".into()),
+            )
+            .build();
+        let cache = mock_r2_cache(&[&get, &head]);
+        let input = template_input(&home, TemplateCache::BestEffort(&cache));
+        let (_scripts, work_dir) = fake_rootfs_scripts().await;
+        let attempt_dir = rootfs.dir().join("attempt.tmp");
+        let staging = rootfs.rootfs_staging();
+
+        materialize_template_from_r2_or_build(
+            &input,
+            &attempt_dir,
+            &work_dir,
+            TemplateMaterializationTarget::RootfsStaging(&staging),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(tokio::fs::read(&staging).await.unwrap(), b"built-template");
+        assert!(
+            head.num_calls() >= 1,
+            "SDK may retry upload preflight failures before best-effort fallback"
+        );
+    }
+
+    #[tokio::test]
+    async fn full_image_invalid_remote_object_force_overwrites_r2() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::head_object::HeadObjectOutput;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "r2-invalid-rootfs");
+        let get = template_get_rule(empty_template_archive_bytes().await);
+        let head = mock!(Client::head_object).then_output(|| HeadObjectOutput::builder().build());
+        let (create, upload_part, complete) = multipart_success_rules();
+        let cache = mock_r2_cache(&[&get, &head, &create, &upload_part, &complete]);
+        let input = template_input(&home, TemplateCache::BestEffort(&cache));
+        let (_scripts, work_dir) = fake_rootfs_scripts().await;
+        let attempt_dir = rootfs.dir().join("attempt.tmp");
+        let staging = rootfs.rootfs_staging();
+
+        materialize_template_from_r2_or_build(
+            &input,
+            &attempt_dir,
+            &work_dir,
+            TemplateMaterializationTarget::RootfsStaging(&staging),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(tokio::fs::read(&staging).await.unwrap(), b"built-template");
+        assert_eq!(
+            head.num_calls(),
+            0,
+            "invalid remote object must force upload and skip head"
+        );
+        assert_eq!(create.num_calls(), 1);
+        assert_eq!(upload_part.num_calls(), 1);
+        assert_eq!(complete.num_calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn full_image_failed_downloaded_template_verification_does_not_publish_bad_template() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::head_object::HeadObjectOutput;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "r2-verify-failed-rootfs");
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+        tokio::fs::write(rootfs.rootfs_staging(), b"old-staging")
+            .await
+            .unwrap();
+        let get = template_get_rule(template_archive_bytes(b"verify-fail").await);
+        let head = mock!(Client::head_object).then_output(|| HeadObjectOutput::builder().build());
+        let (create, upload_part, complete) = multipart_success_rules();
+        let cache = mock_r2_cache(&[&get, &head, &create, &upload_part, &complete]);
+        let input = template_input(&home, TemplateCache::BestEffort(&cache));
+        let (_scripts, work_dir) = fake_rootfs_scripts().await;
+        let attempt_dir = rootfs.dir().join("attempt.tmp");
+        let staging = rootfs.rootfs_staging();
+
+        materialize_template_from_r2_or_build(
+            &input,
+            &attempt_dir,
+            &work_dir,
+            TemplateMaterializationTarget::RootfsStaging(&staging),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            tokio::fs::read(&staging).await.unwrap(),
+            b"built-template",
+            "failed downloaded verification must rebuild instead of publishing the bad file"
+        );
+        assert_eq!(
+            head.num_calls(),
+            0,
+            "verification failure must force upload"
+        );
+        assert_eq!(create.num_calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn warm_cache_download_request_failure_is_fatal() {
+        use aws_sdk_s3::Client;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let get = mock!(Client::get_object)
+            .sequence()
+            .http_status(
+                500,
+                Some("<Error><Code>InternalError</Code></Error>".into()),
+            )
+            .build();
+        let cache = mock_r2_cache(&[&get]);
+        let input = template_input(&home, TemplateCache::Required(&cache));
+        let (_scripts, work_dir) = fake_rootfs_scripts().await;
+        let attempt_dir = home.images_dir().join("warm-attempt.tmp");
+
+        let err = materialize_template_from_r2_or_build(
+            &input,
+            &attempt_dir,
+            &work_dir,
+            TemplateMaterializationTarget::RemoteCacheOnly,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("R2 template download failed while warming cache"),
+            "got {err}"
+        );
+        assert!(
+            !work_dir.join("build-template-called").exists(),
+            "required download failure must fail before local rebuild"
+        );
+    }
+
+    #[tokio::test]
+    async fn warm_cache_upload_failure_is_fatal() {
+        use aws_sdk_s3::Client;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let get = template_get_miss_rule();
+        let head = mock!(Client::head_object)
+            .sequence()
+            .http_status(
+                500,
+                Some("<Error><Code>InternalError</Code></Error>".into()),
+            )
+            .build();
+        let cache = mock_r2_cache(&[&get, &head]);
+        let input = template_input(&home, TemplateCache::Required(&cache));
+        let (_scripts, work_dir) = fake_rootfs_scripts().await;
+        let attempt_dir = home.images_dir().join("warm-attempt.tmp");
+
+        let err = materialize_template_from_r2_or_build(
+            &input,
+            &attempt_dir,
+            &work_dir,
+            TemplateMaterializationTarget::RemoteCacheOnly,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("R2 upload failed while warming template cache"),
+            "got {err}"
+        );
+        assert!(work_dir.join("build-template-called").exists());
+        assert!(
+            head.num_calls() >= 1,
+            "SDK may retry upload preflight failures before returning required error"
+        );
+    }
+
+    #[tokio::test]
+    async fn warm_cache_invalid_remote_object_force_overwrites_r2() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::head_object::HeadObjectOutput;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let get = template_get_rule(empty_template_archive_bytes().await);
+        let head = mock!(Client::head_object).then_output(|| HeadObjectOutput::builder().build());
+        let (create, upload_part, complete) = multipart_success_rules();
+        let cache = mock_r2_cache(&[&get, &head, &create, &upload_part, &complete]);
+        let input = template_input(&home, TemplateCache::Required(&cache));
+        let (_scripts, work_dir) = fake_rootfs_scripts().await;
+        let attempt_dir = home.images_dir().join("warm-attempt.tmp");
+
+        materialize_template_from_r2_or_build(
+            &input,
+            &attempt_dir,
+            &work_dir,
+            TemplateMaterializationTarget::RemoteCacheOnly,
+        )
+        .await
+        .unwrap();
+
+        assert!(work_dir.join("build-template-called").exists());
+        assert_eq!(
+            head.num_calls(),
+            0,
+            "invalid remote object must force upload and skip head"
+        );
+        assert_eq!(create.num_calls(), 1);
+        assert_eq!(upload_part.num_calls(), 1);
+        assert_eq!(complete.num_calls(), 1);
     }
 
     #[test]
@@ -1850,17 +3057,25 @@ exit 1
     }
 
     #[test]
-    fn warm_template_dir_stays_on_runner_image_volume() {
+    fn warm_template_attempt_dir_stays_on_runner_image_volume() {
         let dir = tempfile::tempdir().unwrap();
         let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let images_dir = home.images_dir();
+        let warm_parent = template_warm_parent_dir(&home, "abc123");
 
-        let warm_dir = warm_template_dir(&home, "abc123");
+        let warm_dir = template_attempt_dir(&warm_parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX);
+        let file_name = warm_dir.file_name().and_then(|name| name.to_str()).unwrap();
 
-        assert!(warm_dir.starts_with(home.images_dir()));
-        assert_eq!(
-            warm_dir.file_name().and_then(|name| name.to_str()),
-            Some("template-abc123.warm.tmp")
-        );
+        assert!(warm_dir.starts_with(&images_dir));
+        assert!(warm_dir.starts_with(&warm_parent));
+        assert!(!is_template_attempt_dir_name(
+            file_name,
+            TEMPLATE_BUILD_DIR_PREFIX
+        ));
+        assert!(is_template_attempt_dir_name(
+            file_name,
+            TEMPLATE_WARM_ATTEMPT_DIR_PREFIX
+        ));
     }
 
     #[tokio::test]
@@ -1901,6 +3116,43 @@ exit 1
             err.to_string().contains("original failure"),
             "original error should win when operation and cleanup both fail, got {err}"
         );
+    }
+
+    #[tokio::test]
+    async fn template_warm_cleanup_removes_empty_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let parent = template_warm_parent_dir(&home, "abc123");
+        let attempt = template_attempt_dir(&parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX);
+        tokio::fs::create_dir_all(&attempt).await.unwrap();
+
+        finish_template_warm_dir_result(&parent, &attempt, Ok(()))
+            .await
+            .unwrap();
+
+        assert!(!attempt.exists());
+        assert!(
+            !parent.exists(),
+            "successful warm cleanup should not leave empty parent dirs"
+        );
+    }
+
+    #[tokio::test]
+    async fn template_warm_cleanup_preserves_original_error_when_parent_cleanup_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("not-a-dir");
+        let attempt = parent.join("attempt");
+        tokio::fs::write(&parent, b"file").await.unwrap();
+
+        let err = finish_template_warm_dir_result(
+            &parent,
+            &attempt,
+            Err(RunnerError::Internal("warm failed".into())),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("warm failed"));
     }
 
     #[test]
@@ -2345,9 +3597,9 @@ exit 1
         assert_eq!(content, b"customized");
     }
 
-    /// End-to-end contract simulation for the template-download + customization
-    /// path: template arrives directly in staging, customization mutates
-    /// staging, and commit atomically publishes the rootfs.
+    /// End-to-end contract simulation for the template materialization +
+    /// customization path: the verified template is moved into staging,
+    /// customization mutates staging, and commit atomically publishes the rootfs.
     #[tokio::test]
     async fn staging_contract_happy_path() {
         let dir = tempfile::tempdir().unwrap();
@@ -2356,7 +3608,7 @@ exit 1
         let publish = LocalFilePublish::for_rootfs(&rootfs);
         tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
 
-        // Simulate template R2 download directly into staging.
+        // Simulate a verified template being moved into staging.
         tokio::fs::write(rootfs.rootfs_staging(), b"template-download")
             .await
             .unwrap();
@@ -2398,11 +3650,14 @@ exit 1
     }
 
     #[tokio::test]
-    async fn stale_template_build_dir_is_removed_before_reuse() {
+    async fn stale_template_attempt_dir_is_removed_before_reuse() {
         let dir = tempfile::tempdir().unwrap();
         let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
         let rootfs = RootfsPaths::new(&home, "template-build-residue-hash");
-        let build_dir = template_build_dir(&rootfs);
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+        let build_dir = rootfs.dir().join(format!(
+            "{TEMPLATE_BUILD_DIR_PREFIX}old{TEMPLATE_ATTEMPT_DIR_SUFFIX}"
+        ));
         tokio::fs::create_dir_all(build_dir.join("nested"))
             .await
             .unwrap();
@@ -2410,7 +3665,7 @@ exit 1
             .await
             .unwrap();
 
-        remove_path_if_exists(&build_dir, "stale template build dir")
+        cleanup_stale_template_attempt_dirs(rootfs.dir(), TEMPLATE_BUILD_DIR_PREFIX)
             .await
             .unwrap();
 
@@ -2421,23 +3676,63 @@ exit 1
     }
 
     #[tokio::test]
-    async fn stale_template_build_file_is_removed_before_reuse() {
+    async fn stale_template_attempt_file_is_removed_before_reuse() {
         let dir = tempfile::tempdir().unwrap();
         let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
         let rootfs = RootfsPaths::new(&home, "template-build-file-residue-hash");
-        let build_dir = template_build_dir(&rootfs);
         tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+        let build_dir = rootfs.dir().join(format!(
+            "{TEMPLATE_BUILD_DIR_PREFIX}old{TEMPLATE_ATTEMPT_DIR_SUFFIX}"
+        ));
         tokio::fs::write(&build_dir, b"not a directory")
             .await
             .unwrap();
 
-        remove_path_if_exists(&build_dir, "stale template build dir")
+        cleanup_stale_template_attempt_dirs(rootfs.dir(), TEMPLATE_BUILD_DIR_PREFIX)
             .await
             .unwrap();
 
         assert!(
             !build_dir.exists(),
             "stale local template build file must not block later template materialization"
+        );
+    }
+
+    #[tokio::test]
+    async fn template_attempt_cleanup_preserves_other_hash_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let this_parent = template_warm_parent_dir(&home, "this-hash");
+        let other_parent = template_warm_parent_dir(&home, "other-hash");
+        let this_dir = template_attempt_dir(&this_parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX);
+        let other_dir = template_attempt_dir(&other_parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX);
+        tokio::fs::create_dir_all(&this_dir).await.unwrap();
+        tokio::fs::create_dir_all(&other_dir).await.unwrap();
+
+        cleanup_stale_template_attempt_dirs(&this_parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX)
+            .await
+            .unwrap();
+
+        assert!(!this_dir.exists());
+        assert!(
+            other_dir.exists(),
+            "template warm cleanup for one hash must not remove another hash's active attempt"
+        );
+    }
+
+    #[tokio::test]
+    async fn template_warm_parent_cleanup_removes_stale_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let parent = template_warm_parent_dir(&home, "abc123");
+        tokio::fs::create_dir_all(home.images_dir()).await.unwrap();
+        tokio::fs::write(&parent, b"not a directory").await.unwrap();
+
+        cleanup_template_warm_parent(&parent).await.unwrap();
+
+        assert!(
+            !parent.exists(),
+            "malformed warm parent file must not block later warm attempts"
         );
     }
 
@@ -2498,6 +3793,7 @@ exit 1
             "--guest-mock-claude",
             "--guest-mock-codex",
             "--guest-reseed",
+            "--guest-write-file",
             "--ca-dir",
             "--dns-nameserver",
             "CA_ROOTFS_DEST",
@@ -2590,6 +3886,59 @@ exit 1
         assert!(
             TEMPLATE_BUILD_SCRIPT.contains(r#"TEMPLATE_FILE="template.ext4""#),
             "build-template.sh should produce a template image, not the rootfs image filename"
+        );
+    }
+
+    #[test]
+    fn build_script_publishes_debootstrap_cache_atomically() {
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains(r#"CACHE_TMP_TAR="${cache_tar}.tmp.$$""#),
+            "build-template.sh should stage debootstrap cache writes in a process-scoped temp file"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains(r#"--make-tarball="$CACHE_TMP_TAR""#),
+            "build-template.sh must not write debootstrap output directly to the stable cache path"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains(r#"--unpack-tarball="$(realpath "$CACHE_TMP_TAR")""#),
+            "build-template.sh should validate the temp tarball before publishing it"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains(r#"mv -f "$CACHE_TMP_TAR" "$cache_tar""#),
+            "build-template.sh should atomically publish the verified debootstrap cache tarball"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT
+                .contains(r#"[[ -n "$CACHE_TMP_TAR" ]] && ! rm -f "$CACHE_TMP_TAR""#),
+            "build-template.sh should remove unpublished debootstrap cache temp files on cleanup"
+        );
+        assert!(
+            !TEMPLATE_BUILD_SCRIPT.contains(r#"--make-tarball="$cache_tar""#),
+            "build-template.sh must not publish partial debootstrap cache tarballs on cancellation"
+        );
+    }
+
+    #[test]
+    fn build_script_locks_only_debootstrap_cache_access() {
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains("--debootstrap-lock"),
+            "build-template.sh should receive the same debootstrap cache lock path used by GC"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains("flock \"$lock_fd\""),
+            "build-template.sh should lock shared debootstrap cache access"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains("exec {lock_fd}>>\"$DEBOOTSTRAP_LOCK\""),
+            "build-template.sh should open the pre-created lock file without truncating it"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains("flock -u \"$lock_fd\""),
+            "build-template.sh should release the debootstrap cache lock after unpack"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains("debootstrap_cache_locked\n  flock -u"),
+            "build-template.sh should release the cache lock before chroot package install and mkfs"
         );
     }
 

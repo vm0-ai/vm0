@@ -578,6 +578,19 @@ export async function insertTestChatThread(
   return threadId;
 }
 
+/**
+ * Delete a chat thread directly in the database.
+ *
+ * @why-db-direct Tests need to model stale callbacks arriving after the
+ * user-facing thread row has already been deleted.
+ */
+export async function deleteTestChatThread(threadId: string): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .delete(chatThreads)
+    .where(eq(chatThreads.id, threadId));
+}
+
 // ---------------------------------------------------------------------------
 // Chat message seeders (service wrappers for test data setup)
 // ---------------------------------------------------------------------------

@@ -30,3 +30,20 @@ if (typeof AbortSignal.any !== "function") {
 
   AbortSignal.any = anySignal;
 }
+
+if (typeof Promise.withResolvers !== "function") {
+  Promise.withResolvers = function withResolvers<T>(): PromiseWithResolvers<T> {
+    let resolveDeferred: (value: T | PromiseLike<T>) => void = () => {
+      throw new Error("Promise resolver was not initialized");
+    };
+    let rejectDeferred: (reason?: unknown) => void = () => {
+      throw new Error("Promise rejecter was not initialized");
+    };
+    const promise = new Promise<T>((resolve, reject) => {
+      resolveDeferred = resolve;
+      rejectDeferred = reject;
+    });
+
+    return { promise, resolve: resolveDeferred, reject: rejectDeferred };
+  };
+}

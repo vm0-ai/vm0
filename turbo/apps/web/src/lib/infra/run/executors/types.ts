@@ -4,6 +4,7 @@ import type {
   Firewalls,
   NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
+import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 
 /**
  * Prepared execution context for executors
@@ -33,6 +34,7 @@ export interface PreparedContext {
   environment: Record<string, string> | null;
   secrets: Record<string, string> | null;
   secretConnectorMap: Record<string, string> | null;
+  secretConnectorMetadataMap: Record<string, SecretConnectorMetadata> | null;
 
   // Resume support
   resumeSession: ResumeSession | null;

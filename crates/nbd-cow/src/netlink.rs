@@ -393,12 +393,30 @@ enum NlMsg {
 /// Parse a single netlink message from the buffer. Returns `NlMsg` on
 /// success, or an error for NLMSG_ERROR with non-zero errno.
 fn parse_nl_msg(buf: &[u8], n: usize) -> Result<NlMsg> {
-    if n < 16 {
+    let received = buf
+        .get(..n)
+        .ok_or_else(|| NbdCowError::Netlink("recv length exceeds buffer".into()))?;
+
+    if received.len() < 16 {
         return Err(NbdCowError::Netlink("message too short".into()));
     }
 
+    let nlmsg_len = u32::from_ne_bytes(
+        received
+            .get(..4)
+            .ok_or_else(|| NbdCowError::Netlink("msg_len slice".into()))?
+            .try_into()
+            .map_err(|_| NbdCowError::Netlink("msg_len conversion".into()))?,
+    ) as usize;
+    if nlmsg_len < 16 {
+        return Err(NbdCowError::Netlink("message too short".into()));
+    }
+    let msg = received
+        .get(..nlmsg_len)
+        .ok_or_else(|| NbdCowError::Netlink("truncated netlink message".into()))?;
+
     let msg_type = u16::from_ne_bytes(
-        buf.get(4..6)
+        msg.get(4..6)
             .ok_or_else(|| NbdCowError::Netlink("msg_type slice".into()))?
             .try_into()
             .map_err(|_| NbdCowError::Netlink("msg_type conversion".into()))?,
@@ -406,7 +424,7 @@ fn parse_nl_msg(buf: &[u8], n: usize) -> Result<NlMsg> {
 
     if msg_type == NLMSG_ERROR {
         let error = i32::from_ne_bytes(
-            buf.get(16..20)
+            msg.get(16..20)
                 .ok_or_else(|| NbdCowError::Netlink("error response too short".into()))?
                 .try_into()
                 .map_err(|_| NbdCowError::Netlink("error code conversion".into()))?,
@@ -621,11 +639,37 @@ mod tests {
 
     #[test]
     fn parse_nl_msg_error_response_truncated() {
-        let mut buf = vec![0u8; 18]; // type present but error field incomplete
+        let mut buf = vec![0u8; 4096]; // Production recv buffer size.
+        let len = 20u32;
+        buf[0..4].copy_from_slice(&len.to_ne_bytes());
         let msg_type: u16 = NLMSG_ERROR;
         buf[4..6].copy_from_slice(&msg_type.to_ne_bytes());
 
         let result = parse_nl_msg(&buf, 18);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_nl_msg_declared_length_too_short() {
+        let mut buf = vec![0u8; 24];
+        let len = 15u32;
+        buf[0..4].copy_from_slice(&len.to_ne_bytes());
+
+        let result = parse_nl_msg(&buf, 24);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_nl_msg_error_body_bounded_by_declared_length() {
+        let mut buf = vec![0u8; 24];
+        let len = 18u32;
+        buf[0..4].copy_from_slice(&len.to_ne_bytes());
+        let msg_type: u16 = NLMSG_ERROR;
+        buf[4..6].copy_from_slice(&msg_type.to_ne_bytes());
+        let error: i32 = 0;
+        buf[16..20].copy_from_slice(&error.to_ne_bytes());
+
+        let result = parse_nl_msg(&buf, 24);
         assert!(result.is_err());
     }
 }

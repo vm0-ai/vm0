@@ -404,6 +404,7 @@ async fn register_proxy(
         network_policies: context.network_policies.as_ref(),
         encrypted_secrets: context.encrypted_secrets.as_deref(),
         secret_connector_map: context.secret_connector_map.as_ref(),
+        secret_connector_metadata_map: context.secret_connector_metadata_map.as_ref(),
         vars: context.vars.as_ref(),
         capture_network_bodies: context.capture_network_bodies.unwrap_or(false),
         billable_firewalls: &context.billable_firewalls,
@@ -1141,7 +1142,7 @@ async fn download_storages(
 ///
 /// Dispatches on `cli_agent_type`:
 /// - `claude-code` (or empty, the default) → plain `.jsonl` under `~/.claude/projects/-{project}/`.
-/// - `codex` → zstd-compressed `.jsonl.zst` under `~/.codex/sessions/YYYY/MM/DD/`.
+/// - `codex` → plain `.jsonl` under `~/.codex/sessions/YYYY/MM/DD/`.
 /// - anything else → skipped with a warning (forward-compatible with future agents).
 async fn restore_session(
     sandbox: &dyn Sandbox,
@@ -1185,15 +1186,6 @@ async fn restore_claude_session(
     let session_dir = format!("/home/user/.claude/projects/-{project_name}");
     let session_path = format!("{session_dir}/{}.jsonl", session.session_id);
 
-    let mkdir_cmd = format!("mkdir -p '{}'", session_dir.replace('\'', "'\\''"));
-    sandbox
-        .exec(&ExecRequest {
-            cmd: &mkdir_cmd,
-            timeout: DEFAULT_EXEC_TIMEOUT,
-            env: &[],
-            sudo: false,
-        })
-        .await?;
     sandbox
         .write_file(&session_path, session.session_history.as_bytes())
         .await?;
@@ -1201,20 +1193,19 @@ async fn restore_claude_session(
     Ok(())
 }
 
-/// Write a Codex session history file as zstd-compressed JSONL at
-/// `~/.codex/sessions/YYYY/MM/DD/{thread_id}.jsonl.zst`.
+/// Write a Codex session history file as plain JSONL at
+/// `~/.codex/sessions/YYYY/MM/DD/{thread_id}.jsonl`.
 ///
 /// The date partition uses today's UTC date — `codex exec resume` walks the
 /// `sessions/` tree and resolves files by thread_id, so the partition is a
-/// hint, not a lookup key. Compression level 3 matches `guest-mock-codex`
-/// fixtures so round-trips are byte-stable across host and guest.
+/// hint, not a lookup key.
 async fn restore_codex_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     session: &ResumeSession,
 ) -> RunnerResult<()> {
     // Layout matches the real codex CLI (and `guest-mock-codex`):
-    // `/home/user/.codex/sessions/YYYY/MM/DD/{thread_id}.jsonl.zst`.
+    // `/home/user/.codex/sessions/YYYY/MM/DD/{thread_id}.jsonl`.
     let today = chrono::Utc::now().date_naive();
     let session_dir = format!(
         "/home/user/.codex/sessions/{}/{}/{}",
@@ -1222,27 +1213,16 @@ async fn restore_codex_session(
         today.format("%m"),
         today.format("%d"),
     );
-    let session_path = format!("{session_dir}/{}.jsonl.zst", session.session_id);
+    let session_path = format!("{session_dir}/{}.jsonl", session.session_id);
 
-    let mkdir_cmd = format!("mkdir -p '{}'", session_dir.replace('\'', "'\\''"));
     sandbox
-        .exec(&ExecRequest {
-            cmd: &mkdir_cmd,
-            timeout: DEFAULT_EXEC_TIMEOUT,
-            env: &[],
-            sudo: false,
-        })
+        .write_file(&session_path, session.session_history.as_bytes())
         .await?;
-
-    let compressed = zstd::encode_all(session.session_history.as_bytes(), 3)
-        .map_err(|e| RunnerError::Internal(format!("zstd encode failed: {e}")))?;
-    sandbox.write_file(&session_path, &compressed).await?;
 
     info!(
         run_id = %context.run_id,
         path = %session_path,
         bytes_in = session.session_history.len(),
-        bytes_out = compressed.len(),
         "restored codex session history",
     );
     Ok(())
@@ -1536,6 +1516,7 @@ mod tests {
             secret_values: None,
             encrypted_secrets: None,
             secret_connector_map: None,
+            secret_connector_metadata_map: None,
             cli_agent_type: String::new(),
             debug_no_mock_claude: None,
             debug_no_mock_codex: None,
@@ -2423,7 +2404,6 @@ mod tests {
             session_id: "sess-abc-123".into(),
             session_history: r#"{"type":"init"}"#.into(),
         };
-        // mkdir exec + write_file — both succeed by default.
         restore_session(&sandbox, &ctx, &session).await.unwrap();
     }
 
@@ -2477,10 +2457,15 @@ mod tests {
             session_id: "01jzm-thread-id".into(),
             session_history: "{\"type\":\"thread.started\"}\n".into(),
         };
-        // mkdir exec + write_file — both succeed by default. The codex branch
-        // performs an additional zstd::encode_all call before write_file; this
-        // test fails fast if that path errors out.
         restore_session(&sandbox, &ctx, &session).await.unwrap();
+        let writes = sandbox.write_file_calls();
+        assert_eq!(writes.len(), 1);
+        assert!(
+            writes[0].path.ends_with("/01jzm-thread-id.jsonl"),
+            "codex resume history must be restored as plain jsonl, got {}",
+            writes[0].path
+        );
+        assert_eq!(writes[0].content, session.session_history.as_bytes());
     }
 
     #[tokio::test]
@@ -2496,16 +2481,6 @@ mod tests {
         };
         let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
         assert!(err.to_string().contains("invalid session_id"));
-    }
-
-    #[test]
-    fn codex_session_zstd_round_trip_recovers_bytes() {
-        // The runner compresses session bytes before write; the guest decompresses
-        // on read. This guards against a level/header drift between the two ends.
-        let input = "{\"type\":\"thread.started\",\"thread_id\":\"x\"}\n";
-        let compressed = zstd::encode_all(input.as_bytes(), 3).unwrap();
-        let decoded = zstd::decode_all(compressed.as_slice()).unwrap();
-        assert_eq!(decoded, input.as_bytes());
     }
 
     #[tokio::test]
@@ -2689,24 +2664,9 @@ mod tests {
             session_id: "sess-abc".into(),
             session_history: r#"{"type":"init"}"#.into(),
         };
-        // First exec (mkdir) succeeds by default, write_file fails.
         sandbox.push_write_file_result(Err(sandbox_write_file_error("disk full")));
         let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
         assert!(err.to_string().contains("disk full"), "got: {err}");
-    }
-
-    #[tokio::test]
-    async fn restore_session_fails_on_mkdir_exec_error() {
-        let sandbox = MockSandbox::new("test");
-        let ctx = minimal_context();
-        let session = ResumeSession {
-            session_id: "sess-abc".into(),
-            session_history: "data".into(),
-        };
-        // mkdir exec fails
-        sandbox.push_exec_result(Err(sandbox_exec_error("vsock down")));
-        let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
-        assert!(err.to_string().contains("vsock down"), "got: {err}");
     }
 
     // -----------------------------------------------------------------------
@@ -3289,8 +3249,8 @@ mod tests {
         let config = test_executor_config(dir.path()).await;
 
         let sandbox = MockSandbox::new("reuse-session-fail");
-        // clock fix and reseed succeed (default), then mkdir exec succeeds,
-        // but write_file for session history fails.
+        // clock fix and reseed succeed (default), but write_file for session
+        // history fails.
         sandbox.push_write_file_result(Err(sandbox_write_file_error("disk full")));
 
         let mut ctx = minimal_context();

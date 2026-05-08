@@ -45,6 +45,10 @@ export const zeroRuns = pgTable(
     ),
     // Model provider and selected model — zero-layer concerns moved from agent_runs
     modelProvider: varchar("model_provider", { length: 100 }),
+    modelProviderId: uuid("model_provider_id"),
+    modelProviderCredentialScope: varchar("model_provider_credential_scope", {
+      length: 20,
+    }),
     selectedModel: varchar("selected_model", { length: 255 }),
     // Chat thread this run belongs to (null for non-chat triggers like schedule/telegram)
     chatThreadId: uuid("chat_thread_id").references(

@@ -28,22 +28,25 @@ import { publishUserSignal } from "../../infra/realtime/client";
 /**
  * Source for an OAuth secret bundle. "connector" (default) reads/writes
  * connector-typed rows keyed by the run's user; "model-provider" routes to
- * `model_providers` and `secrets WHERE type='model-provider'`, both of
- * which are org-tier — keyed by ORG_SENTINEL_USER_ID, not the run's user.
- * Mirrors the read-side scope in `resolveModelProviderSecrets`.
+ * `model_providers` and `secrets WHERE type='model-provider'`.
  */
-type OAuthSecretSource = "connector" | "model-provider";
+export type OAuthSecretSource = "connector" | "model-provider";
 
 /**
  * Resolve the storage userId for a given OAuth secret source.
- * Org-tier model providers are stored under the sentinel; connector secrets
- * stay scoped to the run's user.
+ * Model-provider refresh defaults to the org sentinel for compatibility, but
+ * personal providers pass their row owner explicitly through the firewall
+ * refresh metadata.
  */
 function resolveSecretUserId(
   sourceType: OAuthSecretSource,
   userId: string,
+  sourceUserId?: string,
 ): string {
-  return sourceType === "model-provider" ? ORG_SENTINEL_USER_ID : userId;
+  if (sourceType === "model-provider") {
+    return sourceUserId ?? ORG_SENTINEL_USER_ID;
+  }
+  return userId;
 }
 
 const log = logger("service:connector");
@@ -218,7 +221,9 @@ export async function listConnectors(
       return c.type;
     }),
   );
-  const now = new Date().toISOString();
+  // Use a fixed timestamp for derived connectors — they are inferred from
+  // secrets/variables rather than explicitly created, so a stable sentinel
+  // value keeps shadow comparisons deterministic.
   const derivedConnectors: ConnectorResponse[] = derivedTypes
     .filter((type) => {
       return !dbTypeSet.has(type);
@@ -233,8 +238,8 @@ export async function listConnectors(
         externalEmail: null,
         oauthScopes: null,
         needsReconnect: false,
-        createdAt: now,
-        updatedAt: now,
+        createdAt: "1970-01-01T00:00:00.000Z",
+        updatedAt: "1970-01-01T00:00:00.000Z",
       };
     });
 
@@ -358,7 +363,7 @@ export async function getConnector(
   });
   if (!secretsOk || !variablesOk) return null;
 
-  const now = new Date().toISOString();
+  // Use a fixed timestamp — this connector is inferred, not explicitly created.
   return {
     id: null,
     type,
@@ -368,8 +373,8 @@ export async function getConnector(
     externalEmail: null,
     oauthScopes: null,
     needsReconnect: false,
-    createdAt: now,
-    updatedAt: now,
+    createdAt: "1970-01-01T00:00:00.000Z",
+    updatedAt: "1970-01-01T00:00:00.000Z",
   };
 }
 
@@ -733,7 +738,11 @@ export async function refreshConnectorAccessToken(
   orgId: string,
   userId: string,
   connectorSecrets: Record<string, string>,
-  options: { sourceType?: OAuthSecretSource; metadataKey?: string } = {},
+  options: {
+    sourceType?: OAuthSecretSource;
+    metadataKey?: string;
+    sourceUserId?: string;
+  } = {},
 ): Promise<string | null> {
   const sourceType: OAuthSecretSource = options.sourceType ?? "connector";
   const handler =
@@ -770,7 +779,11 @@ export async function refreshConnectorAccessToken(
 
   const accessTokenSecret = handler.getSecretName();
 
-  const secretUserId = resolveSecretUserId(sourceType, userId);
+  const secretUserId = resolveSecretUserId(
+    sourceType,
+    userId,
+    options.sourceUserId,
+  );
 
   try {
     const result = await handler.refreshToken(
@@ -933,13 +946,14 @@ export async function getConnectorAccessToken(
   orgId: string,
   userId: string,
   sourceType: OAuthSecretSource = "connector",
+  options: { sourceUserId?: string } = {},
 ): Promise<string | null> {
   const handler =
     PROVIDER_HANDLERS[connectorType as keyof typeof PROVIDER_HANDLERS];
   if (!handler) return null;
   return getSecretValue(
     orgId,
-    resolveSecretUserId(sourceType, userId),
+    resolveSecretUserId(sourceType, userId, options.sourceUserId),
     handler.getSecretName(),
     sourceType,
   );
@@ -955,6 +969,7 @@ export async function getConnectorRefreshToken(
   orgId: string,
   userId: string,
   sourceType: OAuthSecretSource = "connector",
+  options: { sourceUserId?: string } = {},
 ): Promise<{ secretName: string; token: string } | null> {
   const handler =
     PROVIDER_HANDLERS[connectorType as keyof typeof PROVIDER_HANDLERS];
@@ -962,7 +977,7 @@ export async function getConnectorRefreshToken(
   const secretName = handler.getRefreshSecretName();
   const token = await getSecretValue(
     orgId,
-    resolveSecretUserId(sourceType, userId),
+    resolveSecretUserId(sourceType, userId, options.sourceUserId),
     secretName,
     sourceType,
   );
@@ -980,6 +995,7 @@ export async function getModelProviderExpiry(
   orgId: string,
   userId: string,
   modelProviderTypes: string[],
+  options: { sourceUserId?: string } = {},
 ): Promise<Map<string, number | null>> {
   const result = new Map<string, number | null>();
   if (modelProviderTypes.length === 0) return result;
@@ -993,10 +1009,9 @@ export async function getModelProviderExpiry(
     .where(
       and(
         eq(modelProviders.orgId, orgId),
-        // Org-tier model providers store secrets/metadata under the sentinel
         eq(
           modelProviders.userId,
-          resolveSecretUserId("model-provider", userId),
+          resolveSecretUserId("model-provider", userId, options.sourceUserId),
         ),
         inArray(modelProviders.type, modelProviderTypes),
       ),

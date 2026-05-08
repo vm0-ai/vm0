@@ -6,6 +6,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { parseTelegramConnectParams } from "../../../signals/zero-page/telegram-connect-params.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -65,6 +66,7 @@ describe("zero telegram connect page", () => {
 
   it("requires sign-in before confirmation", async () => {
     let called = false;
+    mockedClerk.redirectToSignIn.mockClear();
     server.use(
       mockApi(zeroIntegrationsTelegramContract.link, ({ respond }) => {
         called = true;
@@ -83,10 +85,7 @@ describe("zero telegram connect page", () => {
     });
 
     await waitFor(() => {
-      const link = screen.getAllByRole("link").find((element) => {
-        return /sign in to vm0/i.test(element.textContent ?? "");
-      });
-      expect(link).toHaveAttribute("href", expect.stringContaining("/sign-in"));
+      expect(mockedClerk.redirectToSignIn).toHaveBeenCalledWith();
     });
     expect(called).toBeFalsy();
   });

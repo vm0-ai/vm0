@@ -28,6 +28,7 @@
 #   bash build-template.sh \
 #     --output-dir /path/to/output \
 #     --debootstrap-dir /path/to/cache \
+#     --debootstrap-lock /path/to/cache/.lock \
 #     --hash <input-hash> \
 #     --disk-mb 16384 \
 #     [--mirror http://archive.ubuntu.com/ubuntu]
@@ -60,6 +61,7 @@ shift
 
 OUTPUT_DIR=""
 DEBOOTSTRAP_DIR=""
+DEBOOTSTRAP_LOCK=""
 INPUT_HASH=""
 DISK_MB=""
 # Default mirror: archive.ubuntu.com only hosts amd64/i386;
@@ -74,6 +76,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --output-dir)        OUTPUT_DIR="$2";        shift 2 ;;
     --debootstrap-dir)   DEBOOTSTRAP_DIR="$2";   shift 2 ;;
+    --debootstrap-lock)  DEBOOTSTRAP_LOCK="$2";  shift 2 ;;
     --hash)              INPUT_HASH="$2";        shift 2 ;;
     --disk-mb)           DISK_MB="$2";           shift 2 ;;
     --mirror)            MIRROR="$2";            shift 2 ;;
@@ -81,7 +84,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-for var in OUTPUT_DIR DEBOOTSTRAP_DIR INPUT_HASH DISK_MB; do
+for var in OUTPUT_DIR DEBOOTSTRAP_DIR DEBOOTSTRAP_LOCK INPUT_HASH DISK_MB; do
   if [[ -z "${!var}" ]]; then
     echo "error: --$(echo "$var" | tr '_' '-' | tr '[:upper:]' '[:lower:]') is required" >&2
     exit 1
@@ -104,14 +107,15 @@ TMP_TEMPLATE="${TEMPLATE_FILE}.tmp.$$"
 TEMPLATE_PATH="${OUTPUT_DIR}/${TEMPLATE_FILE}"
 TMP_TEMPLATE_PATH="${OUTPUT_DIR}/${TMP_TEMPLATE}"
 ROOTFS_DIR=""
+CACHE_TMP_TAR=""
 
 # Pinned versions (changes here invalidate the template cache via script hash)
-GO_VERSION="1.26.2"
-CLAUDE_CODE_VERSION="2.1.132"
-CODEX_CLI_VERSION="0.128.0"
+GO_VERSION="1.26.3"
+CLAUDE_CODE_VERSION="2.1.133"
+CODEX_CLI_VERSION="0.129.0"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.0.3"
-AGENT_BROWSER_VERSION="0.26.0"
+AGENT_BROWSER_VERSION="0.27.0"
 
 # ---------------------------------------------------------------------------
 # Dependency checks
@@ -120,7 +124,7 @@ AGENT_BROWSER_VERSION="0.26.0"
 check_dependencies() {
   local missing=()
 
-  for cmd in debootstrap sudo chroot mktemp stat mkfs.ext4 umount mountpoint unshare; do
+  for cmd in debootstrap flock sudo chroot mktemp stat mkfs.ext4 umount mountpoint unshare; do
     if ! command -v "$cmd" &> /dev/null; then
       missing+=("$cmd")
     fi
@@ -209,6 +213,9 @@ cleanup() {
   if ! rm -f "$TMP_TEMPLATE_PATH"; then
     cleanup_failed=1
   fi
+  if [[ -n "$CACHE_TMP_TAR" ]] && ! rm -f "$CACHE_TMP_TAR"; then
+    cleanup_failed=1
+  fi
 
   if [[ "$cleanup_failed" -ne 0 && "$status" -eq 0 ]]; then
     echo "error: template build cleanup failed" >&2
@@ -227,10 +234,7 @@ trap 'echo "error: command failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
 # Bootstrap Ubuntu 24.04 rootfs
 # ---------------------------------------------------------------------------
 
-debootstrap_build() {
-  echo "bootstrapping Ubuntu 24.04 rootfs..."
-  ROOTFS_DIR="$(mktemp -d)"
-
+debootstrap_cache_locked() {
   # Cache the base package tarball so repeated builds (e.g. after changing
   # a pinned version) skip the ~200 MB download from the Ubuntu mirror.
   local cache_tar="${DEBOOTSTRAP_DIR}/noble-$(dpkg --print-architecture).tar"
@@ -241,14 +245,35 @@ debootstrap_build() {
   else
     # --make-tarball downloads packages into a tarball without extracting.
     # It always exits non-zero ("cannot exec ...") because it skips the
-    # second stage, so we check the tarball was created instead.
-    sudo debootstrap --make-tarball="$cache_tar" noble "$ROOTFS_DIR" "$MIRROR" || true
-    if [[ ! -s "$cache_tar" ]]; then
-      echo "error: debootstrap --make-tarball failed to create $cache_tar" >&2
+    # second stage, so we check the tarball was created instead. Write to a
+    # process-scoped temp file first: a cancelled build must not publish a
+    # partial tarball under the stable cache name that another runner may reuse.
+    CACHE_TMP_TAR="${cache_tar}.tmp.$$"
+    rm -f "$CACHE_TMP_TAR"
+    sudo debootstrap --make-tarball="$CACHE_TMP_TAR" noble "$ROOTFS_DIR" "$MIRROR" || true
+    if [[ ! -s "$CACHE_TMP_TAR" ]]; then
+      echo "error: debootstrap --make-tarball failed to create $CACHE_TMP_TAR" >&2
       exit 1
     fi
-    sudo debootstrap --unpack-tarball="$(realpath "$cache_tar")" noble "$ROOTFS_DIR" "$MIRROR"
+    sudo debootstrap --unpack-tarball="$(realpath "$CACHE_TMP_TAR")" noble "$ROOTFS_DIR" "$MIRROR"
+    mv -f "$CACHE_TMP_TAR" "$cache_tar"
+    CACHE_TMP_TAR=""
   fi
+}
+
+debootstrap_build() {
+  echo "bootstrapping Ubuntu 24.04 rootfs..."
+  ROOTFS_DIR="$(mktemp -d)"
+
+  # Only the shared tarball cache needs fleet-wide serialization. Release the
+  # lock before package installation and mkfs so distinct template builds can
+  # run concurrently after they have their private unpacked rootfs.
+  local lock_fd
+  exec {lock_fd}>>"$DEBOOTSTRAP_LOCK"
+  flock "$lock_fd"
+  debootstrap_cache_locked
+  flock -u "$lock_fd"
+  exec {lock_fd}>&-
 
   # Mount virtual filesystems for chroot operations.
   # --bind /dev recursively brings in sub-mounts (pts, shm, etc.);

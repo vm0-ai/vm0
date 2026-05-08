@@ -105,6 +105,17 @@ export const resumeSessionSchema = z.object({
   sessionHistory: z.string(),
 });
 
+export const secretConnectorMetadataSchema = z.object({
+  sourceType: z.enum(["connector", "model-provider"]),
+  sourceUserId: z.string().optional(),
+  metadataKey: z.string().optional(),
+});
+
+export const secretConnectorMetadataMapSchema = z.record(
+  z.string(),
+  secretConnectorMetadataSchema,
+);
+
 /**
  * Stored execution context (subset stored in database for late routing)
  * Contains prepared context without runtime-generated fields
@@ -118,6 +129,10 @@ export const storedExecutionContextSchema = z.object({
   encryptedSecrets: z.string().nullable(), // AES-256-GCM encrypted Record<string, string> (secret name → value)
   // Maps secret names to OAuth connector types for runtime token refresh (e.g. { "GMAIL_ACCESS_TOKEN": "gmail" })
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
+  // Per-secret refresh metadata, used when a handler needs owner-specific storage (e.g. personal model providers)
+  secretConnectorMetadataMap: secretConnectorMetadataMapSchema
+    .nullable()
+    .optional(),
   cliAgentType: z.string(),
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: z.boolean().optional(),
@@ -170,6 +185,10 @@ export const executionContextSchema = z.object({
   encryptedSecrets: z.string().nullable(),
   // Maps secret names to OAuth connector types for runtime token refresh
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
+  // Per-secret refresh metadata, used when a handler needs owner-specific storage (e.g. personal model providers)
+  secretConnectorMetadataMap: secretConnectorMetadataMapSchema
+    .nullable()
+    .optional(),
   cliAgentType: z.string(),
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: z.boolean().optional(),
@@ -271,6 +290,9 @@ export type Job = z.infer<typeof jobSchema>;
 export type ExecutionContext = z.infer<typeof executionContextSchema>;
 export type StoredExecutionContext = z.infer<
   typeof storedExecutionContextSchema
+>;
+export type SecretConnectorMetadata = z.infer<
+  typeof secretConnectorMetadataSchema
 >;
 export type StorageEntry = z.infer<typeof storageEntrySchema>;
 export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;

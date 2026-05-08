@@ -119,6 +119,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Outlook Calendar connector",
     enabled: false,
   },
+  [FeatureSwitchKey.GoogleAdsConnector]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Enable the Google Ads connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.MetaAdsConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Meta Ads Manager connector",
@@ -268,6 +273,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Route platform API traffic to the api backend host instead of the www backend host. Unported endpoints continue through the api backend's web fallback proxy.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ConnectorCategories]: {
     maintainer: "ethan@vm0.ai",
@@ -334,6 +340,29 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "endpoints return 404; the prefer_personal_provider checkbox on " +
       "agents/schedules is hidden; the resolver ignores the flag (treats " +
       "as false). Staff-only during rollout; per-user toggle via Lab.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ModelFirstModelProvider]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Gate the model-first model provider selection foundation. When off, " +
+      "all provider-first resolver, UI, CLI, and legacy model provider " +
+      "defaults remain unchanged. When on, follow-up work can use org model " +
+      "policies, canonical models, and member-scoped OAuth credentials. " +
+      "Default-off for every org, including staff; per-user toggle via Lab.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.VoiceChatRealtimeBilling]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Switch the voice-chat token endpoint to mint a VM0 relay-bootstrap " +
+      "instead of an OpenAI client_secret. When OFF, browsers receive the " +
+      "legacy ephemeral OpenAI token. When ON, the route runs credit + " +
+      "pricing admission and mints a short-lived HMAC relay token; the " +
+      "browser opens a WebSocket to /api/zero/voice-chat/relay (sub-issue " +
+      "#12139). Staff-only during rollout; operator flips per org via the " +
+      "feature-switch overrides API.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

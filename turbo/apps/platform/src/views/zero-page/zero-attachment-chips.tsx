@@ -697,9 +697,11 @@ function CsvLightboxBody({
 // ---------------------------------------------------------------------------
 
 export function FileAttachmentChip({
+  contentType,
   filename,
   url,
 }: {
+  contentType?: string;
   filename: string;
   url: string;
 }) {
@@ -708,10 +710,12 @@ export function FileAttachmentChip({
       href={getAttachmentDownloadUrl(url)}
       download={filename}
       title={filename}
+      aria-label={`Download ${filename}`}
       className="inline-flex items-center justify-center rounded-lg hover:bg-foreground/10 transition-colors p-0.5"
     >
       <FilePreviewIcon
         filename={filename}
+        contentType={contentType}
         className="h-9 w-9"
         testId="attachment-chip-file-icon"
       />

@@ -312,6 +312,40 @@ describe("outbox-service", () => {
       expect(html).toContain("<strong");
       expect(html).toContain("<code");
     });
+
+    it("renders fenced code blocks inside list items", async () => {
+      const { id } = await insertTestOutboxItem({
+        fromAddress: "agent@vm7.bot",
+        toAddresses: "user@example.com",
+        subject: "Markdown list code test",
+        template: {
+          template: "agent-reply",
+          props: {
+            agentName: "test-agent",
+            output:
+              "- item\n  ```ts\n  const x = 1;\n  ```\n\n<script>alert('x')</script>",
+            logsUrl: "https://example.com/logs",
+          },
+        },
+      });
+
+      await drainById(id);
+
+      const sentCall = mockResend.emails.send.mock.calls[0];
+      expect(sentCall).toBeDefined();
+      const payload: CreateEmailOptions = sentCall![0];
+      expect(payload).toHaveProperty("react");
+      if (!("react" in payload) || payload.react == null) {
+        throw new Error("Expected react property on email payload");
+      }
+      const html = await render(payload.react);
+
+      expect(html).toContain("<li");
+      expect(html).toContain("<pre");
+      expect(html).toContain("<code");
+      expect(html).toContain("const x = 1");
+      expect(html).not.toContain("<script>");
+    });
   });
 
   describe("post-send actions", () => {

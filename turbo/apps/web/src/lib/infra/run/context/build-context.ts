@@ -9,6 +9,7 @@ import type {
   Firewalls,
   NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
+import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 
 interface BuildInfraContextParams {
   runId: string;
@@ -22,6 +23,7 @@ interface BuildInfraContextParams {
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
   secretConnectorMap?: Record<string, string>;
+  secretConnectorMetadataMap?: Record<string, SecretConnectorMetadata>;
   artifacts?: ContextArtifact[];
   volumeVersions?: Record<string, string>;
   additionalVolumes?: AdditionalVolume[];
@@ -78,6 +80,7 @@ export function buildInfraExecutionContext(
     vars: params.vars,
     secrets: params.secrets,
     secretConnectorMap: params.secretConnectorMap,
+    secretConnectorMetadataMap: params.secretConnectorMetadataMap,
     sandboxToken: params.sandboxToken,
     artifacts: params.artifacts,
     volumeVersions: params.volumeVersions,

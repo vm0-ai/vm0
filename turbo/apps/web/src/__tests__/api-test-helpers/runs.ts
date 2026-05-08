@@ -166,6 +166,9 @@ export async function completeTestRun(
   checkpointOptions?: {
     volumeVersionsSnapshot?: { versions: Record<string, string> };
   },
+  completeOptions?: {
+    lastEventSequence?: number;
+  },
 ): Promise<{
   checkpointId: string;
   agentSessionId: string;
@@ -191,6 +194,7 @@ export async function completeTestRun(
       body: JSON.stringify({
         runId,
         exitCode: 0,
+        ...completeOptions,
       }),
     },
   );

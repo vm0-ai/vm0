@@ -36,6 +36,7 @@ const STORAGE_CACHE_MAX_BYTES: u64 = 1 << 30; // 1 GiB
 /// bound many tiny storage versions, and each cached version also creates a
 /// lock file.
 const STORAGE_CACHE_MAX_ENTRIES: u64 = 5_000;
+const TEMPLATE_WARM_DIR_PREFIX: &str = "template-warm-";
 
 #[derive(Args)]
 pub struct GcArgs {
@@ -243,8 +244,11 @@ async fn try_delete_orphan_rootfs(rootfs_path: &Path, rootfs_hash: &str, dry_run
 }
 
 fn template_warm_hash(name: &str) -> Option<&str> {
-    name.strip_prefix("template-")
-        .and_then(|rest| rest.strip_suffix(".warm.tmp"))
+    name.strip_prefix(TEMPLATE_WARM_DIR_PREFIX)
+        .or_else(|| {
+            name.strip_prefix("template-")
+                .and_then(|rest| rest.strip_suffix(".warm.tmp"))
+        })
         .filter(|hash| !hash.is_empty())
 }
 
@@ -626,11 +630,30 @@ async fn gc_debootstrap(
     dry_run: bool,
 ) -> RunnerResult<u64> {
     let dir = home.debootstrap_dir();
+    if !dir.try_exists().map_err(|e| {
+        RunnerError::Internal(format!("check debootstrap dir {}: {e}", dir.display()))
+    })? {
+        return Ok(0);
+    }
+
+    let lock_path = home.debootstrap_lock();
+    let _lock = match probe_lock(&lock_path) {
+        LockProbe::Free(lock) => lock,
+        LockProbe::Held => {
+            info!("debootstrap cache: in use, skipping");
+            return Ok(0);
+        }
+        LockProbe::Error(e) => {
+            info!("debootstrap cache: lock probe failed ({e}), skipping");
+            return Ok(0);
+        }
+    };
+
     let Some(mut entries) = read_dir_or_missing(&dir).await? else {
         return Ok(0);
     };
 
-    let mut files: Vec<(PathBuf, u64, SystemTime)> = Vec::new();
+    let mut files: Vec<DeBootstrapCacheFile> = Vec::new();
     while let Some(entry) = next_entry_warn(&mut entries, "gc_debootstrap", &dir).await {
         let path = entry.path();
         let meta = match tokio::fs::metadata(&path).await {
@@ -640,18 +663,26 @@ async fn gc_debootstrap(
         if !meta.is_file() {
             continue;
         }
+        let Some(kind) = debootstrap_cache_file_kind(&path) else {
+            continue;
+        };
         let mtime = meta.modified().unwrap_or(std::time::UNIX_EPOCH);
-        files.push((path, meta.len(), mtime));
+        files.push(DeBootstrapCacheFile {
+            path,
+            size: meta.len(),
+            mtime,
+            is_temp: matches!(kind, DeBootstrapCacheFileKind::Temp),
+        });
     }
 
     // Skip files touched recently (same GC_MIN_AGE as rootfs/snapshots).
     let now = SystemTime::now();
-    files.retain(|(path, _, mtime)| {
-        let age = now.duration_since(*mtime).unwrap_or_default();
+    files.retain(|file| {
+        let age = now.duration_since(file.mtime).unwrap_or_default();
         if age < GC_MIN_AGE {
             info!(
                 "debootstrap cache: {} too recent ({}s old), skipping",
-                path.display(),
+                file.path.display(),
                 age.as_secs()
             );
             false
@@ -660,31 +691,61 @@ async fn gc_debootstrap(
         }
     });
 
-    // Sort newest first, keep the N most recent.
-    files.sort_by_key(|f| std::cmp::Reverse(f.2));
+    // Sort newest first, keep the N most recent stable tarballs. Stale
+    // `*.tar.tmp.<pid>` files are cancellation residue and must not consume a
+    // keep_latest slot that would otherwise protect a usable cache tarball.
+    files.sort_by_key(|f| std::cmp::Reverse(f.mtime));
     let keep = keep_latest.unwrap_or(0);
+    let mut stable_seen = 0usize;
 
     let mut freed: u64 = 0;
-    for (path, size, _) in files.iter().skip(keep) {
+    for file in files.iter() {
+        if !file.is_temp && stable_seen < keep {
+            stable_seen += 1;
+            continue;
+        }
         if dry_run {
             info!(
                 "debootstrap cache: would remove {} ({})",
-                path.display(),
-                human_bytes(*size)
+                file.path.display(),
+                human_bytes(file.size)
             );
-        } else if let Err(e) = tokio::fs::remove_file(path).await {
-            tracing::warn!("remove {}: {e}", path.display());
+        } else if let Err(e) = tokio::fs::remove_file(&file.path).await {
+            tracing::warn!("remove {}: {e}", file.path.display());
             continue;
         } else {
             info!(
                 "debootstrap cache: removed {} ({})",
-                path.display(),
-                human_bytes(*size)
+                file.path.display(),
+                human_bytes(file.size)
             );
         }
-        freed += size;
+        freed += file.size;
     }
     Ok(freed)
+}
+
+struct DeBootstrapCacheFile {
+    path: PathBuf,
+    size: u64,
+    mtime: SystemTime,
+    is_temp: bool,
+}
+
+enum DeBootstrapCacheFileKind {
+    Stable,
+    Temp,
+}
+
+fn debootstrap_cache_file_kind(path: &Path) -> Option<DeBootstrapCacheFileKind> {
+    let name = path.file_name().and_then(|name| name.to_str())?;
+    if name.contains(".tar.tmp.") {
+        Some(DeBootstrapCacheFileKind::Temp)
+    } else if name.ends_with(".tar") {
+        Some(DeBootstrapCacheFileKind::Stable)
+    } else {
+        None
+    }
 }
 
 /// Remove unused lock files. Any lock file that can be exclusively locked is
@@ -1799,6 +1860,175 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gc_debootstrap_missing_cache_dir_does_not_create_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+
+        let freed = gc_debootstrap(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(
+            !home.debootstrap_dir().exists(),
+            "missing debootstrap cache dir should remain absent"
+        );
+        assert!(
+            !home.debootstrap_lock().exists(),
+            "GC must not create the debootstrap lock when there is no cache dir"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_debootstrap_skips_when_cache_lock_is_held() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let debootstrap_dir = home.debootstrap_dir();
+        std::fs::create_dir_all(&debootstrap_dir).unwrap();
+        let cache_tar = debootstrap_dir.join("noble-amd64.tar");
+        std::fs::write(&cache_tar, b"cached").unwrap();
+        std::fs::File::open(&cache_tar)
+            .unwrap()
+            .set_times(
+                FileTimes::new()
+                    .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000)),
+            )
+            .unwrap();
+
+        let lock_file = lock::open_lock_file(&home.debootstrap_lock()).unwrap();
+        let _held = Flock::lock(lock_file, FlockArg::LockExclusive).unwrap();
+
+        let freed = gc_debootstrap(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(
+            cache_tar.exists(),
+            "active debootstrap cache tarball must survive GC"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_debootstrap_keeps_its_lock_file() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let lock_path = home.debootstrap_lock();
+        drop(lock::open_lock_file(&lock_path).unwrap());
+        std::fs::File::open(&lock_path)
+            .unwrap()
+            .set_times(
+                FileTimes::new()
+                    .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000)),
+            )
+            .unwrap();
+
+        let freed = gc_debootstrap(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(
+            lock_path.exists(),
+            "debootstrap GC must not remove its own lock file"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_debootstrap_ignores_non_cache_files() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let debootstrap_dir = home.debootstrap_dir();
+        std::fs::create_dir_all(&debootstrap_dir).unwrap();
+        let unrelated = debootstrap_dir.join("README");
+        std::fs::write(&unrelated, b"metadata").unwrap();
+        std::fs::File::open(&unrelated)
+            .unwrap()
+            .set_times(
+                FileTimes::new()
+                    .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000)),
+            )
+            .unwrap();
+
+        let freed = gc_debootstrap(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(
+            unrelated.exists(),
+            "debootstrap GC should only remove cache tarballs"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_debootstrap_removes_stale_temp_tarballs_but_keeps_recent_ones() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let debootstrap_dir = home.debootstrap_dir();
+        std::fs::create_dir_all(&debootstrap_dir).unwrap();
+        let stale_tmp = debootstrap_dir.join("noble-amd64.tar.tmp.123");
+        let recent_tmp = debootstrap_dir.join("noble-amd64.tar.tmp.456");
+        std::fs::write(&stale_tmp, b"stale partial").unwrap();
+        std::fs::write(&recent_tmp, b"recent partial").unwrap();
+        let stale_size = std::fs::metadata(&stale_tmp).unwrap().len();
+        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        std::fs::File::open(&stale_tmp)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let freed = gc_debootstrap(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, stale_size);
+        assert!(
+            !stale_tmp.exists(),
+            "stale debootstrap temp tarball should be GC'd"
+        );
+        assert!(
+            recent_tmp.exists(),
+            "recent debootstrap temp tarball may still belong to an active build"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_debootstrap_temp_tarballs_do_not_consume_keep_latest_slots() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let debootstrap_dir = home.debootstrap_dir();
+        std::fs::create_dir_all(&debootstrap_dir).unwrap();
+        let stable_tar = debootstrap_dir.join("noble-amd64.tar");
+        let newer_tmp = debootstrap_dir.join("noble-amd64.tar.tmp.789");
+        std::fs::write(&stable_tar, b"stable").unwrap();
+        std::fs::write(&newer_tmp, b"newer partial").unwrap();
+        let temp_size = std::fs::metadata(&newer_tmp).unwrap().len();
+        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let newer_time = old_time + Duration::from_secs(60);
+        std::fs::File::open(&stable_tar)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+        std::fs::File::open(&newer_tmp)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(newer_time))
+            .unwrap();
+
+        let freed = gc_debootstrap(&home, Some(1), false).await.unwrap();
+
+        assert_eq!(freed, temp_size);
+        assert!(
+            stable_tar.exists(),
+            "keep_latest should protect the stable debootstrap tarball"
+        );
+        assert!(
+            !newer_tmp.exists(),
+            "stale temp tarballs must not consume keep_latest slots"
+        );
+    }
+
+    #[tokio::test]
     async fn gc_job_logs_deletes_stale() {
         use std::fs::FileTimes;
         use std::time::Duration;
@@ -2064,6 +2294,42 @@ mod tests {
         assert_eq!(freed, 0);
     }
 
+    #[test]
+    fn template_warm_hash_accepts_current_and_legacy_names() {
+        assert_eq!(template_warm_hash("template-warm-abc123"), Some("abc123"));
+        assert_eq!(
+            template_warm_hash("template-abc123.warm.tmp"),
+            Some("abc123")
+        );
+        assert_eq!(template_warm_hash("template-warm-"), None);
+        assert_eq!(template_warm_hash("rootfs-hash"), None);
+    }
+
+    #[tokio::test]
+    async fn gc_nested_images_keeps_locked_current_template_warm_dir() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let warm_dir = home.images_dir().join("template-warm-abc123");
+        std::fs::create_dir_all(&warm_dir).unwrap();
+        std::fs::write(warm_dir.join("attempt-old.tmp"), b"partial").unwrap();
+
+        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        std::fs::File::open(&warm_dir)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let lock_file = lock::open_lock_file(&home.template_lock("abc123")).unwrap();
+        let _held = Flock::lock(lock_file, FlockArg::LockExclusive).unwrap();
+
+        let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(warm_dir.exists(), "active warm rootfs dir must survive GC");
+    }
+
     #[tokio::test]
     async fn gc_nested_images_keeps_locked_template_warm_dir() {
         use std::fs::FileTimes;
@@ -2107,6 +2373,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gc_nested_images_keeps_recent_current_template_warm_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let warm_dir = home.images_dir().join("template-warm-abc123");
+        std::fs::create_dir_all(&warm_dir).unwrap();
+        std::fs::write(warm_dir.join("attempt-new.tmp"), b"partial").unwrap();
+
+        let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(
+            warm_dir.exists(),
+            "recent warm rootfs dir must survive the GC grace window"
+        );
+    }
+
+    #[tokio::test]
     async fn gc_nested_images_removes_stale_template_warm_dir() {
         use std::fs::FileTimes;
 
@@ -2115,6 +2398,31 @@ mod tests {
         let warm_dir = home.images_dir().join("template-abc123.warm.tmp");
         std::fs::create_dir_all(&warm_dir).unwrap();
         std::fs::write(warm_dir.join("template.ext4"), b"partial").unwrap();
+
+        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        std::fs::File::open(&warm_dir)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+
+        assert!(
+            !warm_dir.exists(),
+            "stale warm rootfs dir should be removed"
+        );
+        assert!(freed > 0);
+    }
+
+    #[tokio::test]
+    async fn gc_nested_images_removes_stale_current_template_warm_dir() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let warm_dir = home.images_dir().join("template-warm-abc123");
+        std::fs::create_dir_all(&warm_dir).unwrap();
+        std::fs::write(warm_dir.join("attempt-old.tmp"), b"partial").unwrap();
 
         let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
         std::fs::File::open(&warm_dir)

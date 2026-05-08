@@ -11,6 +11,7 @@ import { gmail } from "./connectors/gmail";
 import { googleSheets } from "./connectors/google-sheets";
 import { googleDocs } from "./connectors/google-docs";
 import { googleDrive } from "./connectors/google-drive";
+import { googleAds } from "./connectors/google-ads";
 import { googleCalendar } from "./connectors/google-calendar";
 import { googleMeet } from "./connectors/google-meet";
 import { close } from "./connectors/close";
@@ -146,6 +147,7 @@ import { prismaPostgres } from "./connectors/prisma-postgres";
 import { discord } from "./connectors/discord";
 import { lark } from "./connectors/lark";
 import { luma } from "./connectors/luma";
+import { lumaAi } from "./connectors/luma-ai";
 import { langsmith } from "./connectors/langsmith";
 import { mailsac } from "./connectors/mailsac";
 import { manus } from "./connectors/manus";
@@ -160,7 +162,6 @@ import { v0 } from "./connectors/v0";
 import { db9 } from "./connectors/db9";
 import { drive9 } from "./connectors/drive9";
 import { msg9 } from "./connectors/msg9";
-import { nanoBanana } from "./connectors/nano-banana";
 import { amplitude } from "./connectors/amplitude";
 import { attio } from "./connectors/attio";
 import { buffer } from "./connectors/buffer";
@@ -389,6 +390,7 @@ const CONNECTOR_TYPES_DEF = {
   ...googleSheets,
   ...googleDocs,
   ...googleDrive,
+  ...googleAds,
   ...googleCalendar,
   ...googleMeet,
   ...close,
@@ -524,6 +526,7 @@ const CONNECTOR_TYPES_DEF = {
   ...discord,
   ...lark,
   ...luma,
+  ...lumaAi,
   ...langsmith,
   ...mailsac,
   ...manus,
@@ -538,7 +541,6 @@ const CONNECTOR_TYPES_DEF = {
   ...db9,
   ...drive9,
   ...msg9,
-  ...nanoBanana,
   ...amplitude,
   ...attio,
   ...buffer,

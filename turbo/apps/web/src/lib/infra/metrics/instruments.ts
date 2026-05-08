@@ -18,12 +18,26 @@ export function recordSandboxOperation(attrs: {
   });
 }
 
+/**
+ * Forward a sandbox-internal op record (originally written by the Rust
+ * guest-agent's `record_sandbox_op` to the per-run JSONL file, then
+ * uploaded by the runner via /api/webhooks/agent/telemetry) to the
+ * `vm0-sandbox-op-log` Axiom dataset.
+ *
+ * `success` and `error` were silently dropped here before #12077 — the
+ * Rust JSONL writes them, the webhook receives them, but this forwarder
+ * only kept op_type/duration. As a result `where success == false` and
+ * `where isnotnull(error)` queries returned 0 rows / 400 \"field not
+ * found\". They are forwarded now so engineers can debug op-level
+ * failures (e.g., the codex CLI exit-1 stderr) directly in Axiom.
+ */
 export function recordSandboxInternalOperation(attrs: {
   actionType: string;
   sandboxType: string;
   durationMs: number;
   success: boolean;
   runId: string;
+  error?: string | null;
 }): void {
   ingestSandboxOpLog({
     source: "sandbox",
@@ -31,6 +45,8 @@ export function recordSandboxInternalOperation(attrs: {
     sandbox_type: attrs.sandboxType,
     duration_ms: attrs.durationMs,
     run_id: attrs.runId,
+    success: attrs.success,
+    ...(attrs.error ? { error: attrs.error } : {}),
   });
 }
 

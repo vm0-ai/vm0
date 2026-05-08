@@ -1,5 +1,6 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { currentChatThreadId$ } from "../agent-chat.ts";
+import { logger } from "../log.ts";
 import {
   pushPathSilently$,
   searchParams$,
@@ -23,6 +24,8 @@ import { setupChatThreadInitScroll$ } from "./setup-chat-thread-signals.ts";
 import { syncPrimaryThread$ } from "./sync-primary-thread.ts";
 
 export const SIDEBAR_PARAM = "sidebar";
+
+const L = logger("ChatPanes");
 
 const internalLeftThread$ = state<ChatThreadSignals | null>(null);
 const internalRightThread$ = state<ChatThreadSignals | null>(null);
@@ -120,6 +123,7 @@ const resolvePaneThread$ = command(
     const { spec, thread, isNew, matchingOptimistic } = args;
 
     if (matchingOptimistic) {
+      L.debug("resolvePaneThread$ swap start", { threadId: thread.threadId });
       // Transfer optimistic messages from the local pending thread to the
       // remote-backed thread's delta so messages sent during the optimistic
       // window survive the handoff. On a new thread the remote initial page
@@ -129,6 +133,9 @@ const resolvePaneThread$ = command(
         matchingOptimistic.pendingThread.groupedChatMessages$,
       );
       signal.throwIfAborted();
+      const transferred = optimisticGroups.reduce((n, g) => {
+        return n + g.messages.length;
+      }, 0);
       for (const group of optimisticGroups) {
         for (const msg of group.messages) {
           set(thread.insertOptimisticMessage$, msg);
@@ -140,14 +147,25 @@ const resolvePaneThread$ = command(
       set(thread.hideSkeleton$);
       set(spec.setPaneThread$, thread);
       set(clearMatchingOptimisticChatThread$, matchingOptimistic);
+      L.debug("resolvePaneThread$ swap done", {
+        threadId: thread.threadId,
+        transferred,
+      });
     }
 
+    L.debug("resolvePaneThread$ Promise.all start", {
+      threadId: thread.threadId,
+    });
     await Promise.all([
       set(loadDraft$, thread, isNew, signal),
       set(setupChatThreadInitScroll$, thread, signal),
       set(thread.runPhraseLoop$, signal),
       set(thread.subscribeChatThread$, signal),
     ]);
+    signal.throwIfAborted();
+    L.debug("resolvePaneThread$ Promise.all done", {
+      threadId: thread.threadId,
+    });
   },
 );
 
@@ -168,6 +186,10 @@ const setupPaneThread$ = command(
     const optimisticThread = get(spec.optimisticSource$);
     const matchingOptimistic =
       optimisticThread?.threadId === threadId ? optimisticThread : null;
+    L.debug("setupPaneThread$ start", {
+      threadId,
+      hasOptimistic: Boolean(matchingOptimistic),
+    });
 
     if (matchingOptimistic) {
       set(spec.setPaneThread$, matchingOptimistic.pendingThread);
@@ -196,7 +218,9 @@ const setupPaneThread$ = command(
     }
 
     if (matchingOptimistic) {
+      L.debug("setupPaneThread$ awaiting settleResult", { threadId });
       await matchingOptimistic.settleResult;
+      L.debug("setupPaneThread$ settleResult resolved", { threadId });
       signal.throwIfAborted();
     }
 

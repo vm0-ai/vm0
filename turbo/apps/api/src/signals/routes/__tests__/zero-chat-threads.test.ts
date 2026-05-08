@@ -103,13 +103,62 @@ describe("GET /api/zero/chat-threads/:id", () => {
               contentType: "application/pdf",
               size: 42,
               url: `http://localhost:3000/f/${encodeURIComponent(
-                fixture.userId,
+                fixture.userId.startsWith("user_")
+                  ? fixture.userId.slice("user_".length)
+                  : fixture.userId,
               )}/file_123/report.pdf`,
             },
           ],
         },
       ],
     });
+  });
+
+  it("strips Clerk user_ prefix from attachment file URLs", async () => {
+    // Users authenticated via Clerk have IDs prefixed with "user_".
+    // The public /f/ URL must omit this prefix (matching web behavior)
+    // so the URL is stable regardless of auth source.
+    const fixture = await track(
+      store.set(
+        seedZeroChatThread$,
+        { userId: "user_clerk123" },
+        context.signal,
+      ),
+    );
+    await store.set(
+      seedZeroChatMessage$,
+      fixture,
+      {
+        role: "user",
+        content: "attachment",
+        attachFiles: ["file_abc"],
+        createdAt: new Date("2025-01-01T00:00:00.000Z"),
+      },
+      context.signal,
+    );
+    mocks.clerk.session("user_clerk123", fixture.orgId);
+    mocks.s3.listObjects([
+      {
+        bucket: "test-user-storages",
+        key: "uploads/user_clerk123/file_abc/photo.png",
+        size: 256,
+      },
+    ]);
+    mockApiShadowCompareRoutes([chatThreadByIdContract.get]);
+
+    const client = setupApp({ context })(chatThreadByIdContract);
+
+    const response = await accept(
+      client.get({
+        params: { id: fixture.threadId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.chatMessages[0]?.attachFiles?.[0]?.url).toBe(
+      "http://localhost:3000/f/clerk123/file_abc/photo.png",
+    );
   });
 
   it("returns renamedAt as ISO string when thread was renamed", async () => {
@@ -575,7 +624,9 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
               contentType: "image/png",
               size: 128,
               url: `http://localhost:3000/f/${encodeURIComponent(
-                fixture.userId,
+                fixture.userId.startsWith("user_")
+                  ? fixture.userId.slice("user_".length)
+                  : fixture.userId,
               )}/image_file/screenshot.png`,
             },
           ],

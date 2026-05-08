@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { networkLogEntrySchema } from "./runs";
+import { eventSequenceNumberSchema, networkLogEntrySchema } from "./runs";
 import {
   storageTypeSchema,
   fileEntryWithHashSchema,
@@ -41,7 +41,7 @@ export type SandboxReuseResult = z.infer<typeof sandboxReuseResultSchema>;
 const agentEventSchema = z
   .object({
     type: z.string(),
-    sequenceNumber: z.number().int().nonnegative(),
+    sequenceNumber: eventSequenceNumberSchema,
   })
   .passthrough();
 
@@ -112,7 +112,7 @@ export const webhookCompleteContract = c.router({
       runId: z.string().min(1, "runId is required"),
       exitCode: z.number(),
       error: z.string().optional(),
-      lastEventSequence: z.number().int().nonnegative().optional(),
+      lastEventSequence: eventSequenceNumberSchema.optional(),
       // Sandbox id the run executed against. Optional because a run that fails
       // before VM creation has no sandbox. Persisted to agent_runs.sandbox_id;
       // the 255-char cap matches the DB column (defense in depth).

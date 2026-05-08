@@ -168,6 +168,10 @@ export interface ChatThreadSignals {
   // recalls it so the queued card disappears synchronously, without waiting
   // for the fire-and-forget server clear to round-trip.
   pendingMessage$: Computed<Promise<PendingMessage | null>>;
+  // True when the rendered pending message is the optimistic, client-only
+  // bubble that hasn't been confirmed by the server yet. Used by the queued
+  // row to render the Recall button in a disabled state during this window.
+  pendingMessageIsOptimistic$: Computed<Promise<boolean>>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
   autoScroll$: Command<void, []>;
@@ -689,28 +693,42 @@ function createPagedMessages(
   });
 
   const fetchNextPage$ = command(async ({ get, set }, signal: AbortSignal) => {
-    let sinceId = get(nextCursorId$);
+    let sinceId: string | undefined = get(nextCursorId$);
     if (!sinceId) {
       const initial = await get(initialPage$);
       signal.throwIfAborted();
       sinceId = initial.messages[initial.messages.length - 1]?.id;
+      L.debug("fetchNextPage$ initialPage seeded sinceId", {
+        threadId,
+        sinceId: sinceId ?? null,
+        initialCount: initial.messages.length,
+      });
       if (sinceId) {
         set(nextCursorId$, sinceId);
       }
     }
     signal.throwIfAborted();
-    if (!sinceId) {
-      return true;
-    }
-    // Drain all pending pages so a single trigger fully catches the client
-    // up.  Without this loop, one Ably event or visibilitychange fetches at
-    // most 50 messages then stops; a burst larger than one page leaves the
-    // client permanently behind if the thread goes quiet afterward.
+    // No sinceId is *not* the same as "nothing to fetch": the server side
+    // accepts an absent cursor and returns the latest page in that case.
+    // Brand-new threads hit this path when the swap-time `initialPage$`
+    // fetch raced ahead of the server-side persist and got cached as
+    // empty — without a full fetch here, every Ably-triggered call would
+    // exit early and the rendered list would stay stuck on the thinking
+    // indicator. Drain all pending pages so a single trigger fully catches
+    // the client up; without this loop a burst larger than one page leaves
+    // the client permanently behind if the thread goes quiet afterwards.
     const MAX_PAGES = 10;
     for (let i = 0; i < MAX_PAGES; i++) {
       const result: { messages: PagedChatMessage[]; reachedEnd: boolean } =
         await set(dataSource.listMessagesAfter$, { threadId, sinceId }, signal);
       signal.throwIfAborted();
+      L.debug("fetchNextPage$ listMessagesAfter result", {
+        threadId,
+        sinceId: sinceId ?? null,
+        gotCount: result.messages.length,
+        reachedEnd: result.reachedEnd,
+        page: i,
+      });
       if (result.messages.length > 0) {
         set(appendDeltaMessages$, result.messages);
         sinceId = result.messages[result.messages.length - 1].id;
@@ -1019,8 +1037,18 @@ function createRunTracking({
 
       // Catch up any messages that arrived since the initial page was loaded.
       // On IDB cache hit this fetches messages that arrived after the cache
-      // was written; on cache miss fetchNextPage$ hits reachedEnd (no-op).
+      // was written; on cache miss `fetchNextPage$` issues a no-cursor fetch
+      // (since the contract treats `sinceId` as optional) and ingests the
+      // server's latest page. This must run before the subscribe loop below
+      // because that loop never resolves — `setAblyLoop$` blocks on the
+      // realtime channel for the lifetime of the thread.
+      L.debug("subscribeChatThread$ pre-subscribe fetchNextPage$ start", {
+        threadId,
+      });
       await set(fetchNextPage$, signal);
+      L.debug("subscribeChatThread$ pre-subscribe fetchNextPage$ done", {
+        threadId,
+      });
 
       // Track pending-message presence across reloads so we can re-scroll once
       // the server consumes a queued message: `onRunChanged$` reloads the
@@ -1037,7 +1065,9 @@ function createRunTracking({
       let previouslyHadPending = Boolean(initialThread?.pendingMessage);
 
       const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
+        L.debug("onMessageCreated$ fired", { threadId });
         await set(fetchNextPage$, sig);
+        L.debug("onMessageCreated$ fetchNextPage$ done", { threadId });
         await set(markThreadReadIfNeeded$, sig);
         animationFrame(
           () => {
@@ -1049,6 +1079,7 @@ function createRunTracking({
       });
 
       const onRunChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
+        L.debug("onRunChanged$ fired", { threadId });
         set(reloadThread$);
         if (!queueEnabled) {
           return false;
@@ -1068,6 +1099,7 @@ function createRunTracking({
         return false;
       });
 
+      L.debug("subscribeChatThread$ subscribeRealtime$ start", { threadId });
       await Promise.all([
         set(markThreadReadIfNeeded$, signal),
         set(
@@ -1230,6 +1262,7 @@ interface QueueMessageDeps {
   reloadThread$: Command<void, []>;
   scrollToBottom$: Command<void, []>;
   dataSource: ChatThreadDataSource;
+  setOptimisticPending$: Command<void, [PendingMessage | null]>;
 }
 
 function createQueueMessage(deps: QueueMessageDeps) {
@@ -1243,6 +1276,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
     reloadThread$,
     scrollToBottom$,
     dataSource,
+    setOptimisticPending$,
   } = deps;
   return command(async ({ get, set }, prompt: string, signal: AbortSignal) => {
     L.debug("queueMessage$ start", { threadId, promptLen: prompt.length });
@@ -1286,6 +1320,26 @@ function createQueueMessage(deps: QueueMessageDeps) {
     const clientMessageId =
       existingPending?.clientMessageId ?? crypto.randomUUID();
 
+    // Render the queued bubble synchronously, before any network round-trip.
+    // `pendingMessage$` falls back to this slot until the server-confirmed
+    // pending row lands in `threadData$`, at which point the finally block
+    // below drops the optimistic copy.
+    const nowIso = new Date().toISOString();
+    set(setOptimisticPending$, {
+      content: content ?? null,
+      attachments:
+        attachments && attachments.length > 0 ? [...attachments] : null,
+      createdAt: existingPending?.createdAt ?? nowIso,
+      updatedAt: nowIso,
+      clientMessageId,
+    });
+    animationFrame(
+      () => {
+        set(scrollToBottom$);
+      },
+      { signal },
+    );
+
     await Promise.all([
       set(flushDraftClear$, signal),
       set(
@@ -1303,19 +1357,20 @@ function createQueueMessage(deps: QueueMessageDeps) {
 
     set(reloadThread$);
     set(reloadChatThreads$);
-    // Wait for the refetched threadData before scrolling. The queued card
-    // renders inside the composer footer, so its first appearance shrinks
-    // the message list's clientHeight; scrolling before that render lands
-    // scrollTop against the pre-shrink layout and the bottom drops out of
-    // view once the composer grows.
-    await get(threadData$);
+    // Block until the refetched threadData$ resolves so the optimistic slot
+    // is only cleared after the server-confirmed pending row is in place;
+    // otherwise the queued bubble would flash off and back on.
+    const refreshed = await get(threadData$);
     signal.throwIfAborted();
-    animationFrame(
-      () => {
-        set(scrollToBottom$);
-      },
-      { signal },
-    );
+    // Only retire the optimistic bubble when the server-confirmed pending
+    // row carries the same clientMessageId — proof that the backend actually
+    // accepted this queue. In the new-thread optimistic window the local
+    // data source is a no-op, so `refreshed.pendingMessage` stays null and
+    // we leave the bubble in place; the local signals instance is torn down
+    // when the page swaps to the real thread, taking the bubble with it.
+    if (refreshed?.pendingMessage?.clientMessageId === clientMessageId) {
+      set(setOptimisticPending$, null);
+    }
     L.debug("queueMessage$ done", { threadId });
   });
 }
@@ -1372,7 +1427,7 @@ function createRecallPendingMessage(deps: RecallMessageDeps) {
 interface MessageCommandsDeps
   extends
     SendMessageDeps,
-    QueueMessageDeps,
+    Omit<QueueMessageDeps, "setOptimisticPending$">,
     Omit<RecallMessageDeps, "markPendingRecalled$"> {}
 
 function createMessageCommands(
@@ -1380,18 +1435,21 @@ function createMessageCommands(
     groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
   },
 ) {
-  const { pendingMessage$, markPendingRecalled$ } = createPendingMessageView(
-    deps.threadData$,
-    deps.groupedChatMessages$,
-  );
+  const {
+    pendingMessage$,
+    pendingMessageIsOptimistic$,
+    markPendingRecalled$,
+    setOptimisticPending$,
+  } = createPendingMessageView(deps.threadData$, deps.groupedChatMessages$);
   return {
     sendMessage$: createSendMessage(deps),
-    queueMessage$: createQueueMessage(deps),
+    queueMessage$: createQueueMessage({ ...deps, setOptimisticPending$ }),
     recallPendingMessage$: createRecallPendingMessage({
       ...deps,
       markPendingRecalled$,
     }),
     pendingMessage$,
+    pendingMessageIsOptimistic$,
   };
 }
 
@@ -1409,42 +1467,82 @@ function createPendingMessageView(
   // returns null so the queued card disappears synchronously on click.
   const internalRecalledUpdatedAt$ = state<string | null>(null);
 
-  const pendingMessage$ = computed(
-    async (get): Promise<PendingMessage | null> => {
+  // Client-only optimistic queued bubble. Set synchronously by `queueMessage$`
+  // before its POST flies, cleared in finally once the server-side pending row
+  // round-trips into `threadData$`. Lives on the thread signal so each thread
+  // has its own optimistic slot — switching threads does not leak state.
+  const internalOptimisticPending$ = state<PendingMessage | null>(null);
+
+  const setOptimisticPending$ = command(
+    ({ set }, value: PendingMessage | null) => {
+      set(internalOptimisticPending$, value);
+    },
+  );
+
+  // Shared compute: pick the active pending row (server-confirmed wins over
+  // optimistic) and remember which source it came from so the view layer can
+  // tell apart "in flight" from "confirmed".
+  const pendingMessageWithSource$ = computed(
+    async (
+      get,
+    ): Promise<{ pending: PendingMessage; isOptimistic: boolean } | null> => {
       const thread = await get(threadData$);
-      const pending = thread?.pendingMessage ?? null;
-      if (!pending) {
-        return null;
-      }
+      const serverPending = thread?.pendingMessage ?? null;
       const recalledUpdatedAt = get(internalRecalledUpdatedAt$);
-      if (recalledUpdatedAt === pending.updatedAt) {
+      const serverPendingActive =
+        serverPending && recalledUpdatedAt !== serverPending.updatedAt
+          ? serverPending
+          : null;
+      const optimistic = get(internalOptimisticPending$);
+      const source = serverPendingActive ?? optimistic;
+      if (!source) {
         return null;
       }
       // Dedup by client message id: when auto-send claims the queued
       // message, it inserts a chat_messages row reusing the queued
       // bubble's pre-generated id. Once the realtime fetcher surfaces
-      // that row, the optimistic queued bubble must vacate so we don't
-      // paint the same user message twice.
-      if (pending.clientMessageId) {
+      // that row, the queued bubble must vacate so we don't paint the
+      // same user message twice.
+      if (source.clientMessageId) {
         const groups = await get(groupedChatMessages$);
         const matched = groups.some((group) => {
           return group.messages.some((message) => {
-            return message.id === pending.clientMessageId;
+            return message.id === source.clientMessageId;
           });
         });
         if (matched) {
           return null;
         }
       }
-      return pending;
+      return {
+        pending: source,
+        isOptimistic: serverPendingActive === null,
+      };
     },
   );
+
+  const pendingMessage$ = computed(
+    async (get): Promise<PendingMessage | null> => {
+      const view = await get(pendingMessageWithSource$);
+      return view?.pending ?? null;
+    },
+  );
+
+  const pendingMessageIsOptimistic$ = computed(async (get) => {
+    const view = await get(pendingMessageWithSource$);
+    return view?.isOptimistic ?? false;
+  });
 
   const markPendingRecalled$ = command(({ set }, updatedAt: string) => {
     set(internalRecalledUpdatedAt$, updatedAt);
   });
 
-  return { pendingMessage$, markPendingRecalled$ };
+  return {
+    pendingMessage$,
+    pendingMessageIsOptimistic$,
+    markPendingRecalled$,
+    setOptimisticPending$,
+  };
 }
 
 // ---------------------------------------------------------------------------

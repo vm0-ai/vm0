@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { GET } from "../route";
-import { filterConsecutiveEvents } from "../filter-events";
 import {
   createTestRequest,
   createTestCompose,
@@ -202,6 +201,69 @@ describe("GET /api/agent/runs/:id/events", () => {
       expect(data.events[2].sequenceNumber).toBe(2);
       expect(data.hasMore).toBe(false);
       expect(data.nextSequence).toBe(2);
+    });
+
+    it("should include terminal lastEventSequence watermark when present", async () => {
+      context.mocks.axiom.queryAxiom
+        .mockResolvedValueOnce([
+          createAxiomAgentEvent({
+            runId: testRunId,
+            sequenceNumber: 0,
+            eventType: "assistant",
+            eventData: { type: "assistant" },
+          }),
+          createAxiomAgentEvent({
+            runId: testRunId,
+            sequenceNumber: 1,
+            eventType: "assistant",
+            eventData: { type: "assistant" },
+          }),
+          createAxiomAgentEvent({
+            runId: testRunId,
+            sequenceNumber: 2,
+            eventType: "result",
+            eventData: {
+              type: "result",
+              subtype: "success",
+              is_error: false,
+            },
+          }),
+        ])
+        .mockResolvedValueOnce([]);
+
+      await completeTestRun(user.userId, testRunId, undefined, {
+        lastEventSequence: 2,
+      });
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.run.status).toBe("completed");
+      expect(data.run.lastEventSequence).toBe(2);
+    });
+
+    it("should include zero terminal lastEventSequence watermark when present", async () => {
+      context.mocks.axiom.queryAxiom.mockResolvedValue([]);
+
+      await completeTestRun(user.userId, testRunId, undefined, {
+        lastEventSequence: 0,
+      });
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.run.status).toBe("completed");
+      expect(data.run.lastEventSequence).toBe(0);
     });
   });
 
@@ -414,6 +476,45 @@ describe("GET /api/agent/runs/:id/events", () => {
       const apl = context.mocks.axiom.queryAxiom.mock.calls[0]![0];
       expect(apl).toContain("limit 100");
     });
+
+    it("should reject since below the event cursor floor", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events?since=-2`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("since");
+      expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
+    });
+
+    it("should reject since outside the database integer range", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events?since=2147483648`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("since");
+      expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
+    });
+
+    it("should reject limit above the event page cap", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events?limit=1000`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("limit");
+      expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
+    });
   });
 
   // ============================================
@@ -480,82 +581,12 @@ describe("GET /api/agent/runs/:id/events", () => {
   });
 
   // ============================================
-  // Consecutive Events Filtering Tests (Issue #1233)
+  // Integration: Gap Handling in API Response
   // ============================================
 
-  describe("Consecutive Events Filtering", () => {
-    it("should return all events when there are no gaps", () => {
-      const events = [
-        createAxiomAgentEvent({
-          runId: testRunId,
-          sequenceNumber: 0,
-          eventType: "event_0",
-          eventData: { type: "event_0" },
-        }),
-        createAxiomAgentEvent({
-          runId: testRunId,
-          sequenceNumber: 1,
-          eventType: "event_1",
-          eventData: { type: "event_1" },
-        }),
-        createAxiomAgentEvent({
-          runId: testRunId,
-          sequenceNumber: 2,
-          eventType: "event_2",
-          eventData: { type: "event_2" },
-        }),
-      ];
-
-      const result = filterConsecutiveEvents(events, -1);
-
-      expect(result).toHaveLength(3);
-      expect(
-        result.map((e) => {
-          return e.sequenceNumber;
-        }),
-      ).toEqual([0, 1, 2]);
-    });
-
-    it("should truncate at first gap (Axiom eventual consistency)", () => {
-      const events = [
-        createAxiomAgentEvent({
-          runId: testRunId,
-          sequenceNumber: 0,
-          eventType: "event_0",
-          eventData: { type: "event_0" },
-        }),
-        createAxiomAgentEvent({
-          runId: testRunId,
-          sequenceNumber: 1,
-          eventType: "event_1",
-          eventData: { type: "event_1" },
-        }),
-        createAxiomAgentEvent({
-          runId: testRunId,
-          sequenceNumber: 3,
-          eventType: "event_3",
-          eventData: { type: "event_3" },
-        }),
-        createAxiomAgentEvent({
-          runId: testRunId,
-          sequenceNumber: 5,
-          eventType: "event_5",
-          eventData: { type: "event_5" },
-        }),
-      ];
-
-      const result = filterConsecutiveEvents(events, -1);
-
-      expect(result).toHaveLength(2);
-      expect(
-        result.map((e) => {
-          return e.sequenceNumber;
-        }),
-      ).toEqual([0, 1]);
-    });
-
-    it("should return empty when first event is not since+1", () => {
-      const events = [
+  describe("Gap Handling in API Response", () => {
+    it("should return empty page when the first visible event is after the expected sequence", async () => {
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
         createAxiomAgentEvent({
           runId: testRunId,
           sequenceNumber: 3,
@@ -568,157 +599,21 @@ describe("GET /api/agent/runs/:id/events", () => {
           eventType: "event_4",
           eventData: { type: "event_4" },
         }),
-      ];
+      ]);
 
-      const result = filterConsecutiveEvents(events, -1);
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events`,
+      );
 
-      expect(result).toHaveLength(0);
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.events).toEqual([]);
+      expect(data.hasMore).toBe(true);
+      expect(data.nextSequence).toBe(-1);
     });
 
-    it("should handle continuation from non-zero since", () => {
-      const events = [
-        createAxiomAgentEvent({
-          runId: testRunId,
-          sequenceNumber: 6,
-          eventType: "event_6",
-          eventData: { type: "event_6" },
-        }),
-        createAxiomAgentEvent({
-          runId: testRunId,
-          sequenceNumber: 7,
-          eventType: "event_7",
-          eventData: { type: "event_7" },
-        }),
-        createAxiomAgentEvent({
-          runId: testRunId,
-          sequenceNumber: 8,
-          eventType: "event_8",
-          eventData: { type: "event_8" },
-        }),
-      ];
-
-      const result = filterConsecutiveEvents(events, 5);
-
-      expect(result).toHaveLength(3);
-      expect(
-        result.map((e) => {
-          return e.sequenceNumber;
-        }),
-      ).toEqual([6, 7, 8]);
-    });
-
-    it("should return empty for empty input", () => {
-      const result = filterConsecutiveEvents([], -1);
-
-      expect(result).toHaveLength(0);
-    });
-
-    it("should handle gap in middle of continuation", () => {
-      const events = [
-        createAxiomAgentEvent({
-          runId: testRunId,
-          sequenceNumber: 11,
-          eventType: "event_11",
-          eventData: { type: "event_11" },
-        }),
-        createAxiomAgentEvent({
-          runId: testRunId,
-          sequenceNumber: 12,
-          eventType: "event_12",
-          eventData: { type: "event_12" },
-        }),
-        createAxiomAgentEvent({
-          runId: testRunId,
-          sequenceNumber: 14,
-          eventType: "event_14",
-          eventData: { type: "event_14" },
-        }),
-        createAxiomAgentEvent({
-          runId: testRunId,
-          sequenceNumber: 15,
-          eventType: "event_15",
-          eventData: { type: "event_15" },
-        }),
-      ];
-
-      const result = filterConsecutiveEvents(events, 10);
-
-      expect(result).toHaveLength(2);
-      expect(
-        result.map((e) => {
-          return e.sequenceNumber;
-        }),
-      ).toEqual([11, 12]);
-    });
-
-    it("should handle single event with correct sequence", () => {
-      const events = [
-        createAxiomAgentEvent({
-          runId: testRunId,
-          sequenceNumber: 0,
-          eventType: "event_0",
-          eventData: { type: "event_0" },
-        }),
-      ];
-
-      const result = filterConsecutiveEvents(events, -1);
-
-      expect(result).toHaveLength(1);
-      expect(result[0]!.sequenceNumber).toBe(0);
-    });
-
-    it("should skip duplicate sequence numbers while preserving the prefix", () => {
-      const events = [
-        createAxiomAgentEvent({
-          runId: testRunId,
-          sequenceNumber: 0,
-          eventType: "event_0",
-          eventData: { type: "event_0" },
-        }),
-        createAxiomAgentEvent({
-          runId: testRunId,
-          sequenceNumber: 0,
-          eventType: "event_0_duplicate",
-          eventData: { type: "event_0_duplicate" },
-        }),
-        createAxiomAgentEvent({
-          runId: testRunId,
-          sequenceNumber: 1,
-          eventType: "event_1",
-          eventData: { type: "event_1" },
-        }),
-      ];
-
-      const result = filterConsecutiveEvents(events, -1);
-
-      expect(
-        result.map((e) => {
-          return e.sequenceNumber;
-        }),
-      ).toEqual([0, 1]);
-    });
-
-    it("should handle single event with gap", () => {
-      const events = [
-        createAxiomAgentEvent({
-          runId: testRunId,
-          sequenceNumber: 5,
-          eventType: "event_5",
-          eventData: { type: "event_5" },
-        }),
-      ];
-
-      const result = filterConsecutiveEvents(events, -1);
-
-      expect(result).toHaveLength(0);
-    });
-  });
-
-  // ============================================
-  // Integration: Gap Handling in API Response
-  // ============================================
-
-  describe("Gap Handling in API Response", () => {
     it("should set hasMore=true when events are truncated due to gap", async () => {
       const testEvents = [
         createAxiomAgentEvent({

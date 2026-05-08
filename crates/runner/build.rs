@@ -30,6 +30,7 @@ fn main() {
         ("GUEST_MOCK_CLAUDE_PATH", "BUNDLED_GUEST_MOCK_CLAUDE"),
         ("GUEST_MOCK_CODEX_PATH", "BUNDLED_GUEST_MOCK_CODEX"),
         ("GUEST_RESEED_PATH", "BUNDLED_GUEST_RESEED"),
+        ("GUEST_WRITE_FILE_PATH", "BUNDLED_GUEST_WRITE_FILE"),
     ];
 
     // Always rebuild when any of these env vars change.

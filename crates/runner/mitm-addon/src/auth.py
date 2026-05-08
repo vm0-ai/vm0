@@ -134,6 +134,7 @@ def _fetch_firewall_headers_sync(
     sandbox_token: str,
     api_url: str,
     secret_connector_map: dict | None = None,
+    secret_connector_metadata_map: dict | None = None,
     vars_map: dict | None = None,
     auth_base: str | None = None,
     auth_query: dict | None = None,
@@ -152,6 +153,8 @@ def _fetch_firewall_headers_sync(
         body["authQuery"] = auth_query
     if secret_connector_map:
         body["secretConnectorMap"] = secret_connector_map
+    if secret_connector_metadata_map:
+        body["secretConnectorMetadataMap"] = secret_connector_metadata_map
     if vars_map:
         body["vars"] = vars_map
     if force_refresh:
@@ -184,6 +187,7 @@ async def fetch_firewall_headers(
     auth_headers: dict,
     sandbox_token: str,
     secret_connector_map: dict | None = None,
+    secret_connector_metadata_map: dict | None = None,
     vars_map: dict | None = None,
     auth_base: str | None = None,
     auth_query: dict | None = None,
@@ -207,6 +211,7 @@ async def fetch_firewall_headers(
         sandbox_token,
         api_url,
         secret_connector_map,
+        secret_connector_metadata_map,
         vars_map,
         auth_base,
         auth_query,
@@ -321,6 +326,7 @@ async def get_firewall_headers(
     auth_headers: dict,
     sandbox_token: str,
     secret_connector_map: dict | None = None,
+    secret_connector_metadata_map: dict | None = None,
     vars_map: dict | None = None,
     auth_base: str | None = None,
     auth_query: dict | None = None,
@@ -370,6 +376,7 @@ async def get_firewall_headers(
             auth_headers,
             sandbox_token,
             secret_connector_map,
+            secret_connector_metadata_map,
             vars_map,
             auth_base,
             auth_query,
@@ -415,6 +422,7 @@ async def handle_firewall_request(
     auth_base = api_entry.get("auth", {}).get("base")
     auth_query = api_entry.get("auth", {}).get("query")
     secret_connector_map = vm_info.get("secretConnectorMap")
+    secret_connector_metadata_map = vm_info.get("secretConnectorMetadataMap")
     vars_map = vm_info.get("vars")
 
     # Store metadata upfront — shared across ALLOW/ERROR paths
@@ -473,6 +481,7 @@ async def handle_firewall_request(
             auth_headers,
             sandbox_token,
             secret_connector_map,
+            secret_connector_metadata_map,
             vars_map,
             auth_base,
             auth_query,

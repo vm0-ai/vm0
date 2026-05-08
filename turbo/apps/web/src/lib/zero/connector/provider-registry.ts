@@ -78,6 +78,7 @@ import { hubspotHandler } from "./providers/hubspot-handler";
 import { imgurHandler } from "./providers/imgur-handler";
 import { instagramHandler } from "./providers/instagram-handler";
 import { gmailHandler } from "./providers/gmail-handler";
+import { googleAdsHandler } from "./providers/google-ads-handler";
 import { googleCalendarHandler } from "./providers/google-calendar-handler";
 import { googleDocsHandler } from "./providers/google-docs-handler";
 import { googleDriveHandler } from "./providers/google-drive-handler";
@@ -97,6 +98,7 @@ import { lineHandler } from "./providers/line-handler";
 import { linearHandler } from "./providers/linear-handler";
 import { loopsHandler } from "./providers/loops-handler";
 import { lumaHandler } from "./providers/luma-handler";
+import { lumaAiHandler } from "./providers/luma-ai-handler";
 import { mailsacHandler } from "./providers/mailsac-handler";
 import { makeHandler } from "./providers/make-handler";
 import { manusHandler } from "./providers/manus-handler";
@@ -109,7 +111,6 @@ import { miroHandler } from "./providers/miro-handler";
 import { mixpanelHandler } from "./providers/mixpanel-handler";
 import { mondayHandler } from "./providers/monday-handler";
 import { msg9Handler } from "./providers/msg9-handler";
-import { nanoBananaHandler } from "./providers/nano-banana-handler";
 import { neonHandler } from "./providers/neon-handler";
 import { notionHandler } from "./providers/notion-handler";
 import { onyxHandler } from "./providers/onyx-handler";
@@ -263,6 +264,7 @@ export const PROVIDER_HANDLERS: Record<
   imgur: imgurHandler,
   instantly: instantlyHandler,
   instagram: instagramHandler,
+  "google-ads": googleAdsHandler,
   "google-calendar": googleCalendarHandler,
   "google-docs": googleDocsHandler,
   "google-drive": googleDriveHandler,
@@ -275,6 +277,7 @@ export const PROVIDER_HANDLERS: Record<
   linear: linearHandler,
   loops: loopsHandler,
   luma: lumaHandler,
+  "luma-ai": lumaAiHandler,
   mailsac: mailsacHandler,
   make: makeHandler,
   manus: manusHandler,
@@ -288,7 +291,6 @@ export const PROVIDER_HANDLERS: Record<
   mixpanel: mixpanelHandler,
   monday: mondayHandler,
   msg9: msg9Handler,
-  "nano-banana": nanoBananaHandler,
   neon: neonHandler,
   notion: notionHandler,
   onyx: onyxHandler,

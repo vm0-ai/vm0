@@ -56,6 +56,7 @@ sudo mkdir -p \
   /home/vscode/.local/lib \
   /home/vscode/.pki \
   /home/vscode/.codex \
+  /home/vscode/.codex-switch \
   /home/vscode/.npm
 sudo chown -R vscode:vscode \
   /home/vscode/.config \
@@ -64,6 +65,7 @@ sudo chown -R vscode:vscode \
   /home/vscode/.pki \
   /home/vscode/.cloudflared \
   /home/vscode/.codex \
+  /home/vscode/.codex-switch \
   /home/vscode/.npm
 echo "✓ User-local npm/Codex directories ready"
 

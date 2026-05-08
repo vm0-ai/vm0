@@ -90,6 +90,7 @@ import { generate as generateLine } from "./line";
 import { generate as generateLinear } from "./linear";
 import { generate as generateLoops } from "./loops";
 import { generate as generateLuma } from "./luma";
+import { generate as generateLumaAi } from "./luma-ai";
 import { generate as generateMailchimp } from "./mailchimp";
 import { generate as generateMake } from "./make";
 import { generate as generateMailsac } from "./mailsac";
@@ -104,7 +105,6 @@ import { generate as generateMixpanel } from "./mixpanel";
 import { generate as generateMonday } from "./monday";
 import { generate as generateMsg9 } from "./msg9";
 import { generate as generateN8n } from "./n8n";
-import { generate as generateNanoBanana } from "./nano-banana";
 import { generate as generateNeon } from "./neon";
 import { generate as generateNotion } from "./notion";
 import { generate as generateOnyx } from "./onyx";
@@ -173,6 +173,7 @@ import { generate as generateZep } from "./zep";
 import { generate as generateZeptomail } from "./zeptomail";
 import { generate as generateWandb } from "./wandb";
 import { generate as generateZoom } from "./zoom";
+import { generate as generateGoogleAds } from "./google-ads";
 import { createGoogleGenerator, googleServiceNames } from "./google";
 
 const GENERATORS: Record<string, () => Promise<void>> = {
@@ -232,6 +233,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   "garmin-connect": generateGarminConnect,
   github: generateGitHub,
   gitlab: generateGitlab,
+  "google-ads": generateGoogleAds,
   granola: generateGranola,
   greenhouse: generateGreenhouse,
   groq: generateGroq,
@@ -260,6 +262,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   linear: generateLinear,
   loops: generateLoops,
   luma: generateLuma,
+  "luma-ai": generateLumaAi,
   mailchimp: generateMailchimp,
   make: generateMake,
   mailsac: generateMailsac,
@@ -274,7 +277,6 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   monday: generateMonday,
   msg9: generateMsg9,
   n8n: generateN8n,
-  "nano-banana": generateNanoBanana,
   neon: generateNeon,
   notion: generateNotion,
   onyx: generateOnyx,

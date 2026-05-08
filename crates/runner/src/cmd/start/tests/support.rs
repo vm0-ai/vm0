@@ -33,6 +33,7 @@ pub(super) struct MockRunEnv {
     pub(super) idle_pool: SharedIdlePool,
     pub(super) lifecycle: LifecycleController,
     pub(super) parking_gate: ParkingGate,
+    pub(super) start_probes: StartLoopTestProbes,
     pub(super) mode_tx: tokio::sync::watch::Sender<RunnerMode>,
     pub(super) cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
     pub(super) cancel: CancellationToken,
@@ -148,6 +149,7 @@ pub(super) fn build_mock_run_config_with_runtime(
     let (mode_tx, mode_rx) = tokio::sync::watch::channel(RunnerMode::Running);
     let parking_gate = ParkingGate::new_open();
     let lifecycle = LifecycleController::new(mode_tx, parking_gate.clone());
+    let start_probes = StartLoopTestProbes::default();
     let cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
         Arc::new(tokio::sync::Mutex::new(HashMap::new()));
 
@@ -224,6 +226,7 @@ pub(super) fn build_mock_run_config_with_runtime(
             handler_abort: None,
         }),
         outer_job_panic: None,
+        test_probes: start_probes.clone(),
     };
 
     let env = MockRunEnv {
@@ -232,6 +235,7 @@ pub(super) fn build_mock_run_config_with_runtime(
         idle_pool,
         lifecycle: lifecycle.clone(),
         parking_gate,
+        start_probes,
         mode_tx: lifecycle.mode_tx().clone(),
         cancel_tokens,
         cancel,
@@ -264,6 +268,7 @@ pub(super) fn minimal_context(run_id: RunId) -> crate::types::ExecutionContext {
         secret_values: None,
         encrypted_secrets: None,
         secret_connector_map: None,
+        secret_connector_metadata_map: None,
         cli_agent_type: String::new(),
         debug_no_mock_claude: None,
         debug_no_mock_codex: None,
@@ -497,6 +502,49 @@ pub(super) async fn wait_idle_pool_len(pool: &SharedIdlePool, expected: usize, t
     .await;
 }
 
+pub(super) async fn wait_idle_pool_sessions(
+    pool: &SharedIdlePool,
+    expected: &[&str],
+    timeout: Duration,
+) {
+    let mut expected: Vec<String> = expected
+        .iter()
+        .map(|session| (*session).to_string())
+        .collect();
+    expected.sort_unstable();
+    wait_for_probe(timeout, || async {
+        let actual = pool.lock().await.held_sessions();
+        if actual == expected {
+            WaitProbe::Ready(())
+        } else {
+            WaitProbe::Pending(format!(
+                "idle pool sessions did not reach {expected:?} within {timeout:?} (actual: {actual:?})",
+            ))
+        }
+    })
+    .await;
+}
+
+pub(super) async fn wait_sandbox_lifecycle_counts(
+    overrides: &sandbox_mock::MockSandboxOverrides,
+    expected_park: u32,
+    expected_unpark: u32,
+    timeout: Duration,
+) {
+    wait_for_probe(timeout, || async {
+        let actual_park = overrides.park_call_count();
+        let actual_unpark = overrides.unpark_call_count();
+        if actual_park == expected_park && actual_unpark == expected_unpark {
+            WaitProbe::Ready(())
+        } else {
+            WaitProbe::Pending(format!(
+                "sandbox lifecycle counts did not reach park={expected_park} unpark={expected_unpark} within {timeout:?} (actual park={actual_park} unpark={actual_unpark})",
+            ))
+        }
+    })
+    .await;
+}
+
 /// Poll until the idle pool parking state reaches `expected`.
 pub(super) async fn wait_parking_state(
     pool: &SharedIdlePool,
@@ -558,35 +606,43 @@ pub(super) async fn seed_idle_pool_with_timing(
     assert!(matches!(result, ParkResult::Parked));
 }
 
+#[derive(serde::Deserialize)]
+struct StatusSnapshot {
+    active_runs: Vec<ActiveRunSnapshot>,
+    #[serde(default)]
+    idle_vms: Vec<IdleVmSnapshot>,
+}
+
+#[derive(serde::Deserialize)]
+struct StatusModeSnapshot {
+    mode: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct ActiveRunSnapshot {
+    run_id: String,
+}
+
+#[derive(serde::Deserialize)]
+struct IdleVmSnapshot {
+    session_id: String,
+}
+
 pub(super) async fn status_idle_sessions_and_active_runs(
     status_path: &std::path::Path,
 ) -> (Vec<String>, Vec<String>) {
     let raw = tokio::fs::read_to_string(status_path).await.unwrap();
-    let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    let status: StatusSnapshot = serde_json::from_str(&raw).unwrap();
     let mut sessions: Vec<String> = status
-        .get("idle_vms")
-        .and_then(|v| v.as_array())
-        .map(|idle_vms| {
-            idle_vms
-                .iter()
-                .filter_map(|vm| {
-                    vm.get("session_id")
-                        .and_then(|session| session.as_str())
-                        .map(str::to_string)
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+        .idle_vms
+        .into_iter()
+        .map(|vm| vm.session_id)
+        .collect();
     sessions.sort_unstable();
-    let mut run_ids: Vec<String> = status["active_runs"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|run| {
-            run.get("run_id")
-                .and_then(|run_id| run_id.as_str())
-                .map(str::to_string)
-        })
+    let mut run_ids: Vec<String> = status
+        .active_runs
+        .into_iter()
+        .map(|run| run.run_id)
         .collect();
     run_ids.sort_unstable();
     (sessions, run_ids)
@@ -594,6 +650,72 @@ pub(super) async fn status_idle_sessions_and_active_runs(
 
 pub(super) async fn status_idle_sessions(status_path: &std::path::Path) -> Vec<String> {
     status_idle_sessions_and_active_runs(status_path).await.0
+}
+
+pub(super) async fn status_mode_if_exists(status_path: &std::path::Path) -> Option<Option<String>> {
+    match tokio::fs::try_exists(status_path).await {
+        Ok(true) => {
+            let raw = tokio::fs::read_to_string(status_path).await.unwrap();
+            let status: StatusModeSnapshot = serde_json::from_str(&raw).unwrap();
+            Some(status.mode)
+        }
+        Ok(false) => None,
+        Err(err) => panic!(
+            "failed to check status file {}: {err}",
+            status_path.display()
+        ),
+    }
+}
+
+pub(super) async fn wait_status_mode(
+    status_path: &std::path::Path,
+    expected: &str,
+    timeout: Duration,
+) {
+    wait_for_probe(timeout, || async {
+        match status_mode_if_exists(status_path).await {
+            Some(Some(mode)) if mode == expected => WaitProbe::Ready(()),
+            Some(Some(mode)) => WaitProbe::Pending(format!(
+                "status mode did not reach {expected:?} within {timeout:?} (actual: {mode:?})",
+            )),
+            Some(None) => WaitProbe::Pending(format!(
+                "status file {} did not contain mode within {timeout:?}",
+                status_path.display(),
+            )),
+            None => WaitProbe::Pending(format!(
+                "status file {} was not written within {timeout:?}",
+                status_path.display(),
+            )),
+        }
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn status_parser_defaults_omitted_idle_vms_to_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("status.json");
+    tokio::fs::write(
+        &path,
+        r#"{"active_runs":[{"run_id":"run-b"},{"run_id":"run-a"}]}"#,
+    )
+    .await
+    .unwrap();
+
+    let (idle_sessions, active_runs) = status_idle_sessions_and_active_runs(&path).await;
+
+    assert!(idle_sessions.is_empty());
+    assert_eq!(active_runs, vec!["run-a", "run-b"]);
+}
+
+#[tokio::test]
+#[should_panic(expected = "missing field `active_runs`")]
+async fn status_parser_requires_active_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("status.json");
+    tokio::fs::write(&path, r#"{"idle_vms":[]}"#).await.unwrap();
+
+    let _ = status_idle_sessions_and_active_runs(&path).await;
 }
 
 pub(super) async fn wait_status_idle_sessions_and_active_runs(
@@ -723,4 +845,16 @@ pub(super) async fn wait_cancel_token_removed(
         }
     })
     .await;
+}
+
+pub(super) async fn wait_discover_entered(env: &MockRunEnv, timeout: Duration) {
+    tokio::time::timeout(timeout, env.handle.discover_entered.notified())
+        .await
+        .expect("run() did not enter discover_fut select! within timeout");
+}
+
+pub(super) async fn wait_budget_exhausted_reactor(env: &MockRunEnv, timeout: Duration) {
+    env.start_probes
+        .wait_budget_exhausted_reactor(timeout)
+        .await;
 }

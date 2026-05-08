@@ -93,8 +93,8 @@ describe("zero chat thread page display - attachment image preview", () => {
   });
 });
 
-describe("zero chat thread page display - attachment audio preview", () => {
-  it("renders audio attachment preview with controls", async () => {
+describe("zero chat thread page display - attachment audio chip", () => {
+  it("renders audio attachment as a compact download chip", async () => {
     mockChatLifecycle({
       chatMessages: [
         {
@@ -116,11 +116,13 @@ describe("zero chat thread page display - attachment audio preview", () => {
 
     detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
-    const audio = await waitFor(() => {
-      return screen.getByLabelText("Audio preview for clip.mp3");
+    const download = await waitFor(() => {
+      return screen.getByLabelText("Download clip.mp3");
     });
-    expect(audio).toHaveAttribute("src", "https://example.com/clip.mp3");
-    expect(audio).toHaveAttribute("controls");
+    expect(download).toHaveAttribute("href", "https://example.com/clip.mp3");
+    expect(
+      within(download).getByTestId("attachment-chip-file-icon"),
+    ).toBeInTheDocument();
   });
 });
 
@@ -763,7 +765,7 @@ describe("zero chat thread page display - body link document preview", () => {
     });
   });
 
-  it("renders structured non-inline attached files as thumbnail preview blocks", async () => {
+  it("renders structured non-inline attached files as compact download chips", async () => {
     const fileUrl =
       "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/budget.xlsx";
     mockChatLifecycle({
@@ -789,16 +791,15 @@ describe("zero chat thread page display - body link document preview", () => {
     detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
-      const preview = screen.getByTestId("attachment-preview-file");
-      expect(preview).toBeInTheDocument();
+      const preview = screen.getByLabelText("Download budget.xlsx");
       expect(
-        within(preview).getByTestId("attachment-preview-file-icon"),
+        within(preview).queryByTestId("attachment-preview-file-icon"),
+      ).not.toBeInTheDocument();
+      expect(
+        within(preview).getByTestId("attachment-chip-file-icon"),
       ).toBeInTheDocument();
       expect(within(preview).getByText("XLSX")).toBeInTheDocument();
-      expect(screen.getByLabelText("Download budget.xlsx")).toHaveAttribute(
-        "href",
-        `${fileUrl}?download=1`,
-      );
+      expect(preview).toHaveAttribute("href", `${fileUrl}?download=1`);
     });
   });
 
@@ -856,10 +857,9 @@ describe("zero chat thread page display - body link document preview", () => {
   });
 });
 
-// CHAT-D-065: Video attachments render an inline <video controls> player.
-// Covers isVideoFilename + video branch added to PagedUserMessage in #9662.
-describe("zero chat thread page display - attachment video preview", () => {
-  it("renders a video element with controls for mp4 attachments", async () => {
+// CHAT-D-065: Video attachments render as compact download chips.
+describe("zero chat thread page display - attachment video chip", () => {
+  it("renders a compact download chip for mp4 attachments", async () => {
     const videoUrl = "https://example.com/clip.mp4";
     mockChatLifecycle({
       chatMessages: [
@@ -873,21 +873,19 @@ describe("zero chat thread page display - attachment video preview", () => {
 
     detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
-    const video = await waitFor(() => {
-      const el = document.querySelector<HTMLVideoElement>(
-        `video[src="${videoUrl}"]`,
-      );
-      expect(el).toBeInTheDocument();
-      return el;
+    const download = await waitFor(() => {
+      return screen.getByLabelText("Download clip.mp4");
     });
 
-    expect(video?.hasAttribute("controls")).toBeTruthy();
-    // Must not fall through to the image or download branches.
+    expect(download).toHaveAttribute("href", videoUrl);
+    expect(
+      within(download).getByTestId("attachment-chip-file-icon"),
+    ).toBeInTheDocument();
     expect(
       document.querySelector(`img[src="${videoUrl}"]`),
     ).not.toBeInTheDocument();
     expect(
-      document.querySelector('a[download="clip.mp4"]'),
+      document.querySelector(`video[src="${videoUrl}"]`),
     ).not.toBeInTheDocument();
   });
 });

@@ -8,10 +8,21 @@
 
 use std::io;
 use std::ops::Deref;
+use std::sync::Once;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use vsock_host::VsockHost;
+
+static WRITE_FILE_HELPER: Once = Once::new();
+const WRITE_FILE_HELPER_BIN: &str = env!("CARGO_BIN_EXE_guest-write-file-test-helper");
+
+fn install_write_file_helper() {
+    WRITE_FILE_HELPER.call_once(|| {
+        vsock_guest::set_debug_guest_write_file_path_for_tests(WRITE_FILE_HELPER_BIN.into())
+            .expect("set guest-write-file test helper path");
+    });
+}
 
 /// Spawn a guest agent in a background OS thread that connects to the given socket path.
 ///
@@ -50,6 +61,8 @@ struct Harness {
 
 impl Harness {
     async fn new() -> Self {
+        install_write_file_helper();
+
         let dir = std::env::temp_dir()
             .join(format!("vsock-test-{}", std::process::id()))
             .join(format!("{:?}", std::thread::current().id()));
@@ -268,6 +281,23 @@ async fn test_write_file_special_characters() {
 }
 
 #[tokio::test]
+async fn test_write_file_path_with_shell_metacharacters() {
+    let h = Harness::new().await;
+
+    let file_path = h.dir.join("dash - quote ' dollar $ semi ;.txt");
+    let file_path_str = file_path.to_string_lossy().to_string();
+    let content = b"path should be passed as an argv value";
+
+    h.write_file(&file_path_str, content, false)
+        .await
+        .expect("write_file failed");
+
+    let written = std::fs::read(&file_path).expect("failed to read written file");
+    assert_eq!(written, content);
+    h.finish();
+}
+
+#[tokio::test]
 async fn test_write_file_creates_parent_dirs() {
     let h = Harness::new().await;
 
@@ -284,6 +314,32 @@ async fn test_write_file_creates_parent_dirs() {
     h.finish();
 }
 
+#[tokio::test]
+async fn test_write_file_sudo_create_does_not_create_parent_dirs() {
+    let h = Harness::new().await;
+
+    let file_path = h.dir.join("sudo/missing/parent.txt");
+    let file_path_str = file_path.to_string_lossy().to_string();
+
+    h.write_file(&file_path_str, b"content", true)
+        .await
+        .expect_err("sudo write_file should fail when parent is missing");
+
+    assert!(!file_path.exists());
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_write_file_unwritable_path_fails() {
+    let h = Harness::new().await;
+
+    let path = format!("/proc/vm0-write-file-denied-{}", std::process::id());
+    h.write_file(&path, b"content", false)
+        .await
+        .expect_err("write_file should fail under /proc");
+
+    h.finish();
+}
 // ── spawn_watch ──────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -828,9 +884,10 @@ async fn test_write_file_large() {
 async fn test_write_file_chunked() {
     let h = Harness::new().await;
 
-    let file_path = h.dir.join("chunked.bin");
+    let file_path = h.dir.join("chunked'quote.bin");
     let file_path_str = file_path.to_string_lossy().to_string();
-    // 16 MB content — exceeds the 15 MB chunk limit, triggers 2-chunk path + atomic rename
+    // 16 MB content exceeds the 15 MB chunk limit, triggering the staging +
+    // shell rename path. The quote in the file name covers shell escaping.
     let content = vec![0xABu8; 16 * 1024 * 1024];
 
     h.write_file(&file_path_str, &content, false)
@@ -842,10 +899,30 @@ async fn test_write_file_chunked() {
     assert_eq!(written, content);
 
     // Temp file should not remain
-    assert!(
-        !std::path::Path::new(&format!("{file_path_str}.vm0tmp")).exists(),
-        "temp file was not cleaned up"
-    );
+    let temp_prefix = format!("{file_path_str}.vm0tmp-");
+    let temp_remains = std::fs::read_dir(file_path.parent().unwrap())
+        .expect("failed to read temp dir")
+        .flatten()
+        .any(|entry| entry.path().to_string_lossy().starts_with(&temp_prefix));
+    assert!(!temp_remains, "temp file was not cleaned up");
+    h.finish();
+}
+
+#[tokio::test]
+#[ignore = "local performance comparison only; no stable timing assertion"]
+async fn bench_write_file_many_small_files() {
+    let h = Harness::new().await;
+
+    let start = std::time::Instant::now();
+    for i in 0..100 {
+        let file_path = h.dir.join(format!("bench/{i}.txt"));
+        let file_path_str = file_path.to_string_lossy().to_string();
+        h.write_file(&file_path_str, b"small content", false)
+            .await
+            .expect("write_file failed");
+    }
+    eprintln!("100 small write_file calls took {:?}", start.elapsed());
+
     h.finish();
 }
 

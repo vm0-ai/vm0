@@ -2,6 +2,7 @@ import chalk from "chalk";
 import * as fs from "node:fs";
 import { config as dotenvConfig } from "dotenv";
 import { getEvents } from "../../lib/api";
+import type { GetEventsResponse } from "../../lib/api/core/types";
 import { parseEvent } from "../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
@@ -300,11 +301,178 @@ export interface PollResult {
   checkpointId?: string;
 }
 
+type RunState = GetEventsResponse["run"];
+type TerminalRunStatus = "completed" | "failed" | "timeout" | "cancelled";
+type TerminalRunState = RunState & { status: TerminalRunStatus };
+interface TerminalDrainState {
+  runState?: TerminalRunState;
+  seenAt: number;
+  lastProgressAt: number;
+}
+
+const TERMINAL_RUN_STATUSES: readonly TerminalRunStatus[] = [
+  "completed",
+  "failed",
+  "timeout",
+  "cancelled",
+];
+const POLL_INTERVAL_MS = 1000;
+const TERMINAL_DRAIN_POLL_INTERVAL_MS = 500;
+const TERMINAL_DRAIN_IDLE_MS = 1000;
+const TERMINAL_DRAIN_MAX_MS = 3000;
+
 /**
  * Options for polling/streaming events
  */
 export interface EventRenderingOptions {
   verbose?: boolean;
+}
+
+function isTerminalRunState(run: RunState): run is TerminalRunState {
+  return TERMINAL_RUN_STATUSES.includes(run.status as TerminalRunStatus);
+}
+
+function shouldDrainNextEventPage(
+  response: GetEventsResponse,
+  madeSequenceProgress: boolean,
+): boolean {
+  return response.hasMore && response.events.length > 0 && madeSequenceProgress;
+}
+
+function isBlockedBySequenceGap(
+  response: GetEventsResponse,
+  madeSequenceProgress: boolean,
+): boolean {
+  return response.hasMore && !madeSequenceProgress;
+}
+
+function hasTerminalWatermark(run: TerminalRunState): boolean {
+  return run.lastEventSequence !== undefined;
+}
+
+function hasReachedTerminalWatermark(
+  run: TerminalRunState,
+  nextSequence: number,
+): boolean {
+  return (
+    run.lastEventSequence !== undefined && nextSequence >= run.lastEventSequence
+  );
+}
+
+function shouldCompleteTerminalDrain(
+  terminalSeenAt: number,
+  lastTerminalProgressAt: number,
+  blockedByGap: boolean,
+): boolean {
+  const now = Date.now();
+  const terminalElapsedMs = now - terminalSeenAt;
+  const terminalIdleMs = now - lastTerminalProgressAt;
+  return (
+    terminalElapsedMs >= TERMINAL_DRAIN_MAX_MS ||
+    (!blockedByGap && terminalIdleMs >= TERMINAL_DRAIN_IDLE_MS)
+  );
+}
+
+function updateTerminalDrainState(
+  state: TerminalDrainState,
+  run: RunState,
+  madeSequenceProgress: boolean,
+  now: number,
+): void {
+  if (isTerminalRunState(run)) {
+    if (!state.runState) {
+      state.seenAt = now;
+      state.lastProgressAt = now;
+    } else if (madeSequenceProgress) {
+      state.lastProgressAt = now;
+    }
+    state.runState = run;
+    return;
+  }
+
+  if (state.runState && madeSequenceProgress) {
+    state.lastProgressAt = now;
+  }
+}
+
+function isBlockedByTerminalWatermark(
+  run: TerminalRunState,
+  nextSequence: number,
+): boolean {
+  return (
+    hasTerminalWatermark(run) && !hasReachedTerminalWatermark(run, nextSequence)
+  );
+}
+
+function shouldReturnTerminalRunResult(
+  state: TerminalDrainState,
+  response: GetEventsResponse,
+  nextSequence: number,
+  madeSequenceProgress: boolean,
+  seenResultEvent: boolean,
+): boolean {
+  const run = state.runState;
+  if (!run) {
+    return false;
+  }
+
+  if (!hasTerminalWatermark(run) && run.status !== "completed") {
+    if (
+      run.status === "timeout" &&
+      shouldDrainNextEventPage(response, madeSequenceProgress)
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  if (!hasTerminalWatermark(run) && seenResultEvent) {
+    return true;
+  }
+
+  return shouldCompleteTerminalDrain(
+    state.seenAt,
+    state.lastProgressAt,
+    isBlockedBySequenceGap(response, madeSequenceProgress) ||
+      isBlockedByTerminalWatermark(run, nextSequence),
+  );
+}
+
+function renderTerminalRunResult(
+  runId: string,
+  run: TerminalRunState,
+): PollResult {
+  if (run.status === "completed") {
+    EventRenderer.renderRunCompleted(run.result);
+    return {
+      succeeded: true,
+      runId,
+      sessionId: run.result?.agentSessionId,
+      checkpointId: run.result?.checkpointId,
+    };
+  }
+
+  if (run.status === "failed") {
+    EventRenderer.renderRunFailed(run.error, runId);
+    return { succeeded: false, runId };
+  }
+
+  if (run.status === "timeout") {
+    console.error(chalk.red("\n✗ Run timed out"));
+    console.error(
+      chalk.dim(`  (use "vm0 logs ${runId} --system" to view system logs)`),
+    );
+    return { succeeded: false, runId };
+  }
+
+  console.error(chalk.yellow("\n✗ Run cancelled"));
+  return { succeeded: false, runId };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    return setTimeout(resolve, ms);
+  });
 }
 
 /**
@@ -318,67 +486,82 @@ export async function pollEvents(
   const renderer = new EventRenderer({ verbose: options?.verbose });
 
   let nextSequence = -1;
-  let complete = false;
-  let result: PollResult = { succeeded: true, runId };
-  const pollIntervalMs = 1000;
+  const terminalDrain: TerminalDrainState = {
+    seenAt: 0,
+    lastProgressAt: 0,
+  };
+  let seenResultEvent = false;
 
-  while (!complete) {
+  for (;;) {
+    const previousSequence = nextSequence;
     const response = await getEvents(runId, {
       since: nextSequence,
     });
+    const now = Date.now();
+    const madeSequenceProgress = response.nextSequence > previousSequence;
+    let pageHasResultEvent = false;
 
     // Render agent events (use appropriate renderer based on framework from API)
-    for (const event of response.events) {
-      const eventData = event.eventData as Record<string, unknown>;
+    if (madeSequenceProgress) {
+      for (const event of response.events) {
+        const eventData = event.eventData as Record<string, unknown>;
 
-      const parsed = parseEvent(eventData, response.framework);
-      if (parsed) {
-        renderer.render(parsed);
+        const parsed = parseEvent(eventData, response.framework);
+        if (parsed) {
+          renderer.render(parsed);
+          if (parsed.type === "result") {
+            pageHasResultEvent = true;
+          }
+        }
       }
     }
 
-    nextSequence = response.nextSequence;
+    if (madeSequenceProgress) {
+      if (pageHasResultEvent) {
+        seenResultEvent = true;
+      }
 
-    // Check run status for completion (replaces vm0_result/vm0_error events)
-    const runStatus = response.run.status;
-
-    if (runStatus === "completed") {
-      complete = true;
-      // Render completion info
-      EventRenderer.renderRunCompleted(response.run.result);
-      result = {
-        succeeded: true,
-        runId,
-        sessionId: response.run.result?.agentSessionId,
-        checkpointId: response.run.result?.checkpointId,
-      };
-    } else if (runStatus === "failed") {
-      complete = true;
-      // Render error info
-      EventRenderer.renderRunFailed(response.run.error, runId);
-      result = { succeeded: false, runId };
-    } else if (runStatus === "timeout") {
-      complete = true;
-      console.error(chalk.red("\n✗ Run timed out"));
-      console.error(
-        chalk.dim(`  (use "vm0 logs ${runId} --system" to view system logs)`),
-      );
-      result = { succeeded: false, runId };
-    } else if (runStatus === "cancelled") {
-      complete = true;
-      console.error(chalk.yellow("\n✗ Run cancelled"));
-      result = { succeeded: false, runId };
+      nextSequence = response.nextSequence;
     }
 
-    // If not complete, wait before next poll
-    if (!complete) {
-      await new Promise((resolve) => {
-        return setTimeout(resolve, pollIntervalMs);
-      });
+    updateTerminalDrainState(
+      terminalDrain,
+      response.run,
+      madeSequenceProgress,
+      now,
+    );
+
+    if (
+      terminalDrain.runState &&
+      hasReachedTerminalWatermark(terminalDrain.runState, nextSequence)
+    ) {
+      return renderTerminalRunResult(runId, terminalDrain.runState);
     }
+
+    const terminalRunState = terminalDrain.runState;
+    if (
+      terminalRunState &&
+      shouldReturnTerminalRunResult(
+        terminalDrain,
+        response,
+        nextSequence,
+        madeSequenceProgress,
+        seenResultEvent,
+      )
+    ) {
+      return renderTerminalRunResult(runId, terminalRunState);
+    }
+
+    if (shouldDrainNextEventPage(response, madeSequenceProgress)) {
+      continue;
+    }
+
+    await sleep(
+      terminalDrain.runState
+        ? TERMINAL_DRAIN_POLL_INTERVAL_MS
+        : POLL_INTERVAL_MS,
+    );
   }
-
-  return result;
 }
 
 /**

@@ -10,6 +10,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { onboardingStatusContract } from "@vm0/api-contracts/contracts/onboarding";
+import { pathname$ } from "../../../signals/route.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -72,6 +73,26 @@ describe("zero onboarding - step 1: workspace name", () => {
       expect(
         screen.getByTestId("onboarding-step-select-connectors"),
       ).toBeInTheDocument();
+    });
+  });
+});
+
+describe("onboarding guard entry routes", () => {
+  it.each([
+    "/telegram/connect?bot=bot-123",
+    "/settings/slack?w=ws1&u=user1",
+    "/connectors/gmail/connect",
+    "/connectors/gmail/authorize?agentId=00000000-0000-0000-0000-000000000001",
+    "/activities/inspect",
+    "/schedules/00000000-0000-0000-0000-000000000001",
+    "/redeem/ZERO100",
+  ])("redirects %s to onboarding when onboarding is required", async (path) => {
+    mockOnboardingNeeded();
+
+    detachedSetupPage({ context, path, withoutRender: true });
+
+    await waitFor(() => {
+      expect(context.store.get(pathname$)).toBe("/onboarding");
     });
   });
 });

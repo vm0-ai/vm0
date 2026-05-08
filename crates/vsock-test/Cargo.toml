@@ -1,10 +1,13 @@
 [package]
 name = "vsock-test"
-version = "0.9.13"
+version = "0.9.18"
 edition.workspace = true
 
+[dependencies]
+guest-write-file.workspace = true
+
 [dev-dependencies]
-vsock-guest.workspace = true
+vsock-guest = { workspace = true, features = ["test-support"] }
 vsock-host.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
 

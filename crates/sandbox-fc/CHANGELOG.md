@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.27.22](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.21...sandbox-fc-v0.27.22) (2026-05-08)
+
+
+### Documentation
+
+* **sandbox-fc:** document config types ([#12172](https://github.com/vm0-ai/vm0/issues/12172)) ([a63455e](https://github.com/vm0-ai/vm0/commit/a63455e6901742692e7b9ff3995e0094e71979f3))
+
+## [0.27.21](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.20...sandbox-fc-v0.27.21) (2026-05-08)
+
+## [0.27.20](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.19...sandbox-fc-v0.27.20) (2026-05-07)
+
+
+### Refactoring
+
+* **runner:** split snapshot publish boundary ([#12044](https://github.com/vm0-ai/vm0/issues/12044)) ([b01e205](https://github.com/vm0-ai/vm0/commit/b01e205e530cb9a6ed5353294077d9a80b70da62))
+
+## [0.27.19](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.18...sandbox-fc-v0.27.19) (2026-05-07)
+
+
+### Documentation
+
+* **sandbox-fc:** document guest network invariant ([#12060](https://github.com/vm0-ai/vm0/issues/12060)) ([fc43716](https://github.com/vm0-ai/vm0/commit/fc437163ac6caed3a1d4edbe08159fb4868fa782))
+
 ## [0.27.18](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.17...sandbox-fc-v0.27.18) (2026-05-07)
 
 

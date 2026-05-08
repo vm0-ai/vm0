@@ -1,5 +1,97 @@
 # Changelog
 
+## [1.20.0](https://github.com/vm0-ai/vm0/compare/api-v1.19.4...api-v1.20.0) (2026-05-08)
+
+
+### Features
+
+* **voice-chat:** backend transcript ingestion and talker tool dispatch from relay ([#12148](https://github.com/vm0-ai/vm0/issues/12148)) ([978db30](https://github.com/vm0-ai/vm0/commit/978db3048a0a7bc48b6de3785443d37399f17f83))
+* **voice-chat:** implement vm0 realtime relay runtime and openai client ([#12150](https://github.com/vm0-ai/vm0/issues/12150)) ([4194a73](https://github.com/vm0-ai/vm0/commit/4194a73ba3175087676c380ee5e1908f3b2c9c1f))
+
+
+### Bug Fixes
+
+* **api:** strip Clerk user_ prefix from attachment file URLs ([#12163](https://github.com/vm0-ai/vm0/issues/12163)) ([ab23a04](https://github.com/vm0-ai/vm0/commit/ab23a041dd44395496603fcf5e74bf22857c6b51))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.2.0
+    * @vm0/core bumped to 8.263.0
+    * @vm0/db bumped to 1.2.0
+
+## [1.19.4](https://github.com/vm0-ai/vm0/compare/api-v1.19.3...api-v1.19.4) (2026-05-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.1.0
+    * @vm0/connectors bumped to 1.1.0
+    * @vm0/core bumped to 8.262.0
+    * @vm0/db bumped to 1.1.0
+
+## [1.19.3](https://github.com/vm0-ai/vm0/compare/api-v1.19.2...api-v1.19.3) (2026-05-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.0.2
+    * @vm0/core bumped to 8.261.2
+    * @vm0/db bumped to 1.0.2
+
+## [1.19.2](https://github.com/vm0-ai/vm0/compare/api-v1.19.1...api-v1.19.2) (2026-05-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.0.1
+    * @vm0/core bumped to 8.261.1
+    * @vm0/db bumped to 1.0.1
+
+## [1.19.1](https://github.com/vm0-ai/vm0/compare/api-v1.19.0...api-v1.19.1) (2026-05-07)
+
+
+### Bug Fixes
+
+* **api:** track shared packages in release graph ([#12096](https://github.com/vm0-ai/vm0/issues/12096)) ([20c3751](https://github.com/vm0-ai/vm0/commit/20c375130a5368a95d270722e1d99d5ab1388893))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.0.0
+    * @vm0/connectors bumped to 1.0.0
+    * @vm0/core bumped to 8.261.0
+    * @vm0/db bumped to 1.0.0
+
+## [1.19.0](https://github.com/vm0-ai/vm0/compare/api-v1.18.0...api-v1.19.0) (2026-05-07)
+
+
+### Features
+
+* **chat:** render queued message as a user bubble with id-based dedup ([#12059](https://github.com/vm0-ai/vm0/issues/12059)) ([1e12849](https://github.com/vm0-ai/vm0/commit/1e12849625116a3bb0839a3a5788b4acac62b699))
+
+
+### Bug Fixes
+
+* fix two api shadow divergence sources — slack environment and connector timestamps ([#12055](https://github.com/vm0-ai/vm0/issues/12055)) ([17eaf0b](https://github.com/vm0-ai/vm0/commit/17eaf0bfcc4ace52a92034d17f3322cff554b360))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.260.0
+
 ## [1.18.0](https://github.com/vm0-ai/vm0/compare/api-v1.17.1...api-v1.18.0) (2026-05-06)
 
 

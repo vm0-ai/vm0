@@ -27,7 +27,16 @@ const PROTOCOL_VERSION: &str = "5";
 const AGENT_STRING: &str = concat!("ably-subscriber-rs/", env!("CARGO_PKG_VERSION"));
 
 fn is_localhost(host: &str) -> bool {
-    host.starts_with("127.0.0.1") || host.starts_with("localhost")
+    let Ok(url) = url::Url::parse(&format!("http://{host}/")) else {
+        return false;
+    };
+
+    match url.host() {
+        Some(url::Host::Domain(host)) if host.eq_ignore_ascii_case("localhost") => true,
+        Some(url::Host::Ipv4(addr)) if addr == std::net::Ipv4Addr::LOCALHOST => true,
+        Some(url::Host::Ipv6(addr)) if addr == std::net::Ipv6Addr::LOCALHOST => true,
+        _ => false,
+    }
 }
 
 fn error_or_unknown(error: Option<ErrorInfo>) -> ErrorInfo {
@@ -1906,12 +1915,63 @@ mod tests {
         assert_eq!(result, data);
     }
 
+    fn assert_websocket_endpoint(
+        url: &str,
+        scheme: &str,
+        expected_host: url::Host<&str>,
+        expected_port: Option<u16>,
+    ) {
+        let parsed = url::Url::parse(url).unwrap();
+        assert_eq!(parsed.scheme(), scheme);
+        assert_eq!(parsed.host(), Some(expected_host));
+        assert_eq!(parsed.port(), expected_port);
+    }
+
     #[test]
     fn build_ws_url_localhost_uses_ws() {
         let url = build_ws_url("127.0.0.1:9000", "tok", None).unwrap();
-        assert!(url.starts_with("ws://127.0.0.1:9000/"));
+        assert_websocket_endpoint(
+            &url,
+            "ws",
+            url::Host::Ipv4(std::net::Ipv4Addr::LOCALHOST),
+            Some(9000),
+        );
 
         let url = build_ws_url("localhost:9000", "tok", None).unwrap();
-        assert!(url.starts_with("ws://localhost:9000/"));
+        assert_websocket_endpoint(&url, "ws", url::Host::Domain("localhost"), Some(9000));
+
+        let url = build_ws_url("LOCALHOST:9000", "tok", None).unwrap();
+        assert_websocket_endpoint(&url, "ws", url::Host::Domain("localhost"), Some(9000));
+
+        let url = build_ws_url("[::1]:9000", "tok", None).unwrap();
+        assert_websocket_endpoint(
+            &url,
+            "ws",
+            url::Host::Ipv6(std::net::Ipv6Addr::LOCALHOST),
+            Some(9000),
+        );
+    }
+
+    #[test]
+    fn build_ws_url_localhost_prefixes_use_wss() {
+        let cases = [
+            (
+                "localhost.evil.com",
+                url::Host::Domain("localhost.evil.com"),
+            ),
+            (
+                "127.0.0.1.attacker.com",
+                url::Host::Domain("127.0.0.1.attacker.com"),
+            ),
+            (
+                "127.0.0.10",
+                url::Host::Ipv4(std::net::Ipv4Addr::new(127, 0, 0, 10)),
+            ),
+        ];
+
+        for (host, expected_host) in cases {
+            let url = build_ws_url(host, "tok", None).unwrap();
+            assert_websocket_endpoint(&url, "wss", expected_host, None);
+        }
     }
 }

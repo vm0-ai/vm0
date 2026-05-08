@@ -1,5 +1,126 @@
 # Changelog
 
+## [0.336.1](https://github.com/vm0-ai/vm0/compare/app-v0.336.0...app-v0.336.1) (2026-05-08)
+
+
+### Bug Fixes
+
+* clear oauth connector loading on popup close ([#12176](https://github.com/vm0-ai/vm0/issues/12176)) ([e6d59fd](https://github.com/vm0-ai/vm0/commit/e6d59fd3359ee619ad1ab343971a573386220eb4))
+* **platform:** suppress Ably Connection closed Sentry noise and guard subscribe ([#12166](https://github.com/vm0-ai/vm0/issues/12166)) ([223d8d6](https://github.com/vm0-ai/vm0/commit/223d8d6dd5996060c5fd72e310cdfa281d8ed658))
+* render codex events on activity pages ([#12181](https://github.com/vm0-ai/vm0/issues/12181)) ([83bf58f](https://github.com/vm0-ai/vm0/commit/83bf58f44dc1ca482c856602d35b697273a443fc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.2.0
+    * @vm0/core bumped to 8.263.0
+
+## [0.336.0](https://github.com/vm0-ai/vm0/compare/app-v0.335.0...app-v0.336.0) (2026-05-08)
+
+
+### Features
+
+* **voice-chat:** replace openai token mint with vm0 relay bootstrap admission ([#12149](https://github.com/vm0-ai/vm0/issues/12149)) ([9d29183](https://github.com/vm0-ai/vm0/commit/9d29183e0fd556ab3ffb3dd74f53193863eab415)), closes [#12128](https://github.com/vm0-ai/vm0/issues/12128)
+
+
+### Bug Fixes
+
+* **platform:** polyfill promise withresolvers ([#12158](https://github.com/vm0-ai/vm0/issues/12158)) ([e0792d2](https://github.com/vm0-ai/vm0/commit/e0792d2d0f3498d479a039ef230227454e5efeda))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.1.0
+    * @vm0/connectors bumped to 1.1.0
+    * @vm0/core bumped to 8.262.0
+
+## [0.335.0](https://github.com/vm0-ai/vm0/compare/app-v0.334.1...app-v0.335.0) (2026-05-08)
+
+
+### Features
+
+* **voice-chat:** upgrade Talker model from gpt-realtime-mini to gpt-realtime-2 ([#12106](https://github.com/vm0-ai/vm0/issues/12106)) ([aec0f27](https://github.com/vm0-ai/vm0/commit/aec0f275dd01e43aa2de53f7e5f8f5c97b6b673b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.0.2
+    * @vm0/core bumped to 8.261.2
+
+## [0.334.1](https://github.com/vm0-ai/vm0/compare/app-v0.334.0...app-v0.334.1) (2026-05-07)
+
+
+### Bug Fixes
+
+* close mobile sidebar overlay on account actions ([#12098](https://github.com/vm0-ai/vm0/issues/12098)) ([53d7393](https://github.com/vm0-ai/vm0/commit/53d7393ace54147888e7382e29a96dfac26923e2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.0.1
+    * @vm0/core bumped to 8.261.1
+
+## [0.334.0](https://github.com/vm0-ai/vm0/compare/app-v0.333.0...app-v0.334.0) (2026-05-07)
+
+
+### Features
+
+* add Google Ads connector ([#12084](https://github.com/vm0-ai/vm0/issues/12084)) ([6d77828](https://github.com/vm0-ai/vm0/commit/6d77828457aff1e8330c66aacbe843b4eb49b6bf))
+
+
+### Bug Fixes
+
+* keep personal provider model defaults compatible ([#12091](https://github.com/vm0-ai/vm0/issues/12091)) ([357cae8](https://github.com/vm0-ai/vm0/commit/357cae8bc0c7d0907e2a52d0e22d7e843be5b336))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.0.0
+    * @vm0/connectors bumped to 1.0.0
+    * @vm0/core bumped to 8.261.0
+
+## [0.333.0](https://github.com/vm0-ai/vm0/compare/app-v0.332.0...app-v0.333.0) (2026-05-07)
+
+
+### Features
+
+* rename luma to luma-ai and add luma events connector ([#12076](https://github.com/vm0-ai/vm0/issues/12076)) ([67d5417](https://github.com/vm0-ai/vm0/commit/67d54173e02fb1528ea2533c652e86d2948b78dd))
+
+
+### Bug Fixes
+
+* guard connect routes during onboarding ([#12080](https://github.com/vm0-ai/vm0/issues/12080)) ([bfcdad8](https://github.com/vm0-ai/vm0/commit/bfcdad806229f9abf3748440a63b268096cc7560))
+
+## [0.332.0](https://github.com/vm0-ai/vm0/compare/app-v0.331.0...app-v0.332.0) (2026-05-07)
+
+
+### Features
+
+* add meta-ads connector test and PNG icon ([#12057](https://github.com/vm0-ai/vm0/issues/12057)) ([18c2892](https://github.com/vm0-ai/vm0/commit/18c28928a5ef42212fd4678e5c4e4d3058fbea21))
+* **chat:** render queued message as a user bubble with id-based dedup ([#12059](https://github.com/vm0-ai/vm0/issues/12059)) ([1e12849](https://github.com/vm0-ai/vm0/commit/1e12849625116a3bb0839a3a5788b4acac62b699))
+
+
+### Bug Fixes
+
+* make mobile breadcrumb title match desktop on works page ([#12066](https://github.com/vm0-ai/vm0/issues/12066)) ([8771e67](https://github.com/vm0-ai/vm0/commit/8771e67b3645232f1f51240e6d67ebea9ee169a0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.260.0
+
 ## [0.331.0](https://github.com/vm0-ai/vm0/compare/app-v0.330.0...app-v0.331.0) (2026-05-07)
 
 

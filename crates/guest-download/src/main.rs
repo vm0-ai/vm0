@@ -6,24 +6,19 @@ const LOG_TAG: &str = "sandbox:download";
 fn main() {
     guest_common::log::enable_system_log_file();
 
-    let args: Vec<String> = std::env::args().collect();
-    let manifest_path = match args.get(1) {
-        Some(p) => p,
-        None => {
-            log_error!(LOG_TAG, "Usage: guest-download <manifest_path>");
-            std::process::exit(1);
-        }
+    let Some(manifest_path) = std::env::args().nth(1) else {
+        log_error!(LOG_TAG, "Usage: guest-download <manifest_path>");
+        std::process::exit(1);
     };
 
     let start = Instant::now();
-    let success = guest_download::run(manifest_path);
+    let success = guest_download::run(&manifest_path);
     let elapsed = start.elapsed();
 
+    record_sandbox_op("download_total", elapsed, success, None);
     if success {
-        record_sandbox_op("download_total", elapsed, true, None);
         log_info!(LOG_TAG, "Download completed in {}ms", elapsed.as_millis());
     } else {
-        record_sandbox_op("download_total", elapsed, false, None);
         log_error!(LOG_TAG, "Download failed");
         std::process::exit(1);
     }

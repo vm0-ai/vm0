@@ -8,6 +8,8 @@ export interface ZeroRunMetadataValues {
   triggerAgentId?: string;
   chatThreadId?: string;
   modelProvider?: string;
+  modelProviderId?: string;
+  modelProviderCredentialScope?: string;
   selectedModel?: string;
 }
 
@@ -23,6 +25,8 @@ export async function persistZeroRunMetadata(
     triggerAgentId: metadata.triggerAgentId ?? null,
     chatThreadId: metadata.chatThreadId ?? null,
     modelProvider: metadata.modelProvider ?? null,
+    modelProviderId: metadata.modelProviderId ?? null,
+    modelProviderCredentialScope: metadata.modelProviderCredentialScope ?? null,
     selectedModel: metadata.selectedModel ?? null,
   });
 }

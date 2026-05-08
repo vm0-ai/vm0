@@ -166,3 +166,53 @@ export const voiceChatTasks = pgTable(
     ];
   },
 );
+
+/**
+ * Server-side OpenAI Realtime relay attempts for a voice-chat session.
+ *
+ * One row per relay connection. Reconnects (browser drops, network blips,
+ * deliberate end-and-resume) create new rows so the `usage_event` audit
+ * trail can be correlated by relay session, not by voice-chat session.
+ *
+ * Status flow: starting → active → ended | error.
+ */
+export const voiceChatRealtimeSessions = pgTable(
+  "voice_chat_realtime_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    voiceChatSessionId: uuid("voice_chat_session_id")
+      .references(
+        () => {
+          return voiceChatSessions.id;
+        },
+        { onDelete: "cascade" },
+      )
+      .notNull(),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    provider: varchar("provider", { length: 50 }).notNull(),
+    model: varchar("model", { length: 100 }).notNull(),
+    transcriptionModel: varchar("transcription_model", { length: 100 }),
+    openaiSessionId: text("openai_session_id"),
+    openaiCallId: text("openai_call_id"),
+    // Valid values: "starting" | "active" | "ended" | "error"
+    status: varchar("status", { length: 20 }).notNull().default("starting"),
+    startedAt: timestamp("started_at").defaultNow().notNull(),
+    endedAt: timestamp("ended_at"),
+    lastUsageAt: timestamp("last_usage_at"),
+    error: text("error"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+  },
+  (table) => {
+    return [
+      index("idx_vcrs_voice_chat_session").on(
+        table.voiceChatSessionId,
+        table.startedAt.desc(),
+      ),
+      index("idx_vcrs_org_started").on(table.orgId, table.startedAt.desc()),
+    ];
+  },
+);

@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.100.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.12...runner-rs-v0.100.13) (2026-05-08)
+
+
+### Documentation
+
+* **runner:** document http client constructor ([#12171](https://github.com/vm0-ai/vm0/issues/12171)) ([a31e828](https://github.com/vm0-ai/vm0/commit/a31e8282936e2378397deb81326b78c777424ee3))
+
+
+### Performance Improvements
+
+* add guest write-file helper ([#12136](https://github.com/vm0-ai/vm0/issues/12136)) ([8795398](https://github.com/vm0-ai/vm0/commit/8795398ddd54bb6f7e4cade4c1d3a67a11bebd1b))
+
+## [0.100.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.11...runner-rs-v0.100.12) (2026-05-08)
+
+## [0.100.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.10...runner-rs-v0.100.11) (2026-05-08)
+
+
+### Bug Fixes
+
+* restore codex sessions as jsonl ([#12137](https://github.com/vm0-ai/vm0/issues/12137)) ([ab3dc5b](https://github.com/vm0-ai/vm0/commit/ab3dc5b5f35105709cc22d7caf9e571c59ec5a39))
+
+## [0.100.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.9...runner-rs-v0.100.10) (2026-05-08)
+
+
+### Bug Fixes
+
+* refresh personal codex oauth providers ([#12120](https://github.com/vm0-ai/vm0/issues/12120)) ([b4e727d](https://github.com/vm0-ai/vm0/commit/b4e727da0dc4a1fbb0df6d8ef3aececa9460b5a7))
+
+## [0.100.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.8...runner-rs-v0.100.9) (2026-05-07)
+
+
+### Refactoring
+
+* **runner:** clarify r2 template materialization ([#12104](https://github.com/vm0-ai/vm0/issues/12104)) ([6649d63](https://github.com/vm0-ai/vm0/commit/6649d63b2f58ab29ee7c150e1d055529e0888de5))
+* **runner:** shield snapshot publish cancellation ([#12101](https://github.com/vm0-ai/vm0/issues/12101)) ([ecc38a4](https://github.com/vm0-ai/vm0/commit/ecc38a414a24c72d654d049f6eb38906ce24b734))
+
+## [0.100.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.7...runner-rs-v0.100.8) (2026-05-07)
+
+
+### Refactoring
+
+* **runner:** split snapshot publish boundary ([#12044](https://github.com/vm0-ai/vm0/issues/12044)) ([b01e205](https://github.com/vm0-ai/vm0/commit/b01e205e530cb9a6ed5353294077d9a80b70da62))
+
+## [0.100.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.6...runner-rs-v0.100.7) (2026-05-07)
+
+## [0.100.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.5...runner-rs-v0.100.6) (2026-05-07)
+
+
+### Refactoring
+
+* **runner:** dedupe network log drain warnings ([#12065](https://github.com/vm0-ai/vm0/issues/12065)) ([902113f](https://github.com/vm0-ai/vm0/commit/902113f2af2265322c71d3e435818ffbfc0e0cd5))
+
 ## [0.100.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.4...runner-rs-v0.100.5) (2026-05-07)
 
 

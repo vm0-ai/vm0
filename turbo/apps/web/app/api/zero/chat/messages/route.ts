@@ -26,11 +26,13 @@ import {
   type WebChatIncompleteRound,
 } from "../../../../../src/lib/zero/integration-prompt";
 import { isApiError, providerDeleted } from "@vm0/api-services/errors";
+import { getModelProviderById } from "../../../../../src/lib/zero/model-provider/model-provider-service";
+import { resolvePreferredModelProviderPin } from "../../../../../src/lib/zero/model-provider/resolve-preferred-model-provider-pin";
 import {
-  getModelProviderById,
-  getUserAnyDefaultModelProvider,
-} from "../../../../../src/lib/zero/model-provider/model-provider-service";
-import { isPersonalTierEligible } from "../../../../../src/lib/zero/personal-tier-gate";
+  isModelFirstModelProviderEnabled,
+  resolveModelFirstRouteDescriptor,
+  type ModelFirstRouteDescriptor,
+} from "../../../../../src/lib/zero/model-policy/model-first-route-service";
 import {
   createChatThread,
   getChatThread,
@@ -116,6 +118,24 @@ interface ResolvedThread {
   isNewThread: boolean;
 }
 
+interface ThreadModelPin {
+  modelProviderId: string | null;
+  modelProviderType: string | null;
+  modelProviderCredentialScope: string | null;
+  selectedModel: string | null;
+}
+
+function pinFromModelFirstRoute(
+  route: ModelFirstRouteDescriptor,
+): ThreadModelPin {
+  return {
+    modelProviderId: route.modelProviderId,
+    modelProviderType: route.providerType,
+    modelProviderCredentialScope: route.credentialScope,
+    selectedModel: route.selectedModel,
+  };
+}
+
 /**
  * Persist the composer's per-run override onto the thread row and return the
  * effective override to use for this run (precedence: per-run > thread > agent).
@@ -133,33 +153,71 @@ async function resolveRunModelOverride(
   userId: string,
   threadId: string,
   agent: { modelProviderId: string | null; selectedModel: string | null },
+  modelFirstEnabled: boolean,
   modelSelection:
     | { modelProviderId: string; selectedModel: string }
     | null
     | undefined,
-): Promise<{ providerId: string | null; selectedModel: string | null }> {
+): Promise<ThreadModelPin> {
   if (modelSelection !== undefined && modelSelection !== null) {
+    if (modelFirstEnabled) {
+      const route = await resolveModelFirstRouteDescriptor({
+        orgId,
+        userId,
+        selectedModel: modelSelection.selectedModel,
+      });
+      await globalThis.services.db
+        .update(chatThreads)
+        .set({
+          modelProviderId: route.modelProviderId,
+          modelProviderType: route.providerType,
+          modelProviderCredentialScope: route.credentialScope,
+          selectedModel: route.selectedModel,
+          updatedAt: new Date(),
+        })
+        .where(eq(chatThreads.id, threadId));
+      return pinFromModelFirstRoute(route);
+    }
+
     await globalThis.services.db
       .update(chatThreads)
       .set({
         modelProviderId: modelSelection.modelProviderId,
+        modelProviderType: null,
+        modelProviderCredentialScope: null,
         selectedModel: modelSelection.selectedModel,
         updatedAt: new Date(),
       })
       .where(eq(chatThreads.id, threadId));
     return {
-      providerId: modelSelection.modelProviderId,
+      modelProviderId: modelSelection.modelProviderId,
+      modelProviderType: null,
+      modelProviderCredentialScope: null,
       selectedModel: modelSelection.selectedModel,
     };
   } else {
     const [thread] = await globalThis.services.db
       .select({
         modelProviderId: chatThreads.modelProviderId,
+        modelProviderType: chatThreads.modelProviderType,
+        modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
         selectedModel: chatThreads.selectedModel,
       })
       .from(chatThreads)
       .where(eq(chatThreads.id, threadId))
       .limit(1);
+    if (thread?.selectedModel && modelFirstEnabled) {
+      const route = await resolveModelFirstRouteDescriptor({
+        orgId,
+        userId,
+        selectedModel: thread.selectedModel,
+        providerType: thread.modelProviderType,
+        credentialScope: thread.modelProviderCredentialScope,
+        modelProviderId: thread.modelProviderId,
+      });
+      return pinFromModelFirstRoute(route);
+    }
+
     if (thread?.modelProviderId && thread.selectedModel) {
       const provider = await getModelProviderById(
         orgId,
@@ -170,13 +228,27 @@ async function resolveRunModelOverride(
         throw providerDeleted();
       }
       return {
-        providerId: thread.modelProviderId,
+        modelProviderId: thread.modelProviderId,
+        modelProviderType: null,
+        modelProviderCredentialScope: null,
         selectedModel: thread.selectedModel,
       };
     }
   }
+
+  if (modelFirstEnabled) {
+    const route = await resolveModelFirstRouteDescriptor({
+      orgId,
+      userId,
+      selectedModel: agent.selectedModel,
+    });
+    return pinFromModelFirstRoute(route);
+  }
+
   return {
-    providerId: agent.modelProviderId,
+    modelProviderId: agent.modelProviderId,
+    modelProviderType: null,
+    modelProviderCredentialScope: null,
     selectedModel: agent.selectedModel,
   };
 }
@@ -189,24 +261,25 @@ async function resolveRunModelOverride(
 async function rejectIfThreadModelLocked(
   threadId: string,
   incoming: { modelProviderId: string; selectedModel: string } | null,
+  modelFirstEnabled: boolean,
 ): Promise<boolean> {
   const [existing] = await globalThis.services.db
     .select({
       modelProviderId: chatThreads.modelProviderId,
+      modelProviderType: chatThreads.modelProviderType,
       selectedModel: chatThreads.selectedModel,
     })
     .from(chatThreads)
     .where(eq(chatThreads.id, threadId))
     .limit(1);
-  if (
-    !existing ||
-    existing.modelProviderId === null ||
-    existing.selectedModel === null
-  ) {
+  if (!existing || existing.selectedModel === null) {
     return false;
   }
   if (incoming === null) {
     return true;
+  }
+  if (modelFirstEnabled) {
+    return existing.selectedModel !== incoming.selectedModel;
   }
   return (
     existing.modelProviderId !== incoming.modelProviderId ||
@@ -214,36 +287,6 @@ async function rejectIfThreadModelLocked(
   );
 }
 
-/**
- * Compute the eager-pin written into `chat_threads.modelProviderId` /
- * `selected_model` at NEW thread creation. Defaults to the agent's stored
- * pin; promotes to the caller's personal-tier default when (Epic #11868):
- *   1. the agent has `prefer_personal_provider=true`, AND
- *   2. the `personalModelProvider` feature switch is on for the caller, AND
- *   3. the user has a personal default provider in this workspace.
- *
- * `selectedModel` precedence: user's personal row > agent's > null —
- * mirrors the resolver's runtime fallback chain.
- *
- * Why a single `getUserAnyDefaultModelProvider` is sufficient here (vs the
- * resolver's two-step `getUserDefaultModelProvider(framework) ?? any-default`
- * chain): #11752 introduced the workspace single-default invariant
- * (`idx_model_providers_one_default_per_user`) — at most one
- * `isDefault=true` row per `(orgId, userId)`. The framework-scoped variant
- * therefore returns either that same row (when its framework matches) or
- * null (cross-framework), and the any-default fallback returns the row
- * unconditionally. The two-step chain is NOT redundant in the resolver
- * because of the framework-propagation handshake (Epic #11520 — provider's
- * framework wins, and the resolver returns `framework: getFrameworkForType(
- * providerType)` derived from the row it picked). At pin time we don't
- * propagate framework — we persist row id + model and let the resolver
- * re-derive framework when the run dispatches via `getModelProviderById`.
- * One read suffices; documenting the asymmetry so the optimization isn't
- * mistakenly mirrored back into the resolver.
- *
- * Existing-thread sends bypass this helper — see Decision F2 in plan.md
- * for the per-thread immutability rationale.
- */
 async function computeEagerPin(
   orgId: string,
   userId: string,
@@ -252,32 +295,99 @@ async function computeEagerPin(
     selectedModel: string | null;
     preferPersonalProvider: boolean;
   },
-): Promise<{
-  modelProviderId: string | null;
-  selectedModel: string | null;
-}> {
-  const personalEligible = await isPersonalTierEligible(
+  modelFirstEnabled: boolean,
+): Promise<ThreadModelPin> {
+  if (modelFirstEnabled) {
+    const route = await resolveModelFirstRouteDescriptor({
+      orgId,
+      userId,
+      selectedModel: agent.selectedModel,
+    });
+    return pinFromModelFirstRoute(route);
+  }
+
+  const pin = await resolvePreferredModelProviderPin({
     orgId,
     userId,
-    agent.preferPersonalProvider,
-  );
-  if (!personalEligible) {
-    return {
+    preferPersonalProvider: agent.preferPersonalProvider,
+    fallback: {
       modelProviderId: agent.modelProviderId,
       selectedModel: agent.selectedModel,
-    };
-  }
-  const userRow = await getUserAnyDefaultModelProvider(orgId, userId);
-  if (!userRow) {
-    return {
-      modelProviderId: agent.modelProviderId,
-      selectedModel: agent.selectedModel,
-    };
-  }
+    },
+  });
   return {
-    modelProviderId: userRow.id,
-    selectedModel: userRow.selectedModel ?? agent.selectedModel ?? null,
+    modelProviderId: pin.modelProviderId,
+    modelProviderType: null,
+    modelProviderCredentialScope: null,
+    selectedModel: pin.selectedModel,
   };
+}
+
+type IncomingModelSelection =
+  | { modelProviderId: string; selectedModel: string }
+  | null
+  | undefined;
+
+function modelSelectionBadRequest(message: string) {
+  return {
+    status: 400 as const,
+    body: {
+      error: {
+        message,
+        code: "BAD_REQUEST" as const,
+      },
+    },
+  };
+}
+
+async function validateLegacyModelSelectionOwnership(params: {
+  orgId: string;
+  modelSelection: IncomingModelSelection;
+  modelFirstEnabled: boolean;
+  emit: (op: string, ms: number) => void;
+}) {
+  if (!params.modelSelection || params.modelFirstEnabled) return undefined;
+
+  const modelSelection = params.modelSelection;
+  const validateT = await timed(async () => {
+    return globalThis.services.db
+      .select({ id: modelProviders.id })
+      .from(modelProviders)
+      .where(
+        and(
+          eq(modelProviders.id, modelSelection.modelProviderId),
+          eq(modelProviders.orgId, params.orgId),
+        ),
+      )
+      .limit(1);
+  });
+  params.emit(CHAT_REQUEST_OPS.model_selection_validate, validateT.ms);
+  const [provider] = validateT.result;
+  if (provider) return undefined;
+  return modelSelectionBadRequest("Unknown model provider for this workspace");
+}
+
+async function validateThreadModelSelectionLock(params: {
+  threadId: string | undefined;
+  modelSelection: IncomingModelSelection;
+  modelFirstEnabled: boolean;
+  emit: (op: string, ms: number) => void;
+}) {
+  const { threadId, modelSelection } = params;
+  if (threadId === undefined || modelSelection === undefined) {
+    return undefined;
+  }
+
+  const lockT = await timed(async () => {
+    return rejectIfThreadModelLocked(
+      threadId,
+      modelSelection,
+      params.modelFirstEnabled,
+    );
+  });
+  params.emit(CHAT_REQUEST_OPS.model_selection_lock_check, lockT.ms);
+  if (!lockT.result) return undefined;
+  return modelSelectionBadRequest("Cannot change model on an existing thread");
 }
 
 /**
@@ -295,7 +405,7 @@ async function resolveThread(
   agentId: string,
   existingThreadId: string | undefined,
   clientThreadId: string | undefined,
-  agentPin: { modelProviderId: string | null; selectedModel: string | null },
+  agentPin: ThreadModelPin,
   dims?: ChatSpanDimensions,
 ): Promise<ResolvedThread> {
   const emit = (op: string, ms: number): void => {
@@ -448,76 +558,53 @@ const router = tsr.router(chatMessagesContract, {
       org: callerOrg,
       orgMeta: callerOrgMeta,
     });
+    const modelFirstEnabled = await isModelFirstModelProviderEnabled(
+      callerOrg.orgId,
+      authCtx.userId,
+    );
 
-    // Validate per-run model selection belongs to the caller's org before
-    // we trust it to write onto the thread or override the agent's default.
-    if (body.modelSelection) {
-      const modelSelection = body.modelSelection;
-      const validateT = await timed(async () => {
-        return globalThis.services.db
-          .select({ id: modelProviders.id })
-          .from(modelProviders)
-          .where(
-            and(
-              eq(modelProviders.id, modelSelection.modelProviderId),
-              eq(modelProviders.orgId, callerOrg.orgId),
-            ),
-          )
-          .limit(1);
+    const modelSelectionOwnershipError =
+      await validateLegacyModelSelectionOwnership({
+        orgId: callerOrg.orgId,
+        modelSelection: body.modelSelection,
+        modelFirstEnabled,
+        emit,
       });
-      emit(CHAT_REQUEST_OPS.model_selection_validate, validateT.ms);
-      const [provider] = validateT.result;
-      if (!provider) {
-        return {
-          status: 400 as const,
-          body: {
-            error: {
-              message: "Unknown model provider for this workspace",
-              code: "BAD_REQUEST" as const,
-            },
-          },
-        };
-      }
-    }
+    if (modelSelectionOwnershipError) return modelSelectionOwnershipError;
 
-    if (body.threadId !== undefined && body.modelSelection !== undefined) {
-      const threadId = body.threadId;
-      const modelSelection = body.modelSelection;
-      const lockT = await timed(async () => {
-        return rejectIfThreadModelLocked(threadId, modelSelection);
-      });
-      emit(CHAT_REQUEST_OPS.model_selection_lock_check, lockT.ms);
-      if (lockT.result) {
-        return {
-          status: 400 as const,
-          body: {
-            error: {
-              message: "Cannot change model on an existing thread",
-              code: "BAD_REQUEST" as const,
-            },
-          },
-        };
-      }
-    }
+    const modelSelectionLockError = await validateThreadModelSelectionLock({
+      threadId: body.threadId,
+      modelSelection: body.modelSelection,
+      modelFirstEnabled,
+      emit,
+    });
+    if (modelSelectionLockError) return modelSelectionLockError;
 
     try {
       // Existing-thread sends pass the agent's pin literally — `resolveThread`
       // doesn't use it on that branch (it reads the persisted pin instead),
       // so the personal-tier eligibility check is skipped. NEW threads
-      // compute the eager-pin via `computeEagerPin` so per-Epic #11868 the
-      // user's personal default lands in the persisted pin when the agent's
-      // `prefer_personal_provider` is on and the switch is enabled for
-      // the caller.
+      // compute the eager-pin via `resolvePreferredModelProviderPin` so
+      // per-Epic #11868 the user's personal default lands in the persisted pin
+      // when the agent's `prefer_personal_provider` is on and the switch is
+      // enabled for the caller.
       const eagerPin = body.threadId
         ? {
             modelProviderId: agent.modelProviderId,
+            modelProviderType: null,
+            modelProviderCredentialScope: null,
             selectedModel: agent.selectedModel,
           }
-        : await computeEagerPin(callerOrg.orgId, authCtx.userId, {
-            modelProviderId: agent.modelProviderId,
-            selectedModel: agent.selectedModel,
-            preferPersonalProvider: agent.preferPersonalProvider,
-          });
+        : await computeEagerPin(
+            callerOrg.orgId,
+            authCtx.userId,
+            {
+              modelProviderId: agent.modelProviderId,
+              selectedModel: agent.selectedModel,
+              preferPersonalProvider: agent.preferPersonalProvider,
+            },
+            modelFirstEnabled,
+          );
       const { threadId, sessionId, incompleteContext, isNewThread } =
         await resolveThread(
           authCtx.userId,
@@ -537,6 +624,7 @@ const router = tsr.router(chatMessagesContract, {
             modelProviderId: agent.modelProviderId,
             selectedModel: agent.selectedModel,
           },
+          modelFirstEnabled,
           body.modelSelection,
         );
       });
@@ -598,10 +686,12 @@ const router = tsr.router(chatMessagesContract, {
         payload: { threadId, agentId: body.agentId },
       };
 
-      const modelProvider =
+      const requestedModelProvider =
         body.modelProvider && body.modelProvider !== "default"
           ? body.modelProvider
           : undefined;
+      const modelProvider =
+        override.modelProviderType ?? requestedModelProvider;
 
       // Build prompt: user text + file descriptions appended
       const fullPrompt = buildFullPrompt(body.prompt, body.attachFiles);
@@ -616,7 +706,9 @@ const router = tsr.router(chatMessagesContract, {
         triggerSource: "web",
         apiStartTime,
         modelProvider,
-        modelProviderId: override.providerId ?? undefined,
+        modelProviderId: override.modelProviderId ?? undefined,
+        modelProviderCredentialScope:
+          override.modelProviderCredentialScope ?? undefined,
         selectedModelOverride: override.selectedModel ?? undefined,
         debugNoMockClaude: body.debugNoMockClaude,
         debugNoMockCodex: body.debugNoMockCodex,

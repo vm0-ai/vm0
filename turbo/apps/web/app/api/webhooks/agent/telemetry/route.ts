@@ -130,6 +130,11 @@ const router = tsr.router(webhookTelemetryContract, {
           durationMs: op.duration_ms,
           success: op.success,
           runId: body.runId,
+          // op.error is the per-op stderr / failure reason captured by the
+          // Rust guest-agent's record_sandbox_op (e.g., codex CLI's exit-1
+          // stderr). Forwarded so Axiom can group failures by error string;
+          // before #12077 this was silently dropped.
+          error: op.error,
         });
       }
     }

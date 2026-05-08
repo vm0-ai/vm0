@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
-use crate::types::{Firewall, NetworkPolicy};
+use crate::types::{Firewall, NetworkPolicy, SecretConnectorMetadata};
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,6 +34,7 @@ struct VmEntry {
     network_policies: Option<HashMap<String, NetworkPolicy>>,
     encrypted_secrets: Option<String>,
     secret_connector_map: Option<HashMap<String, String>>,
+    secret_connector_metadata_map: Option<HashMap<String, SecretConnectorMetadata>>,
     vars: Option<HashMap<String, String>>,
     #[serde(default)]
     capture_network_bodies: bool,
@@ -54,6 +55,7 @@ pub struct VmRegistration<'a> {
     pub network_policies: Option<&'a HashMap<String, NetworkPolicy>>,
     pub encrypted_secrets: Option<&'a str>,
     pub secret_connector_map: Option<&'a HashMap<String, String>>,
+    pub secret_connector_metadata_map: Option<&'a HashMap<String, SecretConnectorMetadata>>,
     pub vars: Option<&'a HashMap<String, String>>,
     pub capture_network_bodies: bool,
     pub billable_firewalls: &'a [String],
@@ -772,6 +774,7 @@ impl ProxyRegistryHandle {
                 network_policies: registration.network_policies.cloned(),
                 encrypted_secrets: registration.encrypted_secrets.map(String::from),
                 secret_connector_map: registration.secret_connector_map.cloned(),
+                secret_connector_metadata_map: registration.secret_connector_metadata_map.cloned(),
                 vars: registration.vars.cloned(),
                 capture_network_bodies: registration.capture_network_bodies,
                 billable_firewalls: registration.billable_firewalls.to_vec(),
@@ -948,6 +951,7 @@ PY
                 network_policies: None,
                 encrypted_secrets: None,
                 secret_connector_map: None,
+                secret_connector_metadata_map: None,
                 vars: None,
                 capture_network_bodies: false,
                 billable_firewalls: vec![],
@@ -1001,6 +1005,7 @@ PY
             network_policies: None,
             encrypted_secrets: None,
             secret_connector_map: None,
+            secret_connector_metadata_map: None,
             vars: None,
             capture_network_bodies: false,
             billable_firewalls: &[],
@@ -1026,6 +1031,7 @@ PY
             network_policies: None,
             encrypted_secrets: None,
             secret_connector_map: None,
+            secret_connector_metadata_map: None,
             vars: None,
             capture_network_bodies: false,
             billable_firewalls: &[],
@@ -1087,6 +1093,7 @@ PY
                     network_policies: None,
                     encrypted_secrets: None,
                     secret_connector_map: None,
+                    secret_connector_metadata_map: None,
                     vars: None,
                     capture_network_bodies: false,
                     billable_firewalls: &[],
@@ -1154,6 +1161,7 @@ PY
             network_policies: None,
             encrypted_secrets: None,
             secret_connector_map: None,
+            secret_connector_metadata_map: None,
             vars: None,
             capture_network_bodies: false,
             billable_firewalls: &[],
@@ -1230,6 +1238,7 @@ PY
             network_policies: None,
             encrypted_secrets: None,
             secret_connector_map: None,
+            secret_connector_metadata_map: None,
             vars: None,
             capture_network_bodies: false,
             billable_firewalls: &billable,
@@ -1275,6 +1284,14 @@ PY
             lock_path,
         };
 
+        let metadata = HashMap::from([(
+            "CHATGPT_ACCESS_TOKEN".to_string(),
+            SecretConnectorMetadata {
+                source_type: "model-provider".to_string(),
+                source_user_id: Some("user-123".to_string()),
+                metadata_key: Some("codex-oauth-token".to_string()),
+            },
+        )]);
         let registration = VmRegistration {
             run_id: "run-enc",
             cli_agent_type: "claude-code",
@@ -1285,6 +1302,7 @@ PY
             network_policies: None,
             encrypted_secrets: Some("iv_b64:tag_b64:data_b64"),
             secret_connector_map: None,
+            secret_connector_metadata_map: Some(&metadata),
             vars: None,
             capture_network_bodies: false,
             billable_firewalls: &[],
@@ -1308,6 +1326,10 @@ PY
         assert_eq!(
             value["vms"]["10.200.0.6"]["encryptedSecrets"],
             "iv_b64:tag_b64:data_b64"
+        );
+        assert_eq!(
+            value["vms"]["10.200.0.6"]["secretConnectorMetadataMap"]["CHATGPT_ACCESS_TOKEN"]["sourceUserId"],
+            "user-123"
         );
     }
 
@@ -1351,6 +1373,7 @@ PY
             network_policies: None,
             encrypted_secrets: Some("enc_data"),
             secret_connector_map: None,
+            secret_connector_metadata_map: None,
             vars: None,
             capture_network_bodies: false,
             billable_firewalls: &[],
@@ -1417,6 +1440,7 @@ PY
             network_policies: None,
             encrypted_secrets: Some("enc_data"),
             secret_connector_map: None,
+            secret_connector_metadata_map: None,
             vars: None,
             capture_network_bodies: false,
             billable_firewalls: &[],

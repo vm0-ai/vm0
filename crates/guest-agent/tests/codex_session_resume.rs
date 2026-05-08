@@ -19,8 +19,8 @@
 //!
 //! - End-to-end `send_event` → `extract_session_id` → marker write for the
 //!   codex `thread.started` event shape.
-//! - `session_history::read_session_history` decodes the marker, walks the
-//!   `YYYY/MM/DD/` codex layout, and zstd-decompresses the result.
+//! - `session_history::read_session_history` decodes the marker and walks the
+//!   `YYYY/MM/DD/` codex layout.
 //! - Claude literal-path resolution through the same public entry,
 //!   exercised by passing a literal `.jsonl` path through the
 //!   history-path file.
@@ -181,8 +181,40 @@ async fn read_session_history_resolves_codex_marker_end_to_end() {
     let _guard = TEST_MUTEX.lock().unwrap();
     reset_session_files();
 
-    // Set up a fake codex sessions tree under a temp dir, with a zstd-
-    // compressed jsonl at the canonical YYYY/MM/DD/ depth.
+    // Set up a fake codex sessions tree under a temp dir, with a jsonl file
+    // at the canonical YYYY/MM/DD/ depth.
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions");
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    let history = b"{\"type\":\"thread.started\",\"thread_id\":\"x\"}\n";
+    write_session_file(
+        &sessions_dir,
+        &["2026", "04", "28"],
+        &format!("{thread_id}.jsonl"),
+        history,
+    )
+    .unwrap();
+
+    // Drive the public entry exactly the way `checkpoint.rs` does:
+    // a marker file pointing at the sessions dir + thread id.
+    let path_file = tmp.path().join("path.txt");
+    let marker = format!(
+        "CODEX_SEARCH:{}:{thread_id}",
+        sessions_dir.to_string_lossy()
+    );
+    std::fs::write(&path_file, marker.as_bytes()).unwrap();
+
+    let bytes =
+        guest_agent::session_history::read_session_history(path_file.to_str().unwrap()).unwrap();
+    assert_eq!(bytes, history);
+}
+
+#[tokio::test]
+async fn read_session_history_decodes_legacy_zstd_session() {
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
     let tmp = tempfile::tempdir().unwrap();
     let sessions_dir = tmp.path().join("sessions");
     let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
@@ -196,8 +228,6 @@ async fn read_session_history_resolves_codex_marker_end_to_end() {
     )
     .unwrap();
 
-    // Drive the public entry exactly the way `checkpoint.rs` does:
-    // a marker file pointing at the sessions dir + thread id.
     let path_file = tmp.path().join("path.txt");
     let marker = format!(
         "CODEX_SEARCH:{}:{thread_id}",
@@ -224,12 +254,11 @@ async fn read_session_history_resolves_dash_stripped_filename() {
     let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
     let id_no_dashes = thread_id.replace('-', "");
     let history = b"line1\nline2\n";
-    let compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
     write_session_file(
         &sessions_dir,
         &["2026", "04", "28"],
-        &format!("rollout-2026-04-28T11-22-37-{id_no_dashes}.jsonl.zst"),
-        &compressed,
+        &format!("rollout-2026-04-28T11-22-37-{id_no_dashes}.jsonl"),
+        history,
     )
     .unwrap();
 

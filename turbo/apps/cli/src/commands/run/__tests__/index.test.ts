@@ -120,6 +120,7 @@ describe("run command", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
@@ -1088,8 +1089,779 @@ describe("run command", () => {
       expect(pollCount).toBe(1);
     });
 
-    // Test removed due to timing complexity with fake timers
-    // The polling logic handles empty responses correctly in production
+    it("should drain terminal events that become visible after completion", async () => {
+      vi.useFakeTimers();
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          if (pollCount === 1) {
+            return HttpResponse.json({
+              events: [],
+              hasMore: false,
+              nextSequence: -1,
+              run: {
+                status: "completed",
+                result: {
+                  checkpointId: "cp-1",
+                  agentSessionId: "s-1",
+                  conversationId: "c-1",
+                  artifact: {},
+                },
+              },
+              framework: "claude-code",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "result",
+                eventData: {
+                  type: "result",
+                  subtype: "success",
+                  is_error: false,
+                  duration_ms: 1000,
+                  num_turns: 1,
+                  result: "Done",
+                  session_id: "test",
+                  total_cost_usd: 0,
+                  usage: {},
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      const commandPromise = runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+      ]);
+      await vi.advanceTimersByTimeAsync(500);
+      await commandPromise;
+
+      expect(pollCount).toBe(2);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Run completed successfully"),
+      );
+
+      const logMessages = mockConsoleLog.mock.calls.map((call) => {
+        return call[0];
+      });
+      const resultIndex = logMessages.findIndex((message) => {
+        return String(message).includes("Agent Completed");
+      });
+      const completionIndex = logMessages.findIndex((message) => {
+        return String(message).includes("Run completed successfully");
+      });
+      expect(resultIndex).toBeGreaterThan(-1);
+      expect(completionIndex).toBeGreaterThan(resultIndex);
+    });
+
+    it("should not idle drain after result is visible before completion", async () => {
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          if (pollCount === 1) {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 0,
+                  eventType: "result",
+                  eventData: {
+                    type: "result",
+                    subtype: "success",
+                    is_error: false,
+                    duration_ms: 1000,
+                    num_turns: 1,
+                    result: "Done",
+                    session_id: "test",
+                    total_cost_usd: 0,
+                    usage: {},
+                  },
+                  createdAt: "2025-01-01T00:00:01Z",
+                },
+              ],
+              hasMore: false,
+              nextSequence: 0,
+              run: { status: "running" },
+              framework: "claude-code",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+
+      expect(pollCount).toBe(2);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Agent Completed"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Run completed successfully"),
+      );
+    });
+
+    it("should not drain additional pages after result is visible without watermark", async () => {
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "result",
+                eventData: {
+                  type: "result",
+                  subtype: "success",
+                  is_error: false,
+                  duration_ms: 1000,
+                  num_turns: 1,
+                  result: "Done",
+                  session_id: "test",
+                  total_cost_usd: 0,
+                  usage: {},
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+            ],
+            hasMore: true,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+
+      expect(pollCount).toBe(1);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Agent Completed"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Run completed successfully"),
+      );
+    });
+
+    it("should keep draining to terminal watermark after result is visible", async () => {
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          if (pollCount === 1) {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 0,
+                  eventType: "result",
+                  eventData: {
+                    type: "result",
+                    subtype: "success",
+                    is_error: false,
+                    duration_ms: 1000,
+                    num_turns: 1,
+                    result: "Done",
+                    session_id: "test",
+                    total_cost_usd: 0,
+                    usage: {},
+                  },
+                  createdAt: "2025-01-01T00:00:00Z",
+                },
+              ],
+              hasMore: true,
+              nextSequence: 0,
+              run: {
+                status: "completed",
+                lastEventSequence: 2,
+                result: {
+                  checkpointId: "cp-1",
+                  agentSessionId: "s-1",
+                  conversationId: "c-1",
+                  artifact: {},
+                },
+              },
+              framework: "claude-code",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 1,
+                eventType: "assistant",
+                eventData: {
+                  type: "assistant",
+                  message: {
+                    role: "assistant",
+                    content: [{ type: "text", text: "post-result page" }],
+                  },
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+              {
+                sequenceNumber: 2,
+                eventType: "assistant",
+                eventData: {
+                  type: "assistant",
+                  message: {
+                    role: "assistant",
+                    content: [{ type: "text", text: "terminal watermark" }],
+                  },
+                },
+                createdAt: "2025-01-01T00:00:02Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 2,
+            run: {
+              status: "completed",
+              lastEventSequence: 2,
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+
+      expect(pollCount).toBe(2);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Agent Completed"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("terminal watermark"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Run completed successfully"),
+      );
+    });
+
+    it("should not idle drain after codex result is visible before completion", async () => {
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          if (pollCount === 1) {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 0,
+                  eventType: "turn.completed",
+                  eventData: {
+                    type: "turn.completed",
+                    usage: {
+                      input_tokens: 10,
+                      cached_input_tokens: 5,
+                      output_tokens: 3,
+                    },
+                  },
+                  createdAt: "2025-01-01T00:00:01Z",
+                },
+              ],
+              hasMore: false,
+              nextSequence: 0,
+              run: { status: "running" },
+              framework: "codex",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            framework: "codex",
+          });
+        }),
+      );
+
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+
+      expect(pollCount).toBe(2);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Agent Completed"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Run completed successfully"),
+      );
+    });
+
+    it("should wait for terminal watermark instead of exiting on idle", async () => {
+      vi.useFakeTimers();
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          if (pollCount < 4) {
+            return HttpResponse.json({
+              events: [],
+              hasMore: false,
+              nextSequence: -1,
+              run: {
+                status: "completed",
+                lastEventSequence: 0,
+                result: {
+                  checkpointId: "cp-1",
+                  agentSessionId: "s-1",
+                  conversationId: "c-1",
+                  artifact: {},
+                },
+              },
+              framework: "claude-code",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "result",
+                eventData: {
+                  type: "result",
+                  subtype: "success",
+                  is_error: false,
+                  duration_ms: 1000,
+                  num_turns: 1,
+                  result: "Done",
+                  session_id: "test",
+                  total_cost_usd: 0,
+                  usage: {},
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              lastEventSequence: 0,
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      const commandPromise = runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+      ]);
+      await vi.advanceTimersByTimeAsync(1500);
+      await commandPromise;
+
+      expect(pollCount).toBe(4);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Agent Completed"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Run completed successfully"),
+      );
+    });
+
+    it("should return when terminal watermark was already reached before completion", async () => {
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          if (pollCount === 1) {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 0,
+                  eventType: "assistant",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      role: "assistant",
+                      content: [
+                        { type: "text", text: "already visible before done" },
+                      ],
+                    },
+                  },
+                  createdAt: "2025-01-01T00:00:00Z",
+                },
+              ],
+              hasMore: true,
+              nextSequence: 0,
+              run: { status: "running" },
+              framework: "claude-code",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              lastEventSequence: 0,
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+
+      expect(pollCount).toBe(2);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("already visible before done"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Run completed successfully"),
+      );
+    });
+
+    it("should drain visible terminal pages before rendering completion", async () => {
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          if (pollCount === 1) {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 0,
+                  eventType: "assistant",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      role: "assistant",
+                      content: [{ type: "text", text: "first page" }],
+                    },
+                  },
+                  createdAt: "2025-01-01T00:00:00Z",
+                },
+              ],
+              hasMore: true,
+              nextSequence: 0,
+              run: {
+                status: "completed",
+                result: {
+                  checkpointId: "cp-1",
+                  agentSessionId: "s-1",
+                  conversationId: "c-1",
+                  artifact: {},
+                },
+              },
+              framework: "claude-code",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 1,
+                eventType: "assistant",
+                eventData: {
+                  type: "assistant",
+                  message: {
+                    role: "assistant",
+                    content: [{ type: "text", text: "second page" }],
+                  },
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+              {
+                sequenceNumber: 2,
+                eventType: "result",
+                eventData: {
+                  type: "result",
+                  subtype: "success",
+                  is_error: false,
+                  duration_ms: 1000,
+                  num_turns: 1,
+                  result: "Done",
+                  session_id: "test",
+                  total_cost_usd: 0,
+                  usage: {},
+                },
+                createdAt: "2025-01-01T00:00:02Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 2,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+
+      expect(pollCount).toBe(2);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("first page"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("second page"),
+      );
+    });
+
+    it("should bound terminal drain when a sequence gap never fills", async () => {
+      vi.useFakeTimers();
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          if (pollCount === 1) {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 0,
+                  eventType: "assistant",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      role: "assistant",
+                      content: [{ type: "text", text: "before gap" }],
+                    },
+                  },
+                  createdAt: "2025-01-01T00:00:00Z",
+                },
+              ],
+              hasMore: true,
+              nextSequence: 0,
+              run: {
+                status: "completed",
+                result: {
+                  checkpointId: "cp-1",
+                  agentSessionId: "s-1",
+                  conversationId: "c-1",
+                  artifact: {},
+                },
+              },
+              framework: "claude-code",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [],
+            hasMore: true,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      const commandPromise = runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+      ]);
+      await vi.advanceTimersByTimeAsync(4000);
+      await commandPromise;
+
+      expect(pollCount).toBeGreaterThan(2);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("before gap"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Run completed successfully"),
+      );
+    });
+
+    it("should bound terminal drain when terminal watermark never becomes visible", async () => {
+      vi.useFakeTimers();
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            nextSequence: -1,
+            run: {
+              status: "completed",
+              lastEventSequence: 0,
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      const commandPromise = runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+      ]);
+      await vi.advanceTimersByTimeAsync(4000);
+      await commandPromise;
+
+      expect(pollCount).toBeGreaterThan(2);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Run completed successfully"),
+      );
+    });
+
+    it("should render the latest terminal status after drain", async () => {
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          if (pollCount === 1) {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 0,
+                  eventType: "assistant",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      role: "assistant",
+                      content: [{ type: "text", text: "before upgrade" }],
+                    },
+                  },
+                  createdAt: "2025-01-01T00:00:00Z",
+                },
+              ],
+              hasMore: true,
+              nextSequence: 0,
+              run: { status: "timeout" },
+              framework: "claude-code",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 1,
+                eventType: "result",
+                eventData: {
+                  type: "result",
+                  subtype: "success",
+                  is_error: false,
+                  duration_ms: 1000,
+                  num_turns: 1,
+                  result: "Done",
+                  session_id: "test",
+                  total_cost_usd: 0,
+                  usage: {},
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 1,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Run completed successfully"),
+      );
+      expect(mockConsoleError).not.toHaveBeenCalledWith(
+        expect.stringContaining("Run timed out"),
+      );
+    });
 
     it("should skip events that fail to parse", async () => {
       server.use(
@@ -1099,7 +1871,7 @@ describe("run command", () => {
               {
                 sequenceNumber: 0,
                 eventType: "unknown",
-                eventData: { type: "unknown", data: "something" },
+                eventData: null,
                 createdAt: "2025-01-01T00:00:00Z",
               },
               {
@@ -1188,8 +1960,10 @@ describe("run command", () => {
     });
 
     it("should exit with error when run fails (status: failed)", async () => {
+      let pollCount = 0;
       server.use(
         http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
           // Return no events with "failed" status and error message
           return HttpResponse.json({
             events: [],
@@ -1209,11 +1983,142 @@ describe("run command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Run failed"),
       );
+      expect(pollCount).toBe(1);
+    });
+
+    it("should not drain additional pages after failed status without watermark", async () => {
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "assistant",
+                eventData: {
+                  type: "assistant",
+                  message: {
+                    role: "assistant",
+                    content: [{ type: "text", text: "failure context" }],
+                  },
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+            ],
+            hasMore: true,
+            nextSequence: 0,
+            run: { status: "failed", error: "Agent crashed" },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(pollCount).toBe(1);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("failure context"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Run failed"),
+      );
+    });
+
+    it("should wait for terminal watermark before rendering failed run", async () => {
+      vi.useFakeTimers();
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          if (pollCount === 1) {
+            return HttpResponse.json({
+              events: [],
+              hasMore: false,
+              nextSequence: -1,
+              run: {
+                status: "failed",
+                error: "Agent crashed",
+                lastEventSequence: 0,
+              },
+              framework: "claude-code",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "assistant",
+                eventData: {
+                  type: "assistant",
+                  message: {
+                    role: "assistant",
+                    content: [{ type: "text", text: "failure context" }],
+                  },
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 0,
+            run: {
+              status: "failed",
+              error: "Agent crashed",
+              lastEventSequence: 0,
+            },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      const commandPromise = expect(
+        runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]),
+      ).rejects.toThrow("process.exit called");
+      await vi.advanceTimersByTimeAsync(500);
+      await commandPromise;
+
+      expect(pollCount).toBe(2);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("failure context"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Run failed"),
+      );
+    });
+
+    it("should exit immediately when run is cancelled without terminal watermark", async () => {
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            nextSequence: -1,
+            run: { status: "cancelled" },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Run cancelled"),
+      );
+      expect(pollCount).toBe(1);
     });
 
     it("should exit with error when run times out (status: timeout)", async () => {
+      let pollCount = 0;
       server.use(
         http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
           // Return no events with "timeout" status - sandbox heartbeat expired
           return HttpResponse.json({
             events: [],
@@ -1232,12 +2137,15 @@ describe("run command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Run timed out"),
       );
+      expect(pollCount).toBe(1);
     });
 
-    it("should handle completed status with result", async () => {
+    it("should bound terminal drain when completed has no result event or watermark", async () => {
+      vi.useFakeTimers();
+      let pollCount = 0;
       server.use(
         http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
-          // Return completed status with result (new architecture)
+          pollCount++;
           return HttpResponse.json({
             events: [],
             hasMore: false,
@@ -1256,9 +2164,16 @@ describe("run command", () => {
         }),
       );
 
-      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      const commandPromise = runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+      ]);
+      await vi.advanceTimersByTimeAsync(1000);
+      await commandPromise;
 
-      // Should complete successfully and render completion info to console
+      expect(pollCount).toBeGreaterThan(1);
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Session:"),
       );

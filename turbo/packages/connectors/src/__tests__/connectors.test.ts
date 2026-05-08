@@ -286,6 +286,7 @@ describe("getConnectorTypeForSecretName", () => {
 describe("isGoogleOAuthConnector", () => {
   const GOOGLE_CONNECTORS = [
     "gmail",
+    "google-ads",
     "google-sheets",
     "google-docs",
     "google-drive",

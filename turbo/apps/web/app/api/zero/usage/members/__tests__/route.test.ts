@@ -3,6 +3,7 @@ import {
   createTestRequest,
   insertTestModelUsageEvent,
   insertTestUsageEvent,
+  seedRealtimeBillingPricing,
   updateOrgStripeFields,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -11,6 +12,12 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import type { StripeMockFns } from "../../../../../../src/__tests__/stripe-mock";
+import {
+  REALTIME_PROVIDER,
+  REALTIME_TOKEN_CATEGORIES,
+  TRANSCRIPTION_PROVIDER,
+  TRANSCRIPTION_TOKEN_CATEGORIES,
+} from "../../../../../../src/lib/zero/billing/model-usage-categories";
 
 const stripeMocks = vi.hoisted<StripeMockFns>(() => {
   return {
@@ -344,6 +351,96 @@ describe("GET /api/zero/usage/members", () => {
       cacheReadInputTokens: 0,
       cacheCreationInputTokens: 0,
       creditsCharged: 200,
+    });
+  });
+
+  it("rolls up Realtime and transcription per-modality categories into the four bucket totals", async () => {
+    const { userId, orgId } = await context.user;
+    const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+    await updateOrgStripeFields(orgId, {
+      stripeCustomerId: uniqueId("cus"),
+      stripeSubscriptionId: uniqueId("sub"),
+      subscriptionStatus: "active",
+      currentPeriodEnd: periodEnd,
+      tier: "pro",
+    });
+
+    // Pricing is configured in production via migration 0345. Seed the same
+    // matrix here so the test setup mirrors a real org that has Realtime
+    // billing enabled, and so this test is the first consumer of the shared
+    // helper that #12140's admission test will reuse.
+    await seedRealtimeBillingPricing();
+
+    // Realtime Talker (gpt-realtime-2) emits six per-modality categories that
+    // collapse into the four flat buckets used by member/run totals. Each
+    // quantity below picks a distinct prime-ish number so the rollup math is
+    // unambiguous even if the bucket mapping shifts.
+    const realtimeQuantities: Record<
+      (typeof REALTIME_TOKEN_CATEGORIES)[number],
+      number
+    > = {
+      "tokens.input.text": 100,
+      "tokens.input.audio": 200,
+      "tokens.input.cached_text": 30,
+      "tokens.input.cached_audio": 70,
+      "tokens.output.text": 40,
+      "tokens.output.audio": 60,
+    };
+    for (const category of REALTIME_TOKEN_CATEGORIES) {
+      await insertTestUsageEvent(orgId, {
+        userId,
+        kind: "model",
+        provider: REALTIME_PROVIDER,
+        category,
+        quantity: realtimeQuantities[category],
+        status: "processed",
+      });
+    }
+
+    // Input transcription (gpt-4o-mini-transcribe).
+    const transcriptionQuantities: Record<
+      (typeof TRANSCRIPTION_TOKEN_CATEGORIES)[number],
+      number
+    > = {
+      "tokens.input.audio": 500,
+      "tokens.input.text": 25,
+      "tokens.output.text": 15,
+    };
+    for (const category of TRANSCRIPTION_TOKEN_CATEGORIES) {
+      await insertTestUsageEvent(orgId, {
+        userId,
+        kind: "model",
+        provider: TRANSCRIPTION_PROVIDER,
+        category,
+        quantity: transcriptionQuantities[category],
+        status: "processed",
+      });
+    }
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/usage/members",
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.members).toHaveLength(1);
+
+    // inputTokens = realtime input.text + input.audio
+    //               + transcription input.audio + input.text
+    //             = 100 + 200 + 500 + 25 = 825
+    // outputTokens = realtime output.text + output.audio
+    //                + transcription output.text
+    //              = 40 + 60 + 15 = 115
+    // cacheReadInputTokens = realtime input.cached_text + input.cached_audio
+    //                      = 30 + 70 = 100
+    // cacheCreationInputTokens stays 0 (Realtime has no cache_creation category)
+    expect(data.members[0]).toMatchObject({
+      inputTokens: 825,
+      outputTokens: 115,
+      cacheReadInputTokens: 100,
+      cacheCreationInputTokens: 0,
     });
   });
 

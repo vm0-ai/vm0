@@ -2241,14 +2241,6 @@ function isImageFilename(filename: string): boolean {
   );
 }
 
-function isVideoFilename(filename: string): boolean {
-  return /\.(mp4|webm|mov|ogv)$/i.test(filename);
-}
-
-function isAudioFilename(filename: string): boolean {
-  return /\.(mp3|wav|wave|m4a|aac|ogg|oga|opus|flac|mpga)$/i.test(filename);
-}
-
 function AssistantErrorContent({ error }: { error: string }) {
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const setTab = useSet(setActiveOrgManageTab$);
@@ -2437,8 +2429,6 @@ function resolveAttachments(
       url: f.url,
       contentType,
       isImage: kind === "image" || isImageFilename(f.filename),
-      isVideo: kind === "video" || isVideoFilename(f.filename),
-      isAudio: kind === "audio" || isAudioFilename(f.filename),
       kind,
     };
   });
@@ -2626,47 +2616,14 @@ function UserMessageAttachments({
             />
           );
         }
-        if (a.isVideo) {
-          return (
-            <video
-              key={a.url}
-              src={a.url}
-              controls
-              className="max-h-48 max-w-full rounded-lg border border-foreground/10"
-            />
-          );
-        }
-        if (a.isAudio) {
-          return (
-            <audio
-              key={a.url}
-              src={a.url}
-              controls
-              preload="metadata"
-              className="w-full max-w-md"
-              aria-label={`Audio preview for ${a.filename}`}
-            />
-          );
-        }
         if (
           a.kind === "markdown" ||
+          a.kind === "text" ||
+          a.kind === "json" ||
           a.kind === "csv" ||
           a.kind === "pdf" ||
-          a.kind === "html" ||
-          a.kind === "file"
+          a.kind === "html"
         ) {
-          return (
-            <AttachmentPreview
-              key={a.url}
-              attachment={{
-                filename: a.filename,
-                url: a.url,
-                contentType: a.contentType,
-              }}
-            />
-          );
-        }
-        if (a.kind === "text" || a.kind === "json") {
           return (
             <PreviewableFileAttachmentChip
               key={a.url}
@@ -2677,7 +2634,12 @@ function UserMessageAttachments({
           );
         }
         return (
-          <FileAttachmentChip key={a.url} filename={a.filename} url={a.url} />
+          <FileAttachmentChip
+            key={a.url}
+            filename={a.filename}
+            url={a.url}
+            contentType={a.contentType}
+          />
         );
       })}
     </div>
@@ -2783,10 +2745,18 @@ function QueuedUserMessageRow({ thread }: { thread: ChatThreadSignals }) {
   // dedup-by-client-id check, so this row only renders while the queued
   // bubble has no real-message counterpart in the list.
   const pendingMessage = useLastResolved(thread.pendingMessage$) ?? null;
+  const isOptimistic =
+    useLastResolved(thread.pendingMessageIsOptimistic$) ?? false;
   if (!pendingMessage) {
     return null;
   }
-  return <QueuedUserMessage pendingMessage={pendingMessage} thread={thread} />;
+  return (
+    <QueuedUserMessage
+      pendingMessage={pendingMessage}
+      thread={thread}
+      isOptimistic={isOptimistic}
+    />
+  );
 }
 
 function persistedAttachmentsToResolved(
@@ -2809,8 +2779,6 @@ function persistedAttachmentsToResolved(
       url: a.url,
       contentType: a.contentType,
       isImage: kind === "image" || isImageFilename(a.filename),
-      isVideo: kind === "video" || isVideoFilename(a.filename),
-      isAudio: kind === "audio" || isAudioFilename(a.filename),
       kind,
     };
   });
@@ -2819,9 +2787,11 @@ function persistedAttachmentsToResolved(
 function QueuedUserMessage({
   pendingMessage,
   thread,
+  isOptimistic,
 }: {
   pendingMessage: PendingMessage;
   thread: ChatThreadSignals;
+  isOptimistic: boolean;
 }) {
   const content = pendingMessage.content?.trim() ?? "";
   const attachments = persistedAttachmentsToResolved(
@@ -2866,7 +2836,8 @@ function QueuedUserMessage({
             <button
               type="button"
               onClick={handleRecall}
-              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              disabled={isOptimistic}
+              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
               aria-label="Recall queued message"
             >
               <IconArrowBackUp size={13} stroke={1.75} />

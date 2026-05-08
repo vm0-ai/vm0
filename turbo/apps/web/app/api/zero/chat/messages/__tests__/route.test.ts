@@ -1399,17 +1399,23 @@ describe("POST /api/zero/chat/messages", () => {
         expect(job!.executionContext.cliAgentType).toBe("codex");
       });
 
-      it("falls back to agent's selectedModel when personal row has none", async () => {
-        // Personal default has no selectedModel — precedence is
-        // user > agent > null, so the agent's selectedModel surfaces.
+      it("uses the personal provider default when the agent model is incompatible", async () => {
+        // Personal default has no selectedModel. The agent is pinned to a
+        // DeepSeek VM0 model, which must not be paired with the user's
+        // OpenAI provider. Fall back to the provider's default model instead.
+        await insertOrgNonDefaultModelProvider(
+          user.orgId,
+          "vm0",
+          "deepseek-v4-pro",
+        );
         const orgProviderId = await getTestModelProviderIdByType(
           user.orgId,
-          "anthropic-api-key",
+          "vm0",
         );
         await setTestZeroAgentModelProvider(
           agentId,
           orgProviderId,
-          "claude-opus-4-7",
+          "deepseek-v4-pro",
         );
         await setTestZeroAgentPreferPersonalProvider(agentId, true);
         await enablePersonalModelProviderForUser(user.orgId, user.userId);
@@ -1432,7 +1438,7 @@ describe("POST /api/zero/chat/messages", () => {
 
         const override = await getTestChatThreadModelOverride(threadId);
         expect(override.modelProviderId).toBe(personalProviderId);
-        expect(override.selectedModel).toBe("claude-opus-4-7");
+        expect(override.selectedModel).toBe("gpt-5.5");
       });
 
       it("falls through to agent's pin when user has no personal providers", async () => {

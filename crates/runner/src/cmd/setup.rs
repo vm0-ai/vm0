@@ -68,7 +68,7 @@ fn check_system_dependencies() -> Vec<&'static str> {
     // Required by `runner start` (sandbox networking)
     let required = ["ip", "iptables", "iptables-save", "sysctl", "dnsmasq"];
     // Only needed by specific commands (rootfs, build, etc.)
-    let optional = ["pgrep", "mkfs.ext4", "debootstrap", "openssl"];
+    let optional = ["pgrep", "mkfs.ext4", "debootstrap", "flock", "openssl"];
 
     let missing_required: Vec<&str> = required
         .iter()

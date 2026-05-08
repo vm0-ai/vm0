@@ -13,11 +13,13 @@ import {
   getConnectorAccessToken,
   getConnectorRefreshToken,
   getModelProviderExpiry,
+  type OAuthSecretSource,
 } from "../../../../../../src/lib/zero/connector/connector-service";
 import {
   getRefreshSourceType,
   SOURCE_HANDLER_TO_PROVIDER_TYPE,
 } from "../../../../../../src/lib/zero/handler-key-bridge";
+import { ORG_SENTINEL_USER_ID } from "../../../../../../src/lib/zero/org/org-sentinel";
 import { basicAuthTemplateRe } from "@vm0/connectors/firewall-types";
 
 const bodySchema = z.object({
@@ -26,6 +28,16 @@ const bodySchema = z.object({
   authBase: z.string().optional(),
   authQuery: z.record(z.string(), z.string()).optional(),
   secretConnectorMap: z.record(z.string(), z.string()).optional(),
+  secretConnectorMetadataMap: z
+    .record(
+      z.string(),
+      z.object({
+        sourceType: z.enum(["connector", "model-provider"]),
+        sourceUserId: z.string().optional(),
+        metadataKey: z.string().optional(),
+      }),
+    )
+    .optional(),
   vars: z.record(z.string(), z.string()).optional(),
   // Set by the mitm addon after an upstream 401 so the refresh filter
   // below overrides DB tokenExpiresAt. Covers the case where the provider
@@ -46,6 +58,30 @@ const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
  */
 const REFRESH_BUFFER_SECS = 60;
 
+interface SecretConnectorMetadata {
+  sourceType: OAuthSecretSource;
+  sourceUserId?: string;
+  metadataKey?: string;
+}
+
+function resolveRefreshMetadata(
+  connectorType: string,
+  metadata: SecretConnectorMetadata | undefined,
+): SecretConnectorMetadata {
+  const sourceType =
+    metadata?.sourceType ?? getRefreshSourceType(connectorType);
+  return {
+    sourceType,
+    sourceUserId:
+      sourceType === "model-provider" ? metadata?.sourceUserId : undefined,
+    metadataKey:
+      sourceType === "model-provider"
+        ? (metadata?.metadataKey ??
+          SOURCE_HANDLER_TO_PROVIDER_TYPE[connectorType])
+        : undefined,
+  };
+}
+
 /**
  * Load refresh tokens from DB into the secrets map.
  * The encrypted secrets snapshot only contains mapped env vars (access tokens);
@@ -57,16 +93,15 @@ async function syncRefreshTokensFromDb(
   orgId: string,
   userId: string,
   secrets: Record<string, string>,
+  metadataByConnector: Map<string, SecretConnectorMetadata>,
 ): Promise<void> {
   if (connectorTypes.length === 0) return;
   const results = await Promise.all(
     connectorTypes.map((ct) => {
-      return getConnectorRefreshToken(
-        ct,
-        orgId,
-        userId,
-        getRefreshSourceType(ct),
-      );
+      const metadata = resolveRefreshMetadata(ct, metadataByConnector.get(ct));
+      return getConnectorRefreshToken(ct, orgId, userId, metadata.sourceType, {
+        sourceUserId: metadata.sourceUserId,
+      });
     }),
   );
   for (const result of results) {
@@ -95,6 +130,7 @@ async function getExpiryByHandlerKey(
   orgId: string,
   userId: string,
   connectorTypes: string[],
+  metadataByConnector: Map<string, SecretConnectorMetadata>,
 ): Promise<Map<string, number | null>> {
   const connectorOnly = connectorTypes.filter((ct) => {
     return getRefreshSourceType(ct) === "connector";
@@ -102,26 +138,87 @@ async function getExpiryByHandlerKey(
   const modelProviderHandlerKeys = connectorTypes.filter((ct) => {
     return getRefreshSourceType(ct) === "model-provider";
   });
-  const modelProviderMetadataKeys = modelProviderHandlerKeys.map((k) => {
-    return SOURCE_HANDLER_TO_PROVIDER_TYPE[k] ?? k;
-  });
-  const [connectorExpiry, modelProviderExpiry] = await Promise.all([
+  const [connectorExpiry, modelProviderEntries] = await Promise.all([
     getConnectorExpiry(orgId, userId, connectorOnly),
-    getModelProviderExpiry(orgId, userId, modelProviderMetadataKeys),
+    Promise.all(
+      modelProviderHandlerKeys.map(async (handlerKey) => {
+        const metadata = resolveRefreshMetadata(
+          handlerKey,
+          metadataByConnector.get(handlerKey),
+        );
+        const metadataKey =
+          metadata.metadataKey ??
+          SOURCE_HANDLER_TO_PROVIDER_TYPE[handlerKey] ??
+          handlerKey;
+        const expiryMap = await getModelProviderExpiry(
+          orgId,
+          userId,
+          [metadataKey],
+          { sourceUserId: metadata.sourceUserId },
+        );
+        return [handlerKey, expiryMap.get(metadataKey) ?? null] as const;
+      }),
+    ),
   ]);
   const merged = new Map<string, number | null>(connectorExpiry);
-  for (const handlerKey of modelProviderHandlerKeys) {
-    const metadataKey =
-      SOURCE_HANDLER_TO_PROVIDER_TYPE[handlerKey] ?? handlerKey;
-    merged.set(handlerKey, modelProviderExpiry.get(metadataKey) ?? null);
+  for (const [handlerKey, expiry] of modelProviderEntries) {
+    merged.set(handlerKey, expiry);
   }
   return merged;
+}
+
+function buildMetadataByConnector(
+  refreshable: Map<string, string>,
+  secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined,
+): Map<string, SecretConnectorMetadata> {
+  const metadataByConnector = new Map<string, SecretConnectorMetadata>();
+  for (const [key, connectorType] of refreshable) {
+    const metadata = secretConnectorMetadataMap?.[key];
+    if (metadata && !metadataByConnector.has(connectorType)) {
+      metadataByConnector.set(connectorType, metadata);
+    }
+  }
+  return metadataByConnector;
+}
+
+function hasForbiddenModelProviderOwner(
+  auth: SandboxAuth,
+  secretConnectorMap: Record<string, string>,
+  secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined,
+  referencedKeys: Set<string>,
+): boolean {
+  for (const key of referencedKeys) {
+    const connectorType = secretConnectorMap[key];
+    if (!connectorType) continue;
+    const metadata = resolveRefreshMetadata(
+      connectorType,
+      secretConnectorMetadataMap?.[key],
+    );
+    if (metadata.sourceType !== "model-provider") continue;
+    const ownerUserId = metadata.sourceUserId ?? ORG_SENTINEL_USER_ID;
+    if (ownerUserId !== auth.userId && ownerUserId !== ORG_SENTINEL_USER_ID) {
+      log.warn(`[${auth.runId}] Rejected forbidden model-provider owner`, {
+        ownerUserId,
+        connectorType,
+        secretKey: key,
+      });
+      return true;
+    }
+  }
+  return false;
 }
 
 async function refreshExpiredTokens(
   auth: SandboxAuth,
   secrets: Record<string, string>,
   secretConnectorMap: Record<string, string>,
+  secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined,
   referencedKeys: Set<string>,
   forceRefresh: boolean,
 ): Promise<RefreshResult> {
@@ -157,12 +254,17 @@ async function refreshExpiredTokens(
   }
 
   const connectorTypes = [...new Set(refreshable.values())];
+  const metadataByConnector = buildMetadataByConnector(
+    refreshable,
+    secretConnectorMetadataMap,
+  );
   // Read expiries dispatched by source (connector vs model-provider) — see
   // getExpiryByHandlerKey for the merge logic.
   const expiryMap = await getExpiryByHandlerKey(
     run.orgId,
     auth.userId,
     connectorTypes,
+    metadataByConnector,
   );
 
   const now = Math.floor(Date.now() / 1000);
@@ -197,25 +299,38 @@ async function refreshExpiredTokens(
   // Load refresh tokens from DB into secrets before refreshing.
   // The encrypted secrets snapshot only contains mapped env vars (access tokens),
   // not refresh tokens — refresh tokens are kept server-side only (#7365).
-  await syncRefreshTokensFromDb(toRefresh, run.orgId, auth.userId, secrets);
+  await syncRefreshTokensFromDb(
+    toRefresh,
+    run.orgId,
+    auth.userId,
+    secrets,
+    metadataByConnector,
+  );
 
   const refreshResults = await Promise.all(
     toRefresh.map(async (connectorType) => {
       log.debug(`[${auth.runId}] Refreshing expired ${connectorType} token`);
-      const sourceType = getRefreshSourceType(connectorType);
-      const metadataKey =
-        sourceType === "model-provider"
-          ? SOURCE_HANDLER_TO_PROVIDER_TYPE[connectorType]
-          : undefined;
+      const metadata = resolveRefreshMetadata(
+        connectorType,
+        metadataByConnector.get(connectorType),
+      );
       const freshToken = await refreshConnectorAccessToken(
         connectorType,
         run.orgId,
         auth.userId,
         secrets,
-        { sourceType, metadataKey },
+        {
+          sourceType: metadata.sourceType,
+          metadataKey: metadata.metadataKey,
+          sourceUserId: metadata.sourceUserId,
+        },
       );
       if (!freshToken) {
-        log.warn(`[${auth.runId}] Failed to refresh ${connectorType} token`);
+        log.warn(`[${auth.runId}] Failed to refresh ${connectorType} token`, {
+          sourceType: metadata.sourceType,
+          sourceUserId: metadata.sourceUserId,
+          metadataKey: metadata.metadataKey,
+        });
         return { connectorType, ok: false as const };
       }
       // refreshConnectorAccessToken updates secrets[rawSecretName] but the
@@ -238,13 +353,18 @@ async function refreshExpiredTokens(
   if (skippedTypes.length > 0) {
     const currentTokens = await Promise.all(
       skippedTypes.map(async (ct) => {
+        const metadata = resolveRefreshMetadata(
+          ct,
+          metadataByConnector.get(ct),
+        );
         return {
           connectorType: ct,
           token: await getConnectorAccessToken(
             ct,
             run.orgId,
             auth.userId,
-            getRefreshSourceType(ct),
+            metadata.sourceType,
+            { sourceUserId: metadata.sourceUserId },
           ),
         };
       }),
@@ -286,7 +406,12 @@ async function refreshExpiredTokens(
 
   // Use accurate DB values after refresh; skip extra query if nothing changed.
   const finalExpiryMap = refreshed
-    ? await getExpiryByHandlerKey(run.orgId, auth.userId, connectorTypes)
+    ? await getExpiryByHandlerKey(
+        run.orgId,
+        auth.userId,
+        connectorTypes,
+        metadataByConnector,
+      )
     : expiryMap;
 
   let earliestExpiry: number | null = null;
@@ -470,7 +595,8 @@ function resolveTemplates(
  * on demand and an expiresAt timestamp is returned for addon-side TTL caching.
  *
  * Auth: Sandbox JWT
- * Body: { encryptedSecrets, authHeaders, authBase?, authQuery?, secretConnectorMap?, vars?, forceRefresh? }
+ * Body: { encryptedSecrets, authHeaders, authBase?, authQuery?, secretConnectorMap?,
+ *         secretConnectorMetadataMap?, vars?, forceRefresh? }
  * Response: { headers, base?, query?, expiresAt?, resolvedSecrets, refreshedConnectors, refreshedSecrets }
  *           or 424 { error } when referenced secrets/vars are missing (connector not configured)
  *           or 502 { error } when token refresh fails
@@ -524,6 +650,7 @@ export async function POST(request: Request) {
     authBase,
     authQuery,
     secretConnectorMap,
+    secretConnectorMetadataMap,
     vars,
     forceRefresh,
   } = parsed.data;
@@ -575,10 +702,30 @@ export async function POST(request: Request) {
   let refreshedSecrets: string[] = [];
   let failedConnectors: string[] = [];
   if (secretConnectorMap) {
+    if (
+      hasForbiddenModelProviderOwner(
+        auth,
+        secretConnectorMap,
+        secretConnectorMetadataMap,
+        referenced.secrets,
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error: {
+            message: "Invalid model-provider secret owner",
+            code: "FORBIDDEN",
+          },
+        },
+        { status: 403 },
+      );
+    }
+
     const result = await refreshExpiredTokens(
       auth,
       secrets,
       secretConnectorMap,
+      secretConnectorMetadataMap,
       referenced.secrets,
       forceRefresh ?? false,
     );

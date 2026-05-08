@@ -364,6 +364,9 @@ export async function getWorkspaceAgent(composeId: string): Promise<
       name: string;
       displayName: string | null;
       agentId: string;
+      modelProviderId: string | null;
+      selectedModel: string | null;
+      preferPersonalProvider: boolean;
     }
   | undefined
 > {
@@ -373,6 +376,9 @@ export async function getWorkspaceAgent(composeId: string): Promise<
       id: zeroAgents.id,
       name: zeroAgents.name,
       displayName: zeroAgents.displayName,
+      modelProviderId: zeroAgents.modelProviderId,
+      selectedModel: zeroAgents.selectedModel,
+      preferPersonalProvider: zeroAgents.preferPersonalProvider,
     })
     .from(zeroAgents)
     .where(eq(zeroAgents.id, composeId))
@@ -385,6 +391,9 @@ export async function getWorkspaceAgent(composeId: string): Promise<
     name: agent.name,
     displayName: agent.displayName,
     agentId: agent.id,
+    modelProviderId: agent.modelProviderId,
+    selectedModel: agent.selectedModel,
+    preferPersonalProvider: agent.preferPersonalProvider,
   };
 }
 

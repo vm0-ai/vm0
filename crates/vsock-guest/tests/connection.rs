@@ -11,12 +11,16 @@ use std::time::Duration;
 
 use vsock_guest::{handle_connection, run};
 use vsock_proto::{
-    self, MSG_EXEC, MSG_EXEC_RESULT, MSG_PROCESS_EXIT, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
-    MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK,
+    self, BoundedExecRequest, BoundedExecStream, BoundedExecTermination, MSG_BOUNDED_EXEC,
+    MSG_BOUNDED_EXEC_OUTPUT_CHUNK, MSG_BOUNDED_EXEC_RESULT, MSG_ERROR, MSG_EXEC, MSG_EXEC_RESULT,
+    MSG_PROCESS_EXIT, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT,
+    MSG_STDOUT_CHUNK,
 };
 
 const EXIT_CODE_TIMEOUT: i32 = 124;
 const DRAIN_DEADLINE_SECS: u64 = 5;
+const LARGE_ENV_COMMAND: &str =
+    "printf '%s:%s:%s:%s:%s\\n' \"$SMALL\" \"${#BIG_A}\" \"${#BIG_B}\" \"${#BIG_C}\" \"${#BIG_D}\"";
 
 struct TempPathGuard(String);
 
@@ -54,6 +58,32 @@ fn unique_socket_path(label: &str) -> TempPathGuard {
 
 fn unique_pid_path(label: &str) -> TempPathGuard {
     unique_tmp_path(label, ".pid")
+}
+
+fn large_env_values() -> [String; 4] {
+    [
+        "A".repeat(40 * 1024),
+        "B".repeat(40 * 1024),
+        "C".repeat(40 * 1024),
+        "D".repeat(40 * 1024),
+    ]
+}
+
+fn large_env_entries(values: &[String; 4]) -> [(&'static str, &str); 5] {
+    [
+        ("SMALL", "ok"),
+        ("BIG_A", values[0].as_str()),
+        ("BIG_B", values[1].as_str()),
+        ("BIG_C", values[2].as_str()),
+        ("BIG_D", values[3].as_str()),
+    ]
+}
+
+fn assert_large_env_stdout(stdout: &[u8]) {
+    assert_eq!(
+        String::from_utf8_lossy(stdout),
+        "ok:40960:40960:40960:40960\n"
+    );
 }
 
 struct OrphanProcessGuard {
@@ -103,7 +133,18 @@ fn send_exec_and_read_result(
     command: &str,
     timeout_ms: u32,
 ) -> (i32, Vec<u8>, Vec<u8>) {
-    let payload = vsock_proto::encode_exec(timeout_ms, command, &[], false);
+    send_exec_and_read_result_with_env(writer, reader, seq, command, timeout_ms, &[])
+}
+
+fn send_exec_and_read_result_with_env(
+    writer: &mut impl std::io::Write,
+    reader: &mut impl std::io::Read,
+    seq: u32,
+    command: &str,
+    timeout_ms: u32,
+    env: &[(&str, &str)],
+) -> (i32, Vec<u8>, Vec<u8>) {
+    let payload = vsock_proto::encode_exec(timeout_ms, command, env, false);
     let msg = vsock_proto::encode(MSG_EXEC, seq, &payload).unwrap();
     writer.write_all(&msg).unwrap();
 
@@ -126,6 +167,579 @@ fn send_exec_and_read_result(
     vsock_proto::decode_exec_result(&msgs[0].payload)
         .map(|(code, out, err)| (code, out.to_vec(), err.to_vec()))
         .unwrap()
+}
+
+struct BoundedChunk {
+    stream: BoundedExecStream,
+    sequence: u32,
+    chunk: Vec<u8>,
+    truncated: bool,
+}
+
+struct BoundedResult {
+    termination: BoundedExecTermination,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    stdout_truncated: bool,
+    stderr_truncated: bool,
+}
+
+fn bounded_request<'a>(
+    command: &'a str,
+    env: &'a [(&'a str, &'a str)],
+    stdin: Option<&'a [u8]>,
+) -> BoundedExecRequest<'a> {
+    BoundedExecRequest {
+        timeout_ms: 5000,
+        command,
+        env,
+        sudo: false,
+        stdin,
+        stdout_limit_bytes: 1024 * 1024,
+        stderr_limit_bytes: 1024 * 1024,
+        stream_stdout: false,
+        stream_stderr: false,
+        stream_chunk_limit_bytes: 8192,
+        stdout_stream_limit_bytes: 1024 * 1024,
+        stderr_stream_limit_bytes: 1024 * 1024,
+    }
+}
+
+fn send_bounded_exec(stream: &mut impl std::io::Write, seq: u32, request: &BoundedExecRequest<'_>) {
+    let payload = vsock_proto::encode_bounded_exec(request).unwrap();
+    let msg = vsock_proto::encode(MSG_BOUNDED_EXEC, seq, &payload).unwrap();
+    stream.write_all(&msg).unwrap();
+}
+
+fn read_bounded_exec_result(
+    stream: &mut impl std::io::Read,
+    seq: u32,
+) -> (Vec<BoundedChunk>, BoundedResult) {
+    let mut decoder = vsock_proto::Decoder::new();
+    let mut buf = [0u8; 4096];
+    let mut chunks = Vec::new();
+    loop {
+        let n = read_retry_eintr(stream, &mut buf).unwrap();
+        assert!(n > 0, "unexpected EOF waiting for bounded exec result");
+        for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
+            if msg.seq != seq {
+                continue;
+            }
+            match msg.msg_type {
+                MSG_BOUNDED_EXEC_OUTPUT_CHUNK => {
+                    let decoded =
+                        vsock_proto::decode_bounded_exec_output_chunk(&msg.payload).unwrap();
+                    chunks.push(BoundedChunk {
+                        stream: decoded.stream,
+                        sequence: decoded.sequence,
+                        chunk: decoded.chunk.to_vec(),
+                        truncated: decoded.truncated,
+                    });
+                }
+                MSG_BOUNDED_EXEC_RESULT => {
+                    let decoded = vsock_proto::decode_bounded_exec_result(&msg.payload).unwrap();
+                    return (
+                        chunks,
+                        BoundedResult {
+                            termination: decoded.termination,
+                            stdout: decoded.stdout.to_vec(),
+                            stderr: decoded.stderr.to_vec(),
+                            stdout_truncated: decoded.stdout_truncated,
+                            stderr_truncated: decoded.stderr_truncated,
+                        },
+                    );
+                }
+                other => panic!("unexpected bounded exec response type: 0x{other:02X}"),
+            }
+        }
+    }
+}
+
+fn start_guest_connection() -> (thread::JoinHandle<()>, std::os::unix::net::UnixStream) {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+    read_and_discard_message(&mut host_stream);
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    (handle, host_stream)
+}
+
+fn finish_guest_connection(
+    handle: thread::JoinHandle<()>,
+    host_stream: std::os::unix::net::UnixStream,
+) {
+    drop(host_stream);
+    let _ = handle.join();
+}
+
+#[test]
+fn bounded_exec_stdout_stderr_success() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let request = bounded_request("printf stdout; printf stderr >&2", &[], None);
+    send_bounded_exec(&mut host_stream, 11, &request);
+    let (chunks, result) = read_bounded_exec_result(&mut host_stream, 11);
+
+    assert!(chunks.is_empty());
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(result.stdout, b"stdout");
+    assert_eq!(result.stderr, b"stderr");
+    assert!(!result.stdout_truncated);
+    assert!(!result.stderr_truncated);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_nonzero_exit_is_exited() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let request = bounded_request("printf failed >&2; exit 42", &[], None);
+    send_bounded_exec(&mut host_stream, 12, &request);
+    let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 12);
+
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 42 }
+    );
+    assert_eq!(result.stdout, b"");
+    assert_eq!(result.stderr, b"failed");
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_stdin_is_written_and_closed() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let stdin = b"hello from stdin";
+    let request = bounded_request(
+        "cat; read extra || printf ':eof'",
+        &[],
+        Some(stdin.as_slice()),
+    );
+    send_bounded_exec(&mut host_stream, 13, &request);
+    let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 13);
+
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(result.stdout, b"hello from stdin:eof");
+    assert_eq!(result.stderr, b"");
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_broken_pipe_stdin_keeps_child_exit_status() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let stdin = vec![b'x'; 1024 * 1024];
+    let request = bounded_request("exit 7", &[], Some(stdin.as_slice()));
+    send_bounded_exec(&mut host_stream, 14, &request);
+    let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 14);
+
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 7 }
+    );
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_streams_stdout_before_final_result() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request("printf login-url; printf done", &[], None);
+    request.stream_stdout = true;
+    request.stream_chunk_limit_bytes = vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32;
+    request.stdout_stream_limit_bytes = 64;
+    send_bounded_exec(&mut host_stream, 15, &request);
+    let (chunks, result) = read_bounded_exec_result(&mut host_stream, 15);
+
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(result.stdout, b"login-urldone");
+    assert!(
+        !chunks.is_empty(),
+        "expected stream chunks before final result"
+    );
+    let streamed = chunks
+        .iter()
+        .filter(|chunk| chunk.stream == BoundedExecStream::Stdout)
+        .flat_map(|chunk| chunk.chunk.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(streamed, b"login-urldone");
+    assert_eq!(chunks[0].sequence, 0);
+    assert!(chunks.iter().all(|chunk| !chunk.truncated));
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_streams_stdout_and_stderr_independently() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request("printf out; printf err >&2", &[], None);
+    request.stream_stdout = true;
+    request.stream_stderr = true;
+    request.stream_chunk_limit_bytes = vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32;
+    send_bounded_exec(&mut host_stream, 16, &request);
+    let (chunks, result) = read_bounded_exec_result(&mut host_stream, 16);
+
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    let stdout_chunks = chunks
+        .iter()
+        .filter(|chunk| chunk.stream == BoundedExecStream::Stdout)
+        .collect::<Vec<_>>();
+    let stderr_chunks = chunks
+        .iter()
+        .filter(|chunk| chunk.stream == BoundedExecStream::Stderr)
+        .collect::<Vec<_>>();
+    assert_eq!(stdout_chunks.len(), 1);
+    assert_eq!(stderr_chunks.len(), 1);
+    assert_eq!(stdout_chunks[0].sequence, 0);
+    assert_eq!(stderr_chunks[0].sequence, 0);
+    assert_eq!(stdout_chunks[0].chunk, b"out");
+    assert_eq!(stderr_chunks[0].chunk, b"err");
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_timeout_returns_timed_out_with_partial_output() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request("printf before; sleep 60", &[], None);
+    request.timeout_ms = 200;
+    send_bounded_exec(&mut host_stream, 17, &request);
+    let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 17);
+
+    assert_eq!(result.termination, BoundedExecTermination::TimedOut);
+    assert_eq!(result.stdout, b"before");
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_tracks_stdout_stderr_truncation_independently() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request("printf abcdefghij; printf err >&2", &[], None);
+    request.stdout_limit_bytes = 4;
+    request.stderr_limit_bytes = 10;
+    send_bounded_exec(&mut host_stream, 18, &request);
+    let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 18);
+
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(result.stdout, b"abcd");
+    assert_eq!(result.stderr, b"err");
+    assert!(result.stdout_truncated);
+    assert!(!result.stderr_truncated);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_over_cap_output_continues_draining() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request(
+        "head -c 200000 /dev/zero | tr '\\0' A; head -c 200000 /dev/zero | tr '\\0' B >&2",
+        &[],
+        None,
+    );
+    request.stdout_limit_bytes = 32;
+    request.stderr_limit_bytes = 32;
+    send_bounded_exec(&mut host_stream, 19, &request);
+    let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 19);
+
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(result.stdout, vec![b'A'; 32]);
+    assert_eq!(result.stderr, vec![b'B'; 32]);
+    assert!(result.stdout_truncated);
+    assert!(result.stderr_truncated);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_timeout_zero_silent_child_is_cancelled_on_host_disconnect() {
+    let pid_path = unique_pid_path("bounded-exec-cancel");
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let command = format!("echo $$ > '{}'; sleep 60", pid_path.as_str());
+    let mut request = bounded_request(&command, &[], None);
+    request.timeout_ms = 0;
+    send_bounded_exec(&mut host_stream, 20, &request);
+
+    let pid = read_pid_file(pid_path.as_str());
+    assert!(
+        pid_alive(pid),
+        "child should still be running before disconnect",
+    );
+
+    drop(host_stream);
+    let _ = handle.join();
+    wait_for_pid_exit(pid, "bounded exec host disconnect");
+}
+
+#[test]
+fn bounded_exec_large_env_payload_succeeds() {
+    let values = large_env_values();
+    let env = large_env_entries(&values);
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let request = bounded_request(LARGE_ENV_COMMAND, &env, None);
+    send_bounded_exec(&mut host_stream, 21, &request);
+    let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 21);
+
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 },
+        "stderr: {}",
+        String::from_utf8_lossy(&result.stderr),
+    );
+    assert_large_env_stdout(&result.stdout);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_invalid_env_payload_returns_start_failed_without_leaking_value() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let secret = "do-not-print-this-secret";
+    let env = [("BAD;KEY", secret)];
+    let request = bounded_request("echo should-not-run", &env, None);
+    send_bounded_exec(&mut host_stream, 22, &request);
+    let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 22);
+    let stderr = String::from_utf8_lossy(&result.stderr);
+
+    assert_eq!(result.termination, BoundedExecTermination::StartFailed);
+    assert!(stderr.contains("invalid environment variable name"));
+    assert!(!stderr.contains(secret));
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_rejects_tiny_stream_chunk_limit() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request("echo should-not-run", &[], None);
+    request.stream_stdout = true;
+    request.stream_chunk_limit_bytes = 1;
+    send_bounded_exec(&mut host_stream, 23, &request);
+    let (chunks, result) = read_bounded_exec_result(&mut host_stream, 23);
+    let stderr = String::from_utf8_lossy(&result.stderr);
+
+    assert!(chunks.is_empty());
+    assert_eq!(result.termination, BoundedExecTermination::StartFailed);
+    assert!(stderr.contains("stream chunk limit below minimum"));
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_rejects_final_output_limits_that_cannot_fit_result_frame() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request("echo should-not-run", &[], None);
+    request.stdout_limit_bytes = vsock_proto::MAX_BOUNDED_EXEC_RESULT_OUTPUT_BYTES as u32;
+    request.stderr_limit_bytes = 1;
+    send_bounded_exec(&mut host_stream, 24, &request);
+    let (chunks, result) = read_bounded_exec_result(&mut host_stream, 24);
+    let stderr = String::from_utf8_lossy(&result.stderr);
+
+    assert!(chunks.is_empty());
+    assert_eq!(result.termination, BoundedExecTermination::StartFailed);
+    assert!(stderr.contains("final output limits exceed protocol result frame"));
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_zero_final_limits_return_empty_truncated_output() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request("printf stdout; printf stderr >&2", &[], None);
+    request.stdout_limit_bytes = 0;
+    request.stderr_limit_bytes = 0;
+    send_bounded_exec(&mut host_stream, 25, &request);
+    let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 25);
+
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    assert!(result.stdout.is_empty());
+    assert!(result.stderr.is_empty());
+    assert!(result.stdout_truncated);
+    assert!(result.stderr_truncated);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_ignores_stream_limits_when_streaming_is_disabled() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request("printf no-stream", &[], None);
+    request.stream_stdout = false;
+    request.stream_stderr = false;
+    request.stream_chunk_limit_bytes = 0;
+    request.stdout_stream_limit_bytes = 0;
+    request.stderr_stream_limit_bytes = 0;
+    send_bounded_exec(&mut host_stream, 26, &request);
+    let (chunks, result) = read_bounded_exec_result(&mut host_stream, 26);
+
+    assert!(chunks.is_empty());
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(result.stdout, b"no-stream");
+    assert_eq!(result.stderr, b"");
+    assert!(!result.stdout_truncated);
+    assert!(!result.stderr_truncated);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_zero_stream_budget_emits_truncation_marker_only() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request("printf streamed", &[], None);
+    request.stream_stdout = true;
+    request.stream_chunk_limit_bytes = vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32;
+    request.stdout_stream_limit_bytes = 0;
+    send_bounded_exec(&mut host_stream, 27, &request);
+    let (chunks, result) = read_bounded_exec_result(&mut host_stream, 27);
+
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(result.stdout, b"streamed");
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0].stream, BoundedExecStream::Stdout);
+    assert_eq!(chunks[0].sequence, 0);
+    assert!(chunks[0].chunk.is_empty());
+    assert!(chunks[0].truncated);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_stream_limit_emits_data_then_truncation_marker() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request("head -c 2500 /dev/zero | tr '\\0' S", &[], None);
+    request.stream_stdout = true;
+    request.stream_chunk_limit_bytes = vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32;
+    request.stdout_stream_limit_bytes = 1500;
+    send_bounded_exec(&mut host_stream, 28, &request);
+    let (chunks, result) = read_bounded_exec_result(&mut host_stream, 28);
+
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(result.stdout, vec![b'S'; 2500]);
+    assert!(!result.stdout_truncated);
+    assert!(!result.stderr_truncated);
+
+    assert!(
+        chunks.len() >= 2,
+        "expected streamed data and a truncation marker, got {} chunks",
+        chunks.len()
+    );
+    for (expected_sequence, chunk) in chunks.iter().enumerate() {
+        assert_eq!(chunk.stream, BoundedExecStream::Stdout);
+        assert_eq!(chunk.sequence, expected_sequence as u32);
+    }
+    let (marker, data_chunks) = chunks.split_last().expect("chunks are not empty");
+    assert!(marker.truncated);
+    assert!(marker.chunk.is_empty());
+    assert!(data_chunks.iter().all(|chunk| !chunk.truncated));
+    assert!(data_chunks.iter().all(|chunk| !chunk.chunk.is_empty()));
+    let max_stream_chunk_len = vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES;
+    assert!(
+        data_chunks
+            .iter()
+            .all(|chunk| chunk.chunk.len() <= max_stream_chunk_len)
+    );
+    let streamed = data_chunks
+        .iter()
+        .flat_map(|chunk| chunk.chunk.iter().copied())
+        .collect::<Vec<_>>();
+    assert_eq!(streamed, vec![b'S'; 1500]);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_rejects_stream_chunk_limit_that_cannot_fit_frame() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request("echo should-not-run", &[], None);
+    request.stream_stdout = true;
+    request.stream_chunk_limit_bytes =
+        (vsock_proto::MAX_BOUNDED_EXEC_OUTPUT_CHUNK_BYTES + 1) as u32;
+    send_bounded_exec(&mut host_stream, 29, &request);
+    let (chunks, result) = read_bounded_exec_result(&mut host_stream, 29);
+    let stderr = String::from_utf8_lossy(&result.stderr);
+
+    assert!(chunks.is_empty());
+    assert_eq!(result.termination, BoundedExecTermination::StartFailed);
+    assert!(stderr.contains("stream chunk limit exceeds protocol frame"));
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_slow_request_does_not_block_fast_request() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut slow_request = bounded_request("sleep 60", &[], None);
+    slow_request.timeout_ms = 0;
+    let fast_request = bounded_request("printf fast", &[], None);
+
+    send_bounded_exec(&mut host_stream, 30, &slow_request);
+    send_bounded_exec(&mut host_stream, 31, &fast_request);
+    let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 31);
+
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(result.stdout, b"fast");
+    assert_eq!(result.stderr, b"");
+
+    finish_guest_connection(handle, host_stream);
 }
 
 /// Verify that a slow exec does not block a fast exec that arrives later.
@@ -233,6 +847,79 @@ fn exec_returns_correct_result() {
         send_exec_and_read_result(&mut host_writer, &mut host_reader, 1, "echo hello", 5000);
     assert_eq!(code, 0);
     assert_eq!(String::from_utf8_lossy(&stdout).trim(), "hello");
+
+    drop(host_writer);
+    drop(host_reader);
+    let _ = handle.join();
+}
+
+#[test]
+fn exec_large_env_payload_succeeds() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    let values = large_env_values();
+    let env = large_env_entries(&values);
+
+    let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
+    let mut host_writer = host_stream.try_clone().unwrap();
+    let mut host_reader = host_stream;
+
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+    read_and_discard_message(&mut host_reader); // MSG_READY
+    host_reader
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    let (code, stdout, stderr) = send_exec_and_read_result_with_env(
+        &mut host_writer,
+        &mut host_reader,
+        1,
+        LARGE_ENV_COMMAND,
+        5000,
+        &env,
+    );
+
+    assert_eq!(code, 0, "stderr: {}", String::from_utf8_lossy(&stderr));
+    assert_large_env_stdout(&stdout);
+
+    drop(host_writer);
+    drop(host_reader);
+    let _ = handle.join();
+}
+
+#[test]
+fn exec_invalid_env_payload_returns_error_without_leaking_value() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
+    let mut host_writer = host_stream.try_clone().unwrap();
+    let mut host_reader = host_stream;
+
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+    read_and_discard_message(&mut host_reader); // MSG_READY
+    host_reader
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    let secret = "do-not-print-this-secret";
+    let (code, stdout, stderr) = send_exec_and_read_result_with_env(
+        &mut host_writer,
+        &mut host_reader,
+        1,
+        "echo should-not-run",
+        5000,
+        &[("BAD;KEY", secret)],
+    );
+    let stderr = String::from_utf8_lossy(&stderr);
+
+    assert_eq!(code, 1);
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("invalid environment variable name"));
+    assert!(!stderr.contains(secret));
 
     drop(host_writer);
     drop(host_reader);
@@ -430,8 +1117,19 @@ fn send_spawn_watch(
     log_path: Option<&str>,
     timeout_ms: u32,
 ) {
+    send_spawn_watch_with_env(stream, seq, command, &[], log_path, timeout_ms);
+}
+
+fn send_spawn_watch_with_env(
+    stream: &mut impl std::io::Write,
+    seq: u32,
+    command: &str,
+    env: &[(&str, &str)],
+    log_path: Option<&str>,
+    timeout_ms: u32,
+) {
     let payload =
-        vsock_proto::encode_spawn_watch(timeout_ms, command, &[], false, true, log_path).unwrap();
+        vsock_proto::encode_spawn_watch(timeout_ms, command, env, false, true, log_path).unwrap();
     let msg = vsock_proto::encode(MSG_SPAWN_WATCH, seq, &payload).unwrap();
     stream.write_all(&msg).unwrap();
 }
@@ -511,6 +1209,66 @@ fn streaming_monitor_normal_exit() {
     assert!(pid > 0);
     assert_eq!(exit_code, 0);
     assert_eq!(String::from_utf8_lossy(&stdout_data).trim(), "hello");
+
+    drop(host_stream);
+    let _ = handle.join();
+}
+
+#[test]
+fn streaming_spawn_watch_large_env_payload_succeeds() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    let values = large_env_values();
+    let env = large_env_entries(&values);
+
+    let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+    read_and_discard_message(&mut host_stream); // MSG_READY
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    send_spawn_watch_with_env(&mut host_stream, 1, LARGE_ENV_COMMAND, &env, None, 5000);
+    let (_pid, stdout_data, exit_code, stderr) = read_streaming_result(&mut host_stream, 1);
+
+    assert_eq!(exit_code, 0, "stderr: {}", String::from_utf8_lossy(&stderr));
+    assert_large_env_stdout(&stdout_data);
+
+    drop(host_stream);
+    let _ = handle.join();
+}
+
+#[test]
+fn streaming_spawn_watch_invalid_env_payload_returns_error_without_leaking_value() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+    read_and_discard_message(&mut host_stream); // MSG_READY
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    let secret = "do-not-print-this-secret";
+    send_spawn_watch_with_env(
+        &mut host_stream,
+        1,
+        "echo should-not-run",
+        &[("BAD;KEY", secret)],
+        None,
+        5000,
+    );
+
+    let msg = read_message(&mut host_stream);
+    assert_eq!(msg.msg_type, MSG_ERROR);
+    assert_eq!(msg.seq, 1);
+    let error = vsock_proto::decode_error(&msg.payload).unwrap();
+    assert!(error.contains("invalid environment variable name"));
+    assert!(!error.contains(secret));
 
     drop(host_stream);
     let _ = handle.join();
@@ -771,8 +1529,18 @@ fn send_spawn_watch_buffered(
     command: &str,
     timeout_ms: u32,
 ) {
+    send_spawn_watch_buffered_with_env(stream, seq, command, &[], timeout_ms);
+}
+
+fn send_spawn_watch_buffered_with_env(
+    stream: &mut impl std::io::Write,
+    seq: u32,
+    command: &str,
+    env: &[(&str, &str)],
+    timeout_ms: u32,
+) {
     let payload =
-        vsock_proto::encode_spawn_watch(timeout_ms, command, &[], false, false, None).unwrap();
+        vsock_proto::encode_spawn_watch(timeout_ms, command, env, false, false, None).unwrap();
     let msg = vsock_proto::encode(MSG_SPAWN_WATCH, seq, &payload).unwrap();
     stream.write_all(&msg).unwrap();
 }
@@ -1048,6 +1816,32 @@ fn spawn_watch_buffered_timeout_zero_silent_child_is_cancelled_on_host_disconnec
     drop(host_stream);
     let _ = handle.join();
     wait_for_pid_exit(pid, "buffered spawn_watch host disconnect");
+}
+
+#[test]
+fn buffered_spawn_watch_large_env_payload_succeeds() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    let values = large_env_values();
+    let env = large_env_entries(&values);
+
+    let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+    read_and_discard_message(&mut host_stream); // MSG_READY
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    send_spawn_watch_buffered_with_env(&mut host_stream, 1, LARGE_ENV_COMMAND, &env, 5000);
+    let (_pid, code, stdout, stderr) = read_buffered_spawn_watch_result(&mut host_stream, 1);
+
+    assert_eq!(code, 0, "stderr: {}", String::from_utf8_lossy(&stderr));
+    assert_large_env_stdout(&stdout);
+
+    drop(host_stream);
+    let _ = handle.join();
 }
 
 /// Regression for #11077: when the host drops the vsock connection

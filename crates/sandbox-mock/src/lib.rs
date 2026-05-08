@@ -56,6 +56,12 @@ pub struct SpawnWatchCall {
     pub guest_log_path: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WriteFileCall {
+    pub path: String,
+    pub content: Vec<u8>,
+}
+
 enum LifecycleBehavior {
     Result(Result<()>),
     Panic(String),
@@ -290,6 +296,7 @@ pub struct MockSandbox {
     source_ip: String,
     exec_results: Mutex<VecDeque<Result<ExecResult>>>,
     write_file_results: Mutex<VecDeque<Result<()>>>,
+    write_file_calls: Mutex<Vec<WriteFileCall>>,
     overrides: Option<Arc<MockSandboxOverrides>>,
     /// Holds the stdout channel sender alive when simulating a non-closing
     /// channel (e.g. wait_exit_error override). Without this, the sender is
@@ -304,6 +311,7 @@ impl MockSandbox {
             source_ip: "10.0.0.1".into(),
             exec_results: Mutex::new(VecDeque::new()),
             write_file_results: Mutex::new(VecDeque::new()),
+            write_file_calls: Mutex::new(Vec::new()),
             overrides: None,
             stdout_tx: Mutex::new(None),
         }
@@ -315,6 +323,7 @@ impl MockSandbox {
             source_ip: "10.0.0.1".into(),
             exec_results: Mutex::new(VecDeque::new()),
             write_file_results: Mutex::new(VecDeque::new()),
+            write_file_calls: Mutex::new(Vec::new()),
             overrides: Some(overrides),
             stdout_tx: Mutex::new(None),
         }
@@ -336,6 +345,10 @@ impl MockSandbox {
         self.write_file_results
             .lock_ignoring_poison()
             .push_back(result);
+    }
+
+    pub fn write_file_calls(&self) -> Vec<WriteFileCall> {
+        self.write_file_calls.lock_ignoring_poison().clone()
     }
 }
 
@@ -442,7 +455,13 @@ impl Sandbox for MockSandbox {
             .unwrap_or_else(|| Ok(default_exec_result()))
     }
 
-    async fn write_file(&self, _path: &str, _content: &[u8]) -> Result<()> {
+    async fn write_file(&self, path: &str, content: &[u8]) -> Result<()> {
+        self.write_file_calls
+            .lock_ignoring_poison()
+            .push(WriteFileCall {
+                path: path.to_string(),
+                content: content.to_vec(),
+            });
         self.write_file_results
             .lock_ignoring_poison()
             .pop_front()
@@ -650,17 +669,34 @@ impl RuntimeProvider for MockRuntimeProvider {
 /// A mock [`SnapshotProvider`] that returns dummy paths.
 pub struct MockSnapshotProvider;
 
+struct MockPendingSnapshotPublish {
+    output_dir: PathBuf,
+}
+
+#[async_trait]
+impl PendingSnapshotPublish for MockPendingSnapshotPublish {
+    async fn commit(&mut self) -> std::result::Result<SnapshotOutput, SnapshotError> {
+        Ok(SnapshotOutput {
+            snapshot_path: self.output_dir.join("snapshot.bin"),
+            memory_path: self.output_dir.join("memory.bin"),
+            cow_path: self.output_dir.join("cow.img"),
+        })
+    }
+
+    async fn discard(&mut self) -> std::result::Result<(), SnapshotError> {
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl SnapshotProvider for MockSnapshotProvider {
-    async fn create_snapshot(
+    async fn create_uncommitted_snapshot(
         &self,
         config: SnapshotCreateConfig,
-    ) -> std::result::Result<SnapshotOutput, SnapshotError> {
-        Ok(SnapshotOutput {
-            snapshot_path: config.output_dir.join("snapshot.bin"),
-            memory_path: config.output_dir.join("memory.bin"),
-            cow_path: config.output_dir.join("cow.img"),
-        })
+    ) -> std::result::Result<Box<dyn PendingSnapshotPublish>, SnapshotError> {
+        Ok(Box::new(MockPendingSnapshotPublish {
+            output_dir: config.output_dir,
+        }))
     }
 
     fn config_hash(&self) -> String {
@@ -744,7 +780,22 @@ impl SandboxControl for MockSandboxControl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+
+    fn test_snapshot_config(output_dir: PathBuf) -> SnapshotCreateConfig {
+        SnapshotCreateConfig {
+            id: "test-snapshot".into(),
+            binary_path: "/tmp/firecracker".into(),
+            kernel_path: "/tmp/kernel".into(),
+            rootfs_path: "/tmp/rootfs.ext4".into(),
+            output_dir,
+            vcpu_count: 2,
+            memory_mb: 1024,
+        }
+    }
 
     fn test_sandbox_config() -> SandboxConfig {
         SandboxConfig {
@@ -754,6 +805,22 @@ mod tests {
                 memory_mb: 1024,
             },
         }
+    }
+
+    #[tokio::test]
+    async fn snapshot_provider_can_discard_uncommitted_snapshot() {
+        let provider = MockSnapshotProvider;
+        let output_dir = std::env::temp_dir().join(format!(
+            "sandbox-mock-snapshot-discard-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+
+        let mut pending = provider
+            .create_uncommitted_snapshot(test_snapshot_config(output_dir))
+            .await
+            .expect("create uncommitted snapshot");
+
+        pending.discard().await.expect("discard pending snapshot");
     }
 
     #[tokio::test]
@@ -770,6 +837,101 @@ mod tests {
         let exec = result.unwrap();
         assert_eq!(exec.exit_code, 0);
         assert!(exec.stdout.is_empty());
+    }
+
+    #[tokio::test]
+    async fn snapshot_provider_default_create_snapshot_commits_pending_publish() {
+        let provider = MockSnapshotProvider;
+        let output_dir = std::env::temp_dir().join(format!(
+            "sandbox-mock-snapshot-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+
+        let output = provider
+            .create_snapshot(SnapshotCreateConfig {
+                id: "snapshot-test".into(),
+                binary_path: "/tmp/firecracker".into(),
+                kernel_path: "/tmp/kernel".into(),
+                rootfs_path: "/tmp/rootfs.ext4".into(),
+                output_dir: output_dir.clone(),
+                vcpu_count: 1,
+                memory_mb: 128,
+            })
+            .await
+            .expect("create snapshot");
+
+        assert_eq!(output.snapshot_path, output_dir.join("snapshot.bin"));
+        assert_eq!(output.memory_path, output_dir.join("memory.bin"));
+        assert_eq!(output.cow_path, output_dir.join("cow.img"));
+    }
+
+    struct FailingPendingSnapshotPublish {
+        discarded: Arc<AtomicBool>,
+    }
+
+    #[async_trait]
+    impl PendingSnapshotPublish for FailingPendingSnapshotPublish {
+        async fn commit(&mut self) -> std::result::Result<SnapshotOutput, SnapshotError> {
+            Err(SnapshotError::Teardown("commit failed".into()))
+        }
+
+        async fn discard(&mut self) -> std::result::Result<(), SnapshotError> {
+            self.discarded.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    struct FailingSnapshotProvider {
+        discarded: Arc<AtomicBool>,
+    }
+
+    #[async_trait]
+    impl SnapshotProvider for FailingSnapshotProvider {
+        async fn create_uncommitted_snapshot(
+            &self,
+            _config: SnapshotCreateConfig,
+        ) -> std::result::Result<Box<dyn PendingSnapshotPublish>, SnapshotError> {
+            Ok(Box::new(FailingPendingSnapshotPublish {
+                discarded: Arc::clone(&self.discarded),
+            }))
+        }
+
+        fn config_hash(&self) -> String {
+            "failing-snapshot-config-hash".into()
+        }
+
+        async fn is_complete(
+            &self,
+            _output_dir: &std::path::Path,
+        ) -> std::result::Result<bool, SnapshotError> {
+            Ok(false)
+        }
+    }
+
+    #[tokio::test]
+    async fn snapshot_provider_default_create_snapshot_discards_after_commit_failure() {
+        let discarded = Arc::new(AtomicBool::new(false));
+        let provider = FailingSnapshotProvider {
+            discarded: Arc::clone(&discarded),
+        };
+        let output_dir = std::env::temp_dir().join(format!(
+            "sandbox-mock-snapshot-failure-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+
+        let err = provider
+            .create_snapshot(test_snapshot_config(output_dir))
+            .await
+            .expect_err("commit should fail");
+
+        assert!(
+            matches!(err, SnapshotError::Teardown(ref message) if message == "commit failed"),
+            "got: {err:?}"
+        );
+        assert!(
+            discarded.load(Ordering::SeqCst),
+            "default create_snapshot should discard after commit failure"
+        );
     }
 
     #[tokio::test]

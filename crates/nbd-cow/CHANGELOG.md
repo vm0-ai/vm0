@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.17](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.16...nbd-cow-v0.4.17) (2026-05-07)
+
+
+### Documentation
+
+* document nbd-cow error types ([#12062](https://github.com/vm0-ai/vm0/issues/12062)) ([d54e524](https://github.com/vm0-ai/vm0/commit/d54e5241ba64eff1c596d6e61b3015d25c59cdef))
+
 ## [0.4.16](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.15...nbd-cow-v0.4.16) (2026-05-07)
 
 

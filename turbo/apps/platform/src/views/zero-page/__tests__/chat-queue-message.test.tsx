@@ -392,4 +392,38 @@ describe("chat pending message queue", () => {
     expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
     expect(textarea.value).toBe("should stay in the composer");
   });
+
+  it("disables the Recall button during the optimistic window and enables it once the server confirms", async () => {
+    const user = userEvent.setup({ delay: null });
+    const appendGate = createDeferredPromise<void>(context.signal);
+
+    mockChatLifecycle({
+      appendGate: appendGate.promise,
+    });
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+    });
+
+    const textarea = await startActiveRun(user);
+    await fill(textarea, "optimistic test");
+    await user.keyboard("{Enter}");
+
+    // The queued bubble renders immediately (optimistic), and the Recall
+    // button stays disabled while the append request is in flight.
+    await waitFor(() => {
+      expect(screen.getByLabelText("Queued message")).toBeInTheDocument();
+      expect(screen.getByLabelText("Recall queued message")).toBeDisabled();
+    });
+
+    // Release the gate — the append completes, reload runs, server confirms
+    // the pending row, and the optimistic slot yields.
+    appendGate.resolve();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Recall queued message")).not.toBeDisabled();
+    });
+  });
 });

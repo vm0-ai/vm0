@@ -30,7 +30,7 @@ use std::time::{Duration, Instant};
 use bytes::Bytes;
 use futures_util::stream::{self, StreamExt};
 use reqwest::Client;
-use sandbox::{ExecRequest, Sandbox};
+use sandbox::Sandbox;
 use tokio::fs;
 use tokio::io::AsyncReadExt as _;
 use tracing::{debug, warn};
@@ -52,7 +52,6 @@ const GUEST_STAGE_DIR: &str = "/tmp/vm0-storage-cache";
 
 const HEAD_TIMEOUT: Duration = Duration::from_secs(10);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
-const MKDIR_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Guest-side filename for a cached archive.
 ///
@@ -125,12 +124,6 @@ pub async fn populate_cache(
     if targets.is_empty() {
         return Ok(());
     }
-
-    // One-shot: ensure the guest stage directory exists so the first
-    // `sandbox.write_file` has a parent to write into. If #10805 takes on
-    // this responsibility in guest-download, this call becomes dead code and
-    // is removed in a follow-up commit.
-    ensure_guest_stage_dir(sandbox).await?;
 
     let http = Client::builder()
         .build()
@@ -206,25 +199,6 @@ fn collect_targets(manifest: &GuestDownloadManifest) -> Vec<CacheTarget> {
         });
     }
     out
-}
-
-async fn ensure_guest_stage_dir(sandbox: &dyn Sandbox) -> RunnerResult<()> {
-    let cmd = format!("mkdir -p {GUEST_STAGE_DIR}");
-    let req = ExecRequest {
-        cmd: &cmd,
-        timeout: MKDIR_TIMEOUT,
-        env: &[],
-        sudo: false,
-    };
-    let res = sandbox.exec(&req).await?;
-    if res.exit_code != 0 {
-        return Err(RunnerError::Internal(format!(
-            "guest mkdir {GUEST_STAGE_DIR} exit={} stderr={}",
-            res.exit_code,
-            String::from_utf8_lossy(&res.stderr)
-        )));
-    }
-    Ok(())
 }
 
 async fn process_one(

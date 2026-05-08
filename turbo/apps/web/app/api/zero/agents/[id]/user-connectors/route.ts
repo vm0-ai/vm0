@@ -64,8 +64,9 @@ const router = tsr.router(zeroUserConnectorsContract, {
     return {
       status: 200 as const,
       body: {
-        enabledTypes: rows.map((r) => {
-          return r.connectorType;
+        enabledTypes: rows.flatMap((r) => {
+          const parsed = connectorTypeSchema.safeParse(r.connectorType);
+          return parsed.success ? [parsed.data] : [];
         }),
       },
     };

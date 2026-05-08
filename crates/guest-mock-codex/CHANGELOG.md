@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.1.1...guest-mock-codex-v0.1.2) (2026-05-08)
+
+
+### Bug Fixes
+
+* restore codex sessions as jsonl ([#12137](https://github.com/vm0-ai/vm0/issues/12137)) ([ab3dc5b](https://github.com/vm0-ai/vm0/commit/ab3dc5b5f35105709cc22d7caf9e571c59ec5a39))
+
 ## [0.1.1](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.1.0...guest-mock-codex-v0.1.1) (2026-05-01)
 
 

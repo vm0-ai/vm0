@@ -26,7 +26,6 @@ import { variables } from "@vm0/db/schema/variable";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { nowDate } from "../../lib/time";
 import { db$ } from "../external/db";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
@@ -200,7 +199,9 @@ export function zeroConnectorList(args: {
         return connector.type;
       }),
     );
-    const now = nowDate().toISOString();
+    // Use a fixed timestamp for derived connectors — they are inferred from
+    // secrets/variables rather than explicitly created, so a stable sentinel
+    // value keeps shadow comparisons deterministic.
     const derivedConnectors: ConnectorResponse[] = derivedTypes
       .filter((type) => {
         return !dbTypes.has(type);
@@ -215,8 +216,8 @@ export function zeroConnectorList(args: {
           externalEmail: null,
           oauthScopes: null,
           needsReconnect: false,
-          createdAt: now,
-          updatedAt: now,
+          createdAt: "1970-01-01T00:00:00.000Z",
+          updatedAt: "1970-01-01T00:00:00.000Z",
         };
       });
 
@@ -357,7 +358,7 @@ function apiTokenConnectorByType(args: {
       return null;
     }
 
-    const now = nowDate().toISOString();
+    // Use a fixed timestamp — this connector is inferred, not explicitly created.
     return {
       id: null,
       type: args.type,
@@ -367,8 +368,8 @@ function apiTokenConnectorByType(args: {
       externalEmail: null,
       oauthScopes: null,
       needsReconnect: false,
-      createdAt: now,
-      updatedAt: now,
+      createdAt: "1970-01-01T00:00:00.000Z",
+      updatedAt: "1970-01-01T00:00:00.000Z",
     };
   });
 }

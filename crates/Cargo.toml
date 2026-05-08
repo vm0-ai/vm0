@@ -10,6 +10,7 @@ members = [
     "guest-mock-claude",
     "guest-mock-codex",
     "guest-reseed",
+    "guest-write-file",
     "nbd-cow",
     "runner",
     "sandbox",
@@ -35,6 +36,7 @@ guest-init = { path = "guest-init" }
 guest-mock-claude = { path = "guest-mock-claude" }
 guest-mock-codex = { path = "guest-mock-codex" }
 guest-reseed = { path = "guest-reseed" }
+guest-write-file = { path = "guest-write-file" }
 nbd-cow = { path = "nbd-cow" }
 sandbox = { path = "sandbox" }
 sandbox-fc = { path = "sandbox-fc" }

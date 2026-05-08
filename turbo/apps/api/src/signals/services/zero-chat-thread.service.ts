@@ -173,8 +173,17 @@ function inferMimetype(filename: string): string {
     : "application/octet-stream";
 }
 
+const CLERK_USER_ID_PREFIX = "user_";
+
+function publicFileUserIdSegment(userId: string): string {
+  return userId.startsWith(CLERK_USER_ID_PREFIX)
+    ? userId.slice(CLERK_USER_ID_PREFIX.length)
+    : userId;
+}
+
 function buildFileUrl(userId: string, id: string, filename: string): string {
-  return `${env("VM0_API_URL")}/f/${encodeURIComponent(userId)}/${id}/${encodeURIComponent(filename)}`;
+  const publicUserId = publicFileUserIdSegment(userId);
+  return `${env("VM0_API_URL")}/f/${encodeURIComponent(publicUserId)}/${id}/${encodeURIComponent(filename)}`;
 }
 
 function hasAgentSessionId(

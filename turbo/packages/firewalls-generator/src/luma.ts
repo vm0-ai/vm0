@@ -1,22 +1,23 @@
 /**
- * Generate Luma AI firewall config.
+ * Generate Luma firewall config.
  *
- * Data source: https://docs.lumalabs.ai/docs/api
+ * Data source: https://docs.luma.com/reference/getting-started-with-your-api
  *
- * Luma AI Dream Machine is an AI video and image generation platform.
- * Uses Bearer token authentication via the Authorization header.
- * Token is an opaque string stored in LUMA_TOKEN environment variable.
+ * Luma is an event management platform. Uses API key authentication via
+ * the x-luma-api-key header. Token is stored in LUMA_API_KEY env variable.
+ *
+ * Rate limits: 200 req/min (calendar keys), 500 req/min (org keys).
  */
 
 import { writeOutput } from "./codegen";
 
-const DOCS_URL = "https://docs.lumalabs.ai/docs/api";
-// Token format: opaque string, no documented prefix or fixed length
+const DOCS_URL =
+  "https://docs.luma.com/reference/getting-started-with-your-api";
 const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalC";
 
 function generateTypeScript(): string {
   const lines: string[] = [
-    "// Auto-generated from Luma AI API docs.",
+    "// Auto-generated from Luma API docs.",
     `// Source: ${DOCS_URL}`,
     "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:luma",
     "//",
@@ -26,16 +27,16 @@ function generateTypeScript(): string {
     "",
     "export const lumaFirewall = {",
     '  name: "luma",',
-    '  description: "Luma AI Dream Machine",',
+    '  description: "Luma event management platform",',
     "  placeholders: {",
-    `    LUMA_TOKEN: "${PLACEHOLDER_VALUE}",`,
+    `    LUMA_API_KEY: "${PLACEHOLDER_VALUE}",`,
     "  },",
     "  apis: [",
     "    {",
-    '      base: "https://api.lumalabs.ai",',
+    '      base: "https://public-api.luma.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.LUMA_TOKEN }}",',
+    '          "x-luma-api-key": "${{ secrets.LUMA_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",
@@ -49,7 +50,7 @@ function generateTypeScript(): string {
 }
 
 export async function generate(): Promise<void> {
-  console.error("Generating Luma AI firewall config...");
+  console.error("Generating Luma firewall config...");
   const ts = generateTypeScript();
   writeOutput("luma", ts, import.meta.dirname);
 }

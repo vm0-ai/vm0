@@ -1,5 +1,78 @@
 # Changelog
 
+## [9.145.5](https://github.com/vm0-ai/vm0/compare/cli-v9.145.4...cli-v9.145.5) (2026-05-08)
+
+
+### Bug Fixes
+
+* **cli:** drain terminal run events ([#12154](https://github.com/vm0-ai/vm0/issues/12154)) ([1795a3c](https://github.com/vm0-ai/vm0/commit/1795a3c1a08f1337aa47ce95495bcac472a11d83))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.2.0
+    * @vm0/core bumped to 8.263.0
+
+## [9.145.4](https://github.com/vm0-ai/vm0/compare/cli-v9.145.3...cli-v9.145.4) (2026-05-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.1.0
+    * @vm0/connectors bumped to 1.1.0
+    * @vm0/core bumped to 8.262.0
+
+## [9.145.3](https://github.com/vm0-ai/vm0/compare/cli-v9.145.2...cli-v9.145.3) (2026-05-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.0.2
+    * @vm0/core bumped to 8.261.2
+
+## [9.145.2](https://github.com/vm0-ai/vm0/compare/cli-v9.145.1...cli-v9.145.2) (2026-05-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.0.1
+    * @vm0/core bumped to 8.261.1
+
+## [9.145.1](https://github.com/vm0-ai/vm0/compare/cli-v9.145.0...cli-v9.145.1) (2026-05-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.0.0
+    * @vm0/connectors bumped to 1.0.0
+    * @vm0/core bumped to 8.261.0
+
+## [9.145.0](https://github.com/vm0-ai/vm0/compare/cli-v9.144.1...cli-v9.145.0) (2026-05-07)
+
+
+### Features
+
+* rename luma to luma-ai and add luma events connector ([#12076](https://github.com/vm0-ai/vm0/issues/12076)) ([67d5417](https://github.com/vm0-ai/vm0/commit/67d54173e02fb1528ea2533c652e86d2948b78dd))
+
+## [9.144.1](https://github.com/vm0-ai/vm0/compare/cli-v9.144.0...cli-v9.144.1) (2026-05-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.260.0
+
 ## [9.144.0](https://github.com/vm0-ai/vm0/compare/cli-v9.143.0...cli-v9.144.0) (2026-05-07)
 
 

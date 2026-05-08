@@ -1,5 +1,83 @@
 # Changelog
 
+## [8.263.0](https://github.com/vm0-ai/vm0/compare/core-v8.262.0...core-v8.263.0) (2026-05-08)
+
+
+### Features
+
+* route model-first runs through org policies ([#12159](https://github.com/vm0-ai/vm0/issues/12159)) ([6091026](https://github.com/vm0-ai/vm0/commit/60910260aa93d5e8f1d71cba6642b712b5013592))
+* **voice-chat:** backend transcript ingestion and talker tool dispatch from relay ([#12148](https://github.com/vm0-ai/vm0/issues/12148)) ([978db30](https://github.com/vm0-ai/vm0/commit/978db3048a0a7bc48b6de3785443d37399f17f83))
+* **voice-chat:** implement vm0 realtime relay runtime and openai client ([#12150](https://github.com/vm0-ai/vm0/issues/12150)) ([4194a73](https://github.com/vm0-ai/vm0/commit/4194a73ba3175087676c380ee5e1908f3b2c9c1f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.2.0
+
+## [8.262.0](https://github.com/vm0-ai/vm0/compare/core-v8.261.2...core-v8.262.0) (2026-05-08)
+
+
+### Features
+
+* add model-first provider policy foundation ([#12151](https://github.com/vm0-ai/vm0/issues/12151)) ([68ea0af](https://github.com/vm0-ai/vm0/commit/68ea0af5b98be2baecb6d70dfd9e91b90cb8f8f4))
+* **voice-chat:** add realtime relay schema, pricing, and contract foundations ([#12143](https://github.com/vm0-ai/vm0/issues/12143)) ([d143711](https://github.com/vm0-ai/vm0/commit/d1437115b70e7794d2dab10c7294008976f670b1))
+* **voice-chat:** replace openai token mint with vm0 relay bootstrap admission ([#12149](https://github.com/vm0-ai/vm0/issues/12149)) ([9d29183](https://github.com/vm0-ai/vm0/commit/9d29183e0fd556ab3ffb3dd74f53193863eab415)), closes [#12128](https://github.com/vm0-ai/vm0/issues/12128)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.1.0
+    * @vm0/connectors bumped to 1.1.0
+
+## [8.261.2](https://github.com/vm0-ai/vm0/compare/core-v8.261.1...core-v8.261.2) (2026-05-08)
+
+
+### Bug Fixes
+
+* refresh personal codex oauth providers ([#12120](https://github.com/vm0-ai/vm0/issues/12120)) ([b4e727d](https://github.com/vm0-ai/vm0/commit/b4e727da0dc4a1fbb0df6d8ef3aececa9460b5a7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.0.2
+
+## [8.261.1](https://github.com/vm0-ai/vm0/compare/core-v8.261.0...core-v8.261.1) (2026-05-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.0.1
+
+## [8.261.0](https://github.com/vm0-ai/vm0/compare/core-v8.260.0...core-v8.261.0) (2026-05-07)
+
+
+### Features
+
+* add Google Ads connector ([#12084](https://github.com/vm0-ai/vm0/issues/12084)) ([6d77828](https://github.com/vm0-ai/vm0/commit/6d77828457aff1e8330c66aacbe843b4eb49b6bf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.0.0
+    * @vm0/connectors bumped to 1.0.0
+
+## [8.260.0](https://github.com/vm0-ai/vm0/compare/core-v8.259.0...core-v8.260.0) (2026-05-07)
+
+
+### Features
+
+* move ApiBackend feature switch to organization level ([#12073](https://github.com/vm0-ai/vm0/issues/12073)) ([996a0da](https://github.com/vm0-ai/vm0/commit/996a0da00e64106f921f89734082c741b1470e9e))
+
 ## [8.259.0](https://github.com/vm0-ai/vm0/compare/core-v8.258.0...core-v8.259.0) (2026-05-06)
 
 

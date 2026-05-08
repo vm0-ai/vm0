@@ -183,9 +183,9 @@ pub trait Sandbox: Send + Sync + Any {
     /// Returns an error if the sandbox is not running or if the backing
     /// process crashes during execution.
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult>;
-    /// Write `content` to `path` inside the guest, creating or
-    /// truncating as needed. Returns an error if the sandbox is not
-    /// running or if the backing process crashes.
+    /// Write `content` to `path` inside the guest, creating parent
+    /// directories and truncating the file as needed. Returns an error if
+    /// the sandbox is not running or if the backing process crashes.
     async fn write_file(&self, path: &str, content: &[u8]) -> Result<()>;
     /// Spawn `request.cmd` in the guest and return a handle for later
     /// supervision via [`wait_exit`](Self::wait_exit).

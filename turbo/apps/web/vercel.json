@@ -36,6 +36,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/reconcile-billing-entitlements",
+      "schedule": "0 0,12 * * *"
+    },
+    {
       "path": "/api/cron/voice-chat-cleanup",
       "schedule": "* * * * *"
     },
