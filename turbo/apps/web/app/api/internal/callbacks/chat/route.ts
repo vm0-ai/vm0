@@ -97,7 +97,9 @@ async function queryChatOutputEvents(
 | order by sequenceNumber asc
 | limit 200`;
 
-  const events = await queryAxiom<AxiomChatOutputEvent>(apl);
+  const events = await queryAxiom<AxiomChatOutputEvent>(apl, {
+    noCache: true,
+  });
 
   const assistantItems: AssistantEventItem[] = [];
   let resultFallback: ResultEventItem | null = null;

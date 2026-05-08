@@ -179,7 +179,7 @@ async function queryAgentEvents(
 | where runId == "${escapeAplString(runId)}"
 | order by _time asc, sequenceNumber asc
 | limit 5000`;
-  return queryAxiom<AxiomAgentEvent>(apl).catch((err) => {
+  return queryAxiom<AxiomAgentEvent>(apl, { noCache: true }).catch((err) => {
     log.warn("Failed to collect agent telemetry", { error: String(err) });
     return [];
   });

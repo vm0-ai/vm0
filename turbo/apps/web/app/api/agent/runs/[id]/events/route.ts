@@ -102,6 +102,8 @@ const router = tsr.router(runEventsContract, {
     if (watermarkTarget !== null) {
       await waitForRunEventWatermarkVisible(params.id, watermarkTarget);
     }
+    const axiomQueryOptions =
+      watermarkTarget !== null ? ({ noCache: true } as const) : undefined;
 
     // Build APL query for Axiom
     const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
@@ -112,7 +114,9 @@ const router = tsr.router(runEventsContract, {
 | limit ${limit}`;
 
     // Query Axiom for agent events
-    const rawEvents = await queryAxiom<AxiomAgentEvent>(apl);
+    const rawEvents = axiomQueryOptions
+      ? await queryAxiom<AxiomAgentEvent>(apl, axiomQueryOptions)
+      : await queryAxiom<AxiomAgentEvent>(apl);
 
     // Filter to only consecutive events to handle Axiom's eventual consistency.
     const events = filterConsecutiveEvents(rawEvents, since);

@@ -363,6 +363,9 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       expect(visibilityApl).toContain("project sequenceNumber");
       expect(visibilityApl).toContain("sequenceNumber > -1");
       const eventsApl = context.mocks.axiom.queryAxiom.mock.calls[1]![0];
+      expect(context.mocks.axiom.queryAxiom.mock.calls[1]![1]).toMatchObject({
+        noCache: true,
+      });
       expect(eventsApl).toContain("order by sequenceNumber asc");
       expect(eventsApl).toContain("limit 2");
     });
@@ -412,6 +415,9 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       const visibilityApl = context.mocks.axiom.queryAxiom.mock.calls[0]![0];
       expect(visibilityApl).toContain("project sequenceNumber");
       const eventsApl = context.mocks.axiom.queryAxiom.mock.calls[1]![0];
+      expect(context.mocks.axiom.queryAxiom.mock.calls[1]![1]).toMatchObject({
+        noCache: true,
+      });
       expect(eventsApl).toContain("order by sequenceNumber desc");
       expect(eventsApl).toContain("limit 2");
     });

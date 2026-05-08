@@ -132,6 +132,7 @@ describe("extractRunOutput", () => {
     expect(mockQuery.mock.calls[1]![0]).toContain(
       "['eventData.item.type'] == \"agent_message\"",
     );
+    expect(mockQuery.mock.calls[1]![1]).toMatchObject({ noCache: true });
   });
 
   it("can skip waiting for output visibility", async () => {

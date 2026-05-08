@@ -130,6 +130,8 @@ export async function getRunAgentEvents(
   if (watermarkTarget !== null) {
     await waitForRunEventWatermarkVisible(runId, watermarkTarget);
   }
+  const axiomQueryOptions =
+    watermarkTarget !== null ? ({ noCache: true } as const) : undefined;
 
   const apl = `['${dataset}']
 | where runId == "${escapeAplString(runId)}"
@@ -137,7 +139,9 @@ ${sinceFilter}
 | order by sequenceNumber ${order}
 | limit ${limit + 1}`;
 
-  const events = await queryAxiom<AxiomAgentEvent>(apl);
+  const events = axiomQueryOptions
+    ? await queryAxiom<AxiomAgentEvent>(apl, axiomQueryOptions)
+    : await queryAxiom<AxiomAgentEvent>(apl);
 
   const hasMore = events.length > limit;
   const resultEvents = hasMore ? events.slice(0, limit) : events;

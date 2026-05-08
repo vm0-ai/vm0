@@ -55,6 +55,7 @@ interface RunOutputEvent {
 const OUTPUT_EVENT_FILTER = `eventType == "result" or (eventType == "item.completed" and ['eventData.item.type'] == "agent_message")`;
 const OUTPUT_QUERY_ATTEMPTS = 4;
 const OUTPUT_QUERY_RETRY_MS = 500;
+const FRESH_AXIOM_QUERY_OPTIONS = { noCache: true } as const;
 
 function normalizeOptions(
   input?: RunOutputOptionsInput,
@@ -79,7 +80,7 @@ async function queryOutputEventsDesc(runId: string): Promise<RunOutputEvent[]> {
 | order by sequenceNumber desc
 | limit 1`;
 
-  return queryAxiom<RunOutputEvent>(apl);
+  return queryAxiom<RunOutputEvent>(apl, FRESH_AXIOM_QUERY_OPTIONS);
 }
 
 async function queryLatestOutputEvent(
@@ -108,7 +109,7 @@ async function queryAllOutputEvents(runId: string): Promise<RunOutputEvent[]> {
 | where ${OUTPUT_EVENT_FILTER}
 | order by sequenceNumber asc`;
 
-  return queryAxiom<RunOutputEvent>(apl);
+  return queryAxiom<RunOutputEvent>(apl, FRESH_AXIOM_QUERY_OPTIONS);
 }
 
 async function waitForVisibleOutput(

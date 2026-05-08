@@ -317,6 +317,9 @@ describe("GET /api/agent/runs/:id/events", () => {
       expect(visibilityApl).toContain("project sequenceNumber");
       expect(visibilityApl).toContain("sequenceNumber > -1");
       const eventsApl = context.mocks.axiom.queryAxiom.mock.calls[1]![0];
+      expect(context.mocks.axiom.queryAxiom.mock.calls[1]![1]).toMatchObject({
+        noCache: true,
+      });
       expect(eventsApl).toContain("limit 1");
     });
   });

@@ -462,7 +462,7 @@ async function collectAgentEvents(
 | where runId in (${runIdList})
 | order by _time asc, sequenceNumber asc
 | limit 2000`;
-  return queryAxiom<ChatHistoryEvent>(apl).catch((err) => {
+  return queryAxiom<ChatHistoryEvent>(apl, { noCache: true }).catch((err) => {
     log.warn("Failed to collect agent events from Axiom", {
       error: String(err),
     });
