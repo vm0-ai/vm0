@@ -1,7 +1,9 @@
+use std::ffi::{CStr, CString};
 use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::OnceLock;
 use std::time::{Duration, SystemTime};
 
 use std::os::fd::{AsRawFd, RawFd};
@@ -9,13 +11,13 @@ use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsE
 
 /// Maximum length for command preview in logs
 const COMMAND_PREVIEW_MAX_LEN: usize = 100;
-#[cfg(not(debug_assertions))]
 const SANDBOX_USER: &str = "user";
-const SANDBOX_GID: libc::gid_t = 1000;
 const ENV_SCRIPT_PREFIX: &str = "vm0-env-";
 const ENV_SCRIPT_SUFFIX: &str = ".sh";
 const ENV_SCRIPT_STALE_AFTER: Duration = Duration::from_secs(60 * 60);
 const CHOWN_UNCHANGED_UID: libc::uid_t = !0;
+const PASSWD_BUFFER_MAX_LEN: usize = 1024 * 1024;
+static SANDBOX_USER_GID: OnceLock<libc::gid_t> = OnceLock::new();
 
 fn get_exec_user() -> Option<&'static str> {
     #[cfg(debug_assertions)]
@@ -327,6 +329,70 @@ fn ensure_env_script_dir(dir: &Path) -> io::Result<()> {
     Ok(())
 }
 
+fn initial_passwd_buffer_len() -> usize {
+    // SAFETY: sysconf is read-only for this process setting.
+    let len = unsafe { libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX) };
+    if len > 0 {
+        (len as usize).min(PASSWD_BUFFER_MAX_LEN)
+    } else {
+        16 * 1024
+    }
+}
+
+fn lookup_user_gid_cstr(user: &CStr) -> io::Result<libc::gid_t> {
+    let mut buffer = vec![0_u8; initial_passwd_buffer_len()];
+    loop {
+        // SAFETY: zero is a valid initial state for passwd before getpwnam_r
+        // fills it with pointers into `buffer`.
+        let mut passwd: libc::passwd = unsafe { std::mem::zeroed() };
+        let mut result: *mut libc::passwd = std::ptr::null_mut();
+        // SAFETY: all pointers are valid for the duration of the call, and
+        // `buffer` is writable with the length supplied to getpwnam_r.
+        let ret = unsafe {
+            libc::getpwnam_r(
+                user.as_ptr(),
+                &mut passwd,
+                buffer.as_mut_ptr().cast(),
+                buffer.len(),
+                &mut result,
+            )
+        };
+        if ret == 0 {
+            if result.is_null() {
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("sandbox user not found: {}", user.to_string_lossy()),
+                ));
+            }
+            return Ok(passwd.pw_gid);
+        }
+        if ret == libc::ERANGE && buffer.len() < PASSWD_BUFFER_MAX_LEN {
+            buffer.resize((buffer.len() * 2).min(PASSWD_BUFFER_MAX_LEN), 0);
+            continue;
+        }
+        return Err(io::Error::from_raw_os_error(ret));
+    }
+}
+
+fn lookup_user_gid(user: &str) -> io::Result<libc::gid_t> {
+    let user = CString::new(user).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "sandbox user name must not contain NUL bytes",
+        )
+    })?;
+    lookup_user_gid_cstr(&user)
+}
+
+fn sandbox_user_gid() -> io::Result<libc::gid_t> {
+    if let Some(gid) = SANDBOX_USER_GID.get() {
+        return Ok(*gid);
+    }
+    let gid = lookup_user_gid(SANDBOX_USER)?;
+    let _ = SANDBOX_USER_GID.set(gid);
+    Ok(*SANDBOX_USER_GID.get().unwrap_or(&gid))
+}
+
 fn fchown_group(fd: RawFd, gid: libc::gid_t) -> io::Result<()> {
     // SAFETY: `fd` comes from an open file/directory descriptor and `-1`
     // as uid asks fchown to leave the owner unchanged.
@@ -443,10 +509,11 @@ fn create_env_script_in_dir(
                 // owned either path, an existing same-UID process could
                 // chmod/replace run.sh after the path appears in argv but
                 // before bash opens it.
+                let sandbox_gid = sandbox_user_gid()?;
                 let script_dir_file = File::open(&script_dir)?;
-                fchown_group(file.as_raw_fd(), SANDBOX_GID)?;
+                fchown_group(file.as_raw_fd(), sandbox_gid)?;
                 file.set_permissions(fs::Permissions::from_mode(0o440))?;
-                fchown_group(script_dir_file.as_raw_fd(), SANDBOX_GID)?;
+                fchown_group(script_dir_file.as_raw_fd(), sandbox_gid)?;
                 fs::set_permissions(&script_dir, fs::Permissions::from_mode(0o710))?;
             } else {
                 file.set_permissions(fs::Permissions::from_mode(0o400))?;
@@ -596,6 +663,23 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let guard = TempDirGuard(dir.clone());
         (dir, guard)
+    }
+
+    #[test]
+    fn lookup_user_gid_reads_system_group() {
+        let root = std::ffi::CString::new("root").unwrap();
+
+        assert_eq!(lookup_user_gid_cstr(&root).unwrap(), 0);
+    }
+
+    #[test]
+    fn lookup_user_gid_reports_missing_user() {
+        let user =
+            std::ffi::CString::new(format!("vm0-missing-user-{}", std::process::id())).unwrap();
+
+        let err = lookup_user_gid_cstr(&user).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
     }
 
     #[test]
