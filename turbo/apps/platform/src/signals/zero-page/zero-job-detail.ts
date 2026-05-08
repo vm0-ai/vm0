@@ -1,6 +1,7 @@
 export {
   agentActiveTab$,
   setAgentActiveTab$,
+  type AgentTabKey,
   agentDetail$,
   reloadAgentDetail$,
   agentInstructions$,

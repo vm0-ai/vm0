@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { search } from "../../location.ts";
+import { replaceState, search } from "../../location.ts";
 
 // ---------------------------------------------------------------------------
 // Agent name — set when navigating to a subagent detail page
@@ -17,9 +17,19 @@ export const agentName$ = computed((get) => {
 
 // ---------------------------------------------------------------------------
 // Active tab
+//
+// `null` is the "index" view used by the mobile-native redesign — no specific
+// section selected, render the grouped list of rows. Desktop coerces null to
+// "authorization" for tab display so the existing tabs layout is unchanged.
 // ---------------------------------------------------------------------------
 
-function isValidTab(tab: string): boolean {
+export type AgentTabKey =
+  | "authorization"
+  | "schedule"
+  | "profile"
+  | "instructions";
+
+function isValidTab(tab: string): tab is AgentTabKey {
   return (
     tab === "authorization" ||
     tab === "schedule" ||
@@ -28,28 +38,30 @@ function isValidTab(tab: string): boolean {
   );
 }
 
-function getInitialTab(): string {
+function getInitialTab(): AgentTabKey | null {
   const params = new URLSearchParams(search());
   const tab = params.get("tab") ?? "";
-  return isValidTab(tab) ? tab : "authorization";
+  return isValidTab(tab) ? tab : null;
 }
 
-const internalActiveTab$ = state("authorization");
+const internalActiveTab$ = state<AgentTabKey | null>(null);
 
 export const agentActiveTab$ = computed((get) => {
   return get(internalActiveTab$);
 });
 
-export const setAgentActiveTab$ = command(({ set }, tab: string) => {
-  set(internalActiveTab$, tab);
-  const url = new URL(location.href);
-  if (tab === "authorization") {
-    url.searchParams.delete("tab");
-  } else {
-    url.searchParams.set("tab", tab);
-  }
-  history.replaceState(null, "", url.toString());
-});
+export const setAgentActiveTab$ = command(
+  ({ set }, tab: AgentTabKey | null) => {
+    set(internalActiveTab$, tab);
+    const url = new URL(location.href);
+    if (tab === null) {
+      url.searchParams.delete("tab");
+    } else {
+      url.searchParams.set("tab", tab);
+    }
+    replaceState(null, "", url.toString());
+  },
+);
 
 /** Reset active tab to the value derived from the current URL. */
 export const resetActiveTab$ = command(({ set }) => {

@@ -8,7 +8,11 @@ import { discardAgentConnectorsDraft$ } from "./connectors.ts";
 // Public re-exports
 // ---------------------------------------------------------------------------
 
-export { agentActiveTab$, setAgentActiveTab$ } from "./agent-name.ts";
+export {
+  agentActiveTab$,
+  setAgentActiveTab$,
+  type AgentTabKey,
+} from "./agent-name.ts";
 
 export { agentDetail$, reloadAgentDetail$ } from "./detail.ts";
 

@@ -8,7 +8,10 @@ import {
   useLastResolved,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { isMobileViewport$ } from "../../signals/zero-page/mobile-viewport.ts";
 import {
   IconFileText,
   IconUserCircle,
@@ -20,6 +23,7 @@ import {
   IconX,
   IconMessageCircle,
   IconWand,
+  IconChevronRight,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -66,6 +70,7 @@ import {
   saveAgentConnectors$,
   agentActiveTab$,
   setAgentActiveTab$,
+  type AgentTabKey,
   agentPermissionPolicies$,
   reloadAgentDetail$,
 } from "../../signals/zero-page/zero-job-detail.ts";
@@ -229,11 +234,16 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
 const TAB_TRIGGER_CLASS =
   "gap-1.5 text-[16px] sm:text-sm data-[state=active]:bg-background px-3";
 
-/** Coerce hidden tabs back to "authorization" for non-admin default-agent view. */
+/** Coerce hidden / null tabs back to "authorization" so the desktop tab view
+ *  always has one tab marked active. Mobile-native uses `rawTab` directly so
+ *  it can render the index (grouped list) view when `rawTab === null`. */
 function resolveVisibleTab(
-  rawTab: string,
+  rawTab: AgentTabKey | null,
   hideProfileAndInstructions: boolean,
-): string {
+): AgentTabKey {
+  if (rawTab === null) {
+    return "authorization";
+  }
   if (
     hideProfileAndInstructions &&
     rawTab !== "authorization" &&
@@ -959,9 +969,169 @@ function useTabVisibility(agentId: string, ownerId: string) {
   return {
     isDefaultAgent,
     hideProfileAndInstructions,
+    rawTab,
     activeTab,
     setActiveTab,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Mobile-native (MobileNativeV1) layout — iOS Settings-style index with
+// grouped section rows. Tapping a row sets the activeTab; the page then
+// renders that section's content with the top bar handling section title +
+// "back to overview" navigation.
+// ---------------------------------------------------------------------------
+
+function MobileSectionRow({
+  icon,
+  label,
+  onClick,
+  testId,
+  isLast,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  testId: string;
+  isLast?: boolean;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onClick}
+        data-testid={testId}
+        className="flex items-center gap-3 px-5 py-4 w-full text-left transition-colors hover:bg-muted/50 active:bg-muted"
+      >
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-200 text-foreground/70">
+          {icon}
+        </span>
+        <span className="flex-1 min-w-0 text-[16px] font-medium text-foreground">
+          {label}
+        </span>
+        <IconChevronRight
+          size={18}
+          stroke={1.5}
+          className="text-muted-foreground/50 shrink-0"
+        />
+      </button>
+      {!isLast && <div className="mx-5 border-b border-border/50" />}
+    </>
+  );
+}
+
+function MobileAgentIndexView({
+  agentId,
+  displayName,
+  description,
+  showProfileAndInstructions,
+}: {
+  agentId: string;
+  displayName: string;
+  description: string;
+  showProfileAndInstructions: boolean;
+}) {
+  const setActiveTab = useSet(setAgentActiveTab$);
+  const nav = useSet(detachedNavigateTo$);
+  const openMaker = useSet(openAvatarMaker$);
+
+  return (
+    <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
+      <main className="flex-1 px-4 pt-2 pb-16">
+        <div className="mx-auto max-w-[600px] flex flex-col gap-6">
+          <div className="flex flex-col items-center text-center gap-3 pt-4">
+            <div className="group relative shrink-0">
+              <AgentAvatarImg
+                name={agentId}
+                alt={displayName}
+                className="h-24 w-24 rounded-full object-cover object-top"
+              />
+              {showProfileAndInstructions && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("profile");
+                    openMaker();
+                  }}
+                  className="absolute -right-0.5 -bottom-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border transition-colors hover:text-foreground"
+                  aria-label="Customize avatar"
+                  data-testid="mobile-agent-avatar-maker"
+                >
+                  <IconWand size={14} stroke={1.5} />
+                </button>
+              )}
+            </div>
+            <div className="min-w-0 w-full">
+              <h1
+                className="text-[22px] font-semibold tracking-tight text-foreground truncate"
+                data-testid="mobile-agent-display-name"
+              >
+                {displayName}
+              </h1>
+              <p className="text-[16px] text-muted-foreground mt-1 leading-snug line-clamp-2">
+                {description || "Your AI teammate, tuned to you"}
+              </p>
+            </div>
+          </div>
+
+          <Button
+            variant="default"
+            className="zero-btn-morandi w-full gap-2 h-12 text-[16px]"
+            onClick={() => {
+              nav("/agents/:agentId/chat", {
+                pathParams: { agentId: agentId },
+              });
+            }}
+            aria-label={`Chat with ${displayName}`}
+            data-testid="mobile-agent-chat-cta"
+          >
+            <IconMessageCircle size={18} stroke={2} />
+            Chat with {displayName}
+          </Button>
+
+          <div className="zero-card overflow-hidden">
+            {showProfileAndInstructions && (
+              <MobileSectionRow
+                icon={<IconFileText size={18} stroke={1.5} />}
+                label="Instructions"
+                testId="mobile-agent-section-instructions"
+                onClick={() => {
+                  setActiveTab("instructions");
+                }}
+              />
+            )}
+            {showProfileAndInstructions && (
+              <MobileSectionRow
+                icon={<IconUserCircle size={18} stroke={1.5} />}
+                label="Profile"
+                testId="mobile-agent-section-profile"
+                onClick={() => {
+                  setActiveTab("profile");
+                }}
+              />
+            )}
+            <MobileSectionRow
+              icon={<IconShield size={18} stroke={1.5} />}
+              label="Connectors"
+              testId="mobile-agent-section-connectors"
+              onClick={() => {
+                setActiveTab("authorization");
+              }}
+            />
+            <MobileSectionRow
+              icon={<IconCalendar size={18} stroke={1.5} />}
+              label="Scheduled"
+              testId="mobile-agent-section-scheduled"
+              onClick={() => {
+                setActiveTab("schedule");
+              }}
+              isLast
+            />
+          </div>
+        </div>
+      </main>
+    </div>
+  );
 }
 
 export function ZeroJobDetailPage() {
@@ -971,9 +1141,15 @@ export function ZeroJobDetailPage() {
   const {
     isDefaultAgent,
     hideProfileAndInstructions,
+    rawTab,
     activeTab,
     setActiveTab,
   } = useTabVisibility(fields.agentId, fields.ownerId);
+
+  const features = useLastResolved(featureSwitch$);
+  const mobileNativeOn = features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
+  const isMobile = useGet(isMobileViewport$);
+  const mobileRedesign = mobileNativeOn && isMobile;
 
   if (!fields.detail && !error) {
     return <DetailSkeleton />;
@@ -981,6 +1157,42 @@ export function ZeroJobDetailPage() {
 
   if (error) {
     return <DetailError error={error} agentId={fields.agentId} />;
+  }
+
+  if (mobileRedesign && rawTab === null) {
+    return (
+      <MobileAgentIndexView
+        agentId={fields.agentId}
+        displayName={fields.displayName}
+        description={fields.description}
+        showProfileAndInstructions={!hideProfileAndInstructions}
+      />
+    );
+  }
+
+  if (mobileRedesign) {
+    return (
+      <div
+        className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]"
+        data-testid="mobile-agent-section-view"
+      >
+        <main className="flex-1 px-4 pt-4 pb-16">
+          <AgentTabContent
+            activeTab={activeTab}
+            agentId={fields.agentId}
+            displayName={fields.displayName}
+            description={fields.description}
+            avatarUrl={fields.avatarUrl}
+            resolvedSound={fields.resolvedSound}
+            isDefaultAgent={isDefaultAgent}
+            ownerId={fields.ownerId}
+            modelProviderId={fields.modelProviderId}
+            selectedModel={fields.selectedModel}
+            preferPersonalProvider={fields.preferPersonalProvider}
+          />
+        </main>
+      </div>
+    );
   }
 
   return (
@@ -991,7 +1203,9 @@ export function ZeroJobDetailPage() {
         description={fields.description}
         agentId={fields.agentId}
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={(tab) => {
+          setActiveTab(tab as AgentTabKey);
+        }}
         showProfileAndInstructions={!hideProfileAndInstructions}
       />
       <main className="shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-16">

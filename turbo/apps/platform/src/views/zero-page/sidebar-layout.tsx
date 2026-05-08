@@ -41,6 +41,11 @@ import {
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import { mobileBreadcrumb$ } from "../../signals/zero-page/zero-mobile-breadcrumb.ts";
+import {
+  agentActiveTab$,
+  setAgentActiveTab$,
+  type AgentTabKey,
+} from "../../signals/zero-page/zero-job-detail.ts";
 import { ZeroAboutPage } from "./zero-about-page.tsx";
 import { Link } from "../router/link.tsx";
 import { isOrgAdmin$ } from "../../signals/org.ts";
@@ -476,6 +481,46 @@ function BackButton({
   );
 }
 
+// Mobile-native back arrow that pops a section view back to the agent
+// overview (index) without leaving /agents/:id. The top bar then re-renders
+// with the agent's name as the title and the regular back-to-/agents arrow.
+function BackToAgentOverviewButton() {
+  const setActiveTab = useSet(setAgentActiveTab$);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setActiveTab(null);
+      }}
+      aria-label="Back to overview"
+      data-testid="mobile-back-to-agent-overview"
+      className={cn(
+        "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground",
+        TOPBAR_GLASS,
+      )}
+    >
+      <IconArrowLeft size={20} stroke={1.8} />
+    </button>
+  );
+}
+
+function agentDetailSectionLabel(tab: AgentTabKey): string {
+  switch (tab) {
+    case "authorization": {
+      return "Connectors";
+    }
+    case "schedule": {
+      return "Scheduled";
+    }
+    case "profile": {
+      return "Profile";
+    }
+    case "instructions": {
+      return "Instructions";
+    }
+  }
+}
+
 // Routes that live under the Account hub (entered from /account) and need a
 // back arrow to return there instead of being orphan pages on mobile.
 function isAccountSubRoute(route: RouteKey | null): boolean {
@@ -509,9 +554,11 @@ function HamburgerButton() {
 function MobileTopBarLeftSlot({
   activeId,
   mobileNativeOn,
+  agentSectionTab,
 }: {
   activeId: RouteKey | null;
   mobileNativeOn: boolean;
+  agentSectionTab: AgentTabKey | null;
 }) {
   if (!mobileNativeOn) {
     return <HamburgerButton />;
@@ -527,6 +574,9 @@ function MobileTopBarLeftSlot({
         testId="mobile-back-to-chat-list"
       />
     );
+  }
+  if (activeId === "agentDetail" && agentSectionTab !== null) {
+    return <BackToAgentOverviewButton />;
   }
   if (
     activeId === "agentDetail" ||
@@ -567,6 +617,7 @@ function resolveTopBarSurface(
   activeId: RouteKey | null,
   breadcrumb: { name?: string } | null,
   mobileNativeOn: boolean,
+  agentSectionTab: AgentTabKey | null,
 ): { showBreadcrumb: boolean; centeredTitle: string | undefined } {
   const isChatPage = isChatRoute(activeId);
   // Detail pages that render as "back arrow + name title" instead of a
@@ -580,6 +631,12 @@ function resolveTopBarSurface(
   const showBreadcrumb =
     breadcrumb !== null &&
     (!mobileNativeOn || isChatPage || (hasDetailName && !isBackTitleRoute));
+  if (mobileNativeOn && activeId === "agentDetail" && agentSectionTab !== null) {
+    return {
+      showBreadcrumb: false,
+      centeredTitle: agentDetailSectionLabel(agentSectionTab),
+    };
+  }
   if (mobileNativeOn && isBackTitleRoute && breadcrumb?.name) {
     return { showBreadcrumb: false, centeredTitle: breadcrumb.name };
   }
@@ -600,11 +657,14 @@ function MobileTopBar() {
   // redundant. The left slot becomes route-specific (see MobileTopBarLeftSlot).
   const features = useLastResolved(featureSwitch$);
   const mobileNativeOn = features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
+  const rawAgentTab = useGet(agentActiveTab$);
+  const agentSectionTab = activeId === "agentDetail" ? rawAgentTab : null;
 
   const { showBreadcrumb, centeredTitle } = resolveTopBarSurface(
     activeId,
     breadcrumb,
     mobileNativeOn,
+    agentSectionTab,
   );
 
   return (
@@ -624,6 +684,7 @@ function MobileTopBar() {
       <MobileTopBarLeftSlot
         activeId={activeId}
         mobileNativeOn={mobileNativeOn}
+        agentSectionTab={agentSectionTab}
       />
       {showBreadcrumb && breadcrumb && (
         <div
