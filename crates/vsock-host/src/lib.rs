@@ -1801,6 +1801,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_bounded_exec_ignores_unroutable_or_malformed_stream_chunks() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs[0].msg_type, MSG_BOUNDED_EXEC);
+
+            let valid_chunk = vsock_proto::encode_bounded_exec_output_chunk(
+                vsock_proto::BoundedExecStream::Stdout,
+                1,
+                b"ignored",
+                false,
+            )
+            .unwrap();
+            let seq_zero =
+                vsock_proto::encode(MSG_BOUNDED_EXEC_OUTPUT_CHUNK, 0, &valid_chunk).unwrap();
+            guest.write_all(&seq_zero).await.unwrap();
+
+            let unknown_seq =
+                vsock_proto::encode(MSG_BOUNDED_EXEC_OUTPUT_CHUNK, msgs[0].seq + 1, &valid_chunk)
+                    .unwrap();
+            guest.write_all(&unknown_seq).await.unwrap();
+
+            let malformed =
+                vsock_proto::encode(MSG_BOUNDED_EXEC_OUTPUT_CHUNK, msgs[0].seq, b"\x00").unwrap();
+            guest.write_all(&malformed).await.unwrap();
+
+            let payload = vsock_proto::encode_bounded_exec_result(
+                vsock_proto::BoundedExecTermination::Exited { exit_code: 0 },
+                1,
+                b"done",
+                b"",
+                false,
+                false,
+            )
+            .unwrap();
+            let resp = vsock_proto::encode(MSG_BOUNDED_EXEC_RESULT, msgs[0].seq, &payload).unwrap();
+            guest.write_all(&resp).await.unwrap();
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let request =
+            simple_bounded_request("ignore-bad-chunks", Some(bounded_stream_request(event_tx)));
+
+        let result = host.bounded_exec(&request).await.unwrap();
+
+        assert_eq!(result.stdout, b"done");
+        assert!(matches!(
+            event_rx.try_recv(),
+            Err(mpsc::error::TryRecvError::Empty)
+        ));
+        assert_eq!(registration_counts(&host), (0, 0, 0, 0));
+    }
+
+    #[tokio::test]
     async fn test_bounded_exec_malformed_result_cleans_up() {
         let (host_stream, mut guest) = make_pair();
 
