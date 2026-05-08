@@ -343,9 +343,9 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Gate the model-first model provider selection foundation. When off, " +
       "all provider-first resolver, UI, CLI, and legacy model provider " +
       "defaults remain unchanged. When on, follow-up work can use org model " +
-      "policies, canonical models, and member-scoped OAuth credentials.",
+      "policies, canonical models, and member-scoped OAuth credentials. " +
+      "Default-off for every org, including staff; per-user toggle via Lab.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 

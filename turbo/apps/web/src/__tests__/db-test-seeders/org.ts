@@ -539,7 +539,7 @@ export async function enablePersonalModelProviderForUser(
  * Enable the `modelFirstModelProvider` feature switch for a specific user.
  *
  * @why-db-direct Tests need deterministic feature switch state without
- *   relying on static staff-org hashes.
+ *   relying on static rollout rules.
  */
 export async function enableModelFirstModelProviderForUser(
   orgId: string,

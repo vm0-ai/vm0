@@ -52,10 +52,15 @@ describe("isFeatureEnabled", () => {
     );
   });
 
-  it("should keep model-first model provider off unless an org hash or override enables it", () => {
+  it("should keep model-first model provider off unless an override enables it", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, {})).toBe(
       false,
     );
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, {
+        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      }),
+    ).toBe(false);
     expect(
       isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, {
         orgId: "org_nonexistent",
@@ -93,6 +98,7 @@ describe("getAllFeatureStates", () => {
     // PlatformConnectors has STAFF_ORG_ID_HASHES and should be true
     expect(states[FeatureSwitchKey.PlatformConnectors]).toBe(true);
     expect(states[FeatureSwitchKey.ConnectorCategories]).toBe(true);
+    expect(states[FeatureSwitchKey.ModelFirstModelProvider]).toBe(false);
     // Globally enabled should still be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
     // Switches without org hashes should remain false
