@@ -117,7 +117,7 @@ describe("POST /api/zero/voice-chat/token", () => {
     const body = await response.json();
     expect(response.status).toBe(200);
     expect(body.client_secret.value).toBe("ek_test_value");
-    expect(received?.model).toBe("gpt-realtime-mini");
+    expect(received?.model).toBe("gpt-realtime-2");
     expect(received?.modalities).toEqual(["text", "audio"]);
     expect(typeof received?.instructions).toBe("string");
     expect(received?.instructions?.length ?? 0).toBeGreaterThan(0);

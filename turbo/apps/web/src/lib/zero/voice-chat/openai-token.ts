@@ -10,7 +10,7 @@ import {
 
 const OPENAI_REALTIME_URL = "https://api.openai.com/v1/realtime/sessions";
 
-const TALKER_MODEL = "gpt-realtime-mini";
+const TALKER_MODEL = "gpt-realtime-2";
 
 interface EphemeralTokenResponse {
   client_secret: {
