@@ -94,7 +94,7 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "deepseek-v4-pro": "DeepSeek V4 Pro",
   "kimi-k2.6": "Kimi K2.6",
   "kimi-k2.5": "Kimi K2.5",
-  "glm-5.1": "GLM 5.1",
+  "glm-5.1": "GLM-5.1",
 };
 
 const SUPPORTED_RUN_MODEL_SET: ReadonlySet<string> = new Set(

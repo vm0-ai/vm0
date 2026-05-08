@@ -39,6 +39,14 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   "glm-4.5-air": "GLM-4.5 Air",
   "zai/glm-5-turbo": "GLM-5 Turbo",
   "z-ai/glm-5.1": "GLM-5.1",
+  // Minimax via OpenRouter
+  "minimax/minimax-m2.7": "MiniMax M2.7",
+  // OpenAI / Codex
+  "gpt-5.5": "GPT-5.5",
+  "gpt-5.4": "GPT-5.4",
+  "gpt-5.4-mini": "GPT-5.4 Mini",
+  "gpt-5.3-codex": "GPT-5.3 Codex",
+  "gpt-5.2": "GPT-5.2",
 });
 
 /**
