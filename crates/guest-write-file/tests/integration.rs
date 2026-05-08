@@ -1,6 +1,7 @@
 #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
 use std::io::{ErrorKind, Write};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
@@ -8,13 +9,29 @@ use std::time::Duration;
 const BIN: &str = env!("CARGO_BIN_EXE_guest-write-file");
 
 fn run_helper(args: &[&str], stdin: &[u8]) -> std::process::Output {
-    let mut child = Command::new(BIN)
+    run_helper_with_current_dir(args, stdin, None)
+}
+
+fn run_helper_in_dir(args: &[&str], stdin: &[u8], current_dir: &Path) -> std::process::Output {
+    run_helper_with_current_dir(args, stdin, Some(current_dir))
+}
+
+fn run_helper_with_current_dir(
+    args: &[&str],
+    stdin: &[u8],
+    current_dir: Option<&Path>,
+) -> std::process::Output {
+    let mut command = Command::new(BIN);
+    command
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn guest-write-file");
+        .stderr(Stdio::piped());
+    if let Some(current_dir) = current_dir {
+        command.current_dir(current_dir);
+    }
+
+    let mut child = command.spawn().expect("spawn guest-write-file");
     child
         .stdin
         .take()
@@ -87,6 +104,19 @@ fn append_mode_appends_existing_file() {
 }
 
 #[test]
+fn create_mode_truncates_existing_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("out.txt");
+    std::fs::write(&path, b"old longer content").unwrap();
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&[path_str], b"new");
+
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(std::fs::read(path).unwrap(), b"new");
+}
+
+#[test]
 fn append_mode_creates_missing_file_when_parent_exists() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("out.txt");
@@ -112,6 +142,23 @@ fn append_mode_does_not_create_missing_parents() {
 }
 
 #[test]
+fn path_starting_with_dash_is_treated_as_path_after_separator() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let output = run_helper_in_dir(
+        &["--create-parents", "--", "-literal.txt"],
+        b"hello",
+        dir.path(),
+    );
+
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(
+        std::fs::read(dir.path().join("-literal.txt")).unwrap(),
+        b"hello"
+    );
+}
+
+#[test]
 fn create_mode_without_create_parents_does_not_create_missing_parents() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("missing/out.txt");
@@ -124,6 +171,19 @@ fn create_mode_without_create_parents_does_not_create_missing_parents() {
     assert!(!path.exists());
 }
 
+#[test]
+fn create_mode_rejects_directory_target() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("target");
+    std::fs::create_dir(&path).unwrap();
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&[path_str], b"hello");
+
+    assert!(!output.status.success());
+    assert!(path.is_dir());
+}
+
 #[cfg(unix)]
 #[test]
 fn create_mode_fails_fast_for_fifo_without_reader() {
@@ -132,7 +192,7 @@ fn create_mode_fails_fast_for_fifo_without_reader() {
     mkfifo(&path);
     let path_str = path.to_str().unwrap();
 
-    let output = run_helper(&[path_str], b"");
+    let output = run_helper(&[path_str], b"hello");
 
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("guest-write-file"));
