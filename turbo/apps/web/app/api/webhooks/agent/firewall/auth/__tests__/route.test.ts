@@ -1730,6 +1730,36 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(row!.lastRefreshErrorCode).toBeNull();
     });
 
+    it("rejects forged personal codex-oauth-token owner metadata", async () => {
+      const encrypted = encryptTestSecrets({
+        CHATGPT_ACCESS_TOKEN: "old-personal-chatgpt-at",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${{ secrets.CHATGPT_ACCESS_TOKEN }}",
+            },
+            secretConnectorMap: { CHATGPT_ACCESS_TOKEN: "codex-oauth" },
+            secretConnectorMetadataMap: {
+              CHATGPT_ACCESS_TOKEN: {
+                sourceType: "model-provider",
+                sourceUserId: "other-user-id",
+                metadataKey: "codex-oauth-token",
+              },
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.code).toBe("FORBIDDEN");
+    });
+
     it("classifies refresh_token_expired and persists last_refresh_error_code", async () => {
       await setupChatgptProvider({
         tokenExpiresAt: new Date(Date.now() - 60 * 1000),

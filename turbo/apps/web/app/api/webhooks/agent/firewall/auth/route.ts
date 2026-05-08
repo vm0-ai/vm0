@@ -19,6 +19,7 @@ import {
   getRefreshSourceType,
   SOURCE_HANDLER_TO_PROVIDER_TYPE,
 } from "../../../../../../src/lib/zero/handler-key-bridge";
+import { ORG_SENTINEL_USER_ID } from "../../../../../../src/lib/zero/org/org-sentinel";
 import { basicAuthTemplateRe } from "@vm0/connectors/firewall-types";
 
 const bodySchema = z.object({
@@ -180,6 +181,35 @@ function buildMetadataByConnector(
     }
   }
   return metadataByConnector;
+}
+
+function hasForbiddenModelProviderOwner(
+  auth: SandboxAuth,
+  secretConnectorMap: Record<string, string>,
+  secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined,
+  referencedKeys: Set<string>,
+): boolean {
+  for (const key of referencedKeys) {
+    const connectorType = secretConnectorMap[key];
+    if (!connectorType) continue;
+    const metadata = resolveRefreshMetadata(
+      connectorType,
+      secretConnectorMetadataMap?.[key],
+    );
+    if (metadata.sourceType !== "model-provider") continue;
+    const ownerUserId = metadata.sourceUserId ?? ORG_SENTINEL_USER_ID;
+    if (ownerUserId !== auth.userId && ownerUserId !== ORG_SENTINEL_USER_ID) {
+      log.warn(`[${auth.runId}] Rejected forbidden model-provider owner`, {
+        ownerUserId,
+        connectorType,
+        secretKey: key,
+      });
+      return true;
+    }
+  }
+  return false;
 }
 
 async function refreshExpiredTokens(
@@ -672,6 +702,25 @@ export async function POST(request: Request) {
   let refreshedSecrets: string[] = [];
   let failedConnectors: string[] = [];
   if (secretConnectorMap) {
+    if (
+      hasForbiddenModelProviderOwner(
+        auth,
+        secretConnectorMap,
+        secretConnectorMetadataMap,
+        referenced.secrets,
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error: {
+            message: "Invalid model-provider secret owner",
+            code: "FORBIDDEN",
+          },
+        },
+        { status: 403 },
+      );
+    }
+
     const result = await refreshExpiredTokens(
       auth,
       secrets,
