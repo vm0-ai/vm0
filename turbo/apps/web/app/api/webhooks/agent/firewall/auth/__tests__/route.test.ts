@@ -1540,12 +1540,57 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       return { accessToken, refreshToken };
     }
 
-    async function readChatgptRefreshTokenSecret(): Promise<string | null> {
+    async function setupPersonalChatgptProvider(opts: {
+      tokenExpiresAt: Date | null;
+      accessToken?: string;
+      refreshToken?: string;
+    }): Promise<{ accessToken: string; refreshToken: string }> {
+      const accessToken = opts.accessToken ?? "personal-old-chatgpt-at";
+      const refreshToken = opts.refreshToken ?? "personal-chatgpt-rt";
+
+      const { insertUserMultiAuthModelProvider } =
+        await import("../../../../../../../src/__tests__/db-test-seeders/org");
+      const { insertTestUserModelProviderSecret } =
+        await import("../../../../../../../src/__tests__/db-test-seeders/secrets");
+
+      await insertUserMultiAuthModelProvider(
+        user.orgId,
+        user.userId,
+        "codex-oauth-token",
+        "oauth",
+      );
+      await setTestModelProviderTokenExpiresAt(
+        user.orgId,
+        user.userId,
+        "codex-oauth-token",
+        opts.tokenExpiresAt,
+      );
+
+      for (const [name, value] of [
+        ["CHATGPT_ACCESS_TOKEN", accessToken],
+        ["CHATGPT_REFRESH_TOKEN", refreshToken],
+        ["CHATGPT_ACCOUNT_ID", "ws_acc_personal"],
+        ["CHATGPT_ID_TOKEN", "personal-id-tok"],
+      ] as const) {
+        await insertTestUserModelProviderSecret({
+          orgId: user.orgId,
+          userId: user.userId,
+          name,
+          value,
+        });
+      }
+
+      return { accessToken, refreshToken };
+    }
+
+    async function readChatgptRefreshTokenSecret(
+      ownerUserId = ORG_SENTINEL_USER_ID,
+    ): Promise<string | null> {
       const { getSecretValue } =
         await import("../../../../../../../src/lib/zero/secret/secret-service");
       return getSecretValue(
         user.orgId,
-        ORG_SENTINEL_USER_ID,
+        ownerUserId,
         "CHATGPT_REFRESH_TOKEN",
         "model-provider",
       );
@@ -1663,6 +1708,157 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(row).not.toBeNull();
       expect(row!.needsReconnect).toBe(true);
       expect(row!.lastRefreshErrorCode).toBe("refresh_token_expired");
+    });
+
+    it("refreshes personal codex-oauth-token using the personal owner", async () => {
+      const orgExpiry = new Date(Date.now() + 10 * 60 * 1000);
+      await setupChatgptProvider({
+        tokenExpiresAt: orgExpiry,
+        accessToken: "org-chatgpt-at",
+        refreshToken: "org-chatgpt-rt",
+      });
+      await setupPersonalChatgptProvider({
+        tokenExpiresAt: new Date(Date.now() - 60 * 1000),
+        accessToken: "personal-old-chatgpt-at",
+        refreshToken: "personal-chatgpt-rt",
+      });
+
+      let receivedRefreshToken: string | undefined;
+      server.use(
+        mswHttp.post(CHATGPT_TOKEN_URL, async ({ request }) => {
+          const body = (await request.json()) as { refresh_token?: string };
+          receivedRefreshToken = body.refresh_token;
+          return HttpResponse.json({
+            access_token: "personal-fresh-chatgpt-at",
+            refresh_token: "personal-rotated-chatgpt-rt",
+            expires_in: 600000,
+          });
+        }),
+      );
+
+      const encrypted = encryptTestSecrets({
+        CHATGPT_ACCESS_TOKEN: "personal-old-chatgpt-at",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${{ secrets.CHATGPT_ACCESS_TOKEN }}",
+            },
+            secretConnectorMap: { CHATGPT_ACCESS_TOKEN: "codex-oauth" },
+            modelProviderSecretOwnerMap: { "codex-oauth": user.userId },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(receivedRefreshToken).toBe("personal-chatgpt-rt");
+      expect(data.headers.Authorization).toBe(
+        "Bearer personal-fresh-chatgpt-at",
+      );
+      expect(data.refreshedConnectors).toEqual(["codex-oauth"]);
+
+      await expect(readChatgptRefreshTokenSecret(user.userId)).resolves.toBe(
+        "personal-rotated-chatgpt-rt",
+      );
+      await expect(readChatgptRefreshTokenSecret()).resolves.toBe(
+        "org-chatgpt-rt",
+      );
+
+      const personalRow = await findTestModelProviderTokenState(
+        user.orgId,
+        user.userId,
+        "codex-oauth-token",
+      );
+      expect(personalRow).not.toBeNull();
+      expect(personalRow!.needsReconnect).toBe(false);
+      expect(personalRow!.lastRefreshErrorCode).toBeNull();
+
+      const orgRow = await findTestModelProviderTokenState(
+        user.orgId,
+        ORG_SENTINEL_USER_ID,
+        "codex-oauth-token",
+      );
+      expect(orgRow).not.toBeNull();
+      expect(orgRow!.tokenExpiresAt?.getTime()).toBe(orgExpiry.getTime());
+      expect(orgRow!.needsReconnect).toBe(false);
+      expect(orgRow!.lastRefreshErrorCode).toBeNull();
+    });
+
+    it("marks the personal codex-oauth-token stale when personal refresh fails", async () => {
+      await setupChatgptProvider({
+        tokenExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        accessToken: "org-chatgpt-at",
+        refreshToken: "org-chatgpt-rt",
+      });
+      await setupPersonalChatgptProvider({
+        tokenExpiresAt: new Date(Date.now() - 60 * 1000),
+        accessToken: "personal-old-chatgpt-at",
+        refreshToken: "personal-chatgpt-rt",
+      });
+
+      let receivedRefreshToken: string | undefined;
+      server.use(
+        mswHttp.post(CHATGPT_TOKEN_URL, async ({ request }) => {
+          const body = (await request.json()) as { refresh_token?: string };
+          receivedRefreshToken = body.refresh_token;
+          return HttpResponse.json(
+            {
+              error: {
+                code: "refresh_token_expired",
+                message: "Refresh token has expired",
+              },
+            },
+            { status: 401 },
+          );
+        }),
+      );
+
+      const encrypted = encryptTestSecrets({
+        CHATGPT_ACCESS_TOKEN: "personal-old-chatgpt-at",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${{ secrets.CHATGPT_ACCESS_TOKEN }}",
+            },
+            secretConnectorMap: { CHATGPT_ACCESS_TOKEN: "codex-oauth" },
+            modelProviderSecretOwnerMap: { "codex-oauth": user.userId },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(502);
+      const data = await response.json();
+      expect(receivedRefreshToken).toBe("personal-chatgpt-rt");
+      expect(data.error.code).toBe("TOKEN_REFRESH_FAILED");
+      expect(data.error.connectors).toEqual(["codex-oauth"]);
+
+      const personalRow = await findTestModelProviderTokenState(
+        user.orgId,
+        user.userId,
+        "codex-oauth-token",
+      );
+      expect(personalRow).not.toBeNull();
+      expect(personalRow!.needsReconnect).toBe(true);
+      expect(personalRow!.lastRefreshErrorCode).toBe("refresh_token_expired");
+
+      const orgRow = await findTestModelProviderTokenState(
+        user.orgId,
+        ORG_SENTINEL_USER_ID,
+        "codex-oauth-token",
+      );
+      expect(orgRow).not.toBeNull();
+      expect(orgRow!.needsReconnect).toBe(false);
+      expect(orgRow!.lastRefreshErrorCode).toBeNull();
     });
 
     it("non-OAuth providers (no refreshToken on handler) do not enter refresh map", async () => {

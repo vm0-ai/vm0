@@ -267,7 +267,7 @@ const router = tsr.router(onboardingSetupContract, {
               ),
             );
           await tx.insert(userConnectors).values(
-            connectors.map((connectorType) => {
+            connectors.map((connectorType: string) => {
               return {
                 orgId: org.orgId,
                 userId,

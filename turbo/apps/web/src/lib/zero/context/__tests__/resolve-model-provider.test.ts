@@ -8,6 +8,7 @@ import {
   insertOrgNonDefaultModelProvider,
   insertOrgMultiAuthModelProvider,
   insertUserDefaultModelProvider,
+  insertUserMultiAuthModelProvider,
   insertUserNonDefaultModelProvider,
   enablePersonalModelProviderForUser,
   setTestModelProviderNeedsReconnect,
@@ -531,6 +532,53 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
     expect(result.secretConnectorMap).toEqual({
       CHATGPT_ACCESS_TOKEN: "codex-oauth",
     });
+    expect(result.modelProviderSecretOwnerMap).toEqual({
+      "codex-oauth": ORG_SENTINEL_USER_ID,
+    });
+  });
+
+  it("emits the personal owner for user-tier codex-oauth-token", async () => {
+    const userId = uniqueId("scm-chatgpt-personal");
+    const orgId = await setupOrg(userId);
+    await enablePersonalModelProviderForUser(orgId, userId);
+    await insertOrgMultiAuthModelProvider(
+      orgId,
+      "codex-oauth-token",
+      "auth_json",
+    );
+    await insertUserMultiAuthModelProvider(
+      orgId,
+      userId,
+      "codex-oauth-token",
+      "auth_json",
+    );
+    for (const [name, value] of [
+      ["CHATGPT_ACCESS_TOKEN", "personal-at"],
+      ["CHATGPT_REFRESH_TOKEN", "personal-rt"],
+      ["CHATGPT_ACCOUNT_ID", "ws_acc"],
+      ["CHATGPT_ID_TOKEN", "id-1"],
+    ] as const) {
+      await insertTestUserModelProviderSecret({ orgId, userId, name, value });
+    }
+
+    const result = await resolveModelProviderSecrets(
+      orgId,
+      userId,
+      "codex",
+      false,
+      undefined,
+      undefined,
+      undefined,
+      true,
+    );
+
+    expect(result.secrets?.CHATGPT_ACCESS_TOKEN).toBe("personal-at");
+    expect(result.secretConnectorMap).toEqual({
+      CHATGPT_ACCESS_TOKEN: "codex-oauth",
+    });
+    expect(result.modelProviderSecretOwnerMap).toEqual({
+      "codex-oauth": userId,
+    });
   });
 
   it("returns undefined secretConnectorMap for openai-api-key (no refreshToken on handler)", async () => {
@@ -546,6 +594,7 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
     );
 
     expect(result.secretConnectorMap).toBeUndefined();
+    expect(result.modelProviderSecretOwnerMap).toBeUndefined();
   });
 
   it("does not emit secretConnectorMap when codex-oauth-token is missing required secrets", async () => {
@@ -572,6 +621,7 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
     );
 
     expect(result.secretConnectorMap).toBeUndefined();
+    expect(result.modelProviderSecretOwnerMap).toBeUndefined();
   });
 });
 

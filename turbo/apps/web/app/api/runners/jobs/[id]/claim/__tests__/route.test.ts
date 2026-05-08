@@ -554,12 +554,15 @@ describe("POST /api/runners/jobs/:id/claim", () => {
         GMAIL_ACCESS_TOKEN: "gmail",
         GMAIL_TOKEN: "gmail",
       };
+      const modelProviderSecretOwnerMap = {
+        "codex-oauth": user.userId,
+      };
 
       const { runId } = await createTestRunnerJob(
         user.userId,
         versionId,
         "vm0/default",
-        { encryptedSecrets, secretConnectorMap },
+        { encryptedSecrets, secretConnectorMap, modelProviderSecretOwnerMap },
       );
 
       const token = await createTestCliToken(user.userId);
@@ -580,6 +583,9 @@ describe("POST /api/runners/jobs/:id/claim", () => {
 
       const data = await response.json();
       expect(data.secretConnectorMap).toEqual(secretConnectorMap);
+      expect(data.modelProviderSecretOwnerMap).toEqual(
+        modelProviderSecretOwnerMap,
+      );
       expect(data.encryptedSecrets).toBe(encryptedSecrets);
     });
 

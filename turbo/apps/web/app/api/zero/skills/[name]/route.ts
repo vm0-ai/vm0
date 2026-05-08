@@ -212,7 +212,7 @@ const router = tsr.router(zeroSkillsDetailContract, {
 
     log.info(`Updated custom skill "${params.name}" content`);
 
-    const skillMd = body.files.find((f) => {
+    const skillMd = body.files.find((f: { path: string; content: string }) => {
       return f.path === "SKILL.md";
     });
 
@@ -223,7 +223,7 @@ const router = tsr.router(zeroSkillsDetailContract, {
         displayName: skill.displayName ?? null,
         description: skill.description ?? null,
         content: skillMd?.content ?? null,
-        files: body.files.map((f) => {
+        files: body.files.map((f: { path: string; content: string }) => {
           return {
             path: f.path,
             size: new TextEncoder().encode(f.content).length,

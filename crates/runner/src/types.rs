@@ -65,6 +65,9 @@ pub struct ExecutionContext {
     // Maps secret names to OAuth connector types for runtime token refresh
     #[serde(default)]
     pub secret_connector_map: Option<HashMap<String, String>>,
+    // Maps model-provider OAuth handler keys to the secret owner userId
+    #[serde(default)]
+    pub model_provider_secret_owner_map: Option<HashMap<String, String>>,
     pub cli_agent_type: String,
     #[serde(default)]
     pub debug_no_mock_claude: Option<bool>,
@@ -420,6 +423,7 @@ mod tests {
             "secretValues": ["s1", "s2"],
             "encryptedSecrets": "enc-blob",
             "secretConnectorMap": {"github": "oauth"},
+            "modelProviderSecretOwnerMap": {"codex-oauth": "user-123"},
             "debugNoMockClaude": true,
             "debugNoMockCodex": true,
             "apiStartTime": 1700000000000.0,
@@ -443,6 +447,10 @@ mod tests {
         assert_eq!(ctx.resume_session.as_ref().unwrap().session_id, "sess-1");
         assert_eq!(ctx.secret_values.as_ref().unwrap().len(), 2);
         assert_eq!(ctx.encrypted_secrets.as_deref(), Some("enc-blob"));
+        assert_eq!(
+            ctx.model_provider_secret_owner_map.as_ref().unwrap()["codex-oauth"],
+            "user-123"
+        );
         assert!(ctx.debug_no_mock_claude.unwrap());
         assert!(ctx.debug_no_mock_codex.unwrap());
         assert_eq!(ctx.firewalls.as_ref().unwrap()[0].name, "github");

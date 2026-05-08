@@ -22,6 +22,7 @@ interface BuildInfraContextParams {
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
   secretConnectorMap?: Record<string, string>;
+  modelProviderSecretOwnerMap?: Record<string, string>;
   artifacts?: ContextArtifact[];
   volumeVersions?: Record<string, string>;
   additionalVolumes?: AdditionalVolume[];
@@ -78,6 +79,7 @@ export function buildInfraExecutionContext(
     vars: params.vars,
     secrets: params.secrets,
     secretConnectorMap: params.secretConnectorMap,
+    modelProviderSecretOwnerMap: params.modelProviderSecretOwnerMap,
     sandboxToken: params.sandboxToken,
     artifacts: params.artifacts,
     volumeVersions: params.volumeVersions,

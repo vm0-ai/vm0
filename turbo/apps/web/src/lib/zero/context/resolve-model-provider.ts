@@ -173,6 +173,10 @@ interface ModelProviderSecretResult {
    *  runs — the filter would otherwise drop these because they also appear in
    *  `secrets`, but model-provider entries ARE the source, not an override target. */
   secretConnectorMap?: Record<string, string>;
+  /** Maps model-provider OAuth handler keys → the userId that owns their
+   *  server-side secrets/metadata. The sandbox receives only this owner hint;
+   *  refresh tokens remain server-side. */
+  modelProviderSecretOwnerMap?: Record<string, string>;
 }
 
 /**
@@ -212,6 +216,20 @@ function buildModelProviderSecretConnectorMap(
     }
   }
   return result;
+}
+
+function buildModelProviderSecretOwnerMap(
+  providerType: ModelProviderType,
+  secretUserId: string,
+): Record<string, string> | undefined {
+  const handlerKey = MODEL_PROVIDER_HANDLER_KEY[providerType];
+  if (!handlerKey) return undefined;
+
+  const handler =
+    PROVIDER_HANDLERS[handlerKey as keyof typeof PROVIDER_HANDLERS];
+  if (!handler?.refreshToken) return undefined;
+
+  return { [handlerKey]: secretUserId };
 }
 
 /**
@@ -329,6 +347,10 @@ async function resolveMultiAuthProviderSecrets(
     framework: getFrameworkForType(providerType),
     selectedModel,
     secretConnectorMap: buildModelProviderSecretConnectorMap(providerType),
+    modelProviderSecretOwnerMap: buildModelProviderSecretOwnerMap(
+      providerType,
+      secretUserId,
+    ),
   };
 }
 

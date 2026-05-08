@@ -109,7 +109,7 @@ const router = tsr.router(zeroAgentCustomConnectorsContract, {
           return r.id;
         }),
       );
-      const missing = body.enabledIds.filter((id) => {
+      const missing = body.enabledIds.filter((id: string) => {
         return !foundSet.has(id);
       });
       if (missing.length > 0) {
@@ -143,7 +143,7 @@ const router = tsr.router(zeroAgentCustomConnectorsContract, {
 
       if (body.enabledIds.length > 0) {
         await tx.insert(userCustomConnectors).values(
-          body.enabledIds.map((customConnectorId) => {
+          body.enabledIds.map((customConnectorId: string) => {
             return {
               orgId: org.orgId,
               userId,

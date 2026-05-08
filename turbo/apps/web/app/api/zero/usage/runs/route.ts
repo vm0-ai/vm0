@@ -28,7 +28,7 @@ const router = tsr.router(zeroUsageRunsContract, {
     const userIds = query.userIds
       ? query.userIds
           .split(",")
-          .map((s) => {
+          .map((s: string) => {
             return s.trim();
           })
           .filter(Boolean)

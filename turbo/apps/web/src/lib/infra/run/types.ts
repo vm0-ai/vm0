@@ -71,6 +71,7 @@ export interface ExecutionContext {
   vars?: Record<string, string>;
   secrets?: Record<string, string>; // Decrypted secrets for environment expansion
   secretConnectorMap?: Record<string, string>; // Secret name → connector type for OAuth refresh
+  modelProviderSecretOwnerMap?: Record<string, string>; // Model-provider handler → secret owner userId for OAuth refresh
   sandboxToken: string;
 
   // Artifacts: unified list where every entry carries its own mountPath.

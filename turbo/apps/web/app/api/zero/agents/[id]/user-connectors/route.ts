@@ -146,11 +146,13 @@ const router = tsr.router(zeroUserConnectorsContract, {
       if (uniqueTypes.length > 0) {
         await tx.insert(userConnectors).values(
           uniqueTypes.map((connectorType) => {
+            const parsedConnectorType =
+              connectorTypeSchema.parse(connectorType);
             return {
               orgId: org.orgId,
               userId,
               agentId: params.id,
-              connectorType,
+              connectorType: parsedConnectorType,
             };
           }),
         );

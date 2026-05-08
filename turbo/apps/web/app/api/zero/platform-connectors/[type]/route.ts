@@ -1,6 +1,9 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { zeroPlatformConnectorContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
+import {
+  CONNECTOR_TYPES,
+  connectorTypeSchema,
+} from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
@@ -35,10 +38,19 @@ const router = tsr.router(zeroPlatformConnectorContract, {
       );
     }
 
+    const connectorTypeParse = connectorTypeSchema.safeParse(params.type);
+    if (!connectorTypeParse.success) {
+      return createErrorResponse(
+        "NOT_FOUND",
+        `Connector "${params.type}" not found`,
+      );
+    }
+    const connectorType = connectorTypeParse.data;
+
     // Only connector types that declare a `platform` auth method can be
     // enabled via this endpoint. Anything else is a client bug — OAuth /
     // api-token types do not support credential-less enable.
-    const config = CONNECTOR_TYPES[params.type];
+    const config = CONNECTOR_TYPES[connectorType];
     if (!("platform" in config.authMethods)) {
       return createErrorResponse(
         "BAD_REQUEST",
@@ -49,7 +61,7 @@ const router = tsr.router(zeroPlatformConnectorContract, {
     const connector = await createPlatformConnector(
       org.orgId,
       userId,
-      params.type,
+      connectorType,
     );
 
     return {

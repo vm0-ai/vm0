@@ -18,6 +18,7 @@ import {
   getRefreshSourceType,
   SOURCE_HANDLER_TO_PROVIDER_TYPE,
 } from "../../../../../../src/lib/zero/handler-key-bridge";
+import { ORG_SENTINEL_USER_ID } from "../../../../../../src/lib/zero/org/org-sentinel";
 import { basicAuthTemplateRe } from "@vm0/connectors/firewall-types";
 
 const bodySchema = z.object({
@@ -26,6 +27,7 @@ const bodySchema = z.object({
   authBase: z.string().optional(),
   authQuery: z.record(z.string(), z.string()).optional(),
   secretConnectorMap: z.record(z.string(), z.string()).optional(),
+  modelProviderSecretOwnerMap: z.record(z.string(), z.string()).optional(),
   vars: z.record(z.string(), z.string()).optional(),
   // Set by the mitm addon after an upstream 401 so the refresh filter
   // below overrides DB tokenExpiresAt. Covers the case where the provider
@@ -35,6 +37,13 @@ const bodySchema = z.object({
 });
 
 const log = logger("webhook:firewall-auth");
+
+function isAllowedModelProviderOwner(
+  auth: SandboxAuth,
+  ownerUserId: string,
+): boolean {
+  return ownerUserId === auth.userId || ownerUserId === ORG_SENTINEL_USER_ID;
+}
 
 /** Matches ${{ secrets.X }} or ${{ vars.X }} template placeholders. */
 const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
@@ -57,15 +66,20 @@ async function syncRefreshTokensFromDb(
   orgId: string,
   userId: string,
   secrets: Record<string, string>,
+  modelProviderSecretOwnerMap?: Record<string, string>,
 ): Promise<void> {
   if (connectorTypes.length === 0) return;
   const results = await Promise.all(
     connectorTypes.map((ct) => {
+      const sourceType = getRefreshSourceType(ct);
       return getConnectorRefreshToken(
         ct,
         orgId,
         userId,
-        getRefreshSourceType(ct),
+        sourceType,
+        sourceType === "model-provider"
+          ? modelProviderSecretOwnerMap?.[ct]
+          : undefined,
       );
     }),
   );
@@ -95,6 +109,7 @@ async function getExpiryByHandlerKey(
   orgId: string,
   userId: string,
   connectorTypes: string[],
+  modelProviderSecretOwnerMap?: Record<string, string>,
 ): Promise<Map<string, number | null>> {
   const connectorOnly = connectorTypes.filter((ct) => {
     return getRefreshSourceType(ct) === "connector";
@@ -102,18 +117,25 @@ async function getExpiryByHandlerKey(
   const modelProviderHandlerKeys = connectorTypes.filter((ct) => {
     return getRefreshSourceType(ct) === "model-provider";
   });
-  const modelProviderMetadataKeys = modelProviderHandlerKeys.map((k) => {
-    return SOURCE_HANDLER_TO_PROVIDER_TYPE[k] ?? k;
-  });
-  const [connectorExpiry, modelProviderExpiry] = await Promise.all([
+  const [connectorExpiry, modelProviderExpiryEntries] = await Promise.all([
     getConnectorExpiry(orgId, userId, connectorOnly),
-    getModelProviderExpiry(orgId, userId, modelProviderMetadataKeys),
+    Promise.all(
+      modelProviderHandlerKeys.map(async (handlerKey) => {
+        const metadataKey =
+          SOURCE_HANDLER_TO_PROVIDER_TYPE[handlerKey] ?? handlerKey;
+        const expiry = await getModelProviderExpiry(
+          orgId,
+          userId,
+          [metadataKey],
+          modelProviderSecretOwnerMap?.[handlerKey],
+        );
+        return [handlerKey, expiry.get(metadataKey) ?? null] as const;
+      }),
+    ),
   ]);
   const merged = new Map<string, number | null>(connectorExpiry);
-  for (const handlerKey of modelProviderHandlerKeys) {
-    const metadataKey =
-      SOURCE_HANDLER_TO_PROVIDER_TYPE[handlerKey] ?? handlerKey;
-    merged.set(handlerKey, modelProviderExpiry.get(metadataKey) ?? null);
+  for (const [handlerKey, expiresAt] of modelProviderExpiryEntries) {
+    merged.set(handlerKey, expiresAt);
   }
   return merged;
 }
@@ -122,6 +144,7 @@ async function refreshExpiredTokens(
   auth: SandboxAuth,
   secrets: Record<string, string>,
   secretConnectorMap: Record<string, string>,
+  modelProviderSecretOwnerMap: Record<string, string> | undefined,
   referencedKeys: Set<string>,
   forceRefresh: boolean,
 ): Promise<RefreshResult> {
@@ -163,6 +186,7 @@ async function refreshExpiredTokens(
     run.orgId,
     auth.userId,
     connectorTypes,
+    modelProviderSecretOwnerMap,
   );
 
   const now = Math.floor(Date.now() / 1000);
@@ -197,7 +221,13 @@ async function refreshExpiredTokens(
   // Load refresh tokens from DB into secrets before refreshing.
   // The encrypted secrets snapshot only contains mapped env vars (access tokens),
   // not refresh tokens — refresh tokens are kept server-side only (#7365).
-  await syncRefreshTokensFromDb(toRefresh, run.orgId, auth.userId, secrets);
+  await syncRefreshTokensFromDb(
+    toRefresh,
+    run.orgId,
+    auth.userId,
+    secrets,
+    modelProviderSecretOwnerMap,
+  );
 
   const refreshResults = await Promise.all(
     toRefresh.map(async (connectorType) => {
@@ -207,12 +237,16 @@ async function refreshExpiredTokens(
         sourceType === "model-provider"
           ? SOURCE_HANDLER_TO_PROVIDER_TYPE[connectorType]
           : undefined;
+      const ownerUserId =
+        sourceType === "model-provider"
+          ? modelProviderSecretOwnerMap?.[connectorType]
+          : undefined;
       const freshToken = await refreshConnectorAccessToken(
         connectorType,
         run.orgId,
         auth.userId,
         secrets,
-        { sourceType, metadataKey },
+        { sourceType, metadataKey, ownerUserId },
       );
       if (!freshToken) {
         log.warn(`[${auth.runId}] Failed to refresh ${connectorType} token`);
@@ -245,6 +279,9 @@ async function refreshExpiredTokens(
             run.orgId,
             auth.userId,
             getRefreshSourceType(ct),
+            getRefreshSourceType(ct) === "model-provider"
+              ? modelProviderSecretOwnerMap?.[ct]
+              : undefined,
           ),
         };
       }),
@@ -286,7 +323,12 @@ async function refreshExpiredTokens(
 
   // Use accurate DB values after refresh; skip extra query if nothing changed.
   const finalExpiryMap = refreshed
-    ? await getExpiryByHandlerKey(run.orgId, auth.userId, connectorTypes)
+    ? await getExpiryByHandlerKey(
+        run.orgId,
+        auth.userId,
+        connectorTypes,
+        modelProviderSecretOwnerMap,
+      )
     : expiryMap;
 
   let earliestExpiry: number | null = null;
@@ -470,7 +512,7 @@ function resolveTemplates(
  * on demand and an expiresAt timestamp is returned for addon-side TTL caching.
  *
  * Auth: Sandbox JWT
- * Body: { encryptedSecrets, authHeaders, authBase?, authQuery?, secretConnectorMap?, vars?, forceRefresh? }
+ * Body: { encryptedSecrets, authHeaders, authBase?, authQuery?, secretConnectorMap?, modelProviderSecretOwnerMap?, vars?, forceRefresh? }
  * Response: { headers, base?, query?, expiresAt?, resolvedSecrets, refreshedConnectors, refreshedSecrets }
  *           or 424 { error } when referenced secrets/vars are missing (connector not configured)
  *           or 502 { error } when token refresh fails
@@ -524,9 +566,26 @@ export async function POST(request: Request) {
     authBase,
     authQuery,
     secretConnectorMap,
+    modelProviderSecretOwnerMap,
     vars,
     forceRefresh,
   } = parsed.data;
+  const hasInvalidModelProviderOwner = Object.values(
+    modelProviderSecretOwnerMap ?? {},
+  ).some((ownerUserId) => {
+    return !isAllowedModelProviderOwner(auth, ownerUserId);
+  });
+  if (hasInvalidModelProviderOwner) {
+    return NextResponse.json(
+      {
+        error: {
+          message: "Invalid model provider owner",
+          code: "BAD_REQUEST",
+        },
+      },
+      { status: 400 },
+    );
+  }
 
   // Decrypt secrets
   let secrets: Record<string, string> | null;
@@ -579,6 +638,7 @@ export async function POST(request: Request) {
       auth,
       secrets,
       secretConnectorMap,
+      modelProviderSecretOwnerMap,
       referenced.secrets,
       forceRefresh ?? false,
     );

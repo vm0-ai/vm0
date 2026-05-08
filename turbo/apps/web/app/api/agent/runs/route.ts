@@ -397,6 +397,7 @@ const router = tsr.router(runsMainContract, {
           vars: resolved.vars ?? body.vars,
           secrets: resolved.secrets ?? body.secrets,
           secretConnectorMap: resolved.secretConnectorMap,
+          modelProviderSecretOwnerMap: resolved.modelProviderSecretOwnerMap,
           artifacts: mergedArtifacts,
           volumeVersions: resolved.volumeVersions ?? body.volumeVersions,
           additionalVolumes: finalAdditionalVolumes,

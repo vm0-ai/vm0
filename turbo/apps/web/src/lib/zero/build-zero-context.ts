@@ -214,6 +214,7 @@ async function resolveSecretsAndEnvironment(
   secrets: Record<string, string> | undefined;
   environment: Record<string, string> | undefined;
   secretConnectorMap: Record<string, string> | undefined;
+  modelProviderSecretOwnerMap: Record<string, string> | undefined;
   resolvedModelProvider: ModelProviderType | undefined;
   resolvedFramework: string;
   modelProviderConfig: ExpandedFirewallConfig | undefined;
@@ -384,6 +385,8 @@ async function resolveSecretsAndEnvironment(
     secrets,
     environment,
     secretConnectorMap,
+    modelProviderSecretOwnerMap:
+      modelProviderResult.modelProviderSecretOwnerMap,
     resolvedModelProvider: modelProviderResult.resolvedModelProvider,
     // Provider-derived framework when resolution ran; otherwise the compose
     // framework. Source-of-truth for downstream framework-aware logic.
@@ -463,6 +466,7 @@ interface ResolvedCliContext {
   secrets?: Record<string, string>;
   environment?: Record<string, string>;
   secretConnectorMap?: Record<string, string>;
+  modelProviderSecretOwnerMap?: Record<string, string>;
   firewalls?: Firewalls;
   networkPolicies?: NetworkPolicies;
   userTimezone?: string;
@@ -614,6 +618,7 @@ export async function resolveCliRunContext(
     secrets,
     environment,
     secretConnectorMap,
+    modelProviderSecretOwnerMap,
     resolvedModelProvider,
     resolvedFramework,
     modelProviderConfig,
@@ -648,6 +653,7 @@ export async function resolveCliRunContext(
     secrets,
     environment,
     secretConnectorMap,
+    modelProviderSecretOwnerMap,
     firewalls: permissionResult?.firewalls,
     networkPolicies: permissionResult?.networkPolicies,
     userTimezone,
@@ -787,6 +793,7 @@ export async function buildZeroExecutionContext(
     secrets,
     environment,
     secretConnectorMap,
+    modelProviderSecretOwnerMap,
     resolvedModelProvider,
     resolvedFramework,
     modelProviderConfig,
@@ -833,6 +840,7 @@ export async function buildZeroExecutionContext(
       vars,
       secrets,
       secretConnectorMap,
+      modelProviderSecretOwnerMap,
       sandboxToken: params.sandboxToken,
       artifacts,
       volumeVersions,

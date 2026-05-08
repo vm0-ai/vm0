@@ -68,7 +68,7 @@ const router = tsr.router(runnersPollContract, {
       heldSessions && heldSessions.length > 0
         ? [
             sql`CASE WHEN ${runnerJobQueue.sessionId} IN (${sql.join(
-              heldSessions.map((s) => {
+              heldSessions.map((s: string) => {
                 return sql`${s}`;
               }),
               sql`, `,

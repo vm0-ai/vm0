@@ -118,6 +118,11 @@ export const storedExecutionContextSchema = z.object({
   encryptedSecrets: z.string().nullable(), // AES-256-GCM encrypted Record<string, string> (secret name → value)
   // Maps secret names to OAuth connector types for runtime token refresh (e.g. { "GMAIL_ACCESS_TOKEN": "gmail" })
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
+  // Maps model-provider OAuth handler keys to the userId that owns server-side refresh state
+  modelProviderSecretOwnerMap: z
+    .record(z.string(), z.string())
+    .nullable()
+    .optional(),
   cliAgentType: z.string(),
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: z.boolean().optional(),
@@ -170,6 +175,11 @@ export const executionContextSchema = z.object({
   encryptedSecrets: z.string().nullable(),
   // Maps secret names to OAuth connector types for runtime token refresh
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
+  // Maps model-provider OAuth handler keys to the userId that owns server-side refresh state
+  modelProviderSecretOwnerMap: z
+    .record(z.string(), z.string())
+    .nullable()
+    .optional(),
   cliAgentType: z.string(),
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: z.boolean().optional(),

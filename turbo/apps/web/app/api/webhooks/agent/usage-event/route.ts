@@ -44,18 +44,26 @@ const router = tsr.router(webhookUsageEventContract, {
       await globalThis.services.db
         .insert(usageEvent)
         .values(
-          events.map((event) => {
-            return {
-              runId: body.runId,
-              orgId,
-              userId,
-              kind: event.kind,
-              provider: event.provider,
-              category: event.category,
-              quantity: event.quantity,
-              idempotencyKey: event.idempotencyKey,
-            };
-          }),
+          events.map(
+            (event: {
+              idempotencyKey: string;
+              kind: "connector" | "model" | "image";
+              provider: string;
+              category: string;
+              quantity: number;
+            }) => {
+              return {
+                runId: body.runId,
+                orgId,
+                userId,
+                kind: event.kind,
+                provider: event.provider,
+                category: event.category,
+                quantity: event.quantity,
+                idempotencyKey: event.idempotencyKey,
+              };
+            },
+          ),
         )
         .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
     } catch (err) {

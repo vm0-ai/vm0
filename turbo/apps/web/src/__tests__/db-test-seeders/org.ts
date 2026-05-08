@@ -437,6 +437,44 @@ export async function insertUserDefaultModelProvider(
 }
 
 /**
+ * Insert a user-level multi-auth model provider directly in the database with
+ * the given authMethod. Mirrors `insertOrgMultiAuthModelProvider` for tests
+ * that need personal-tier OAuth providers such as codex-oauth-token.
+ */
+export async function insertUserMultiAuthModelProvider(
+  orgId: string,
+  userId: string,
+  type: string,
+  authMethod: string,
+  selectedModel?: string,
+): Promise<string> {
+  initServices();
+  await globalThis.services.db
+    .update(modelProviders)
+    .set({ isDefault: false, updatedAt: new Date() })
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, userId),
+        eq(modelProviders.isDefault, true),
+      ),
+    );
+  const [row] = await globalThis.services.db
+    .insert(modelProviders)
+    .values({
+      type,
+      userId,
+      orgId,
+      isDefault: true,
+      authMethod,
+      selectedModel: selectedModel ?? null,
+    })
+    .returning({ id: modelProviders.id });
+  if (!row) throw new Error("insertUserMultiAuthModelProvider: insert failed");
+  return row.id;
+}
+
+/**
  * Insert a user-level non-default model provider directly in the database.
  * Companion to `insertUserDefaultModelProvider` for tests that need to seed
  * a coexisting personal-tier row that the workspace's single-default
