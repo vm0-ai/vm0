@@ -2,9 +2,17 @@ import { eq, and, sql } from "drizzle-orm";
 import { waitUntil } from "@vercel/functions";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
+  getValidatedFramework,
+  type SupportedFramework,
+} from "@vm0/core/frameworks";
+import {
   getCustomSkillStorageName,
   getSkillStorageName,
 } from "@vm0/core/storage-names";
+import {
+  getFrameworkForType,
+  type ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { orgTierSchema } from "@vm0/api-contracts/contracts/orgs";
 import { resolveFirewallPolicies } from "@vm0/connectors/firewalls";
@@ -28,6 +36,7 @@ import {
   type CreateRunParams,
   type CreateRunRecordResult,
 } from "../infra/run";
+import { resolveFrameworkSkillsMountPath } from "../infra/framework/framework-config";
 import { resolveStartRunCompose } from "./zero-run-validation";
 import {
   checkRunConcurrencyLimit,
@@ -266,7 +275,26 @@ function loadOrgAdmissionMetadata(
  * skills are injected only for connectors the user has authorized for the
  * agent (via the user_connectors table).
  */
-function buildSystemSkillVolumes(connectorTypes: readonly string[]): Array<{
+function buildSkillMountPath(
+  framework: SupportedFramework,
+  skillName: string,
+): string {
+  return `${resolveFrameworkSkillsMountPath(framework)}/${skillName}`;
+}
+
+function resolveRunFramework(
+  composeFramework: string,
+  providerType: ModelProviderType | null,
+): SupportedFramework {
+  return getValidatedFramework(
+    providerType ? getFrameworkForType(providerType) : composeFramework,
+  );
+}
+
+function buildSystemSkillVolumes(
+  connectorTypes: readonly string[],
+  framework: SupportedFramework,
+): Array<{
   name: string;
   mountPath: string;
   system: boolean;
@@ -279,7 +307,7 @@ function buildSystemSkillVolumes(connectorTypes: readonly string[]): Array<{
     return [
       {
         name: getSkillStorageName(parsed.fullPath),
-        mountPath: `/home/user/.claude/skills/${parsed.skillName}`,
+        mountPath: buildSkillMountPath(framework, parsed.skillName),
         system: true,
       },
     ];
@@ -659,44 +687,7 @@ async function createZeroRunRecord(
     userInfo,
     params.appendSystemPrompt,
   );
-
-  // Construct CreateRunParams (infra knows nothing about ZERO_TOKEN)
-  // Inject system + custom skill volumes (needed on every run).
-  const systemSkillVolumes = buildSystemSkillVolumes(
-    allowedConnectorTypes ?? [],
-  );
-  const customSkillVolumes = (row?.customSkills ?? []).map((name) => {
-    return {
-      name: getCustomSkillStorageName(name),
-      mountPath: `/home/user/.claude/skills/${name}`,
-    };
-  });
-  // System skills first, custom skills after (custom overrides system at same mount path)
-  const skillVolumes = [...systemSkillVolumes, ...customSkillVolumes];
-
-  const runParams: CreateRunParams = {
-    userId: params.userId,
-    agentComposeVersionId: resolved.agentComposeVersionId,
-    prompt: params.prompt,
-    composeId: resolved.composeId,
-    sessionId: params.sessionId,
-    appendSystemPrompt,
-    modelProvider: params.modelProvider,
-    ...resolveEffectiveModel(params, row),
-    callbacks: params.callbacks,
-    disallowedTools: [...DISALLOWED_TOOLS],
-    vars: { ZERO_AGENT_ID: params.agentId },
-    permissionPolicies: permissionPolicies ?? undefined,
-    allowedConnectorTypes,
-    allowedCustomConnectorIds,
-    agentName: resolved.agentName,
-    orgId: resolved.orgId,
-    orgTier,
-    additionalVolumes: skillVolumes.length > 0 ? skillVolumes : undefined,
-    debugNoMockClaude: params.debugNoMockClaude,
-    debugNoMockCodex: params.debugNoMockCodex,
-    triggerSource: params.triggerSource,
-  };
+  const effectiveModel = resolveEffectiveModel(params, row);
 
   // ── Round 3: Pre-flight checks (need compose content) ───────────────
   authorizeCompose(params.userId, resolved.orgId, {
@@ -714,12 +705,16 @@ async function createZeroRunRecord(
     orgId: resolved.orgId,
     userId: params.userId,
     modelProvider: params.modelProvider,
-    modelProviderId: runParams.modelProviderId,
-    modelProviderCredentialScope: runParams.modelProviderCredentialScope,
-    selectedModelOverride: runParams.selectedModelOverride,
+    modelProviderId: effectiveModel.modelProviderId,
+    modelProviderCredentialScope: effectiveModel.modelProviderCredentialScope,
+    selectedModelOverride: effectiveModel.selectedModelOverride,
     composeFramework,
-    preferPersonalProvider: runParams.preferPersonalProvider,
+    preferPersonalProvider: effectiveModel.preferPersonalProvider,
   });
+  const runFramework = resolveRunFramework(
+    composeFramework,
+    admissionContext.providerType,
+  );
 
   if (!params.sessionId) {
     await validateComposeRequirements(
@@ -742,10 +737,10 @@ async function createZeroRunRecord(
       params.userId,
       params.modelProvider,
       resolved.composeContent,
-      runParams.preferPersonalProvider,
-      runParams.selectedModelOverride,
-      runParams.modelProviderId,
-      runParams.modelProviderCredentialScope,
+      effectiveModel.preferPersonalProvider,
+      effectiveModel.selectedModelOverride,
+      effectiveModel.modelProviderId,
+      effectiveModel.modelProviderCredentialScope,
     );
   });
   const round3Capture = timed(async () => {
@@ -766,9 +761,45 @@ async function createZeroRunRecord(
   emit(CHAT_REQUEST_OPS.create_run_round3_model_provider, modelProviderT.ms);
   emit(CHAT_REQUEST_OPS.create_run_round3_capture, captureT.ms);
 
-  if (captureNetworkBodies) {
-    runParams.captureNetworkBodies = true;
-  }
+  // Construct CreateRunParams (infra knows nothing about ZERO_TOKEN)
+  // Inject system + custom skill volumes (needed on every run).
+  const systemSkillVolumes = buildSystemSkillVolumes(
+    allowedConnectorTypes ?? [],
+    runFramework,
+  );
+  const customSkillVolumes = (row?.customSkills ?? []).map((name) => {
+    return {
+      name: getCustomSkillStorageName(name),
+      mountPath: buildSkillMountPath(runFramework, name),
+    };
+  });
+  // System skills first, custom skills after (custom overrides system at same mount path)
+  const skillVolumes = [...systemSkillVolumes, ...customSkillVolumes];
+
+  const runParams: CreateRunParams = {
+    userId: params.userId,
+    agentComposeVersionId: resolved.agentComposeVersionId,
+    prompt: params.prompt,
+    composeId: resolved.composeId,
+    sessionId: params.sessionId,
+    appendSystemPrompt,
+    modelProvider: params.modelProvider,
+    ...effectiveModel,
+    callbacks: params.callbacks,
+    disallowedTools: [...DISALLOWED_TOOLS],
+    vars: { ZERO_AGENT_ID: params.agentId },
+    permissionPolicies: permissionPolicies ?? undefined,
+    allowedConnectorTypes,
+    allowedCustomConnectorIds,
+    agentName: resolved.agentName,
+    orgId: resolved.orgId,
+    orgTier,
+    additionalVolumes: skillVolumes.length > 0 ? skillVolumes : undefined,
+    debugNoMockClaude: params.debugNoMockClaude,
+    debugNoMockCodex: params.debugNoMockCodex,
+    triggerSource: params.triggerSource,
+    ...(captureNetworkBodies ? { captureNetworkBodies: true } : {}),
+  };
 
   // ── Round 4: Advisory lock + concurrency check + INSERT ─────────────
   const lockResult = await insertRunWithAdvisoryLock({

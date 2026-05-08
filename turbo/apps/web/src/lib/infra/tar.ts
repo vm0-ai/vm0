@@ -8,14 +8,7 @@
 
 const BLOCK_SIZE = 512;
 
-/**
- * Create a tar archive containing a single file.
- * Produces a valid POSIX (ustar) tar with checksum, end-of-archive markers,
- * and 512-byte block alignment.
- */
-export function createSingleFileTar(filename: string, content: Buffer): Buffer {
-  const blocks: Buffer[] = [];
-
+function createFileHeader(filename: string, content: Buffer): Buffer {
   const header = Buffer.alloc(BLOCK_SIZE, 0);
   // File name (bytes 0-99)
   header.write(filename, 0, Math.min(filename.length, 100), "utf-8");
@@ -46,20 +39,41 @@ export function createSingleFileTar(filename: string, content: Buffer): Buffer {
     checksum += header.readUInt8(i);
   }
   header.write(checksum.toString(8).padStart(6, "0") + "\0 ", 148, 8, "utf-8");
+  return header;
+}
 
-  blocks.push(header);
-  blocks.push(content);
+/**
+ * Create a tar archive containing multiple files.
+ * Produces a valid POSIX (ustar) tar with checksum, end-of-archive markers,
+ * and 512-byte block alignment.
+ */
+export function createTarArchive(
+  files: Array<{ filename: string; content: Buffer }>,
+): Buffer {
+  const blocks: Buffer[] = [];
 
-  // Pad content to 512-byte boundary
-  const padding = BLOCK_SIZE - (content.length % BLOCK_SIZE);
-  if (padding < BLOCK_SIZE) {
-    blocks.push(Buffer.alloc(padding, 0));
+  for (const file of files) {
+    blocks.push(createFileHeader(file.filename, file.content));
+    blocks.push(file.content);
+
+    // Pad content to 512-byte boundary
+    const padding = BLOCK_SIZE - (file.content.length % BLOCK_SIZE);
+    if (padding < BLOCK_SIZE) {
+      blocks.push(Buffer.alloc(padding, 0));
+    }
   }
 
   // End-of-archive marker: two 512-byte zero blocks
   blocks.push(Buffer.alloc(BLOCK_SIZE * 2, 0));
 
   return Buffer.concat(blocks);
+}
+
+/**
+ * Create a tar archive containing a single file.
+ */
+export function createSingleFileTar(filename: string, content: Buffer): Buffer {
+  return createTarArchive([{ filename, content }]);
 }
 
 /**

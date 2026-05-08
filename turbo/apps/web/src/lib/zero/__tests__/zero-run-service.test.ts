@@ -16,12 +16,14 @@ import {
   createTestSessionWithConversation,
   getTestUserPreferencesAll,
   updateTestUserPreferencesAll,
+  createTestOrgModelProvider,
 } from "../../../__tests__/api-test-helpers";
 import {
   clearComposeHeadVersion,
   createTestZeroAgent,
   deleteTestCompose,
 } from "../../../__tests__/db-test-seeders/agents";
+import { seedUserFeatureSwitches } from "../../../__tests__/db-test-seeders/feature-switches";
 import { bindCustomSkillToAgent } from "../../../__tests__/db-test-seeders/skills";
 import { createTestUserConnector } from "../../../__tests__/db-test-seeders/connectors";
 import {
@@ -315,6 +317,76 @@ describe("createZeroRun() — service-only parameters", () => {
           mountPath: "/home/user/.claude/skills/gamma",
         },
       ]);
+    });
+
+    it("injects custom skills under the codex skills path for codex agents", async () => {
+      const agentName = uniqueId("codex-skill");
+      await createTestCompose(agentName, {
+        overrides: {
+          framework: "codex",
+          instructions: "AGENTS.md",
+          environment: { OPENAI_API_KEY: "test-api-key" },
+        },
+      });
+      const codexAgentId = await getTestZeroAgentId(user.orgId, agentName);
+      await bindCustomSkillToAgent(codexAgentId, "my-skill");
+
+      const result = await createZeroRun(baseParams({ agentId: codexAgentId }));
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.additionalVolumes).toEqual(
+        expect.arrayContaining([
+          {
+            name: "custom-skill@my-skill",
+            mountPath: "/home/user/.codex/skills/my-skill",
+          },
+        ]),
+      );
+      expect(
+        run!.additionalVolumes!.filter((v) => {
+          return v.system === true;
+        }),
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            mountPath: expect.stringMatching(
+              /^\/home\/user\/\.codex\/skills\//,
+            ),
+          }),
+        ]),
+      );
+    });
+
+    it("injects skills under the provider-derived codex path", async () => {
+      const agentName = uniqueId("provider-codex-skill");
+      await createTestCompose(agentName, {
+        skipDefaultApiKey: true,
+      });
+      const providerCodexAgentId = await getTestZeroAgentId(
+        user.orgId,
+        agentName,
+      );
+      await bindCustomSkillToAgent(providerCodexAgentId, "my-skill");
+      await seedUserFeatureSwitches(user.orgId, user.userId, {
+        codexBeta: true,
+      });
+      await createTestOrgModelProvider("openai-api-key", "org-openai-key");
+
+      const result = await createZeroRun(
+        baseParams({ agentId: providerCodexAgentId }),
+      );
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.additionalVolumes).toEqual(
+        expect.arrayContaining([
+          {
+            name: "custom-skill@my-skill",
+            mountPath: "/home/user/.codex/skills/my-skill",
+          },
+        ]),
+      );
     });
 
     it("should inject custom skill volumes on session resume", async () => {

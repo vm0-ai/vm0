@@ -6,7 +6,10 @@ import type {
   VolumeError,
   StorageDriver,
 } from "./types";
-import { getValidatedFramework } from "@vm0/core/frameworks";
+import {
+  getValidatedFramework,
+  type SupportedFramework,
+} from "@vm0/core/frameworks";
 import { expandVariablesInString } from "@vm0/core/variable-expander";
 import { getInstructionsStorageName } from "@vm0/core/storage-names";
 import { resolveFrameworkInstructionsMountPath } from "../framework/framework-config";
@@ -202,9 +205,10 @@ function processVolumeDeclarations(
 function resolveInstructions(
   config: AgentVolumeConfig,
   agent: { instructions?: unknown; framework?: unknown },
+  runtimeFramework?: SupportedFramework,
 ): ResolvedVolume[] {
   const volumes: ResolvedVolume[] = [];
-  const framework = agent.framework as string | undefined;
+  const framework = runtimeFramework ?? (agent.framework as string | undefined);
 
   if (agent.instructions) {
     const agentName = config.agents ? Object.keys(config.agents)[0] : undefined;
@@ -236,6 +240,7 @@ export function resolveVolumes(
   config: AgentVolumeConfig,
   vars: Record<string, string> = {},
   volumeVersionOverrides?: Record<string, string>,
+  runtimeFramework?: SupportedFramework,
 ): VolumeResolutionResult {
   const volumes: ResolvedVolume[] = [];
   const errors: VolumeError[] = [];
@@ -259,7 +264,7 @@ export function resolveVolumes(
 
   // Process instructions
   if (agent) {
-    volumes.push(...resolveInstructions(config, agent));
+    volumes.push(...resolveInstructions(config, agent, runtimeFramework));
   }
 
   return { volumes, errors };

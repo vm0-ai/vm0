@@ -50,11 +50,21 @@ describe("uploadInstructionsServerSide", () => {
     // Verify manifest content
     const manifestBody = JSON.parse(manifestCall![2] as string);
     expect(manifestBody.version).toBe(result.versionId);
-    expect(manifestBody.fileCount).toBe(1);
-    expect(manifestBody.files).toHaveLength(1);
-    expect(manifestBody.files[0].path).toBe("CLAUDE.md");
-    expect(manifestBody.files[0].hash).toMatch(/^[a-f0-9]{64}$/);
-    expect(manifestBody.files[0].size).toBeGreaterThan(0);
+    expect(manifestBody.fileCount).toBe(2);
+    expect(manifestBody.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "CLAUDE.md",
+          hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+          size: expect.any(Number),
+        }),
+        expect.objectContaining({
+          path: "AGENTS.md",
+          hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+          size: expect.any(Number),
+        }),
+      ]),
+    );
   });
 
   it("should store raw content without metadata injection", async () => {
@@ -75,11 +85,15 @@ describe("uploadInstructionsServerSide", () => {
     const archiveBuffer = archiveCall![2] as Buffer;
     const tarBuffer = gunzipSync(archiveBuffer);
     const fileContent = extractFileFromTar(tarBuffer, "CLAUDE.md");
+    const agentsContent = extractFileFromTar(tarBuffer, "AGENTS.md");
     expect(fileContent).not.toBeNull();
+    expect(agentsContent).not.toBeNull();
 
     const text = fileContent!.toString("utf-8");
+    const agentsText = agentsContent!.toString("utf-8");
     expect(text).not.toContain("[AGENT_PROFILE]");
     expect(text).toBe("# Instructions");
+    expect(agentsText).toBe("# Instructions");
   });
 
   it("should deduplicate when same content is uploaded twice", async () => {
@@ -131,8 +145,12 @@ describe("uploadInstructionsServerSide", () => {
     });
     expect(manifestCall).toBeDefined();
     const manifestBody = JSON.parse(manifestCall![2] as string);
-    expect(manifestBody.files).toHaveLength(1);
-    expect(manifestBody.files[0].path).toBe("AGENTS.md");
+    expect(manifestBody.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "AGENTS.md" }),
+        expect.objectContaining({ path: "CLAUDE.md" }),
+      ]),
+    );
   });
 
   it("should return different versionId for different content", async () => {

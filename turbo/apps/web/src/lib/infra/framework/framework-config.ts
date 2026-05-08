@@ -15,6 +15,7 @@ import type { SupportedFramework } from "@vm0/core/frameworks";
 interface FrameworkDefaults {
   workingDir: string;
   instructionsMountPath: string;
+  skillsMountPath: string;
   apiKeyEnvVar: string;
 }
 
@@ -25,11 +26,13 @@ const FRAMEWORK_DEFAULTS: Record<SupportedFramework, FrameworkDefaults> = {
   "claude-code": {
     workingDir: "/home/user/workspace",
     instructionsMountPath: "/home/user/.claude",
+    skillsMountPath: "/home/user/.claude/skills",
     apiKeyEnvVar: "ANTHROPIC_API_KEY",
   },
   codex: {
     workingDir: "/home/user/workspace",
     instructionsMountPath: "/home/user/.codex",
+    skillsMountPath: "/home/user/.codex/skills",
     apiKeyEnvVar: "OPENAI_API_KEY",
   },
 };
@@ -56,6 +59,18 @@ export function resolveFrameworkInstructionsMountPath(
   framework: SupportedFramework,
 ): string {
   return FRAMEWORK_DEFAULTS[framework].instructionsMountPath;
+}
+
+/**
+ * Resolve the skills mount path for a framework
+ *
+ * @param framework - The supported framework
+ * @returns The mount path where skill volumes are attached
+ */
+export function resolveFrameworkSkillsMountPath(
+  framework: SupportedFramework,
+): string {
+  return FRAMEWORK_DEFAULTS[framework].skillsMountPath;
 }
 
 /**

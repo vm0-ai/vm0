@@ -19,6 +19,7 @@ import { env } from "../../../env";
 import { resolveVersionByPrefix, isResolutionError } from "./version-resolver";
 import { computeContentHashFromHashes } from "./content-hash";
 import { VOLUME_ORG_USER_ID, SYSTEM_ORG_ID } from "@vm0/core/storage-names";
+import type { SupportedFramework } from "@vm0/core/frameworks";
 
 const log = logger("storage");
 
@@ -513,6 +514,7 @@ export async function prepareStorageManifest(
   artifacts: ContextArtifact[],
   volumeVersionOverrides?: Record<string, string>,
   additionalVolumes?: AdditionalVolume[],
+  runtimeFramework?: SupportedFramework,
 ): Promise<StorageManifest> {
   log.debug("Preparing storage manifest with presigned URLs...");
 
@@ -534,7 +536,12 @@ export async function prepareStorageManifest(
   // Resolve volumes from agent config. Artifacts are resolved separately from
   // the unified caller-provided list (mounts come from ContextArtifact.mountPath).
   const volumeResult = agentConfig
-    ? resolveVolumes(agentConfig, vars, volumeVersionOverrides)
+    ? resolveVolumes(
+        agentConfig,
+        vars,
+        volumeVersionOverrides,
+        runtimeFramework,
+      )
     : { volumes: [], errors: [] };
 
   if (volumeResult.errors.length > 0) {

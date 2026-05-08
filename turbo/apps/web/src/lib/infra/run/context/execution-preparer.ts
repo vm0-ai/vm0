@@ -8,6 +8,7 @@ import {
 } from "../../../infra/storage/storage-service";
 import type { StorageManifest } from "../../../infra/storage/types";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
+import { getValidatedFramework } from "@vm0/core/frameworks";
 import { DEFAULT_PROFILE } from "@vm0/api-contracts/contracts/runners";
 import { badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../../shared/logger";
@@ -88,6 +89,9 @@ export async function prepareForExecution(
   const workingDir = extractWorkingDir(context.agentCompose);
   const cliAgentType =
     context.resolvedFramework ?? extractCliAgentType(context.agentCompose);
+  const runtimeFramework = context.resolvedFramework
+    ? getValidatedFramework(context.resolvedFramework)
+    : undefined;
   const runnerGroup = resolveRunnerGroup(context.agentCompose);
   const profile = resolveRunnerProfile(context.agentCompose);
 
@@ -144,6 +148,7 @@ export async function prepareForExecution(
     artifacts,
     context.volumeVersions,
     context.additionalVolumes,
+    runtimeFramework,
   );
   const storageEnd = Date.now();
 
