@@ -362,7 +362,7 @@ fn bounded_exec_streams_stdout_before_final_result() {
 
     let mut request = bounded_request("printf login-url; sleep 0.2; printf done", &[], None);
     request.stream_stdout = true;
-    request.stream_chunk_limit_bytes = 4;
+    request.stream_chunk_limit_bytes = 1024;
     request.stdout_stream_limit_bytes = 64;
     send_bounded_exec(&mut host_stream, 15, &request);
     let (chunks, result) = read_bounded_exec_result(&mut host_stream, 15);
@@ -540,6 +540,24 @@ fn bounded_exec_invalid_env_payload_returns_start_failed_without_leaking_value()
     assert_eq!(result.termination, BoundedExecTermination::StartFailed);
     assert!(stderr.contains("invalid environment variable name"));
     assert!(!stderr.contains(secret));
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_rejects_tiny_stream_chunk_limit() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request("echo should-not-run", &[], None);
+    request.stream_stdout = true;
+    request.stream_chunk_limit_bytes = 1;
+    send_bounded_exec(&mut host_stream, 23, &request);
+    let (chunks, result) = read_bounded_exec_result(&mut host_stream, 23);
+    let stderr = String::from_utf8_lossy(&result.stderr);
+
+    assert!(chunks.is_empty());
+    assert_eq!(result.termination, BoundedExecTermination::StartFailed);
+    assert!(stderr.contains("stream chunk limit below minimum"));
 
     finish_guest_connection(handle, host_stream);
 }

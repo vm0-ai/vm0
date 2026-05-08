@@ -50,6 +50,17 @@ pub const MAX_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
 /// Minimum body size: type (1) + seq (4).
 pub const MIN_BODY_SIZE: usize = 5;
 
+/// Fixed bytes in a bounded_exec_result payload before stdout/stderr contents.
+pub const BOUNDED_EXEC_RESULT_FIXED_PAYLOAD_BYTES: usize = 1 + 1 + 4 + 8 + 4 + 4;
+/// Fixed bytes in a bounded_exec_output_chunk payload before chunk contents.
+pub const BOUNDED_EXEC_OUTPUT_CHUNK_FIXED_PAYLOAD_BYTES: usize = 1 + 1 + 4 + 4;
+/// Maximum combined stdout+stderr bytes that fit in one bounded_exec_result frame.
+pub const MAX_BOUNDED_EXEC_RESULT_OUTPUT_BYTES: usize =
+    MAX_MESSAGE_SIZE - MIN_BODY_SIZE - BOUNDED_EXEC_RESULT_FIXED_PAYLOAD_BYTES;
+/// Maximum chunk bytes that fit in one bounded_exec_output_chunk frame.
+pub const MAX_BOUNDED_EXEC_OUTPUT_CHUNK_BYTES: usize =
+    MAX_MESSAGE_SIZE - MIN_BODY_SIZE - BOUNDED_EXEC_OUTPUT_CHUNK_FIXED_PAYLOAD_BYTES;
+
 // Message type constants.
 pub const MSG_READY: u8 = 0x00;
 pub const MSG_PING: u8 = 0x01;

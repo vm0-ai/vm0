@@ -28,13 +28,7 @@ const THREAD_BOUNDED_STDOUT: &str = "vsock-bounded-stdout";
 const THREAD_BOUNDED_STDERR: &str = "vsock-bounded-stderr";
 const THREAD_BOUNDED_STDIN: &str = "vsock-bounded-stdin";
 
-// MSG frame overhead (type + seq) plus bounded_exec_result fixed payload.
-const RESULT_FRAME_OVERHEAD_BYTES: usize = 1 + 4 + 22;
-const MAX_RESULT_OUTPUT_BYTES: usize = vsock_proto::MAX_MESSAGE_SIZE - RESULT_FRAME_OVERHEAD_BYTES;
-// MSG frame overhead (type + seq) plus bounded_exec_output_chunk fixed payload.
-const OUTPUT_CHUNK_FRAME_OVERHEAD_BYTES: usize = 1 + 4 + 10;
-const MAX_OUTPUT_CHUNK_BYTES: usize =
-    vsock_proto::MAX_MESSAGE_SIZE - OUTPUT_CHUNK_FRAME_OVERHEAD_BYTES;
+const MIN_STREAM_CHUNK_LIMIT_BYTES: usize = 1024;
 
 pub(crate) struct BoundedExecWorkerRequest {
     pub(crate) seq: u32,
@@ -438,20 +432,29 @@ fn validate_request(request: &BoundedExecWorkerRequest) -> Result<(), String> {
     let total_limit = stdout_limit
         .checked_add(stderr_limit)
         .ok_or_else(|| "bounded exec final output limits overflow".to_string())?;
-    if total_limit > MAX_RESULT_OUTPUT_BYTES {
+    if total_limit > vsock_proto::MAX_BOUNDED_EXEC_RESULT_OUTPUT_BYTES {
         return Err(format!(
             "bounded exec final output limits exceed protocol result frame: {} > {}",
-            total_limit, MAX_RESULT_OUTPUT_BYTES
+            total_limit,
+            vsock_proto::MAX_BOUNDED_EXEC_RESULT_OUTPUT_BYTES
         ));
     }
 
-    if (request.stream_stdout || request.stream_stderr)
-        && request.stream_chunk_limit_bytes as usize > MAX_OUTPUT_CHUNK_BYTES
-    {
-        return Err(format!(
-            "bounded exec stream chunk limit exceeds protocol frame: {} > {}",
-            request.stream_chunk_limit_bytes, MAX_OUTPUT_CHUNK_BYTES
-        ));
+    if request.stream_stdout || request.stream_stderr {
+        let stream_chunk_limit = request.stream_chunk_limit_bytes as usize;
+        if stream_chunk_limit < MIN_STREAM_CHUNK_LIMIT_BYTES {
+            return Err(format!(
+                "bounded exec stream chunk limit below minimum: {} < {}",
+                request.stream_chunk_limit_bytes, MIN_STREAM_CHUNK_LIMIT_BYTES
+            ));
+        }
+        if stream_chunk_limit > vsock_proto::MAX_BOUNDED_EXEC_OUTPUT_CHUNK_BYTES {
+            return Err(format!(
+                "bounded exec stream chunk limit exceeds protocol frame: {} > {}",
+                request.stream_chunk_limit_bytes,
+                vsock_proto::MAX_BOUNDED_EXEC_OUTPUT_CHUNK_BYTES
+            ));
+        }
     }
 
     Ok(())
