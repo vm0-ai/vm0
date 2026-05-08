@@ -1,6 +1,5 @@
 import { useLastResolved, useResolved, useSet } from "ccstate-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { IconPlus } from "@tabler/icons-react";
 import { cn } from "@vm0/ui";
 import {
   currentChatAgentId$,
@@ -8,7 +7,6 @@ import {
 } from "../../signals/agent-chat.ts";
 import { pinnedAgents$ } from "../../signals/zero-page/zero-pinned-agents.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { setMobileNewSessionSheetOpen$ } from "../../signals/zero-page/zero-nav.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 
 /**
@@ -23,7 +21,6 @@ export function MobileChatAgentSwitcher() {
   const pinned = useLastResolved(pinnedAgents$) ?? [];
   const currentId = useResolved(currentChatAgentId$);
   const setAgentId = useSet(setChatAgentId$);
-  const openNewSession = useSet(setMobileNewSessionSheetOpen$);
 
   if (!enabled) {
     return null;
@@ -73,24 +70,6 @@ export function MobileChatAgentSwitcher() {
           </button>
         );
       })}
-      {/* Trailing "+" chip — opens the agent picker sheet so the user can
-          start a new chat with any agent without leaving the strip. */}
-      <button
-        type="button"
-        onClick={() => {
-          openNewSession(true);
-        }}
-        aria-label="Start a new chat with another agent"
-        data-testid="mobile-new-session-chip"
-        className="flex flex-col items-center gap-1 shrink-0 snap-start text-[14px] font-medium"
-      >
-        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-muted-foreground">
-          <IconPlus size={22} stroke={1.8} />
-        </span>
-        <span className="max-w-[64px] truncate text-muted-foreground">
-          New
-        </span>
-      </button>
     </div>
   );
 }
