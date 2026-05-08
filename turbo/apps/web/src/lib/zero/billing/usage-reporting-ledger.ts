@@ -10,6 +10,50 @@ import {
 } from "./model-usage-categories";
 
 /**
+ * Realtime/transcription providers emit per-modality token counts
+ * (`tokens.input.text`, `tokens.input.audio`, `tokens.input.cached_*`,
+ * `tokens.output.text`, `tokens.output.audio`) instead of the four flat
+ * model-token buckets. Member and run totals merge those into the same
+ * inputTokens/outputTokens/cacheReadInputTokens columns so the existing
+ * UI/API surface treats audio cost as just another model cost.
+ *
+ *   tokens.input + tokens.input.text + tokens.input.audio
+ *     -> inputTokens
+ *   tokens.output + tokens.output.text + tokens.output.audio
+ *     -> outputTokens
+ *   tokens.cache_read + tokens.input.cached_text + tokens.input.cached_audio
+ *     -> cacheReadInputTokens
+ *   tokens.cache_creation
+ *     -> cacheCreationInputTokens
+ */
+const INPUT_TOKEN_CATEGORIES = [
+  TOKEN_CATEGORY_INPUT,
+  "tokens.input.text",
+  "tokens.input.audio",
+] as const;
+
+const OUTPUT_TOKEN_CATEGORIES = [
+  TOKEN_CATEGORY_OUTPUT,
+  "tokens.output.text",
+  "tokens.output.audio",
+] as const;
+
+const CACHE_READ_TOKEN_CATEGORIES = [
+  TOKEN_CATEGORY_CACHE_READ,
+  "tokens.input.cached_text",
+  "tokens.input.cached_audio",
+] as const;
+
+const CACHE_CREATION_TOKEN_CATEGORIES = [
+  TOKEN_CATEGORY_CACHE_CREATION,
+] as const;
+
+const ALL_CACHE_TOKEN_CATEGORIES = [
+  ...CACHE_READ_TOKEN_CATEGORIES,
+  ...CACHE_CREATION_TOKEN_CATEGORIES,
+] as const;
+
+/**
  * Reporting time terms:
  * - activityTime maps to ledger created_at, when usage activity was recorded.
  * - billingTime maps to ledger processed_at, when credits were settled.
@@ -60,14 +104,14 @@ function getUsageEventMemberUsageTotals(
 ): Promise<UsageMemberTotalsRow[]> {
   const totalsSelect = {
     userId: usageEvent.userId,
-    inputTokens: usageEventTokenSum(TOKEN_CATEGORY_INPUT, "input_tokens"),
-    outputTokens: usageEventTokenSum(TOKEN_CATEGORY_OUTPUT, "output_tokens"),
+    inputTokens: usageEventTokenSum(INPUT_TOKEN_CATEGORIES, "input_tokens"),
+    outputTokens: usageEventTokenSum(OUTPUT_TOKEN_CATEGORIES, "output_tokens"),
     cacheReadInputTokens: usageEventTokenSum(
-      TOKEN_CATEGORY_CACHE_READ,
+      CACHE_READ_TOKEN_CATEGORIES,
       "cache_read_input_tokens",
     ),
     cacheCreationInputTokens: usageEventTokenSum(
-      TOKEN_CATEGORY_CACHE_CREATION,
+      CACHE_CREATION_TOKEN_CATEGORIES,
       "cache_creation_input_tokens",
     ),
     creditsCharged:
@@ -102,23 +146,23 @@ export function buildUsageEventRunUsageTotalsSubquery(
 ) {
   const totalsSelect = {
     runId: usageEvent.runId,
-    inputTokens: usageEventTokenSum(TOKEN_CATEGORY_INPUT, "input_tokens_sum"),
+    inputTokens: usageEventTokenSum(INPUT_TOKEN_CATEGORIES, "input_tokens_sum"),
     outputTokens: usageEventTokenSum(
-      TOKEN_CATEGORY_OUTPUT,
+      OUTPUT_TOKEN_CATEGORIES,
       "output_tokens_sum",
     ),
     cacheReadInputTokens: usageEventTokenSum(
-      TOKEN_CATEGORY_CACHE_READ,
+      CACHE_READ_TOKEN_CATEGORIES,
       "cache_read_input_tokens_sum",
     ),
     cacheCreationInputTokens: usageEventTokenSum(
-      TOKEN_CATEGORY_CACHE_CREATION,
+      CACHE_CREATION_TOKEN_CATEGORIES,
       "cache_creation_input_tokens_sum",
     ),
-    cacheTokens:
-      sql<number>`COALESCE(SUM(CASE WHEN ${usageEvent.kind} = ${MODEL_USAGE_KIND} AND ${usageEvent.category} IN (${TOKEN_CATEGORY_CACHE_READ}, ${TOKEN_CATEGORY_CACHE_CREATION}) THEN ${usageEvent.quantity} ELSE 0 END), 0)::bigint`.as(
-        "cache_tokens_sum",
-      ),
+    cacheTokens: usageEventTokenSum(
+      ALL_CACHE_TOKEN_CATEGORIES,
+      "cache_tokens_sum",
+    ),
     creditsCharged:
       sql<number>`COALESCE(SUM(${usageEvent.creditsCharged}), 0)::bigint`.as(
         "credits_sum",
@@ -177,8 +221,14 @@ export function mergedRunModel(events: UsageEventRunUsageTotalsSubquery) {
   return sql<string | null>`${events.model}`.as("model");
 }
 
-function usageEventTokenSum(category: string, alias: string) {
-  return sql<number>`COALESCE(SUM(CASE WHEN ${usageEvent.kind} = ${MODEL_USAGE_KIND} AND ${usageEvent.category} = ${category} THEN ${usageEvent.quantity} ELSE 0 END), 0)::bigint`.as(
+function usageEventTokenSum(categories: readonly string[], alias: string) {
+  const list = sql.join(
+    categories.map((c) => {
+      return sql`${c}`;
+    }),
+    sql.raw(", "),
+  );
+  return sql<number>`COALESCE(SUM(CASE WHEN ${usageEvent.kind} = ${MODEL_USAGE_KIND} AND ${usageEvent.category} IN (${list}) THEN ${usageEvent.quantity} ELSE 0 END), 0)::bigint`.as(
     alias,
   );
 }

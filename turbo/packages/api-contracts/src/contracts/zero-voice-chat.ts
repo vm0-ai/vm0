@@ -88,6 +88,25 @@ const tokenResponseSchema = z.object({
 });
 export type VoiceChatTokenResponse = z.infer<typeof tokenResponseSchema>;
 
+/**
+ * Forward-compatible relay bootstrap response shape used by the VM0 server
+ * realtime relay landed by Epic #12128. Not yet returned by the `token`
+ * endpoint — the route still returns `tokenResponseSchema` until the relay
+ * admission path (#12140) replaces it. Exported here so downstream code can
+ * be built against the final shape.
+ */
+export const relayBootstrapResponseSchema = z.object({
+  relayUrl: z.url(),
+  relayToken: z.string(),
+  expiresAt: z.number(),
+  sessionId: z.uuid(),
+  transport: z.enum(["websocket"]),
+  minimumCreditsRequired: z.number().int().nonnegative().optional(),
+});
+export type RelayBootstrapResponse = z.infer<
+  typeof relayBootstrapResponseSchema
+>;
+
 const createSessionBodySchema = z.object({ agentId: z.uuid() });
 export type CreateVoiceChatSessionBody = z.infer<
   typeof createSessionBodySchema
