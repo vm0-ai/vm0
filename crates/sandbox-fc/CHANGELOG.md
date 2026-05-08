@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.22](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.21...sandbox-fc-v0.27.22) (2026-05-08)
+
+
+### Documentation
+
+* **sandbox-fc:** document config types ([#12172](https://github.com/vm0-ai/vm0/issues/12172)) ([a63455e](https://github.com/vm0-ai/vm0/commit/a63455e6901742692e7b9ff3995e0094e71979f3))
+
 ## [0.27.21](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.20...sandbox-fc-v0.27.21) (2026-05-08)
 
 ## [0.27.20](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.19...sandbox-fc-v0.27.20) (2026-05-07)

@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.336.1](https://github.com/vm0-ai/vm0/compare/app-v0.336.0...app-v0.336.1) (2026-05-08)
+
+
+### Bug Fixes
+
+* clear oauth connector loading on popup close ([#12176](https://github.com/vm0-ai/vm0/issues/12176)) ([e6d59fd](https://github.com/vm0-ai/vm0/commit/e6d59fd3359ee619ad1ab343971a573386220eb4))
+* **platform:** suppress Ably Connection closed Sentry noise and guard subscribe ([#12166](https://github.com/vm0-ai/vm0/issues/12166)) ([223d8d6](https://github.com/vm0-ai/vm0/commit/223d8d6dd5996060c5fd72e310cdfa281d8ed658))
+* render codex events on activity pages ([#12181](https://github.com/vm0-ai/vm0/issues/12181)) ([83bf58f](https://github.com/vm0-ai/vm0/commit/83bf58f44dc1ca482c856602d35b697273a443fc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.2.0
+    * @vm0/core bumped to 8.263.0
+
 ## [0.336.0](https://github.com/vm0-ai/vm0/compare/app-v0.335.0...app-v0.336.0) (2026-05-08)
 
 

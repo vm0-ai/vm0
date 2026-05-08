@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.263.0](https://github.com/vm0-ai/vm0/compare/core-v8.262.0...core-v8.263.0) (2026-05-08)
+
+
+### Features
+
+* route model-first runs through org policies ([#12159](https://github.com/vm0-ai/vm0/issues/12159)) ([6091026](https://github.com/vm0-ai/vm0/commit/60910260aa93d5e8f1d71cba6642b712b5013592))
+* **voice-chat:** backend transcript ingestion and talker tool dispatch from relay ([#12148](https://github.com/vm0-ai/vm0/issues/12148)) ([978db30](https://github.com/vm0-ai/vm0/commit/978db3048a0a7bc48b6de3785443d37399f17f83))
+* **voice-chat:** implement vm0 realtime relay runtime and openai client ([#12150](https://github.com/vm0-ai/vm0/issues/12150)) ([4194a73](https://github.com/vm0-ai/vm0/commit/4194a73ba3175087676c380ee5e1908f3b2c9c1f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.2.0
+
 ## [8.262.0](https://github.com/vm0-ai/vm0/compare/core-v8.261.2...core-v8.262.0) (2026-05-08)
 
 

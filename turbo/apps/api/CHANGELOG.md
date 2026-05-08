@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.20.0](https://github.com/vm0-ai/vm0/compare/api-v1.19.4...api-v1.20.0) (2026-05-08)
+
+
+### Features
+
+* **voice-chat:** backend transcript ingestion and talker tool dispatch from relay ([#12148](https://github.com/vm0-ai/vm0/issues/12148)) ([978db30](https://github.com/vm0-ai/vm0/commit/978db3048a0a7bc48b6de3785443d37399f17f83))
+* **voice-chat:** implement vm0 realtime relay runtime and openai client ([#12150](https://github.com/vm0-ai/vm0/issues/12150)) ([4194a73](https://github.com/vm0-ai/vm0/commit/4194a73ba3175087676c380ee5e1908f3b2c9c1f))
+
+
+### Bug Fixes
+
+* **api:** strip Clerk user_ prefix from attachment file URLs ([#12163](https://github.com/vm0-ai/vm0/issues/12163)) ([ab23a04](https://github.com/vm0-ai/vm0/commit/ab23a041dd44395496603fcf5e74bf22857c6b51))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.2.0
+    * @vm0/core bumped to 8.263.0
+    * @vm0/db bumped to 1.2.0
+
 ## [1.19.4](https://github.com/vm0-ai/vm0/compare/api-v1.19.3...api-v1.19.4) (2026-05-08)
 
 

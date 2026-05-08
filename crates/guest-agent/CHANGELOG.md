@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.28.2...guest-agent-v0.28.3) (2026-05-08)
+
+
+### Bug Fixes
+
+* **cli:** drain terminal run events ([#12154](https://github.com/vm0-ai/vm0/issues/12154)) ([1795a3c](https://github.com/vm0-ai/vm0/commit/1795a3c1a08f1337aa47ce95495bcac472a11d83))
+
 ## [0.28.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.28.1...guest-agent-v0.28.2) (2026-05-08)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.15](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.14...sandbox-v0.12.15) (2026-05-08)
+
+
+### Performance Improvements
+
+* add guest write-file helper ([#12136](https://github.com/vm0-ai/vm0/issues/12136)) ([8795398](https://github.com/vm0-ai/vm0/commit/8795398ddd54bb6f7e4cade4c1d3a67a11bebd1b))
+
 ## [0.12.14](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.13...sandbox-v0.12.14) (2026-05-07)
 
 

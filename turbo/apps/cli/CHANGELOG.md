@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.145.5](https://github.com/vm0-ai/vm0/compare/cli-v9.145.4...cli-v9.145.5) (2026-05-08)
+
+
+### Bug Fixes
+
+* **cli:** drain terminal run events ([#12154](https://github.com/vm0-ai/vm0/issues/12154)) ([1795a3c](https://github.com/vm0-ai/vm0/commit/1795a3c1a08f1337aa47ce95495bcac472a11d83))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.2.0
+    * @vm0/core bumped to 8.263.0
+
 ## [9.145.4](https://github.com/vm0-ai/vm0/compare/cli-v9.145.3...cli-v9.145.4) (2026-05-08)
 
 

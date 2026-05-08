@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.11.0](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.15...vsock-guest-v0.11.0) (2026-05-08)
+
+
+### Features
+
+* **vsock-guest:** implement bounded exec ([#12164](https://github.com/vm0-ai/vm0/issues/12164)) ([f2b85dd](https://github.com/vm0-ai/vm0/commit/f2b85dd4f73a0f4ba0032340b37e92857bd74e71))
+
+
+### Performance Improvements
+
+* add guest write-file helper ([#12136](https://github.com/vm0-ai/vm0/issues/12136)) ([8795398](https://github.com/vm0-ai/vm0/commit/8795398ddd54bb6f7e4cade4c1d3a67a11bebd1b))
+
 ## [0.10.15](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.14...vsock-guest-v0.10.15) (2026-05-08)
 
 

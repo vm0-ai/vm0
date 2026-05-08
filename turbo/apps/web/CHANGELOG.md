@@ -1,5 +1,39 @@
 # Changelog
 
+## [12.344.0](https://github.com/vm0-ai/vm0/compare/web-v12.343.0...web-v12.344.0) (2026-05-08)
+
+
+### Features
+
+* route model-first runs through org policies ([#12159](https://github.com/vm0-ai/vm0/issues/12159)) ([6091026](https://github.com/vm0-ai/vm0/commit/60910260aa93d5e8f1d71cba6642b712b5013592))
+* **voice-chat:** backend transcript ingestion and talker tool dispatch from relay ([#12148](https://github.com/vm0-ai/vm0/issues/12148)) ([978db30](https://github.com/vm0-ai/vm0/commit/978db3048a0a7bc48b6de3785443d37399f17f83))
+* **voice-chat:** implement vm0 realtime relay runtime and openai client ([#12150](https://github.com/vm0-ai/vm0/issues/12150)) ([4194a73](https://github.com/vm0-ai/vm0/commit/4194a73ba3175087676c380ee5e1908f3b2c9c1f))
+
+
+### Bug Fixes
+
+* **cli:** drain terminal run events ([#12154](https://github.com/vm0-ai/vm0/issues/12154)) ([1795a3c](https://github.com/vm0-ai/vm0/commit/1795a3c1a08f1337aa47ce95495bcac472a11d83))
+* read codex output in callbacks ([#12175](https://github.com/vm0-ai/vm0/issues/12175)) ([9955ff0](https://github.com/vm0-ai/vm0/commit/9955ff06b4e64cd213867a25bdd75f4e5fda8b52))
+* reconcile stale billing entitlements ([#12170](https://github.com/vm0-ai/vm0/issues/12170)) ([4f92d7e](https://github.com/vm0-ai/vm0/commit/4f92d7e2685dd3952aa4e468a80cf06d80fc68d8))
+* remove grace period from pricing credit expiration copy ([#12107](https://github.com/vm0-ai/vm0/issues/12107)) ([19c2484](https://github.com/vm0-ai/vm0/commit/19c24845870e26fcafe3b855116579a124d149bf))
+* show negative credit balances ([#12189](https://github.com/vm0-ai/vm0/issues/12189)) ([cc2726a](https://github.com/vm0-ai/vm0/commit/cc2726a72f3a91c75abe76784ef65f3ad7751322))
+* update homepage avatar customizer ([#12165](https://github.com/vm0-ai/vm0/issues/12165)) ([6fc697d](https://github.com/vm0-ai/vm0/commit/6fc697d3c09778891fbd6b4f5e46b5ac4edf6934))
+* **web:** redirect bare root to default locale to clear gsc alternate page report ([#11901](https://github.com/vm0-ai/vm0/issues/11901)) ([49a8cf5](https://github.com/vm0-ai/vm0/commit/49a8cf5feb860a24220451bd8c29b40ecbe27889))
+
+
+### Refactoring
+
+* introduce resolved model route ([#12192](https://github.com/vm0-ai/vm0/issues/12192)) ([3fa890f](https://github.com/vm0-ai/vm0/commit/3fa890f6bb04ac33e464bf738b6d8c6972c9437e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.2.0
+    * @vm0/core bumped to 8.263.0
+    * @vm0/db bumped to 1.2.0
+
 ## [12.343.0](https://github.com/vm0-ai/vm0/compare/web-v12.342.1...web-v12.343.0) (2026-05-08)
 
 

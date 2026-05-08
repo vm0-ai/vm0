@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.18](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.17...vsock-test-v0.9.18) (2026-05-08)
+
+
+### Performance Improvements
+
+* add guest write-file helper ([#12136](https://github.com/vm0-ai/vm0/issues/12136)) ([8795398](https://github.com/vm0-ai/vm0/commit/8795398ddd54bb6f7e4cade4c1d3a67a11bebd1b))
+
 ## [0.9.17](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.16...vsock-test-v0.9.17) (2026-05-08)
 
 ## [0.9.16](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.15...vsock-test-v0.9.16) (2026-05-08)

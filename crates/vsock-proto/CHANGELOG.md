@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.10.0...vsock-proto-v0.11.0) (2026-05-08)
+
+
+### Features
+
+* **vsock-guest:** implement bounded exec ([#12164](https://github.com/vm0-ai/vm0/issues/12164)) ([f2b85dd](https://github.com/vm0-ai/vm0/commit/f2b85dd4f73a0f4ba0032340b37e92857bd74e71))
+
 ## [0.10.0](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.9.7...vsock-proto-v0.10.0) (2026-05-08)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.100.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.12...runner-rs-v0.100.13) (2026-05-08)
+
+
+### Documentation
+
+* **runner:** document http client constructor ([#12171](https://github.com/vm0-ai/vm0/issues/12171)) ([a31e828](https://github.com/vm0-ai/vm0/commit/a31e8282936e2378397deb81326b78c777424ee3))
+
+
+### Performance Improvements
+
+* add guest write-file helper ([#12136](https://github.com/vm0-ai/vm0/issues/12136)) ([8795398](https://github.com/vm0-ai/vm0/commit/8795398ddd54bb6f7e4cade4c1d3a67a11bebd1b))
+
 ## [0.100.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.11...runner-rs-v0.100.12) (2026-05-08)
 
 ## [0.100.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.10...runner-rs-v0.100.11) (2026-05-08)
