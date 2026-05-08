@@ -14,6 +14,7 @@ import {
   getPushSubscriptionsByEndpoint,
   createSignedCallbackRequest,
   addTestRunToThread,
+  deleteTestChatThread,
   getTestChatMessagesByThread,
   insertTestAssistantEventMessages,
   insertOrgDefaultModelProvider,
@@ -275,6 +276,117 @@ describe("POST /api/internal/callbacks/chat", () => {
     );
 
     expect(response.status).toBe(400);
+  });
+
+  describe("Stale Thread Callbacks", () => {
+    it("should no-op completed callbacks after the chat thread is deleted", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
+      await deleteTestChatThread(threadId);
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      const chatMessages = await getTestChatMessagesByThread(threadId);
+      expect(chatMessages).toHaveLength(0);
+      expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
+      expect(mockAblyPublish).not.toHaveBeenCalledWith(
+        expect.stringMatching(/^chatThread/),
+        null,
+      );
+    });
+
+    it("should no-op failed callbacks after the chat thread is deleted", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread({
+        status: "failed",
+      });
+      await deleteTestChatThread(threadId);
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "failed",
+            error: "boom",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      const chatMessages = await getTestChatMessagesByThread(threadId);
+      expect(chatMessages).toHaveLength(0);
+      expect(mockAblyPublish).not.toHaveBeenCalledWith(
+        expect.stringMatching(/^chatThread/),
+        null,
+      );
+    });
+
+    it("should use the run's chat thread when callback payload thread is stale", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
+      const staleThreadId = "00000000-0000-0000-0000-000000000001";
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        {
+          sequenceNumber: 0,
+          eventData: {
+            message: {
+              content: [{ type: "text", text: "Authoritative thread reply" }],
+            },
+          },
+        },
+      ]);
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "completed",
+            payload: { threadId: staleThreadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+
+      const messages = await getTestChatMessagesByThread(threadId);
+      const assistant = messages.find((m) => {
+        return m.role === "assistant" && m.sequenceNumber !== null;
+      });
+      expect(assistant).toBeDefined();
+      expect(assistant!.content).toBe("Authoritative thread reply");
+
+      expect(mockAblyPublish).toHaveBeenCalledWith(
+        `chatThreadMessageCreated:${threadId}`,
+        null,
+      );
+      expect(mockAblyPublish).toHaveBeenCalledWith(
+        `chatThreadRunUpdated:${threadId}`,
+        null,
+      );
+      expect(mockAblyPublish).not.toHaveBeenCalledWith(
+        `chatThreadRunUpdated:${staleThreadId}`,
+        null,
+      );
+    });
   });
 
   describe("Chat Persistence", () => {

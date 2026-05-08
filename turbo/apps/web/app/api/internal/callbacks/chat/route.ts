@@ -10,6 +10,7 @@ import {
   insertAssistantEventMessages,
   publishChatThreadRunUpdated,
   getLatestMessagesByThreadId,
+  getChatThreadIdForRun,
   PREVIOUS_CONTEXT_MESSAGES,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
 import { autoSendPendingMessageOnRunComplete } from "../../../../../src/lib/zero/chat-thread/auto-send-pending-message";
@@ -388,10 +389,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true });
   }
 
-  // Fetch the run record for userId, prompt, error
+  // Fetch the run record for prompt and terminal error details.
   const [run] = await globalThis.services.db
     .select({
-      userId: agentRuns.userId,
       prompt: agentRuns.prompt,
       error: agentRuns.error,
     })
@@ -403,15 +403,38 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true });
   }
 
+  const chatThread = await getChatThreadIdForRun(runId);
+  if (!chatThread) {
+    log.info("Skipping terminal chat callback for missing chat thread", {
+      runId,
+      status,
+      payloadThreadId: payload.threadId,
+    });
+    return NextResponse.json({ success: true });
+  }
+
+  if (chatThread.chatThreadId !== payload.threadId) {
+    log.warn("Chat callback payload thread does not match run mapping", {
+      runId,
+      payloadThreadId: payload.threadId,
+      chatThreadId: chatThread.chatThreadId,
+    });
+  }
+
   if (status === "completed") {
-    await handleCompleted(runId, run.prompt, payload.threadId, run.userId);
+    await handleCompleted(
+      runId,
+      run.prompt,
+      chatThread.chatThreadId,
+      chatThread.userId,
+    );
   } else if (status === "failed") {
     const errorMessage = error ?? run.error ?? "Run failed";
     await handleFailed(
       runId,
       run.prompt,
-      payload.threadId,
-      run.userId,
+      chatThread.chatThreadId,
+      chatThread.userId,
       errorMessage,
     );
   }

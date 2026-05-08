@@ -55,6 +55,7 @@ export {
   createTestAgentSession,
   createTestSessionWithConversation,
   insertTestChatThread,
+  deleteTestChatThread,
   insertTestChatMessage,
   getTestChatMessagesByThread,
   addTestRunToThread,
