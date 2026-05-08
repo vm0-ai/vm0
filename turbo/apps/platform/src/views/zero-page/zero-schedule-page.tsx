@@ -688,9 +688,7 @@ export function ZeroSchedulePage() {
       </header>
 
       <main
-        className={`flex-1 max-md:flex max-md:flex-col overflow-auto px-4 sm:px-6 pb-8 ${
-          mobileRedesign ? "pt-4 md:pt-3" : "pt-3"
-        }`}
+        className={`flex-1 max-md:flex max-md:flex-col overflow-auto px-4 sm:px-6 pb-8 pt-3`}
       >
         <div className="mx-auto w-full max-w-[900px] max-md:flex-1 max-md:flex max-md:flex-col">
           <div
