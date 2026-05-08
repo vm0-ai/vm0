@@ -107,7 +107,7 @@ describe("composer Stop button + draft recall on cancel", () => {
     });
   });
 
-  it("Stop click recalls the queued message back into the draft and cancels the run", async () => {
+  it("stop click recalls the queued message back into the draft and cancels the run", async () => {
     const user = userEvent.setup({ delay: null });
     let recallRequestSeen = false;
     const ctrl = mockChatLifecycle({
@@ -159,7 +159,7 @@ describe("composer Stop button + draft recall on cancel", () => {
     });
   });
 
-  it("Stop click recalls a server-side queued message even when nothing was just queued client-side", async () => {
+  it("stop click recalls a server-side queued message even when nothing was just queued client-side", async () => {
     // Resume scenario: thread already has a pending message from a previous
     // session. The user clicks Stop while the run is active — recall should
     // still pull the persisted queue back into the draft.
@@ -210,7 +210,7 @@ describe("composer Stop button + draft recall on cancel", () => {
     expect(textarea.value).toBe("queued from earlier session");
   });
 
-  it("Stop click without a queued message just cancels the run", async () => {
+  it("stop click without a queued message just cancels the run", async () => {
     const user = userEvent.setup({ delay: null });
     let recallRequestSeen = false;
     const ctrl = mockChatLifecycle({
