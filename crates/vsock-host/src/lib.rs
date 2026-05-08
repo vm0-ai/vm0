@@ -640,6 +640,8 @@ impl VsockHost {
     /// to a temporary file and atomically renamed to the target path after
     /// the last chunk succeeds, so a partial transfer never leaves a
     /// truncated file at the destination.
+    ///
+    /// Non-sudo writes create missing parent directories on the guest.
     pub async fn write_file(&self, path: &str, content: &[u8], sudo: bool) -> io::Result<()> {
         if content.len() <= Self::WRITE_FILE_CHUNK_LIMIT {
             return self.write_file_chunk(path, content, sudo, false).await;
@@ -648,7 +650,7 @@ impl VsockHost {
         // Write chunks to a temp file, then atomic rename.
         let tmp = format!("{path}.vm0tmp");
         let escaped_tmp = tmp.replace('\'', "'\\''");
-        let rm_tmp = format!("rm -f '{escaped_tmp}'");
+        let rm_tmp = format!("rm -f -- '{escaped_tmp}'");
 
         let result = async {
             for (i, chunk) in content.chunks(Self::WRITE_FILE_CHUNK_LIMIT).enumerate() {
@@ -668,7 +670,7 @@ impl VsockHost {
 
         // Atomic rename temp → target.
         let escaped_path = path.replace('\'', "'\\''");
-        let mv_cmd = format!("mv -f '{escaped_tmp}' '{escaped_path}'");
+        let mv_cmd = format!("mv -f -- '{escaped_tmp}' '{escaped_path}'");
         match self
             .exec(&mv_cmd, Self::HELPER_EXEC_TIMEOUT_MS, &[], sudo)
             .await
@@ -1137,7 +1139,7 @@ mod tests {
                     } else if msg.msg_type == MSG_EXEC {
                         // Atomic rename: mv temp → target
                         let decoded = vsock_proto::decode_exec(&msg.payload).unwrap();
-                        assert!(decoded.command.contains("mv -f"));
+                        assert!(decoded.command.contains("mv -f --"));
                         assert!(decoded.command.contains("/tmp/big.bin.vm0tmp"));
                         assert!(decoded.command.contains("/tmp/big.bin"));
 
@@ -1200,7 +1202,7 @@ mod tests {
                     } else if msg.msg_type == MSG_EXEC {
                         // Cleanup: rm -f temp file
                         let decoded = vsock_proto::decode_exec(&msg.payload).unwrap();
-                        assert!(decoded.command.contains("rm -f"));
+                        assert!(decoded.command.contains("rm -f --"));
                         let payload = vsock_proto::encode_exec_result(0, &[], &[]);
                         let resp = vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &payload).unwrap();
                         guest.write_all(&resp).await.unwrap();
@@ -1255,7 +1257,7 @@ mod tests {
                             guest.write_all(&resp).await.unwrap();
                         } else {
                             // cleanup rm
-                            assert!(decoded.command.contains("rm -f"));
+                            assert!(decoded.command.contains("rm -f --"));
                             let payload = vsock_proto::encode_exec_result(0, &[], &[]);
                             let resp =
                                 vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &payload).unwrap();
