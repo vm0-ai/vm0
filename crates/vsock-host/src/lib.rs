@@ -2158,12 +2158,12 @@ mod tests {
                 mock_handshake(&mut guest, &mut decoder).await;
 
                 let mut buf = [0u8; 1024];
-                let n = guest.read(&mut buf).await.unwrap();
-                assert!(n > 0, "guest should receive partial frame bytes");
-                assert!(
-                    n >= vsock_proto::HEADER_SIZE,
-                    "guest should receive enough bytes to read the frame length",
-                );
+                let mut n = 0usize;
+                while n < vsock_proto::HEADER_SIZE {
+                    let read = guest.read(&mut buf[n..]).await.unwrap();
+                    assert_ne!(read, 0, "connection closed before frame header arrived");
+                    n += read;
+                }
                 let frame_body_len =
                     u32::from_be_bytes(buf[..vsock_proto::HEADER_SIZE].try_into().unwrap())
                         as usize;
