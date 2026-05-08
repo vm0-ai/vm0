@@ -305,7 +305,7 @@ function ScheduleListCard<T extends ScheduleEntry>({
   return (
     <div
       className={cn(
-        "relative flex items-center gap-3 px-5 max-md:px-0 py-3 transition-colors",
+        "relative flex items-center gap-2 px-5 max-md:px-0 py-3 transition-colors",
         clickable && "hover:bg-muted/25",
         dimmed && "opacity-75",
       )}
@@ -320,7 +320,7 @@ function ScheduleListCard<T extends ScheduleEntry>({
           <span className="sr-only">Open schedule {entry.prompt}</span>
         </Link>
       )}
-      <span className="shrink-0 flex h-11 w-11 items-center justify-center rounded-xl bg-muted max-md:bg-transparent max-md:h-12 max-md:w-12 text-foreground/80 pointer-events-none">
+      <span className="shrink-0 flex h-11 w-11 items-center justify-center rounded-xl max-md:h-12 max-md:w-12 text-muted-foreground pointer-events-none">
         <IconCalendarClock size={26} className="max-md:size-[28px]" stroke={1.6} />
       </span>
       {/* Text content — pointer-events disabled so clicks pass through to the Link overlay */}
@@ -341,7 +341,7 @@ function ScheduleListCard<T extends ScheduleEntry>({
         >
           {showAgent && agentLabel && (
             <>
-              <span className="font-semibold text-foreground">
+              <span className="text-muted-foreground">
                 {agentLabel}
               </span>
               {" · "}
