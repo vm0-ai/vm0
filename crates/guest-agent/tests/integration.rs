@@ -48,22 +48,24 @@ async fn wait_mock_calls(
     timeout: Duration,
     context: &str,
 ) {
-    let deadline = tokio::time::Instant::now() + timeout;
+    let mut observed = 0;
 
-    loop {
-        let observed = mock_.calls_async().await;
-        if observed >= expected {
-            return;
+    let result = tokio::time::timeout(timeout, async {
+        loop {
+            observed = mock_.calls_async().await;
+            if observed >= expected {
+                return;
+            }
+
+            tokio::time::sleep(MOCK_CALL_POLL_INTERVAL).await;
         }
+    })
+    .await;
 
-        let now = tokio::time::Instant::now();
-        assert!(
-            now < deadline,
-            "timed out waiting for {context}: expected at least {expected} mock calls, observed {observed} after {timeout:?}",
-        );
-
-        tokio::time::sleep(std::cmp::min(MOCK_CALL_POLL_INTERVAL, deadline - now)).await;
-    }
+    assert!(
+        result.is_ok(),
+        "timed out waiting for {context}: expected at least {expected} mock calls, observed {observed} after {timeout:?}",
+    );
 }
 
 struct SystemLogOverrideGuard;
