@@ -119,7 +119,11 @@ describe("GET /api/zero/chat-threads/:id", () => {
     // The public /f/ URL must omit this prefix (matching web behavior)
     // so the URL is stable regardless of auth source.
     const fixture = await track(
-      store.set(seedZeroChatThread$, { userId: "user_clerk123" }, context.signal),
+      store.set(
+        seedZeroChatThread$,
+        { userId: "user_clerk123" },
+        context.signal,
+      ),
     );
     await store.set(
       seedZeroChatMessage$,
