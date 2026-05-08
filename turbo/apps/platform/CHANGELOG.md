@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.337.0](https://github.com/vm0-ai/vm0/compare/app-v0.336.3...app-v0.337.0) (2026-05-08)
+
+
+### Features
+
+* **platform:** keep Send visible while typing during a run, recall queue on Stop ([#12229](https://github.com/vm0-ai/vm0/issues/12229)) ([6b96766](https://github.com/vm0-ai/vm0/commit/6b96766998e30d916a16a212076b9d1c8a90d757))
+* **voice-chat:** browser-reported realtime usage with session lifecycle (plan d) ([#12227](https://github.com/vm0-ai/vm0/issues/12227)) ([fa94d09](https://github.com/vm0-ai/vm0/commit/fa94d09b5e8b3cbcf9dc4435dbb5aec7e99fa674))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.3.0
+    * @vm0/core bumped to 8.264.1
+
 ## [0.336.3](https://github.com/vm0-ai/vm0/compare/app-v0.336.2...app-v0.336.3) (2026-05-08)
 
 

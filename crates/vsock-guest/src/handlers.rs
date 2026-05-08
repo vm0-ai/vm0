@@ -315,23 +315,20 @@ mod tests {
     use crate::threading::test_support::FailingThreadSpawner;
     use std::sync::Mutex;
 
-    static TEST_HELPER_EXEC: Mutex<()> = Mutex::new(());
+    static WRITE_FILE_CHILD_TESTS: Mutex<()> = Mutex::new(());
 
-    struct TestHelper {
-        _dir: tempfile::TempDir,
-    }
-
-    fn install_sleeping_write_file_helper() -> TestHelper {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("guest-write-file");
-        std::fs::write(&path, "#!/bin/sh\nsleep 60\ncat >/dev/null\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-        }
-        set_debug_guest_write_file_path(path).unwrap();
-        TestHelper { _dir: dir }
+    fn spawn_write_file_test_child(script: &str) -> Child {
+        // Use a stable shell binary instead of a freshly written temp
+        // executable; some CI filesystems can transiently reject immediate exec
+        // of a just-created file with ETXTBSY.
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg(script)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped());
+        spawn_in_own_process_group(&mut command).unwrap()
     }
 
     fn pid_alive(pid: u32) -> bool {
@@ -341,10 +338,9 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn write_file_command_starts_as_process_group_leader() {
-        let _guard = TEST_HELPER_EXEC.lock().unwrap();
-        let _helper = install_sleeping_write_file_helper();
-        let child = spawn_write_file_command("/tmp/out.txt", false, false).unwrap();
+    fn write_file_child_starts_as_process_group_leader() {
+        let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
+        let child = spawn_write_file_test_child("sleep 60");
         let pid = child.id();
 
         let pgid = unsafe { libc::getpgid(pid as libc::pid_t) };
@@ -356,9 +352,8 @@ mod tests {
 
     #[test]
     fn write_file_stderr_drain_spawn_failure_kills_and_reaps_child() {
-        let _guard = TEST_HELPER_EXEC.lock().unwrap();
-        let _helper = install_sleeping_write_file_helper();
-        let child = spawn_write_file_command("/tmp/out.txt", false, false).unwrap();
+        let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
+        let child = spawn_write_file_test_child("sleep 60");
         let pid = child.id();
 
         let (success, error) = wait_write_file_child(
@@ -374,9 +369,8 @@ mod tests {
 
     #[test]
     fn write_file_timeout_kills_child_while_stdin_writer_is_blocked() {
-        let _guard = TEST_HELPER_EXEC.lock().unwrap();
-        let _helper = install_sleeping_write_file_helper();
-        let child = spawn_write_file_command("/tmp/out.txt", false, false).unwrap();
+        let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
+        let child = spawn_write_file_test_child("sleep 60; cat >/dev/null");
         let pid = child.id();
         let content = vec![b'x'; 1024 * 1024];
 
@@ -390,22 +384,8 @@ mod tests {
 
     #[test]
     fn write_file_kills_lingering_process_group_after_parent_exit() {
-        let _guard = TEST_HELPER_EXEC.lock().unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("guest-write-file");
-        std::fs::write(
-            &path,
-            "#!/bin/sh\nsleep 60 <&0 >/dev/null 2>/dev/null &\nexit 0\n",
-        )
-        .unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-        }
-        set_debug_guest_write_file_path(path).unwrap();
-
-        let child = spawn_write_file_command("/tmp/out.txt", false, false).unwrap();
+        let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
+        let child = spawn_write_file_test_child("sleep 60 <&0 >/dev/null 2>/dev/null & exit 0");
         let pid = child.id();
         let content = vec![b'x'; 1024 * 1024];
 

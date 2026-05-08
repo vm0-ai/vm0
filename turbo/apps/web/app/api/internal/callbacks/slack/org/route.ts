@@ -19,7 +19,7 @@ import {
   setThreadStatus,
 } from "../../../../../../src/lib/zero/slack/client";
 import { buildAgentResponseMessage } from "../../../../../../src/lib/zero/slack/blocks";
-import { extractAllRunOutputs } from "../../../../../../src/lib/infra/run/extract-run-output";
+import { extractRunOutput } from "../../../../../../src/lib/infra/run/extract-run-output";
 import {
   saveThreadSession,
   buildLogsUrl,
@@ -317,7 +317,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .where(eq(agentRuns.id, runId))
     .limit(1);
 
-  const allOutputs = await extractAllRunOutputs(
+  const runOutput = await extractRunOutput(
     runId,
     error,
     runContext?.lastEventSequence,
@@ -343,16 +343,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     ? await resolveFooterText(runContext.orgId, payload, selectedModel)
     : undefined;
 
-  // Post each result as a separate Slack reply (in order)
-  for (let i = 0; i < allOutputs.length; i++) {
-    const output = allOutputs[i]!;
-    const responseText = buildResponseText(status, error, output);
-    if (!responseText) continue;
-
-    const isLast = i === allOutputs.length - 1;
-    const logsUrl =
-      isLast && auditLinkEnabled ? buildLogsUrl(runId) : undefined;
-
+  const responseText = buildResponseText(status, error, runOutput);
+  if (responseText) {
+    const logsUrl = auditLinkEnabled ? buildLogsUrl(runId) : undefined;
     await postMessage(client, payload.channelId, responseText, {
       threadTs: payload.threadTs,
       blocks: buildAgentResponseMessage(responseText, logsUrl, footerText),
@@ -361,13 +354,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Generate run summary (best-effort — errors handled internally)
   if (runContext?.prompt) {
-    const combinedOutput = allOutputs
-      .map((o) => {
-        return o.result;
-      })
-      .filter(Boolean)
-      .join("\n");
-    await saveRunSummary(runId, "slack", runContext.prompt, combinedOutput);
+    await saveRunSummary(
+      runId,
+      "slack",
+      runContext.prompt,
+      runOutput.result ?? "",
+    );
   }
 
   // Fire-and-forget: clearing the status is a UI hint; failure must not affect

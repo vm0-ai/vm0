@@ -8,6 +8,8 @@ import { schema } from "@vm0/db";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool, type PoolClient, type QueryConfig } from "pg";
 
+import { attachDatabasePool } from "@vercel/functions";
+
 import { env } from "./env";
 import { singleton } from "./singleton";
 import { deriveSqlSpanName } from "./sql-span-name";
@@ -135,14 +137,20 @@ const pool = singleton((): Pool => {
     return target;
   }
 
-  return instrumentPool(
+  const pgPool = instrumentPool(
     new Pool({
       allowExitOnIdle: true,
       connectionString: env("DATABASE_URL"),
       min: 1,
-      max: 5,
+      max: env("DB_POOL_MAX"),
+      idleTimeoutMillis: env("DB_POOL_IDLE_TIMEOUT_MS"),
+      connectionTimeoutMillis: env("DB_POOL_CONNECT_TIMEOUT_MS"),
     }),
   );
+
+  attachDatabasePool(pgPool);
+
+  return pgPool;
 });
 
 export const db = singleton((): NodePgDatabase<typeof schema> => {

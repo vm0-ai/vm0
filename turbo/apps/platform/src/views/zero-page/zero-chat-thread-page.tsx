@@ -1886,7 +1886,6 @@ function ChatThreadComposer({
   const setInput = useSet(thread.draft.setInput$);
   const cancelRun = useSet(thread.cancelRun$);
   const recallPendingMessage = useSet(thread.recallPendingMessage$);
-  const pendingMessage = useLastResolved(thread.pendingMessage$) ?? null;
   const setInputRef = useSet(thread.setInputRef$);
   const scheduleDraftSync = useSet(thread.scheduleDraftSync$);
   const pageSignal = useGet(pageSignal$);
@@ -1959,10 +1958,18 @@ function ChatThreadComposer({
             onCancel={
               allFinishedResolved
                 ? () => {
-                    if (pendingMessage) {
-                      detach(recallPendingMessage(rootSignal), Reason.DomCallback);
-                    }
-                    detach(cancelRun(pageSignal), Reason.DomCallback);
+                    // Recall any queued pending message back into the draft
+                    // before cancelling so the auto-send hook on the cancel
+                    // callback finds an empty pending and is a no-op. The
+                    // recall is optimistic — the draft repopulates
+                    // synchronously while the server clear races the cancel.
+                    detach(
+                      (async () => {
+                        await recallPendingMessage(rootSignal);
+                        await cancelRun(pageSignal);
+                      })(),
+                      Reason.DomCallback,
+                    );
                   }
                 : undefined
             }

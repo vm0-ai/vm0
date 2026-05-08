@@ -176,6 +176,50 @@ function mockAppendItemOk() {
 
 const TALKER_INSTRUCTIONS = "You are a helpful voice assistant.";
 
+function mockSessionStartedOk(): { calls: number } {
+  const state = { calls: 0 };
+  server.use(
+    mockApi(zeroVoiceChatContract.sessionStarted, ({ respond }) => {
+      state.calls += 1;
+      return respond(200, { id: RELAY_SESSION_ID });
+    }),
+  );
+  return state;
+}
+
+function mockSessionEndedOk(): {
+  calls: { relaySessionId: string }[];
+} {
+  const state = { calls: [] as { relaySessionId: string }[] };
+  server.use(
+    mockApi(zeroVoiceChatContract.sessionEnded, ({ body, respond }) => {
+      state.calls.push({ relaySessionId: body.relaySessionId });
+      return respond(200, { ok: true as const });
+    }),
+  );
+  return state;
+}
+
+function mockUsageEventOk(opts: { creditsExhausted?: boolean } = {}): {
+  calls: { providerEventId: string; eventType: string }[];
+} {
+  const state = {
+    calls: [] as { providerEventId: string; eventType: string }[],
+  };
+  server.use(
+    mockApi(zeroVoiceChatContract.postUsageEvent, ({ body, respond }) => {
+      state.calls.push({
+        providerEventId: body.providerEventId,
+        eventType: body.eventType,
+      });
+      return respond(200, { creditsExhausted: opts.creditsExhausted ?? false });
+    }),
+  );
+  return state;
+}
+
+const RELAY_SESSION_ID = "00000000-0000-4444-8888-000000000099";
+
 function mockGetSessionOk() {
   server.use(
     mockApi(zeroVoiceChatContract.getSession, ({ respond }) => {
@@ -415,9 +459,18 @@ describe("voice-chat session", () => {
     micTrackRef.current = null;
   }
 
-  async function startSuccessfully() {
+  async function startSuccessfully(
+    opts: {
+      overrideMocks?: boolean;
+    } = {},
+  ) {
     mockCreateSessionOk();
     mockTokenOk();
+    if (!opts.overrideMocks) {
+      mockSessionStartedOk();
+      mockSessionEndedOk();
+      mockUsageEventOk();
+    }
     mockGetSessionOk();
     mockListActiveTasksOk();
     detach(
@@ -948,6 +1001,194 @@ describe("voice-chat session", () => {
         expect(context.store.get(voiceChatStatus$)).toBe("idle");
       });
       expect(context.store.get(voiceChatSessionId$)).toBeNull();
+    });
+
+    it("posts session-ended with the audit relay session id", async () => {
+      await setup();
+      const sessionStartedCalls = mockSessionStartedOk();
+      const sessionEndedCalls = mockSessionEndedOk();
+      mockUsageEventOk();
+      await startSuccessfully({ overrideMocks: true });
+      // Wait for the fire-and-forget billing wiring to register the relay
+      // session id; otherwise endVoiceChat$ has nothing to send.
+      await vi.waitFor(() => {
+        expect(sessionStartedCalls.calls).toBe(1);
+      });
+
+      await context.store.set(endVoiceChat$, context.signal);
+
+      await vi.waitFor(() => {
+        expect(sessionEndedCalls.calls).toHaveLength(1);
+      });
+      expect(sessionEndedCalls.calls[0]?.relaySessionId).toBe(RELAY_SESSION_ID);
+    });
+  });
+
+  describe("realtime usage capture (Plan D)", () => {
+    function dcEvent(payload: { type: string; [key: string]: unknown }): void {
+      dcRef.current?.emitMessage(payload);
+    }
+
+    // The reporter is set up via a fire-and-forget command after WebRTC
+    // is up. Wait for sessionStarted to have been observed (the audit
+    // POST is the first inside the wiring command). Tests then assert
+    // on usage-call counts via `vi.waitFor`, whose retry handles the
+    // small remaining latency for `await get(apiBase$)` / `await get(clerk$)`
+    // / `set(internalUsageReporter$, ...)` to settle.
+    async function waitForReporterReady(sessionStartedState: {
+      calls: number;
+    }): Promise<void> {
+      await vi.waitFor(() => {
+        expect(sessionStartedState.calls).toBe(1);
+      });
+    }
+
+    it("posts response.done usage with all six token fields", async () => {
+      await setup();
+      const sessionStartedCalls = mockSessionStartedOk();
+      mockSessionEndedOk();
+      const usageCalls = mockUsageEventOk();
+      await startSuccessfully({ overrideMocks: true });
+      await waitForReporterReady(sessionStartedCalls);
+
+      dcEvent({
+        type: "response.done",
+        event_id: "evt_done_1",
+        response: {
+          id: "resp_1",
+          status: "completed",
+          usage: {
+            input_token_details: {
+              text_tokens: 10,
+              audio_tokens: 100,
+              cached_tokens: 5,
+              cached_tokens_details: { text_tokens: 3, audio_tokens: 2 },
+            },
+            output_token_details: { text_tokens: 7, audio_tokens: 200 },
+          },
+        },
+      });
+
+      await vi.waitFor(() => {
+        expect(usageCalls.calls.length).toBeGreaterThanOrEqual(1);
+      });
+      expect(usageCalls.calls[0]?.providerEventId).toBe("evt_done_1");
+      expect(usageCalls.calls[0]?.eventType).toBe("response.done");
+    });
+
+    it("posts response.done usage even when status is cancelled (barge-in)", async () => {
+      await setup();
+      const sessionStartedCalls = mockSessionStartedOk();
+      mockSessionEndedOk();
+      const usageCalls = mockUsageEventOk();
+      await startSuccessfully({ overrideMocks: true });
+      await waitForReporterReady(sessionStartedCalls);
+
+      dcEvent({
+        type: "response.done",
+        event_id: "evt_cancelled",
+        response: {
+          id: "resp_2",
+          status: "cancelled",
+          usage: {
+            input_token_details: { text_tokens: 5, audio_tokens: 50 },
+            output_token_details: { text_tokens: 1, audio_tokens: 25 },
+          },
+        },
+      });
+
+      await vi.waitFor(() => {
+        expect(usageCalls.calls.length).toBeGreaterThanOrEqual(1);
+      });
+      expect(usageCalls.calls[0]?.providerEventId).toBe("evt_cancelled");
+    });
+
+    it("posts transcription.completed usage in token-mode", async () => {
+      await setup();
+      const sessionStartedCalls = mockSessionStartedOk();
+      mockSessionEndedOk();
+      const usageCalls = mockUsageEventOk();
+      await startSuccessfully({ overrideMocks: true });
+      await waitForReporterReady(sessionStartedCalls);
+
+      dcEvent({
+        type: "conversation.item.input_audio_transcription.completed",
+        event_id: "evt_tx",
+        item_id: "item_x",
+        transcript: "hello",
+        usage: {
+          type: "tokens",
+          input_token_details: { text_tokens: 0, audio_tokens: 200 },
+          output_tokens: 5,
+        },
+      });
+
+      await vi.waitFor(() => {
+        const tx = usageCalls.calls.find((c) => {
+          return c.eventType === "transcription.completed";
+        });
+        expect(tx).toBeDefined();
+      });
+    });
+
+    it("does not POST when transcription event lacks usage", async () => {
+      await setup();
+      const sessionStartedCalls = mockSessionStartedOk();
+      mockSessionEndedOk();
+      const usageCalls = mockUsageEventOk();
+      await startSuccessfully({ overrideMocks: true });
+      await waitForReporterReady(sessionStartedCalls);
+
+      dcEvent({
+        type: "conversation.item.input_audio_transcription.completed",
+        item_id: "item_no_usage",
+        transcript: "hello",
+        // No `usage` field — server bug per openai-agents-js #538.
+      });
+
+      // Drain a few microtasks for the (would-be) reporter call to
+      // settle, then assert nothing was emitted. A real timer would be
+      // banned by ccstate/no-test-delay; microtask drain is sufficient
+      // here since the assertion is "absence of a fetch", not "presence".
+      for (let i = 0; i < 5; i++) {
+        await Promise.resolve();
+      }
+      const tx = usageCalls.calls.find((c) => {
+        return c.eventType === "transcription.completed";
+      });
+      expect(tx).toBeUndefined();
+    });
+
+    it("tears down session when server reports creditsExhausted: true", async () => {
+      await setup();
+      const sessionStartedCalls = mockSessionStartedOk();
+      mockSessionEndedOk();
+      mockUsageEventOk({ creditsExhausted: true });
+      await startSuccessfully({ overrideMocks: true });
+      await waitForReporterReady(sessionStartedCalls);
+
+      dcEvent({
+        type: "response.done",
+        event_id: "evt_exhaust",
+        response: {
+          id: "resp_3",
+          status: "completed",
+          usage: {
+            input_token_details: { text_tokens: 1, audio_tokens: 1 },
+            output_token_details: { text_tokens: 1, audio_tokens: 1 },
+          },
+        },
+      });
+
+      // handleCreditsExhausted$ flips status to "error" then runs
+      // endVoiceChat$ which finishes at "idle". Either is acceptable
+      // evidence of the teardown — assert on the friendly error message
+      // instead since it's set unconditionally and stays set.
+      await vi.waitFor(() => {
+        expect(context.store.get(voiceChatError$)).toBe(
+          "Voice-chat credits exhausted; the session has ended.",
+        );
+      });
     });
   });
 

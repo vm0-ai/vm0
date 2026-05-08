@@ -802,6 +802,9 @@ async function resolveNonLatestVolumes(
           mountPath: volume.mountPath,
           vasStorageName: volume.vasStorageName,
           vasVersionId: resolved.versionId,
+          ...(volume.instructionsTargetFilename
+            ? { instructionsTargetFilename: volume.instructionsTargetFilename }
+            : {}),
           archiveUrl,
         } satisfies ManifestStorage;
       } catch (error) {
@@ -828,6 +831,7 @@ async function buildStorageEntry(
   mountPath: string,
   vasStorageName: string,
   resolved: { versionId: string; s3Key: string },
+  instructionsTargetFilename?: string,
 ): Promise<ManifestStorage> {
   const archiveKey = `${resolved.s3Key}/archive.tar.gz`;
   const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
@@ -836,6 +840,7 @@ async function buildStorageEntry(
     mountPath,
     vasStorageName,
     vasVersionId: resolved.versionId,
+    ...(instructionsTargetFilename ? { instructionsTargetFilename } : {}),
     archiveUrl,
   };
 }
@@ -899,6 +904,7 @@ async function buildManifestFromResults(
           volume.mountPath,
           volume.vasStorageName,
           resolved,
+          volume.instructionsTargetFilename,
         ),
       );
     } else if (!volume.optional) {
@@ -930,6 +936,7 @@ async function buildManifestFromResults(
           volume.mountPath,
           volume.vasStorageName,
           resolved,
+          volume.instructionsTargetFilename,
         ),
       );
     } else if (!volume.optional) {

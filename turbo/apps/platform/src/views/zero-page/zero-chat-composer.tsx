@@ -154,10 +154,10 @@ interface ZeroChatComposerProps {
   sending?: boolean;
   queueWhileSending?: boolean;
   /**
-   * Cancel the active run. When provided, a stop button is shown while
-   * sending with an empty input. When the input has content (canSend=true),
-   * the send button is shown instead so the user can queue the message;
-   * clicking Stop while a queue exists recalls the queued text to draft.
+   * Cancel the active run. When provided, the Send button switches to a Stop
+   * button while sending and the composer is empty; with content present the
+   * Send button stays visible and clicks queue the message instead.
+   * Clicking Stop while a queue exists recalls the queued text to draft.
    */
   onCancel?: () => void;
   displayName: string;
@@ -1084,14 +1084,29 @@ export function ZeroChatComposer({
     setSavingType(null);
   };
 
+  const sendAction = resolveKeyboardSendAction({
+    canSend,
+    sending,
+    queueWhileSending,
+    hasQueueHandler: onQueue !== undefined,
+  });
+
   const handleSend = () => {
-    if (!canSend || sending) {
+    if (sendAction === "send") {
+      // Fire-and-forget: request push permission on first send, never blocks
+      detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
+      onSend(input.trim());
       return;
     }
-    // Fire-and-forget: request push permission on first send, never blocks
-    detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
-    onSend(input.trim());
+    if (sendAction === "queue") {
+      onQueue?.(input.trim());
+    }
   };
+
+  // Stop button replaces Send only when there is nothing to dispatch — i.e.
+  // the composer is empty during an active run. With draft content present
+  // the Send button stays visible so the click can queue the message.
+  const showStopButton = Boolean(sending && onCancel) && !canSend;
 
   // Routes a button click to queue (while an active run exists and the
   // queue feature is on) or to the normal send path.
@@ -1131,7 +1146,7 @@ export function ZeroChatComposer({
       return;
     }
     const send = () => {
-      handleKeyboardSend();
+      handleSend();
     };
     processShortcut(
       {
@@ -1324,7 +1339,7 @@ export function ZeroChatComposer({
                         onDraftChange?.();
                       }}
                     />
-                    {sending && !canSend && onCancel ? (
+                    {showStopButton ? (
                       <Button
                         size="sm"
                         variant="destructive"
@@ -1339,11 +1354,7 @@ export function ZeroChatComposer({
                         size="sm"
                         className="rounded-lg h-9 w-9 p-0 shrink-0"
                         onClick={handleButtonSend}
-                        disabled={
-                          !canSend ||
-                          (!!sending &&
-                            !(queueWhileSending && onQueue !== undefined))
-                        }
+                        disabled={sendAction === "none"}
                         aria-label="Send"
                       >
                         <IconArrowUp size={18} stroke={2} />

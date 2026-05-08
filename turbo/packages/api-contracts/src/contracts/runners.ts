@@ -74,6 +74,7 @@ export const storageEntrySchema = z.object({
   mountPath: z.string(),
   vasStorageName: z.string(),
   vasVersionId: z.string(),
+  instructionsTargetFilename: z.string().optional(),
   archiveUrl: z.string(),
 });
 

@@ -115,6 +115,62 @@ const tokenBodySchema = z.object({
 });
 export type VoiceChatTokenBody = z.infer<typeof tokenBodySchema>;
 
+// Browser-reported voice-chat realtime usage event (Plan D — Epic #12128).
+// Per-event token cap rejects obvious over-reports (typical response.done is
+// well under 10k tokens; transcription completion under 40k for a long
+// turn). The browser sends one body per provider event; the server fans the
+// non-zero/defined token fields out into individual `usage_event` rows keyed
+// by `(voiceChatSessionId, providerEventId, category)` for replay safety.
+const VOICE_CHAT_USAGE_PER_EVENT_TOKEN_CAP = 200_000;
+export const voiceChatUsageEventBodySchema = z.object({
+  providerEventId: z.string().min(1),
+  eventType: z.enum(["response.done", "transcription.completed"]),
+  inputTextTokens: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(VOICE_CHAT_USAGE_PER_EVENT_TOKEN_CAP)
+    .optional(),
+  inputAudioTokens: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(VOICE_CHAT_USAGE_PER_EVENT_TOKEN_CAP)
+    .optional(),
+  inputCachedTextTokens: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(VOICE_CHAT_USAGE_PER_EVENT_TOKEN_CAP)
+    .optional(),
+  inputCachedAudioTokens: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(VOICE_CHAT_USAGE_PER_EVENT_TOKEN_CAP)
+    .optional(),
+  outputTextTokens: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(VOICE_CHAT_USAGE_PER_EVENT_TOKEN_CAP)
+    .optional(),
+  outputAudioTokens: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(VOICE_CHAT_USAGE_PER_EVENT_TOKEN_CAP)
+    .optional(),
+});
+export type VoiceChatUsageEventBody = z.infer<
+  typeof voiceChatUsageEventBodySchema
+>;
+
+const sessionEndedBodySchema = z.object({
+  relaySessionId: z.uuid(),
+});
+export type VoiceChatSessionEndedBody = z.infer<typeof sessionEndedBodySchema>;
+
 const okResponseSchema = z.object({ ok: z.literal(true) });
 
 export const zeroVoiceChatContract = c.router({
@@ -252,6 +308,51 @@ export const zeroVoiceChatContract = c.router({
       503: apiErrorSchema,
     },
     summary: "Mint an ephemeral OpenAI realtime token for voice-chat",
+  },
+
+  postUsageEvent: {
+    method: "POST",
+    path: "/api/zero/voice-chat/:id/usage",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.uuid() }),
+    body: voiceChatUsageEventBodySchema,
+    responses: {
+      200: z.object({ creditsExhausted: z.boolean() }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary:
+      "Browser-reported voice-chat realtime usage event (Plan D — billing settler)",
+  },
+
+  sessionStarted: {
+    method: "POST",
+    path: "/api/zero/voice-chat/:id/session-started",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.uuid() }),
+    body: z.object({}),
+    responses: {
+      200: z.object({ id: z.uuid().nullable() }),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary:
+      "Mark a voice-chat realtime session active (audit; null id when billing OFF)",
+  },
+
+  sessionEnded: {
+    method: "POST",
+    path: "/api/zero/voice-chat/:id/session-ended",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.uuid() }),
+    body: sessionEndedBodySchema,
+    responses: {
+      200: okResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Mark a voice-chat realtime session ended (idempotent)",
   },
 });
 

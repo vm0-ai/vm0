@@ -282,8 +282,7 @@ function ChatThreadMenu({
   const setRenameDialogInput = useSet(setRenameDialogInput$);
   const pageSignal = useGet(pageSignal$);
 
-  function handleTogglePin(e: Event) {
-    e.preventDefault();
+  function handleTogglePin() {
     if (isPinned) {
       detach(unpinChatThread(threadId, pageSignal), Reason.DomCallback);
     } else {
@@ -296,68 +295,73 @@ function ChatThreadMenu({
     e.stopPropagation();
   }
 
-  function openRenameDialog(e: Event) {
-    e.preventDefault();
+  function openRenameDialog() {
     setRenameDialogInput("");
     setRenameDialogThreadId(threadId);
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          onClick={handleMenuTriggerClick}
-          className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md visible md:invisible md:group-hover:visible md:data-[state=open]:visible transition-opacity duration-150 ${
-            isHighlighted
-              ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
-              : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
-          }`}
-          aria-label="Open chat menu"
-          data-testid="chat-thread-menu-trigger"
-          data-pinned={isPinned ? "true" : "false"}
-        >
-          {isPinned ? (
-            <IconPin size={16} stroke={2} />
-          ) : (
-            <IconDots size={16} stroke={2} />
+    <TooltipProvider delayDuration={200}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            onClick={handleMenuTriggerClick}
+            className={`peer pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md visible md:invisible md:group-hover:visible md:data-[state=open]:visible transition-opacity duration-150 ${
+              isHighlighted
+                ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
+                : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
+            }`}
+            aria-label="Open chat menu"
+            data-testid="chat-thread-menu-trigger"
+            data-pinned={isPinned ? "true" : "false"}
+          >
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <IconDots size={16} stroke={2} />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">More</p>
+              </TooltipContent>
+            </Tooltip>
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-40">
+          {pinEnabled && (
+            <DropdownMenuItem onSelect={handleTogglePin}>
+              {isPinned ? (
+                <>
+                  <IconPinnedOff size={16} stroke={2} className="mr-2" />
+                  Unpin chat
+                </>
+              ) : (
+                <>
+                  <IconPin size={16} stroke={2} className="mr-2" />
+                  Pin chat
+                </>
+              )}
+            </DropdownMenuItem>
           )}
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-40">
-        {pinEnabled && (
-          <DropdownMenuItem onSelect={handleTogglePin}>
-            {isPinned ? (
-              <>
-                <IconPinnedOff size={16} stroke={2} className="mr-2" />
-                Unpin chat
-              </>
-            ) : (
-              <>
-                <IconPin size={16} stroke={2} className="mr-2" />
-                Pin chat
-              </>
-            )}
+          {renameEnabled && (
+            <DropdownMenuItem onSelect={openRenameDialog}>
+              <IconPencil size={16} stroke={2} className="mr-2" />
+              Rename chat
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem
+            onSelect={() => {
+              setPendingDeleteThreadId(threadId);
+            }}
+            className="text-destructive focus:text-destructive"
+          >
+            <IconTrash size={16} stroke={2} className="mr-2" />
+            Delete chat
           </DropdownMenuItem>
-        )}
-        {renameEnabled && (
-          <DropdownMenuItem onSelect={openRenameDialog}>
-            <IconPencil size={16} stroke={2} className="mr-2" />
-            Rename chat
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuItem
-          onSelect={(e) => {
-            e.preventDefault();
-            setPendingDeleteThreadId(threadId);
-          }}
-          className="text-destructive focus:text-destructive"
-        >
-          <IconTrash size={16} stroke={2} className="mr-2" />
-          Delete chat
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </TooltipProvider>
   );
 }
 
@@ -387,11 +391,6 @@ function ChatThreadSideDecorator({
   }
   return (
     <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
-      {indicatorState !== null && (
-        <span className="flex items-center justify-center group-hover:invisible">
-          <SessionStateIndicator state={indicatorState} />
-        </span>
-      )}
       {pinEnabled || renameEnabled ? (
         <ChatThreadMenu
           threadId={threadId}
@@ -406,6 +405,28 @@ function ChatThreadSideDecorator({
           isHighlighted={isHighlighted}
         />
       )}
+      {indicatorState !== null ? (
+        <span className="flex items-center justify-center group-hover:hidden peer-data-[state=open]:hidden">
+          <SessionStateIndicator state={indicatorState} />
+        </span>
+      ) : pinEnabled && isPinned ? (
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                aria-label="Pinned"
+                data-testid="chat-thread-pinned-indicator"
+                className="flex items-center justify-center text-sidebar-foreground/70 group-hover:hidden peer-data-[state=open]:hidden"
+              >
+                <IconPin size={16} stroke={2} />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">Pinned</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : null}
     </div>
   );
 }
