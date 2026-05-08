@@ -898,10 +898,12 @@ async fn test_write_file_chunked() {
     assert_eq!(written, content);
 
     // Temp file should not remain
-    assert!(
-        !std::path::Path::new(&format!("{file_path_str}.vm0tmp")).exists(),
-        "temp file was not cleaned up"
-    );
+    let temp_prefix = format!("{file_path_str}.vm0tmp-");
+    let temp_remains = std::fs::read_dir(file_path.parent().unwrap())
+        .expect("failed to read temp dir")
+        .flatten()
+        .any(|entry| entry.path().to_string_lossy().starts_with(&temp_prefix));
+    assert!(!temp_remains, "temp file was not cleaned up");
     h.finish();
 }
 
