@@ -70,8 +70,7 @@ export function AgentsPage() {
   const defaultAgentName = useLastResolved(defaultAgentName$);
 
   const features = useLastResolved(featureSwitch$);
-  const mobileNativeOn =
-    features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
+  const mobileNativeOn = features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
   const isMobile = useGet(isMobileViewport$);
   // The mobile-native chrome is mobile-only — on desktop the user keeps
   // their grid/list preference even when the feature switch is on.
@@ -253,7 +252,7 @@ function AgentListView({ flat = false }: { flat?: boolean }) {
                   flat ? "" : "px-5",
                 )}
               >
-                <div className="h-11 w-11 rounded-xl bg-muted" />
+                <div className="h-11 w-11 max-md:h-14 max-md:w-14 rounded-xl bg-muted" />
                 <div className="min-w-0 flex-1 space-y-2">
                   <div className="h-4 w-24 rounded bg-muted" />
                   <div className="h-3 w-40 rounded bg-muted" />
@@ -488,7 +487,7 @@ function AgentListRow({
         <AgentAvatarImg
           name={agent.id}
           alt={displayName}
-          className="h-11 w-11 shrink-0 rounded-xl object-cover object-top"
+          className="h-11 w-11 max-md:h-14 max-md:w-14 shrink-0 rounded-xl object-cover object-top"
         />
         <div className="flex-1 min-w-0 flex flex-col gap-0.5">
           <span className="truncate text-[16px] max-md:text-[17px] leading-snug font-medium text-foreground">
