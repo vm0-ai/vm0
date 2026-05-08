@@ -259,6 +259,66 @@ describe("POST /api/webhooks/agent/events", () => {
       const data = await response.json();
       expect(data.error.message).toContain("empty");
     });
+
+    it("should reject event with negative sequenceNumber", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "test",
+                sequenceNumber: -1,
+                timestamp: Date.now(),
+                data: {},
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await postAndFlush(request);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("sequenceNumber");
+    });
+
+    it("should reject event sequenceNumber outside the database integer range", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "test",
+                sequenceNumber: 2_147_483_648,
+                timestamp: Date.now(),
+                data: {},
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await postAndFlush(request);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("sequenceNumber");
+    });
   });
 
   // ============================================

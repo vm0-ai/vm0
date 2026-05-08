@@ -1831,10 +1831,12 @@ describe("run command", () => {
       expect(pollCount).toBe(1);
     });
 
-    it("should handle completed status with result", async () => {
+    it("should bound terminal drain when completed has no result event or watermark", async () => {
+      vi.useFakeTimers();
+      let pollCount = 0;
       server.use(
         http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
-          // Return completed status with result (new architecture)
+          pollCount++;
           return HttpResponse.json({
             events: [],
             hasMore: false,
@@ -1853,9 +1855,16 @@ describe("run command", () => {
         }),
       );
 
-      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      const commandPromise = runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+      ]);
+      await vi.advanceTimersByTimeAsync(1000);
+      await commandPromise;
 
-      // Should complete successfully and render completion info to console
+      expect(pollCount).toBeGreaterThan(1);
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Session:"),
       );
