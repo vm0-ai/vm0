@@ -782,6 +782,30 @@ mod tests {
     }
 
     #[test]
+    fn env_script_dir_rejects_existing_file() {
+        let (base, _guard) = temp_dir("dir-file");
+        let path = base.join("vm0-exec");
+        std::fs::write(&path, "not a directory").unwrap();
+
+        let err = ensure_env_script_dir(&path).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+        assert!(path.is_file());
+    }
+
+    #[test]
+    fn env_script_dir_rejects_group_or_world_writable_directory() {
+        let (base, _guard) = temp_dir("dir-mode");
+        let dir = base.join("vm0-exec");
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o777)).unwrap();
+
+        let err = ensure_env_script_dir(&dir).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+    }
+
+    #[test]
     fn stale_env_script_cleanup_only_removes_matching_entries() {
         let (dir, _guard) = temp_dir("stale");
         let stale = dir.join(format!("{ENV_SCRIPT_PREFIX}stale{ENV_SCRIPT_SUFFIX}"));
@@ -795,6 +819,21 @@ mod tests {
         assert_eq!(removed, 1);
         assert!(!stale.exists());
         assert!(other.exists());
+    }
+
+    #[test]
+    fn stale_env_script_cleanup_preserves_recent_directories() {
+        let (dir, _guard) = temp_dir("recent-dir");
+        let active = dir.join(format!("{ENV_SCRIPT_PREFIX}active"));
+        std::fs::create_dir(&active).unwrap();
+        std::fs::write(active.join("run.sh"), "secret").unwrap();
+
+        let removed =
+            cleanup_stale_env_scripts_in(&dir, SystemTime::now(), Duration::from_secs(60 * 60))
+                .unwrap();
+
+        assert_eq!(removed, 0);
+        assert!(active.exists());
     }
 
     #[test]
