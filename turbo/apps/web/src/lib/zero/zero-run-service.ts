@@ -64,6 +64,8 @@ import { SEED_SKILLS } from "./seed-skills";
 import { logger } from "../shared/logger";
 import { recordChatSpan, type ChatSpanDimensions } from "../infra/metrics";
 import { CHAT_REQUEST_OPS, timed } from "./chat-thread/request-span-ops";
+import { getValidatedFramework } from "@vm0/core/frameworks";
+import { resolveFrameworkSkillsMountPath } from "../infra/framework/framework-config";
 
 const log = logger("service:zero-run");
 
@@ -266,7 +268,10 @@ function loadOrgAdmissionMetadata(
  * skills are injected only for connectors the user has authorized for the
  * agent (via the user_connectors table).
  */
-function buildSystemSkillVolumes(connectorTypes: readonly string[]): Array<{
+function buildSystemSkillVolumes(
+  connectorTypes: readonly string[],
+  skillsMountPath: string,
+): Array<{
   name: string;
   mountPath: string;
   system: boolean;
@@ -279,7 +284,7 @@ function buildSystemSkillVolumes(connectorTypes: readonly string[]): Array<{
     return [
       {
         name: getSkillStorageName(parsed.fullPath),
-        mountPath: `/home/user/.claude/skills/${parsed.skillName}`,
+        mountPath: `${skillsMountPath}/${parsed.skillName}`,
         system: true,
       },
     ];
@@ -660,15 +665,22 @@ async function createZeroRunRecord(
     params.appendSystemPrompt,
   );
 
+  const composeAgents = resolved.composeContent?.agents
+    ? Object.values(resolved.composeContent.agents)
+    : [];
+  const composeFramework = getValidatedFramework(composeAgents[0]?.framework);
+  const skillsMountPath = resolveFrameworkSkillsMountPath(composeFramework);
+
   // Construct CreateRunParams (infra knows nothing about ZERO_TOKEN)
   // Inject system + custom skill volumes (needed on every run).
   const systemSkillVolumes = buildSystemSkillVolumes(
     allowedConnectorTypes ?? [],
+    skillsMountPath,
   );
   const customSkillVolumes = (row?.customSkills ?? []).map((name) => {
     return {
       name: getCustomSkillStorageName(name),
-      mountPath: `/home/user/.claude/skills/${name}`,
+      mountPath: `${skillsMountPath}/${name}`,
     };
   });
   // System skills first, custom skills after (custom overrides system at same mount path)
@@ -706,10 +718,6 @@ async function createZeroRunRecord(
   });
   const authorizeTime = Date.now();
 
-  const composeAgents = resolved.composeContent?.agents
-    ? Object.values(resolved.composeContent.agents)
-    : [];
-  const composeFramework = composeAgents[0]?.framework ?? "claude-code";
   const admissionContext = await resolveRunAdmissionContext({
     orgId: resolved.orgId,
     userId: params.userId,

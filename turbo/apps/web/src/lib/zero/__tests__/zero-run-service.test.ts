@@ -270,6 +270,31 @@ describe("createZeroRun() — service-only parameters", () => {
       );
     });
 
+    it("should mount codex custom skills under .codex/skills", async () => {
+      const agentName = uniqueId("codex-skill-agent");
+      await createTestCompose(agentName, {
+        overrides: {
+          framework: "codex",
+          environment: { OPENAI_API_KEY: "test-api-key" },
+        },
+      });
+      const skillAgentId = await getTestZeroAgentId(user.orgId, agentName);
+      await bindCustomSkillToAgent(skillAgentId, "my-skill");
+
+      const result = await createZeroRun(baseParams({ agentId: skillAgentId }));
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.additionalVolumes).toEqual(
+        expect.arrayContaining([
+          {
+            name: "custom-skill@my-skill",
+            mountPath: "/home/user/.codex/skills/my-skill",
+          },
+        ]),
+      );
+    });
+
     it("should inject only system skill volumes when agent has no custom skills", async () => {
       const result = await createZeroRun(baseParams());
 
@@ -280,6 +305,36 @@ describe("createZeroRun() — service-only parameters", () => {
       expect(
         run!.additionalVolumes!.every((v) => {
           return v.system === true;
+        }),
+      ).toBe(true);
+    });
+
+    it("should mount codex system skills under .codex/skills", async () => {
+      const agentName = uniqueId("codex-system-skill-agent");
+      await createTestCompose(agentName, {
+        overrides: {
+          framework: "codex",
+          environment: { OPENAI_API_KEY: "test-api-key" },
+        },
+      });
+      const codexAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      const result = await createZeroRun(baseParams({ agentId: codexAgentId }));
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      const systemVolumes = run!.additionalVolumes!.filter((v) => {
+        return v.system === true;
+      });
+      expect(systemVolumes.length).toBeGreaterThan(0);
+      expect(
+        systemVolumes.every((v) => {
+          return v.mountPath.startsWith("/home/user/.codex/skills/");
+        }),
+      ).toBe(true);
+      expect(
+        systemVolumes.some((v) => {
+          return v.mountPath === "/home/user/.codex/skills/deep-dive";
         }),
       ).toBe(true);
     });
