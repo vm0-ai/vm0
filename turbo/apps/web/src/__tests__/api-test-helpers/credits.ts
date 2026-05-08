@@ -16,6 +16,7 @@ export {
   insertTestModelUsageEventForRun,
   insertTestUsagePricing,
   deleteTestUsagePricing,
+  seedRealtimeBillingPricing,
   insertTestUsageEvent,
   deleteTestUsageEventsByProvider,
   setTestUsageEventCreatedAt,

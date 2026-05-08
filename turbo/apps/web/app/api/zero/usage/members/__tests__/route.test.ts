@@ -3,6 +3,7 @@ import {
   createTestRequest,
   insertTestModelUsageEvent,
   insertTestUsageEvent,
+  seedRealtimeBillingPricing,
   updateOrgStripeFields,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -364,6 +365,12 @@ describe("GET /api/zero/usage/members", () => {
       currentPeriodEnd: periodEnd,
       tier: "pro",
     });
+
+    // Pricing is configured in production via migration 0345. Seed the same
+    // matrix here so the test setup mirrors a real org that has Realtime
+    // billing enabled, and so this test is the first consumer of the shared
+    // helper that #12140's admission test will reuse.
+    await seedRealtimeBillingPricing();
 
     // Realtime Talker (gpt-realtime-2) emits six per-modality categories that
     // collapse into the four flat buckets used by member/run totals. Each

@@ -19,6 +19,12 @@ import {
   deductFromExpiresRecords,
   expireCredits,
 } from "../../lib/zero/credit/credit-expires-service";
+import {
+  REALTIME_PROVIDER,
+  REALTIME_TOKEN_CATEGORIES,
+  TRANSCRIPTION_PROVIDER,
+  TRANSCRIPTION_TOKEN_CATEGORIES,
+} from "../../lib/zero/billing/model-usage-categories";
 
 // ---------------------------------------------------------------------------
 // DB-direct seeders for billing / Stripe test setup.
@@ -212,6 +218,39 @@ export async function deleteTestUsagePricing(params: {
         eq(usagePricing.category, params.category),
       ),
     );
+}
+
+/**
+ * Seed the full Realtime + transcription pricing matrix used by the
+ * voice-chat relay billing path. Idempotent (each row upserts on
+ * `(kind, provider, category)`), so it is safe to call from any test that
+ * needs the relay billable categories priced. Tests that exercise the
+ * missing-pricing-503 path can call `deleteTestUsagePricing(...)` for one
+ * specific (provider, category) pair after this helper has seeded the matrix.
+ *
+ * @why-db-direct Same rationale as `insertTestUsagePricing`. Pricing is
+ * reference data normally managed via migrations/dev seed; tests need
+ * precise control over which categories are present without touching the
+ * production seeder.
+ */
+export async function seedRealtimeBillingPricing(): Promise<void> {
+  const rows: Array<{ provider: string; category: string }> = [
+    ...REALTIME_TOKEN_CATEGORIES.map((category) => {
+      return { provider: REALTIME_PROVIDER, category };
+    }),
+    ...TRANSCRIPTION_TOKEN_CATEGORIES.map((category) => {
+      return { provider: TRANSCRIPTION_PROVIDER, category };
+    }),
+  ];
+  for (const row of rows) {
+    await insertTestUsagePricing({
+      kind: "model",
+      provider: row.provider,
+      category: row.category,
+      unitPrice: 1,
+      unitSize: 1_000_000,
+    });
+  }
 }
 
 /**
