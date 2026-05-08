@@ -562,6 +562,93 @@ fn bounded_exec_rejects_tiny_stream_chunk_limit() {
     finish_guest_connection(handle, host_stream);
 }
 
+#[test]
+fn bounded_exec_rejects_final_output_limits_that_cannot_fit_result_frame() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request("echo should-not-run", &[], None);
+    request.stdout_limit_bytes = vsock_proto::MAX_BOUNDED_EXEC_RESULT_OUTPUT_BYTES as u32;
+    request.stderr_limit_bytes = 1;
+    send_bounded_exec(&mut host_stream, 24, &request);
+    let (chunks, result) = read_bounded_exec_result(&mut host_stream, 24);
+    let stderr = String::from_utf8_lossy(&result.stderr);
+
+    assert!(chunks.is_empty());
+    assert_eq!(result.termination, BoundedExecTermination::StartFailed);
+    assert!(stderr.contains("final output limits exceed protocol result frame"));
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_zero_final_limits_return_empty_truncated_output() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request("printf stdout; printf stderr >&2", &[], None);
+    request.stdout_limit_bytes = 0;
+    request.stderr_limit_bytes = 0;
+    send_bounded_exec(&mut host_stream, 25, &request);
+    let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 25);
+
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    assert!(result.stdout.is_empty());
+    assert!(result.stderr.is_empty());
+    assert!(result.stdout_truncated);
+    assert!(result.stderr_truncated);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_zero_stream_budget_emits_truncation_marker_only() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request("printf streamed", &[], None);
+    request.stream_stdout = true;
+    request.stream_chunk_limit_bytes = vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32;
+    request.stdout_stream_limit_bytes = 0;
+    send_bounded_exec(&mut host_stream, 26, &request);
+    let (chunks, result) = read_bounded_exec_result(&mut host_stream, 26);
+
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(result.stdout, b"streamed");
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0].stream, BoundedExecStream::Stdout);
+    assert_eq!(chunks[0].sequence, 0);
+    assert!(chunks[0].chunk.is_empty());
+    assert!(chunks[0].truncated);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_slow_request_does_not_block_fast_request() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut slow_request = bounded_request("sleep 60", &[], None);
+    slow_request.timeout_ms = 0;
+    let fast_request = bounded_request("printf fast", &[], None);
+
+    send_bounded_exec(&mut host_stream, 27, &slow_request);
+    send_bounded_exec(&mut host_stream, 28, &fast_request);
+    let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 28);
+
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(result.stdout, b"fast");
+    assert_eq!(result.stderr, b"");
+
+    finish_guest_connection(handle, host_stream);
+}
+
 /// Verify that a slow exec does not block a fast exec that arrives later.
 /// This is the core regression test for the non-blocking exec fix.
 #[test]
