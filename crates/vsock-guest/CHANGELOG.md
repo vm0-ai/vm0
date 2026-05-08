@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.15](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.14...vsock-guest-v0.10.15) (2026-05-08)
+
+
+### Bug Fixes
+
+* **vsock-guest:** avoid env argv blowup ([#12127](https://github.com/vm0-ai/vm0/issues/12127)) ([4e41b39](https://github.com/vm0-ai/vm0/commit/4e41b39210f18119595869b6aee0a7b67eb75a09))
+
 ## [0.10.14](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.13...vsock-guest-v0.10.14) (2026-05-08)
 
 ## [0.10.13](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.12...vsock-guest-v0.10.13) (2026-05-07)

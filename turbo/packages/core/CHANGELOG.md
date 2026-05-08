@@ -1,5 +1,22 @@
 # Changelog
 
+## [8.262.0](https://github.com/vm0-ai/vm0/compare/core-v8.261.2...core-v8.262.0) (2026-05-08)
+
+
+### Features
+
+* add model-first provider policy foundation ([#12151](https://github.com/vm0-ai/vm0/issues/12151)) ([68ea0af](https://github.com/vm0-ai/vm0/commit/68ea0af5b98be2baecb6d70dfd9e91b90cb8f8f4))
+* **voice-chat:** add realtime relay schema, pricing, and contract foundations ([#12143](https://github.com/vm0-ai/vm0/issues/12143)) ([d143711](https://github.com/vm0-ai/vm0/commit/d1437115b70e7794d2dab10c7294008976f670b1))
+* **voice-chat:** replace openai token mint with vm0 relay bootstrap admission ([#12149](https://github.com/vm0-ai/vm0/issues/12149)) ([9d29183](https://github.com/vm0-ai/vm0/commit/9d29183e0fd556ab3ffb3dd74f53193863eab415)), closes [#12128](https://github.com/vm0-ai/vm0/issues/12128)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.1.0
+    * @vm0/connectors bumped to 1.1.0
+
 ## [8.261.2](https://github.com/vm0-ai/vm0/compare/core-v8.261.1...core-v8.261.2) (2026-05-08)
 
 

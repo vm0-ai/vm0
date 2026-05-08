@@ -1,5 +1,33 @@
 # Changelog
 
+## [12.343.0](https://github.com/vm0-ai/vm0/compare/web-v12.342.1...web-v12.343.0) (2026-05-08)
+
+
+### Features
+
+* **voice-chat:** add realtime relay schema, pricing, and contract foundations ([#12143](https://github.com/vm0-ai/vm0/issues/12143)) ([d143711](https://github.com/vm0-ai/vm0/commit/d1437115b70e7794d2dab10c7294008976f670b1))
+* **voice-chat:** replace openai token mint with vm0 relay bootstrap admission ([#12149](https://github.com/vm0-ai/vm0/issues/12149)) ([9d29183](https://github.com/vm0-ai/vm0/commit/9d29183e0fd556ab3ffb3dd74f53193863eab415)), closes [#12128](https://github.com/vm0-ai/vm0/issues/12128)
+
+
+### Bug Fixes
+
+* use personal model providers for slack runs ([#12161](https://github.com/vm0-ai/vm0/issues/12161)) ([a722ff7](https://github.com/vm0-ai/vm0/commit/a722ff7c63986e7ba7aef4ac89982d04f6ba5114))
+
+
+### Performance Improvements
+
+* add run startup diagnostic spans ([#12157](https://github.com/vm0-ai/vm0/issues/12157)) ([206b149](https://github.com/vm0-ai/vm0/commit/206b14947b4fe1e7817fea48a020ae5c606dedb7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.1.0
+    * @vm0/connectors bumped to 1.1.0
+    * @vm0/core bumped to 8.262.0
+    * @vm0/db bumped to 1.1.0
+
 ## [12.342.1](https://github.com/vm0-ai/vm0/compare/web-v12.342.0...web-v12.342.1) (2026-05-08)
 
 
