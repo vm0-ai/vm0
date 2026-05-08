@@ -416,6 +416,7 @@ function shouldReturnTerminalRunResult(
   response: GetEventsResponse,
   nextSequence: number,
   madeSequenceProgress: boolean,
+  seenResultEvent: boolean,
 ): boolean {
   const run = state.runState;
   if (!run) {
@@ -426,8 +427,8 @@ function shouldReturnTerminalRunResult(
     return true;
   }
 
-  if (!hasTerminalWatermark(run) && !response.hasMore && madeSequenceProgress) {
-    return hasResultEvent(response);
+  if (!hasTerminalWatermark(run) && !response.hasMore && seenResultEvent) {
+    return true;
   }
 
   return shouldCompleteTerminalDrain(
@@ -490,6 +491,7 @@ export async function pollEvents(
     seenAt: 0,
     lastProgressAt: 0,
   };
+  let seenResultEvent = false;
 
   for (;;) {
     const previousSequence = nextSequence;
@@ -512,6 +514,10 @@ export async function pollEvents(
     }
 
     if (madeSequenceProgress) {
+      if (hasResultEvent(response)) {
+        seenResultEvent = true;
+      }
+
       nextSequence = response.nextSequence;
     }
 
@@ -541,6 +547,7 @@ export async function pollEvents(
         response,
         nextSequence,
         madeSequenceProgress,
+        seenResultEvent,
       )
     ) {
       return renderTerminalRunResult(runId, terminalRunState);
