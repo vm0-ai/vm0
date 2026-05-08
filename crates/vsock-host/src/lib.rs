@@ -750,6 +750,8 @@ async fn write_frame_on_shared(shared: &Arc<Shared>, data: &[u8]) -> io::Result<
         }
     }
 
+    // Declare after `writer` so cancellation drops the guard before the writer
+    // lock, preventing another request from writing before the poison close.
     let mut write_guard = FrameWriteGuard::new(Arc::clone(shared));
     writer.write_all(data).await?;
     write_guard.disarm();
