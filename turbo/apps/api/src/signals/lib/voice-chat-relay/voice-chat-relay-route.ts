@@ -72,9 +72,24 @@ export function registerVoiceChatRelayRoute(
   options.app.get(
     RELAY_ROUTE_PATH,
     options.upgradeWebSocket((c) => {
+      // VOICE_CHAT_RELAY_TOKEN_SECRET is optional in the env schema (so
+      // non-relay deployments don't fail validation), but the relay path
+      // cannot run without it. Fail-closed with WS close 1011 if unset —
+      // tests stub it via env-stub.ts, dev pulls it through
+      // `scripts/sync-env.sh`, production must set it (sub-issue #12140's
+      // contract).
+      const relaySecret = env("VOICE_CHAT_RELAY_TOKEN_SECRET");
+      if (relaySecret === undefined) {
+        return {
+          onOpen: (_evt, ws) => {
+            ws.close(1011, "relay token secret not configured");
+          },
+        };
+      }
       const token = c.req.query("token") ?? "";
       const verifyResult = verifyRelayToken(token, {
         nowSeconds: Math.floor(now() / 1000),
+        secret: relaySecret,
       });
       if (!verifyResult.ok) {
         return {

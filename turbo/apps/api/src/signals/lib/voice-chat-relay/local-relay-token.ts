@@ -11,7 +11,6 @@
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-import { env } from "../../../lib/env";
 import { safeJsonParse } from "../../utils";
 
 export interface RelayTokenClaims {
@@ -25,21 +24,12 @@ type VerifyResult =
   | { readonly ok: true; readonly claims: RelayTokenClaims }
   | { readonly ok: false; readonly closeCode: 4400 | 4401 };
 
-// Deterministic dev fallback used only when the env var is unset and the
-// process is not running in production. Production deploys must set the env;
-// `resolveSecret` rejects an unset secret in prod.
-const DEV_FALLBACK_SECRET = "dev-only-relay-secret-do-not-use-in-prod-32";
-
-function resolveSecret(): string {
-  const configured = env("VOICE_CHAT_RELAY_TOKEN_SECRET");
-  if (configured !== undefined) {
-    return configured;
-  }
-  if (env("ENV") === "production") {
-    throw new Error("VOICE_CHAT_RELAY_TOKEN_SECRET is required in production");
-  }
-  return DEV_FALLBACK_SECRET;
-}
+// No dev fallback secret lives in source — every environment (test, dev,
+// preview, prod) must set VOICE_CHAT_RELAY_TOKEN_SECRET. Tests inject via
+// `apps/api/src/__tests__/env-stub.ts`; local dev pulls the value through
+// `scripts/sync-env.sh` (1Password reference in `apps/web/.env.local.tpl`,
+// mirrored into `apps/api/.env.local`). Removing the fallback eliminates the
+// secret-scanning false positive that otherwise fires on the literal string.
 
 function base64UrlEncode(input: Buffer): string {
   return input
@@ -72,7 +62,7 @@ function hmac(secret: string, payload: string): Buffer {
 
 export function signRelayTokenForTests(
   claims: RelayTokenClaims,
-  secret: string = resolveSecret(),
+  secret: string,
 ): string {
   const json = JSON.stringify(claims);
   const payload = base64UrlEncode(Buffer.from(json, "utf8"));
@@ -95,7 +85,7 @@ function isClaimsShape(value: unknown): value is RelayTokenClaims {
 
 interface VerifyOptions {
   readonly nowSeconds: number;
-  readonly secret?: string;
+  readonly secret: string;
 }
 
 export function verifyRelayToken(
@@ -117,7 +107,7 @@ export function verifyRelayToken(
   if (sigBuf.length !== 32) {
     return { ok: false, closeCode: 4400 };
   }
-  const expected = hmac(options.secret ?? resolveSecret(), payload);
+  const expected = hmac(options.secret, payload);
   if (expected.length !== sigBuf.length || !timingSafeEqual(expected, sigBuf)) {
     return { ok: false, closeCode: 4401 };
   }

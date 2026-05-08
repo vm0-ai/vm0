@@ -33,6 +33,13 @@ GIT_COMMIT_SHA=local-dev
 
 SECRETS_ENCRYPTION_KEY=op://Development/vm0/SECRETS_ENCRYPTION_KEY
 
+# Required: HMAC secret for the voice-chat realtime relay token. Verified by
+# apps/api at the WS upgrade endpoint; minted by apps/web bootstrap (added by
+# sub-issue #12140). Mirrored from web/.env.local into api/.env.local by
+# scripts/sync-env.sh. Production deploys MUST set this; the relay route
+# fails closed (WS close 1011) when unset.
+VOICE_CHAT_RELAY_TOKEN_SECRET=op://Development/vm0/VOICE_CHAT_RELAY_TOKEN_SECRET
+
 # Optional: Slack Integration
 SLACK_CLIENT_ID=op://Development/slack/SLACK_CLIENT_ID
 SLACK_CLIENT_SECRET=op://Development/slack/SLACK_CLIENT_SECRET
