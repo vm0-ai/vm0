@@ -693,28 +693,42 @@ function createPagedMessages(
   });
 
   const fetchNextPage$ = command(async ({ get, set }, signal: AbortSignal) => {
-    let sinceId = get(nextCursorId$);
+    let sinceId: string | undefined = get(nextCursorId$);
     if (!sinceId) {
       const initial = await get(initialPage$);
       signal.throwIfAborted();
       sinceId = initial.messages[initial.messages.length - 1]?.id;
+      L.debug("fetchNextPage$ initialPage seeded sinceId", {
+        threadId,
+        sinceId: sinceId ?? null,
+        initialCount: initial.messages.length,
+      });
       if (sinceId) {
         set(nextCursorId$, sinceId);
       }
     }
     signal.throwIfAborted();
-    if (!sinceId) {
-      return true;
-    }
-    // Drain all pending pages so a single trigger fully catches the client
-    // up.  Without this loop, one Ably event or visibilitychange fetches at
-    // most 50 messages then stops; a burst larger than one page leaves the
-    // client permanently behind if the thread goes quiet afterward.
+    // No sinceId is *not* the same as "nothing to fetch": the server side
+    // accepts an absent cursor and returns the latest page in that case.
+    // Brand-new threads hit this path when the swap-time `initialPage$`
+    // fetch raced ahead of the server-side persist and got cached as
+    // empty — without a full fetch here, every Ably-triggered call would
+    // exit early and the rendered list would stay stuck on the thinking
+    // indicator. Drain all pending pages so a single trigger fully catches
+    // the client up; without this loop a burst larger than one page leaves
+    // the client permanently behind if the thread goes quiet afterwards.
     const MAX_PAGES = 10;
     for (let i = 0; i < MAX_PAGES; i++) {
       const result: { messages: PagedChatMessage[]; reachedEnd: boolean } =
         await set(dataSource.listMessagesAfter$, { threadId, sinceId }, signal);
       signal.throwIfAborted();
+      L.debug("fetchNextPage$ listMessagesAfter result", {
+        threadId,
+        sinceId: sinceId ?? null,
+        gotCount: result.messages.length,
+        reachedEnd: result.reachedEnd,
+        page: i,
+      });
       if (result.messages.length > 0) {
         set(appendDeltaMessages$, result.messages);
         sinceId = result.messages[result.messages.length - 1].id;
@@ -1023,8 +1037,18 @@ function createRunTracking({
 
       // Catch up any messages that arrived since the initial page was loaded.
       // On IDB cache hit this fetches messages that arrived after the cache
-      // was written; on cache miss fetchNextPage$ hits reachedEnd (no-op).
+      // was written; on cache miss `fetchNextPage$` issues a no-cursor fetch
+      // (since the contract treats `sinceId` as optional) and ingests the
+      // server's latest page. This must run before the subscribe loop below
+      // because that loop never resolves — `setAblyLoop$` blocks on the
+      // realtime channel for the lifetime of the thread.
+      L.debug("subscribeChatThread$ pre-subscribe fetchNextPage$ start", {
+        threadId,
+      });
       await set(fetchNextPage$, signal);
+      L.debug("subscribeChatThread$ pre-subscribe fetchNextPage$ done", {
+        threadId,
+      });
 
       // Track pending-message presence across reloads so we can re-scroll once
       // the server consumes a queued message: `onRunChanged$` reloads the
@@ -1041,7 +1065,9 @@ function createRunTracking({
       let previouslyHadPending = Boolean(initialThread?.pendingMessage);
 
       const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
+        L.debug("onMessageCreated$ fired", { threadId });
         await set(fetchNextPage$, sig);
+        L.debug("onMessageCreated$ fetchNextPage$ done", { threadId });
         await set(markThreadReadIfNeeded$, sig);
         animationFrame(
           () => {
@@ -1053,6 +1079,7 @@ function createRunTracking({
       });
 
       const onRunChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
+        L.debug("onRunChanged$ fired", { threadId });
         set(reloadThread$);
         if (!queueEnabled) {
           return false;
@@ -1072,6 +1099,7 @@ function createRunTracking({
         return false;
       });
 
+      L.debug("subscribeChatThread$ subscribeRealtime$ start", { threadId });
       await Promise.all([
         set(markThreadReadIfNeeded$, signal),
         set(

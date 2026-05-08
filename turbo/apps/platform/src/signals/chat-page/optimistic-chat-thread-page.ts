@@ -40,11 +40,14 @@ import { toVoid } from "../utils.ts";
 import { agentById } from "../agent.ts";
 import { composerModelProviders$ } from "../zero-page/composer-model-providers.ts";
 import { resolveEffectiveAgentDefaultSelection } from "../zero-page/model-provider-default.ts";
+import { logger } from "../log.ts";
 
 export type { OptimisticChatPane };
 export { optimisticChatThread$ };
 
 const SIDEBAR_PARAM = "sidebar";
+
+const L = logger("OptimisticChat");
 
 /**
  * Persist the (threadId, agentId) pairing into the IDB cache the moment the
@@ -198,6 +201,10 @@ const createNewChatThread$ = command(
     }
 
     const threadId = crypto.randomUUID();
+    L.debug("createNewChatThread$ optimistic thread minted", {
+      threadId,
+      agentId: resolvedComposeId,
+    });
     await set(writeThreadAgentToCache$, threadId, resolvedComposeId, signal);
     const createdAt = new Date().toISOString();
     const dataSource = createLocalChatThreadDataSource({
@@ -213,6 +220,7 @@ const createNewChatThread$ = command(
     set(localThread.hideSkeleton$);
 
     const createClient = get(zeroClient$);
+    L.debug("createNewChatThread$ POST chat-threads start", { threadId });
     const settleResult = (async (): Promise<void> => {
       await createChatThread(
         createClient,
@@ -221,6 +229,7 @@ const createNewChatThread$ = command(
         undefined,
         threadId,
       );
+      L.debug("createNewChatThread$ POST chat-threads 201", { threadId });
       signal.throwIfAborted();
     })();
 
@@ -374,6 +383,10 @@ const sendNewThreadMessage$ = command(
     }
 
     const threadId = crypto.randomUUID();
+    L.debug("sendNewThreadMessage$ optimistic thread minted", {
+      threadId,
+      agentId,
+    });
     await set(writeThreadAgentToCache$, threadId, agentId, signal);
     const clientMessageId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
@@ -403,6 +416,10 @@ const sendNewThreadMessage$ = command(
     set(draft.clear$);
 
     const client = get(zeroClient$)(chatMessagesContract);
+    L.debug("sendNewThreadMessage$ POST chat/messages start", {
+      threadId,
+      clientMessageId,
+    });
     const sendResult = (async (): Promise<SendNewThreadMessageResult> => {
       const result = await accept(
         client.send({
@@ -420,6 +437,10 @@ const sendNewThreadMessage$ = command(
         [201],
       );
       signal.throwIfAborted();
+      L.debug("sendNewThreadMessage$ POST chat/messages 201", {
+        threadId: result.body.threadId,
+        runId: result.body.runId,
+      });
       set(reloadChatThreads$);
 
       return { threadId: result.body.threadId, runId: result.body.runId };
