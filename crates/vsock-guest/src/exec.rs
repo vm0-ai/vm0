@@ -135,18 +135,33 @@ fn format_env_key_for_log(key: &str) -> String {
     truncate_preview(&key.escape_debug().to_string())
 }
 
+fn compare_env_diagnostic_entries(
+    left: &(&str, usize),
+    right: &(&str, usize),
+) -> std::cmp::Ordering {
+    right.1.cmp(&left.1).then_with(|| left.0.cmp(right.0))
+}
+
 pub(crate) fn format_env_diagnostics(command: &str, env: &[(&str, &str)]) -> String {
-    let env_bytes: usize = env.iter().map(|(key, value)| key.len() + value.len()).sum();
-    let mut largest: Vec<(&str, usize)> =
-        env.iter().map(|(key, value)| (*key, value.len())).collect();
-    largest.sort_by(|(left_key, left_len), (right_key, right_len)| {
-        right_len
-            .cmp(left_len)
-            .then_with(|| left_key.cmp(right_key))
-    });
+    let mut env_bytes = 0;
+    let mut largest: Vec<(&str, usize)> = Vec::with_capacity(env.len().min(5));
+    for (key, value) in env {
+        env_bytes += key.len() + value.len();
+        let entry = (*key, value.len());
+        match largest
+            .iter()
+            .position(|existing| compare_env_diagnostic_entries(&entry, existing).is_lt())
+        {
+            Some(index) => largest.insert(index, entry),
+            None if largest.len() < 5 => largest.push(entry),
+            None => {}
+        }
+        if largest.len() > 5 {
+            largest.pop();
+        }
+    }
     let largest = largest
         .into_iter()
-        .take(5)
         .map(|(key, len)| format!("{}:{len}", format_env_key_for_log(key)))
         .collect::<Vec<_>>()
         .join(",");
@@ -740,6 +755,25 @@ mod tests {
         assert!(diagnostics.contains("BIG:33"));
         assert!(!diagnostics.contains("secret-value"));
         assert!(!diagnostics.contains("ok"));
+    }
+
+    #[test]
+    fn env_diagnostics_reports_largest_five_in_stable_order() {
+        let diagnostics = format_env_diagnostics(
+            "cmd",
+            &[
+                ("Z", "1"),
+                ("B", "22"),
+                ("A", "22"),
+                ("C", "333"),
+                ("D", "4444"),
+                ("E", "55555"),
+                ("F", "666666"),
+            ],
+        );
+
+        assert!(diagnostics.contains("env_count=7"));
+        assert!(diagnostics.contains("largest_env=[F:6,E:5,D:4,C:3,A:2]"));
     }
 
     #[test]
