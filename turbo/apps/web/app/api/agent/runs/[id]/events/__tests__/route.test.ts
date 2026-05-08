@@ -265,6 +265,26 @@ describe("GET /api/agent/runs/:id/events", () => {
       expect(data.run.status).toBe("completed");
       expect(data.run.lastEventSequence).toBe(0);
     });
+
+    it("should not wait for terminal watermark when since already reached it", async () => {
+      context.mocks.axiom.queryAxiom.mockResolvedValue([]);
+
+      await completeTestRun(user.userId, testRunId, undefined, {
+        lastEventSequence: 2,
+      });
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events?since=2`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledTimes(1);
+      const apl = context.mocks.axiom.queryAxiom.mock.calls[0]![0];
+      expect(apl).toContain("sequenceNumber > 2");
+      expect(apl).not.toContain("project sequenceNumber");
+    });
   });
 
   // ============================================

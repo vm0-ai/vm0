@@ -39,6 +39,10 @@ interface AgentMeta {
   composeContent?: unknown;
 }
 
+interface AssembleActivityLogOptions {
+  waitForAgentEventWatermark?: boolean;
+}
+
 /**
  * Assemble an activity log JSON matching the format downloaded from the
  * activity detail page (meta + events + context + networkLogs).
@@ -50,9 +54,11 @@ export async function assembleActivityLog(
   runId: string,
   run: RunMeta,
   agent: AgentMeta,
+  options: AssembleActivityLogOptions = {},
 ): Promise<Record<string, unknown>> {
+  const waitForAgentEventWatermark = options.waitForAgentEventWatermark ?? true;
   const [events, networkLogs, runContext] = await Promise.all([
-    queryAgentEvents(runId, run.lastEventSequence),
+    queryAgentEvents(runId, run.lastEventSequence, waitForAgentEventWatermark),
     queryNetworkLogs(runId),
     queryRunContext(runId).catch((err) => {
       log.warn("Failed to collect run context", { error: String(err) });
@@ -162,8 +168,9 @@ function mapNetworkLogs(logs: AxiomNetworkEvent[]): Record<string, unknown>[] {
 async function queryAgentEvents(
   runId: string,
   lastEventSequence: number | null,
+  waitForAgentEventWatermark: boolean,
 ): Promise<AxiomAgentEvent[]> {
-  if (lastEventSequence !== null) {
+  if (waitForAgentEventWatermark && lastEventSequence !== null) {
     await waitForRunEventWatermarkVisible(runId, lastEventSequence);
   }
 

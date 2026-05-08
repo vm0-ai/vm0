@@ -1,7 +1,26 @@
 import { describe, expect, it, vi } from "vitest";
-import { waitForAgentEventPrefixVisible } from "../agent-event-visibility";
+import { reloadEnv } from "../../../../env";
+import {
+  waitForAgentEventPrefixVisible,
+  waitForRunEventWatermarkVisible,
+} from "../agent-event-visibility";
 
 describe("waitForAgentEventPrefixVisible", () => {
+  it("skips when the sessions Axiom dataset is not configured", async () => {
+    vi.stubEnv("AXIOM_TOKEN_SESSIONS", "");
+    reloadEnv();
+
+    const result = await waitForAgentEventPrefixVisible("run-1", 0);
+
+    expect(result).toMatchObject({
+      visible: false,
+      visibleThrough: -1,
+      targetSequence: 0,
+      attempts: 0,
+      reason: "not_configured",
+    });
+  });
+
   it("waits until Axiom exposes the contiguous prefix", async () => {
     let now = 0;
     const queryAxiomFn = vi
@@ -146,5 +165,13 @@ describe("waitForAgentEventPrefixVisible", () => {
     });
     expect(result.error).toBeInstanceOf(Error);
     expect(queryAxiomFn).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("waitForRunEventWatermarkVisible", () => {
+  it("returns immediately when no terminal watermark exists", async () => {
+    await expect(
+      waitForRunEventWatermarkVisible("run-1", null),
+    ).resolves.toBeUndefined();
   });
 });

@@ -7,5 +7,5 @@ export {
   ingestRequestLog,
   ingestSandboxOpLog,
 } from "./client";
-export { escapeAplString, quoteAplString } from "./apl";
+export { escapeAplString } from "./apl";
 export { getDatasetName, DATASETS } from "./datasets";

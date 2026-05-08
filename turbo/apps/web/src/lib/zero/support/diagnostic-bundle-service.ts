@@ -154,7 +154,9 @@ export async function submitDiagnosticBundle(
   // entire diagnostic bundle submit.
   const activityLogs = await Promise.all(
     sessionRuns.map((r) => {
-      return assembleActivityLog(r.id, r, agentConfig).catch((err) => {
+      return assembleActivityLog(r.id, r, agentConfig, {
+        waitForAgentEventWatermark: false,
+      }).catch((err) => {
         log.warn("Failed to assemble activity log for run", {
           runId: r.id,
           error: String(err),
