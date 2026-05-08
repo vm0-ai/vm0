@@ -2,7 +2,8 @@
 
 use std::io::{ErrorKind, Write};
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::sync::mpsc;
+use std::time::Duration;
 
 const BIN: &str = env!("CARGO_BIN_EXE_guest-write-file");
 
@@ -30,19 +31,34 @@ fn run_helper(args: &[&str], stdin: &[u8]) -> std::process::Output {
     wait_with_timeout(child, Duration::from_secs(5))
 }
 
-fn wait_with_timeout(mut child: std::process::Child, timeout: Duration) -> std::process::Output {
-    let deadline = Instant::now() + timeout;
-    loop {
-        if child.try_wait().expect("poll guest-write-file").is_some() {
-            return child.wait_with_output().expect("wait guest-write-file");
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
+fn wait_with_timeout(child: std::process::Child, timeout: Duration) -> std::process::Output {
+    let pid = child.id();
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(child.wait_with_output());
+    });
+
+    match rx.recv_timeout(timeout) {
+        Ok(output) => output.expect("wait guest-write-file"),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            terminate_child(pid);
+            let _ = rx.recv_timeout(Duration::from_secs(1));
             panic!("guest-write-file did not exit within {timeout:?}");
         }
-        std::thread::sleep(Duration::from_millis(10));
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            panic!("guest-write-file waiter thread exited without sending output");
+        }
     }
+}
+
+#[cfg(unix)]
+fn terminate_child(pid: u32) {
+    let _ = unsafe { libc::kill(pid as i32, libc::SIGKILL) };
+}
+
+#[cfg(not(unix))]
+fn terminate_child(_pid: u32) {
+    // Tests run on Unix in CI; keep a non-Unix fallback for compilation.
 }
 
 #[test]
