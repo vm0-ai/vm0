@@ -1631,7 +1631,9 @@ PY
         .to_string()
     }
 
-    #[tokio::test]
+    const USAGE_FLUSH_TEST_DELAY: Duration = Duration::from_millis(1);
+
+    #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_returns_true_when_zero() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
@@ -1639,14 +1641,14 @@ PY
         assert!(wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_times_out_when_file_missing() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
         assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_waits_for_state_file_to_appear() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
@@ -1654,7 +1656,7 @@ PY
 
         let p = path.clone();
         let handle = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            tokio::time::sleep(USAGE_FLUSH_TEST_DELAY).await;
             std::fs::write(&p, usage_state(0, 0)).unwrap();
         });
 
@@ -1663,7 +1665,7 @@ PY
         handle.await.unwrap();
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_waits_until_zero() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
@@ -1672,7 +1674,7 @@ PY
 
         let p = path.clone();
         let handle = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            tokio::time::sleep(USAGE_FLUSH_TEST_DELAY).await;
             std::fs::write(&p, usage_state(0, 0)).unwrap();
         });
 
@@ -1681,7 +1683,7 @@ PY
         handle.await.unwrap();
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_timeout() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
@@ -1690,7 +1692,7 @@ PY
         assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_times_out_on_corrupt_file() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
@@ -1698,7 +1700,7 @@ PY
         assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_times_out_on_empty_file() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
@@ -1706,7 +1708,7 @@ PY
         assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_rejects_unknown_field() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
@@ -1723,7 +1725,7 @@ PY
         assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_rejects_unsupported_version() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
@@ -1739,7 +1741,7 @@ PY
         assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_rejects_missing_required_field() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
@@ -1754,7 +1756,7 @@ PY
         assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_rejects_wrong_usage_state_id() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
@@ -1770,7 +1772,7 @@ PY
         assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_allows_wrapper_pid_mismatch() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
@@ -1786,7 +1788,7 @@ PY
         assert!(wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_rejects_stale_state() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
@@ -1802,7 +1804,7 @@ PY
         assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_rejects_future_state() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
