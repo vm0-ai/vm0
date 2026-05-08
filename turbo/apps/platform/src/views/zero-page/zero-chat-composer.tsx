@@ -153,7 +153,11 @@ interface ZeroChatComposerProps {
   onQueue?: (message: string) => void;
   sending?: boolean;
   queueWhileSending?: boolean;
-  /** Cancel the active run. When provided, a stop button replaces the send button while sending. */
+  /**
+   * Cancel the active run. When provided, the Send button switches to a Stop
+   * button while sending and the composer is empty; with content present the
+   * Send button stays visible and clicks queue the message instead.
+   */
   onCancel?: () => void;
   displayName: string;
   className?: string;
@@ -1079,32 +1083,29 @@ export function ZeroChatComposer({
     setSavingType(null);
   };
 
+  const sendAction = resolveKeyboardSendAction({
+    canSend,
+    sending,
+    queueWhileSending,
+    hasQueueHandler: onQueue !== undefined,
+  });
+
   const handleSend = () => {
-    if (!canSend || sending) {
+    if (sendAction === "send") {
+      // Fire-and-forget: request push permission on first send, never blocks
+      detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
+      onSend(input.trim());
       return;
     }
-    // Fire-and-forget: request push permission on first send, never blocks
-    detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
-    onSend(input.trim());
+    if (sendAction === "queue") {
+      onQueue?.(input.trim());
+    }
   };
 
-  const handleKeyboardSend = () => {
-    const handlers: Record<KeyboardSendAction, (() => void) | undefined> = {
-      none: undefined,
-      send: handleSend,
-      queue: () => {
-        onQueue?.(input.trim());
-      },
-    };
-    handlers[
-      resolveKeyboardSendAction({
-        canSend,
-        sending,
-        queueWhileSending,
-        hasQueueHandler: onQueue !== undefined,
-      })
-    ]?.();
-  };
+  // Stop button replaces Send only when there is nothing to dispatch — i.e.
+  // the composer is empty during an active run. With draft content present
+  // the Send button stays visible so the click can queue the message.
+  const showStopButton = Boolean(sending && onCancel) && !canSend;
 
   const sendModeLoadable = useLastLoadable(sendMode$);
   const sendMode =
@@ -1116,7 +1117,7 @@ export function ZeroChatComposer({
       return;
     }
     const send = () => {
-      handleKeyboardSend();
+      handleSend();
     };
     processShortcut(
       {
@@ -1309,7 +1310,7 @@ export function ZeroChatComposer({
                         onDraftChange?.();
                       }}
                     />
-                    {sending && onCancel ? (
+                    {showStopButton ? (
                       <Button
                         size="sm"
                         variant="destructive"
@@ -1324,7 +1325,7 @@ export function ZeroChatComposer({
                         size="sm"
                         className="rounded-lg h-9 w-9 p-0 shrink-0"
                         onClick={handleSend}
-                        disabled={!canSend || !!sending}
+                        disabled={sendAction === "none"}
                         aria-label="Send"
                       >
                         <IconArrowUp size={18} stroke={2} />
