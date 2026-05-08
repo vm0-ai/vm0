@@ -1,9 +1,61 @@
 import { describe, expect, it, vi } from "vitest";
 import { reloadEnv } from "../../../../env";
 import {
+  getAgentEventPageWatermarkTarget,
   waitForAgentEventPrefixVisible,
   waitForRunEventWatermarkVisible,
 } from "../agent-event-visibility";
+
+describe("getAgentEventPageWatermarkTarget", () => {
+  it.each([
+    {
+      name: "skips when no terminal watermark exists",
+      lastEventSequence: null,
+      since: -1,
+      limit: 100,
+      expected: null,
+    },
+    {
+      name: "waits for sequence zero when zero is terminal",
+      lastEventSequence: 0,
+      since: -1,
+      limit: 100,
+      expected: 0,
+    },
+    {
+      name: "skips when cursor already reached terminal",
+      lastEventSequence: 5,
+      since: 5,
+      limit: 100,
+      expected: null,
+    },
+    {
+      name: "caps target to current page",
+      lastEventSequence: 50,
+      since: -1,
+      limit: 1,
+      expected: 0,
+    },
+    {
+      name: "caps target to terminal within current page",
+      lastEventSequence: 2,
+      since: -1,
+      limit: 100,
+      expected: 2,
+    },
+    {
+      name: "skips invalid page sizes defensively",
+      lastEventSequence: 2,
+      since: -1,
+      limit: 0,
+      expected: null,
+    },
+  ])("$name", ({ lastEventSequence, since, limit, expected }) => {
+    expect(
+      getAgentEventPageWatermarkTarget(lastEventSequence, since, limit),
+    ).toBe(expected);
+  });
+});
 
 describe("waitForAgentEventPrefixVisible", () => {
   it("skips when the sessions Axiom dataset is not configured", async () => {
