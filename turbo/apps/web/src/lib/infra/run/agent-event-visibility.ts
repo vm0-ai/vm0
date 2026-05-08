@@ -221,6 +221,7 @@ export async function waitForAgentEventPrefixVisible(
             maxRetries: 0,
             noCache: true,
             streamingDuration: "1s",
+            timeoutMs: remainingMs,
           }),
           remainingMs,
         );

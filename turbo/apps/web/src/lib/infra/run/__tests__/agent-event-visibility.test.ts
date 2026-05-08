@@ -102,6 +102,7 @@ describe("waitForAgentEventPrefixVisible", () => {
       maxRetries: 0,
       noCache: true,
       streamingDuration: "1s",
+      timeoutMs: 1_000,
     });
   });
 

@@ -227,4 +227,37 @@ describe("queryAxiom", () => {
       streamingDuration: "1s",
     });
   });
+
+  it("uses an abortable direct query when timeoutMs is provided", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify(axiomResponse([{ eventType: "result" }])), {
+          status: 200,
+        }),
+      );
+
+    try {
+      const results = await queryAxiom(apl, {
+        maxRetries: 0,
+        noCache: true,
+        streamingDuration: "1s",
+        timeoutMs: 2_000,
+      });
+
+      expect(results).toHaveLength(1);
+      expect(mockQuery).not.toHaveBeenCalled();
+      const [url, init] = fetchSpy.mock.calls[0]!;
+      expect(String(url)).toContain("https://api.axiom.co/v1/datasets/_apl?");
+      expect(String(url)).toContain("nocache=true");
+      expect(String(url)).toContain("streaming-duration=1s");
+      expect(init).toMatchObject({
+        method: "POST",
+        cache: "no-store",
+      });
+      expect((init as RequestInit).signal).toBeInstanceOf(AbortSignal);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
 });

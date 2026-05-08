@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../../mocks/server";
 
 // Mock @axiomhq/js at the package boundary (not internal modules).
 // We provide a controllable `query` method that returns Axiom-shaped responses.
@@ -115,9 +117,17 @@ describe("extractRunOutput", () => {
   });
 
   it("does not retry output query after terminal watermark is visible", async () => {
-    mockQuery
-      .mockResolvedValueOnce(axiomResponse([{ sequenceNumber: 0 }]))
-      .mockResolvedValueOnce(axiomResponse([]));
+    let visibilityRequests = 0;
+    server.use(
+      http.post("https://api.axiom.co/v1/datasets/_apl", ({ request }) => {
+        visibilityRequests++;
+        const url = new URL(request.url);
+        expect(url.searchParams.get("nocache")).toBe("true");
+        expect(url.searchParams.get("streaming-duration")).toBe("1s");
+        return HttpResponse.json(axiomResponse([{ sequenceNumber: 0 }]));
+      }),
+    );
+    mockQuery.mockResolvedValueOnce(axiomResponse([]));
 
     const output = await extractRunOutput(
       "550e8400-e29b-41d4-a716-446655440000",
@@ -126,13 +136,13 @@ describe("extractRunOutput", () => {
     );
 
     expect(output.result).toBeNull();
-    expect(mockQuery).toHaveBeenCalledTimes(2);
-    expect(mockQuery.mock.calls[0]![0]).toContain("project sequenceNumber");
-    expect(mockQuery.mock.calls[1]![0]).toContain('eventType == "result"');
-    expect(mockQuery.mock.calls[1]![0]).toContain(
+    expect(visibilityRequests).toBe(1);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockQuery.mock.calls[0]![0]).toContain('eventType == "result"');
+    expect(mockQuery.mock.calls[0]![0]).toContain(
       "['eventData.item.type'] == \"agent_message\"",
     );
-    expect(mockQuery.mock.calls[1]![1]).toMatchObject({ noCache: true });
+    expect(mockQuery.mock.calls[0]![1]).toMatchObject({ noCache: true });
   });
 
   it("can skip waiting for output visibility", async () => {
