@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../../mocks/server";
 import { reloadEnv } from "../../../../env";
 import {
   getAgentEventPageWatermarkTarget,
@@ -231,5 +233,49 @@ describe("waitForRunEventWatermarkVisible", () => {
     await expect(
       waitForRunEventWatermarkVisible("run-1", null),
     ).resolves.toBeUndefined();
+  });
+
+  it("returns the known watermark after Axiom exposes it", async () => {
+    vi.stubEnv("AXIOM_TOKEN_SESSIONS", "test-axiom-token");
+    reloadEnv();
+
+    let visibilityRequests = 0;
+    server.use(
+      http.post("https://api.axiom.co/v1/datasets/_apl", () => {
+        visibilityRequests++;
+        return HttpResponse.json({
+          matches: [
+            {
+              _time: new Date().toISOString(),
+              data: { sequenceNumber: 0 },
+            },
+            {
+              _time: new Date().toISOString(),
+              data: { sequenceNumber: 1 },
+            },
+          ],
+        });
+      }),
+    );
+
+    await expect(
+      waitForRunEventWatermarkVisible(
+        "550e8400-e29b-41d4-a716-446655440000",
+        1,
+      ),
+    ).resolves.toBe(1);
+    expect(visibilityRequests).toBe(1);
+  });
+
+  it("returns the known watermark when Axiom is not configured", async () => {
+    vi.stubEnv("AXIOM_TOKEN_SESSIONS", "");
+    reloadEnv();
+
+    await expect(
+      waitForRunEventWatermarkVisible(
+        "550e8400-e29b-41d4-a716-446655440000",
+        0,
+      ),
+    ).resolves.toBe(0);
   });
 });
