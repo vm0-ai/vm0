@@ -66,6 +66,16 @@ export const SESSION_TOOLS = [
   },
 ] as const;
 
+export type SessionToolName = (typeof SESSION_TOOLS)[number]["name"];
+export const SESSION_TOOL_NAMES: readonly SessionToolName[] = SESSION_TOOLS.map(
+  (t) => {
+    return t.name;
+  },
+);
+export function isSessionToolName(name: string): name is SessionToolName {
+  return (SESSION_TOOL_NAMES as readonly string[]).includes(name);
+}
+
 export const TURN_DETECTION_CONFIG = {
   type: "semantic_vad",
   eagerness: "medium",
