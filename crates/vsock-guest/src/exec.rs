@@ -262,39 +262,49 @@ fn random_hex(bytes: usize) -> io::Result<String> {
     Ok(out)
 }
 
+fn validate_env_script_dir(dir: &Path, euid: libc::uid_t) -> io::Result<()> {
+    let metadata = fs::symlink_metadata(dir)?;
+    if !metadata.file_type().is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            format!("env script path is not a directory: {}", dir.display()),
+        ));
+    }
+    let expected_owner = if euid == 0 { 0 } else { euid };
+    if metadata.uid() != expected_owner {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "env script directory has unexpected owner: {}",
+                dir.display()
+            ),
+        ));
+    }
+    if metadata.permissions().mode() & 0o022 != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "env script directory is writable by group/other: {}",
+                dir.display()
+            ),
+        ));
+    }
+    Ok(())
+}
+
 fn ensure_env_script_dir(dir: &Path) -> io::Result<()> {
     let euid = effective_uid();
     let mode = if euid == 0 { 0o711 } else { 0o700 };
-    match fs::symlink_metadata(dir) {
-        Ok(metadata) => {
-            if !metadata.file_type().is_dir() {
-                return Err(io::Error::new(
-                    io::ErrorKind::AlreadyExists,
-                    format!("env script path is not a directory: {}", dir.display()),
-                ));
-            }
-            let expected_owner = if euid == 0 { 0 } else { euid };
-            if metadata.uid() != expected_owner {
-                return Err(io::Error::new(
-                    io::ErrorKind::PermissionDenied,
-                    format!(
-                        "env script directory has unexpected owner: {}",
-                        dir.display()
-                    ),
-                ));
-            }
-            if metadata.permissions().mode() & 0o022 != 0 {
-                return Err(io::Error::new(
-                    io::ErrorKind::PermissionDenied,
-                    format!(
-                        "env script directory is writable by group/other: {}",
-                        dir.display()
-                    ),
-                ));
-            }
-        }
+    match validate_env_script_dir(dir, euid) {
+        Ok(()) => {}
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            DirBuilder::new().mode(mode).create(dir)?;
+            match DirBuilder::new().mode(mode).create(dir) {
+                Ok(()) => {}
+                Err(create_err) if create_err.kind() == io::ErrorKind::AlreadyExists => {
+                    validate_env_script_dir(dir, euid)?;
+                }
+                Err(create_err) => return Err(create_err),
+            }
         }
         Err(e) => return Err(e),
     }
@@ -519,6 +529,7 @@ pub(crate) fn spawn_with_pipes(
 mod tests {
     use super::*;
     use std::path::PathBuf;
+    use std::sync::{Arc, Barrier};
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     use crate::wait::{WaitOutcome, wait_with_kill_timeout};
@@ -710,6 +721,29 @@ mod tests {
 
         assert!(!path.exists());
         assert!(!script_dir.exists());
+    }
+
+    #[test]
+    fn env_script_dir_creation_tolerates_concurrent_first_use() {
+        let (base, _guard) = temp_dir("dir-race");
+        let dir = base.join("vm0-exec");
+        let thread_count = 8;
+        let barrier = Arc::new(Barrier::new(thread_count));
+        let handles = (0..thread_count)
+            .map(|_| {
+                let dir = dir.clone();
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    ensure_env_script_dir(&dir)
+                })
+            })
+            .collect::<Vec<_>>();
+
+        for handle in handles {
+            handle.join().unwrap().unwrap();
+        }
+        assert!(dir.is_dir());
     }
 
     #[test]
