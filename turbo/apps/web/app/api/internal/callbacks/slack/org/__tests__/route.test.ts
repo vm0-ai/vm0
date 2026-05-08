@@ -322,6 +322,70 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     expect(blocksStr).toContain("GPT-5.5");
   });
 
+  it("posts only the latest publishable output to Slack", async () => {
+    vi.stubEnv("AXIOM_TOKEN_SESSIONS", "test-sessions-token");
+    reloadEnv();
+
+    const { workspaceId, connectionId } = await setupOrgSlack();
+    const { composeId } = await createTestCompose(uniqueId("agent"));
+    const { runId } = await seedTestRun(user.userId, composeId, {
+      prompt: "Test prompt",
+    });
+    await completeTestRun(user.userId, runId, undefined, {
+      lastEventSequence: 10,
+    });
+    context.mocks.axiom.queryAxiom
+      .mockResolvedValueOnce([{ sequenceNumber: 10 }])
+      .mockResolvedValueOnce([
+        {
+          eventType: "item.completed",
+          eventData: {
+            item: {
+              type: "agent_message",
+              text: "latest codex answer",
+            },
+          },
+        },
+      ]);
+
+    const channelId = uniqueId("C-ch");
+    const threadTs = uniqueId("ts");
+    const payload: OrgCallbackPayload = {
+      workspaceId,
+      channelId,
+      threadTs,
+      messageTs: threadTs,
+      connectionId,
+      agentId: composeId,
+    };
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org",
+      payload: { ...payload },
+    });
+
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/slack/org",
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const { WebClient } = await import("@slack/web-api");
+    const mockClient = new WebClient();
+    expect(mockClient.chat.postMessage).toHaveBeenCalledOnce();
+    const call = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as { text: string };
+    expect(call.text).toBe("latest codex answer");
+
+    const outputQuery = context.mocks.axiom.queryAxiom.mock
+      .calls[1]![0] as string;
+    expect(outputQuery).toContain("| order by sequenceNumber desc");
+    expect(outputQuery).toContain("| limit 1");
+  });
+
   it("posts error message for failed status", async () => {
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
