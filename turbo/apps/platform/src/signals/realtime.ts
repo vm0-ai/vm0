@@ -58,6 +58,7 @@ async function runWithChannel({
   // run the body themselves before calling this. Chat / queue / slack
   // subscribers don't need a baseline because their data is fetched through
   // separate computeds.
+  signal.throwIfAborted();
   let deferred = createDeferredPromise(signal);
 
   const pokeLoop = () => {
