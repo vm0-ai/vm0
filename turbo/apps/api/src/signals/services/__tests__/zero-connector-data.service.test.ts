@@ -33,4 +33,14 @@ describe("zeroConnectorList", () => {
       expect(openai.updatedAt).toBe("1970-01-01T00:00:00.000Z");
     }
   });
+
+  it("returns configuredTypes in sorted order", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+
+    const list = await store.get(zeroConnectorList({ orgId, userId }));
+
+    const sorted = [...list.configuredTypes].sort();
+    expect(list.configuredTypes).toStrictEqual(sorted);
+  });
 });
