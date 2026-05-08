@@ -323,7 +323,7 @@ function ScheduleListCard<T extends ScheduleEntry>({
       <div className="min-w-0 flex-1 flex flex-col gap-0.5 pointer-events-none">
         <span
           className={cn(
-            "block text-[17px] font-semibold text-foreground leading-snug truncate",
+            "truncate text-[16px] max-md:text-[17px] leading-snug font-medium text-foreground",
             dimmed && "text-muted-foreground",
           )}
         >
@@ -331,7 +331,7 @@ function ScheduleListCard<T extends ScheduleEntry>({
         </span>
         <span
           className={cn(
-            "text-[14px] text-muted-foreground truncate",
+            "truncate text-xs max-md:text-[16px] text-muted-foreground",
             dimmed && "text-muted-foreground/80",
           )}
         >
