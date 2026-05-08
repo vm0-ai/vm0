@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { resolveModelProviderSecrets } from "../resolve-model-provider";
+import {
+  resolveModelProviderSecrets,
+  resolveModelRoute,
+} from "../resolve-model-provider";
 import {
   isBadRequest,
   isModelProviderConnectRequired,
@@ -246,6 +249,33 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
 
     expect(result.resolvedModelProvider).toBe("openai-api-key");
     expect(result.framework).toBe("codex");
+  });
+
+  it("resolves a route whose provider framework overrides the compose framework", async () => {
+    const userId = uniqueId("route-cross-framework");
+    const orgId = await setupOrg(userId);
+    await insertOrgDefaultModelProvider(orgId, "openai-api-key");
+    const modelProviderId = await getTestModelProviderIdByType(
+      orgId,
+      "openai-api-key",
+    );
+
+    const route = await resolveModelRoute({
+      orgId,
+      userId,
+      framework: "claude-code",
+      modelProviderId,
+    });
+
+    expect(route.provider.type).toBe("openai-api-key");
+    expect(route.framework).toBe("codex");
+    expect(route.model.canonical).toBe("gpt-5.5");
+    expect(route.model.runtime).toBe("gpt-5.5");
+    expect(route.credential).toEqual({
+      scope: "org",
+      modelProviderId,
+      ownerUserId: ORG_SENTINEL_USER_ID,
+    });
   });
 });
 
@@ -506,6 +536,39 @@ describe("resolveModelProviderSecrets — personal tier (#11899)", () => {
     expect(result.resolvedModelProvider).toBe("openai-api-key");
     expect(result.framework).toBe("codex");
     expect(result.secrets?.OPENAI_API_KEY).toBe("personal-pin-key");
+  });
+
+  it("resolves a personal default route with member-owned credentials", async () => {
+    const userId = uniqueId("personal-route");
+    const orgId = await setupOrg(userId);
+    await enablePersonalModelProviderForUser(orgId, userId);
+    const modelProviderId = await insertUserDefaultModelProvider(
+      orgId,
+      userId,
+      "openai-api-key",
+      "gpt-5.4",
+    );
+    await insertOrgDefaultModelProvider(
+      orgId,
+      "anthropic-api-key",
+      "claude-sonnet-4-6",
+    );
+
+    const route = await resolveModelRoute({
+      orgId,
+      userId,
+      framework: "claude-code",
+      preferPersonalProvider: true,
+    });
+
+    expect(route.provider.type).toBe("openai-api-key");
+    expect(route.framework).toBe("codex");
+    expect(route.model.canonical).toBe("gpt-5.4");
+    expect(route.credential).toEqual({
+      scope: "member",
+      modelProviderId,
+      ownerUserId: userId,
+    });
   });
 });
 
@@ -781,6 +844,45 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     expect(result.injectedEnvironment?.ANTHROPIC_MODEL).toBe("z-ai/glm-5.1");
   });
 
+  it("resolves model-first org API-key routes into route framework/model/credential", async () => {
+    const userId = uniqueId("mf-route-org");
+    const orgId = await setupOrg(userId);
+    await enableModelFirstModelProviderForUser(orgId, userId);
+    await insertOrgNonDefaultModelProvider(orgId, "openrouter-api-key");
+    const providerId = await getTestModelProviderIdByType(
+      orgId,
+      "openrouter-api-key",
+    );
+    await insertOrgModelPolicy({
+      orgId,
+      model: "glm-5.1",
+      sortOrder: 0,
+      defaultProviderType: "openrouter-api-key",
+      credentialScope: "org",
+      modelProviderId: providerId,
+    });
+
+    const route = await resolveModelRoute({
+      orgId,
+      userId,
+      framework: "codex",
+      selectedModelOverride: "glm-5.1",
+    });
+
+    expect(route.provider.type).toBe("openrouter-api-key");
+    expect(route.framework).toBe("claude-code");
+    expect(route.model).toEqual({
+      selected: "glm-5.1",
+      canonical: "glm-5.1",
+      runtime: "z-ai/glm-5.1",
+    });
+    expect(route.credential).toEqual({
+      scope: "org",
+      modelProviderId: providerId,
+      ownerUserId: ORG_SENTINEL_USER_ID,
+    });
+  });
+
   it("uses the current member's OAuth credential for member-scoped routes", async () => {
     const userId = uniqueId("mf-member-oauth");
     const orgId = await setupOrg(userId);
@@ -825,6 +927,41 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
       CHATGPT_ACCOUNT_ID: "member-account",
     });
     expect(result.injectedEnvironment?.OPENAI_MODEL).toBe("gpt-5.5");
+  });
+
+  it("resolves model-first member OAuth routes into member-owned Codex routes", async () => {
+    const userId = uniqueId("mf-route-member");
+    const orgId = await setupOrg(userId);
+    await enableModelFirstModelProviderForUser(orgId, userId);
+    await insertUserMultiAuthModelProvider(
+      orgId,
+      userId,
+      "codex-oauth-token",
+      "auth_json",
+    );
+    await insertOrgModelPolicy({
+      orgId,
+      model: "gpt-5.5",
+      sortOrder: 0,
+      defaultProviderType: "codex-oauth-token",
+      credentialScope: "member",
+    });
+
+    const route = await resolveModelRoute({
+      orgId,
+      userId,
+      framework: "claude-code",
+      selectedModelOverride: "gpt-5.5",
+    });
+
+    expect(route.provider.type).toBe("codex-oauth-token");
+    expect(route.framework).toBe("codex");
+    expect(route.model.runtime).toBe("gpt-5.5");
+    expect(route.credential).toEqual({
+      scope: "member",
+      modelProviderId: null,
+      ownerUserId: userId,
+    });
   });
 
   it("throws connect-required for missing member OAuth and does not fallback", async () => {
@@ -951,6 +1088,30 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
       ),
     ).rejects.toSatisfy((err: unknown) => {
       return isProviderDeleted(err);
+    });
+  });
+
+  it("rejects vm0 model routes before materialization when no concrete mapping exists", async () => {
+    const userId = uniqueId("mf-vm0-missing-map");
+    const orgId = await setupOrg(userId);
+    await enableModelFirstModelProviderForUser(orgId, userId);
+    await insertOrgModelPolicy({
+      orgId,
+      model: "gpt-5.5",
+      sortOrder: 0,
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+    });
+
+    await expect(
+      resolveModelRoute({
+        orgId,
+        userId,
+        framework: "codex",
+        selectedModelOverride: "gpt-5.5",
+      }),
+    ).rejects.toSatisfy((err: unknown) => {
+      return isBadRequest(err);
     });
   });
 

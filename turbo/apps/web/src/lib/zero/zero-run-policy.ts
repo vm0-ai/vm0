@@ -4,9 +4,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   concurrentRunLimit,
   forbidden,
-  modelProviderConnectRequired,
-  noModelProvider,
-  staleProvider,
+  isNoModelProvider,
 } from "@vm0/api-services/errors";
 import {
   MODEL_PROVIDER_TYPES,
@@ -15,26 +13,14 @@ import {
 import { canAccessCompose } from "../infra/agent/compose-access";
 import { validateFrameworkApiKey } from "../infra/run/utils";
 import { logger } from "../shared/logger";
-import { MODEL_PROVIDER_ENV_VARS } from "./context/resolve-model-provider";
+import {
+  MODEL_PROVIDER_ENV_VARS,
+  resolveModelRoute,
+} from "./context/resolve-model-provider";
 import {
   checkOrgCredits,
   type CheckOrgCreditsOptions,
 } from "./credit/check-org-credits";
-import {
-  getOrgDefaultModelProvider,
-  getOrgDefaultModelProviderType,
-  getOrgAnyDefaultModelProvider,
-  getOrgAnyDefaultModelProviderType,
-  getModelProviderById,
-  getUserDefaultModelProvider,
-  getUserAnyDefaultModelProvider,
-  getUserModelProviderByType,
-} from "./model-provider/model-provider-service";
-import { isPersonalTierEligible } from "./personal-tier-gate";
-import {
-  isModelFirstModelProviderEnabled,
-  resolveModelFirstRouteDescriptor,
-} from "./model-policy/model-first-route-service";
 import type { Database } from "../../types/global";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import type { AgentComposeYaml } from "../infra/agent-compose/types";
@@ -153,22 +139,12 @@ export async function validateComposeRequirements(
 
 /**
  * Resolve the provider type that admission checks should treat as the
- * effective key source for this run. Precedence:
- *   explicit override → explicit modelProviderId → personal-tier (gated) →
- *   org default for compose framework → any org default (cross-framework
- *   fallback).
+ * effective key source for this run.
  *
- * The cross-framework fallback implements Epic #11520's "provider's framework
- * wins" rule at the admission boundary: an org with only a codex provider
- * still admits a claude-code compose; the provider's framework propagates
- * downstream via `resolvedFramework` so dispatch launches the right binary.
- *
- * The personal-tier branch (Epic #11868) admits a user with only personal
- * providers — without it admission would throw `noModelProvider()` even
- * though the resolver downstream would have served them.
- *
- * Returns null only when the user has no personal tier (or it's gated off)
- * AND the org has no `isDefault: true` provider at all.
+ * This intentionally reuses the dispatch route resolver so credit admission
+ * and sandbox dispatch cannot drift on provider/default precedence. It returns
+ * null only when no provider route exists; explicit compose env validation
+ * happens separately in `checkModelProviderConfigured`.
  */
 async function resolveProviderTypeForAdmission(params: {
   orgId: string;
@@ -180,47 +156,26 @@ async function resolveProviderTypeForAdmission(params: {
   composeFramework: string;
   preferPersonalProvider?: boolean;
 }): Promise<ModelProviderType | null> {
-  if (await isModelFirstModelProviderEnabled(params.orgId, params.userId)) {
-    const route = await resolveModelFirstRouteDescriptor({
+  if (params.modelProvider && !(params.modelProvider in MODEL_PROVIDER_TYPES)) {
+    return null;
+  }
+  try {
+    const route = await resolveModelRoute({
       orgId: params.orgId,
       userId: params.userId,
-      selectedModel: params.selectedModelOverride,
-      providerType: params.modelProvider,
-      credentialScope: params.modelProviderCredentialScope,
-      modelProviderId: params.modelProviderId,
+      framework: params.composeFramework,
+      explicitModelProvider: params.modelProvider ?? undefined,
+      modelProviderId: params.modelProviderId ?? undefined,
+      modelProviderCredentialScope:
+        params.modelProviderCredentialScope ?? undefined,
+      selectedModelOverride: params.selectedModelOverride ?? undefined,
+      preferPersonalProvider: params.preferPersonalProvider,
     });
-    return route.providerType;
+    return route.provider.type;
+  } catch (error) {
+    if (isNoModelProvider(error)) return null;
+    throw error;
   }
-
-  if (params.modelProvider && params.modelProvider in MODEL_PROVIDER_TYPES) {
-    return params.modelProvider as ModelProviderType;
-  }
-  if (params.modelProviderId) {
-    const row = await getModelProviderById(
-      params.orgId,
-      params.userId,
-      params.modelProviderId,
-    );
-    return row?.type ?? null;
-  }
-  const personalEligible = await isPersonalTierEligible(
-    params.orgId,
-    params.userId,
-    params.preferPersonalProvider,
-  );
-  if (personalEligible) {
-    const userDef =
-      (await getUserDefaultModelProvider(
-        params.orgId,
-        params.userId,
-        params.composeFramework,
-      )) ?? (await getUserAnyDefaultModelProvider(params.orgId, params.userId));
-    if (userDef) return userDef.type;
-  }
-  const def =
-    (await getOrgDefaultModelProvider(params.orgId, params.composeFramework)) ??
-    (await getOrgAnyDefaultModelProvider(params.orgId));
-  return def?.type ?? null;
 }
 
 interface RunAdmissionContext {
@@ -268,14 +223,9 @@ export async function checkOrgCreditsForRunAdmission(
 /**
  * Pre-flight check: ensure a model provider is configured.
  *
- * Skips when compose has explicit env vars, an explicit modelProvider param
- * is provided, or the framework doesn't use model providers.
- *
- * When `preferPersonalProvider` is on AND the personal feature switch is
- * enabled for the caller (Epic #11868), accepts a personal-tier provider
- * before falling through to the org chain — without this the admission
- * boundary would throw `noModelProvider()` for users who only have personal
- * providers, even though the resolver downstream would have served them.
+ * Skips when compose has explicit env vars. Otherwise this uses the same
+ * central route resolver as dispatch so pre-flight configuration checks and
+ * runtime materialization agree on provider/default semantics.
  */
 export async function checkModelProviderConfigured(
   orgId: string,
@@ -296,53 +246,16 @@ export async function checkModelProviderConfigured(
     return firstAgent?.environment?.[v] !== undefined;
   });
   if (hasExplicitConfig) return;
+  if (modelProvider && !(modelProvider in MODEL_PROVIDER_TYPES)) return;
 
-  if (await isModelFirstModelProviderEnabled(orgId, userId)) {
-    const route = await resolveModelFirstRouteDescriptor({
-      orgId,
-      userId,
-      selectedModel: selectedModelOverride,
-      providerType: modelProvider,
-      credentialScope: modelProviderCredentialScope,
-      modelProviderId,
-    });
-    if (route.credentialScope === "member") {
-      const memberProvider = await getUserModelProviderByType(
-        orgId,
-        userId,
-        route.providerType,
-      );
-      if (!memberProvider) {
-        throw modelProviderConnectRequired(route.providerType);
-      }
-      if (memberProvider.needsReconnect) {
-        throw staleProvider(
-          memberProvider.type,
-          memberProvider.lastRefreshErrorCode,
-        );
-      }
-    }
-    return;
-  }
-
-  if (modelProvider) return;
-
-  if (await isPersonalTierEligible(orgId, userId, preferPersonalProvider)) {
-    const userType =
-      (await getUserDefaultModelProvider(orgId, userId, framework))?.type ??
-      (await getUserAnyDefaultModelProvider(orgId, userId))?.type;
-    if (userType) return;
-  }
-
-  // Framework-scoped default first; fall back to any org default so a
-  // codex-only org still admits a claude-code compose. Mirrors the
-  // cross-framework fallback in resolveProviderTypeForAdmission — see
-  // Epic #11520 for the provider-framework-wins design intent.
-  const defaultProviderType =
-    (await getOrgDefaultModelProviderType(orgId, framework)) ??
-    (await getOrgAnyDefaultModelProviderType(orgId));
-
-  if (!defaultProviderType) {
-    throw noModelProvider();
-  }
+  await resolveModelRoute({
+    orgId,
+    userId,
+    framework,
+    explicitModelProvider: modelProvider ?? undefined,
+    modelProviderId: modelProviderId ?? undefined,
+    modelProviderCredentialScope: modelProviderCredentialScope ?? undefined,
+    selectedModelOverride: selectedModelOverride ?? undefined,
+    preferPersonalProvider,
+  });
 }
