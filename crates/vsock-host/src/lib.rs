@@ -1862,6 +1862,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_bounded_exec_ignores_stream_chunks_after_final_result() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs[0].msg_type, MSG_BOUNDED_EXEC);
+
+            let result_payload = vsock_proto::encode_bounded_exec_result(
+                vsock_proto::BoundedExecTermination::Exited { exit_code: 0 },
+                1,
+                b"done",
+                b"",
+                false,
+                false,
+            )
+            .unwrap();
+            let result =
+                vsock_proto::encode(MSG_BOUNDED_EXEC_RESULT, msgs[0].seq, &result_payload).unwrap();
+
+            let late_chunk_payload = vsock_proto::encode_bounded_exec_output_chunk(
+                vsock_proto::BoundedExecStream::Stdout,
+                99,
+                b"late",
+                false,
+            )
+            .unwrap();
+            let late_chunk = vsock_proto::encode(
+                MSG_BOUNDED_EXEC_OUTPUT_CHUNK,
+                msgs[0].seq,
+                &late_chunk_payload,
+            )
+            .unwrap();
+
+            let mut combined = result;
+            combined.extend_from_slice(&late_chunk);
+            guest.write_all(&combined).await.unwrap();
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let request = simple_bounded_request("late-chunk", Some(bounded_stream_request(event_tx)));
+
+        let result = host.bounded_exec(&request).await.unwrap();
+
+        assert_eq!(result.stdout, b"done");
+        assert!(matches!(
+            event_rx.try_recv(),
+            Err(mpsc::error::TryRecvError::Empty)
+        ));
+        assert_eq!(registration_counts(&host), (0, 0, 0, 0));
+    }
+
+    #[tokio::test]
     async fn test_bounded_exec_malformed_result_cleans_up() {
         let (host_stream, mut guest) = make_pair();
 
@@ -2235,6 +2293,17 @@ mod tests {
             ..simple_bounded_request("invalid-stream", None)
         };
         let err = host.bounded_exec(&invalid_stream).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let oversized_stream = BoundedExecRequest {
+            stream: Some(BoundedExecStreamRequest {
+                chunk_limit_bytes: u32::MAX,
+                ..bounded_stream_request(tx)
+            }),
+            ..simple_bounded_request("oversized-stream", None)
+        };
+        let err = host.bounded_exec(&oversized_stream).await.unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     }
 
