@@ -22,6 +22,7 @@ const GUEST_AGENT_DEST: &str = "/usr/local/bin/guest-agent";
 const GUEST_DOWNLOAD_DEST: &str = "/usr/local/bin/guest-download";
 const GUEST_INIT_DEST: &str = "/sbin/guest-init";
 const GUEST_RESEED_DEST: &str = "/sbin/guest-reseed";
+const GUEST_WRITE_FILE_DEST: &str = "/sbin/guest-write-file";
 const GUEST_MOCK_CLAUDE_DEST: &str = "/usr/local/bin/guest-mock-claude";
 const GUEST_MOCK_CODEX_DEST: &str = "/usr/local/bin/guest-mock-codex";
 const ROOTFS_DNS_NAMESERVER: &str = "8.8.8.8";
@@ -54,6 +55,7 @@ mod embedded {
     pub const GUEST_MOCK_CLAUDE: &[u8] = include_bytes!(env!("BUNDLED_GUEST_MOCK_CLAUDE"));
     pub const GUEST_MOCK_CODEX: &[u8] = include_bytes!(env!("BUNDLED_GUEST_MOCK_CODEX"));
     pub const GUEST_RESEED: &[u8] = include_bytes!(env!("BUNDLED_GUEST_RESEED"));
+    pub const GUEST_WRITE_FILE: &[u8] = include_bytes!(env!("BUNDLED_GUEST_WRITE_FILE"));
 }
 
 #[cfg(bundled_guests)]
@@ -65,6 +67,7 @@ fn bundled_guest(name: &str) -> Option<&'static [u8]> {
         "guest-mock-claude" => Some(embedded::GUEST_MOCK_CLAUDE),
         "guest-mock-codex" => Some(embedded::GUEST_MOCK_CODEX),
         "guest-reseed" => Some(embedded::GUEST_RESEED),
+        "guest-write-file" => Some(embedded::GUEST_WRITE_FILE),
         _ => None,
     }
 }
@@ -130,6 +133,15 @@ pub struct BuildArgs {
         arg(long, help = "Path to guest-reseed binary (required)")
     )]
     guest_reseed: Option<PathBuf>,
+    #[cfg_attr(
+        bundled_guests,
+        arg(long, help = "Path to guest-write-file binary [default: bundled]")
+    )]
+    #[cfg_attr(
+        not(bundled_guests),
+        arg(long, help = "Path to guest-write-file binary (required)")
+    )]
+    guest_write_file: Option<PathBuf>,
     /// Profile to build (determines VM resources and disk size)
     #[arg(long)]
     pub profile: String,
@@ -388,6 +400,7 @@ struct GuestBinaries {
     guest_mock_claude: PathBuf,
     guest_mock_codex: PathBuf,
     guest_reseed: PathBuf,
+    guest_write_file: PathBuf,
 }
 
 impl GuestBinaries {
@@ -409,6 +422,8 @@ impl GuestBinaries {
             resolve_guest(args.guest_mock_codex.take(), "guest-mock-codex", temp_path).await?;
         let guest_reseed =
             resolve_guest(args.guest_reseed.take(), "guest-reseed", temp_path).await?;
+        let guest_write_file =
+            resolve_guest(args.guest_write_file.take(), "guest-write-file", temp_path).await?;
 
         Ok(Self {
             _temp_dir: temp_dir,
@@ -418,15 +433,17 @@ impl GuestBinaries {
             guest_mock_claude,
             guest_mock_codex,
             guest_reseed,
+            guest_write_file,
         })
     }
 
-    fn hash_inputs(&self) -> [(&Path, &str); 6] {
+    fn hash_inputs(&self) -> [(&Path, &str); 7] {
         [
             (self.guest_agent.as_path(), GUEST_AGENT_DEST),
             (self.guest_download.as_path(), GUEST_DOWNLOAD_DEST),
             (self.guest_init.as_path(), GUEST_INIT_DEST),
             (self.guest_reseed.as_path(), GUEST_RESEED_DEST),
+            (self.guest_write_file.as_path(), GUEST_WRITE_FILE_DEST),
             (self.guest_mock_claude.as_path(), GUEST_MOCK_CLAUDE_DEST),
             (self.guest_mock_codex.as_path(), GUEST_MOCK_CODEX_DEST),
         ]
@@ -1409,7 +1426,9 @@ async fn customize_rootfs_staging(
         .arg("--guest-mock-codex")
         .arg(&input.guests.guest_mock_codex)
         .arg("--guest-reseed")
-        .arg(&input.guests.guest_reseed);
+        .arg(&input.guests.guest_reseed)
+        .arg("--guest-write-file")
+        .arg(&input.guests.guest_write_file);
     let status = run_rootfs_script(cmd, "customize-rootfs.sh").await?;
 
     if !status.success() {
@@ -1690,7 +1709,7 @@ mod tests {
         args: BuildArgs,
     }
 
-    fn build_args() -> [&'static str; 15] {
+    fn build_args() -> [&'static str; 17] {
         [
             "runner-build",
             "--guest-agent",
@@ -1705,6 +1724,8 @@ mod tests {
             "/tmp/guest-mock-codex",
             "--guest-reseed",
             "/tmp/guest-reseed",
+            "--guest-write-file",
+            "/tmp/guest-write-file",
             "--profile",
             "vm0/default",
         ]
@@ -1732,6 +1753,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let guest = temp_dir.path().join("guest");
         std::fs::write(&guest, b"guest").unwrap();
+        let guest_write_file = guest.clone();
         GuestBinaries {
             _temp_dir: temp_dir,
             guest_agent: guest.clone(),
@@ -1740,6 +1762,7 @@ mod tests {
             guest_mock_claude: guest.clone(),
             guest_mock_codex: guest.clone(),
             guest_reseed: guest,
+            guest_write_file,
         }
     }
 
@@ -2301,6 +2324,7 @@ exit 1
         let guest_download = temp_dir.path().join("guest-download");
         let guest_init = temp_dir.path().join("guest-init");
         let guest_reseed = temp_dir.path().join("guest-reseed");
+        let guest_write_file = temp_dir.path().join("guest-write-file");
         let guest_mock_claude = temp_dir.path().join("guest-mock-claude");
         let guest_mock_codex = temp_dir.path().join("guest-mock-codex");
         let guests = GuestBinaries {
@@ -2311,6 +2335,7 @@ exit 1
             guest_mock_claude: guest_mock_claude.clone(),
             guest_mock_codex: guest_mock_codex.clone(),
             guest_reseed: guest_reseed.clone(),
+            guest_write_file: guest_write_file.clone(),
         };
 
         assert_eq!(
@@ -2320,6 +2345,7 @@ exit 1
                 (guest_download.as_path(), GUEST_DOWNLOAD_DEST),
                 (guest_init.as_path(), GUEST_INIT_DEST),
                 (guest_reseed.as_path(), GUEST_RESEED_DEST),
+                (guest_write_file.as_path(), GUEST_WRITE_FILE_DEST),
                 (guest_mock_claude.as_path(), GUEST_MOCK_CLAUDE_DEST),
                 (guest_mock_codex.as_path(), GUEST_MOCK_CODEX_DEST),
             ]
@@ -2598,6 +2624,7 @@ exit 1
         assert!(cli.args.guest_mock_claude.is_none());
         assert!(cli.args.guest_mock_codex.is_none());
         assert!(cli.args.guest_reseed.is_none());
+        assert!(cli.args.guest_write_file.is_none());
     }
 
     #[test]
@@ -3766,6 +3793,7 @@ exit 1
             "--guest-mock-claude",
             "--guest-mock-codex",
             "--guest-reseed",
+            "--guest-write-file",
             "--ca-dir",
             "--dns-nameserver",
             "CA_ROOTFS_DEST",

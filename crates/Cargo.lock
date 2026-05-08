@@ -1336,6 +1336,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "guest-write-file"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "tempfile",
+]
+
+[[package]]
 name = "h2"
 version = "0.3.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2567,6 +2575,7 @@ dependencies = [
  "guest-mock-claude",
  "guest-mock-codex",
  "guest-reseed",
+ "guest-write-file",
  "hex",
  "httpmock",
  "nbd-cow",
@@ -3661,6 +3670,7 @@ name = "vsock-guest"
 version = "0.10.15"
 dependencies = [
  "libc",
+ "tempfile",
  "vsock-proto",
 ]
 
@@ -3681,6 +3691,7 @@ version = "0.10.0"
 name = "vsock-test"
 version = "0.9.17"
 dependencies = [
+ "guest-write-file",
  "tokio",
  "vsock-guest",
  "vsock-host",

@@ -6,7 +6,9 @@ import {
 } from "../../../../__tests__/test-helpers";
 import {
   findCreditExpiresRecords,
+  grantCreditsToOrg,
   getOrgBillingFields,
+  setOrgCredits,
 } from "../../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../env";
 
@@ -105,6 +107,8 @@ describe("billing-service", () => {
   it("campaign checkout does not grant starter credits to a new org", async () => {
     const { createOneTimeCheckoutSession } = await import("../billing-service");
 
+    await setOrgCredits(user.orgId, 0);
+
     const customerId = uniqueId("cus");
     stripeMocks.customersCreate.mockResolvedValue({ id: customerId });
     stripeMocks.checkoutSessionsCreate.mockResolvedValue({
@@ -134,5 +138,27 @@ describe("billing-service", () => {
       return r.source === "starter_grant";
     });
     expect(starterGrants).toHaveLength(0);
+  });
+
+  it("returns negative credit balances instead of clamping them to zero", async () => {
+    const { getBillingStatus } = await import("../billing-service");
+
+    await setOrgCredits(user.orgId, -5);
+
+    const billing = await getBillingStatus(user.orgId);
+
+    expect(billing.credits).toBe(-5);
+    expect(billing.creditBreakdown).toEqual([]);
+  });
+
+  it("shows remaining debt after a recharge partially offsets a negative balance", async () => {
+    const { getBillingStatus } = await import("../billing-service");
+
+    await setOrgCredits(user.orgId, -100);
+    await grantCreditsToOrg(user.orgId, 5);
+
+    const billing = await getBillingStatus(user.orgId);
+
+    expect(billing.credits).toBe(-95);
   });
 });

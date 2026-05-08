@@ -1303,7 +1303,7 @@ export async function getBillingStatus(orgId: string): Promise<{
   ]);
 
   const rawCredits = org?.credits ?? 0;
-  const displayedCredits = Math.max(rawCredits - unsettledExpired, 0);
+  const displayedCredits = rawCredits - unsettledExpired;
   const tier = org?.tier ?? "free";
 
   const breakdown = buildCreditBreakdown({

@@ -114,7 +114,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Generate run summary (best-effort — errors handled internally)
   if (status === "completed" && schedule.prompt) {
-    const resultText = await getRunOutputText(result.data.runId).catch(() => {
+    const resultText = await getRunOutputText(result.data.runId, {
+      waitForOutput: false,
+    }).catch(() => {
       return undefined;
     });
     await saveRunSummary(

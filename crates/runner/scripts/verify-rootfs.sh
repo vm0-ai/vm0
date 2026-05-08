@@ -158,6 +158,7 @@ guest_dests=(
   "/usr/local/bin/guest-mock-claude"
   "/usr/local/bin/guest-mock-codex"
   "/sbin/guest-reseed"
+  "/sbin/guest-write-file"
 )
 if [[ "$MODE" == "rootfs" ]]; then
   # Check guest binaries

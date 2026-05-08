@@ -71,6 +71,8 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/internal/event-consumers/telegram-typing/route.ts",
   "app/api/internal/event-consumers/voice-chat-candidate/route.ts",
   "app/api/internal/event-consumers/voice-chat/route.ts",
+  "app/api/internal/voice-chat/relay/[id]/items/route.ts",
+  "app/api/internal/voice-chat/relay/[id]/tasks/route.ts",
   "app/api/logs/search/route.ts",
   "app/api/runners/heartbeat/route.ts",
   "app/api/runners/jobs/[id]/claim/route.ts",

@@ -7,5 +7,12 @@ edition.workspace = true
 libc.workspace = true
 vsock-proto.workspace = true
 
+[features]
+# Enables local integration-test hooks. Do not enable for production guest binaries.
+test-support = []
+
+[dev-dependencies]
+tempfile.workspace = true
+
 [lints]
 workspace = true

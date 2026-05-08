@@ -2,17 +2,12 @@ import { NextResponse, after } from "next/server";
 import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getVoiceChatSession } from "../../../../../../src/lib/zero/voice-chat/session-service";
-import { readVoiceChatItems } from "../../../../../../src/lib/zero/voice-chat/item-service";
 import {
   createVoiceChatTask,
-  listSessionTasks,
   listSessionTasksForCard,
 } from "../../../../../../src/lib/zero/voice-chat/task-service";
-import { buildSlowBrainAppendSystemPrompt } from "../../../../../../src/lib/zero/voice-chat/build-slow-brain-prompt";
-import {
-  resolveAgentSystemPrompt,
-  triggerReasoning,
-} from "../../../../../../src/lib/zero/voice-chat/trigger-reasoning";
+import { buildVoiceChatTaskAppendSystemPrompt } from "../../../../../../src/lib/zero/voice-chat/build-voice-chat-task-context";
+import { triggerReasoning } from "../../../../../../src/lib/zero/voice-chat/trigger-reasoning";
 import { adaptVoiceChatTaskTrigger } from "../../../../../../src/lib/zero/voice-chat/adapt-task-trigger";
 import { publishUserSignal } from "../../../../../../src/lib/infra/realtime/client";
 import { createZeroRun } from "../../../../../../src/lib/zero/zero-run-service";
@@ -69,15 +64,9 @@ export async function POST(
     return badRequestResponse(issue?.message ?? "Invalid request body");
   }
 
-  const [agentSystemPrompt, allItems, sessionTasks] = await Promise.all([
-    resolveAgentSystemPrompt(session.agentId),
-    readVoiceChatItems(id),
-    listSessionTasks(id),
-  ]);
-  const appendSystemPrompt = buildSlowBrainAppendSystemPrompt({
-    agentSystemPrompt,
-    items: allItems,
-    sessionTasks,
+  const appendSystemPrompt = await buildVoiceChatTaskAppendSystemPrompt({
+    sessionId: id,
+    agentId: session.agentId,
   });
 
   const agentId = session.agentId;

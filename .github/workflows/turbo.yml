@@ -1421,7 +1421,7 @@ jobs:
         run: |
           cd crates
           cargo build --release --target "$TARGET_TRIPLE" \
-            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed
+            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-write-file
 
       - name: Cross-compile runner with embedded guests for ARM64
         run: |
@@ -1432,6 +1432,7 @@ jobs:
           GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/release/guest-mock-claude" \
           GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/release/guest-mock-codex" \
           GUEST_RESEED_PATH="target/$TARGET_TRIPLE/release/guest-reseed" \
+          GUEST_WRITE_FILE_PATH="target/$TARGET_TRIPLE/release/guest-write-file" \
           cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
 
       - name: Setup SSH via Cloudflare Tunnel
@@ -1541,6 +1542,31 @@ jobs:
             local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
             local REMOTE="${METAL_USER}@${HOST}"
             echo "=== Preparing ${HOST} (runner: ${RUNNER_NAME}) ==="
+
+            # Stop the old service before deleting its runner directory. A live
+            # runner can keep claiming jobs after its base_dir disappears.
+            if ! ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${RUNNER_NAME}" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          BIN_DIR=$1
+          RUNNER_NAME=$2
+          UNIT="vm0-runner-${RUNNER_NAME}.service"
+
+          if [ -x "${BIN_DIR}/runner" ]; then
+            sudo "${BIN_DIR}/runner" service stop --name "${RUNNER_NAME}" --force
+          else
+            sudo systemctl stop "${UNIT}" 2>/dev/null || true
+          fi
+
+          if sudo systemctl is-active --quiet "${UNIT}" 2>/dev/null; then
+            echo "runner service ${UNIT} is still active after stop" >&2
+            exit 1
+          fi
+
+          sudo systemctl reset-failed "${UNIT}" 2>/dev/null || true
+          REMOTE_SCRIPT
+            then
+              return 1
+            fi
 
             # Clean previous run artifacts and upload runner (guests are embedded)
             # shellcheck disable=SC2029

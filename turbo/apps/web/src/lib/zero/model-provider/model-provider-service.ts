@@ -16,7 +16,6 @@ import { encryptSecretValue } from "../../shared/crypto";
 import { badRequest, notFound } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
-import type { Database } from "../../../types/global";
 
 const log = logger("service:model-provider");
 
@@ -154,19 +153,6 @@ function toModelProviderInfo(params: {
     createdAt: params.createdAt,
     updatedAt: params.updatedAt,
   };
-}
-
-/**
- * Get all provider types that belong to a given framework.
- *
- * Accepts `string` rather than `ModelProviderFramework` so callers that derive
- * the framework from a compose document (codex, claude-code, …) can filter
- * without first widening the registry's enum.
- */
-function getTypesForFramework(framework: string): string[] {
-  return Object.keys(MODEL_PROVIDER_TYPES).filter((t) => {
-    return getFrameworkForType(t as ModelProviderType) === framework;
-  });
 }
 
 /**
@@ -1261,43 +1247,6 @@ export function getOrgDefaultModelProvider(
 }
 
 /**
- * Get the org-level default model provider type for run-policy checks.
- *
- * Filters by framework so a claude-code default does not satisfy a codex run
- * (and vice versa) — without this filter, admission checks would pass for
- * cross-framework configurations and fail later at provider-resolution time
- * with a worse error.
- *
- * Accepts a db handle so callers inside queue-drain transactions can keep
- * the read in the same boundary.
- */
-export async function getOrgDefaultModelProviderType(
-  orgId: string,
-  framework: string,
-  db: Database = globalThis.services.db,
-): Promise<string | null> {
-  const frameworkTypes = getTypesForFramework(framework);
-  if (frameworkTypes.length === 0) {
-    return null;
-  }
-
-  const [row] = await db
-    .select({ type: modelProviders.type })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        eq(modelProviders.isDefault, true),
-        inArray(modelProviders.type, frameworkTypes),
-      ),
-    )
-    .limit(1);
-
-  return row?.type ?? null;
-}
-
-/**
  * Get the org-level default model provider regardless of framework.
  *
  * Used as the cross-framework fallback by admission (Stage B) when
@@ -1313,30 +1262,6 @@ export function getOrgAnyDefaultModelProvider(
   orgId: string,
 ): Promise<ModelProviderInfo | null> {
   return getAnyDefaultModelProvider(orgId, ORG_SENTINEL_USER_ID);
-}
-
-/**
- * Type-only variant of `getOrgAnyDefaultModelProvider`, mirroring the shape
- * of `getOrgDefaultModelProviderType`. Accepts a db handle so callers inside
- * queue-drain transactions can keep the read in the same boundary.
- */
-export async function getOrgAnyDefaultModelProviderType(
-  orgId: string,
-  db: Database = globalThis.services.db,
-): Promise<string | null> {
-  const [row] = await db
-    .select({ type: modelProviders.type })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        eq(modelProviders.isDefault, true),
-      ),
-    )
-    .limit(1);
-
-  return row?.type ?? null;
 }
 
 /**

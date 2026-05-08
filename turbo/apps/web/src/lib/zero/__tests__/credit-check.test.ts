@@ -424,6 +424,14 @@ describe("checkOrgCredits (general vm0 credit gate)", () => {
     });
   });
 
+  it("throws when spendable balance is negative", async () => {
+    await setOrgCredits(user.orgId, -5);
+
+    await expectInsufficientCredits(() => {
+      return checkOrgCredits(user.orgId, user.userId);
+    });
+  });
+
   it("throws with preloaded credits when member creditEnabled is false", async () => {
     await insertOrgMembersEntry({
       orgId: user.orgId,
@@ -484,6 +492,17 @@ describe("checkOrgCreditsForRunAdmission (resolved provider LLM wrapper)", () =>
 
   it("returns OK when resolved provider is non-vm0", async () => {
     await setOrgCredits(user.orgId, 0);
+    await expect(
+      checkOrgCreditsForRunAdmission({
+        orgId: user.orgId,
+        userId: user.userId,
+        providerType: "anthropic-api-key",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("returns OK when resolved provider is non-vm0 even with negative credits", async () => {
+    await setOrgCredits(user.orgId, -5);
     await expect(
       checkOrgCreditsForRunAdmission({
         orgId: user.orgId,

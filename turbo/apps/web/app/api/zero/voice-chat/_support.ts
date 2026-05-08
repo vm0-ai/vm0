@@ -163,9 +163,9 @@ export function notFoundResponse(message: string): Response {
   );
 }
 
-export function badRequestResponse(message: string): Response {
-  return NextResponse.json(
-    { error: { message, code: "BAD_REQUEST" } },
-    { status: 400 },
-  );
+export function badRequestResponse(
+  message: string,
+  code: string = "BAD_REQUEST",
+): Response {
+  return NextResponse.json({ error: { message, code } }, { status: 400 });
 }

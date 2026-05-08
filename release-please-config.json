@@ -69,6 +69,9 @@
         "crates/guest-reseed": {
             "release-type": "rust"
         },
+        "crates/guest-write-file": {
+            "release-type": "rust"
+        },
         "crates/runner": {
             "release-type": "rust",
             "component": "runner-rs"

@@ -1186,15 +1186,6 @@ async fn restore_claude_session(
     let session_dir = format!("/home/user/.claude/projects/-{project_name}");
     let session_path = format!("{session_dir}/{}.jsonl", session.session_id);
 
-    let mkdir_cmd = format!("mkdir -p '{}'", session_dir.replace('\'', "'\\''"));
-    sandbox
-        .exec(&ExecRequest {
-            cmd: &mkdir_cmd,
-            timeout: DEFAULT_EXEC_TIMEOUT,
-            env: &[],
-            sudo: false,
-        })
-        .await?;
     sandbox
         .write_file(&session_path, session.session_history.as_bytes())
         .await?;
@@ -1223,16 +1214,6 @@ async fn restore_codex_session(
         today.format("%d"),
     );
     let session_path = format!("{session_dir}/{}.jsonl", session.session_id);
-
-    let mkdir_cmd = format!("mkdir -p '{}'", session_dir.replace('\'', "'\\''"));
-    sandbox
-        .exec(&ExecRequest {
-            cmd: &mkdir_cmd,
-            timeout: DEFAULT_EXEC_TIMEOUT,
-            env: &[],
-            sudo: false,
-        })
-        .await?;
 
     sandbox
         .write_file(&session_path, session.session_history.as_bytes())
@@ -2423,7 +2404,6 @@ mod tests {
             session_id: "sess-abc-123".into(),
             session_history: r#"{"type":"init"}"#.into(),
         };
-        // mkdir exec + write_file — both succeed by default.
         restore_session(&sandbox, &ctx, &session).await.unwrap();
     }
 
@@ -2477,7 +2457,6 @@ mod tests {
             session_id: "01jzm-thread-id".into(),
             session_history: "{\"type\":\"thread.started\"}\n".into(),
         };
-        // mkdir exec + write_file — both succeed by default.
         restore_session(&sandbox, &ctx, &session).await.unwrap();
         let writes = sandbox.write_file_calls();
         assert_eq!(writes.len(), 1);
@@ -2685,24 +2664,9 @@ mod tests {
             session_id: "sess-abc".into(),
             session_history: r#"{"type":"init"}"#.into(),
         };
-        // First exec (mkdir) succeeds by default, write_file fails.
         sandbox.push_write_file_result(Err(sandbox_write_file_error("disk full")));
         let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
         assert!(err.to_string().contains("disk full"), "got: {err}");
-    }
-
-    #[tokio::test]
-    async fn restore_session_fails_on_mkdir_exec_error() {
-        let sandbox = MockSandbox::new("test");
-        let ctx = minimal_context();
-        let session = ResumeSession {
-            session_id: "sess-abc".into(),
-            session_history: "data".into(),
-        };
-        // mkdir exec fails
-        sandbox.push_exec_result(Err(sandbox_exec_error("vsock down")));
-        let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
-        assert!(err.to_string().contains("vsock down"), "got: {err}");
     }
 
     // -----------------------------------------------------------------------
@@ -3285,8 +3249,8 @@ mod tests {
         let config = test_executor_config(dir.path()).await;
 
         let sandbox = MockSandbox::new("reuse-session-fail");
-        // clock fix and reseed succeed (default), then mkdir exec succeeds,
-        // but write_file for session history fails.
+        // clock fix and reseed succeed (default), but write_file for session
+        // history fails.
         sandbox.push_write_file_result(Err(sandbox_write_file_error("disk full")));
 
         let mut ctx = minimal_context();

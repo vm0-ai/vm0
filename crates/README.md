@@ -21,6 +21,7 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 | **guest-mock-claude** | Mock Claude CLI for testing — executes bash commands and outputs Claude-compatible JSONL |
 | **guest-mock-codex** | Mock Codex CLI for testing — emits Codex JSONL protocol on stdout and persists zstd-compressed session files |
 | **guest-reseed** | Entropy reseed after snapshot restore — injects host entropy via RNDADDENTROPY and forces CRNG reseed via RNDRESEEDCRNG |
+| **guest-write-file** | Direct file writer for vsock `write_file` — writes stdin to guest files without shell startup overhead |
 | **ably-subscriber** | Ably Pub/Sub subscribe-only realtime client — WebSocket/MessagePack protocol with token auth and automatic reconnection |
 
 ## Architecture
@@ -68,7 +69,7 @@ cargo build --release
 # Cross-compile for aarch64 (production target)
 # Step 1: build guest binaries
 cargo build --target aarch64-unknown-linux-musl \
-  -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed \
+  -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-write-file \
   --release
 
 # Step 2: build runner with embedded guests
@@ -78,6 +79,7 @@ GUEST_INIT_PATH=target/aarch64-unknown-linux-musl/release/guest-init \
 GUEST_MOCK_CLAUDE_PATH=target/aarch64-unknown-linux-musl/release/guest-mock-claude \
 GUEST_MOCK_CODEX_PATH=target/aarch64-unknown-linux-musl/release/guest-mock-codex \
 GUEST_RESEED_PATH=target/aarch64-unknown-linux-musl/release/guest-reseed \
+GUEST_WRITE_FILE_PATH=target/aarch64-unknown-linux-musl/release/guest-write-file \
 cargo build --target aarch64-unknown-linux-musl -p runner --release
 ```
 

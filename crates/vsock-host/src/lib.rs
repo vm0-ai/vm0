@@ -159,6 +159,63 @@ impl Drop for PendingStdoutGuard {
     }
 }
 
+struct ChunkedWriteCleanupGuard {
+    shared: Option<Arc<Shared>>,
+    command: String,
+    sudo: bool,
+}
+
+impl ChunkedWriteCleanupGuard {
+    fn new(shared: Arc<Shared>, command: String, sudo: bool) -> Self {
+        Self {
+            shared: Some(shared),
+            command,
+            sudo,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.shared = None;
+    }
+
+    async fn cleanup_now(&mut self) {
+        if let Some(shared) = self.shared.as_ref() {
+            let _ = exec_cleanup_on_shared(
+                shared,
+                &self.command,
+                VsockHost::CLEANUP_EXEC_TIMEOUT_MS,
+                &[],
+                self.sudo,
+            )
+            .await;
+        }
+        self.disarm();
+    }
+}
+
+impl Drop for ChunkedWriteCleanupGuard {
+    fn drop(&mut self) {
+        let Some(shared) = self.shared.take() else {
+            return;
+        };
+
+        let command = std::mem::take(&mut self.command);
+        let sudo = self.sudo;
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let _ = exec_cleanup_on_shared(
+                    &shared,
+                    &command,
+                    VsockHost::CLEANUP_EXEC_TIMEOUT_MS,
+                    &[],
+                    sudo,
+                )
+                .await;
+            });
+        }
+    }
+}
+
 impl Shared {
     /// Get next sequence number, skipping 0 (reserved for unsolicited messages).
     fn next_seq(&self) -> u32 {
@@ -367,6 +424,145 @@ async fn reader_loop(
     shared.close();
 }
 
+/// Send a request and wait for a response with matching sequence number.
+async fn request_on_shared(
+    shared: &Arc<Shared>,
+    msg_type: u8,
+    payload: &[u8],
+    timeout: Duration,
+) -> io::Result<RawMessage> {
+    let seq = shared.next_seq();
+    request_raw_on_shared(shared, msg_type, seq, payload, timeout).await
+}
+
+/// Send a request with a pre-allocated sequence number.
+async fn request_raw_on_shared(
+    shared: &Arc<Shared>,
+    msg_type: u8,
+    seq: u32,
+    payload: &[u8],
+    timeout: Duration,
+) -> io::Result<RawMessage> {
+    let data = vsock_proto::encode(msg_type, seq, payload)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+
+    // Register under the state lock: `Closed` short-circuits to an
+    // immediate error, and insertion into `pending` is serialised with
+    // the `Connected -> Closed` transition in `close()`. There is no
+    // post-write `is_closed` check because close is observed via the
+    // oneshot receiver becoming `Closed` when `close()` drops the map.
+    let (tx, rx) = oneshot::channel();
+    {
+        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        match &mut *guard {
+            ConnectionState::Closed { .. } => {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "connection closed",
+                ));
+            }
+            ConnectionState::Connected { pending, .. } => {
+                pending.insert(seq, tx);
+            }
+        }
+    }
+    let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
+
+    // The guard removes the pending entry on write failure, timeout, or
+    // cancellation before reader_loop dispatches a response.
+    shared.writer.lock().await.write_all(&data).await?;
+
+    // `rx` returns `Ok(msg)` when the reader dispatches a response and
+    // `Err(RecvError)` when `close()` drops the `Connected` variant. The
+    // timeout arm is the only other way out.
+    tokio::select! {
+        biased;
+        result = rx => {
+            result.map_err(|_| io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "connection closed",
+            ))
+        }
+        _ = tokio::time::sleep(timeout) => {
+            Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"))
+        }
+    }
+}
+
+async fn exec_on_shared(
+    shared: &Arc<Shared>,
+    command: &str,
+    timeout_ms: u32,
+    env: &[(&str, &str)],
+    sudo: bool,
+) -> io::Result<ExecResult> {
+    let request_timeout = Duration::from_millis(timeout_ms as u64 + 5000);
+    exec_on_shared_with_request_timeout(shared, command, timeout_ms, env, sudo, request_timeout)
+        .await
+}
+
+async fn exec_cleanup_on_shared(
+    shared: &Arc<Shared>,
+    command: &str,
+    timeout_ms: u32,
+    env: &[(&str, &str)],
+    sudo: bool,
+) -> io::Result<ExecResult> {
+    exec_on_shared_with_request_timeout(
+        shared,
+        command,
+        timeout_ms,
+        env,
+        sudo,
+        Duration::from_millis(timeout_ms as u64),
+    )
+    .await
+}
+
+async fn exec_on_shared_with_request_timeout(
+    shared: &Arc<Shared>,
+    command: &str,
+    timeout_ms: u32,
+    env: &[(&str, &str)],
+    sudo: bool,
+    request_timeout: Duration,
+) -> io::Result<ExecResult> {
+    if timeout_ms == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "exec requires a positive timeout; use spawn_watch for unbounded commands",
+        ));
+    }
+    let payload = vsock_proto::encode_exec(timeout_ms, command, env, sudo);
+    let resp = request_on_shared(shared, MSG_EXEC, &payload, request_timeout).await?;
+
+    if resp.msg_type == MSG_ERROR {
+        let msg = vsock_proto::decode_error(&resp.payload)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        return Ok(ExecResult {
+            exit_code: 1,
+            stdout: Vec::new(),
+            stderr: msg.as_bytes().to_vec(),
+        });
+    }
+
+    if resp.msg_type != MSG_EXEC_RESULT {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("unexpected response type: 0x{:02X}", resp.msg_type),
+        ));
+    }
+
+    let (exit_code, stdout, stderr) = vsock_proto::decode_exec_result(&resp.payload)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+
+    Ok(ExecResult {
+        exit_code,
+        stdout: stdout.to_vec(),
+        stderr: stderr.to_vec(),
+    })
+}
+
 impl VsockHost {
     /// Wait for a guest to connect on the vsock UDS path.
     ///
@@ -510,8 +706,7 @@ impl VsockHost {
         payload: &[u8],
         timeout: Duration,
     ) -> io::Result<RawMessage> {
-        let seq = self.shared.next_seq();
-        self.request_raw(msg_type, seq, payload, timeout).await
+        request_on_shared(&self.shared, msg_type, payload, timeout).await
     }
 
     /// Send a request with a pre-allocated sequence number.
@@ -525,50 +720,7 @@ impl VsockHost {
         payload: &[u8],
         timeout: Duration,
     ) -> io::Result<RawMessage> {
-        let data = vsock_proto::encode(msg_type, seq, payload)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
-
-        // Register under the state lock: `Closed` short-circuits to an
-        // immediate error, and insertion into `pending` is serialised with
-        // the `Connected → Closed` transition in `close()`. There is no
-        // post-write `is_closed` check because close is observed via the
-        // oneshot receiver becoming `Closed` when `close()` drops the map.
-        let (tx, rx) = oneshot::channel();
-        {
-            let mut guard = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
-            match &mut *guard {
-                ConnectionState::Closed { .. } => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::ConnectionReset,
-                        "connection closed",
-                    ));
-                }
-                ConnectionState::Connected { pending, .. } => {
-                    pending.insert(seq, tx);
-                }
-            }
-        }
-        let _pending_guard = PendingRequestGuard::new(Arc::clone(&self.shared), seq);
-
-        // The guard removes the pending entry on write failure, timeout, or
-        // cancellation before reader_loop dispatches a response.
-        self.shared.writer.lock().await.write_all(&data).await?;
-
-        // `rx` returns `Ok(msg)` when the reader dispatches a response and
-        // `Err(RecvError)` when `close()` drops the `Connected` variant. The
-        // timeout arm is the only other way out.
-        tokio::select! {
-            biased;
-            result = rx => {
-                result.map_err(|_| io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "connection closed",
-                ))
-            }
-            _ = tokio::time::sleep(timeout) => {
-                Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"))
-            }
-        }
+        request_raw_on_shared(&self.shared, msg_type, seq, payload, timeout).await
     }
 
     /// Execute a command on the guest.
@@ -584,42 +736,7 @@ impl VsockHost {
         env: &[(&str, &str)],
         sudo: bool,
     ) -> io::Result<ExecResult> {
-        if timeout_ms == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "exec requires a positive timeout; use spawn_watch for unbounded commands",
-            ));
-        }
-        let payload = vsock_proto::encode_exec(timeout_ms, command, env, sudo);
-        // Add 5s buffer for network latency
-        let timeout = Duration::from_millis(timeout_ms as u64 + 5000);
-        let resp = self.request(MSG_EXEC, &payload, timeout).await?;
-
-        if resp.msg_type == MSG_ERROR {
-            let msg = vsock_proto::decode_error(&resp.payload)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-            return Ok(ExecResult {
-                exit_code: 1,
-                stdout: Vec::new(),
-                stderr: msg.as_bytes().to_vec(),
-            });
-        }
-
-        if resp.msg_type != MSG_EXEC_RESULT {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("unexpected response type: 0x{:02X}", resp.msg_type),
-            ));
-        }
-
-        let (exit_code, stdout, stderr) = vsock_proto::decode_exec_result(&resp.payload)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-
-        Ok(ExecResult {
-            exit_code,
-            stdout: stdout.to_vec(),
-            stderr: stderr.to_vec(),
-        })
+        exec_on_shared(&self.shared, command, timeout_ms, env, sudo).await
     }
 
     /// Maximum content per write_file message.  Leaves headroom below
@@ -640,15 +757,21 @@ impl VsockHost {
     /// to a temporary file and atomically renamed to the target path after
     /// the last chunk succeeds, so a partial transfer never leaves a
     /// truncated file at the destination.
+    ///
+    /// Non-sudo writes create missing parent directories on the guest.
     pub async fn write_file(&self, path: &str, content: &[u8], sudo: bool) -> io::Result<()> {
         if content.len() <= Self::WRITE_FILE_CHUNK_LIMIT {
             return self.write_file_chunk(path, content, sudo, false).await;
         }
 
-        // Write chunks to a temp file, then atomic rename.
-        let tmp = format!("{path}.vm0tmp");
+        // Write chunks to a per-call temp file, then atomic rename. The
+        // suffix prevents concurrent large writes to the same destination
+        // from appending to or cleaning up each other's staging file.
+        let tmp = format!("{path}.vm0tmp-{}", self.shared.next_seq());
         let escaped_tmp = tmp.replace('\'', "'\\''");
-        let rm_tmp = format!("rm -f '{escaped_tmp}'");
+        let rm_tmp = format!("rm -f -- '{escaped_tmp}'");
+        let mut cleanup_guard =
+            ChunkedWriteCleanupGuard::new(Arc::clone(&self.shared), rm_tmp, sudo);
 
         let result = async {
             for (i, chunk) in content.chunks(Self::WRITE_FILE_CHUNK_LIMIT).enumerate() {
@@ -660,24 +783,23 @@ impl VsockHost {
 
         if result.is_err() {
             // Best-effort cleanup of the temp file.
-            let _ = self
-                .exec(&rm_tmp, Self::CLEANUP_EXEC_TIMEOUT_MS, &[], sudo)
-                .await;
+            cleanup_guard.cleanup_now().await;
             return result;
         }
 
         // Atomic rename temp → target.
         let escaped_path = path.replace('\'', "'\\''");
-        let mv_cmd = format!("mv -f '{escaped_tmp}' '{escaped_path}'");
+        let mv_cmd = format!("mv -f -- '{escaped_tmp}' '{escaped_path}'");
         match self
             .exec(&mv_cmd, Self::HELPER_EXEC_TIMEOUT_MS, &[], sudo)
             .await
         {
-            Ok(r) if r.exit_code == 0 => Ok(()),
+            Ok(r) if r.exit_code == 0 => {
+                cleanup_guard.disarm();
+                Ok(())
+            }
             Ok(r) => {
-                let _ = self
-                    .exec(&rm_tmp, Self::CLEANUP_EXEC_TIMEOUT_MS, &[], sudo)
-                    .await;
+                cleanup_guard.cleanup_now().await;
                 Err(io::Error::other(format!(
                     "failed to rename temp file to {path}: {}",
                     String::from_utf8_lossy(&r.stderr),
@@ -685,9 +807,7 @@ impl VsockHost {
             }
             Err(e) => {
                 // Connection likely broken — short timeout to avoid blocking.
-                let _ = self
-                    .exec(&rm_tmp, Self::CLEANUP_EXEC_TIMEOUT_MS, &[], sudo)
-                    .await;
+                cleanup_guard.cleanup_now().await;
                 Err(e)
             }
         }
@@ -1113,6 +1233,7 @@ mod tests {
             mock_handshake(&mut guest, &mut decoder).await;
 
             let mut chunks_received = Vec::new();
+            let mut temp_path = None::<String>;
             let mut buf = vec![0u8; chunk_limit + 4096];
 
             // Read write_file chunks + final exec (mv) message
@@ -1127,7 +1248,12 @@ mod tests {
                         let (path, chunk, _sudo, append) =
                             vsock_proto::decode_write_file(&msg.payload).unwrap();
                         // Chunks go to temp file
-                        assert_eq!(path, "/tmp/big.bin.vm0tmp");
+                        if let Some(temp_path) = &temp_path {
+                            assert_eq!(path, temp_path);
+                        } else {
+                            assert!(path.starts_with("/tmp/big.bin.vm0tmp-"));
+                            temp_path = Some(path.to_string());
+                        }
                         chunks_received.push((append, chunk.to_vec()));
 
                         let payload = vsock_proto::encode_write_file_result(true, "");
@@ -1137,8 +1263,9 @@ mod tests {
                     } else if msg.msg_type == MSG_EXEC {
                         // Atomic rename: mv temp → target
                         let decoded = vsock_proto::decode_exec(&msg.payload).unwrap();
-                        assert!(decoded.command.contains("mv -f"));
-                        assert!(decoded.command.contains("/tmp/big.bin.vm0tmp"));
+                        let temp_path = temp_path.as_ref().expect("temp path");
+                        assert!(decoded.command.contains("mv -f --"));
+                        assert!(decoded.command.contains(temp_path));
                         assert!(decoded.command.contains("/tmp/big.bin"));
 
                         let payload = vsock_proto::encode_exec_result(0, &[], &[]);
@@ -1167,6 +1294,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_write_file_at_chunk_limit_uses_single_message() {
+        let (host_stream, mut guest) = make_pair();
+
+        let chunk_limit = VsockHost::WRITE_FILE_CHUNK_LIMIT;
+        let content = vec![0xABu8; chunk_limit];
+        let content_clone = content.clone();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = vec![0u8; chunk_limit + 4096];
+            let mut msgs = Vec::new();
+            while msgs.is_empty() {
+                let n = guest.read(&mut buf).await.unwrap();
+                assert_ne!(n, 0, "connection closed before write_file message");
+                msgs.extend(decoder.decode(&buf[..n]).unwrap());
+            }
+            assert_eq!(msgs.len(), 1);
+            assert_eq!(msgs[0].msg_type, MSG_WRITE_FILE);
+
+            let (path, chunk, _sudo, append) =
+                vsock_proto::decode_write_file(&msgs[0].payload).unwrap();
+            assert_eq!(path, "/tmp/exact-limit.bin");
+            assert_eq!(chunk, content_clone);
+            assert!(!append);
+
+            let payload = vsock_proto::encode_write_file_result(true, "");
+            let resp = vsock_proto::encode(MSG_WRITE_FILE_RESULT, msgs[0].seq, &payload).unwrap();
+            guest.write_all(&resp).await.unwrap();
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        host.write_file("/tmp/exact-limit.bin", &content, false)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
     async fn test_write_file_chunked_cleans_up_on_chunk_failure() {
         let (host_stream, mut guest) = make_pair();
 
@@ -1179,6 +1345,7 @@ mod tests {
 
             let mut buf = vec![0u8; chunk_limit + 4096];
             let mut chunk_count = 0u32;
+            let mut temp_path = None::<String>;
             loop {
                 let n = guest.read(&mut buf).await.unwrap();
                 if n == 0 {
@@ -1188,6 +1355,14 @@ mod tests {
                 for msg in msgs {
                     if msg.msg_type == MSG_WRITE_FILE {
                         chunk_count += 1;
+                        let (path, _chunk, _sudo, _append) =
+                            vsock_proto::decode_write_file(&msg.payload).unwrap();
+                        if let Some(temp_path) = &temp_path {
+                            assert_eq!(path, temp_path);
+                        } else {
+                            assert!(path.starts_with("/tmp/big.bin.vm0tmp-"));
+                            temp_path = Some(path.to_string());
+                        }
                         let (success, err) = if chunk_count == 2 {
                             (false, "disk full")
                         } else {
@@ -1200,7 +1375,9 @@ mod tests {
                     } else if msg.msg_type == MSG_EXEC {
                         // Cleanup: rm -f temp file
                         let decoded = vsock_proto::decode_exec(&msg.payload).unwrap();
-                        assert!(decoded.command.contains("rm -f"));
+                        let temp_path = temp_path.as_ref().expect("temp path");
+                        assert!(decoded.command.contains("rm -f --"));
+                        assert!(decoded.command.contains(temp_path));
                         let payload = vsock_proto::encode_exec_result(0, &[], &[]);
                         let resp = vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &payload).unwrap();
                         guest.write_all(&resp).await.unwrap();
@@ -1231,6 +1408,7 @@ mod tests {
 
             let mut buf = vec![0u8; chunk_limit + 4096];
             let mut exec_count = 0u32;
+            let mut temp_path = None::<String>;
             loop {
                 let n = guest.read(&mut buf).await.unwrap();
                 if n == 0 {
@@ -1239,6 +1417,14 @@ mod tests {
                 let msgs = decoder.decode(&buf[..n]).unwrap();
                 for msg in msgs {
                     if msg.msg_type == MSG_WRITE_FILE {
+                        let (path, _chunk, _sudo, _append) =
+                            vsock_proto::decode_write_file(&msg.payload).unwrap();
+                        if let Some(temp_path) = &temp_path {
+                            assert_eq!(path, temp_path);
+                        } else {
+                            assert!(path.starts_with("/tmp/big.bin.vm0tmp-"));
+                            temp_path = Some(path.to_string());
+                        }
                         let payload = vsock_proto::encode_write_file_result(true, "");
                         let resp =
                             vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload).unwrap();
@@ -1246,8 +1432,10 @@ mod tests {
                     } else if msg.msg_type == MSG_EXEC {
                         exec_count += 1;
                         let decoded = vsock_proto::decode_exec(&msg.payload).unwrap();
-                        if decoded.command.contains("mv -f") {
+                        let temp_path = temp_path.as_ref().expect("temp path");
+                        if decoded.command.contains("mv -f --") {
                             // mv fails
+                            assert!(decoded.command.contains(temp_path));
                             let payload =
                                 vsock_proto::encode_exec_result(1, &[], b"permission denied");
                             let resp =
@@ -1255,7 +1443,8 @@ mod tests {
                             guest.write_all(&resp).await.unwrap();
                         } else {
                             // cleanup rm
-                            assert!(decoded.command.contains("rm -f"));
+                            assert!(decoded.command.contains("rm -f --"));
+                            assert!(decoded.command.contains(temp_path));
                             let payload = vsock_proto::encode_exec_result(0, &[], &[]);
                             let resp =
                                 vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &payload).unwrap();
@@ -1274,6 +1463,80 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("permission denied"));
+    }
+
+    #[tokio::test]
+    async fn test_write_file_chunked_cleans_up_when_cancelled() {
+        let (host_stream, mut guest) = make_pair();
+
+        let chunk_limit = VsockHost::WRITE_FILE_CHUNK_LIMIT;
+        let content = vec![0xABu8; chunk_limit + 100];
+        let (first_chunk_tx, first_chunk_rx) = oneshot::channel::<()>();
+        let (cleanup_tx, cleanup_rx) = oneshot::channel::<String>();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = vec![0u8; chunk_limit + 4096];
+            let mut temp_path = None::<String>;
+            let mut first_chunk_tx = Some(first_chunk_tx);
+            let mut cleanup_tx = Some(cleanup_tx);
+
+            loop {
+                let n = guest.read(&mut buf).await.unwrap();
+                if n == 0 {
+                    break;
+                }
+                let msgs = decoder.decode(&buf[..n]).unwrap();
+                for msg in msgs {
+                    if msg.msg_type == MSG_WRITE_FILE {
+                        let (path, _chunk, _sudo, _append) =
+                            vsock_proto::decode_write_file(&msg.payload).unwrap();
+                        if let Some(temp_path) = &temp_path {
+                            assert_eq!(path, temp_path);
+                            continue;
+                        }
+
+                        assert!(path.starts_with("/tmp/big.bin.vm0tmp-"));
+                        temp_path = Some(path.to_string());
+                        let payload = vsock_proto::encode_write_file_result(true, "");
+                        let resp =
+                            vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload).unwrap();
+                        guest.write_all(&resp).await.unwrap();
+                        if let Some(tx) = first_chunk_tx.take() {
+                            let _ = tx.send(());
+                        }
+                    } else if msg.msg_type == MSG_EXEC {
+                        let decoded = vsock_proto::decode_exec(&msg.payload).unwrap();
+                        let temp_path = temp_path.as_ref().expect("temp path");
+                        assert!(decoded.command.contains("rm -f --"));
+                        assert!(decoded.command.contains(temp_path));
+                        if let Some(tx) = cleanup_tx.take() {
+                            let _ = tx.send(decoded.command.to_string());
+                        }
+                        let payload = vsock_proto::encode_exec_result(0, &[], &[]);
+                        let resp = vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &payload).unwrap();
+                        guest.write_all(&resp).await.unwrap();
+                        return;
+                    }
+                }
+            }
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let mut write = Box::pin(host.write_file("/tmp/big.bin", &content, false));
+        tokio::select! {
+            _ = &mut write => panic!("chunked write completed before cancellation"),
+            result = first_chunk_rx => result.unwrap(),
+        }
+        drop(write);
+
+        let cleanup_command = tokio::time::timeout(Duration::from_secs(2), cleanup_rx)
+            .await
+            .expect("cleanup command was not sent after cancellation")
+            .expect("cleanup sender dropped");
+        assert!(cleanup_command.contains("rm -f --"));
     }
 
     #[tokio::test]
