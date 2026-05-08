@@ -391,11 +391,21 @@ fn create_env_script_in_dir(
             Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
             Err(e) => return Err(e),
         }
-        fs::set_permissions(&script_dir, fs::Permissions::from_mode(0o700))?;
 
         let path = script_dir.join(format!("run{ENV_SCRIPT_SUFFIX}"));
-        let script = build_env_script_content(&script_dir, &path, command, env)?;
         let mut guard = EnvScriptGuard::new(path.clone(), script_dir.clone());
+        if let Err(e) = fs::set_permissions(&script_dir, fs::Permissions::from_mode(0o700)) {
+            guard.cleanup();
+            return Err(e);
+        }
+
+        let script = match build_env_script_content(&script_dir, &path, command, env) {
+            Ok(script) => script,
+            Err(e) => {
+                guard.cleanup();
+                return Err(e);
+            }
+        };
 
         let mut options = OpenOptions::new();
         options
@@ -405,8 +415,14 @@ fn create_env_script_in_dir(
             .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
         let mut file = match options.open(&path) {
             Ok(file) => file,
-            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(e) => return Err(e),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                guard.cleanup();
+                continue;
+            }
+            Err(e) => {
+                guard.cleanup();
+                return Err(e);
+            }
         };
 
         let result = (|| -> io::Result<()> {
@@ -638,6 +654,25 @@ mod tests {
         );
         assert!(!err.to_string().contains("before"));
         assert!(!err.to_string().contains("after"));
+    }
+
+    #[test]
+    fn create_env_script_cleans_dir_on_script_build_failure() {
+        let (dir, _guard) = temp_dir("build-failure-cleanup");
+        let err = match create_env_script_in_dir(&dir, "echo hi", &[("BAD;KEY", "x")], true) {
+            Ok(_) => panic!("invalid env key unexpectedly created an env script"),
+            Err(err) => err,
+        };
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        let entries = std::fs::read_dir(&dir)
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert!(
+            entries.is_empty(),
+            "env script entries leaked after build failure: {entries:?}"
+        );
     }
 
     #[test]
