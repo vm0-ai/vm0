@@ -201,7 +201,7 @@ fn binary_writes_system_log_to_guest_common_default_path() {
     let run_id = unique_run_id("success");
     let system_log = format!("/tmp/vm0-system-{run_id}.log");
     let ops_log = format!("/tmp/vm0-sandbox-ops-{run_id}.jsonl");
-    let _cleanup = RunFileCleanup::new(vec![system_log.clone(), ops_log]);
+    let _cleanup = RunFileCleanup::new(vec![system_log.clone(), ops_log.clone()]);
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
         .arg(&manifest_path)
@@ -224,6 +224,14 @@ fn binary_writes_system_log_to_guest_common_default_path() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("[INFO] [sandbox:download] Download completed"));
+    let ops_content = std::fs::read_to_string(&ops_log).unwrap();
+    let totals: Vec<serde_json::Value> = ops_content
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .filter(|entry: &serde_json::Value| entry["action_type"] == "download_total")
+        .collect();
+    assert_eq!(totals.len(), 1, "unexpected ops log: {ops_content}");
+    assert_eq!(totals[0]["success"], true);
 }
 
 #[test]
@@ -231,7 +239,7 @@ fn binary_writes_system_log_on_manifest_read_failure() {
     let run_id = unique_run_id("missing-manifest");
     let system_log = format!("/tmp/vm0-system-{run_id}.log");
     let ops_log = format!("/tmp/vm0-sandbox-ops-{run_id}.jsonl");
-    let _cleanup = RunFileCleanup::new(vec![system_log.clone(), ops_log]);
+    let _cleanup = RunFileCleanup::new(vec![system_log.clone(), ops_log.clone()]);
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
         .arg("/tmp/nonexistent-guest-download-manifest.json")
@@ -249,6 +257,43 @@ fn binary_writes_system_log_on_manifest_read_failure() {
     assert!(
         content.contains("[ERROR] [sandbox:download] Download failed"),
         "unexpected system log: {content:?}"
+    );
+    let ops_content = std::fs::read_to_string(&ops_log).unwrap();
+    let totals: Vec<serde_json::Value> = ops_content
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .filter(|entry: &serde_json::Value| entry["action_type"] == "download_total")
+        .collect();
+    assert_eq!(totals.len(), 1, "unexpected ops log: {ops_content}");
+    assert_eq!(totals[0]["success"], false);
+}
+
+#[test]
+fn binary_without_manifest_path_logs_usage() {
+    let run_id = unique_run_id("missing-arg");
+    let system_log = format!("/tmp/vm0-system-{run_id}.log");
+    let ops_log = format!("/tmp/vm0-sandbox-ops-{run_id}.jsonl");
+    let _cleanup = RunFileCleanup::new(vec![system_log.clone(), ops_log.clone()]);
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .env("VM0_RUN_ID", &run_id)
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("[ERROR] [sandbox:download] Usage: guest-download <manifest_path>"),
+        "unexpected stderr: {stderr}"
+    );
+    let content = std::fs::read_to_string(&system_log).unwrap();
+    assert!(
+        content.contains("[ERROR] [sandbox:download] Usage: guest-download <manifest_path>"),
+        "unexpected system log: {content:?}"
+    );
+    assert!(
+        !std::path::Path::new(&ops_log).exists(),
+        "usage failure should not record download_total before a run starts"
     );
 }
 
