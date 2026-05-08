@@ -48,6 +48,10 @@ where
     }
 
     let path = path.ok_or_else(|| "missing path".to_string())?;
+    if append && create_parents {
+        return Err("--append and --create-parents cannot be used together".to_string());
+    }
+
     Ok(Args {
         append,
         create_parents,
@@ -149,7 +153,7 @@ where
             let _ = writeln!(stderr, "guest-write-file: {e}");
             let _ = writeln!(
                 stderr,
-                "usage: guest-write-file [--append] [--create-parents] <path>"
+                "usage: guest-write-file [--append | --create-parents] <path>"
             );
             return 2;
         }
@@ -213,5 +217,17 @@ mod tests {
         let err = parse_args(["--unknown".to_string(), "/tmp/a".to_string()]).unwrap_err();
 
         assert!(err.contains("unknown argument"));
+    }
+
+    #[test]
+    fn rejects_append_with_create_parents() {
+        let err = parse_args([
+            "--append".to_string(),
+            "--create-parents".to_string(),
+            "/tmp/a".to_string(),
+        ])
+        .unwrap_err();
+
+        assert!(err.contains("cannot be used together"));
     }
 }

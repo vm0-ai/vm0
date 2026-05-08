@@ -154,6 +154,19 @@ fn append_mode_does_not_create_missing_parents() {
 }
 
 #[test]
+fn append_mode_rejects_create_parents() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("missing/out.txt");
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&["--append", "--create-parents", path_str], b"hello");
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("cannot be used together"));
+    assert!(!path.exists());
+}
+
+#[test]
 fn path_starting_with_dash_is_treated_as_path_after_separator() {
     let dir = tempfile::tempdir().unwrap();
 

@@ -20,12 +20,12 @@ const PASSWD_BUFFER_MAX_LEN: usize = 1024 * 1024;
 static SANDBOX_USER_GID: OnceLock<libc::gid_t> = OnceLock::new();
 
 fn get_exec_user() -> Option<&'static str> {
-    #[cfg(debug_assertions)]
+    #[cfg(any(debug_assertions, feature = "test-support"))]
     {
         None
     }
 
-    #[cfg(not(debug_assertions))]
+    #[cfg(not(any(debug_assertions, feature = "test-support")))]
     {
         // Default user for command execution (UID 1000, matching E2B sandbox)
         Some(SANDBOX_USER)

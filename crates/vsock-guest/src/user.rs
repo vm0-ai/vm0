@@ -1,16 +1,16 @@
 use std::io;
-#[cfg(any(test, not(debug_assertions)))]
+#[cfg(any(test, not(any(debug_assertions, feature = "test-support"))))]
 use std::path::PathBuf;
 use std::process::Command;
-#[cfg(not(debug_assertions))]
+#[cfg(not(any(debug_assertions, feature = "test-support")))]
 use std::sync::OnceLock;
 
-#[cfg(not(debug_assertions))]
+#[cfg(not(any(debug_assertions, feature = "test-support")))]
 const SANDBOX_USER: &str = "user";
-#[cfg(not(debug_assertions))]
+#[cfg(not(any(debug_assertions, feature = "test-support")))]
 static SANDBOX_USER_CREDENTIALS: OnceLock<UserCredentials> = OnceLock::new();
 
-#[cfg(any(test, not(debug_assertions)))]
+#[cfg(any(test, not(any(debug_assertions, feature = "test-support"))))]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct UserCredentials {
     username: String,
@@ -22,16 +22,16 @@ pub(crate) struct UserCredentials {
 
 enum TargetIdentity {
     Current,
-    #[cfg(not(debug_assertions))]
+    #[cfg(not(any(debug_assertions, feature = "test-support")))]
     User(UserCredentials),
 }
 
 pub(crate) fn apply_write_file_identity(command: &mut Command, sudo: bool) -> io::Result<()> {
-    #[cfg(debug_assertions)]
+    #[cfg(any(debug_assertions, feature = "test-support"))]
     let _ = command;
     match target_identity(sudo)? {
         TargetIdentity::Current => Ok(()),
-        #[cfg(not(debug_assertions))]
+        #[cfg(not(any(debug_assertions, feature = "test-support")))]
         TargetIdentity::User(credentials) => apply_credentials(command, credentials),
     }
 }
@@ -41,21 +41,21 @@ fn target_identity(sudo: bool) -> io::Result<TargetIdentity> {
         return Ok(TargetIdentity::Current);
     }
 
-    #[cfg(debug_assertions)]
+    #[cfg(any(debug_assertions, feature = "test-support"))]
     {
         // Local vsock tests run without the production rootfs user account.
         // Production release builds below resolve and drop to the sandbox user.
         Ok(TargetIdentity::Current)
     }
 
-    #[cfg(not(debug_assertions))]
+    #[cfg(not(any(debug_assertions, feature = "test-support")))]
     {
         cached_system_user_credentials()
             .map(|credentials| TargetIdentity::User(credentials.clone()))
     }
 }
 
-#[cfg(not(debug_assertions))]
+#[cfg(not(any(debug_assertions, feature = "test-support")))]
 fn apply_credentials(command: &mut Command, credentials: UserCredentials) -> io::Result<()> {
     command
         .current_dir(&credentials.home)
@@ -106,14 +106,14 @@ fn apply_credentials(command: &mut Command, credentials: UserCredentials) -> io:
     Ok(())
 }
 
-#[cfg(not(debug_assertions))]
+#[cfg(not(any(debug_assertions, feature = "test-support")))]
 fn system_user_credentials(username: &str) -> io::Result<UserCredentials> {
     let passwd = std::fs::read_to_string("/etc/passwd")?;
     let group = std::fs::read_to_string("/etc/group")?;
     parse_user_credentials(&passwd, &group, username)
 }
 
-#[cfg(not(debug_assertions))]
+#[cfg(not(any(debug_assertions, feature = "test-support")))]
 fn cached_system_user_credentials() -> io::Result<&'static UserCredentials> {
     if let Some(credentials) = SANDBOX_USER_CREDENTIALS.get() {
         return Ok(credentials);
@@ -126,7 +126,7 @@ fn cached_system_user_credentials() -> io::Result<&'static UserCredentials> {
         .ok_or_else(|| io::Error::other("sandbox user credential cache unavailable"))
 }
 
-#[cfg(any(test, not(debug_assertions)))]
+#[cfg(any(test, not(any(debug_assertions, feature = "test-support"))))]
 fn parse_user_credentials(
     passwd: &str,
     group: &str,
@@ -152,7 +152,7 @@ fn parse_user_credentials(
     Ok(credentials)
 }
 
-#[cfg(any(test, not(debug_assertions)))]
+#[cfg(any(test, not(any(debug_assertions, feature = "test-support"))))]
 fn parse_passwd_line(line: &str, username: &str) -> io::Result<Option<UserCredentials>> {
     if line.trim().is_empty() || line.starts_with('#') {
         return Ok(None);
@@ -183,7 +183,7 @@ fn parse_passwd_line(line: &str, username: &str) -> io::Result<Option<UserCreden
     }))
 }
 
-#[cfg(any(test, not(debug_assertions)))]
+#[cfg(any(test, not(any(debug_assertions, feature = "test-support"))))]
 fn parse_supplementary_groups(
     group: &str,
     username: &str,
@@ -211,7 +211,7 @@ fn parse_supplementary_groups(
     Ok(groups)
 }
 
-#[cfg(any(test, not(debug_assertions)))]
+#[cfg(any(test, not(any(debug_assertions, feature = "test-support"))))]
 fn parse_required_u32(value: Option<&str>, field: &str) -> io::Result<u32> {
     let value = value.ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidData, format!("missing {field} field"))

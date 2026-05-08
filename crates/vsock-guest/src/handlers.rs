@@ -2,7 +2,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, feature = "test-support"))]
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
@@ -30,7 +30,7 @@ const THREAD_WRITE_STDERR: &str = "vsock-write-stderr";
 const THREAD_WRITE_STDIN: &str = "vsock-write-stdin";
 const WRITE_TIMEOUT_MS: u32 = 30_000;
 const GUEST_WRITE_FILE_PATH: &str = "/sbin/guest-write-file";
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, feature = "test-support"))]
 static DEBUG_GUEST_WRITE_FILE_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 pub(crate) enum MessageOutcome {
@@ -235,7 +235,7 @@ fn spawn_write_file_command(path: &str, use_sudo: bool, append: bool) -> io::Res
 }
 
 fn guest_write_file_path() -> PathBuf {
-    #[cfg(debug_assertions)]
+    #[cfg(any(debug_assertions, feature = "test-support"))]
     {
         DEBUG_GUEST_WRITE_FILE_PATH
             .lock()
@@ -244,13 +244,13 @@ fn guest_write_file_path() -> PathBuf {
             .unwrap_or_else(|| PathBuf::from(GUEST_WRITE_FILE_PATH))
     }
 
-    #[cfg(not(debug_assertions))]
+    #[cfg(not(any(debug_assertions, feature = "test-support")))]
     {
         PathBuf::from(GUEST_WRITE_FILE_PATH)
     }
 }
 
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, feature = "test-support"))]
 pub(crate) fn set_debug_guest_write_file_path(path: PathBuf) -> Result<(), PathBuf> {
     *DEBUG_GUEST_WRITE_FILE_PATH
         .lock()
