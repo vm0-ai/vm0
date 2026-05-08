@@ -780,6 +780,54 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(data.status).toBe("failed");
     });
 
+    it("should persist a late lastEventSequence for already failed run", async () => {
+      const failRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 1,
+            error: "Initial failure",
+          }),
+        },
+      );
+
+      const failResponse = await POST(failRequest);
+      expect(failResponse.status).toBe(200);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 1,
+            error: "Another error",
+            lastEventSequence: 7,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+      expect(data.status).toBe("failed");
+      const run = await findTestRunRecord(testRunId);
+      expect(run!.lastEventSequence).toBe(7);
+      expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
+    });
+
     it("should return failed when completion loses the transition race to cancellation", async () => {
       await createCheckpoint();
       const cancelled = await transitionRunStatus(
