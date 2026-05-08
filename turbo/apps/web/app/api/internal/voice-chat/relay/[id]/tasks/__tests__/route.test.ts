@@ -140,7 +140,7 @@ describe("POST /api/internal/voice-chat/relay/:id/tasks", () => {
     expect(response.status).toBe(503);
   });
 
-  it("returns 400 when the session has no agent", async () => {
+  it("returns 400 with code NO_AGENT when the session has no agent", async () => {
     const fixture = await seedFixtureWithoutAgent();
     const token = tokenFor(fixture);
     const response = await POST(
@@ -152,8 +152,10 @@ describe("POST /api/internal/voice-chat/relay/:id/tasks", () => {
       paramsFor(fixture.sessionId),
     );
     expect(response.status).toBe(400);
-    const body = (await response.json()) as { error: { message: string } };
-    expect(body.error.message).toContain("no agent");
+    const body = (await response.json()) as {
+      error: { message: string; code: string };
+    };
+    expect(body.error.code).toBe("NO_AGENT");
   });
 
   it("returns 400 when prompt is missing", async () => {

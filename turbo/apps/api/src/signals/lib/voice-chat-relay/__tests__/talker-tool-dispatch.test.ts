@@ -166,18 +166,37 @@ describe("dispatchTalkerTool — happy path", () => {
 });
 
 describe("dispatchTalkerTool — upstream failure mapping", () => {
-  it("maps 400 'no agent' to 'Slow brain not available for this session.'", async () => {
+  it("maps 400 'NO_AGENT' to 'Slow brain not available for this session.'", async () => {
     const result = await run({
       toolName: "inform_slow_brain",
       argumentsJson: '{"prompt":"hi"}',
       response: {
         status: 400,
         body: {
-          error: { message: "Session has no agent; cannot spawn task" },
+          error: {
+            message: "Session has no agent; cannot spawn task",
+            code: "NO_AGENT",
+          },
         },
       },
     });
     expect(output(result)).toBe("Slow brain not available for this session.");
+  });
+
+  it("maps 400 with a generic BAD_REQUEST code to the catch-all retry voice text", async () => {
+    const result = await run({
+      toolName: "inform_slow_brain",
+      argumentsJson: '{"prompt":"hi"}',
+      response: {
+        status: 400,
+        body: {
+          error: { message: "Invalid request body", code: "BAD_REQUEST" },
+        },
+      },
+    });
+    expect(output(result)).toBe(
+      "Failed to reach the slow brain. Please try again or rephrase.",
+    );
   });
 
   it("maps generic 4xx to the catch-all retry voice text", async () => {

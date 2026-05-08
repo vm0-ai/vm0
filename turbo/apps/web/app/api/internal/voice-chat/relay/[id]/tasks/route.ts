@@ -47,7 +47,10 @@ export async function POST(
     return notFoundResponse("Voice-chat session not found");
   }
   if (!session.agentId) {
-    return badRequestResponse("Session has no agent; cannot spawn task");
+    return badRequestResponse(
+      "Session has no agent; cannot spawn task",
+      "NO_AGENT",
+    );
   }
 
   const parsed = createVoiceChatTaskBodySchema.safeParse(

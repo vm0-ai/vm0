@@ -138,10 +138,9 @@ async function postToInternalTasksRoute(opts: {
   if (response.status === 400) {
     const text = await response.text();
     const parsed = safeJsonParse(text) as
-      | { error?: { message?: string } }
+      | { error?: { code?: string } }
       | undefined;
-    const message = parsed?.error?.message ?? "";
-    if (message.toLowerCase().includes("no agent")) {
+    if (parsed?.error?.code === "NO_AGENT") {
       return { kind: "no_agent" };
     }
   }
