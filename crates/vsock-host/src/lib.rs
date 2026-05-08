@@ -1428,8 +1428,21 @@ impl VsockHost {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::future::Future;
     use std::os::fd::AsRawFd;
+    use std::pin::Pin;
+    use std::task::{Context, Poll, Wake, Waker};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    struct NoopWake;
+
+    impl Wake for NoopWake {
+        fn wake(self: std::sync::Arc<Self>) {}
+    }
+
+    fn noop_waker() -> Waker {
+        Waker::from(std::sync::Arc::new(NoopWake))
+    }
 
     fn make_pair() -> (UnixStream, UnixStream) {
         UnixStream::pair().unwrap()
@@ -1521,22 +1534,6 @@ mod tests {
             stdout_limit_bytes: 2048,
             stderr_limit_bytes: 2048,
         }
-    }
-
-    async fn wait_for_registration_counts(
-        host: &VsockHost,
-        expected: (usize, usize, usize, usize),
-    ) {
-        tokio::time::timeout(Duration::from_secs(5), async {
-            loop {
-                if registration_counts(host) == expected {
-                    return;
-                }
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("registration counts did not reach expected state");
     }
 
     #[tokio::test]
@@ -2126,13 +2123,17 @@ mod tests {
         let host = std::sync::Arc::new(host_from_stream(host_stream).await.unwrap());
         let writer_guard = host.shared.writer.lock().await;
 
-        let task_host = std::sync::Arc::clone(&host);
-        let task =
-            tokio::spawn(async move { task_host.exec("blocked-on-lock", 5000, &[], false).await });
-
-        wait_for_registration_counts(&host, (1, 0, 0, 0)).await;
-        task.abort();
-        let _ = task.await;
+        let request_host = std::sync::Arc::clone(&host);
+        let mut request =
+            Box::pin(async move { request_host.exec("blocked-on-lock", 5000, &[], false).await });
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        assert!(matches!(
+            Future::poll(Pin::as_mut(&mut request), &mut cx),
+            Poll::Pending
+        ));
+        assert_eq!(registration_counts(&host), (1, 0, 0, 0));
+        drop(request);
         assert_eq!(registration_counts(&host), (0, 0, 0, 0));
 
         drop(writer_guard);
