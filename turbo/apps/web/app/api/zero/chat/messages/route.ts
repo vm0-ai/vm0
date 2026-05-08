@@ -1,6 +1,5 @@
 import { and, eq } from "drizzle-orm";
 import { after } from "next/server";
-import { waitUntil } from "@vercel/functions";
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import {
   chatMessagesContract,
@@ -63,7 +62,6 @@ import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client"
 import { logger } from "../../../../../src/lib/shared/logger";
 import {
   recordChatSpan,
-  recordSandboxOperation,
   type ChatSpanDimensions,
 } from "../../../../../src/lib/infra/metrics";
 import {
@@ -666,64 +664,39 @@ const router = tsr.router(chatMessagesContract, {
         userProfile: userProfileFromClaims(authCtx),
       });
 
-      // Stamp response-ready for the Phase-2 instrumentation split before
-      // registering the signals waitUntil() so we can measure its closure-entry
-      // offset against the same responseReady anchor used by dispatchZeroRun.
-      const responseReadyAt = result.markResponseReady();
-
-      // Persist user message to chat_messages in waitUntil() so the 201
-      // response flushes before the INSERT (+ internal chatThreadMessageCreated
-      // publish) runs. The response body omits the row id and the client
-      // renders optimistically via clientMessageId, so no caller blocks.
+      // Persist user message and publish realtime signals before returning the
+      // 201 so the client's realtime subscription can update thread state before
+      // the send command resolves, keeping the cancel button visible for pending
+      // runs.
       //
       // Ordering: insertChatMessage MUST complete before publishUserSignal /
       // publishThreadListChanged fire — those signals tell other devices to
       // refetch the thread list / paged-messages view, and they must see the
-      // new row on refetch. The `await`s below preserve that ordering.
-      waitUntil(
-        (async () => {
-          const signalsEnterAt = Date.now();
-          try {
-            // Stamp with the runId so the callback's prior-context filter can
-            // exclude this message structurally (by runId) instead of by content.
-            await insertChatMessage({
-              chatThreadId: threadId,
-              userId: authCtx.userId,
-              role: "user",
-              content: body.prompt,
-              runId: result.runId,
-              attachFiles: body.attachFiles?.map((f: AttachFile) => {
-                return f.id;
-              }),
-              id: body.clientMessageId,
-              spanDims: dims,
-            });
-          } catch (err: unknown) {
-            log.error("Deferred insertChatMessage failed", {
-              runId: result.runId,
-              err,
-            });
-          }
-          await publishUserSignal(
-            [authCtx.userId],
-            `chatThreadRunCreated:${threadId}`,
-          );
-          await publishThreadListChanged(authCtx.userId);
-          // Cross-referenced with api_after_schedule_to_closure in Axiom to
-          // infer whether Vercel fires waitUntil() and after() callbacks in
-          // parallel or serial: near-equal durations imply parallel, a large
-          // gap implies serial.
-          if (responseReadyAt !== undefined) {
-            recordSandboxOperation({
-              sandboxType: "chat",
-              actionType: "api_after_signals_enter_offset",
-              durationMs: signalsEnterAt - responseReadyAt,
-              success: true,
-              runId: result.runId,
-            });
-          }
-        })(),
+      // new row on refetch.
+      try {
+        await insertChatMessage({
+          chatThreadId: threadId,
+          userId: authCtx.userId,
+          role: "user",
+          content: body.prompt,
+          runId: result.runId,
+          attachFiles: body.attachFiles?.map((f: AttachFile) => {
+            return f.id;
+          }),
+          id: body.clientMessageId,
+          spanDims: dims,
+        });
+      } catch (err: unknown) {
+        log.error("insertChatMessage failed", {
+          runId: result.runId,
+          err,
+        });
+      }
+      await publishUserSignal(
+        [authCtx.userId],
+        `chatThreadRunCreated:${threadId}`,
       );
+      await publishThreadListChanged(authCtx.userId);
 
       return {
         status: 201 as const,

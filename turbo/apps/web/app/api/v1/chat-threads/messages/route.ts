@@ -1,4 +1,3 @@
-import { after } from "next/server";
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { chatThreadV1SendContract } from "@vm0/api-contracts/contracts/chat-threads-v1";
 import { initServices } from "../../../../../src/lib/init-services";
@@ -107,13 +106,13 @@ const router = tsr.router(chatThreadV1SendContract, {
         runId: result.runId,
       });
 
-      after(async () => {
-        await publishUserSignal(
-          [authCtx.userId],
-          `chatThreadRunCreated:${threadId}`,
-        );
-        await publishThreadListChanged(authCtx.userId);
-      });
+      // Publish realtime signals before returning the 201 so the client's
+      // realtime subscription can update before the send command resolves.
+      await publishUserSignal(
+        [authCtx.userId],
+        `chatThreadRunCreated:${threadId}`,
+      );
+      await publishThreadListChanged(authCtx.userId);
 
       return {
         status: 201 as const,
