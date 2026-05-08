@@ -304,7 +304,7 @@ function ScheduleListCard<T extends ScheduleEntry>({
   return (
     <div
       className={cn(
-        "relative flex items-center gap-3 px-5 py-3 border-b border-border/50 last:border-0 transition-colors",
+        "relative flex items-center gap-3 px-5 max-md:px-0 py-3 border-b border-border/50 last:border-0 transition-colors",
         clickable && "hover:bg-muted/25",
         dimmed && "opacity-75",
       )}
