@@ -99,6 +99,51 @@ describe("connectConnector$", () => {
     expect(context.store.get(pollingConnectorType$)).toBeNull();
   });
 
+  it("clears polling when the oauth popup closes before connector appears", async () => {
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    const mockWindow = { closed: false, close: vi.fn() };
+    vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
+
+    let pollCount = 0;
+    server.use(
+      mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
+        pollCount++;
+        return respond(200, makeEmptyConnectorResponse());
+      }),
+    );
+
+    const connectPromise = context.store.set(
+      connectConnector$,
+      "github",
+      {},
+      context.signal,
+    );
+
+    await vi.waitFor(() => {
+      expect(pollCount).toBeGreaterThanOrEqual(1);
+      expect(hasSubscription("connector:changed")).toBeTruthy();
+      expect(context.store.get(pollingConnectorType$)).toBe("github");
+    });
+
+    mockWindow.closed = true;
+
+    await expect(connectPromise).resolves.toBeFalsy();
+    expect(context.store.get(pollingConnectorType$)).toBeNull();
+    expect(hasSubscription("connector:changed")).toBeFalsy();
+  });
+
+  it("clears polling when the authorization popup fails to open", async () => {
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    vi.spyOn(window, "open").mockReturnValue(null);
+
+    await expect(
+      context.store.set(connectConnector$, "github", {}, context.signal),
+    ).rejects.toThrow("Failed to open authorization window");
+    expect(context.store.get(pollingConnectorType$)).toBeNull();
+  });
+
   it("keeps subscribing on reconnect until updatedAt changes", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 

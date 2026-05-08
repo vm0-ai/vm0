@@ -29,7 +29,7 @@ import {
 } from "../../external/connectors.ts";
 import { apiBaseForNavigation$ } from "../../fetch.ts";
 import { zeroClient$ } from "../../api-client.ts";
-import { jsonParseOr } from "../../utils.ts";
+import { jsonParseOr, resetSignal, withCleanup } from "../../utils.ts";
 import { setAblyLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { resetPermissionDialog$ } from "./permission-dialog.ts";
@@ -465,6 +465,64 @@ export function isStandaloneMode(): boolean {
   return window.matchMedia("(display-mode: standalone)").matches;
 }
 
+const OAUTH_POPUP_CLOSED_POLL_MS = 250;
+
+function waitForOAuthPopupClosed(
+  authWindow: Pick<Window, "closed">,
+  signal: AbortSignal,
+): Promise<"popupClosed"> {
+  signal.throwIfAborted();
+
+  const deferred = Promise.withResolvers<"popupClosed">();
+  let settled = false;
+  let intervalId: ReturnType<typeof window.setInterval> | undefined;
+
+  function cleanup() {
+    if (intervalId !== undefined) {
+      window.clearInterval(intervalId);
+      intervalId = undefined;
+    }
+    signal.removeEventListener("abort", onAbort);
+  }
+
+  function resolveClosed() {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    cleanup();
+    deferred.resolve("popupClosed");
+  }
+
+  function rejectAborted() {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    cleanup();
+    deferred.reject(signal.reason);
+  }
+
+  function onAbort() {
+    rejectAborted();
+  }
+
+  function checkClosed() {
+    if (authWindow.closed) {
+      resolveClosed();
+    }
+  }
+
+  intervalId = window.setInterval(checkClosed, OAUTH_POPUP_CLOSED_POLL_MS);
+  signal.addEventListener("abort", onAbort, { once: true });
+  checkClosed();
+
+  return deferred.promise;
+}
+
+const resetOAuthConnectorLoopSignal$ = resetSignal();
+const resetOAuthConnectorPopupSignal$ = resetSignal();
+
 // ---------------------------------------------------------------------------
 // Connect command
 // ---------------------------------------------------------------------------
@@ -481,99 +539,150 @@ export const connectConnector$ = command(
 
     set(internalPollingType$, type);
 
-    const standalone = isStandaloneMode();
+    return await withCleanup(
+      (async () => {
+        const standalone = isStandaloneMode();
 
-    // In standalone (PWA) mode, omit popup features so iOS Safari opens the
-    // URL in the external browser instead of blocking it as a popup.
-    const popupFeatures = standalone ? undefined : "width=600,height=700";
-    const authWindow = window.open(
-      `${baseUrl}/api/zero/connectors/${type}/authorize`,
-      "_blank",
-      popupFeatures,
-    );
-
-    if (!authWindow && !standalone) {
-      throw new Error("Failed to open authorization window");
-    }
-
-    // Wait for the OAuth flow to complete. The callback publishes
-    // `connector:changed`, and the subscription rechecks the server state.
-    // Snapshot taken on the first body invocation: `null` marks "no
-    // connector yet" and an `updatedAt` value marks "reconnect scenario —
-    // wait for it to change". The snapshot must happen *inside* the loop
-    // body so we start from the freshest server state, not a cached signal
-    // value.
-    let initialUpdatedAt: string | null | undefined;
-
-    const onConnectorChanged$ = command(
-      async ({ get }, sig: AbortSignal): Promise<boolean> => {
-        const client = get(zeroClient$)(zeroConnectorsMainContract);
-        const result = await accept(
-          client.list({ fetchOptions: { signal: sig } }),
-          [200],
+        // In standalone (PWA) mode, omit popup features so iOS Safari opens the
+        // URL in the external browser instead of blocking it as a popup.
+        const popupFeatures = standalone ? undefined : "width=600,height=700";
+        const authWindow = window.open(
+          `${baseUrl}/api/zero/connectors/${type}/authorize`,
+          "_blank",
+          popupFeatures,
         );
-        const polled = (result.body as ConnectorListResponse).connectors;
-        const current = polled.find((c) => {
-          return c.type === type;
-        });
 
-        if (initialUpdatedAt === undefined) {
-          initialUpdatedAt = current?.updatedAt ?? null;
+        if (!authWindow && !standalone) {
+          throw new Error("Failed to open authorization window");
+        }
+
+        // Wait for the OAuth flow to complete. The callback publishes
+        // `connector:changed`, and the subscription rechecks the server state.
+        // Snapshot taken on the first body invocation: `null` marks "no
+        // connector yet" and an `updatedAt` value marks "reconnect scenario —
+        // wait for it to change". The snapshot must happen *inside* the loop
+        // body so we start from the freshest server state, not a cached signal
+        // value.
+        let initialUpdatedAt: string | null | undefined;
+
+        const onConnectorChanged$ = command(
+          async ({ get }, sig: AbortSignal): Promise<boolean> => {
+            const client = get(zeroClient$)(zeroConnectorsMainContract);
+            const result = await accept(
+              client.list({ fetchOptions: { signal: sig } }),
+              [200],
+            );
+            const polled = (result.body as ConnectorListResponse).connectors;
+            const current = polled.find((c) => {
+              return c.type === type;
+            });
+
+            if (initialUpdatedAt === undefined) {
+              initialUpdatedAt = current?.updatedAt ?? null;
+              return false;
+            }
+            if (current) {
+              // initialUpdatedAt === null means the connector didn't exist on
+              // the first fetch; any subsequent appearance signals completion.
+              if (initialUpdatedAt === null) {
+                return true;
+              }
+              if (current.updatedAt !== initialUpdatedAt) {
+                return true;
+              }
+            }
+            return false;
+          },
+        );
+
+        // Prime once so `initialUpdatedAt` snapshots the current server state.
+        // `setAblyLoop$` no longer primes its subscribers, and without this the
+        // first ably event would be taken as the baseline instead of signalling
+        // completion.
+        await set(onConnectorChanged$, signal);
+        signal.throwIfAborted();
+
+        const loopSignal = set(resetOAuthConnectorLoopSignal$, signal);
+        const popupSignal = set(resetOAuthConnectorPopupSignal$, signal);
+
+        const completed = await withCleanup(
+          (async () => {
+            const waitForConnectorChanged = async () => {
+              await set(
+                setAblyLoop$,
+                "connector:changed",
+                onConnectorChanged$,
+                loopSignal,
+              );
+              return "connectorChanged" as const;
+            };
+            const changedPromise = waitForConnectorChanged();
+            const waitResult =
+              authWindow === null
+                ? await changedPromise
+                : await Promise.race([
+                    changedPromise,
+                    waitForOAuthPopupClosed(authWindow, popupSignal),
+                  ]);
+            signal.throwIfAborted();
+
+            if (waitResult === "popupClosed") {
+              set(resetOAuthConnectorLoopSignal$, signal);
+              const connectedAfterClose = await set(
+                onConnectorChanged$,
+                signal,
+              );
+              signal.throwIfAborted();
+              if (!connectedAfterClose) {
+                return false;
+              }
+            }
+            return true;
+          })(),
+          () => {
+            set(resetOAuthConnectorLoopSignal$, signal);
+            set(resetOAuthConnectorPopupSignal$, signal);
+          },
+        );
+        if (!completed) {
           return false;
         }
-        if (current) {
-          // initialUpdatedAt === null means the connector didn't exist on
-          // the first fetch; any subsequent appearance signals completion.
-          if (initialUpdatedAt === null) {
-            return true;
-          }
-          if (current.updatedAt !== initialUpdatedAt) {
-            return true;
+
+        // Refresh the connectors$ cache so UI picks up the latest state.
+        set(reloadConnectors$);
+        const { connectors } = await get(connectors$);
+        signal.throwIfAborted();
+
+        // Mark as optimistically connected before clearing polling so the UI
+        // transitions directly from "Connecting…" to "Connected" without flash.
+        const isConnected = connectors.some((c) => {
+          return c.type === type;
+        });
+        if (isConnected) {
+          set(internalJustConnectedTypes$, (prev) => {
+            return new Set([...prev, type]);
+          });
+        }
+        // Show in connections list again when user connects
+        const hidden = new Set(get(hiddenConnectorTypes$));
+        hidden.delete(type);
+        set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
+        // Close connect modal on OAuth success. Only connectors-page flows should
+        // show the post-connect permission dialog.
+        if (isConnected) {
+          set(internalSelectedConnectorType$, null);
+          if (options.showPermissionDialog) {
+            set(internalPermissionDialogType$, type);
           }
         }
-        return false;
+        return isConnected;
+      })(),
+      () => {
+        set(internalPollingType$, (current) => {
+          return current === type ? null : current;
+        });
       },
     );
-
-    // Prime once so `initialUpdatedAt` snapshots the current server state.
-    // `setAblyLoop$` no longer primes its subscribers, and without this the
-    // first ably event would be taken as the baseline instead of signalling
-    // completion.
-    await set(onConnectorChanged$, signal);
-    signal.throwIfAborted();
-
-    await set(setAblyLoop$, "connector:changed", onConnectorChanged$, signal);
-    signal.throwIfAborted();
-
-    // Refresh the connectors$ cache so UI picks up the latest state.
-    set(reloadConnectors$);
-    const { connectors } = await get(connectors$);
-    signal.throwIfAborted();
-
-    // Mark as optimistically connected before clearing polling so the UI
-    // transitions directly from "Connecting…" to "Connected" without flash.
-    const isConnected = connectors.some((c) => {
-      return c.type === type;
-    });
-    if (isConnected) {
-      set(internalJustConnectedTypes$, (prev) => {
-        return new Set([...prev, type]);
-      });
-    }
-    set(internalPollingType$, null);
-    // Show in connections list again when user connects
-    const hidden = new Set(get(hiddenConnectorTypes$));
-    hidden.delete(type);
-    set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
-    // Close connect modal on OAuth success. Only connectors-page flows should
-    // show the post-connect permission dialog.
-    if (isConnected) {
-      set(internalSelectedConnectorType$, null);
-      if (options.showPermissionDialog) {
-        set(internalPermissionDialogType$, type);
-      }
-    }
-    return isConnected;
   },
 );
 
