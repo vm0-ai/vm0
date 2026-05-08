@@ -117,6 +117,18 @@ fn create_mode_truncates_existing_file() {
 }
 
 #[test]
+fn create_mode_writes_empty_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("empty.txt");
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&[path_str], b"");
+
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(std::fs::read(path).unwrap(), b"");
+}
+
+#[test]
 fn append_mode_creates_missing_file_when_parent_exists() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("out.txt");

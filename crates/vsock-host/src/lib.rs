@@ -1294,6 +1294,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_write_file_at_chunk_limit_uses_single_message() {
+        let (host_stream, mut guest) = make_pair();
+
+        let chunk_limit = VsockHost::WRITE_FILE_CHUNK_LIMIT;
+        let content = vec![0xABu8; chunk_limit];
+        let content_clone = content.clone();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = vec![0u8; chunk_limit + 4096];
+            let mut msgs = Vec::new();
+            while msgs.is_empty() {
+                let n = guest.read(&mut buf).await.unwrap();
+                assert_ne!(n, 0, "connection closed before write_file message");
+                msgs.extend(decoder.decode(&buf[..n]).unwrap());
+            }
+            assert_eq!(msgs.len(), 1);
+            assert_eq!(msgs[0].msg_type, MSG_WRITE_FILE);
+
+            let (path, chunk, _sudo, append) =
+                vsock_proto::decode_write_file(&msgs[0].payload).unwrap();
+            assert_eq!(path, "/tmp/exact-limit.bin");
+            assert_eq!(chunk, content_clone);
+            assert!(!append);
+
+            let payload = vsock_proto::encode_write_file_result(true, "");
+            let resp = vsock_proto::encode(MSG_WRITE_FILE_RESULT, msgs[0].seq, &payload).unwrap();
+            guest.write_all(&resp).await.unwrap();
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        host.write_file("/tmp/exact-limit.bin", &content, false)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
     async fn test_write_file_chunked_cleans_up_on_chunk_failure() {
         let (host_stream, mut guest) = make_pair();
 

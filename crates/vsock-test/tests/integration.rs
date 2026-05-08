@@ -884,9 +884,10 @@ async fn test_write_file_large() {
 async fn test_write_file_chunked() {
     let h = Harness::new().await;
 
-    let file_path = h.dir.join("chunked.bin");
+    let file_path = h.dir.join("chunked'quote.bin");
     let file_path_str = file_path.to_string_lossy().to_string();
-    // 16 MB content — exceeds the 15 MB chunk limit, triggers 2-chunk path + atomic rename
+    // 16 MB content exceeds the 15 MB chunk limit, triggering the staging +
+    // shell rename path. The quote in the file name covers shell escaping.
     let content = vec![0xABu8; 16 * 1024 * 1024];
 
     h.write_file(&file_path_str, &content, false)
