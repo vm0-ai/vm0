@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.336.2](https://github.com/vm0-ai/vm0/compare/app-v0.336.1...app-v0.336.2) (2026-05-08)
+
+
+### Bug Fixes
+
+* **chat:** unblock thinking indicator when initial page is empty ([#12208](https://github.com/vm0-ai/vm0/issues/12208)) ([e29908c](https://github.com/vm0-ai/vm0/commit/e29908ce45548f6d97b6f917d4000fe2b7c5e96e))
+
 ## [0.336.1](https://github.com/vm0-ai/vm0/compare/app-v0.336.0...app-v0.336.1) (2026-05-08)
 
 

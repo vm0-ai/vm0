@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.344.1](https://github.com/vm0-ai/vm0/compare/web-v12.344.0...web-v12.344.1) (2026-05-08)
+
+
+### Bug Fixes
+
+* **api,web:** sort configuredTypes to eliminate connector shadow divergence ([#12217](https://github.com/vm0-ai/vm0/issues/12217)) ([74d7648](https://github.com/vm0-ai/vm0/commit/74d7648143c9e0e977b9b8abbe36edc0170cddbe))
+* wait for terminal axiom events on read paths ([#12188](https://github.com/vm0-ai/vm0/issues/12188)) ([fddd0a0](https://github.com/vm0-ai/vm0/commit/fddd0a0ce7f64a4e3bc8f4c56692c5cc6342bf43))
+
 ## [12.344.0](https://github.com/vm0-ai/vm0/compare/web-v12.343.0...web-v12.344.0) (2026-05-08)
 
 

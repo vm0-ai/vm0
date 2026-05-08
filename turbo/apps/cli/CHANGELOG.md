@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.145.6](https://github.com/vm0-ai/vm0/compare/cli-v9.145.5...cli-v9.145.6) (2026-05-08)
+
+
+### Bug Fixes
+
+* wait for terminal axiom events on read paths ([#12188](https://github.com/vm0-ai/vm0/issues/12188)) ([fddd0a0](https://github.com/vm0-ai/vm0/commit/fddd0a0ce7f64a4e3bc8f4c56692c5cc6342bf43))
+
 ## [9.145.5](https://github.com/vm0-ai/vm0/compare/cli-v9.145.4...cli-v9.145.5) (2026-05-08)
 
 
