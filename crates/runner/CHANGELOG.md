@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.22...runner-rs-v0.100.23) (2026-05-09)
+
+
+### Refactoring
+
+* **runner:** include bounded exec diagnostics ([#12368](https://github.com/vm0-ai/vm0/issues/12368)) ([41d5d12](https://github.com/vm0-ai/vm0/commit/41d5d12ced60e34731d78bea2ef172eed5fbdc77))
+
 ## [0.100.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.21...runner-rs-v0.100.22) (2026-05-09)
 
 

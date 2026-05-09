@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.23.1](https://github.com/vm0-ai/vm0/compare/api-v1.23.0...api-v1.23.1) (2026-05-09)
+
+
+### Refactoring
+
+* **api:** migrate custom-connectors list get to api backend ([#12392](https://github.com/vm0-ai/vm0/issues/12392)) ([076d707](https://github.com/vm0-ai/vm0/commit/076d70721621415ab2bbb8556fc4d6a9f97efe93))
+* **api:** migrate model providers list get to api backend ([#12391](https://github.com/vm0-ai/vm0/issues/12391)) ([2bc1348](https://github.com/vm0-ai/vm0/commit/2bc1348546796fda261826db060aadc6a988a294)), closes [#12387](https://github.com/vm0-ai/vm0/issues/12387)
+* **api:** migrate runs queue get to api backend ([#12402](https://github.com/vm0-ai/vm0/issues/12402)) ([60df3d2](https://github.com/vm0-ai/vm0/commit/60df3d24a092e9570f5de615cba621a53579b207))
+* **api:** migrate schedules list get to api backend ([#12393](https://github.com/vm0-ai/vm0/issues/12393)) ([f9da2eb](https://github.com/vm0-ai/vm0/commit/f9da2eb63fc3b3860396d75c23d38ef740c5bc18)), closes [#12389](https://github.com/vm0-ai/vm0/issues/12389)
+* **api:** migrate skill detail get to api backend ([#12401](https://github.com/vm0-ai/vm0/issues/12401)) ([95a2893](https://github.com/vm0-ai/vm0/commit/95a289332ed91629c5f9b8c9a8b9a3b4564d06f7)), closes [#12398](https://github.com/vm0-ai/vm0/issues/12398)
+* **api:** migrate skills list get ([#12388](https://github.com/vm0-ai/vm0/issues/12388)) ([f171574](https://github.com/vm0-ai/vm0/commit/f171574f50649eb989c71577f8537573cbd41a55))
+* **api:** migrate slack integration status get to api backend ([#12399](https://github.com/vm0-ai/vm0/issues/12399)) ([db594c0](https://github.com/vm0-ai/vm0/commit/db594c0488c1a1c7c509566dd2afdc29699463f5)), closes [#12396](https://github.com/vm0-ai/vm0/issues/12396)
+* **api:** migrate variables list get ([#12397](https://github.com/vm0-ai/vm0/issues/12397)) ([3953c2f](https://github.com/vm0-ai/vm0/commit/3953c2f154c140db62b50f0e06a1659825e039d4))
+
 ## [1.23.0](https://github.com/vm0-ai/vm0/compare/api-v1.22.1...api-v1.23.0) (2026-05-09)
 
 
