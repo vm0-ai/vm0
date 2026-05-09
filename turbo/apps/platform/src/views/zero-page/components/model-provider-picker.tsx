@@ -523,13 +523,19 @@ function ModelFirstTriggerLabel({
     );
   }
   const iconType = getModelFirstIconType(selectedModel);
+  const multiplier = getVm0ModelMultiplier(selectedModel);
   return (
     <ResponsiveTriggerContent
       mobileIcon={mobileIcon}
       iconType={iconType}
       label={
-        <span className="truncate">
-          {getCanonicalModelDisplayName(selectedModel)}
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate">
+            {getCanonicalModelDisplayName(selectedModel)}
+          </span>
+          {multiplier !== undefined && (
+            <MultiplierBadge multiplier={multiplier} />
+          )}
         </span>
       }
     />
@@ -642,10 +648,7 @@ function modelFirstSelectionFromRaw(
 
 function ModelFirstPolicyRow({ policy }: { policy: OrgModelPolicy }) {
   const iconType = getModelFirstIconType(policy.model);
-  const multiplier =
-    policy.defaultProviderType === "vm0"
-      ? getVm0ModelMultiplier(policy.model)
-      : undefined;
+  const multiplier = getVm0ModelMultiplier(policy.model);
   return (
     <SelectItem
       key={policy.id}
@@ -659,11 +662,6 @@ function ModelFirstPolicyRow({ policy }: { policy: OrgModelPolicy }) {
         </span>
         {multiplier !== undefined && (
           <MultiplierBadge multiplier={multiplier} />
-        )}
-        {policy.isDefault && (
-          <span className="ml-0.5 shrink-0 rounded bg-accent px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            Workspace default
-          </span>
         )}
       </span>
     </SelectItem>
