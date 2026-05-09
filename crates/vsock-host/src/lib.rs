@@ -4838,6 +4838,7 @@ mod tests {
     #[tokio::test]
     async fn test_wait_for_exit_connection_closed() {
         let (host_stream, mut guest) = make_pair();
+        let (close_tx, close_rx) = oneshot::channel::<()>();
 
         tokio::spawn(async move {
             let mut decoder = Decoder::new();
@@ -4854,22 +4855,22 @@ mod tests {
             let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload).unwrap();
             guest.write_all(&resp).await.unwrap();
 
-            // Small delay then close the connection WITHOUT sending process_exit.
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            let _ = close_rx.await;
             drop(guest);
         });
 
-        let host = host_from_stream(host_stream).await.unwrap();
+        let host = Arc::new(host_from_stream(host_stream).await.unwrap());
         let (pid, _stdout_rx) = host
             .spawn_watch("long-running", 0, &[], false, false, None)
             .await
             .unwrap();
         assert_eq!(pid, 77);
 
-        let err = host
-            .wait_for_exit(77, Duration::from_secs(5))
-            .await
-            .unwrap_err();
+        let wait_host = Arc::clone(&host);
+        let wait_task =
+            tokio::spawn(async move { wait_host.wait_for_exit(77, Duration::from_secs(5)).await });
+        close_tx.send(()).unwrap();
+        let err = wait_task.await.unwrap().unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
     }
 
@@ -5018,6 +5019,7 @@ mod tests {
     #[tokio::test]
     async fn test_concurrent_exec_and_wait_exit() {
         let (host_stream, mut guest) = make_pair();
+        let (send_exit_tx, send_exit_rx) = oneshot::channel::<()>();
 
         tokio::spawn(async move {
             let mut decoder = Decoder::new();
@@ -5046,8 +5048,7 @@ mod tests {
             let exec_resp = vsock_proto::encode(MSG_EXEC_RESULT, exec_seq, &exec_payload).unwrap();
             guest.write_all(&exec_resp).await.unwrap();
 
-            // Small delay then send process_exit
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            let _ = send_exit_rx.await;
             let exit_payload = vsock_proto::encode_process_exit(50, 42, b"exited", b"");
             let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
             guest.write_all(&exit_msg).await.unwrap();
@@ -5076,6 +5077,8 @@ mod tests {
             .unwrap();
         assert_eq!(exec_result.exit_code, 0);
         assert_eq!(exec_result.stdout, b"concurrent");
+
+        send_exit_tx.send(()).unwrap();
 
         // wait_for_exit should also resolve
         let exit_event = wait_task.await.unwrap().unwrap();
