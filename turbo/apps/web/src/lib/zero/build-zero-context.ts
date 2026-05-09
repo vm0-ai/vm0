@@ -16,6 +16,7 @@ import {
   getModelProviderFirewall,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import type { SupportedFramework } from "@vm0/core/frameworks";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { badRequest, notFound } from "@vm0/api-services/errors";
@@ -260,7 +261,7 @@ async function resolveSecretsAndEnvironment(
     | Record<string, SecretConnectorMetadata>
     | undefined;
   resolvedModelProvider: ModelProviderType | undefined;
-  resolvedFramework: string;
+  resolvedFramework: SupportedFramework;
   modelProviderConfig: ExpandedFirewallConfig | undefined;
   modelProviderId: string | null | undefined;
   modelProviderCredentialScope: string | undefined;
@@ -475,6 +476,9 @@ async function resolveSecretsAndEnvironment(
     }
   }
   timings.billableFirewalls = Date.now() - billableFirewallsStart;
+  const resolvedFramework = resolveRuntimeFramework({
+    resolvedFramework: resolvedModelProviderResult.framework ?? framework,
+  });
 
   return {
     secrets,
@@ -484,7 +488,7 @@ async function resolveSecretsAndEnvironment(
     resolvedModelProvider: resolvedModelProviderResult.resolvedModelProvider,
     // Provider-derived framework when resolution ran; otherwise the compose
     // framework. Source-of-truth for downstream framework-aware logic.
-    resolvedFramework: resolvedModelProviderResult.framework ?? framework,
+    resolvedFramework,
     modelProviderConfig,
     modelProviderId: resolvedModelProviderResult.modelProviderId,
     modelProviderCredentialScope: resolvedModelProviderResult.credentialScope,
@@ -517,8 +521,8 @@ interface BuildZeroContextResult {
   modelProviderId: string | null | undefined;
   /** Model-first credential scope, if provider resolution used model policy. */
   modelProviderCredentialScope: string | undefined;
-  /** Provider-derived framework, source-of-truth for downstream. */
-  resolvedFramework: string;
+  /** Final framework for this execution context. */
+  framework: SupportedFramework;
   /** The logical model name selected by the user, for model usage billing. */
   selectedModel: string | undefined;
 }
@@ -678,6 +682,7 @@ interface ResolvedCliContext {
   modelProviderId?: string | null;
   modelProviderCredentialScope?: string;
   selectedModel?: string;
+  framework: SupportedFramework;
 
   billableFirewalls: string[];
   modelUsageProvider?: string;
@@ -767,6 +772,7 @@ export async function resolveCliRunContext(
     return {
       artifacts,
       vars,
+      framework: resolveRuntimeFramework({ agentCompose }),
       billableFirewalls: [],
       timings: {
         resolveSource: resolveEnd - resolveStart,
@@ -875,6 +881,7 @@ export async function resolveCliRunContext(
     modelProviderId,
     modelProviderCredentialScope,
     selectedModel,
+    framework: resolvedFramework,
     billableFirewalls,
     modelUsageProvider,
     timings: {
@@ -1043,8 +1050,8 @@ export async function buildZeroExecutionContext(
   // - Provider: avoid mid-conversation base URL mismatches.
   // - Framework: persisted cliAgentSessionHistory is in the previous
   //   framework's format; switching binaries mid-thread can't replay it.
-  //   resolvedFramework is the source of truth (provider-derived since
-  //   #11649); the compose's `framework` field is no longer authoritative.
+  //   ExecutionContext.framework is the source of truth (provider-derived
+  //   since #11649); the compose's `framework` field is no longer authoritative.
   const compatibilityChecksStart = Date.now();
   checkProviderCompatibility(originalModelProvider, resolvedModelProvider);
   checkFrameworkCompatibility(resolution?.sessionFramework, resolvedFramework);
@@ -1109,11 +1116,7 @@ export async function buildZeroExecutionContext(
       modelUsageProvider,
       // API start time for E2E timing metrics
       apiStartTime: params.apiStartTime,
-      // Provider-derived framework — source of truth for downstream
-      // dispatch (execution-preparer) and admission validation. Undefined
-      // on the CLI path (no provider context); dispatch falls back to
-      // compose framework via resolveRuntimeFramework.
-      resolvedFramework,
+      framework: resolvedFramework,
     },
     timings: {
       ...timingDetails,
@@ -1122,7 +1125,7 @@ export async function buildZeroExecutionContext(
     resolvedModelProvider,
     modelProviderId,
     modelProviderCredentialScope,
-    resolvedFramework,
+    framework: resolvedFramework,
     selectedModel,
   };
 }

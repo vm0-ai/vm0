@@ -1,4 +1,5 @@
 import type { AdditionalVolume } from "../storage/types";
+import type { SupportedFramework } from "@vm0/core/frameworks";
 import type { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type {
   Firewalls,
@@ -137,11 +138,10 @@ export interface ExecutionContext {
   // vm0-managed model provider runs; BYOK/custom providers leave it unset.
   modelUsageProvider?: string;
 
-  // Provider-derived framework when zero-layer resolution ran. Source of
-  // truth for downstream framework-aware logic (dispatch + validation).
-  // Falls back to compose framework via resolveRuntimeFramework when undefined
-  // (CLI path, no provider context).
-  resolvedFramework?: string;
+  // Final runtime framework for this execution. Builders must resolve this
+  // before creating the context; downstream infra only maps it to the runner
+  // protocol field (`cliAgentType`).
+  framework: SupportedFramework;
 
   // API start time for E2E timing metrics — epoch millis captured at the route
   // handler's first line by the caller (see issue #9936).

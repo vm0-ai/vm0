@@ -16,7 +16,6 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
-import { resolveRuntimeFramework } from "../utils";
 
 const log = logger("context:preparer");
 
@@ -81,13 +80,10 @@ export async function prepareForExecution(
   const orgId = context.orgId;
   log.debug(`Preparing execution context for run ${context.runId}...`);
 
-  // Resolve runtime framework once; runner payloads still call this
-  // `cliAgentType` at the protocol boundary.
+  // ExecutionContext builders already resolved the final runtime framework.
+  // Runner payloads still call this value `cliAgentType` at the protocol boundary.
   const workingDir = extractWorkingDir(context.agentCompose);
-  const runtimeFramework = resolveRuntimeFramework({
-    resolvedFramework: context.resolvedFramework,
-    agentCompose: context.agentCompose,
-  });
+  const runtimeFramework = context.framework;
   const cliAgentType = runtimeFramework;
   const runnerGroup = resolveRunnerGroup(context.agentCompose);
   const profile = resolveRunnerProfile(context.agentCompose);

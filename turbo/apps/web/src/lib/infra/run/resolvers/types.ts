@@ -30,7 +30,7 @@ export interface ConversationResolution {
   /**
    * Framework recorded on the conversation being continued
    * (`conversations.cliAgentType`). Source of truth for the previous run's
-   * framework — compared against `resolvedFramework` in build-zero-context to
+   * framework — compared against the resolved execution context framework to
    * detect mid-thread framework switches. Undefined for direct-conversation
    * resumes from data that predates cliAgentType persistence.
    */
