@@ -6,7 +6,9 @@ import {
   VOLUME_ORG_USER_ID,
 } from "@vm0/core/storage-names";
 import { command } from "ccstate";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroSkills } from "@vm0/db/schema/zero-skill";
 import { eq } from "drizzle-orm";
 
@@ -38,6 +40,11 @@ export const deleteSkillsForFixture$ = command(
     await db.delete(storages).where(eq(storages.orgId, fixture.orgId));
     signal.throwIfAborted();
     await db.delete(zeroSkills).where(eq(zeroSkills.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    // agent_composes cascades to zero_agents via FK.
+    await db
+      .delete(agentComposes)
+      .where(eq(agentComposes.orgId, fixture.orgId));
     signal.throwIfAborted();
   },
 );
@@ -222,3 +229,33 @@ export function mockSkillContent(
     return Promise.resolve({});
   });
 }
+
+export const seedAgentForInstructions$ = command(
+  async (
+    { set },
+    args: { orgId: string; userId: string; name?: string },
+    signal: AbortSignal,
+  ): Promise<{ agentId: string }> => {
+    const db = set(writeDb$);
+    const agentId = randomUUID();
+    const name = args.name ?? `agent-${randomUUID().slice(0, 8)}`;
+    await db.insert(agentComposes).values({
+      id: agentId,
+      userId: args.userId,
+      orgId: args.orgId,
+      name,
+    });
+    signal.throwIfAborted();
+    await db
+      .insert(zeroAgents)
+      .values({
+        id: agentId,
+        orgId: args.orgId,
+        owner: args.userId,
+        name,
+      })
+      .onConflictDoNothing();
+    signal.throwIfAborted();
+    return { agentId };
+  },
+);

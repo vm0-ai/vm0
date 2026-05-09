@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  zeroAgentInstructionsContract,
   zeroSkillsCollectionContract,
   zeroSkillsDetailContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
@@ -10,6 +11,7 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import {
   deleteSkillsForFixture$,
   mockSkillContent,
+  seedAgentForInstructions$,
   seedSkill$,
   seedSkillStorage$,
   seedSkillsFixture$,
@@ -34,6 +36,10 @@ function listClient() {
 
 function detailClient() {
   return setupApp({ context })(zeroSkillsDetailContract);
+}
+
+function instructionsClient() {
+  return setupApp({ context })(zeroAgentInstructionsContract);
 }
 
 describe("GET /api/zero/skills", () => {
@@ -316,5 +322,105 @@ describe("GET /api/zero/skills/:name", () => {
 
     expect(response.body.content).toBe("# Readable");
     expect(response.body.name).toBe("readable-skill");
+  });
+});
+
+describe("GET /api/zero/agents/:id/instructions", () => {
+  const track = createFixtureTracker<SkillsFixture>((fixture) => {
+    return store.set(deleteSkillsForFixture$, fixture, context.signal);
+  });
+
+  it("returns 401 when the request is unauthenticated", async () => {
+    const response = await accept(
+      instructionsClient().get({
+        headers: {},
+        params: { id: randomUUID() },
+      }),
+      [401],
+    );
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+    const response = await accept(
+      instructionsClient().get({
+        headers: authHeaders(),
+        params: { id: randomUUID() },
+      }),
+      [401],
+    );
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns null content when no instructions uploaded", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const { agentId } = await store.set(
+      seedAgentForInstructions$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      instructionsClient().get({
+        headers: authHeaders(),
+        params: { id: agentId },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ content: null, filename: null });
+  });
+
+  it("returns 404 for unknown agent", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const unknownAgentId = randomUUID();
+    const response = await accept(
+      instructionsClient().get({
+        headers: authHeaders(),
+        params: { id: unknownAgentId },
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: `Agent not found: ${unknownAgentId}`,
+        code: "NOT_FOUND",
+      },
+    });
+  });
+
+  it("allows org member to read instructions", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const { agentId } = await store.set(
+      seedAgentForInstructions$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const response = await accept(
+      instructionsClient().get({
+        headers: authHeaders(),
+        params: { id: agentId },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ content: null, filename: null });
   });
 });

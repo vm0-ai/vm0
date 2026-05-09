@@ -7,7 +7,6 @@ import {
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import { notFound } from "../../lib/error";
 import { zeroAgentInstructions } from "../services/zero-agent-instructions.service";
 import { zeroSkillDetail } from "../services/zero-skill-detail.service";
@@ -42,10 +41,7 @@ const getSkillDetailInner$ = computed(async (get) => {
 export const zeroAgentInstructionsRoutes: readonly RouteEntry[] = [
   {
     route: zeroAgentInstructionsContract.get,
-    handler: shadowCompareRoute({
-      route: zeroAgentInstructionsContract.get,
-      handler: authRoute(agentReadAuth, getAgentInstructionsInner$),
-    }),
+    handler: authRoute(agentReadAuth, getAgentInstructionsInner$),
   },
   {
     route: zeroSkillsDetailContract.get,
