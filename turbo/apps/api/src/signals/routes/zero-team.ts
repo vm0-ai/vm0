@@ -3,7 +3,6 @@ import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import { zeroTeam } from "../services/zero-agent-data.service";
 import type { RouteEntry } from "../route";
 
@@ -30,9 +29,6 @@ const listTeamInner$ = computed(async (get) => {
 export const zeroTeamRoutes: readonly RouteEntry[] = [
   {
     route: zeroTeamContract.list,
-    handler: shadowCompareRoute({
-      route: zeroTeamContract.list,
-      handler: authRoute({}, listTeamInner$),
-    }),
+    handler: authRoute({}, listTeamInner$),
   },
 ];
