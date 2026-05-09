@@ -23,6 +23,12 @@ import {
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
+import {
+  appendOptimisticChatMessage$,
+  createOptimisticChatMessagesForThread,
+  reconcileOptimisticChatMessages$,
+  type OptimisticChatMessageEntry,
+} from "./optimistic-chat-messages.ts";
 import { reloadChatThreads$, type ChatThread } from "../agent-chat.ts";
 import {
   chatMessagesContract,
@@ -72,24 +78,7 @@ export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
 const L = logger("ChatThread");
 
-type OptimisticAssociation = "run" | "queue";
-
-type OptimisticPagedChatMessage = PagedChatMessage & {
-  optimisticAssociation?: OptimisticAssociation;
-};
-
-function optimisticAssociation(
-  msg: PagedChatMessage | OptimisticPagedChatMessage,
-): OptimisticAssociation | undefined {
-  if ("optimisticAssociation" in msg) {
-    return msg.optimisticAssociation;
-  }
-  return undefined;
-}
-
-function isRecallControlMessage(
-  msg: PagedChatMessage | OptimisticPagedChatMessage,
-): boolean {
+function isRecallControlMessage(msg: PagedChatMessage): boolean {
   return (
     msg.role === "user" &&
     msg.runId === undefined &&
@@ -243,7 +232,6 @@ export interface ChatThreadSignals {
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   loadHistory$: Command<Promise<void>, [AbortSignal]>;
   subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;
-  insertOptimisticMessage$: Command<void, [OptimisticPagedChatMessage]>;
   // ── Thinking indicator ───────────────────────────────────────────────────
   blockColors$: Computed<[string, string, string]>;
   rotatingPhrase$: Computed<string>;
@@ -501,19 +489,6 @@ function createThreadUIState() {
 /** Milliseconds to wait before persisting a draft change to the server. */
 const DRAFT_SYNC_DEBOUNCE_MS = 500;
 
-// Backing state for the debounce delay — not exported directly (no-export-state rule).
-const internalDraftSyncDebounceMs$ = state(DRAFT_SYNC_DEBOUNCE_MS);
-
-/**
- * Overrides the debounce delay (ms) used by `scheduleDraftSync$`. Set to 0
- * in tests to bypass the 500ms wait without fake timers.
- *
- * @internal — exported for testing only; do not use in application code.
- */
-export const setDraftSyncDebounceMs$ = command(({ set }, ms: number) => {
-  set(internalDraftSyncDebounceMs$, ms);
-});
-
 function createDraftSync(
   threadId: string,
   draft: DraftSignals,
@@ -525,7 +500,7 @@ function createDraftSync(
 
   const debouncedSyncDraft$ = command(
     async ({ get, set }, signal: AbortSignal) => {
-      await delay(get(internalDraftSyncDebounceMs$), { signal });
+      await delay(DRAFT_SYNC_DEBOUNCE_MS, { signal });
       signal.throwIfAborted();
 
       const input = get(draft.input$);
@@ -656,15 +631,19 @@ function groupMessagesForDisplay(
   ];
 }
 
-type DeltaMessages$ = State<OptimisticPagedChatMessage[]>;
+type ServerMessages$ = State<PagedChatMessage[]>;
 
-function createAppendDelta(deltaMessages$: DeltaMessages$) {
-  return command(({ set }, msgs: OptimisticPagedChatMessage[]) => {
+function createAppendServerMessages(
+  threadId: string,
+  serverMessages$: ServerMessages$,
+) {
+  return command(({ set }, msgs: PagedChatMessage[]) => {
     if (msgs.length === 0) {
       return;
     }
-    set(deltaMessages$, (prev) => {
-      const byId = new Map<string, OptimisticPagedChatMessage>();
+    set(reconcileOptimisticChatMessages$, { threadId, messages: msgs });
+    set(serverMessages$, (prev) => {
+      const byId = new Map<string, PagedChatMessage>();
       for (const m of prev) {
         byId.set(m.id, m);
       }
@@ -719,65 +698,91 @@ function createBackfillHistoryBoundaryCommand({
   });
 }
 
+interface ChatMessageProjectionEntry {
+  message: PagedChatMessage;
+  optimisticUserMessageAssociation?: OptimisticChatMessageEntry["optimisticUserMessageAssociation"];
+}
+
 function createAllMessagesComputed({
   initialPage$,
   historyMessages$,
-  deltaMessages$,
+  serverMessages$,
+  optimisticMessages$,
 }: {
   initialPage$: Computed<
     Promise<{ messages: PagedChatMessage[]; hasHistoryBefore: boolean }>
   >;
   historyMessages$: State<PagedChatMessage[]>;
-  deltaMessages$: State<OptimisticPagedChatMessage[]>;
+  serverMessages$: State<PagedChatMessage[]>;
+  optimisticMessages$: Computed<OptimisticChatMessageEntry[]>;
 }): Computed<Promise<EnrichedChatMessage[]>> {
   return computed(async (get): Promise<EnrichedChatMessage[]> => {
     const initial = await get(initialPage$);
     const history = get(historyMessages$);
-    const deltas = get(deltaMessages$);
-    const raw = [...history, ...initial.messages, ...deltas];
+    const server = [...history, ...initial.messages, ...get(serverMessages$)];
+    const serverIds = new Set(
+      server.map((message) => {
+        return message.id;
+      }),
+    );
+    const optimistic = get(optimisticMessages$).filter((entry) => {
+      return !serverIds.has(entry.message.id);
+    });
+    const raw: ChatMessageProjectionEntry[] = [
+      ...server.map((message) => {
+        return { message };
+      }),
+      ...optimistic,
+    ];
     const rawById = new Map(
-      raw.map((msg) => {
-        return [msg.id, msg] as const;
+      raw.map((entry) => {
+        return [entry.message.id, entry.message] as const;
       }),
     );
     const recalledIds = new Set(
-      raw.flatMap((msg) => {
-        return isRecallControlMessage(msg) && msg.revokesMessageId
-          ? [msg.revokesMessageId]
+      raw.flatMap((entry) => {
+        const { message } = entry;
+        return isRecallControlMessage(message) && message.revokesMessageId
+          ? [message.revokesMessageId]
           : [];
       }),
     );
     const replacedIds = new Set(
-      raw.flatMap((msg) => {
-        return !isRecallControlMessage(msg) && msg.revokesMessageId
-          ? [msg.revokesMessageId]
+      raw.flatMap((entry) => {
+        const { message } = entry;
+        return !isRecallControlMessage(message) && message.revokesMessageId
+          ? [message.revokesMessageId]
           : [];
       }),
     );
     return raw
-      .filter((msg) => {
-        return !recalledIds.has(msg.id) && !replacedIds.has(msg.id);
+      .filter((entry) => {
+        return (
+          !recalledIds.has(entry.message.id) &&
+          !replacedIds.has(entry.message.id)
+        );
       })
-      .map((msg) => {
+      .map((entry) => {
+        const { message } = entry;
         const recallTarget =
-          isRecallControlMessage(msg) && msg.revokesMessageId
-            ? rawById.get(msg.revokesMessageId)
+          isRecallControlMessage(message) && message.revokesMessageId
+            ? rawById.get(message.revokesMessageId)
             : undefined;
         const displayMessage =
-          recallTarget && msg.role === "user"
+          recallTarget && message.role === "user"
             ? {
-                ...msg,
+                ...message,
                 content: recallTarget.content,
                 attachFiles: recallTarget.attachFiles,
               }
-            : msg;
+            : message;
         const { blocks } = parseBodyRenderBlocks(displayMessage.content ?? "");
         const isUnassociatedUser =
           displayMessage.role === "user" && displayMessage.runId === undefined;
-        const optimistic = optimisticAssociation(displayMessage);
-        const isRecalled = isRecallControlMessage(msg);
+        const optimisticAssociation = entry.optimisticUserMessageAssociation;
+        const isRecalled = isRecallControlMessage(message);
         const isQueued =
-          isUnassociatedUser && !isRecalled && optimistic !== "run";
+          isUnassociatedUser && !isRecalled && optimisticAssociation !== "run";
         if (displayMessage.role !== "assistant") {
           return {
             ...displayMessage,
@@ -802,13 +807,13 @@ function createFetchNextPageCommand({
   threadId,
   initialPage$,
   nextCursorId$,
-  appendDeltaMessages$,
+  appendServerMessages$,
   dataSource,
 }: {
   threadId: string;
   initialPage$: Computed<Promise<InitialPage>>;
   nextCursorId$: State<string | undefined>;
-  appendDeltaMessages$: Command<void, [OptimisticPagedChatMessage[]]>;
+  appendServerMessages$: Command<void, [PagedChatMessage[]]>;
   dataSource: ChatThreadDataSource;
 }): Command<Promise<boolean>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal) => {
@@ -816,6 +821,10 @@ function createFetchNextPageCommand({
     if (!sinceId) {
       const initial = await get(initialPage$);
       signal.throwIfAborted();
+      set(reconcileOptimisticChatMessages$, {
+        threadId,
+        messages: initial.messages,
+      });
       sinceId = initial.messages[initial.messages.length - 1]?.id;
       L.debug("fetchNextPage$ initialPage seeded sinceId", {
         threadId,
@@ -849,7 +858,7 @@ function createFetchNextPageCommand({
         page: i,
       });
       if (result.messages.length > 0) {
-        set(appendDeltaMessages$, result.messages);
+        set(appendServerMessages$, result.messages);
         sinceId = result.messages[result.messages.length - 1].id;
         set(nextCursorId$, sinceId);
       }
@@ -870,8 +879,12 @@ function createPagedMessages(
   const historyMessages$ = state<PagedChatMessage[]>([]);
   const initialPage$ = createInitialPage(dataSource);
 
-  const deltaMessages$ = state<OptimisticPagedChatMessage[]>([]);
-  const appendDeltaMessages$ = createAppendDelta(deltaMessages$);
+  const serverMessages$ = state<PagedChatMessage[]>([]);
+  const appendServerMessages$ = createAppendServerMessages(
+    threadId,
+    serverMessages$,
+  );
+  const optimisticMessages$ = createOptimisticChatMessagesForThread(threadId);
 
   // Tracks the last known server-validated message ID so optimistic
   // (client-generated) IDs never leak into sinceId calls.
@@ -882,7 +895,8 @@ function createPagedMessages(
   const allMessages$ = createAllMessagesComputed({
     initialPage$,
     historyMessages$,
-    deltaMessages$,
+    serverMessages$,
+    optimisticMessages$,
   });
 
   const groupedChatMessages$ = computed(
@@ -925,7 +939,7 @@ function createPagedMessages(
     threadId,
     initialPage$,
     nextCursorId$,
-    appendDeltaMessages$,
+    appendServerMessages$,
     dataSource,
   });
 
@@ -937,13 +951,7 @@ function createPagedMessages(
         signal,
       );
       signal.throwIfAborted();
-      set(appendDeltaMessages$, result.messages);
-    },
-  );
-
-  const insertOptimisticMessage$ = command(
-    ({ set }, msg: OptimisticPagedChatMessage) => {
-      set(appendDeltaMessages$, [msg]);
+      set(appendServerMessages$, result.messages);
     },
   );
 
@@ -965,7 +973,6 @@ function createPagedMessages(
     backfillHistoryBoundary$,
     refreshLatestMessages$,
     loadHistory$,
-    insertOptimisticMessage$,
   };
 }
 
@@ -1005,6 +1012,10 @@ function createLoadHistoryCommand({
       signal,
     );
     signal.throwIfAborted();
+    set(reconcileOptimisticChatMessages$, {
+      threadId,
+      messages: result.messages,
+    });
 
     set(historyMessages$, (prev) => {
       if (result.messages.length === 0) {
@@ -1326,7 +1337,6 @@ interface SendMessageDeps {
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
-  insertOptimisticMessage$: Command<void, [OptimisticPagedChatMessage]>;
   scrollToBottom$: Command<void, []>;
 }
 
@@ -1337,7 +1347,6 @@ function createSendMessage(deps: SendMessageDeps) {
     draft,
     cancelDraftSync$,
     flushDraftClear$,
-    insertOptimisticMessage$,
     scrollToBottom$,
   } = deps;
   return command(
@@ -1399,13 +1408,16 @@ function createSendMessage(deps: SendMessageDeps) {
       set(draft.clear$);
 
       const clientMessageId = crypto.randomUUID();
-      set(insertOptimisticMessage$, {
-        id: clientMessageId,
-        role: "user",
-        content: result.prompt,
-        optimisticAssociation: "run",
-        attachFiles: result.attachments,
-        createdAt: new Date().toISOString(),
+      set(appendOptimisticChatMessage$, {
+        threadId,
+        optimisticUserMessageAssociation: "run",
+        message: {
+          id: clientMessageId,
+          role: "user",
+          content: result.prompt,
+          attachFiles: result.attachments,
+          createdAt: new Date().toISOString(),
+        },
       });
       animationFrame(
         () => {
@@ -1456,7 +1468,6 @@ interface QueueMessageDeps {
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
-  insertOptimisticMessage$: Command<void, [OptimisticPagedChatMessage]>;
   scrollToBottom$: Command<void, []>;
   dataSource: ChatThreadDataSource;
 }
@@ -1469,7 +1480,6 @@ function createQueueMessage(deps: QueueMessageDeps) {
     draft,
     cancelDraftSync$,
     flushDraftClear$,
-    insertOptimisticMessage$,
     scrollToBottom$,
     dataSource,
   } = deps;
@@ -1507,13 +1517,16 @@ function createQueueMessage(deps: QueueMessageDeps) {
 
     const clientMessageId = crypto.randomUUID();
     const nowIso = new Date().toISOString();
-    set(insertOptimisticMessage$, {
-      id: clientMessageId,
-      role: "user",
-      content: result.prompt,
-      optimisticAssociation: "queue",
-      attachFiles: result.attachments,
-      createdAt: nowIso,
+    set(appendOptimisticChatMessage$, {
+      threadId,
+      optimisticUserMessageAssociation: "queue",
+      message: {
+        id: clientMessageId,
+        role: "user",
+        content: result.prompt,
+        attachFiles: result.attachments,
+        createdAt: nowIso,
+      },
     });
     animationFrame(
       () => {
@@ -1549,13 +1562,11 @@ interface RecallMessageDeps {
   threadId: string;
   threadData$: Computed<Promise<ChatThread | null>>;
   draft: DraftSignals;
-  insertOptimisticMessage$: Command<void, [OptimisticPagedChatMessage]>;
   dataSource: ChatThreadDataSource;
 }
 
 function createRecallMessage(deps: RecallMessageDeps) {
-  const { threadId, threadData$, draft, insertOptimisticMessage$, dataSource } =
-    deps;
+  const { threadId, threadData$, draft, dataSource } = deps;
 
   return command(
     async ({ get, set }, message: EnrichedChatMessage, signal: AbortSignal) => {
@@ -1574,12 +1585,15 @@ function createRecallMessage(deps: RecallMessageDeps) {
       }
 
       const clientMessageId = crypto.randomUUID();
-      set(insertOptimisticMessage$, {
-        id: clientMessageId,
-        role: "user",
-        content: null,
-        revokesMessageId: message.id,
-        createdAt: new Date().toISOString(),
+      set(appendOptimisticChatMessage$, {
+        threadId,
+        message: {
+          id: clientMessageId,
+          role: "user",
+          content: null,
+          revokesMessageId: message.id,
+          createdAt: new Date().toISOString(),
+        },
       });
       set(
         draft.seed$,
@@ -1741,7 +1755,6 @@ export function createChatThreadSignals(
     backfillHistoryBoundary$,
     refreshLatestMessages$,
     loadHistory$: loadPagedHistory$,
-    insertOptimisticMessage$,
   } = createPagedMessages(threadId, threadData$, dataSource);
 
   const loadHistory$ = createLoadHistoryWithPrependScroll(
@@ -1770,7 +1783,6 @@ export function createChatThreadSignals(
     draft,
     cancelDraftSync$,
     flushDraftClear$,
-    insertOptimisticMessage$,
     scrollToBottom$: scrollSignals.scrollToBottom$,
     dataSource,
   });
@@ -1829,7 +1841,6 @@ export function createChatThreadSignals(
     fetchNextPage$,
     loadHistory$,
     subscribeChatThread$: runTracking.subscribeChatThread$,
-    insertOptimisticMessage$,
     blockColors$,
     rotatingPhrase$,
     donePhrase$,

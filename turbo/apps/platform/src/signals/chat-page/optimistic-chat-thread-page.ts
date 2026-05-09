@@ -24,16 +24,19 @@ import {
   ensureDraft$,
   type ChatThreadSignals,
 } from "./create-chat-thread.ts";
-import {
-  createLocalChatThreadDataSource,
-  type LocalChatThreadDataSource,
-} from "./local-chat-thread-data-source.ts";
+import { createLocalChatThreadDataSource } from "./local-chat-thread-data-source.ts";
 import type { AppendQueuedMessageArgs } from "./chat-thread-data-source.ts";
 import { createPendingChatThread } from "./pending-chat-thread.ts";
 import {
+  ATTACH_ONLY_PLACEHOLDER,
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
+import {
+  appendOptimisticChatMessage$,
+  createQueuedOptimisticUserMessagesForThread,
+  type OptimisticChatMessageEntry,
+} from "./optimistic-chat-messages.ts";
 import {
   allPendingChatThreads$,
   clearMatchingOptimisticChatThread$,
@@ -100,10 +103,6 @@ interface SendNewThreadMessagePending extends PendingChatThread {
   sendResult: Promise<SendNewThreadMessageResult>;
 }
 
-type OptimisticThreadMessage = PagedChatMessage & {
-  optimisticAssociation?: "run" | "queue";
-};
-
 async function appendQueuedMessage(
   createClient: ZeroClientFactory,
   threadId: string,
@@ -134,6 +133,64 @@ async function appendQueuedMessage(
     [201],
   );
   signal.throwIfAborted();
+}
+
+function hasTextContentForQueuedReplay(message: PagedChatMessage): boolean {
+  const content = message.content?.trim() ?? "";
+  return content.length > 0 && content !== ATTACH_ONLY_PLACEHOLDER;
+}
+
+function queuedReplayAppendArgs({
+  threadId,
+  agentId,
+  modelSelection,
+  entry,
+}: {
+  threadId: string;
+  agentId: string;
+  modelSelection: ModelSelectionRequest | null;
+  entry: OptimisticChatMessageEntry;
+}): AppendQueuedMessageArgs {
+  return {
+    threadId,
+    agentId,
+    content: entry.message.content,
+    attachments: entry.message.attachFiles ?? null,
+    clientMessageId: entry.message.id,
+    hasTextContent: hasTextContentForQueuedReplay(entry.message),
+    modelSelection,
+  };
+}
+
+async function replayQueuedOptimisticMessages({
+  createClient,
+  threadId,
+  agentId,
+  modelSelection,
+  entries,
+  signal,
+}: {
+  createClient: ZeroClientFactory;
+  threadId: string;
+  agentId: string;
+  modelSelection: ModelSelectionRequest | null;
+  entries: OptimisticChatMessageEntry[];
+  signal: AbortSignal;
+}): Promise<void> {
+  for (const entry of entries) {
+    signal.throwIfAborted();
+    await appendQueuedMessage(
+      createClient,
+      threadId,
+      queuedReplayAppendArgs({
+        threadId,
+        agentId,
+        modelSelection,
+        entry,
+      }),
+      signal,
+    );
+  }
 }
 
 const routeMainOptimisticChatThread$ = command(
@@ -217,14 +274,12 @@ const mintOptimisticPendingThread$ = command(
     args: {
       threadId: string;
       agentId: string;
-      messages?: OptimisticThreadMessage[];
       pendingRunId?: string;
     },
     signal: AbortSignal,
   ): Promise<{
     createdAt: string;
     pendingThread: ChatThreadSignals;
-    dataSource: LocalChatThreadDataSource;
   }> => {
     L.debug("optimistic thread minted", {
       threadId: args.threadId,
@@ -238,7 +293,7 @@ const mintOptimisticPendingThread$ = command(
         args.agentId,
         args.pendingRunId,
       ),
-      messages: args.messages ?? [],
+      messages: [],
     });
     const { draft } = set(ensureDraft$, args.threadId);
     const pendingThread = createChatThreadSignals(
@@ -246,7 +301,7 @@ const mintOptimisticPendingThread$ = command(
       draft,
       dataSource,
     );
-    return { createdAt, pendingThread, dataSource };
+    return { createdAt, pendingThread };
   },
 );
 
@@ -452,22 +507,23 @@ const sendNewThreadMessage$ = command(
     const threadId = crypto.randomUUID();
     const clientMessageId = crypto.randomUUID();
     const messageCreatedAt = new Date().toISOString();
-    const { createdAt, pendingThread, dataSource } = await set(
+    set(appendOptimisticChatMessage$, {
+      threadId,
+      optimisticUserMessageAssociation: "run",
+      message: {
+        id: clientMessageId,
+        role: "user",
+        content: prepared.prompt,
+        attachFiles: prepared.attachments,
+        createdAt: messageCreatedAt,
+      },
+    });
+    const { createdAt, pendingThread } = await set(
       mintOptimisticPendingThread$,
       {
         threadId,
         agentId,
         pendingRunId: `pending-${threadId}`,
-        messages: [
-          {
-            id: clientMessageId,
-            role: "user",
-            content: prepared.prompt,
-            attachFiles: prepared.attachments,
-            optimisticAssociation: "run",
-            createdAt: messageCreatedAt,
-          },
-        ],
       },
       signal,
     );
@@ -475,6 +531,8 @@ const sendNewThreadMessage$ = command(
 
     const createClient = get(zeroClient$);
     const client = createClient(chatMessagesContract);
+    const queuedOptimisticMessages$ =
+      createQueuedOptimisticUserMessagesForThread(threadId);
     L.debug("sendNewThreadMessage$ POST chat/messages start", {
       threadId,
       clientMessageId,
@@ -503,16 +561,18 @@ const sendNewThreadMessage$ = command(
         threadId: result.body.threadId,
         runId: result.body.runId,
       });
-      const queuedAppends = dataSource.takeQueuedMessageAppends();
-      for (const append of queuedAppends) {
-        signal.throwIfAborted();
-        await appendQueuedMessage(
-          createClient,
-          result.body.threadId,
-          append,
-          signal,
-        );
-      }
+      const queuedMessages = await get(queuedOptimisticMessages$);
+      signal.throwIfAborted();
+      const replayModelSelection = await get(pendingThread.modelSelection$);
+      signal.throwIfAborted();
+      await replayQueuedOptimisticMessages({
+        createClient,
+        threadId: result.body.threadId,
+        agentId,
+        modelSelection: replayModelSelection,
+        entries: queuedMessages,
+        signal,
+      });
       set(reloadChatThreads$);
 
       return { threadId: result.body.threadId, runId: result.body.runId };
