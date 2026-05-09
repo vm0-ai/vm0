@@ -5,7 +5,6 @@ import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { zeroComputerUseHost } from "../services/zero-computer-use.service";
 import type { RouteEntry } from "../route";
@@ -57,16 +56,13 @@ const getComputerUseHostInner$ = computed(async (get) => {
 export const zeroComputerUseRoutes: readonly RouteEntry[] = [
   {
     route: zeroComputerUseHostContract.getHost,
-    handler: shadowCompareRoute({
-      route: zeroComputerUseHostContract.getHost,
-      handler: authRoute(
-        {
-          requireOrganization: true,
-          missingOrganizationStatus: 401,
-          requiredCapability: "computer-use:write",
-        },
-        getComputerUseHostInner$,
-      ),
-    }),
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "computer-use:write",
+      },
+      getComputerUseHostInner$,
+    ),
   },
 ];
