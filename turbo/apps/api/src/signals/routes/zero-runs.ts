@@ -70,10 +70,7 @@ const getRunQueueInner$ = computed(async (get) => {
 export const zeroRunsRoutes: readonly RouteEntry[] = [
   {
     route: zeroRunsQueueContract.getQueue,
-    handler: shadowCompareRoute({
-      route: zeroRunsQueueContract.getQueue,
-      handler: authRoute(runReadAuth, getRunQueueInner$),
-    }),
+    handler: authRoute(runReadAuth, getRunQueueInner$),
   },
   {
     route: zeroRunRunnerContract.getRunner,
