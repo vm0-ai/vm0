@@ -103,7 +103,7 @@ describe("GET /api/zero/chat-threads/:id", () => {
     // optional for back-compat, but production clients dedupe on id, and
     // omitting it caused a shadow divergence regression (see PR #12339).
     for (const message of response.body.chatMessages) {
-      expect(message.id).toEqual(expect.any(String));
+      expect(message.id).toStrictEqual(expect.any(String));
     }
   });
 
@@ -427,6 +427,6 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
       response.body.messages.map((m) => {
         return m.id;
       }),
-    ).toEqual([visibleId]);
+    ).toStrictEqual([visibleId]);
   });
 });
