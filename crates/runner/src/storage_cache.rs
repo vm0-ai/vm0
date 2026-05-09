@@ -89,6 +89,8 @@ enum TargetKind {
 
 #[derive(Clone)]
 struct StageArchive {
+    name: String,
+    version: String,
     guest_path: String,
     archive_path: PathBuf,
     len: u64,
@@ -96,7 +98,6 @@ struct StageArchive {
 
 struct ProcessedTarget {
     outcome: TargetOutcome,
-    _guard: Option<nix::fcntl::Flock<std::fs::File>>,
 }
 
 enum TargetOutcome {
@@ -117,15 +118,35 @@ enum TargetOutcome {
     SkippedHeadFailed {
         reason: String,
     },
+    /// The local archive was ready after cache processing, but became
+    /// unavailable before guest staging. Cache is an optimization, so keep the
+    /// manifest pointed at the original URL instead of failing the run.
+    SkippedStageUnavailable {
+        reason: String,
+    },
 }
 
 impl TargetOutcome {
     fn stage(&self) -> Option<&StageArchive> {
         match self {
             Self::Hit { stage } | Self::Miss { stage, .. } => Some(stage),
-            Self::SkippedOverSize | Self::SkippedHeadFailed { .. } => None,
+            Self::SkippedOverSize
+            | Self::SkippedHeadFailed { .. }
+            | Self::SkippedStageUnavailable { .. } => None,
         }
     }
+}
+
+struct LockedStageArchives {
+    stages: Vec<StageArchive>,
+    skipped: Vec<SkippedStageArchive>,
+    guards: Vec<nix::fcntl::Flock<std::fs::File>>,
+}
+
+struct SkippedStageArchive {
+    name: String,
+    version: String,
+    reason: String,
 }
 
 enum DownloadBody {
@@ -191,8 +212,26 @@ pub async fn populate_cache(
         resolved.insert(cache_key(&target.name, &target.version), processed);
     }
 
-    if !staged.is_empty() {
-        let requests = staged
+    let LockedStageArchives {
+        stages: locked_stages,
+        skipped: skipped_stages,
+        guards: stage_guards,
+    } = lock_stage_archives(staged, home).await?;
+    for skipped in skipped_stages {
+        let key = cache_key(&skipped.name, &skipped.version);
+        let processed = resolved.get_mut(&key).ok_or_else(|| {
+            RunnerError::Internal(format!(
+                "storage cache missing skipped stage outcome for {}@{}",
+                skipped.name, skipped.version
+            ))
+        })?;
+        processed.outcome = TargetOutcome::SkippedStageUnavailable {
+            reason: skipped.reason,
+        };
+    }
+
+    if !locked_stages.is_empty() {
+        let requests = locked_stages
             .iter()
             .map(|stage| WriteFileRequest {
                 path: stage.guest_path.as_str(),
@@ -206,6 +245,7 @@ pub async fn populate_cache(
         sandbox.write_files(&requests).await?;
         telemetry.record("storage_cache_guest_stage", started.elapsed(), true, None);
     }
+    drop(stage_guards);
 
     for group in groups {
         let key = cache_key(&group.representative.name, &group.representative.version);
@@ -304,7 +344,7 @@ async fn process_one(
     // Acquire the per-version flock (blocking, cross-process dedup).
     // Disk-check happens under the lock so we never race with a writer.
     let lock_path = home.storage_lock(&target.name, &target.version);
-    let guard = lock::acquire(lock_path).await?;
+    let _guard = lock::acquire(lock_path).await?;
 
     let cache_dir = home.storage_cache_dir(&target.name, &target.version);
     let archive_path = cache_dir.join("archive.tar.gz");
@@ -317,12 +357,13 @@ async fn process_one(
             return Ok(ProcessedTarget {
                 outcome: TargetOutcome::Hit {
                     stage: StageArchive {
+                        name: target.name.clone(),
+                        version: target.version.clone(),
                         guest_path: guest_archive_path(&target.name, &target.version),
                         archive_path,
                         len: metadata.len(),
                     },
                 },
-                _guard: Some(guard),
             });
         }
         Ok(metadata) => {
@@ -354,7 +395,6 @@ async fn process_one(
                 outcome: TargetOutcome::SkippedHeadFailed {
                     reason: "missing-size-header".to_string(),
                 },
-                _guard: None,
             });
         }
         Err(e) => {
@@ -367,7 +407,6 @@ async fn process_one(
             );
             return Ok(ProcessedTarget {
                 outcome: TargetOutcome::SkippedHeadFailed { reason },
-                _guard: None,
             });
         }
     };
@@ -380,7 +419,6 @@ async fn process_one(
         );
         return Ok(ProcessedTarget {
             outcome: TargetOutcome::SkippedOverSize,
-            _guard: None,
         });
     }
 
@@ -412,13 +450,79 @@ async fn process_one(
         outcome: TargetOutcome::Miss {
             download_duration: t.elapsed(),
             stage: StageArchive {
+                name: target.name.clone(),
+                version: target.version.clone(),
                 guest_path: guest_archive_path(&target.name, &target.version),
                 archive_path,
                 len,
             },
         },
-        _guard: Some(guard),
     })
+}
+
+async fn lock_stage_archives(
+    mut stages: Vec<StageArchive>,
+    home: &HomePaths,
+) -> RunnerResult<LockedStageArchives> {
+    sort_stage_archives(&mut stages);
+
+    let mut locked_stages = Vec::with_capacity(stages.len());
+    let mut skipped = Vec::new();
+    let mut guards = Vec::with_capacity(stages.len());
+    for stage in stages {
+        let guard = lock::acquire_shared(home.storage_lock(&stage.name, &stage.version)).await?;
+        match validate_stage_archive(&stage).await {
+            Ok(()) => {
+                guards.push(guard);
+                locked_stages.push(stage);
+            }
+            Err(reason) => {
+                warn!(
+                    name = %stage.name,
+                    version = %stage.version,
+                    reason = %reason,
+                    "storage_cache: staged archive unavailable, passthrough"
+                );
+                skipped.push(SkippedStageArchive {
+                    name: stage.name,
+                    version: stage.version,
+                    reason,
+                });
+            }
+        }
+    }
+
+    Ok(LockedStageArchives {
+        stages: locked_stages,
+        skipped,
+        guards,
+    })
+}
+
+fn sort_stage_archives(stages: &mut [StageArchive]) {
+    stages.sort_by(|a, b| {
+        a.name
+            .cmp(&b.name)
+            .then_with(|| a.version.cmp(&b.version))
+            .then_with(|| a.guest_path.cmp(&b.guest_path))
+    });
+}
+
+async fn validate_stage_archive(stage: &StageArchive) -> Result<(), String> {
+    let metadata = fs::metadata(&stage.archive_path)
+        .await
+        .map_err(|e| format!("stat {}: {e}", stage.archive_path.display()))?;
+    if !metadata.is_file() {
+        return Err(format!("{} is not a file", stage.archive_path.display()));
+    }
+    if metadata.len() != stage.len {
+        return Err(format!(
+            "size changed from {} to {} bytes",
+            stage.len,
+            metadata.len()
+        ));
+    }
+    Ok(())
 }
 
 async fn probe_size(http: &Client, url: &str) -> RunnerResult<Option<u64>> {
@@ -681,6 +785,14 @@ fn apply_outcome(
         TargetOutcome::SkippedHeadFailed { reason } => {
             telemetry.record(
                 "storage_cache_skipped_head_failed",
+                Duration::ZERO,
+                true,
+                Some(reason.as_str()),
+            );
+        }
+        TargetOutcome::SkippedStageUnavailable { reason } => {
+            telemetry.record(
+                "storage_cache_skipped_stage_unavailable",
                 Duration::ZERO,
                 true,
                 Some(reason.as_str()),
@@ -1005,7 +1117,37 @@ mod tests {
 
         probe.assert_async().await;
         assert!(matches!(processed.outcome, TargetOutcome::SkippedOverSize));
-        assert!(processed._guard.is_none());
+        let _lock = lock::try_acquire(home.storage_lock("user-volume", "v9"))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn hit_outcome_does_not_keep_cache_lock() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let http = Client::builder().build().unwrap();
+
+        let name = "cached-hit";
+        let version = "v1";
+        let cache_dir = home.storage_cache_dir(name, version);
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        std::fs::write(cache_dir.join("archive.tar.gz"), tarball_bytes()).unwrap();
+
+        let target = CacheTarget {
+            kind: TargetKind::Storage,
+            index: 0,
+            name: name.to_string(),
+            version: version.to_string(),
+            archive_url: "https://r2.example.com/ignored.tar.gz".to_string(),
+        };
+
+        let processed = process_one(&target, &http, &home).await.unwrap();
+
+        assert!(matches!(processed.outcome, TargetOutcome::Hit { .. }));
+        let _lock = lock::try_acquire(home.storage_lock(name, version))
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -1572,6 +1714,53 @@ mod tests {
         }
     }
 
+    #[test]
+    fn stage_archives_sort_by_cache_key() {
+        let mut stages = vec![
+            StageArchive {
+                name: "z-storage".to_string(),
+                version: "v1".to_string(),
+                guest_path: "/tmp/z.tar.gz".to_string(),
+                archive_path: PathBuf::from("/cache/z/archive.tar.gz"),
+                len: 1,
+            },
+            StageArchive {
+                name: "a-storage".to_string(),
+                version: "v1".to_string(),
+                guest_path: "/tmp/a.tar.gz".to_string(),
+                archive_path: PathBuf::from("/cache/a/archive.tar.gz"),
+                len: 1,
+            },
+        ];
+
+        sort_stage_archives(&mut stages);
+
+        let names = stages
+            .iter()
+            .map(|stage| stage.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["a-storage", "z-storage"]);
+    }
+
+    #[tokio::test]
+    async fn unavailable_stage_archive_is_skipped_before_guest_write() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let stage = StageArchive {
+            name: "missing-stage".to_string(),
+            version: "v1".to_string(),
+            guest_path: guest_archive_path("missing-stage", "v1"),
+            archive_path: temp.path().join("missing.tar.gz"),
+            len: 1,
+        };
+
+        let locked = lock_stage_archives(vec![stage], &home).await.unwrap();
+
+        assert!(locked.stages.is_empty());
+        assert_eq!(locked.skipped.len(), 1);
+        assert!(locked.skipped[0].reason.contains("stat"));
+    }
+
     #[tokio::test]
     async fn shared_version_distinct_names_get_distinct_guest_paths() {
         // Regression guard: two manifest entries that share `vasVersionId`
@@ -1633,6 +1822,63 @@ mod tests {
         assert_eq!(
             url_b,
             format!("file://{}", guest_archive_path(name_b, version))
+        );
+    }
+
+    #[tokio::test]
+    async fn staged_archives_are_written_in_stable_lock_order() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+
+        let version = "v1";
+        for name in ["z-storage", "a-storage"] {
+            let cache_dir = home.storage_cache_dir(name, version);
+            std::fs::create_dir_all(&cache_dir).unwrap();
+            std::fs::write(cache_dir.join("archive.tar.gz"), tarball_bytes()).unwrap();
+        }
+
+        let mut manifest = GuestDownloadManifest {
+            storages: vec![
+                GuestDownloadStorageEntry {
+                    mount_path: "/mnt/z".into(),
+                    archive_url: Some("https://r2.example.com/z.tar.gz".into()),
+                    cached: false,
+                    instructions_target_filename: None,
+                    vas_storage_name: "z-storage".into(),
+                    vas_version_id: version.into(),
+                },
+                GuestDownloadStorageEntry {
+                    mount_path: "/mnt/a".into(),
+                    archive_url: Some("https://r2.example.com/a.tar.gz".into()),
+                    cached: false,
+                    instructions_target_filename: None,
+                    vas_storage_name: "a-storage".into(),
+                    vas_version_id: version.into(),
+                },
+            ],
+            artifacts: Vec::new(),
+            cleanup_paths: Vec::new(),
+        };
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        let calls = sandbox.write_files_calls();
+        assert_eq!(calls.len(), 1, "expected one batched write_files call");
+        let paths = calls[0]
+            .files
+            .iter()
+            .map(|file| file.path.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            paths,
+            vec![
+                guest_archive_path("a-storage", version),
+                guest_archive_path("z-storage", version),
+            ]
         );
     }
 
