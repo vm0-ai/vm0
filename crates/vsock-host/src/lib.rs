@@ -2861,13 +2861,11 @@ mod tests {
                 truncated: true,
             }
         );
-        tokio::time::timeout(Duration::from_secs(5), async {
-            while bounded_stream_sender_presence(&host) != Some((false, true)) {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("closed stdout stream should release its sender before final result");
+        assert_eq!(
+            bounded_stream_sender_presence(&host),
+            Some((false, true)),
+            "closed stdout stream should release its sender before final result"
+        );
 
         release_result.notify_one();
         let result = task.await.unwrap().unwrap();
