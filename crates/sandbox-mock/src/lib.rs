@@ -603,16 +603,16 @@ impl Sandbox for MockSandbox {
                 .bounded_exec_calls
                 .lock_ignoring_poison()
                 .push(call);
-            {
+            let matched_response = {
                 let mut matchers = overrides.bounded_exec_matchers.lock_ignoring_poison();
-                if let Some(idx) = matchers
+                matchers
                     .iter()
                     .position(|m| request.cmd.contains(&m.pattern))
-                {
-                    let matcher = matchers.remove(idx);
-                    emit_bounded_exec_events(request, matcher.response.events);
-                    return matcher.response.result;
-                }
+                    .map(|idx| matchers.remove(idx).response)
+            };
+            if let Some(response) = matched_response {
+                emit_bounded_exec_events(request, response.events);
+                return response.result;
             }
             if let Some(response) = overrides
                 .bounded_exec_responses
