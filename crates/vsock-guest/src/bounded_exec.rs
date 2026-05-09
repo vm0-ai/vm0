@@ -36,13 +36,42 @@ pub(crate) struct BoundedExecWorkerRequest {
     pub(crate) env: Vec<(String, String)>,
     pub(crate) sudo: bool,
     pub(crate) stdin: Option<Vec<u8>>,
-    pub(crate) stdout_limit_bytes: u32,
-    pub(crate) stderr_limit_bytes: u32,
-    pub(crate) stream_stdout: bool,
-    pub(crate) stream_stderr: bool,
-    pub(crate) stream_chunk_limit_bytes: u32,
-    pub(crate) stdout_stream_limit_bytes: u32,
-    pub(crate) stderr_stream_limit_bytes: u32,
+    pub(crate) stdout: BoundedOutputRequest,
+    pub(crate) stderr: BoundedOutputRequest,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct BoundedOutputRequest {
+    pub(crate) capture: vsock_proto::BoundedExecCapturePolicy,
+    pub(crate) stream: Option<BoundedStreamConfig>,
+}
+
+impl BoundedOutputRequest {
+    fn from_proto(policy: vsock_proto::BoundedExecOutputPolicy) -> Self {
+        Self {
+            capture: policy.capture,
+            stream: policy.stream.map(|stream| BoundedStreamConfig {
+                chunk_limit_bytes: stream.chunk_limit_bytes as usize,
+                stream_limit_bytes: stream.limit_bytes as usize,
+            }),
+        }
+    }
+
+    fn requires_pipe(self) -> bool {
+        matches!(
+            self.capture,
+            vsock_proto::BoundedExecCapturePolicy::Capture { .. }
+        ) || self.stream.is_some()
+    }
+
+    fn final_limit_bytes(self) -> Option<usize> {
+        match self.capture {
+            vsock_proto::BoundedExecCapturePolicy::Discard => None,
+            vsock_proto::BoundedExecCapturePolicy::Capture { limit_bytes } => {
+                Some(limit_bytes as usize)
+            }
+        }
+    }
 }
 
 impl BoundedExecWorkerRequest {
@@ -58,13 +87,8 @@ impl BoundedExecWorkerRequest {
                 .collect(),
             sudo: decoded.sudo,
             stdin: decoded.stdin.map(<[u8]>::to_vec),
-            stdout_limit_bytes: decoded.stdout_limit_bytes,
-            stderr_limit_bytes: decoded.stderr_limit_bytes,
-            stream_stdout: decoded.stream_stdout,
-            stream_stderr: decoded.stream_stderr,
-            stream_chunk_limit_bytes: decoded.stream_chunk_limit_bytes,
-            stdout_stream_limit_bytes: decoded.stdout_stream_limit_bytes,
-            stderr_stream_limit_bytes: decoded.stderr_stream_limit_bytes,
+            stdout: BoundedOutputRequest::from_proto(decoded.stdout),
+            stderr: BoundedOutputRequest::from_proto(decoded.stderr),
         }
     }
 }
@@ -72,7 +96,7 @@ impl BoundedExecWorkerRequest {
 struct BoundedDrainWorker {
     seq: u32,
     stream: BoundedExecStream,
-    final_limit_bytes: usize,
+    final_limit_bytes: Option<usize>,
     stream_config: Option<BoundedStreamConfig>,
     writer: GuestWriter,
     drain_cancel: Arc<AtomicBool>,
@@ -84,10 +108,49 @@ struct BoundedExecResultFrame<'a> {
     seq: u32,
     termination: BoundedExecTermination,
     duration_ms: u64,
-    stdout: &'a [u8],
-    stderr: &'a [u8],
-    stdout_truncated: bool,
-    stderr_truncated: bool,
+    stdout: vsock_proto::BoundedExecOutput<'a>,
+    stderr: vsock_proto::BoundedExecOutput<'a>,
+    diagnostic: Option<&'a str>,
+}
+
+#[derive(Debug)]
+enum GuestBoundedOutput {
+    Discarded,
+    Captured(BoundedDrainResult),
+}
+
+impl GuestBoundedOutput {
+    fn empty_for_policy(policy: BoundedOutputRequest) -> Self {
+        if policy.final_limit_bytes().is_some() {
+            Self::Captured(BoundedDrainResult::default())
+        } else {
+            Self::Discarded
+        }
+    }
+
+    fn as_proto(&self) -> vsock_proto::BoundedExecOutput<'_> {
+        match self {
+            Self::Discarded => vsock_proto::BoundedExecOutput::Discarded,
+            Self::Captured(result) => vsock_proto::BoundedExecOutput::Captured {
+                bytes: &result.output,
+                truncated: result.truncated,
+            },
+        }
+    }
+
+    fn len(&self) -> usize {
+        match self {
+            Self::Discarded => 0,
+            Self::Captured(result) => result.output.len(),
+        }
+    }
+
+    fn truncated(&self) -> bool {
+        match self {
+            Self::Discarded => false,
+            Self::Captured(result) => result.truncated,
+        }
+    }
 }
 
 pub(crate) fn spawn_bounded_exec_worker(
@@ -108,6 +171,8 @@ where
     S: ThreadSpawner,
 {
     let seq = request.seq;
+    let stdout_policy = request.stdout;
+    let stderr_policy = request.stderr;
     let worker_writer = writer.clone();
     let worker_spawner = spawner.clone();
     let result = spawner.spawn_unit(
@@ -120,16 +185,17 @@ where
     match result {
         Ok(_) => Ok(()),
         Err(e) => {
-            let stderr = format!("Failed to spawn bounded exec worker thread: {e}");
+            let diagnostic = format!("Failed to spawn bounded exec worker thread: {e}");
+            let stdout = GuestBoundedOutput::empty_for_policy(stdout_policy);
+            let stderr = GuestBoundedOutput::empty_for_policy(stderr_policy);
             send_bounded_exec_result(
                 BoundedExecResultFrame {
                     seq,
                     termination: BoundedExecTermination::StartFailed,
                     duration_ms: 0,
-                    stdout: &[],
-                    stderr: stderr.as_bytes(),
-                    stdout_truncated: false,
-                    stderr_truncated: false,
+                    stdout: stdout.as_proto(),
+                    stderr: stderr.as_proto(),
+                    diagnostic: Some(&diagnostic),
                 },
                 &writer,
             )
@@ -148,30 +214,28 @@ fn run_bounded_exec<S>(
     log(
         "INFO",
         &format!(
-            "bounded_exec: {} (timeout={}ms, sudo={}, stdin={}, stdout_limit={}, stderr_limit={}, stream_stdout={}, stream_stderr={}, {})",
+            "bounded_exec: {} (timeout={}ms, sudo={}, stdin={}, stdout={}, stderr={}, {})",
             truncate_preview(&request.command),
             request.timeout_ms,
             request.sudo,
             request.stdin.as_ref().map_or(0, Vec::len),
-            request.stdout_limit_bytes,
-            request.stderr_limit_bytes,
-            request.stream_stdout,
-            request.stream_stderr,
+            format_output_policy(request.stdout),
+            format_output_policy(request.stderr),
             format_env_diagnostics(&request.command, &env_refs(&request.env)),
         ),
     );
 
     let started = Instant::now();
     if let Err(error) = validate_request(&request) {
+        let stdout = GuestBoundedOutput::empty_for_policy(request.stdout);
+        let stderr = GuestBoundedOutput::empty_for_policy(request.stderr);
         send_final_best_effort(
             request.seq,
             BoundedExecTermination::StartFailed,
             duration_ms(started),
-            &BoundedDrainResult::default(),
-            &BoundedDrainResult {
-                output: error.into_bytes(),
-                truncated: false,
-            },
+            &stdout,
+            &stderr,
+            Some(&error),
             &writer,
         );
         return;
@@ -183,22 +247,25 @@ fn run_bounded_exec<S>(
         &env_refs,
         request.sudo,
         request.stdin.is_some(),
+        request.stdout.requires_pipe(),
+        request.stderr.requires_pipe(),
     ) {
         Ok(spawned) => spawned,
         Err(e) => {
-            let stderr = format!(
+            let diagnostic = format!(
                 "Failed to execute: {e} ({})",
                 format_env_diagnostics(&request.command, &env_refs)
             );
+            let stdout = GuestBoundedOutput::empty_for_policy(request.stdout);
+            let stderr = GuestBoundedOutput::empty_for_policy(request.stderr);
             let _ = send_bounded_exec_result(
                 BoundedExecResultFrame {
                     seq: request.seq,
                     termination: BoundedExecTermination::StartFailed,
                     duration_ms: duration_ms(started),
-                    stdout: &[],
-                    stderr: stderr.as_bytes(),
-                    stdout_truncated: false,
-                    stderr_truncated: false,
+                    stdout: stdout.as_proto(),
+                    stderr: stderr.as_proto(),
+                    diagnostic: Some(&diagnostic),
                 },
                 &writer,
             );
@@ -212,19 +279,43 @@ fn run_bounded_exec<S>(
     } = spawned;
     let _env_script = env_script;
 
-    let stdout = match child.stdout.take() {
-        Some(stdout) => stdout,
-        None => {
-            kill_and_send_wait_failed(request.seq, started, child, "missing stdout pipe", &writer);
-            return;
+    let stdout = if request.stdout.requires_pipe() {
+        match child.stdout.take() {
+            Some(stdout) => Some(stdout),
+            None => {
+                kill_and_send_wait_failed(
+                    request.seq,
+                    started,
+                    child,
+                    request.stdout,
+                    request.stderr,
+                    "missing stdout pipe",
+                    &writer,
+                );
+                return;
+            }
         }
+    } else {
+        None
     };
-    let stderr = match child.stderr.take() {
-        Some(stderr) => stderr,
-        None => {
-            kill_and_send_wait_failed(request.seq, started, child, "missing stderr pipe", &writer);
-            return;
+    let stderr = if request.stderr.requires_pipe() {
+        match child.stderr.take() {
+            Some(stderr) => Some(stderr),
+            None => {
+                kill_and_send_wait_failed(
+                    request.seq,
+                    started,
+                    child,
+                    request.stdout,
+                    request.stderr,
+                    "missing stderr pipe",
+                    &writer,
+                );
+                return;
+            }
         }
+    } else {
+        None
     };
     let stdin = if request.stdin.is_some() {
         match child.stdin.take() {
@@ -234,6 +325,8 @@ fn run_bounded_exec<S>(
                     request.seq,
                     started,
                     child,
+                    request.stdout,
+                    request.stderr,
                     "missing stdin pipe",
                     &writer,
                 );
@@ -248,77 +341,84 @@ fn run_bounded_exec<S>(
     let command_cancel = Arc::new(AtomicBool::new(false));
     let (drain_done_tx, drain_done_rx) = mpsc::channel::<()>();
 
-    let stdout_rx = spawn_bounded_drain(
-        stdout,
-        BoundedDrainWorker {
-            seq: request.seq,
-            stream: BoundedExecStream::Stdout,
-            final_limit_bytes: request.stdout_limit_bytes as usize,
-            stream_config: stream_config(
-                request.stream_stdout,
-                request.stream_chunk_limit_bytes,
-                request.stdout_stream_limit_bytes,
-            ),
-            writer: writer.clone(),
-            drain_cancel: drain_cancel.clone(),
-            command_cancel: command_cancel.clone(),
-            drain_done_tx: drain_done_tx.clone(),
-        },
-        spawner.clone(),
-    );
-    let (stdout_handle, stdout_result_rx) = match stdout_rx {
-        Ok(parts) => parts,
-        Err(e) => {
-            drain_cancel.store(true, Ordering::Release);
-            kill_and_send_wait_failed(
-                request.seq,
-                started,
-                child,
-                &format!("failed to spawn stdout drain thread: {e}"),
-                &writer,
-            );
-            return;
+    let stdout_worker = match stdout {
+        Some(stdout) => {
+            match spawn_bounded_drain(
+                stdout,
+                BoundedDrainWorker {
+                    seq: request.seq,
+                    stream: BoundedExecStream::Stdout,
+                    final_limit_bytes: request.stdout.final_limit_bytes(),
+                    stream_config: request.stdout.stream,
+                    writer: writer.clone(),
+                    drain_cancel: drain_cancel.clone(),
+                    command_cancel: command_cancel.clone(),
+                    drain_done_tx: drain_done_tx.clone(),
+                },
+                spawner.clone(),
+            ) {
+                Ok(parts) => Some(parts),
+                Err(e) => {
+                    drain_cancel.store(true, Ordering::Release);
+                    kill_and_send_wait_failed(
+                        request.seq,
+                        started,
+                        child,
+                        request.stdout,
+                        request.stderr,
+                        &format!("failed to spawn stdout drain thread: {e}"),
+                        &writer,
+                    );
+                    return;
+                }
+            }
         }
+        None => None,
     };
 
-    let stderr_rx = spawn_bounded_drain(
-        stderr,
-        BoundedDrainWorker {
-            seq: request.seq,
-            stream: BoundedExecStream::Stderr,
-            final_limit_bytes: request.stderr_limit_bytes as usize,
-            stream_config: stream_config(
-                request.stream_stderr,
-                request.stream_chunk_limit_bytes,
-                request.stderr_stream_limit_bytes,
-            ),
-            writer: writer.clone(),
-            drain_cancel: drain_cancel.clone(),
-            command_cancel: command_cancel.clone(),
-            drain_done_tx: drain_done_tx.clone(),
-        },
-        spawner.clone(),
-    );
-    let (stderr_handle, stderr_result_rx) = match stderr_rx {
-        Ok(parts) => parts,
-        Err(e) => {
-            drain_cancel.store(true, Ordering::Release);
-            kill_and_reap_child(child);
-            let _ = stdout_handle.join();
-            let _ = send_bounded_exec_result(
-                BoundedExecResultFrame {
+    let stderr_worker = match stderr {
+        Some(stderr) => {
+            match spawn_bounded_drain(
+                stderr,
+                BoundedDrainWorker {
                     seq: request.seq,
-                    termination: BoundedExecTermination::WaitFailed,
-                    duration_ms: duration_ms(started),
-                    stdout: &[],
-                    stderr: format!("failed to spawn stderr drain thread: {e}").as_bytes(),
-                    stdout_truncated: false,
-                    stderr_truncated: false,
+                    stream: BoundedExecStream::Stderr,
+                    final_limit_bytes: request.stderr.final_limit_bytes(),
+                    stream_config: request.stderr.stream,
+                    writer: writer.clone(),
+                    drain_cancel: drain_cancel.clone(),
+                    command_cancel: command_cancel.clone(),
+                    drain_done_tx: drain_done_tx.clone(),
                 },
-                &writer,
-            );
-            return;
+                spawner.clone(),
+            ) {
+                Ok(parts) => Some(parts),
+                Err(e) => {
+                    drain_cancel.store(true, Ordering::Release);
+                    command_cancel.store(true, Ordering::Release);
+                    kill_and_reap_child(child);
+                    if let Some((stdout_handle, _)) = stdout_worker {
+                        let _ = stdout_handle.join();
+                    }
+                    let stdout_output = GuestBoundedOutput::empty_for_policy(request.stdout);
+                    let stderr_output = GuestBoundedOutput::empty_for_policy(request.stderr);
+                    let diagnostic = format!("failed to spawn stderr drain thread: {e}");
+                    let _ = send_bounded_exec_result(
+                        BoundedExecResultFrame {
+                            seq: request.seq,
+                            termination: BoundedExecTermination::WaitFailed,
+                            duration_ms: duration_ms(started),
+                            stdout: stdout_output.as_proto(),
+                            stderr: stderr_output.as_proto(),
+                            diagnostic: Some(&diagnostic),
+                        },
+                        &writer,
+                    );
+                    return;
+                }
+            }
         }
+        None => None,
     };
 
     let stdin_worker = match (stdin, request.stdin) {
@@ -329,17 +429,23 @@ fn run_bounded_exec<S>(
                     drain_cancel.store(true, Ordering::Release);
                     command_cancel.store(true, Ordering::Release);
                     kill_and_reap_child(child);
-                    let _ = stdout_handle.join();
-                    let _ = stderr_handle.join();
+                    if let Some((stdout_handle, _)) = stdout_worker {
+                        let _ = stdout_handle.join();
+                    }
+                    if let Some((stderr_handle, _)) = stderr_worker {
+                        let _ = stderr_handle.join();
+                    }
+                    let stdout_output = GuestBoundedOutput::empty_for_policy(request.stdout);
+                    let stderr_output = GuestBoundedOutput::empty_for_policy(request.stderr);
+                    let diagnostic = format!("failed to spawn stdin writer thread: {e}");
                     let _ = send_bounded_exec_result(
                         BoundedExecResultFrame {
                             seq: request.seq,
                             termination: BoundedExecTermination::WaitFailed,
                             duration_ms: duration_ms(started),
-                            stdout: &[],
-                            stderr: format!("failed to spawn stdin writer thread: {e}").as_bytes(),
-                            stdout_truncated: false,
-                            stderr_truncated: false,
+                            stdout: stdout_output.as_proto(),
+                            stderr: stderr_output.as_proto(),
+                            diagnostic: Some(&diagnostic),
                         },
                         &writer,
                     );
@@ -364,23 +470,24 @@ fn run_bounded_exec<S>(
         drain_cancel.store(true, Ordering::Release);
     }
 
-    let completed = await_drain_deadline(&drain_done_rx, 2, &drain_cancel);
-    if completed < 2 {
+    let expected_drains =
+        usize::from(stdout_worker.is_some()) + usize::from(stderr_worker.is_some());
+    let completed = await_drain_deadline(&drain_done_rx, expected_drains, &drain_cancel);
+    if completed < expected_drains {
         log(
             "WARN",
             &format!("bounded_exec: drain deadline reached after {DRAIN_DEADLINE_SECS}s",),
         );
     }
 
-    let _ = stdout_handle.join();
-    let _ = stderr_handle.join();
+    let stdout_output = finish_drain_worker(request.stdout, stdout_worker);
+    let stderr_output = finish_drain_worker(request.stderr, stderr_worker);
     let stdin_error_rx = stdin_worker.map(|(stdin_handle, stdin_error_rx)| {
         let _ = stdin_handle.join();
         stdin_error_rx
     });
-    let stdout_result = stdout_result_rx.recv().unwrap_or_default();
-    let mut stderr_result = stderr_result_rx.recv().unwrap_or_default();
 
+    let mut diagnostic = None;
     let mut termination = match outcome {
         WaitOutcome::Exited(status) => BoundedExecTermination::Exited {
             exit_code: crate::process::extract_exit_code(status),
@@ -388,10 +495,7 @@ fn run_bounded_exec<S>(
         WaitOutcome::TimedOut => BoundedExecTermination::TimedOut,
         WaitOutcome::Cancelled => BoundedExecTermination::Cancelled,
         WaitOutcome::WaitFailed(msg) => {
-            if stderr_result.output.is_empty() {
-                stderr_result.output = format!("Failed to wait: {msg}").into_bytes();
-                stderr_result.truncated = false;
-            }
+            diagnostic = Some(format!("Failed to wait: {msg}"));
             BoundedExecTermination::WaitFailed
         }
     };
@@ -400,18 +504,18 @@ fn run_bounded_exec<S>(
         && let Ok(stdin_error) = stdin_error_rx.try_recv()
     {
         termination = BoundedExecTermination::WaitFailed;
-        stderr_result.output = format!("Failed to write stdin: {stdin_error}").into_bytes();
-        stderr_result.truncated = false;
+        diagnostic = Some(format!("Failed to write stdin: {stdin_error}"));
     }
 
     log(
         "INFO",
         &format!(
-            "bounded_exec result: termination={termination:?}, stdout_len={}, stderr_len={}, stdout_truncated={}, stderr_truncated={}",
-            stdout_result.output.len(),
-            stderr_result.output.len(),
-            stdout_result.truncated,
-            stderr_result.truncated,
+            "bounded_exec result: termination={termination:?}, stdout_len={}, stderr_len={}, stdout_truncated={}, stderr_truncated={}, diagnostic={}",
+            stdout_output.len(),
+            stderr_output.len(),
+            stdout_output.truncated(),
+            stderr_output.truncated(),
+            diagnostic.is_some(),
         ),
     );
 
@@ -419,15 +523,16 @@ fn run_bounded_exec<S>(
         request.seq,
         termination,
         duration_ms(started),
-        &stdout_result,
-        &stderr_result,
+        &stdout_output,
+        &stderr_output,
+        diagnostic.as_deref(),
         &writer,
     );
 }
 
 fn validate_request(request: &BoundedExecWorkerRequest) -> Result<(), String> {
-    let stdout_limit = request.stdout_limit_bytes as usize;
-    let stderr_limit = request.stderr_limit_bytes as usize;
+    let stdout_limit = request.stdout.final_limit_bytes().unwrap_or(0);
+    let stderr_limit = request.stderr.final_limit_bytes().unwrap_or(0);
     let total_limit = stdout_limit
         .checked_add(stderr_limit)
         .ok_or_else(|| "bounded exec final output limits overflow".to_string())?;
@@ -439,19 +544,22 @@ fn validate_request(request: &BoundedExecWorkerRequest) -> Result<(), String> {
         ));
     }
 
-    if request.stream_stdout || request.stream_stderr {
-        let stream_chunk_limit = request.stream_chunk_limit_bytes as usize;
+    for stream in [request.stdout.stream, request.stderr.stream]
+        .into_iter()
+        .flatten()
+    {
+        let stream_chunk_limit = stream.chunk_limit_bytes;
         if stream_chunk_limit < vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES {
             return Err(format!(
                 "bounded exec stream chunk limit below minimum: {} < {}",
-                request.stream_chunk_limit_bytes,
+                stream.chunk_limit_bytes,
                 vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES
             ));
         }
         if stream_chunk_limit > vsock_proto::MAX_BOUNDED_EXEC_OUTPUT_CHUNK_BYTES {
             return Err(format!(
                 "bounded exec stream chunk limit exceeds protocol frame: {} > {}",
-                request.stream_chunk_limit_bytes,
+                stream.chunk_limit_bytes,
                 vsock_proto::MAX_BOUNDED_EXEC_OUTPUT_CHUNK_BYTES
             ));
         }
@@ -460,21 +568,27 @@ fn validate_request(request: &BoundedExecWorkerRequest) -> Result<(), String> {
     Ok(())
 }
 
+fn format_output_policy(policy: BoundedOutputRequest) -> String {
+    let capture = match policy.capture {
+        vsock_proto::BoundedExecCapturePolicy::Discard => "discard".to_string(),
+        vsock_proto::BoundedExecCapturePolicy::Capture { limit_bytes } => {
+            format!("capture({limit_bytes})")
+        }
+    };
+    let stream = match policy.stream {
+        Some(stream) => format!(
+            "stream(limit={}, chunk={})",
+            stream.stream_limit_bytes, stream.chunk_limit_bytes
+        ),
+        None => "no-stream".to_string(),
+    };
+    format!("{capture}+{stream}")
+}
+
 fn env_refs(env: &[(String, String)]) -> Vec<(&str, &str)> {
     env.iter()
         .map(|(key, value)| (key.as_str(), value.as_str()))
         .collect()
-}
-
-fn stream_config(
-    enabled: bool,
-    chunk_limit_bytes: u32,
-    stream_limit_bytes: u32,
-) -> Option<BoundedStreamConfig> {
-    enabled.then_some(BoundedStreamConfig {
-        chunk_limit_bytes: chunk_limit_bytes as usize,
-        stream_limit_bytes: stream_limit_bytes as usize,
-    })
 }
 
 fn spawn_bounded_drain<R, S>(
@@ -534,6 +648,22 @@ where
     Ok((handle, result_rx))
 }
 
+fn finish_drain_worker(
+    policy: BoundedOutputRequest,
+    worker: Option<(JoinHandle<()>, mpsc::Receiver<BoundedDrainResult>)>,
+) -> GuestBoundedOutput {
+    let Some((handle, result_rx)) = worker else {
+        return GuestBoundedOutput::empty_for_policy(policy);
+    };
+    let _ = handle.join();
+    let result = result_rx.recv().unwrap_or_default();
+    if policy.final_limit_bytes().is_some() {
+        GuestBoundedOutput::Captured(result)
+    } else {
+        GuestBoundedOutput::Discarded
+    }
+}
+
 fn spawn_stdin_writer<S>(
     mut stdin: ChildStdin,
     stdin_bytes: Vec<u8>,
@@ -565,19 +695,22 @@ fn kill_and_send_wait_failed(
     seq: u32,
     started: Instant,
     child: Child,
+    stdout_policy: BoundedOutputRequest,
+    stderr_policy: BoundedOutputRequest,
     error: &str,
     writer: &GuestWriter,
 ) {
     kill_and_reap_child(child);
+    let stdout = GuestBoundedOutput::empty_for_policy(stdout_policy);
+    let stderr = GuestBoundedOutput::empty_for_policy(stderr_policy);
     let _ = send_bounded_exec_result(
         BoundedExecResultFrame {
             seq,
             termination: BoundedExecTermination::WaitFailed,
             duration_ms: duration_ms(started),
-            stdout: &[],
-            stderr: error.as_bytes(),
-            stdout_truncated: false,
-            stderr_truncated: false,
+            stdout: stdout.as_proto(),
+            stderr: stderr.as_proto(),
+            diagnostic: Some(error),
         },
         writer,
     );
@@ -587,8 +720,9 @@ fn send_final_best_effort(
     seq: u32,
     termination: BoundedExecTermination,
     duration_ms: u64,
-    stdout: &BoundedDrainResult,
-    stderr: &BoundedDrainResult,
+    stdout: &GuestBoundedOutput,
+    stderr: &GuestBoundedOutput,
+    diagnostic: Option<&str>,
     writer: &GuestWriter,
 ) {
     if let Err(e) = send_bounded_exec_result(
@@ -596,10 +730,9 @@ fn send_final_best_effort(
             seq,
             termination,
             duration_ms,
-            stdout: &stdout.output,
-            stderr: &stderr.output,
-            stdout_truncated: stdout.truncated,
-            stderr_truncated: stderr.truncated,
+            stdout: stdout.as_proto(),
+            stderr: stderr.as_proto(),
+            diagnostic,
         },
         writer,
     ) {
@@ -617,16 +750,14 @@ fn send_bounded_exec_result(
         duration_ms,
         stdout,
         stderr,
-        stdout_truncated,
-        stderr_truncated,
+        diagnostic,
     } = frame;
     let payload = match vsock_proto::encode_bounded_exec_result(
         termination,
         duration_ms,
         stdout,
         stderr,
-        stdout_truncated,
-        stderr_truncated,
+        diagnostic,
     ) {
         Ok(payload) => payload,
         Err(e) => {
@@ -638,10 +769,9 @@ fn send_bounded_exec_result(
             vsock_proto::encode_bounded_exec_result(
                 BoundedExecTermination::WaitFailed,
                 duration_ms,
-                &[],
-                diagnostic.as_bytes(),
-                false,
-                false,
+                vsock_proto::BoundedExecOutput::Discarded,
+                vsock_proto::BoundedExecOutput::Discarded,
+                Some(&diagnostic),
             )
             .map_err(to_io_error)?
         }

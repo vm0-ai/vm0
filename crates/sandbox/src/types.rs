@@ -23,13 +23,21 @@ pub struct BoundedExecOutputEvent {
     pub truncated: bool,
 }
 
-pub struct BoundedExecStreamRequest {
+pub struct BoundedExecStreamPolicy {
     pub event_tx: tokio::sync::mpsc::UnboundedSender<BoundedExecOutputEvent>,
-    pub stdout: bool,
-    pub stderr: bool,
+    pub limit_bytes: u32,
     pub chunk_limit_bytes: u32,
-    pub stdout_limit_bytes: u32,
-    pub stderr_limit_bytes: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BoundedExecCapturePolicy {
+    Discard,
+    Capture { limit_bytes: u32 },
+}
+
+pub struct BoundedExecOutputRequest {
+    pub capture: BoundedExecCapturePolicy,
+    pub stream: Option<BoundedExecStreamPolicy>,
 }
 
 pub struct BoundedExecRequest<'a> {
@@ -38,9 +46,8 @@ pub struct BoundedExecRequest<'a> {
     pub env: &'a [(&'a str, &'a str)],
     pub sudo: bool,
     pub stdin: Option<&'a [u8]>,
-    pub stdout_limit_bytes: u32,
-    pub stderr_limit_bytes: u32,
-    pub stream: Option<BoundedExecStreamRequest>,
+    pub stdout: BoundedExecOutputRequest,
+    pub stderr: BoundedExecOutputRequest,
 }
 
 impl BoundedExecRequest<'_> {
@@ -53,10 +60,15 @@ impl BoundedExecRequest<'_> {
 pub struct BoundedExecResult {
     pub termination: BoundedExecTermination,
     pub duration: Duration,
-    pub stdout: Vec<u8>,
-    pub stderr: Vec<u8>,
-    pub stdout_truncated: bool,
-    pub stderr_truncated: bool,
+    pub stdout: BoundedExecOutput,
+    pub stderr: BoundedExecOutput,
+    pub diagnostic: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum BoundedExecOutput {
+    Discarded,
+    Captured { bytes: Vec<u8>, truncated: bool },
 }
 
 pub struct ExecRequest<'a> {
@@ -168,9 +180,14 @@ mod tests {
             env: &[],
             sudo: false,
             stdin: None,
-            stdout_limit_bytes: 0,
-            stderr_limit_bytes: 0,
-            stream: None,
+            stdout: BoundedExecOutputRequest {
+                capture: BoundedExecCapturePolicy::Capture { limit_bytes: 0 },
+                stream: None,
+            },
+            stderr: BoundedExecOutputRequest {
+                capture: BoundedExecCapturePolicy::Capture { limit_bytes: 0 },
+                stream: None,
+            },
         };
         assert_eq!(req.timeout_ms(), u32::MAX);
     }

@@ -11,7 +11,8 @@ use std::time::Duration;
 
 use vsock_guest::{handle_connection, run};
 use vsock_proto::{
-    self, BoundedExecRequest, BoundedExecStream, BoundedExecTermination, MSG_BOUNDED_EXEC,
+    self, BoundedExecCapturePolicy, BoundedExecOutput, BoundedExecOutputPolicy, BoundedExecRequest,
+    BoundedExecStream, BoundedExecStreamPolicy, BoundedExecTermination, MSG_BOUNDED_EXEC,
     MSG_BOUNDED_EXEC_OUTPUT_CHUNK, MSG_BOUNDED_EXEC_RESULT, MSG_ERROR, MSG_EXEC, MSG_EXEC_RESULT,
     MSG_PROCESS_EXIT, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT,
     MSG_STDOUT_CHUNK,
@@ -178,10 +179,50 @@ struct BoundedChunk {
 
 struct BoundedResult {
     termination: BoundedExecTermination,
-    stdout: Vec<u8>,
-    stderr: Vec<u8>,
-    stdout_truncated: bool,
-    stderr_truncated: bool,
+    stdout: OwnedBoundedOutput,
+    stderr: OwnedBoundedOutput,
+    diagnostic: Option<String>,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum OwnedBoundedOutput {
+    Discarded,
+    Captured { bytes: Vec<u8>, truncated: bool },
+}
+
+fn owned_output(output: BoundedExecOutput<'_>) -> OwnedBoundedOutput {
+    match output {
+        BoundedExecOutput::Discarded => OwnedBoundedOutput::Discarded,
+        BoundedExecOutput::Captured { bytes, truncated } => OwnedBoundedOutput::Captured {
+            bytes: bytes.to_vec(),
+            truncated,
+        },
+    }
+}
+
+fn assert_captured_output(
+    output: &OwnedBoundedOutput,
+    expected_bytes: &[u8],
+    expected_truncated: bool,
+) {
+    match output {
+        OwnedBoundedOutput::Captured { bytes, truncated } => {
+            assert_eq!(bytes, expected_bytes);
+            assert_eq!(*truncated, expected_truncated);
+        }
+        OwnedBoundedOutput::Discarded => panic!("expected captured output"),
+    }
+}
+
+fn assert_discarded_output(output: &OwnedBoundedOutput) {
+    assert_eq!(*output, OwnedBoundedOutput::Discarded);
+}
+
+fn captured_bytes(output: &OwnedBoundedOutput) -> &[u8] {
+    match output {
+        OwnedBoundedOutput::Captured { bytes, .. } => bytes,
+        OwnedBoundedOutput::Discarded => panic!("expected captured output"),
+    }
 }
 
 fn bounded_request<'a>(
@@ -195,13 +236,29 @@ fn bounded_request<'a>(
         env,
         sudo: false,
         stdin,
-        stdout_limit_bytes: 1024 * 1024,
-        stderr_limit_bytes: 1024 * 1024,
-        stream_stdout: false,
-        stream_stderr: false,
-        stream_chunk_limit_bytes: 8192,
-        stdout_stream_limit_bytes: 1024 * 1024,
-        stderr_stream_limit_bytes: 1024 * 1024,
+        stdout: capture_policy(1024 * 1024),
+        stderr: capture_policy(1024 * 1024),
+    }
+}
+
+fn capture_policy(limit_bytes: u32) -> BoundedExecOutputPolicy {
+    BoundedExecOutputPolicy {
+        capture: BoundedExecCapturePolicy::Capture { limit_bytes },
+        stream: None,
+    }
+}
+
+fn discard_policy() -> BoundedExecOutputPolicy {
+    BoundedExecOutputPolicy {
+        capture: BoundedExecCapturePolicy::Discard,
+        stream: None,
+    }
+}
+
+fn stream_policy(limit_bytes: u32, chunk_limit_bytes: u32) -> BoundedExecStreamPolicy {
+    BoundedExecStreamPolicy {
+        limit_bytes,
+        chunk_limit_bytes,
     }
 }
 
@@ -242,10 +299,9 @@ fn read_bounded_exec_result(
                         chunks,
                         BoundedResult {
                             termination: decoded.termination,
-                            stdout: decoded.stdout.to_vec(),
-                            stderr: decoded.stderr.to_vec(),
-                            stdout_truncated: decoded.stdout_truncated,
-                            stderr_truncated: decoded.stderr_truncated,
+                            stdout: owned_output(decoded.stdout),
+                            stderr: owned_output(decoded.stderr),
+                            diagnostic: decoded.diagnostic.map(ToOwned::to_owned),
                         },
                     );
                 }
@@ -290,10 +346,8 @@ fn bounded_exec_stdout_stderr_success() {
         result.termination,
         BoundedExecTermination::Exited { exit_code: 0 }
     );
-    assert_eq!(result.stdout, b"stdout");
-    assert_eq!(result.stderr, b"stderr");
-    assert!(!result.stdout_truncated);
-    assert!(!result.stderr_truncated);
+    assert_captured_output(&result.stdout, b"stdout", false);
+    assert_captured_output(&result.stderr, b"stderr", false);
 
     finish_guest_connection(handle, host_stream);
 }
@@ -310,8 +364,8 @@ fn bounded_exec_nonzero_exit_is_exited() {
         result.termination,
         BoundedExecTermination::Exited { exit_code: 42 }
     );
-    assert_eq!(result.stdout, b"");
-    assert_eq!(result.stderr, b"failed");
+    assert_captured_output(&result.stdout, b"", false);
+    assert_captured_output(&result.stderr, b"failed", false);
 
     finish_guest_connection(handle, host_stream);
 }
@@ -333,8 +387,8 @@ fn bounded_exec_stdin_is_written_and_closed() {
         result.termination,
         BoundedExecTermination::Exited { exit_code: 0 }
     );
-    assert_eq!(result.stdout, b"hello from stdin:eof");
-    assert_eq!(result.stderr, b"");
+    assert_captured_output(&result.stdout, b"hello from stdin:eof", false);
+    assert_captured_output(&result.stderr, b"", false);
 
     finish_guest_connection(handle, host_stream);
 }
@@ -361,9 +415,10 @@ fn bounded_exec_streams_stdout_before_final_result() {
     let (handle, mut host_stream) = start_guest_connection();
 
     let mut request = bounded_request("printf login-url; printf done", &[], None);
-    request.stream_stdout = true;
-    request.stream_chunk_limit_bytes = vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32;
-    request.stdout_stream_limit_bytes = 64;
+    request.stdout.stream = Some(stream_policy(
+        64,
+        vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32,
+    ));
     send_bounded_exec(&mut host_stream, 15, &request);
     let (chunks, result) = read_bounded_exec_result(&mut host_stream, 15);
 
@@ -371,7 +426,7 @@ fn bounded_exec_streams_stdout_before_final_result() {
         result.termination,
         BoundedExecTermination::Exited { exit_code: 0 }
     );
-    assert_eq!(result.stdout, b"login-urldone");
+    assert_captured_output(&result.stdout, b"login-urldone", false);
     assert!(
         !chunks.is_empty(),
         "expected stream chunks before final result"
@@ -393,9 +448,14 @@ fn bounded_exec_streams_stdout_and_stderr_independently() {
     let (handle, mut host_stream) = start_guest_connection();
 
     let mut request = bounded_request("printf out; printf err >&2", &[], None);
-    request.stream_stdout = true;
-    request.stream_stderr = true;
-    request.stream_chunk_limit_bytes = vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32;
+    request.stdout.stream = Some(stream_policy(
+        1024 * 1024,
+        vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32,
+    ));
+    request.stderr.stream = Some(stream_policy(
+        1024 * 1024,
+        vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32,
+    ));
     send_bounded_exec(&mut host_stream, 16, &request);
     let (chunks, result) = read_bounded_exec_result(&mut host_stream, 16);
 
@@ -431,7 +491,7 @@ fn bounded_exec_timeout_returns_timed_out_with_partial_output() {
     let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 17);
 
     assert_eq!(result.termination, BoundedExecTermination::TimedOut);
-    assert_eq!(result.stdout, b"before");
+    assert_captured_output(&result.stdout, b"before", false);
 
     finish_guest_connection(handle, host_stream);
 }
@@ -441,8 +501,8 @@ fn bounded_exec_tracks_stdout_stderr_truncation_independently() {
     let (handle, mut host_stream) = start_guest_connection();
 
     let mut request = bounded_request("printf abcdefghij; printf err >&2", &[], None);
-    request.stdout_limit_bytes = 4;
-    request.stderr_limit_bytes = 10;
+    request.stdout.capture = BoundedExecCapturePolicy::Capture { limit_bytes: 4 };
+    request.stderr.capture = BoundedExecCapturePolicy::Capture { limit_bytes: 10 };
     send_bounded_exec(&mut host_stream, 18, &request);
     let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 18);
 
@@ -450,10 +510,8 @@ fn bounded_exec_tracks_stdout_stderr_truncation_independently() {
         result.termination,
         BoundedExecTermination::Exited { exit_code: 0 }
     );
-    assert_eq!(result.stdout, b"abcd");
-    assert_eq!(result.stderr, b"err");
-    assert!(result.stdout_truncated);
-    assert!(!result.stderr_truncated);
+    assert_captured_output(&result.stdout, b"abcd", true);
+    assert_captured_output(&result.stderr, b"err", false);
 
     finish_guest_connection(handle, host_stream);
 }
@@ -467,8 +525,8 @@ fn bounded_exec_over_cap_output_continues_draining() {
         &[],
         None,
     );
-    request.stdout_limit_bytes = 32;
-    request.stderr_limit_bytes = 32;
+    request.stdout.capture = BoundedExecCapturePolicy::Capture { limit_bytes: 32 };
+    request.stderr.capture = BoundedExecCapturePolicy::Capture { limit_bytes: 32 };
     send_bounded_exec(&mut host_stream, 19, &request);
     let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 19);
 
@@ -476,10 +534,8 @@ fn bounded_exec_over_cap_output_continues_draining() {
         result.termination,
         BoundedExecTermination::Exited { exit_code: 0 }
     );
-    assert_eq!(result.stdout, vec![b'A'; 32]);
-    assert_eq!(result.stderr, vec![b'B'; 32]);
-    assert!(result.stdout_truncated);
-    assert!(result.stderr_truncated);
+    assert_captured_output(&result.stdout, &[b'A'; 32], true);
+    assert_captured_output(&result.stderr, &[b'B'; 32], true);
 
     finish_guest_connection(handle, host_stream);
 }
@@ -519,9 +575,9 @@ fn bounded_exec_large_env_payload_succeeds() {
         result.termination,
         BoundedExecTermination::Exited { exit_code: 0 },
         "stderr: {}",
-        String::from_utf8_lossy(&result.stderr),
+        String::from_utf8_lossy(captured_bytes(&result.stderr)),
     );
-    assert_large_env_stdout(&result.stdout);
+    assert_large_env_stdout(captured_bytes(&result.stdout));
 
     finish_guest_connection(handle, host_stream);
 }
@@ -535,11 +591,11 @@ fn bounded_exec_invalid_env_payload_returns_start_failed_without_leaking_value()
     let request = bounded_request("echo should-not-run", &env, None);
     send_bounded_exec(&mut host_stream, 22, &request);
     let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 22);
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let diagnostic = result.diagnostic.as_deref().unwrap_or_default();
 
     assert_eq!(result.termination, BoundedExecTermination::StartFailed);
-    assert!(stderr.contains("invalid environment variable name"));
-    assert!(!stderr.contains(secret));
+    assert!(diagnostic.contains("invalid environment variable name"));
+    assert!(!diagnostic.contains(secret));
 
     finish_guest_connection(handle, host_stream);
 }
@@ -549,15 +605,14 @@ fn bounded_exec_rejects_tiny_stream_chunk_limit() {
     let (handle, mut host_stream) = start_guest_connection();
 
     let mut request = bounded_request("echo should-not-run", &[], None);
-    request.stream_stdout = true;
-    request.stream_chunk_limit_bytes = 1;
+    request.stdout.stream = Some(stream_policy(1024, 1));
     send_bounded_exec(&mut host_stream, 23, &request);
     let (chunks, result) = read_bounded_exec_result(&mut host_stream, 23);
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let diagnostic = result.diagnostic.as_deref().unwrap_or_default();
 
     assert!(chunks.is_empty());
     assert_eq!(result.termination, BoundedExecTermination::StartFailed);
-    assert!(stderr.contains("stream chunk limit below minimum"));
+    assert!(diagnostic.contains("stream chunk limit below minimum"));
 
     finish_guest_connection(handle, host_stream);
 }
@@ -567,15 +622,17 @@ fn bounded_exec_rejects_final_output_limits_that_cannot_fit_result_frame() {
     let (handle, mut host_stream) = start_guest_connection();
 
     let mut request = bounded_request("echo should-not-run", &[], None);
-    request.stdout_limit_bytes = vsock_proto::MAX_BOUNDED_EXEC_RESULT_OUTPUT_BYTES as u32;
-    request.stderr_limit_bytes = 1;
+    request.stdout.capture = BoundedExecCapturePolicy::Capture {
+        limit_bytes: vsock_proto::MAX_BOUNDED_EXEC_RESULT_OUTPUT_BYTES as u32,
+    };
+    request.stderr.capture = BoundedExecCapturePolicy::Capture { limit_bytes: 1 };
     send_bounded_exec(&mut host_stream, 24, &request);
     let (chunks, result) = read_bounded_exec_result(&mut host_stream, 24);
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let diagnostic = result.diagnostic.as_deref().unwrap_or_default();
 
     assert!(chunks.is_empty());
     assert_eq!(result.termination, BoundedExecTermination::StartFailed);
-    assert!(stderr.contains("final output limits exceed protocol result frame"));
+    assert!(diagnostic.contains("final output limits exceed protocol result frame"));
 
     finish_guest_connection(handle, host_stream);
 }
@@ -585,8 +642,8 @@ fn bounded_exec_zero_final_limits_return_empty_truncated_output() {
     let (handle, mut host_stream) = start_guest_connection();
 
     let mut request = bounded_request("printf stdout; printf stderr >&2", &[], None);
-    request.stdout_limit_bytes = 0;
-    request.stderr_limit_bytes = 0;
+    request.stdout.capture = BoundedExecCapturePolicy::Capture { limit_bytes: 0 };
+    request.stderr.capture = BoundedExecCapturePolicy::Capture { limit_bytes: 0 };
     send_bounded_exec(&mut host_stream, 25, &request);
     let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 25);
 
@@ -594,10 +651,129 @@ fn bounded_exec_zero_final_limits_return_empty_truncated_output() {
         result.termination,
         BoundedExecTermination::Exited { exit_code: 0 }
     );
-    assert!(result.stdout.is_empty());
-    assert!(result.stderr.is_empty());
-    assert!(result.stdout_truncated);
-    assert!(result.stderr_truncated);
+    assert_captured_output(&result.stdout, b"", true);
+    assert_captured_output(&result.stderr, b"", true);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_discarded_outputs_do_not_block_large_writes() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request(
+        "head -c 200000 /dev/zero | tr '\\0' A; head -c 200000 /dev/zero | tr '\\0' B >&2",
+        &[],
+        None,
+    );
+    request.stdout = discard_policy();
+    request.stderr = discard_policy();
+    send_bounded_exec(&mut host_stream, 32, &request);
+    let (chunks, result) = read_bounded_exec_result(&mut host_stream, 32);
+
+    assert!(chunks.is_empty());
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    assert_discarded_output(&result.stdout);
+    assert_discarded_output(&result.stderr);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_can_discard_stdout_while_capturing_stderr() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request("printf out; printf err >&2", &[], None);
+    request.stdout = discard_policy();
+    request.stderr = capture_policy(16);
+    send_bounded_exec(&mut host_stream, 33, &request);
+    let (chunks, result) = read_bounded_exec_result(&mut host_stream, 33);
+
+    assert!(chunks.is_empty());
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    assert_discarded_output(&result.stdout);
+    assert_captured_output(&result.stderr, b"err", false);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_can_discard_stderr_while_capturing_stdout() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request("printf out; printf err >&2", &[], None);
+    request.stdout = capture_policy(16);
+    request.stderr = discard_policy();
+    send_bounded_exec(&mut host_stream, 34, &request);
+    let (chunks, result) = read_bounded_exec_result(&mut host_stream, 34);
+
+    assert!(chunks.is_empty());
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    assert_captured_output(&result.stdout, b"out", false);
+    assert_discarded_output(&result.stderr);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_stream_only_returns_discarded_final_output() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let mut request = bounded_request("printf stream-only", &[], None);
+    request.stdout = BoundedExecOutputPolicy {
+        capture: BoundedExecCapturePolicy::Discard,
+        stream: Some(stream_policy(
+            1024,
+            vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32,
+        )),
+    };
+    request.stderr = discard_policy();
+    send_bounded_exec(&mut host_stream, 35, &request);
+    let (chunks, result) = read_bounded_exec_result(&mut host_stream, 35);
+
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0].stream, BoundedExecStream::Stdout);
+    assert_eq!(chunks[0].sequence, 0);
+    assert_eq!(chunks[0].chunk, b"stream-only");
+    assert!(!chunks[0].truncated);
+    assert_discarded_output(&result.stdout);
+    assert_discarded_output(&result.stderr);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_diagnostic_survives_discarded_outputs() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let secret = "discarded-diagnostic-secret";
+    let env = [("BAD;KEY", secret)];
+    let mut request = bounded_request("echo should-not-run", &env, None);
+    request.stdout = discard_policy();
+    request.stderr = discard_policy();
+    send_bounded_exec(&mut host_stream, 36, &request);
+    let (chunks, result) = read_bounded_exec_result(&mut host_stream, 36);
+    let diagnostic = result.diagnostic.as_deref().unwrap_or_default();
+
+    assert!(chunks.is_empty());
+    assert_eq!(result.termination, BoundedExecTermination::StartFailed);
+    assert_discarded_output(&result.stdout);
+    assert_discarded_output(&result.stderr);
+    assert!(diagnostic.contains("invalid environment variable name"));
+    assert!(!diagnostic.contains(secret));
 
     finish_guest_connection(handle, host_stream);
 }
@@ -607,11 +783,8 @@ fn bounded_exec_ignores_stream_limits_when_streaming_is_disabled() {
     let (handle, mut host_stream) = start_guest_connection();
 
     let mut request = bounded_request("printf no-stream", &[], None);
-    request.stream_stdout = false;
-    request.stream_stderr = false;
-    request.stream_chunk_limit_bytes = 0;
-    request.stdout_stream_limit_bytes = 0;
-    request.stderr_stream_limit_bytes = 0;
+    request.stdout.stream = None;
+    request.stderr.stream = None;
     send_bounded_exec(&mut host_stream, 26, &request);
     let (chunks, result) = read_bounded_exec_result(&mut host_stream, 26);
 
@@ -620,10 +793,8 @@ fn bounded_exec_ignores_stream_limits_when_streaming_is_disabled() {
         result.termination,
         BoundedExecTermination::Exited { exit_code: 0 }
     );
-    assert_eq!(result.stdout, b"no-stream");
-    assert_eq!(result.stderr, b"");
-    assert!(!result.stdout_truncated);
-    assert!(!result.stderr_truncated);
+    assert_captured_output(&result.stdout, b"no-stream", false);
+    assert_captured_output(&result.stderr, b"", false);
 
     finish_guest_connection(handle, host_stream);
 }
@@ -633,9 +804,10 @@ fn bounded_exec_zero_stream_budget_emits_truncation_marker_only() {
     let (handle, mut host_stream) = start_guest_connection();
 
     let mut request = bounded_request("printf streamed", &[], None);
-    request.stream_stdout = true;
-    request.stream_chunk_limit_bytes = vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32;
-    request.stdout_stream_limit_bytes = 0;
+    request.stdout.stream = Some(stream_policy(
+        0,
+        vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32,
+    ));
     send_bounded_exec(&mut host_stream, 27, &request);
     let (chunks, result) = read_bounded_exec_result(&mut host_stream, 27);
 
@@ -643,7 +815,7 @@ fn bounded_exec_zero_stream_budget_emits_truncation_marker_only() {
         result.termination,
         BoundedExecTermination::Exited { exit_code: 0 }
     );
-    assert_eq!(result.stdout, b"streamed");
+    assert_captured_output(&result.stdout, b"streamed", false);
     assert_eq!(chunks.len(), 1);
     assert_eq!(chunks[0].stream, BoundedExecStream::Stdout);
     assert_eq!(chunks[0].sequence, 0);
@@ -658,9 +830,10 @@ fn bounded_exec_stream_limit_emits_data_then_truncation_marker() {
     let (handle, mut host_stream) = start_guest_connection();
 
     let mut request = bounded_request("head -c 2500 /dev/zero | tr '\\0' S", &[], None);
-    request.stream_stdout = true;
-    request.stream_chunk_limit_bytes = vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32;
-    request.stdout_stream_limit_bytes = 1500;
+    request.stdout.stream = Some(stream_policy(
+        1500,
+        vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32,
+    ));
     send_bounded_exec(&mut host_stream, 28, &request);
     let (chunks, result) = read_bounded_exec_result(&mut host_stream, 28);
 
@@ -668,9 +841,8 @@ fn bounded_exec_stream_limit_emits_data_then_truncation_marker() {
         result.termination,
         BoundedExecTermination::Exited { exit_code: 0 }
     );
-    assert_eq!(result.stdout, vec![b'S'; 2500]);
-    assert!(!result.stdout_truncated);
-    assert!(!result.stderr_truncated);
+    assert_captured_output(&result.stdout, &vec![b'S'; 2500], false);
+    assert_captured_output(&result.stderr, b"", false);
 
     assert!(
         chunks.len() >= 2,
@@ -706,16 +878,17 @@ fn bounded_exec_rejects_stream_chunk_limit_that_cannot_fit_frame() {
     let (handle, mut host_stream) = start_guest_connection();
 
     let mut request = bounded_request("echo should-not-run", &[], None);
-    request.stream_stdout = true;
-    request.stream_chunk_limit_bytes =
-        (vsock_proto::MAX_BOUNDED_EXEC_OUTPUT_CHUNK_BYTES + 1) as u32;
+    request.stdout.stream = Some(stream_policy(
+        1024,
+        (vsock_proto::MAX_BOUNDED_EXEC_OUTPUT_CHUNK_BYTES + 1) as u32,
+    ));
     send_bounded_exec(&mut host_stream, 29, &request);
     let (chunks, result) = read_bounded_exec_result(&mut host_stream, 29);
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let diagnostic = result.diagnostic.as_deref().unwrap_or_default();
 
     assert!(chunks.is_empty());
     assert_eq!(result.termination, BoundedExecTermination::StartFailed);
-    assert!(stderr.contains("stream chunk limit exceeds protocol frame"));
+    assert!(diagnostic.contains("stream chunk limit exceeds protocol frame"));
 
     finish_guest_connection(handle, host_stream);
 }
@@ -736,8 +909,8 @@ fn bounded_exec_slow_request_does_not_block_fast_request() {
         result.termination,
         BoundedExecTermination::Exited { exit_code: 0 }
     );
-    assert_eq!(result.stdout, b"fast");
-    assert_eq!(result.stderr, b"");
+    assert_captured_output(&result.stdout, b"fast", false);
+    assert_captured_output(&result.stderr, b"", false);
 
     finish_guest_connection(handle, host_stream);
 }

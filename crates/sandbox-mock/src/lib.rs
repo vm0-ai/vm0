@@ -57,13 +57,20 @@ pub struct BoundedExecCall {
     pub env: Vec<(String, String)>,
     pub sudo: bool,
     pub stdin: Option<Vec<u8>>,
-    pub stdout_limit_bytes: u32,
-    pub stderr_limit_bytes: u32,
-    pub stream_stdout: bool,
-    pub stream_stderr: bool,
-    pub stream_chunk_limit_bytes: u32,
-    pub stdout_stream_limit_bytes: u32,
-    pub stderr_stream_limit_bytes: u32,
+    pub stdout: BoundedExecOutputCall,
+    pub stderr: BoundedExecOutputCall,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BoundedExecOutputCall {
+    pub capture: BoundedExecCapturePolicy,
+    pub stream: Option<BoundedExecStreamCall>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BoundedExecStreamCall {
+    pub limit_bytes: u32,
+    pub chunk_limit_bytes: u32,
 }
 
 pub struct BoundedExecResponse {
@@ -424,10 +431,25 @@ fn default_bounded_exec_result() -> BoundedExecResult {
     BoundedExecResult {
         termination: BoundedExecTermination::Exited { exit_code: 0 },
         duration: Duration::ZERO,
-        stdout: Vec::new(),
-        stderr: Vec::new(),
-        stdout_truncated: false,
-        stderr_truncated: false,
+        stdout: BoundedExecOutput::Captured {
+            bytes: Vec::new(),
+            truncated: false,
+        },
+        stderr: BoundedExecOutput::Captured {
+            bytes: Vec::new(),
+            truncated: false,
+        },
+        diagnostic: None,
+    }
+}
+
+fn output_call_from_request(output: &BoundedExecOutputRequest) -> BoundedExecOutputCall {
+    BoundedExecOutputCall {
+        capture: output.capture,
+        stream: output.stream.as_ref().map(|stream| BoundedExecStreamCall {
+            limit_bytes: stream.limit_bytes,
+            chunk_limit_bytes: stream.chunk_limit_bytes,
+        }),
     }
 }
 
@@ -441,37 +463,18 @@ fn bounded_exec_call_from_request(request: &BoundedExecRequest<'_>) -> BoundedEx
             .collect(),
         sudo: request.sudo,
         stdin: request.stdin.map(<[u8]>::to_vec),
-        stdout_limit_bytes: request.stdout_limit_bytes,
-        stderr_limit_bytes: request.stderr_limit_bytes,
-        stream_stdout: request.stream.as_ref().is_some_and(|stream| stream.stdout),
-        stream_stderr: request.stream.as_ref().is_some_and(|stream| stream.stderr),
-        stream_chunk_limit_bytes: request
-            .stream
-            .as_ref()
-            .map_or(0, |stream| stream.chunk_limit_bytes),
-        stdout_stream_limit_bytes: request
-            .stream
-            .as_ref()
-            .map_or(0, |stream| stream.stdout_limit_bytes),
-        stderr_stream_limit_bytes: request
-            .stream
-            .as_ref()
-            .map_or(0, |stream| stream.stderr_limit_bytes),
+        stdout: output_call_from_request(&request.stdout),
+        stderr: output_call_from_request(&request.stderr),
     }
 }
 
 fn emit_bounded_exec_events(request: &BoundedExecRequest<'_>, events: Vec<BoundedExecOutputEvent>) {
-    let Some(stream) = &request.stream else {
-        return;
-    };
     for event in events {
-        let requested = match event.stream {
-            BoundedExecStream::Stdout => stream.stdout,
-            BoundedExecStream::Stderr => stream.stderr,
+        let target = match event.stream {
+            BoundedExecStream::Stdout => request.stdout.stream.as_ref(),
+            BoundedExecStream::Stderr => request.stderr.stream.as_ref(),
         };
-        if !requested {
-            continue;
-        }
+        let Some(stream) = target else { continue };
         let _ = stream.event_tx.send(event);
     }
 }
@@ -953,6 +956,34 @@ mod tests {
         }
     }
 
+    fn capture_output(limit_bytes: u32) -> BoundedExecOutputRequest {
+        BoundedExecOutputRequest {
+            capture: BoundedExecCapturePolicy::Capture { limit_bytes },
+            stream: None,
+        }
+    }
+
+    fn captured_output(bytes: &[u8], truncated: bool) -> BoundedExecOutput {
+        BoundedExecOutput::Captured {
+            bytes: bytes.to_vec(),
+            truncated,
+        }
+    }
+
+    fn assert_captured_output(
+        output: &BoundedExecOutput,
+        expected_bytes: &[u8],
+        expected_truncated: bool,
+    ) {
+        match output {
+            BoundedExecOutput::Captured { bytes, truncated } => {
+                assert_eq!(bytes, expected_bytes);
+                assert_eq!(*truncated, expected_truncated);
+            }
+            BoundedExecOutput::Discarded => panic!("expected captured output"),
+        }
+    }
+
     #[tokio::test]
     async fn snapshot_provider_can_discard_uncommitted_snapshot() {
         let provider = MockSnapshotProvider;
@@ -995,9 +1026,8 @@ mod tests {
             env: &env,
             sudo: true,
             stdin: Some(b"input"),
-            stdout_limit_bytes: 100,
-            stderr_limit_bytes: 101,
-            stream: None,
+            stdout: capture_output(100),
+            stderr: capture_output(101),
         };
 
         let result = sandbox.bounded_exec(&request).await.unwrap();
@@ -1006,7 +1036,7 @@ mod tests {
             result.termination,
             BoundedExecTermination::Exited { exit_code: 0 }
         );
-        assert!(result.stdout.is_empty());
+        assert_captured_output(&result.stdout, b"", false);
         assert_eq!(
             sandbox.bounded_exec_calls(),
             vec![BoundedExecCall {
@@ -1014,13 +1044,14 @@ mod tests {
                 env: vec![("K".to_string(), "V".to_string())],
                 sudo: true,
                 stdin: Some(b"input".to_vec()),
-                stdout_limit_bytes: 100,
-                stderr_limit_bytes: 101,
-                stream_stdout: false,
-                stream_stderr: false,
-                stream_chunk_limit_bytes: 0,
-                stdout_stream_limit_bytes: 0,
-                stderr_stream_limit_bytes: 0,
+                stdout: BoundedExecOutputCall {
+                    capture: BoundedExecCapturePolicy::Capture { limit_bytes: 100 },
+                    stream: None,
+                },
+                stderr: BoundedExecOutputCall {
+                    capture: BoundedExecCapturePolicy::Capture { limit_bytes: 101 },
+                    stream: None,
+                },
             }]
         );
     }
@@ -1046,10 +1077,9 @@ mod tests {
             result: Ok(BoundedExecResult {
                 termination: BoundedExecTermination::TimedOut,
                 duration: Duration::from_millis(25),
-                stdout: b"final-out".to_vec(),
-                stderr: b"final-err".to_vec(),
-                stdout_truncated: false,
-                stderr_truncated: true,
+                stdout: captured_output(b"final-out", false),
+                stderr: captured_output(b"final-err", true),
+                diagnostic: None,
             }),
         });
 
@@ -1060,26 +1090,26 @@ mod tests {
             env: &[],
             sudo: false,
             stdin: None,
-            stdout_limit_bytes: 100,
-            stderr_limit_bytes: 100,
-            stream: Some(BoundedExecStreamRequest {
-                event_tx,
-                stdout: true,
-                stderr: false,
-                chunk_limit_bytes: 1024,
-                stdout_limit_bytes: 2048,
-                stderr_limit_bytes: 0,
-            }),
+            stdout: BoundedExecOutputRequest {
+                capture: BoundedExecCapturePolicy::Capture { limit_bytes: 100 },
+                stream: Some(BoundedExecStreamPolicy {
+                    event_tx,
+                    limit_bytes: 2048,
+                    chunk_limit_bytes: 1024,
+                }),
+            },
+            stderr: BoundedExecOutputRequest {
+                capture: BoundedExecCapturePolicy::Capture { limit_bytes: 100 },
+                stream: None,
+            },
         };
 
         let result = sandbox.bounded_exec(&request).await.unwrap();
 
         assert_eq!(result.termination, BoundedExecTermination::TimedOut);
         assert_eq!(result.duration, Duration::from_millis(25));
-        assert_eq!(result.stdout, b"final-out");
-        assert_eq!(result.stderr, b"final-err");
-        assert!(!result.stdout_truncated);
-        assert!(result.stderr_truncated);
+        assert_captured_output(&result.stdout, b"final-out", false);
+        assert_captured_output(&result.stderr, b"final-err", true);
         assert_eq!(
             event_rx.recv().await.unwrap(),
             BoundedExecOutputEvent {
@@ -1100,13 +1130,17 @@ mod tests {
                 env: vec![],
                 sudo: false,
                 stdin: None,
-                stdout_limit_bytes: 100,
-                stderr_limit_bytes: 100,
-                stream_stdout: true,
-                stream_stderr: false,
-                stream_chunk_limit_bytes: 1024,
-                stdout_stream_limit_bytes: 2048,
-                stderr_stream_limit_bytes: 0,
+                stdout: BoundedExecOutputCall {
+                    capture: BoundedExecCapturePolicy::Capture { limit_bytes: 100 },
+                    stream: Some(BoundedExecStreamCall {
+                        limit_bytes: 2048,
+                        chunk_limit_bytes: 1024,
+                    }),
+                },
+                stderr: BoundedExecOutputCall {
+                    capture: BoundedExecCapturePolicy::Capture { limit_bytes: 100 },
+                    stream: None,
+                },
             }]
         );
     }
@@ -1119,10 +1153,9 @@ mod tests {
             result: Ok(BoundedExecResult {
                 termination: BoundedExecTermination::Exited { exit_code: 42 },
                 duration: Duration::from_millis(10),
-                stdout: b"shared".to_vec(),
-                stderr: Vec::new(),
-                stdout_truncated: false,
-                stderr_truncated: false,
+                stdout: captured_output(b"shared", false),
+                stderr: captured_output(b"", false),
+                diagnostic: None,
             }),
         });
         let mut factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
@@ -1136,9 +1169,8 @@ mod tests {
             env: &[],
             sudo: false,
             stdin: None,
-            stdout_limit_bytes: 100,
-            stderr_limit_bytes: 100,
-            stream: None,
+            stdout: capture_output(100),
+            stderr: capture_output(100),
         };
 
         let queued = first.bounded_exec(&request).await.unwrap();
@@ -1148,7 +1180,7 @@ mod tests {
             queued.termination,
             BoundedExecTermination::Exited { exit_code: 42 }
         );
-        assert_eq!(queued.stdout, b"shared");
+        assert_captured_output(&queued.stdout, b"shared", false);
         assert_eq!(
             fallback.termination,
             BoundedExecTermination::Exited { exit_code: 0 }

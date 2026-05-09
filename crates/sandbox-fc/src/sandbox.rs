@@ -8,10 +8,10 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use sandbox::{
-    BoundedExecOutputEvent, BoundedExecRequest, BoundedExecResult, BoundedExecStream,
-    BoundedExecTermination, ExecRequest, ExecResult, ProcessExit, Sandbox, SandboxConfig,
-    SandboxError, SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation,
-    SandboxOperationReason, SpawnHandle,
+    BoundedExecCapturePolicy, BoundedExecOutput, BoundedExecOutputEvent, BoundedExecOutputRequest,
+    BoundedExecRequest, BoundedExecResult, BoundedExecStream, BoundedExecTermination, ExecRequest,
+    ExecResult, ProcessExit, Sandbox, SandboxConfig, SandboxError, SandboxIdleTransition,
+    SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason, SpawnHandle,
 };
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::{mpsc, watch};
@@ -19,9 +19,10 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, trace, warn};
 use vsock_host::{
     BoundedExecOutputEvent as HostBoundedExecOutputEvent,
+    BoundedExecOutputRequest as HostBoundedExecOutputRequest,
     BoundedExecRequest as HostBoundedExecRequest, BoundedExecResult as HostBoundedExecResult,
     BoundedExecStream as HostBoundedExecStream,
-    BoundedExecStreamRequest as HostBoundedExecStreamRequest,
+    BoundedExecStreamPolicy as HostBoundedExecStreamPolicy,
     BoundedExecTermination as HostBoundedExecTermination, VsockHost,
 };
 
@@ -1138,14 +1139,43 @@ fn host_bounded_termination_to_sandbox(
     }
 }
 
+fn host_bounded_output_to_sandbox(output: vsock_host::BoundedExecOutput) -> BoundedExecOutput {
+    match output {
+        vsock_host::BoundedExecOutput::Discarded => BoundedExecOutput::Discarded,
+        vsock_host::BoundedExecOutput::Captured { bytes, truncated } => {
+            BoundedExecOutput::Captured { bytes, truncated }
+        }
+    }
+}
+
 fn host_bounded_result_to_sandbox(result: HostBoundedExecResult) -> BoundedExecResult {
     BoundedExecResult {
         termination: host_bounded_termination_to_sandbox(result.termination),
         duration: Duration::from_millis(result.duration_ms),
-        stdout: result.stdout,
-        stderr: result.stderr,
-        stdout_truncated: result.stdout_truncated,
-        stderr_truncated: result.stderr_truncated,
+        stdout: host_bounded_output_to_sandbox(result.stdout),
+        stderr: host_bounded_output_to_sandbox(result.stderr),
+        diagnostic: result.diagnostic,
+    }
+}
+
+fn sandbox_capture_to_host(
+    capture: BoundedExecCapturePolicy,
+) -> vsock_host::BoundedExecCapturePolicy {
+    match capture {
+        BoundedExecCapturePolicy::Discard => vsock_host::BoundedExecCapturePolicy::Discard,
+        BoundedExecCapturePolicy::Capture { limit_bytes } => {
+            vsock_host::BoundedExecCapturePolicy::Capture { limit_bytes }
+        }
+    }
+}
+
+fn sandbox_output_to_host(
+    output: &BoundedExecOutputRequest,
+    stream: Option<HostBoundedExecStreamPolicy>,
+) -> HostBoundedExecOutputRequest {
+    HostBoundedExecOutputRequest {
+        capture: sandbox_capture_to_host(output.capture),
+        stream,
     }
 }
 
@@ -1412,34 +1442,58 @@ impl Sandbox for FirecrackerSandbox {
         let operation = SandboxOperation::BoundedExec;
         let guest = self.operation_guest(operation).await?;
 
-        let (bridge_task, host_stream) = if let Some(stream) = &request.stream
-            && (stream.stdout || stream.stderr)
-        {
-            let (host_tx, mut host_rx) = mpsc::unbounded_channel();
-            let sandbox_tx = stream.event_tx.clone();
+        let has_stream = request.stdout.stream.is_some() || request.stderr.stream.is_some();
+        let (bridge_task, stdout_stream, stderr_stream) = if has_stream {
+            let (host_tx, mut host_rx) = mpsc::unbounded_channel::<HostBoundedExecOutputEvent>();
+            let mut stdout_tx = request
+                .stdout
+                .stream
+                .as_ref()
+                .map(|stream| stream.event_tx.clone());
+            let mut stderr_tx = request
+                .stderr
+                .stream
+                .as_ref()
+                .map(|stream| stream.event_tx.clone());
             let task = tokio::spawn(async move {
                 while let Some(event) = host_rx.recv().await {
-                    if sandbox_tx
-                        .send(host_bounded_event_to_sandbox(event))
-                        .is_err()
+                    let target = match event.stream {
+                        HostBoundedExecStream::Stdout => &mut stdout_tx,
+                        HostBoundedExecStream::Stderr => &mut stderr_tx,
+                    };
+                    if let Some(tx) = target
+                        && tx.send(host_bounded_event_to_sandbox(event)).is_err()
                     {
+                        *target = None;
+                    }
+                    if stdout_tx.is_none() && stderr_tx.is_none() {
                         break;
                     }
                 }
             });
-            (
-                Some(task),
-                Some(HostBoundedExecStreamRequest {
-                    event_tx: host_tx,
-                    stdout: stream.stdout,
-                    stderr: stream.stderr,
-                    chunk_limit_bytes: stream.chunk_limit_bytes,
-                    stdout_limit_bytes: stream.stdout_limit_bytes,
-                    stderr_limit_bytes: stream.stderr_limit_bytes,
-                }),
-            )
+            let stdout_stream =
+                request
+                    .stdout
+                    .stream
+                    .as_ref()
+                    .map(|stream| HostBoundedExecStreamPolicy {
+                        event_tx: host_tx.clone(),
+                        limit_bytes: stream.limit_bytes,
+                        chunk_limit_bytes: stream.chunk_limit_bytes,
+                    });
+            let stderr_stream =
+                request
+                    .stderr
+                    .stream
+                    .as_ref()
+                    .map(|stream| HostBoundedExecStreamPolicy {
+                        event_tx: host_tx,
+                        limit_bytes: stream.limit_bytes,
+                        chunk_limit_bytes: stream.chunk_limit_bytes,
+                    });
+            (Some(task), stdout_stream, stderr_stream)
         } else {
-            (None, None)
+            (None, None, None)
         };
 
         let host_request = HostBoundedExecRequest {
@@ -1448,9 +1502,8 @@ impl Sandbox for FirecrackerSandbox {
             env: request.env,
             sudo: request.sudo,
             stdin: request.stdin,
-            stdout_limit_bytes: request.stdout_limit_bytes,
-            stderr_limit_bytes: request.stderr_limit_bytes,
-            stream: host_stream,
+            stdout: sandbox_output_to_host(&request.stdout, stdout_stream),
+            stderr: sandbox_output_to_host(&request.stderr, stderr_stream),
         };
 
         let result = tokio::select! {

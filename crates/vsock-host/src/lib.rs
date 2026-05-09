@@ -82,13 +82,21 @@ pub struct BoundedExecOutputEvent {
     pub truncated: bool,
 }
 
-pub struct BoundedExecStreamRequest {
+pub struct BoundedExecStreamPolicy {
     pub event_tx: mpsc::UnboundedSender<BoundedExecOutputEvent>,
-    pub stdout: bool,
-    pub stderr: bool,
+    pub limit_bytes: u32,
     pub chunk_limit_bytes: u32,
-    pub stdout_limit_bytes: u32,
-    pub stderr_limit_bytes: u32,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum BoundedExecCapturePolicy {
+    Discard,
+    Capture { limit_bytes: u32 },
+}
+
+pub struct BoundedExecOutputRequest {
+    pub capture: BoundedExecCapturePolicy,
+    pub stream: Option<BoundedExecStreamPolicy>,
 }
 
 pub struct BoundedExecRequest<'a> {
@@ -97,32 +105,35 @@ pub struct BoundedExecRequest<'a> {
     pub env: &'a [(&'a str, &'a str)],
     pub sudo: bool,
     pub stdin: Option<&'a [u8]>,
-    pub stdout_limit_bytes: u32,
-    pub stderr_limit_bytes: u32,
-    pub stream: Option<BoundedExecStreamRequest>,
+    pub stdout: BoundedExecOutputRequest,
+    pub stderr: BoundedExecOutputRequest,
 }
 
 #[derive(Debug, Clone)]
 pub struct BoundedExecResult {
     pub termination: BoundedExecTermination,
     pub duration_ms: u64,
-    pub stdout: Vec<u8>,
-    pub stderr: Vec<u8>,
-    pub stdout_truncated: bool,
-    pub stderr_truncated: bool,
+    pub stdout: BoundedExecOutput,
+    pub stderr: BoundedExecOutput,
+    pub diagnostic: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum BoundedExecOutput {
+    Discarded,
+    Captured { bytes: Vec<u8>, truncated: bool },
 }
 
 struct BoundedOutputRegistration {
-    event_tx: mpsc::UnboundedSender<BoundedExecOutputEvent>,
-    chunk_limit_bytes: usize,
     stdout: BoundedOutputStreamState,
     stderr: BoundedOutputStreamState,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct BoundedOutputStreamState {
-    enabled: bool,
+    event_tx: Option<mpsc::UnboundedSender<BoundedExecOutputEvent>>,
     limit_bytes: usize,
+    chunk_limit_bytes: usize,
     forwarded_bytes: usize,
     closed: bool,
 }
@@ -178,12 +189,10 @@ struct BoundedOutputForwardPlan {
 }
 
 impl BoundedOutputRegistration {
-    fn new(request: &BoundedExecStreamRequest) -> Self {
+    fn new(stdout: &BoundedExecOutputRequest, stderr: &BoundedExecOutputRequest) -> Self {
         Self {
-            event_tx: request.event_tx.clone(),
-            chunk_limit_bytes: request.chunk_limit_bytes as usize,
-            stdout: BoundedOutputStreamState::new(request.stdout, request.stdout_limit_bytes),
-            stderr: BoundedOutputStreamState::new(request.stderr, request.stderr_limit_bytes),
+            stdout: BoundedOutputStreamState::new(stdout.stream.as_ref()),
+            stderr: BoundedOutputStreamState::new(stderr.stream.as_ref()),
         }
     }
 
@@ -194,25 +203,24 @@ impl BoundedOutputRegistration {
         chunk_len: usize,
         truncated: bool,
     ) -> Option<BoundedOutputForwardPlan> {
-        let chunk_limit_bytes = self.chunk_limit_bytes;
-        let events = self.stream_mut(stream).forward_plan(
-            stream,
-            sequence,
-            chunk_len,
-            truncated,
-            chunk_limit_bytes,
-        );
+        let state = self.stream_mut(stream);
+        let event_tx = state.event_tx.clone()?;
+        let events = state.forward_plan(stream, sequence, chunk_len, truncated);
         if events.is_empty() {
             return None;
         }
-        Some(BoundedOutputForwardPlan {
-            event_tx: self.event_tx.clone(),
-            events,
-        })
+        Some(BoundedOutputForwardPlan { event_tx, events })
     }
 
     fn all_streams_closed(&self) -> bool {
         self.stdout.is_closed_or_disabled() && self.stderr.is_closed_or_disabled()
+    }
+
+    fn close_stream(
+        &mut self,
+        stream: BoundedExecStream,
+    ) -> Option<mpsc::UnboundedSender<BoundedExecOutputEvent>> {
+        self.stream_mut(stream).close()
     }
 
     fn stream_mut(&mut self, stream: BoundedExecStream) -> &mut BoundedOutputStreamState {
@@ -224,17 +232,23 @@ impl BoundedOutputRegistration {
 }
 
 impl BoundedOutputStreamState {
-    fn new(enabled: bool, limit_bytes: u32) -> Self {
+    fn new(stream: Option<&BoundedExecStreamPolicy>) -> Self {
         Self {
-            enabled,
-            limit_bytes: limit_bytes as usize,
+            event_tx: stream.map(|stream| stream.event_tx.clone()),
+            limit_bytes: stream.map_or(0, |stream| stream.limit_bytes as usize),
+            chunk_limit_bytes: stream.map_or(0, |stream| stream.chunk_limit_bytes as usize),
             forwarded_bytes: 0,
             closed: false,
         }
     }
 
     fn is_closed_or_disabled(&self) -> bool {
-        !self.enabled || self.closed
+        self.event_tx.is_none() || self.closed
+    }
+
+    fn close(&mut self) -> Option<mpsc::UnboundedSender<BoundedExecOutputEvent>> {
+        self.closed = true;
+        self.event_tx.take()
     }
 
     fn forward_plan(
@@ -243,13 +257,13 @@ impl BoundedOutputStreamState {
         sequence: u32,
         chunk_len: usize,
         incoming_truncated: bool,
-        chunk_limit_bytes: usize,
     ) -> BoundedOutputEventPlans {
         if self.is_closed_or_disabled() {
             return BoundedOutputEventPlans::empty();
         }
 
         let remaining = self.limit_bytes.saturating_sub(self.forwarded_bytes);
+        let chunk_limit_bytes = self.chunk_limit_bytes;
 
         if incoming_truncated {
             let allowed_len = chunk_len.min(chunk_limit_bytes).min(remaining);
@@ -613,6 +627,32 @@ impl Shared {
         };
         drop(removed);
     }
+
+    fn close_bounded_output_stream(&self, seq: u32, stream: BoundedExecStream) {
+        let (removed_stream_sender, removed_registration) = {
+            let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if let ConnectionState::Connected {
+                bounded_output_senders,
+                ..
+            } = &mut *guard
+            {
+                if let Some(registration) = bounded_output_senders.get_mut(&seq) {
+                    let removed_stream_sender = registration.close_stream(stream);
+                    let removed_registration = registration
+                        .all_streams_closed()
+                        .then(|| bounded_output_senders.remove(&seq))
+                        .flatten();
+                    (removed_stream_sender, removed_registration)
+                } else {
+                    (None, None)
+                }
+            } else {
+                (None, None)
+            }
+        };
+        drop(removed_stream_sender);
+        drop(removed_registration);
+    }
 }
 
 /// Host-side vsock endpoint.
@@ -666,6 +706,48 @@ fn proto_termination_to_host(termination: ProtoBoundedExecTermination) -> Bounde
     }
 }
 
+fn host_output_request_to_proto(
+    request: &BoundedExecOutputRequest,
+) -> vsock_proto::BoundedExecOutputPolicy {
+    let capture = match request.capture {
+        BoundedExecCapturePolicy::Discard => vsock_proto::BoundedExecCapturePolicy::Discard,
+        BoundedExecCapturePolicy::Capture { limit_bytes } => {
+            vsock_proto::BoundedExecCapturePolicy::Capture { limit_bytes }
+        }
+    };
+    let stream = request
+        .stream
+        .as_ref()
+        .map(|stream| vsock_proto::BoundedExecStreamPolicy {
+            limit_bytes: stream.limit_bytes,
+            chunk_limit_bytes: stream.chunk_limit_bytes,
+        });
+    vsock_proto::BoundedExecOutputPolicy { capture, stream }
+}
+
+fn proto_output_to_host(output: vsock_proto::BoundedExecOutput<'_>) -> BoundedExecOutput {
+    match output {
+        vsock_proto::BoundedExecOutput::Discarded => BoundedExecOutput::Discarded,
+        vsock_proto::BoundedExecOutput::Captured { bytes, truncated } => {
+            BoundedExecOutput::Captured {
+                bytes: bytes.to_vec(),
+                truncated,
+            }
+        }
+    }
+}
+
+fn captured_limit_bytes(request: &BoundedExecOutputRequest) -> Option<usize> {
+    match request.capture {
+        BoundedExecCapturePolicy::Discard => None,
+        BoundedExecCapturePolicy::Capture { limit_bytes } => Some(limit_bytes as usize),
+    }
+}
+
+fn has_bounded_stream(request: &BoundedExecRequest<'_>) -> bool {
+    request.stdout.stream.is_some() || request.stderr.stream.is_some()
+}
+
 fn validate_bounded_exec_request(request: &BoundedExecRequest<'_>) -> io::Result<()> {
     if request.timeout_ms == 0 {
         return Err(io::Error::new(
@@ -674,8 +756,9 @@ fn validate_bounded_exec_request(request: &BoundedExecRequest<'_>) -> io::Result
         ));
     }
 
-    let total_output_limit = (request.stdout_limit_bytes as usize)
-        .checked_add(request.stderr_limit_bytes as usize)
+    let total_output_limit = captured_limit_bytes(&request.stdout)
+        .unwrap_or(0)
+        .checked_add(captured_limit_bytes(&request.stderr).unwrap_or(0))
         .ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -693,8 +776,9 @@ fn validate_bounded_exec_request(request: &BoundedExecRequest<'_>) -> io::Result
         ));
     }
 
-    if let Some(stream) = &request.stream
-        && (stream.stdout || stream.stderr)
+    for stream in [&request.stdout.stream, &request.stderr.stream]
+        .into_iter()
+        .flatten()
     {
         let chunk_limit = stream.chunk_limit_bytes as usize;
         if chunk_limit < vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES {
@@ -839,7 +923,7 @@ async fn reader_loop(
                                 truncated: event_plan.truncated,
                             };
                             if forward_plan.event_tx.send(event).is_err() {
-                                shared.remove_bounded_output_sender(msg.seq);
+                                shared.close_bounded_output_stream(msg.seq, event_plan.stream);
                                 break;
                             }
                         }
@@ -1236,25 +1320,14 @@ impl VsockHost {
     ) -> io::Result<BoundedExecResult> {
         validate_bounded_exec_request(request)?;
 
-        let stream_stdout = request.stream.as_ref().is_some_and(|s| s.stdout);
-        let stream_stderr = request.stream.as_ref().is_some_and(|s| s.stderr);
-        let stream_chunk_limit_bytes = request.stream.as_ref().map_or(0, |s| s.chunk_limit_bytes);
-        let stdout_stream_limit_bytes = request.stream.as_ref().map_or(0, |s| s.stdout_limit_bytes);
-        let stderr_stream_limit_bytes = request.stream.as_ref().map_or(0, |s| s.stderr_limit_bytes);
-
         let proto_request = vsock_proto::BoundedExecRequest {
             timeout_ms: request.timeout_ms,
             command: request.command,
             env: request.env,
             sudo: request.sudo,
             stdin: request.stdin,
-            stdout_limit_bytes: request.stdout_limit_bytes,
-            stderr_limit_bytes: request.stderr_limit_bytes,
-            stream_stdout,
-            stream_stderr,
-            stream_chunk_limit_bytes,
-            stdout_stream_limit_bytes,
-            stderr_stream_limit_bytes,
+            stdout: host_output_request_to_proto(&request.stdout),
+            stderr: host_output_request_to_proto(&request.stderr),
         };
         let payload = vsock_proto::encode_bounded_exec(&proto_request)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
@@ -1278,19 +1351,18 @@ impl VsockHost {
                     ..
                 } => {
                     pending.insert(seq, tx);
-                    if let Some(stream) = &request.stream
-                        && (stream.stdout || stream.stderr)
-                    {
-                        bounded_output_senders.insert(seq, BoundedOutputRegistration::new(stream));
+                    if has_bounded_stream(request) {
+                        bounded_output_senders.insert(
+                            seq,
+                            BoundedOutputRegistration::new(&request.stdout, &request.stderr),
+                        );
                     }
                 }
             }
         }
         let _pending_guard = PendingRequestGuard::new(Arc::clone(&self.shared), seq);
-        let _bounded_output_guard = request.stream.as_ref().and_then(|stream| {
-            (stream.stdout || stream.stderr)
-                .then(|| PendingBoundedOutputGuard::new(Arc::clone(&self.shared), seq))
-        });
+        let _bounded_output_guard = has_bounded_stream(request)
+            .then(|| PendingBoundedOutputGuard::new(Arc::clone(&self.shared), seq));
 
         write_frame_on_shared(&self.shared, &data).await?;
 
@@ -1327,10 +1399,9 @@ impl VsockHost {
         Ok(BoundedExecResult {
             termination: proto_termination_to_host(decoded.termination),
             duration_ms: decoded.duration_ms,
-            stdout: decoded.stdout.to_vec(),
-            stderr: decoded.stderr.to_vec(),
-            stdout_truncated: decoded.stdout_truncated,
-            stderr_truncated: decoded.stderr_truncated,
+            stdout: proto_output_to_host(decoded.stdout),
+            stderr: proto_output_to_host(decoded.stderr),
+            diagnostic: decoded.diagnostic.map(ToOwned::to_owned),
         })
     }
 
@@ -1717,25 +1788,87 @@ mod tests {
         }
     }
 
+    struct TestBoundedExecStreams {
+        event_tx: mpsc::UnboundedSender<BoundedExecOutputEvent>,
+        stdout: bool,
+        stderr: bool,
+        chunk_limit_bytes: u32,
+        stdout_budget_bytes: u32,
+        stderr_budget_bytes: u32,
+    }
+
+    fn capture_output(limit_bytes: u32) -> BoundedExecOutputRequest {
+        BoundedExecOutputRequest {
+            capture: BoundedExecCapturePolicy::Capture { limit_bytes },
+            stream: None,
+        }
+    }
+
+    fn discard_output() -> BoundedExecOutputRequest {
+        BoundedExecOutputRequest {
+            capture: BoundedExecCapturePolicy::Discard,
+            stream: None,
+        }
+    }
+
+    fn proto_captured_output(bytes: &[u8], truncated: bool) -> vsock_proto::BoundedExecOutput<'_> {
+        vsock_proto::BoundedExecOutput::Captured { bytes, truncated }
+    }
+
+    fn assert_host_captured_output(
+        output: &BoundedExecOutput,
+        expected_bytes: &[u8],
+        expected_truncated: bool,
+    ) {
+        match output {
+            BoundedExecOutput::Captured { bytes, truncated } => {
+                assert_eq!(bytes, expected_bytes);
+                assert_eq!(*truncated, expected_truncated);
+            }
+            BoundedExecOutput::Discarded => panic!("expected captured output"),
+        }
+    }
+
+    fn assert_host_discarded_output(output: &BoundedExecOutput) {
+        assert_eq!(*output, BoundedExecOutput::Discarded);
+    }
+
     fn simple_bounded_request<'a>(
         command: &'a str,
-        stream: Option<BoundedExecStreamRequest>,
+        stream: Option<TestBoundedExecStreams>,
     ) -> BoundedExecRequest<'a> {
+        let mut stdout = capture_output(1024);
+        let mut stderr = capture_output(1024);
+        if let Some(stream) = stream {
+            if stream.stdout {
+                stdout.stream = Some(BoundedExecStreamPolicy {
+                    event_tx: stream.event_tx.clone(),
+                    limit_bytes: stream.stdout_budget_bytes,
+                    chunk_limit_bytes: stream.chunk_limit_bytes,
+                });
+            }
+            if stream.stderr {
+                stderr.stream = Some(BoundedExecStreamPolicy {
+                    event_tx: stream.event_tx,
+                    limit_bytes: stream.stderr_budget_bytes,
+                    chunk_limit_bytes: stream.chunk_limit_bytes,
+                });
+            }
+        }
         BoundedExecRequest {
             command,
             timeout_ms: 5000,
             env: &[],
             sudo: false,
             stdin: None,
-            stdout_limit_bytes: 1024,
-            stderr_limit_bytes: 1024,
-            stream,
+            stdout,
+            stderr,
         }
     }
 
     fn bounded_stream_request(
         event_tx: mpsc::UnboundedSender<BoundedExecOutputEvent>,
-    ) -> BoundedExecStreamRequest {
+    ) -> TestBoundedExecStreams {
         bounded_stream_request_with_limits(
             event_tx,
             true,
@@ -1751,16 +1884,16 @@ mod tests {
         stdout: bool,
         stderr: bool,
         chunk_limit_bytes: usize,
-        stdout_limit_bytes: u32,
-        stderr_limit_bytes: u32,
-    ) -> BoundedExecStreamRequest {
-        BoundedExecStreamRequest {
+        stdout_budget_bytes: u32,
+        stderr_budget_bytes: u32,
+    ) -> TestBoundedExecStreams {
+        TestBoundedExecStreams {
             event_tx,
             stdout,
             stderr,
             chunk_limit_bytes: chunk_limit_bytes as u32,
-            stdout_limit_bytes,
-            stderr_limit_bytes,
+            stdout_budget_bytes,
+            stderr_budget_bytes,
         }
     }
 
@@ -1783,10 +1916,15 @@ mod tests {
         let payload = vsock_proto::encode_bounded_exec_result(
             vsock_proto::BoundedExecTermination::Exited { exit_code: 0 },
             1,
-            stdout,
-            b"",
-            false,
-            false,
+            vsock_proto::BoundedExecOutput::Captured {
+                bytes: stdout,
+                truncated: false,
+            },
+            vsock_proto::BoundedExecOutput::Captured {
+                bytes: b"",
+                truncated: false,
+            },
+            None,
         )
         .unwrap();
         let frame = vsock_proto::encode(MSG_BOUNDED_EXEC_RESULT, seq, &payload).unwrap();
@@ -1925,18 +2063,23 @@ mod tests {
             assert_eq!(d.env, vec![("K", "V")]);
             assert!(d.sudo);
             assert_eq!(d.stdin, Some(b"input".as_slice()));
-            assert_eq!(d.stdout_limit_bytes, 10);
-            assert_eq!(d.stderr_limit_bytes, 11);
-            assert!(!d.stream_stdout);
-            assert!(!d.stream_stderr);
+            assert_eq!(
+                d.stdout.capture,
+                vsock_proto::BoundedExecCapturePolicy::Capture { limit_bytes: 10 }
+            );
+            assert_eq!(
+                d.stderr.capture,
+                vsock_proto::BoundedExecCapturePolicy::Capture { limit_bytes: 11 }
+            );
+            assert!(d.stdout.stream.is_none());
+            assert!(d.stderr.stream.is_none());
 
             let payload = vsock_proto::encode_bounded_exec_result(
                 vsock_proto::BoundedExecTermination::Exited { exit_code: 7 },
                 123,
-                b"out",
-                b"err",
-                true,
-                false,
+                proto_captured_output(b"out", true),
+                proto_captured_output(b"err", false),
+                Some("diag"),
             )
             .unwrap();
             let resp = vsock_proto::encode(MSG_BOUNDED_EXEC_RESULT, msgs[0].seq, &payload).unwrap();
@@ -1951,9 +2094,8 @@ mod tests {
             env: &env,
             sudo: true,
             stdin: Some(b"input"),
-            stdout_limit_bytes: 10,
-            stderr_limit_bytes: 11,
-            stream: None,
+            stdout: capture_output(10),
+            stderr: capture_output(11),
         };
         let result = host.bounded_exec(&request).await.unwrap();
         assert_eq!(
@@ -1961,10 +2103,59 @@ mod tests {
             BoundedExecTermination::Exited { exit_code: 7 }
         );
         assert_eq!(result.duration_ms, 123);
-        assert_eq!(result.stdout, b"out");
-        assert_eq!(result.stderr, b"err");
-        assert!(result.stdout_truncated);
-        assert!(!result.stderr_truncated);
+        assert_host_captured_output(&result.stdout, b"out", true);
+        assert_host_captured_output(&result.stderr, b"err", false);
+        assert_eq!(result.diagnostic.as_deref(), Some("diag"));
+    }
+
+    #[tokio::test]
+    async fn test_bounded_exec_distinguishes_discarded_and_captured_empty_outputs() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs[0].msg_type, MSG_BOUNDED_EXEC);
+
+            let d = vsock_proto::decode_bounded_exec(&msgs[0].payload).unwrap();
+            assert_eq!(
+                d.stdout.capture,
+                vsock_proto::BoundedExecCapturePolicy::Discard
+            );
+            assert_eq!(
+                d.stderr.capture,
+                vsock_proto::BoundedExecCapturePolicy::Capture { limit_bytes: 0 }
+            );
+
+            let payload = vsock_proto::encode_bounded_exec_result(
+                vsock_proto::BoundedExecTermination::Exited { exit_code: 0 },
+                1,
+                vsock_proto::BoundedExecOutput::Discarded,
+                proto_captured_output(b"", false),
+                None,
+            )
+            .unwrap();
+            let resp = vsock_proto::encode(MSG_BOUNDED_EXEC_RESULT, msgs[0].seq, &payload).unwrap();
+            guest.write_all(&resp).await.unwrap();
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let request = BoundedExecRequest {
+            command: "printf bounded",
+            timeout_ms: 7500,
+            env: &[],
+            sudo: false,
+            stdin: None,
+            stdout: discard_output(),
+            stderr: capture_output(0),
+        };
+        let result = host.bounded_exec(&request).await.unwrap();
+        assert_host_discarded_output(&result.stdout);
+        assert_host_captured_output(&result.stderr, b"", false);
     }
 
     #[tokio::test]
@@ -2014,10 +2205,9 @@ mod tests {
                 let payload = vsock_proto::encode_bounded_exec_result(
                     vsock_proto::BoundedExecTermination::Exited { exit_code: 0 },
                     1,
-                    stdout.as_bytes(),
-                    b"",
-                    false,
-                    false,
+                    proto_captured_output(stdout.as_bytes(), false),
+                    proto_captured_output(b"", false),
+                    None,
                 )
                 .unwrap();
                 let resp = vsock_proto::encode(MSG_BOUNDED_EXEC_RESULT, *seq, &payload).unwrap();
@@ -2043,8 +2233,8 @@ mod tests {
 
         let result_a = task_a.await.unwrap().unwrap();
         let result_b = task_b.await.unwrap().unwrap();
-        assert_eq!(result_a.stdout, b"final-cmd-a");
-        assert_eq!(result_b.stdout, b"final-cmd-b");
+        assert_host_captured_output(&result_a.stdout, b"final-cmd-a", false);
+        assert_host_captured_output(&result_b.stdout, b"final-cmd-b", false);
 
         assert_eq!(
             rx_a.recv().await.unwrap(),
@@ -2079,8 +2269,8 @@ mod tests {
             let msgs = decoder.decode(&buf[..n]).unwrap();
             assert_eq!(msgs[0].msg_type, MSG_BOUNDED_EXEC);
             let decoded = vsock_proto::decode_bounded_exec(&msgs[0].payload).unwrap();
-            assert!(decoded.stream_stdout);
-            assert!(!decoded.stream_stderr);
+            assert!(decoded.stdout.stream.is_some());
+            assert!(decoded.stderr.stream.is_none());
 
             let ignored_payload = vsock_proto::encode_bounded_exec_output_chunk(
                 vsock_proto::BoundedExecStream::Stderr,
@@ -2109,10 +2299,9 @@ mod tests {
             let payload = vsock_proto::encode_bounded_exec_result(
                 vsock_proto::BoundedExecTermination::Exited { exit_code: 0 },
                 1,
-                b"done",
-                b"",
-                false,
-                false,
+                proto_captured_output(b"done", false),
+                proto_captured_output(b"", false),
+                None,
             )
             .unwrap();
             let resp = vsock_proto::encode(MSG_BOUNDED_EXEC_RESULT, msgs[0].seq, &payload).unwrap();
@@ -2123,19 +2312,19 @@ mod tests {
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
         let request = simple_bounded_request(
             "stdout-only",
-            Some(BoundedExecStreamRequest {
+            Some(TestBoundedExecStreams {
                 event_tx,
                 stdout: true,
                 stderr: false,
                 chunk_limit_bytes: vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32,
-                stdout_limit_bytes: 2048,
-                stderr_limit_bytes: 0,
+                stdout_budget_bytes: 2048,
+                stderr_budget_bytes: 0,
             }),
         );
 
         let result = host.bounded_exec(&request).await.unwrap();
         drop(request);
-        assert_eq!(result.stdout, b"done");
+        assert_host_captured_output(&result.stdout, b"done", false);
         assert_eq!(
             event_rx.recv().await.unwrap(),
             BoundedExecOutputEvent {
@@ -2198,7 +2387,7 @@ mod tests {
 
         let result = host.bounded_exec(&request).await.unwrap();
         drop(request);
-        assert_eq!(result.stdout, b"done");
+        assert_host_captured_output(&result.stdout, b"done", false);
         assert_eq!(
             event_rx.recv().await.unwrap(),
             BoundedExecOutputEvent {
@@ -2270,7 +2459,7 @@ mod tests {
 
         let result = host.bounded_exec(&request).await.unwrap();
         drop(request);
-        assert_eq!(result.stdout, b"done");
+        assert_host_captured_output(&result.stdout, b"done", false);
         assert_eq!(
             event_rx.recv().await.unwrap(),
             BoundedExecOutputEvent {
@@ -2333,7 +2522,7 @@ mod tests {
 
         let result = host.bounded_exec(&request).await.unwrap();
         drop(request);
-        assert_eq!(result.stdout, b"done");
+        assert_host_captured_output(&result.stdout, b"done", false);
         assert_eq!(
             event_rx.recv().await.unwrap(),
             BoundedExecOutputEvent {
@@ -2405,7 +2594,7 @@ mod tests {
 
         let result = host.bounded_exec(&request).await.unwrap();
         drop(request);
-        assert_eq!(result.stdout, b"done");
+        assert_host_captured_output(&result.stdout, b"done", false);
         assert_eq!(
             event_rx.recv().await.unwrap(),
             BoundedExecOutputEvent {
@@ -2486,7 +2675,7 @@ mod tests {
 
         let result = host.bounded_exec(&request).await.unwrap();
         drop(request);
-        assert_eq!(result.stdout, b"done");
+        assert_host_captured_output(&result.stdout, b"done", false);
         assert_eq!(
             event_rx.recv().await.unwrap(),
             BoundedExecOutputEvent {
@@ -2554,7 +2743,7 @@ mod tests {
 
         let result = host.bounded_exec(&request).await.unwrap();
         drop(request);
-        assert_eq!(result.stdout, b"done");
+        assert_host_captured_output(&result.stdout, b"done", false);
         assert_eq!(
             event_rx.recv().await.unwrap(),
             BoundedExecOutputEvent {
@@ -2617,7 +2806,7 @@ mod tests {
 
         let result = host.bounded_exec(&request).await.unwrap();
         drop(request);
-        assert_eq!(result.stdout, b"done");
+        assert_host_captured_output(&result.stdout, b"done", false);
         assert_eq!(
             event_rx.recv().await.unwrap(),
             BoundedExecOutputEvent {
@@ -2685,7 +2874,7 @@ mod tests {
 
         let result = host.bounded_exec(&request).await.unwrap();
         drop(request);
-        assert_eq!(result.stdout, b"done");
+        assert_host_captured_output(&result.stdout, b"done", false);
         assert_eq!(
             event_rx.recv().await.unwrap(),
             BoundedExecOutputEvent {
@@ -2757,7 +2946,7 @@ mod tests {
 
         let result = host.bounded_exec(&request).await.unwrap();
         drop(request);
-        assert_eq!(result.stdout, b"done");
+        assert_host_captured_output(&result.stdout, b"done", false);
         assert_eq!(
             event_rx.recv().await.unwrap(),
             BoundedExecOutputEvent {
@@ -2815,10 +3004,9 @@ mod tests {
             let payload = vsock_proto::encode_bounded_exec_result(
                 vsock_proto::BoundedExecTermination::Exited { exit_code: 0 },
                 1,
-                b"done",
-                b"",
-                false,
-                false,
+                proto_captured_output(b"done", false),
+                proto_captured_output(b"", false),
+                None,
             )
             .unwrap();
             let resp = vsock_proto::encode(MSG_BOUNDED_EXEC_RESULT, msgs[0].seq, &payload).unwrap();
@@ -2833,7 +3021,7 @@ mod tests {
         let result = host.bounded_exec(&request).await.unwrap();
         drop(request);
 
-        assert_eq!(result.stdout, b"done");
+        assert_host_captured_output(&result.stdout, b"done", false);
         assert_bounded_event_stream_closed(&mut event_rx);
         assert_eq!(registration_counts(&host), (0, 0, 0, 0));
     }
@@ -2854,10 +3042,9 @@ mod tests {
             let result_payload = vsock_proto::encode_bounded_exec_result(
                 vsock_proto::BoundedExecTermination::Exited { exit_code: 0 },
                 1,
-                b"done",
-                b"",
-                false,
-                false,
+                proto_captured_output(b"done", false),
+                proto_captured_output(b"", false),
+                None,
             )
             .unwrap();
             let result =
@@ -2889,7 +3076,7 @@ mod tests {
         let result = host.bounded_exec(&request).await.unwrap();
         drop(request);
 
-        assert_eq!(result.stdout, b"done");
+        assert_host_captured_output(&result.stdout, b"done", false);
         assert_bounded_event_stream_closed(&mut event_rx);
         assert_eq!(registration_counts(&host), (0, 0, 0, 0));
     }
@@ -2916,10 +3103,9 @@ mod tests {
             let payload = vsock_proto::encode_bounded_exec_result(
                 vsock_proto::BoundedExecTermination::Exited { exit_code: 0 },
                 1,
-                b"ok",
-                b"",
-                false,
-                false,
+                proto_captured_output(b"ok", false),
+                proto_captured_output(b"", false),
+                None,
             )
             .unwrap();
             let ok_resp =
@@ -2940,7 +3126,7 @@ mod tests {
 
         let request = simple_bounded_request("good-result", None);
         let result = host.bounded_exec(&request).await.unwrap();
-        assert_eq!(result.stdout, b"ok");
+        assert_host_captured_output(&result.stdout, b"ok", false);
     }
 
     #[tokio::test]
@@ -3147,9 +3333,22 @@ mod tests {
                 env: &[],
                 sudo: false,
                 stdin: Some(&stdin),
-                stdout_limit_bytes: 1024,
-                stderr_limit_bytes: 1024,
-                stream: Some(bounded_stream_request(tx)),
+                stdout: BoundedExecOutputRequest {
+                    capture: BoundedExecCapturePolicy::Capture { limit_bytes: 1024 },
+                    stream: Some(BoundedExecStreamPolicy {
+                        event_tx: tx.clone(),
+                        limit_bytes: 2048,
+                        chunk_limit_bytes: vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32,
+                    }),
+                },
+                stderr: BoundedExecOutputRequest {
+                    capture: BoundedExecCapturePolicy::Capture { limit_bytes: 1024 },
+                    stream: Some(BoundedExecStreamPolicy {
+                        event_tx: tx,
+                        limit_bytes: 2048,
+                        chunk_limit_bytes: vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32,
+                    }),
+                },
             };
             task_host.bounded_exec(&request).await
         });
@@ -3254,10 +3453,9 @@ mod tests {
                 let payload = vsock_proto::encode_bounded_exec_result(
                     vsock_proto::BoundedExecTermination::Exited { exit_code: 0 },
                     1,
-                    b"done",
-                    b"",
-                    false,
-                    false,
+                    proto_captured_output(b"done", false),
+                    proto_captured_output(b"", false),
+                    None,
                 )
                 .unwrap();
                 let resp =
@@ -3271,8 +3469,17 @@ mod tests {
         let task = tokio::spawn(async move {
             let (tx, rx) = mpsc::unbounded_channel();
             drop(rx);
-            let request =
-                simple_bounded_request("dropped-receiver", Some(bounded_stream_request(tx)));
+            let request = simple_bounded_request(
+                "dropped-receiver",
+                Some(TestBoundedExecStreams {
+                    event_tx: tx,
+                    stdout: true,
+                    stderr: false,
+                    chunk_limit_bytes: vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32,
+                    stdout_budget_bytes: 2048,
+                    stderr_budget_bytes: 0,
+                }),
+            );
             task_host.bounded_exec(&request).await
         });
 
@@ -3289,8 +3496,91 @@ mod tests {
 
         release_result.notify_one();
         let result = task.await.unwrap().unwrap();
-        assert_eq!(result.stdout, b"done");
+        assert_host_captured_output(&result.stdout, b"done", false);
         assert_eq!(registration_counts(&host), (0, 0, 0, 0));
+    }
+
+    #[tokio::test]
+    async fn test_bounded_exec_dropped_stdout_receiver_does_not_close_stderr() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs[0].msg_type, MSG_BOUNDED_EXEC);
+            let decoded = vsock_proto::decode_bounded_exec(&msgs[0].payload).unwrap();
+            assert!(decoded.stdout.stream.is_some());
+            assert!(decoded.stderr.stream.is_some());
+
+            write_bounded_stream_chunk(
+                &mut guest,
+                msgs[0].seq,
+                vsock_proto::BoundedExecStream::Stdout,
+                1,
+                b"lost",
+                false,
+            )
+            .await;
+            write_bounded_stream_chunk(
+                &mut guest,
+                msgs[0].seq,
+                vsock_proto::BoundedExecStream::Stderr,
+                2,
+                b"kept",
+                false,
+            )
+            .await;
+            write_bounded_exec_result(&mut guest, msgs[0].seq, b"done").await;
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let (stdout_tx, stdout_rx) = mpsc::unbounded_channel();
+        drop(stdout_rx);
+        let (stderr_tx, mut stderr_rx) = mpsc::unbounded_channel();
+        let request = BoundedExecRequest {
+            command: "dropped-stdout-receiver",
+            timeout_ms: 5000,
+            env: &[],
+            sudo: false,
+            stdin: None,
+            stdout: BoundedExecOutputRequest {
+                capture: BoundedExecCapturePolicy::Capture { limit_bytes: 1024 },
+                stream: Some(BoundedExecStreamPolicy {
+                    event_tx: stdout_tx,
+                    limit_bytes: 1024,
+                    chunk_limit_bytes: vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32,
+                }),
+            },
+            stderr: BoundedExecOutputRequest {
+                capture: BoundedExecCapturePolicy::Capture { limit_bytes: 1024 },
+                stream: Some(BoundedExecStreamPolicy {
+                    event_tx: stderr_tx,
+                    limit_bytes: 1024,
+                    chunk_limit_bytes: vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32,
+                }),
+            },
+        };
+
+        let result = host.bounded_exec(&request).await.unwrap();
+        drop(request);
+        assert_host_captured_output(&result.stdout, b"done", false);
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(5), stderr_rx.recv())
+                .await
+                .expect("stderr stream should stay active after stdout receiver is dropped")
+                .expect("stderr stream should receive event"),
+            BoundedExecOutputEvent {
+                stream: BoundedExecStream::Stderr,
+                sequence: 2,
+                chunk: b"kept".to_vec(),
+                truncated: false,
+            }
+        );
+        assert_bounded_event_stream_closed(&mut stderr_rx);
     }
 
     #[tokio::test]
@@ -3315,10 +3605,9 @@ mod tests {
             let payload = vsock_proto::encode_bounded_exec_result(
                 vsock_proto::BoundedExecTermination::Exited { exit_code: 0 },
                 1,
-                b"ok",
-                b"",
-                false,
-                false,
+                proto_captured_output(b"ok", false),
+                proto_captured_output(b"", false),
+                None,
             )
             .unwrap();
             let ok_resp =
@@ -3340,7 +3629,7 @@ mod tests {
 
         let request = simple_bounded_request("good-result", None);
         let result = host.bounded_exec(&request).await.unwrap();
-        assert_eq!(result.stdout, b"ok");
+        assert_host_captured_output(&result.stdout, b"ok", false);
     }
 
     #[tokio::test]
@@ -3361,19 +3650,17 @@ mod tests {
                 let msgs = decoder.decode(&buf[..n]).unwrap();
                 assert_eq!(msgs[0].msg_type, MSG_BOUNDED_EXEC);
                 let decoded = vsock_proto::decode_bounded_exec(&msgs[0].payload).unwrap();
-                assert!(!decoded.stream_stdout);
-                assert!(!decoded.stream_stderr);
-                assert_eq!(decoded.stream_chunk_limit_bytes, 0);
+                assert!(decoded.stdout.stream.is_none());
+                assert!(decoded.stderr.stream.is_none());
                 request_seen.notify_one();
 
                 release_result.notified().await;
                 let payload = vsock_proto::encode_bounded_exec_result(
                     vsock_proto::BoundedExecTermination::Exited { exit_code: 0 },
                     1,
-                    b"done",
-                    b"",
-                    false,
-                    false,
+                    proto_captured_output(b"done", false),
+                    proto_captured_output(b"", false),
+                    None,
                 )
                 .unwrap();
                 let resp =
@@ -3388,13 +3675,13 @@ mod tests {
             let (event_tx, _event_rx) = mpsc::unbounded_channel();
             let request = simple_bounded_request(
                 "no-streams",
-                Some(BoundedExecStreamRequest {
+                Some(TestBoundedExecStreams {
                     event_tx,
                     stdout: false,
                     stderr: false,
                     chunk_limit_bytes: 0,
-                    stdout_limit_bytes: 0,
-                    stderr_limit_bytes: 0,
+                    stdout_budget_bytes: 0,
+                    stderr_budget_bytes: 0,
                 }),
             );
             task_host.bounded_exec(&request).await
@@ -3411,7 +3698,7 @@ mod tests {
 
         release_result.notify_one();
         let result = task.await.unwrap().unwrap();
-        assert_eq!(result.stdout, b"done");
+        assert_host_captured_output(&result.stdout, b"done", false);
         assert_eq!(registration_counts(&host), (0, 0, 0, 0));
     }
 
@@ -3433,32 +3720,30 @@ mod tests {
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
 
         let oversized_final = BoundedExecRequest {
-            stdout_limit_bytes: u32::MAX,
-            stderr_limit_bytes: u32::MAX,
+            stdout: capture_output(u32::MAX),
+            stderr: capture_output(u32::MAX),
             ..simple_bounded_request("oversized-final", None)
         };
         let err = host.bounded_exec(&oversized_final).await.unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
 
         let (tx, _rx) = mpsc::unbounded_channel();
-        let invalid_stream = BoundedExecRequest {
-            stream: Some(BoundedExecStreamRequest {
-                chunk_limit_bytes: 0,
-                ..bounded_stream_request(tx)
-            }),
-            ..simple_bounded_request("invalid-stream", None)
-        };
+        let mut invalid_stream = simple_bounded_request("invalid-stream", None);
+        invalid_stream.stdout.stream = Some(BoundedExecStreamPolicy {
+            event_tx: tx,
+            limit_bytes: 1,
+            chunk_limit_bytes: 0,
+        });
         let err = host.bounded_exec(&invalid_stream).await.unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
 
         let (tx, _rx) = mpsc::unbounded_channel();
-        let oversized_stream = BoundedExecRequest {
-            stream: Some(BoundedExecStreamRequest {
-                chunk_limit_bytes: u32::MAX,
-                ..bounded_stream_request(tx)
-            }),
-            ..simple_bounded_request("oversized-stream", None)
-        };
+        let mut oversized_stream = simple_bounded_request("oversized-stream", None);
+        oversized_stream.stderr.stream = Some(BoundedExecStreamPolicy {
+            event_tx: tx,
+            limit_bytes: 1,
+            chunk_limit_bytes: u32::MAX,
+        });
         let err = host.bounded_exec(&oversized_stream).await.unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     }
