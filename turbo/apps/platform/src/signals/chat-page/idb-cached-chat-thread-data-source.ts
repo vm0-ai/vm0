@@ -88,9 +88,6 @@ function createListMessagesBefore(
       });
 
       if (!result.hasMore) {
-        // Remote confirms we've reached the start. Persist the first message
-        // id (or `beforeId` itself when there were no older messages) so
-        // subsequent cache hits can compute hasMore without re-fetching.
         const startMessageId = result.messages[0]?.id ?? beforeId;
         await patchThreadMeta$(userId, orgId, tid, { startMessageId }, signal);
       }
@@ -228,9 +225,6 @@ export function createIdbCachedDataSource(
     });
 
     if (!page.hasHistoryBefore && page.messages.length > 0) {
-      // Remote confirms the latest page already contains the very first
-      // message. Persist its id so subsequent cache hits don't show a
-      // phantom "Load history" button.
       await patchThreadMeta$(userId, orgId, threadId, {
         startMessageId: page.messages[0].id,
       });

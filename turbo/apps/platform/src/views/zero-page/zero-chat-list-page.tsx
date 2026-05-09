@@ -78,8 +78,11 @@ export function ZeroChatListPage() {
     : recentSessions;
 
   const onNewChat = (pane: OptimisticChatPane) => {
+    if (!currentChatAgentId) {
+      return;
+    }
     detach(
-      createNewChat(currentChatAgentId ?? null, pane, rootSignal),
+      createNewChat(currentChatAgentId, pane, rootSignal),
       Reason.DomCallback,
     );
   };
@@ -134,7 +137,7 @@ export function ZeroChatListPage() {
           onClick={(event) => {
             onNewChat(event.altKey ? "sidebar" : "main");
           }}
-          disabled={creating}
+          disabled={!currentChatAgentId || creating}
           className="flex w-full h-10 items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
           <IconPlus size={16} stroke={2} />

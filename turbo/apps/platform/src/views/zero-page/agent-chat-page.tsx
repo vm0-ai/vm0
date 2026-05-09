@@ -183,8 +183,12 @@ function NewChatButton() {
   const rootSignal = useGet(rootSignal$);
 
   const handleNewChat = (pane: OptimisticChatPane) => {
+    if (!currentChatAgentId) {
+      return;
+    }
+
     detach(
-      createNewChat(currentChatAgentId ?? null, pane, rootSignal),
+      createNewChat(currentChatAgentId, pane, rootSignal),
       Reason.DomCallback,
     );
   };
@@ -196,7 +200,7 @@ function NewChatButton() {
       onClick={(event) => {
         handleNewChat(event.altKey ? "sidebar" : "main");
       }}
-      disabled={creating}
+      disabled={!currentChatAgentId || creating}
       className="zero-btn-morandi gap-1.5"
       data-testid="chat-header-new-button"
     >

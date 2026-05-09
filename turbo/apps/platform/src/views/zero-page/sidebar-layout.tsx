@@ -155,8 +155,11 @@ function NewOrUnreadChatButtonLeaf() {
   }
 
   const handleNewChat = (pane: OptimisticChatPane) => {
+    if (!currentChatAgentId) {
+      return;
+    }
     detach(
-      createNewChat(currentChatAgentId ?? null, pane, rootSignal),
+      createNewChat(currentChatAgentId, pane, rootSignal),
       Reason.DomCallback,
     );
   };
@@ -167,7 +170,7 @@ function NewOrUnreadChatButtonLeaf() {
       onClick={(event) => {
         handleNewChat(event.altKey ? "sidebar" : "main");
       }}
-      disabled={creating}
+      disabled={!currentChatAgentId || creating}
       className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0 disabled:opacity-50"
     >
       <IconPlus size={14} stroke={1.5} />

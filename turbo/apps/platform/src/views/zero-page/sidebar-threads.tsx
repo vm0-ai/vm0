@@ -715,6 +715,9 @@ function ChatThreadsTitle() {
     useChatThreadsTitleLabels();
   const newChatDisabled = useGet(optimisticChatThread$) !== null;
   const onNewChat = (pane: OptimisticChatPane) => {
+    if (!currentChatAgentId) {
+      return;
+    }
     detach(
       createNewChat(currentChatAgentId, pane, rootSignal),
       Reason.DomCallback,
@@ -807,7 +810,7 @@ function ChatThreadsTitle() {
                   e.stopPropagation();
                   onNewChat(e.altKey ? "sidebar" : "main");
                 }}
-                disabled={newChatDisabled}
+                disabled={!currentChatAgentId || newChatDisabled}
                 className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors disabled:opacity-50"
                 aria-label={newChatAriaLabel}
               >

@@ -59,15 +59,6 @@ export const unloadRightThread$ = command(({ get, set }) => {
   }
 });
 
-/**
- * Per-pane wiring. The shared body lives in `setupPaneThread$`; this spec
- * captures the bits that vary so the two `loadX$` commands stay parallel.
- *
- * Document-title / agent-context / Ably title-sync used to live here as
- * boolean flags, but they only ever flipped on for the left pane. They've
- * moved to `syncPrimaryThread$`, which `loadLeftThread$` runs alongside
- * `setupPaneThread$`.
- */
 interface PaneSpec {
   setPaneThread$: Command<void, [ChatThreadSignals | null]>;
   optimisticSource$: Computed<PendingChatThread | null>;
@@ -104,11 +95,6 @@ const loadDraft$ = command(
     }
   },
 );
-/**
- * Second half of pane thread setup — called after the threadData$ resolves.
- * Owns: draft seeding, message page warm-up, optimistic swap, and the inner
- * setup loops. Extracted to keep cyclomatic complexity under the lint cap.
- */
 const resolvePaneThread$ = command(
   async (
     { get, set },
@@ -124,11 +110,6 @@ const resolvePaneThread$ = command(
 
     if (matchingOptimistic) {
       L.debug("resolvePaneThread$ swap start", { threadId: thread.threadId });
-      // Transfer optimistic messages from the local pending thread to the
-      // remote-backed thread's delta so messages sent during the optimistic
-      // window survive the handoff. On a new thread the remote initial page
-      // may not yet include the server-committed message (waitUntil race),
-      // and fetchNextPage$ exits early when sinceId is undefined.
       const optimisticGroups = await get(
         matchingOptimistic.pendingThread.groupedChatMessages$,
       );
@@ -169,11 +150,6 @@ const resolvePaneThread$ = command(
   },
 );
 
-/**
- * Shared body for `loadLeftThread$` / `loadRightThread$`. Owns: data-source
- * selection, optimistic publish + settle dance, then delegates the second
- * half to `resolvePaneThread$`.
- */
 const setupPaneThread$ = command(
   async (
     { get, set },
@@ -196,18 +172,12 @@ const setupPaneThread$ = command(
     }
 
     const { draft, isNew } = set(ensureDraft$, threadId);
-    // Forward-reference so the data source can flip the skeleton on at the
-    // moment it discovers a cache miss, before the network fetch starts.
     let onIdbMiss: () => void = () => {};
     const dataSource = createIdbCachedDataSource(threadId, () => {
       onIdbMiss();
     });
     const thread = createChatThreadSignals(threadId, draft, dataSource);
     onIdbMiss = () => {
-      // When a matching optimistic thread is already filling this pane, its
-      // pendingThread holds the visible state until `resolvePaneThread$`
-      // hands the pane over to this remote-backed thread. Showing a skeleton
-      // on this thread would flash through that hand-over.
       if (matchingOptimistic) {
         return;
       }
@@ -237,18 +207,6 @@ const setupPaneThread$ = command(
   },
 );
 
-/**
- * Make the left (primary) chat pane show `threadId`. Updates the URL pathname
- * silently so subsequent route re-entries (browser back / link share) replay
- * correctly.
- *
- * If the requested thread is currently the right pane, the right pane is
- * unloaded first (a thread cannot occupy both panes).
- *
- * Runs `syncPrimaryThread$` in parallel with the pane wiring so the document
- * title / global agent context / Ably title loop start as soon as the
- * primary thread switches, independent of how long the messages page takes.
- */
 export const loadLeftThread$ = command(
   async (
     { get, set },
@@ -279,11 +237,6 @@ export const loadLeftThread$ = command(
   },
 );
 
-/**
- * Make the right (sidebar) chat pane show `threadId`. Idempotent — re-loading
- * the current right thread is a no-op. Refuses to load the same thread that's
- * already in the left pane.
- */
 export const loadRightThread$ = command(
   async (
     { get, set },
