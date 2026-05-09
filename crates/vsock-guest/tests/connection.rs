@@ -435,6 +435,30 @@ fn bounded_exec_stdin_writer_exits_when_grandchild_holds_stdin() {
 }
 
 #[test]
+fn bounded_exec_disconnect_kills_setsid_grandchild_holding_stdin() {
+    let orphan = OrphanProcessGuard::new("bounded-exec-cancel-stdin-orphan");
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let stdin = vec![b'x'; 8 * 1024 * 1024];
+    let command = format!(
+        "python3 -c \"import os,signal; p=os.fork(); (lambda fd: (os.write(fd, str(p).encode()), os.close(fd), signal.pause()))(os.open('{}', os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o600)) if p else (os.setsid(), os.dup2(os.open('/dev/null', os.O_WRONLY), 1), os.dup2(os.open('/dev/null', os.O_WRONLY), 2), signal.pause())\"",
+        orphan.pid_path()
+    );
+    let request = bounded_request(&command, &[], Some(stdin.as_slice()));
+    send_bounded_exec(&mut host_stream, 38, &request);
+
+    let orphan_pid = read_pid_file(orphan.pid_path());
+    assert!(
+        pid_alive(orphan_pid),
+        "setsid grandchild should be running before disconnect"
+    );
+
+    drop(host_stream);
+    let _ = handle.join();
+    wait_for_pid_exit(orphan_pid, "bounded exec disconnect stdin cleanup");
+}
+
+#[test]
 fn bounded_exec_streams_stdout_before_final_result() {
     let (handle, mut host_stream) = start_guest_connection();
 

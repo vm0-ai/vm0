@@ -499,15 +499,14 @@ fn run_bounded_exec<S>(
     {
         drain_cancel.store(true, Ordering::Release);
     }
-    if matches!(outcome, WaitOutcome::Exited(_) | WaitOutcome::WaitFailed(_))
-        && stdin_worker
-            .as_ref()
-            .is_some_and(BoundedStdinWorker::is_pending)
+    if stdin_worker
+        .as_ref()
+        .is_some_and(BoundedStdinWorker::is_pending)
     {
-        // The direct child is gone, but a descendant may still hold stdin open
-        // without reading it. Signal the process group before waiting for
-        // stdout/stderr drain so inherited output fds do not burn the whole
-        // drain deadline.
+        // The direct child may have exited or been killed, but a descendant can
+        // still hold stdin open without reading it. Signal the process group
+        // before waiting for stdout/stderr drain, then clean up any process
+        // still holding this exact stdin pipe.
         kill_process_group_best_effort(child_pid);
         if let Some(pipe_link) = stdin_worker
             .as_ref()
