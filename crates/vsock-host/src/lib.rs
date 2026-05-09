@@ -134,9 +134,46 @@ struct BoundedOutputEventPlan {
     truncated: bool,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct BoundedOutputEventPlans {
+    first: Option<BoundedOutputEventPlan>,
+    second: Option<BoundedOutputEventPlan>,
+}
+
+impl BoundedOutputEventPlans {
+    fn empty() -> Self {
+        Self {
+            first: None,
+            second: None,
+        }
+    }
+
+    fn one(first: BoundedOutputEventPlan) -> Self {
+        Self {
+            first: Some(first),
+            second: None,
+        }
+    }
+
+    fn two(first: BoundedOutputEventPlan, second: BoundedOutputEventPlan) -> Self {
+        Self {
+            first: Some(first),
+            second: Some(second),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.first.is_none() && self.second.is_none()
+    }
+
+    fn iter(&self) -> impl Iterator<Item = &BoundedOutputEventPlan> {
+        self.first.iter().chain(self.second.iter())
+    }
+}
+
 struct BoundedOutputForwardPlan {
     event_tx: mpsc::UnboundedSender<BoundedExecOutputEvent>,
-    events: Vec<BoundedOutputEventPlan>,
+    events: BoundedOutputEventPlans,
 }
 
 impl BoundedOutputRegistration {
@@ -206,9 +243,9 @@ impl BoundedOutputStreamState {
         chunk_len: usize,
         incoming_truncated: bool,
         chunk_limit_bytes: usize,
-    ) -> Vec<BoundedOutputEventPlan> {
+    ) -> BoundedOutputEventPlans {
         if self.is_closed_or_disabled() {
-            return Vec::new();
+            return BoundedOutputEventPlans::empty();
         }
 
         let remaining = self.limit_bytes.saturating_sub(self.forwarded_bytes);
@@ -217,47 +254,55 @@ impl BoundedOutputStreamState {
             let allowed_len = chunk_len.min(chunk_limit_bytes).min(remaining);
             self.forwarded_bytes = self.forwarded_bytes.saturating_add(allowed_len);
             self.closed = true;
-            return vec![BoundedOutputEventPlan {
+            return BoundedOutputEventPlans::one(BoundedOutputEventPlan {
                 stream,
                 sequence,
                 chunk_len: allowed_len,
                 truncated: true,
-            }];
+            });
         }
 
         if remaining == 0 || chunk_limit_bytes == 0 {
             self.closed = true;
-            return vec![BoundedOutputEventPlan {
+            return BoundedOutputEventPlans::one(BoundedOutputEventPlan {
                 stream,
                 sequence,
                 chunk_len: 0,
                 truncated: true,
-            }];
+            });
         }
 
         let allowed_len = chunk_len.min(chunk_limit_bytes).min(remaining);
-        let mut events = Vec::with_capacity(2);
-        if allowed_len > 0 {
-            events.push(BoundedOutputEventPlan {
+        let prefix = if allowed_len > 0 {
+            self.forwarded_bytes = self.forwarded_bytes.saturating_add(allowed_len);
+            Some(BoundedOutputEventPlan {
                 stream,
                 sequence,
                 chunk_len: allowed_len,
                 truncated: false,
-            });
-            self.forwarded_bytes = self.forwarded_bytes.saturating_add(allowed_len);
-        }
+            })
+        } else {
+            None
+        };
 
         if allowed_len < chunk_len {
             self.closed = true;
-            events.push(BoundedOutputEventPlan {
+            let marker = BoundedOutputEventPlan {
                 stream,
                 sequence: sequence.wrapping_add(1),
                 chunk_len: 0,
                 truncated: true,
-            });
+            };
+            return match prefix {
+                Some(prefix) => BoundedOutputEventPlans::two(prefix, marker),
+                None => BoundedOutputEventPlans::one(marker),
+            };
         }
 
-        events
+        match prefix {
+            Some(prefix) => BoundedOutputEventPlans::one(prefix),
+            None => BoundedOutputEventPlans::empty(),
+        }
     }
 }
 
@@ -739,7 +784,7 @@ async fn reader_loop(
                         }
                     };
                     if let Some(forward_plan) = forward_plan {
-                        for event_plan in forward_plan.events {
+                        for event_plan in forward_plan.events.iter() {
                             let event = BoundedExecOutputEvent {
                                 stream: event_plan.stream,
                                 sequence: event_plan.sequence,
