@@ -3,6 +3,7 @@
 import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { createPortal } from "react-dom";
 import { IconX } from "@tabler/icons-react";
+import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import {
   Button,
   cn,
@@ -34,10 +35,15 @@ import {
   showConfirm$,
   setShowConfirm$,
   dialogAgentModelDefault$,
+  type ScheduleFormData,
 } from "../../signals/schedule-page/schedule-form.ts";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
-import { personalModelProviderEnabled$ } from "../../signals/external/feature-switch.ts";
 import {
+  modelFirstModelProviderEnabled$,
+  personalModelProviderEnabled$,
+} from "../../signals/external/feature-switch.ts";
+import {
+  MODEL_FIRST_SELECTION_PROVIDER_ID,
   ModelProviderPicker,
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
@@ -545,6 +551,88 @@ function getSaveLabel(mode: "create" | "edit", saving: boolean): string {
   return saving ? "Creating\u2026" : "Create";
 }
 
+function getScheduleModelPickerValue(
+  form: ScheduleFormData,
+  modelFirstEnabled: boolean,
+): ModelProviderSelection | null {
+  if (!form.selectedModel || (!modelFirstEnabled && !form.modelProviderId)) {
+    return null;
+  }
+  return {
+    modelProviderId: form.modelProviderId ?? MODEL_FIRST_SELECTION_PROVIDER_ID,
+    selectedModel: form.selectedModel,
+  };
+}
+
+function ScheduleDialogModelControls({
+  form,
+  updateForm,
+  orgProviders,
+  agentModelDefault,
+  modelFirstEnabled,
+  personalProviderEnabled,
+}: {
+  form: ScheduleFormData;
+  updateForm: (patch: Partial<ScheduleFormData>) => void;
+  orgProviders: { modelProviders: ModelProviderResponse[] } | undefined;
+  agentModelDefault: ModelProviderSelection | null;
+  modelFirstEnabled: boolean;
+  personalProviderEnabled: boolean;
+}) {
+  const showModelPicker =
+    orgProviders &&
+    (modelFirstEnabled || orgProviders.modelProviders.length > 0);
+  return (
+    <>
+      {showModelPicker && (
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-medium text-foreground">
+            Model
+            <span className="text-muted-foreground font-normal ml-1">
+              (optional)
+            </span>
+          </label>
+          <ModelProviderPicker
+            providers={orgProviders.modelProviders}
+            value={getScheduleModelPickerValue(form, modelFirstEnabled)}
+            onChange={(sel: ModelProviderSelection | null) => {
+              updateForm({
+                modelProviderId: modelFirstEnabled
+                  ? null
+                  : (sel?.modelProviderId ?? null),
+                selectedModel: sel?.selectedModel ?? null,
+              });
+            }}
+            agentDefault={agentModelDefault}
+            inheritLabel="agent"
+          />
+        </div>
+      )}
+
+      {personalProviderEnabled && !modelFirstEnabled && (
+        <div className="flex items-start gap-2">
+          <Switch
+            id="schedule-prefer-personal"
+            checked={form.preferPersonalProvider}
+            onCheckedChange={(v) => {
+              updateForm({ preferPersonalProvider: v });
+            }}
+            aria-label="Use personal provider"
+            className="mt-0.5"
+          />
+          <label
+            htmlFor="schedule-prefer-personal"
+            className="text-sm text-muted-foreground leading-snug"
+          >
+            Use the caller&apos;s personal provider when available, fall back to
+            the selected one above.
+          </label>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Inner dialog (manages form state, mounted only when open)
 // ---------------------------------------------------------------------------
@@ -560,7 +648,7 @@ function ScheduleFormDialogInner({
 }: Omit<ScheduleFormDialogProps, "open"> & {
   preferredTimezone: string | null | undefined;
 }) {
-  const init = buildDefaults(agents, initialValues, preferredTimezone);
+  const baseInit = buildDefaults(agents, initialValues, preferredTimezone);
 
   const updateForm = useSet(updateDialogForm$);
   const form = useGet(dialogForm$);
@@ -571,7 +659,11 @@ function ScheduleFormDialogInner({
 
   const agentModelDefault = useLastResolved(dialogAgentModelDefault$) ?? null;
 
+  const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
   const personalProviderEnabled = useGet(personalModelProviderEnabled$);
+  const init = modelFirstEnabled
+    ? { ...baseInit, modelProviderId: null }
+    : baseInit;
 
   const current: ScheduleFormValues = {
     prompt: form.prompt,
@@ -585,7 +677,7 @@ function ScheduleFormDialogInner({
     loopMinutes: form.loopMinutes,
     dayOfWeek: form.dayOfWeek,
     dayOfMonth: form.dayOfMonth,
-    modelProviderId: form.modelProviderId,
+    modelProviderId: modelFirstEnabled ? null : form.modelProviderId,
     selectedModel: form.selectedModel,
     preferPersonalProvider: form.preferPersonalProvider,
   };
@@ -766,56 +858,14 @@ function ScheduleFormDialogInner({
             }}
           />
 
-          {orgProviders && orgProviders.modelProviders.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium text-foreground">
-                Model
-                <span className="text-muted-foreground font-normal ml-1">
-                  (optional)
-                </span>
-              </label>
-              <ModelProviderPicker
-                providers={orgProviders.modelProviders}
-                value={
-                  form.modelProviderId && form.selectedModel
-                    ? {
-                        modelProviderId: form.modelProviderId,
-                        selectedModel: form.selectedModel,
-                      }
-                    : null
-                }
-                onChange={(sel: ModelProviderSelection | null) => {
-                  updateForm({
-                    modelProviderId: sel?.modelProviderId ?? null,
-                    selectedModel: sel?.selectedModel ?? null,
-                  });
-                }}
-                agentDefault={agentModelDefault}
-                inheritLabel="agent"
-              />
-            </div>
-          )}
-
-          {personalProviderEnabled && (
-            <div className="flex items-start gap-2">
-              <Switch
-                id="schedule-prefer-personal"
-                checked={form.preferPersonalProvider}
-                onCheckedChange={(v) => {
-                  updateForm({ preferPersonalProvider: v });
-                }}
-                aria-label="Use personal provider"
-                className="mt-0.5"
-              />
-              <label
-                htmlFor="schedule-prefer-personal"
-                className="text-sm text-muted-foreground leading-snug"
-              >
-                Use the caller&apos;s personal provider when available, fall
-                back to the selected one above.
-              </label>
-            </div>
-          )}
+          <ScheduleDialogModelControls
+            form={form}
+            updateForm={updateForm}
+            orgProviders={orgProviders}
+            agentModelDefault={agentModelDefault}
+            modelFirstEnabled={modelFirstEnabled}
+            personalProviderEnabled={personalProviderEnabled}
+          />
         </div>
 
         <DialogFooter className="max-md:shrink-0 max-md:!flex-row max-md:gap-2 max-md:px-5 max-md:pt-3 max-md:pb-[max(env(safe-area-inset-bottom),1.25rem)] max-md:border-t max-md:border-border/60 max-md:!space-x-0">

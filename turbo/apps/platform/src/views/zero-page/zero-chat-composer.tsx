@@ -213,6 +213,8 @@ interface ZeroChatComposerProps {
     disabled?: boolean;
     /** The agent-level default model, shown as a "Default" tag in the dropdown. */
     agentDefault?: ModelProviderSelection | null;
+    /** Hide the "Use default" row in compact chat pickers. */
+    showUseDefault?: boolean;
   };
 }
 
@@ -1326,6 +1328,7 @@ export function ZeroChatComposer({
                         disabled={modelPicker.disabled}
                         agentDefault={modelPicker.agentDefault}
                         inheritLabel="agent"
+                        showUseDefault={modelPicker.showUseDefault}
                       />
                     )}
                     <div className="mx-1 h-5 w-px bg-border/60 sm:mx-0.5" />

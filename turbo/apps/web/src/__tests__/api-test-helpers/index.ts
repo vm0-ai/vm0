@@ -225,6 +225,7 @@ export {
   seedUserCacheEntry,
   insertUserCacheEntry,
   insertVm0ApiKeys,
+  deleteInsertedVm0ApiKeys,
   insertTestVoiceChatSession,
   countUserRows,
   getPushSubscriptionsByEndpoint,

@@ -36,11 +36,19 @@ import type { ModelProviderSelection } from "../../views/zero-page/components/mo
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
+import {
+  featureSwitch$,
+  modelFirstModelProviderEnabled$,
+} from "../external/feature-switch.ts";
+import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import { composerModelProviders$ } from "../zero-page/composer-model-providers.ts";
-import { resolveEffectiveAgentDefaultSelection } from "../zero-page/model-provider-default.ts";
+import {
+  createModelFirstSelection,
+  resolveEffectiveAgentDefaultSelection,
+  resolveModelFirstAgentDefaultSelection,
+} from "../zero-page/model-provider-default.ts";
 import {
   writeChatMessageToClipboard,
   type ChatClipboardPayload,
@@ -274,6 +282,10 @@ function createModelSelection(
         return user.value;
       }
       const thread = await get(threadData$);
+      const modelFirstEnabled = get(modelFirstModelProviderEnabled$);
+      if (modelFirstEnabled && thread?.selectedModel) {
+        return createModelFirstSelection(thread.selectedModel);
+      }
       if (thread?.modelProviderId && thread.selectedModel) {
         return {
           modelProviderId: thread.modelProviderId,
@@ -290,6 +302,10 @@ function createModelSelection(
       const agent = thread?.agentId
         ? await get(agentById(thread.agentId))
         : null;
+      if (modelFirstEnabled) {
+        const policies = await get(orgModelPolicies$);
+        return resolveModelFirstAgentDefaultSelection({ agent, policies });
+      }
       const composerProviders = await get(composerModelProviders$);
       return resolveEffectiveAgentDefaultSelection({
         agent,
@@ -376,6 +392,10 @@ function createAgentInfoSignals(
         return null;
       }
       const agent = await get(agentById(agentId));
+      if (get(modelFirstModelProviderEnabled$)) {
+        const policies = await get(orgModelPolicies$);
+        return resolveModelFirstAgentDefaultSelection({ agent, policies });
+      }
       const composerProviders = await get(composerModelProviders$);
       return resolveEffectiveAgentDefaultSelection({
         agent,
@@ -1172,14 +1192,24 @@ function createSendMessage(deps: SendMessageDeps) {
       if (!effectiveSelectedModel) {
         const agent = await get(agentById(agentId));
         signal.throwIfAborted();
-        const composerProviders = await get(composerModelProviders$);
-        signal.throwIfAborted();
-        effectiveSelectedModel =
-          resolveEffectiveAgentDefaultSelection({
-            agent,
-            providers: composerProviders.providers,
-            tiers: composerProviders.tiers,
-          })?.selectedModel ?? undefined;
+        if (get(modelFirstModelProviderEnabled$)) {
+          const policies = await get(orgModelPolicies$);
+          signal.throwIfAborted();
+          effectiveSelectedModel =
+            resolveModelFirstAgentDefaultSelection({
+              agent,
+              policies,
+            })?.selectedModel ?? undefined;
+        } else {
+          const composerProviders = await get(composerModelProviders$);
+          signal.throwIfAborted();
+          effectiveSelectedModel =
+            resolveEffectiveAgentDefaultSelection({
+              agent,
+              providers: composerProviders.providers,
+              tiers: composerProviders.tiers,
+            })?.selectedModel ?? undefined;
+        }
       }
 
       const result = await set(

@@ -193,23 +193,41 @@ describe("GET/PUT /api/zero/model-policies", () => {
     ).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
   });
 
-  it("requires admins for policy reads and writes", async () => {
+  it("allows members to read policy controls", async () => {
     const fixture = await seedFixture({
       [FeatureSwitchKey.ModelFirstModelProvider]: true,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const client = apiClient();
-    const listResponse = await client.list({
-      headers: { authorization: "Bearer clerk-session" },
+    const response = await accept(
+      apiClient().list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(
+      response.body.policies.map((policy) => {
+        return policy.model;
+      }),
+    ).toStrictEqual(DEFAULT_ORG_MODEL_POLICY_MODELS);
+    expect(response.body.workspaceDefaultModel).toBe(
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+    );
+  });
+
+  it("requires admins for policy writes", async () => {
+    const fixture = await seedFixture({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
     });
-    const updateResponse = await client.update({
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const response = await apiClient().update({
       headers: { authorization: "Bearer clerk-session" },
       body: { policies: [] },
     });
 
-    expect(listResponse.status).toBe(403);
-    expect(updateResponse.status).toBe(403);
+    expect(response.status).toBe(403);
   });
 
   it("updates the explicit workspace default", async () => {

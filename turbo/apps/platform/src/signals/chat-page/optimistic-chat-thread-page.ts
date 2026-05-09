@@ -39,7 +39,12 @@ import {
 import { toVoid } from "../utils.ts";
 import { agentById } from "../agent.ts";
 import { composerModelProviders$ } from "../zero-page/composer-model-providers.ts";
-import { resolveEffectiveAgentDefaultSelection } from "../zero-page/model-provider-default.ts";
+import {
+  resolveEffectiveAgentDefaultSelection,
+  resolveModelFirstAgentDefaultSelection,
+} from "../zero-page/model-provider-default.ts";
+import { modelFirstModelProviderEnabled$ } from "../external/feature-switch.ts";
+import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { logger } from "../log.ts";
 
 export type { OptimisticChatPane };
@@ -357,14 +362,24 @@ const sendNewThreadMessage$ = command(
     if (!effectiveSelectedModel) {
       const agent = await get(agentById(agentId));
       signal.throwIfAborted();
-      const composerProviders = await get(composerModelProviders$);
-      signal.throwIfAborted();
-      effectiveSelectedModel =
-        resolveEffectiveAgentDefaultSelection({
-          agent,
-          providers: composerProviders.providers,
-          tiers: composerProviders.tiers,
-        })?.selectedModel ?? undefined;
+      if (get(modelFirstModelProviderEnabled$)) {
+        const policies = await get(orgModelPolicies$);
+        signal.throwIfAborted();
+        effectiveSelectedModel =
+          resolveModelFirstAgentDefaultSelection({
+            agent,
+            policies,
+          })?.selectedModel ?? undefined;
+      } else {
+        const composerProviders = await get(composerModelProviders$);
+        signal.throwIfAborted();
+        effectiveSelectedModel =
+          resolveEffectiveAgentDefaultSelection({
+            agent,
+            providers: composerProviders.providers,
+            tiers: composerProviders.tiers,
+          })?.selectedModel ?? undefined;
+      }
     }
     const prepared = await set(
       prepareUserMessageFromDraft$,

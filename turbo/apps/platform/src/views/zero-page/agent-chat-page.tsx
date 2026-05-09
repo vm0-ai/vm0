@@ -27,11 +27,11 @@ import {
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   featureSwitch$,
+  modelFirstModelProviderEnabled$,
   trinityEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
   currentChatAgentId$,
-  currentChatAgent$,
   currentChatAgentDisplayName$,
 } from "../../signals/agent-chat.ts";
 import {
@@ -50,8 +50,8 @@ import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-ma
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { AttachmentLightbox } from "./zero-attachment-chips.tsx";
 import { composerModelProviders$ } from "../../signals/zero-page/composer-model-providers.ts";
-import { resolveEffectiveAgentDefaultSelection } from "../../signals/zero-page/model-provider-default.ts";
 import {
+  chatPageAgentModelDefault$,
   chatPageInput$,
   chatPageModelSelection$,
   setChatPageInput$,
@@ -478,14 +478,8 @@ export function AgentChatPage() {
   const modelSelection = useLastResolved(chatPageModelSelection$) ?? null;
   const setModelSelection = useSet(setChatPageModelSelection$);
   const resetModelSelection = useSet(resetChatPageModelSelection$);
-  const currentAgent = useLastResolved(currentChatAgent$);
-  const agentModelDefault = composerProviders
-    ? resolveEffectiveAgentDefaultSelection({
-        agent: currentAgent,
-        providers: composerProviders.providers,
-        tiers: composerProviders.tiers,
-      })
-    : null;
+  const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
+  const agentModelDefault = useLastResolved(chatPageAgentModelDefault$) ?? null;
 
   const handleSendMessage = (message: string) => {
     if (!currentChatAgentId) {
@@ -561,7 +555,8 @@ export function AgentChatPage() {
             displayName={currentChatAgentDisplayName ?? ""}
             autoFocus
             modelPicker={
-              composerProviders && composerProviders.providers.length > 0
+              composerProviders &&
+              (modelFirstEnabled || composerProviders.providers.length > 0)
                 ? {
                     providers: composerProviders.providers,
                     tiers: composerProviders.tiers,
@@ -570,6 +565,7 @@ export function AgentChatPage() {
                     // No prior session exists on the landing page.
                     sessionProviderType: null,
                     agentDefault: agentModelDefault,
+                    showUseDefault: !modelFirstEnabled,
                   }
                 : undefined
             }
