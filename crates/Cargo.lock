@@ -1299,7 +1299,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.23"
+version = "0.16.24"
 dependencies = [
  "libc",
  "nix",
@@ -2528,7 +2528,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.100.18"
+version = "0.100.19"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -3639,7 +3639,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "libc",
  "vsock-proto",
@@ -3660,7 +3660,7 @@ version = "0.11.0"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.21"
+version = "0.9.22"
 dependencies = [
  "guest-write-file",
  "tokio",

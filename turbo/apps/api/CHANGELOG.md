@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.22.0](https://github.com/vm0-ai/vm0/compare/api-v1.21.4...api-v1.22.0) (2026-05-09)
+
+
+### Features
+
+* add model-first policy admin controls ([#12180](https://github.com/vm0-ai/vm0/issues/12180)) ([ff5b8c9](https://github.com/vm0-ai/vm0/commit/ff5b8c9b8d5fe06ff0120724f509d5baa873ade2))
+* switch zero model pickers to model-first ([#12286](https://github.com/vm0-ai/vm0/issues/12286)) ([4c0dafc](https://github.com/vm0-ai/vm0/commit/4c0dafcfef16f977d9dda8d4ed72c03aa8b310fb))
+
+
+### Bug Fixes
+
+* **api:** add scopeMismatch/reinstallUrl to Slack shadow response ([#12277](https://github.com/vm0-ai/vm0/issues/12277)) ([61b03e5](https://github.com/vm0-ai/vm0/commit/61b03e5bb28d2bd6d359f76ce05bd4bc43617c14))
+* **api:** align connector configured types ([#12306](https://github.com/vm0-ai/vm0/issues/12306)) ([771065b](https://github.com/vm0-ai/vm0/commit/771065bf8678c076e2632de83c0acb456d9d5684))
+
+
+### Refactoring
+
+* **api:** migrate user preferences get ([#12312](https://github.com/vm0-ai/vm0/issues/12312)) ([baf0445](https://github.com/vm0-ai/vm0/commit/baf0445c9d4305fb696f71564bc647ee96bdf0ff))
+* **api:** migrate user preferences post ([#12315](https://github.com/vm0-ai/vm0/issues/12315)) ([c0788c4](https://github.com/vm0-ai/vm0/commit/c0788c45d478503c94adc9c332d8f6dd94f9fdf4))
+* migrate voice IO quota GET to api ([#12314](https://github.com/vm0-ai/vm0/issues/12314)) ([985ca34](https://github.com/vm0-ai/vm0/commit/985ca3456f237d8788e6a4fb9f404453ef6e3c82))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.4.0
+    * @vm0/connectors bumped to 1.1.1
+    * @vm0/core bumped to 8.264.4
+    * @vm0/db bumped to 1.3.0
+
 ## [1.21.4](https://github.com/vm0-ai/vm0/compare/api-v1.21.3...api-v1.21.4) (2026-05-09)
 
 

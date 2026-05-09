@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.11.0...vsock-guest-v0.11.1) (2026-05-09)
+
+
+### Refactoring
+
+* remove redundant monitor spawner wrappers ([#12291](https://github.com/vm0-ai/vm0/issues/12291)) ([961f9c7](https://github.com/vm0-ai/vm0/commit/961f9c72eb0503bd847cfe21bfeb8c6735310fef))
+
 ## [0.11.0](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.15...vsock-guest-v0.11.0) (2026-05-08)
 
 
