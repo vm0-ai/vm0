@@ -5363,6 +5363,75 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_write_files_early_non_error_response_is_rejected() {
+        let (host_stream, mut guest) = make_pair();
+        set_send_buffer(&host_stream, 4096).unwrap();
+
+        let release_guest = std::sync::Arc::new(Notify::new());
+        let guest_task = {
+            let release_guest = std::sync::Arc::clone(&release_guest);
+            tokio::spawn(async move {
+                let mut decoder = Decoder::new();
+                mock_handshake(&mut guest, &mut decoder).await;
+
+                let mut buf = [0u8; 4096];
+                loop {
+                    let n = guest.read(&mut buf).await.unwrap();
+                    assert_ne!(n, 0, "connection closed before write_files start");
+                    for msg in decoder.decode(&buf[..n]).unwrap() {
+                        if msg.msg_type == MSG_WRITE_FILES_START {
+                            let payload = vsock_proto::encode_write_files_result(&[
+                                vsock_proto::WriteFilesResultEntry {
+                                    file_index: 0,
+                                    success: true,
+                                    error: String::new(),
+                                },
+                            ])
+                            .unwrap();
+                            let resp =
+                                vsock_proto::encode(MSG_WRITE_FILES_RESULT, msg.seq, &payload)
+                                    .unwrap();
+                            guest.write_all(&resp).await.unwrap();
+                            release_guest.notified().await;
+
+                            let mut drain = [0u8; 4096];
+                            loop {
+                                let n = guest.read(&mut drain).await.unwrap();
+                                if n == 0 {
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+        };
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let content = vec![b'x'; 8 * 1024 * 1024];
+        let files = [WriteFileRequest {
+            path: "/tmp/large.bin",
+            source: WriteFileSource::Bytes(&content),
+        }];
+
+        let err = tokio::time::timeout(Duration::from_secs(5), host.write_files(&files, false))
+            .await
+            .expect("early guest response must stop streaming promptly")
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(
+            err.to_string()
+                .contains("write_files response before stream finished")
+        );
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
+
+        release_guest.notify_one();
+        guest_task.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn test_write_file_at_inline_limit_uses_single_message() {
         let (host_stream, mut guest) = make_pair();
 

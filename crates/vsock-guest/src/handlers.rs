@@ -1163,6 +1163,97 @@ mod tests {
     }
 
     #[test]
+    fn write_files_stream_rejects_wrong_seq() {
+        assert_write_files_stream_error(
+            write_files_start(15, 1, 0),
+            vec![write_files_message(
+                MSG_WRITE_FILES_FILE,
+                16,
+                vsock_proto::encode_write_files_file(0, "/tmp/file", 0).unwrap(),
+            )],
+            "write_files stream received wrong seq",
+        );
+    }
+
+    #[test]
+    fn write_files_stream_rejects_file_content_len_over_total() {
+        assert_write_files_stream_error(
+            write_files_start(16, 1, 1),
+            vec![write_files_message(
+                MSG_WRITE_FILES_FILE,
+                16,
+                vsock_proto::encode_write_files_file(0, "/tmp/file", 2).unwrap(),
+            )],
+            "write_files content length exceeds total",
+        );
+    }
+
+    #[test]
+    fn write_files_stream_rejects_chunk_index_mismatch() {
+        assert_write_files_stream_error(
+            write_files_start(17, 1, 1),
+            vec![
+                write_files_message(
+                    MSG_WRITE_FILES_FILE,
+                    17,
+                    vsock_proto::encode_write_files_file(0, "/tmp/file", 1).unwrap(),
+                ),
+                write_files_message(
+                    MSG_WRITE_FILES_CHUNK,
+                    17,
+                    vsock_proto::encode_write_files_chunk(1, b"x").unwrap(),
+                ),
+            ],
+            "write_files chunk index mismatch",
+        );
+    }
+
+    #[test]
+    fn write_files_stream_rejects_chunk_exceeding_file_len() {
+        assert_write_files_stream_error(
+            write_files_start(18, 1, 1),
+            vec![
+                write_files_message(
+                    MSG_WRITE_FILES_FILE,
+                    18,
+                    vsock_proto::encode_write_files_file(0, "/tmp/file", 1).unwrap(),
+                ),
+                write_files_message(
+                    MSG_WRITE_FILES_CHUNK,
+                    18,
+                    vsock_proto::encode_write_files_chunk(0, b"xy").unwrap(),
+                ),
+            ],
+            "write_files chunk exceeds file length",
+        );
+    }
+
+    #[test]
+    fn write_files_stream_rejects_finish_before_all_files_received() {
+        assert_write_files_stream_error(
+            write_files_start(19, 2, 0),
+            vec![
+                write_files_message(
+                    MSG_WRITE_FILES_FILE,
+                    19,
+                    vsock_proto::encode_write_files_file(0, "/tmp/a", 0).unwrap(),
+                ),
+                write_files_message(MSG_WRITE_FILES_FINISH, 19, Vec::new()),
+            ],
+            "write_files finish before all files received",
+        );
+    }
+
+    #[test]
+    fn write_files_stream_rejects_unexpected_message_type() {
+        assert_write_files_stream_error(
+            write_files_start(20, 1, 0),
+            vec![write_files_message(MSG_PING, 20, Vec::new())],
+            "unexpected message in write_files stream",
+        );
+    }
+
+    #[test]
     fn write_files_stream_batch_failure_returns_single_error_response() {
         let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
         let _path_guard = install_test_guest_write_file(
