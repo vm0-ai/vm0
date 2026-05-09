@@ -1,12 +1,11 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
-#[cfg(any(debug_assertions, feature = "test-support"))]
-use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, Condvar, Mutex, mpsc};
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use vsock_proto::{
     self, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
@@ -35,6 +34,7 @@ const WRITE_TIMEOUT_MS: u32 = 30_000;
 const GUEST_WRITE_FILE_PATH: &str = "/sbin/guest-write-file";
 const BATCH_MAGIC: &[u8; 8] = b"VM0WFB1\n";
 const WRITE_FILES_CHUNK_DATA_OFFSET: usize = 8;
+const WRITE_FILES_STDIN_QUEUE_BYTES: usize = 32 * 1024 * 1024;
 #[cfg(any(debug_assertions, feature = "test-support"))]
 static DEBUG_GUEST_WRITE_FILE_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
 
@@ -313,6 +313,12 @@ enum BatchWrite {
 }
 
 impl BatchWrite {
+    fn queued_len(&self) -> usize {
+        match self {
+            Self::Bytes(bytes) | Self::WriteFilesChunkPayload(bytes) => bytes.len(),
+        }
+    }
+
     fn write_to(self, stdin: &mut ChildStdin) -> io::Result<()> {
         match self {
             Self::Bytes(bytes) => stdin.write_all(&bytes),
@@ -326,9 +332,135 @@ impl BatchWrite {
     }
 }
 
+struct BatchWriteQueueState {
+    queue: VecDeque<BatchWrite>,
+    queued_bytes: usize,
+    closed: bool,
+}
+
+struct BatchWriteQueue {
+    state: Mutex<BatchWriteQueueState>,
+    available: Condvar,
+    space: Condvar,
+}
+
+impl BatchWriteQueue {
+    fn new() -> Self {
+        Self {
+            state: Mutex::new(BatchWriteQueueState {
+                queue: VecDeque::new(),
+                queued_bytes: 0,
+                closed: false,
+            }),
+            available: Condvar::new(),
+            space: Condvar::new(),
+        }
+    }
+
+    fn send(&self, write: BatchWrite, timeout: Duration) -> io::Result<()> {
+        self.send_with_limit(write, timeout, WRITE_FILES_STDIN_QUEUE_BYTES)
+    }
+
+    fn send_with_limit(
+        &self,
+        write: BatchWrite,
+        timeout: Duration,
+        max_queued_bytes: usize,
+    ) -> io::Result<()> {
+        let len = write.queued_len();
+        if len > max_queued_bytes {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "write command stdin queue item exceeds limit",
+            ));
+        }
+
+        let deadline = Instant::now()
+            .checked_add(timeout)
+            .unwrap_or_else(Instant::now);
+        let mut write = Some(write);
+        let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        loop {
+            if guard.closed {
+                return Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "write command stdin closed",
+                ));
+            }
+
+            if guard.queued_bytes.saturating_add(len) <= max_queued_bytes {
+                guard.queued_bytes += len;
+                let Some(write) = write.take() else {
+                    return Err(io::Error::other("write command queued more than once"));
+                };
+                guard.queue.push_back(write);
+                self.available.notify_one();
+                return Ok(());
+            }
+
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "write command stdin queue full",
+                ));
+            }
+
+            let (next_guard, wait_result) = self
+                .space
+                .wait_timeout(guard, remaining)
+                .unwrap_or_else(|e| e.into_inner());
+            guard = next_guard;
+            if wait_result.timed_out() && guard.queued_bytes.saturating_add(len) > max_queued_bytes
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "write command stdin queue full",
+                ));
+            }
+        }
+    }
+
+    fn recv(&self) -> Option<BatchWrite> {
+        let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        loop {
+            if let Some(write) = guard.queue.pop_front() {
+                guard.queued_bytes = guard.queued_bytes.saturating_sub(write.queued_len());
+                self.space.notify_all();
+                return Some(write);
+            }
+
+            if guard.closed {
+                return None;
+            }
+
+            guard = self
+                .available
+                .wait(guard)
+                .unwrap_or_else(|e| e.into_inner());
+        }
+    }
+
+    fn close_input(&self) {
+        let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        guard.closed = true;
+        self.available.notify_all();
+        self.space.notify_all();
+    }
+
+    fn abort(&self) {
+        let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        guard.closed = true;
+        guard.queue.clear();
+        guard.queued_bytes = 0;
+        self.available.notify_all();
+        self.space.notify_all();
+    }
+}
+
 struct BatchChild {
     child: Child,
-    stdin_tx: Option<mpsc::Sender<BatchWrite>>,
+    stdin_queue: Arc<BatchWriteQueue>,
     stdin_handle: JoinHandle<io::Result<()>>,
     stdin_done_rx: mpsc::Receiver<()>,
     stderr_handle: JoinHandle<Vec<u8>>,
@@ -359,17 +491,21 @@ impl BatchChild {
             }
         };
 
-        // Keep helper stdin writes off the connection loop. The protocol total
-        // byte cap bounds this queue if the helper stops reading.
-        let (stdin_tx, stdin_rx) = mpsc::channel::<BatchWrite>();
+        // Keep helper stdin writes off the connection loop, but bound queued
+        // bytes so a stuck helper cannot accumulate the whole stream in memory.
+        let stdin_queue = Arc::new(BatchWriteQueue::new());
+        let writer_queue = Arc::clone(&stdin_queue);
         let (stdin_done_tx, stdin_done_rx) = mpsc::channel::<()>();
         let stdin_handle = match std::thread::Builder::new()
             .name(THREAD_WRITE_STDIN.to_string())
             .spawn(move || {
                 let mut stdin = stdin;
                 let result = (|| {
-                    for write in stdin_rx {
-                        write.write_to(&mut stdin)?;
+                    while let Some(write) = writer_queue.recv() {
+                        if let Err(e) = write.write_to(&mut stdin) {
+                            writer_queue.abort();
+                            return Err(e);
+                        }
                     }
                     stdin.flush()
                 })();
@@ -397,7 +533,7 @@ impl BatchChild {
             Ok(handle) => handle,
             Err(e) => {
                 cancel.store(true, std::sync::atomic::Ordering::Release);
-                drop(stdin_tx);
+                stdin_queue.abort();
                 kill_and_reap_child(child);
                 let _ = stdin_handle.join();
                 return Err(format!("Failed to spawn stderr drain thread: {e}"));
@@ -406,7 +542,7 @@ impl BatchChild {
 
         Ok(Self {
             child,
-            stdin_tx: Some(stdin_tx),
+            stdin_queue,
             stdin_handle,
             stdin_done_rx,
             stderr_handle,
@@ -416,27 +552,23 @@ impl BatchChild {
     }
 
     fn write_bytes(&self, bytes: Vec<u8>) -> io::Result<()> {
-        let tx = self
-            .stdin_tx
-            .as_ref()
-            .ok_or_else(|| io::Error::other("write command stdin already closed"))?;
-        tx.send(BatchWrite::Bytes(bytes))
-            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "write command stdin closed"))
+        self.stdin_queue.send(
+            BatchWrite::Bytes(bytes),
+            Duration::from_millis(u64::from(WRITE_TIMEOUT_MS)),
+        )
     }
 
     fn write_chunk_payload(&self, payload: Vec<u8>) -> io::Result<()> {
-        let tx = self
-            .stdin_tx
-            .as_ref()
-            .ok_or_else(|| io::Error::other("write command stdin already closed"))?;
-        tx.send(BatchWrite::WriteFilesChunkPayload(payload))
-            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "write command stdin closed"))
+        self.stdin_queue.send(
+            BatchWrite::WriteFilesChunkPayload(payload),
+            Duration::from_millis(u64::from(WRITE_TIMEOUT_MS)),
+        )
     }
 
-    fn kill(mut self) {
+    fn kill(self) {
         self.cancel
             .store(true, std::sync::atomic::Ordering::Release);
-        drop(self.stdin_tx.take());
+        self.stdin_queue.abort();
         kill_and_reap_child(self.child);
         let _ = self.stdin_handle.join();
         let _ = await_drain_deadline(&self.stderr_done_rx, 1, &self.cancel);
@@ -447,9 +579,9 @@ impl BatchChild {
         self.finish_with_timeout(WRITE_TIMEOUT_MS)
     }
 
-    fn finish_with_timeout(mut self, timeout_ms: u32) -> (bool, String) {
+    fn finish_with_timeout(self, timeout_ms: u32) -> (bool, String) {
         let child_pid = self.child.id();
-        drop(self.stdin_tx.take());
+        self.stdin_queue.close_input();
         let outcome = wait_with_kill_timeout(self.child, timeout_ms);
         if matches!(outcome, WaitOutcome::Exited(_) | WaitOutcome::WaitFailed(_))
             && matches!(
@@ -810,6 +942,22 @@ mod tests {
         assert!(!success);
         assert!(error.contains("Failed to write to stdin"), "got: {error}");
         assert!(!pid_alive(pid), "child pid {pid} should have been reaped");
+    }
+
+    #[test]
+    fn write_files_batch_queue_is_bounded_and_abort_drops_backlog() {
+        let queue = BatchWriteQueue::new();
+
+        queue
+            .send_with_limit(BatchWrite::Bytes(vec![0; 8]), Duration::ZERO, 8)
+            .unwrap();
+        let err = queue
+            .send_with_limit(BatchWrite::Bytes(vec![1]), Duration::ZERO, 8)
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+
+        queue.abort();
+        assert!(queue.recv().is_none());
     }
 
     #[test]
