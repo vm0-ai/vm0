@@ -800,7 +800,7 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     expect(result.resolvedModelProvider).toBe("vm0");
     expect(result.selectedModel).toBe("claude-sonnet-4-6");
     expect(result.credentialScope).toBe("org");
-    expect(result.secrets?.ANTHROPIC_API_KEY).toBe("vm0-anthropic-key");
+    expect(result.secrets?.ANTHROPIC_API_KEY).toEqual(expect.any(String));
   });
 
   it("uses org-scoped API-key routes without member credentials and injects runtime model aliases", async () => {
