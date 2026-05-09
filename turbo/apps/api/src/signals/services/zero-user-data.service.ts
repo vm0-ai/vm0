@@ -1,10 +1,11 @@
-import { computed, type Computed } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import type {
   ApiKeyListResponse,
   ApiKeyItem,
 } from "@vm0/api-contracts/contracts/api-keys";
 import type {
   SendMode,
+  UpdateUserPreferencesRequest,
   UserPreferencesResponse,
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import type {
@@ -18,7 +19,9 @@ import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
 import { and, desc, eq } from "drizzle-orm";
 
-import { db$ } from "../external/db";
+import { nowDate } from "../../lib/time";
+import { db$, writeDb$ } from "../external/db";
+import { isValidTimeZone } from "../utils";
 
 const API_KEY_PREFIX_LENGTH = 12;
 
@@ -127,6 +130,94 @@ export function userPreferences({
     };
   });
 }
+
+interface UpdateUserPreferencesArgs extends UserScopedQuery {
+  readonly preferences: UpdateUserPreferencesRequest;
+}
+
+type UpdateUserPreferencesResult =
+  | { readonly ok: true; readonly data: UserPreferencesResponse }
+  | { readonly ok: false; readonly message: string };
+
+export const updateUserPreferences$ = command(
+  async (
+    { get, set },
+    args: UpdateUserPreferencesArgs,
+    signal: AbortSignal,
+  ): Promise<UpdateUserPreferencesResult> => {
+    const preferences = args.preferences;
+    if (
+      preferences.timezone !== undefined &&
+      !isValidTimeZone(preferences.timezone)
+    ) {
+      return {
+        ok: false,
+        message: "Invalid request",
+      };
+    }
+
+    const existing = await get(
+      userPreferences({ orgId: args.orgId, userId: args.userId }),
+    );
+    signal.throwIfAborted();
+
+    const merged: UserPreferencesResponse = {
+      timezone:
+        preferences.timezone !== undefined
+          ? preferences.timezone
+          : existing.timezone,
+      pinnedAgentIds:
+        preferences.pinnedAgentIds !== undefined
+          ? [...preferences.pinnedAgentIds]
+          : existing.pinnedAgentIds,
+      sendMode:
+        preferences.sendMode !== undefined
+          ? preferences.sendMode
+          : existing.sendMode,
+      captureNetworkBodiesRemaining:
+        preferences.captureNetworkBodiesRemaining !== undefined
+          ? preferences.captureNetworkBodiesRemaining
+          : existing.captureNetworkBodiesRemaining,
+    };
+
+    const updatedAt = nowDate();
+    const writeDb = set(writeDb$);
+    await writeDb
+      .insert(orgMembersMetadata)
+      .values({
+        orgId: args.orgId,
+        userId: args.userId,
+        timezone: merged.timezone,
+        pinnedAgentIds: merged.pinnedAgentIds,
+        sendMode: merged.sendMode,
+        captureNetworkBodiesRemaining: merged.captureNetworkBodiesRemaining,
+        createdAt: updatedAt,
+        updatedAt,
+      })
+      .onConflictDoUpdate({
+        target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
+        set: {
+          ...(preferences.timezone !== undefined && {
+            timezone: preferences.timezone,
+          }),
+          ...(preferences.pinnedAgentIds !== undefined && {
+            pinnedAgentIds: [...preferences.pinnedAgentIds],
+          }),
+          ...(preferences.sendMode !== undefined && {
+            sendMode: preferences.sendMode,
+          }),
+          ...(preferences.captureNetworkBodiesRemaining !== undefined && {
+            captureNetworkBodiesRemaining:
+              preferences.captureNetworkBodiesRemaining,
+          }),
+          updatedAt,
+        },
+      });
+    signal.throwIfAborted();
+
+    return { ok: true, data: merged };
+  },
+);
 
 export function userVariables({
   orgId,

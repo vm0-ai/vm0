@@ -52,6 +52,17 @@ export function safeUrlParse(input: string): URL | undefined {
   }
 }
 
+export function isValidTimeZone(input: string): boolean {
+  // eslint-disable-next-line no-restricted-syntax -- centralized guarded Intl timezone validation
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: input });
+    return true;
+  } catch (error) {
+    throwIfAbort(error);
+    return false;
+  }
+}
+
 export function detach(
   promise: Promise<unknown>,
   mechanism: Mechanism,
