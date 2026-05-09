@@ -11,6 +11,7 @@
 - **Run `pnpm db:migrate` to sync database** - After pulling new changes, run this command in the `turbo` directory to apply the latest migrations.
 - **Run `script/sync-env.sh` to sync environment variables** - If missing required environment variables, ask the user to run this script to sync `.env.local`.
 - **Run `scripts/prepare.sh` when local dev or tests fail unexpectedly** - Before debugging test failures, verify your environment is set up correctly. This script checks Node.js, pnpm, PostgreSQL, syncs env files, installs dependencies, runs migrations, and seeds dev data.
+- **API migration is in progress** - `apps/web` API traffic is migrating to `apps/api`; read https://github.com/vm0-ai/vm0/issues/12290 before API work, and keep `apps/web` and `apps/api` implementations in sync for feature work until the relevant route is fully API-authoritative.
 
 ## Global Services Pattern
 
