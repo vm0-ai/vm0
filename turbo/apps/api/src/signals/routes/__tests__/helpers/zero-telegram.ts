@@ -6,7 +6,6 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
 import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { eq, inArray } from "drizzle-orm";
 
@@ -55,12 +54,6 @@ interface SeedUserAgentPreferenceValues {
   readonly orgId: string;
   readonly userId: string;
   readonly composeId: string;
-}
-
-interface SeedUserFeatureSwitchValues {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly switches: Record<string, boolean>;
 }
 
 function encryptBotTokenForTests(plaintext: string): string {
@@ -205,28 +198,6 @@ export const seedUserAgentPreference$ = command(
   },
 );
 
-export const seedUserFeatureSwitch$ = command(
-  async (
-    { set },
-    values: SeedUserFeatureSwitchValues,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    await writeDb
-      .insert(userFeatureSwitches)
-      .values({
-        orgId: values.orgId,
-        userId: values.userId,
-        switches: values.switches,
-      })
-      .onConflictDoUpdate({
-        target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
-        set: { switches: values.switches },
-      });
-    signal.throwIfAborted();
-  },
-);
-
 export const deleteTelegramFixture$ = command(
   async (
     { set },
@@ -234,10 +205,6 @@ export const deleteTelegramFixture$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const writeDb = set(writeDb$);
-    await writeDb
-      .delete(userFeatureSwitches)
-      .where(eq(userFeatureSwitches.orgId, fixture.orgId));
-    signal.throwIfAborted();
     await writeDb
       .delete(telegramOfficialUserLinks)
       .where(eq(telegramOfficialUserLinks.orgId, fixture.orgId));

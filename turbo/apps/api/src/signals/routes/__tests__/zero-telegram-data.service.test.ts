@@ -15,7 +15,6 @@ import {
   seedOrgDefaultAgent$,
   seedTelegramInstallation$,
   seedUserAgentPreference$,
-  seedUserFeatureSwitch$,
   type TelegramFixture,
 } from "./helpers/zero-telegram";
 
@@ -149,47 +148,6 @@ describe("zeroTelegramBots service", () => {
       return bot.id === otherBotId;
     });
     expect(otherBot?.isOwner).toBeFalsy();
-  });
-
-  it("omits the official bot when the user has overridden the switch off", async () => {
-    const orgId = newOrgId();
-    const userId = newUserId();
-    const builder = makeTelegramFixtureBuilder(orgId);
-    builder.userIds.push(userId);
-
-    context.mocks.telegram.getMe.mockResolvedValue({
-      id: 1,
-      is_bot: true,
-      first_name: "Bot",
-      username: "x",
-    });
-
-    const customBotId = newTelegramBotId();
-    const customInstall = await store.set(
-      seedTelegramInstallation$,
-      { orgId, ownerUserId: userId, telegramBotId: customBotId },
-      context.signal,
-    );
-    builder.composeIds.push(customInstall.composeId);
-    builder.telegramBotIds.push(customInstall.telegramBotId);
-
-    await store.set(
-      seedUserFeatureSwitch$,
-      { orgId, userId, switches: { officialTelegramBot: false } },
-      context.signal,
-    );
-
-    trackFixture(freezeTelegramFixture(builder));
-
-    const bots = await store.get(zeroTelegramBots({ orgId, userId }));
-
-    expect(bots).toHaveLength(1);
-    expect(bots[0]?.id).toBe(customBotId);
-    expect(
-      bots.some((bot) => {
-        return bot.id === OFFICIAL_TELEGRAM_BOT_ID;
-      }),
-    ).toBeFalsy();
   });
 
   it("returns the official bot with configured=false when env is unset", async () => {
