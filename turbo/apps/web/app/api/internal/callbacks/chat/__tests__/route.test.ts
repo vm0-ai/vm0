@@ -1897,11 +1897,7 @@ describe("POST /api/internal/callbacks/chat", () => {
           {
             runId,
             status: "failed",
-<<<<<<< HEAD
-            error: "Run cancelled",
-=======
             error: "Run cancelled by user",
->>>>>>> origin/main
             payload: { threadId, agentId },
           },
           secret,
@@ -1909,18 +1905,6 @@ describe("POST /api/internal/callbacks/chat", () => {
       );
       expect(response.status).toBe(200);
 
-<<<<<<< HEAD
-      // No auto-sent row should appear — pending was already recalled
-      const messages = await getTestChatMessagesByThread(threadId);
-      const userMessages = messages.filter((m) => {
-        return m.role === "user";
-      });
-      // Only the original user message from setupRunAndThread
-      expect(userMessages).toHaveLength(1);
-
-      // No pending-message-change signal since nothing was queued
-      // (the pending was already cleared before the callback fired)
-=======
       // No additional user message row should have been created.
       const messages = await getTestChatMessagesByThread(threadId);
       const userMessages = messages.filter((m) => {
@@ -1933,7 +1917,6 @@ describe("POST /api/internal/callbacks/chat", () => {
         `chatThreadPendingMessageChanged:${threadId}`,
         null,
       );
->>>>>>> origin/main
     });
   });
 });

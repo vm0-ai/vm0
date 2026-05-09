@@ -1103,17 +1103,6 @@ export function ZeroChatComposer({
     }
   };
 
-  const handleButtonClick = () => {
-    if (!canSend) {
-      return;
-    }
-    if (sending && queueWhileSending && onQueue) {
-      onQueue(input.trim());
-      return;
-    }
-    handleSend();
-  };
-
   // Stop button replaces Send only when there is nothing to dispatch — i.e.
   // the composer is empty during an active run. With draft content present
   // the Send button stays visible so the click can queue the message.
