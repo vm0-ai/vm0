@@ -2738,6 +2738,66 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn download_storages_fails_on_truncated_output() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_bounded_exec_response(BoundedExecResponse {
+            events: Vec::new(),
+            result: Ok(BoundedExecResult {
+                termination: BoundedExecTermination::Exited { exit_code: 0 },
+                duration: Duration::ZERO,
+                stdout: b"partial stdout".to_vec(),
+                stderr: b"partial stderr".to_vec(),
+                stdout_truncated: false,
+                stderr_truncated: true,
+            }),
+        });
+        let ctx = minimal_context();
+        let manifest = GuestDownloadManifest {
+            storages: vec![],
+            artifacts: vec![],
+            cleanup_paths: vec![],
+        };
+
+        let err = download_storages(&sandbox, &ctx, &manifest)
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("storage download output truncated"),
+            "got: {err}"
+        );
+        assert!(err.to_string().contains("partial stderr"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn download_storages_fails_on_timeout_termination() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_bounded_exec_response(bounded_exec_response(
+            BoundedExecTermination::TimedOut,
+            b"partial stdout".to_vec(),
+            b"partial stderr".to_vec(),
+        ));
+        let ctx = minimal_context();
+        let manifest = GuestDownloadManifest {
+            storages: vec![],
+            artifacts: vec![],
+            cleanup_paths: vec![],
+        };
+
+        let err = download_storages(&sandbox, &ctx, &manifest)
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("storage download failed (timed out)"),
+            "got: {err}"
+        );
+        assert!(err.to_string().contains("partial stderr"), "got: {err}");
+    }
+
+    #[tokio::test]
     async fn restore_session_writes_history() {
         let sandbox = MockSandbox::new("test");
         let mut ctx = minimal_context();

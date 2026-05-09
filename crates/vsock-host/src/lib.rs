@@ -3826,6 +3826,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_bounded_exec_request_timeout_cleans_up_and_keeps_connection_usable() {
+        let (host_stream, mut guest) = make_pair();
+
+        let guest_task = tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut saw_timeout_request = false;
+            let mut buf = [0u8; 4096];
+            loop {
+                let n = guest.read(&mut buf).await.unwrap();
+                assert_ne!(n, 0, "connection closed before follow-up bounded_exec");
+                let msgs = decoder.decode(&buf[..n]).unwrap();
+                for msg in msgs {
+                    assert_eq!(msg.msg_type, MSG_BOUNDED_EXEC);
+                    let decoded = vsock_proto::decode_bounded_exec(&msg.payload).unwrap();
+                    if !saw_timeout_request {
+                        assert_eq!(decoded.command, "request-timeout");
+                        saw_timeout_request = true;
+                        continue;
+                    }
+
+                    assert_eq!(decoded.command, "after-timeout");
+                    write_bounded_exec_result(&mut guest, msg.seq, b"ok").await;
+                    return;
+                }
+            }
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let request =
+            simple_bounded_request("request-timeout", Some(bounded_stream_request(event_tx)));
+
+        let err = bounded_exec_on_shared_with_request_timeout(
+            &host.shared,
+            &request,
+            Duration::from_millis(1),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+        assert_eq!(
+            registration_counts(&host),
+            (0, 0, 0, 0),
+            "timed-out bounded_exec must clean pending registrations",
+        );
+        drop(request);
+        assert_bounded_event_stream_closed(&mut event_rx);
+
+        let request = simple_bounded_request("after-timeout", None);
+        let result = host.bounded_exec(&request).await.unwrap();
+        assert_eq!(result.stdout, b"ok");
+        tokio::time::timeout(Duration::from_secs(5), guest_task)
+            .await
+            .expect("guest task should finish after follow-up bounded_exec")
+            .unwrap();
+    }
+
+    #[tokio::test]
     async fn test_bounded_exec_stream_request_with_no_streams_does_not_register_sender() {
         let (host_stream, mut guest) = make_pair();
         let request_seen = std::sync::Arc::new(Notify::new());
