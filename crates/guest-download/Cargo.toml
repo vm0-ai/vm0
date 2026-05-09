@@ -10,6 +10,7 @@ serde_json.workspace = true
 tar.workspace = true
 ureq = { workspace = true, features = ["platform-verifier"] }
 guest-common.workspace = true
+libc.workspace = true
 
 [dev-dependencies]
 httpmock.workspace = true

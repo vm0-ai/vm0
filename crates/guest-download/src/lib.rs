@@ -9,7 +9,7 @@ use guest_common::{log_error, log_info, log_warn, telemetry::record_sandbox_op};
 use serde::Deserialize;
 use std::collections::BTreeSet;
 use std::fs;
-use std::io::Read;
+use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 use std::sync::LazyLock;
 use std::thread;
@@ -356,18 +356,85 @@ fn cleanup_local_stage_archives(paths: &BTreeSet<PathBuf>) {
     }
 }
 
+#[cfg(unix)]
 fn open_local_stage_archive(path: &Path) -> Result<fs::File, DownloadError> {
-    let stage_metadata = fs::symlink_metadata(GUEST_STAGE_DIR).map_err(|e| {
-        DownloadError::fatal(format!(
-            "Failed to inspect local stage dir {GUEST_STAGE_DIR}: {e}"
-        ))
-    })?;
-    if !stage_metadata.is_dir() {
-        return Err(DownloadError::fatal(format!(
-            "Refusing local archive because {GUEST_STAGE_DIR} is not a directory"
-        )));
+    use std::ffi::CString;
+    use std::os::fd::{FromRawFd, RawFd};
+    use std::os::unix::ffi::OsStrExt;
+
+    struct FdGuard(RawFd);
+
+    impl Drop for FdGuard {
+        fn drop(&mut self) {
+            // SAFETY: `FdGuard` owns a valid fd returned by `open`; close is
+            // best-effort during cleanup and has no Rust-side aliasing impact.
+            let _ = unsafe { libc::close(self.0) };
+        }
     }
 
+    let stage_dir = CString::new(GUEST_STAGE_DIR)
+        .map_err(|_| DownloadError::fatal("local stage dir contains NUL"))?;
+    // Open the trusted parent first and use openat for the child. This removes
+    // the symlink/rename race between validating the stage directory and
+    // opening the archive path.
+    // SAFETY: `stage_dir` is a NUL-terminated C string and flags request a
+    // read-only directory fd. On success, `FdGuard` owns and closes it.
+    let stage_fd = unsafe {
+        libc::open(
+            stage_dir.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+        )
+    };
+    if stage_fd < 0 {
+        return Err(DownloadError::fatal(format!(
+            "Failed to open local stage dir {GUEST_STAGE_DIR}: {}",
+            std::io::Error::last_os_error()
+        )));
+    }
+    let stage_fd = FdGuard(stage_fd);
+
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| DownloadError::fatal("local archive path has no file name"))?;
+    let file_name = CString::new(file_name.as_bytes()).map_err(|_| {
+        DownloadError::fatal(format!(
+            "Refusing local archive with invalid file name: {}",
+            path.display()
+        ))
+    })?;
+    // `O_NOFOLLOW` rejects symlink archives. `O_NONBLOCK` prevents opening a
+    // malicious FIFO from blocking if the staged path changes before openat.
+    // SAFETY: `stage_fd` is a live directory fd and `file_name` is a
+    // NUL-terminated basename. On success, `File::from_raw_fd` takes ownership.
+    let archive_fd = unsafe {
+        libc::openat(
+            stage_fd.0,
+            file_name.as_ptr(),
+            libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK,
+        )
+    };
+    if archive_fd < 0 {
+        return Err(DownloadError::fatal(format!(
+            "Failed to open local archive {}: {}",
+            path.display(),
+            std::io::Error::last_os_error()
+        )));
+    }
+    // SAFETY: `archive_fd` was returned by openat and is now exclusively owned
+    // by the File.
+    let file = unsafe { fs::File::from_raw_fd(archive_fd) };
+    validate_local_stage_file(&file, path)?;
+    clear_nonblocking(&file).map_err(|e| {
+        DownloadError::fatal(format!(
+            "Failed to configure local archive {}: {e}",
+            path.display()
+        ))
+    })?;
+    Ok(file)
+}
+
+#[cfg(not(unix))]
+fn open_local_stage_archive(path: &Path) -> Result<fs::File, DownloadError> {
     let archive_metadata = fs::symlink_metadata(path).map_err(|e| {
         DownloadError::fatal(format!(
             "Failed to inspect local archive {}: {e}",
@@ -381,12 +448,53 @@ fn open_local_stage_archive(path: &Path) -> Result<fs::File, DownloadError> {
         )));
     }
 
-    fs::File::open(path).map_err(|e| {
+    let file = fs::File::open(path).map_err(|e| {
         DownloadError::fatal(format!(
             "Failed to open local archive {}: {e}",
             path.display()
         ))
-    })
+    })?;
+    validate_local_stage_file(&file, path)?;
+    Ok(file)
+}
+
+fn validate_local_stage_file(file: &fs::File, path: &Path) -> Result<(), DownloadError> {
+    let metadata = file.metadata().map_err(|e| {
+        DownloadError::fatal(format!(
+            "Failed to inspect local archive {}: {e}",
+            path.display()
+        ))
+    })?;
+    if !metadata.is_file() {
+        return Err(DownloadError::fatal(format!(
+            "Refusing local archive that is not a regular file: {}",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn clear_nonblocking(file: &fs::File) -> io::Result<()> {
+    use std::os::unix::io::AsRawFd;
+
+    let fd = file.as_raw_fd();
+    // SAFETY: `fd` comes from a live File and F_GETFL only reads descriptor
+    // status flags.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if flags & libc::O_NONBLOCK == 0 {
+        return Ok(());
+    }
+    // SAFETY: `fd` comes from a live File. F_SETFL updates descriptor status
+    // flags and leaves the open file description otherwise intact.
+    let result = unsafe { libc::fcntl(fd, libc::F_SETFL, flags & !libc::O_NONBLOCK) };
+    if result < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 fn valid_instruction_filename(filename: &str) -> bool {
@@ -1004,7 +1112,7 @@ mod tests {
 
         assert!(!err.retriable);
         assert!(
-            err.message.contains("not a regular file"),
+            err.message.contains("Failed to open local archive"),
             "got: {}",
             err.message
         );

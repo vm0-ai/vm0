@@ -1290,6 +1290,7 @@ dependencies = [
  "flate2",
  "guest-common",
  "httpmock",
+ "libc",
  "serde",
  "serde_json",
  "tar",
