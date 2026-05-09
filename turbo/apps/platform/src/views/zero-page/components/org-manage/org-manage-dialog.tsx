@@ -38,6 +38,7 @@ import {
   billingSubPage$,
   type OrgManageTab,
 } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { modelFirstModelProviderEnabled$ } from "../../../../signals/external/feature-switch.ts";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -93,21 +94,23 @@ const BILLING_GROUP = {
   ],
 } as const satisfies SidebarGroup;
 
-const CONFIGURATION_GROUP = {
-  label: "Configuration",
-  items: [
-    {
-      id: "providers",
-      label: "Model Providers",
-      icon: IconCpu as NavIcon,
-    },
-    {
-      id: "domains",
-      label: "Domains",
-      icon: IconWorldWww as NavIcon,
-    },
-  ],
-} as const satisfies SidebarGroup;
+function getConfigurationGroup(modelFirstEnabled: boolean): SidebarGroup {
+  return {
+    label: "Configuration",
+    items: [
+      {
+        id: "providers",
+        label: modelFirstEnabled ? "Models" : "Model Providers",
+        icon: IconCpu as NavIcon,
+      },
+      {
+        id: "domains",
+        label: "Domains",
+        icon: IconWorldWww as NavIcon,
+      },
+    ],
+  };
+}
 
 const BASE_SIDEBAR_GROUPS = [
   {
@@ -155,15 +158,23 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
+  const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
 
   const sidebarGroups = [
     ...BASE_SIDEBAR_GROUPS.slice(0, 1),
-    ...(isAdmin ? [CONFIGURATION_GROUP] : []),
+    ...(isAdmin ? [getConfigurationGroup(modelFirstEnabled)] : []),
     ...BASE_SIDEBAR_GROUPS.slice(1),
     ...(isAdmin ? [BILLING_GROUP] : []),
   ];
 
-  const meta = TAB_META[activeTab];
+  const meta =
+    activeTab === "providers" && modelFirstEnabled
+      ? {
+          title: "Models Configuration",
+          description:
+            "Manage workspace models, set the default model, and choose how each model is routed.",
+        }
+      : TAB_META[activeTab];
   const isBillingSubPage = useGet(billingSubPage$);
   const hideHeader = activeTab === "billing" && isBillingSubPage;
 
@@ -279,7 +290,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
                   </h2>
                 </div>
                 <p
-                  className="mt-1 truncate whitespace-nowrap text-sm text-muted-foreground"
+                  className="mt-1 max-w-3xl text-sm text-muted-foreground"
                   data-testid="tab-description"
                 >
                   {meta.description}

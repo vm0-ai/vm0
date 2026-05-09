@@ -58,15 +58,31 @@ export const SUPPORTED_RUN_MODELS = [
   "claude-opus-4-7",
   "claude-opus-4-6",
   "claude-sonnet-4-6",
-  "gpt-5.5",
-  "gpt-5.4",
+  "claude-haiku-4-5",
   "deepseek-v4-pro",
+  "deepseek-v4-flash",
   "kimi-k2.6",
   "kimi-k2.5",
+  "MiniMax-M2.7",
   "glm-5.1",
+  "gpt-5.5",
+  "gpt-5.4",
+  "gpt-5.4-mini",
+  "gpt-5.3-codex",
+  "gpt-5.2",
 ] as const;
 
 export type SupportedRunModel = (typeof SUPPORTED_RUN_MODELS)[number];
+
+export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
+  "claude-opus-4-7",
+  "claude-sonnet-4-6",
+  "deepseek-v4-pro",
+  "gpt-5.5",
+] as const satisfies readonly SupportedRunModel[];
+
+export const DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL =
+  "claude-sonnet-4-6" as const satisfies SupportedRunModel;
 
 export const supportedRunModelSchema = z.enum(SUPPORTED_RUN_MODELS);
 
@@ -78,8 +94,7 @@ export type ModelProviderCredentialScope = z.infer<
 
 export interface DefaultOrgModelPolicySeed {
   model: SupportedRunModel;
-  enabled: true;
-  sortOrder: number;
+  isDefault: boolean;
   defaultProviderType: "vm0";
   credentialScope: "org";
   modelProviderId: null;
@@ -89,12 +104,18 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "claude-opus-4-7": "Claude Opus 4.7",
   "claude-opus-4-6": "Claude Opus 4.6",
   "claude-sonnet-4-6": "Claude Sonnet 4.6",
-  "gpt-5.5": "GPT-5.5",
-  "gpt-5.4": "GPT-5.4",
+  "claude-haiku-4-5": "Claude Haiku 4.5",
   "deepseek-v4-pro": "DeepSeek V4 Pro",
+  "deepseek-v4-flash": "DeepSeek V4 Flash",
   "kimi-k2.6": "Kimi K2.6",
   "kimi-k2.5": "Kimi K2.5",
+  "MiniMax-M2.7": "MiniMax M2.7",
   "glm-5.1": "GLM-5.1",
+  "gpt-5.5": "GPT-5.5",
+  "gpt-5.4": "GPT-5.4",
+  "gpt-5.4-mini": "GPT-5.4 Mini",
+  "gpt-5.3-codex": "GPT-5.3 Codex",
+  "gpt-5.2": "GPT-5.2",
 };
 
 const SUPPORTED_RUN_MODEL_SET: ReadonlySet<string> = new Set(
@@ -112,11 +133,10 @@ export function getCanonicalModelDisplayName(model: string): string {
 }
 
 export function getDefaultOrgModelPolicySeed(): DefaultOrgModelPolicySeed[] {
-  return SUPPORTED_RUN_MODELS.map((model, index) => {
+  return DEFAULT_ORG_MODEL_POLICY_MODELS.map((model) => {
     return {
       model,
-      enabled: true,
-      sortOrder: index,
+      isDefault: model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
       defaultProviderType: "vm0",
       credentialScope: "org",
       modelProviderId: null,
@@ -186,6 +206,31 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
   "deepseek-v4-flash": {
     concreteType: "deepseek-api-key",
     vendor: "deepseek",
+  },
+  "gpt-5.5": {
+    concreteType: "openai-api-key",
+    vendor: "openai",
+    featureFlag: FeatureSwitchKey.CodexBeta,
+  },
+  "gpt-5.4": {
+    concreteType: "openai-api-key",
+    vendor: "openai",
+    featureFlag: FeatureSwitchKey.CodexBeta,
+  },
+  "gpt-5.4-mini": {
+    concreteType: "openai-api-key",
+    vendor: "openai",
+    featureFlag: FeatureSwitchKey.CodexBeta,
+  },
+  "gpt-5.3-codex": {
+    concreteType: "openai-api-key",
+    vendor: "openai",
+    featureFlag: FeatureSwitchKey.CodexBeta,
+  },
+  "gpt-5.2": {
+    concreteType: "openai-api-key",
+    vendor: "openai",
+    featureFlag: FeatureSwitchKey.CodexBeta,
   },
 };
 
@@ -715,9 +760,14 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
+  "claude-haiku-4-5": ["vm0", "openrouter-api-key"],
   "gpt-5.5": ["vm0", "openai-api-key", "codex-oauth-token"],
   "gpt-5.4": ["vm0", "openai-api-key", "codex-oauth-token"],
+  "gpt-5.4-mini": ["vm0", "openai-api-key", "codex-oauth-token"],
+  "gpt-5.3-codex": ["vm0", "openai-api-key", "codex-oauth-token"],
+  "gpt-5.2": ["vm0", "openai-api-key", "codex-oauth-token"],
   "deepseek-v4-pro": ["vm0", "deepseek-api-key", "openrouter-api-key"],
+  "deepseek-v4-flash": ["vm0", "deepseek-api-key", "openrouter-api-key"],
   "kimi-k2.6": [
     "vm0",
     "moonshot-api-key",
@@ -730,6 +780,7 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
+  "MiniMax-M2.7": ["vm0", "minimax-api-key", "openrouter-api-key"],
   "glm-5.1": ["vm0", "zai-api-key", "openrouter-api-key"],
 } as const satisfies Record<SupportedRunModel, readonly ModelProviderType[]>;
 
@@ -740,9 +791,12 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
     "claude-opus-4-7": "anthropic/claude-opus-4.7",
     "claude-opus-4-6": "anthropic/claude-opus-4.6",
     "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
+    "claude-haiku-4-5": "anthropic/claude-haiku-4.5",
     "deepseek-v4-pro": "deepseek/deepseek-v4-pro",
+    "deepseek-v4-flash": "deepseek/deepseek-v4-flash",
     "kimi-k2.6": "moonshotai/kimi-k2.6",
     "kimi-k2.5": "moonshotai/kimi-k2.5",
+    "MiniMax-M2.7": "minimax/minimax-m2.7",
     "glm-5.1": "z-ai/glm-5.1",
   },
   "vercel-ai-gateway": {
@@ -758,9 +812,12 @@ const CANONICAL_RUN_MODEL_ALIASES: Readonly<Record<string, SupportedRunModel>> =
     "anthropic/claude-opus-4.7": "claude-opus-4-7",
     "anthropic/claude-opus-4.6": "claude-opus-4-6",
     "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
+    "anthropic/claude-haiku-4.5": "claude-haiku-4-5",
     "deepseek/deepseek-v4-pro": "deepseek-v4-pro",
+    "deepseek/deepseek-v4-flash": "deepseek-v4-flash",
     "moonshotai/kimi-k2.6": "kimi-k2.6",
     "moonshotai/kimi-k2.5": "kimi-k2.5",
+    "minimax/minimax-m2.7": "MiniMax-M2.7",
     "z-ai/glm-5.1": "glm-5.1",
   };
 
@@ -1370,3 +1427,57 @@ export const updateModelRequestSchema = z.object({
 });
 
 export type UpdateModelRequest = z.infer<typeof updateModelRequestSchema>;
+
+export const orgModelPolicyRouteStatusSchema = z.enum([
+  "valid",
+  "missing_provider",
+  "invalid",
+]);
+
+export type OrgModelPolicyRouteStatus = z.infer<
+  typeof orgModelPolicyRouteStatusSchema
+>;
+
+export const orgModelPolicySchema = z.object({
+  id: z.uuid(),
+  model: supportedRunModelSchema,
+  modelLabel: z.string(),
+  isDefault: z.boolean(),
+  defaultProviderType: modelProviderTypeSchema,
+  credentialScope: modelProviderCredentialScopeSchema,
+  modelProviderId: z.uuid().nullable(),
+  routeStatus: orgModelPolicyRouteStatusSchema,
+  routeStatusReason: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type OrgModelPolicy = z.infer<typeof orgModelPolicySchema>;
+
+export const updateOrgModelPolicySchema = z.object({
+  model: supportedRunModelSchema,
+  isDefault: z.boolean(),
+  defaultProviderType: modelProviderTypeSchema,
+  credentialScope: modelProviderCredentialScopeSchema,
+  modelProviderId: z.uuid().nullable(),
+});
+
+export type UpdateOrgModelPolicy = z.infer<typeof updateOrgModelPolicySchema>;
+
+export const orgModelPoliciesResponseSchema = z.object({
+  policies: z.array(orgModelPolicySchema),
+  workspaceDefaultModel: supportedRunModelSchema.nullable(),
+  workspaceDefaultPolicyId: z.uuid().nullable(),
+});
+
+export type OrgModelPoliciesResponse = z.infer<
+  typeof orgModelPoliciesResponseSchema
+>;
+
+export const updateOrgModelPoliciesRequestSchema = z.object({
+  policies: z.array(updateOrgModelPolicySchema),
+});
+
+export type UpdateOrgModelPoliciesRequest = z.infer<
+  typeof updateOrgModelPoliciesRequestSchema
+>;

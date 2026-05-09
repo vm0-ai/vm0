@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   getProviderBaseUrl,
   areProvidersCompatible,
@@ -23,7 +24,9 @@ import {
   getSecretsForAuthMethod,
   modelProviderCredentialScopeSchema,
   supportedRunModelSchema,
+  DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   SUPPORTED_RUN_MODELS,
+  DEFAULT_ORG_MODEL_POLICY_MODELS,
   VM0_MODEL_TO_PROVIDER,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   MODEL_PROVIDER_TYPES,
@@ -39,20 +42,24 @@ describe("model-first canonical catalog", () => {
       "claude-opus-4-7",
       "claude-opus-4-6",
       "claude-sonnet-4-6",
-      "gpt-5.5",
-      "gpt-5.4",
+      "claude-haiku-4-5",
       "deepseek-v4-pro",
+      "deepseek-v4-flash",
       "kimi-k2.6",
       "kimi-k2.5",
+      "MiniMax-M2.7",
       "glm-5.1",
+      "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+      "gpt-5.3-codex",
+      "gpt-5.2",
     ]);
-    expect(SUPPORTED_RUN_MODELS).not.toContain("MiniMax-M2.7");
-    expect(SUPPORTED_RUN_MODELS).not.toContain("deepseek-v4-flash");
   });
 
   it("validates canonical models and credential scopes", () => {
     expect(supportedRunModelSchema.safeParse("gpt-5.5").success).toBe(true);
-    expect(supportedRunModelSchema.safeParse("gpt-5.3-codex").success).toBe(
+    expect(supportedRunModelSchema.safeParse("custom-model").success).toBe(
       false,
     );
     expect(modelProviderCredentialScopeSchema.safeParse("org").success).toBe(
@@ -77,7 +84,7 @@ describe("model-first canonical catalog", () => {
     expect(normalizeRunModelId("z-ai/glm-5.1")).toBe("glm-5.1");
     expect(normalizeRunModelId("custom/model")).toBe("custom/model");
     expect(isSupportedRunModel("glm-5.1")).toBe(true);
-    expect(isSupportedRunModel("deepseek-v4-flash")).toBe(false);
+    expect(isSupportedRunModel("deepseek-v4-flash")).toBe(true);
   });
 
   it("returns compatible provider types for canonical models", () => {
@@ -95,6 +102,11 @@ describe("model-first canonical catalog", () => {
     expect(getProvidersForModel("deepseek/deepseek-v4-pro")).toContain(
       "openrouter-api-key",
     );
+    expect(getProvidersForModel("minimax/minimax-m2.7")).toEqual([
+      "vm0",
+      "minimax-api-key",
+      "openrouter-api-key",
+    ]);
     expect(getProvidersForModel("custom/model")).toEqual([]);
   });
 
@@ -115,6 +127,9 @@ describe("model-first canonical catalog", () => {
     expect(getProviderRuntimeModel("openrouter-api-key", "kimi-k2.6")).toBe(
       "moonshotai/kimi-k2.6",
     );
+    expect(getProviderRuntimeModel("openrouter-api-key", "MiniMax-M2.7")).toBe(
+      "minimax/minimax-m2.7",
+    );
     expect(
       getProviderRuntimeModel("anthropic-api-key", "claude-opus-4-7"),
     ).toBe("claude-opus-4-7");
@@ -127,13 +142,18 @@ describe("model-first canonical catalog", () => {
     );
   });
 
-  it("builds the default org policy seed from the curated catalog", () => {
+  it("builds the default org policy seed from the workspace defaults", () => {
+    expect(DEFAULT_ORG_MODEL_POLICY_MODELS).toEqual([
+      "claude-opus-4-7",
+      "claude-sonnet-4-6",
+      "deepseek-v4-pro",
+      "gpt-5.5",
+    ]);
     expect(getDefaultOrgModelPolicySeed()).toEqual(
-      SUPPORTED_RUN_MODELS.map((model, index) => {
+      DEFAULT_ORG_MODEL_POLICY_MODELS.map((model) => {
         return {
           model,
-          enabled: true,
-          sortOrder: index,
+          isDefault: model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
           defaultProviderType: "vm0",
           credentialScope: "org",
           modelProviderId: null,
@@ -292,6 +312,13 @@ describe("getVm0VisibleModels", () => {
     const models = getVm0VisibleModels({});
     expect(models).toContain("deepseek-v4-pro");
     expect(models).toContain("deepseek-v4-flash");
+  });
+
+  it("shows GPT models only when Codex beta is enabled", () => {
+    expect(getVm0VisibleModels({})).not.toContain("gpt-5.5");
+    expect(
+      getVm0VisibleModels({ [FeatureSwitchKey.CodexBeta]: true }),
+    ).toContain("gpt-5.5");
   });
 });
 

@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
@@ -21,6 +21,7 @@ import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { loadFeatureSwitchOverrides } from "../user/feature-switches-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
+import { ensureOrgModelPolicies } from "./org-model-policy-service";
 import {
   getModelProviderById,
   type ModelProviderInfo,
@@ -189,6 +190,7 @@ async function loadPolicyByModel(
   orgId: string,
   selectedModel: SupportedRunModel,
 ): Promise<OrgModelPolicyRow | undefined> {
+  await ensureOrgModelPolicies(orgId);
   const [policy] = await globalThis.services.db
     .select()
     .from(orgModelPolicies)
@@ -206,10 +208,6 @@ async function resolveRouteFromPolicy(
   orgId: string,
   policy: OrgModelPolicyRow,
 ): Promise<ModelFirstRouteDescriptor> {
-  if (!policy.enabled) {
-    throw badRequest(`Model "${policy.model}" is disabled for this workspace`);
-  }
-
   const route = routeShapeFromPolicy(policy);
   if (!(await validateOrgProviderRoute(orgId, route))) {
     throw providerDeleted();
@@ -220,30 +218,22 @@ async function resolveRouteFromPolicy(
 async function resolveDefaultRoute(
   orgId: string,
 ): Promise<ModelFirstRouteDescriptor> {
-  const policies = await globalThis.services.db
+  await ensureOrgModelPolicies(orgId);
+  const [policy] = await globalThis.services.db
     .select()
     .from(orgModelPolicies)
     .where(
       and(
         eq(orgModelPolicies.orgId, orgId),
-        eq(orgModelPolicies.enabled, true),
+        eq(orgModelPolicies.isDefault, true),
       ),
     )
-    .orderBy(asc(orgModelPolicies.sortOrder));
+    .limit(1);
 
-  for (const policy of policies) {
-    try {
-      const route = routeShapeFromPolicy(policy);
-      if (await validateOrgProviderRoute(orgId, route)) {
-        return route;
-      }
-    } catch {
-      // Invalid rows are skipped for workspace default resolution; explicit
-      // selections surface their validation error from resolveRouteFromPolicy.
-    }
+  if (!policy) {
+    throw noModelProvider();
   }
-
-  throw noModelProvider();
+  return resolveRouteFromPolicy(orgId, policy);
 }
 
 async function deriveRouteFromPinnedProvider(
@@ -266,18 +256,15 @@ async function deriveRouteFromPinnedProvider(
   };
 }
 
-async function validateModelEnabled(
+async function validateModelConfigured(
   orgId: string,
   selectedModel: SupportedRunModel,
 ): Promise<void> {
   const policy = await loadPolicyByModel(orgId, selectedModel);
   if (!policy) {
     throw badRequest(
-      `Model "${selectedModel}" is not enabled for this workspace`,
+      `Model "${selectedModel}" is not configured for this workspace`,
     );
-  }
-  if (!policy.enabled) {
-    throw badRequest(`Model "${selectedModel}" is disabled for this workspace`);
   }
 }
 
@@ -289,7 +276,7 @@ export async function resolveModelFirstRouteDescriptor(
   }
 
   const selectedModel = canonicalizeRunModel(params.selectedModel);
-  await validateModelEnabled(params.orgId, selectedModel);
+  await validateModelConfigured(params.orgId, selectedModel);
 
   const providerType = params.providerType
     ? parseProviderType(params.providerType)
@@ -322,7 +309,7 @@ export async function resolveModelFirstRouteDescriptor(
     const policy = await loadPolicyByModel(params.orgId, selectedModel);
     if (!policy) {
       throw badRequest(
-        `Model "${selectedModel}" is not enabled for this workspace`,
+        `Model "${selectedModel}" is not configured for this workspace`,
       );
     }
     return resolveRouteFromPolicy(params.orgId, policy);

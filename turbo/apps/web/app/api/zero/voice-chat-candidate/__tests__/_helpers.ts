@@ -32,7 +32,7 @@ export async function setupCandidateOrg(userId: string): Promise<{
   await insertOrgModelPolicy({
     orgId,
     model: "claude-sonnet-4-6",
-    sortOrder: 1,
+    isDefault: true,
     defaultProviderType: "anthropic-api-key",
     credentialScope: "org",
     modelProviderId,

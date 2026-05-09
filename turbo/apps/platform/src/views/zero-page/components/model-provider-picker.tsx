@@ -1,5 +1,5 @@
 import type { MouseEvent, ReactNode } from "react";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { IconCpu } from "@tabler/icons-react";
 import {
   Select,
@@ -21,6 +21,7 @@ import {
   areProvidersCompatible,
   getDefaultModel,
   getModels,
+  getVm0VisibleModels,
   MODEL_PROVIDER_TYPES,
   VM0_MODEL_TO_PROVIDER,
   type ModelProviderResponse,
@@ -31,6 +32,7 @@ import {
   showAllVm0Models$,
   toggleShowAllVm0Models$,
 } from "../../../signals/zero-page/model-picker-ui";
+import { featureSwitch$ } from "../../../signals/external/feature-switch";
 import {
   getUILabel,
   getVm0ModelMultiplier,
@@ -455,6 +457,7 @@ interface ProviderGroup {
 function buildProviderGroups(
   providers: ModelProviderResponse[],
   sessionProviderType: ModelProviderType | null | undefined,
+  features?: Parameters<typeof getVm0VisibleModels>[0],
 ): ProviderGroup[] {
   return providers
     .map((provider): ProviderGroup | null => {
@@ -462,7 +465,10 @@ function buildProviderGroups(
       if (!typeConfig) {
         return null;
       }
-      const models = getModels(provider.type);
+      const models =
+        provider.type === "vm0"
+          ? getVm0VisibleModels(features)
+          : getModels(provider.type);
       if (!models || models.length === 0) {
         return null;
       }
@@ -800,6 +806,8 @@ export function ModelProviderPicker({
   inheritLabel,
   tiers,
 }: ModelProviderPickerProps) {
+  const features = useLastResolved(featureSwitch$);
+
   if (disabled) {
     return (
       <DisabledPickerLabel
@@ -827,7 +835,7 @@ export function ModelProviderPicker({
     resolveEffectiveDefault(agentDefault, inheritScope);
   const defaultSource: DefaultSource = inheritLabel ?? autoSource;
 
-  const groups = buildProviderGroups(providers, sessionProviderType);
+  const groups = buildProviderGroups(providers, sessionProviderType, features);
   return (
     <ModelSelectDropdown
       groups={groups}

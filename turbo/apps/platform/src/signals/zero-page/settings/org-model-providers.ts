@@ -8,8 +8,11 @@ import {
   getSecretsForAuthMethod,
   hasAuthMethods,
   hasModelSelection,
+  type OrgModelPolicy,
   type ModelProviderType,
   type ModelProviderResponse,
+  type UpdateOrgModelPolicy,
+  type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import {
@@ -19,8 +22,14 @@ import {
   reloadOrgModelProviders$,
   setDefaultOrgModelProvider$,
 } from "../../external/org-model-providers.ts";
+import {
+  orgModelPolicies$,
+  updateOrgModelPolicies$,
+} from "../../external/org-model-policies.ts";
+import { modelFirstModelProviderEnabled$ } from "../../external/feature-switch.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
+import { closeModelPolicyDialog$ } from "./org-model-policy-dialog.ts";
 
 // ---------------------------------------------------------------------------
 // Add provider dialog (list of provider type cards)
@@ -145,6 +154,57 @@ export const orgDialogState$ = computed((get) => {
   return get(internalOrgDialogState$);
 });
 
+interface ModelPolicyRouteAfterAdd {
+  providerType: ModelProviderType;
+  model: SupportedRunModel;
+}
+
+const internalOrgModelPolicyRouteAfterAdd$ =
+  state<ModelPolicyRouteAfterAdd | null>(null);
+
+function toOrgModelPolicyUpdate(policy: OrgModelPolicy): UpdateOrgModelPolicy {
+  return {
+    model: policy.model,
+    isDefault: policy.isDefault,
+    defaultProviderType: policy.defaultProviderType,
+    credentialScope: policy.credentialScope,
+    modelProviderId: policy.modelProviderId,
+  };
+}
+
+function applyOrgProviderRouteToPolicies(
+  policies: OrgModelPolicy[],
+  route: ModelPolicyRouteAfterAdd,
+  provider: ModelProviderResponse,
+): UpdateOrgModelPolicy[] {
+  let found = false;
+  const updates = policies.map((policy) => {
+    const update = toOrgModelPolicyUpdate(policy);
+    if (policy.model !== route.model) {
+      return update;
+    }
+    found = true;
+    return {
+      ...update,
+      defaultProviderType: provider.type,
+      credentialScope: "org" as const,
+      modelProviderId: provider.id,
+    };
+  });
+
+  if (!found) {
+    updates.push({
+      model: route.model,
+      isDefault: updates.length === 0,
+      defaultProviderType: provider.type,
+      credentialScope: "org",
+      modelProviderId: provider.id,
+    });
+  }
+
+  return updates;
+}
+
 // ---------------------------------------------------------------------------
 // Delete dialog state
 // ---------------------------------------------------------------------------
@@ -173,6 +233,25 @@ interface DialogFormValues {
   authMethod: string;
   secrets: Record<string, string>;
   useDefaultModel: boolean;
+}
+
+function initialDialogFormValues(
+  providerType: ModelProviderType,
+): DialogFormValues {
+  const defaultAuth = hasAuthMethods(providerType)
+    ? (getDefaultAuthMethod(providerType) ?? "")
+    : "";
+  const defaultModel = hasModelSelection(providerType)
+    ? (getDefaultModel(providerType) ?? "")
+    : "";
+
+  return {
+    secret: "",
+    selectedModel: defaultModel,
+    authMethod: defaultAuth,
+    secrets: {},
+    useDefaultModel: !defaultModel,
+  };
 }
 
 const internalOrgFormValues$ = state<DialogFormValues>({
@@ -233,20 +312,8 @@ export const orgDefaultProvider$ = computed(async (get) => {
 
 export const orgOpenAddDialog$ = command(
   ({ set }, providerType: ModelProviderType) => {
-    const defaultAuth = hasAuthMethods(providerType)
-      ? (getDefaultAuthMethod(providerType) ?? "")
-      : "";
-    const defaultModel = hasModelSelection(providerType)
-      ? (getDefaultModel(providerType) ?? "")
-      : "";
-
-    set(internalOrgFormValues$, {
-      secret: "",
-      selectedModel: defaultModel,
-      authMethod: defaultAuth,
-      secrets: {},
-      useDefaultModel: !defaultModel,
-    });
+    set(internalOrgModelPolicyRouteAfterAdd$, null);
+    set(internalOrgFormValues$, initialDialogFormValues(providerType));
     set(internalOrgFormErrors$, {});
     set(internalOrgDialogState$, {
       open: true,
@@ -256,8 +323,22 @@ export const orgOpenAddDialog$ = command(
   },
 );
 
+export const orgOpenAddDialogForModelPolicyRoute$ = command(
+  ({ set }, route: ModelPolicyRouteAfterAdd) => {
+    set(internalOrgModelPolicyRouteAfterAdd$, route);
+    set(internalOrgFormValues$, initialDialogFormValues(route.providerType));
+    set(internalOrgFormErrors$, {});
+    set(internalOrgDialogState$, {
+      open: true,
+      mode: "add",
+      providerType: route.providerType,
+    });
+  },
+);
+
 export const orgOpenEditDialog$ = command(
   ({ set }, provider: ModelProviderResponse) => {
+    set(internalOrgModelPolicyRouteAfterAdd$, null);
     set(internalOrgFormValues$, {
       secret: "",
       selectedModel: provider.selectedModel ?? "",
@@ -280,6 +361,7 @@ export const orgCloseDialog$ = command(({ set }) => {
     mode: "add",
     providerType: null,
   });
+  set(internalOrgModelPolicyRouteAfterAdd$, null);
   set(internalOrgFormValues$, {
     secret: "",
     selectedModel: "",
@@ -409,6 +491,7 @@ export const orgSubmitDialog$ = command(
 
     // Build request
     const request: Record<string, unknown> = { type: providerType };
+    const modelFirstEnabled = get(modelFirstModelProviderEnabled$);
 
     if (isMultiAuth) {
       request.authMethod = formValues.authMethod;
@@ -418,6 +501,7 @@ export const orgSubmitDialog$ = command(
     }
 
     if (
+      !modelFirstEnabled &&
       hasModelSelection(providerType) &&
       !formValues.useDefaultModel &&
       formValues.selectedModel
@@ -426,12 +510,36 @@ export const orgSubmitDialog$ = command(
     }
 
     const promise = (async () => {
-      await set(
+      const result = await set(
         createOrgModelProvider$,
         request as Parameters<typeof createOrgModelProvider$.write>[1],
         signal,
       );
       signal.throwIfAborted();
+
+      const pendingRoute = get(internalOrgModelPolicyRouteAfterAdd$);
+      if (
+        dialogState.mode === "add" &&
+        pendingRoute &&
+        pendingRoute.providerType === providerType
+      ) {
+        const policyResponse = await get(orgModelPolicies$);
+        signal.throwIfAborted();
+        await set(
+          updateOrgModelPolicies$,
+          {
+            policies: applyOrgProviderRouteToPolicies(
+              policyResponse.policies,
+              pendingRoute,
+              result.provider,
+            ),
+            toast: false,
+          },
+          signal,
+        );
+        signal.throwIfAborted();
+        set(closeModelPolicyDialog$);
+      }
 
       const providerLabel =
         MODEL_PROVIDER_TYPES[providerType]?.label ?? providerType;
@@ -445,6 +553,7 @@ export const orgSubmitDialog$ = command(
         providerType: null,
       });
       set(internalOrgAddProviderDialogOpen$, false);
+      set(internalOrgModelPolicyRouteAfterAdd$, null);
       set(internalOrgFormValues$, {
         secret: "",
         selectedModel: "",
