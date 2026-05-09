@@ -21,7 +21,7 @@ runs:
         # Check if Vercel CLI is installed, install if not
         if ! command -v vercel &> /dev/null; then
           echo "Vercel CLI not found, installing..."
-          npm install -g vercel@latest
+          npm install -g vercel@53.2.0
         else
           echo "Vercel CLI already installed"
         fi
