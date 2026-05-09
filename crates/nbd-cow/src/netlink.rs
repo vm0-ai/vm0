@@ -235,7 +235,8 @@ fn open_genl_socket() -> Result<GenlSocket> {
     }
 
     // Set a receive timeout so recv() doesn't block forever if the
-    // kernel never sends an ACK (e.g., nbd module unloaded mid-call).
+    // kernel never sends a completion message (e.g., nbd module unloaded
+    // mid-call).
     let timeout = libc::timeval {
         tv_sec: 5,
         tv_usec: 0,
