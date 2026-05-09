@@ -2415,6 +2415,42 @@ mod tests {
         assert!(!summary.contains("stdout:"));
     }
 
+    #[test]
+    fn bounded_exec_failure_summary_truncates_long_stdout_and_stderr() {
+        let stdout_tail = "stdout-tail-after-limit";
+        let stderr_tail = "stderr-tail-after-limit";
+        let result = BoundedExecResult {
+            termination: BoundedExecTermination::Exited { exit_code: 1 },
+            duration: Duration::ZERO,
+            stdout: BoundedExecOutput::Captured {
+                bytes: format!(
+                    "{}{stdout_tail}",
+                    "o".repeat(EXEC_ERROR_OUTPUT_PREVIEW_BYTES + 8)
+                )
+                .into_bytes(),
+                truncated: false,
+            },
+            stderr: BoundedExecOutput::Captured {
+                bytes: format!(
+                    "{}{stderr_tail}",
+                    "e".repeat(EXEC_ERROR_OUTPUT_PREVIEW_BYTES + 8)
+                )
+                .into_bytes(),
+                truncated: false,
+            },
+            diagnostic: None,
+        };
+
+        let summary = BoundedExecFailureSummary::new("storage download", &result).message();
+
+        assert!(summary.contains("stderr:"));
+        assert!(summary.contains("stdout:"));
+        assert!(summary.contains("..."));
+        assert!(!summary.contains(stdout_tail));
+        assert!(!summary.contains(stderr_tail));
+        assert!(!summary.contains("diagnostic:"));
+    }
+
     /// Real `sudo dmesg | grep 'oom-kill'` output captured from prod-3.
     const PROD3_OOM_GREP: &str = "\
         [1718300.650867] fc_vcpu 0 invoked oom-killer: gfp_mask=0xcc0(GFP_KERNEL), order=0, oom_score_adj=0\n\
