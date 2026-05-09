@@ -95,7 +95,9 @@ interface SendNewThreadMessagePending extends PendingChatThread {
   sendResult: Promise<SendNewThreadMessageResult>;
 }
 
-type OptimisticThreadMessage = PagedChatMessage & { isQueued?: boolean };
+type OptimisticThreadMessage = PagedChatMessage & {
+  optimisticAssociation?: "run" | "queue";
+};
 
 async function appendQueuedMessage(
   createClient: ZeroClientFactory,
@@ -448,7 +450,7 @@ const sendNewThreadMessage$ = command(
             role: "user",
             content: prepared.prompt,
             attachFiles: prepared.attachments,
-            isQueued: false,
+            optimisticAssociation: "run",
             createdAt: messageCreatedAt,
           },
         ],

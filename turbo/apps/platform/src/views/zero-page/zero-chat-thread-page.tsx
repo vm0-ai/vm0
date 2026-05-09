@@ -1721,6 +1721,8 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const sessionError = resolveSessionError(threadDataLoadable, groupsLoadable);
   const messagesLoading = groupsLoadable.state === "loading";
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
+  const { activeGroups, queuedGroups } =
+    splitQueuedMessagesForThinkingIndicator(groups);
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const manualHistoryEnabled =
@@ -1788,7 +1790,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
                     </p>
                   </div>
                 )}
-              {groups.map((group) => {
+              {activeGroups.map((group) => {
                 return (
                   <PagedGroupRow
                     key={group.beginMessageId}
@@ -1797,7 +1799,16 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
                   />
                 );
               })}
-              <ThinkingIndicator thread={thread} />
+              <ThinkingIndicator thread={thread} groups={activeGroups} />
+              {queuedGroups.map((group) => {
+                return (
+                  <PagedGroupRow
+                    key={group.beginMessageId}
+                    group={group}
+                    thread={thread}
+                  />
+                );
+              })}
             </div>
           </main>
         </div>
@@ -1818,6 +1829,54 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
       <ChatThreadComposer thread={thread} />
     </>
   );
+}
+
+function splitQueuedMessagesForThinkingIndicator(
+  groups: GroupedChatMessageGroup[],
+): {
+  activeGroups: GroupedChatMessageGroup[];
+  queuedGroups: GroupedChatMessageGroup[];
+} {
+  const activeGroups: GroupedChatMessageGroup[] = [];
+  const queuedMessages: EnrichedChatMessage[] = [];
+
+  for (const group of groups) {
+    if (group.role !== "user") {
+      activeGroups.push(group);
+      continue;
+    }
+
+    const activeMessages: EnrichedChatMessage[] = [];
+    for (const message of group.messages) {
+      if (message.isQueued) {
+        queuedMessages.push(message);
+      } else {
+        activeMessages.push(message);
+      }
+    }
+
+    if (activeMessages.length > 0) {
+      activeGroups.push({
+        ...group,
+        beginMessageId: activeMessages[0]!.id,
+        messages: activeMessages,
+      });
+    }
+  }
+
+  return {
+    activeGroups,
+    queuedGroups:
+      queuedMessages.length > 0
+        ? [
+            {
+              beginMessageId: queuedMessages[0]!.id,
+              role: "user",
+              messages: queuedMessages,
+            },
+          ]
+        : [],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -2006,8 +2065,13 @@ function ChatSkeleton() {
 // Thinking indicator — shown the entire time a run is active
 // ---------------------------------------------------------------------------
 
-function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
-  const groups = useLastResolved(thread.groupedChatMessages$) ?? [];
+function ThinkingIndicator({
+  thread,
+  groups,
+}: {
+  thread: ChatThreadSignals;
+  groups: GroupedChatMessageGroup[];
+}) {
   const allFinishedLoadable = useLastLoadable(thread.allFinished$);
   const runActive =
     allFinishedLoadable.state === "hasData" && !allFinishedLoadable.data;
@@ -2054,6 +2118,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   if (lastIsAssistant || !running) {
     return (
       <div
+        data-thinking-indicator
         data-role="assistant-thinking"
         className="-mt-5 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start"
       >
@@ -2087,6 +2152,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   // Waiting for first assistant response — show bubble with avatar
   return (
     <div
+      data-thinking-indicator
       data-role="assistant"
       className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >

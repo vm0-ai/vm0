@@ -96,6 +96,28 @@ async function expectQueuedMessages(contents: string[]): Promise<void> {
   });
 }
 
+async function expectQueuedMessagesBelowThinkingIndicator(
+  contents: string[],
+): Promise<void> {
+  await waitFor(() => {
+    const thinkingIndicator = document.querySelector<HTMLElement>(
+      "[data-thinking-indicator]",
+    );
+    expect(thinkingIndicator).not.toBeNull();
+
+    const queuedMessages = screen.getAllByLabelText("Queued message");
+    expect(queuedMessages).toHaveLength(contents.length);
+    for (const [index, content] of contents.entries()) {
+      const queuedMessage = queuedMessages[index]!;
+      expect(queuedMessage).toHaveTextContent(content);
+      expect(
+        thinkingIndicator!.compareDocumentPosition(queuedMessage) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).not.toBe(0);
+    }
+  });
+}
+
 describe("chat queued user messages", () => {
   it("queues keyboard sends during an active run as independent user messages", async () => {
     const user = userEvent.setup({ delay: null });
@@ -118,7 +140,10 @@ describe("chat queued user messages", () => {
     await sendQueuedMessage(user, "first queued");
     await sendQueuedMessage(user, "second queued");
 
-    await expectQueuedMessages(["first queued", "second queued"]);
+    await expectQueuedMessagesBelowThinkingIndicator([
+      "first queued",
+      "second queued",
+    ]);
     expect(appendedContents).toStrictEqual(["first queued", "second queued"]);
     expect(new Set(appendedClientIds).size).toBe(2);
   });

@@ -5,7 +5,9 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { initServices } from "../../init-services";
 import {
   buildWebAttachFilesPrompt,
+  buildWebChatIncompleteContext,
   buildWebChatPrompt,
+  type WebChatIncompleteRound,
 } from "../integration-prompt";
 import { createZeroRun, fetchZeroAgentForRun } from "../zero-run-service";
 import { getApiUrl, generateCallbackSecret } from "../../infra/callback";
@@ -13,7 +15,9 @@ import type { ChatCallbackPayload } from "../../infra/callback/callback-payloads
 import { publishUserSignal } from "../../infra/realtime/client";
 import { logger } from "../../shared/logger";
 import {
+  getIncompleteRoundsSinceLastSuccess,
   getChatThreadIdForRun,
+  getLatestSessionIdForThread,
   publishThreadListChanged,
 } from "./chat-message-service";
 import { resolveAttachFileUrls } from "./chat-thread-service";
@@ -64,6 +68,42 @@ async function nextQueuedUserMessage(
   return message ?? null;
 }
 
+function buildAppendSystemPrompt(incompleteContext: string): string {
+  return [buildWebChatPrompt(), incompleteContext]
+    .filter((part) => {
+      return typeof part === "string" && part.length > 0;
+    })
+    .join("\n\n");
+}
+
+function groupIncompleteRoundsByRunId(
+  rows: Awaited<ReturnType<typeof getIncompleteRoundsSinceLastSuccess>>,
+): WebChatIncompleteRound[] {
+  const byRunId = new Map<string, WebChatIncompleteRound>();
+  const order: string[] = [];
+  for (const row of rows) {
+    let round = byRunId.get(row.runId);
+    if (!round) {
+      round = {
+        runId: row.runId,
+        status: row.runStatus,
+        messages: [],
+      };
+      byRunId.set(row.runId, round);
+      order.push(row.runId);
+    }
+    round.messages.push({
+      role: row.role,
+      content: row.content,
+      error: row.error,
+      attachFiles: row.attachFiles,
+    });
+  }
+  return order.map((id) => {
+    return byRunId.get(id)!;
+  });
+}
+
 /**
  * After a chat run reaches a terminal state, claim the oldest unassociated user
  * message in the thread and dispatch it as the next run. The queued message row
@@ -88,6 +128,14 @@ export async function autoSendQueuedMessageOnRunComplete(input: {
   if (!queuedMessage) {
     return;
   }
+
+  const [sessionId, incompleteRows] = await Promise.all([
+    getLatestSessionIdForThread(threadId),
+    getIncompleteRoundsSinceLastSuccess(threadId),
+  ]);
+  const incompleteContext = buildWebChatIncompleteContext(
+    groupIncompleteRoundsByRunId(incompleteRows),
+  );
 
   const agent = await fetchZeroAgentForRun(agentId);
   if (!agent) {
@@ -131,9 +179,10 @@ export async function autoSendQueuedMessageOnRunComplete(input: {
     userId,
     prompt: fullPrompt,
     agentId,
+    sessionId,
     triggerSource: "web",
     apiStartTime,
-    appendSystemPrompt: buildWebChatPrompt(),
+    appendSystemPrompt: buildAppendSystemPrompt(incompleteContext),
     callbacks: [chatCallback],
     chatThreadId: threadId,
     modelProvider: queuedMessage.modelProviderType ?? undefined,

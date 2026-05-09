@@ -65,13 +65,17 @@ export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
 const L = logger("ChatThread");
 
-type OptimisticPagedChatMessage = PagedChatMessage & { isQueued?: boolean };
+type OptimisticAssociation = "run" | "queue";
 
-function optimisticQueuedOverride(
+type OptimisticPagedChatMessage = PagedChatMessage & {
+  optimisticAssociation?: OptimisticAssociation;
+};
+
+function optimisticAssociation(
   msg: PagedChatMessage | OptimisticPagedChatMessage,
-): boolean | undefined {
-  if ("isQueued" in msg) {
-    return msg.isQueued === true;
+): OptimisticAssociation | undefined {
+  if ("optimisticAssociation" in msg) {
+    return msg.optimisticAssociation;
   }
   return undefined;
 }
@@ -606,6 +610,24 @@ function mergeIntoGroups(
   return result;
 }
 
+function groupMessagesForDisplay(
+  messages: EnrichedChatMessage[],
+): GroupedChatMessageGroup[] {
+  const activeMessages: EnrichedChatMessage[] = [];
+  const queuedMessages: EnrichedChatMessage[] = [];
+  for (const msg of messages) {
+    if (msg.role === "user" && msg.isQueued) {
+      queuedMessages.push(msg);
+      continue;
+    }
+    activeMessages.push(msg);
+  }
+  return [
+    ...mergeIntoGroups([], activeMessages),
+    ...mergeIntoGroups([], queuedMessages),
+  ];
+}
+
 type DeltaMessages$ = State<OptimisticPagedChatMessage[]>;
 
 function createAppendDelta(deltaMessages$: DeltaMessages$) {
@@ -673,20 +695,17 @@ function createAllMessagesComputed({
   initialPage$,
   historyMessages$,
   deltaMessages$,
-  optimisticSentUserMessageIds$,
 }: {
   initialPage$: Computed<
     Promise<{ messages: PagedChatMessage[]; hasHistoryBefore: boolean }>
   >;
   historyMessages$: State<PagedChatMessage[]>;
   deltaMessages$: State<OptimisticPagedChatMessage[]>;
-  optimisticSentUserMessageIds$: State<Set<string>>;
 }): Computed<Promise<EnrichedChatMessage[]>> {
   return computed(async (get): Promise<EnrichedChatMessage[]> => {
     const initial = await get(initialPage$);
     const history = get(historyMessages$);
     const deltas = get(deltaMessages$);
-    const optimisticSentIds = get(optimisticSentUserMessageIds$);
     const raw = [...history, ...initial.messages, ...deltas];
     const revokedIds = new Set(
       raw.flatMap((msg) => {
@@ -701,10 +720,8 @@ function createAllMessagesComputed({
         const { blocks } = parseBodyRenderBlocks(msg.content ?? "");
         const isUnassociatedUser =
           msg.role === "user" && msg.runId === undefined;
-        const queuedOverride = optimisticQueuedOverride(msg);
-        const isQueued =
-          isUnassociatedUser &&
-          (queuedOverride ?? !optimisticSentIds.has(msg.id));
+        const optimistic = optimisticAssociation(msg);
+        const isQueued = isUnassociatedUser && optimistic !== "run";
         if (msg.role !== "assistant") {
           return {
             ...msg,
@@ -797,7 +814,6 @@ function createPagedMessages(
 
   const deltaMessages$ = state<OptimisticPagedChatMessage[]>([]);
   const appendDeltaMessages$ = createAppendDelta(deltaMessages$);
-  const optimisticSentUserMessageIds$ = state(new Set<string>());
 
   // Tracks the last known server-validated message ID so optimistic
   // (client-generated) IDs never leak into sinceId calls.
@@ -809,12 +825,11 @@ function createPagedMessages(
     initialPage$,
     historyMessages$,
     deltaMessages$,
-    optimisticSentUserMessageIds$,
   });
 
   const groupedChatMessages$ = computed(
     async (get): Promise<GroupedChatMessageGroup[]> => {
-      return mergeIntoGroups([], await get(allMessages$));
+      return groupMessagesForDisplay(await get(allMessages$));
     },
   );
 
@@ -869,12 +884,7 @@ function createPagedMessages(
   );
 
   const insertOptimisticMessage$ = command(
-    ({ get, set }, msg: OptimisticPagedChatMessage) => {
-      if (msg.role === "user" && msg.runId === undefined && !msg.isQueued) {
-        const next = new Set(get(optimisticSentUserMessageIds$));
-        next.add(msg.id);
-        set(optimisticSentUserMessageIds$, next);
-      }
+    ({ set }, msg: OptimisticPagedChatMessage) => {
       set(appendDeltaMessages$, [msg]);
     },
   );
@@ -1326,6 +1336,7 @@ function createSendMessage(deps: SendMessageDeps) {
         id: clientMessageId,
         role: "user",
         content: result.prompt,
+        optimisticAssociation: "run",
         attachFiles: result.attachments,
         createdAt: new Date().toISOString(),
       });
@@ -1433,7 +1444,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
       id: clientMessageId,
       role: "user",
       content: result.prompt,
-      isQueued: true,
+      optimisticAssociation: "queue",
       attachFiles: result.attachments,
       createdAt: nowIso,
     });

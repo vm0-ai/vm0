@@ -286,6 +286,54 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
 });
 
 describe("fetchNextPage$ cursor", () => {
+  it("groups assistant messages across queued user messages", async () => {
+    const threadId = "thread-group-queued";
+    const mockDataSource = createStaticDataSource({
+      threadId,
+      initialPage: {
+        hasHistoryBefore: false,
+        messages: [
+          {
+            id: "assistant-before",
+            role: "assistant",
+            content: "before",
+            runId: "run-1",
+            createdAt: "2026-05-01T00:00:00Z",
+          },
+          {
+            id: "queued-user",
+            role: "user",
+            content: "queued",
+            createdAt: "2026-05-01T00:00:01Z",
+          },
+          {
+            id: "assistant-after",
+            role: "assistant",
+            content: "after",
+            runId: "run-1",
+            createdAt: "2026-05-01T00:00:02Z",
+          },
+        ],
+      },
+    });
+
+    const { draft } = context.store.set(ensureDraft$, threadId);
+    const thread = createChatThreadSignals(threadId, draft, mockDataSource);
+
+    const groups = await context.store.get(thread.groupedChatMessages$);
+
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.role).toBe("assistant");
+    expect(
+      groups[0]?.messages.map((message) => {
+        return message.id;
+      }),
+    ).toStrictEqual(["assistant-before", "assistant-after"]);
+    expect(groups[1]?.role).toBe("user");
+    expect(groups[1]?.messages[0]?.id).toBe("queued-user");
+    expect(groups[1]?.messages[0]?.isQueued).toBeTruthy();
+  });
+
   it("auto backfills an unknown cached history boundary during subscribe", async () => {
     const threadId = "thread-history-boundary-backfill";
     const firstMessageId = "11111111-1111-4111-8111-111111111111";
@@ -426,6 +474,7 @@ describe("fetchNextPage$ cursor", () => {
       id: crypto.randomUUID(),
       role: "user",
       content: "optimistic message",
+      optimisticAssociation: "run",
       createdAt: new Date().toISOString(),
     });
 

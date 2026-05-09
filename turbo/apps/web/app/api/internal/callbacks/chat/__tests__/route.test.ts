@@ -10,16 +10,19 @@ import {
   createTestCallback,
   createTestRequest,
   createTestAgentSession,
+  createTestSessionWithConversation,
   createTestPushSubscription,
   getPushSubscriptionsByEndpoint,
   createSignedCallbackRequest,
   addTestRunToThread,
   deleteTestChatThread,
+  findTestRunRecord,
   getTestChatMessagesByThread,
   getTestUserMessageRunStorage,
   insertTestAssistantEventMessages,
   insertTestChatMessage,
   insertOrgDefaultModelProvider,
+  setTestRunResult,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../../../../src/__tests__/db-test-assertions/agents";
 import { reloadEnv } from "../../../../../../src/env";
@@ -1771,6 +1774,61 @@ describe("POST /api/internal/callbacks/chat", () => {
         `chatThreadRunCreated:${threadId}`,
         null,
       );
+    });
+
+    it("should continue the latest chat session when auto-sending", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
+      const session = await createTestSessionWithConversation(
+        user.userId,
+        agentId,
+      );
+      await setTestRunResult(runId, { agentSessionId: session.id });
+      await insertTestChatMessage({
+        chatThreadId: threadId,
+        role: "user",
+        content: "queued in same session",
+        runId: null,
+      });
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+
+      const queuedStorage = await getTestUserMessageRunStorage({
+        threadId,
+        content: "queued in same session",
+        runId: null,
+        revokesMessageId: null,
+      });
+      if (!queuedStorage) {
+        throw new Error("Expected queued user message storage");
+      }
+
+      const materializedStorage = await getTestUserMessageRunStorage({
+        threadId,
+        content: "queued in same session",
+        revokesMessageId: queuedStorage.messageId,
+      });
+      if (!materializedStorage?.messageRunId) {
+        throw new Error("Expected auto-sent user message run id");
+      }
+
+      const autoSentRun = await findTestRunRecord(
+        materializedStorage.messageRunId,
+      );
+      expect(autoSentRun?.sessionId).toBe(session.id);
+      expect(autoSentRun?.continuedFromSessionId).toBe(session.id);
     });
 
     it("should auto-send the queued message after a failed run too", async () => {
