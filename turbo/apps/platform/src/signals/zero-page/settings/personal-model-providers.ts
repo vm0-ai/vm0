@@ -257,12 +257,13 @@ function waitForOAuthPopupClosed(
   signal: AbortSignal,
 ): Promise<void> {
   const closed = createDeferredPromise<void>(signal);
-  let intervalId: number | undefined;
+  const intervalId = window.setInterval(
+    checkClosed,
+    OAUTH_POPUP_CLOSED_POLL_MS,
+  );
 
   function cleanup() {
-    if (intervalId !== undefined) {
-      window.clearInterval(intervalId);
-    }
+    window.clearInterval(intervalId);
     signal.removeEventListener("abort", cleanup);
   }
 
@@ -273,7 +274,6 @@ function waitForOAuthPopupClosed(
     }
   }
 
-  intervalId = window.setInterval(checkClosed, OAUTH_POPUP_CLOSED_POLL_MS);
   signal.addEventListener("abort", cleanup, { once: true });
   checkClosed();
 
