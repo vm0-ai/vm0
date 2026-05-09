@@ -33,6 +33,13 @@ import {
   isApiError,
   providerDeleted,
 } from "@vm0/api-services/errors";
+import { cancelRun } from "../../../../../src/lib/zero/zero-run-cancel";
+import { dispatchCancelSideEffects } from "../../../../../src/lib/infra/run/run-service";
+import {
+  dispatchQueuedZeroRun,
+  drainOrgQueue,
+} from "../../../../../src/lib/zero/zero-run-queue-service";
+import { processOrgUsageEvents } from "../../../../../src/lib/zero/credit/usage-event-service";
 import { getModelProviderById } from "../../../../../src/lib/zero/model-provider/model-provider-service";
 import { resolvePreferredModelProviderPin } from "../../../../../src/lib/zero/model-provider/resolve-preferred-model-provider-pin";
 import {
@@ -291,6 +298,96 @@ async function appendRecallUserMessage(params: {
 
     if (!resolved) {
       throw new Error("Failed to insert recall user message");
+    }
+    return resolved;
+  });
+}
+
+async function appendInterruptUserMessage(params: {
+  threadId: string;
+  interruptsRunId: string;
+  clientMessageId: string | undefined;
+}): Promise<{ id: string; createdAt: Date }> {
+  return globalThis.services.db.transaction(async (tx) => {
+    const [existingInterrupter] = await tx
+      .select({
+        id: chatMessages.id,
+        role: chatMessages.role,
+        runId: chatMessages.runId,
+        createdAt: chatMessages.createdAt,
+      })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.chatThreadId, params.threadId),
+          eq(chatMessages.interruptsRunId, params.interruptsRunId),
+        ),
+      )
+      .limit(1);
+
+    if (existingInterrupter) {
+      if (
+        existingInterrupter.role === "user" &&
+        existingInterrupter.runId === null
+      ) {
+        return {
+          id: existingInterrupter.id,
+          createdAt: existingInterrupter.createdAt,
+        };
+      }
+      throw badRequest("Only active chat runs can be interrupted");
+    }
+
+    const [targetRun] = await tx
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+      .where(
+        and(
+          eq(agentRuns.id, params.interruptsRunId),
+          eq(zeroRuns.chatThreadId, params.threadId),
+          inArray(agentRuns.status, ["queued", "pending", "running"]),
+        ),
+      )
+      .limit(1);
+
+    if (!targetRun) {
+      throw badRequest("Only active chat runs can be interrupted");
+    }
+
+    const [inserted] = await tx
+      .insert(chatMessages)
+      .values({
+        ...(params.clientMessageId ? { id: params.clientMessageId } : {}),
+        chatThreadId: params.threadId,
+        role: "user",
+        content: null,
+        runId: null,
+        interruptsRunId: params.interruptsRunId,
+        attachFiles: null,
+      })
+      .onConflictDoNothing()
+      .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
+
+    if (inserted) {
+      return inserted;
+    }
+
+    const [resolved] = await tx
+      .select({ id: chatMessages.id, createdAt: chatMessages.createdAt })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.chatThreadId, params.threadId),
+          eq(chatMessages.interruptsRunId, params.interruptsRunId),
+          eq(chatMessages.role, "user"),
+          isNull(chatMessages.runId),
+        ),
+      )
+      .limit(1);
+
+    if (!resolved) {
+      throw new Error("Failed to insert interrupt user message");
     }
     return resolved;
   });
@@ -716,6 +813,19 @@ function isRecallSendBody(body: {
   return body.revokesMessageId !== undefined;
 }
 
+interface InterruptSendBody {
+  agentId: string;
+  threadId: string;
+  interruptsRunId: string;
+  clientMessageId?: string;
+}
+
+function isInterruptSendBody(body: {
+  interruptsRunId?: string;
+}): body is InterruptSendBody {
+  return body.interruptsRunId !== undefined;
+}
+
 async function handleRecallSend(
   body: RecallSendBody,
   authorization: string | undefined,
@@ -747,14 +857,91 @@ async function handleRecallSend(
   };
 }
 
+async function handleInterruptSend(
+  body: InterruptSendBody,
+  authorization: string | undefined,
+) {
+  const authCtx = await requireAuth(authorization, {
+    requiredCapability: "agent-run:write",
+  });
+  if (isAuthError(authCtx)) return authCtx;
+
+  await getChatThread(body.threadId, authCtx.userId);
+  const { org } = await resolveOrgWithMetadata(authCtx);
+  const message = await appendInterruptUserMessage({
+    threadId: body.threadId,
+    interruptsRunId: body.interruptsRunId,
+    clientMessageId: body.clientMessageId,
+  });
+  await publishUserSignal(
+    [authCtx.userId],
+    `chatThreadMessageCreated:${body.threadId}`,
+  );
+  await publishThreadListChanged(authCtx.userId);
+
+  const result = await cancelRun(
+    body.interruptsRunId,
+    authCtx.userId,
+    org.orgId,
+  );
+
+  if (!result.alreadyCancelled) {
+    after(async () => {
+      const shouldProcessCredits = await dispatchCancelSideEffects(
+        result,
+        (orgId) => {
+          return drainOrgQueue(orgId, dispatchQueuedZeroRun);
+        },
+      );
+      if (shouldProcessCredits) {
+        await processOrgUsageEvents(result.orgId);
+      }
+    });
+  }
+
+  return {
+    status: 201 as const,
+    body: {
+      runId: null,
+      threadId: body.threadId,
+      createdAt: message.createdAt.toISOString(),
+    },
+  };
+}
+
+async function handleControlSend(
+  body: { revokesMessageId?: string; interruptsRunId?: string },
+  authorization: string | undefined,
+) {
+  if (isRecallSendBody(body)) {
+    return handleRecallSend(body, authorization);
+  }
+  if (isInterruptSendBody(body)) {
+    return handleInterruptSend(body, authorization);
+  }
+  return undefined;
+}
+
+function requirePrompt(body: { prompt?: string }): string {
+  if (body.prompt === undefined) {
+    throw badRequest("Prompt is required");
+  }
+  return body.prompt;
+}
+
 const router = tsr.router(chatMessagesContract, {
   send: async ({ body, headers }) => {
     const apiStartTime = Date.now();
     initServices();
 
-    if (isRecallSendBody(body)) {
-      return handleRecallSend(body, headers.authorization);
+    const controlResponse = await handleControlSend(
+      body,
+      headers.authorization,
+    );
+    if (controlResponse) {
+      return controlResponse;
     }
+    const prompt = requirePrompt(body);
 
     // Dims object is mutated in place as details become known. Each Phase-1
     // sub-stage emits a span carrying the dims snapshot at emit time.
@@ -860,7 +1047,7 @@ const router = tsr.router(chatMessagesContract, {
         const message = await appendUnassociatedUserMessage({
           threadId,
           userId: authCtx.userId,
-          prompt: body.prompt,
+          prompt,
           attachFiles: body.attachFiles,
           clientMessageId: body.clientMessageId,
         });
@@ -927,7 +1114,7 @@ const router = tsr.router(chatMessagesContract, {
               priorRounds = mapped.length > 0 ? mapped : undefined;
             }
             const title = await generateChatTitle({
-              currentUserMessage: body.prompt,
+              currentUserMessage: prompt,
               priorRounds,
             });
             if (title) {
@@ -958,7 +1145,7 @@ const router = tsr.router(chatMessagesContract, {
         override.modelProviderType ?? requestedModelProvider;
 
       // Build prompt: user text + file descriptions appended
-      const fullPrompt = buildFullPrompt(body.prompt, body.attachFiles);
+      const fullPrompt = buildFullPrompt(prompt, body.attachFiles);
 
       // Create the run. Phase 2 dispatch is deferred inside createZeroRun
       // via waitUntil() so the response flushes before tokens/secrets/runner work.
@@ -1009,7 +1196,7 @@ const router = tsr.router(chatMessagesContract, {
               chatThreadId: threadId,
               userId: authCtx.userId,
               role: "user",
-              content: body.prompt,
+              content: prompt,
               runId: result.runId,
               attachFiles: body.attachFiles?.map((f: AttachFile) => {
                 return f.id;

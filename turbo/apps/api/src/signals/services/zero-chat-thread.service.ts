@@ -101,6 +101,7 @@ type ChatMessageRow = {
   readonly runError: string | null;
   readonly attachFiles: readonly string[] | null;
   readonly revokesMessageId: string | null;
+  readonly interruptsRunId: string | null;
 };
 
 type ChatSearchMessageRow = {
@@ -143,6 +144,11 @@ function visibleChatMessageCondition() {
       ${chatMessages.role} = 'user'
       AND ${chatMessages.runId} IS NULL
       AND ${chatMessages.revokesMessageId} IS NOT NULL
+    )
+    AND NOT (
+      ${chatMessages.role} = 'user'
+      AND ${chatMessages.runId} IS NULL
+      AND ${chatMessages.interruptsRunId} IS NOT NULL
     )`;
 }
 
@@ -158,6 +164,7 @@ const messageColumns = {
   runError: agentRuns.error,
   attachFiles: chatMessages.attachFiles,
   revokesMessageId: chatMessages.revokesMessageId,
+  interruptsRunId: chatMessages.interruptsRunId,
 } as const;
 
 const searchMessageColumns = {
@@ -403,6 +410,7 @@ function toStoredMessage(
         content: row.content,
         runId: row.runId ?? undefined,
         revokesMessageId: row.revokesMessageId ?? undefined,
+        interruptsRunId: row.interruptsRunId ?? undefined,
         error: effectiveError,
         attachFiles: attachFiles ? [...attachFiles] : undefined,
         createdAt: row.createdAt.toISOString(),
@@ -455,6 +463,7 @@ function toPagedMessage(
       content: row.content,
       runId: row.runId ?? undefined,
       revokesMessageId: row.revokesMessageId ?? undefined,
+      interruptsRunId: row.interruptsRunId ?? undefined,
       error: effectiveError,
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       createdAt: row.createdAt.toISOString(),

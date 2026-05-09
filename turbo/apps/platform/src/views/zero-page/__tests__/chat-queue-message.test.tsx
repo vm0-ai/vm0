@@ -10,6 +10,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { optimisticChatThread$ } from "../../../signals/chat-page/optimistic-chat-thread-state.ts";
+import { createOptimisticChatMessagesForThread } from "../../../signals/chat-page/optimistic-chat-messages.ts";
 import {
   mockChatLifecycle,
   sendMessageInUI,
@@ -100,13 +101,9 @@ async function expectQueuedMessages(contents: string[]): Promise<void> {
   });
 }
 
-async function expectRecalledMessages(contents: string[]): Promise<void> {
+async function expectNoRecalledMessages(): Promise<void> {
   await waitFor(() => {
-    const recalledMessages = screen.getAllByLabelText("Recalled message");
-    expect(recalledMessages).toHaveLength(contents.length);
-    for (const [index, content] of contents.entries()) {
-      expect(recalledMessages[index]).toHaveTextContent(content);
-    }
+    expect(screen.queryByLabelText("Recalled message")).not.toBeInTheDocument();
   });
 }
 
@@ -133,6 +130,100 @@ async function expectQueuedMessagesBelowThinkingIndicator(
 }
 
 describe("chat queued user messages", () => {
+  it("shows the thinking indicator immediately for an optimistic run user message", async () => {
+    const user = userEvent.setup({ delay: null });
+    const sendDeferred = createDeferredPromise<void>(context.signal);
+    mockChatLifecycle({
+      sendGate: sendDeferred.promise,
+    });
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+    });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, "start optimistically");
+
+    await waitFor(() => {
+      expect(screen.getByText("start optimistically")).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).toBeInTheDocument();
+    });
+
+    act(() => {
+      sendDeferred.resolve();
+    });
+  });
+
+  it("keeps the thinking indicator when the optimistic run user message settles", async () => {
+    const user = userEvent.setup({ delay: null });
+    const sendDeferred = createDeferredPromise<void>(context.signal);
+    const optimisticMessages$ =
+      createOptimisticChatMessagesForThread(THREAD_ID);
+    const message = "settle without thinking flicker";
+    const missingIndicatorSnapshots: string[] = [];
+    mockChatLifecycle({
+      sendGate: sendDeferred.promise,
+    });
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+    });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, message);
+
+    await waitFor(() => {
+      expect(screen.getByText(message)).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).toBeInTheDocument();
+      expect(
+        context.store.get(optimisticMessages$).some((entry) => {
+          return entry.message.content === message;
+        }),
+      ).toBeTruthy();
+    });
+
+    const observer = new MutationObserver(() => {
+      if (
+        screen.queryByText(message) &&
+        document.querySelector("[data-thinking-indicator]") === null
+      ) {
+        missingIndicatorSnapshots.push(document.body.textContent ?? "");
+      }
+    });
+    observer.observe(document.body, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+    });
+
+    act(() => {
+      sendDeferred.resolve();
+    });
+
+    await waitFor(() => {
+      expect(
+        context.store.get(optimisticMessages$).some((entry) => {
+          return entry.message.content === message;
+        }),
+      ).toBeFalsy();
+    });
+    observer.disconnect();
+
+    expect(missingIndicatorSnapshots).toHaveLength(0);
+  });
+
   it("queues keyboard sends during an active run as independent user messages", async () => {
     const user = userEvent.setup({ delay: null });
     const appendedContents: string[] = [];
@@ -180,9 +271,9 @@ describe("chat queued user messages", () => {
 
     await waitFor(() => {
       expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
-      expect(screen.getByLabelText("Recalled message")).toHaveTextContent(
-        "recall this message",
-      );
+      expect(
+        screen.queryByLabelText("Recalled message"),
+      ).not.toBeInTheDocument();
       expect(screen.getByPlaceholderText(/Type your next message/)).toHaveValue(
         "recall this message",
       );
@@ -192,7 +283,11 @@ describe("chat queued user messages", () => {
   it("recalls queued messages when stopping the active run", async () => {
     const user = userEvent.setup({ delay: null });
     const recalledTargets: string[] = [];
+    const interruptedRuns: string[] = [];
     mockChatLifecycle({
+      onInterruptMessageAppend: (body) => {
+        interruptedRuns.push(body.interruptsRunId);
+      },
       onRecallMessageAppend: (body) => {
         recalledTargets.push(body.revokesMessageId);
       },
@@ -213,14 +308,24 @@ describe("chat queued user messages", () => {
 
     await waitFor(() => {
       expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+      expect(interruptedRuns).toHaveLength(1);
       expect(recalledTargets).toHaveLength(2);
     });
-    await expectRecalledMessages(["first queued", "second queued"]);
+    await expectNoRecalledMessages();
   });
 
   it("stops the active run and recalls three queued messages without showing a thinking indicator", async () => {
     const user = userEvent.setup({ delay: null });
-    const ctrl = mockChatLifecycle();
+    const interruptedRuns: string[] = [];
+    const recalledTargets: string[] = [];
+    mockChatLifecycle({
+      onInterruptMessageAppend: (body) => {
+        interruptedRuns.push(body.interruptsRunId);
+      },
+      onRecallMessageAppend: (body) => {
+        recalledTargets.push(body.revokesMessageId);
+      },
+    });
 
     detachedSetupPage({
       context,
@@ -239,19 +344,19 @@ describe("chat queued user messages", () => {
     ]);
 
     click(screen.getByLabelText("Stop"));
-    ctrl.cancelRun();
 
     await waitFor(() => {
+      expect(
+        screen.getAllByText("Paused mid-thought — pick it back up whenever."),
+      ).toHaveLength(1);
       expect(
         screen.getByText("Paused mid-thought — pick it back up whenever."),
       ).toBeInTheDocument();
       expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(interruptedRuns).toHaveLength(1);
+      expect(recalledTargets).toHaveLength(3);
     });
-    await expectRecalledMessages([
-      "first queued",
-      "second queued",
-      "third queued",
-    ]);
+    await expectNoRecalledMessages();
     await waitFor(() => {
       expect(
         document.querySelector("[data-thinking-indicator]"),

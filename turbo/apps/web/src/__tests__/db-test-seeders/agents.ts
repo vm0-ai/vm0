@@ -565,6 +565,7 @@ export async function insertTestChatMessage(params: {
   role: "user" | "assistant";
   content: string | null;
   runId?: string | null;
+  interruptsRunId?: string | null;
   archivedAt?: Date | null;
   attachFiles?: string[];
   createdAt?: Date;
@@ -577,6 +578,7 @@ export async function insertTestChatMessage(params: {
       role: params.role,
       content: params.content,
       runId: params.runId ?? null,
+      interruptsRunId: params.interruptsRunId ?? null,
       archivedAt: params.archivedAt ?? null,
       attachFiles: params.attachFiles ?? null,
       ...(params.createdAt ? { createdAt: params.createdAt } : {}),

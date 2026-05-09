@@ -63,6 +63,7 @@ const router = tsr.router(chatThreadMessagesContract, {
             content: row.content,
             runId: row.runId ?? undefined,
             revokesMessageId: row.revokesMessageId ?? undefined,
+            interruptsRunId: row.interruptsRunId ?? undefined,
             error: effectiveError,
             attachFiles,
             createdAt: row.createdAt.toISOString(),

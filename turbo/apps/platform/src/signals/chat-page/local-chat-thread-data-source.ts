@@ -3,6 +3,7 @@ import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads
 import type { ChatThread } from "../agent-chat.ts";
 import type {
   AppendQueuedMessageArgs,
+  CancelRunsArgs,
   ChatThreadDataSource,
   RecallMessageArgs,
 } from "./chat-thread-data-source.ts";
@@ -51,9 +52,11 @@ export function createLocalChatThreadDataSource(input: {
     return Promise.resolve({ messages, hasHistoryBefore: false });
   });
 
-  const cancelRuns$ = command((): Promise<void> => {
-    return Promise.resolve();
-  });
+  const cancelRuns$ = command(
+    (_visitor, _args: CancelRunsArgs, _signal: AbortSignal): Promise<void> => {
+      return Promise.resolve();
+    },
+  );
 
   const localAppendQueuedMessage$ = command(
     (

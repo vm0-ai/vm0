@@ -343,6 +343,70 @@ describe("POST /api/zero/chat/messages", () => {
       expect(recallResponse.status).toBe(400);
     });
 
+    it("should append an interrupt user message and cancel the active run", async () => {
+      const firstResponse = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "first message",
+          }),
+        }),
+      );
+      expect(firstResponse.status).toBe(201);
+      const firstData = await firstResponse.json();
+      await context.mocks.flushAfter();
+
+      const clientMessageId = randomUUID();
+      const interruptResponse = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            threadId: firstData.threadId,
+            interruptsRunId: firstData.runId,
+            clientMessageId,
+          }),
+        }),
+      );
+
+      expect(interruptResponse.status).toBe(201);
+      const interruptData = await interruptResponse.json();
+      expect(interruptData.runId).toBeNull();
+
+      const interruptedRun = await getTestRun(firstData.runId);
+      expect(interruptedRun.status).toBe("cancelled");
+
+      const messages = await getTestChatMessagesByThread(firstData.threadId);
+      const interruptMessage = messages.find((message) => {
+        return message.interruptsRunId === firstData.runId;
+      });
+      expect(interruptMessage).toBeDefined();
+      expect(interruptMessage!.id).toBe(clientMessageId);
+      expect(interruptMessage!.role).toBe("user");
+      expect(interruptMessage!.runId).toBeNull();
+      expect(interruptMessage!.content).toBeNull();
+
+      const pageResponse = await getChatThreadMessages(
+        createTestRequest(
+          `http://localhost:3000/api/zero/chat-threads/${firstData.threadId}/messages`,
+        ),
+      );
+      expect(pageResponse.status).toBe(200);
+      const page = await pageResponse.json();
+      const visibleInterrupt = page.messages.find(
+        (message: { id: string; interruptsRunId?: string }) => {
+          return message.id === clientMessageId;
+        },
+      );
+      expect(visibleInterrupt).toBeDefined();
+      expect(visibleInterrupt!.interruptsRunId).toBe(firstData.runId);
+
+      await context.mocks.flushAfter();
+    });
+
     it("should create a new run for an existing thread after the active run completes", async () => {
       const firstResponse = await POST(
         createTestRequest(URL, {

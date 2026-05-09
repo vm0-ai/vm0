@@ -40,6 +40,11 @@ export interface RecallMessageArgs {
   clientMessageId: string;
 }
 
+export interface InterruptRunArgs {
+  runId: string;
+  clientMessageId: string;
+}
+
 export interface ListMessagesAfterArgs {
   threadId: string;
   sinceId: string | undefined;
@@ -52,7 +57,8 @@ export interface ListMessagesBeforeArgs {
 
 export interface CancelRunsArgs {
   threadId: string;
-  activeRunIds: string[];
+  agentId: string;
+  interrupts: InterruptRunArgs[];
 }
 
 export interface MarkReadArgs {

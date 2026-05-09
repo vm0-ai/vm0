@@ -41,7 +41,7 @@ export type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads
 export type EnrichedChatMessage = PagedChatMessage & {
   blocks: BodyRenderBlock[];
   isQueued: boolean;
-  isRecalled: boolean;
+  isOptimisticRun: boolean;
 };
 
 /** A group of consecutive messages with the same role. */

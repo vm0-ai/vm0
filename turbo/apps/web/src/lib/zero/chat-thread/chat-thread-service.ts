@@ -34,6 +34,11 @@ function visibleChatMessageCondition() {
       ${chatMessages.role} = 'user'
       AND ${chatMessages.runId} IS NULL
       AND ${chatMessages.revokesMessageId} IS NOT NULL
+    )
+    AND NOT (
+      ${chatMessages.role} = 'user'
+      AND ${chatMessages.runId} IS NULL
+      AND ${chatMessages.interruptsRunId} IS NOT NULL
     )`;
 }
 
@@ -594,6 +599,7 @@ export async function getChatThreadMessages(
         content: row.content,
         runId: row.runId ?? undefined,
         revokesMessageId: row.revokesMessageId ?? undefined,
+        interruptsRunId: row.interruptsRunId ?? undefined,
         error: effectiveError,
         attachFiles,
         createdAt: row.createdAt.toISOString(),

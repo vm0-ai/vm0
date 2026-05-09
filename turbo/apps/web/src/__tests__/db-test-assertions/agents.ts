@@ -186,6 +186,7 @@ export async function getTestUserMessageRunStorage(params: {
       messageId: string;
       messageRunId: string | null;
       revokesMessageId: string | null;
+      interruptsRunId: string | null;
     }
   | undefined
 > {
@@ -216,6 +217,7 @@ export async function getTestUserMessageRunStorage(params: {
       messageId: chatMessages.id,
       messageRunId: chatMessages.runId,
       revokesMessageId: chatMessages.revokesMessageId,
+      interruptsRunId: chatMessages.interruptsRunId,
     })
     .from(chatMessages)
     .where(and(...conditions))

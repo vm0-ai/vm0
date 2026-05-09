@@ -32,6 +32,7 @@ import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 export const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+const MOCK_RUN_ID = "d0000000-0000-4000-a000-000000000001";
 export const SUB_AGENT_ID = "a1111111-0000-4000-a000-000000000001";
 
 export function mockSubagentThread(threadId: string) {
@@ -190,6 +191,14 @@ function isRecallMessageBody(body: { revokesMessageId?: string }): body is {
   return body.revokesMessageId !== undefined;
 }
 
+function isInterruptMessageBody(body: { interruptsRunId?: string }): body is {
+  interruptsRunId: string;
+  threadId: string;
+  clientMessageId?: string;
+} {
+  return body.interruptsRunId !== undefined;
+}
+
 export function mockChatLifecycle(options?: {
   threadId?: string;
   historyMessages?: MockPagedMessage[];
@@ -202,6 +211,10 @@ export function mockChatLifecycle(options?: {
   }) => void;
   onRecallMessageAppend?: (body: {
     revokesMessageId: string;
+    clientMessageId: string;
+  }) => void;
+  onInterruptMessageAppend?: (body: {
+    interruptsRunId: string;
     clientMessageId: string;
   }) => void;
   /**
@@ -241,6 +254,131 @@ export function mockChatLifecycle(options?: {
     if (clientMessageId !== undefined) {
       runUserMessageId = clientMessageId;
     }
+  };
+
+  const markRunCancelled = () => {
+    if (runStatus === "cancelled") {
+      return;
+    }
+    runStatus = "cancelled";
+    runError = "Run cancelled";
+    assistantVersion++;
+    updateChatRun(threadId);
+    createChatMessage(threadId);
+  };
+
+  const appendRecallControlMessage = (body: {
+    revokesMessageId: string;
+    threadId: string;
+    clientMessageId?: string;
+  }) => {
+    const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
+    const now = new Date().toISOString();
+    options?.onRecallMessageAppend?.({
+      revokesMessageId: body.revokesMessageId,
+      clientMessageId,
+    });
+    queuedMessages.push({
+      id: clientMessageId,
+      role: "user" as const,
+      content: null,
+      revokesMessageId: body.revokesMessageId,
+      createdAt: now,
+    });
+    return { runId: null, threadId: body.threadId, createdAt: now };
+  };
+
+  const appendInterruptControlMessage = (body: {
+    interruptsRunId: string;
+    threadId: string;
+    clientMessageId?: string;
+  }) => {
+    const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
+    const now = new Date().toISOString();
+    options?.onInterruptMessageAppend?.({
+      interruptsRunId: body.interruptsRunId,
+      clientMessageId,
+    });
+    queuedMessages.push({
+      id: clientMessageId,
+      role: "user" as const,
+      content: null,
+      interruptsRunId: body.interruptsRunId,
+      createdAt: now,
+    });
+    markRunCancelled();
+    return { runId: null, threadId: body.threadId, createdAt: now };
+  };
+
+  const terminal = new Set(["completed", "failed", "cancelled", "timeout"]);
+
+  const hasActiveRun = () => {
+    const hasSeedActiveRun = chatMessages.some((m) => {
+      const status = m.role === "assistant" ? m.status : undefined;
+      return (
+        m.runId !== undefined && status !== undefined && !terminal.has(status)
+      );
+    });
+    return hasSeedActiveRun || (runAssociated && !terminal.has(runStatus));
+  };
+
+  const appendQueuedUserMessage = async (body: {
+    prompt?: string;
+    attachFiles?: {
+      id: string;
+      filename: string;
+      contentType: string;
+      size: number;
+    }[];
+    clientMessageId?: string;
+  }) => {
+    const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
+    const attachFiles = body.attachFiles?.map((file) => {
+      return {
+        ...file,
+        url: `/f/test/${file.id}/${file.filename}`,
+      };
+    });
+    options?.onQueuedMessageAppend?.({
+      content: body.prompt,
+      attachments: attachFiles,
+      clientMessageId,
+    });
+    if (options?.appendGate) {
+      await options.appendGate;
+    }
+    const now = new Date().toISOString();
+    queuedMessages.push({
+      id: clientMessageId,
+      role: "user" as const,
+      content: body.prompt ?? "",
+      attachFiles,
+      createdAt: now,
+    });
+    return { runId: null, threadId, createdAt: now };
+  };
+
+  const startRunFromUserMessage = async (body: {
+    prompt?: string;
+    clientMessageId?: string;
+  }) => {
+    if (options?.sendGate) {
+      await options.sendGate;
+    }
+    if (body.prompt) {
+      runPrompt = body.prompt;
+    }
+    rememberRunUserMessageId(body.clientMessageId);
+    options?.onRunCreate?.();
+    runAssociated = true;
+    createChatRun(threadId);
+    createChatMessage(threadId);
+    return {
+      runId: MOCK_RUN_ID,
+      threadId,
+      status: "pending" as const,
+      createdAt: "2026-03-10T00:00:00Z",
+    };
   };
 
   server.use(
@@ -285,14 +423,14 @@ export function mockChatLifecycle(options?: {
           id: runUserMessageId,
           role: "user",
           content: runPrompt ?? "Hello",
-          runId: "run-test-1",
+          runId: MOCK_RUN_ID,
           createdAt: "2026-03-10T00:00:01Z",
         });
         pagedMessages.push({
           id: assistantId,
           role: "assistant",
           content: resultContent || null,
-          runId: "run-test-1",
+          runId: MOCK_RUN_ID,
           error: runError ?? undefined,
           status: runStatus,
           createdAt: "2026-03-10T00:00:02Z",
@@ -351,7 +489,7 @@ export function mockChatLifecycle(options?: {
           return m.runId!;
         });
       const lifecycleActiveRunIds =
-        runAssociated && !terminal.has(runStatus) ? ["run-test-1"] : [];
+        runAssociated && !terminal.has(runStatus) ? [MOCK_RUN_ID] : [];
       const activeRunIds = [...seedActiveRunIds, ...lifecycleActiveRunIds];
       return respond(200, {
         id: threadId,
@@ -380,83 +518,18 @@ export function mockChatLifecycle(options?: {
     // Unified chat message endpoint (creates thread + run + association)
     mockApi(chatMessagesContract.send, async ({ body, respond }) => {
       if (isRecallMessageBody(body)) {
-        const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
-        const now = new Date().toISOString();
-        options?.onRecallMessageAppend?.({
-          revokesMessageId: body.revokesMessageId,
-          clientMessageId,
-        });
-        queuedMessages.push({
-          id: clientMessageId,
-          role: "user" as const,
-          content: null,
-          revokesMessageId: body.revokesMessageId,
-          createdAt: now,
-        });
-        return respond(201, {
-          runId: null,
-          threadId: body.threadId,
-          createdAt: now,
-        });
+        return respond(201, appendRecallControlMessage(body));
       }
 
-      const terminal = new Set(["completed", "failed", "cancelled", "timeout"]);
-      const hasSeedActiveRun = chatMessages.some((m) => {
-        const status = m.role === "assistant" ? m.status : undefined;
-        return (
-          m.runId !== undefined && status !== undefined && !terminal.has(status)
-        );
-      });
-      const hasActiveRun =
-        hasSeedActiveRun || (runAssociated && !terminal.has(runStatus));
+      if (isInterruptMessageBody(body)) {
+        return respond(201, appendInterruptControlMessage(body));
+      }
+
       threadId = body.clientThreadId ?? threadId;
-      if (hasActiveRun) {
-        const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
-        const attachFiles = body.attachFiles?.map((file) => {
-          return {
-            ...file,
-            url: `/f/test/${file.id}/${file.filename}`,
-          };
-        });
-        options?.onQueuedMessageAppend?.({
-          content: body.prompt,
-          attachments: attachFiles,
-          clientMessageId,
-        });
-        if (options?.appendGate) {
-          await options.appendGate;
-        }
-        const now = new Date().toISOString();
-        queuedMessages.push({
-          id: clientMessageId,
-          role: "user" as const,
-          content: body.prompt,
-          attachFiles,
-          createdAt: now,
-        });
-        return respond(201, {
-          runId: null,
-          threadId,
-          createdAt: now,
-        });
-      }
-      if (options?.sendGate) {
-        await options.sendGate;
-      }
-      if (body.prompt) {
-        runPrompt = body.prompt;
-      }
-      rememberRunUserMessageId(body.clientMessageId);
-      options?.onRunCreate?.();
-      runAssociated = true;
-      createChatRun(threadId);
-      createChatMessage(threadId);
-      return respond(201, {
-        runId: "run-test-1",
-        threadId,
-        status: "pending",
-        createdAt: "2026-03-10T00:00:00Z",
-      });
+      const responseBody = hasActiveRun()
+        ? await appendQueuedUserMessage(body)
+        : await startRunFromUserMessage(body);
+      return respond(201, responseBody);
     }),
     mockApi(logsByIdContract.getById, ({ respond }) => {
       return respond(200, {
@@ -552,11 +625,7 @@ export function mockChatLifecycle(options?: {
       createChatMessage(threadId);
     },
     cancelRun: () => {
-      runStatus = "cancelled";
-      runError = "Run cancelled";
-      assistantVersion++;
-      updateChatRun(threadId);
-      createChatMessage(threadId);
+      markRunCancelled();
     },
   };
 }

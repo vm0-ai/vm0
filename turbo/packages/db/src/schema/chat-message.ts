@@ -57,6 +57,12 @@ export const chatMessages = pgTable(
       },
       { onDelete: "set null" },
     ),
+    interruptsRunId: uuid("interrupts_run_id").references(
+      () => {
+        return agentRuns.id;
+      },
+      { onDelete: "set null" },
+    ),
     role: text("role").notNull(), // "user" | "assistant"
     content: text("content"),
     error: text("error"),
@@ -75,6 +81,9 @@ export const chatMessages = pgTable(
       index("idx_chat_messages_run_id").on(table.runId),
       uniqueIndex("chat_messages_revokes_message_id_unique").on(
         table.revokesMessageId,
+      ),
+      uniqueIndex("chat_messages_interrupts_run_id_unique").on(
+        table.interruptsRunId,
       ),
       uniqueIndex("chat_messages_run_seq_unique").on(
         table.runId,

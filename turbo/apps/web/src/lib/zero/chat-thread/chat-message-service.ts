@@ -34,6 +34,11 @@ function visibleChatMessageCondition() {
       ${chatMessages.role} = 'user'
       AND ${chatMessages.runId} IS NULL
       AND ${chatMessages.revokesMessageId} IS NOT NULL
+    )
+    AND NOT (
+      ${chatMessages.role} = 'user'
+      AND ${chatMessages.runId} IS NULL
+      AND ${chatMessages.interruptsRunId} IS NOT NULL
     )`;
 }
 
@@ -49,6 +54,7 @@ const messageRowProjection = {
   runError: agentRuns.error,
   attachFiles: chatMessages.attachFiles,
   revokesMessageId: chatMessages.revokesMessageId,
+  interruptsRunId: chatMessages.interruptsRunId,
 } as const;
 
 type MessageRow = {
@@ -63,6 +69,7 @@ type MessageRow = {
   runError: string | null;
   attachFiles: ChatMessageAttachFiles | null;
   revokesMessageId: string | null;
+  interruptsRunId: string | null;
 };
 
 /**
@@ -98,6 +105,7 @@ export async function insertChatMessage(params: {
   error?: string | null;
   attachFiles?: ChatMessageAttachFiles;
   revokesMessageId?: string | null;
+  interruptsRunId?: string | null;
   id?: string;
   spanDims?: ChatSpanDimensions;
 }): Promise<{ id: string; createdAt: Date }> {
@@ -111,6 +119,7 @@ export async function insertChatMessage(params: {
         content: params.content,
         runId: params.runId,
         revokesMessageId: params.revokesMessageId ?? null,
+        interruptsRunId: params.interruptsRunId ?? null,
         error: params.error ?? null,
         attachFiles: params.attachFiles ?? null,
       })
@@ -364,6 +373,7 @@ export async function getPagedMessages(
     runError: string | null;
     attachFiles: ChatMessageAttachFiles | null;
     revokesMessageId: string | null;
+    interruptsRunId: string | null;
   }>;
   hasHistoryBefore: boolean;
 }> {
@@ -381,6 +391,7 @@ export async function getPagedMessages(
     runError: agentRuns.error,
     attachFiles: chatMessages.attachFiles,
     revokesMessageId: chatMessages.revokesMessageId,
+    interruptsRunId: chatMessages.interruptsRunId,
   };
 
   if (sinceId !== undefined && beforeId !== undefined) {

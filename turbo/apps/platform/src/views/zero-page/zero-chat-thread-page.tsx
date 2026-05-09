@@ -2131,6 +2131,65 @@ function ChatSkeleton() {
 // Thinking indicator — shown the entire time a run is active
 // ---------------------------------------------------------------------------
 
+function isCancelledAssistantMessage(
+  message: EnrichedChatMessage | undefined,
+): boolean {
+  return (
+    message?.role === "assistant" &&
+    message.error?.trim().toLowerCase() === "run cancelled"
+  );
+}
+
+function shouldRenderThinkingIndicator({
+  lastGroup,
+  lastIsAssistant,
+  running,
+  lastAssistantCancelled,
+}: {
+  lastGroup: GroupedChatMessageGroup | undefined;
+  lastIsAssistant: boolean;
+  running: boolean;
+  lastAssistantCancelled: boolean;
+}): boolean {
+  if (!lastGroup) {
+    return false;
+  }
+  if (lastAssistantCancelled && !running) {
+    return false;
+  }
+  return lastIsAssistant || running;
+}
+
+function ThinkingLabel({
+  isQueued,
+  rotatingLabel,
+}: {
+  isQueued: boolean;
+  rotatingLabel: string;
+}) {
+  const openQueueDrawer = useSet(openQueueDrawer$);
+  const pageSignal = useGet(pageSignal$);
+
+  if (isQueued) {
+    return (
+      <p className="zero-shimmer-text text-xs truncate">
+        Waiting in{" "}
+        <button
+          type="button"
+          onClick={() => {
+            openQueueDrawer(pageSignal);
+          }}
+          className="cursor-pointer underline underline-offset-2"
+        >
+          queue...
+        </button>
+      </p>
+    );
+  }
+
+  return <p className="zero-shimmer-text text-xs truncate">{rotatingLabel}</p>;
+}
+
 function ThinkingIndicator({
   thread,
   groups,
@@ -2139,8 +2198,9 @@ function ThinkingIndicator({
   groups: GroupedChatMessageGroup[];
 }) {
   const allFinishedLoadable = useLastLoadable(thread.allFinished$);
-  const runActive =
-    allFinishedLoadable.state === "hasData" && !allFinishedLoadable.data;
+  const allFinishedResolved = allFinishedLoadable.state === "hasData";
+  const allFinished = allFinishedResolved ? allFinishedLoadable.data : false;
+  const runActive = allFinishedResolved && !allFinished;
   const [c1, c2, c3] = useGet(thread.blockColors$);
   const blockStyle = {
     "--zb-c1": c1,
@@ -2150,41 +2210,33 @@ function ThinkingIndicator({
 
   const lastGroup = groups[groups.length - 1];
   const lastIsAssistant = lastGroup?.role === "assistant";
+  const lastAssistantMessage =
+    lastIsAssistant && lastGroup
+      ? lastGroup.messages[lastGroup.messages.length - 1]
+      : undefined;
+  const lastAssistantCancelled =
+    isCancelledAssistantMessage(lastAssistantMessage);
   const waitingForAssistant =
     lastGroup?.role === "user" &&
-    lastGroup.messages.some((message) => {
-      return !message.isRecalled;
-    });
+    lastGroup.messages.length > 0 &&
+    (!allFinishedResolved ||
+      lastGroup.messages.some((message) => {
+        return message.isOptimisticRun || message.runId !== undefined;
+      }));
   const running = runActive || waitingForAssistant;
   const rotatingLabel = useGet(thread.rotatingPhrase$);
   const donePhrase = useGet(thread.donePhrase$);
   const latestRunStatus = useLastResolved(thread.latestRunStatus$);
   const isQueued = latestRunStatus === "queued";
-  const openQueueDrawer = useSet(openQueueDrawer$);
-  const pageSignal = useGet(pageSignal$);
 
-  const thinkingLabel = isQueued ? (
-    <p className="zero-shimmer-text text-xs truncate">
-      Waiting in{" "}
-      <button
-        type="button"
-        onClick={() => {
-          openQueueDrawer(pageSignal);
-        }}
-        className="cursor-pointer underline underline-offset-2"
-      >
-        queue...
-      </button>
-    </p>
-  ) : (
-    <p className="zero-shimmer-text text-xs truncate">{rotatingLabel}</p>
-  );
-
-  if (!lastGroup) {
-    return null;
-  }
-
-  if (!lastIsAssistant && !running) {
+  if (
+    !shouldRenderThinkingIndicator({
+      lastGroup,
+      lastIsAssistant,
+      running,
+      lastAssistantCancelled,
+    })
+  ) {
     return null;
   }
 
@@ -2205,7 +2257,10 @@ function ThinkingIndicator({
                 <span />
                 <span />
               </span>
-              {thinkingLabel}
+              <ThinkingLabel
+                isQueued={isQueued}
+                rotatingLabel={rotatingLabel}
+              />
             </div>
           ) : (
             <div className="flex flex-col gap-1.5 h-5 justify-center">
@@ -2239,7 +2294,7 @@ function ThinkingIndicator({
               <span />
               <span />
             </span>
-            {thinkingLabel}
+            <ThinkingLabel isQueued={isQueued} rotatingLabel={rotatingLabel} />
           </div>
         </div>
       </div>
@@ -2758,38 +2813,23 @@ function UserMessageAttachments({
 
 function userMessageAriaLabel({
   isQueued,
-  isRecalled,
 }: {
   isQueued: boolean;
-  isRecalled: boolean;
 }): string | undefined {
   if (isQueued) {
     return "Queued message";
   }
-  if (isRecalled) {
-    return "Recalled message";
-  }
   return undefined;
 }
 
-function UserMessageStatusLabel({
-  isQueued,
-  isRecalled,
-}: {
-  isQueued: boolean;
-  isRecalled: boolean;
-}) {
-  if (!isQueued && !isRecalled) {
+function UserMessageStatusLabel({ isQueued }: { isQueued: boolean }) {
+  if (!isQueued) {
     return null;
   }
   return (
     <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-      <span
-        className={`h-1.5 w-1.5 rounded-full ${
-          isQueued ? "bg-primary/70" : "bg-muted-foreground/60"
-        }`}
-      />
-      {isQueued ? "Queued" : "Recalled"}
+      <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
+      Queued
     </div>
   );
 }
@@ -2880,10 +2920,8 @@ function PagedUserMessage({
   const copyText = strippedContent;
   const canCopy = copyText.trim().length > 0 || clipboardAttachments.length > 0;
   const isQueued = message.isQueued;
-  const isRecalled = message.isRecalled;
   const canRecall =
     isQueued &&
-    !isRecalled &&
     message.runId === undefined &&
     message.revokesMessageId === undefined;
 
@@ -2918,12 +2956,12 @@ function PagedUserMessage({
     <div
       data-role="user"
       className="group"
-      aria-label={userMessageAriaLabel({ isQueued, isRecalled })}
+      aria-label={userMessageAriaLabel({ isQueued })}
     >
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
-          <UserMessageStatusLabel isQueued={isQueued} isRecalled={isRecalled} />
+          <UserMessageStatusLabel isQueued={isQueued} />
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
             {bodyBlocks.length > 0 && (
               <div className="px-4 py-3">

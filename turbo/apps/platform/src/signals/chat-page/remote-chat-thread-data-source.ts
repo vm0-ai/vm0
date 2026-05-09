@@ -5,7 +5,6 @@ import {
   chatThreadMessagesContract,
   chatMessagesContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroRunsCancelContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { setAblyLoop$ } from "../realtime.ts";
@@ -181,16 +180,29 @@ const listMessagesBefore$ = command(
 const cancelRuns$ = command(
   async (
     { get },
-    { threadId, activeRunIds }: CancelRunsArgs,
+    { threadId, agentId, interrupts }: CancelRunsArgs,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroRunsCancelContract);
-    L.debug("cancelRun$ start", { threadId, pendingRunIds: activeRunIds });
+    const client = get(zeroClient$)(chatMessagesContract);
+    L.debug("cancelRun$ start", {
+      threadId,
+      pendingRunIds: interrupts.map((interrupt) => {
+        return interrupt.runId;
+      }),
+    });
     await Promise.all(
-      activeRunIds.map(async (runId) => {
+      interrupts.map(async ({ runId, clientMessageId }) => {
         await accept(
-          client.cancel({ params: { id: runId }, fetchOptions: { signal } }),
-          [200],
+          client.send({
+            body: {
+              agentId,
+              threadId,
+              interruptsRunId: runId,
+              clientMessageId,
+            },
+            fetchOptions: { signal },
+          }),
+          [201],
         );
         L.debug("cancelRun$ server accepted cancel", { threadId, runId });
       }),
