@@ -791,14 +791,18 @@ async fn reader_loop(
                     drop(closed_registration);
                     if let Some(forward_plan) = forward_plan {
                         for event_plan in forward_plan.events.iter() {
+                            debug_assert!(
+                                event_plan.chunk_len <= decoded.chunk.len(),
+                                "bounded output plan length must fit decoded chunk length"
+                            );
+                            let Some(chunk) = decoded.chunk.get(..event_plan.chunk_len) else {
+                                shared.remove_bounded_output_sender(msg.seq);
+                                break;
+                            };
                             let event = BoundedExecOutputEvent {
                                 stream: event_plan.stream,
                                 sequence: event_plan.sequence,
-                                chunk: decoded
-                                    .chunk
-                                    .get(..event_plan.chunk_len)
-                                    .unwrap_or_default()
-                                    .to_vec(),
+                                chunk: chunk.to_vec(),
                                 truncated: event_plan.truncated,
                             };
                             if forward_plan.event_tx.send(event).is_err() {
