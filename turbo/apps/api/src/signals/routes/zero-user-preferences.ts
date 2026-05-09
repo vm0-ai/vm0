@@ -3,7 +3,6 @@ import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-u
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import type { RouteEntry } from "../route";
 import { userPreferences } from "../services/zero-user-data.service";
 
@@ -21,12 +20,9 @@ const getUserPreferencesInner$ = computed(async (get): Promise<unknown> => {
 export const zeroUserPreferencesRoutes: readonly RouteEntry[] = [
   {
     route: zeroUserPreferencesContract.get,
-    handler: shadowCompareRoute({
-      route: zeroUserPreferencesContract.get,
-      handler: authRoute(
-        { requireOrganization: true, missingOrganizationStatus: 401 },
-        getUserPreferencesInner$,
-      ),
-    }),
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      getUserPreferencesInner$,
+    ),
   },
 ];

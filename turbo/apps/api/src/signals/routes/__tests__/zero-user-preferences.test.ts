@@ -4,7 +4,6 @@ import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-u
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -24,6 +23,42 @@ describe("GET /api/zero/user-preferences", () => {
     return store.set(deleteUserData$, fixture, context.signal);
   });
 
+  it("returns 401 when the request is unauthenticated", async () => {
+    const client = setupApp({ context })(zeroUserPreferencesContract);
+
+    const response = await accept(client.get({ headers: {} }), [401]);
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    const fixture = await track(
+      store.set(seedUserPreferences$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, null);
+
+    const client = setupApp({ context })(zeroUserPreferencesContract);
+
+    const response = await accept(
+      client.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
   it("returns the persisted preferences for the current org member", async () => {
     const fixture = await track(
       store.set(
@@ -38,7 +73,6 @@ describe("GET /api/zero/user-preferences", () => {
       ),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    mockApiShadowCompareRoutes([zeroUserPreferencesContract.get]);
 
     const client = setupApp({ context })(zeroUserPreferencesContract);
 
@@ -61,7 +95,6 @@ describe("GET /api/zero/user-preferences", () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
-    mockApiShadowCompareRoutes([zeroUserPreferencesContract.get]);
 
     const client = setupApp({ context })(zeroUserPreferencesContract);
 
