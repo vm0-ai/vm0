@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.21...runner-rs-v0.100.22) (2026-05-09)
+
+
+### Refactoring
+
+* **runner:** migrate internal execs to bounded exec ([#12322](https://github.com/vm0-ai/vm0/issues/12322)) ([f0b84b4](https://github.com/vm0-ai/vm0/commit/f0b84b4f09bad9abc16074af3f0190944bba3d04))
+
 ## [0.100.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.20...runner-rs-v0.100.21) (2026-05-09)
 
 ## [0.100.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.19...runner-rs-v0.100.20) (2026-05-09)

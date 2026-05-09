@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.23.0](https://github.com/vm0-ai/vm0/compare/api-v1.22.1...api-v1.23.0) (2026-05-09)
+
+
+### Features
+
+* **api:** port official telegram bot logic for parity with web ([#12378](https://github.com/vm0-ai/vm0/issues/12378)) ([a8ce3d7](https://github.com/vm0-ai/vm0/commit/a8ce3d74db51d11ffe43d7dc0a92bad524383046)), closes [#12290](https://github.com/vm0-ai/vm0/issues/12290) [#12370](https://github.com/vm0-ai/vm0/issues/12370)
+
+
+### Bug Fixes
+
+* **api:** exclude user-revoke ghost rows in visibleChatMessageCondition ([#12372](https://github.com/vm0-ai/vm0/issues/12372)) ([656e2ab](https://github.com/vm0-ai/vm0/commit/656e2ab8a5cacc14cb7c2c1c39d18faa4626b628))
+
+
+### Refactoring
+
+* **api:** migrate api keys get to api backend ([#12357](https://github.com/vm0-ai/vm0/issues/12357)) ([d967a6c](https://github.com/vm0-ai/vm0/commit/d967a6cb1a9fbfc412deb897786b997e27187bc3)), closes [#12350](https://github.com/vm0-ai/vm0/issues/12350)
+* **api:** migrate billing auto-recharge get to api backend ([#12351](https://github.com/vm0-ai/vm0/issues/12351)) ([5686c5c](https://github.com/vm0-ai/vm0/commit/5686c5c2da47a4c71912c59073a8acb11c5effbf))
+* **api:** migrate billing invoices get to api backend ([#12363](https://github.com/vm0-ai/vm0/issues/12363)) ([504c11a](https://github.com/vm0-ai/vm0/commit/504c11a585c681e2d5c15bc7504e87538c6f13c3))
+* **api:** migrate billing status get to api backend ([#12353](https://github.com/vm0-ai/vm0/issues/12353)) ([351be15](https://github.com/vm0-ai/vm0/commit/351be15fdbb2a54e21c973e72d6b9ee4a59a8008)), closes [#12345](https://github.com/vm0-ai/vm0/issues/12345)
+* **api:** migrate computer use host get to api backend ([#12371](https://github.com/vm0-ai/vm0/issues/12371)) ([fe3a421](https://github.com/vm0-ai/vm0/commit/fe3a421e42e0515db80dd87ea09ff7173f81517a)), closes [#12367](https://github.com/vm0-ai/vm0/issues/12367)
+* **api:** migrate insights get ([#12369](https://github.com/vm0-ai/vm0/issues/12369)) ([1ed312e](https://github.com/vm0-ai/vm0/commit/1ed312ebda451ebf8528bdc0bf3e17889364fff8))
+* **api:** migrate insights range get ([#12376](https://github.com/vm0-ai/vm0/issues/12376)) ([65d16b2](https://github.com/vm0-ai/vm0/commit/65d16b2fbfe230bb85e6e9c73690c8d6a97fe15d))
+* **api:** migrate secrets get to api backend ([#12377](https://github.com/vm0-ai/vm0/issues/12377)) ([ce5bf36](https://github.com/vm0-ai/vm0/commit/ce5bf363e103188c3fa5e76935f4e92e89cdbe8f))
+* **api:** migrate usage insight get ([#12356](https://github.com/vm0-ai/vm0/issues/12356)) ([3f31844](https://github.com/vm0-ai/vm0/commit/3f31844fdd3e485b813da1f8a52123451eed5047))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.5.1
+    * @vm0/core bumped to 8.265.1
+    * @vm0/db bumped to 1.3.2
+
 ## [1.22.1](https://github.com/vm0-ai/vm0/compare/api-v1.22.0...api-v1.22.1) (2026-05-09)
 
 
