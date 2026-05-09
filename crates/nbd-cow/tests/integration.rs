@@ -75,6 +75,13 @@ fn claim_free_device_for_direct_connect() -> nbd_cow::device_lock::NbdDeviceClai
     panic!("no free NBD device");
 }
 
+fn nbd_pid(device_index: u32) -> Option<u32> {
+    let pid_path = format!("/sys/block/nbd{device_index}/pid");
+    std::fs::read_to_string(pid_path)
+        .ok()
+        .and_then(|contents| contents.trim().parse().ok())
+}
+
 // ---------------------------------------------------------------------------
 // Full device lifecycle tests (require root + nbd module)
 // ---------------------------------------------------------------------------
@@ -520,6 +527,7 @@ async fn connect_device_specific_index() {
         }));
     }
 
+    let connect_tid = unsafe { libc::gettid() } as u32;
     let connect_result = nbd_cow::netlink::connect_device(
         device_index,
         &client_fds,
@@ -540,7 +548,7 @@ async fn connect_device_specific_index() {
         let _ = h.await;
     }
     drop(client_fds);
-    if connected {
+    if connected || nbd_pid(device_index) == Some(connect_tid) {
         let _ = nbd_cow::netlink::disconnect(device_index);
     }
 
