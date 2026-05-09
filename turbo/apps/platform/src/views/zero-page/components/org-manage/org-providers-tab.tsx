@@ -7,6 +7,7 @@ import {
   type ModelProviderResponse,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   cn,
   Button,
@@ -43,7 +44,10 @@ import {
 import { PersonalProviderDialog } from "../settings/personal-provider-dialog.tsx";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
-import { modelFirstModelProviderEnabled$ } from "../../../../signals/external/feature-switch.ts";
+import {
+  featureSwitch$,
+  modelFirstModelProviderEnabled$,
+} from "../../../../signals/external/feature-switch.ts";
 import { OrgModelPoliciesSection } from "./org-model-policies-section.tsx";
 
 export function OrgProvidersTab() {
@@ -91,7 +95,14 @@ export function OrgProvidersTab() {
  * pill so users see the failed row at a glance.
  */
 function StaleBannerSection() {
+  const features = useGet(featureSwitch$);
   const providersLoadable = useLoadable(orgConfiguredProviders$);
+  const codexOauthEnabled =
+    features?.[FeatureSwitchKey.CodexOauthProvider] ?? false;
+  if (!codexOauthEnabled) {
+    return null;
+  }
+
   const providers =
     providersLoadable.state === "hasData" ? providersLoadable.data : [];
   return <StaleProviderBanner providers={providers} />;

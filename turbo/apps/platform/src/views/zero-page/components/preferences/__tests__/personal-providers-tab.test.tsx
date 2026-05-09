@@ -178,6 +178,31 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("hides ChatGPT OAuth when the Codex OAuth provider switch is off", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+      [FeatureSwitchKey.CodexOauthProvider]: false,
+    });
+    mockPreferences();
+    setMockPersonalModelProviders([makeProvider("codex-oauth-token")]);
+    detachedSetupPage({ context, path: "/settings" });
+
+    await openModelConfiguration();
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("oauth-card-claude-code-oauth-token"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("oauth-card-codex-oauth-token"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("ChatGPT (Codex)")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/ChatGPT authorization/i),
+    ).not.toBeInTheDocument();
+  });
+
   it("opens the Claude Code OAuth write dialog without a model selector", async () => {
     setMockFeatureSwitches({
       [FeatureSwitchKey.ModelFirstModelProvider]: true,
