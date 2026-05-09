@@ -178,7 +178,7 @@ export async function getTestChatThreadLastReadAt(
  */
 export async function getTestUserMessageRunStorage(params: {
   threadId: string;
-  content: string;
+  content: string | null;
   runId?: string | null;
   revokesMessageId?: string | null;
 }): Promise<
@@ -193,7 +193,9 @@ export async function getTestUserMessageRunStorage(params: {
   const conditions = [
     eq(chatMessages.chatThreadId, params.threadId),
     eq(chatMessages.role, "user"),
-    eq(chatMessages.content, params.content),
+    params.content === null
+      ? isNull(chatMessages.content)
+      : eq(chatMessages.content, params.content),
   ];
   if (params.runId !== undefined) {
     conditions.push(

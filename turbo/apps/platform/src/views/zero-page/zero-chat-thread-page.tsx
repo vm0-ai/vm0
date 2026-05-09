@@ -24,6 +24,7 @@ import {
   IconPin,
   IconVolume2,
   IconArrowBarToUp,
+  IconArrowBackUp,
   IconBrandGoogleDrive,
   IconDownload,
   IconFile,
@@ -2682,6 +2683,90 @@ function UserMessageAttachments({
   );
 }
 
+function userMessageAriaLabel({
+  isQueued,
+  isRecalled,
+}: {
+  isQueued: boolean;
+  isRecalled: boolean;
+}): string | undefined {
+  if (isQueued) {
+    return "Queued message";
+  }
+  if (isRecalled) {
+    return "Recalled message";
+  }
+  return undefined;
+}
+
+function UserMessageStatusLabel({
+  isQueued,
+  isRecalled,
+}: {
+  isQueued: boolean;
+  isRecalled: boolean;
+}) {
+  if (!isQueued && !isRecalled) {
+    return null;
+  }
+  return (
+    <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${
+          isQueued ? "bg-primary/70" : "bg-muted-foreground/60"
+        }`}
+      />
+      {isQueued ? "Queued" : "Recalled"}
+    </div>
+  );
+}
+
+function UserMessageActions({
+  canCopy,
+  canRecall,
+  copied,
+  onCopy,
+  onRecall,
+}: {
+  canCopy: boolean;
+  canRecall: boolean;
+  copied: boolean;
+  onCopy: () => void;
+  onRecall: () => void;
+}) {
+  if (!canCopy && !canRecall) {
+    return null;
+  }
+  return (
+    <div className="flex justify-end gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+      {canRecall && (
+        <button
+          type="button"
+          onClick={onRecall}
+          className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+          aria-label="Recall message"
+        >
+          <IconArrowBackUp size={18} stroke={1.5} />
+        </button>
+      )}
+      {canCopy && (
+        <button
+          type="button"
+          onClick={onCopy}
+          className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+          aria-label="Copy message"
+        >
+          {copied ? (
+            <IconCheck size={18} stroke={1.5} />
+          ) : (
+            <IconCopy size={18} stroke={1.5} />
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function PagedUserMessage({
   message,
   thread,
@@ -2715,11 +2800,19 @@ function PagedUserMessage({
   const copiedId = useGet(thread.copiedMessageId$);
   const copied = copiedId === message.id;
   const copyMessage = useSet(thread.copyMessage$);
+  const recallMessage = useSet(thread.recallMessage$);
+  const focusInput = useSet(thread.focusInput$);
   const allAttachments = resolveAttachments(message, parsed);
   const clipboardAttachments = clipboardAttachmentsFromMessage(message, parsed);
   const copyText = strippedContent;
   const canCopy = copyText.trim().length > 0 || clipboardAttachments.length > 0;
   const isQueued = message.isQueued;
+  const isRecalled = message.isRecalled;
+  const canRecall =
+    isQueued &&
+    !isRecalled &&
+    message.runId === undefined &&
+    message.revokesMessageId === undefined;
 
   const handleCopy = () => {
     if (!canCopy) {
@@ -2735,21 +2828,29 @@ function PagedUserMessage({
     );
   };
 
+  const handleRecall = () => {
+    if (!canRecall) {
+      return;
+    }
+    detach(
+      (async () => {
+        await recallMessage(message, pageSignal);
+        focusInput();
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
   return (
     <div
       data-role="user"
       className="group"
-      aria-label={isQueued ? "Queued message" : undefined}
+      aria-label={userMessageAriaLabel({ isQueued, isRecalled })}
     >
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
-          {isQueued && (
-            <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-              <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-              Queued
-            </div>
-          )}
+          <UserMessageStatusLabel isQueued={isQueued} isRecalled={isRecalled} />
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
             {bodyBlocks.length > 0 && (
               <div className="px-4 py-3">
@@ -2765,22 +2866,13 @@ function PagedUserMessage({
               onImageClick={openLightbox}
             />
           </div>
-          {canCopy && (
-            <div className="flex justify-end mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-                aria-label="Copy message"
-              >
-                {copied ? (
-                  <IconCheck size={18} stroke={1.5} />
-                ) : (
-                  <IconCopy size={18} stroke={1.5} />
-                )}
-              </button>
-            </div>
-          )}
+          <UserMessageActions
+            canCopy={canCopy}
+            canRecall={canRecall}
+            copied={copied}
+            onCopy={handleCopy}
+            onRecall={handleRecall}
+          />
         </div>
       </div>
     </div>

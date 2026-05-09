@@ -4,6 +4,7 @@ import type { ChatThread } from "../agent-chat.ts";
 import type {
   AppendQueuedMessageArgs,
   ChatThreadDataSource,
+  RecallMessageArgs,
 } from "./chat-thread-data-source.ts";
 
 const localPatchDraft$ = command((): Promise<void> => {
@@ -82,12 +83,32 @@ export function createLocalChatThreadDataSource(input: {
     },
   );
 
+  const localRecallMessage$ = command(
+    (
+      _visitor,
+      args: RecallMessageArgs,
+      _signal: AbortSignal,
+    ): Promise<PagedChatMessage> => {
+      queuedMessageAppends = queuedMessageAppends.filter((append) => {
+        return append.clientMessageId !== args.revokesMessageId;
+      });
+      return Promise.resolve({
+        id: args.clientMessageId,
+        role: "user",
+        content: null,
+        revokesMessageId: args.revokesMessageId,
+        createdAt: new Date().toISOString(),
+      });
+    },
+  );
+
   return {
     getThread$,
     reloadThread$: localReloadThread$,
     initialPage$,
     patchDraft$: localPatchDraft$,
     appendQueuedMessage$: localAppendQueuedMessage$,
+    recallMessage$: localRecallMessage$,
     listMessagesAfter$: localListMessagesAfter$,
     listMessagesBefore$: localListMessagesBefore$,
     cancelRuns$,

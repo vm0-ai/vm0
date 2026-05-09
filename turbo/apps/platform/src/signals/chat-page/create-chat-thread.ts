@@ -15,6 +15,7 @@ import {
 } from "../auto-scroll.ts";
 import {
   createDraftSignals,
+  createRestoredAttachment,
   type DraftSignals,
 } from "../zero-page/chat-draft.ts";
 import {
@@ -78,6 +79,16 @@ function optimisticAssociation(
     return msg.optimisticAssociation;
   }
   return undefined;
+}
+
+function isRecallControlMessage(
+  msg: PagedChatMessage | OptimisticPagedChatMessage,
+): boolean {
+  return (
+    msg.role === "user" &&
+    msg.runId === undefined &&
+    msg.revokesMessageId !== undefined
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -177,6 +188,7 @@ export interface ChatThreadSignals {
     [string, ModelSelectionRequest | null, AbortSignal]
   >;
   queueMessage$: Command<Promise<void>, [string, AbortSignal]>;
+  recallMessage$: Command<Promise<void>, [EnrichedChatMessage, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
   autoScroll$: Command<void, []>;
@@ -707,34 +719,64 @@ function createAllMessagesComputed({
     const history = get(historyMessages$);
     const deltas = get(deltaMessages$);
     const raw = [...history, ...initial.messages, ...deltas];
-    const revokedIds = new Set(
+    const rawById = new Map(
+      raw.map((msg) => {
+        return [msg.id, msg] as const;
+      }),
+    );
+    const recalledIds = new Set(
       raw.flatMap((msg) => {
-        return msg.revokesMessageId ? [msg.revokesMessageId] : [];
+        return isRecallControlMessage(msg) && msg.revokesMessageId
+          ? [msg.revokesMessageId]
+          : [];
+      }),
+    );
+    const replacedIds = new Set(
+      raw.flatMap((msg) => {
+        return !isRecallControlMessage(msg) && msg.revokesMessageId
+          ? [msg.revokesMessageId]
+          : [];
       }),
     );
     return raw
       .filter((msg) => {
-        return !revokedIds.has(msg.id);
+        return !recalledIds.has(msg.id) && !replacedIds.has(msg.id);
       })
       .map((msg) => {
-        const { blocks } = parseBodyRenderBlocks(msg.content ?? "");
+        const recallTarget =
+          isRecallControlMessage(msg) && msg.revokesMessageId
+            ? rawById.get(msg.revokesMessageId)
+            : undefined;
+        const displayMessage =
+          recallTarget && msg.role === "user"
+            ? {
+                ...msg,
+                content: recallTarget.content,
+                attachFiles: recallTarget.attachFiles,
+              }
+            : msg;
+        const { blocks } = parseBodyRenderBlocks(displayMessage.content ?? "");
         const isUnassociatedUser =
-          msg.role === "user" && msg.runId === undefined;
-        const optimistic = optimisticAssociation(msg);
-        const isQueued = isUnassociatedUser && optimistic !== "run";
-        if (msg.role !== "assistant") {
+          displayMessage.role === "user" && displayMessage.runId === undefined;
+        const optimistic = optimisticAssociation(displayMessage);
+        const isRecalled = isRecallControlMessage(msg);
+        const isQueued =
+          isUnassociatedUser && !isRecalled && optimistic !== "run";
+        if (displayMessage.role !== "assistant") {
           return {
-            ...msg,
+            ...displayMessage,
             role: "user" as const,
             blocks: enrichBlocksWithTextPreviews(blocks),
             isQueued,
+            isRecalled,
           };
         }
         return {
-          ...msg,
+          ...displayMessage,
           role: "assistant" as const,
           blocks: enrichBlocksWithTextPreviews(blocks),
           isQueued,
+          isRecalled,
         };
       });
   });
@@ -1478,13 +1520,105 @@ function createQueueMessage(deps: QueueMessageDeps) {
   });
 }
 
-interface MessageCommandsDeps extends SendMessageDeps, QueueMessageDeps {}
+interface RecallMessageDeps {
+  threadId: string;
+  threadData$: Computed<Promise<ChatThread | null>>;
+  draft: DraftSignals;
+  insertOptimisticMessage$: Command<void, [OptimisticPagedChatMessage]>;
+  dataSource: ChatThreadDataSource;
+}
+
+function createRecallMessage(deps: RecallMessageDeps) {
+  const { threadId, threadData$, draft, insertOptimisticMessage$, dataSource } =
+    deps;
+
+  return command(
+    async ({ get, set }, message: EnrichedChatMessage, signal: AbortSignal) => {
+      if (
+        message.role !== "user" ||
+        message.runId !== undefined ||
+        message.revokesMessageId !== undefined
+      ) {
+        return;
+      }
+
+      const thread = await get(threadData$);
+      signal.throwIfAborted();
+      if (!thread) {
+        return;
+      }
+
+      const clientMessageId = crypto.randomUUID();
+      set(insertOptimisticMessage$, {
+        id: clientMessageId,
+        role: "user",
+        content: null,
+        revokesMessageId: message.id,
+        createdAt: new Date().toISOString(),
+      });
+      set(
+        draft.seed$,
+        message.content ?? "",
+        (message.attachFiles ?? []).map(createRestoredAttachment),
+      );
+
+      await set(
+        dataSource.recallMessage$,
+        {
+          threadId,
+          agentId: thread.agentId,
+          revokesMessageId: message.id,
+          clientMessageId,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+    },
+  );
+}
+
+interface MessageCommandsDeps
+  extends SendMessageDeps, QueueMessageDeps, RecallMessageDeps {}
 
 function createMessageCommands(deps: MessageCommandsDeps) {
   return {
     sendMessage$: createSendMessage(deps),
     queueMessage$: createQueueMessage(deps),
+    recallMessage$: createRecallMessage(deps),
   };
+}
+
+function createCancelRunWithQueuedRecall({
+  cancelRun$,
+  groupedChatMessages$,
+  recallMessage$,
+}: {
+  cancelRun$: Command<Promise<void>, [AbortSignal]>;
+  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
+  recallMessage$: Command<Promise<void>, [EnrichedChatMessage, AbortSignal]>;
+}) {
+  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const groups = await get(groupedChatMessages$);
+    signal.throwIfAborted();
+    const queuedMessages = groups.flatMap((group) => {
+      return group.messages.filter((message) => {
+        return (
+          message.role === "user" &&
+          message.isQueued &&
+          message.runId === undefined &&
+          message.revokesMessageId === undefined
+        );
+      });
+    });
+
+    await set(cancelRun$, signal);
+    signal.throwIfAborted();
+
+    for (const message of queuedMessages) {
+      await set(recallMessage$, message, signal);
+      signal.throwIfAborted();
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1592,7 +1726,7 @@ export function createChatThreadSignals(
 
   const { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ } =
     createDraftSync(threadId, draft, dataSource);
-  const { allFinished$, subscribeChatThread$, cancelRun$ } = createRunTracking({
+  const runTracking = createRunTracking({
     threadId,
     reloadThread$,
     threadData$,
@@ -1616,9 +1750,15 @@ export function createChatThreadSignals(
     dataSource,
   });
 
+  const cancelRun$ = createCancelRunWithQueuedRecall({
+    cancelRun$: runTracking.cancelRun$,
+    groupedChatMessages$,
+    recallMessage$: messageCommands.recallMessage$,
+  });
+
   const { setInputRef$, focusInput$ } = createInputRef();
   const { blockColors$, rotatingPhrase$, donePhrase$, runPhraseLoop$ } =
-    createPhraseLoop(groupedChatMessages$, allFinished$);
+    createPhraseLoop(groupedChatMessages$, runTracking.allFinished$);
   const {
     artifacts$,
     artifactsDrawerOpen$,
@@ -1660,10 +1800,10 @@ export function createChatThreadSignals(
     groupedChatMessages$,
     hasOlderHistory$,
     latestRunStatus$,
-    allFinished$,
+    allFinished$: runTracking.allFinished$,
     fetchNextPage$,
     loadHistory$,
-    subscribeChatThread$,
+    subscribeChatThread$: runTracking.subscribeChatThread$,
     insertOptimisticMessage$,
     blockColors$,
     rotatingPhrase$,

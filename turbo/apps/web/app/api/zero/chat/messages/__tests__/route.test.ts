@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { randomUUID } from "node:crypto";
 import { HttpResponse } from "msw";
 import { clerkClient } from "@clerk/nextjs/server";
 import { POST } from "../route";
@@ -44,6 +45,7 @@ import { http } from "../../../../../../src/__tests__/msw";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 import { createQueryCounter } from "../../../../../../src/__tests__/db-query-counter";
 import { GET as getChatThreadById } from "../../../chat-threads/[id]/route";
+import { GET as getChatThreadMessages } from "../../../chat-threads/[id]/messages/route";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -215,6 +217,130 @@ describe("POST /api/zero/chat/messages", () => {
       expect(queuedMessage).toBeDefined();
       expect(queuedMessage!.runId).toBeNull();
       expect(queuedMessage!.revokesMessageId).toBeNull();
+    });
+
+    it("should recall only an unassociated user message", async () => {
+      const firstResponse = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "first message",
+          }),
+        }),
+      );
+      expect(firstResponse.status).toBe(201);
+      const firstData = await firstResponse.json();
+      await context.mocks.flushAfter();
+
+      const secondResponse = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "queued message",
+            threadId: firstData.threadId,
+          }),
+        }),
+      );
+      expect(secondResponse.status).toBe(201);
+
+      const queuedStorage = await getTestUserMessageRunStorage({
+        threadId: firstData.threadId,
+        content: "queued message",
+        runId: null,
+        revokesMessageId: null,
+      });
+      if (!queuedStorage) {
+        throw new Error("Expected queued user message storage");
+      }
+
+      const recallResponse = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            threadId: firstData.threadId,
+            revokesMessageId: queuedStorage.messageId,
+            clientMessageId: randomUUID(),
+          }),
+        }),
+      );
+
+      expect(recallResponse.status).toBe(201);
+      const recallData = await recallResponse.json();
+      expect(recallData.runId).toBeNull();
+
+      const messages = await getTestChatMessagesByThread(firstData.threadId);
+      const recallMessage = messages.find((message) => {
+        return message.revokesMessageId === queuedStorage.messageId;
+      });
+      expect(recallMessage).toBeDefined();
+      expect(recallMessage!.role).toBe("user");
+      expect(recallMessage!.runId).toBeNull();
+      expect(recallMessage!.content).toBeNull();
+
+      const pageResponse = await getChatThreadMessages(
+        createTestRequest(
+          `http://localhost:3000/api/zero/chat-threads/${firstData.threadId}/messages`,
+        ),
+      );
+      expect(pageResponse.status).toBe(200);
+      const page = await pageResponse.json();
+      const visibleQueued = page.messages.find((message: { id: string }) => {
+        return message.id === queuedStorage.messageId;
+      });
+      const visibleRecall = page.messages.find(
+        (message: { id: string; revokesMessageId?: string }) => {
+          return message.id === recallMessage!.id;
+        },
+      );
+      expect(visibleQueued).toBeDefined();
+      expect(visibleRecall).toBeDefined();
+      expect(visibleRecall!.revokesMessageId).toBe(queuedStorage.messageId);
+    });
+
+    it("should reject recall for a run-associated user message", async () => {
+      const firstResponse = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "first message",
+          }),
+        }),
+      );
+      expect(firstResponse.status).toBe(201);
+      const firstData = await firstResponse.json();
+      await context.mocks.flushAfter();
+
+      const storage = await getTestUserMessageRunStorage({
+        threadId: firstData.threadId,
+        content: "first message",
+        runId: firstData.runId,
+      });
+      if (!storage) {
+        throw new Error("Expected run-associated user message storage");
+      }
+
+      const recallResponse = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            threadId: firstData.threadId,
+            revokesMessageId: storage.messageId,
+            clientMessageId: randomUUID(),
+          }),
+        }),
+      );
+
+      expect(recallResponse.status).toBe(400);
     });
 
     it("should create a new run for an existing thread after the active run completes", async () => {

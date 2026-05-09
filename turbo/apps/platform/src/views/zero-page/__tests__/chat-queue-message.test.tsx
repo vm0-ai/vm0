@@ -3,7 +3,11 @@ import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  detachedSetupPage,
+  fill,
+} from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { optimisticChatThread$ } from "../../../signals/chat-page/optimistic-chat-thread-state.ts";
 import {
@@ -96,6 +100,16 @@ async function expectQueuedMessages(contents: string[]): Promise<void> {
   });
 }
 
+async function expectRecalledMessages(contents: string[]): Promise<void> {
+  await waitFor(() => {
+    const recalledMessages = screen.getAllByLabelText("Recalled message");
+    expect(recalledMessages).toHaveLength(contents.length);
+    for (const [index, content] of contents.entries()) {
+      expect(recalledMessages[index]).toHaveTextContent(content);
+    }
+  });
+}
+
 async function expectQueuedMessagesBelowThinkingIndicator(
   contents: string[],
 ): Promise<void> {
@@ -146,6 +160,62 @@ describe("chat queued user messages", () => {
     ]);
     expect(appendedContents).toStrictEqual(["first queued", "second queued"]);
     expect(new Set(appendedClientIds).size).toBe(2);
+  });
+
+  it("recalls a queued message back into the composer", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle();
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+    });
+
+    await startActiveRun(user);
+    await sendQueuedMessage(user, "recall this message");
+    await expectQueuedMessages(["recall this message"]);
+
+    click(screen.getByLabelText("Recall message"));
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Recalled message")).toHaveTextContent(
+        "recall this message",
+      );
+      expect(screen.getByPlaceholderText(/Type your next message/)).toHaveValue(
+        "recall this message",
+      );
+    });
+  });
+
+  it("recalls queued messages when stopping the active run", async () => {
+    const user = userEvent.setup({ delay: null });
+    const recalledTargets: string[] = [];
+    mockChatLifecycle({
+      onRecallMessageAppend: (body) => {
+        recalledTargets.push(body.revokesMessageId);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+    });
+
+    await startActiveRun(user);
+    await sendQueuedMessage(user, "first queued");
+    await sendQueuedMessage(user, "second queued");
+    await expectQueuedMessages(["first queued", "second queued"]);
+
+    click(screen.getByLabelText("Stop"));
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+      expect(recalledTargets).toHaveLength(2);
+    });
+    await expectRecalledMessages(["first queued", "second queued"]);
   });
 
   it("replays queued sends when a new optimistic thread settles after two queued messages", async () => {

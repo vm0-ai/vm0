@@ -157,7 +157,7 @@ interface ZeroChatComposerProps {
    * Cancel the active run. When provided, the Send button switches to a Stop
    * button while sending and the composer is empty; with content present the
    * Send button stays visible and clicks queue the message instead.
-   * Clicking Stop while a queue exists recalls the queued text to draft.
+   * Clicking Stop while a queue exists recalls the queued messages.
    */
   onCancel?: () => void;
   displayName: string;

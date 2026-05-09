@@ -33,6 +33,13 @@ export interface AppendQueuedMessageArgs {
   modelSelection: ModelSelectionRequest | null;
 }
 
+export interface RecallMessageArgs {
+  threadId: string;
+  agentId: string;
+  revokesMessageId: string;
+  clientMessageId: string;
+}
+
 export interface ListMessagesAfterArgs {
   threadId: string;
   sinceId: string | undefined;
@@ -66,6 +73,10 @@ export interface ChatThreadDataSource {
   appendQueuedMessage$: Command<
     Promise<PagedChatMessage>,
     [AppendQueuedMessageArgs, AbortSignal]
+  >;
+  recallMessage$: Command<
+    Promise<PagedChatMessage>,
+    [RecallMessageArgs, AbortSignal]
   >;
   listMessagesAfter$: Command<
     Promise<{ messages: PagedChatMessage[]; reachedEnd: boolean }>,

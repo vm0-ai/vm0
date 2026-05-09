@@ -182,6 +182,14 @@ type MockPagedMessage =
       id?: string;
     });
 
+function isRecallMessageBody(body: { revokesMessageId?: string }): body is {
+  revokesMessageId: string;
+  threadId: string;
+  clientMessageId?: string;
+} {
+  return body.revokesMessageId !== undefined;
+}
+
 export function mockChatLifecycle(options?: {
   threadId?: string;
   historyMessages?: MockPagedMessage[];
@@ -190,6 +198,10 @@ export function mockChatLifecycle(options?: {
   onQueuedMessageAppend?: (body: {
     content?: string;
     attachments?: PersistedAttachment[];
+    clientMessageId: string;
+  }) => void;
+  onRecallMessageAppend?: (body: {
+    revokesMessageId: string;
     clientMessageId: string;
   }) => void;
   /**
@@ -360,6 +372,27 @@ export function mockChatLifecycle(options?: {
     }),
     // Unified chat message endpoint (creates thread + run + association)
     mockApi(chatMessagesContract.send, async ({ body, respond }) => {
+      if (isRecallMessageBody(body)) {
+        const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
+        const now = new Date().toISOString();
+        options?.onRecallMessageAppend?.({
+          revokesMessageId: body.revokesMessageId,
+          clientMessageId,
+        });
+        queuedMessages.push({
+          id: clientMessageId,
+          role: "user" as const,
+          content: null,
+          revokesMessageId: body.revokesMessageId,
+          createdAt: now,
+        });
+        return respond(201, {
+          runId: null,
+          threadId: body.threadId,
+          createdAt: now,
+        });
+      }
+
       const terminal = new Set(["completed", "failed", "cancelled", "timeout"]);
       const hasSeedActiveRun = chatMessages.some((m) => {
         const status = m.role === "assistant" ? m.status : undefined;

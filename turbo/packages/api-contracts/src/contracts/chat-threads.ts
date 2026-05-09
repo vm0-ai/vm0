@@ -132,6 +132,7 @@ const summaryEntrySchema = z.union([
 ]);
 
 const storedChatMessageBaseSchema = z.object({
+  id: z.string().optional(),
   content: z.string().nullable(),
   runId: z.string().optional(),
   revokesMessageId: z.string().optional(),
@@ -425,35 +426,52 @@ export const chatMessagesContract = c.router({
     method: "POST",
     path: "/api/zero/chat/messages",
     headers: authHeadersSchema,
-    body: z.object({
-      agentId: z.string().min(1),
-      prompt: z.string().min(1),
-      threadId: z.string().optional(),
-      clientThreadId: z.string().uuid().optional(),
-      modelProvider: z.string().optional(),
-      /**
-       * Per-run model override; persisted on the thread so subsequent runs
-       * inherit the same choice. `undefined` = leave current thread override
-       * untouched (backward-compat for older clients). `null` = clear the
-       * thread override and fall back to agent/org defaults.
-       */
-      modelSelection: modelSelectionRequestSchema.nullable().optional(),
-      // Optional for backward compatibility: older clients that omit this field
-      // still trigger title generation (server guards with !== false, not === true).
-      hasTextContent: z.boolean().optional(),
-      attachFiles: z.array(attachFileSchema).optional(),
-      // Client-generated UUID used as the user message's primary key.
-      // Lets the client render an optimistic row and reconcile with the
-      // server row by id — no temp-id swap, no React remount.
-      clientMessageId: z.string().uuid().optional(),
-      // Test-only escape hatch: when the host runner has USE_MOCK_CODEX
-      // set (CI default), allow the request to bypass the mock and execute
-      // the real codex CLI. Mirrors `debugNoMockClaude` / `debugNoMockCodex`
-      // on /api/zero/runs so e2e BYOK smoke tests can exercise the chat
-      // entry path end-to-end.
-      debugNoMockClaude: z.boolean().optional(),
-      debugNoMockCodex: z.boolean().optional(),
-    }),
+    body: z.union([
+      z.object({
+        agentId: z.string().min(1),
+        prompt: z.string().min(1),
+        threadId: z.string().optional(),
+        clientThreadId: z.string().uuid().optional(),
+        modelProvider: z.string().optional(),
+        /**
+         * Per-run model override; persisted on the thread so subsequent runs
+         * inherit the same choice. `undefined` = leave current thread override
+         * untouched (backward-compat for older clients). `null` = clear the
+         * thread override and fall back to agent/org defaults.
+         */
+        modelSelection: modelSelectionRequestSchema.nullable().optional(),
+        // Optional for backward compatibility: older clients that omit this field
+        // still trigger title generation (server guards with !== false, not === true).
+        hasTextContent: z.boolean().optional(),
+        attachFiles: z.array(attachFileSchema).optional(),
+        // Client-generated UUID used as the user message's primary key.
+        // Lets the client render an optimistic row and reconcile with the
+        // server row by id — no temp-id swap, no React remount.
+        clientMessageId: z.string().uuid().optional(),
+        // Test-only escape hatch: when the host runner has USE_MOCK_CODEX
+        // set (CI default), allow the request to bypass the mock and execute
+        // the real codex CLI. Mirrors `debugNoMockClaude` / `debugNoMockCodex`
+        // on /api/zero/runs so e2e BYOK smoke tests can exercise the chat
+        // entry path end-to-end.
+        debugNoMockClaude: z.boolean().optional(),
+        debugNoMockCodex: z.boolean().optional(),
+        revokesMessageId: z.undefined().optional(),
+      }),
+      z.object({
+        agentId: z.string().min(1),
+        threadId: z.string().min(1),
+        revokesMessageId: z.string().min(1),
+        clientMessageId: z.string().uuid().optional(),
+        prompt: z.undefined().optional(),
+        clientThreadId: z.undefined().optional(),
+        modelProvider: z.undefined().optional(),
+        modelSelection: z.undefined().optional(),
+        hasTextContent: z.undefined().optional(),
+        attachFiles: z.undefined().optional(),
+        debugNoMockClaude: z.undefined().optional(),
+        debugNoMockCodex: z.undefined().optional(),
+      }),
+    ]),
     responses: {
       201: z.object({
         runId: z.string().nullable(),

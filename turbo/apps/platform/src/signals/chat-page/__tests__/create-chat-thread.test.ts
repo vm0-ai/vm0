@@ -23,6 +23,7 @@ import type {
   ListMessagesBeforeArgs,
   PatchDraftArgs,
   CancelRunsArgs,
+  RecallMessageArgs,
   SubscribeRealtimeArgs,
 } from "../chat-thread-data-source.ts";
 
@@ -114,6 +115,17 @@ function createStaticDataSource({
           role: "user",
           content: args.content,
           attachFiles: args.attachments ?? undefined,
+          createdAt: "2026-05-01T00:00:00Z",
+        });
+      },
+    ),
+    recallMessage$: command(
+      (_ctx, args: RecallMessageArgs, _signal: AbortSignal) => {
+        return Promise.resolve({
+          id: args.clientMessageId,
+          role: "user",
+          content: null,
+          revokesMessageId: args.revokesMessageId,
           createdAt: "2026-05-01T00:00:00Z",
         });
       },
@@ -334,6 +346,53 @@ describe("fetchNextPage$ cursor", () => {
     expect(groups[1]?.messages[0]?.isQueued).toBeTruthy();
   });
 
+  it("projects recall events as recalled pending user messages", async () => {
+    const threadId = "thread-recalled-queued";
+    const mockDataSource = createStaticDataSource({
+      threadId,
+      initialPage: {
+        hasHistoryBefore: false,
+        messages: [
+          {
+            id: "queued-user",
+            role: "user",
+            content: "queued",
+            createdAt: "2026-05-01T00:00:00Z",
+          },
+          {
+            id: "assistant-after",
+            role: "assistant",
+            content: "after",
+            runId: "run-1",
+            createdAt: "2026-05-01T00:00:01Z",
+          },
+          {
+            id: "recall-event",
+            role: "user",
+            content: null,
+            revokesMessageId: "queued-user",
+            createdAt: "2026-05-01T00:00:02Z",
+          },
+        ],
+      },
+    });
+
+    const { draft } = context.store.set(ensureDraft$, threadId);
+    const thread = createChatThreadSignals(threadId, draft, mockDataSource);
+
+    const groups = await context.store.get(thread.groupedChatMessages$);
+
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.role).toBe("assistant");
+    expect(groups[0]?.messages[0]?.id).toBe("assistant-after");
+    expect(groups[1]?.role).toBe("user");
+    expect(groups[1]?.messages).toHaveLength(1);
+    expect(groups[1]?.messages[0]?.id).toBe("recall-event");
+    expect(groups[1]?.messages[0]?.content).toBe("queued");
+    expect(groups[1]?.messages[0]?.isQueued).toBeFalsy();
+    expect(groups[1]?.messages[0]?.isRecalled).toBeTruthy();
+  });
+
   it("auto backfills an unknown cached history boundary during subscribe", async () => {
     const threadId = "thread-history-boundary-backfill";
     const firstMessageId = "11111111-1111-4111-8111-111111111111";
@@ -437,6 +496,17 @@ describe("fetchNextPage$ cursor", () => {
             role: "user",
             content: args.content,
             attachFiles: args.attachments ?? undefined,
+            createdAt: "2026-05-01T00:00:00Z",
+          });
+        },
+      ),
+      recallMessage$: command(
+        (_ctx, args: RecallMessageArgs, _signal: AbortSignal) => {
+          return Promise.resolve({
+            id: args.clientMessageId,
+            role: "user",
+            content: null,
+            revokesMessageId: args.revokesMessageId,
             createdAt: "2026-05-01T00:00:00Z",
           });
         },
@@ -552,6 +622,17 @@ describe("fetchNextPage$ cursor", () => {
             role: "user",
             content: args.content,
             attachFiles: args.attachments ?? undefined,
+            createdAt: "2026-05-01T00:00:00Z",
+          });
+        },
+      ),
+      recallMessage$: command(
+        (_ctx, args: RecallMessageArgs, _signal: AbortSignal) => {
+          return Promise.resolve({
+            id: args.clientMessageId,
+            role: "user",
+            content: null,
+            revokesMessageId: args.revokesMessageId,
             createdAt: "2026-05-01T00:00:00Z",
           });
         },
@@ -686,6 +767,17 @@ describe("fetchNextPage$ cursor", () => {
             role: "user",
             content: args.content,
             attachFiles: args.attachments ?? undefined,
+            createdAt: "2026-05-01T00:00:00Z",
+          });
+        },
+      ),
+      recallMessage$: command(
+        (_ctx, args: RecallMessageArgs, _signal: AbortSignal) => {
+          return Promise.resolve({
+            id: args.clientMessageId,
+            role: "user",
+            content: null,
+            revokesMessageId: args.revokesMessageId,
             createdAt: "2026-05-01T00:00:00Z",
           });
         },

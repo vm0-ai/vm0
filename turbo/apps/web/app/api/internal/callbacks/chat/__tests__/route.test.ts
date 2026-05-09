@@ -1763,7 +1763,11 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       const messages = await getTestChatMessagesByThread(threadId);
       const queuedRow = messages.find((m) => {
-        return m.role === "user" && m.content === "queued next turn";
+        return (
+          m.role === "user" &&
+          m.content === "queued next turn" &&
+          m.revokesMessageId === queuedStorage.messageId
+        );
       });
       expect(queuedRow).toBeDefined();
       expect(queuedRow!.runId).toBeTruthy();
@@ -1878,7 +1882,11 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       const messages = await getTestChatMessagesByThread(threadId);
       const queuedRow = messages.find((m) => {
-        return m.role === "user" && m.content === "queued after failure";
+        return (
+          m.role === "user" &&
+          m.content === "queued after failure" &&
+          m.revokesMessageId === queuedStorage.messageId
+        );
       });
       expect(queuedRow).toBeDefined();
       expect(queuedRow!.runId).not.toBe(runId);
@@ -1916,7 +1924,11 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       const messages = await getTestChatMessagesByThread(threadId);
       const queuedRow = messages.find((m) => {
-        return m.role === "user" && m.content === "queued with files";
+        return (
+          m.role === "user" &&
+          m.content === "queued with files" &&
+          m.runId !== null
+        );
       });
       expect(queuedRow).toBeDefined();
       expect(queuedRow!.attachFiles).toEqual(["att-1"]);

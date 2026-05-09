@@ -20,6 +20,7 @@ import type {
   ListMessagesBeforeArgs,
   MarkReadArgs,
   PatchDraftArgs,
+  RecallMessageArgs,
   SubscribeRealtimeArgs,
 } from "./chat-thread-data-source.ts";
 
@@ -79,6 +80,36 @@ const appendQueuedMessage$ = command(
       role: "user" as const,
       content,
       attachFiles: attachments ?? undefined,
+      createdAt: result.body.createdAt ?? new Date().toISOString(),
+    };
+  },
+);
+
+const recallMessage$ = command(
+  async (
+    { get },
+    { threadId, agentId, revokesMessageId, clientMessageId }: RecallMessageArgs,
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(chatMessagesContract);
+    const result = await accept(
+      client.send({
+        body: {
+          agentId,
+          threadId,
+          revokesMessageId,
+          clientMessageId,
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    return {
+      id: clientMessageId,
+      role: "user" as const,
+      content: null,
+      revokesMessageId,
       createdAt: result.body.createdAt ?? new Date().toISOString(),
     };
   },
@@ -282,6 +313,7 @@ export function createRemoteChatThreadDataSource(
     initialPage$,
     patchDraft$,
     appendQueuedMessage$,
+    recallMessage$,
     listMessagesAfter$,
     listMessagesBefore$,
     cancelRuns$,
