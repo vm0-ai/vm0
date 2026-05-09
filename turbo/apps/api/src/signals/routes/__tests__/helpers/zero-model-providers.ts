@@ -1,12 +1,12 @@
-import { createCipheriv, randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
 import { and, eq } from "drizzle-orm";
 
-import { env } from "../../../../lib/env";
 import { writeDb$ } from "../../../external/db";
+import { encryptSecretForTests } from "./encrypt-secret";
 
 const ORG_SENTINEL_USER_ID = "__org__";
 
@@ -23,22 +23,6 @@ interface SeedOrgModelProviderValues {
   readonly authMethod?: string | null;
 }
 
-function encryptSecretValueForTests(plaintext: string): string {
-  const key = Buffer.from(env("SECRETS_ENCRYPTION_KEY"), "hex");
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv, { authTagLength: 16 });
-  const data = Buffer.concat([
-    cipher.update(plaintext, "utf8"),
-    cipher.final(),
-  ]);
-  const authTag = cipher.getAuthTag();
-  return [
-    iv.toString("base64"),
-    authTag.toString("base64"),
-    data.toString("base64"),
-  ].join(":");
-}
-
 export const seedOrgModelProvider$ = command(
   async (
     { set },
@@ -53,7 +37,7 @@ export const seedOrgModelProvider$ = command(
         .insert(secrets)
         .values({
           name: values.secretName,
-          encryptedValue: encryptSecretValueForTests("test-secret-value"),
+          encryptedValue: encryptSecretForTests("test-secret-value"),
           type: "model-provider",
           userId: ORG_SENTINEL_USER_ID,
           orgId: values.orgId,

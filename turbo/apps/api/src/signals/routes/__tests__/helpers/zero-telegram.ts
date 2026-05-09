@@ -1,4 +1,4 @@
-import { createCipheriv, randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
@@ -9,8 +9,8 @@ import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { eq, inArray } from "drizzle-orm";
 
-import { env } from "../../../../lib/env";
 import { writeDb$ } from "../../../external/db";
+import { encryptSecretForTests } from "./encrypt-secret";
 
 export interface TelegramFixture {
   readonly orgId: string;
@@ -56,22 +56,6 @@ interface SeedUserAgentPreferenceValues {
   readonly composeId: string;
 }
 
-function encryptBotTokenForTests(plaintext: string): string {
-  const key = Buffer.from(env("SECRETS_ENCRYPTION_KEY"), "hex");
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv, { authTagLength: 16 });
-  const data = Buffer.concat([
-    cipher.update(plaintext, "utf8"),
-    cipher.final(),
-  ]);
-  const authTag = cipher.getAuthTag();
-  return [
-    iv.toString("base64"),
-    authTag.toString("base64"),
-    data.toString("base64"),
-  ].join(":");
-}
-
 export const seedTelegramInstallation$ = command(
   async (
     { set },
@@ -107,7 +91,7 @@ export const seedTelegramInstallation$ = command(
         values.botUsername === undefined
           ? `bot_${values.telegramBotId}`
           : values.botUsername,
-      encryptedBotToken: encryptBotTokenForTests("test-bot-token"),
+      encryptedBotToken: encryptSecretForTests("test-bot-token"),
       webhookSecret: `whs_${randomUUID()}`,
       defaultComposeId: composeId,
       ownerUserId: values.ownerUserId,

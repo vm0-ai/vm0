@@ -1,11 +1,11 @@
-import { createCipheriv, randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { eq } from "drizzle-orm";
 
-import { env } from "../../../../lib/env";
 import { writeDb$ } from "../../../external/db";
+import { encryptSecretForTests } from "./encrypt-secret";
 
 export interface SlackInstallationFixture {
   readonly orgId: string;
@@ -16,22 +16,6 @@ interface SeedSlackInstallationValues {
   readonly orgId?: string;
   readonly botToken?: string;
   readonly workspaceName?: string;
-}
-
-function encryptBotTokenForTests(plaintext: string): string {
-  const key = Buffer.from(env("SECRETS_ENCRYPTION_KEY"), "hex");
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv, { authTagLength: 16 });
-  const data = Buffer.concat([
-    cipher.update(plaintext, "utf8"),
-    cipher.final(),
-  ]);
-  const authTag = cipher.getAuthTag();
-  return [
-    iv.toString("base64"),
-    authTag.toString("base64"),
-    data.toString("base64"),
-  ].join(":");
 }
 
 function randomSlackId(prefix: string): string {
@@ -52,7 +36,7 @@ export const seedSlackInstallation$ = command(
       slackWorkspaceId,
       slackWorkspaceName: values.workspaceName ?? "Test Workspace",
       orgId,
-      encryptedBotToken: encryptBotTokenForTests(
+      encryptedBotToken: encryptSecretForTests(
         values.botToken ?? "xoxb-test-token",
       ),
       botUserId: randomSlackId("U"),

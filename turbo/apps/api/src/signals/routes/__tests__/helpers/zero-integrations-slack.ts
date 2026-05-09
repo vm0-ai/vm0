@@ -1,4 +1,4 @@
-import { createCipheriv, randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import {
@@ -10,8 +10,8 @@ import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { eq } from "drizzle-orm";
 
-import { env } from "../../../../lib/env";
 import { writeDb$ } from "../../../external/db";
+import { encryptSecretForTests } from "./encrypt-secret";
 
 export interface SlackIntegrationFixture {
   readonly orgId: string;
@@ -30,22 +30,6 @@ interface SeedSlackConnectionValues {
   readonly slackWorkspaceId: string;
   readonly vm0UserId: string;
   readonly slackUserId?: string;
-}
-
-function encryptSecretForTests(plaintext: string): string {
-  const key = Buffer.from(env("SECRETS_ENCRYPTION_KEY"), "hex");
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv, { authTagLength: 16 });
-  const data = Buffer.concat([
-    cipher.update(plaintext, "utf8"),
-    cipher.final(),
-  ]);
-  const authTag = cipher.getAuthTag();
-  return [
-    iv.toString("base64"),
-    authTag.toString("base64"),
-    data.toString("base64"),
-  ].join(":");
 }
 
 function randomSlackId(prefix: string): string {
