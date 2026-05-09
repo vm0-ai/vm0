@@ -57,8 +57,8 @@ const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
 ///
 /// Must be injective in `(name, version)`: two manifest entries that differ
 /// only in `vas_storage_name` but share `vas_version_id` end up at distinct
-/// `file://` URLs so the second `sandbox.write_file` does not clobber the
-/// first. Uses the same `short_digest` helper that `HomePaths` uses for
+/// `file://` URLs so one staged archive cannot clobber another. Uses the
+/// same `short_digest` helper that `HomePaths` uses for
 /// the host cache dir, so the two keys always map 1:1.
 fn guest_archive_path(name: &str, version: &str) -> String {
     let name_hash = short_digest(name);
@@ -1543,8 +1543,8 @@ mod tests {
         // Regression guard: two manifest entries that share `vasVersionId`
         // but differ in `vasStorageName` must resolve to distinct guest
         // `file://` URLs. Before the host/guest key symmetrization, both
-        // entries collided on `{GUEST_STAGE_DIR}/{version}.tar.gz` and the
-        // second `sandbox.write_file` clobbered the first.
+        // entries collided on `{GUEST_STAGE_DIR}/{version}.tar.gz` and one
+        // staged archive clobbered the other.
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let sandbox = MockSandbox::new("test");

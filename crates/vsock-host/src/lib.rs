@@ -165,12 +165,12 @@ pub struct WriteFileRequest<'a> {
     pub source: WriteFileSource<'a>,
 }
 
-enum PreparedWriteFileSource {
-    Bytes(Vec<u8>),
+enum PreparedWriteFileSource<'a> {
+    Bytes(&'a [u8]),
     File { file: tokio::fs::File, len: u64 },
 }
 
-impl PreparedWriteFileSource {
+impl PreparedWriteFileSource<'_> {
     fn len(&self) -> u64 {
         match self {
             Self::Bytes(bytes) => bytes.len() as u64,
@@ -179,9 +179,9 @@ impl PreparedWriteFileSource {
     }
 }
 
-struct PreparedWriteFile {
+struct PreparedWriteFile<'a> {
     path: String,
-    source: PreparedWriteFileSource,
+    source: PreparedWriteFileSource<'a>,
 }
 
 #[derive(Clone)]
@@ -1163,7 +1163,9 @@ async fn send_bounded_exec_cancel_on_shared_with_timeout(
         })
 }
 
-async fn prepare_write_files(files: &[WriteFileRequest<'_>]) -> io::Result<Vec<PreparedWriteFile>> {
+async fn prepare_write_files<'a>(
+    files: &'a [WriteFileRequest<'a>],
+) -> io::Result<Vec<PreparedWriteFile<'a>>> {
     if files.len() > vsock_proto::MAX_WRITE_FILES_COUNT {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -1211,7 +1213,7 @@ async fn prepare_write_files(files: &[WriteFileRequest<'_>]) -> io::Result<Vec<P
         }
 
         let source = match &file.source {
-            WriteFileSource::Bytes(bytes) => PreparedWriteFileSource::Bytes(bytes.to_vec()),
+            WriteFileSource::Bytes(bytes) => PreparedWriteFileSource::Bytes(bytes),
             WriteFileSource::File { path, len } => {
                 let file = tokio::fs::File::open(path).await?;
                 let actual_len = file.metadata().await?.len();
@@ -1241,7 +1243,7 @@ async fn prepare_write_files(files: &[WriteFileRequest<'_>]) -> io::Result<Vec<P
 async fn send_write_files_stream(
     shared: &Arc<Shared>,
     seq: u32,
-    mut files: Vec<PreparedWriteFile>,
+    mut files: Vec<PreparedWriteFile<'_>>,
     sudo: bool,
 ) -> io::Result<()> {
     let file_count = u32::try_from(files.len()).map_err(|_| {
@@ -1954,7 +1956,11 @@ impl VsockHost {
         Ok(())
     }
 
-    pub async fn write_files(&self, files: &[WriteFileRequest<'_>], sudo: bool) -> io::Result<()> {
+    pub async fn write_files<'a>(
+        &self,
+        files: &'a [WriteFileRequest<'a>],
+        sudo: bool,
+    ) -> io::Result<()> {
         let expected_count = files.len();
         let prepared = prepare_write_files(files).await?;
         if prepared.is_empty() {
