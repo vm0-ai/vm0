@@ -62,7 +62,7 @@ export function MobileStackSection({
 interface MobileStackRowProps {
   readonly label: string;
   readonly onClick: () => void;
-  /** When provided, renders inside an 8x8 tinted square (gray-200 / red-100). */
+  /** When provided, renders inside a 9x9 tinted squircle (gray-100 / red-100). */
   readonly icon?: ReactNode;
   readonly testId?: string;
   /** Right-side decoration. Defaults to a 18px chevron. Pass null to hide. */
@@ -99,12 +99,12 @@ export function MobileStackRow({
       type="button"
       onClick={onClick}
       data-testid={testId}
-      className="flex w-full items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-muted/50 active:bg-muted"
+      className="flex w-full items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-muted/50 active:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30"
     >
       {icon && (
         <span
           className={cn(
-            "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl",
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px]",
             destructive
               ? "bg-red-100 text-destructive dark:bg-red-950/40"
               : "bg-gray-100 text-foreground/70",

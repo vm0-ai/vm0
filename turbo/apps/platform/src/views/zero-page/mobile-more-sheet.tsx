@@ -45,7 +45,7 @@ function SectionLink({
       type="button"
       onClick={onSelect}
       data-testid={testId}
-      className="flex w-full items-center gap-3 px-3 py-3 rounded-xl text-left transition-colors hover:bg-muted/40 active:bg-muted/60"
+      className="flex w-full items-center gap-3 px-3 py-3 rounded-xl text-left transition-colors hover:bg-muted/40 active:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
     >
       <Icon size={22} stroke={1.6} className="shrink-0 text-muted-foreground" />
       <span className="flex-1 min-w-0">
