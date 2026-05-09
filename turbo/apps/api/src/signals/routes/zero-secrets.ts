@@ -35,13 +35,10 @@ const listVariablesInner$ = computed(async (get): Promise<unknown> => {
 export const zeroSecretsRoutes: readonly RouteEntry[] = [
   {
     route: zeroSecretsContract.list,
-    handler: shadowCompareRoute({
-      route: zeroSecretsContract.list,
-      handler: authRoute(
-        { requireOrganization: true, missingOrganizationStatus: 401 },
-        listSecretsInner$,
-      ),
-    }),
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      listSecretsInner$,
+    ),
   },
   {
     route: zeroVariablesContract.list,

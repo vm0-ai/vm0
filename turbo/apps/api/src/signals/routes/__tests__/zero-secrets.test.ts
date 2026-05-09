@@ -2,7 +2,6 @@ import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -21,6 +20,19 @@ const mocks = createZeroRouteMocks(context);
 describe("GET /api/zero/secrets", () => {
   const track = createFixtureTracker<UserDataFixture>((fixture) => {
     return store.set(deleteUserData$, fixture, context.signal);
+  });
+
+  it("returns 401 when the request is unauthenticated", async () => {
+    const client = setupApp({ context })(zeroSecretsContract);
+
+    const response = await accept(client.list({ headers: {} }), [401]);
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
   });
 
   it("returns current user secret metadata sorted by name", async () => {
@@ -50,7 +62,6 @@ describe("GET /api/zero/secrets", () => {
     );
     await store.set(seedOtherSecret$, fixture, context.signal);
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    mockApiShadowCompareRoutes([zeroSecretsContract.list]);
 
     const client = setupApp({ context })(zeroSecretsContract);
 
@@ -78,12 +89,15 @@ describe("GET /api/zero/secrets", () => {
         updatedAt: "2026-01-03T03:04:05.000Z",
       },
     ]);
+    for (const secret of response.body.secrets) {
+      expect(secret).not.toHaveProperty("value");
+      expect(secret).not.toHaveProperty("encryptedValue");
+    }
   });
 
   it("returns an empty list when the user has no secrets", async () => {
     const fixture = await track(store.set(seedSecrets$, [], context.signal));
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    mockApiShadowCompareRoutes([zeroSecretsContract.list]);
 
     const client = setupApp({ context })(zeroSecretsContract);
 
