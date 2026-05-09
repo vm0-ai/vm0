@@ -771,12 +771,21 @@ async fn sequential_same_session_reuse_cycle() {
 #[tokio::test(start_paused = true)]
 async fn park_evicts_via_guest_session_id() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
-        pattern: "cat /tmp/vm0-session-".into(),
-        exit_code: 0,
-        stdout: b"sess-evict".to_vec(),
-        stderr: Vec::new(),
-    });
+    // Snapshot-backed profiles run clock fix + entropy reseed before the agent;
+    // the third bounded exec is the post-job guest session-id read.
+    for stdout in [Vec::new(), Vec::new(), b"sess-evict".to_vec()] {
+        overrides.push_bounded_exec_response(sandbox_mock::BoundedExecResponse {
+            events: Vec::new(),
+            result: Ok(sandbox::BoundedExecResult {
+                termination: sandbox::BoundedExecTermination::Exited { exit_code: 0 },
+                duration: Duration::ZERO,
+                stdout,
+                stderr: Vec::new(),
+                stdout_truncated: false,
+                stderr_truncated: false,
+            }),
+        });
+    }
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
     let budget = Arc::clone(&config.budget);
     let idle_pool = Arc::clone(&config.idle_pool);

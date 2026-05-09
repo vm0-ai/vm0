@@ -2002,16 +2002,37 @@ async fn run_with_firecracker(
     //      are fast. The snapshot captures memory + disk state, so caches
     //      populated here persist across restores.
     let prewarm_result = guest
-        .exec(inv.prewarm_script, 30_000, &[], false)
+        .bounded_exec(&vsock_host::BoundedExecRequest {
+            command: inv.prewarm_script,
+            timeout_ms: 30_000,
+            env: &[],
+            sudo: false,
+            stdin: None,
+            stdout_limit_bytes: 64 * 1024,
+            stderr_limit_bytes: 256 * 1024,
+            stream: None,
+        })
         .await
-        .map_err(|e| SnapshotError::Setup(format!("pre-warm exec: {e}")))?;
-    if prewarm_result.exit_code != 0 {
-        let stderr = String::from_utf8_lossy(&prewarm_result.stderr);
-        return Err(SnapshotError::Setup(format!(
-            "pre-warm failed (exit code {}): {}",
-            prewarm_result.exit_code,
-            stderr.trim(),
-        )));
+        .map_err(|e| SnapshotError::Setup(format!("pre-warm bounded exec: {e}")))?;
+    if prewarm_result.stderr_truncated {
+        return Err(SnapshotError::Setup(
+            "pre-warm failed: stderr output was truncated".into(),
+        ));
+    }
+    match prewarm_result.termination {
+        vsock_host::BoundedExecTermination::Exited { exit_code: 0 } => {}
+        vsock_host::BoundedExecTermination::Exited { exit_code } => {
+            let stderr = String::from_utf8_lossy(&prewarm_result.stderr);
+            return Err(SnapshotError::Setup(format!(
+                "pre-warm failed (exit code {exit_code}): {}",
+                stderr.trim(),
+            )));
+        }
+        termination => {
+            return Err(SnapshotError::Setup(format!(
+                "pre-warm failed ({termination:?})"
+            )));
+        }
     }
     info!("pre-warm complete");
 
