@@ -5602,6 +5602,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_write_files_rejects_out_of_range_result_index() {
+        let (host_stream, mut guest) = make_pair();
+
+        let guest_task = tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = [0u8; 4096];
+            loop {
+                let n = guest.read(&mut buf).await.unwrap();
+                assert_ne!(n, 0);
+                for msg in decoder.decode(&buf[..n]).unwrap() {
+                    if msg.msg_type == MSG_WRITE_FILES_FINISH {
+                        let payload = vsock_proto::encode_write_files_result(&[
+                            vsock_proto::WriteFilesResultEntry {
+                                file_index: 0,
+                                success: true,
+                                error: String::new(),
+                            },
+                            vsock_proto::WriteFilesResultEntry {
+                                file_index: 2,
+                                success: true,
+                                error: String::new(),
+                            },
+                        ])
+                        .unwrap();
+                        let resp =
+                            vsock_proto::encode(MSG_WRITE_FILES_RESULT, msg.seq, &payload).unwrap();
+                        guest.write_all(&resp).await.unwrap();
+                        return;
+                    }
+                }
+            }
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let err = host
+            .write_files(
+                &[
+                    WriteFileRequest {
+                        path: "/tmp/a",
+                        source: WriteFileSource::Bytes(b"a"),
+                    },
+                    WriteFileRequest {
+                        path: "/tmp/b",
+                        source: WriteFileSource::Bytes(b"b"),
+                    },
+                ],
+                false,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("result index out of range"));
+        guest_task.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn test_write_files_rejects_incomplete_success_result() {
         let (host_stream, mut guest) = make_pair();
 

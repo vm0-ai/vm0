@@ -890,6 +890,39 @@ mod tests {
         messages.remove(0)
     }
 
+    fn write_files_start(seq: u32, file_count: u32, total_bytes: u64) -> RawMessage {
+        RawMessage {
+            msg_type: vsock_proto::MSG_WRITE_FILES_START,
+            seq,
+            payload: vsock_proto::encode_write_files_start(false, file_count, total_bytes).unwrap(),
+        }
+    }
+
+    fn write_files_message(msg_type: u8, seq: u32, payload: Vec<u8>) -> RawMessage {
+        RawMessage {
+            msg_type,
+            seq,
+            payload,
+        }
+    }
+
+    fn assert_write_files_stream_error(
+        start: RawMessage,
+        messages: Vec<RawMessage>,
+        expected: &str,
+    ) {
+        let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
+        let _path_guard = install_test_guest_write_file("cat >/dev/null");
+        let mut messages = VecDeque::from(messages);
+
+        let response = handle_write_files_stream(&start, || Ok(messages.pop_front())).unwrap();
+        let response = decode_single_response(&response);
+
+        assert_eq!(response.msg_type, MSG_ERROR);
+        let error = vsock_proto::decode_error(&response.payload).unwrap();
+        assert!(error.contains(expected), "got: {error}");
+    }
+
     fn spawn_write_file_test_child(script: &str) -> Child {
         // Use a stable shell binary instead of a freshly written temp
         // executable; some CI filesystems can transiently reject immediate exec
@@ -1039,60 +1072,93 @@ mod tests {
 
     #[test]
     fn write_files_stream_malformed_file_payload_returns_error_response() {
-        let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
-        let _path_guard = install_test_guest_write_file("cat >/dev/null");
-        let start_payload = vsock_proto::encode_write_files_start(false, 1, 1).unwrap();
-        let start = RawMessage {
-            msg_type: vsock_proto::MSG_WRITE_FILES_START,
-            seq: 7,
-            payload: start_payload,
-        };
-        let mut messages = VecDeque::from([RawMessage {
-            msg_type: MSG_WRITE_FILES_FILE,
-            seq: 7,
-            payload: vec![0],
-        }]);
-
-        let response = handle_write_files_stream(&start, || Ok(messages.pop_front())).unwrap();
-        let response = decode_single_response(&response);
-
-        assert_eq!(response.msg_type, MSG_ERROR);
-        let error = vsock_proto::decode_error(&response.payload).unwrap();
-        assert!(error.contains("write_files_file too short"), "got: {error}");
+        assert_write_files_stream_error(
+            write_files_start(7, 1, 1),
+            vec![write_files_message(MSG_WRITE_FILES_FILE, 7, vec![0])],
+            "write_files_file too short",
+        );
     }
 
     #[test]
     fn write_files_stream_malformed_chunk_payload_returns_error_response() {
-        let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
-        let _path_guard = install_test_guest_write_file("cat >/dev/null");
-        let start_payload = vsock_proto::encode_write_files_start(false, 1, 1).unwrap();
-        let start = RawMessage {
-            msg_type: vsock_proto::MSG_WRITE_FILES_START,
-            seq: 8,
-            payload: start_payload,
-        };
-        let file_payload = vsock_proto::encode_write_files_file(0, "/tmp/file", 1).unwrap();
-        let mut messages = VecDeque::from([
-            RawMessage {
-                msg_type: MSG_WRITE_FILES_FILE,
-                seq: 8,
-                payload: file_payload,
-            },
-            RawMessage {
-                msg_type: MSG_WRITE_FILES_CHUNK,
-                seq: 8,
-                payload: vec![0],
-            },
-        ]);
+        assert_write_files_stream_error(
+            write_files_start(8, 1, 1),
+            vec![
+                write_files_message(
+                    MSG_WRITE_FILES_FILE,
+                    8,
+                    vsock_proto::encode_write_files_file(0, "/tmp/file", 1).unwrap(),
+                ),
+                write_files_message(MSG_WRITE_FILES_CHUNK, 8, vec![0]),
+            ],
+            "write_files_chunk too short",
+        );
+    }
 
-        let response = handle_write_files_stream(&start, || Ok(messages.pop_front())).unwrap();
-        let response = decode_single_response(&response);
+    #[test]
+    fn write_files_stream_rejects_file_index_out_of_range() {
+        assert_write_files_stream_error(
+            write_files_start(11, 1, 0),
+            vec![write_files_message(
+                MSG_WRITE_FILES_FILE,
+                11,
+                vsock_proto::encode_write_files_file(1, "/tmp/file", 0).unwrap(),
+            )],
+            "write_files file index out of range",
+        );
+    }
 
-        assert_eq!(response.msg_type, MSG_ERROR);
-        let error = vsock_proto::decode_error(&response.payload).unwrap();
-        assert!(
-            error.contains("write_files_chunk too short"),
-            "got: {error}"
+    #[test]
+    fn write_files_stream_rejects_duplicate_file_index() {
+        assert_write_files_stream_error(
+            write_files_start(12, 2, 0),
+            vec![
+                write_files_message(
+                    MSG_WRITE_FILES_FILE,
+                    12,
+                    vsock_proto::encode_write_files_file(0, "/tmp/a", 0).unwrap(),
+                ),
+                write_files_message(
+                    MSG_WRITE_FILES_FILE,
+                    12,
+                    vsock_proto::encode_write_files_file(0, "/tmp/b", 0).unwrap(),
+                ),
+            ],
+            "write_files duplicate file index",
+        );
+    }
+
+    #[test]
+    fn write_files_stream_rejects_chunk_without_active_file() {
+        assert_write_files_stream_error(
+            write_files_start(13, 1, 1),
+            vec![write_files_message(
+                MSG_WRITE_FILES_CHUNK,
+                13,
+                vsock_proto::encode_write_files_chunk(0, b"x").unwrap(),
+            )],
+            "write_files chunk without active file",
+        );
+    }
+
+    #[test]
+    fn write_files_stream_rejects_finish_before_file_content_complete() {
+        assert_write_files_stream_error(
+            write_files_start(14, 1, 2),
+            vec![
+                write_files_message(
+                    MSG_WRITE_FILES_FILE,
+                    14,
+                    vsock_proto::encode_write_files_file(0, "/tmp/file", 2).unwrap(),
+                ),
+                write_files_message(
+                    MSG_WRITE_FILES_CHUNK,
+                    14,
+                    vsock_proto::encode_write_files_chunk(0, b"x").unwrap(),
+                ),
+                write_files_message(MSG_WRITE_FILES_FINISH, 14, Vec::new()),
+            ],
+            "write_files finish before file content complete",
         );
     }
 
