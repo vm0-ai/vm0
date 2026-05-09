@@ -1311,6 +1311,39 @@ fn file_scheme_staged_archive_removed_after_failed_run() {
 }
 
 #[test]
+fn file_scheme_all_staged_archives_removed_after_partial_failure() {
+    let tar_gz = create_tar_gz(&[("ok.txt", b"ok")]).unwrap();
+
+    let dir = tempfile::tempdir().unwrap();
+    let good_staged = write_stage_archive("file-scheme-partial-good", &tar_gz).unwrap();
+    let bad_staged = write_stage_archive("file-scheme-partial-bad", b"not a gzip archive").unwrap();
+
+    let good_mount = dir.path().join("good");
+    let bad_mount = dir.path().join("bad");
+    let good_url = format!("file://{}", good_staged.display());
+    let bad_url = format!("file://{}", bad_staged.display());
+    let manifest = write_manifest(
+        &dir,
+        &[
+            (good_mount.to_str().unwrap(), Some(&good_url)),
+            (bad_mount.to_str().unwrap(), Some(&bad_url)),
+        ],
+        None,
+    )
+    .unwrap();
+
+    let result = run_guest_download(manifest.to_str().unwrap());
+
+    assert!(!result);
+    assert_eq!(
+        std::fs::read_to_string(good_mount.join("ok.txt")).unwrap(),
+        "ok"
+    );
+    assert!(!good_staged.exists());
+    assert!(!bad_staged.exists());
+}
+
+#[test]
 fn file_scheme_staged_archive_removed_after_mount_create_failure() {
     let tar_gz = create_tar_gz(&[("hello.txt", b"hello")]).unwrap();
 
