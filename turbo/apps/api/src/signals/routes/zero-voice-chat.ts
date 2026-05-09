@@ -6,7 +6,6 @@ import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import { notFound } from "../../lib/error";
 import type { RouteEntry } from "../route";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
