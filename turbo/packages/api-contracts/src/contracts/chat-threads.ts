@@ -82,7 +82,7 @@ const pendingMessageSchema = z.object({
   clientMessageId: z.string().uuid().nullable(),
 });
 
-const appendPendingMessageBodySchema = z
+const replacePendingMessageBodySchema = z
   .object({
     content: z.string().min(1).optional(),
     attachments: z.array(persistedAttachmentSchema).min(1).optional(),
@@ -416,20 +416,20 @@ export const chatThreadRenameContract = c.router({
   },
 });
 
-export const chatThreadPendingMessageAppendContract = c.router({
-  append: {
-    method: "POST",
-    path: "/api/zero/chat-threads/:id/pending-message/append",
+export const chatThreadPendingMessageReplaceContract = c.router({
+  replace: {
+    method: "PUT",
+    path: "/api/zero/chat-threads/:id/pending-message",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string() }),
-    body: appendPendingMessageBodySchema,
+    body: replacePendingMessageBodySchema,
     responses: {
       200: z.object({ pendingMessage: pendingMessageSchema }),
       400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Append submitted content to a chat thread pending message",
+    summary: "Replace a chat thread pending message",
   },
 });
 
@@ -682,8 +682,8 @@ export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
 export type ChatThreadPinContract = typeof chatThreadPinContract;
 export type ChatThreadUnpinContract = typeof chatThreadUnpinContract;
 export type ChatThreadRenameContract = typeof chatThreadRenameContract;
-export type ChatThreadPendingMessageAppendContract =
-  typeof chatThreadPendingMessageAppendContract;
+export type ChatThreadPendingMessageReplaceContract =
+  typeof chatThreadPendingMessageReplaceContract;
 export type ChatThreadPendingMessageDeleteContract =
   typeof chatThreadPendingMessageDeleteContract;
 export type ChatThreadPendingMessageRecallContract =

@@ -4,8 +4,8 @@ import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
   chatThreadMessagesContract,
-  chatThreadPendingMessageAppendContract,
   chatThreadPendingMessageDeleteContract,
+  chatThreadPendingMessageReplaceContract,
   chatThreadPendingMessageRecallContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -23,9 +23,9 @@ import {
   zeroChatThreadDetail,
   zeroChatThreadList,
   zeroChatThreadMessagesPage,
-  appendZeroChatThreadPendingMessage$,
   deleteZeroChatThreadPendingMessage$,
   recallZeroChatThreadPendingMessage$,
+  replaceZeroChatThreadPendingMessage$,
 } from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route";
 
@@ -143,11 +143,11 @@ const searchChatInner$ = computed(async (get) => {
   };
 });
 
-const appendPendingMessageInner$ = command(
+const replacePendingMessageInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(authContext$);
     const params = get(
-      pathParamsOf(chatThreadPendingMessageAppendContract.append),
+      pathParamsOf(chatThreadPendingMessageReplaceContract.replace),
     );
 
     if (!isValidChatThreadId(params.id)) {
@@ -155,7 +155,7 @@ const appendPendingMessageInner$ = command(
     }
 
     const bodyResult = await get(
-      bodyResultOf(chatThreadPendingMessageAppendContract.append),
+      bodyResultOf(chatThreadPendingMessageReplaceContract.replace),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -163,7 +163,7 @@ const appendPendingMessageInner$ = command(
     }
 
     const pendingMessage = await set(
-      appendZeroChatThreadPendingMessage$,
+      replaceZeroChatThreadPendingMessage$,
       {
         threadId: params.id,
         userId: auth.userId,
@@ -276,8 +276,8 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     }),
   },
   {
-    route: chatThreadPendingMessageAppendContract.append,
-    handler: authRoute({}, appendPendingMessageInner$),
+    route: chatThreadPendingMessageReplaceContract.replace,
+    handler: authRoute({}, replacePendingMessageInner$),
   },
   {
     route: chatThreadPendingMessageDeleteContract.delete,

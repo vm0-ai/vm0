@@ -77,6 +77,7 @@ export {
   getTestChatThreadPendingMessage,
   getTestChatThreadPinnedAt,
   getTestChatThreadRenamedAt,
+  getTestUserMessageRunStorage,
   createTestCompose,
   createTestOrgModelProvider,
   createTestOrgMultiAuthModelProvider,

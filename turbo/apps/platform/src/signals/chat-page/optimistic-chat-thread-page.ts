@@ -3,6 +3,7 @@ import { clerk$ } from "../auth.ts";
 import { patchThreadMeta$ } from "../external/idb-thread-meta-store.ts";
 import {
   chatMessagesContract,
+  chatThreadPendingMessageReplaceContract,
   chatThreadsContract,
   type ChatThreadListItem,
   type ModelSelectionRequest,
@@ -24,7 +25,11 @@ import {
   ensureDraft$,
   type ChatThreadSignals,
 } from "./create-chat-thread.ts";
-import { createLocalChatThreadDataSource } from "./local-chat-thread-data-source.ts";
+import {
+  createLocalChatThreadDataSource,
+  type LocalChatThreadDataSource,
+} from "./local-chat-thread-data-source.ts";
+import type { ReplacePendingMessageArgs } from "./chat-thread-data-source.ts";
 import { createPendingChatThread } from "./pending-chat-thread.ts";
 import {
   prepareUserMessageFromDraft$,
@@ -89,6 +94,44 @@ interface SendNewThreadMessageResult {
 
 interface SendNewThreadMessagePending extends PendingChatThread {
   sendResult: Promise<SendNewThreadMessageResult>;
+}
+
+async function replacePendingMessage(
+  createClient: ZeroClientFactory,
+  threadId: string,
+  replacement: ReplacePendingMessageArgs,
+  signal: AbortSignal,
+): Promise<void> {
+  if (
+    replacement.content === null &&
+    (!replacement.attachments || replacement.attachments.length === 0)
+  ) {
+    return;
+  }
+
+  const client = createClient(chatThreadPendingMessageReplaceContract, {
+    apiBase: "api",
+  });
+  await accept(
+    client.replace({
+      params: { id: threadId },
+      body: {
+        ...(replacement.content !== null
+          ? { content: replacement.content }
+          : {}),
+        ...(replacement.attachments !== null &&
+        replacement.attachments.length > 0
+          ? { attachments: replacement.attachments }
+          : {}),
+        ...(replacement.clientMessageId !== null
+          ? { clientMessageId: replacement.clientMessageId }
+          : {}),
+      },
+      fetchOptions: { signal },
+    }),
+    [200],
+  );
+  signal.throwIfAborted();
 }
 
 const routeMainOptimisticChatThread$ = command(
@@ -176,7 +219,11 @@ const mintOptimisticPendingThread$ = command(
       pendingRunId?: string;
     },
     signal: AbortSignal,
-  ): Promise<{ createdAt: string; pendingThread: ChatThreadSignals }> => {
+  ): Promise<{
+    createdAt: string;
+    pendingThread: ChatThreadSignals;
+    dataSource: LocalChatThreadDataSource;
+  }> => {
     L.debug("optimistic thread minted", {
       threadId: args.threadId,
       agentId: args.agentId,
@@ -197,7 +244,7 @@ const mintOptimisticPendingThread$ = command(
       draft,
       dataSource,
     );
-    return { createdAt, pendingThread };
+    return { createdAt, pendingThread, dataSource };
   },
 );
 
@@ -394,7 +441,7 @@ const sendNewThreadMessage$ = command(
     const threadId = crypto.randomUUID();
     const clientMessageId = crypto.randomUUID();
     const messageCreatedAt = new Date().toISOString();
-    const { createdAt, pendingThread } = await set(
+    const { createdAt, pendingThread, dataSource } = await set(
       mintOptimisticPendingThread$,
       {
         threadId,
@@ -414,7 +461,8 @@ const sendNewThreadMessage$ = command(
     );
     set(draft.clear$);
 
-    const client = get(zeroClient$)(chatMessagesContract);
+    const createClient = get(zeroClient$);
+    const client = createClient(chatMessagesContract);
     L.debug("sendNewThreadMessage$ POST chat/messages start", {
       threadId,
       clientMessageId,
@@ -440,6 +488,16 @@ const sendNewThreadMessage$ = command(
         threadId: result.body.threadId,
         runId: result.body.runId,
       });
+      const replacement = dataSource.takePendingMessageReplacement();
+      if (replacement) {
+        signal.throwIfAborted();
+        await replacePendingMessage(
+          createClient,
+          result.body.threadId,
+          replacement,
+          signal,
+        );
+      }
       set(reloadChatThreads$);
 
       return { threadId: result.body.threadId, runId: result.body.runId };

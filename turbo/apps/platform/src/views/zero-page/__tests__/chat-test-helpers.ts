@@ -12,8 +12,8 @@ import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
   chatMessagesContract,
-  chatThreadPendingMessageAppendContract,
   chatThreadPendingMessageRecallContract,
+  chatThreadPendingMessageReplaceContract,
   type PendingMessage,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -216,7 +216,7 @@ export function mockChatLifecycle(options?: {
   }[];
   threadTitle?: string | null;
   pendingMessage?: PendingMessage | null;
-  onPendingMessageAppend?: (body: {
+  onPendingMessageReplace?: (body: {
     content?: string;
     attachments?: PersistedAttachment[];
     clientMessageId?: string;
@@ -228,11 +228,16 @@ export function mockChatLifecycle(options?: {
    */
   recallGate?: Promise<void>;
   /**
-   * Promise the append handler awaits before responding. Lets a test observe
+   * Promise the replace handler awaits before responding. Lets a test observe
    * the optimistic pending state (disabled Recall button) before the server
    * round-trip completes.
    */
-  appendGate?: Promise<void>;
+  replaceGate?: Promise<void>;
+  /**
+   * Promise the initial send handler awaits before responding. Lets tests
+   * keep the new-thread optimistic view mounted while interacting with it.
+   */
+  sendGate?: Promise<void>;
   onRunCreate?: () => void;
 }): MockLifecycleControl {
   let threadId = options?.threadId ?? "thread-test-1";
@@ -386,30 +391,19 @@ export function mockChatLifecycle(options?: {
       });
     }),
     mockApi(
-      chatThreadPendingMessageAppendContract.append,
+      chatThreadPendingMessageReplaceContract.replace,
       async ({ body, respond }) => {
-        options?.onPendingMessageAppend?.(body);
-        if (options?.appendGate) {
-          await options.appendGate;
+        options?.onPendingMessageReplace?.(body);
+        if (options?.replaceGate) {
+          await options.replaceGate;
         }
         const now = new Date().toISOString();
-        const nextContent =
-          body.content === undefined
-            ? (pendingMessage?.content ?? null)
-            : pendingMessage?.content
-              ? `${pendingMessage.content}\n${body.content}`
-              : body.content;
-        const nextAttachments = [
-          ...(pendingMessage?.attachments ?? []),
-          ...(body.attachments ?? []),
-        ];
         pendingMessage = {
-          content: nextContent,
-          attachments: nextAttachments.length > 0 ? nextAttachments : null,
+          content: body.content ?? null,
+          attachments: body.attachments ?? null,
           createdAt: pendingMessage?.createdAt ?? now,
           updatedAt: now,
-          clientMessageId:
-            pendingMessage?.clientMessageId ?? body.clientMessageId ?? null,
+          clientMessageId: body.clientMessageId ?? null,
         };
         return respond(200, { pendingMessage });
       },
@@ -451,7 +445,10 @@ export function mockChatLifecycle(options?: {
       });
     }),
     // Unified chat message endpoint (creates thread + run + association)
-    mockApi(chatMessagesContract.send, ({ body, respond }) => {
+    mockApi(chatMessagesContract.send, async ({ body, respond }) => {
+      if (options?.sendGate) {
+        await options.sendGate;
+      }
       threadId = body.clientThreadId ?? threadId;
       if (body.prompt) {
         runPrompt = body.prompt;

@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { userMessageRun } from "@vm0/db/schema/user-message-run";
 import {
   RUN_UPLOADED_FILE_SOURCES,
   runUploadedFiles,
@@ -167,8 +168,11 @@ async function getChatThreadForRun(
       userId: chatThreads.userId,
     })
     .from(chatMessages)
+    .leftJoin(userMessageRun, eq(userMessageRun.userMessageId, chatMessages.id))
     .innerJoin(chatThreads, eq(chatMessages.chatThreadId, chatThreads.id))
-    .where(eq(chatMessages.runId, runId))
+    .where(
+      sql`${chatMessages.runId} = ${runId} OR ${userMessageRun.runId} = ${runId}`,
+    )
     .limit(1);
 
   return messageThread ?? null;

@@ -5,37 +5,14 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ChatThread } from "../agent-chat.ts";
 import type {
-  AppendPendingMessageArgs,
   ChatThreadDataSource,
   RecallPendingMessageResult,
+  ReplacePendingMessageArgs,
 } from "./chat-thread-data-source.ts";
 
 const localPatchDraft$ = command((): Promise<void> => {
   return Promise.resolve();
 });
-
-const localAppendPendingMessage$ = command(
-  (
-    _visitor,
-    args: AppendPendingMessageArgs,
-    _signal: AbortSignal,
-  ): Promise<PendingMessage> => {
-    const now = new Date().toISOString();
-    return Promise.resolve({
-      content: args.content ?? null,
-      attachments: args.attachments ?? null,
-      createdAt: now,
-      updatedAt: now,
-      clientMessageId: args.clientMessageId ?? null,
-    });
-  },
-);
-
-const localRecallPendingMessage$ = command(
-  (): Promise<RecallPendingMessageResult> => {
-    return Promise.resolve({ draftContent: null, draftAttachments: null });
-  },
-);
 
 const localListMessagesAfter$ = command(() => {
   return Promise.resolve({
@@ -63,11 +40,16 @@ const localReloadThread$ = command(() => {
   // Local snapshot is fixed for the optimistic lifetime — nothing to reload.
 });
 
+export interface LocalChatThreadDataSource extends ChatThreadDataSource {
+  takePendingMessageReplacement: () => ReplacePendingMessageArgs | null;
+}
+
 export function createLocalChatThreadDataSource(input: {
   threadData: ChatThread;
   messages: PagedChatMessage[];
-}): ChatThreadDataSource {
+}): LocalChatThreadDataSource {
   const { threadData, messages } = input;
+  let pendingMessageReplacement: ReplacePendingMessageArgs | null = null;
 
   const getThread$ = computed((): Promise<ChatThread | null> => {
     return Promise.resolve(threadData);
@@ -81,17 +63,50 @@ export function createLocalChatThreadDataSource(input: {
     return Promise.resolve();
   });
 
+  const localReplacePendingMessage$ = command(
+    (
+      _visitor,
+      args: ReplacePendingMessageArgs,
+      _signal: AbortSignal,
+    ): Promise<PendingMessage> => {
+      pendingMessageReplacement = {
+        ...args,
+        attachments: args.attachments ? [...args.attachments] : null,
+      };
+      const now = new Date().toISOString();
+      return Promise.resolve({
+        content: args.content,
+        attachments: args.attachments ? [...args.attachments] : null,
+        createdAt: now,
+        updatedAt: now,
+        clientMessageId: args.clientMessageId,
+      });
+    },
+  );
+
+  const localRecallPendingMessage$ = command(
+    (): Promise<RecallPendingMessageResult> => {
+      pendingMessageReplacement = null;
+      return Promise.resolve({ draftContent: null, draftAttachments: null });
+    },
+  );
+
   return {
     getThread$,
     reloadThread$: localReloadThread$,
     initialPage$,
     patchDraft$: localPatchDraft$,
-    appendPendingMessage$: localAppendPendingMessage$,
+    replacePendingMessage$: localReplacePendingMessage$,
     recallPendingMessage$: localRecallPendingMessage$,
     listMessagesAfter$: localListMessagesAfter$,
     listMessagesBefore$: localListMessagesBefore$,
     cancelRuns$,
     markRead$: localMarkRead$,
     subscribeRealtime$: localSubscribeRealtime$,
+    takePendingMessageReplacement: () => {
+      const replacement = pendingMessageReplacement;
+      pendingMessageReplacement = null;
+      return replacement;
+    },
   };
 }

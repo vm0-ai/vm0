@@ -1,6 +1,7 @@
 import { eq, and, desc, inArray, isNull, asc, or, sql } from "drizzle-orm";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatMessages } from "@vm0/db/schema/chat-message";
+import { userMessageRun } from "@vm0/db/schema/user-message-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -534,7 +535,12 @@ export async function getChatThreadArtifacts(
           sql`EXISTS (
             SELECT 1
             FROM ${chatMessages}
-            WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
+            LEFT JOIN ${userMessageRun}
+              ON ${userMessageRun.userMessageId} = ${chatMessages.id}
+            WHERE (
+                ${chatMessages.runId} = ${runUploadedFiles.runId}
+                OR ${userMessageRun.runId} = ${runUploadedFiles.runId}
+              )
               AND ${chatMessages.chatThreadId} = ${threadId}
           )`,
         ),

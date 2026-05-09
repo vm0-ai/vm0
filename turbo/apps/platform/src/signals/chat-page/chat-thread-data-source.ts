@@ -22,16 +22,16 @@ export interface PatchDraftArgs {
   attachments: PersistedAttachment[] | null;
 }
 
-export interface AppendPendingMessageArgs {
+export interface ReplacePendingMessageArgs {
   threadId: string;
-  content: string | undefined;
-  attachments: PersistedAttachment[] | undefined;
+  content: string | null;
+  attachments: PersistedAttachment[] | null;
   /**
    * Pre-generated UUID the client uses for the optimistic queued bubble.
    * The server persists it and reuses it as `chat_messages.id` on
    * auto-send so the optimistic row reconciles with the real one.
    */
-  clientMessageId: string | undefined;
+  clientMessageId: string | null;
 }
 
 export interface RecallPendingMessageArgs {
@@ -73,9 +73,9 @@ export interface ChatThreadDataSource {
   reloadThread$: Command<void, []>;
   initialPage$: Computed<Promise<InitialPage>>;
   patchDraft$: Command<Promise<void>, [PatchDraftArgs, AbortSignal]>;
-  appendPendingMessage$: Command<
+  replacePendingMessage$: Command<
     Promise<PendingMessage>,
-    [AppendPendingMessageArgs, AbortSignal]
+    [ReplacePendingMessageArgs, AbortSignal]
   >;
   recallPendingMessage$: Command<
     Promise<RecallPendingMessageResult>,

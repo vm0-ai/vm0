@@ -3,8 +3,8 @@ import {
   chatThreadByIdContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
-  chatThreadPendingMessageAppendContract,
   chatThreadPendingMessageRecallContract,
+  chatThreadPendingMessageReplaceContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroRunsCancelContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { accept } from "../../lib/accept.ts";
@@ -16,13 +16,13 @@ import type {
   CancelRunsArgs,
   ChatThreadDataSource,
   InitialPage,
-  AppendPendingMessageArgs,
   ListMessagesAfterArgs,
   ListMessagesBeforeArgs,
   MarkReadArgs,
   PatchDraftArgs,
   RecallPendingMessageArgs,
   RecallPendingMessageResult,
+  ReplacePendingMessageArgs,
   SubscribeRealtimeArgs,
 } from "./chat-thread-data-source.ts";
 
@@ -46,7 +46,7 @@ const patchDraft$ = command(
   },
 );
 
-const appendPendingMessage$ = command(
+const replacePendingMessage$ = command(
   async (
     { get },
     {
@@ -54,19 +54,19 @@ const appendPendingMessage$ = command(
       content,
       attachments,
       clientMessageId,
-    }: AppendPendingMessageArgs,
+    }: ReplacePendingMessageArgs,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(chatThreadPendingMessageAppendContract, {
+    const client = get(zeroClient$)(chatThreadPendingMessageReplaceContract, {
       apiBase: "api",
     });
     const body = {
-      ...(content !== undefined ? { content } : {}),
-      ...(attachments !== undefined ? { attachments } : {}),
-      ...(clientMessageId !== undefined ? { clientMessageId } : {}),
+      ...(content !== null ? { content } : {}),
+      ...(attachments !== null ? { attachments } : {}),
+      ...(clientMessageId !== null ? { clientMessageId } : {}),
     };
     const result = await accept(
-      client.append({
+      client.replace({
         params: { id: threadId },
         body,
         fetchOptions: { signal },
@@ -304,7 +304,7 @@ export function createRemoteChatThreadDataSource(
     reloadThread$,
     initialPage$,
     patchDraft$,
-    appendPendingMessage$,
+    replacePendingMessage$,
     recallPendingMessage$,
     listMessagesAfter$,
     listMessagesBefore$,

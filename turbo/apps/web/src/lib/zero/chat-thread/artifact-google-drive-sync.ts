@@ -3,6 +3,7 @@ import { and, eq, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { badRequest, notFound } from "@vm0/api-services/errors";
 import { chatMessages } from "@vm0/db/schema/chat-message";
+import { userMessageRun } from "@vm0/db/schema/user-message-run";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import type {
@@ -292,7 +293,12 @@ async function getThreadArtifactFile(params: {
           sql`EXISTS (
             SELECT 1
             FROM ${chatMessages}
-            WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
+            LEFT JOIN ${userMessageRun}
+              ON ${userMessageRun.userMessageId} = ${chatMessages.id}
+            WHERE (
+                ${chatMessages.runId} = ${runUploadedFiles.runId}
+                OR ${userMessageRun.runId} = ${runUploadedFiles.runId}
+              )
               AND ${chatMessages.chatThreadId} = ${params.threadId}
           )`,
         ),

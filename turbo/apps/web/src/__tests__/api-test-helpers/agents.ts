@@ -53,6 +53,7 @@ export {
   getTestChatThreadPendingMessage,
   getTestChatThreadPinnedAt,
   getTestChatThreadRenamedAt,
+  getTestUserMessageRunStorage,
 } from "../db-test-assertions/agents";
 
 // ---------------------------------------------------------------------------

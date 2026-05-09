@@ -1,4 +1,4 @@
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import archiver from "archiver";
 import { exportJobs } from "@vm0/db/schema/export-job";
 import type { ExportArtifactUrl } from "@vm0/db/schema/export-job";
@@ -16,6 +16,7 @@ import {
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatMessages } from "@vm0/db/schema/chat-message";
+import { userMessageRun } from "@vm0/db/schema/user-message-run";
 import { resolveSessionHistory } from "../../infra/session-history/session-history-service";
 import { enqueueEmail } from "../email/outbox-service";
 import {
@@ -142,11 +143,17 @@ async function collectConversations(
       .select({
         role: chatMessages.role,
         content: chatMessages.content,
-        runId: chatMessages.runId,
+        runId: sql<
+          string | null
+        >`CASE WHEN ${chatMessages.role} = 'user' THEN ${userMessageRun.runId} ELSE ${chatMessages.runId} END`,
         error: chatMessages.error,
         createdAt: chatMessages.createdAt,
       })
       .from(chatMessages)
+      .leftJoin(
+        userMessageRun,
+        eq(userMessageRun.userMessageId, chatMessages.id),
+      )
       .where(eq(chatMessages.chatThreadId, thread.id))
       .orderBy(chatMessages.createdAt);
 

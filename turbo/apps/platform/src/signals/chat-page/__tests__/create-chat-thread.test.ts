@@ -17,7 +17,7 @@ import {
   type PendingMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
-  AppendPendingMessageArgs,
+  ReplacePendingMessageArgs,
   ChatThreadDataSource,
   PatchDraftArgs,
   CancelRunsArgs,
@@ -263,8 +263,8 @@ describe("fetchNextPage$ cursor", () => {
           return Promise.resolve();
         },
       ),
-      appendPendingMessage$: command(
-        (_ctx, _args: AppendPendingMessageArgs, _signal: AbortSignal) => {
+      replacePendingMessage$: command(
+        (_ctx, _args: ReplacePendingMessageArgs, _signal: AbortSignal) => {
           return Promise.resolve(createEmptyPendingMessage());
         },
       ),
@@ -378,8 +378,8 @@ describe("fetchNextPage$ cursor", () => {
           return Promise.resolve();
         },
       ),
-      appendPendingMessage$: command(
-        (_ctx, _args: AppendPendingMessageArgs, _signal: AbortSignal) => {
+      replacePendingMessage$: command(
+        (_ctx, _args: ReplacePendingMessageArgs, _signal: AbortSignal) => {
           return Promise.resolve(createEmptyPendingMessage());
         },
       ),
@@ -513,8 +513,8 @@ describe("fetchNextPage$ cursor", () => {
           return Promise.resolve();
         },
       ),
-      appendPendingMessage$: command(
-        (_ctx, _args: AppendPendingMessageArgs, _signal: AbortSignal) => {
+      replacePendingMessage$: command(
+        (_ctx, _args: ReplacePendingMessageArgs, _signal: AbortSignal) => {
           return Promise.resolve(createEmptyPendingMessage());
         },
       ),

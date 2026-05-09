@@ -18,6 +18,7 @@ import {
   getTestChatMessagesByThread,
   countUserRows,
   completeTestRun,
+  getTestUserMessageRunStorage,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   setTestSessionFramework,
@@ -140,6 +141,18 @@ describe("POST /api/zero/chat/messages", () => {
       expect(data.runId).toBeTruthy();
       expect(data.threadId).toBeTruthy();
       expect(data.createdAt).toBeTruthy();
+
+      await context.mocks.flushAfter();
+
+      const storage = await getTestUserMessageRunStorage({
+        threadId: data.threadId,
+        content: "hello world",
+      });
+      if (!storage) {
+        throw new Error("Expected user message to be persisted");
+      }
+      expect(storage.messageRunId).toBeNull();
+      expect(storage.associatedRunId).toBe(data.runId);
     });
 
     it("should create a new thread with the provided clientThreadId", async () => {

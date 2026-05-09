@@ -19,6 +19,7 @@ import {
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
+import { userMessageRun } from "@vm0/db/schema/user-message-run";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -141,11 +142,17 @@ type PendingMessageColumns = {
   readonly pendingMessageClientId?: string | null;
 };
 
+function effectiveChatMessageRunId() {
+  return sql<
+    string | null
+  >`CASE WHEN ${chatMessages.role} = 'user' THEN ${userMessageRun.runId} ELSE ${chatMessages.runId} END`;
+}
+
 const messageColumns = {
   id: chatMessages.id,
   role: chatMessages.role,
   content: chatMessages.content,
-  runId: chatMessages.runId,
+  runId: effectiveChatMessageRunId(),
   error: chatMessages.error,
   sequenceNumber: chatMessages.sequenceNumber,
   createdAt: chatMessages.createdAt,
@@ -161,7 +168,7 @@ const searchMessageColumns = {
   content: chatMessages.content,
   createdAt: chatMessages.createdAt,
   sequenceNumber: chatMessages.sequenceNumber,
-  runId: chatMessages.runId,
+  runId: effectiveChatMessageRunId(),
 } as const;
 
 function escapeLikePattern(value: string): string {
@@ -286,20 +293,7 @@ function toPendingMessage(row: PendingMessageColumns): PendingMessage | null {
   };
 }
 
-function appendPendingText(
-  currentContent: string | null,
-  nextContent: string | null,
-): string | null {
-  if (nextContent === null) {
-    return currentContent;
-  }
-  if (currentContent === null || currentContent === "") {
-    return nextContent;
-  }
-  return `${currentContent}\n${nextContent}`;
-}
-
-export const appendZeroChatThreadPendingMessage$ = command(
+export const replaceZeroChatThreadPendingMessage$ = command(
   async (
     { set },
     args: {
@@ -315,11 +309,7 @@ export const appendZeroChatThreadPendingMessage$ = command(
     const result = await db.transaction(async (tx) => {
       const [thread] = await tx
         .select({
-          pendingMessageContent: chatThreads.pendingMessageContent,
-          pendingMessageAttachments: chatThreads.pendingMessageAttachments,
           pendingMessageCreatedAt: chatThreads.pendingMessageCreatedAt,
-          pendingMessageUpdatedAt: chatThreads.pendingMessageUpdatedAt,
-          pendingMessageClientId: chatThreads.pendingMessageClientId,
         })
         .from(chatThreads)
         .where(
@@ -335,33 +325,19 @@ export const appendZeroChatThreadPendingMessage$ = command(
         return null;
       }
 
-      const currentAttachments =
-        parsePersistedAttachments(thread.pendingMessageAttachments) ?? [];
-      const nextAttachments = [
-        ...currentAttachments,
-        ...(args.attachments ?? []),
-      ];
       const now = nowDate();
-      // First append wins the client id — the queued bubble that issued
-      // it is the one we'll reconcile with on auto-send. Subsequent
-      // appends coalesce content/attachments into the same row but keep
-      // the original id.
-      const nextClientId =
-        thread.pendingMessageClientId ?? args.clientMessageId ?? null;
       const [updated] = await tx
         .update(chatThreads)
         .set({
           draftContent: null,
           draftAttachments: null,
-          pendingMessageContent: appendPendingText(
-            thread.pendingMessageContent ?? null,
-            args.content,
-          ),
-          pendingMessageAttachments:
-            nextAttachments.length > 0 ? nextAttachments : null,
+          pendingMessageContent: args.content,
+          pendingMessageAttachments: args.attachments
+            ? [...args.attachments]
+            : null,
           pendingMessageCreatedAt: thread.pendingMessageCreatedAt ?? now,
           pendingMessageUpdatedAt: now,
-          pendingMessageClientId: nextClientId,
+          pendingMessageClientId: args.clientMessageId,
         })
         .where(
           and(
@@ -415,6 +391,7 @@ export const deleteZeroChatThreadPendingMessage$ = command(
           pendingMessageAttachments: null,
           pendingMessageCreatedAt: null,
           pendingMessageUpdatedAt: null,
+          pendingMessageClientId: null,
         })
         .where(
           and(
@@ -485,6 +462,7 @@ export const recallZeroChatThreadPendingMessage$ = command(
           pendingMessageAttachments: null,
           pendingMessageCreatedAt: null,
           pendingMessageUpdatedAt: null,
+          pendingMessageClientId: null,
         })
         .where(
           and(
@@ -689,7 +667,14 @@ function chatThreadMessages(
       const rows = await get(db$)
         .select(messageColumns)
         .from(chatMessages)
-        .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
+        .leftJoin(
+          userMessageRun,
+          eq(userMessageRun.userMessageId, chatMessages.id),
+        )
+        .leftJoin(
+          agentRuns,
+          sql`${agentRuns.id} = ${effectiveChatMessageRunId()}`,
+        )
         .where(eq(chatMessages.chatThreadId, threadId))
         .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
 
@@ -945,7 +930,11 @@ export function zeroChatThreadArtifacts(args: {
               sql`EXISTS (
                 SELECT 1
                 FROM ${chatMessages}
-                WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
+                LEFT JOIN ${userMessageRun} ON ${userMessageRun.userMessageId} = ${chatMessages.id}
+                WHERE (
+                    ${chatMessages.runId} = ${runUploadedFiles.runId}
+                    OR ${userMessageRun.runId} = ${runUploadedFiles.runId}
+                  )
                   AND ${chatMessages.chatThreadId} = ${args.threadId}
               )`,
             ),
@@ -1040,6 +1029,10 @@ export function zeroChatSearch(args: {
         agentName: agentComposes.name,
       })
       .from(chatMessages)
+      .leftJoin(
+        userMessageRun,
+        eq(userMessageRun.userMessageId, chatMessages.id),
+      )
       .innerJoin(chatThreads, eq(chatMessages.chatThreadId, chatThreads.id))
       .innerJoin(
         agentComposes,
@@ -1060,6 +1053,10 @@ export function zeroChatSearch(args: {
             ? db
                 .select(searchMessageColumns)
                 .from(chatMessages)
+                .leftJoin(
+                  userMessageRun,
+                  eq(userMessageRun.userMessageId, chatMessages.id),
+                )
                 .where(
                   and(
                     eq(chatMessages.chatThreadId, match.chatThreadId),
@@ -1075,6 +1072,10 @@ export function zeroChatSearch(args: {
             ? db
                 .select(searchMessageColumns)
                 .from(chatMessages)
+                .leftJoin(
+                  userMessageRun,
+                  eq(userMessageRun.userMessageId, chatMessages.id),
+                )
                 .where(
                   and(
                     eq(chatMessages.chatThreadId, match.chatThreadId),
@@ -1136,7 +1137,14 @@ export function zeroChatThreadMessagesPage(args: {
       const latestRows = await db
         .select(messageColumns)
         .from(chatMessages)
-        .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
+        .leftJoin(
+          userMessageRun,
+          eq(userMessageRun.userMessageId, chatMessages.id),
+        )
+        .leftJoin(
+          agentRuns,
+          sql`${agentRuns.id} = ${effectiveChatMessageRunId()}`,
+        )
         .where(threadFilter)
         .orderBy(
           desc(chatMessages.createdAt),
@@ -1171,7 +1179,14 @@ export function zeroChatThreadMessagesPage(args: {
         rows = await db
           .select(messageColumns)
           .from(chatMessages)
-          .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
+          .leftJoin(
+            userMessageRun,
+            eq(userMessageRun.userMessageId, chatMessages.id),
+          )
+          .leftJoin(
+            agentRuns,
+            sql`${agentRuns.id} = ${effectiveChatMessageRunId()}`,
+          )
           .where(and(threadFilter, cursorAfterCondition))
           .orderBy(
             asc(chatMessages.createdAt),
@@ -1182,7 +1197,14 @@ export function zeroChatThreadMessagesPage(args: {
         const previousRows = await db
           .select(messageColumns)
           .from(chatMessages)
-          .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
+          .leftJoin(
+            userMessageRun,
+            eq(userMessageRun.userMessageId, chatMessages.id),
+          )
+          .leftJoin(
+            agentRuns,
+            sql`${agentRuns.id} = ${effectiveChatMessageRunId()}`,
+          )
           .where(and(threadFilter, cursorBeforeCondition))
           .orderBy(
             desc(chatMessages.createdAt),

@@ -31,6 +31,7 @@ import {
   type ModelSelectionRequest,
   type PagedChatMessage,
   type PendingMessage,
+  type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { accept } from "../../lib/accept.ts";
@@ -1255,6 +1256,7 @@ function createSendMessage(deps: SendMessageDeps) {
 interface QueueMessageDeps {
   threadId: string;
   threadData$: Computed<Promise<ChatThread | null>>;
+  pendingMessage$: Computed<Promise<PendingMessage | null>>;
   modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
@@ -1265,10 +1267,29 @@ interface QueueMessageDeps {
   setOptimisticPending$: Command<void, [PendingMessage | null]>;
 }
 
+function mergePendingText(
+  existing: string | null,
+  next: string | undefined,
+): string | null {
+  if (next === undefined) {
+    return existing;
+  }
+  return existing ? `${existing}\n${next}` : next;
+}
+
+function mergePendingAttachments(
+  existing: readonly PersistedAttachment[] | null | undefined,
+  next: readonly PersistedAttachment[] | undefined,
+): PersistedAttachment[] | null {
+  const attachments = [...(existing ?? []), ...(next ?? [])];
+  return attachments.length > 0 ? attachments : null;
+}
+
 function createQueueMessage(deps: QueueMessageDeps) {
   const {
     threadId,
     threadData$,
+    pendingMessage$,
     modelSelection$,
     draft,
     cancelDraftSync$,
@@ -1278,6 +1299,8 @@ function createQueueMessage(deps: QueueMessageDeps) {
     dataSource,
     setOptimisticPending$,
   } = deps;
+  let replacePendingMessageTail: Promise<void> = Promise.resolve();
+
   return command(async ({ get, set }, prompt: string, signal: AbortSignal) => {
     L.debug("queueMessage$ start", { threadId, promptLen: prompt.length });
     const thread = await get(threadData$);
@@ -1316,7 +1339,8 @@ function createQueueMessage(deps: QueueMessageDeps) {
     // chat_messages row uses it; the optimistic queued bubble is mounted
     // with this id so the merge-by-id reconciliation drops the dupe when
     // the real row arrives via Ably.
-    const existingPending = thread.pendingMessage;
+    const existingPending = await get(pendingMessage$);
+    signal.throwIfAborted();
     const clientMessageId =
       existingPending?.clientMessageId ?? crypto.randomUUID();
 
@@ -1325,13 +1349,18 @@ function createQueueMessage(deps: QueueMessageDeps) {
     // pending row lands in `threadData$`, at which point the finally block
     // below drops the optimistic copy.
     const nowIso = new Date().toISOString();
-    set(setOptimisticPending$, {
-      content: content ?? null,
-      attachments:
-        attachments && attachments.length > 0 ? [...attachments] : null,
+    const nextPending: PendingMessage = {
+      content: mergePendingText(existingPending?.content ?? null, content),
+      attachments: mergePendingAttachments(
+        existingPending?.attachments,
+        attachments,
+      ),
       createdAt: existingPending?.createdAt ?? nowIso,
       updatedAt: nowIso,
       clientMessageId,
+    };
+    set(setOptimisticPending$, {
+      ...nextPending,
     });
     animationFrame(
       () => {
@@ -1340,19 +1369,25 @@ function createQueueMessage(deps: QueueMessageDeps) {
       { signal },
     );
 
-    await Promise.all([
-      set(flushDraftClear$, signal),
-      set(
-        dataSource.appendPendingMessage$,
-        {
-          threadId,
-          content,
-          attachments,
-          clientMessageId,
-        },
-        signal,
-      ),
-    ]);
+    const replaceArgs = {
+      threadId,
+      content: nextPending.content,
+      attachments: nextPending.attachments,
+      clientMessageId: nextPending.clientMessageId,
+    };
+    const runReplace = async (): Promise<void> => {
+      await set(dataSource.replacePendingMessage$, replaceArgs, signal);
+    };
+    const previousReplacePendingMessage = replacePendingMessageTail;
+    const replacePendingMessage = (async (): Promise<void> => {
+      await Promise.allSettled([previousReplacePendingMessage]);
+      await runReplace();
+    })();
+    replacePendingMessageTail = (async (): Promise<void> => {
+      await Promise.allSettled([replacePendingMessage]);
+    })();
+
+    await Promise.all([set(flushDraftClear$, signal), replacePendingMessage]);
     signal.throwIfAborted();
 
     set(reloadThread$);
@@ -1427,7 +1462,7 @@ function createRecallPendingMessage(deps: RecallMessageDeps) {
 interface MessageCommandsDeps
   extends
     SendMessageDeps,
-    Omit<QueueMessageDeps, "setOptimisticPending$">,
+    Omit<QueueMessageDeps, "pendingMessage$" | "setOptimisticPending$">,
     Omit<RecallMessageDeps, "markPendingRecalled$"> {}
 
 function createMessageCommands(
@@ -1443,7 +1478,11 @@ function createMessageCommands(
   } = createPendingMessageView(deps.threadData$, deps.groupedChatMessages$);
   return {
     sendMessage$: createSendMessage(deps),
-    queueMessage$: createQueueMessage({ ...deps, setOptimisticPending$ }),
+    queueMessage$: createQueueMessage({
+      ...deps,
+      pendingMessage$,
+      setOptimisticPending$,
+    }),
     recallPendingMessage$: createRecallPendingMessage({
       ...deps,
       markPendingRecalled$,

@@ -572,7 +572,7 @@ describe("zero chat thread page - queueMessage$ scrolls to bottom on append", ()
 
       // Wait for the active-run composer placeholder to show, then queue
       // another message — `queueMessage$` should fire an autoScroll after the
-      // pending-message append succeeds.
+      // pending-message replace succeeds.
       const queueComposer = await waitFor(() => {
         return screen.getByPlaceholderText(
           /Type your next message/,

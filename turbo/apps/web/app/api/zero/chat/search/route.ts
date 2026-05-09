@@ -17,6 +17,7 @@ import {
   isNotNull,
   isNull,
   lt,
+  sql,
 } from "drizzle-orm";
 import { z } from "zod";
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
@@ -31,6 +32,7 @@ import {
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { chatMessages } from "@vm0/db/schema/chat-message";
+import { userMessageRun } from "@vm0/db/schema/user-message-run";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -70,6 +72,12 @@ interface ChatMessageRow {
  */
 const chatRoleSchema = z.enum(["user", "assistant"]);
 
+function effectiveChatMessageRunId() {
+  return sql<
+    string | null
+  >`CASE WHEN ${chatMessages.role} = 'user' THEN ${userMessageRun.runId} ELSE ${chatMessages.runId} END`;
+}
+
 function toChatMessage(row: ChatMessageRow): ChatSearchMessage {
   if (row.content === null) {
     // WHERE clauses in this route guarantee non-null content; hitting this
@@ -97,7 +105,7 @@ const messageColumns = {
   content: chatMessages.content,
   createdAt: chatMessages.createdAt,
   sequenceNumber: chatMessages.sequenceNumber,
-  runId: chatMessages.runId,
+  runId: effectiveChatMessageRunId(),
 };
 
 const router = tsr.router(chatSearchContract, {
@@ -133,6 +141,10 @@ const router = tsr.router(chatSearchContract, {
         agentName: agentComposes.name,
       })
       .from(chatMessages)
+      .leftJoin(
+        userMessageRun,
+        eq(userMessageRun.userMessageId, chatMessages.id),
+      )
       .innerJoin(chatThreads, eq(chatMessages.chatThreadId, chatThreads.id))
       .innerJoin(
         agentComposes,
@@ -158,6 +170,10 @@ const router = tsr.router(chatSearchContract, {
             ? globalThis.services.db
                 .select(messageColumns)
                 .from(chatMessages)
+                .leftJoin(
+                  userMessageRun,
+                  eq(userMessageRun.userMessageId, chatMessages.id),
+                )
                 .where(
                   and(
                     eq(chatMessages.chatThreadId, m.chatThreadId),
@@ -173,6 +189,10 @@ const router = tsr.router(chatSearchContract, {
             ? globalThis.services.db
                 .select(messageColumns)
                 .from(chatMessages)
+                .leftJoin(
+                  userMessageRun,
+                  eq(userMessageRun.userMessageId, chatMessages.id),
+                )
                 .where(
                   and(
                     eq(chatMessages.chatThreadId, m.chatThreadId),

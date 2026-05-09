@@ -74,7 +74,7 @@ describe("composer Stop button + draft recall on cancel", () => {
     const user = userEvent.setup({ delay: null });
     const appendedContents: (string | undefined)[] = [];
     mockChatLifecycle({
-      onPendingMessageAppend: (body) => {
+      onPendingMessageReplace: (body) => {
         appendedContents.push(body.content);
       },
     });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -17,6 +17,7 @@ import { changeChatPendingMessage } from "../../../mocks/mock-helpers.ts";
 import { server } from "../../../mocks/server.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
+import { optimisticChatThread$ } from "../../../signals/chat-page/optimistic-chat-thread-state.ts";
 import {
   mockChatLifecycle,
   sendMessageInUI,
@@ -27,6 +28,11 @@ const context = testContext();
 
 const THREAD_ID = "thread-test-1";
 const CHAT_PATH = `/chats/${THREAD_ID}`;
+const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
+const FIRST_NEW_THREAD_MESSAGE = "new thread first";
+const SECOND_NEW_THREAD_MESSAGE = "new thread second";
+const THIRD_NEW_THREAD_MESSAGE = "new thread third";
 
 function getActiveRunTextarea(): Promise<HTMLTextAreaElement> {
   return waitFor(() => {
@@ -52,13 +58,63 @@ async function startActiveRun(
   return await getActiveRunTextarea();
 }
 
+async function startOptimisticNewThreadRun(
+  user: ReturnType<typeof userEvent.setup>,
+): Promise<void> {
+  const textarea = await waitFor(() => {
+    return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+  });
+  await sendMessageInUI(user, textarea, FIRST_NEW_THREAD_MESSAGE);
+
+  await waitFor(() => {
+    expect(screen.getByText(FIRST_NEW_THREAD_MESSAGE)).toBeInTheDocument();
+    expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+  });
+}
+
+async function sendQueuedMessage(
+  user: ReturnType<typeof userEvent.setup>,
+  text: string,
+): Promise<void> {
+  const textarea = await getActiveRunTextarea();
+  await fill(textarea, text);
+  await user.keyboard("{Enter}");
+}
+
+async function settleOptimisticNewThread(
+  sendDeferred: ReturnType<typeof createDeferredPromise<void>>,
+): Promise<void> {
+  await act(async () => {
+    if (!sendDeferred.settled()) {
+      sendDeferred.resolve();
+    }
+    for (let i = 0; i < 30; i++) {
+      await Promise.resolve();
+    }
+  });
+
+  await waitFor(() => {
+    expect(context.store.get(optimisticChatThread$)).toBeNull();
+  });
+}
+
+async function expectQueuedSecondAndThird(): Promise<void> {
+  await waitFor(() => {
+    const queuedMessages = screen.getAllByLabelText("Queued message");
+    expect(queuedMessages).toHaveLength(1);
+    expect(queuedMessages[0]).toHaveTextContent(
+      /new thread second\s+new thread third/,
+    );
+  });
+}
+
 describe("chat pending message queue", () => {
   it("queues keyboard sends during an active run when enabled", async () => {
     const user = userEvent.setup({ delay: null });
-    const appendedContents: (string | undefined)[] = [];
+    const replacedContents: (string | undefined)[] = [];
     mockChatLifecycle({
-      onPendingMessageAppend: (body) => {
-        appendedContents.push(body.content);
+      onPendingMessageReplace: (body) => {
+        replacedContents.push(body.content);
       },
     });
 
@@ -92,15 +148,18 @@ describe("chat pending message queue", () => {
       expect(queued).toHaveTextContent("first pending");
       expect(queued).toHaveTextContent("second pending");
     });
-    expect(appendedContents).toStrictEqual(["first pending", "second pending"]);
+    expect(replacedContents).toStrictEqual([
+      "first pending",
+      "first pending\nsecond pending",
+    ]);
   });
 
-  it("attaches a pre-generated client message id to the append request", async () => {
+  it("attaches a pre-generated client message id to the replace request", async () => {
     const user = userEvent.setup({ delay: null });
-    const appendedClientIds: (string | undefined)[] = [];
+    const replacedClientIds: (string | undefined)[] = [];
     mockChatLifecycle({
-      onPendingMessageAppend: (body) => {
-        appendedClientIds.push(body.clientMessageId);
+      onPendingMessageReplace: (body) => {
+        replacedClientIds.push(body.clientMessageId);
       },
     });
 
@@ -118,19 +177,19 @@ describe("chat pending message queue", () => {
       expect(screen.getByLabelText("Queued message")).toBeInTheDocument();
     });
 
-    // Subsequent appends in the same active-run window keep coalescing into
+    // Subsequent replacements in the same active-run window keep coalescing into
     // the same queued row, so they reuse the client id of the first send.
     textarea = await getActiveRunTextarea();
     await fill(textarea, "second pending");
     await user.keyboard("{Enter}");
     await waitFor(() => {
-      expect(appendedClientIds).toHaveLength(2);
+      expect(replacedClientIds).toHaveLength(2);
     });
 
-    expect(appendedClientIds[0]).toMatch(
+    expect(replacedClientIds[0]).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
     );
-    expect(appendedClientIds[1]).toBe(appendedClientIds[0]);
+    expect(replacedClientIds[1]).toBe(replacedClientIds[0]);
   });
 
   it("hides the queued bubble when the real message with the same id lands", async () => {
@@ -152,7 +211,7 @@ describe("chat pending message queue", () => {
           createdAt: "2026-03-09T00:00:00Z",
         },
       ],
-      onPendingMessageAppend: (body) => {
+      onPendingMessageReplace: (body) => {
         capturedClientId = body.clientMessageId;
       },
     });
@@ -375,10 +434,10 @@ describe("chat pending message queue", () => {
 
   it("does not queue keyboard sends while the feature switch is disabled", async () => {
     const user = userEvent.setup({ delay: null });
-    let appendCount = 0;
+    let replaceCount = 0;
     mockChatLifecycle({
-      onPendingMessageAppend: () => {
-        appendCount++;
+      onPendingMessageReplace: () => {
+        replaceCount++;
       },
     });
 
@@ -392,17 +451,17 @@ describe("chat pending message queue", () => {
     await fill(textarea, "should stay in the composer");
     await user.keyboard("{Enter}");
 
-    expect(appendCount).toBe(0);
+    expect(replaceCount).toBe(0);
     expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
     expect(textarea.value).toBe("should stay in the composer");
   });
 
   it("disables the Recall button during the optimistic window and enables it once the server confirms", async () => {
     const user = userEvent.setup({ delay: null });
-    const appendGate = createDeferredPromise<void>(context.signal);
+    const replaceGate = createDeferredPromise<void>(context.signal);
 
     mockChatLifecycle({
-      appendGate: appendGate.promise,
+      replaceGate: replaceGate.promise,
     });
 
     detachedSetupPage({
@@ -416,28 +475,137 @@ describe("chat pending message queue", () => {
     await user.keyboard("{Enter}");
 
     // The queued bubble renders immediately (optimistic), and the Recall
-    // button stays disabled while the append request is in flight.
+    // button stays disabled while the replace request is in flight.
     await waitFor(() => {
       expect(screen.getByLabelText("Queued message")).toBeInTheDocument();
       expect(screen.getByLabelText("Recall queued message")).toBeDisabled();
     });
 
-    // Release the gate — the append completes, reload runs, server confirms
+    // Release the gate — the replace completes, reload runs, server confirms
     // the pending row, and the optimistic slot yields.
-    appendGate.resolve();
+    replaceGate.resolve();
 
     await waitFor(() => {
       expect(screen.getByLabelText("Recall queued message")).not.toBeDisabled();
     });
   });
 
+  describe("new thread optimistic queue handoff", () => {
+    it("replays the latest queued snapshot when the new thread settles", async () => {
+      const user = userEvent.setup({ delay: null });
+      const sendDeferred = createDeferredPromise<void>(context.signal);
+      const replacedContents: (string | undefined)[] = [];
+      mockChatLifecycle({
+        sendGate: sendDeferred.promise,
+        onPendingMessageReplace: (body) => {
+          replacedContents.push(body.content);
+        },
+      });
+
+      detachedSetupPage({
+        context,
+        path: AGENT_CHAT_PATH,
+        featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+      });
+
+      await startOptimisticNewThreadRun(user);
+      await sendQueuedMessage(user, SECOND_NEW_THREAD_MESSAGE);
+      await sendQueuedMessage(user, THIRD_NEW_THREAD_MESSAGE);
+
+      await expectQueuedSecondAndThird();
+      expect(replacedContents).toStrictEqual([]);
+
+      await settleOptimisticNewThread(sendDeferred);
+
+      await waitFor(() => {
+        expect(replacedContents).toStrictEqual([
+          `${SECOND_NEW_THREAD_MESSAGE}\n${THIRD_NEW_THREAD_MESSAGE}`,
+        ]);
+      });
+      await expectQueuedSecondAndThird();
+    });
+
+    it("keeps one queued row when the new thread settles after the second queued send", async () => {
+      const user = userEvent.setup({ delay: null });
+      const sendDeferred = createDeferredPromise<void>(context.signal);
+      const replacedContents: (string | undefined)[] = [];
+      mockChatLifecycle({
+        sendGate: sendDeferred.promise,
+        onPendingMessageReplace: (body) => {
+          replacedContents.push(body.content);
+        },
+      });
+
+      detachedSetupPage({
+        context,
+        path: AGENT_CHAT_PATH,
+        featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+      });
+
+      await startOptimisticNewThreadRun(user);
+      await sendQueuedMessage(user, SECOND_NEW_THREAD_MESSAGE);
+      await waitFor(() => {
+        expect(screen.getByLabelText("Queued message")).toHaveTextContent(
+          SECOND_NEW_THREAD_MESSAGE,
+        );
+      });
+
+      await settleOptimisticNewThread(sendDeferred);
+      await waitFor(() => {
+        expect(replacedContents).toStrictEqual([SECOND_NEW_THREAD_MESSAGE]);
+      });
+
+      await sendQueuedMessage(user, THIRD_NEW_THREAD_MESSAGE);
+
+      await waitFor(() => {
+        expect(replacedContents).toStrictEqual([
+          SECOND_NEW_THREAD_MESSAGE,
+          `${SECOND_NEW_THREAD_MESSAGE}\n${THIRD_NEW_THREAD_MESSAGE}`,
+        ]);
+      });
+      await expectQueuedSecondAndThird();
+    });
+
+    it("keeps one queued row when the new thread settles before the second and third sends", async () => {
+      const user = userEvent.setup({ delay: null });
+      const sendDeferred = createDeferredPromise<void>(context.signal);
+      const replacedContents: (string | undefined)[] = [];
+      mockChatLifecycle({
+        sendGate: sendDeferred.promise,
+        onPendingMessageReplace: (body) => {
+          replacedContents.push(body.content);
+        },
+      });
+
+      detachedSetupPage({
+        context,
+        path: AGENT_CHAT_PATH,
+        featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+      });
+
+      await startOptimisticNewThreadRun(user);
+      await settleOptimisticNewThread(sendDeferred);
+
+      await sendQueuedMessage(user, SECOND_NEW_THREAD_MESSAGE);
+      await sendQueuedMessage(user, THIRD_NEW_THREAD_MESSAGE);
+
+      await waitFor(() => {
+        expect(replacedContents).toStrictEqual([
+          SECOND_NEW_THREAD_MESSAGE,
+          `${SECOND_NEW_THREAD_MESSAGE}\n${THIRD_NEW_THREAD_MESSAGE}`,
+        ]);
+      });
+      await expectQueuedSecondAndThird();
+    });
+  });
+
   describe("send button queues during active run when input has content", () => {
     it("shows Send button (not Stop) during active run when composer has content and clicking queues", async () => {
       const user = userEvent.setup({ delay: null });
-      const appendedContents: (string | undefined)[] = [];
+      const replacedContents: (string | undefined)[] = [];
       mockChatLifecycle({
-        onPendingMessageAppend: (body) => {
-          appendedContents.push(body.content);
+        onPendingMessageReplace: (body) => {
+          replacedContents.push(body.content);
         },
       });
 
@@ -462,7 +630,7 @@ describe("chat pending message queue", () => {
         expect(screen.getByText("queued by button")).toBeInTheDocument();
       });
       expect(textarea.value).toBe("");
-      expect(appendedContents).toStrictEqual(["queued by button"]);
+      expect(replacedContents).toStrictEqual(["queued by button"]);
     });
 
     it("shows Stop button during active run when composer is empty", async () => {

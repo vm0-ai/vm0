@@ -61,6 +61,7 @@ import * as voiceChatSchema from "./schema/voice-chat";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
 import * as userBehaviorCountSchema from "./schema/user-behavior-count";
 import * as chatMessageSchema from "./schema/chat-message";
+import * as userMessageRunSchema from "./schema/user-message-run";
 import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
 import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-secret";
 
@@ -128,6 +129,7 @@ export const schema = {
   ...userFeatureSwitchesSchema,
   ...userBehaviorCountSchema,
   ...chatMessageSchema,
+  ...userMessageRunSchema,
   ...orgCustomConnectorSchema,
   ...orgCustomConnectorSecretSchema,
 };

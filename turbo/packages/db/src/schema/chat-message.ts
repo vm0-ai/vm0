@@ -18,7 +18,8 @@ export type ChatMessageAttachFiles = string[];
  * Chat Messages table
  * Each row is a single message belonging to a chat_thread.
  *
- * User messages are persisted immediately on send.
+ * User messages are persisted immediately on send. Their run association lives
+ * in user_message_run so the message row remains append-only after insert.
  *
  * Assistant rows come in two shapes:
  * - Placeholder: inserted on send with `content` NULL and `sequence_number` NULL.
@@ -45,6 +46,8 @@ export const chatMessages = pgTable(
         { onDelete: "cascade" },
       )
       .notNull(),
+    // Assistant-message run ownership. User-message run association lives in
+    // user_message_run so user content rows can remain immutable.
     runId: uuid("run_id").references(
       () => {
         return agentRuns.id;

@@ -6,7 +6,9 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { userMessageRun } from "@vm0/db/schema/user-message-run";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 /**
@@ -168,6 +170,43 @@ export async function getTestChatThreadLastReadAt(
     .limit(1);
   if (!row) return undefined;
   return row.lastReadAt;
+}
+
+/**
+ * Read raw user-message run storage for append-only immutability assertions.
+ *
+ * @why-db-direct Public chat APIs expose the effective runId, not the storage
+ * split between chat_messages.run_id and user_message_run.
+ */
+export async function getTestUserMessageRunStorage(params: {
+  threadId: string;
+  content: string;
+}): Promise<
+  | {
+      messageId: string;
+      messageRunId: string | null;
+      associatedRunId: string | null;
+    }
+  | undefined
+> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({
+      messageId: chatMessages.id,
+      messageRunId: chatMessages.runId,
+      associatedRunId: userMessageRun.runId,
+    })
+    .from(chatMessages)
+    .leftJoin(userMessageRun, eq(userMessageRun.userMessageId, chatMessages.id))
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, params.threadId),
+        eq(chatMessages.role, "user"),
+        eq(chatMessages.content, params.content),
+      ),
+    )
+    .limit(1);
+  return row;
 }
 
 /**
