@@ -523,19 +523,13 @@ function ModelFirstTriggerLabel({
     );
   }
   const iconType = getModelFirstIconType(selectedModel);
-  const multiplier = getVm0ModelMultiplier(selectedModel);
   return (
     <ResponsiveTriggerContent
       mobileIcon={mobileIcon}
       iconType={iconType}
       label={
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate">
-            {getCanonicalModelDisplayName(selectedModel)}
-          </span>
-          {multiplier !== undefined && (
-            <MultiplierBadge multiplier={multiplier} />
-          )}
+        <span className="truncate">
+          {getCanonicalModelDisplayName(selectedModel)}
         </span>
       }
     />
