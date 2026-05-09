@@ -177,7 +177,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
     await expect(
       screen.findByText("Default provider"),
     ).resolves.toBeInTheDocument();
-    expect(screen.getAllByText("Model Providers").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Model providers").length).toBeGreaterThan(0);
     expect(screen.queryByText("Model")).not.toBeInTheDocument();
     expect(screen.queryByText("Model Configuration")).not.toBeInTheDocument();
     expect(screen.queryByText("Workspace default:")).not.toBeInTheDocument();
@@ -200,7 +200,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
     expect(screen.getAllByText("Models").length).toBeGreaterThan(0);
     expect(screen.queryByText("Model Configuration")).not.toBeInTheDocument();
     expect(screen.getByText("Models Configuration")).toBeInTheDocument();
-    expect(screen.queryByText("Model Providers")).not.toBeInTheDocument();
+    expect(screen.queryByText("Model providers")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/Members see models in this order/i),
     ).not.toBeInTheDocument();

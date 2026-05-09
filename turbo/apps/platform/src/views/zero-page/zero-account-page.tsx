@@ -283,7 +283,7 @@ export function ZeroPreferencesPage() {
                   value="personal-providers"
                   className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
                 >
-                  Model Providers
+                  Model providers
                 </TabsTrigger>
               )}
               {showDebug && (

@@ -67,7 +67,7 @@ const TAB_META = {
     description: "Manage your workspace profile and settings.",
   },
   providers: {
-    title: "Model Providers",
+    title: "Model providers",
     description:
       "Configure model providers for running tasks. You can also bring your own API key to use a custom provider.",
   },
@@ -114,7 +114,7 @@ function getConfigurationGroup(modelFirstEnabled: boolean): SidebarGroup {
     items: [
       {
         id: "providers",
-        label: modelFirstEnabled ? "Models" : "Model Providers",
+        label: modelFirstEnabled ? "Models" : "Model providers",
         icon: IconCpu as NavIcon,
       },
       {

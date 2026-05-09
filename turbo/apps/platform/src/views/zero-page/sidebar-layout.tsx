@@ -445,7 +445,7 @@ function mobileTopBarTitle(route: RouteKey | null): string | undefined {
       return "Preferences";
     }
     case "settingsApiKeys": {
-      return "API Keys";
+      return "API keys";
     }
     case "usage": {
       return "Usage";

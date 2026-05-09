@@ -120,7 +120,7 @@ export function ZeroAccountHubPage() {
             {showApiKeys && (
               <MobileStackRow
                 icon={<IconKey size={18} stroke={1.5} />}
-                label="API Keys"
+                label="API keys"
                 testId="account-hub-api-keys"
                 onClick={goApiKeys}
               />

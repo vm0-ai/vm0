@@ -20,7 +20,7 @@ export const setupApiKeysPage$ = command(
     }
 
     set(updatePage$, createElement(ApiKeysPage), "sidebar");
-    set(updateDocumentTitle$, "API Keys");
+    set(updateDocumentTitle$, "API keys");
     await set(hideAppSkeleton$, signal);
 
     if (await set(onboardGuard$, signal)) {

@@ -333,7 +333,7 @@ function ExtraAccountActions({
           className="gap-3 px-3 py-2.5 rounded-lg"
         >
           <IconKey size={18} stroke={1.5} className="text-muted-foreground" />
-          <span>API Keys</span>
+          <span>API keys</span>
         </DropdownMenuItem>
       )}
       {showExportData && (

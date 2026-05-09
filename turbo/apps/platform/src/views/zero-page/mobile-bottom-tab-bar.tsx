@@ -68,8 +68,8 @@ const MOBILE_TABS: readonly MobileTab[] = [
 // brand color carry the active state). The active pill is fully rounded
 // to mirror the fully-rounded outer dock.
 const TAB_BASE =
-  "flex flex-1 flex-col items-center justify-center gap-1 px-2 py-2 rounded-full text-[11px] leading-none no-underline transition-colors";
-const TAB_ACTIVE = "bg-muted text-foreground font-semibold";
+  "flex flex-1 flex-col items-center justify-center gap-1 px-2 py-2 rounded-full text-[10px] leading-none no-underline transition-colors";
+const TAB_ACTIVE = "bg-gray-100 text-foreground font-semibold";
 const TAB_INACTIVE = "text-muted-foreground font-medium";
 const ICON_SIZE = 24;
 const ICON_STROKE = 1.6;

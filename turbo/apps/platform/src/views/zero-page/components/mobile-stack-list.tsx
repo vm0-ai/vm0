@@ -30,7 +30,7 @@ export function MobileStackList({ children, className }: MobileStackListProps) {
 
 interface MobileStackSectionProps {
   readonly children: ReactNode;
-  /** Optional uppercase tracking-wide label rendered above the card. */
+  /** Optional sentence-case label rendered above the card. */
   readonly label?: string;
   readonly className?: string;
 }
@@ -48,7 +48,7 @@ export function MobileStackSection({
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       {label && (
-        <span className="px-1 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="px-1 text-[13px] font-medium text-muted-foreground">
           {label}
         </span>
       )}

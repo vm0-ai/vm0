@@ -56,7 +56,7 @@ function makeProvider(
 }
 
 describe("personal-providers-tab — feature switch gating", () => {
-  it("hides the Model Providers tab when personalModelProvider is off", async () => {
+  it("hides the Model providers tab when personalModelProvider is off", async () => {
     setMockFeatureSwitches({
       [FeatureSwitchKey.PersonalModelProvider]: false,
     });
@@ -67,10 +67,10 @@ describe("personal-providers-tab — feature switch gating", () => {
       expect(screen.getByText("Time Zone")).toBeInTheDocument();
     });
 
-    expect(screen.queryByText("Model Providers")).not.toBeInTheDocument();
+    expect(screen.queryByText("Model providers")).not.toBeInTheDocument();
   });
 
-  it("shows the Model Providers tab when personalModelProvider is on", async () => {
+  it("shows the Model providers tab when personalModelProvider is on", async () => {
     setMockFeatureSwitches({
       [FeatureSwitchKey.PersonalModelProvider]: true,
     });
@@ -78,7 +78,7 @@ describe("personal-providers-tab — feature switch gating", () => {
     detachedSetupPage({ context, path: "/settings" });
 
     await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
+      expect(screen.getByText("Model providers")).toBeInTheDocument();
     });
   });
 });
@@ -93,9 +93,9 @@ describe("personal-providers-tab — empty state and vm0 filter", () => {
     detachedSetupPage({ context, path: "/settings" });
 
     await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
+      expect(screen.getByText("Model providers")).toBeInTheDocument();
     });
-    click(screen.getByText("Model Providers"));
+    click(screen.getByText("Model providers"));
 
     await waitFor(() => {
       expect(screen.getByText("Personal model providers")).toBeInTheDocument();
@@ -112,9 +112,9 @@ describe("personal-providers-tab — empty state and vm0 filter", () => {
     detachedSetupPage({ context, path: "/settings" });
 
     await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
+      expect(screen.getByText("Model providers")).toBeInTheDocument();
     });
-    click(screen.getByText("Model Providers"));
+    click(screen.getByText("Model providers"));
 
     await waitFor(() => {
       expect(
@@ -143,9 +143,9 @@ describe("personal-providers-tab — empty state and vm0 filter", () => {
     detachedSetupPage({ context, path: "/settings" });
 
     await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
+      expect(screen.getByText("Model providers")).toBeInTheDocument();
     });
-    click(screen.getByText("Model Providers"));
+    click(screen.getByText("Model providers"));
 
     await waitFor(() => {
       expect(
@@ -182,9 +182,9 @@ describe("personal-providers-tab — provider list rendering", () => {
     detachedSetupPage({ context, path: "/settings" });
 
     await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
+      expect(screen.getByText("Model providers")).toBeInTheDocument();
     });
-    click(screen.getByText("Model Providers"));
+    click(screen.getByText("Model providers"));
 
     // Wait for the tab content to mount before asserting tile presence.
     await waitFor(() => {
@@ -211,9 +211,9 @@ describe("personal-providers-tab — provider list rendering", () => {
     detachedSetupPage({ context, path: "/settings" });
 
     await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
+      expect(screen.getByText("Model providers")).toBeInTheDocument();
     });
-    click(screen.getByText("Model Providers"));
+    click(screen.getByText("Model providers"));
 
     await waitFor(() => {
       expect(screen.getByText("Personal default")).toBeInTheDocument();
@@ -270,9 +270,9 @@ describe("personal-providers-tab — codex paste flow", () => {
     detachedSetupPage({ context, path: "/settings" });
 
     await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
+      expect(screen.getByText("Model providers")).toBeInTheDocument();
     });
-    click(screen.getByText("Model Providers"));
+    click(screen.getByText("Model providers"));
 
     await waitFor(() => {
       expect(
@@ -301,9 +301,9 @@ describe("personal-providers-tab — codex paste flow", () => {
     detachedSetupPage({ context, path: "/settings" });
 
     await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
+      expect(screen.getByText("Model providers")).toBeInTheDocument();
     });
-    click(screen.getByText("Model Providers"));
+    click(screen.getByText("Model providers"));
 
     await waitFor(() => {
       expect(
@@ -337,9 +337,9 @@ describe("personal-providers-tab — codex paste flow", () => {
     detachedSetupPage({ context, path: "/settings" });
 
     await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
+      expect(screen.getByText("Model providers")).toBeInTheDocument();
     });
-    click(screen.getByText("Model Providers"));
+    click(screen.getByText("Model providers"));
 
     await waitFor(() => {
       expect(
@@ -361,9 +361,9 @@ describe("personal-providers-tab — codex paste flow", () => {
     detachedSetupPage({ context, path: "/settings" });
 
     await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
+      expect(screen.getByText("Model providers")).toBeInTheDocument();
     });
-    click(screen.getByText("Model Providers"));
+    click(screen.getByText("Model providers"));
 
     const reconnectBtn = await screen.findByText("Re-paste auth.json");
     click(reconnectBtn);
