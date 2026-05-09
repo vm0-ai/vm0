@@ -218,6 +218,7 @@ export const zeroRunContextContract = c.router({
       200: runContextResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Get run execution context snapshot for debugging",

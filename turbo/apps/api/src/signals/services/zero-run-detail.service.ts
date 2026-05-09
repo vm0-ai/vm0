@@ -56,17 +56,22 @@ interface NetworkLogsParams {
   order: "asc" | "desc";
 }
 
+type RunContextResult =
+  | { readonly kind: "not-found" }
+  | { readonly kind: "no-snapshot" }
+  | { readonly kind: "ok"; readonly context: RunContextResponse };
+
 export function zeroRunContext(
   runId: string,
   userId: string,
   orgId: string,
-): Computed<Promise<RunContextResponse | null>> {
-  return computed(async (get): Promise<RunContextResponse | null> => {
+): Computed<Promise<RunContextResult>> {
+  return computed(async (get): Promise<RunContextResult> => {
     const db = get(db$);
 
     const owned = await verifyRunOwnership(db, runId, userId, orgId);
     if (!owned) {
-      return null;
+      return { kind: "not-found" };
     }
 
     // Get run metadata for vars
@@ -82,12 +87,12 @@ export function zeroRunContext(
       .limit(1);
 
     if (!run) {
-      return null;
+      return { kind: "not-found" };
     }
 
     const sanitizedRunId = runId.replace(/[^a-zA-Z0-9_-]/g, "");
     if (sanitizedRunId !== runId) {
-      return null;
+      return { kind: "not-found" };
     }
 
     const dataset = getDatasetName("run-context");
@@ -112,25 +117,29 @@ export function zeroRunContext(
       | undefined;
 
     if (!snapshot) {
-      return null;
+      return { kind: "no-snapshot" };
     }
 
     return {
-      prompt: run.prompt,
-      appendSystemPrompt: run.appendSystemPrompt ?? null,
-      runId,
-      sessionId: (snapshot.sessionId as string) ?? null,
-      secretNames: (run.secretNames as string[]) ?? [],
-      vars: (run.vars as Record<string, string> | undefined) ?? null,
-      environment: (snapshot.environment as Record<string, string>) ?? {},
-      firewalls: (snapshot.firewalls as RunContextResponse["firewalls"]) ?? [],
-      networkPolicies:
-        (snapshot.networkPolicies as RunContextResponse["networkPolicies"]) ??
-        null,
-      volumes: (snapshot.volumes as RunContextResponse["volumes"]) ?? [],
-      artifact: (snapshot.artifact as RunContextResponse["artifact"]) ?? null,
-      featureFlags:
-        (snapshot.featureFlags as RunContextResponse["featureFlags"]) ?? null,
+      kind: "ok",
+      context: {
+        prompt: run.prompt,
+        appendSystemPrompt: run.appendSystemPrompt ?? null,
+        runId,
+        sessionId: (snapshot.sessionId as string) ?? null,
+        secretNames: (run.secretNames as string[]) ?? [],
+        vars: (run.vars as Record<string, string> | undefined) ?? null,
+        environment: (snapshot.environment as Record<string, string>) ?? {},
+        firewalls:
+          (snapshot.firewalls as RunContextResponse["firewalls"]) ?? [],
+        networkPolicies:
+          (snapshot.networkPolicies as RunContextResponse["networkPolicies"]) ??
+          null,
+        volumes: (snapshot.volumes as RunContextResponse["volumes"]) ?? [],
+        artifact: (snapshot.artifact as RunContextResponse["artifact"]) ?? null,
+        featureFlags:
+          (snapshot.featureFlags as RunContextResponse["featureFlags"]) ?? null,
+      },
     };
   });
 }

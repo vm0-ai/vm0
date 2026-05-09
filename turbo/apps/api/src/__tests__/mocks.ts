@@ -1,3 +1,4 @@
+import { computed } from "ccstate";
 import { vi, type Mock } from "vitest";
 
 type AsyncMock = Mock<(...args: unknown[]) => Promise<unknown>>;
@@ -224,7 +225,17 @@ vi.mock("../signals/external/telegram-client", () => {
 
 vi.mock("../signals/external/axiom", () => {
   return {
-    queryAxiom: apiTestMocks.axiom.query,
+    // Wrap the underlying vi.fn() in a ccstate `computed` so `get(queryAxiom(apl))`
+    // resolves correctly. Tests configure responses via
+    // `context.mocks.axiom.query.mockResolvedValue(...)`.
+    queryAxiom: (apl: string) => {
+      return computed(() => {
+        return apiTestMocks.axiom.query(apl);
+      });
+    },
+    getDatasetName: (name: string) => {
+      return name;
+    },
   };
 });
 

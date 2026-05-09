@@ -29,10 +29,13 @@ const getContextInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroRunContextContract.getContext));
   const result = await get(zeroRunContext(params.id, auth.userId, auth.orgId));
-  if (!result) {
+  if (result.kind === "not-found") {
     return runNotFound;
   }
-  return { status: 200 as const, body: result };
+  if (result.kind === "no-snapshot") {
+    return notFound("Run context not available");
+  }
+  return { status: 200 as const, body: result.context };
 });
 
 const getNetworkLogsInner$ = computed(async (get) => {
@@ -78,10 +81,7 @@ const getAgentEventsInner$ = computed(async (get) => {
 export const zeroRunDetailRoutes: readonly RouteEntry[] = [
   {
     route: zeroRunContextContract.getContext,
-    handler: shadowCompareRoute({
-      route: zeroRunContextContract.getContext,
-      handler: authRoute(runReadAuth, getContextInner$),
-    }),
+    handler: authRoute(runReadAuth, getContextInner$),
   },
   {
     route: zeroRunNetworkLogsContract.getNetworkLogs,
