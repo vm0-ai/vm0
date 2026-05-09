@@ -11,7 +11,7 @@ import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads"
 const context = testContext();
 const mockApi = createMockApi(context);
 
-const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
+const PLACEHOLDER = "Ask me anything…";
 
 function mockChatAPI() {
   let messageSent = false;

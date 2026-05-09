@@ -7,7 +7,7 @@ import { pathname, search } from "../../../signals/location.ts";
 
 const context = testContext();
 
-const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
+const PLACEHOLDER = "Ask me anything…";
 
 function mockChatAPI() {
   server.use();

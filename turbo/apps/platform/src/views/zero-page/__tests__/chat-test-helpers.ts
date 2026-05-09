@@ -31,7 +31,7 @@ import type { RunStatus } from "@vm0/api-contracts/contracts/runs";
 import { fill } from "../../../__tests__/page-helper.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
-export const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
+export const PLACEHOLDER = "Ask me anything…";
 
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 export const SUB_AGENT_ID = "a1111111-0000-4000-a000-000000000001";

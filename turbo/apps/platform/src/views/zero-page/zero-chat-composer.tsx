@@ -1240,7 +1240,7 @@ export function ZeroChatComposer({
               placeholder={
                 sending
                   ? "Type your next message\u2026"
-                  : "Ask me to automate workflows, manage tasks..."
+                  : "Ask me anything\u2026"
               }
               value={input}
               onChange={(e) => {

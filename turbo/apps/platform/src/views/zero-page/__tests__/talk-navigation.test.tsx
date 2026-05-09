@@ -32,7 +32,7 @@ import {
 const context = testContext();
 const mockApi = createMockApi(context);
 
-const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
+const PLACEHOLDER = "Ask me anything…";
 
 function mockChatAPIs(options?: { waitForSend?: Promise<void> }) {
   server.use(

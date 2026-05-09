@@ -94,7 +94,7 @@ describe("zero chat page - suggested prompts", () => {
 
     await waitFor(() => {
       const textarea = screen.getByPlaceholderText(
-        "Ask me to automate workflows, manage tasks...",
+        "Ask me anything…",
       );
       expect(textarea).toHaveValue(expectedPrompt);
     });
@@ -108,7 +108,7 @@ describe("zero chat page - composer", () => {
     await waitFor(() => {
       expect(
         screen.getByPlaceholderText(
-          "Ask me to automate workflows, manage tasks...",
+          "Ask me anything…",
         ),
       ).toBeInTheDocument();
     });
@@ -150,7 +150,7 @@ describe("zero chat page - composer", () => {
 
     const textarea = await waitFor(() => {
       return screen.getByPlaceholderText(
-        "Ask me to automate workflows, manage tasks...",
+        "Ask me anything…",
       );
     });
 
@@ -587,7 +587,7 @@ describe("zero chat page - ideation page", () => {
     // Should navigate back to chat page with the prompt set
     await waitFor(() => {
       const textarea = screen.getByPlaceholderText(
-        "Ask me to automate workflows, manage tasks...",
+        "Ask me anything…",
       );
       expect(textarea).toHaveValue(
         "Set up a daily standup report that pulls data from GitHub, Sentry, Axiom, and Plausible every morning, generates a pptx, and posts it to #all-vm0",
