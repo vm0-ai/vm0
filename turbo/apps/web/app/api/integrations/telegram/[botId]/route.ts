@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
@@ -23,8 +21,6 @@ import {
   publishTelegramOrgChangedSafely,
   publishTelegramUserChangedSafely,
 } from "../../../../../src/lib/zero/telegram/realtime";
-import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
-
 const patchBodySchema = z.object({
   defaultAgentId: z.string().trim().min(1).optional(),
   selectedAgentId: z.string().trim().min(1).nullable().optional(),
@@ -80,21 +76,6 @@ async function loadVisibleInstallation(params: {
   return { installation, isOwner };
 }
 
-async function isOfficialTelegramEnabled(params: {
-  orgId: string;
-  userId: string;
-}): Promise<boolean> {
-  const overrides = await loadFeatureSwitchOverrides(
-    params.orgId,
-    params.userId,
-  );
-  return isFeatureEnabled(FeatureSwitchKey.OfficialTelegramBot, {
-    orgId: params.orgId,
-    userId: params.userId,
-    overrides,
-  });
-}
-
 async function loadComposeInOrg(composeId: string, orgId: string) {
   const [compose] = await globalThis.services.db
     .select({ id: agentComposes.id, orgId: agentComposes.orgId })
@@ -133,15 +114,6 @@ export async function GET(
   const { org } = await resolveOrg(authCtx);
 
   if (botId === OFFICIAL_TELEGRAM_BOT_ID) {
-    if (
-      !(await isOfficialTelegramEnabled({
-        orgId: org.orgId,
-        userId: authCtx.userId,
-      }))
-    ) {
-      return notFoundResponse();
-    }
-
     return NextResponse.json(
       await buildOfficialTelegramBot({
         orgId: org.orgId,
@@ -187,15 +159,6 @@ export async function PATCH(
   const { org, member } = await resolveOrg(authCtx);
 
   if (botId === OFFICIAL_TELEGRAM_BOT_ID) {
-    if (
-      !(await isOfficialTelegramEnabled({
-        orgId: org.orgId,
-        userId: authCtx.userId,
-      }))
-    ) {
-      return notFoundResponse();
-    }
-
     const parseResult = patchBodySchema.safeParse(await request.json());
     if (!parseResult.success || !("selectedAgentId" in parseResult.data)) {
       return NextResponse.json(

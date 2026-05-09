@@ -1741,8 +1741,6 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
     splitQueuedMessagesForThinkingIndicator(groups);
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
-  const manualHistoryEnabled =
-    features?.[FeatureSwitchKey.ChatManualHistory] ?? false;
   const loadingHistory = loadHistoryLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
   const onLoadHistory = onDomEventFn(() => {
@@ -1768,7 +1766,6 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
             >
               {!sessionError &&
                 !skeletonVisible &&
-                manualHistoryEnabled &&
                 hasOlderHistory && (
                   <div className="flex justify-center">
                     <button

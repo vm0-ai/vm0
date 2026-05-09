@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { z } from "zod";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
@@ -39,8 +37,6 @@ import {
   linkOfficialTelegramUserToVm0User,
   type LinkOfficialTelegramUserResult,
 } from "../../../../../src/lib/zero/telegram/official-user";
-import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
-
 const log = logger("api:telegram:link");
 
 type LinkTelegramUserConflictReason = Extract<
@@ -115,21 +111,6 @@ function officialLinkConflictResponse(
   );
 }
 
-async function isOfficialTelegramEnabled(params: {
-  orgId: string;
-  userId: string;
-}): Promise<boolean> {
-  const overrides = await loadFeatureSwitchOverrides(
-    params.orgId,
-    params.userId,
-  );
-  return isFeatureEnabled(FeatureSwitchKey.OfficialTelegramBot, {
-    userId: params.userId,
-    orgId: params.orgId,
-    overrides,
-  });
-}
-
 async function linkUserOrConflict(params: {
   installationId: string;
   telegramUserId: string;
@@ -189,18 +170,6 @@ export async function DELETE(request: Request) {
   const db = globalThis.services.db;
 
   if (botId === OFFICIAL_TELEGRAM_BOT_ID) {
-    if (
-      !(await isOfficialTelegramEnabled({
-        orgId: org.orgId,
-        userId,
-      }))
-    ) {
-      return NextResponse.json(
-        { error: { message: "Telegram bot not found", code: "NOT_FOUND" } },
-        { status: 404 },
-      );
-    }
-
     const deleted = await db
       .delete(telegramOfficialUserLinks)
       .where(
@@ -294,15 +263,6 @@ export async function GET(request: Request) {
   const telegramLoginOrigin = resolveTelegramLoginOrigin(request);
 
   if (botId === OFFICIAL_TELEGRAM_BOT_ID) {
-    if (
-      !(await isOfficialTelegramEnabled({
-        orgId: org.orgId,
-        userId,
-      }))
-    ) {
-      return NextResponse.json({ linked: false });
-    }
-
     const [officialLink] = await globalThis.services.db
       .select({
         telegramUserId: telegramOfficialUserLinks.telegramUserId,
@@ -458,18 +418,6 @@ async function handleOfficialLinkPost(
   userId: string,
   orgId: string,
 ): Promise<NextResponse> {
-  if (
-    !(await isOfficialTelegramEnabled({
-      orgId,
-      userId,
-    }))
-  ) {
-    return NextResponse.json(
-      { error: { message: "Installation not found", code: "NOT_FOUND" } },
-      { status: 404 },
-    );
-  }
-
   const config = getOfficialTelegramBotConfig();
   if (!config.botToken) {
     return NextResponse.json(

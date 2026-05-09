@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
 import { desc, eq } from "drizzle-orm";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { buildOfficialTelegramBot, buildTelegramBot } from "./telegram-status";
-import { loadFeatureSwitchOverrides } from "../../../../src/lib/zero/user/feature-switches-service";
 
 /**
  * GET /api/integrations/telegram
@@ -28,15 +25,6 @@ export async function GET(request: Request) {
   }
 
   const { org } = await resolveOrg(authCtx);
-  const overrides = await loadFeatureSwitchOverrides(org.orgId, authCtx.userId);
-  const officialTelegramEnabled = isFeatureEnabled(
-    FeatureSwitchKey.OfficialTelegramBot,
-    {
-      userId: authCtx.userId,
-      orgId: org.orgId,
-      overrides,
-    },
-  );
 
   const installations = await globalThis.services.db
     .select()
@@ -52,15 +40,13 @@ export async function GET(request: Request) {
       return buildTelegramBot(installation, authCtx.userId);
     }),
   );
-  const bots = officialTelegramEnabled
-    ? [
-        await buildOfficialTelegramBot({
-          orgId: org.orgId,
-          userId: authCtx.userId,
-        }),
-        ...customBots,
-      ]
-    : customBots;
+  const bots = [
+    await buildOfficialTelegramBot({
+      orgId: org.orgId,
+      userId: authCtx.userId,
+    }),
+    ...customBots,
+  ];
 
   return NextResponse.json({ bots });
 }

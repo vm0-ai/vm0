@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -1901,7 +1900,6 @@ describe("zero chat thread page display - manual history button", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: { [FeatureSwitchKey.ChatManualHistory]: true },
     });
 
     await waitFor(() => {

@@ -371,7 +371,6 @@ describe("zero chat thread page - manual history loading", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatManualHistory]: true },
     });
 
     await waitFor(() => {
