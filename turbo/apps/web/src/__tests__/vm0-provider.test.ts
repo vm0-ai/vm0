@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { POST } from "../../app/api/zero/model-providers/route";
 import {
   createTestRequest,
   createTestOrg,
   insertVm0ApiKeys,
+  deleteInsertedVm0ApiKeys,
   getTestVm0ApiKey,
   insertOrgDefaultModelProvider,
 } from "./api-test-helpers";
@@ -46,6 +47,10 @@ function orgUrl(): string {
 describe("VM0 managed model provider", () => {
   beforeEach(() => {
     context.setupMocks();
+  });
+
+  afterEach(async () => {
+    await deleteInsertedVm0ApiKeys();
   });
 
   describe("API route: org slug check", () => {

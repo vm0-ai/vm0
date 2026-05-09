@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   resolveModelProviderSecrets,
   resolveModelRoute,
@@ -23,6 +23,7 @@ import {
   enableModelFirstModelProviderForUser,
   insertOrgModelPolicy,
   insertVm0ApiKeys,
+  deleteInsertedVm0ApiKeys,
   setTestModelProviderNeedsReconnect,
   ORG_SENTINEL_USER_ID,
 } from "../../../../__tests__/api-test-helpers";
@@ -34,6 +35,10 @@ import {
 } from "../../../../__tests__/db-test-seeders/secrets";
 
 const context = testContext();
+
+afterEach(async () => {
+  await deleteInsertedVm0ApiKeys();
+});
 
 async function setupOrg(userId: string): Promise<string> {
   const orgSlug = uniqueId("resolver");
@@ -1085,7 +1090,7 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     await enableModelFirstModelProviderForUser(orgId, userId);
     await insertOrgModelPolicy({
       orgId,
-      model: "gpt-5.5",
+      model: "deepseek-v4-pro",
       isDefault: true,
       defaultProviderType: "vm0",
       credentialScope: "org",
@@ -1099,7 +1104,7 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
         false,
         undefined,
         undefined,
-        "gpt-5.5",
+        "deepseek-v4-pro",
       ),
     ).rejects.toSatisfy((err: unknown) => {
       return isBadRequest(err);
