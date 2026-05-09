@@ -125,6 +125,7 @@ describe("chat composer — mod+alt+. opens the model picker", () => {
       expect(screen.getByRole("listbox")).toBeInTheDocument();
     });
     expect(screen.queryByText("Use agent default")).not.toBeInTheDocument();
+    expect(screen.getByText("Models")).toBeInTheDocument();
     expect(
       screen.queryByLabelText("Use agent default model"),
     ).not.toBeInTheDocument();

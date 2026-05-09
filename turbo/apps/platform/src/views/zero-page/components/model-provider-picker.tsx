@@ -667,9 +667,11 @@ function ModelFirstPolicyRow({ policy }: { policy: OrgModelPolicy }) {
 function ModelFirstPolicyItems({
   policies,
   explicitSelectedModel,
+  showSeparator = true,
 }: {
   policies: OrgModelPolicy[];
   explicitSelectedModel: string | null;
+  showSeparator?: boolean;
 }) {
   const hasExplicitSelectedPolicy =
     explicitSelectedModel === null ||
@@ -678,7 +680,7 @@ function ModelFirstPolicyItems({
     });
   return (
     <>
-      {(!hasExplicitSelectedPolicy || policies.length > 0) && (
+      {showSeparator && (!hasExplicitSelectedPolicy || policies.length > 0) && (
         <SelectSeparator className="my-0" />
       )}
       {!hasExplicitSelectedPolicy && explicitSelectedModel && (
@@ -809,6 +811,7 @@ function ModelFirstModelPicker({
           <ModelFirstPolicyItems
             policies={policies}
             explicitSelectedModel={explicitSelectedModel}
+            showSeparator={showUseDefault}
           />
         )}
       </SelectContent>
