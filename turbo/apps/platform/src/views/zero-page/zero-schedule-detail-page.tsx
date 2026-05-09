@@ -103,8 +103,12 @@ import {
   type ScheduleSettingsSnapshot,
 } from "../../signals/schedule-page/schedule-form.ts";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
-import { personalModelProviderEnabled$ } from "../../signals/external/feature-switch.ts";
 import {
+  modelFirstModelProviderEnabled$,
+  personalModelProviderEnabled$,
+} from "../../signals/external/feature-switch.ts";
+import {
+  MODEL_FIRST_SELECTION_PROVIDER_ID,
   ModelProviderPicker,
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
@@ -325,10 +329,14 @@ function ScheduleSettingsForm({
 
   const agentModelDefault = useLastResolved(scheduleAgentModelDefault$) ?? null;
 
+  const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
   const personalProviderEnabled = useGet(personalModelProviderEnabled$);
+  const normalizedInitial = modelFirstEnabled
+    ? { ...initial, modelProviderId: null }
+    : initial;
 
   // Reset form when entry changes (component is keyed by entry.id)
-  useSet(syncSettingsFormEntry$)(entry.id, entry.prompt, initial);
+  useSet(syncSettingsFormEntry$)(entry.id, entry.prompt, normalizedInitial);
 
   const current: ScheduleSettingsSnapshot = {
     freq: form.freq,
@@ -341,7 +349,7 @@ function ScheduleSettingsForm({
     description: form.description,
     dayOfWeek: form.dayOfWeek,
     dayOfMonth: form.dayOfMonth,
-    modelProviderId: form.modelProviderId,
+    modelProviderId: modelFirstEnabled ? null : form.modelProviderId,
     selectedModel: form.selectedModel,
     preferPersonalProvider: form.preferPersonalProvider,
   };
@@ -381,7 +389,7 @@ function ScheduleSettingsForm({
       intervalSeconds: form.loopMinutes * 60,
       editName: entry.name,
       agentId: form.agentId,
-      modelProviderId: form.modelProviderId,
+      modelProviderId: modelFirstEnabled ? null : form.modelProviderId,
       selectedModel: form.selectedModel,
       preferPersonalProvider: form.preferPersonalProvider,
       ...(form.freq === "every_week" ? { dayOfWeek: form.dayOfWeek } : {}),
@@ -490,35 +498,41 @@ function ScheduleSettingsForm({
             />
           </InlineSettingsRow>
 
-          {orgProviders && orgProviders.modelProviders.length > 0 && (
-            <InlineSettingsRow
-              label="Model"
-              description="Override the agent's default model for this schedule."
-            >
-              <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
-                <ModelProviderPicker
-                  providers={orgProviders.modelProviders}
-                  value={
-                    form.modelProviderId && form.selectedModel
-                      ? {
-                          modelProviderId: form.modelProviderId,
-                          selectedModel: form.selectedModel,
-                        }
-                      : null
-                  }
-                  onChange={(sel: ModelProviderSelection | null) => {
-                    updateForm({
-                      modelProviderId: sel?.modelProviderId ?? null,
-                      selectedModel: sel?.selectedModel ?? null,
-                    });
-                  }}
-                  agentDefault={agentModelDefault}
-                  inheritLabel="agent"
-                />
-              </div>
-            </InlineSettingsRow>
-          )}
-          {personalProviderEnabled && (
+          {orgProviders &&
+            (modelFirstEnabled || orgProviders.modelProviders.length > 0) && (
+              <InlineSettingsRow
+                label="Model"
+                description="Override the agent's default model for this schedule."
+              >
+                <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
+                  <ModelProviderPicker
+                    providers={orgProviders.modelProviders}
+                    value={
+                      form.selectedModel &&
+                      (modelFirstEnabled || form.modelProviderId)
+                        ? {
+                            modelProviderId:
+                              form.modelProviderId ??
+                              MODEL_FIRST_SELECTION_PROVIDER_ID,
+                            selectedModel: form.selectedModel,
+                          }
+                        : null
+                    }
+                    onChange={(sel: ModelProviderSelection | null) => {
+                      updateForm({
+                        modelProviderId: modelFirstEnabled
+                          ? null
+                          : (sel?.modelProviderId ?? null),
+                        selectedModel: sel?.selectedModel ?? null,
+                      });
+                    }}
+                    agentDefault={agentModelDefault}
+                    inheritLabel="agent"
+                  />
+                </div>
+              </InlineSettingsRow>
+            )}
+          {personalProviderEnabled && !modelFirstEnabled && (
             <InlineSettingsRow
               label="Personal provider"
               description="Use the caller's personal provider when available, fall back to the selected one above."

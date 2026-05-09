@@ -26,7 +26,9 @@ import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
 } from "../../../mocks/handlers/api-org-model-providers.ts";
+import { resetMockOrgModelPolicies } from "../../../mocks/handlers/api-org-model-policies.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -87,6 +89,7 @@ async function openProfileTab() {
 describe("model-provider-picker - display with null value", () => {
   beforeEach(() => {
     resetMockOrgModelProviders();
+    resetMockOrgModelPolicies();
   });
 
   // MPKR-D-001: When value is null and default provider has a selectedModel,
@@ -180,6 +183,22 @@ describe("model-provider-picker - display with null value", () => {
     await waitFor(() => {
       expect(
         screen.getByRole("combobox", { name: "Inherit from org default" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows the model-policy workspace default when model-first is enabled with no providers", async () => {
+    setupMockAgent();
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+    setMockOrgModelProviders([]);
+
+    await openProfileTab();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
       ).toBeInTheDocument();
     });
   });

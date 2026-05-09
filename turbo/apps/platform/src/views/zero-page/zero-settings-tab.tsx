@@ -56,8 +56,12 @@ import {
   setSettingsPreferPersonalProvider$,
 } from "../../signals/zero-page/settings/settings-tab.ts";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
-import { personalModelProviderEnabled$ } from "../../signals/external/feature-switch.ts";
 import {
+  modelFirstModelProviderEnabled$,
+  personalModelProviderEnabled$,
+} from "../../signals/external/feature-switch.ts";
+import {
+  MODEL_FIRST_SELECTION_PROVIDER_ID,
   ModelProviderPicker,
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
@@ -105,10 +109,13 @@ export function ZeroSettingsTab({
   isDefaultAgent = false,
   onDelete,
 }: ZeroSettingsTabProps) {
+  const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
   const initialModelSelection: ModelProviderSelection | null =
-    initialModelProviderId && initialSelectedModel
+    initialSelectedModel && (modelFirstEnabled || initialModelProviderId)
       ? {
-          modelProviderId: initialModelProviderId,
+          modelProviderId: modelFirstEnabled
+            ? MODEL_FIRST_SELECTION_PROVIDER_ID
+            : (initialModelProviderId ?? MODEL_FIRST_SELECTION_PROVIDER_ID),
           selectedModel: initialSelectedModel,
         }
       : null;
@@ -163,7 +170,9 @@ export function ZeroSettingsTab({
             description: desc,
             sound: tone,
             avatarUrl,
-            modelProviderId: modelSelection?.modelProviderId ?? null,
+            modelProviderId: modelFirstEnabled
+              ? null
+              : (modelSelection?.modelProviderId ?? null),
             selectedModel: modelSelection?.selectedModel ?? null,
             preferPersonalProvider,
           },
@@ -219,8 +228,9 @@ export function ZeroSettingsTab({
                           description: desc,
                           sound: tone,
                           avatarUrl: newAvatarUrl,
-                          modelProviderId:
-                            modelSelection?.modelProviderId ?? null,
+                          modelProviderId: modelFirstEnabled
+                            ? null
+                            : (modelSelection?.modelProviderId ?? null),
                           selectedModel: modelSelection?.selectedModel ?? null,
                           preferPersonalProvider,
                         },
@@ -332,19 +342,20 @@ export function ZeroSettingsTab({
                 </div>
               </div>
             </InlineSettingsRow>
-            {orgProviders && orgProviders.modelProviders.length > 0 && (
-              <InlineSettingsRow
-                label="Model"
-                description="The model used by this agent. Defaults to the workspace setting."
-              >
-                <ModelProviderPicker
-                  providers={orgProviders.modelProviders}
-                  value={modelSelection}
-                  onChange={setModelSelection}
-                />
-              </InlineSettingsRow>
-            )}
-            {personalProviderEnabled && (
+            {orgProviders &&
+              (modelFirstEnabled || orgProviders.modelProviders.length > 0) && (
+                <InlineSettingsRow
+                  label="Model"
+                  description="The model used by this agent. Defaults to the workspace setting."
+                >
+                  <ModelProviderPicker
+                    providers={orgProviders.modelProviders}
+                    value={modelSelection}
+                    onChange={setModelSelection}
+                  />
+                </InlineSettingsRow>
+              )}
+            {personalProviderEnabled && !modelFirstEnabled && (
               <InlineSettingsRow
                 label="Personal provider"
                 description="Use the caller's personal provider when available, fall back to the selected one above."
