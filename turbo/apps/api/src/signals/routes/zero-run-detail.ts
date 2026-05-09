@@ -85,10 +85,7 @@ export const zeroRunDetailRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroRunNetworkLogsContract.getNetworkLogs,
-    handler: shadowCompareRoute({
-      route: zeroRunNetworkLogsContract.getNetworkLogs,
-      handler: authRoute(runReadAuth, getNetworkLogsInner$),
-    }),
+    handler: authRoute(runReadAuth, getNetworkLogsInner$),
   },
   {
     route: zeroRunAgentEventsContract.getAgentEvents,

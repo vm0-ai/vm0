@@ -246,6 +246,7 @@ export const zeroRunNetworkLogsContract = c.router({
       200: networkLogsResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Get network logs for a run",
