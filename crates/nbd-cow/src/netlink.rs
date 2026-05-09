@@ -616,8 +616,8 @@ mod tests {
         let recv_fd = unsafe { OwnedFd::from_raw_fd(fds[0]) };
         let send_fd = unsafe { OwnedFd::from_raw_fd(fds[1]) };
         let timeout = libc::timeval {
-            tv_sec: 1,
-            tv_usec: 0,
+            tv_sec: 0,
+            tv_usec: 100_000,
         };
         let ret = unsafe {
             libc::setsockopt(
