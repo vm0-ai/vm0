@@ -2003,6 +2003,7 @@ function ChatThreadComposer({
                     // continuity.
                     disabled: hasUserMessages,
                     agentDefault: agentModelDefault,
+                    showUseDefault: !modelFirstEnabled,
                   }
                 : undefined
             }

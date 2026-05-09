@@ -103,6 +103,8 @@ interface ModelProviderPickerProps {
    * the agent itself falls back to workspace.
    */
   inheritLabel?: "agent" | "workspace";
+  /** When false, hide the "Use default" row from the dropdown. */
+  showUseDefault?: boolean;
   /**
    * Per-provider tier annotation (Wave 3 of Epic #11868). When provided,
    * the picker groups items into "Personal" and "Org" sections with
@@ -714,6 +716,7 @@ function ModelFirstModelPicker({
   disabled,
   agentDefault,
   inheritLabel,
+  showUseDefault = true,
 }: ModelProviderPickerProps & {
   placeholder: string;
   compactTrigger: boolean;
@@ -736,7 +739,7 @@ function ModelFirstModelPicker({
   const defaultSource = inheritLabel ?? autoDefaultSource;
   const selectedModel = resolved?.selectedModel ?? null;
   const explicitSelectedModel = value?.selectedModel ?? null;
-  const showModelPolicies = value !== null;
+  const showModelPolicies = !showUseDefault || value !== null;
   const triggerAriaLabel = selectedModel
     ? getCanonicalModelDisplayName(selectedModel)
     : placeholder;
@@ -776,20 +779,32 @@ function ModelFirstModelPicker({
           />
         </SelectValue>
       </SelectTrigger>
-      <SelectContent className="max-h-[280px] min-w-[260px]">
-        <ModelFirstInheritToggleRow
-          effectiveDefault={effectiveDefault}
-          defaultSource={defaultSource}
-          isInheriting={value === null}
-          onToggle={(inherit) => {
-            if (inherit) {
-              onChange(null);
-              onOpenChange?.(false);
-              return;
-            }
-            onChange(effectiveDefault);
-          }}
-        />
+      <SelectContent
+        className="max-h-none min-w-[260px]"
+        hideScrollButtons
+        viewportClassName="h-auto max-h-none"
+      >
+        {showUseDefault ? (
+          <ModelFirstInheritToggleRow
+            effectiveDefault={effectiveDefault}
+            defaultSource={defaultSource}
+            isInheriting={value === null}
+            onToggle={(inherit) => {
+              if (inherit) {
+                onChange(null);
+                onOpenChange?.(false);
+                return;
+              }
+              onChange(effectiveDefault);
+            }}
+          />
+        ) : (
+          value === null && (
+            <SelectItem value={INHERIT_SENTINEL} className="hidden absolute">
+              {placeholder}
+            </SelectItem>
+          )
+        )}
         {showModelPolicies && (
           <ModelFirstPolicyItems
             policies={policies}
@@ -1101,6 +1116,11 @@ function ModelSelectDropdown({
         </SelectValue>
       </SelectTrigger>
       <SelectContent className="max-h-[280px] min-w-[260px]">
+        {!showUseDefault && value === null && (
+          <SelectItem value={INHERIT_SENTINEL} className="hidden absolute">
+            {placeholder}
+          </SelectItem>
+        )}
         {showUseDefault && (
           <InheritToggleRow
             effectiveDefault={effectiveDefault}
@@ -1159,6 +1179,7 @@ export function ModelProviderPicker({
   disabled = false,
   agentDefault,
   inheritLabel,
+  showUseDefault = true,
   tiers,
 }: ModelProviderPickerProps) {
   const features = useLastResolved(featureSwitch$);
@@ -1180,6 +1201,7 @@ export function ModelProviderPicker({
         disabled={disabled}
         agentDefault={agentDefault}
         inheritLabel={inheritLabel}
+        showUseDefault={showUseDefault}
         tiers={tiers}
       />
     );
@@ -1227,7 +1249,7 @@ export function ModelProviderPicker({
       onChange={onChange}
       open={open}
       onOpenChange={onOpenChange}
-      showUseDefault
+      showUseDefault={showUseDefault}
       tiers={tiers}
     />
   );

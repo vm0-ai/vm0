@@ -563,6 +563,7 @@ export function AgentChatPage() {
                     // No prior session exists on the landing page.
                     sessionProviderType: null,
                     agentDefault: agentModelDefault,
+                    showUseDefault: !modelFirstEnabled,
                   }
                 : undefined
             }
