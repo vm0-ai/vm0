@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
@@ -14,6 +14,21 @@ beforeEach(() => {
   resetMockOrg();
   resetMockOrgMembers();
 });
+
+function mockMobileViewport() {
+  vi.spyOn(window, "matchMedia").mockImplementation((query: string) => {
+    return {
+      matches: query === "(max-width: 767px)",
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    } as MediaQueryList;
+  });
+}
 
 async function openDialog() {
   detachedSetupPage({ context, path: "/?settings=general" });
@@ -57,7 +72,7 @@ describe("org manage dialog - display", () => {
 });
 
 describe("org manage dialog - conditional", () => {
-  it("renders both desktop sidebar nav buttons and mobile select dropdown", async () => {
+  it("renders the desktop sidebar nav buttons (mobile master/detail covered separately)", async () => {
     setMockOrg({ slug: "test-org", name: "Test Org", role: "admin" });
     await openDialog();
 
@@ -67,10 +82,6 @@ describe("org manage dialog - conditional", () => {
         return /General/i.test(el.textContent ?? "");
       })!,
     ).toBeInTheDocument();
-
-    // Mobile nav has a combobox/select
-    const combobox = screen.getByRole("combobox");
-    expect(combobox).toBeInTheDocument();
   });
 
   it("shows Configuration and Billing groups for admin users", async () => {
@@ -126,7 +137,8 @@ describe("org manage dialog - interaction", () => {
     });
   });
 
-  it("switches tab content when the mobile select dropdown is changed", async () => {
+  it("on mobile, tapping a master row pushes to that section's detail view", async () => {
+    mockMobileViewport();
     setMockOrg({ slug: "test-org", name: "Test Org", role: "admin" });
     setMockOrgMembers({
       slug: "test-org",
@@ -138,25 +150,59 @@ describe("org manage dialog - interaction", () => {
 
     await openDialog();
 
+    // Mobile master view: top bar reads "Workspace" + Members row visible.
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: "General" }),
+        screen.getByTestId("mobile-workspace-settings-close"),
       ).toBeInTheDocument();
     });
 
-    const combobox = screen.getByRole("combobox");
-    click(combobox);
+    const membersRow = screen
+      .getAllByRole("button")
+      .find((el) => {
+        return /^Members$/.test(el.textContent?.trim() ?? "");
+      });
+    expect(membersRow).toBeDefined();
+    click(membersRow!);
 
+    // Detail view: top bar swaps to a back arrow with the section title.
     await waitFor(() => {
       expect(
-        screen.getByRole("option", { name: /Members/i }),
+        screen.getByTestId("mobile-workspace-settings-back"),
       ).toBeInTheDocument();
     });
-    click(screen.getByRole("option", { name: /Members/i }));
+  });
+
+  it("on mobile, the back arrow inside a detail view returns to the master list", async () => {
+    mockMobileViewport();
+    setMockOrg({ slug: "test-org", name: "Test Org", role: "admin" });
+    setMockOrgMembers({
+      slug: "test-org",
+      role: "admin",
+      members: [],
+      pendingInvitations: [],
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+
+    await openDialog();
+
+    const membersRow = await waitFor(() => {
+      return screen
+        .getAllByRole("button")
+        .find((el) => {
+          return /^Members$/.test(el.textContent?.trim() ?? "");
+        })!;
+    });
+    click(membersRow);
+
+    const back = await waitFor(() => {
+      return screen.getByTestId("mobile-workspace-settings-back");
+    });
+    click(back);
 
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: "Members" }),
+        screen.getByTestId("mobile-workspace-settings-close"),
       ).toBeInTheDocument();
     });
   });

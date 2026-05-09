@@ -14,8 +14,8 @@ import {
   cn,
 } from "@vm0/ui";
 import {
+  IconArrowLeft,
   IconBuilding,
-  IconChevronLeft,
   IconChevronRight,
   IconCpu,
   IconUsers,
@@ -49,6 +49,12 @@ interface OrgManageDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
+
+// Same recipe as the global mobile top bar's tap targets (sidebar-layout.tsx).
+// Duplicated here so the workspace settings full-screen page renders an
+// identical-looking back arrow without pulling in sidebar-layout's imports.
+const MOBILE_TOPBAR_GLASS =
+  "bg-card/70 backdrop-blur-xl border border-border/60 shadow-[0_1px_2px_rgb(0_0_0/0.04)] hover:bg-card hover:shadow-[0_2px_6px_rgb(0_0_0/0.06)] transition-all";
 
 const TAB_META = {
   general: {
@@ -153,8 +159,49 @@ function TabContent({ tab }: { tab: OrgManageTab }) {
   return <Content />;
 }
 
+// Mobile-only top bar that mirrors the global sidebar-layout top bar — same
+// glass tap-target, same 40px circle back arrow, same centered 17px title —
+// so the full-screen workspace settings page reads as a continuation of the
+// rest of the mobile-native chrome instead of an internal modal.
+function MobileFullScreenTopBar({
+  title,
+  onBack,
+  testId,
+}: {
+  readonly title: string;
+  readonly onBack: () => void;
+  readonly testId: string;
+}) {
+  return (
+    <div
+      className="md:hidden shrink-0 relative flex items-center px-3 gap-2 z-10 min-h-14 py-1.5"
+      style={{ paddingTop: "calc(env(safe-area-inset-top) + 12px)" }}
+    >
+      <button
+        type="button"
+        onClick={onBack}
+        aria-label="Back"
+        data-testid={testId}
+        className={cn(
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground",
+          MOBILE_TOPBAR_GLASS,
+        )}
+      >
+        <IconArrowLeft size={20} stroke={1.8} />
+      </button>
+      <div className="absolute inset-x-12 top-0 bottom-0 flex items-center justify-center pointer-events-none">
+        <span className="text-[17px] font-medium text-foreground truncate">
+          {title}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // iOS Settings-style master list rendered when the dialog opens on mobile.
-// Tapping a row pushes to the existing tab content as a sub-page.
+// Tapping a row pushes to the existing tab content as a sub-page. The page
+// title now lives in the top bar, so this surface only renders the
+// description and the grouped rows.
 function MobileMasterList({
   groups,
   onSelect,
@@ -163,11 +210,8 @@ function MobileMasterList({
   readonly onSelect: (id: OrgManageTab) => void;
 }) {
   return (
-    <div className="flex-1 overflow-y-auto px-5 pt-4 pb-10 [scrollbar-gutter:stable]">
-      <h2 className="text-[20px] font-semibold leading-7 text-foreground pr-12">
-        Workspace
-      </h2>
-      <p className="text-[15px] text-muted-foreground mt-1 leading-snug pr-12">
+    <div className="flex-1 overflow-y-auto px-5 pt-2 pb-10 [scrollbar-gutter:stable]">
+      <p className="text-[15px] text-muted-foreground leading-snug">
         Manage workspace profile, members, integrations, and billing.
       </p>
 
@@ -216,32 +260,13 @@ function MobileMasterList({
   );
 }
 
-// Mobile detail-page header: ← Workspace · title · (close X comes from
-// the Dialog primitive). Only renders below md when the user has pushed
-// into a sub-page from the master list.
-function MobileDetailHeader({
-  title,
-  description,
-  onBack,
-}: {
-  readonly title: string;
-  readonly description: string;
-  readonly onBack: () => void;
-}) {
+// Mobile detail subtitle: section description sits above the existing tab
+// content. The section name itself is now in the top bar (back arrow +
+// centered title), so we don't render an in-page h2 anymore.
+function MobileDetailIntro({ description }: { readonly description: string }) {
   return (
-    <header className="shrink-0 px-5 pt-5 pb-1 pr-14">
-      <button
-        type="button"
-        onClick={onBack}
-        className="flex items-center gap-1 -ml-1 mb-2 text-primary text-[14px] active:opacity-60"
-      >
-        <IconChevronLeft size={18} stroke={2} />
-        <span>Workspace</span>
-      </button>
-      <h2 className="text-[20px] font-semibold leading-7 text-foreground">
-        {title}
-      </h2>
-      <p className="text-[15px] text-muted-foreground mt-1 leading-snug">
+    <header className="shrink-0 px-5 pt-2 pb-1">
+      <p className="text-[15px] text-muted-foreground leading-snug">
         {description}
       </p>
     </header>
@@ -286,14 +311,49 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
 
   const showMobileMaster = isMobile && masterMode;
   const showMobileDetail = isMobile && !masterMode;
+  // Mobile back arrow walks one level at a time: detail -> master -> close.
+  // Billing's nested Plans page handles its own back UI internally, so we
+  // hide the top bar entirely there to let it take over.
+  const handleMobileBack = () => {
+    if (showMobileDetail) {
+      setMasterMode(true);
+      return;
+    }
+    onOpenChange(false);
+  };
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="zero-app flex flex-col w-[calc(100vw-2rem)] max-w-[1200px] h-[92dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden zero-border rounded-xl bg-card">
+      <DialogContent
+        className={cn(
+          // Mobile: full-screen, no rounded corners, no border, no padding.
+          // The Radix-rendered close X gets hidden so the top bar's smart
+          // back arrow is the sole exit affordance on mobile.
+          "zero-app flex flex-col p-0 gap-0 overflow-hidden bg-card",
+          "max-md:fixed max-md:inset-0 max-md:left-0 max-md:top-0 max-md:translate-x-0 max-md:translate-y-0",
+          "max-md:w-screen max-md:max-w-none max-md:h-svh max-md:max-h-none",
+          "max-md:rounded-none max-md:border-0 max-md:shadow-none",
+          "max-md:[&>button[aria-label='Close']]:hidden",
+          // Desktop: existing card-style modal.
+          "md:w-[calc(100vw-2rem)] md:max-w-[1200px] md:h-[85vh] md:rounded-xl md:border-[0.7px] md:border-[hsl(var(--gray-400))]",
+        )}
+      >
         <DialogTitle className="sr-only">Workspace settings</DialogTitle>
         <DialogDescription className="sr-only">
           Manage your workspace profile, members, integrations, and billing.
         </DialogDescription>
+
+        {isMobile && !hideHeader && (
+          <MobileFullScreenTopBar
+            title={showMobileMaster ? "Workspace" : meta.title}
+            onBack={handleMobileBack}
+            testId={
+              showMobileMaster
+                ? "mobile-workspace-settings-close"
+                : "mobile-workspace-settings-back"
+            }
+          />
+        )}
 
         {showMobileMaster ? (
           <MobileMasterList
@@ -368,13 +428,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
               style={{ backgroundColor: "hsl(var(--background))" }}
             >
               {showMobileDetail && !hideHeader && (
-                <MobileDetailHeader
-                  title={meta.title}
-                  description={meta.description}
-                  onBack={() => {
-                    setMasterMode(true);
-                  }}
-                />
+                <MobileDetailIntro description={meta.description} />
               )}
               {!showMobileDetail && !hideHeader && (
                 <header className="shrink-0 px-4 sm:px-10 pt-6 sm:pt-8 pb-1">
