@@ -2,11 +2,9 @@ import type { ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
-  IconBluetooth,
   IconCheck,
   IconChevronDown,
-  IconLoader2,
-  IconPlugConnected,
+  IconLoader,
   IconRefresh,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui/components/ui/button";
@@ -35,14 +33,7 @@ import {
   setBb0WifiSsid$,
 } from "../../signals/device-bb0-page/bb0-device-onboarding.ts";
 
-type StepStatus = "pending" | "active" | "complete";
-
-function LoadingIcon({ visible }: { readonly visible: boolean }) {
-  if (!visible) {
-    return null;
-  }
-  return <IconLoader2 size={16} className="animate-spin" />;
-}
+const zeroSrc = "/zero.png";
 
 function loadableErrorMessage(loadable: {
   readonly state: string;
@@ -53,189 +44,103 @@ function loadableErrorMessage(loadable: {
   }
   return loadable.error instanceof Error
     ? loadable.error.message
-    : "bb0 setup failed.";
+    : "BB0 setup failed.";
+}
+
+// ---------------------------------------------------------------------------
+// Hero section (top banner, like Slack Huddles)
+// ---------------------------------------------------------------------------
+
+function HeroIllustration() {
+  return (
+    <img
+      src={zeroSrc}
+      alt=""
+      role="presentation"
+      className="hidden sm:block h-28 w-28 shrink-0 object-contain mix-blend-multiply dark:mix-blend-screen mr-10"
+    />
+  );
+}
+
+function HeroSection() {
+  return (
+    <div className="zero-card overflow-hidden">
+      <div className="flex items-center gap-6 px-8 py-10 bg-gradient-to-br from-muted/60 via-muted/20 to-background">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            Set up BB0
+          </h1>
+          <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-muted-foreground">
+            Three quick steps to get BB0 online. Pair over Bluetooth, share your
+            Wi-Fi, and confirm the code on screen.
+          </p>
+        </div>
+        <HeroIllustration />
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Step rows (like Slack "Recent huddles" rows + Zero onboarding cards)
+// ---------------------------------------------------------------------------
+
+function StepIcon({ src }: { readonly src: string }) {
+  return (
+    <img
+      src={src}
+      alt=""
+      role="presentation"
+      className="h-12 w-12 shrink-0 rounded-xl object-cover"
+    />
+  );
+}
+
+function CompleteBadge({ label }: { readonly label: string }) {
+  return (
+    <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-emerald-600">
+      <IconCheck size={13} stroke={2.5} />
+      {label}
+    </span>
+  );
 }
 
 function StepError({ message }: { readonly message: string | null }) {
   if (!message) {
     return null;
   }
-  return (
-    <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-      {message}
-    </div>
-  );
+  return <p className="mt-2 text-xs text-destructive">{message}</p>;
 }
 
-function StatusPill({
-  tone,
-  icon,
+function MorandiButton({
   children,
+  onClick,
+  disabled,
+  className,
 }: {
-  readonly tone: "neutral" | "success";
-  readonly icon: ReactNode;
   readonly children: ReactNode;
+  readonly onClick?: () => void;
+  readonly disabled?: boolean;
+  readonly className?: string;
 }) {
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium zero-badge",
-        tone === "success" ? "text-foreground" : "text-muted-foreground",
-      )}
+    <Button
+      size="sm"
+      variant="outline"
+      className={cn("zero-btn-morandi", className)}
+      disabled={disabled}
+      onClick={onClick}
     >
-      {icon}
       {children}
-    </span>
+    </Button>
   );
 }
 
-function StepBadge({
-  number,
-  status,
-}: {
-  readonly number: string;
-  readonly status: StepStatus;
-}) {
-  if (status === "complete") {
-    return (
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-primary/40 bg-primary/10 text-primary">
-        <IconCheck size={14} stroke={2} />
-      </div>
-    );
-  }
-  if (status === "active") {
-    return (
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-foreground text-xs font-semibold text-background">
-        {number}
-      </div>
-    );
-  }
-  return (
-    <div className="zero-badge flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-muted-foreground">
-      {number}
-    </div>
-  );
-}
+// ---------------------------------------------------------------------------
+// Step 1: Connect via BLE
+// ---------------------------------------------------------------------------
 
-function StepCard({
-  number,
-  status,
-  title,
-  description,
-  statusPill,
-  children,
-}: {
-  readonly number: string;
-  readonly status: StepStatus;
-  readonly title: string;
-  readonly description: string;
-  readonly statusPill?: ReactNode;
-  readonly children: ReactNode;
-}) {
-  return (
-    <section className="zero-card p-5">
-      <div className="flex items-start gap-3">
-        <StepBadge number={number} status={status} />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-            {statusPill}
-          </div>
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">
-            {description}
-          </p>
-        </div>
-      </div>
-      <div className="mt-4">{children}</div>
-    </section>
-  );
-}
-
-function PageHeader({
-  statusLabel,
-  statusTone,
-}: {
-  readonly statusLabel: string;
-  readonly statusTone: "neutral" | "success";
-}) {
-  return (
-    <header className="px-4 pt-10 pb-4 sm:px-6">
-      <div className="mx-auto max-w-[900px]">
-        <StatusPill
-          tone={statusTone}
-          icon={
-            <IconPlugConnected
-              size={12}
-              stroke={1.8}
-              className={
-                statusTone === "success"
-                  ? "text-green-600"
-                  : "text-muted-foreground"
-              }
-            />
-          }
-        >
-          {statusLabel}
-        </StatusPill>
-        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-foreground">
-          Set up bb0
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Connect over Bluetooth, send Wi-Fi, then enter the device code shown
-          on bb0. After that, bb0 finishes setup by polling the API over Wi-Fi.
-        </p>
-      </div>
-    </header>
-  );
-}
-
-function UnsupportedBrowser({ reason }: { readonly reason: string | null }) {
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-auto [scrollbar-gutter:stable]">
-      <header className="px-4 pt-10 pb-4 sm:px-6">
-        <div className="mx-auto max-w-[900px]">
-          <StatusPill
-            tone="neutral"
-            icon={
-              <IconBluetooth
-                size={12}
-                stroke={1.8}
-                className="text-muted-foreground"
-              />
-            }
-          >
-            Web Bluetooth required
-          </StatusPill>
-          <h1 className="mt-3 text-2xl font-semibold tracking-tight text-foreground">
-            bb0 setup needs Web Bluetooth
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Open this page in a Chromium-based browser over HTTPS or localhost.
-            The page is blocked before provisioning because bb0 setup depends on{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">
-              navigator.bluetooth
-            </code>
-            .
-          </p>
-        </div>
-      </header>
-      <main className="px-4 pb-14 sm:px-6">
-        <div className="mx-auto max-w-[900px]">
-          <section className="zero-card flex items-start gap-3 p-5">
-            <div className="zero-badge flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground">
-              <IconBluetooth size={14} stroke={1.8} />
-            </div>
-            <p className="text-sm leading-6 text-muted-foreground">
-              {reason ?? "Web Bluetooth is not available in this browser."}
-            </p>
-          </section>
-        </div>
-      </main>
-    </div>
-  );
-}
-
-function BleConnectStep({ status }: { readonly status: StepStatus }) {
+function BleConnectStep() {
   const info = useGet(bb0DeviceInfo$);
   const state = useGet(bb0ProvisioningState$);
   const pageSignal = useGet(pageSignal$);
@@ -245,26 +150,25 @@ function BleConnectStep({ status }: { readonly status: StepStatus }) {
   const connected = state.connectionStatus === "connected";
   const error = loadableErrorMessage(connectLoadable);
 
-  const statusPill = connected ? (
-    <StatusPill
-      tone="success"
-      icon={<IconCheck size={12} stroke={2} className="text-green-600" />}
-    >
-      Connected to {info.name ?? "bb0"}
-    </StatusPill>
-  ) : null;
-
   return (
-    <StepCard
-      number="1"
-      status={status}
-      title="Connect bb0"
-      description="Put bb0 into setup mode, then choose the nearby Zero-Buddy device."
-      statusPill={statusPill}
-    >
-      <div className="flex flex-col gap-3">
+    <div className="px-6 py-5">
+      <div className="flex items-center gap-4">
+        <StepIcon src="/onboarding-step1-connect-v3.png" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-foreground">Connect BB0</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Hold the button on BB0 to enter setup mode, then select it from the
+            device list.
+          </p>
+        </div>
+        {connected && (
+          <CompleteBadge label={`Connected · ${info.name ?? "BB0"}`} />
+        )}
+      </div>
+
+      <div className="mt-3 pl-16 flex flex-col gap-3">
         <div className="flex flex-wrap gap-2">
-          <Button
+          <MorandiButton
             disabled={connecting || connected}
             onClick={() => {
               detach(
@@ -274,33 +178,33 @@ function BleConnectStep({ status }: { readonly status: StepStatus }) {
               );
             }}
           >
-            <LoadingIcon visible={connecting} />
-            {connected ? "Connected" : "Connect bb0"}
-          </Button>
-          {connected ? (
+            {connecting && <IconLoader size={14} className="animate-spin" />}
+            {connected ? "Connected" : "Connect BB0"}
+          </MorandiButton>
+          {connected && (
             <Button
+              size="sm"
               variant="outline"
-              disabled={connecting}
               onClick={() => {
                 disconnect();
               }}
             >
               Disconnect
             </Button>
-          ) : null}
+          )}
         </div>
-        <details className="group text-xs text-muted-foreground">
-          <summary className="inline-flex cursor-pointer items-center gap-1 select-none hover:text-foreground">
+
+        <details className="group">
+          <summary className="inline-flex cursor-pointer select-none items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+            Technical details
             <IconChevronDown
-              size={12}
+              size={11}
               stroke={1.8}
               className="transition-transform group-open:rotate-180"
             />
-            Show technical details
           </summary>
-          <div className="zero-border mt-2 rounded-lg bg-gray-50 px-3 py-2 leading-6">
-            Browser filter:{" "}
-            <code className="text-foreground">Zero-Buddy-*</code>
+          <div className="zero-border mt-2 rounded-lg bg-muted/30 px-3 py-2 text-xs leading-6 text-muted-foreground">
+            Filter: <code className="text-foreground">Zero-Buddy-*</code>
             <br />
             Service UUID:{" "}
             <code className="break-all text-foreground">
@@ -308,13 +212,18 @@ function BleConnectStep({ status }: { readonly status: StepStatus }) {
             </code>
           </div>
         </details>
+
+        <StepError message={error} />
       </div>
-      <StepError message={error} />
-    </StepCard>
+    </div>
   );
 }
 
-function WifiStep({ status }: { readonly status: StepStatus }) {
+// ---------------------------------------------------------------------------
+// Step 2: Send Wi-Fi credentials
+// ---------------------------------------------------------------------------
+
+function WifiStep() {
   const state = useGet(bb0ProvisioningState$);
   const ssid = useGet(bb0WifiSsid$);
   const password = useGet(bb0WifiPassword$);
@@ -330,90 +239,103 @@ function WifiStep({ status }: { readonly status: StepStatus }) {
   const error =
     loadableErrorMessage(wifiLoadable) ?? loadableErrorMessage(refreshLoadable);
 
-  const statusPill = state.wifiSent ? (
-    <StatusPill
-      tone="success"
-      icon={<IconCheck size={12} stroke={2} className="text-green-600" />}
-    >
-      Wi-Fi sent
-    </StatusPill>
-  ) : null;
-
   return (
-    <StepCard
-      number="2"
-      status={status}
-      title="Send Wi-Fi"
-      description="Write Wi-Fi credentials over BLE. bb0 closes Bluetooth after receiving them."
-      statusPill={statusPill}
-    >
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1.5 text-sm font-medium">
-          Wi-Fi SSID
-          <Input
-            value={ssid}
-            disabled={!connected || sendingWifi || state.wifiSent}
-            placeholder="Zero-Lab"
-            onChange={(event) => {
-              setSsid(event.target.value);
-            }}
-          />
-        </label>
-        <label className="flex flex-col gap-1.5 text-sm font-medium">
-          Wi-Fi password
-          <Input
-            type="password"
-            value={password}
-            disabled={!connected || sendingWifi || state.wifiSent}
-            placeholder="Leave empty for open network"
-            onChange={(event) => {
-              setPassword(event.target.value);
-            }}
-          />
-        </label>
+    <div className="px-6 py-5">
+      <div className="flex items-center gap-4">
+        <StepIcon src="/onboarding-step2-wifi-v2.png" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-foreground">Share Wi-Fi</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Enter your network details and send them to BB0. It&apos;ll
+            disconnect from Bluetooth once received.
+          </p>
+        </div>
+        {state.wifiSent && <CompleteBadge label="Wi-Fi sent" />}
       </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Button
-          disabled={!canSendWifi || sendingWifi || state.wifiSent}
-          onClick={() => {
-            detach(
-              sendWifi(pageSignal),
-              Reason.DomCallback,
-              "sendBb0WifiCredentials",
-            );
-          }}
-        >
-          <LoadingIcon visible={sendingWifi} />
-          {state.wifiSent ? "Wi-Fi sent" : "Send Wi-Fi"}
-        </Button>
-        <Button
-          variant="outline"
-          disabled={!connected || refreshing || state.wifiSent}
-          onClick={() => {
-            detach(
-              refresh(pageSignal),
-              Reason.DomCallback,
-              "refreshBb0DeviceStatus",
-            );
-          }}
-        >
-          <LoadingIcon visible={refreshing} />
-          <IconRefresh size={16} />
-          Refresh BLE status
-        </Button>
+
+      <div className="mt-3 pl-16 flex flex-col gap-3">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground">
+              Wi-Fi SSID
+            </span>
+            <Input
+              value={ssid}
+              disabled={!connected || sendingWifi || state.wifiSent}
+              placeholder="Zero-Lab"
+              onChange={(e) => {
+                setSsid(e.target.value);
+              }}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground">
+              Password
+            </span>
+            <Input
+              type="password"
+              value={password}
+              disabled={!connected || sendingWifi || state.wifiSent}
+              placeholder="Leave empty for open network"
+              onChange={(e) => {
+                setPassword(e.target.value);
+              }}
+            />
+          </label>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <MorandiButton
+            disabled={!canSendWifi || sendingWifi || state.wifiSent}
+            onClick={() => {
+              detach(
+                sendWifi(pageSignal),
+                Reason.DomCallback,
+                "sendBb0WifiCredentials",
+              );
+            }}
+          >
+            {sendingWifi && <IconLoader size={14} className="animate-spin" />}
+            {state.wifiSent ? "Wi-Fi sent" : "Send Wi-Fi"}
+          </MorandiButton>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!connected || refreshing || state.wifiSent}
+            onClick={() => {
+              detach(
+                refresh(pageSignal),
+                Reason.DomCallback,
+                "refreshBb0DeviceStatus",
+              );
+            }}
+          >
+            {refreshing ? (
+              <IconLoader size={14} className="animate-spin" />
+            ) : (
+              <IconRefresh size={14} />
+            )}
+            Refresh status
+          </Button>
+        </div>
+
+        {state.wifiSent && (
+          <p className="text-xs leading-5 text-muted-foreground">
+            BB0 is connecting to Wi-Fi — a code will appear on its screen
+            shortly.
+          </p>
+        )}
+        <StepError message={error} />
       </div>
-      {state.wifiSent ? (
-        <p className="mt-3 text-xs leading-5 text-muted-foreground">
-          Check the bb0 screen — the device will connect to Wi-Fi and display a
-          code.
-        </p>
-      ) : null}
-      <StepError message={error} />
-    </StepCard>
+    </div>
   );
 }
 
-function DeviceCodeStep({ status }: { readonly status: StepStatus }) {
+// ---------------------------------------------------------------------------
+// Step 3: Enter device code
+// ---------------------------------------------------------------------------
+
+function DeviceCodeStep() {
   const state = useGet(bb0ProvisioningState$);
   const deviceCode = useGet(bb0DeviceCodeInput$);
   const canConfirm = useGet(bb0CanConfirmCode$);
@@ -424,38 +346,41 @@ function DeviceCodeStep({ status }: { readonly status: StepStatus }) {
   const confirmed = state.operationStatus === "confirmed";
   const error = loadableErrorMessage(confirmLoadable);
 
-  const statusPill = confirmed ? (
-    <StatusPill
-      tone="success"
-      icon={<IconCheck size={12} stroke={2} className="text-green-600" />}
-    >
-      Code confirmed
-    </StatusPill>
-  ) : null;
-
   return (
-    <StepCard
-      number="3"
-      status={status}
-      title="Enter device code"
-      description="Read the code from bb0's screen and confirm it here."
-      statusPill={statusPill}
-    >
-      <label className="flex flex-col gap-1.5 text-sm font-medium">
-        Device code
-        <Input
-          value={deviceCode}
-          disabled={confirming || confirmed}
-          placeholder="ABCD-2345"
-          inputMode="text"
-          autoCapitalize="characters"
-          onChange={(event) => {
-            setDeviceCode(event.target.value);
-          }}
-        />
-      </label>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Button
+    <div className="px-6 pt-5 pb-8">
+      <div className="flex items-center gap-4">
+        <StepIcon src="/onboarding-step3-code-v2.png" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-foreground">
+            Confirm device code
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Enter the code shown on BB0&apos;s screen to complete setup. No
+            credentials are sent to the device.
+          </p>
+        </div>
+        {confirmed && <CompleteBadge label="Confirmed" />}
+      </div>
+
+      <div className="mt-3 pl-16 flex flex-col gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted-foreground">
+            Device code
+          </span>
+          <Input
+            value={deviceCode}
+            disabled={!state.wifiSent || confirming || confirmed}
+            placeholder="ABCD2345"
+            inputMode="text"
+            autoCapitalize="characters"
+            className="max-w-[14rem]"
+            onChange={(e) => {
+              setDeviceCode(e.target.value);
+            }}
+          />
+        </label>
+        <MorandiButton
+          className="self-start"
           disabled={!canConfirm || confirming}
           onClick={() => {
             detach(
@@ -465,121 +390,104 @@ function DeviceCodeStep({ status }: { readonly status: StepStatus }) {
             );
           }}
         >
-          <LoadingIcon visible={confirming} />
+          {confirming && <IconLoader size={14} className="animate-spin" />}
           {confirmed ? "Code confirmed" : "Confirm code"}
-        </Button>
-      </div>
-      <p className="mt-3 text-xs leading-5 text-muted-foreground">
-        {confirmed
-          ? "bb0 will receive its token and thread ID through its own Wi-Fi polling flow."
-          : "This page does not send a PAT to the device. It only approves the visible code for your current account."}
-      </p>
-      <StepError message={error} />
-    </StepCard>
-  );
-}
-
-function ResetHelp() {
-  const resetPage = useSet(resetBb0Onboarding$);
-
-  return (
-    <section className="zero-card p-5">
-      <div className="flex items-start gap-3">
-        <div className="zero-badge flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground">
-          <IconRefresh size={14} stroke={1.8} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold text-foreground">
-            Something went wrong?
-          </h2>
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">
-            Hold <code className="text-foreground">BtnA</code>, press{" "}
-            <code className="text-foreground">BtnB</code> once, then release{" "}
-            <code className="text-foreground">BtnA</code>. After bb0 returns to
-            setup mode, reset this page and start from step 1.
+        </MorandiButton>
+        {confirmed && (
+          <p className="text-xs leading-5 text-muted-foreground">
+            All done! BB0 will check in over Wi-Fi and start working shortly.
           </p>
-          <Button
-            className="mt-3"
-            variant="outline"
-            onClick={() => {
-              resetPage();
-            }}
-          >
-            <IconRefresh size={16} />
-            Reset page state
-          </Button>
-        </div>
+        )}
+        <StepError message={error} />
       </div>
-    </section>
+    </div>
   );
 }
 
-function deriveStatuses(state: {
-  readonly connectionStatus: string;
-  readonly wifiSent: boolean;
-  readonly operationStatus: string;
-}): {
-  connect: StepStatus;
-  wifi: StepStatus;
-  code: StepStatus;
-  headerLabel: string;
-  headerTone: "neutral" | "success";
-} {
-  const connected = state.connectionStatus === "connected";
-  const wifiSent = state.wifiSent;
-  const confirmed = state.operationStatus === "confirmed";
+// ---------------------------------------------------------------------------
+// Unsupported browser fallback
+// ---------------------------------------------------------------------------
 
-  const connect: StepStatus = connected ? "complete" : "active";
-  const wifi: StepStatus = wifiSent
-    ? "complete"
-    : connected
-      ? "active"
-      : "pending";
-  const code: StepStatus = confirmed
-    ? "complete"
-    : wifiSent
-      ? "active"
-      : "pending";
-
-  let headerLabel = "bb0 setup";
-  let headerTone: "neutral" | "success" = "neutral";
-  if (confirmed) {
-    headerLabel = "bb0 ready";
-    headerTone = "success";
-  } else if (wifiSent) {
-    headerLabel = "Waiting for device code";
-  } else if (connected) {
-    headerLabel = "bb0 connected";
-    headerTone = "success";
-  }
-
-  return { connect, wifi, code, headerLabel, headerTone };
+function UnsupportedBrowser({ reason }: { readonly reason: string | null }) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto [scrollbar-gutter:stable]">
+      <div className="px-4 py-6 sm:px-6">
+        <div className="mx-auto max-w-[760px]">
+          <div className="zero-card overflow-hidden">
+            <div className="flex items-center gap-6 bg-muted/40 px-6 py-7">
+              <div className="min-w-0 flex-1">
+                <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+                  Set up BB0
+                </h1>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                  Open this page in a Chromium-based browser over HTTPS or
+                  localhost to use Web Bluetooth.
+                </p>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  {reason ?? "Web Bluetooth is not available in this browser."}
+                </p>
+              </div>
+              <img
+                src={zeroSrc}
+                alt=""
+                role="presentation"
+                className="hidden sm:block h-20 w-20 shrink-0 object-contain opacity-40"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
+
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
 
 export function Bb0DevicePage() {
   const support = useGet(bb0BrowserSupport$);
-  const state = useGet(bb0ProvisioningState$);
+  const resetPage = useSet(resetBb0Onboarding$);
 
   if (!support.supported) {
     return <UnsupportedBrowser reason={support.reason} />;
   }
 
-  const statuses = deriveStatuses(state);
-
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-auto [scrollbar-gutter:stable]">
-      <PageHeader
-        statusLabel={statuses.headerLabel}
-        statusTone={statuses.headerTone}
-      />
-      <main className="px-4 pb-14 sm:px-6">
-        <div className="mx-auto flex max-w-[900px] flex-col gap-4">
-          <BleConnectStep status={statuses.connect} />
-          <WifiStep status={statuses.wifi} />
-          <DeviceCodeStep status={statuses.code} />
-          <ResetHelp />
+      <div className="px-4 pt-6 pb-14 sm:px-6">
+        <div className="mx-auto max-w-[760px] flex flex-col gap-4">
+          {/* Hero banner */}
+          <HeroSection />
+
+          {/* Step list */}
+          <section className="zero-card overflow-hidden">
+            <BleConnectStep />
+            <hr className="mx-6 border-0 border-t border-border/50" />
+            <WifiStep />
+            <hr className="mx-6 border-0 border-t border-border/50" />
+            <DeviceCodeStep />
+          </section>
+
+          {/* Troubleshoot footer */}
+          <p className="px-1 text-xs text-muted-foreground">
+            Having trouble? Hold <code className="text-foreground">BtnA</code>,
+            press <code className="text-foreground">BtnB</code>, then release{" "}
+            <code className="text-foreground">BtnA</code> to restart setup mode,
+            and{" "}
+            <button
+              type="button"
+              className="underline underline-offset-2 hover:text-foreground"
+              onClick={() => {
+                resetPage();
+              }}
+            >
+              reset this page
+            </button>
+            .
+          </p>
         </div>
-      </main>
+      </div>
     </div>
   );
 }
