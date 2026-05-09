@@ -92,9 +92,6 @@ export const zeroRunDetailRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroRunAgentEventsContract.getAgentEvents,
-    handler: shadowCompareRoute({
-      route: zeroRunAgentEventsContract.getAgentEvents,
-      handler: authRoute(runReadAuth, getAgentEventsInner$),
-    }),
+    handler: authRoute(runReadAuth, getAgentEventsInner$),
   },
 ];

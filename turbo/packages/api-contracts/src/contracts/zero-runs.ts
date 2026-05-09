@@ -145,6 +145,7 @@ export const zeroRunAgentEventsContract = c.router({
     responses: {
       200: agentEventsResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Get agent events with pagination (zero proxy)",
