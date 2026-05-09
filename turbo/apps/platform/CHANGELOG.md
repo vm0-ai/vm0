@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.338.1](https://github.com/vm0-ai/vm0/compare/app-v0.338.0...app-v0.338.1) (2026-05-09)
+
+
+### Bug Fixes
+
+* show Send button during active run when composer has content, clicking queues ([#12230](https://github.com/vm0-ai/vm0/issues/12230)) ([5d5c9a5](https://github.com/vm0-ai/vm0/commit/5d5c9a55b2f0b32ae12134e0719ab74f30cb9832))
+
 ## [0.338.0](https://github.com/vm0-ai/vm0/compare/app-v0.337.0...app-v0.338.0) (2026-05-09)
 
 
