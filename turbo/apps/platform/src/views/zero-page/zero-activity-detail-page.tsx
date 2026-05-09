@@ -113,17 +113,28 @@ function RunErrorBanner({ error }: { error: string }) {
 // ---------------------------------------------------------------------------
 
 /**
- * Returns true if a grouped message should be shown (filters out text-only
- * assistant messages immediately before a result message).
+ * Returns true if a grouped message should be shown.
+ *
+ * Claude Code emits a result event that repeats the final assistant text, so
+ * text-only assistant messages immediately before a non-empty result are
+ * hidden. Other frameworks keep the assistant message as-is.
  */
 export function isVisibleMessage(
   message: GroupedMessage,
   nextMessage: GroupedMessage | undefined,
+  framework?: string | null,
 ): boolean {
   if (message.type !== "assistant") {
     return true;
   }
   if (!nextMessage || nextMessage.type !== "result") {
+    return true;
+  }
+  if (framework !== "claude-code") {
+    return true;
+  }
+  const result = (nextMessage.eventData as { result?: unknown }).result;
+  if (typeof result !== "string" || result.trim().length === 0) {
     return true;
   }
   return (message.toolOperations?.length ?? 0) > 0;
@@ -339,7 +350,11 @@ export function ActivityHeaderCard({
 }
 
 function prepareRenderData(
-  detail: { prompt: string | null; appendSystemPrompt: string | null },
+  detail: {
+    prompt: string | null;
+    appendSystemPrompt: string | null;
+    framework: string | null;
+  },
   rawEvents: AgentEvent[] | null,
   stepSearch: string,
   features: Record<FeatureSwitchKey, boolean> | undefined,
@@ -347,7 +362,7 @@ function prepareRenderData(
   const events: AgentEvent[] = rawEvents ?? [];
   const allMessages = groupEventsIntoMessages(events);
   const visibleMessages = allMessages.filter((message, index) => {
-    return isVisibleMessage(message, allMessages[index + 1]);
+    return isVisibleMessage(message, allMessages[index + 1], detail.framework);
   });
   const messages = visibleMessages.filter((m) => {
     return groupedMessageMatchesSearch(m, stepSearch.trim());

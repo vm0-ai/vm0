@@ -225,7 +225,7 @@ describe("chat composer — model picker display vs. send body", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("combobox", { name: "gpt-5.4" }),
+        screen.getByRole("combobox", { name: "GPT-5.4" }),
       ).toBeInTheDocument();
     });
 

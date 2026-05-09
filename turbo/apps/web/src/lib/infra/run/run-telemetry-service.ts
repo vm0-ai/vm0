@@ -1,9 +1,18 @@
 import { eq, and } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
-import { queryAxiom, getDatasetName, DATASETS } from "../../shared/axiom";
+import {
+  queryAxiom,
+  getDatasetName,
+  DATASETS,
+  escapeAplString,
+} from "../../shared/axiom";
 import { notFound } from "@vm0/api-services/errors";
 import { extractFrameworkFromCompose } from "../framework/framework-config";
+import {
+  getAgentEventPageWatermarkTarget,
+  waitForRunEventWatermarkVisible,
+} from "./agent-event-visibility";
 
 interface AxiomAgentEvent {
   _time: string;
@@ -31,6 +40,31 @@ interface AgentEventsResult {
   framework: string;
 }
 
+function getAgentEventsVisibilityTarget(
+  lastEventSequence: number | null,
+  since: number | undefined,
+  limit: number,
+  order: "asc" | "desc",
+): number | null {
+  if (lastEventSequence === null) {
+    return null;
+  }
+
+  if (order === "asc") {
+    return getAgentEventPageWatermarkTarget(
+      lastEventSequence,
+      since,
+      limit + 1,
+    );
+  }
+
+  if (since !== undefined && since >= lastEventSequence) {
+    return null;
+  }
+
+  return lastEventSequence;
+}
+
 /**
  * Get agent telemetry events for a run.
  * Verifies run ownership, extracts framework from compose, queries Axiom.
@@ -46,6 +80,7 @@ export async function getRunAgentEvents(
   const [runWithCompose] = await db
     .select({
       id: agentRuns.id,
+      lastEventSequence: agentRuns.lastEventSequence,
       composeContent: agentComposeVersions.content,
     })
     .from(agentRuns)
@@ -85,13 +120,28 @@ export async function getRunAgentEvents(
   // integer `sequenceNumber` avoids any precision loss.
   const sinceFilter =
     since !== undefined ? `| where sequenceNumber > ${since}` : "";
+
+  const watermarkTarget = getAgentEventsVisibilityTarget(
+    runWithCompose.lastEventSequence,
+    since,
+    limit,
+    order,
+  );
+  if (watermarkTarget !== null) {
+    await waitForRunEventWatermarkVisible(runId, watermarkTarget);
+  }
+  const axiomQueryOptions =
+    watermarkTarget !== null ? ({ noCache: true } as const) : undefined;
+
   const apl = `['${dataset}']
-| where runId == "${runId}"
+| where runId == "${escapeAplString(runId)}"
 ${sinceFilter}
 | order by sequenceNumber ${order}
 | limit ${limit + 1}`;
 
-  const events = await queryAxiom<AxiomAgentEvent>(apl);
+  const events = axiomQueryOptions
+    ? await queryAxiom<AxiomAgentEvent>(apl, axiomQueryOptions)
+    : await queryAxiom<AxiomAgentEvent>(apl);
 
   const hasMore = events.length > limit;
   const resultEvents = hasMore ? events.slice(0, limit) : events;

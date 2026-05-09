@@ -179,6 +179,28 @@ async fn send_message(
     Ok(())
 }
 
+async fn wait_for_test_observation(rx: tokio::sync::oneshot::Receiver<()>, context: &'static str) {
+    let observed = tokio::time::timeout(Duration::from_secs(5), rx).await;
+    assert!(
+        matches!(observed, Ok(Ok(()))),
+        "timed out or dropped observation signal for {context}: {observed:?}",
+    );
+}
+
+// Negative waits still need a real observation window; keep them explicit so
+// they are not confused with arbitrary synchronization delays.
+async fn assert_value_stable_for<T>(
+    window: Duration,
+    mut current: impl FnMut() -> T,
+    expected: T,
+    context: &'static str,
+) where
+    T: std::fmt::Debug + PartialEq,
+{
+    tokio::time::sleep(window).await;
+    assert_eq!(current(), expected, "{context}");
+}
+
 /// Register a mock that responds to POST /keys/{key_name}/requestToken.
 /// httpmock mocks match unlimited times, so a single call handles both
 /// the initial connect and any reconnects that require a new token.
@@ -378,12 +400,13 @@ async fn zero_event_channel_capacity_uses_minimum_capacity() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
+    let (message_seen_tx, message_seen_rx) = tokio::sync::oneshot::channel::<()>();
     let server_task = tokio::spawn(async move {
         let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
         send_message(&mut conn, "ch", "after-connect", serde_json::json!(1))
             .await
             .unwrap();
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_for_test_observation(message_seen_rx, "after-connect message").await;
     });
 
     let mut timing = TimingConfig::default();
@@ -398,7 +421,10 @@ async fn zero_event_channel_capacity_uses_minimum_capacity() {
         .expect("timed out waiting for message")
         .unwrap();
     match event {
-        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("after-connect")),
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-connect"));
+            message_seen_tx.send(()).unwrap();
+        }
         other => panic!("expected Message, got {other:?}"),
     }
 
@@ -714,16 +740,13 @@ async fn token_renewal() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    // Give the renewal timer a moment to misbehave if it's going to.
-    // Next legitimate renewal is ~3300s away (3_600_000ms TTL - 300s
-    // margin), so any further hits inside this window indicate the
-    // subscriber did not stabilise on the long-lived token.
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    assert_eq!(
-        token_mock.calls(),
+    assert_value_stable_for(
+        Duration::from_millis(500),
+        || token_mock.calls(),
         2,
         "subscriber should stop renewing after receiving the long-lived token",
-    );
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -793,14 +816,15 @@ async fn reconnect_after_server_drop() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
-    tokio::spawn(async move {
+    let (before_drop_seen_tx, before_drop_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let (after_reconnect_seen_tx, after_reconnect_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
         // First connection
         let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
         send_message(&mut conn, "ch", "before-drop", serde_json::json!(1))
             .await
             .unwrap();
-        // Yield so the client can process the message before we drop the connection.
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_for_test_observation(before_drop_seen_rx, "before-drop message").await;
         drop(conn);
 
         // Second connection (after reconnect)
@@ -808,8 +832,7 @@ async fn reconnect_after_server_drop() {
         send_message(&mut conn2, "ch", "after-reconnect", serde_json::json!(2))
             .await
             .unwrap();
-        // Keep alive long enough for client to read
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        wait_for_test_observation(after_reconnect_seen_rx, "after-reconnect message").await;
     });
 
     let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
@@ -820,7 +843,10 @@ async fn reconnect_after_server_drop() {
 
     // First message
     match sub.next().await.unwrap() {
-        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("before-drop")),
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("before-drop"));
+            before_drop_seen_tx.send(()).unwrap();
+        }
         other => panic!("expected Message, got {other:?}"),
     }
 
@@ -857,9 +883,14 @@ async fn reconnect_after_server_drop() {
         .expect("timed out waiting for message after reconnect")
         .unwrap();
     match event {
-        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("after-reconnect")),
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-reconnect"));
+            after_reconnect_seen_tx.send(()).unwrap();
+        }
         other => panic!("expected Message, got {other:?}"),
     }
+
+    server_task.await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -873,14 +904,15 @@ async fn reconnect_immediately_after_close_frame() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
-    tokio::spawn(async move {
+    let (before_close_seen_tx, before_close_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let (after_close_seen_tx, after_close_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
         // First connection — send a message then close with a reason
         let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
         send_message(&mut conn, "ch", "before-close", serde_json::json!(1))
             .await
             .unwrap();
-        // Yield so the client can process the message before we close.
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_for_test_observation(before_close_seen_rx, "before-close message").await;
         conn.close(Some(tungstenite::protocol::CloseFrame {
             code: tungstenite::protocol::frame::coding::CloseCode::Normal,
             reason: "server maintenance".into(),
@@ -894,7 +926,7 @@ async fn reconnect_immediately_after_close_frame() {
         send_message(&mut conn2, "ch", "after-close", serde_json::json!(2))
             .await
             .unwrap();
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        wait_for_test_observation(after_close_seen_rx, "after-close message").await;
     });
 
     let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
@@ -904,7 +936,10 @@ async fn reconnect_immediately_after_close_frame() {
     assert!(matches!(sub.next().await.unwrap(), Event::Connected));
 
     match sub.next().await.unwrap() {
-        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("before-close")),
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("before-close"));
+            before_close_seen_tx.send(()).unwrap();
+        }
         other => panic!("expected Message, got {other:?}"),
     }
 
@@ -938,9 +973,14 @@ async fn reconnect_immediately_after_close_frame() {
         .expect("timed out waiting for message after reconnect")
         .unwrap();
     match event {
-        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("after-close")),
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-close"));
+            after_close_seen_tx.send(()).unwrap();
+        }
         other => panic!("expected Message, got {other:?}"),
     }
+
+    server_task.await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -954,13 +994,14 @@ async fn reconnect_immediately_after_close_frame_no_reason() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
-    tokio::spawn(async move {
+    let (before_close_seen_tx, before_close_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let (after_close_seen_tx, after_close_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
         let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
         send_message(&mut conn, "ch", "before-close", serde_json::json!(1))
             .await
             .unwrap();
-        // Yield so the client can process the message before we close.
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_for_test_observation(before_close_seen_rx, "before-close message").await;
         // Close without reason
         conn.close(None).await.unwrap();
         expect_websocket_close_frame(&mut conn).await.unwrap();
@@ -969,7 +1010,7 @@ async fn reconnect_immediately_after_close_frame_no_reason() {
         send_message(&mut conn2, "ch", "after-close", serde_json::json!(2))
             .await
             .unwrap();
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        wait_for_test_observation(after_close_seen_rx, "after-close message").await;
     });
 
     let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
@@ -979,7 +1020,10 @@ async fn reconnect_immediately_after_close_frame_no_reason() {
     assert!(matches!(sub.next().await.unwrap(), Event::Connected));
 
     match sub.next().await.unwrap() {
-        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("before-close")),
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("before-close"));
+            before_close_seen_tx.send(()).unwrap();
+        }
         other => panic!("expected Message, got {other:?}"),
     }
 
@@ -1012,9 +1056,14 @@ async fn reconnect_immediately_after_close_frame_no_reason() {
         .expect("timed out waiting for message after reconnect")
         .unwrap();
     match event {
-        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("after-close")),
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-close"));
+            after_close_seen_tx.send(()).unwrap();
+        }
         other => panic!("expected Message, got {other:?}"),
     }
+
+    server_task.await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -1028,6 +1077,7 @@ async fn reconnect_after_close_frame_empty_reason_reports_code_only() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
+    let (after_close_seen_tx, after_close_seen_rx) = tokio::sync::oneshot::channel::<()>();
     let server_task = tokio::spawn(async move {
         let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
         conn.close(Some(tungstenite::protocol::CloseFrame {
@@ -1042,7 +1092,7 @@ async fn reconnect_after_close_frame_empty_reason_reports_code_only() {
         send_message(&mut conn2, "ch", "after-close", serde_json::json!(2))
             .await
             .unwrap();
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_for_test_observation(after_close_seen_rx, "after-close message").await;
     });
 
     let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
@@ -1076,7 +1126,10 @@ async fn reconnect_after_close_frame_empty_reason_reports_code_only() {
         .expect("timed out waiting for message after reconnect")
         .unwrap();
     match event {
-        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("after-close")),
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-close"));
+            after_close_seen_tx.send(()).unwrap();
+        }
         other => panic!("expected Message, got {other:?}"),
     }
 
@@ -1094,6 +1147,8 @@ async fn repeated_clean_close_reconnect_is_rate_limited() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
+    let (after_rate_limit_seen_tx, after_rate_limit_seen_rx) =
+        tokio::sync::oneshot::channel::<()>();
     let server_task = tokio::spawn(async move {
         let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
         conn.close(Some(tungstenite::protocol::CloseFrame {
@@ -1131,7 +1186,7 @@ async fn repeated_clean_close_reconnect_is_rate_limited() {
         send_message(&mut conn3, "ch", "after-rate-limit", serde_json::json!(3))
             .await
             .unwrap();
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_for_test_observation(after_rate_limit_seen_rx, "after-rate-limit message").await;
     });
 
     let mut timing = TimingConfig::default();
@@ -1171,7 +1226,10 @@ async fn repeated_clean_close_reconnect_is_rate_limited() {
         .expect("timed out waiting for post-reconnect message")
         .unwrap();
     match event {
-        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("after-rate-limit")),
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-rate-limit"));
+            after_rate_limit_seen_tx.send(()).unwrap();
+        }
         other => panic!("expected Message, got {other:?}"),
     }
 
@@ -1273,6 +1331,7 @@ async fn server_sends_disconnected_without_message_reports_reason() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
+    let (reconnected_seen_tx, reconnected_seen_rx) = tokio::sync::oneshot::channel::<()>();
     let server_task = tokio::spawn(async move {
         let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
 
@@ -1309,7 +1368,7 @@ async fn server_sends_disconnected_without_message_reports_reason() {
         send_message(&mut conn3, "ch", "reconnected", serde_json::json!("ok"))
             .await
             .unwrap();
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_for_test_observation(reconnected_seen_rx, "reconnected message").await;
     });
 
     let mut timing = TimingConfig::default();
@@ -1371,7 +1430,10 @@ async fn server_sends_disconnected_without_message_reports_reason() {
         .expect("timed out")
         .unwrap();
     match event {
-        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("reconnected")),
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("reconnected"));
+            reconnected_seen_tx.send(()).unwrap();
+        }
         other => panic!("expected Message, got {other:?}"),
     }
 
@@ -1438,7 +1500,8 @@ async fn server_sends_detached_reattach() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
-    tokio::spawn(async move {
+    let (after_reattach_seen_tx, after_reattach_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
         let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
 
         // Send DETACHED (retriable — server error)
@@ -1483,7 +1546,7 @@ async fn server_sends_detached_reattach() {
         send_message(&mut conn, "ch", "after-reattach", serde_json::json!("ok"))
             .await
             .unwrap();
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        wait_for_test_observation(after_reattach_seen_rx, "after-reattach message").await;
     });
 
     let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
@@ -1498,9 +1561,14 @@ async fn server_sends_detached_reattach() {
         .expect("timed out waiting for message after reattach")
         .unwrap();
     match event {
-        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("after-reattach")),
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-reattach"));
+            after_reattach_seen_tx.send(()).unwrap();
+        }
         other => panic!("expected Message, got {other:?}"),
     }
+
+    server_task.await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -1614,7 +1682,8 @@ async fn non_retriable_disconnected_triggers_reconnect() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
-    tokio::spawn(async move {
+    let (after_reconnect_seen_tx, after_reconnect_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
         let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
 
         // Send DISCONNECTED with a non-retriable error (401 + non-connection code)
@@ -1644,7 +1713,11 @@ async fn non_retriable_disconnected_triggers_reconnect() {
         )
         .await
         .unwrap();
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        wait_for_test_observation(
+            after_reconnect_seen_rx,
+            "after-non-retriable-disconnect message",
+        )
+        .await;
     });
 
     let mut timing = TimingConfig::default();
@@ -1684,10 +1757,13 @@ async fn non_retriable_disconnected_triggers_reconnect() {
         .unwrap();
     match event {
         Event::Message(msg) => {
-            assert_eq!(msg.name.as_deref(), Some("after-non-retriable-disconnect"))
+            assert_eq!(msg.name.as_deref(), Some("after-non-retriable-disconnect"));
+            after_reconnect_seen_tx.send(()).unwrap();
         }
         other => panic!("expected Message, got {other:?}"),
     }
+
+    server_task.await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -1751,7 +1827,8 @@ async fn detached_with_client_error_reattaches() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
-    tokio::spawn(async move {
+    let (after_detached_seen_tx, after_detached_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
         let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
 
         // ably-js does not gate DETACHED handling on error retriability:
@@ -1798,7 +1875,7 @@ async fn detached_with_client_error_reattaches() {
         )
         .await
         .unwrap();
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        wait_for_test_observation(after_detached_seen_rx, "after-client-detached message").await;
     });
 
     let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
@@ -1812,9 +1889,14 @@ async fn detached_with_client_error_reattaches() {
         .expect("timed out")
         .unwrap();
     match event {
-        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("after-client-detached")),
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-client-detached"));
+            after_detached_seen_tx.send(()).unwrap();
+        }
         other => panic!("expected Message, got {other:?}"),
     }
+
+    server_task.await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -1868,7 +1950,8 @@ async fn server_initiated_auth() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
-    tokio::spawn(async move {
+    let (after_auth_seen_tx, after_auth_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
         let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
 
         // Server sends AUTH to request reauthentication
@@ -1902,7 +1985,7 @@ async fn server_initiated_auth() {
         )
         .await
         .unwrap();
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        wait_for_test_observation(after_auth_seen_rx, "after-server-auth message").await;
     });
 
     let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
@@ -1916,9 +1999,14 @@ async fn server_initiated_auth() {
         .expect("timed out waiting for message after server AUTH")
         .unwrap();
     match event {
-        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("after-server-auth")),
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-server-auth"));
+            after_auth_seen_tx.send(()).unwrap();
+        }
         other => panic!("expected Message, got {other:?}"),
     }
+
+    server_task.await.unwrap();
 }
 
 #[tokio::test]
@@ -2114,7 +2202,6 @@ async fn retry_enters_suspended_after_connection_state_ttl() {
         // Drop the server so the port is unbound — reconnects fail with
         // "connection refused" immediately instead of hanging on the listener.
         drop(ws);
-        tokio::time::sleep(Duration::from_secs(30)).await;
     });
 
     let mut timing = TimingConfig::default();
@@ -2187,10 +2274,10 @@ async fn token_renewal_failures_fatal() {
     let rest_host = format!("127.0.0.1:{}", http.port());
 
     tokio::spawn(async move {
-        let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
-        // Keep the connection alive while renewal attempts happen
-        tokio::time::sleep(Duration::from_secs(10)).await;
-        let _ = conn.close(None).await;
+        let _conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+        // Keep the socket open; the subscriber should close itself after
+        // fatal token-renewal failures.
+        std::future::pending::<()>().await;
     });
 
     // Use an atomic counter so get_token succeeds for the initial exchange
@@ -2552,10 +2639,10 @@ async fn connect_timeout_fires() {
 
     let ws_port = ws.port;
     tokio::spawn(async move {
-        // Accept TCP but never complete the WebSocket handshake — just sleep
+        // Accept TCP but never complete the WebSocket handshake.
         let (tcp, _) = ws.listener.accept().await.unwrap();
         let _hold = tcp; // keep socket open
-        tokio::time::sleep(Duration::from_secs(30)).await;
+        std::future::pending::<()>().await;
     });
 
     let mut timing = TimingConfig::default();
@@ -2605,7 +2692,9 @@ async fn reconnect_timeout_retries_until_suspended() {
         while let Ok((tcp, _)) = ws.listener.accept().await {
             tokio::spawn(async move {
                 let _hold = tcp;
-                tokio::time::sleep(Duration::from_secs(30)).await;
+                // Keep the TCP connection open without completing the
+                // WebSocket handshake so reconnect_timeout fires.
+                std::future::pending::<()>().await;
             });
         }
     });
@@ -3320,8 +3409,9 @@ async fn expired_ttl_skips_resume() {
 
     let ws_port = ws.port;
     let (resume_tx, resume_rx) = tokio::sync::oneshot::channel::<bool>();
+    let (message_seen_tx, message_seen_rx) = tokio::sync::oneshot::channel::<()>();
 
-    tokio::spawn(async move {
+    let server_task = tokio::spawn(async move {
         // First connection with an already-expired connection_state_ttl.
         // The server-provided TTL overrides the TimingConfig default, so we
         // set it here to ensure can_resume() is false on reconnect.
@@ -3355,7 +3445,7 @@ async fn expired_ttl_skips_resume() {
         )
         .await
         .unwrap();
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        wait_for_test_observation(message_seen_rx, "after-fresh-connect message").await;
     });
 
     let mut timing = TimingConfig::default();
@@ -3392,13 +3482,17 @@ async fn expired_ttl_skips_resume() {
         .expect("timed out waiting for message")
         .unwrap();
     match event {
-        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("after-fresh-connect")),
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-fresh-connect"));
+            message_seen_tx.send(()).unwrap();
+        }
         other => panic!("expected Message, got {other:?}"),
     }
 
     // Verify server saw ATTACH (meaning client did NOT resume)
     let did_attach = resume_rx.await.expect("server task panicked");
     assert!(did_attach, "client should have sent ATTACH (no resume)");
+    server_task.await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -3417,11 +3511,13 @@ async fn resumed_connection_reattaches_channel() {
 
     let ws_port = ws.port;
     let (attach_tx, attach_rx) = tokio::sync::oneshot::channel::<bool>();
+    let (connected_seen_tx, connected_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let (message_seen_tx, message_seen_rx) = tokio::sync::oneshot::channel::<()>();
 
-    tokio::spawn(async move {
+    let server_task = tokio::spawn(async move {
         // First connection
         let conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        wait_for_test_observation(connected_seen_rx, "initial Connected event").await;
         drop(conn);
 
         // Second connection — use the SAME conn_id to simulate a successful resume.
@@ -3482,7 +3578,7 @@ async fn resumed_connection_reattaches_channel() {
         )
         .await
         .unwrap();
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        wait_for_test_observation(message_seen_rx, "after-resume message").await;
     });
 
     let mut timing = TimingConfig::default();
@@ -3492,6 +3588,7 @@ async fn resumed_connection_reattaches_channel() {
         .unwrap();
 
     assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    connected_seen_tx.send(()).unwrap();
 
     // Wait for disconnect → reconnect cycle
     let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
@@ -3512,7 +3609,10 @@ async fn resumed_connection_reattaches_channel() {
         .expect("timed out waiting for message after resume")
         .unwrap();
     match event {
-        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("after-resume")),
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-resume"));
+            message_seen_tx.send(()).unwrap();
+        }
         other => panic!("expected Message, got {other:?}"),
     }
 
@@ -3522,6 +3622,7 @@ async fn resumed_connection_reattaches_channel() {
         did_attach,
         "client must send ATTACH even on resumed connection"
     );
+    server_task.await.unwrap();
 }
 
 #[tokio::test]
@@ -3531,7 +3632,8 @@ async fn detached_during_reconnect_attach_retries_channel_on_same_transport() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
-    tokio::spawn(async move {
+    let (message_seen_tx, message_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
         let conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
         drop(conn);
 
@@ -3607,7 +3709,7 @@ async fn detached_during_reconnect_attach_retries_channel_on_same_transport() {
         )
         .await
         .unwrap();
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        wait_for_test_observation(message_seen_rx, "after-reconnect-channel-retry message").await;
     });
 
     let mut timing = TimingConfig::default();
@@ -3644,9 +3746,12 @@ async fn detached_during_reconnect_attach_retries_channel_on_same_transport() {
     match event {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("after-reconnect-channel-retry"));
+            message_seen_tx.send(()).unwrap();
         }
         other => panic!("expected Message, got {other:?}"),
     }
+
+    server_task.await.unwrap();
 }
 
 #[tokio::test]
@@ -3656,7 +3761,8 @@ async fn superseded_error_during_reconnect_attach_retries_on_same_transport() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
-    tokio::spawn(async move {
+    let (message_seen_tx, message_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
         let conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
         drop(conn);
 
@@ -3732,7 +3838,7 @@ async fn superseded_error_during_reconnect_attach_retries_on_same_transport() {
         )
         .await
         .unwrap();
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        wait_for_test_observation(message_seen_rx, "after-superseded-retry message").await;
     });
 
     let mut timing = TimingConfig::default();
@@ -3768,9 +3874,12 @@ async fn superseded_error_during_reconnect_attach_retries_on_same_transport() {
     match event {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("after-superseded-retry"));
+            message_seen_tx.send(()).unwrap();
         }
         other => panic!("expected Message, got {other:?}"),
     }
+
+    server_task.await.unwrap();
 }
 
 #[tokio::test]
@@ -3780,7 +3889,8 @@ async fn other_channel_error_during_reconnect_attach_is_ignored() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
-    tokio::spawn(async move {
+    let (message_seen_tx, message_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
         let conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
         drop(conn);
 
@@ -3856,7 +3966,7 @@ async fn other_channel_error_during_reconnect_attach_is_ignored() {
         )
         .await
         .unwrap();
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        wait_for_test_observation(message_seen_rx, "after-other-channel-error message").await;
     });
 
     let mut timing = TimingConfig::default();
@@ -3892,9 +4002,12 @@ async fn other_channel_error_during_reconnect_attach_is_ignored() {
     match event {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("after-other-channel-error"));
+            message_seen_tx.send(()).unwrap();
         }
         other => panic!("expected Message, got {other:?}"),
     }
+
+    server_task.await.unwrap();
 }
 
 #[tokio::test]
@@ -4101,7 +4214,8 @@ async fn superseded_reconnect_attach_timeout_retries_channel_on_same_transport()
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
-    tokio::spawn(async move {
+    let (message_seen_tx, message_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
         let conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
         drop(conn);
 
@@ -4184,7 +4298,7 @@ async fn superseded_reconnect_attach_timeout_retries_channel_on_same_transport()
         )
         .await
         .unwrap();
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        wait_for_test_observation(message_seen_rx, "after-superseded-timeout message").await;
     });
 
     let mut timing = TimingConfig::default();
@@ -4222,9 +4336,12 @@ async fn superseded_reconnect_attach_timeout_retries_channel_on_same_transport()
     match event {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("after-superseded-timeout"));
+            message_seen_tx.send(()).unwrap();
         }
         other => panic!("expected Message, got {other:?}"),
     }
+
+    server_task.await.unwrap();
 }
 
 #[tokio::test]
@@ -4312,7 +4429,8 @@ async fn reconnect_attach_timeout_retries_channel_on_same_transport() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
-    tokio::spawn(async move {
+    let (message_seen_tx, message_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
         let conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
         drop(conn);
 
@@ -4374,7 +4492,7 @@ async fn reconnect_attach_timeout_retries_channel_on_same_transport() {
         )
         .await
         .unwrap();
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        wait_for_test_observation(message_seen_rx, "after-reconnect-attach-timeout message").await;
     });
 
     let mut timing = TimingConfig::default();
@@ -4412,9 +4530,12 @@ async fn reconnect_attach_timeout_retries_channel_on_same_transport() {
     match event {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("after-reconnect-attach-timeout"));
+            message_seen_tx.send(()).unwrap();
         }
         other => panic!("expected Message, got {other:?}"),
     }
+
+    server_task.await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -4430,7 +4551,8 @@ async fn detach_after_reconnect_reattaches_not_full_reconnect() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
-    tokio::spawn(async move {
+    let (message_seen_tx, message_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
         let mut conn1 = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
 
         let detached = ProtocolMessage {
@@ -4501,7 +4623,7 @@ async fn detach_after_reconnect_reattaches_not_full_reconnect() {
         send_message(&mut conn2, "ch", "after-reattach", serde_json::json!("ok"))
             .await
             .unwrap();
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        wait_for_test_observation(message_seen_rx, "after-reattach message").await;
     });
 
     let mut timing = TimingConfig::default();
@@ -4537,7 +4659,12 @@ async fn detach_after_reconnect_reattaches_not_full_reconnect() {
         .expect("timed out waiting for message")
         .unwrap();
     match event {
-        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("after-reattach")),
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-reattach"));
+            message_seen_tx.send(()).unwrap();
+        }
         other => panic!("expected Message, got {other:?}"),
     }
+
+    server_task.await.unwrap();
 }

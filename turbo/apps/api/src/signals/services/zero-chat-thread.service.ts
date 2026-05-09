@@ -12,7 +12,10 @@ import {
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
-import { modelProviderTypeSchema } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  modelProviderCredentialScopeSchema,
+  modelProviderTypeSchema,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
@@ -119,6 +122,8 @@ type ChatThreadRow = {
   readonly draftAttachments: readonly PersistedAttachment[] | null;
   readonly pendingMessage: PendingMessage | null;
   readonly modelProviderId: string | null;
+  readonly modelProviderType: string | null;
+  readonly modelProviderCredentialScope: string | null;
   readonly selectedModel: string | null;
   readonly lastReadMessageId: string | null;
   readonly renamedAt: Date | null;
@@ -246,6 +251,8 @@ function ownedChatThread(
         .parse(thread.draftAttachments ?? null),
       pendingMessage: toPendingMessage(thread),
       modelProviderId: thread.modelProviderId ?? null,
+      modelProviderType: thread.modelProviderType ?? null,
+      modelProviderCredentialScope: thread.modelProviderCredentialScope ?? null,
       selectedModel: thread.selectedModel ?? null,
       lastReadMessageId: thread.lastReadMessageId ?? null,
       renamedAt: thread.renamedAt ?? null,
@@ -796,6 +803,15 @@ export function zeroChatThreadDetail(args: {
         : null,
       pendingMessage: thread.pendingMessage,
       modelProviderId: thread.modelProviderId,
+      modelProviderType: formatLatestSessionProviderType(
+        thread.modelProviderType,
+      ),
+      modelProviderCredentialScope:
+        thread.modelProviderCredentialScope === null
+          ? null
+          : (modelProviderCredentialScopeSchema.safeParse(
+              thread.modelProviderCredentialScope,
+            ).data ?? null),
       selectedModel: thread.selectedModel,
       renamedAt: thread.renamedAt?.toISOString() ?? null,
     };

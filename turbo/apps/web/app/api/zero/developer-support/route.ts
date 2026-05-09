@@ -72,6 +72,7 @@ const router = tsr.router(zeroDeveloperSupportContract, {
         createdAt: agentRuns.createdAt,
         startedAt: agentRuns.startedAt,
         completedAt: agentRuns.completedAt,
+        lastEventSequence: agentRuns.lastEventSequence,
         agentComposeVersionId: agentRuns.agentComposeVersionId,
         runnerGroup: agentRuns.runnerGroup,
         continuedFromSessionId: agentRuns.continuedFromSessionId,

@@ -7,6 +7,7 @@ import {
   zeroVoiceChatContract,
   type VoiceChatItemRole,
   type VoiceChatTask,
+  type VoiceChatUsageEventBody,
 } from "@vm0/api-contracts/contracts/zero-voice-chat";
 import {
   jsonParseOr,
@@ -15,8 +16,14 @@ import {
   throwIfAbort,
 } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { apiBase$ } from "../fetch.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { clerk$ } from "../auth.ts";
 import { accept } from "../../lib/accept.ts";
+import {
+  createUsageReporter,
+  type UsageReporter,
+} from "../../lib/voice-chat/usage-reporter.ts";
 import { resolveAudioConfig } from "../../lib/voice-io/audio-config.ts";
 import { logger } from "../log.ts";
 
@@ -86,6 +93,12 @@ const internalCurrentAssistantAudioItem$ = state<{
   transcript: string;
 } | null>(null);
 const internalWakeLock$ = state<WakeLockSentinel | null>(null);
+
+// Plan D (Epic #12128): browser self-reports `response.done` and
+// `transcription.completed` usage to /api/zero/voice-chat-candidate/:id/usage.
+// Mirror of the main path; see voice-chat-session.ts for design rationale.
+const internalUsageReporter$ = state<UsageReporter | null>(null);
+const internalRelaySessionId$ = state<string | null>(null);
 
 const resetSessionSignal$ = resetSignal();
 
@@ -262,8 +275,36 @@ function sendFunctionOutput(
   );
 }
 
+type RealtimeUsageBreakdown = {
+  total_tokens?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  input_token_details?: {
+    text_tokens?: number;
+    audio_tokens?: number;
+    cached_tokens?: number;
+    cached_tokens_details?: {
+      text_tokens?: number;
+      audio_tokens?: number;
+    };
+  };
+  output_token_details?: {
+    text_tokens?: number;
+    audio_tokens?: number;
+  };
+};
+
+type TranscriptionUsage = {
+  type?: "tokens" | "duration";
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  input_token_details?: { text_tokens?: number; audio_tokens?: number };
+};
+
 type RealtimeDCEvent = {
   type: string;
+  event_id?: string;
   item_id?: string;
   item?: { id: string; type: string; role?: string };
   transcript?: string;
@@ -272,11 +313,164 @@ type RealtimeDCEvent = {
   call_id?: string;
   name?: string;
   arguments?: string;
+  content_index?: number;
+  response?: {
+    id?: string;
+    status?: string;
+    usage?: RealtimeUsageBreakdown;
+  };
+  usage?: TranscriptionUsage;
 };
 
 function parseRealtimeDCEvent(data: string): RealtimeDCEvent | null {
   return jsonParseOr<RealtimeDCEvent | null>(data, null);
 }
+
+type UsageTokens = Omit<
+  VoiceChatUsageEventBody,
+  "providerEventId" | "eventType"
+>;
+
+function extractResponseDoneUsage(event: RealtimeDCEvent): UsageTokens | null {
+  const usage = event.response?.usage;
+  if (!usage) {
+    return null;
+  }
+  const cachedText =
+    usage.input_token_details?.cached_tokens_details?.text_tokens;
+  const cachedAudio =
+    usage.input_token_details?.cached_tokens_details?.audio_tokens;
+  return {
+    inputTextTokens: usage.input_token_details?.text_tokens,
+    inputAudioTokens: usage.input_token_details?.audio_tokens,
+    inputCachedTextTokens: cachedText,
+    inputCachedAudioTokens: cachedAudio,
+    outputTextTokens: usage.output_token_details?.text_tokens,
+    outputAudioTokens: usage.output_token_details?.audio_tokens,
+  };
+}
+
+function extractTranscriptionUsage(event: RealtimeDCEvent): UsageTokens | null {
+  const usage = event.usage;
+  if (!usage || usage.type !== "tokens") {
+    return null;
+  }
+  return {
+    inputTextTokens: usage.input_token_details?.text_tokens,
+    inputAudioTokens: usage.input_token_details?.audio_tokens,
+    outputTextTokens: usage.output_tokens,
+  };
+}
+
+function deriveProviderEventId(
+  event: RealtimeDCEvent,
+  fallbackPrefix: string,
+): string {
+  return (
+    event.event_id ??
+    event.response?.id ??
+    (event.item_id !== undefined
+      ? `${event.item_id}:${event.content_index ?? 0}`
+      : `${fallbackPrefix}:${crypto.randomUUID()}`)
+  );
+}
+
+const reportRealtimeUsage$ = command(
+  ({ get }, payload: VoiceChatUsageEventBody) => {
+    const reporter = get(internalUsageReporter$);
+    if (!reporter) {
+      return;
+    }
+    reporter.enqueue(payload);
+  },
+);
+
+const setupBillingWiring$ = command(
+  async (
+    { get, set },
+    voiceChatSessionId: string,
+    sessionSignal: AbortSignal,
+  ) => {
+    if (sessionSignal.aborted) {
+      return;
+    }
+    try {
+      const createClient = get(zeroClient$);
+      const client = createClient(zeroVoiceChatContract);
+      const sessionStartedRes = await accept(
+        client.sessionStarted({
+          params: { id: voiceChatSessionId },
+          body: {},
+          fetchOptions: { signal: sessionSignal },
+        }),
+        [200, 401, 404],
+        { toast: false },
+      );
+      if (sessionSignal.aborted) {
+        return;
+      }
+      if (sessionStartedRes.status === 200 && sessionStartedRes.body.id) {
+        set(internalRelaySessionId$, sessionStartedRes.body.id);
+      } else if (sessionStartedRes.status !== 200) {
+        L.warn("session-started failed; continuing un-tracked", {
+          status: sessionStartedRes.status,
+        });
+      }
+
+      const apiBase = await get(apiBase$);
+      const clerk = await get(clerk$);
+      if (sessionSignal.aborted) {
+        return;
+      }
+      const reporter = createUsageReporter({
+        apiBase,
+        pathPrefix: "/api/zero/voice-chat-candidate",
+        voiceChatSessionId,
+        getAuthToken: async () => {
+          const token = await clerk.session?.getToken();
+          return token ?? null;
+        },
+        onCreditsExhausted: () => {
+          return set(handleCreditsExhausted$, sessionSignal);
+        },
+      });
+      set(internalUsageReporter$, reporter);
+
+      const onPagehide = onDomEventFn(() => {
+        reporter.flushKeepalive();
+      });
+      const onVisibilityHidden = onDomEventFn(() => {
+        if (document.visibilityState === "hidden") {
+          reporter.flushKeepalive();
+        }
+      });
+      window.addEventListener("pagehide", onPagehide);
+      document.addEventListener("visibilitychange", onVisibilityHidden);
+      sessionSignal.addEventListener(
+        "abort",
+        () => {
+          window.removeEventListener("pagehide", onPagehide);
+          document.removeEventListener("visibilitychange", onVisibilityHidden);
+        },
+        { once: true },
+      );
+    } catch (error) {
+      throwIfAbort(error);
+      L.warn("billing wiring failed; usage events will be dropped", {
+        error: error instanceof Error ? error.message : "unknown",
+      });
+    }
+  },
+);
+
+const handleCreditsExhausted$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    set(internalError$, "Voice-chat credits exhausted; the session has ended.");
+    set(internalStatus$, "error");
+    await set(truncateCurrentAssistantAudio$, signal);
+    await set(endVoiceChatCandidate$, signal);
+  },
+);
 
 const handleAudioTranscriptDone$ = command(
   async ({ get, set }, event: RealtimeDCEvent, signal: AbortSignal) => {
@@ -302,6 +496,14 @@ const handleInputAudioTranscriptionCompleted$ = command(
         await set(truncateCurrentAssistantAudio$, signal);
       }
       await set(appendItem$, "user", event.transcript, event.item_id, signal);
+    }
+    const usage = extractTranscriptionUsage(event);
+    if (usage) {
+      set(reportRealtimeUsage$, {
+        providerEventId: deriveProviderEventId(event, "transcription"),
+        eventType: "transcription.completed",
+        ...usage,
+      });
     }
   },
 );
@@ -412,6 +614,17 @@ const handleDCMessage$ = command(
       }
       case "response.audio_transcript.done": {
         await set(handleAudioTranscriptDone$, event, signal);
+        break;
+      }
+      case "response.done": {
+        const usage = extractResponseDoneUsage(event);
+        if (usage) {
+          set(reportRealtimeUsage$, {
+            providerEventId: deriveProviderEventId(event, "response.done"),
+            eventType: "response.done",
+            ...usage,
+          });
+        }
         break;
       }
       case "response.function_call_arguments.done": {
@@ -910,6 +1123,11 @@ export const startVoiceChatCandidate$ = command(
       return;
     }
 
+    // Plan D billing wiring — awaited; see voice-chat-session.ts for
+    // design rationale.
+    await set(setupBillingWiring$, session.id, sessionSignal);
+    signal.throwIfAborted();
+
     await set(acquireWakeLock$, sessionSignal);
     signal.throwIfAborted();
 
@@ -927,6 +1145,30 @@ export const startVoiceChatCandidate$ = command(
  */
 export const endVoiceChatCandidate$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    const reporter = get(internalUsageReporter$);
+    if (reporter) {
+      reporter.flushKeepalive();
+      reporter.destroy();
+      set(internalUsageReporter$, null);
+    }
+
+    const relaySessionId = get(internalRelaySessionId$);
+    const sid = get(internalSessionId$);
+    if (relaySessionId && sid) {
+      const createClient = get(zeroClient$);
+      const endClient = createClient(zeroVoiceChatContract);
+      await accept(
+        endClient.sessionEnded({
+          params: { id: sid },
+          body: { relaySessionId },
+          fetchOptions: { signal },
+        }),
+        [200, 401, 404],
+        { toast: false },
+      );
+    }
+    set(internalRelaySessionId$, null);
+
     set(resetSessionSignal$);
     await set(releaseWakeLock$, signal);
 

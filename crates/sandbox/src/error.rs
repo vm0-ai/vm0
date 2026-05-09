@@ -84,6 +84,8 @@ impl fmt::Display for SandboxInitializationPhase {
 pub enum SandboxOperation {
     /// [`Sandbox::exec`](crate::Sandbox::exec).
     Exec,
+    /// [`Sandbox::bounded_exec`](crate::Sandbox::bounded_exec).
+    BoundedExec,
     /// [`Sandbox::write_file`](crate::Sandbox::write_file).
     WriteFile,
     /// [`Sandbox::spawn_watch`](crate::Sandbox::spawn_watch).
@@ -96,6 +98,7 @@ impl fmt::Display for SandboxOperation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Exec => f.write_str("exec"),
+            Self::BoundedExec => f.write_str("bounded exec"),
             Self::WriteFile => f.write_str("write file"),
             Self::SpawnWatch => f.write_str("spawn watch"),
             Self::WaitExit => f.write_str("wait exit"),

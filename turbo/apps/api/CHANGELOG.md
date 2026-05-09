@@ -1,5 +1,55 @@
 # Changelog
 
+## [1.21.2](https://github.com/vm0-ai/vm0/compare/api-v1.21.1...api-v1.21.2) (2026-05-09)
+
+
+### Bug Fixes
+
+* **api:** add modelProviderType/modelProviderCredentialScope to chat-thread detail ([#12252](https://github.com/vm0-ai/vm0/issues/12252)) ([a15af0e](https://github.com/vm0-ai/vm0/commit/a15af0e569dc16751eb431b675e4153156c9a409))
+
+## [1.21.1](https://github.com/vm0-ai/vm0/compare/api-v1.21.0...api-v1.21.1) (2026-05-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.3.1
+    * @vm0/core bumped to 8.264.2
+    * @vm0/db bumped to 1.2.2
+
+## [1.21.0](https://github.com/vm0-ai/vm0/compare/api-v1.20.2...api-v1.21.0) (2026-05-08)
+
+
+### Features
+
+* **api:** add attachDatabasePool and env-configurable pool params ([#12239](https://github.com/vm0-ai/vm0/issues/12239)) ([b4f000d](https://github.com/vm0-ai/vm0/commit/b4f000d86f0792dcb09d50c4c2865b2afbb63993))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.3.0
+    * @vm0/core bumped to 8.264.1
+    * @vm0/db bumped to 1.2.1
+
+## [1.20.2](https://github.com/vm0-ai/vm0/compare/api-v1.20.1...api-v1.20.2) (2026-05-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.264.0
+
+## [1.20.1](https://github.com/vm0-ai/vm0/compare/api-v1.20.0...api-v1.20.1) (2026-05-08)
+
+
+### Bug Fixes
+
+* **api,web:** sort configuredTypes to eliminate connector shadow divergence ([#12217](https://github.com/vm0-ai/vm0/issues/12217)) ([74d7648](https://github.com/vm0-ai/vm0/commit/74d7648143c9e0e977b9b8abbe36edc0170cddbe))
+
 ## [1.20.0](https://github.com/vm0-ai/vm0/compare/api-v1.19.4...api-v1.20.0) (2026-05-08)
 
 

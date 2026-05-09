@@ -1,5 +1,70 @@
 # Changelog
 
+## [0.338.1](https://github.com/vm0-ai/vm0/compare/app-v0.338.0...app-v0.338.1) (2026-05-09)
+
+
+### Bug Fixes
+
+* show Send button during active run when composer has content, clicking queues ([#12230](https://github.com/vm0-ai/vm0/issues/12230)) ([5d5c9a5](https://github.com/vm0-ai/vm0/commit/5d5c9a55b2f0b32ae12134e0719ab74f30cb9832))
+
+## [0.338.0](https://github.com/vm0-ai/vm0/compare/app-v0.337.0...app-v0.338.0) (2026-05-09)
+
+
+### Features
+
+* show send button (not stop) when running with input content ([#12228](https://github.com/vm0-ai/vm0/issues/12228)) ([989683d](https://github.com/vm0-ai/vm0/commit/989683df880cb42e51af036691865ceb7cb99298))
+
+
+### Bug Fixes
+
+* clear optimistic pending on recall so queued card disappears synchronously ([#12251](https://github.com/vm0-ai/vm0/issues/12251)) ([272088e](https://github.com/vm0-ai/vm0/commit/272088ef9bce90634286047e724c06a6672dcebe))
+* **platform:** swap pinned thread trigger to kebab on desktop hover ([#12177](https://github.com/vm0-ai/vm0/issues/12177)) ([387406d](https://github.com/vm0-ai/vm0/commit/387406dcb8205463d941ca6dca3290a82d4a4bef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.3.1
+    * @vm0/core bumped to 8.264.2
+
+## [0.337.0](https://github.com/vm0-ai/vm0/compare/app-v0.336.3...app-v0.337.0) (2026-05-08)
+
+
+### Features
+
+* **platform:** keep Send visible while typing during a run, recall queue on Stop ([#12229](https://github.com/vm0-ai/vm0/issues/12229)) ([6b96766](https://github.com/vm0-ai/vm0/commit/6b96766998e30d916a16a212076b9d1c8a90d757))
+* **voice-chat:** browser-reported realtime usage with session lifecycle (plan d) ([#12227](https://github.com/vm0-ai/vm0/issues/12227)) ([fa94d09](https://github.com/vm0-ai/vm0/commit/fa94d09b5e8b3cbcf9dc4435dbb5aec7e99fa674))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.3.0
+    * @vm0/core bumped to 8.264.1
+
+## [0.336.3](https://github.com/vm0-ai/vm0/compare/app-v0.336.2...app-v0.336.3) (2026-05-08)
+
+
+### Bug Fixes
+
+* keep codex activity final text ([#12221](https://github.com/vm0-ai/vm0/issues/12221)) ([9a7e420](https://github.com/vm0-ai/vm0/commit/9a7e42065f551e064784a740c84f84cf1bf265f7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.264.0
+
+## [0.336.2](https://github.com/vm0-ai/vm0/compare/app-v0.336.1...app-v0.336.2) (2026-05-08)
+
+
+### Bug Fixes
+
+* **chat:** unblock thinking indicator when initial page is empty ([#12208](https://github.com/vm0-ai/vm0/issues/12208)) ([e29908c](https://github.com/vm0-ai/vm0/commit/e29908ce45548f6d97b6f917d4000fe2b7c5e96e))
+
 ## [0.336.1](https://github.com/vm0-ai/vm0/compare/app-v0.336.0...app-v0.336.1) (2026-05-08)
 
 

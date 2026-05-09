@@ -33,7 +33,7 @@ pub(super) struct MockRunEnv {
     pub(super) idle_pool: SharedIdlePool,
     pub(super) lifecycle: LifecycleController,
     pub(super) parking_gate: ParkingGate,
-    pub(super) start_probes: StartLoopTestProbes,
+    pub(super) start_observer: StartLoopTestObserver,
     pub(super) mode_tx: tokio::sync::watch::Sender<RunnerMode>,
     pub(super) cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
     pub(super) cancel: CancellationToken,
@@ -149,7 +149,7 @@ pub(super) fn build_mock_run_config_with_runtime(
     let (mode_tx, mode_rx) = tokio::sync::watch::channel(RunnerMode::Running);
     let parking_gate = ParkingGate::new_open();
     let lifecycle = LifecycleController::new(mode_tx, parking_gate.clone());
-    let start_probes = StartLoopTestProbes::default();
+    let start_observer = StartLoopTestObserver::default();
     let cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
         Arc::new(tokio::sync::Mutex::new(HashMap::new()));
 
@@ -226,7 +226,7 @@ pub(super) fn build_mock_run_config_with_runtime(
             handler_abort: None,
         }),
         outer_job_panic: None,
-        test_probes: start_probes.clone(),
+        test_observer: start_observer.clone(),
     };
 
     let env = MockRunEnv {
@@ -235,7 +235,7 @@ pub(super) fn build_mock_run_config_with_runtime(
         idle_pool,
         lifecycle: lifecycle.clone(),
         parking_gate,
-        start_probes,
+        start_observer,
         mode_tx: lifecycle.mode_tx().clone(),
         cancel_tokens,
         cancel,
@@ -854,7 +854,16 @@ pub(super) async fn wait_discover_entered(env: &MockRunEnv, timeout: Duration) {
 }
 
 pub(super) async fn wait_budget_exhausted_reactor(env: &MockRunEnv, timeout: Duration) {
-    env.start_probes
+    env.start_observer
         .wait_budget_exhausted_reactor(timeout)
         .await;
+}
+
+pub(super) async fn wait_idle_cleanup_processed_with_expired_entries(
+    env: &MockRunEnv,
+    timeout: Duration,
+) -> usize {
+    env.start_observer
+        .wait_idle_cleanup_processed_with_expired_entries(timeout)
+        .await
 }

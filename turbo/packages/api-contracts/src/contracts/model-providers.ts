@@ -94,7 +94,7 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "deepseek-v4-pro": "DeepSeek V4 Pro",
   "kimi-k2.6": "Kimi K2.6",
   "kimi-k2.5": "Kimi K2.5",
-  "glm-5.1": "GLM 5.1",
+  "glm-5.1": "GLM-5.1",
 };
 
 const SUPPORTED_RUN_MODEL_SET: ReadonlySet<string> = new Set(
@@ -1008,12 +1008,14 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
         permissions: [
           {
             name: "codex:api",
-            rules: [
-              "GET /models",
-              "GET /responses",
-              "POST /responses",
-              "POST /analytics-events/events",
-            ],
+            // Subtree-wildcard the codex backend: codex's path surface keeps
+            // growing (#12099 added /responses, then /responses/compact 403'd
+            // again). Method narrowing to GET/POST is the actual safety net —
+            // it blocks accidental DELETE/PUT/PATCH on the user's ChatGPT
+            // account if codex is ever prompt-injected. Base is already
+            // locked to /backend-api/codex, so the blast radius is just
+            // codex's own surface area.
+            rules: ["GET /{path*}", "POST /{path*}"],
           },
         ],
       },

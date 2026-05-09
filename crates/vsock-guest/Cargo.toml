@@ -11,8 +11,5 @@ vsock-proto.workspace = true
 # Enables local integration-test hooks. Do not enable for production guest binaries.
 test-support = []
 
-[dev-dependencies]
-tempfile.workspace = true
-
 [lints]
 workspace = true

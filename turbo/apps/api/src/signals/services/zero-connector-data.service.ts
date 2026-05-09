@@ -224,7 +224,7 @@ export function zeroConnectorList(args: {
     const connectorList = [...dbConnectors, ...derivedConnectors];
     return {
       connectors: connectorList,
-      configuredTypes: [...configuredConnectorTypes()],
+      configuredTypes: [...configuredConnectorTypes()].sort(),
       connectorProvidedSecretNames: [
         ...getConnectorProvidedSecretNames(
           connectorList.map((connector) => {

@@ -6,7 +6,12 @@ import {
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, eq, inArray, gte } from "drizzle-orm";
-import { queryAxiom, getDatasetName, DATASETS } from "../../shared/axiom";
+import {
+  queryAxiom,
+  getDatasetName,
+  DATASETS,
+  escapeAplString,
+} from "../../shared/axiom";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -17,10 +22,6 @@ interface AxiomAgentEvent {
   sequenceNumber: number;
   eventType: string;
   eventData: unknown;
-}
-
-function escapeApl(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 async function getAgentNames(
@@ -106,10 +107,10 @@ async function getUserRunIds(
 
 function buildRunIdFilter(runIds: string[]): string {
   return runIds.length === 1
-    ? `| where runId == "${escapeApl(runIds[0]!)}"`
+    ? `| where runId == "${escapeAplString(runIds[0]!)}"`
     : `| where runId in (${runIds
         .map((id) => {
-          return `"${escapeApl(id)}"`;
+          return `"${escapeAplString(id)}"`;
         })
         .join(", ")})`;
 }
@@ -128,7 +129,7 @@ async function searchEventsInAxiom(
   const apl = `['${dataset}']
 | where _time > datetime("${sinceISO}")
 ${runIdFilter}
-| search "*${escapeApl(keyword)}*"
+| search "*${escapeAplString(keyword)}*"
 | order by _time desc
 | limit ${limit + 1}`;
 
@@ -150,7 +151,7 @@ async function fetchContextEvents(
   const contextConditions = matches.map((match) => {
     const seqMin = Math.max(0, match.sequenceNumber - before);
     const seqMax = match.sequenceNumber + after;
-    return `(runId == "${escapeApl(match.runId)}" and sequenceNumber >= ${seqMin} and sequenceNumber <= ${seqMax})`;
+    return `(runId == "${escapeAplString(match.runId)}" and sequenceNumber >= ${seqMin} and sequenceNumber <= ${seqMax})`;
   });
 
   const apl = `['${dataset}']

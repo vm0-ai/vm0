@@ -463,7 +463,7 @@ pub async fn run_start(
         #[cfg(test)]
         outer_job_panic: None,
         #[cfg(test)]
-        test_probes: StartLoopTestProbes::default(),
+        test_observer: StartLoopTestObserver::default(),
     };
 
     run(config).await
@@ -505,7 +505,7 @@ struct RunConfig {
     #[cfg(test)]
     outer_job_panic: Option<OuterJobPanicPoint>,
     #[cfg(test)]
-    test_probes: StartLoopTestProbes,
+    test_observer: StartLoopTestObserver,
 }
 
 enum SignalSource {
@@ -520,21 +520,95 @@ enum SignalSource {
 }
 
 #[cfg(test)]
-#[derive(Clone, Default)]
-struct StartLoopTestProbes {
-    budget_exhausted_reactor: Arc<tokio::sync::Notify>,
+#[derive(Debug, PartialEq, Eq)]
+enum StartLoopEvent {
+    BudgetExhaustedReactorEntered,
+    IdleCleanupProcessed { expired_count: usize },
 }
 
 #[cfg(test)]
-impl StartLoopTestProbes {
+#[derive(Clone, Default)]
+struct StartLoopTestObserver {
+    inner: Arc<StartLoopTestObserverInner>,
+}
+
+#[cfg(test)]
+#[derive(Default)]
+struct StartLoopTestObserverInner {
+    events: std::sync::Mutex<Vec<StartLoopEvent>>,
+    notify: tokio::sync::Notify,
+}
+
+#[cfg(test)]
+impl StartLoopTestObserver {
+    fn record(&self, event: StartLoopEvent) {
+        self.inner
+            .events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(event);
+        self.inner.notify.notify_waiters();
+    }
+
+    async fn wait_for<T>(
+        &self,
+        timeout: Duration,
+        context: &'static str,
+        mut predicate: impl FnMut(&StartLoopEvent) -> Option<T>,
+    ) -> T {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let notified = self.inner.notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+
+            {
+                let events = self
+                    .inner
+                    .events
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                if let Some(value) = events.iter().find_map(&mut predicate) {
+                    return value;
+                }
+            }
+
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            assert!(
+                !remaining.is_zero(),
+                "runner did not observe {context} within {timeout:?}"
+            );
+            let observed = tokio::time::timeout(remaining, notified).await;
+            assert!(
+                observed.is_ok(),
+                "runner did not observe {context} within {timeout:?}"
+            );
+        }
+    }
+
     fn notify_budget_exhausted_reactor(&self) {
-        self.budget_exhausted_reactor.notify_one();
+        self.record(StartLoopEvent::BudgetExhaustedReactorEntered);
     }
 
     async fn wait_budget_exhausted_reactor(&self, timeout: Duration) {
-        tokio::time::timeout(timeout, self.budget_exhausted_reactor.notified())
-            .await
-            .expect("runner did not enter budget-exhausted reactor within timeout");
+        self.wait_for(timeout, "budget-exhausted reactor entry", |event| {
+            matches!(event, StartLoopEvent::BudgetExhaustedReactorEntered).then_some(())
+        })
+        .await;
+    }
+
+    async fn wait_idle_cleanup_processed_with_expired_entries(&self, timeout: Duration) -> usize {
+        self.wait_for(
+            timeout,
+            "idle cleanup processing expired entries",
+            |event| match event {
+                StartLoopEvent::IdleCleanupProcessed { expired_count } if *expired_count > 0 => {
+                    Some(*expired_count)
+                }
+                _ => None,
+            },
+        )
+        .await
     }
 }
 
@@ -586,7 +660,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         #[cfg(test)]
         outer_job_panic,
         #[cfg(test)]
-        test_probes,
+        test_observer,
     } = config;
 
     let mut factories =
@@ -780,7 +854,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         };
         #[cfg(test)]
         if matches!(mode, RunnerMode::Running) && !can_discover {
-            test_probes.notify_budget_exhausted_reactor();
+            test_observer.notify_budget_exhausted_reactor();
         }
         tokio::select! {
             // Job discovery via provider (Ably wakeups + HTTP poll).
@@ -853,9 +927,13 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             // Idle pool cleanup: evict expired VMs and update status
             _ = idle_cleanup.tick(), if can_discover => {
                 let expired = cleanup_expired_idle_entries(&idle_pool, &status).await;
+                #[cfg(test)]
+                let expired_count = expired.len();
                 for entry in expired {
                     spawn_idle_destroy_job(&mut destroy_tasks, entry, "idle_expired");
                 }
+                #[cfg(test)]
+                test_observer.record(StartLoopEvent::IdleCleanupProcessed { expired_count });
             }
             // Heartbeat: report runner state to the server
             _ = heartbeat_tick.tick() => {

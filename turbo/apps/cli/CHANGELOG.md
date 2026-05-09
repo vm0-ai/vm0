@@ -1,5 +1,41 @@
 # Changelog
 
+## [9.145.9](https://github.com/vm0-ai/vm0/compare/cli-v9.145.8...cli-v9.145.9) (2026-05-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.3.1
+    * @vm0/core bumped to 8.264.2
+
+## [9.145.8](https://github.com/vm0-ai/vm0/compare/cli-v9.145.7...cli-v9.145.8) (2026-05-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.3.0
+    * @vm0/core bumped to 8.264.1
+
+## [9.145.7](https://github.com/vm0-ai/vm0/compare/cli-v9.145.6...cli-v9.145.7) (2026-05-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.264.0
+
+## [9.145.6](https://github.com/vm0-ai/vm0/compare/cli-v9.145.5...cli-v9.145.6) (2026-05-08)
+
+
+### Bug Fixes
+
+* wait for terminal axiom events on read paths ([#12188](https://github.com/vm0-ai/vm0/issues/12188)) ([fddd0a0](https://github.com/vm0-ai/vm0/commit/fddd0a0ce7f64a4e3bc8f4c56692c5cc6342bf43))
+
 ## [9.145.5](https://github.com/vm0-ai/vm0/compare/cli-v9.145.4...cli-v9.145.5) (2026-05-08)
 
 

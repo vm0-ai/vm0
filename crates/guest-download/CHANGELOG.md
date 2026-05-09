@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.10](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.9...guest-download-v0.20.10) (2026-05-09)
+
+
+### Bug Fixes
+
+* normalize instructions filename by runtime framework ([#12245](https://github.com/vm0-ai/vm0/issues/12245)) ([55b4846](https://github.com/vm0-ai/vm0/commit/55b484668ed1b559e2bf16f74ad3fcc4b4559c1f))
+
 ## [0.20.9](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.8...guest-download-v0.20.9) (2026-05-08)
 
 

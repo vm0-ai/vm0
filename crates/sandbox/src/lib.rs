@@ -40,4 +40,8 @@ pub use sandbox::Sandbox;
 pub use snapshot::{
     PendingSnapshotPublish, SnapshotCreateConfig, SnapshotError, SnapshotOutput, SnapshotProvider,
 };
-pub use types::{ExecRequest, ExecResult, ProcessExit, SpawnHandle, SpawnOutputMode};
+pub use types::{
+    BoundedExecOutputEvent, BoundedExecRequest, BoundedExecResult, BoundedExecStream,
+    BoundedExecStreamRequest, BoundedExecTermination, ExecRequest, ExecResult, ProcessExit,
+    SpawnHandle, SpawnOutputMode,
+};

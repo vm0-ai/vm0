@@ -58,6 +58,21 @@ export function clearMockApiShadowCompareRoutes(): void {
   clearApiRouteOverrides();
 }
 
+/**
+ * Promote routes to use the API response as the authoritative source while
+ * still continuing to shadow-compare against the web response. Routes added
+ * here MUST have zero response-body divergences in production — promoting
+ * a route with known mismatches will serve broken data to clients.
+ */
+export function promoteToApiSource(routes: readonly AppRoute[]): void {
+  const current = getApiRouteOverrides();
+  const next = new Set(current);
+  for (const route of routes) {
+    next.add(route);
+  }
+  setApiRouteOverrides(next);
+}
+
 function isCommand(
   handler$: SignalRouteHandler<unknown>,
 ): handler$ is Command<unknown, [AbortSignal]> {

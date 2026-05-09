@@ -7,11 +7,18 @@ import {
   zeroVoiceChatContract,
   type VoiceChatItemRole,
   type VoiceChatTask,
+  type VoiceChatUsageEventBody,
 } from "@vm0/api-contracts/contracts/zero-voice-chat";
 import { onDomEventFn, resetSignal, throwIfAbort } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { apiBase$ } from "../fetch.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { clerk$ } from "../auth.ts";
 import { accept } from "../../lib/accept.ts";
+import {
+  createUsageReporter,
+  type UsageReporter,
+} from "../../lib/voice-chat/usage-reporter.ts";
 import { resolveAudioConfig } from "../../lib/voice-io/audio-config.ts";
 import { logger } from "../log.ts";
 
@@ -77,6 +84,16 @@ const internalCurrentAssistantAudioItem$ = state<{
   transcript: string;
 } | null>(null);
 const internalWakeLock$ = state<WakeLockSentinel | null>(null);
+
+// Plan D (Epic #12128): browser self-reports `response.done` and
+// `transcription.completed` usage to /api/zero/voice-chat/:id/usage. The
+// reporter is fire-and-drop per event (no retry; option 2 — accepted
+// operational overhead per the Epic body) plus a fetch-keepalive flush of
+// every payload sent so far on `pagehide`. The relay session id is the
+// audit row created by /session-started; null means the
+// VoiceChatRealtimeBilling switch is OFF (server returns `id: null` no-op).
+const internalUsageReporter$ = state<UsageReporter | null>(null);
+const internalRelaySessionId$ = state<string | null>(null);
 
 const resetSessionSignal$ = resetSignal();
 
@@ -258,8 +275,36 @@ function sendFunctionOutput(
   );
 }
 
+type RealtimeUsageBreakdown = {
+  total_tokens?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  input_token_details?: {
+    text_tokens?: number;
+    audio_tokens?: number;
+    cached_tokens?: number;
+    cached_tokens_details?: {
+      text_tokens?: number;
+      audio_tokens?: number;
+    };
+  };
+  output_token_details?: {
+    text_tokens?: number;
+    audio_tokens?: number;
+  };
+};
+
+type TranscriptionUsage = {
+  type?: "tokens" | "duration";
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  input_token_details?: { text_tokens?: number; audio_tokens?: number };
+};
+
 type RealtimeDCEvent = {
   type: string;
+  event_id?: string;
   item_id?: string;
   item?: { id: string; type: string; role?: string };
   transcript?: string;
@@ -268,7 +313,185 @@ type RealtimeDCEvent = {
   call_id?: string;
   name?: string;
   arguments?: string;
+  content_index?: number;
+  // response.done envelope: nested `response.usage`. `status` may be
+  // "completed" or "cancelled" (barge-in); we bill both per Innovation §7.
+  response?: {
+    id?: string;
+    status?: string;
+    usage?: RealtimeUsageBreakdown;
+  };
+  // input_audio_transcription.completed sometimes carries usage in `usage`
+  // (token-mode); duration-mode is for older models we don't use.
+  usage?: TranscriptionUsage;
 };
+
+type UsageTokens = Omit<
+  VoiceChatUsageEventBody,
+  "providerEventId" | "eventType"
+>;
+
+function extractResponseDoneUsage(event: RealtimeDCEvent): UsageTokens | null {
+  const usage = event.response?.usage;
+  if (!usage) {
+    return null;
+  }
+  // OpenAI's `cached_tokens` is the sum of cached_tokens_details.{text,audio};
+  // prefer the breakdown if present, else split is unknown — drop into text
+  // bucket as a conservative default. Plan D's billing maps these to
+  // distinct categories; precision matters for the final invoice.
+  const cachedText =
+    usage.input_token_details?.cached_tokens_details?.text_tokens;
+  const cachedAudio =
+    usage.input_token_details?.cached_tokens_details?.audio_tokens;
+  return {
+    inputTextTokens: usage.input_token_details?.text_tokens,
+    inputAudioTokens: usage.input_token_details?.audio_tokens,
+    inputCachedTextTokens: cachedText,
+    inputCachedAudioTokens: cachedAudio,
+    outputTextTokens: usage.output_token_details?.text_tokens,
+    outputAudioTokens: usage.output_token_details?.audio_tokens,
+  };
+}
+
+function extractTranscriptionUsage(event: RealtimeDCEvent): UsageTokens | null {
+  const usage = event.usage;
+  if (!usage || usage.type !== "tokens") {
+    return null;
+  }
+  // gpt-4o-mini-transcribe usage shape: top-level input/output and a
+  // single `input_token_details` for {text,audio}. No cached fields.
+  return {
+    inputTextTokens: usage.input_token_details?.text_tokens,
+    inputAudioTokens: usage.input_token_details?.audio_tokens,
+    outputTextTokens: usage.output_tokens,
+  };
+}
+
+function deriveProviderEventId(
+  event: RealtimeDCEvent,
+  fallbackPrefix: string,
+): string {
+  // OpenAI's docs say `event_id` is always present on server events, but
+  // older client-data-channel paths sometimes omit it; fall back to
+  // response.id (response.done) or item_id+content_index (transcription)
+  // before degrading to a non-deterministic uuid.
+  return (
+    event.event_id ??
+    event.response?.id ??
+    (event.item_id !== undefined
+      ? `${event.item_id}:${event.content_index ?? 0}`
+      : `${fallbackPrefix}:${crypto.randomUUID()}`)
+  );
+}
+
+const reportRealtimeUsage$ = command(
+  ({ get }, payload: VoiceChatUsageEventBody) => {
+    const reporter = get(internalUsageReporter$);
+    if (!reporter) {
+      return;
+    }
+    reporter.enqueue(payload);
+  },
+);
+
+// Fire-and-forget billing setup: the voice-chat startup path doesn't await
+// this so a slow audit POST or feature-switch resolution can't delay
+// connecting. Errors are logged and absorbed; `response.done` events that
+// fire before the reporter is ready are dropped (Epic Plan D's accepted
+// operational overhead).
+const setupBillingWiring$ = command(
+  async (
+    { get, set },
+    voiceChatSessionId: string,
+    sessionSignal: AbortSignal,
+  ) => {
+    if (sessionSignal.aborted) {
+      return;
+    }
+    try {
+      const createClient = get(zeroClient$);
+      const client = createClient(zeroVoiceChatContract);
+      const sessionStartedRes = await accept(
+        client.sessionStarted({
+          params: { id: voiceChatSessionId },
+          body: {},
+          fetchOptions: { signal: sessionSignal },
+        }),
+        [200, 401, 404],
+        { toast: false },
+      );
+      if (sessionSignal.aborted) {
+        return;
+      }
+      if (sessionStartedRes.status === 200 && sessionStartedRes.body.id) {
+        set(internalRelaySessionId$, sessionStartedRes.body.id);
+      } else if (sessionStartedRes.status !== 200) {
+        L.warn("session-started failed; continuing un-tracked", {
+          status: sessionStartedRes.status,
+        });
+      }
+
+      const apiBase = await get(apiBase$);
+      const clerk = await get(clerk$);
+      if (sessionSignal.aborted) {
+        return;
+      }
+      const reporter = createUsageReporter({
+        apiBase,
+        voiceChatSessionId,
+        getAuthToken: async () => {
+          const token = await clerk.session?.getToken();
+          return token ?? null;
+        },
+        // Returning the command's Promise keeps the signal chain intact:
+        // the reporter awaits it, so any rejection propagates through
+        // ccstate's normal error channel. ccstate/no-detach-in-signals
+        // disallows fire-and-forget inside signals/.
+        onCreditsExhausted: () => {
+          return set(handleCreditsExhausted$, sessionSignal);
+        },
+      });
+      set(internalUsageReporter$, reporter);
+
+      // pagehide is bfcache-aware (fires when navigating away too);
+      // visibilitychange === "hidden" covers mobile background-app cases.
+      const onPagehide = onDomEventFn(() => {
+        reporter.flushKeepalive();
+      });
+      const onVisibilityHidden = onDomEventFn(() => {
+        if (document.visibilityState === "hidden") {
+          reporter.flushKeepalive();
+        }
+      });
+      window.addEventListener("pagehide", onPagehide);
+      document.addEventListener("visibilitychange", onVisibilityHidden);
+      sessionSignal.addEventListener(
+        "abort",
+        () => {
+          window.removeEventListener("pagehide", onPagehide);
+          document.removeEventListener("visibilitychange", onVisibilityHidden);
+        },
+        { once: true },
+      );
+    } catch (error) {
+      throwIfAbort(error);
+      L.warn("billing wiring failed; usage events will be dropped", {
+        error: error instanceof Error ? error.message : "unknown",
+      });
+    }
+  },
+);
+
+const handleCreditsExhausted$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    set(internalError$, "Voice-chat credits exhausted; the session has ended.");
+    set(internalStatus$, "error");
+    // Politely truncate the in-flight assistant response, then tear down.
+    await set(truncateCurrentAssistantAudio$, signal);
+    await set(endVoiceChat$, signal);
+  },
+);
 
 const handleAudioTranscriptDone$ = command(
   async ({ get, set }, event: RealtimeDCEvent, signal: AbortSignal) => {
@@ -294,6 +517,19 @@ const handleInputAudioTranscriptionCompleted$ = command(
         await set(truncateCurrentAssistantAudio$, signal);
       }
       await set(appendItem$, "user", event.transcript, event.item_id, signal);
+    }
+    // Plan D billing capture. Only token-mode usage carries countable
+    // numbers; duration-mode (older models) doesn't apply to
+    // gpt-4o-mini-transcribe. `extractTranscriptionUsage` returns null on
+    // the missing-usage path that openai-agents-js #538 documents — drop
+    // the report rather than insert all-zero rows.
+    const usage = extractTranscriptionUsage(event);
+    if (usage) {
+      set(reportRealtimeUsage$, {
+        providerEventId: deriveProviderEventId(event, "transcription"),
+        eventType: "transcription.completed",
+        ...usage,
+      });
     }
   },
 );
@@ -401,6 +637,20 @@ const handleDCMessage$ = command(
       }
       case "response.audio_transcript.done": {
         await set(handleAudioTranscriptDone$, event, signal);
+        break;
+      }
+      case "response.done": {
+        // Bill regardless of `event.response.status` — OpenAI charges for
+        // partial responses cut off by barge-in (status: "cancelled"), so
+        // the browser must report them. See Innovation §7.
+        const usage = extractResponseDoneUsage(event);
+        if (usage) {
+          set(reportRealtimeUsage$, {
+            providerEventId: deriveProviderEventId(event, "response.done"),
+            eventType: "response.done",
+            ...usage,
+          });
+        }
         break;
       }
       case "response.function_call_arguments.done": {
@@ -900,6 +1150,14 @@ export const startVoiceChat$ = command(
       return;
     }
 
+    // Plan D billing wiring. Awaited so the reporter is in place before
+    // the first `response.done` event lands. Internally the wiring's
+    // session-started POST + apiBase/clerk resolution is short; if it
+    // fails the reporter just doesn't get installed (events drop on the
+    // floor — Epic Plan D's accepted operational overhead).
+    await set(setupBillingWiring$, session.id, sessionSignal);
+    signal.throwIfAborted();
+
     await set(acquireWakeLock$, sessionSignal);
     signal.throwIfAborted();
 
@@ -917,6 +1175,38 @@ export const startVoiceChat$ = command(
  */
 export const endVoiceChat$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    // Drain any pending usage reports BEFORE we abort the session signal
+    // (that abort kills the reporter's retry timers via destroy()). Both
+    // calls are no-throw on a missing reporter.
+    const reporter = get(internalUsageReporter$);
+    if (reporter) {
+      reporter.flushKeepalive();
+      reporter.destroy();
+      set(internalUsageReporter$, null);
+    }
+
+    // Mark the relay row ended for audit. Awaited so the row update lands
+    // before WebRTC teardown — the round-trip is short and Plan D's audit
+    // contract is more useful when this consistently completes. Network
+    // errors here are inevitable on tab-close paths (handled separately
+    // by the unload-flush keepalive); accept() swallows toasts.
+    const relaySessionId = get(internalRelaySessionId$);
+    const sid = get(internalSessionId$);
+    if (relaySessionId && sid) {
+      const createClient = get(zeroClient$);
+      const endClient = createClient(zeroVoiceChatContract);
+      await accept(
+        endClient.sessionEnded({
+          params: { id: sid },
+          body: { relaySessionId },
+          fetchOptions: { signal },
+        }),
+        [200, 401, 404],
+        { toast: false },
+      );
+    }
+    set(internalRelaySessionId$, null);
+
     set(resetSessionSignal$);
     await set(releaseWakeLock$, signal);
 

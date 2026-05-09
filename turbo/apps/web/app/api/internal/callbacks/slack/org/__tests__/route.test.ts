@@ -22,6 +22,7 @@ import { POST } from "../route";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 import { seedUserFeatureSwitches } from "../../../../../../../src/__tests__/db-test-seeders/feature-switches";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { reloadEnv } from "../../../../../../../src/env";
 
 const context = testContext();
 
@@ -203,12 +204,22 @@ describe("POST /api/internal/callbacks/slack/org", () => {
   });
 
   it("posts completion message to Slack thread", async () => {
+    vi.stubEnv("AXIOM_TOKEN_SESSIONS", "test-sessions-token");
+    reloadEnv();
+
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
     const { runId } = await seedTestRun(user.userId, composeId, {
       prompt: "Test prompt",
     });
-    await completeTestRun(user.userId, runId);
+    context.mocks.axiom.queryAxiom
+      .mockResolvedValueOnce([{ sequenceNumber: 0 }])
+      .mockResolvedValueOnce([
+        { eventData: { result: "HELLO_FROM_CALLBACK" } },
+      ]);
+    await completeTestRun(user.userId, runId, undefined, {
+      lastEventSequence: 0,
+    });
 
     const channelId = uniqueId("C-ch");
     const threadTs = uniqueId("ts");
@@ -245,9 +256,75 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     expect(mockClient.chat.postMessage).toHaveBeenCalled();
     const call = (
       mockClient.chat.postMessage as ReturnType<typeof import("vitest").vi.fn>
-    ).mock.calls[0]![0] as { channel: string; thread_ts: string };
+    ).mock.calls[0]![0] as {
+      channel: string;
+      thread_ts: string;
+      text: string;
+    };
     expect(call.channel).toBe(channelId);
     expect(call.thread_ts).toBe(threadTs);
+    expect(call.text).toContain("HELLO_FROM_CALLBACK");
+    expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledTimes(2);
+  });
+
+  it("posts only one Slack reply for runs with multiple Codex agent_message events", async () => {
+    const { workspaceId, connectionId } = await setupOrgSlack();
+    const { composeId } = await createTestCompose(uniqueId("agent"));
+    const { runId } = await seedTestRun(user.userId, composeId, {
+      prompt: "Test prompt",
+    });
+    await completeTestRun(user.userId, runId);
+    // queryAxiom is invoked once with `| order by sequenceNumber desc | limit 1`,
+    // so Axiom-side selection collapses multiple agent_message events into the
+    // latest one. Returning a single (latest) event mirrors that contract.
+    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+      {
+        eventType: "item.completed",
+        eventData: {
+          item: {
+            type: "agent_message",
+            text: "final codex answer",
+          },
+        },
+      },
+    ]);
+
+    const channelId = uniqueId("C-ch");
+    const threadTs = uniqueId("ts");
+    const payload: OrgCallbackPayload = {
+      workspaceId,
+      channelId,
+      threadTs,
+      messageTs: threadTs,
+      connectionId,
+      agentId: composeId,
+    };
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org",
+      payload: { ...payload },
+    });
+
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/slack/org",
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const { WebClient } = await import("@slack/web-api");
+    const mockClient = new WebClient();
+    expect(mockClient.chat.postMessage).toHaveBeenCalledOnce();
+    const call = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as { text: string };
+    expect(call.text).toBe("final codex answer");
+
+    const outputQuery = context.mocks.axiom.queryAxiom.mock
+      .calls[0]![0] as string;
+    expect(outputQuery).toContain("| order by sequenceNumber desc");
+    expect(outputQuery).toContain("| limit 1");
   });
 
   it("posts Codex agent_message output instead of the completion fallback", async () => {
@@ -302,7 +379,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     const blocksStr = JSON.stringify(call.blocks);
     expect(call.text).toBe("I am okay.");
     expect(call.text).not.toBe("Task completed successfully.");
-    expect(blocksStr).toContain("gpt-5.5");
+    expect(blocksStr).toContain("GPT-5.5");
   });
 
   it("posts error message for failed status", async () => {

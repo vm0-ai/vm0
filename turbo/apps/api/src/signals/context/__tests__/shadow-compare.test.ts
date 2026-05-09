@@ -9,6 +9,7 @@ import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import {
   mockApiShadowCompareRoutes,
+  promoteToApiSource,
   shadowCompareRoute,
 } from "../shadow-compare";
 
@@ -71,6 +72,38 @@ describe("shadowCompareRoute", () => {
   it("returns the api response when api is selected", async () => {
     mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
     mockApiShadowCompareRoutes([shadowCompareContract.check]);
+    let comparedWithWeb = false;
+    server.use(
+      http.get("https://www.vm0.ai/__test/shadow-compare", () => {
+        comparedWithWeb = true;
+        return HttpResponse.json({ source: "web" });
+      }),
+    );
+
+    const client = setupApp({
+      context,
+      routes: [
+        {
+          route: shadowCompareContract.check,
+          handler: shadowCompareRoute({
+            route: shadowCompareContract.check,
+            handler: apiHandler$,
+          }),
+        },
+      ],
+    })(shadowCompareContract);
+
+    const response = await accept(client.check({ headers: {} }), [200]);
+
+    expect(response.body).toStrictEqual({ source: "api" });
+    expect(comparedWithWeb).toBeTruthy();
+  });
+});
+
+describe("promoteToApiSource", () => {
+  it("returns the api response when a route is promoted", async () => {
+    mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+    promoteToApiSource([shadowCompareContract.check]);
     let comparedWithWeb = false;
     server.use(
       http.get("https://www.vm0.ai/__test/shadow-compare", () => {

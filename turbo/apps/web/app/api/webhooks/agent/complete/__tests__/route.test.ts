@@ -323,7 +323,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(data.status).toBe("completed");
     });
 
-    it("should persist lastEventSequence without waiting for Axiom visibility", async () => {
+    it("should persist lastEventSequence without waiting in the response path", async () => {
       await createCheckpoint();
 
       const request = createTestRequest(
@@ -348,6 +348,9 @@ describe("POST /api/webhooks/agent/complete", () => {
       const run = await findTestRunRecord(testRunId);
       expect(run!.status).toBe("completed");
       expect(run!.lastEventSequence).toBe(2);
+
+      await context.mocks.flushAfter();
+
       expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
     });
 

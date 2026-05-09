@@ -6,11 +6,17 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { queryAxiom, getDatasetName, DATASETS } from "../../shared/axiom";
+import {
+  queryAxiom,
+  getDatasetName,
+  DATASETS,
+  escapeAplString,
+} from "../../shared/axiom";
 import {
   assembleActivityLog,
   type RunMeta,
 } from "../../infra/run/activity-log-service";
+import { waitForRunEventWatermarkVisible } from "../../infra/run/agent-event-visibility";
 import { listConnectors } from "../connector/connector-service";
 import { uploadS3Buffer, generatePresignedUrl } from "../../infra/s3/s3-client";
 import { createPlainSupportThread } from "./plain-service";
@@ -22,6 +28,7 @@ import { logger } from "../../shared/logger";
 const log = logger("service:diagnostic-bundle");
 
 const DOWNLOAD_EXPIRY_SECONDS = 72 * 60 * 60;
+const AGENT_EVENT_WATERMARK_WAIT_CONCURRENCY = 4;
 
 interface ZipEntry {
   path: string;
@@ -110,7 +117,7 @@ export async function submitDiagnosticBundle(
     return r.id;
   });
   const [agentEvents, systemLogText, networkLogEntries] = await Promise.all([
-    collectAgentEvents(sessionRunIds),
+    collectAgentEvents(sessionRuns),
     collectSystemLog(sessionRunIds),
     collectNetworkLog(sessionRunIds),
   ]);
@@ -148,7 +155,9 @@ export async function submitDiagnosticBundle(
   // entire diagnostic bundle submit.
   const activityLogs = await Promise.all(
     sessionRuns.map((r) => {
-      return assembleActivityLog(r.id, r, agentConfig).catch((err) => {
+      return assembleActivityLog(r.id, r, agentConfig, {
+        waitForAgentEventWatermark: false,
+      }).catch((err) => {
         log.warn("Failed to assemble activity log for run", {
           runId: r.id,
           error: String(err),
@@ -350,6 +359,7 @@ const sessionRunSelect = {
   createdAt: agentRuns.createdAt,
   startedAt: agentRuns.startedAt,
   completedAt: agentRuns.completedAt,
+  lastEventSequence: agentRuns.lastEventSequence,
   runnerGroup: agentRuns.runnerGroup,
   continuedFromSessionId: agentRuns.continuedFromSessionId,
   result: agentRuns.result,
@@ -384,7 +394,7 @@ async function collectSystemLog(sessionRunIds: string[]): Promise<string> {
   if (sessionRunIds.length === 0) return "";
   const runIdList = sessionRunIds
     .map((id) => {
-      return `"${id}"`;
+      return `"${escapeAplString(id)}"`;
     })
     .join(", ");
   const dataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_SYSTEM);
@@ -410,7 +420,7 @@ async function collectNetworkLog(
   if (sessionRunIds.length === 0) return [];
   const runIdList = sessionRunIds
     .map((id) => {
-      return `"${id}"`;
+      return `"${escapeAplString(id)}"`;
     })
     .join(", ");
   const dataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_NETWORK);
@@ -428,12 +438,23 @@ async function collectNetworkLog(
 }
 
 async function collectAgentEvents(
-  sessionRunIds: string[],
+  sessionRuns: RunMeta[],
 ): Promise<ChatHistoryEvent[]> {
+  const sessionRunIds = sessionRuns.map((run) => {
+    return run.id;
+  });
   if (sessionRunIds.length === 0) return [];
+
+  const terminalRuns = sessionRuns.filter((run) => {
+    return run.lastEventSequence !== null;
+  });
+  if (terminalRuns.length > 0) {
+    await waitForAgentEventWatermarks(terminalRuns);
+  }
+
   const runIdList = sessionRunIds
     .map((id) => {
-      return `"${id}"`;
+      return `"${escapeAplString(id)}"`;
     })
     .join(", ");
   const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
@@ -441,10 +462,30 @@ async function collectAgentEvents(
 | where runId in (${runIdList})
 | order by _time asc, sequenceNumber asc
 | limit 2000`;
-  return queryAxiom<ChatHistoryEvent>(apl).catch((err) => {
+  return queryAxiom<ChatHistoryEvent>(apl, { noCache: true }).catch((err) => {
     log.warn("Failed to collect agent events from Axiom", {
       error: String(err),
     });
     return [] as ChatHistoryEvent[];
   });
+}
+
+async function waitForAgentEventWatermarks(
+  terminalRuns: RunMeta[],
+): Promise<void> {
+  for (
+    let offset = 0;
+    offset < terminalRuns.length;
+    offset += AGENT_EVENT_WATERMARK_WAIT_CONCURRENCY
+  ) {
+    const batch = terminalRuns.slice(
+      offset,
+      offset + AGENT_EVENT_WATERMARK_WAIT_CONCURRENCY,
+    );
+    await Promise.all(
+      batch.map((run) => {
+        return waitForRunEventWatermarkVisible(run.id, run.lastEventSequence);
+      }),
+    );
+  }
 }

@@ -23,6 +23,8 @@ pub mod runners {
             pub mount_path: String,
             pub vas_storage_name: String,
             pub vas_version_id: String,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub instructions_target_filename: Option<String>,
             pub archive_url: String,
         }
 

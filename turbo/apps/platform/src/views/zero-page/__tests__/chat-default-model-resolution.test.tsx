@@ -354,7 +354,7 @@ describe("chat composer — default model resolution", () => {
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
     await expectAgentChatLoaded();
 
-    await expectComposerShowsModel("gpt-5.4");
+    await expectComposerShowsModel("GPT-5.4");
   });
 
   it("uses the personal provider default when the agent model is incompatible", async () => {
@@ -391,7 +391,7 @@ describe("chat composer — default model resolution", () => {
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
     await expectAgentChatLoaded();
 
-    await expectComposerShowsModel("gpt-5.5");
+    await expectComposerShowsModel("GPT-5.5");
     expect(
       screen.queryByRole("combobox", { name: "DeepSeek V4 Pro" }),
     ).not.toBeInTheDocument();

@@ -1,5 +1,66 @@
 # Changelog
 
+## [12.346.0](https://github.com/vm0-ai/vm0/compare/web-v12.345.0...web-v12.346.0) (2026-05-09)
+
+
+### Features
+
+* show send button (not stop) when running with input content ([#12228](https://github.com/vm0-ai/vm0/issues/12228)) ([989683d](https://github.com/vm0-ai/vm0/commit/989683df880cb42e51af036691865ceb7cb99298))
+
+
+### Bug Fixes
+
+* normalize instructions filename by runtime framework ([#12245](https://github.com/vm0-ai/vm0/issues/12245)) ([55b4846](https://github.com/vm0-ai/vm0/commit/55b484668ed1b559e2bf16f74ad3fcc4b4559c1f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.3.1
+    * @vm0/core bumped to 8.264.2
+    * @vm0/db bumped to 1.2.2
+
+## [12.345.0](https://github.com/vm0-ai/vm0/compare/web-v12.344.2...web-v12.345.0) (2026-05-08)
+
+
+### Features
+
+* **platform:** keep Send visible while typing during a run, recall queue on Stop ([#12229](https://github.com/vm0-ai/vm0/issues/12229)) ([6b96766](https://github.com/vm0-ai/vm0/commit/6b96766998e30d916a16a212076b9d1c8a90d757))
+* **voice-chat:** browser-reported realtime usage with session lifecycle (plan d) ([#12227](https://github.com/vm0-ai/vm0/issues/12227)) ([fa94d09](https://github.com/vm0-ai/vm0/commit/fa94d09b5e8b3cbcf9dc4435dbb5aec7e99fa674))
+
+
+### Bug Fixes
+
+* mount zero resources for resolved framework ([#12223](https://github.com/vm0-ai/vm0/issues/12223)) ([18440d8](https://github.com/vm0-ai/vm0/commit/18440d806fd3c554093fe72dc100b7c335fa4932))
+* **slack:** post only the latest agent output (closes [#12234](https://github.com/vm0-ai/vm0/issues/12234)) ([#12236](https://github.com/vm0-ai/vm0/issues/12236)) ([b287cdd](https://github.com/vm0-ai/vm0/commit/b287cdd22e95c4ac05bc6b51c67bd94ee065659b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.3.0
+    * @vm0/core bumped to 8.264.1
+    * @vm0/db bumped to 1.2.1
+
+## [12.344.2](https://github.com/vm0-ai/vm0/compare/web-v12.344.1...web-v12.344.2) (2026-05-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.264.0
+
+## [12.344.1](https://github.com/vm0-ai/vm0/compare/web-v12.344.0...web-v12.344.1) (2026-05-08)
+
+
+### Bug Fixes
+
+* **api,web:** sort configuredTypes to eliminate connector shadow divergence ([#12217](https://github.com/vm0-ai/vm0/issues/12217)) ([74d7648](https://github.com/vm0-ai/vm0/commit/74d7648143c9e0e977b9b8abbe36edc0170cddbe))
+* wait for terminal axiom events on read paths ([#12188](https://github.com/vm0-ai/vm0/issues/12188)) ([fddd0a0](https://github.com/vm0-ai/vm0/commit/fddd0a0ce7f64a4e3bc8f4c56692c5cc6342bf43))
+
 ## [12.344.0](https://github.com/vm0-ai/vm0/compare/web-v12.343.0...web-v12.344.0) (2026-05-08)
 
 

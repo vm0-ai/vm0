@@ -23,6 +23,7 @@
 //!
 //! # Operations
 //! Once running, callers invoke [`exec`](Sandbox::exec) /
+//! [`bounded_exec`](Sandbox::bounded_exec) /
 //! [`write_file`](Sandbox::write_file) / [`spawn_watch`](Sandbox::spawn_watch) /
 //! [`wait_exit`](Sandbox::wait_exit) via the host-to-guest IPC channel
 //! (vsock, in the Firecracker backend). Operations race against a crash
@@ -35,7 +36,9 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use crate::error::Result;
-use crate::types::{ExecRequest, ExecResult, ProcessExit, SpawnHandle};
+use crate::types::{
+    BoundedExecRequest, BoundedExecResult, ExecRequest, ExecResult, ProcessExit, SpawnHandle,
+};
 
 /// A process-isolation environment that runs guest workloads for the runner.
 ///
@@ -59,11 +62,11 @@ use crate::types::{ExecRequest, ExecResult, ProcessExit, SpawnHandle};
 ///
 /// # Operations
 /// Once running, callers invoke [`exec`](Self::exec) /
-/// [`write_file`](Self::write_file) / [`spawn_watch`](Self::spawn_watch) /
-/// [`wait_exit`](Self::wait_exit) via the host-to-guest IPC channel
-/// (vsock, in the Firecracker backend). Operations race against a crash
-/// notifier so that a dying backend process surfaces as a specific
-/// error rather than an opaque IPC timeout.
+/// [`bounded_exec`](Self::bounded_exec) / [`write_file`](Self::write_file) /
+/// [`spawn_watch`](Self::spawn_watch) / [`wait_exit`](Self::wait_exit) via
+/// the host-to-guest IPC channel (vsock, in the Firecracker backend).
+/// Operations race against a crash notifier so that a dying backend process
+/// surfaces as a specific error rather than an opaque IPC timeout.
 ///
 /// # Thread-safety and trait objects
 /// Implementations are consumed as `Box<dyn Sandbox>` and shared across
@@ -154,7 +157,7 @@ pub trait Sandbox: Send + Sync + Any {
     /// Transition the sandbox back to the active state.
     ///
     /// Must be called before any further work is dispatched via `exec` /
-    /// `spawn_watch` on a previously parked sandbox. Implementations
+    /// `bounded_exec` / `spawn_watch` on a previously parked sandbox. Implementations
     /// should restore whatever state `park()` altered (resume vCPUs,
     /// balloon deflate, respawn background tickers, etc).
     ///
@@ -183,6 +186,13 @@ pub trait Sandbox: Send + Sync + Any {
     /// Returns an error if the sandbox is not running or if the backing
     /// process crashes during execution.
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult>;
+    /// Run `request.cmd` in the guest with structured termination status,
+    /// bounded final stdout/stderr buffers, and optional request-scoped
+    /// stdout/stderr stream events.
+    ///
+    /// Returns an error if the sandbox is not running, if the backing
+    /// process crashes during execution, or if the host/guest transport fails.
+    async fn bounded_exec(&self, request: &BoundedExecRequest<'_>) -> Result<BoundedExecResult>;
     /// Write `content` to `path` inside the guest, creating parent
     /// directories and truncating the file as needed. Returns an error if
     /// the sandbox is not running or if the backing process crashes.

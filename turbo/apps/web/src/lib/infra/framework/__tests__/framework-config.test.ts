@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   resolveFrameworkWorkingDir,
   resolveFrameworkInstructionsMountPath,
+  resolveFrameworkSkillsMountPath,
   resolveFrameworkApiKeyEnvVar,
 } from "../framework-config";
 
@@ -15,6 +16,19 @@ describe("framework-config", () => {
     it("returns /home/user/.codex for codex", () => {
       expect(resolveFrameworkInstructionsMountPath("codex")).toBe(
         "/home/user/.codex",
+      );
+    });
+  });
+
+  describe("resolveFrameworkSkillsMountPath", () => {
+    it("returns /home/user/.claude/skills for claude-code", () => {
+      expect(resolveFrameworkSkillsMountPath("claude-code")).toBe(
+        "/home/user/.claude/skills",
+      );
+    });
+    it("returns /home/user/.codex/skills for codex", () => {
+      expect(resolveFrameworkSkillsMountPath("codex")).toBe(
+        "/home/user/.codex/skills",
       );
     });
   });

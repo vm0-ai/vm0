@@ -320,6 +320,110 @@ describe("zeroActivityDetailPageDisplay", () => {
     });
   });
 
+  it("should keep final Codex text before an empty turn result", async () => {
+    const finalText = "Codex final answer stays visible.";
+    const eventsResponse: AgentEventsResponse = {
+      events: [
+        {
+          sequenceNumber: 1,
+          eventType: "item.completed",
+          eventData: {
+            type: "item.completed",
+            item: {
+              id: "item-final-message",
+              type: "agent_message",
+              text: finalText,
+            },
+          },
+          createdAt: "2026-03-10T14:56:08Z",
+        },
+        {
+          sequenceNumber: 2,
+          eventType: "turn.completed",
+          eventData: {
+            type: "turn.completed",
+            usage: {
+              input_tokens: 10,
+              output_tokens: 20,
+            },
+          },
+          createdAt: "2026-03-10T14:56:10Z",
+        },
+      ],
+      hasMore: false,
+      framework: "codex",
+    };
+
+    mockDetailAPI(
+      {
+        framework: "codex",
+        modelProvider: "openai-api-key",
+        selectedModel: "gpt-5.5",
+      },
+      eventsResponse,
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${BASE_LOG_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Display Test Agent" }),
+      ).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("2 total")).toBeInTheDocument();
+    });
+    expect(screen.getByText(finalText)).toBeInTheDocument();
+    expect(screen.getByText("Summary")).toBeInTheDocument();
+  });
+
+  it("should hide text-only Claude messages before a non-empty result", async () => {
+    const events: AgentEvent[] = [
+      {
+        sequenceNumber: 1,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [{ type: "text", text: "Draft final answer" }],
+          },
+        },
+        createdAt: "2026-03-10T14:56:08Z",
+      },
+      {
+        sequenceNumber: 2,
+        eventType: "result",
+        eventData: {
+          result: "Claude result answer",
+          is_error: false,
+        },
+        createdAt: "2026-03-10T14:56:10Z",
+      },
+    ];
+
+    mockDetailAPI({}, events);
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${BASE_LOG_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Display Test Agent" }),
+      ).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("1 total")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Draft final answer")).toBeNull();
+    expect(screen.getByText("Claude result answer")).toBeInTheDocument();
+  });
+
   it("should render prompt content in a collapsible block (ACT-D-025)", async () => {
     mockDetailAPI({ prompt: "Build a web app" });
 

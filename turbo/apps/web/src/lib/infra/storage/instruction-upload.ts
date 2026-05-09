@@ -1,4 +1,7 @@
-import { getInstructionsFilename } from "@vm0/core/frameworks";
+import {
+  SUPPORTED_FRAMEWORKS,
+  getInstructionsFilename,
+} from "@vm0/core/frameworks";
 import { getInstructionsStorageName } from "@vm0/core/storage-names";
 import { uploadStorageServerSide } from "./upload-storage";
 import { logger } from "../../shared/logger";
@@ -21,13 +24,22 @@ export async function uploadInstructionsServerSide(params: {
   const { orgId, agentName, content, framework } = params;
 
   const filename = getInstructionsFilename(framework);
+  const filenames = [
+    filename,
+    ...SUPPORTED_FRAMEWORKS.map((supported) => {
+      return getInstructionsFilename(supported);
+    }),
+  ].filter((entry, index, all) => {
+    return all.indexOf(entry) === index;
+  });
   const storageName = getInstructionsStorageName(agentName.toLowerCase());
 
   const result = await uploadStorageServerSide({
     orgId,
     storageName,
-    filename,
-    content,
+    files: filenames.map((name) => {
+      return { filename: name, content };
+    }),
     log,
   });
 
