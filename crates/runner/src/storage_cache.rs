@@ -1762,6 +1762,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn changed_stage_archive_size_is_skipped_before_guest_write() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let archive_path = temp.path().join("changed.tar.gz");
+        std::fs::write(&archive_path, b"longer-than-expected").unwrap();
+        let stage = StageArchive {
+            name: "changed-stage".to_string(),
+            version: "v1".to_string(),
+            guest_path: guest_archive_path("changed-stage", "v1"),
+            archive_path,
+            len: 1,
+        };
+
+        let locked = lock_stage_archives(vec![stage], &home).await.unwrap();
+
+        assert!(locked.stages.is_empty());
+        assert_eq!(locked.skipped.len(), 1);
+        assert!(locked.skipped[0].reason.contains("size changed"));
+    }
+
+    #[tokio::test]
     async fn shared_version_distinct_names_get_distinct_guest_paths() {
         // Regression guard: two manifest entries that share `vasVersionId`
         // but differ in `vasStorageName` must resolve to distinct guest

@@ -1133,6 +1133,30 @@ mod tests {
     }
 
     #[test]
+    fn write_files_stream_abort_returns_error_response() {
+        let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
+        let _path_guard = install_test_guest_write_file("cat >/dev/null");
+        let start_payload = vsock_proto::encode_write_files_start(false, 1, 1).unwrap();
+        let start = RawMessage {
+            msg_type: vsock_proto::MSG_WRITE_FILES_START,
+            seq: 10,
+            payload: start_payload,
+        };
+        let mut messages = VecDeque::from([RawMessage {
+            msg_type: MSG_WRITE_FILES_ABORT,
+            seq: 10,
+            payload: vsock_proto::encode_write_files_abort("host cancelled"),
+        }]);
+
+        let response = handle_write_files_stream(&start, || Ok(messages.pop_front())).unwrap();
+        let response = decode_single_response(&response);
+
+        assert_eq!(response.msg_type, MSG_ERROR);
+        let error = vsock_proto::decode_error(&response.payload).unwrap();
+        assert_eq!(error, "write_files aborted");
+    }
+
+    #[test]
     fn write_file_kills_lingering_process_group_after_parent_exit() {
         let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
         let child = spawn_write_file_test_child("sleep 60 <&0 >/dev/null 2>/dev/null & exit 0");

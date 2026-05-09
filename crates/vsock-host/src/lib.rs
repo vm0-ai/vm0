@@ -5592,6 +5592,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_write_files_missing_lazy_file_source_closes_connection() {
+        let (host_stream, mut guest) = make_pair();
+        let guest_task = tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            assert_ne!(n, 0, "connection closed before write_files start");
+            let messages = decoder.decode(&buf[..n]).unwrap();
+            assert!(
+                messages
+                    .iter()
+                    .any(|msg| msg.msg_type == MSG_WRITE_FILES_START),
+                "expected start frame before lazy source open failure"
+            );
+
+            let n = guest.read(&mut buf).await.unwrap();
+            assert_eq!(
+                n, 0,
+                "connection should close after lazy source open failure"
+            );
+        });
+
+        let missing = std::env::temp_dir().join(format!(
+            "vm0-vsock-host-missing-lazy-source-{}-{}.tar.gz",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let host = host_from_stream(host_stream).await.unwrap();
+        let seq = host.shared.next_seq();
+        let files = vec![PreparedWriteFile {
+            path: "/tmp/missing.tar.gz".to_string(),
+            source: PreparedWriteFileSource::File {
+                path: &missing,
+                len: 1,
+            },
+        }];
+
+        let err =
+            send_write_files_stream_until(&host.shared, seq, files, false, std::future::pending())
+                .await
+                .unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
+        guest_task.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn test_write_file_failure() {
         let (host_stream, mut guest) = make_pair();
 
