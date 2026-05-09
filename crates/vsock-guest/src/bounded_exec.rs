@@ -298,7 +298,6 @@ fn run_bounded_exec<S>(
         mut child,
         env_script,
     } = spawned;
-    let child_pid = child.id();
     let _env_script = env_script;
 
     let stdout = if request.stdout.requires_pipe() {
@@ -504,16 +503,15 @@ fn run_bounded_exec<S>(
         .is_some_and(BoundedStdinWorker::is_pending)
     {
         // The direct child may have exited or been killed, but a descendant can
-        // still hold stdin open without reading it. Signal the process group
-        // before waiting for stdout/stderr drain, then clean up any process
-        // still holding this exact stdin pipe.
-        kill_process_group_best_effort(child_pid);
+        // still hold stdin open without reading it. Clean up any process still
+        // holding this exact stdin pipe before waiting for stdout/stderr drain.
         if let Some(pipe_link) = stdin_worker
             .as_ref()
             .and_then(|worker| worker.pipe_link.as_deref())
         {
             kill_processes_holding_pipe(pipe_link);
         }
+        stdin_cancel.store(true, Ordering::Release);
     }
     if matches!(
         outcome,
@@ -755,17 +753,11 @@ where
     })
 }
 
-fn kill_process_group_best_effort(child_pid: u32) {
-    // SAFETY: child_pid came from Command::spawn; ESRCH is fine because the
-    // process group may already be gone by the time the stdin writer lags.
-    let _ = unsafe { libc::kill(-(child_pid as i32), libc::SIGKILL) };
-}
-
 fn stdin_pipe_link(stdin: &ChildStdin) -> Option<String> {
     let path = format!("/proc/self/fd/{}", stdin.as_raw_fd());
-    std::fs::read_link(path)
-        .ok()
-        .map(|target| target.to_string_lossy().into_owned())
+    let target = std::fs::read_link(path).ok()?;
+    let link = target.to_string_lossy().into_owned();
+    link.starts_with("pipe:[").then_some(link)
 }
 
 fn kill_processes_holding_pipe(pipe_link: &str) {
