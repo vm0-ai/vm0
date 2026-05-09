@@ -771,11 +771,24 @@ async fn sequential_same_session_reuse_cycle() {
 #[tokio::test(start_paused = true)]
 async fn park_evicts_via_guest_session_id() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+    overrides.add_bounded_exec_matcher(sandbox_mock::BoundedExecMatcher {
         pattern: "cat /tmp/vm0-session-".into(),
-        exit_code: 0,
-        stdout: b"sess-evict".to_vec(),
-        stderr: Vec::new(),
+        response: sandbox_mock::BoundedExecResponse {
+            events: Vec::new(),
+            result: Ok(sandbox::BoundedExecResult {
+                termination: sandbox::BoundedExecTermination::Exited { exit_code: 0 },
+                duration: Duration::ZERO,
+                stdout: sandbox::BoundedExecOutput::Captured {
+                    bytes: b"sess-evict".to_vec(),
+                    truncated: false,
+                },
+                stderr: sandbox::BoundedExecOutput::Captured {
+                    bytes: Vec::new(),
+                    truncated: false,
+                },
+                diagnostic: None,
+            }),
+        },
     });
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
     let budget = Arc::clone(&config.budget);
@@ -789,7 +802,7 @@ async fn park_evicts_via_guest_session_id() {
 
     // Push job WITHOUT resume_session — first run, no session context.
     // read_guest_session_id() will be called and return "sess-evict"
-    // via the exec matcher.
+    // via the bounded_exec matcher.
     let run_id = RunId::new_v4();
     push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 

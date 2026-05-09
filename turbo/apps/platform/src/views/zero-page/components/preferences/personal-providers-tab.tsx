@@ -32,7 +32,7 @@ import { ProviderIcon } from "../settings/provider-icons.tsx";
 import { PersonalProviderDialog } from "../settings/personal-provider-dialog.tsx";
 import { PersonalCodexAuthPasteDialog } from "../settings/codex-auth-paste-dialog.tsx";
 
-type OAuthStatus = "connected" | "stale" | "missing" | "unavailable";
+type OAuthStatus = "connected" | "stale" | "missing";
 
 export function PersonalProvidersTab() {
   return (
@@ -60,7 +60,7 @@ function OAuthCredentialsSection() {
     features?.[FeatureSwitchKey.CodexOauthProvider] ?? false;
   const claudeCode = findProvider(providers, "claude-code-oauth-token");
   const openAI = findProvider(providers, "codex-oauth-token");
-  const openAIStatus = getOpenAIStatus(openAI, codexOauthEnabled);
+  const openAIStatus = getOpenAIStatus(openAI);
   const disconnecting = actionLoadable.state === "loading";
   const connectOpenAI = () => {
     detach(connectCodexOAuth(pageSignal), Reason.DomCallback);
@@ -70,13 +70,14 @@ function OAuthCredentialsSection() {
     <section className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
         Manage OAuth access used when workspace model routes require your
-        personal Claude Code or ChatGPT authorization.
+        personal Claude Code
+        {codexOauthEnabled ? " or ChatGPT" : ""} authorization.
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {isLoading ? (
           <>
             <OAuthCardSkeleton />
-            <OAuthCardSkeleton />
+            {codexOauthEnabled && <OAuthCardSkeleton />}
           </>
         ) : (
           <>
@@ -115,38 +116,39 @@ function OAuthCredentialsSection() {
               }}
               testId="oauth-card-claude-code-oauth-token"
             />
-            <OAuthCredentialCard
-              type="codex-oauth-token"
-              title="ChatGPT (Codex)"
-              description="Connect a ChatGPT account for Codex-backed model routes."
-              status={openAIStatus}
-              disabled={openAIStatus === "unavailable"}
-              menuItems={
-                openAI
-                  ? [
-                      {
-                        label: "Replace",
-                        onSelect: connectOpenAI,
-                      },
-                      {
-                        label: "Disconnect",
-                        disabled: disconnecting,
-                        onSelect: () => {
-                          detach(
-                            disconnectCredential(
-                              "codex-oauth-token",
-                              pageSignal,
-                            ),
-                            Reason.DomCallback,
-                          );
+            {codexOauthEnabled && (
+              <OAuthCredentialCard
+                type="codex-oauth-token"
+                title="ChatGPT (Codex)"
+                description="Connect a ChatGPT account for Codex-backed model routes."
+                status={openAIStatus}
+                menuItems={
+                  openAI
+                    ? [
+                        {
+                          label: "Replace",
+                          onSelect: connectOpenAI,
                         },
-                      },
-                    ]
-                  : []
-              }
-              onAction={connectOpenAI}
-              testId="oauth-card-codex-oauth-token"
-            />
+                        {
+                          label: "Disconnect",
+                          disabled: disconnecting,
+                          onSelect: () => {
+                            detach(
+                              disconnectCredential(
+                                "codex-oauth-token",
+                                pageSignal,
+                              ),
+                              Reason.DomCallback,
+                            );
+                          },
+                        },
+                      ]
+                    : []
+                }
+                onAction={connectOpenAI}
+                testId="oauth-card-codex-oauth-token"
+              />
+            )}
           </>
         )}
       </div>
@@ -165,22 +167,11 @@ function findProvider(
 
 function getOpenAIStatus(
   provider: ModelProviderResponse | undefined,
-  enabled: boolean,
 ): OAuthStatus {
-  if (!enabled) {
-    return "unavailable";
-  }
   if (provider?.needsReconnect) {
     return "stale";
   }
   return provider ? "connected" : "missing";
-}
-
-function getOpenAIActionLabel(status: OAuthStatus): string {
-  if (status === "unavailable") {
-    return "Unavailable";
-  }
-  return "Connect";
 }
 
 interface OAuthMenuItem {
@@ -334,7 +325,7 @@ function OAuthFooterStatus({ status }: { status: OAuthStatus }) {
   }
   return (
     <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
-      {getOpenAIActionLabel(status)}
+      Connect
     </span>
   );
 }

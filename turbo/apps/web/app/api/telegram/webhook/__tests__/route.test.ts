@@ -8,6 +8,7 @@ import {
 } from "../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
+  createTelegramCallbackInstallation,
   createTelegramInstallation,
   createTelegramPendingLinkInstallation,
   findTestRunCallbacks,
@@ -48,6 +49,30 @@ const WEBHOOK_SECRET = "webhook-secret";
 const TEST_BOT_TOKEN = "123456:ABC-pending-test";
 const OFFICIAL_BOT_TOKEN = "777000:official-route-test";
 const OFFICIAL_WEBHOOK_SECRET = "official-webhook-secret";
+
+interface TelegramSendMessageBody {
+  chat_id: string | number;
+  text: string;
+  reply_markup?: {
+    inline_keyboard: Array<Array<{ text: string; url: string }>>;
+  };
+  reply_parameters?: { message_id: number };
+}
+
+function telegramSendMessage(botToken: string) {
+  const calls: TelegramSendMessageBody[] = [];
+  const handler = http.post(
+    `https://api.telegram.org/bot${botToken}/sendMessage`,
+    async ({ request }) => {
+      calls.push((await request.json()) as TelegramSendMessageBody);
+      return HttpResponse.json({
+        ok: true,
+        result: { message_id: 999, chat: { id: 123 } },
+      });
+    },
+  );
+  return { ...handler, calls };
+}
 
 function createWebhookRequest(
   body: Record<string, unknown>,
@@ -207,6 +232,43 @@ describe("POST /api/telegram/webhook/[telegramBotId]", () => {
     expect(response.status).toBe(400);
   });
 
+  it("should ignore group replies to a different bot", async () => {
+    context.setupMocks();
+    const user = await context.setupUser();
+    const { composeId } = await createTestCompose(uniqueId("agent"));
+    const installation = await createTelegramCallbackInstallation(
+      composeId,
+      user.userId,
+      TEST_BOT_TOKEN,
+    );
+    const sendMsg = telegramSendMessage(TEST_BOT_TOKEN);
+    server.use(sendMsg.handler);
+
+    const request = createWebhookRequest({
+      update_id: 2,
+      message: {
+        message_id: 2,
+        chat: { id: -100123456, type: "group" },
+        from: { id: 99999, username: "unlinked_user" },
+        text: "following up",
+        reply_to_message: {
+          message_id: 55,
+          chat: { id: -100123456, type: "group" },
+          from: { id: 123, is_bot: true, username: "other_bot" },
+          text: "message from another bot",
+        },
+      },
+    });
+
+    const response = await POST(request, {
+      params: Promise.resolve({ telegramBotId: installation.installationId }),
+    });
+
+    expect(response.status).toBe(200);
+    await flushAfterCallbacks();
+    expect(sendMsg.calls).toHaveLength(0);
+  });
+
   describe("auto-complete pending link", () => {
     it("should complete pending link on first DM from admin", async () => {
       context.setupMocks();
@@ -278,6 +340,96 @@ describe("POST /api/telegram/webhook/[telegramBotId]", () => {
   });
 
   describe("official bot inbound messages", () => {
+    it("does not send a connect prompt for group replies to a different bot", async () => {
+      context.setupMocks();
+      vi.stubEnv("TELEGRAM_OFFICIAL_BOT_TOKEN", OFFICIAL_BOT_TOKEN);
+      vi.stubEnv("TELEGRAM_OFFICIAL_BOT_USERNAME", "zero_vm0_bot");
+      vi.stubEnv("TELEGRAM_OFFICIAL_WEBHOOK_SECRET", OFFICIAL_WEBHOOK_SECRET);
+      reloadEnv();
+
+      const sendMsg = telegramSendMessage(OFFICIAL_BOT_TOKEN);
+      server.use(sendMsg.handler);
+
+      const response = await POST(
+        createWebhookRequest(
+          {
+            update_id: 201,
+            message: {
+              message_id: 18,
+              chat: { id: -100123456, type: "group" },
+              from: {
+                id: Number(uniqueNumericId()),
+                username: "unlinked_user",
+              },
+              text: "following up",
+              reply_to_message: {
+                message_id: 77,
+                chat: { id: -100123456, type: "group" },
+                from: { id: 777, is_bot: true, username: "other_bot" },
+                text: "message from another bot",
+              },
+            },
+          },
+          OFFICIAL_WEBHOOK_SECRET,
+        ),
+        {
+          params: Promise.resolve({
+            telegramBotId: OFFICIAL_TELEGRAM_BOT_ID,
+          }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+      expect(sendMsg.calls).toHaveLength(0);
+    });
+
+    it("sends a connect prompt for group replies to the official bot", async () => {
+      context.setupMocks();
+      vi.stubEnv("TELEGRAM_OFFICIAL_BOT_TOKEN", OFFICIAL_BOT_TOKEN);
+      vi.stubEnv("TELEGRAM_OFFICIAL_BOT_USERNAME", "zero_vm0_bot");
+      vi.stubEnv("TELEGRAM_OFFICIAL_WEBHOOK_SECRET", OFFICIAL_WEBHOOK_SECRET);
+      reloadEnv();
+
+      const sendMsg = telegramSendMessage(OFFICIAL_BOT_TOKEN);
+      server.use(sendMsg.handler);
+
+      const response = await POST(
+        createWebhookRequest(
+          {
+            update_id: 202,
+            message: {
+              message_id: 19,
+              chat: { id: -100123456, type: "group" },
+              from: {
+                id: Number(uniqueNumericId()),
+                username: "unlinked_user",
+              },
+              text: "following up",
+              reply_to_message: {
+                message_id: 78,
+                chat: { id: -100123456, type: "group" },
+                from: { id: 777000, is_bot: true, username: "zero_vm0_bot" },
+                text: "message from zero",
+              },
+            },
+          },
+          OFFICIAL_WEBHOOK_SECRET,
+        ),
+        {
+          params: Promise.resolve({
+            telegramBotId: OFFICIAL_TELEGRAM_BOT_ID,
+          }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+      expect(sendMsg.calls).toHaveLength(1);
+      expect(sendMsg.calls[0]?.text).toContain("connect your account");
+      expect(sendMsg.calls[0]?.reply_parameters).toEqual({ message_id: 19 });
+    });
+
     it("routes a linked official DM to the user's org default agent", async () => {
       context.setupMocks();
       vi.stubEnv("TELEGRAM_OFFICIAL_BOT_TOKEN", OFFICIAL_BOT_TOKEN);

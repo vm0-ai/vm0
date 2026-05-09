@@ -215,6 +215,24 @@ describe("org-providers-tab — stale banner reconnect", () => {
     expect(screen.queryByText("Default provider")).not.toBeInTheDocument();
   });
 
+  it("hides the stale Codex reconnect banner when the Codex OAuth provider switch is off", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+      [FeatureSwitchKey.CodexOauthProvider]: false,
+    });
+    setMockOrgModelProviders([makeStaleProvider()]);
+
+    await openProvidersPage();
+
+    await expect(
+      screen.findByText(/Manage workspace models/i),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText(/ChatGPT session needs reconnection/i),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Re-paste auth.json")).not.toBeInTheDocument();
+  });
+
   it("changes the default model from the default selector", async () => {
     setMockFeatureSwitches({
       [FeatureSwitchKey.ModelFirstModelProvider]: true,
@@ -463,6 +481,9 @@ describe("org-providers-tab — stale banner reconnect", () => {
   });
 
   it("opens the paste dialog in reconnect mode when Re-paste button is clicked", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.CodexOauthProvider]: true,
+    });
     setMockOrgModelProviders([makeStaleProvider()]);
     await openProvidersPage();
 
@@ -474,6 +495,9 @@ describe("org-providers-tab — stale banner reconnect", () => {
   });
 
   it("clears the stale banner after a successful re-paste", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.CodexOauthProvider]: true,
+    });
     setMockOrgModelProviders([makeStaleProvider()]);
     server.use(
       mockApi(zeroModelProvidersMainContract.upsert, ({ respond }) => {

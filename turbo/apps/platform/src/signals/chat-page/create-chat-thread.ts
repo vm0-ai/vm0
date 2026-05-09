@@ -307,10 +307,10 @@ function createModelSelection(
           selectedModel: thread.selectedModel,
         };
       }
-      // No thread override → fall back to preferred personal default, then
-      // the agent's default, then the workspace default. Seeding here
-      // (rather than letting the picker show its null-value fallback) keeps
-      // the picker's displayed model identical to what the send body carries.
+      // No thread override → fall back to the agent's default, then the
+      // workspace default. Seeding here (rather than letting the picker show
+      // its null-value fallback) keeps the picker's displayed model identical
+      // to what the send body carries.
       // Without this seed, the backend would receive `modelSelection: null`
       // while the UI advertised a specific model, producing a display/run
       // mismatch.
@@ -325,7 +325,6 @@ function createModelSelection(
       return resolveEffectiveAgentDefaultSelection({
         agent,
         providers: composerProviders.providers,
-        tiers: composerProviders.tiers,
       });
     },
   );
@@ -415,7 +414,6 @@ function createAgentInfoSignals(
       return resolveEffectiveAgentDefaultSelection({
         agent,
         providers: composerProviders.providers,
-        tiers: composerProviders.tiers,
       });
     },
   );
@@ -1376,7 +1374,6 @@ function createSendMessage(deps: SendMessageDeps) {
             resolveEffectiveAgentDefaultSelection({
               agent,
               providers: composerProviders.providers,
-              tiers: composerProviders.tiers,
             })?.selectedModel ?? undefined;
         }
       }

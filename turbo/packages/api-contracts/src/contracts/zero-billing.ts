@@ -243,6 +243,7 @@ export const zeroBillingInvoicesContract = c.router({
     responses: {
       200: billingInvoicesResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Get invoices for current org",

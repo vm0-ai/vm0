@@ -670,6 +670,19 @@ function normalizedBotUsername(botUsername: string | null | undefined): string {
   return botUsername?.replace(/^@/, "").trim() ?? "";
 }
 
+export function isTelegramReplyToBotUsername(
+  message: Pick<TelegramHandlerUpdate["message"], "reply_to_message">,
+  botUsername: string | null | undefined,
+): boolean {
+  const username = normalizedBotUsername(botUsername).toLowerCase();
+  if (!username) return false;
+
+  const replyFrom = message.reply_to_message?.from;
+  if (replyFrom?.is_bot !== true) return false;
+
+  return normalizedBotUsername(replyFrom.username).toLowerCase() === username;
+}
+
 export function formatTelegramConnectPrompt(
   agentName: string = "Zero",
 ): string {

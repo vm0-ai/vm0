@@ -1,5 +1,6 @@
 import StripeSDK from "stripe";
 import { env } from "../../lib/env";
+import { testOverride } from "../../lib/singleton";
 
 interface StripeInvoice {
   readonly id: string;
@@ -10,9 +11,24 @@ interface StripeInvoice {
   readonly hosted_invoice_url: string | null;
 }
 
+const {
+  get: getMockedListInvoices,
+  set: setMockedListInvoices,
+  clear: clearMockedListInvoices,
+} = testOverride<
+  ((customerId: string) => Promise<readonly StripeInvoice[]>) | undefined
+>(() => {
+  return undefined;
+});
+
 export async function listStripeInvoices(
   customerId: string,
 ): Promise<readonly StripeInvoice[]> {
+  const mocked = getMockedListInvoices();
+  if (mocked) {
+    return await mocked(customerId);
+  }
+
   const stripe = new StripeSDK(env("STRIPE_SECRET_KEY"));
   const result = await stripe.invoices.list({
     customer: customerId,
@@ -29,4 +45,14 @@ export async function listStripeInvoices(
       hosted_invoice_url: inv.hosted_invoice_url ?? null,
     };
   });
+}
+
+export function mockListStripeInvoices(
+  fn: (customerId: string) => Promise<readonly StripeInvoice[]>,
+): void {
+  setMockedListInvoices(fn);
+}
+
+export function clearMockListStripeInvoices(): void {
+  clearMockedListInvoices();
 }

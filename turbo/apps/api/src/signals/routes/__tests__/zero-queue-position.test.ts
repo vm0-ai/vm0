@@ -5,7 +5,6 @@ import { createStore } from "ccstate";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import {
   deleteQueuePositionRuns$,
   seedQueuePositionRuns$,
@@ -25,6 +24,37 @@ describe("GET /api/zero/queue-position", () => {
     return store.set(deleteQueuePositionRuns$, fixture, context.signal);
   });
 
+  it("returns 401 when the request is unauthenticated", async () => {
+    const client = setupApp({ context })(zeroQueuePositionContract);
+
+    const response = await accept(
+      client.getPosition({
+        query: { runId: randomUUID() },
+        headers: {},
+      }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns 400 when runId is missing before auth", async () => {
+    const app = createApp({
+      signal: context.signal,
+    });
+
+    const response = await app.request("/api/zero/queue-position", {
+      method: "GET",
+    });
+
+    expect(response.status).toBe(400);
+    const body: unknown = await response.json();
+    expect(body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+    expect(JSON.stringify(body)).toContain("runId");
+  });
+
   it("returns the queued run position within the org queue", async () => {
     const fixture = await track(
       store.set(seedQueuePositionRuns$, { queuedRuns: 2 }, context.signal),
@@ -34,7 +64,6 @@ describe("GET /api/zero/queue-position", () => {
     if (!runId) {
       throw new Error("Expected queued run fixture");
     }
-    mockApiShadowCompareRoutes([zeroQueuePositionContract.getPosition]);
 
     const client = setupApp({ context })(zeroQueuePositionContract);
 
@@ -61,7 +90,6 @@ describe("GET /api/zero/queue-position", () => {
     if (!runId) {
       throw new Error("Expected unqueued run fixture");
     }
-    mockApiShadowCompareRoutes([zeroQueuePositionContract.getPosition]);
 
     const client = setupApp({ context })(zeroQueuePositionContract);
 
@@ -88,7 +116,6 @@ describe("GET /api/zero/queue-position", () => {
     if (!runId) {
       throw new Error("Expected queued run fixture");
     }
-    mockApiShadowCompareRoutes([zeroQueuePositionContract.getPosition]);
 
     const client = setupApp({ context })(zeroQueuePositionContract);
 
@@ -103,9 +130,34 @@ describe("GET /api/zero/queue-position", () => {
     expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
-  it("returns 404 for an unknown run", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-    mockApiShadowCompareRoutes([zeroQueuePositionContract.getPosition]);
+  it("returns 404 for a run from a different org", async () => {
+    const fixture = await track(
+      store.set(seedQueuePositionRuns$, { queuedRuns: 1 }, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, `org_${randomUUID()}`);
+    const runId = fixture.queuedRunIds[0];
+    if (!runId) {
+      throw new Error("Expected queued run fixture");
+    }
+
+    const client = setupApp({ context })(zeroQueuePositionContract);
+
+    const response = await accept(
+      client.getPosition({
+        query: { runId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 404 when an authenticated user requests an unknown run", async () => {
+    const fixture = await track(
+      store.set(seedQueuePositionRuns$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(zeroQueuePositionContract);
 
@@ -118,23 +170,5 @@ describe("GET /api/zero/queue-position", () => {
     );
 
     expect(response.body.error.code).toBe("NOT_FOUND");
-  });
-
-  it("returns 400 when runId is missing before auth", async () => {
-    mockApiShadowCompareRoutes([zeroQueuePositionContract.getPosition]);
-    const app = createApp({
-      signal: context.signal,
-    });
-
-    const response = await app.request("/api/zero/queue-position", {
-      method: "GET",
-    });
-
-    expect(response.status).toBe(400);
-    const body: unknown = await response.json();
-    expect(body).toMatchObject({
-      error: { code: "BAD_REQUEST" },
-    });
-    expect(JSON.stringify(body)).toContain("runId");
   });
 });

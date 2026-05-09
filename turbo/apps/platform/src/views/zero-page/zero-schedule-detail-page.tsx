@@ -35,7 +35,6 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Switch,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -103,10 +102,7 @@ import {
   type ScheduleSettingsSnapshot,
 } from "../../signals/schedule-page/schedule-form.ts";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
-import {
-  modelFirstModelProviderEnabled$,
-  personalModelProviderEnabled$,
-} from "../../signals/external/feature-switch.ts";
+import { modelFirstModelProviderEnabled$ } from "../../signals/external/feature-switch.ts";
 import {
   MODEL_FIRST_SELECTION_PROVIDER_ID,
   ModelProviderPicker,
@@ -330,7 +326,6 @@ function ScheduleSettingsForm({
   const agentModelDefault = useLastResolved(scheduleAgentModelDefault$) ?? null;
 
   const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
-  const personalProviderEnabled = useGet(personalModelProviderEnabled$);
   const normalizedInitial = modelFirstEnabled
     ? { ...initial, modelProviderId: null }
     : initial;
@@ -532,21 +527,6 @@ function ScheduleSettingsForm({
                 </div>
               </InlineSettingsRow>
             )}
-          {personalProviderEnabled && !modelFirstEnabled && (
-            <InlineSettingsRow
-              label="Personal provider"
-              description="Use the caller's personal provider when available, fall back to the selected one above."
-              alignControls="center"
-            >
-              <Switch
-                checked={form.preferPersonalProvider}
-                onCheckedChange={(v) => {
-                  updateForm({ preferPersonalProvider: v });
-                }}
-                aria-label="Use personal provider"
-              />
-            </InlineSettingsRow>
-          )}
         </CardContent>
       </Card>
 

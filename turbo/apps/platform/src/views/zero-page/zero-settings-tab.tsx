@@ -16,7 +16,6 @@ import {
   DialogTitle,
   DialogTrigger,
   Input,
-  Switch,
   cn,
 } from "@vm0/ui";
 import { IconTrash } from "@tabler/icons-react";
@@ -53,13 +52,9 @@ import {
   settingsModelSelection$,
   setSettingsModelSelection$,
   settingsPreferPersonalProvider$,
-  setSettingsPreferPersonalProvider$,
 } from "../../signals/zero-page/settings/settings-tab.ts";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
-import {
-  modelFirstModelProviderEnabled$,
-  personalModelProviderEnabled$,
-} from "../../signals/external/feature-switch.ts";
+import { modelFirstModelProviderEnabled$ } from "../../signals/external/feature-switch.ts";
 import {
   MODEL_FIRST_SELECTION_PROVIDER_ID,
   ModelProviderPicker,
@@ -140,8 +135,6 @@ export function ZeroSettingsTab({
   const modelSelection = useGet(settingsModelSelection$);
   const setModelSelection = useSet(setSettingsModelSelection$);
   const preferPersonalProvider = useGet(settingsPreferPersonalProvider$);
-  const setPreferPersonalProvider = useSet(setSettingsPreferPersonalProvider$);
-  const personalProviderEnabled = useGet(personalModelProviderEnabled$);
   const isSettingsDirty = useGet(settingsDirty$);
   const resetForm = useSet(resetSettingsForm$);
   const markSaved = useSet(markSettingsSaved$);
@@ -355,19 +348,6 @@ export function ZeroSettingsTab({
                   />
                 </InlineSettingsRow>
               )}
-            {personalProviderEnabled && !modelFirstEnabled && (
-              <InlineSettingsRow
-                label="Personal provider"
-                description="Use the caller's personal provider when available, fall back to the selected one above."
-                alignControls="center"
-              >
-                <Switch
-                  checked={preferPersonalProvider}
-                  onCheckedChange={setPreferPersonalProvider}
-                  aria-label="Use personal provider"
-                />
-              </InlineSettingsRow>
-            )}
           </CardContent>
         </Card>
 
