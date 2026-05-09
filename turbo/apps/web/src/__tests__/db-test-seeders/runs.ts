@@ -6,7 +6,6 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
-import { userMessageRun } from "@vm0/db/schema/user-message-run";
 import {
   agentComposes,
   agentComposeVersions,
@@ -329,7 +328,7 @@ export async function seedTestChatRounds(params: {
         rows.map((row) => {
           return {
             chatThreadId: params.chatThreadId,
-            runId: null,
+            runId: row.runId,
             role: "user" as const,
             content: row.prompt,
             createdAt: row.createdAt,
@@ -337,19 +336,9 @@ export async function seedTestChatRounds(params: {
         }),
       )
       .returning({ id: chatMessages.id });
-
-    await tx.insert(userMessageRun).values(
-      rows.map((row, index) => {
-        const message = insertedMessages[index];
-        if (!message) {
-          throw new Error("Failed to seed chat message");
-        }
-        return {
-          userMessageId: message.id,
-          runId: row.runId,
-        };
-      }),
-    );
+    if (insertedMessages.length !== rows.length) {
+      throw new Error("Failed to seed chat messages");
+    }
   });
 }
 
@@ -370,13 +359,10 @@ export async function setTestChatRoundCreatedAt(
       .update(agentRuns)
       .set({ createdAt })
       .where(eq(agentRuns.id, runId)),
-    globalThis.services.db.update(chatMessages).set({ createdAt })
-      .where(sql`${chatMessages.runId} = ${runId} OR EXISTS (
-        SELECT 1
-        FROM ${userMessageRun}
-        WHERE ${userMessageRun.userMessageId} = ${chatMessages.id}
-          AND ${userMessageRun.runId} = ${runId}
-      )`),
+    globalThis.services.db
+      .update(chatMessages)
+      .set({ createdAt })
+      .where(eq(chatMessages.runId, runId)),
   ]);
 }
 

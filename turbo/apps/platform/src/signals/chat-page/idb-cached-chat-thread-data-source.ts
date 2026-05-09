@@ -202,16 +202,17 @@ export function createIdbCachedDataSource(
 
     if (cached.length > 0) {
       const meta = await readThreadMeta$(userId, orgId, threadId);
-      const hasHistoryBefore = !reachedStart(
-        cached,
-        meta?.startMessageId ?? null,
-      );
+      const startMessageId = meta?.startMessageId ?? null;
+      const hasReachedStart = reachedStart(cached, startMessageId);
+      const needsHistoryBackfill = !hasReachedStart && startMessageId === null;
+      const hasHistoryBefore = !hasReachedStart && !needsHistoryBackfill;
       L.debug("initialPage:cacheHit", {
         threadId,
         count: cached.length,
         hasHistoryBefore,
+        needsHistoryBackfill,
       });
-      return { messages: cached, hasHistoryBefore };
+      return { messages: cached, hasHistoryBefore, needsHistoryBackfill };
     }
 
     L.debug("initialPage:cacheMiss", { threadId });

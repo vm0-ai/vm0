@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
-import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -84,28 +83,6 @@ export const deleteZeroChatThread$ = command(
     await writeDb
       .delete(agentComposes)
       .where(eq(agentComposes.id, fixture.composeId));
-    signal.throwIfAborted();
-  },
-);
-
-export const updateZeroChatThreadDraft$ = command(
-  async (
-    { set },
-    fixture: ZeroChatThreadFixture,
-    draft: {
-      readonly content: string | null;
-      readonly attachments?: readonly PersistedAttachment[] | null;
-    },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    await writeDb
-      .update(chatThreads)
-      .set({
-        draftContent: draft.content,
-        draftAttachments: draft.attachments ? [...draft.attachments] : null,
-      })
-      .where(eq(chatThreads.id, fixture.threadId));
     signal.throwIfAborted();
   },
 );

@@ -1,17 +1,16 @@
-import { command, computed } from "ccstate";
+import { computed } from "ccstate";
 import {
   chatSearchContract,
   chatThreadByIdContract,
   chatThreadArtifactsContract,
   chatThreadMessagesContract,
-  chatThreadQueuedMessagesContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { z } from "zod";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
+import { pathParamsOf, queryOf } from "../context/request";
 import { shadowCompareRoute } from "../context/shadow-compare";
 import { notFound } from "../../lib/error";
 import { zeroComposeExists } from "../services/zero-compose-data.service";
@@ -21,7 +20,6 @@ import {
   zeroChatThreadDetail,
   zeroChatThreadList,
   zeroChatThreadMessagesPage,
-  appendZeroChatThreadQueuedMessage$,
 } from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route";
 
@@ -139,43 +137,6 @@ const searchChatInner$ = computed(async (get) => {
   };
 });
 
-const appendQueuedMessageInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(authContext$);
-    const params = get(pathParamsOf(chatThreadQueuedMessagesContract.append));
-
-    if (!isValidChatThreadId(params.id)) {
-      return chatThreadNotFound();
-    }
-
-    const bodyResult = await get(
-      bodyResultOf(chatThreadQueuedMessagesContract.append),
-    );
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return bodyResult.response;
-    }
-
-    const message = await set(
-      appendZeroChatThreadQueuedMessage$,
-      {
-        threadId: params.id,
-        userId: auth.userId,
-        content: bodyResult.data.content ?? null,
-        attachments: bodyResult.data.attachments ?? null,
-        clientMessageId: bodyResult.data.clientMessageId,
-      },
-      signal,
-    );
-
-    if (!message) {
-      return chatThreadNotFound();
-    }
-
-    return { status: 201 as const, body: { message } };
-  },
-);
-
 export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadsContract.list,
@@ -207,10 +168,6 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
       route: chatThreadMessagesContract.list,
       handler: authRoute({}, listChatThreadMessagesInner$),
     }),
-  },
-  {
-    route: chatThreadQueuedMessagesContract.append,
-    handler: authRoute({}, appendQueuedMessageInner$),
   },
   {
     route: chatSearchContract.search,

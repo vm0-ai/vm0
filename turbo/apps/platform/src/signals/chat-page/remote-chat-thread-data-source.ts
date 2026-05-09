@@ -3,7 +3,7 @@ import {
   chatThreadByIdContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
-  chatThreadQueuedMessagesContract,
+  chatMessagesContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroRunsCancelContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { accept } from "../../lib/accept.ts";
@@ -48,30 +48,39 @@ const appendQueuedMessage$ = command(
     { get },
     {
       threadId,
+      agentId,
       content,
       attachments,
       clientMessageId,
+      hasTextContent,
+      modelSelection,
     }: AppendQueuedMessageArgs,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(chatThreadQueuedMessagesContract, {
-      apiBase: "api",
-    });
-    const body = {
-      ...(content !== null ? { content } : {}),
-      ...(attachments !== null ? { attachments } : {}),
-      clientMessageId,
-    };
+    const client = get(zeroClient$)(chatMessagesContract);
     const result = await accept(
-      client.append({
-        params: { id: threadId },
-        body,
+      client.send({
+        body: {
+          agentId,
+          prompt: content ?? "",
+          threadId,
+          hasTextContent,
+          clientMessageId,
+          modelSelection,
+          attachFiles: attachments ?? undefined,
+        },
         fetchOptions: { signal },
       }),
       [201],
     );
     signal.throwIfAborted();
-    return result.body.message;
+    return {
+      id: clientMessageId,
+      role: "user" as const,
+      content,
+      attachFiles: attachments ?? undefined,
+      createdAt: result.body.createdAt ?? new Date().toISOString(),
+    };
   },
 );
 

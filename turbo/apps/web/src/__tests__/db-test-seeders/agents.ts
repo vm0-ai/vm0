@@ -8,7 +8,6 @@ import {
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatMessages } from "@vm0/db/schema/chat-message";
-import { userMessageRun } from "@vm0/db/schema/user-message-run";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { conversations } from "@vm0/db/schema/conversation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -571,29 +570,18 @@ export async function insertTestChatMessage(params: {
   createdAt?: Date;
 }): Promise<{ id: string; createdAt: Date }> {
   initServices();
-  const row = await globalThis.services.db.transaction(async (tx) => {
-    const [inserted] = await tx
-      .insert(chatMessages)
-      .values({
-        chatThreadId: params.chatThreadId,
-        role: params.role,
-        content: params.content,
-        runId: params.role === "user" ? null : (params.runId ?? null),
-        archivedAt: params.archivedAt ?? null,
-        attachFiles: params.attachFiles ?? null,
-        ...(params.createdAt ? { createdAt: params.createdAt } : {}),
-      })
-      .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
-
-    if (inserted && params.role === "user" && params.runId) {
-      await tx.insert(userMessageRun).values({
-        userMessageId: inserted.id,
-        runId: params.runId,
-      });
-    }
-
-    return inserted;
-  });
+  const [row] = await globalThis.services.db
+    .insert(chatMessages)
+    .values({
+      chatThreadId: params.chatThreadId,
+      role: params.role,
+      content: params.content,
+      runId: params.runId ?? null,
+      archivedAt: params.archivedAt ?? null,
+      attachFiles: params.attachFiles ?? null,
+      ...(params.createdAt ? { createdAt: params.createdAt } : {}),
+    })
+    .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
   if (!row) {
     throw new Error("Failed to seed chat message");
   }
@@ -633,16 +621,12 @@ export async function addTestRunToThread(
         chatThreadId: threadId,
         role: "user",
         content: prompt ?? "test prompt",
-        runId: null,
+        runId,
       })
       .returning({ id: chatMessages.id });
     if (!message) {
       throw new Error("Failed to seed chat message");
     }
-    await tx.insert(userMessageRun).values({
-      userMessageId: message.id,
-      runId,
-    });
     await tx
       .update(zeroRuns)
       .set({ chatThreadId: threadId })
@@ -662,13 +646,10 @@ export async function setTestChatMessageAttachFiles(
   ids: string[],
 ): Promise<void> {
   initServices();
-  await globalThis.services.db.update(chatMessages).set({ attachFiles: ids })
-    .where(sql`${chatMessages.runId} = ${runId} OR EXISTS (
-      SELECT 1
-      FROM ${userMessageRun}
-      WHERE ${userMessageRun.userMessageId} = ${chatMessages.id}
-        AND ${userMessageRun.runId} = ${runId}
-    )`);
+  await globalThis.services.db
+    .update(chatMessages)
+    .set({ attachFiles: ids })
+    .where(eq(chatMessages.runId, runId));
 }
 
 /**
@@ -729,13 +710,10 @@ export async function setTestChatMessageContent(
   content: string,
 ): Promise<void> {
   initServices();
-  await globalThis.services.db.update(chatMessages).set({ content })
-    .where(sql`${chatMessages.runId} = ${runId} OR EXISTS (
-      SELECT 1
-      FROM ${userMessageRun}
-      WHERE ${userMessageRun.userMessageId} = ${chatMessages.id}
-        AND ${userMessageRun.runId} = ${runId}
-    )`);
+  await globalThis.services.db
+    .update(chatMessages)
+    .set({ content })
+    .where(eq(chatMessages.runId, runId));
 }
 
 /**

@@ -32,7 +32,6 @@ import {
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { chatMessages } from "@vm0/db/schema/chat-message";
-import { userMessageRun } from "@vm0/db/schema/user-message-run";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -73,9 +72,15 @@ interface ChatMessageRow {
 const chatRoleSchema = z.enum(["user", "assistant"]);
 
 function effectiveChatMessageRunId() {
-  return sql<
-    string | null
-  >`CASE WHEN ${chatMessages.role} = 'user' THEN ${userMessageRun.runId} ELSE ${chatMessages.runId} END`;
+  return chatMessages.runId;
+}
+
+function visibleChatMessageCondition() {
+  return sql<boolean>`NOT EXISTS (
+    SELECT 1
+    FROM ${chatMessages} AS revoker
+    WHERE revoker.revokes_message_id = ${chatMessages.id}
+  )`;
 }
 
 function toChatMessage(row: ChatMessageRow): ChatSearchMessage {
@@ -129,6 +134,7 @@ const router = tsr.router(chatSearchContract, {
       eq(agentComposes.orgId, org.orgId),
       isNotNull(chatMessages.content),
       isNull(chatMessages.archivedAt),
+      visibleChatMessageCondition(),
       ilike(chatMessages.content, pattern),
     ];
     if (sinceDate) matchConditions.push(gte(chatMessages.createdAt, sinceDate));
@@ -141,10 +147,6 @@ const router = tsr.router(chatSearchContract, {
         agentName: agentComposes.name,
       })
       .from(chatMessages)
-      .leftJoin(
-        userMessageRun,
-        eq(userMessageRun.userMessageId, chatMessages.id),
-      )
       .innerJoin(chatThreads, eq(chatMessages.chatThreadId, chatThreads.id))
       .innerJoin(
         agentComposes,
@@ -170,16 +172,13 @@ const router = tsr.router(chatSearchContract, {
             ? globalThis.services.db
                 .select(messageColumns)
                 .from(chatMessages)
-                .leftJoin(
-                  userMessageRun,
-                  eq(userMessageRun.userMessageId, chatMessages.id),
-                )
                 .where(
                   and(
                     eq(chatMessages.chatThreadId, m.chatThreadId),
                     lt(chatMessages.createdAt, m.createdAt),
                     isNotNull(chatMessages.content),
                     isNull(chatMessages.archivedAt),
+                    visibleChatMessageCondition(),
                   ),
                 )
                 .orderBy(desc(chatMessages.createdAt))
@@ -189,16 +188,13 @@ const router = tsr.router(chatSearchContract, {
             ? globalThis.services.db
                 .select(messageColumns)
                 .from(chatMessages)
-                .leftJoin(
-                  userMessageRun,
-                  eq(userMessageRun.userMessageId, chatMessages.id),
-                )
                 .where(
                   and(
                     eq(chatMessages.chatThreadId, m.chatThreadId),
                     gt(chatMessages.createdAt, m.createdAt),
                     isNotNull(chatMessages.content),
                     isNull(chatMessages.archivedAt),
+                    visibleChatMessageCondition(),
                   ),
                 )
                 .orderBy(asc(chatMessages.createdAt))

@@ -68,24 +68,6 @@ const persistedAttachmentSchema = z.object({
   size: z.number(),
 });
 
-const queuedUserMessageBodySchema = z
-  .object({
-    content: z.string().min(1).optional(),
-    attachments: z.array(persistedAttachmentSchema).min(1).optional(),
-    /**
-     * Pre-generated UUID the client uses as the immutable queued
-     * `chat_messages.id`, so the optimistic row reconciles with the server row
-     * by id and never needs a temp-id swap.
-     */
-    clientMessageId: z.string().uuid(),
-  })
-  .refine(
-    (body) => {
-      return body.content !== undefined || body.attachments !== undefined;
-    },
-    { message: "content or attachments is required" },
-  );
-
 const chatThreadListItemSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
@@ -152,6 +134,7 @@ const summaryEntrySchema = z.union([
 const storedChatMessageBaseSchema = z.object({
   content: z.string().nullable(),
   runId: z.string().optional(),
+  revokesMessageId: z.string().optional(),
   error: z.string().optional(),
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   createdAt: z.string(),
@@ -173,6 +156,7 @@ const pagedChatMessageBaseSchema = z.object({
   id: z.string(),
   content: z.string().nullable(),
   runId: z.string().optional(),
+  revokesMessageId: z.string().optional(),
   error: z.string().optional(),
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   createdAt: z.string(),
@@ -432,23 +416,6 @@ export const chatThreadRenameContract = c.router({
   },
 });
 
-export const chatThreadQueuedMessagesContract = c.router({
-  append: {
-    method: "POST",
-    path: "/api/zero/chat-threads/:id/queued-messages",
-    headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
-    body: queuedUserMessageBodySchema,
-    responses: {
-      201: z.object({ message: pagedChatMessageSchema }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Append a queued user message to a chat thread",
-  },
-});
-
 /**
  * Chat messages contract (/api/zero/chat/messages)
  * Unified endpoint: create thread (if needed) + run + association in one call.
@@ -489,9 +456,9 @@ export const chatMessagesContract = c.router({
     }),
     responses: {
       201: z.object({
-        runId: z.string(),
+        runId: z.string().nullable(),
         threadId: z.string(),
-        status: runStatusSchema,
+        status: runStatusSchema.optional(),
         createdAt: z.string().optional(),
       }),
       400: apiErrorSchema,
@@ -651,8 +618,6 @@ export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
 export type ChatThreadPinContract = typeof chatThreadPinContract;
 export type ChatThreadUnpinContract = typeof chatThreadUnpinContract;
 export type ChatThreadRenameContract = typeof chatThreadRenameContract;
-export type ChatThreadQueuedMessagesContract =
-  typeof chatThreadQueuedMessagesContract;
 export type ChatMessagesContract = typeof chatMessagesContract;
 export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
 export type ChatThreadArtifactsContract = typeof chatThreadArtifactsContract;

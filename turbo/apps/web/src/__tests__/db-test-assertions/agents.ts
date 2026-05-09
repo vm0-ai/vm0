@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import {
   agentComposes,
@@ -7,7 +7,6 @@ import {
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { userMessageRun } from "@vm0/db/schema/user-message-run";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 /**
@@ -174,36 +173,51 @@ export async function getTestChatThreadLastReadAt(
 /**
  * Read raw user-message run storage for append-only immutability assertions.
  *
- * @why-db-direct Public chat APIs expose the effective runId, not the storage
- * split between chat_messages.run_id and user_message_run.
+ * @why-db-direct Public chat APIs hide revoked queued rows, while these tests
+ * assert the append-only storage shape directly.
  */
 export async function getTestUserMessageRunStorage(params: {
   threadId: string;
   content: string;
+  runId?: string | null;
+  revokesMessageId?: string | null;
 }): Promise<
   | {
       messageId: string;
       messageRunId: string | null;
-      associatedRunId: string | null;
+      revokesMessageId: string | null;
     }
   | undefined
 > {
   initServices();
+  const conditions = [
+    eq(chatMessages.chatThreadId, params.threadId),
+    eq(chatMessages.role, "user"),
+    eq(chatMessages.content, params.content),
+  ];
+  if (params.runId !== undefined) {
+    conditions.push(
+      params.runId === null
+        ? isNull(chatMessages.runId)
+        : eq(chatMessages.runId, params.runId),
+    );
+  }
+  if (params.revokesMessageId !== undefined) {
+    conditions.push(
+      params.revokesMessageId === null
+        ? isNull(chatMessages.revokesMessageId)
+        : eq(chatMessages.revokesMessageId, params.revokesMessageId),
+    );
+  }
   const [row] = await globalThis.services.db
     .select({
       messageId: chatMessages.id,
       messageRunId: chatMessages.runId,
-      associatedRunId: userMessageRun.runId,
+      revokesMessageId: chatMessages.revokesMessageId,
     })
     .from(chatMessages)
-    .leftJoin(userMessageRun, eq(userMessageRun.userMessageId, chatMessages.id))
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, params.threadId),
-        eq(chatMessages.role, "user"),
-        eq(chatMessages.content, params.content),
-      ),
-    )
+    .where(and(...conditions))
+    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber))
     .limit(1);
   return row;
 }

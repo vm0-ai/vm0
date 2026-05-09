@@ -18,6 +18,9 @@ import {
 import type {
   AppendQueuedMessageArgs,
   ChatThreadDataSource,
+  InitialPage,
+  ListMessagesAfterArgs,
+  ListMessagesBeforeArgs,
   PatchDraftArgs,
   CancelRunsArgs,
   SubscribeRealtimeArgs,
@@ -60,6 +63,87 @@ function setupBaseHandlers(threadId: string) {
 function createThreadSignals(threadId: string) {
   const { draft } = context.store.set(ensureDraft$, threadId);
   return createChatThreadSignals(threadId, draft);
+}
+
+function createStaticDataSource({
+  threadId,
+  initialPage,
+  listMessagesAfter,
+  listMessagesBefore,
+}: {
+  threadId: string;
+  initialPage: InitialPage;
+  listMessagesAfter?: (
+    args: ListMessagesAfterArgs,
+  ) => Promise<{ messages: PagedChatMessage[]; reachedEnd: boolean }>;
+  listMessagesBefore?: (
+    args: ListMessagesBeforeArgs,
+  ) => Promise<{ messages: PagedChatMessage[]; hasMore: boolean }>;
+}): ChatThreadDataSource {
+  return {
+    getThread$: computed(() => {
+      return Promise.resolve({
+        id: threadId,
+        title: null,
+        agentId: "agent-1",
+        latestSessionId: null,
+        lastReadMessageId: null,
+        latestSessionProviderType: null,
+        activeRunIds: [],
+        activeRuns: [],
+        isLegacySession: false,
+        draftContent: null,
+        draftAttachments: null,
+        modelProviderId: null,
+        selectedModel: null,
+      });
+    }),
+    reloadThread$: command(() => {}),
+    initialPage$: computed(() => {
+      return Promise.resolve(initialPage);
+    }),
+    patchDraft$: command(
+      (_ctx, _args: PatchDraftArgs, _signal: AbortSignal) => {
+        return Promise.resolve();
+      },
+    ),
+    appendQueuedMessage$: command(
+      (_ctx, args: AppendQueuedMessageArgs, _signal: AbortSignal) => {
+        return Promise.resolve({
+          id: args.clientMessageId,
+          role: "user",
+          content: args.content,
+          attachFiles: args.attachments ?? undefined,
+          createdAt: "2026-05-01T00:00:00Z",
+        });
+      },
+    ),
+    listMessagesAfter$: command((_ctx, args) => {
+      return (
+        listMessagesAfter?.(args) ??
+        Promise.resolve({ messages: [], reachedEnd: true })
+      );
+    }),
+    listMessagesBefore$: command((_ctx, args) => {
+      return (
+        listMessagesBefore?.(args) ??
+        Promise.resolve({ messages: [], hasMore: false })
+      );
+    }),
+    cancelRuns$: command(
+      (_ctx, _args: CancelRunsArgs, _signal: AbortSignal) => {
+        return Promise.resolve();
+      },
+    ),
+    markRead$: command(() => {
+      return Promise.resolve(null);
+    }),
+    subscribeRealtime$: command(
+      (_ctx, _args: SubscribeRealtimeArgs, _signal: AbortSignal) => {
+        return Promise.resolve();
+      },
+    ),
+  };
 }
 
 describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftClear$", () => {
@@ -202,6 +286,53 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
 });
 
 describe("fetchNextPage$ cursor", () => {
+  it("auto backfills an unknown cached history boundary during subscribe", async () => {
+    const threadId = "thread-history-boundary-backfill";
+    const firstMessageId = "11111111-1111-4111-8111-111111111111";
+    const secondMessageId = "22222222-2222-4222-8222-222222222222";
+    const beforeIds: string[] = [];
+    const initialMessages: PagedChatMessage[] = [
+      {
+        id: firstMessageId,
+        role: "user",
+        content: "hi",
+        createdAt: "2026-05-01T00:00:00Z",
+      },
+      {
+        id: secondMessageId,
+        role: "assistant",
+        content: "hello",
+        createdAt: "2026-05-01T00:00:01Z",
+      },
+    ];
+
+    const mockDataSource = createStaticDataSource({
+      threadId,
+      initialPage: {
+        messages: initialMessages,
+        hasHistoryBefore: false,
+        needsHistoryBackfill: true,
+      },
+      listMessagesBefore: (args) => {
+        beforeIds.push(args.beforeId);
+        return Promise.resolve({ messages: [], hasMore: false });
+      },
+    });
+
+    const { draft } = context.store.set(ensureDraft$, threadId);
+    const thread = createChatThreadSignals(threadId, draft, mockDataSource);
+
+    await expect(
+      context.store.get(thread.hasOlderHistory$),
+    ).resolves.toBeFalsy();
+    await context.store.set(thread.subscribeChatThread$, context.signal);
+
+    expect(beforeIds).toStrictEqual([firstMessageId]);
+    await expect(
+      context.store.get(thread.hasOlderHistory$),
+    ).resolves.toBeFalsy();
+  });
+
   it("uses the last server-validated message ID, not the optimistic message ID", async () => {
     const threadId = "thread-cursor-test";
     const serverMessages: PagedChatMessage[] = [

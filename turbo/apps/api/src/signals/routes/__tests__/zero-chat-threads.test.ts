@@ -1,9 +1,8 @@
-import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
+import { randomUUID } from "node:crypto";
 import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
-  chatThreadQueuedMessagesContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatMessages } from "@vm0/db/schema/chat-message";
@@ -15,7 +14,6 @@ import {
   deleteZeroChatThread$,
   seedZeroChatMessage$,
   seedZeroChatThread$,
-  updateZeroChatThreadDraft$,
   type ZeroChatThreadFixture,
 } from "./helpers/zero-chat-threads";
 import {
@@ -26,16 +24,6 @@ import {
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
-
-function attachment(id: string) {
-  return {
-    id,
-    url: `https://example.com/${id}.txt`,
-    filename: `${id}.txt`,
-    contentType: "text/plain",
-    size: 100,
-  };
-}
 
 describe("GET /api/zero/chat-threads/:id", () => {
   const track = createFixtureTracker<ZeroChatThreadFixture>((fixture) => {
@@ -183,161 +171,6 @@ describe("GET /api/zero/chat-threads/:id", () => {
     );
 
     expect(response.body.renamedAt).toBe("2025-06-01T12:00:00.000Z");
-  });
-});
-
-describe("chat thread queued message routes", () => {
-  const track = createFixtureTracker<ZeroChatThreadFixture>((fixture) => {
-    return store.set(deleteZeroChatThread$, fixture, context.signal);
-  });
-
-  it("appends a queued user message and clears the draft", async () => {
-    const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
-    await store.set(
-      updateZeroChatThreadDraft$,
-      fixture,
-      {
-        content: "draft before send",
-        attachments: [attachment("draft-att")],
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(chatThreadQueuedMessagesContract);
-    const clientMessageId = randomUUID();
-
-    const response = await accept(
-      client.append({
-        params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          content: "first queued",
-          clientMessageId,
-        },
-      }),
-      [201],
-    );
-
-    expect(response.body.message).toMatchObject({
-      id: clientMessageId,
-      role: "user",
-      content: "first queued",
-    });
-    expect(response.body.message).not.toHaveProperty("status");
-
-    mockApiShadowCompareRoutes([chatThreadByIdContract.get]);
-    const detailClient = setupApp({ context })(chatThreadByIdContract);
-    const detail = await accept(
-      detailClient.get({
-        params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(detail.body.draftContent).toBeNull();
-    expect(detail.body.draftAttachments).toBeNull();
-    const queuedDetailMessage = detail.body.chatMessages.find((message) => {
-      return message.role === "user" && message.content === "first queued";
-    });
-    expect(queuedDetailMessage).toBeDefined();
-    expect(queuedDetailMessage?.runId).toBeUndefined();
-  });
-
-  it("keeps multiple queued sends as independent user messages", async () => {
-    const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const client = setupApp({ context })(chatThreadQueuedMessagesContract);
-
-    const first = await accept(
-      client.append({
-        params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          content: "first",
-          clientMessageId: randomUUID(),
-        },
-      }),
-      [201],
-    );
-    const second = await accept(
-      client.append({
-        params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          content: "second",
-          clientMessageId: randomUUID(),
-        },
-      }),
-      [201],
-    );
-
-    expect(first.body.message.id).not.toBe(second.body.message.id);
-
-    mockApiShadowCompareRoutes([chatThreadByIdContract.get]);
-    const detailClient = setupApp({ context })(chatThreadByIdContract);
-    const detail = await accept(
-      detailClient.get({
-        params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(
-      detail.body.chatMessages.filter((message) => {
-        return (
-          message.role === "user" &&
-          message.runId === undefined &&
-          (message.content === "first" || message.content === "second")
-        );
-      }),
-    ).toStrictEqual([
-      expect.objectContaining({ content: "first" }),
-      expect.objectContaining({ content: "second" }),
-    ]);
-  });
-
-  it("requires authentication for append", async () => {
-    context.mocks.clerk.authenticateRequest.mockResolvedValue({
-      isAuthenticated: false,
-    });
-    const client = setupApp({ context })(chatThreadQueuedMessagesContract);
-
-    const response = await accept(
-      client.append({
-        params: { id: "00000000-0000-0000-0000-000000000000" },
-        headers: { authorization: "Bearer clerk-session" },
-        body: { content: "no auth", clientMessageId: randomUUID() },
-      }),
-      [401],
-    );
-
-    expect(response.body.error.message).toBe("Not authenticated");
-  });
-
-  it("returns 404 for another user's thread", async () => {
-    const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
-    mocks.clerk.session("other-user", fixture.orgId);
-    const client = setupApp({ context })(chatThreadQueuedMessagesContract);
-
-    const response = await accept(
-      client.append({
-        params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
-        body: { content: "not mine", clientMessageId: randomUUID() },
-      }),
-      [404],
-    );
-
-    expect(response.body.error.message).toBe("Chat thread not found");
   });
 });
 

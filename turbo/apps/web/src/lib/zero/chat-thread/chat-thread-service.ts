@@ -1,7 +1,6 @@
 import { eq, and, desc, inArray, isNull, asc, or, sql } from "drizzle-orm";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatMessages } from "@vm0/db/schema/chat-message";
-import { userMessageRun } from "@vm0/db/schema/user-message-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -24,6 +23,14 @@ import { listS3Objects } from "../../infra/s3/s3-client";
 import { env } from "../../../env";
 import { EXT_MIMETYPE_MAP } from "../../shared/mimetype";
 import { buildFileUrl } from "../uploads/file-url";
+
+function visibleChatMessageCondition() {
+  return sql<boolean>`NOT EXISTS (
+    SELECT 1
+    FROM ${chatMessages} AS revoker
+    WHERE revoker.revokes_message_id = ${chatMessages.id}
+  )`;
+}
 
 /**
  * Create a new chat thread.
@@ -118,6 +125,7 @@ export async function listChatThreads(
       ),
     })
     .from(chatMessages)
+    .where(visibleChatMessageCondition())
     .as("last_message");
 
   const filters = [
@@ -197,7 +205,12 @@ export async function markThreadRead(
   const [latestMessage] = await globalThis.services.db
     .select({ id: chatMessages.id })
     .from(chatMessages)
-    .where(eq(chatMessages.chatThreadId, threadId))
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, threadId),
+        visibleChatMessageCondition(),
+      ),
+    )
     .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
     .limit(1);
 
@@ -495,12 +508,7 @@ export async function getChatThreadArtifacts(
           sql`EXISTS (
             SELECT 1
             FROM ${chatMessages}
-            LEFT JOIN ${userMessageRun}
-              ON ${userMessageRun.userMessageId} = ${chatMessages.id}
-            WHERE (
-                ${chatMessages.runId} = ${runUploadedFiles.runId}
-                OR ${userMessageRun.runId} = ${runUploadedFiles.runId}
-              )
+            WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
               AND ${chatMessages.chatThreadId} = ${threadId}
           )`,
         ),
@@ -579,6 +587,7 @@ export async function getChatThreadMessages(
         role,
         content: row.content,
         runId: row.runId ?? undefined,
+        revokesMessageId: row.revokesMessageId ?? undefined,
         error: effectiveError,
         attachFiles,
         createdAt: row.createdAt.toISOString(),

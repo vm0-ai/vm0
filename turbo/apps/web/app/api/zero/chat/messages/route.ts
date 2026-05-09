@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { after } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
@@ -19,6 +19,9 @@ import {
 import { resolveOrgWithMetadata } from "../../../../../src/lib/zero/org/resolve-org";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatMessages } from "@vm0/db/schema/chat-message";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   buildWebChatPrompt,
   buildWebAttachFilesPrompt,
@@ -116,6 +119,91 @@ interface ResolvedThread {
   sessionId: string | undefined;
   incompleteContext: string;
   isNewThread: boolean;
+}
+
+async function activeRunExistsForThread(threadId: string): Promise<boolean> {
+  const [run] = await globalThis.services.db
+    .select({ id: zeroRuns.id })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, threadId),
+        inArray(agentRuns.status, ["queued", "pending", "running"]),
+      ),
+    )
+    .limit(1);
+  return run !== undefined;
+}
+
+async function appendUnassociatedUserMessage(params: {
+  threadId: string;
+  userId: string;
+  prompt: string;
+  attachFiles: AttachFile[] | undefined;
+  clientMessageId: string | undefined;
+}): Promise<{ createdAt: Date }> {
+  return globalThis.services.db.transaction(async (tx) => {
+    await tx
+      .update(chatThreads)
+      .set({
+        draftContent: null,
+        draftAttachments: null,
+      })
+      .where(
+        and(
+          eq(chatThreads.id, params.threadId),
+          eq(chatThreads.userId, params.userId),
+        ),
+      );
+
+    const attachFileIds = params.attachFiles?.map((file) => {
+      return file.id;
+    });
+
+    const inserted = await tx
+      .insert(chatMessages)
+      .values({
+        ...(params.clientMessageId ? { id: params.clientMessageId } : {}),
+        chatThreadId: params.threadId,
+        role: "user",
+        content: params.prompt,
+        runId: null,
+        attachFiles:
+          attachFileIds && attachFileIds.length > 0 ? attachFileIds : null,
+      })
+      .onConflictDoNothing({ target: chatMessages.id })
+      .returning({ createdAt: chatMessages.createdAt });
+
+    const [insertedMessage] = inserted;
+    if (insertedMessage) {
+      return insertedMessage;
+    }
+
+    if (!params.clientMessageId) {
+      throw new Error("Failed to insert unassociated user message");
+    }
+
+    const [existing] = await tx
+      .select({ createdAt: chatMessages.createdAt })
+      .from(chatMessages)
+      .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
+      .where(
+        and(
+          eq(chatMessages.id, params.clientMessageId),
+          eq(chatMessages.chatThreadId, params.threadId),
+          eq(chatThreads.userId, params.userId),
+          eq(chatMessages.role, "user"),
+          isNull(chatMessages.runId),
+        ),
+      )
+      .limit(1);
+
+    if (!existing) {
+      throw new Error("Failed to resolve unassociated user message");
+    }
+    return existing;
+  });
 }
 
 interface ThreadModelPin {
@@ -614,6 +702,29 @@ const router = tsr.router(chatMessagesContract, {
           eagerPin,
           dims,
         );
+
+      if (await activeRunExistsForThread(threadId)) {
+        const message = await appendUnassociatedUserMessage({
+          threadId,
+          userId: authCtx.userId,
+          prompt: body.prompt,
+          attachFiles: body.attachFiles,
+          clientMessageId: body.clientMessageId,
+        });
+        await publishUserSignal(
+          [authCtx.userId],
+          `chatThreadMessageCreated:${threadId}`,
+        );
+        await publishThreadListChanged(authCtx.userId);
+        return {
+          status: 201 as const,
+          body: {
+            runId: null,
+            threadId,
+            createdAt: message.createdAt.toISOString(),
+          },
+        };
+      }
 
       const overrideT = await timed(async () => {
         return resolveRunModelOverride(

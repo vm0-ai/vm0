@@ -33,7 +33,7 @@ function setupAuth() {
 const context = testContext();
 
 describe("createIdbCachedDataSource initialPage cache-hit + thread meta", () => {
-  it("cache hit returns hasHistoryBefore=true when startMessageId is unknown", async () => {
+  it("cache hit defers history state when startMessageId is unknown", async () => {
     setupAuth();
     const threadId = `thread-initial-unknown-${Date.now()}`;
     const stores = createIdbMessageStores(USER_ID, ORG_ID);
@@ -44,7 +44,8 @@ describe("createIdbCachedDataSource initialPage cache-hit + thread meta", () => 
 
     const ds = createIdbCachedDataSource(threadId);
     const page = await context.store.get(ds.initialPage$);
-    expect(page.hasHistoryBefore).toBeTruthy();
+    expect(page.hasHistoryBefore).toBeFalsy();
+    expect(page.needsHistoryBackfill).toBeTruthy();
     expect(
       page.messages.map((m) => {
         return m.id;

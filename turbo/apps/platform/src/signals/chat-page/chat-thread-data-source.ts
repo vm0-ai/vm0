@@ -1,5 +1,6 @@
 import type { Command, Computed } from "ccstate";
 import type {
+  ModelSelectionRequest,
   PagedChatMessage,
   PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -13,6 +14,7 @@ export interface ChatThreadRealtimeHandlers {
 export interface InitialPage {
   messages: PagedChatMessage[];
   hasHistoryBefore: boolean;
+  needsHistoryBackfill?: boolean;
 }
 
 export interface PatchDraftArgs {
@@ -23,9 +25,12 @@ export interface PatchDraftArgs {
 
 export interface AppendQueuedMessageArgs {
   threadId: string;
+  agentId: string;
   content: string | null;
   attachments: PersistedAttachment[] | null;
   clientMessageId: string;
+  hasTextContent: boolean;
+  modelSelection: ModelSelectionRequest | null;
 }
 
 export interface ListMessagesAfterArgs {

@@ -46,7 +46,10 @@ import type {
   GroupedChatMessageGroup,
 } from "./chat-message.ts";
 import { logger } from "../log.ts";
-import type { ChatThreadDataSource } from "./chat-thread-data-source.ts";
+import type {
+  ChatThreadDataSource,
+  InitialPage,
+} from "./chat-thread-data-source.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import {
   enrichBlocksWithTextPreviews,
@@ -632,6 +635,40 @@ function createInitialPage(dataSource: ChatThreadDataSource) {
   return dataSource.initialPage$;
 }
 
+function createBackfillHistoryBoundaryCommand({
+  threadId,
+  initialPage$,
+  loadedHistoryHasMore$,
+  dataSource,
+}: {
+  threadId: string;
+  initialPage$: Computed<Promise<InitialPage>>;
+  loadedHistoryHasMore$: State<boolean | null>;
+  dataSource: ChatThreadDataSource;
+}) {
+  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const initial = await get(initialPage$);
+    signal.throwIfAborted();
+    if (!initial.needsHistoryBackfill) {
+      return;
+    }
+
+    const beforeId = initial.messages[0]?.id;
+    if (!beforeId) {
+      set(loadedHistoryHasMore$, false);
+      return;
+    }
+
+    const result = await set(
+      dataSource.listMessagesBefore$,
+      { threadId, beforeId },
+      signal,
+    );
+    signal.throwIfAborted();
+    set(loadedHistoryHasMore$, result.messages.length > 0 || result.hasMore);
+  });
+}
+
 function createAllMessagesComputed({
   initialPage$,
   historyMessages$,
@@ -651,28 +688,101 @@ function createAllMessagesComputed({
     const deltas = get(deltaMessages$);
     const optimisticSentIds = get(optimisticSentUserMessageIds$);
     const raw = [...history, ...initial.messages, ...deltas];
-    return raw.map((msg) => {
-      const { blocks } = parseBodyRenderBlocks(msg.content ?? "");
-      const isUnassociatedUser = msg.role === "user" && msg.runId === undefined;
-      const queuedOverride = optimisticQueuedOverride(msg);
-      const isQueued =
-        isUnassociatedUser &&
-        (queuedOverride ?? !optimisticSentIds.has(msg.id));
-      if (msg.role !== "assistant") {
+    const revokedIds = new Set(
+      raw.flatMap((msg) => {
+        return msg.revokesMessageId ? [msg.revokesMessageId] : [];
+      }),
+    );
+    return raw
+      .filter((msg) => {
+        return !revokedIds.has(msg.id);
+      })
+      .map((msg) => {
+        const { blocks } = parseBodyRenderBlocks(msg.content ?? "");
+        const isUnassociatedUser =
+          msg.role === "user" && msg.runId === undefined;
+        const queuedOverride = optimisticQueuedOverride(msg);
+        const isQueued =
+          isUnassociatedUser &&
+          (queuedOverride ?? !optimisticSentIds.has(msg.id));
+        if (msg.role !== "assistant") {
+          return {
+            ...msg,
+            role: "user" as const,
+            blocks: enrichBlocksWithTextPreviews(blocks),
+            isQueued,
+          };
+        }
         return {
           ...msg,
-          role: "user" as const,
+          role: "assistant" as const,
           blocks: enrichBlocksWithTextPreviews(blocks),
           isQueued,
         };
+      });
+  });
+}
+
+function createFetchNextPageCommand({
+  threadId,
+  initialPage$,
+  nextCursorId$,
+  appendDeltaMessages$,
+  dataSource,
+}: {
+  threadId: string;
+  initialPage$: Computed<Promise<InitialPage>>;
+  nextCursorId$: State<string | undefined>;
+  appendDeltaMessages$: Command<void, [OptimisticPagedChatMessage[]]>;
+  dataSource: ChatThreadDataSource;
+}): Command<Promise<boolean>, [AbortSignal]> {
+  return command(async ({ get, set }, signal: AbortSignal) => {
+    let sinceId: string | undefined = get(nextCursorId$);
+    if (!sinceId) {
+      const initial = await get(initialPage$);
+      signal.throwIfAborted();
+      sinceId = initial.messages[initial.messages.length - 1]?.id;
+      L.debug("fetchNextPage$ initialPage seeded sinceId", {
+        threadId,
+        sinceId: sinceId ?? null,
+        initialCount: initial.messages.length,
+      });
+      if (sinceId) {
+        set(nextCursorId$, sinceId);
       }
-      return {
-        ...msg,
-        role: "assistant" as const,
-        blocks: enrichBlocksWithTextPreviews(blocks),
-        isQueued,
-      };
-    });
+    }
+    signal.throwIfAborted();
+    // No sinceId is *not* the same as "nothing to fetch": the server side
+    // accepts an absent cursor and returns the latest page in that case.
+    // Brand-new threads hit this path when the swap-time `initialPage$`
+    // fetch raced ahead of the server-side persist and got cached as
+    // empty — without a full fetch here, every Ably-triggered call would
+    // exit early and the rendered list would stay stuck on the thinking
+    // indicator. Drain all pending pages so a single trigger fully catches
+    // the client up; without this loop a burst larger than one page leaves
+    // the client permanently behind if the thread goes quiet afterwards.
+    const MAX_PAGES = 10;
+    for (let i = 0; i < MAX_PAGES; i++) {
+      const result: { messages: PagedChatMessage[]; reachedEnd: boolean } =
+        await set(dataSource.listMessagesAfter$, { threadId, sinceId }, signal);
+      signal.throwIfAborted();
+      L.debug("fetchNextPage$ listMessagesAfter result", {
+        threadId,
+        sinceId: sinceId ?? null,
+        gotCount: result.messages.length,
+        reachedEnd: result.reachedEnd,
+        page: i,
+      });
+      if (result.messages.length > 0) {
+        set(appendDeltaMessages$, result.messages);
+        sinceId = result.messages[result.messages.length - 1].id;
+        set(nextCursorId$, sinceId);
+      }
+      if (result.reachedEnd) {
+        return true;
+      }
+    }
+    return false;
   });
 }
 
@@ -731,53 +841,19 @@ function createPagedMessages(
     return initial.hasHistoryBefore;
   });
 
-  const fetchNextPage$ = command(async ({ get, set }, signal: AbortSignal) => {
-    let sinceId: string | undefined = get(nextCursorId$);
-    if (!sinceId) {
-      const initial = await get(initialPage$);
-      signal.throwIfAborted();
-      sinceId = initial.messages[initial.messages.length - 1]?.id;
-      L.debug("fetchNextPage$ initialPage seeded sinceId", {
-        threadId,
-        sinceId: sinceId ?? null,
-        initialCount: initial.messages.length,
-      });
-      if (sinceId) {
-        set(nextCursorId$, sinceId);
-      }
-    }
-    signal.throwIfAborted();
-    // No sinceId is *not* the same as "nothing to fetch": the server side
-    // accepts an absent cursor and returns the latest page in that case.
-    // Brand-new threads hit this path when the swap-time `initialPage$`
-    // fetch raced ahead of the server-side persist and got cached as
-    // empty — without a full fetch here, every Ably-triggered call would
-    // exit early and the rendered list would stay stuck on the thinking
-    // indicator. Drain all pending pages so a single trigger fully catches
-    // the client up; without this loop a burst larger than one page leaves
-    // the client permanently behind if the thread goes quiet afterwards.
-    const MAX_PAGES = 10;
-    for (let i = 0; i < MAX_PAGES; i++) {
-      const result: { messages: PagedChatMessage[]; reachedEnd: boolean } =
-        await set(dataSource.listMessagesAfter$, { threadId, sinceId }, signal);
-      signal.throwIfAborted();
-      L.debug("fetchNextPage$ listMessagesAfter result", {
-        threadId,
-        sinceId: sinceId ?? null,
-        gotCount: result.messages.length,
-        reachedEnd: result.reachedEnd,
-        page: i,
-      });
-      if (result.messages.length > 0) {
-        set(appendDeltaMessages$, result.messages);
-        sinceId = result.messages[result.messages.length - 1].id;
-        set(nextCursorId$, sinceId);
-      }
-      if (result.reachedEnd) {
-        return true;
-      }
-    }
-    return false;
+  const backfillHistoryBoundary$ = createBackfillHistoryBoundaryCommand({
+    threadId,
+    initialPage$,
+    loadedHistoryHasMore$,
+    dataSource,
+  });
+
+  const fetchNextPage$ = createFetchNextPageCommand({
+    threadId,
+    initialPage$,
+    nextCursorId$,
+    appendDeltaMessages$,
+    dataSource,
   });
 
   const refreshLatestMessages$ = command(
@@ -818,6 +894,7 @@ function createPagedMessages(
     groupedChatMessages$,
     hasOlderHistory$,
     fetchNextPage$,
+    backfillHistoryBoundary$,
     refreshLatestMessages$,
     loadHistory$,
     insertOptimisticMessage$,
@@ -1014,6 +1091,7 @@ interface RunTrackingDeps {
   threadData$: Computed<Promise<ChatThread | null>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
+  backfillHistoryBoundary$: Command<Promise<void>, [AbortSignal]>;
   refreshLatestMessages$: Command<Promise<void>, [AbortSignal]>;
   autoScroll$: Command<void, []>;
   dataSource: ChatThreadDataSource;
@@ -1070,6 +1148,7 @@ function createRunTracking({
   threadData$,
   latestChatMessageId$,
   fetchNextPage$,
+  backfillHistoryBoundary$,
   refreshLatestMessages$,
   autoScroll$,
   dataSource,
@@ -1141,6 +1220,7 @@ function createRunTracking({
 
     L.debug("subscribeChatThread$ subscribeRealtime$ start", { threadId });
     await Promise.all([
+      set(backfillHistoryBoundary$, signal),
       set(markThreadReadIfNeeded$, signal),
       set(
         dataSource.subscribeRealtime$,
@@ -1320,8 +1400,8 @@ function createQueueMessage(deps: QueueMessageDeps) {
     L.debug("queueMessage$ start", { threadId, promptLen: prompt.length });
     const thread = await get(threadData$);
     signal.throwIfAborted();
-    if (!thread || thread.activeRunIds.length === 0) {
-      L.debug("queueMessage$ no active run, abort", { threadId });
+    if (!thread) {
+      L.debug("queueMessage$ no thread data, abort", { threadId });
       return;
     }
 
@@ -1370,9 +1450,12 @@ function createQueueMessage(deps: QueueMessageDeps) {
         dataSource.appendQueuedMessage$,
         {
           threadId,
+          agentId: thread.agentId,
           content: result.prompt,
           attachments: result.attachments ?? null,
           clientMessageId,
+          hasTextContent: result.hasTextContent,
+          modelSelection,
         },
         signal,
       ),
@@ -1485,6 +1568,7 @@ export function createChatThreadSignals(
     groupedChatMessages$,
     hasOlderHistory$,
     fetchNextPage$,
+    backfillHistoryBoundary$,
     refreshLatestMessages$,
     loadHistory$: loadPagedHistory$,
     insertOptimisticMessage$,
@@ -1503,6 +1587,7 @@ export function createChatThreadSignals(
     threadData$,
     latestChatMessageId$,
     fetchNextPage$,
+    backfillHistoryBoundary$,
     refreshLatestMessages$,
     autoScroll$: scrollSignals.autoScroll$,
     dataSource,

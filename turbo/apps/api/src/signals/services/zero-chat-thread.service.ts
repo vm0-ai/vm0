@@ -1,4 +1,4 @@
-import { command, computed, type Computed } from "ccstate";
+import { computed, type Computed } from "ccstate";
 import {
   type ChatSearchMessage,
   type ChatSearchResult,
@@ -18,7 +18,6 @@ import {
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
-import { userMessageRun } from "@vm0/db/schema/user-message-run";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -41,7 +40,7 @@ import {
 import { z } from "zod";
 
 import { env } from "../../lib/env";
-import { db$, writeDb$ } from "../external/db";
+import { db$ } from "../external/db";
 import { listS3Objects } from "../external/s3";
 
 const REPORT_ERROR_STREAK_THRESHOLD = 2;
@@ -101,6 +100,7 @@ type ChatMessageRow = {
   readonly runStatus: string | null;
   readonly runError: string | null;
   readonly attachFiles: readonly string[] | null;
+  readonly revokesMessageId: string | null;
 };
 
 type ChatSearchMessageRow = {
@@ -130,9 +130,15 @@ type ChatThreadRow = {
 };
 
 function effectiveChatMessageRunId() {
-  return sql<
-    string | null
-  >`CASE WHEN ${chatMessages.role} = 'user' THEN ${userMessageRun.runId} ELSE ${chatMessages.runId} END`;
+  return chatMessages.runId;
+}
+
+function visibleChatMessageCondition() {
+  return sql<boolean>`NOT EXISTS (
+    SELECT 1
+    FROM ${chatMessages} AS revoker
+    WHERE revoker.revokes_message_id = ${chatMessages.id}
+  )`;
 }
 
 const messageColumns = {
@@ -146,6 +152,7 @@ const messageColumns = {
   runStatus: agentRuns.status,
   runError: agentRuns.error,
   attachFiles: chatMessages.attachFiles,
+  revokesMessageId: chatMessages.revokesMessageId,
 } as const;
 
 const searchMessageColumns = {
@@ -254,117 +261,6 @@ function ownedChatThread(
     };
   });
 }
-
-export const appendZeroChatThreadQueuedMessage$ = command(
-  async (
-    { set },
-    args: {
-      readonly threadId: string;
-      readonly userId: string;
-      readonly content: string | null;
-      readonly attachments: readonly PersistedAttachment[] | null;
-      readonly clientMessageId: string;
-    },
-    signal: AbortSignal,
-  ): Promise<PagedChatMessage | null> => {
-    const db = set(writeDb$);
-    const message = await db.transaction(async (tx) => {
-      const [thread] = await tx
-        .select({ id: chatThreads.id })
-        .from(chatThreads)
-        .where(
-          and(
-            eq(chatThreads.id, args.threadId),
-            eq(chatThreads.userId, args.userId),
-          ),
-        )
-        .for("update")
-        .limit(1);
-
-      if (!thread) {
-        return null;
-      }
-
-      await tx
-        .update(chatThreads)
-        .set({
-          draftContent: null,
-          draftAttachments: null,
-        })
-        .where(
-          and(
-            eq(chatThreads.id, args.threadId),
-            eq(chatThreads.userId, args.userId),
-          ),
-        );
-
-      const attachFileIds =
-        args.attachments && args.attachments.length > 0
-          ? args.attachments.map((attachment) => {
-              return attachment.id;
-            })
-          : null;
-
-      const inserted = await tx
-        .insert(chatMessages)
-        .values({
-          id: args.clientMessageId,
-          chatThreadId: args.threadId,
-          role: "user",
-          content: args.content,
-          runId: null,
-          attachFiles: attachFileIds,
-        })
-        .onConflictDoNothing({ target: chatMessages.id })
-        .returning({
-          id: chatMessages.id,
-          content: chatMessages.content,
-          createdAt: chatMessages.createdAt,
-        });
-
-      const [insertedMessage] = inserted;
-      if (insertedMessage) {
-        return insertedMessage;
-      }
-
-      const [existing] = await tx
-        .select({
-          id: chatMessages.id,
-          content: chatMessages.content,
-          createdAt: chatMessages.createdAt,
-        })
-        .from(chatMessages)
-        .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
-        .leftJoin(
-          userMessageRun,
-          eq(userMessageRun.userMessageId, chatMessages.id),
-        )
-        .where(
-          and(
-            eq(chatMessages.id, args.clientMessageId),
-            eq(chatMessages.chatThreadId, args.threadId),
-            eq(chatThreads.userId, args.userId),
-            eq(chatMessages.role, "user"),
-            isNull(userMessageRun.runId),
-          ),
-        )
-        .limit(1);
-
-      return existing ?? null;
-    });
-    signal.throwIfAborted();
-    if (!message) {
-      return null;
-    }
-    return {
-      id: message.id,
-      role: "user",
-      content: message.content,
-      attachFiles: args.attachments ? [...args.attachments] : undefined,
-      createdAt: message.createdAt.toISOString(),
-    };
-  },
-);
 
 function resolveAttachFileUrls(
   userId: string,
@@ -500,6 +396,7 @@ function toStoredMessage(
         role,
         content: row.content,
         runId: row.runId ?? undefined,
+        revokesMessageId: row.revokesMessageId ?? undefined,
         error: effectiveError,
         attachFiles: attachFiles ? [...attachFiles] : undefined,
         createdAt: row.createdAt.toISOString(),
@@ -551,6 +448,7 @@ function toPagedMessage(
       role,
       content: row.content,
       runId: row.runId ?? undefined,
+      revokesMessageId: row.revokesMessageId ?? undefined,
       error: effectiveError,
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       createdAt: row.createdAt.toISOString(),
@@ -580,15 +478,13 @@ function chatThreadMessages(
       const rows = await get(db$)
         .select(messageColumns)
         .from(chatMessages)
-        .leftJoin(
-          userMessageRun,
-          eq(userMessageRun.userMessageId, chatMessages.id),
+        .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+        .where(
+          and(
+            eq(chatMessages.chatThreadId, threadId),
+            visibleChatMessageCondition(),
+          ),
         )
-        .leftJoin(
-          agentRuns,
-          sql`${agentRuns.id} = ${effectiveChatMessageRunId()}`,
-        )
-        .where(eq(chatMessages.chatThreadId, threadId))
         .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
 
       return await Promise.all(
@@ -733,6 +629,7 @@ export function zeroChatThreadList(args: {
         ),
       })
       .from(chatMessages)
+      .where(visibleChatMessageCondition())
       .as("last_message");
 
     const filters = [
@@ -842,11 +739,7 @@ export function zeroChatThreadArtifacts(args: {
               sql`EXISTS (
                 SELECT 1
                 FROM ${chatMessages}
-                LEFT JOIN ${userMessageRun} ON ${userMessageRun.userMessageId} = ${chatMessages.id}
-                WHERE (
-                    ${chatMessages.runId} = ${runUploadedFiles.runId}
-                    OR ${userMessageRun.runId} = ${runUploadedFiles.runId}
-                  )
+                WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
                   AND ${chatMessages.chatThreadId} = ${args.threadId}
               )`,
             ),
@@ -926,6 +819,7 @@ export function zeroChatSearch(args: {
       eq(agentComposes.orgId, args.orgId),
       isNotNull(chatMessages.content),
       isNull(chatMessages.archivedAt),
+      visibleChatMessageCondition(),
       ilike(chatMessages.content, pattern),
     ];
     if (sinceDate) {
@@ -941,10 +835,6 @@ export function zeroChatSearch(args: {
         agentName: agentComposes.name,
       })
       .from(chatMessages)
-      .leftJoin(
-        userMessageRun,
-        eq(userMessageRun.userMessageId, chatMessages.id),
-      )
       .innerJoin(chatThreads, eq(chatMessages.chatThreadId, chatThreads.id))
       .innerJoin(
         agentComposes,
@@ -965,16 +855,13 @@ export function zeroChatSearch(args: {
             ? db
                 .select(searchMessageColumns)
                 .from(chatMessages)
-                .leftJoin(
-                  userMessageRun,
-                  eq(userMessageRun.userMessageId, chatMessages.id),
-                )
                 .where(
                   and(
                     eq(chatMessages.chatThreadId, match.chatThreadId),
                     lt(chatMessages.createdAt, match.createdAt),
                     isNotNull(chatMessages.content),
                     isNull(chatMessages.archivedAt),
+                    visibleChatMessageCondition(),
                   ),
                 )
                 .orderBy(desc(chatMessages.createdAt))
@@ -984,16 +871,13 @@ export function zeroChatSearch(args: {
             ? db
                 .select(searchMessageColumns)
                 .from(chatMessages)
-                .leftJoin(
-                  userMessageRun,
-                  eq(userMessageRun.userMessageId, chatMessages.id),
-                )
                 .where(
                   and(
                     eq(chatMessages.chatThreadId, match.chatThreadId),
                     gt(chatMessages.createdAt, match.createdAt),
                     isNotNull(chatMessages.content),
                     isNull(chatMessages.archivedAt),
+                    visibleChatMessageCondition(),
                   ),
                 )
                 .orderBy(asc(chatMessages.createdAt))
@@ -1049,15 +933,8 @@ export function zeroChatThreadMessagesPage(args: {
       const latestRows = await db
         .select(messageColumns)
         .from(chatMessages)
-        .leftJoin(
-          userMessageRun,
-          eq(userMessageRun.userMessageId, chatMessages.id),
-        )
-        .leftJoin(
-          agentRuns,
-          sql`${agentRuns.id} = ${effectiveChatMessageRunId()}`,
-        )
-        .where(threadFilter)
+        .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+        .where(and(threadFilter, visibleChatMessageCondition()))
         .orderBy(
           desc(chatMessages.createdAt),
           desc(chatMessages.sequenceNumber),
@@ -1091,15 +968,14 @@ export function zeroChatThreadMessagesPage(args: {
         rows = await db
           .select(messageColumns)
           .from(chatMessages)
-          .leftJoin(
-            userMessageRun,
-            eq(userMessageRun.userMessageId, chatMessages.id),
+          .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+          .where(
+            and(
+              threadFilter,
+              cursorAfterCondition,
+              visibleChatMessageCondition(),
+            ),
           )
-          .leftJoin(
-            agentRuns,
-            sql`${agentRuns.id} = ${effectiveChatMessageRunId()}`,
-          )
-          .where(and(threadFilter, cursorAfterCondition))
           .orderBy(
             asc(chatMessages.createdAt),
             asc(chatMessages.sequenceNumber),
@@ -1109,15 +985,14 @@ export function zeroChatThreadMessagesPage(args: {
         const previousRows = await db
           .select(messageColumns)
           .from(chatMessages)
-          .leftJoin(
-            userMessageRun,
-            eq(userMessageRun.userMessageId, chatMessages.id),
+          .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+          .where(
+            and(
+              threadFilter,
+              cursorBeforeCondition,
+              visibleChatMessageCondition(),
+            ),
           )
-          .leftJoin(
-            agentRuns,
-            sql`${agentRuns.id} = ${effectiveChatMessageRunId()}`,
-          )
-          .where(and(threadFilter, cursorBeforeCondition))
           .orderBy(
             desc(chatMessages.createdAt),
             desc(chatMessages.sequenceNumber),

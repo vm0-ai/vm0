@@ -1824,26 +1824,8 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
 // Composer wrapper — reads chat signals from thread prop
 // ---------------------------------------------------------------------------
 
-function canQueueMessage({
-  queueMessageEnabled,
-  activeRunCount,
-  allFinishedResolved,
-  allFinished,
-  queueLoading,
-}: {
-  queueMessageEnabled: boolean;
-  activeRunCount: number;
-  allFinishedResolved: boolean;
-  allFinished: boolean;
-  queueLoading: boolean;
-}): boolean {
-  return (
-    queueMessageEnabled &&
-    activeRunCount > 0 &&
-    allFinishedResolved &&
-    !allFinished &&
-    !queueLoading
-  );
+function canQueueMessage({ sending }: { sending: boolean }): boolean {
+  return sending;
 }
 
 function shouldAutoFocusComposer({
@@ -1875,7 +1857,7 @@ function ChatThreadComposer({
   const allFinishedResolved = allFinishedLoadable.state === "hasData";
   const allFinished = allFinishedResolved ? allFinishedLoadable.data : false;
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
-  const [queueLoadable, queueMessage] = useLoadableSet(thread.queueMessage$);
+  const [, queueMessage] = useLoadableSet(thread.queueMessage$);
   const sending = !allFinished || sendLoadable.state === "loading";
   const input = useGet(thread.draft.input$);
   const setInput = useSet(thread.draft.setInput$);
@@ -1900,15 +1882,8 @@ function ChatThreadComposer({
   // render the whole action cluster as a skeleton so we don't flash stale
   // picker state or a wrong send/stop button.
   const skeletonVisible = useGet(thread.skeletonVisible$);
-  const features = useLastResolved(featureSwitch$);
-  const queueMessageEnabled =
-    features?.[FeatureSwitchKey.QueueMessage] ?? false;
   const queueWhileSending = canQueueMessage({
-    queueMessageEnabled,
-    activeRunCount: threadData?.activeRunIds.length ?? 0,
-    allFinishedResolved: allFinishedLoadable.state === "hasData",
-    allFinished,
-    queueLoading: queueLoadable.state === "loading",
+    sending,
   });
 
   const handleInputChange = (text: string) => {

@@ -1739,15 +1739,24 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       expect(response.status).toBe(200);
 
-      // The queued row itself stays immutable; only user_message_run records
-      // the newly-created run association.
-      const storage = await getTestUserMessageRunStorage({
+      const queuedStorage = await getTestUserMessageRunStorage({
         threadId,
         content: "queued next turn",
+        runId: null,
+        revokesMessageId: null,
       });
-      expect(storage?.messageRunId).toBeNull();
-      expect(storage?.associatedRunId).toBeTruthy();
-      expect(storage?.associatedRunId).not.toBe(runId);
+      if (!queuedStorage) {
+        throw new Error("Expected queued user message storage");
+      }
+      expect(queuedStorage?.messageRunId).toBeNull();
+
+      const materializedStorage = await getTestUserMessageRunStorage({
+        threadId,
+        content: "queued next turn",
+        revokesMessageId: queuedStorage.messageId,
+      });
+      expect(materializedStorage?.messageRunId).toBeTruthy();
+      expect(materializedStorage?.messageRunId).not.toBe(runId);
 
       const messages = await getTestChatMessagesByThread(threadId);
       const queuedRow = messages.find((m) => {
@@ -1756,6 +1765,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(queuedRow).toBeDefined();
       expect(queuedRow!.runId).toBeTruthy();
       expect(queuedRow!.runId).not.toBe(runId);
+      expect(queuedRow!.revokesMessageId).toBe(queuedStorage.messageId);
 
       expect(mockAblyPublish).toHaveBeenCalledWith(
         `chatThreadRunCreated:${threadId}`,
@@ -1789,13 +1799,24 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       expect(response.status).toBe(200);
 
-      const storage = await getTestUserMessageRunStorage({
+      const queuedStorage = await getTestUserMessageRunStorage({
         threadId,
         content: "queued after failure",
+        runId: null,
+        revokesMessageId: null,
       });
-      expect(storage?.messageRunId).toBeNull();
-      expect(storage?.associatedRunId).toBeTruthy();
-      expect(storage?.associatedRunId).not.toBe(runId);
+      if (!queuedStorage) {
+        throw new Error("Expected queued user message storage");
+      }
+      expect(queuedStorage?.messageRunId).toBeNull();
+
+      const materializedStorage = await getTestUserMessageRunStorage({
+        threadId,
+        content: "queued after failure",
+        revokesMessageId: queuedStorage.messageId,
+      });
+      expect(materializedStorage?.messageRunId).toBeTruthy();
+      expect(materializedStorage?.messageRunId).not.toBe(runId);
 
       const messages = await getTestChatMessagesByThread(threadId);
       const queuedRow = messages.find((m) => {
@@ -1803,6 +1824,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       });
       expect(queuedRow).toBeDefined();
       expect(queuedRow!.runId).not.toBe(runId);
+      expect(queuedRow!.revokesMessageId).toBe(queuedStorage.messageId);
 
       expect(mockAblyPublish).toHaveBeenCalledWith(
         `chatThreadRunCreated:${threadId}`,

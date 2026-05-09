@@ -1,8 +1,7 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { userMessageRun } from "@vm0/db/schema/user-message-run";
 import { initServices } from "../../init-services";
 import {
   buildWebAttachFilesPrompt,
@@ -13,7 +12,10 @@ import { getApiUrl, generateCallbackSecret } from "../../infra/callback";
 import type { ChatCallbackPayload } from "../../infra/callback/callback-payloads";
 import { publishUserSignal } from "../../infra/realtime/client";
 import { logger } from "../../shared/logger";
-import { getChatThreadIdForRun } from "./chat-message-service";
+import {
+  getChatThreadIdForRun,
+  publishThreadListChanged,
+} from "./chat-message-service";
 import { resolveAttachFileUrls } from "./chat-thread-service";
 
 const log = logger("auto-send-queued");
@@ -43,13 +45,17 @@ async function nextQueuedUserMessage(
     })
     .from(chatMessages)
     .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
-    .leftJoin(userMessageRun, eq(userMessageRun.userMessageId, chatMessages.id))
     .where(
       and(
         eq(chatMessages.chatThreadId, threadId),
         eq(chatMessages.role, "user"),
         isNull(chatMessages.archivedAt),
-        isNull(userMessageRun.userMessageId),
+        isNull(chatMessages.runId),
+        sql`NOT EXISTS (
+          SELECT 1
+          FROM ${chatMessages} AS revoker
+          WHERE revoker.revokes_message_id = ${chatMessages.id}
+        )`,
       ),
     )
     .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id))
@@ -59,10 +65,10 @@ async function nextQueuedUserMessage(
 }
 
 /**
- * After a chat run reaches a terminal state, claim the oldest user message in
- * the thread that has no user_message_run row yet and dispatch it as the next
- * run. The queued message row itself is immutable; claiming appends only the
- * user_message_run association.
+ * After a chat run reaches a terminal state, claim the oldest unassociated user
+ * message in the thread and dispatch it as the next run. The queued message row
+ * itself is immutable; claiming appends a new user row that revokes the queued
+ * row and carries the new run_id.
  */
 export async function autoSendQueuedMessageOnRunComplete(input: {
   runId: string;
@@ -138,16 +144,20 @@ export async function autoSendQueuedMessageOnRunComplete(input: {
     preloadedAgent: agent,
   });
 
-  const linked = await globalThis.services.db
-    .insert(userMessageRun)
+  const claimed = await globalThis.services.db
+    .insert(chatMessages)
     .values({
-      userMessageId: queuedMessage.id,
+      chatThreadId: threadId,
+      role: "user",
+      content: queuedMessage.content,
       runId: run.runId,
+      attachFiles: queuedMessage.attachFiles,
+      revokesMessageId: queuedMessage.id,
     })
-    .onConflictDoNothing({ target: userMessageRun.userMessageId })
-    .returning({ userMessageId: userMessageRun.userMessageId });
+    .onConflictDoNothing({ target: chatMessages.revokesMessageId })
+    .returning({ id: chatMessages.id });
 
-  if (linked.length === 0) {
+  if (claimed.length === 0) {
     await globalThis.services.db
       .update(agentRuns)
       .set({ status: "cancelled", error: "Queued message already claimed" })
@@ -160,5 +170,7 @@ export async function autoSendQueuedMessageOnRunComplete(input: {
     return;
   }
 
+  await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
   await publishUserSignal([userId], `chatThreadRunCreated:${threadId}`);
+  await publishThreadListChanged(userId);
 }

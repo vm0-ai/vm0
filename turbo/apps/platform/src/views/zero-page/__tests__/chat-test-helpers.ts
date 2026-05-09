@@ -12,7 +12,6 @@ import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
   chatMessagesContract,
-  chatThreadQueuedMessagesContract,
   type PagedChatMessage,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -348,25 +347,6 @@ export function mockChatLifecycle(options?: {
         draftAttachments: null,
       });
     }),
-    mockApi(
-      chatThreadQueuedMessagesContract.append,
-      async ({ body, respond }) => {
-        options?.onQueuedMessageAppend?.(body);
-        if (options?.appendGate) {
-          await options.appendGate;
-        }
-        const now = new Date().toISOString();
-        const message = {
-          id: body.clientMessageId,
-          role: "user" as const,
-          content: body.content ?? null,
-          attachFiles: body.attachments ?? undefined,
-          createdAt: now,
-        };
-        queuedMessages.push(message);
-        return respond(201, { message });
-      },
-    ),
     mockApi(chatThreadsContract.list, ({ respond }) => {
       return respond(200, { threads: threadList });
     }),
@@ -380,10 +360,49 @@ export function mockChatLifecycle(options?: {
     }),
     // Unified chat message endpoint (creates thread + run + association)
     mockApi(chatMessagesContract.send, async ({ body, respond }) => {
+      const terminal = new Set(["completed", "failed", "cancelled", "timeout"]);
+      const hasSeedActiveRun = chatMessages.some((m) => {
+        const status = m.role === "assistant" ? m.status : undefined;
+        return (
+          m.runId !== undefined && status !== undefined && !terminal.has(status)
+        );
+      });
+      const hasActiveRun =
+        hasSeedActiveRun || (runAssociated && !terminal.has(runStatus));
+      threadId = body.clientThreadId ?? threadId;
+      if (hasActiveRun) {
+        const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
+        const attachFiles = body.attachFiles?.map((file) => {
+          return {
+            ...file,
+            url: `/f/test/${file.id}/${file.filename}`,
+          };
+        });
+        options?.onQueuedMessageAppend?.({
+          content: body.prompt,
+          attachments: attachFiles,
+          clientMessageId,
+        });
+        if (options?.appendGate) {
+          await options.appendGate;
+        }
+        const now = new Date().toISOString();
+        queuedMessages.push({
+          id: clientMessageId,
+          role: "user" as const,
+          content: body.prompt,
+          attachFiles,
+          createdAt: now,
+        });
+        return respond(201, {
+          runId: null,
+          threadId,
+          createdAt: now,
+        });
+      }
       if (options?.sendGate) {
         await options.sendGate;
       }
-      threadId = body.clientThreadId ?? threadId;
       if (body.prompt) {
         runPrompt = body.prompt;
       }
