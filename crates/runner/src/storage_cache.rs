@@ -242,8 +242,15 @@ pub async fn populate_cache(
             })
             .collect::<Vec<_>>();
         let started = Instant::now();
-        sandbox.write_files(&requests).await?;
-        telemetry.record("storage_cache_guest_stage", started.elapsed(), true, None);
+        let result = sandbox.write_files(&requests).await;
+        let error = result.as_ref().err().map(ToString::to_string);
+        telemetry.record(
+            "storage_cache_guest_stage",
+            started.elapsed(),
+            result.is_ok(),
+            error.as_deref(),
+        );
+        result?;
     }
     drop(stage_guards);
 
@@ -975,6 +982,46 @@ mod tests {
             &guest_archive_path(name, version),
             &cache_dir.join("archive.tar.gz"),
             tarball_bytes().len() as u64,
+        );
+    }
+
+    #[tokio::test]
+    async fn guest_stage_failure_records_failed_telemetry() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_write_files_result(Err(sandbox_write_files_error("stage failed")));
+        let mut telemetry = new_telemetry();
+
+        let name = "stage-failure";
+        let version = "v1";
+        let cache_dir = home.storage_cache_dir(name, version);
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        std::fs::write(cache_dir.join("archive.tar.gz"), tarball_bytes()).unwrap();
+
+        let original = "https://r2.example.com/stage-failure.tar.gz".to_string();
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        let err = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("stage failed"), "got: {err}");
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        let ops = telemetry.pending_ops_snapshot();
+        let (_, success, error) = ops
+            .iter()
+            .find(|(k, _, _)| k == "storage_cache_guest_stage")
+            .expect("expected failed guest stage telemetry");
+        assert!(!success);
+        assert!(
+            error
+                .as_deref()
+                .is_some_and(|error| error.contains("stage failed")),
+            "expected stage failure reason in {ops:?}"
         );
     }
 
