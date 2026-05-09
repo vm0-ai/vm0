@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.28.4...guest-agent-v0.29.0) (2026-05-09)
+
+
+### Features
+
+* **guest-agent:** record last event to cli exit metric ([#12272](https://github.com/vm0-ai/vm0/issues/12272)) ([dce7e82](https://github.com/vm0-ai/vm0/commit/dce7e82908b8bf8f5aff511a7995c0f8e20e66a5))
+
 ## [0.28.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.28.3...guest-agent-v0.28.4) (2026-05-09)
 
 ## [0.28.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.28.2...guest-agent-v0.28.3) (2026-05-08)

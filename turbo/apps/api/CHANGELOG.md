@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.21.4](https://github.com/vm0-ai/vm0/compare/api-v1.21.3...api-v1.21.4) (2026-05-09)
+
+
+### Bug Fixes
+
+* refresh connector auth state and catalog ([#12218](https://github.com/vm0-ai/vm0/issues/12218)) ([9cde9c6](https://github.com/vm0-ai/vm0/commit/9cde9c6dd39a3fe2bc266d681ae8c15227a15782))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.3.2
+    * @vm0/core bumped to 8.264.3
+    * @vm0/db bumped to 1.2.3
+
 ## [1.21.3](https://github.com/vm0-ai/vm0/compare/api-v1.21.2...api-v1.21.3) (2026-05-09)
 
 
