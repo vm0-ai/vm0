@@ -519,7 +519,9 @@ describe("chat pending message queue", () => {
         ).not.toBeInTheDocument();
       });
 
-      textarea = await getActiveRunTextarea();
+      // The textarea from line 508 still references the same DOM element
+      // after cancel, but getActiveRunTextarea() would fail because the
+      // placeholder reverts from "Type your next message" to PLACEHOLDER.
       await waitFor(() => {
         expect(textarea.value).toBe("message to be recalled");
       });

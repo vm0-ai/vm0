@@ -1896,9 +1896,9 @@ describe("POST /api/internal/callbacks/chat", () => {
       // Now clear it (simulating recall API call)
       await setTestChatThreadPendingMessage(threadId, null);
 
-      // Verify pending is gone
+      // Verify pending is gone — the row still exists but columns are null
       const afterRecall = await getTestChatThreadPendingMessage(threadId);
-      expect(afterRecall).toBeUndefined();
+      expect(afterRecall?.pendingMessageContent).toBeNull();
 
       // Now the cancel callback fires (as "failed" because cancelled maps to failed)
       const response = await POST(
