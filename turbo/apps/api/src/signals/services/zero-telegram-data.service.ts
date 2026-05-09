@@ -1,13 +1,10 @@
 import { computed, type Computed } from "ccstate";
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
 import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, desc, eq } from "drizzle-orm";
 
@@ -215,32 +212,6 @@ function buildOfficialTelegramBot(args: {
   });
 }
 
-function loadFeatureSwitchOverrides(args: {
-  readonly orgId: string;
-  readonly userId: string;
-}): Computed<Promise<Partial<Record<FeatureSwitchKey, boolean>> | undefined>> {
-  return computed(async (get) => {
-    const db = get(db$);
-    const [row] = await db
-      .select({ switches: userFeatureSwitches.switches })
-      .from(userFeatureSwitches)
-      .where(
-        and(
-          eq(userFeatureSwitches.orgId, args.orgId),
-          eq(userFeatureSwitches.userId, args.userId),
-        ),
-      )
-      .limit(1);
-    if (!row) {
-      return undefined;
-    }
-    const switches = row.switches as Record<string, boolean>;
-    return Object.keys(switches).length > 0
-      ? (switches as Partial<Record<FeatureSwitchKey, boolean>>)
-      : undefined;
-  });
-}
-
 export function zeroTelegramBots(args: {
   readonly orgId: string;
   readonly userId: string;
@@ -285,19 +256,6 @@ export function zeroTelegramBots(args: {
         };
       }),
     );
-
-    const overrides = await get(loadFeatureSwitchOverrides(args));
-    const officialEnabled = isFeatureEnabled(
-      FeatureSwitchKey.OfficialTelegramBot,
-      {
-        userId: args.userId,
-        orgId: args.orgId,
-        overrides,
-      },
-    );
-    if (!officialEnabled) {
-      return customBots;
-    }
 
     const official = await get(buildOfficialTelegramBot(args));
     return [official, ...customBots];
