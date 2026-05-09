@@ -8,7 +8,6 @@ import { zeroLogsSearchContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import { notFound } from "../../lib/error";
 import {
   zeroLogDetail,
@@ -86,15 +85,14 @@ export const zeroLogsRoutes: readonly RouteEntry[] = [
     route: logsListContract.list,
     handler: authRoute(runReadAuth, getLogsListInner$),
   },
+  // Register the literal `/search` path before `/:id` so Hono matches the
+  // search endpoint instead of treating `search` as a log id.
+  {
+    route: zeroLogsSearchContract.searchLogs,
+    handler: authRoute(runReadAuth, searchLogsInner$),
+  },
   {
     route: logsByIdContract.getById,
     handler: authRoute(runReadAuth, getLogByIdInner$),
-  },
-  {
-    route: zeroLogsSearchContract.searchLogs,
-    handler: shadowCompareRoute({
-      route: zeroLogsSearchContract.searchLogs,
-      handler: authRoute(runReadAuth, searchLogsInner$),
-    }),
   },
 ];
