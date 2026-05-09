@@ -144,6 +144,14 @@ const chatThreadListItemSchema = z.object({
    * Optional for back-compat with fixtures that predate the field.
    */
   renamedAt: z.string().nullable().optional(),
+  /**
+   * Single-line preview of the most recent message in the thread. Drives the
+   * mobile chat list secondary line — the title says what the thread is
+   * *about*, the preview shows what was last said. Server should truncate to
+   * ~120 chars. Optional so existing fixtures and pre-rollout backends keep
+   * validating; the frontend falls back to the agent name when absent.
+   */
+  lastMessagePreview: z.string().nullable().optional(),
 });
 
 const toolSummaryEntrySchema = z.object({

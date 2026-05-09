@@ -457,6 +457,13 @@ function threadSecondaryLine(
   if (session.running) {
     return "Running…";
   }
+  // Prefer the server-supplied preview of the last message — that's what the
+  // user actually wants to skim. Fall back to the agent name only when the
+  // preview is missing (older backends, threads with no messages yet).
+  const preview = session.lastMessagePreview?.trim();
+  if (preview) {
+    return preview;
+  }
   return agentName ?? "";
 }
 
@@ -615,6 +622,8 @@ function buildDemoSessions(): ChatThreadListItem[] {
       isRead: false,
       isArchived: false,
       running: false,
+      lastMessagePreview:
+        "Pulled together the v3 frames + open questions. Want me to flag the ones that need a decision?",
     },
     {
       id: "demo-2",
@@ -626,6 +635,8 @@ function buildDemoSessions(): ChatThreadListItem[] {
       isArchived: false,
       running: false,
       hasDraft: true,
+      lastMessagePreview:
+        "Drafting three headline variants — short / medium / long-form. First pass uses the new positioning…",
     },
     {
       id: "demo-3",
@@ -636,6 +647,7 @@ function buildDemoSessions(): ChatThreadListItem[] {
       isRead: true,
       isArchived: false,
       running: true,
+      lastMessagePreview: null,
     },
     {
       id: "demo-4",
@@ -647,6 +659,8 @@ function buildDemoSessions(): ChatThreadListItem[] {
       isRead: false,
       isArchived: false,
       running: false,
+      lastMessagePreview:
+        "Looking at the rollout, I'd phase it: shadow-mode first, then dual-write, then cut over.",
     },
     {
       id: "demo-5",
@@ -657,6 +671,8 @@ function buildDemoSessions(): ChatThreadListItem[] {
       isRead: true,
       isArchived: false,
       running: false,
+      lastMessagePreview:
+        "Tightened the welcome screen copy. Want me to also revise the empty states?",
     },
     {
       id: "demo-6",
@@ -667,6 +683,8 @@ function buildDemoSessions(): ChatThreadListItem[] {
       isRead: true,
       isArchived: false,
       running: false,
+      lastMessagePreview:
+        "Variant B converted 12% better at p<0.01. Preparing the final write-up with the segment cuts.",
     },
     {
       id: "demo-7",
@@ -677,6 +695,8 @@ function buildDemoSessions(): ChatThreadListItem[] {
       isRead: true,
       isArchived: false,
       running: false,
+      lastMessagePreview:
+        "Acme is interested in the enterprise tier. They asked about SSO, SCIM, and audit-log retention.",
     },
     {
       id: "demo-8",
@@ -687,6 +707,7 @@ function buildDemoSessions(): ChatThreadListItem[] {
       isRead: true,
       isArchived: false,
       running: false,
+      lastMessagePreview: "Hi! What can I help you draft today?",
     },
   ];
 }
