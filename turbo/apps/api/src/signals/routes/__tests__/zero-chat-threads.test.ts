@@ -90,6 +90,8 @@ describe("GET /api/zero/chat-threads/:id", () => {
       draftAttachments: null,
       pendingMessage: null,
       modelProviderId: null,
+      modelProviderType: null,
+      modelProviderCredentialScope: null,
       selectedModel: null,
       renamedAt: null,
       chatMessages: [
