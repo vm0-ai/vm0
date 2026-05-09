@@ -7,7 +7,11 @@ import {
   type PendingMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { changeChatPendingMessage } from "../../../mocks/mock-helpers.ts";
 import { server } from "../../../mocks/server.ts";
@@ -510,7 +514,9 @@ describe("chat pending message queue", () => {
 
       // The queued message should be recalled into the draft
       await waitFor(() => {
-        expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+        expect(
+          screen.queryByLabelText("Queued message"),
+        ).not.toBeInTheDocument();
       });
 
       textarea = await getActiveRunTextarea();
@@ -553,6 +559,4 @@ describe("chat pending message queue", () => {
       });
     });
   });
-
-
 });

@@ -1926,6 +1926,5 @@ describe("POST /api/internal/callbacks/chat", () => {
       // No pending-message-change signal since nothing was queued
       // (the pending was already cleared before the callback fired)
     });
-
   });
 });

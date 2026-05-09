@@ -1336,7 +1336,10 @@ export function ZeroChatComposer({
                         size="sm"
                         className="rounded-lg h-9 w-9 p-0 shrink-0"
                         onClick={handleButtonClick}
-                        disabled={!canSend}
+                        disabled={
+                          !canSend ||
+                          (sending && (!queueWhileSending || !onQueue))
+                        }
                         aria-label="Send"
                       >
                         <IconArrowUp size={18} stroke={2} />
