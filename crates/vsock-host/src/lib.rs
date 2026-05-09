@@ -6553,7 +6553,7 @@ mod tests {
     #[tokio::test]
     async fn test_concurrent_exec_and_wait_exit() {
         let (host_stream, mut guest) = make_pair();
-        let (send_exit_tx, send_exit_rx) = oneshot::channel::<()>();
+        let (release_exit_tx, release_exit_rx) = oneshot::channel::<()>();
 
         tokio::spawn(async move {
             let mut decoder = Decoder::new();
@@ -6582,7 +6582,9 @@ mod tests {
             let exec_resp = vsock_proto::encode(MSG_EXEC_RESULT, exec_seq, &exec_payload).unwrap();
             guest.write_all(&exec_resp).await.unwrap();
 
-            let _ = send_exit_rx.await;
+            // Keep wait_for_exit pending until the host has observed the exec
+            // response; this is deterministic and avoids fixed timing delays.
+            release_exit_rx.await.unwrap();
             let exit_payload = vsock_proto::encode_process_exit(50, 42, b"exited", b"");
             let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
             guest.write_all(&exit_msg).await.unwrap();
@@ -6611,8 +6613,7 @@ mod tests {
             .unwrap();
         assert_eq!(exec_result.exit_code, 0);
         assert_eq!(exec_result.stdout, b"concurrent");
-
-        send_exit_tx.send(()).unwrap();
+        release_exit_tx.send(()).unwrap();
 
         // wait_for_exit should also resolve
         let exit_event = wait_task.await.unwrap().unwrap();
