@@ -28,9 +28,13 @@ const SLACK_BOT_SCOPES: readonly string[] = [
   "files:write",
 ];
 
-function hasAllBotScopes(storedScopes: string[] | null): boolean {
-  if (storedScopes === null) return false;
-  const stored = new Set(storedScopes);
+function hasAllBotScopes(storedScopes: string | null): boolean {
+  if (storedScopes === null) {
+    return false;
+  }
+  const parsed: unknown = JSON.parse(storedScopes);
+  const scopes: string[] = Array.isArray(parsed) ? parsed : [];
+  const stored = new Set(scopes);
   return SLACK_BOT_SCOPES.every((s) => {
     return stored.has(s);
   });
@@ -128,13 +132,15 @@ export function zeroSlackOrgStatus(args: {
       .limit(1);
 
     if (!connection) {
-      const scopeFields =
-        isAdmin
-          ? {
-              scopeMismatch: !hasAllBotScopes(installation.botScopes),
-              reinstallUrl: null as string | null,
-            }
-          : { scopeMismatch: null as boolean | null, reinstallUrl: null as string | null };
+      const scopeFields = isAdmin
+        ? {
+            scopeMismatch: !hasAllBotScopes(installation.botScopes),
+            reinstallUrl: null as string | null,
+          }
+        : {
+            scopeMismatch: null as boolean | null,
+            reinstallUrl: null as string | null,
+          };
 
       return {
         isConnected: false,
@@ -149,13 +155,15 @@ export function zeroSlackOrgStatus(args: {
       };
     }
 
-    const scopeFields =
-      isAdmin
-        ? {
-            scopeMismatch: !hasAllBotScopes(installation.botScopes),
-            reinstallUrl: null as string | null,
-          }
-        : { scopeMismatch: null as boolean | null, reinstallUrl: null as string | null };
+    const scopeFields = isAdmin
+      ? {
+          scopeMismatch: !hasAllBotScopes(installation.botScopes),
+          reinstallUrl: null as string | null,
+        }
+      : {
+          scopeMismatch: null as boolean | null,
+          reinstallUrl: null as string | null,
+        };
 
     return {
       isConnected: true,
