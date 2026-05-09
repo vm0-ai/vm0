@@ -88,10 +88,7 @@ export const zeroLogsRoutes: readonly RouteEntry[] = [
   },
   {
     route: logsByIdContract.getById,
-    handler: shadowCompareRoute({
-      route: logsByIdContract.getById,
-      handler: authRoute(runReadAuth, getLogByIdInner$),
-    }),
+    handler: authRoute(runReadAuth, getLogByIdInner$),
   },
   {
     route: zeroLogsSearchContract.searchLogs,

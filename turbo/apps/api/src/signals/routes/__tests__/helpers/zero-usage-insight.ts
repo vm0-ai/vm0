@@ -36,6 +36,8 @@ interface SeedRunArgs {
   readonly chatThreadId?: string;
   readonly status?: string;
   readonly sandboxReuseResult?: string | null;
+  readonly result?: Record<string, unknown> | null;
+  readonly error?: string | null;
 }
 
 interface SeedScheduleArgs {
@@ -272,6 +274,8 @@ export const seedRun$ = command(
         status: args.status ?? "pending",
         sessionId: session.id,
         sandboxReuseResult: args.sandboxReuseResult ?? null,
+        result: args.result ?? null,
+        error: args.error ?? null,
       })
       .returning({ id: agentRuns.id });
     signal.throwIfAborted();
@@ -283,6 +287,67 @@ export const seedRun$ = command(
       triggerSource: args.triggerSource ?? "cli",
       scheduleId: args.scheduleId ?? null,
       chatThreadId: args.chatThreadId ?? null,
+    });
+    signal.throwIfAborted();
+    return { runId: run.id };
+  },
+);
+
+// A run whose agent_compose_version_id is null — mirrors web's
+// seedOrphanTestRun. Tests the leftJoin path where compose+agent are missing
+// (response has agentId/framework/displayName all null).
+export const seedOrphanRun$ = command(
+  async (
+    { set },
+    args: { orgId: string; userId: string; prompt?: string },
+    signal: AbortSignal,
+  ): Promise<{ runId: string }> => {
+    const db = set(writeDb$);
+    // Throwaway compose for the session FK; the run itself has no version.
+    const [compose] = await db
+      .insert(agentComposes)
+      .values({
+        userId: args.userId,
+        orgId: args.orgId,
+        name: `orphan-${randomUUID().slice(0, 8)}`,
+      })
+      .returning({ id: agentComposes.id });
+    signal.throwIfAborted();
+    if (!compose) {
+      throw new Error("seedOrphanRun$: compose insert returned no row");
+    }
+    const [session] = await db
+      .insert(agentSessions)
+      .values({
+        userId: args.userId,
+        orgId: args.orgId,
+        agentComposeId: compose.id,
+      })
+      .returning({ id: agentSessions.id });
+    signal.throwIfAborted();
+    if (!session) {
+      throw new Error("seedOrphanRun$: session insert returned no row");
+    }
+    const [run] = await db
+      .insert(agentRuns)
+      .values({
+        userId: args.userId,
+        orgId: args.orgId,
+        agentComposeVersionId: null,
+        prompt: args.prompt ?? "orphan run prompt",
+        status: "completed",
+        sessionId: session.id,
+      })
+      .returning({ id: agentRuns.id });
+    signal.throwIfAborted();
+    if (!run) {
+      throw new Error("seedOrphanRun$: run insert returned no row");
+    }
+    await db.insert(zeroRuns).values({
+      id: run.id,
+      triggerSource: "cli",
+      scheduleId: null,
+      chatThreadId: null,
     });
     signal.throwIfAborted();
     return { runId: run.id };
