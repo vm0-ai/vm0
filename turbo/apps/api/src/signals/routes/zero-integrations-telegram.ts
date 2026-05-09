@@ -8,7 +8,6 @@ import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import { buildFileDownloadUrl, getFile } from "../external/telegram-client";
 import {
   zeroTelegramBots,
@@ -134,10 +133,7 @@ const telegramReadAuth = {
 export const zeroIntegrationsTelegramRoutes: readonly RouteEntry[] = [
   {
     route: integrationsTelegramBotListContract.listBots,
-    handler: shadowCompareRoute({
-      route: integrationsTelegramBotListContract.listBots,
-      handler: authRoute(telegramReadAuth, getTelegramBotsInner$),
-    }),
+    handler: authRoute(telegramReadAuth, getTelegramBotsInner$),
   },
   {
     route: telegramDownloadFileContract.download,
