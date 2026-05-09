@@ -446,7 +446,7 @@ function ThreadKindIcon({
       {(isUnread || isRunning) && (
         <span
           aria-hidden
-          className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-blue-500 ring-2 ring-background"
+          className="absolute top-0.5 right-0.5 h-2.5 w-2.5 rounded-full bg-blue-500 ring-2 ring-background"
         />
       )}
     </span>

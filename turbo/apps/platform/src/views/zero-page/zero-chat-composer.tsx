@@ -726,7 +726,7 @@ function MicButton({
                 <span className="mic-eq-bar" />
               </>
             ) : (
-              <IconMicrophone size={18} stroke={1.5} />
+              <IconMicrophone size={22} stroke={1.5} />
             )}
           </button>
         </TooltipTrigger>
@@ -1270,7 +1270,7 @@ export function ZeroChatComposer({
               onPaste={handlePaste}
             />
             <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
-              <div className="flex items-center gap-0.5 text-muted-foreground sm:gap-1.5">
+              <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -1280,7 +1280,7 @@ export function ZeroChatComposer({
                         aria-label="Attach"
                         onClick={handleFileSelect}
                       >
-                        <IconPaperclip size={18} stroke={1.5} />
+                        <IconPaperclip size={22} stroke={1.5} />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="top" className="text-xs">
@@ -1298,7 +1298,7 @@ export function ZeroChatComposer({
                   onToggle={handleToggle}
                 />
               </div>
-              <div className="flex items-center gap-0.5 sm:gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 {actionsLoading ? (
                   <Skeleton
                     className={cn(
@@ -1331,7 +1331,6 @@ export function ZeroChatComposer({
                         showUseDefault={modelPicker.showUseDefault}
                       />
                     )}
-                    <div className="mx-1 h-5 w-px bg-border/60 sm:mx-0.5" />
                     <MicButton
                       onTranscribed={(text) => {
                         const base = input;
@@ -1359,7 +1358,7 @@ export function ZeroChatComposer({
                         disabled={sendAction === "none"}
                         aria-label="Send"
                       >
-                        <IconArrowUp size={18} stroke={2} />
+                        <IconArrowUp size={22} stroke={2} />
                       </Button>
                     )}
                   </>
