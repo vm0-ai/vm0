@@ -736,6 +736,7 @@ function ModelFirstModelPicker({
   const defaultSource = inheritLabel ?? autoDefaultSource;
   const selectedModel = resolved?.selectedModel ?? null;
   const explicitSelectedModel = value?.selectedModel ?? null;
+  const showModelPolicies = value !== null;
   const triggerAriaLabel = selectedModel
     ? getCanonicalModelDisplayName(selectedModel)
     : placeholder;
@@ -789,10 +790,12 @@ function ModelFirstModelPicker({
             onChange(effectiveDefault);
           }}
         />
-        <ModelFirstPolicyItems
-          policies={policies}
-          explicitSelectedModel={explicitSelectedModel}
-        />
+        {showModelPolicies && (
+          <ModelFirstPolicyItems
+            policies={policies}
+            explicitSelectedModel={explicitSelectedModel}
+          />
+        )}
       </SelectContent>
     </Select>
   );
