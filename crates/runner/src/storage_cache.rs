@@ -96,7 +96,7 @@ struct StageArchive {
 
 struct ProcessedTarget {
     outcome: TargetOutcome,
-    _guard: nix::fcntl::Flock<std::fs::File>,
+    _guard: Option<nix::fcntl::Flock<std::fs::File>>,
 }
 
 enum TargetOutcome {
@@ -322,7 +322,7 @@ async fn process_one(
                         len: metadata.len(),
                     },
                 },
-                _guard: guard,
+                _guard: Some(guard),
             });
         }
         Ok(metadata) => {
@@ -354,7 +354,7 @@ async fn process_one(
                 outcome: TargetOutcome::SkippedHeadFailed {
                     reason: "missing-size-header".to_string(),
                 },
-                _guard: guard,
+                _guard: None,
             });
         }
         Err(e) => {
@@ -367,7 +367,7 @@ async fn process_one(
             );
             return Ok(ProcessedTarget {
                 outcome: TargetOutcome::SkippedHeadFailed { reason },
-                _guard: guard,
+                _guard: None,
             });
         }
     };
@@ -380,7 +380,7 @@ async fn process_one(
         );
         return Ok(ProcessedTarget {
             outcome: TargetOutcome::SkippedOverSize,
-            _guard: guard,
+            _guard: None,
         });
     }
 
@@ -417,7 +417,7 @@ async fn process_one(
                 len,
             },
         },
-        _guard: guard,
+        _guard: Some(guard),
     })
 }
 
@@ -972,6 +972,40 @@ mod tests {
             ops.iter()
                 .any(|(k, _, _)| k == "storage_cache_skipped_over_size")
         );
+    }
+
+    #[tokio::test]
+    async fn skipped_outcome_does_not_keep_cache_lock() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let http = Client::builder().build().unwrap();
+        let server = MockServer::start_async().await;
+
+        let too_big = CACHE_MAX_SIZE + 1;
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/big.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{too_big}"))
+                    .body(b"x");
+            })
+            .await;
+
+        let target = CacheTarget {
+            kind: TargetKind::Storage,
+            index: 0,
+            name: "user-volume".to_string(),
+            version: "v9".to_string(),
+            archive_url: server.url("/big.tar.gz"),
+        };
+
+        let processed = process_one(&target, &http, &home).await.unwrap();
+
+        probe.assert_async().await;
+        assert!(matches!(processed.outcome, TargetOutcome::SkippedOverSize));
+        assert!(processed._guard.is_none());
     }
 
     #[tokio::test]

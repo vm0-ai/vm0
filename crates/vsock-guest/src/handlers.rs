@@ -619,21 +619,12 @@ impl BatchChild {
     }
 }
 
-fn write_files_result_response(
-    seq: u32,
-    file_count: u32,
-    success: bool,
-    error: &str,
-) -> io::Result<Vec<u8>> {
+fn write_files_success_response(seq: u32, file_count: u32) -> io::Result<Vec<u8>> {
     let entries: Vec<WriteFilesResultEntry> = (0..file_count)
         .map(|file_index| WriteFilesResultEntry {
             file_index,
-            success,
-            error: if success {
-                String::new()
-            } else {
-                error.to_string()
-            },
+            success: true,
+            error: String::new(),
         })
         .collect();
     let payload = vsock_proto::encode_write_files_result(&entries).map_err(to_io_error)?;
@@ -656,7 +647,7 @@ where
     let child = match BatchChild::spawn(start.sudo) {
         Ok(child) => child,
         Err(error) => {
-            return write_files_result_response(start_msg.seq, start.file_count, false, &error);
+            return error_response(start_msg.seq, error);
         }
     };
     let mut batch_header = Vec::with_capacity(BATCH_MAGIC.len() + 4);
@@ -665,7 +656,7 @@ where
     {
         let error = e.to_string();
         child.kill();
-        return write_files_result_response(start_msg.seq, start.file_count, false, &error);
+        return error_response(start_msg.seq, error);
     }
 
     let mut seen = HashSet::new();
@@ -736,12 +727,7 @@ where
                 {
                     let error = e.to_string();
                     child.kill();
-                    return write_files_result_response(
-                        start_msg.seq,
-                        start.file_count,
-                        false,
-                        &error,
-                    );
+                    return error_response(start_msg.seq, error);
                 }
                 if file.content_len > 0 {
                     current = Some((file.file_index, file.content_len));
@@ -772,12 +758,7 @@ where
                 if let Err(e) = child.write_chunk_payload(msg.payload) {
                     let error = e.to_string();
                     child.kill();
-                    return write_files_result_response(
-                        start_msg.seq,
-                        start.file_count,
-                        false,
-                        &error,
-                    );
+                    return error_response(start_msg.seq, error);
                 }
                 let next_remaining = remaining - chunk_len;
                 current = (next_remaining > 0).then_some((file_index, next_remaining));
@@ -798,22 +779,15 @@ where
                     );
                 }
                 let (success, error) = child.finish();
-                return write_files_result_response(
-                    start_msg.seq,
-                    start.file_count,
-                    success,
-                    &error,
-                );
+                if success {
+                    return write_files_success_response(start_msg.seq, start.file_count);
+                }
+                return error_response(start_msg.seq, error);
             }
             MSG_WRITE_FILES_ABORT => {
                 let _ = vsock_proto::decode_write_files_abort(&msg.payload);
                 child.kill();
-                return write_files_result_response(
-                    start_msg.seq,
-                    start.file_count,
-                    false,
-                    "write_files aborted",
-                );
+                return error_response(start_msg.seq, "write_files aborted");
             }
             _ => {
                 child.kill();
@@ -1120,6 +1094,42 @@ mod tests {
             error.contains("write_files_chunk too short"),
             "got: {error}"
         );
+    }
+
+    #[test]
+    fn write_files_stream_batch_failure_returns_single_error_response() {
+        let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
+        let _path_guard = install_test_guest_write_file(
+            "cat >/dev/null; printf '%*s' 20000 '' | tr ' ' x >&2; exit 1",
+        );
+        let file_count = vsock_proto::MAX_WRITE_FILES_COUNT as u32;
+        let start_payload = vsock_proto::encode_write_files_start(false, file_count, 0).unwrap();
+        let start = RawMessage {
+            msg_type: vsock_proto::MSG_WRITE_FILES_START,
+            seq: 9,
+            payload: start_payload,
+        };
+        let mut messages = VecDeque::new();
+        for file_index in 0..file_count {
+            let path = format!("/tmp/file-{file_index}");
+            messages.push_back(RawMessage {
+                msg_type: MSG_WRITE_FILES_FILE,
+                seq: 9,
+                payload: vsock_proto::encode_write_files_file(file_index, &path, 0).unwrap(),
+            });
+        }
+        messages.push_back(RawMessage {
+            msg_type: MSG_WRITE_FILES_FINISH,
+            seq: 9,
+            payload: Vec::new(),
+        });
+
+        let response = handle_write_files_stream(&start, || Ok(messages.pop_front())).unwrap();
+        let response = decode_single_response(&response);
+
+        assert_eq!(response.msg_type, MSG_ERROR);
+        let error = vsock_proto::decode_error(&response.payload).unwrap();
+        assert!(error.contains("write failed:"), "got: {error}");
     }
 
     #[test]
