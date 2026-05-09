@@ -29,6 +29,7 @@
 //! keyed by sequence number.
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::io;
 use std::os::fd::RawFd;
 use std::path::Path;
@@ -1243,9 +1244,22 @@ async fn prepare_write_files<'a>(
 async fn send_write_files_stream(
     shared: &Arc<Shared>,
     seq: u32,
-    mut files: Vec<PreparedWriteFile<'_>>,
+    files: Vec<PreparedWriteFile<'_>>,
     sudo: bool,
     timeout: Duration,
+) -> io::Result<()> {
+    send_write_files_stream_until(shared, seq, files, sudo, async move {
+        tokio::time::sleep(timeout).await;
+    })
+    .await
+}
+
+async fn send_write_files_stream_until(
+    shared: &Arc<Shared>,
+    seq: u32,
+    mut files: Vec<PreparedWriteFile<'_>>,
+    sudo: bool,
+    timeout: impl Future<Output = ()>,
 ) -> io::Result<()> {
     let file_count = u32::try_from(files.len()).map_err(|_| {
         io::Error::new(
@@ -1265,7 +1279,12 @@ async fn send_write_files_stream(
         }
     }
 
-    let stream_result = tokio::time::timeout(timeout, async {
+    enum StreamResult {
+        Completed(io::Result<()>),
+        TimedOut,
+    }
+
+    let stream = async {
         // Active after START; any cancellation or write/read failure before
         // FINISH poisons the connection so the guest stream cannot hang.
         let mut write_guard = FrameWriteGuard::new(Arc::clone(shared));
@@ -1330,12 +1349,17 @@ async fn send_write_files_stream(
         write_proto_frame(&mut writer, MSG_WRITE_FILES_FINISH, seq, &[]).await?;
         write_guard.disarm();
         Ok(())
-    })
-    .await;
+    };
+
+    tokio::pin!(timeout);
+    let stream_result = tokio::select! {
+        result = stream => StreamResult::Completed(result),
+        _ = &mut timeout => StreamResult::TimedOut,
+    };
 
     match stream_result {
-        Ok(result) => result,
-        Err(_) => {
+        StreamResult::Completed(result) => result,
+        StreamResult::TimedOut => {
             shared.poison_connection();
             Err(io::Error::new(
                 io::ErrorKind::TimedOut,
@@ -5135,15 +5159,18 @@ mod tests {
             source: PreparedWriteFileSource::Bytes(&content),
         }];
         let seq = host.shared.next_seq();
+        let (timeout_tx, timeout_rx) = oneshot::channel::<()>();
 
-        let send =
-            send_write_files_stream(&host.shared, seq, files, false, Duration::from_millis(50));
+        let send = send_write_files_stream_until(&host.shared, seq, files, false, async {
+            let _ = timeout_rx.await;
+        });
         tokio::pin!(send);
         tokio::select! {
             _ = frame_started.notified() => {}
             result = &mut send => panic!("write_files stream completed before blocking: {result:?}"),
         }
 
+        let _ = timeout_tx.send(());
         let err = send.await.unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::TimedOut);
         host.wait_until_closed(Duration::from_secs(5))
