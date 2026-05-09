@@ -1,4 +1,5 @@
 import { computed, type Computed } from "ccstate";
+import type { VoiceChatSession } from "@vm0/api-contracts/contracts/zero-voice-chat";
 import { voiceChatSessions, voiceChatTasks } from "@vm0/db/schema/voice-chat";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 
@@ -7,6 +8,32 @@ import { db$ } from "../external/db";
 const ACTIVE_TASK_STATUSES = ["pending", "queued", "running"] as const;
 const FINISHED_TASK_STATUSES = ["done", "failed"] as const;
 const MAX_FINISHED_TASKS = 3;
+
+/**
+ * Map a `voice_chat_sessions` row to the contract-shaped `VoiceChatSession`
+ * DTO. Mirrors web's `serializeVoiceChatSession` in
+ * `apps/web/app/api/zero/voice-chat/_support.ts` so the contract -> row
+ * mapping has a single source of truth across the api migration. Sibling
+ * routes (`getSession`, `listTasks`) reuse this when they migrate.
+ */
+export function serializeVoiceChatSession(
+  session: typeof voiceChatSessions.$inferSelect,
+): VoiceChatSession {
+  return {
+    id: session.id,
+    orgId: session.orgId,
+    userId: session.userId,
+    agentId: session.agentId,
+    mode: "chat",
+    conversationSummary: session.conversationSummary,
+    workingTasksSummary: session.workingTasksSummary,
+    finishedTasksSummary: session.finishedTasksSummary,
+    summarySeq: session.summarySeq,
+    summaryVersion: session.summaryVersion,
+    lastSummaryAt: session.lastSummaryAt?.toISOString() ?? null,
+    createdAt: session.createdAt.toISOString(),
+  };
+}
 
 export function voiceChatSessionList(
   orgId: string,

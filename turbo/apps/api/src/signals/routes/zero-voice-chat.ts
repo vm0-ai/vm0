@@ -11,6 +11,7 @@ import { notFound } from "../../lib/error";
 import type { RouteEntry } from "../route";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
+  serializeVoiceChatSession,
   voiceChatSessionList,
   voiceChatSessionDetail,
   voiceChatTaskList,
@@ -42,24 +43,7 @@ const listSessionsInner$ = computed(async (get) => {
   const sessions = await get(voiceChatSessionList(auth.orgId, auth.userId));
   return {
     status: 200 as const,
-    body: {
-      sessions: sessions.map((session) => {
-        return {
-          id: session.id,
-          orgId: session.orgId,
-          userId: session.userId,
-          agentId: session.agentId,
-          mode: "chat" as const,
-          conversationSummary: session.conversationSummary,
-          workingTasksSummary: session.workingTasksSummary,
-          finishedTasksSummary: session.finishedTasksSummary,
-          summarySeq: session.summarySeq,
-          summaryVersion: session.summaryVersion,
-          lastSummaryAt: session.lastSummaryAt?.toISOString() ?? null,
-          createdAt: session.createdAt.toISOString(),
-        };
-      }),
-    },
+    body: { sessions: sessions.map(serializeVoiceChatSession) },
   };
 });
 
