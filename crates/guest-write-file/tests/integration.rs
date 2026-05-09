@@ -184,6 +184,22 @@ fn create_mode_rejects_character_device_target() {
 
 #[cfg(unix)]
 #[test]
+fn create_mode_rejects_symlink_target() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target.txt");
+    let link = dir.path().join("link.txt");
+    std::fs::write(&target, b"original").unwrap();
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let link_str = link.to_str().unwrap();
+
+    let output = run_helper(&[link_str], b"replacement");
+
+    assert!(!output.status.success());
+    assert_eq!(std::fs::read(&target).unwrap(), b"original");
+}
+
+#[cfg(unix)]
+#[test]
 fn create_mode_fails_fast_for_fifo_without_reader() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("fifo");

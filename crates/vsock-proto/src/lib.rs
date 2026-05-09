@@ -20,7 +20,7 @@
 //! | 0x02 | G→H       | pong              | (empty) |
 //! | 0x03 | H→G       | exec              | `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)` |
 //! | 0x04 | G→H       | exec_result       | `[4B exit_code][4B stdout_len][stdout][4B stderr_len][stderr]` |
-//! | 0x05 | H→G       | write_file        | `[2B path_len][path][1B flags][4B content_len][content]` (flags: `SUDO=0x01`, `APPEND=0x02`) |
+//! | 0x05 | H→G       | write_file        | `[2B path_len][path][1B flags][4B content_len][content]` (flags: `SUDO=0x01`) |
 //! | 0x06 | G→H       | write_file_result | `[1B success][2B error_len][error]` |
 //! | 0x07 | H→G       | spawn_watch       | `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)([2B log_path_len][log_path])` (flags: `SUDO=0x01`, `STREAM_STDOUT=0x02`) |
 //! | 0x08 | G→H       | spawn_watch_result| `[4B pid]` |

@@ -673,12 +673,19 @@ where
     let mut received_total = 0u64;
 
     loop {
-        let Some(msg) = next_msg()? else {
-            child.kill();
-            return Err(io::Error::new(
-                io::ErrorKind::UnexpectedEof,
-                "connection closed during write_files stream",
-            ));
+        let msg = match next_msg() {
+            Ok(Some(msg)) => msg,
+            Ok(None) => {
+                child.kill();
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "connection closed during write_files stream",
+                ));
+            }
+            Err(e) => {
+                child.kill();
+                return Err(e);
+            }
         };
         if msg.seq != start_msg.seq {
             child.kill();
@@ -693,8 +700,13 @@ where
                         "write_files file started before prior file completed",
                     );
                 }
-                let file =
-                    vsock_proto::decode_write_files_file(&msg.payload).map_err(to_io_error)?;
+                let file = match vsock_proto::decode_write_files_file(&msg.payload) {
+                    Ok(file) => file,
+                    Err(e) => {
+                        child.kill();
+                        return error_response(start_msg.seq, e.to_string());
+                    }
+                };
                 if file.file_index >= start.file_count {
                     child.kill();
                     return error_response(start_msg.seq, "write_files file index out of range");
@@ -737,8 +749,13 @@ where
                 received_total += file.content_len;
             }
             MSG_WRITE_FILES_CHUNK => {
-                let chunk =
-                    vsock_proto::decode_write_files_chunk(&msg.payload).map_err(to_io_error)?;
+                let chunk = match vsock_proto::decode_write_files_chunk(&msg.payload) {
+                    Ok(chunk) => chunk,
+                    Err(e) => {
+                        child.kill();
+                        return error_response(start_msg.seq, e.to_string());
+                    }
+                };
                 let Some((file_index, remaining)) = current else {
                     child.kill();
                     return error_response(start_msg.seq, "write_files chunk without active file");
@@ -845,9 +862,59 @@ pub(crate) fn handle_message(msg: &RawMessage) -> io::Result<MessageOutcome> {
 mod tests {
     use super::*;
     use crate::threading::test_support::FailingThreadSpawner;
+    use std::os::unix::fs::PermissionsExt;
     use std::sync::Mutex;
 
     static WRITE_FILE_CHILD_TESTS: Mutex<()> = Mutex::new(());
+
+    struct DebugGuestWriteFilePathGuard {
+        previous: Option<PathBuf>,
+        dir: PathBuf,
+    }
+
+    impl Drop for DebugGuestWriteFilePathGuard {
+        fn drop(&mut self) {
+            *DEBUG_GUEST_WRITE_FILE_PATH
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = self.previous.take();
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    fn install_test_guest_write_file(script: &str) -> DebugGuestWriteFilePathGuard {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "vm0-vsock-guest-write-file-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("guest-write-file");
+        std::fs::write(&path, format!("#!/bin/sh\n{script}\n")).unwrap();
+        let mut permissions = std::fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&path, permissions).unwrap();
+
+        let previous = {
+            let mut guard = DEBUG_GUEST_WRITE_FILE_PATH
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let previous = guard.clone();
+            *guard = Some(path);
+            previous
+        };
+
+        DebugGuestWriteFilePathGuard { previous, dir }
+    }
+
+    fn decode_single_response(response: &[u8]) -> RawMessage {
+        let mut decoder = vsock_proto::Decoder::new();
+        let mut messages = decoder.decode(response).unwrap();
+        assert_eq!(messages.len(), 1);
+        messages.remove(0)
+    }
 
     fn spawn_write_file_test_child(script: &str) -> Child {
         // Use a stable shell binary instead of a freshly written temp
@@ -994,6 +1061,65 @@ mod tests {
             _ => panic!("expected queue to remain usable after oversized item rejection"),
         }
         assert!(queue.recv().is_none());
+    }
+
+    #[test]
+    fn write_files_stream_malformed_file_payload_returns_error_response() {
+        let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
+        let _path_guard = install_test_guest_write_file("cat >/dev/null");
+        let start_payload = vsock_proto::encode_write_files_start(false, 1, 1).unwrap();
+        let start = RawMessage {
+            msg_type: vsock_proto::MSG_WRITE_FILES_START,
+            seq: 7,
+            payload: start_payload,
+        };
+        let mut messages = VecDeque::from([RawMessage {
+            msg_type: MSG_WRITE_FILES_FILE,
+            seq: 7,
+            payload: vec![0],
+        }]);
+
+        let response = handle_write_files_stream(&start, || Ok(messages.pop_front())).unwrap();
+        let response = decode_single_response(&response);
+
+        assert_eq!(response.msg_type, MSG_ERROR);
+        let error = vsock_proto::decode_error(&response.payload).unwrap();
+        assert!(error.contains("write_files_file too short"), "got: {error}");
+    }
+
+    #[test]
+    fn write_files_stream_malformed_chunk_payload_returns_error_response() {
+        let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
+        let _path_guard = install_test_guest_write_file("cat >/dev/null");
+        let start_payload = vsock_proto::encode_write_files_start(false, 1, 1).unwrap();
+        let start = RawMessage {
+            msg_type: vsock_proto::MSG_WRITE_FILES_START,
+            seq: 8,
+            payload: start_payload,
+        };
+        let file_payload = vsock_proto::encode_write_files_file(0, "/tmp/file", 1).unwrap();
+        let mut messages = VecDeque::from([
+            RawMessage {
+                msg_type: MSG_WRITE_FILES_FILE,
+                seq: 8,
+                payload: file_payload,
+            },
+            RawMessage {
+                msg_type: MSG_WRITE_FILES_CHUNK,
+                seq: 8,
+                payload: vec![0],
+            },
+        ]);
+
+        let response = handle_write_files_stream(&start, || Ok(messages.pop_front())).unwrap();
+        let response = decode_single_response(&response);
+
+        assert_eq!(response.msg_type, MSG_ERROR);
+        let error = vsock_proto::decode_error(&response.payload).unwrap();
+        assert!(
+            error.contains("write_files_chunk too short"),
+            "got: {error}"
+        );
     }
 
     #[test]
