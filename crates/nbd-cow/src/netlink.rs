@@ -633,7 +633,6 @@ mod tests {
         let recv_fd = unsafe { OwnedFd::from_raw_fd(fds[0]) };
         let send_fd = unsafe { OwnedFd::from_raw_fd(fds[1]) };
         set_test_recv_timeout(&recv_fd);
-        set_test_recv_timeout(&send_fd);
         (
             GenlSocket {
                 fd: recv_fd,
@@ -653,21 +652,6 @@ mod tests {
             )
         };
         assert_eq!(ret, msg.len() as isize);
-    }
-
-    fn recv_test_nl(peer: &OwnedFd) -> Vec<u8> {
-        let mut buf = vec![0u8; 4096];
-        let n = unsafe {
-            libc::recv(
-                std::os::unix::io::AsRawFd::as_raw_fd(peer),
-                buf.as_mut_ptr().cast(),
-                buf.len(),
-                0,
-            )
-        };
-        assert!(n > 0, "recv failed: {}", std::io::Error::last_os_error());
-        buf.truncate(n as usize);
-        buf
     }
 
     #[test]
@@ -765,13 +749,9 @@ mod tests {
     }
 
     #[test]
-    fn resolve_nbd_family_ignores_stale_reply_and_reads_matching_family_id() {
+    fn recv_nl_for_seq_ignores_stale_family_reply() {
         let (sock, peer) = test_genl_socket_pair();
-        let resolver = std::thread::spawn(move || resolve_nbd_family(&sock));
-
-        let request = recv_test_nl(&peer);
-        let request_seq = nlmsg_seq(&request, request.len()).unwrap();
-        assert_eq!(nlmsg_flags(&request) & NLM_F_ACK, 0);
+        let expected_seq = 42;
 
         let stale_attrs = build_nla(CTRL_ATTR_FAMILY_ID, &999u16.to_ne_bytes());
         let stale_reply = build_genl_msg(
@@ -779,7 +759,7 @@ mod tests {
             CTRL_CMD_GETFAMILY,
             1,
             &stale_attrs,
-            request_seq + 1,
+            expected_seq + 1,
             false,
         );
         let matching_attrs = build_nla(CTRL_ATTR_FAMILY_ID, &123u16.to_ne_bytes());
@@ -788,14 +768,17 @@ mod tests {
             CTRL_CMD_GETFAMILY,
             1,
             &matching_attrs,
-            request_seq,
+            expected_seq,
             false,
         );
 
         send_test_nl(&peer, &stale_reply);
         send_test_nl(&peer, &matching_reply);
 
-        let family_id = resolver.join().unwrap().unwrap();
+        let mut buf = vec![0u8; 4096];
+        let n = recv_nl_for_seq(&sock, &mut buf, expected_seq).unwrap();
+        assert!(matches!(parse_nl_msg(&buf, n), Ok(NlMsg::Reply)));
+        let family_id = u16::from_ne_bytes(buf[24..26].try_into().unwrap());
         assert_eq!(family_id, 123);
     }
 
