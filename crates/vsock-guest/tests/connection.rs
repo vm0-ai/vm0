@@ -435,6 +435,30 @@ fn bounded_exec_stdin_writer_exits_when_grandchild_holds_stdin() {
 }
 
 #[test]
+fn bounded_exec_cleans_stdin_holder_after_small_stdin_finishes() {
+    let orphan = OrphanProcessGuard::new("bounded-exec-small-stdin-orphan");
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let stdin = b"x";
+    let command = format!(
+        "python3 -c \"import os,signal; p=os.fork(); (os.write(os.open('{}', os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o600), str(p).encode()), os._exit(0)) if p else (os.setsid(), os.dup2(os.open('/dev/null', os.O_WRONLY), 1), os.dup2(os.open('/dev/null', os.O_WRONLY), 2), signal.pause())\"",
+        orphan.pid_path()
+    );
+    let request = bounded_request(&command, &[], Some(stdin.as_slice()));
+    send_bounded_exec(&mut host_stream, 39, &request);
+    let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 39);
+
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    let orphan_pid = read_pid_file(orphan.pid_path());
+    wait_for_pid_exit(orphan_pid, "bounded exec small stdin cleanup");
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn bounded_exec_disconnect_kills_setsid_grandchild_holding_stdin() {
     let orphan = OrphanProcessGuard::new("bounded-exec-cancel-stdin-orphan");
     let (handle, mut host_stream) = start_guest_connection();
