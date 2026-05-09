@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroInsightsContract } from "@vm0/api-contracts/contracts/zero-insights";
+import {
+  zeroInsightsContract,
+  zeroInsightsRangeContract,
+} from "@vm0/api-contracts/contracts/zero-insights";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -26,6 +29,10 @@ function authHeaders() {
 
 function apiClient() {
   return setupApp({ context })(zeroInsightsContract);
+}
+
+function apiRangeClient() {
+  return setupApp({ context })(zeroInsightsRangeContract);
 }
 
 function daysAgo(n: number): string {
@@ -355,5 +362,167 @@ describe("GET /api/zero/insights", () => {
     expect(response.body.days[0]?.date).toBe(day2);
     expect(response.body.days[1]?.date).toBe(day3);
     expect(response.body.days[2]?.date).toBe(day1);
+  });
+});
+
+describe("GET /api/zero/insights/range", () => {
+  const track = createFixtureTracker<InsightsFixture>((fixture) => {
+    return store.set(deleteInsightsForFixture$, fixture, context.signal);
+  });
+
+  it("returns 401 when the request is unauthenticated", async () => {
+    const response = await accept(apiRangeClient().get({ headers: {} }), [401]);
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+    const response = await accept(
+      apiRangeClient().get({ headers: authHeaders() }),
+      [401],
+    );
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns nulls when no insights exist", async () => {
+    const fixture = await track(
+      store.set(seedInsightsFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiRangeClient().get({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body.minDate).toBeNull();
+    expect(response.body.maxDate).toBeNull();
+    expect(response.body.totalDays).toBe(0);
+  });
+
+  it("returns correct range for a single day", async () => {
+    const fixture = await track(
+      store.set(seedInsightsFixture$, undefined, context.signal),
+    );
+    const date = daysAgo(1);
+    await store.set(
+      seedInsightsDaily$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        date,
+        data: defaultInsightData(),
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiRangeClient().get({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body.minDate).toBe(date);
+    expect(response.body.maxDate).toBe(date);
+    expect(response.body.totalDays).toBe(1);
+  });
+
+  it("returns correct range for multiple days", async () => {
+    const fixture = await track(
+      store.set(seedInsightsFixture$, undefined, context.signal),
+    );
+    const day1 = daysAgo(5);
+    const day2 = daysAgo(3);
+    const day3 = daysAgo(1);
+    for (const date of [day1, day2, day3]) {
+      await store.set(
+        seedInsightsDaily$,
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          date,
+          data: defaultInsightData(),
+        },
+        context.signal,
+      );
+    }
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiRangeClient().get({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body.minDate).toBe(day1);
+    expect(response.body.maxDate).toBe(day3);
+    expect(response.body.totalDays).toBe(3);
+  });
+
+  it("does not include insights from other orgs", async () => {
+    const fixture = await track(
+      store.set(seedInsightsFixture$, undefined, context.signal),
+    );
+    const otherOrgFixture = await track(
+      Promise.resolve<InsightsFixture>({
+        orgId: `org_${randomUUID()}`,
+        userId: fixture.userId,
+      }),
+    );
+    await store.set(
+      seedInsightsDaily$,
+      {
+        orgId: otherOrgFixture.orgId,
+        userId: otherOrgFixture.userId,
+        date: daysAgo(1),
+        data: defaultInsightData(),
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiRangeClient().get({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body.minDate).toBeNull();
+    expect(response.body.maxDate).toBeNull();
+    expect(response.body.totalDays).toBe(0);
+  });
+
+  it("does not include insights from other users", async () => {
+    const fixture = await track(
+      store.set(seedInsightsFixture$, undefined, context.signal),
+    );
+    const otherUserFixture = await track(
+      Promise.resolve<InsightsFixture>({
+        orgId: fixture.orgId,
+        userId: `user_${randomUUID()}`,
+      }),
+    );
+    await store.set(
+      seedInsightsDaily$,
+      {
+        orgId: otherUserFixture.orgId,
+        userId: otherUserFixture.userId,
+        date: daysAgo(1),
+        data: defaultInsightData(),
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiRangeClient().get({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body.minDate).toBeNull();
+    expect(response.body.maxDate).toBeNull();
+    expect(response.body.totalDays).toBe(0);
   });
 });

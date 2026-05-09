@@ -227,6 +227,7 @@ export function mockChatLifecycle(options?: {
   let resultContent = "";
   let threadList: ThreadListItem[] = [];
   let runPrompt: string | null = null;
+  let runUserMessageId = "msg-user-sent";
   let runAssociated = false;
   let threadTitle: string | null = options?.threadTitle ?? null;
   const queuedMessages: MockPagedMessage[] = [];
@@ -235,6 +236,12 @@ export function mockChatLifecycle(options?: {
   // real server inserting event-backed rows on run completion).
   let assistantVersion = 0;
   let lastDeliveredVersion = -1;
+
+  const rememberRunUserMessageId = (clientMessageId: string | undefined) => {
+    if (clientMessageId !== undefined) {
+      runUserMessageId = clientMessageId;
+    }
+  };
 
   server.use(
     // Paged messages endpoint — cursor-aware, version-aware mock.
@@ -275,7 +282,7 @@ export function mockChatLifecycle(options?: {
       // After a run is associated, append user + assistant messages
       if (runAssociated) {
         pagedMessages.push({
-          id: "msg-user-sent",
+          id: runUserMessageId,
           role: "user",
           content: runPrompt ?? "Hello",
           runId: "run-test-1",
@@ -439,6 +446,7 @@ export function mockChatLifecycle(options?: {
       if (body.prompt) {
         runPrompt = body.prompt;
       }
+      rememberRunUserMessageId(body.clientMessageId);
       options?.onRunCreate?.();
       runAssociated = true;
       createChatRun(threadId);

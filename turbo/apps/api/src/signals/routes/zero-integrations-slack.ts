@@ -19,7 +19,6 @@ import { eq } from "drizzle-orm";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import {
   zeroSlackOrgInstallation,
   zeroSlackOrgStatus,
@@ -239,10 +238,7 @@ const slackReadAuth = {
 export const zeroIntegrationsSlackRoutes: readonly RouteEntry[] = [
   {
     route: zeroIntegrationsSlackContract.getStatus,
-    handler: shadowCompareRoute({
-      route: zeroIntegrationsSlackContract.getStatus,
-      handler: authRoute(slackReadAuth, getSlackStatusInner$),
-    }),
+    handler: authRoute(slackReadAuth, getSlackStatusInner$),
   },
   {
     route: slackDownloadFileContract.download,

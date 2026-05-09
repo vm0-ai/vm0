@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.340.1](https://github.com/vm0-ai/vm0/compare/app-v0.340.0...app-v0.340.1) (2026-05-09)
+
+
+### Bug Fixes
+
+* clarify Claude Code OAuth token dialog copy to remove misleading workspace routing language ([#12375](https://github.com/vm0-ai/vm0/issues/12375)) ([8f284bc](https://github.com/vm0-ai/vm0/commit/8f284bccd6a4bc704c7f037771b7cd71aec9888b))
+* gate codex oauth ui surfaces ([#12354](https://github.com/vm0-ai/vm0/issues/12354)) ([89a7435](https://github.com/vm0-ai/vm0/commit/89a74355af234e6807c83fd956764b30f22efce1))
+* restore model picker expand chevrons ([#12360](https://github.com/vm0-ai/vm0/issues/12360)) ([ad72484](https://github.com/vm0-ai/vm0/commit/ad72484b3074866f12bbef4efeec285e801a5f58))
+
+
+### Refactoring
+
+* **chat:** centralize optimistic chat messages ([#12379](https://github.com/vm0-ai/vm0/issues/12379)) ([1639b76](https://github.com/vm0-ai/vm0/commit/1639b76bcc401a8c460a61c6a7a66373b9684e22))
+* remove personal provider frontend switch ([#12347](https://github.com/vm0-ai/vm0/issues/12347)) ([f7b0a7d](https://github.com/vm0-ai/vm0/commit/f7b0a7dc77a4822c6144722046188a90866ec16f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.5.1
+    * @vm0/core bumped to 8.265.1
+
 ## [0.340.0](https://github.com/vm0-ai/vm0/compare/app-v0.339.0...app-v0.340.0) (2026-05-09)
 
 

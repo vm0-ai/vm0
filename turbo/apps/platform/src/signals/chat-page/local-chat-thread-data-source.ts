@@ -37,16 +37,11 @@ const localReloadThread$ = command(() => {
   // Local snapshot is fixed for the optimistic lifetime — nothing to reload.
 });
 
-export interface LocalChatThreadDataSource extends ChatThreadDataSource {
-  takeQueuedMessageAppends: () => AppendQueuedMessageArgs[];
-}
-
 export function createLocalChatThreadDataSource(input: {
   threadData: ChatThread;
   messages: PagedChatMessage[];
-}): LocalChatThreadDataSource {
+}): ChatThreadDataSource {
   const { threadData, messages } = input;
-  let queuedMessageAppends: AppendQueuedMessageArgs[] = [];
 
   const getThread$ = computed((): Promise<ChatThread | null> => {
     return Promise.resolve(threadData);
@@ -66,13 +61,6 @@ export function createLocalChatThreadDataSource(input: {
       args: AppendQueuedMessageArgs,
       _signal: AbortSignal,
     ): Promise<PagedChatMessage> => {
-      queuedMessageAppends = [
-        ...queuedMessageAppends,
-        {
-          ...args,
-          attachments: args.attachments ? [...args.attachments] : null,
-        },
-      ];
       return Promise.resolve({
         id: args.clientMessageId,
         role: "user",
@@ -89,9 +77,6 @@ export function createLocalChatThreadDataSource(input: {
       args: RecallMessageArgs,
       _signal: AbortSignal,
     ): Promise<PagedChatMessage> => {
-      queuedMessageAppends = queuedMessageAppends.filter((append) => {
-        return append.clientMessageId !== args.revokesMessageId;
-      });
       return Promise.resolve({
         id: args.clientMessageId,
         role: "user",
@@ -114,15 +99,5 @@ export function createLocalChatThreadDataSource(input: {
     cancelRuns$,
     markRead$: localMarkRead$,
     subscribeRealtime$: localSubscribeRealtime$,
-    takeQueuedMessageAppends: () => {
-      const appends = queuedMessageAppends.map((append) => {
-        return {
-          ...append,
-          attachments: append.attachments ? [...append.attachments] : null,
-        };
-      });
-      queuedMessageAppends = [];
-      return appends;
-    },
   };
 }

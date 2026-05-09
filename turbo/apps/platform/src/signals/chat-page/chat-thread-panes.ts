@@ -110,19 +110,6 @@ const resolvePaneThread$ = command(
 
     if (matchingOptimistic) {
       L.debug("resolvePaneThread$ swap start", { threadId: thread.threadId });
-      const optimisticGroups = await get(
-        matchingOptimistic.pendingThread.groupedChatMessages$,
-      );
-      signal.throwIfAborted();
-      const transferred = optimisticGroups.reduce((n, g) => {
-        return n + g.messages.length;
-      }, 0);
-      for (const group of optimisticGroups) {
-        for (const msg of group.messages) {
-          set(thread.insertOptimisticMessage$, msg);
-        }
-      }
-
       await get(thread.groupedChatMessages$);
       signal.throwIfAborted();
       set(thread.hideSkeleton$);
@@ -130,7 +117,6 @@ const resolvePaneThread$ = command(
       set(clearMatchingOptimisticChatThread$, matchingOptimistic);
       L.debug("resolvePaneThread$ swap done", {
         threadId: thread.threadId,
-        transferred,
       });
     }
 

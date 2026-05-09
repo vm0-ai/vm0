@@ -7,7 +7,6 @@ import {
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import {
   zeroInsights,
   zeroInsightsRange,
@@ -43,10 +42,7 @@ const getInsightsRangeInner$ = computed(async (get) => {
 export const zeroInsightsRoutes: readonly RouteEntry[] = [
   {
     route: zeroInsightsRangeContract.get,
-    handler: shadowCompareRoute({
-      route: zeroInsightsRangeContract.get,
-      handler: authRoute(orgAuth, getInsightsRangeInner$),
-    }),
+    handler: authRoute(orgAuth, getInsightsRangeInner$),
   },
   {
     route: zeroInsightsContract.get,

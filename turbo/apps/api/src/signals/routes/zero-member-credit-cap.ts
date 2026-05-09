@@ -4,7 +4,6 @@ import { zeroMemberCreditCapContract } from "@vm0/api-contracts/contracts/zero-m
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import { zeroMemberCreditCap } from "../services/zero-member-credit-cap.service";
 import type { RouteEntry } from "../route";
 
@@ -28,12 +27,9 @@ const getMemberCreditCapInner$ = computed(async (get) => {
 export const zeroMemberCreditCapRoutes: readonly RouteEntry[] = [
   {
     route: zeroMemberCreditCapContract.get,
-    handler: shadowCompareRoute({
-      route: zeroMemberCreditCapContract.get,
-      handler: authRoute(
-        { requireOrganization: true, missingOrganizationStatus: 401 },
-        getMemberCreditCapInner$,
-      ),
-    }),
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      getMemberCreditCapInner$,
+    ),
   },
 ];

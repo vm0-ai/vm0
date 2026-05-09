@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.11.0...vsock-host-v0.11.1) (2026-05-09)
+
+
+### Refactoring
+
+* **runner:** migrate internal execs to bounded exec ([#12322](https://github.com/vm0-ai/vm0/issues/12322)) ([f0b84b4](https://github.com/vm0-ai/vm0/commit/f0b84b4f09bad9abc16074af3f0190944bba3d04))
+
 ## [0.11.0](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.10.2...vsock-host-v0.11.0) (2026-05-09)
 
 

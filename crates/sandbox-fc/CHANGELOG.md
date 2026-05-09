@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.29.0...sandbox-fc-v0.29.1) (2026-05-09)
+
+
+### Refactoring
+
+* **runner:** migrate internal execs to bounded exec ([#12322](https://github.com/vm0-ai/vm0/issues/12322)) ([f0b84b4](https://github.com/vm0-ai/vm0/commit/f0b84b4f09bad9abc16074af3f0190944bba3d04))
+
 ## [0.29.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.28.2...sandbox-fc-v0.29.0) (2026-05-09)
 
 

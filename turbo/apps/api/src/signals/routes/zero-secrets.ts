@@ -6,7 +6,6 @@ import {
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import type { RouteEntry } from "../route";
 import { userSecrets, userVariables } from "../services/zero-user-data.service";
 
@@ -35,22 +34,16 @@ const listVariablesInner$ = computed(async (get): Promise<unknown> => {
 export const zeroSecretsRoutes: readonly RouteEntry[] = [
   {
     route: zeroSecretsContract.list,
-    handler: shadowCompareRoute({
-      route: zeroSecretsContract.list,
-      handler: authRoute(
-        { requireOrganization: true, missingOrganizationStatus: 401 },
-        listSecretsInner$,
-      ),
-    }),
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      listSecretsInner$,
+    ),
   },
   {
     route: zeroVariablesContract.list,
-    handler: shadowCompareRoute({
-      route: zeroVariablesContract.list,
-      handler: authRoute(
-        { requireOrganization: true, missingOrganizationStatus: 401 },
-        listVariablesInner$,
-      ),
-    }),
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      listVariablesInner$,
+    ),
   },
 ];

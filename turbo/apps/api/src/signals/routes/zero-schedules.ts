@@ -3,7 +3,6 @@ import { zeroSchedulesMainContract } from "@vm0/api-contracts/contracts/zero-sch
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import { zeroScheduleList } from "../services/zero-schedules.service";
 import type { RouteEntry } from "../route";
 
@@ -18,16 +17,13 @@ const listSchedulesInner$ = computed(async (get) => {
 export const zeroSchedulesRoutes: readonly RouteEntry[] = [
   {
     route: zeroSchedulesMainContract.list,
-    handler: shadowCompareRoute({
-      route: zeroSchedulesMainContract.list,
-      handler: authRoute(
-        {
-          requireOrganization: true,
-          missingOrganizationStatus: 401,
-          requiredCapability: "schedule:read",
-        },
-        listSchedulesInner$,
-      ),
-    }),
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "schedule:read",
+      },
+      listSchedulesInner$,
+    ),
   },
 ];

@@ -209,7 +209,7 @@ function getDialogCopy({
     return {
       title: "Configure Claude Code OAuth",
       description:
-        "Paste a Claude Code OAuth token for workspace model routes that use your Claude credentials.",
+        "Paste your personal Claude Code OAuth token. It is stored encrypted and used only to authenticate the official Claude Code CLI in your own runs — requests go directly to Anthropic, and the token is never shared with workspace teammates.",
     };
   }
 

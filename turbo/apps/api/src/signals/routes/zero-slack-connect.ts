@@ -3,7 +3,6 @@ import { zeroSlackConnectContract } from "@vm0/api-contracts/contracts/zero-slac
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import { zeroSlackConnectStatus } from "../services/zero-slack-connect.service";
 import type { RouteEntry } from "../route";
 
@@ -22,12 +21,9 @@ const getSlackConnectStatusInner$ = computed(async (get) => {
 export const zeroSlackConnectRoutes: readonly RouteEntry[] = [
   {
     route: zeroSlackConnectContract.getStatus,
-    handler: shadowCompareRoute({
-      route: zeroSlackConnectContract.getStatus,
-      handler: authRoute(
-        { requireOrganization: true, missingOrganizationStatus: 401 },
-        getSlackConnectStatusInner$,
-      ),
-    }),
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      getSlackConnectStatusInner$,
+    ),
   },
 ];

@@ -99,6 +99,12 @@ describe("GET /api/zero/chat-threads/:id", () => {
         },
       ],
     });
+    // Each chatMessage must carry its DB row id — the contract marks it
+    // optional for back-compat, but production clients dedupe on id, and
+    // omitting it caused a shadow divergence regression (see PR #12339).
+    for (const message of response.body.chatMessages) {
+      expect(message.id).toStrictEqual(expect.any(String));
+    }
   });
 
   it("strips Clerk user_ prefix from attachment file URLs", async () => {
@@ -357,5 +363,70 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
       ],
       hasHistoryBefore: false,
     });
+  });
+
+  it("excludes user-revoke ghost rows that revoke a queued message", async () => {
+    // Queued user messages start with run_id IS NULL. When the queue drains,
+    // a NEW user row (also with run_id IS NULL) is appended pointing at the
+    // queued row via revokes_message_id. The web visibility filter drops
+    // BOTH the original (revoked) row and the ghost revoker row; the api
+    // shadow used to drop only the original, which shifted the page window
+    // by one and surfaced as "response shadow divergence" warnings on
+    // GET /api/zero/chat-threads/:threadId/messages.
+    const fixture = await track(
+      store.set(seedZeroChatThread$, {}, context.signal),
+    );
+    const writeDb = store.set(writeDb$);
+
+    const queuedId = randomUUID();
+    const revokerId = randomUUID();
+    const visibleId = randomUUID();
+    await writeDb.insert(chatMessages).values([
+      {
+        id: queuedId,
+        chatThreadId: fixture.threadId,
+        role: "user",
+        content: "queued draft",
+        runId: null,
+        createdAt: new Date("2025-01-01T00:00:00.000Z"),
+      },
+      {
+        id: revokerId,
+        chatThreadId: fixture.threadId,
+        role: "user",
+        content: null,
+        runId: null,
+        revokesMessageId: queuedId,
+        createdAt: new Date("2025-01-01T00:00:01.000Z"),
+      },
+      {
+        id: visibleId,
+        chatThreadId: fixture.threadId,
+        role: "user",
+        content: "kept",
+        runId: null,
+        createdAt: new Date("2025-01-01T00:00:02.000Z"),
+      },
+    ]);
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockApiShadowCompareRoutes([chatThreadMessagesContract.list]);
+
+    const client = setupApp({ context })(chatThreadMessagesContract);
+
+    const response = await accept(
+      client.list({
+        params: { threadId: fixture.threadId },
+        query: { limit: 50 },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(
+      response.body.messages.map((m) => {
+        return m.id;
+      }),
+    ).toStrictEqual([visibleId]);
   });
 });

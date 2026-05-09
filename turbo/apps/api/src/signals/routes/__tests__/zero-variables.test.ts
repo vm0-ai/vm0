@@ -1,8 +1,9 @@
+import { randomUUID } from "node:crypto";
+
 import { zeroVariablesContract } from "@vm0/api-contracts/contracts/zero-secrets";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -50,7 +51,6 @@ describe("GET /api/zero/variables", () => {
     );
     await store.set(seedOtherVariable$, fixture, context.signal);
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    mockApiShadowCompareRoutes([zeroVariablesContract.list]);
 
     const client = setupApp({ context })(zeroVariablesContract);
 
@@ -83,7 +83,6 @@ describe("GET /api/zero/variables", () => {
   it("returns an empty list when the user has no variables", async () => {
     const fixture = await track(store.set(seedVariables$, [], context.signal));
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    mockApiShadowCompareRoutes([zeroVariablesContract.list]);
 
     const client = setupApp({ context })(zeroVariablesContract);
 
@@ -95,5 +94,32 @@ describe("GET /api/zero/variables", () => {
     );
 
     expect(response.body).toStrictEqual({ variables: [] });
+  });
+
+  it("returns 401 when the request is unauthenticated", async () => {
+    const client = setupApp({ context })(zeroVariablesContract);
+
+    const response = await accept(client.list({ headers: {} }), [401]);
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+
+    const client = setupApp({ context })(zeroVariablesContract);
+
+    const response = await accept(
+      client.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
   });
 });

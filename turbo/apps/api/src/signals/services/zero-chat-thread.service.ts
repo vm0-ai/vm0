@@ -135,10 +135,15 @@ function effectiveChatMessageRunId() {
 
 function visibleChatMessageCondition() {
   return sql<boolean>`NOT EXISTS (
-    SELECT 1
-    FROM ${chatMessages} AS revoker
-    WHERE revoker.revokes_message_id = ${chatMessages.id}
-  )`;
+      SELECT 1
+      FROM ${chatMessages} AS revoker
+      WHERE revoker.revokes_message_id = ${chatMessages.id}
+    )
+    AND NOT (
+      ${chatMessages.role} = 'user'
+      AND ${chatMessages.runId} IS NULL
+      AND ${chatMessages.revokesMessageId} IS NOT NULL
+    )`;
 }
 
 const messageColumns = {
