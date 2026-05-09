@@ -186,6 +186,7 @@ impl BoundedOutputEventPlans {
 struct BoundedOutputForwardPlan {
     event_tx: mpsc::UnboundedSender<BoundedExecOutputEvent>,
     events: BoundedOutputEventPlans,
+    closed_stream_sender: Option<mpsc::UnboundedSender<BoundedExecOutputEvent>>,
 }
 
 impl BoundedOutputRegistration {
@@ -209,7 +210,12 @@ impl BoundedOutputRegistration {
         if events.is_empty() {
             return None;
         }
-        Some(BoundedOutputForwardPlan { event_tx, events })
+        let closed_stream_sender = state.closed.then(|| state.event_tx.take()).flatten();
+        Some(BoundedOutputForwardPlan {
+            event_tx,
+            events,
+            closed_stream_sender,
+        })
     }
 
     fn all_streams_closed(&self) -> bool {
@@ -907,7 +913,13 @@ async fn reader_loop(
                     };
                     drop(closed_registration);
                     if let Some(forward_plan) = forward_plan {
-                        for event_plan in forward_plan.events.iter() {
+                        let BoundedOutputForwardPlan {
+                            event_tx,
+                            events,
+                            closed_stream_sender,
+                        } = forward_plan;
+                        drop(closed_stream_sender);
+                        for event_plan in events.iter() {
                             debug_assert!(
                                 event_plan.chunk_len <= decoded.chunk.len(),
                                 "bounded output plan length must fit decoded chunk length"
@@ -922,7 +934,7 @@ async fn reader_loop(
                                 chunk: chunk.to_vec(),
                                 truncated: event_plan.truncated,
                             };
-                            if forward_plan.event_tx.send(event).is_err() {
+                            if event_tx.send(event).is_err() {
                                 shared.close_bounded_output_stream(msg.seq, event_plan.stream);
                                 break;
                             }
@@ -1785,6 +1797,23 @@ mod tests {
                 bounded_output_senders.len(),
             ),
             ConnectionState::Closed { .. } => (0, 0, 0, 0),
+        }
+    }
+
+    fn bounded_stream_sender_presence(host: &VsockHost) -> Option<(bool, bool)> {
+        let guard = host.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        match &*guard {
+            ConnectionState::Connected {
+                bounded_output_senders,
+                ..
+            } => {
+                let registration = bounded_output_senders.values().next()?;
+                Some((
+                    registration.stdout.event_tx.is_some(),
+                    registration.stderr.event_tx.is_some(),
+                ))
+            }
+            ConnectionState::Closed { .. } => None,
         }
     }
 
@@ -2754,6 +2783,93 @@ mod tests {
             }
         );
         assert_bounded_event_stream_closed(&mut event_rx);
+    }
+
+    #[tokio::test]
+    async fn test_bounded_exec_closed_stream_drops_sender_before_result() {
+        let (host_stream, mut guest) = make_pair();
+        let stdout_capped = std::sync::Arc::new(Notify::new());
+        let release_result = std::sync::Arc::new(Notify::new());
+
+        {
+            let stdout_capped = std::sync::Arc::clone(&stdout_capped);
+            let release_result = std::sync::Arc::clone(&release_result);
+            tokio::spawn(async move {
+                let mut decoder = Decoder::new();
+                mock_handshake(&mut guest, &mut decoder).await;
+
+                let mut buf = [0u8; 4096];
+                let n = guest.read(&mut buf).await.unwrap();
+                let msgs = decoder.decode(&buf[..n]).unwrap();
+                assert_eq!(msgs[0].msg_type, MSG_BOUNDED_EXEC);
+
+                write_bounded_stream_chunk(
+                    &mut guest,
+                    msgs[0].seq,
+                    vsock_proto::BoundedExecStream::Stdout,
+                    1,
+                    b"abcd",
+                    false,
+                )
+                .await;
+                stdout_capped.notify_one();
+
+                release_result.notified().await;
+                write_bounded_exec_result(&mut guest, msgs[0].seq, b"done").await;
+            });
+        }
+
+        let host = std::sync::Arc::new(host_from_stream(host_stream).await.unwrap());
+        let task_host = std::sync::Arc::clone(&host);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let task = tokio::spawn(async move {
+            let request = simple_bounded_request(
+                "cap-stdout-release-sender",
+                Some(bounded_stream_request_with_limits(
+                    event_tx,
+                    true,
+                    true,
+                    vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES,
+                    3,
+                    8,
+                )),
+            );
+            task_host.bounded_exec(&request).await
+        });
+
+        tokio::time::timeout(Duration::from_secs(5), stdout_capped.notified())
+            .await
+            .expect("guest should send stdout chunk");
+        assert_eq!(
+            event_rx.recv().await.unwrap(),
+            BoundedExecOutputEvent {
+                stream: BoundedExecStream::Stdout,
+                sequence: 1,
+                chunk: b"abc".to_vec(),
+                truncated: false,
+            }
+        );
+        assert_eq!(
+            event_rx.recv().await.unwrap(),
+            BoundedExecOutputEvent {
+                stream: BoundedExecStream::Stdout,
+                sequence: 2,
+                chunk: Vec::new(),
+                truncated: true,
+            }
+        );
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while bounded_stream_sender_presence(&host) != Some((false, true)) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("closed stdout stream should release its sender before final result");
+
+        release_result.notify_one();
+        let result = task.await.unwrap().unwrap();
+        assert_host_captured_output(&result.stdout, b"done", false);
+        assert_eq!(registration_counts(&host), (0, 0, 0, 0));
     }
 
     #[tokio::test]
