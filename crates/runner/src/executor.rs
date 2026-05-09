@@ -1445,6 +1445,8 @@ const RUNNER_OWNED_ENV_KEYS: &[&str] = &[
     "VM0_FEATURE_FLAGS",
     "USE_MOCK_CLAUDE",
     "USE_MOCK_CODEX",
+    "VM0_MOCK_CLAUDE_PATH",
+    "VM0_MOCK_CODEX_PATH",
     "VERCEL_PROTECTION_BYPASS",
     "VM0_DISALLOWED_TOOLS",
     "VM0_TOOLS",
@@ -1789,6 +1791,8 @@ mod tests {
             ("VM0_DISALLOWED_TOOLS".into(), "CronCreate".into()),
             ("VM0_TOOLS".into(), "Bash".into()),
             ("VM0_SETTINGS".into(), r#"{"hooks":{}}"#.into()),
+            ("VM0_MOCK_CLAUDE_PATH".into(), "/tmp/mock-claude".into()),
+            ("VM0_MOCK_CODEX_PATH".into(), "/tmp/mock-codex".into()),
         ]));
 
         let env = build_env_for_test(&ctx, "http://localhost");
@@ -1804,6 +1808,8 @@ mod tests {
         assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
         assert!(!env.contains_key("VM0_TOOLS"));
         assert!(!env.contains_key("VM0_SETTINGS"));
+        assert!(!env.contains_key("VM0_MOCK_CLAUDE_PATH"));
+        assert!(!env.contains_key("VM0_MOCK_CODEX_PATH"));
     }
 
     #[test]
