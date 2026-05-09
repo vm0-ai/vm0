@@ -16,6 +16,16 @@ import {
   zeroOrgMembersList,
 } from "../services/zero-org-data.service";
 
+const adminRequired = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Access denied",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
 const getOrgInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const org = await get(zeroOrgDetail(auth.orgId, auth.userId));
@@ -33,6 +43,9 @@ const listOrgsInner$ = computed(async (get) => {
 
 const listDomainsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
+  if (auth.orgRole !== "admin") {
+    return adminRequired;
+  }
   const body = await get(zeroOrgDomainsList(auth.orgId));
   return { status: 200 as const, body };
 });
@@ -60,13 +73,10 @@ export const zeroOrgReadRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroOrgDomainsContract.list,
-    handler: shadowCompareRoute({
-      route: zeroOrgDomainsContract.list,
-      handler: authRoute(
-        { requireOrganization: true, missingOrganizationStatus: 401 },
-        listDomainsInner$,
-      ),
-    }),
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      listDomainsInner$,
+    ),
   },
   {
     route: zeroOrgMembersContract.members,
