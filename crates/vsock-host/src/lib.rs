@@ -111,19 +111,153 @@ pub struct BoundedExecResult {
     pub stderr_truncated: bool,
 }
 
-#[derive(Clone)]
 struct BoundedOutputRegistration {
     event_tx: mpsc::UnboundedSender<BoundedExecOutputEvent>,
-    stdout: bool,
-    stderr: bool,
+    chunk_limit_bytes: usize,
+    stdout: BoundedOutputStreamState,
+    stderr: BoundedOutputStreamState,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct BoundedOutputStreamState {
+    enabled: bool,
+    limit_bytes: usize,
+    forwarded_bytes: usize,
+    closed: bool,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct BoundedOutputEventPlan {
+    stream: BoundedExecStream,
+    sequence: u32,
+    chunk_len: usize,
+    truncated: bool,
+}
+
+struct BoundedOutputForwardPlan {
+    event_tx: mpsc::UnboundedSender<BoundedExecOutputEvent>,
+    events: Vec<BoundedOutputEventPlan>,
 }
 
 impl BoundedOutputRegistration {
-    fn allows(&self, stream: BoundedExecStream) -> bool {
-        match stream {
-            BoundedExecStream::Stdout => self.stdout,
-            BoundedExecStream::Stderr => self.stderr,
+    fn new(request: &BoundedExecStreamRequest) -> Self {
+        Self {
+            event_tx: request.event_tx.clone(),
+            chunk_limit_bytes: request.chunk_limit_bytes as usize,
+            stdout: BoundedOutputStreamState::new(request.stdout, request.stdout_limit_bytes),
+            stderr: BoundedOutputStreamState::new(request.stderr, request.stderr_limit_bytes),
         }
+    }
+
+    fn forward_plan(
+        &mut self,
+        stream: BoundedExecStream,
+        sequence: u32,
+        chunk_len: usize,
+        truncated: bool,
+    ) -> Option<BoundedOutputForwardPlan> {
+        let chunk_limit_bytes = self.chunk_limit_bytes;
+        let events = self.stream_mut(stream).forward_plan(
+            stream,
+            sequence,
+            chunk_len,
+            truncated,
+            chunk_limit_bytes,
+        );
+        if events.is_empty() {
+            return None;
+        }
+        Some(BoundedOutputForwardPlan {
+            event_tx: self.event_tx.clone(),
+            events,
+        })
+    }
+
+    fn all_streams_closed(&self) -> bool {
+        self.stdout.is_closed_or_disabled() && self.stderr.is_closed_or_disabled()
+    }
+
+    fn stream_mut(&mut self, stream: BoundedExecStream) -> &mut BoundedOutputStreamState {
+        match stream {
+            BoundedExecStream::Stdout => &mut self.stdout,
+            BoundedExecStream::Stderr => &mut self.stderr,
+        }
+    }
+}
+
+impl BoundedOutputStreamState {
+    fn new(enabled: bool, limit_bytes: u32) -> Self {
+        Self {
+            enabled,
+            limit_bytes: limit_bytes as usize,
+            forwarded_bytes: 0,
+            closed: false,
+        }
+    }
+
+    fn is_closed_or_disabled(&self) -> bool {
+        !self.enabled || self.closed
+    }
+
+    fn forward_plan(
+        &mut self,
+        stream: BoundedExecStream,
+        sequence: u32,
+        chunk_len: usize,
+        incoming_truncated: bool,
+        chunk_limit_bytes: usize,
+    ) -> Vec<BoundedOutputEventPlan> {
+        if self.is_closed_or_disabled() {
+            return Vec::new();
+        }
+
+        let remaining = self.limit_bytes.saturating_sub(self.forwarded_bytes);
+
+        if incoming_truncated {
+            let allowed_len = chunk_len.min(chunk_limit_bytes).min(remaining);
+            self.forwarded_bytes = self.forwarded_bytes.saturating_add(allowed_len);
+            self.closed = true;
+            return vec![BoundedOutputEventPlan {
+                stream,
+                sequence,
+                chunk_len: allowed_len,
+                truncated: true,
+            }];
+        }
+
+        if remaining == 0 || chunk_limit_bytes == 0 {
+            self.closed = true;
+            return vec![BoundedOutputEventPlan {
+                stream,
+                sequence,
+                chunk_len: 0,
+                truncated: true,
+            }];
+        }
+
+        let allowed_len = chunk_len.min(chunk_limit_bytes).min(remaining);
+        let mut events = Vec::with_capacity(2);
+        if allowed_len > 0 {
+            events.push(BoundedOutputEventPlan {
+                stream,
+                sequence,
+                chunk_len: allowed_len,
+                truncated: false,
+            });
+            self.forwarded_bytes = self.forwarded_bytes.saturating_add(allowed_len);
+        }
+
+        if allowed_len < chunk_len {
+            self.closed = true;
+            events.push(BoundedOutputEventPlan {
+                stream,
+                sequence: sequence.wrapping_add(1),
+                chunk_len: 0,
+                truncated: true,
+            });
+        }
+
+        events
     }
 }
 
@@ -575,28 +709,51 @@ async fn reader_loop(
             } else if msg.msg_type == MSG_BOUNDED_EXEC_OUTPUT_CHUNK && msg.seq != 0 {
                 if let Ok(decoded) = vsock_proto::decode_bounded_exec_output_chunk(&msg.payload) {
                     let stream = proto_stream_to_host(decoded.stream);
-                    let registration = {
-                        let guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-                        match &*guard {
+                    let forward_plan = {
+                        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+                        match &mut *guard {
                             ConnectionState::Connected {
                                 bounded_output_senders,
                                 ..
-                            } => bounded_output_senders.get(&msg.seq).cloned(),
+                            } => {
+                                let (plan, remove_registration) = if let Some(registration) =
+                                    bounded_output_senders.get_mut(&msg.seq)
+                                {
+                                    let plan = registration.forward_plan(
+                                        stream,
+                                        decoded.sequence,
+                                        decoded.chunk.len(),
+                                        decoded.truncated,
+                                    );
+                                    let remove_registration = registration.all_streams_closed();
+                                    (plan, remove_registration)
+                                } else {
+                                    (None, false)
+                                };
+                                if remove_registration {
+                                    bounded_output_senders.remove(&msg.seq);
+                                }
+                                plan
+                            }
                             ConnectionState::Closed { .. } => None,
                         }
                     };
-                    if let Some(registration) = registration {
-                        if !registration.allows(stream) {
-                            continue;
-                        }
-                        let event = BoundedExecOutputEvent {
-                            stream,
-                            sequence: decoded.sequence,
-                            chunk: decoded.chunk.to_vec(),
-                            truncated: decoded.truncated,
-                        };
-                        if registration.event_tx.send(event).is_err() {
-                            shared.remove_bounded_output_sender(msg.seq);
+                    if let Some(forward_plan) = forward_plan {
+                        for event_plan in forward_plan.events {
+                            let event = BoundedExecOutputEvent {
+                                stream: event_plan.stream,
+                                sequence: event_plan.sequence,
+                                chunk: decoded
+                                    .chunk
+                                    .get(..event_plan.chunk_len)
+                                    .unwrap_or_default()
+                                    .to_vec(),
+                                truncated: event_plan.truncated,
+                            };
+                            if forward_plan.event_tx.send(event).is_err() {
+                                shared.remove_bounded_output_sender(msg.seq);
+                                break;
+                            }
                         }
                     }
                 }
@@ -1012,14 +1169,7 @@ impl VsockHost {
                     if let Some(stream) = &request.stream
                         && (stream.stdout || stream.stderr)
                     {
-                        bounded_output_senders.insert(
-                            seq,
-                            BoundedOutputRegistration {
-                                event_tx: stream.event_tx.clone(),
-                                stdout: stream.stdout,
-                                stderr: stream.stderr,
-                            },
-                        );
+                        bounded_output_senders.insert(seq, BoundedOutputRegistration::new(stream));
                     }
                 }
             }
@@ -1442,14 +1592,61 @@ mod tests {
     fn bounded_stream_request(
         event_tx: mpsc::UnboundedSender<BoundedExecOutputEvent>,
     ) -> BoundedExecStreamRequest {
+        bounded_stream_request_with_limits(
+            event_tx,
+            true,
+            true,
+            vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES,
+            2048,
+            2048,
+        )
+    }
+
+    fn bounded_stream_request_with_limits(
+        event_tx: mpsc::UnboundedSender<BoundedExecOutputEvent>,
+        stdout: bool,
+        stderr: bool,
+        chunk_limit_bytes: usize,
+        stdout_limit_bytes: u32,
+        stderr_limit_bytes: u32,
+    ) -> BoundedExecStreamRequest {
         BoundedExecStreamRequest {
             event_tx,
-            stdout: true,
-            stderr: true,
-            chunk_limit_bytes: vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES as u32,
-            stdout_limit_bytes: 2048,
-            stderr_limit_bytes: 2048,
+            stdout,
+            stderr,
+            chunk_limit_bytes: chunk_limit_bytes as u32,
+            stdout_limit_bytes,
+            stderr_limit_bytes,
         }
+    }
+
+    async fn write_bounded_stream_chunk(
+        guest: &mut UnixStream,
+        seq: u32,
+        stream: vsock_proto::BoundedExecStream,
+        sequence: u32,
+        chunk: &[u8],
+        truncated: bool,
+    ) {
+        let payload =
+            vsock_proto::encode_bounded_exec_output_chunk(stream, sequence, chunk, truncated)
+                .unwrap();
+        let frame = vsock_proto::encode(MSG_BOUNDED_EXEC_OUTPUT_CHUNK, seq, &payload).unwrap();
+        guest.write_all(&frame).await.unwrap();
+    }
+
+    async fn write_bounded_exec_result(guest: &mut UnixStream, seq: u32, stdout: &[u8]) {
+        let payload = vsock_proto::encode_bounded_exec_result(
+            vsock_proto::BoundedExecTermination::Exited { exit_code: 0 },
+            1,
+            stdout,
+            b"",
+            false,
+            false,
+        )
+        .unwrap();
+        let frame = vsock_proto::encode(MSG_BOUNDED_EXEC_RESULT, seq, &payload).unwrap();
+        guest.write_all(&frame).await.unwrap();
     }
 
     #[tokio::test]
@@ -1798,6 +1995,373 @@ mod tests {
             event_rx.try_recv(),
             Err(mpsc::error::TryRecvError::Empty)
         ));
+    }
+
+    #[tokio::test]
+    async fn test_bounded_exec_caps_stream_output_at_requested_limit() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs[0].msg_type, MSG_BOUNDED_EXEC);
+
+            write_bounded_stream_chunk(
+                &mut guest,
+                msgs[0].seq,
+                vsock_proto::BoundedExecStream::Stdout,
+                7,
+                b"abcdef",
+                false,
+            )
+            .await;
+            write_bounded_stream_chunk(
+                &mut guest,
+                msgs[0].seq,
+                vsock_proto::BoundedExecStream::Stdout,
+                9,
+                b"ignored",
+                false,
+            )
+            .await;
+            write_bounded_exec_result(&mut guest, msgs[0].seq, b"done").await;
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let request = simple_bounded_request(
+            "cap-stdout",
+            Some(bounded_stream_request_with_limits(
+                event_tx,
+                true,
+                false,
+                vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES,
+                4,
+                0,
+            )),
+        );
+
+        let result = host.bounded_exec(&request).await.unwrap();
+        assert_eq!(result.stdout, b"done");
+        assert_eq!(
+            event_rx.recv().await.unwrap(),
+            BoundedExecOutputEvent {
+                stream: BoundedExecStream::Stdout,
+                sequence: 7,
+                chunk: b"abcd".to_vec(),
+                truncated: false,
+            }
+        );
+        assert_eq!(
+            event_rx.recv().await.unwrap(),
+            BoundedExecOutputEvent {
+                stream: BoundedExecStream::Stdout,
+                sequence: 8,
+                chunk: Vec::new(),
+                truncated: true,
+            }
+        );
+        assert!(matches!(
+            event_rx.try_recv(),
+            Err(mpsc::error::TryRecvError::Empty)
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_bounded_exec_stdout_cap_does_not_close_stderr() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs[0].msg_type, MSG_BOUNDED_EXEC);
+
+            write_bounded_stream_chunk(
+                &mut guest,
+                msgs[0].seq,
+                vsock_proto::BoundedExecStream::Stdout,
+                1,
+                b"abcd",
+                false,
+            )
+            .await;
+            write_bounded_stream_chunk(
+                &mut guest,
+                msgs[0].seq,
+                vsock_proto::BoundedExecStream::Stderr,
+                5,
+                b"err",
+                false,
+            )
+            .await;
+            write_bounded_exec_result(&mut guest, msgs[0].seq, b"done").await;
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let request = simple_bounded_request(
+            "cap-stdout-keep-stderr",
+            Some(bounded_stream_request_with_limits(
+                event_tx,
+                true,
+                true,
+                vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES,
+                3,
+                8,
+            )),
+        );
+
+        let result = host.bounded_exec(&request).await.unwrap();
+        assert_eq!(result.stdout, b"done");
+        assert_eq!(
+            event_rx.recv().await.unwrap(),
+            BoundedExecOutputEvent {
+                stream: BoundedExecStream::Stdout,
+                sequence: 1,
+                chunk: b"abc".to_vec(),
+                truncated: false,
+            }
+        );
+        assert_eq!(
+            event_rx.recv().await.unwrap(),
+            BoundedExecOutputEvent {
+                stream: BoundedExecStream::Stdout,
+                sequence: 2,
+                chunk: Vec::new(),
+                truncated: true,
+            }
+        );
+        assert_eq!(
+            event_rx.recv().await.unwrap(),
+            BoundedExecOutputEvent {
+                stream: BoundedExecStream::Stderr,
+                sequence: 5,
+                chunk: b"err".to_vec(),
+                truncated: false,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_bounded_exec_incoming_truncation_closes_stream_once() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs[0].msg_type, MSG_BOUNDED_EXEC);
+
+            write_bounded_stream_chunk(
+                &mut guest,
+                msgs[0].seq,
+                vsock_proto::BoundedExecStream::Stdout,
+                30,
+                b"abcdef",
+                true,
+            )
+            .await;
+            write_bounded_stream_chunk(
+                &mut guest,
+                msgs[0].seq,
+                vsock_proto::BoundedExecStream::Stdout,
+                31,
+                b"ignored",
+                false,
+            )
+            .await;
+            write_bounded_exec_result(&mut guest, msgs[0].seq, b"done").await;
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let request = simple_bounded_request(
+            "incoming-truncated",
+            Some(bounded_stream_request_with_limits(
+                event_tx,
+                true,
+                false,
+                vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES,
+                4,
+                0,
+            )),
+        );
+
+        let result = host.bounded_exec(&request).await.unwrap();
+        assert_eq!(result.stdout, b"done");
+        assert_eq!(
+            event_rx.recv().await.unwrap(),
+            BoundedExecOutputEvent {
+                stream: BoundedExecStream::Stdout,
+                sequence: 30,
+                chunk: b"abcd".to_vec(),
+                truncated: true,
+            }
+        );
+        assert!(matches!(
+            event_rx.try_recv(),
+            Err(mpsc::error::TryRecvError::Empty)
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_bounded_exec_caps_oversized_stream_chunk() {
+        let (host_stream, mut guest) = make_pair();
+        let chunk_limit = vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES;
+        let oversized_chunk = vec![b'a'; chunk_limit + 7];
+
+        tokio::spawn({
+            let oversized_chunk = oversized_chunk.clone();
+            async move {
+                let mut decoder = Decoder::new();
+                mock_handshake(&mut guest, &mut decoder).await;
+
+                let mut buf = [0u8; 4096];
+                let n = guest.read(&mut buf).await.unwrap();
+                let msgs = decoder.decode(&buf[..n]).unwrap();
+                assert_eq!(msgs[0].msg_type, MSG_BOUNDED_EXEC);
+
+                write_bounded_stream_chunk(
+                    &mut guest,
+                    msgs[0].seq,
+                    vsock_proto::BoundedExecStream::Stdout,
+                    11,
+                    &oversized_chunk,
+                    false,
+                )
+                .await;
+                write_bounded_stream_chunk(
+                    &mut guest,
+                    msgs[0].seq,
+                    vsock_proto::BoundedExecStream::Stdout,
+                    13,
+                    b"ignored",
+                    false,
+                )
+                .await;
+                write_bounded_exec_result(&mut guest, msgs[0].seq, b"done").await;
+            }
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let request = simple_bounded_request(
+            "cap-chunk",
+            Some(bounded_stream_request_with_limits(
+                event_tx,
+                true,
+                false,
+                chunk_limit,
+                (chunk_limit * 2) as u32,
+                0,
+            )),
+        );
+
+        let result = host.bounded_exec(&request).await.unwrap();
+        assert_eq!(result.stdout, b"done");
+        assert_eq!(
+            event_rx.recv().await.unwrap(),
+            BoundedExecOutputEvent {
+                stream: BoundedExecStream::Stdout,
+                sequence: 11,
+                chunk: vec![b'a'; chunk_limit],
+                truncated: false,
+            }
+        );
+        assert_eq!(
+            event_rx.recv().await.unwrap(),
+            BoundedExecOutputEvent {
+                stream: BoundedExecStream::Stdout,
+                sequence: 12,
+                chunk: Vec::new(),
+                truncated: true,
+            }
+        );
+        assert!(matches!(
+            event_rx.try_recv(),
+            Err(mpsc::error::TryRecvError::Empty)
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_bounded_exec_zero_stream_limit_emits_truncation_marker() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs[0].msg_type, MSG_BOUNDED_EXEC);
+
+            write_bounded_stream_chunk(
+                &mut guest,
+                msgs[0].seq,
+                vsock_proto::BoundedExecStream::Stdout,
+                21,
+                b"ignored",
+                false,
+            )
+            .await;
+            write_bounded_stream_chunk(
+                &mut guest,
+                msgs[0].seq,
+                vsock_proto::BoundedExecStream::Stderr,
+                22,
+                b"err",
+                false,
+            )
+            .await;
+            write_bounded_exec_result(&mut guest, msgs[0].seq, b"done").await;
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let request = simple_bounded_request(
+            "zero-stdout-limit",
+            Some(bounded_stream_request_with_limits(
+                event_tx,
+                true,
+                true,
+                vsock_proto::MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES,
+                0,
+                8,
+            )),
+        );
+
+        let result = host.bounded_exec(&request).await.unwrap();
+        assert_eq!(result.stdout, b"done");
+        assert_eq!(
+            event_rx.recv().await.unwrap(),
+            BoundedExecOutputEvent {
+                stream: BoundedExecStream::Stdout,
+                sequence: 21,
+                chunk: Vec::new(),
+                truncated: true,
+            }
+        );
+        assert_eq!(
+            event_rx.recv().await.unwrap(),
+            BoundedExecOutputEvent {
+                stream: BoundedExecStream::Stderr,
+                sequence: 22,
+                chunk: b"err".to_vec(),
+                truncated: false,
+            }
+        );
     }
 
     #[tokio::test]
