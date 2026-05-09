@@ -380,15 +380,29 @@ function AddConnectorsDialog({
       }}
     >
       <DialogContent
-        className="max-w-2xl flex flex-col max-h-[80vh]"
+        className={cn(
+          // Desktop: centered modal with capped height.
+          "max-w-2xl flex flex-col max-h-[80vh]",
+          // Mobile: full-page so the connector list reads as a proper page.
+          // `!` overrides the consumer max-w/max-h so phones get edge-to-edge.
+          "max-md:!inset-0 max-md:!left-0 max-md:!top-0 max-md:!w-screen max-md:!max-w-none max-md:!h-[100dvh] max-md:!max-h-[100dvh] max-md:!translate-x-0 max-md:!translate-y-0 max-md:!rounded-none max-md:!border-0 max-md:!shadow-none max-md:!p-0 max-md:!gap-0",
+        )}
         aria-describedby={undefined}
       >
-        <DialogHeader className="shrink-0">
-          <DialogTitle>
-            Available connectors to connect ({unconnected.length})
+        <DialogHeader className="shrink-0 max-md:px-5 max-md:pt-[max(env(safe-area-inset-top),1.25rem)] max-md:pb-3 max-md:pr-14 max-md:border-b max-md:border-border/60">
+          <DialogTitle className="max-md:!text-left">
+            <span className="md:inline hidden">
+              Available connectors to connect ({unconnected.length})
+            </span>
+            {/* Mobile uses page-style title + count subtitle so the long
+                desktop label doesn't truncate or wrap awkwardly. */}
+            <span className="md:hidden block">Add connector</span>
           </DialogTitle>
+          <p className="hidden max-md:block text-[14px] text-muted-foreground mt-1 leading-snug">
+            {unconnected.length} available
+          </p>
         </DialogHeader>
-        <div className="shrink-0">
+        <div className="shrink-0 max-md:px-5 max-md:pt-3">
           <Input
             type="text"
             placeholder="Find connectors..."
@@ -397,10 +411,13 @@ function AddConnectorsDialog({
               return setSearch(e.target.value);
             }}
             autoFocus
+            className="max-md:h-12 max-md:text-[16px]"
           />
         </div>
-        <div className="overflow-y-auto -mx-6 px-6">
-          <div className="grid grid-cols-2 gap-3">
+        <div className="overflow-y-auto -mx-6 px-6 max-md:!mx-0 max-md:!px-5 max-md:flex-1 max-md:pt-3 max-md:pb-[max(env(safe-area-inset-bottom),1.25rem)]">
+          {/* Two columns on desktop, one column on mobile so each row has a
+              comfortable tap target without truncating the help text. */}
+          <div className="grid grid-cols-2 gap-3 max-md:grid-cols-1 max-md:gap-2">
             {filtered.map((item) => {
               return (
                 <button
@@ -411,11 +428,11 @@ function AddConnectorsDialog({
                   }}
                   disabled={pollingType === item.type}
                   aria-label={`Connect ${item.label}`}
-                  className="rounded-lg bg-card overflow-hidden transition-colors hover:bg-muted/30 cursor-pointer text-left w-full"
+                  className="rounded-lg bg-card overflow-hidden transition-colors hover:bg-muted/30 active:bg-muted/40 cursor-pointer text-left w-full"
                   style={{ border: "0.7px solid hsl(var(--gray-400))" }}
                 >
-                  <div className="flex items-center gap-2.5 px-4 pt-4 pb-1">
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+                  <div className="flex items-center gap-2.5 px-4 pt-4 pb-1 max-md:gap-3">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center max-md:h-7 max-md:w-7">
                       {item.type in CONNECTOR_TYPES ? (
                         <ConnectorIcon
                           type={item.type as ConnectorType}
@@ -429,7 +446,7 @@ function AddConnectorsDialog({
                         />
                       )}
                     </span>
-                    <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
+                    <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate max-md:text-[16px]">
                       {item.label}
                     </span>
                     {pollingType === item.type ? (
@@ -439,13 +456,13 @@ function AddConnectorsDialog({
                         className="shrink-0 text-muted-foreground animate-spin"
                       />
                     ) : (
-                      <span className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
+                      <span className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground max-md:h-8 max-md:w-8">
                         <IconPlus size={14} stroke={1.5} />
                       </span>
                     )}
                   </div>
                   <div className="px-4 pb-4 pt-1">
-                    <div className="text-xs text-muted-foreground line-clamp-2">
+                    <div className="text-xs text-muted-foreground line-clamp-2 max-md:text-[14px] max-md:leading-snug">
                       {item.helpText ?? ""}
                     </div>
                   </div>

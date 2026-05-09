@@ -1,5 +1,6 @@
 import { useLastResolved, useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { cn } from "@vm0/ui";
 import { Input } from "@vm0/ui/components/ui/input";
 import { Button } from "@vm0/ui/components/ui/button";
 import {
@@ -145,13 +146,13 @@ function ApiTokenForm({
   return (
     <div className="flex flex-col gap-3">
       {item.connected && item.connector?.authMethod === "oauth" && (
-        <p className="text-xs text-amber-600">
+        <p className="text-xs text-amber-600 max-md:text-[14px]">
           This will replace your current OAuth connection.
         </p>
       )}
       {apiTokenConfig.helpText && (
         <div
-          className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
+          className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline max-md:text-[14px]"
           dangerouslySetInnerHTML={{
             __html: renderMarkdown(apiTokenConfig.helpText),
           }}
@@ -160,7 +161,7 @@ function ApiTokenForm({
       {secretEntries.map(([name, secretConfig]) => {
         return (
           <div key={name} className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-foreground">
+            <label className="text-sm font-medium text-foreground max-md:text-[14px]">
               {secretConfig.label}
             </label>
             <Input
@@ -170,6 +171,7 @@ function ApiTokenForm({
               onChange={(e) => {
                 return setFormValue(type, name, e.target.value);
               }}
+              className="max-md:h-12 max-md:text-[16px]"
             />
           </div>
         );
@@ -177,7 +179,7 @@ function ApiTokenForm({
       <Button
         onClick={handleSubmit}
         disabled={!allFilled || submitting}
-        className="w-full"
+        className="w-full max-md:h-12 max-md:text-[16px]"
       >
         {submitting ? "Saving..." : "Save"}
       </Button>
@@ -228,13 +230,17 @@ function PlatformConfirmationForm({
     <div className="flex flex-col gap-3">
       {platformConfig.helpText && (
         <div
-          className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
+          className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline max-md:text-[14px]"
           dangerouslySetInnerHTML={{
             __html: renderMarkdown(platformConfig.helpText),
           }}
         />
       )}
-      <Button onClick={handleEnable} disabled={submitting} className="w-full">
+      <Button
+        onClick={handleEnable}
+        disabled={submitting}
+        className="w-full max-md:h-12 max-md:text-[16px]"
+      >
         {submitting ? "Enabling..." : (platformConfig.label ?? "Enable")}
       </Button>
     </div>
@@ -310,7 +316,7 @@ function ConnectModalContent({
               Reason.DomCallback,
             );
           }}
-          className="w-full"
+          className="w-full max-md:h-12 max-md:text-[16px]"
         >
           Sign in with {config.label}
         </Button>
@@ -395,31 +401,44 @@ export function ConnectModal({
         return !open && onClose();
       }}
     >
-      <DialogContent className="max-w-md" aria-describedby={undefined}>
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            <div className="flex h-5 w-5 shrink-0 items-center justify-center">
+      <DialogContent
+        className={cn(
+          // Desktop: tight centered modal.
+          "max-w-md",
+          // Mobile: full-page so the OAuth button + token inputs read as a
+          // proper auth page. Flex column with safe-area-aware paddings.
+          "max-md:!inset-0 max-md:!left-0 max-md:!top-0 max-md:!w-screen max-md:!max-w-none max-md:!h-[100dvh] max-md:!max-h-[100dvh] max-md:!translate-x-0 max-md:!translate-y-0 max-md:!rounded-none max-md:!border-0 max-md:!shadow-none max-md:!p-0 max-md:!gap-0 max-md:flex max-md:flex-col",
+        )}
+        aria-describedby={undefined}
+      >
+        <DialogHeader className="max-md:shrink-0 max-md:px-5 max-md:pt-[max(env(safe-area-inset-top),1.25rem)] max-md:pb-3 max-md:pr-14 max-md:border-b max-md:border-border/60">
+          <div className="flex items-center gap-3 max-md:gap-2.5">
+            <div className="flex h-5 w-5 shrink-0 items-center justify-center max-md:h-7 max-md:w-7">
               <ConnectorIcon type={selectedType} size={20} />
             </div>
-            <DialogTitle>{config.label}</DialogTitle>
+            <DialogTitle className="max-md:!text-left">
+              {config.label}
+            </DialogTitle>
           </div>
         </DialogHeader>
 
-        {item.connected && (
-          <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>{connectedStatusText(item)}</span>
-            {item.connector?.authMethod === "platform" && <Vm0ManagedBadge />}
-          </p>
-        )}
+        <div className="flex flex-col gap-4 max-md:flex-1 max-md:overflow-y-auto max-md:px-5 max-md:py-4 max-md:pb-[max(env(safe-area-inset-bottom),1.25rem)]">
+          {item.connected && (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground max-md:text-[14px]">
+              <span>{connectedStatusText(item)}</span>
+              {item.connector?.authMethod === "platform" && <Vm0ManagedBadge />}
+            </p>
+          )}
 
-        <ConnectModalContent
-          item={item}
-          showPermissionDialogOnConnect={showPermissionDialogOnConnect}
-          onSuccess={async () => {
-            await onSuccess?.();
-            onClose();
-          }}
-        />
+          <ConnectModalContent
+            item={item}
+            showPermissionDialogOnConnect={showPermissionDialogOnConnect}
+            onSuccess={async () => {
+              await onSuccess?.();
+              onClose();
+            }}
+          />
+        </div>
       </DialogContent>
     </Dialog>
   );
