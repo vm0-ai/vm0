@@ -335,8 +335,9 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "all provider-first resolver, UI, CLI, and legacy model provider " +
       "defaults remain unchanged. When on, follow-up work can use org model " +
       "policies, canonical models, and member-scoped OAuth credentials. " +
-      "Default-off for every org, including staff; per-user toggle via Lab.",
+      "Staff-only during rollout; per-user toggle via Lab.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.VoiceChatRealtimeBilling]: {
     maintainer: "lancy@vm0.ai",
