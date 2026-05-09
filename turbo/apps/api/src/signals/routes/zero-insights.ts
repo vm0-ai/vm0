@@ -50,9 +50,6 @@ export const zeroInsightsRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroInsightsContract.get,
-    handler: shadowCompareRoute({
-      route: zeroInsightsContract.get,
-      handler: authRoute(orgAuth, getInsightsInner$),
-    }),
+    handler: authRoute(orgAuth, getInsightsInner$),
   },
 ];
