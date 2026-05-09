@@ -1821,21 +1821,103 @@ fn read_spawn_watch_pid(stream: &mut impl std::io::Read, seq: u32) -> u32 {
 fn read_pid_file(path: &str) -> u32 {
     let deadline = std::time::Instant::now() + Duration::from_secs(3);
     loop {
-        match std::fs::read_to_string(path) {
-            Ok(contents) => {
-                if let Ok(pid) = contents.trim().parse() {
-                    return pid;
-                }
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => panic!("failed to read pid file {path}: {e}"),
+        if let Some(pid) = try_read_pid_file(path) {
+            return pid;
         }
         assert!(
             std::time::Instant::now() < deadline,
             "pid file {path} was not created",
         );
+        if wait_for_pid_file_change(path, deadline).unwrap_or(false) {
+            continue;
+        }
         thread::sleep(Duration::from_millis(50));
     }
+}
+
+fn try_read_pid_file(path: &str) -> Option<u32> {
+    match std::fs::read_to_string(path) {
+        Ok(contents) => contents.trim().parse().ok(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => panic!("failed to read pid file {path}: {e}"),
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn wait_for_pid_file_change(path: &str, deadline: std::time::Instant) -> std::io::Result<bool> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Path;
+
+    let path = Path::new(path);
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let parent_c = CString::new(parent.as_os_str().as_bytes())?;
+
+    // SAFETY: inotify_init1 has no preconditions; the returned fd is checked.
+    let fd = unsafe { libc::inotify_init1(libc::IN_CLOEXEC) };
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    struct FdGuard(libc::c_int);
+    impl Drop for FdGuard {
+        fn drop(&mut self) {
+            // SAFETY: the fd is owned by this guard.
+            unsafe {
+                libc::close(self.0);
+            }
+        }
+    }
+    let fd = FdGuard(fd);
+
+    let mask = libc::IN_CREATE | libc::IN_CLOSE_WRITE | libc::IN_MODIFY | libc::IN_MOVED_TO;
+    // SAFETY: parent_c is a valid nul-terminated path and fd is an inotify fd.
+    let wd = unsafe { libc::inotify_add_watch(fd.0, parent_c.as_ptr(), mask) };
+    if wd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    if try_read_pid_file(path.to_string_lossy().as_ref()).is_some() {
+        return Ok(true);
+    }
+
+    loop {
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            return Ok(false);
+        }
+        let timeout_ms = remaining.as_millis().clamp(1, libc::c_int::MAX as u128) as libc::c_int;
+        let mut pfd = libc::pollfd {
+            fd: fd.0,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: pfd points to one initialized pollfd and timeout_ms is bounded.
+        let ret = unsafe { libc::poll(&mut pfd, 1, timeout_ms) };
+        if ret < 0 {
+            let err = std::io::Error::last_os_error();
+            if err.kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(err);
+        }
+        if ret == 0 {
+            return Ok(false);
+        }
+
+        let mut buf = [0u8; 4096];
+        // SAFETY: buf is valid writable memory and fd is readable after poll.
+        let _ = unsafe { libc::read(fd.0, buf.as_mut_ptr().cast(), buf.len()) };
+        return Ok(true);
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn wait_for_pid_file_change(_path: &str, _deadline: std::time::Instant) -> std::io::Result<bool> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "inotify is linux-only",
+    ))
 }
 
 fn kill_pid_group(pid: u32) {
@@ -1846,6 +1928,18 @@ fn kill_pid_group(pid: u32) {
 }
 
 fn wait_for_pid_exit(pid: u32, context: &str) {
+    if !pid_alive(pid) {
+        return;
+    }
+
+    if let Ok(exited) = wait_for_pid_exit_with_pidfd(pid, Duration::from_secs(5)) {
+        if exited {
+            return;
+        }
+        kill_pid_group(pid);
+        panic!("pid {pid} did not terminate within 5s after {context}");
+    }
+
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
     while pid_alive(pid) {
         if std::time::Instant::now() >= deadline {
@@ -1854,6 +1948,71 @@ fn wait_for_pid_exit(pid: u32, context: &str) {
         }
         thread::sleep(Duration::from_millis(50));
     }
+}
+
+#[cfg(target_os = "linux")]
+fn wait_for_pid_exit_with_pidfd(pid: u32, timeout: Duration) -> std::io::Result<bool> {
+    // SAFETY: pidfd_open is called with a pid produced by this test and flags=0.
+    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0) };
+    if fd < 0 {
+        let err = std::io::Error::last_os_error();
+        if !pid_alive(pid) {
+            return Ok(true);
+        }
+        return Err(err);
+    }
+
+    struct FdGuard(libc::c_int);
+    impl Drop for FdGuard {
+        fn drop(&mut self) {
+            // SAFETY: the fd is owned by this guard.
+            unsafe {
+                libc::close(self.0);
+            }
+        }
+    }
+
+    let pidfd = FdGuard(fd as libc::c_int);
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        if !pid_alive(pid) {
+            return Ok(true);
+        }
+
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            return Ok(false);
+        }
+        let timeout_ms = remaining.as_millis().clamp(1, libc::c_int::MAX as u128) as libc::c_int;
+        let mut pfd = libc::pollfd {
+            fd: pidfd.0,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: pfd points to one initialized pollfd and timeout_ms is bounded.
+        let ret = unsafe { libc::poll(&mut pfd, 1, timeout_ms) };
+        if ret < 0 {
+            let err = std::io::Error::last_os_error();
+            if err.kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(err);
+        }
+        if ret == 0 {
+            return Ok(!pid_alive(pid));
+        }
+        if pfd.revents & (libc::POLLIN | libc::POLLHUP | libc::POLLERR) != 0 {
+            return Ok(true);
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn wait_for_pid_exit_with_pidfd(_pid: u32, _timeout: Duration) -> std::io::Result<bool> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "pidfd is linux-only",
+    ))
 }
 
 /// Regression for #11077 (`MSG_EXEC` side): with `timeout_ms = 0`, a
@@ -2149,20 +2308,7 @@ fn streaming_terminates_child_on_vsock_disconnect() {
     drop(host_stream);
     let _ = handle.join();
 
-    // Wait for the child to terminate. Timing budget: ≤100 ms drain
-    // poll + 50 ms next echo + tear-down. 5 s deadline is generous.
-    let kill_deadline = Instant::now() + Duration::from_secs(5);
-    while pid_alive(pid) {
-        if Instant::now() >= kill_deadline {
-            // Best-effort cleanup before failing
-            // SAFETY: pid was obtained from MSG_SPAWN_WATCH_RESULT.
-            unsafe {
-                libc::kill(pid as i32, libc::SIGKILL);
-            }
-            panic!("pid {pid} did not terminate within 5s after vsock disconnect");
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
+    wait_for_pid_exit(pid, "vsock disconnect");
 }
 
 /// Regression: a child producing > 64 KB on **both** stdout and stderr

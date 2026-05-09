@@ -802,16 +802,12 @@ fn kill_processes_holding_pipe(pipe_link: &str) {
 
         // SAFETY: pid came from /proc. getpgid may fail if the process exits.
         let pgid = unsafe { libc::getpgid(pid as libc::pid_t) };
-        if pgid > 0 && pgid != self_pgid && killed_pgroups.insert(pgid) {
-            // SAFETY: pgid is positive and not our own process group.
-            let ret = unsafe { libc::kill(-pgid, libc::SIGKILL) };
-            if ret == 0 {
-                continue;
-            }
+        if pgid <= 0 || pgid == self_pgid || !killed_pgroups.insert(pgid) {
+            continue;
         }
 
-        // SAFETY: pid came from /proc and may already be gone; errors ignored.
-        let _ = unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
+        // SAFETY: pgid is positive and not our own process group.
+        let _ = unsafe { libc::kill(-pgid, libc::SIGKILL) };
     }
 }
 
