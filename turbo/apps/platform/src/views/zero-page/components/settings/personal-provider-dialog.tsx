@@ -16,6 +16,7 @@ import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   personalDialogState$,
+  personalDialogHideModelSelector$,
   personalDialogFormValues$,
   personalFormErrors$,
   personalActionPromise$,
@@ -36,6 +37,7 @@ import {
 
 export function PersonalProviderDialog() {
   const dialog = useGet(personalDialogState$);
+  const hideModelSelector = useGet(personalDialogHideModelSelector$);
   const formValues = useGet(personalDialogFormValues$);
   const errors = useGet(personalFormErrors$);
   const actionStatus = useLoadable(personalActionPromise$);
@@ -123,6 +125,7 @@ export function PersonalProviderDialog() {
               secret={formValues.secret}
               selectedModel={formValues.selectedModel}
               useDefaultModel={formValues.useDefaultModel}
+              hideModelSelector={hideModelSelector}
               onSecretChange={setSecret}
               onModelChange={setModel}
               onUseDefaultModelChange={setUseDefaultModel}

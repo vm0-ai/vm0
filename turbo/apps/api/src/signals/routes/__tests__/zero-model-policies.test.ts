@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { createStore, command } from "ccstate";
 import {
-  SUPPORTED_RUN_MODELS,
+  DEFAULT_ORG_MODEL_POLICY_MODELS,
   type ModelProviderType,
   type OrgModelPoliciesResponse,
   type UpdateOrgModelPolicy,
@@ -117,6 +117,20 @@ function toUpdate(data: OrgModelPoliciesResponse): UpdateOrgModelPolicy[] {
   });
 }
 
+function makeVm0Policy(
+  model: UpdateOrgModelPolicy["model"],
+  sortOrder: number,
+): UpdateOrgModelPolicy {
+  return {
+    model,
+    enabled: true,
+    sortOrder,
+    defaultProviderType: "vm0",
+    credentialScope: "org",
+    modelProviderId: null,
+  };
+}
+
 function apiClient() {
   return setupApp({ context })(zeroModelPoliciesMainContract);
 }
@@ -163,7 +177,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       response.body.policies.map((policy) => {
         return policy.model;
       }),
-    ).toStrictEqual(SUPPORTED_RUN_MODELS);
+    ).toStrictEqual(DEFAULT_ORG_MODEL_POLICY_MODELS);
     expect(response.body.policies[0]).toMatchObject({
       enabled: true,
       sortOrder: 0,
@@ -172,7 +186,9 @@ describe("GET/PUT /api/zero/model-policies", () => {
       modelProviderId: null,
       routeStatus: "valid",
     });
-    expect(response.body.workspaceDefaultModel).toBe(SUPPORTED_RUN_MODELS[0]);
+    expect(response.body.workspaceDefaultModel).toBe(
+      DEFAULT_ORG_MODEL_POLICY_MODELS[0],
+    );
   });
 
   it("requires admins for policy reads and writes", async () => {
@@ -220,10 +236,42 @@ describe("GET/PUT /api/zero/model-policies", () => {
     const [firstPolicy, secondPolicy] = response.body.policies;
     expect(firstPolicy).toBeDefined();
     expect(secondPolicy).toBeDefined();
-    expect(firstPolicy!.model).toBe(SUPPORTED_RUN_MODELS[1]);
-    expect(secondPolicy!.model).toBe(SUPPORTED_RUN_MODELS[0]);
+    expect(firstPolicy!.model).toBe(DEFAULT_ORG_MODEL_POLICY_MODELS[1]);
+    expect(secondPolicy!.model).toBe(DEFAULT_ORG_MODEL_POLICY_MODELS[0]);
     expect(secondPolicy!.enabled).toBeFalsy();
-    expect(response.body.workspaceDefaultModel).toBe(SUPPORTED_RUN_MODELS[1]);
+    expect(response.body.workspaceDefaultModel).toBe(
+      DEFAULT_ORG_MODEL_POLICY_MODELS[1],
+    );
+  });
+
+  it("allows adding a supported model that was not seeded by default", async () => {
+    const fixture = await seedFixture({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = apiClient();
+    const listResponse = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    const updates = [
+      ...toUpdate(listResponse.body),
+      makeVm0Policy("claude-opus-4-6", listResponse.body.policies.length),
+    ];
+
+    const response = await accept(
+      client.update({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { policies: updates },
+      }),
+      [200],
+    );
+
+    expect(
+      response.body.policies.map((policy) => {
+        return policy.model;
+      }),
+    ).toStrictEqual([...DEFAULT_ORG_MODEL_POLICY_MODELS, "claude-opus-4-6"]);
   });
 
   it("allows compatible org provider routes", async () => {
@@ -241,17 +289,17 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
     );
-    const updates = toUpdate(listResponse.body).map((policy) => {
-      if (policy.model !== "glm-5.1") {
-        return policy;
-      }
-      return {
-        ...policy,
-        defaultProviderType: "openrouter-api-key" as const,
-        credentialScope: "org" as const,
+    const updates = [
+      ...toUpdate(listResponse.body),
+      {
+        model: "glm-5.1",
+        enabled: true,
+        sortOrder: listResponse.body.policies.length,
+        defaultProviderType: "openrouter-api-key",
+        credentialScope: "org",
         modelProviderId: providerId,
-      };
-    });
+      } satisfies UpdateOrgModelPolicy,
+    ];
 
     const response = await accept(
       client.update({
@@ -269,6 +317,85 @@ describe("GET/PUT /api/zero/model-policies", () => {
       credentialScope: "org",
       modelProviderId: providerId,
       routeStatus: "valid",
+    });
+  });
+
+  it("allows compatible member OAuth provider routes", async () => {
+    const fixture = await seedFixture({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = apiClient();
+    const listResponse = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    const updates = toUpdate(listResponse.body).map((policy) => {
+      if (policy.model !== "claude-opus-4-7") {
+        return policy;
+      }
+      return {
+        ...policy,
+        defaultProviderType: "claude-code-oauth-token" as const,
+        credentialScope: "member" as const,
+        modelProviderId: null,
+      };
+    });
+
+    const response = await accept(
+      client.update({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { policies: updates },
+      }),
+      [200],
+    );
+    const opus = response.body.policies.find((policy) => {
+      return policy.model === "claude-opus-4-7";
+    });
+
+    expect(opus).toMatchObject({
+      defaultProviderType: "claude-code-oauth-token",
+      credentialScope: "member",
+      modelProviderId: null,
+      routeStatus: "valid",
+    });
+  });
+
+  it("rejects workspace-scoped OAuth provider routes", async () => {
+    const fixture = await seedFixture({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const providerId = await store.set(
+      insertOrgProvider$,
+      { orgId: fixture.orgId, type: "claude-code-oauth-token" },
+      context.signal,
+    );
+    const client = apiClient();
+    const listResponse = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    const updates = toUpdate(listResponse.body).map((policy) => {
+      if (policy.model !== "claude-opus-4-7") {
+        return policy;
+      }
+      return {
+        ...policy,
+        defaultProviderType: "claude-code-oauth-token" as const,
+        credentialScope: "org" as const,
+        modelProviderId: providerId,
+      };
+    });
+
+    const response = await client.update({
+      headers: { authorization: "Bearer clerk-session" },
+      body: { policies: updates },
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
     });
   });
 

@@ -37,6 +37,10 @@ export async function ensureOrgModelPolicies(
   userId?: string,
 ): Promise<OrgModelPolicyRow[]> {
   const existing = await loadRows(orgId);
+  if (existing.length > 0) {
+    return existing;
+  }
+
   const existingModels = new Set(
     existing.map((policy) => {
       return policy.model;

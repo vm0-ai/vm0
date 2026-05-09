@@ -117,21 +117,24 @@ describe("Personal-tier (BYOK) model provider routes", () => {
   describe("feature switch off → all endpoints 404", () => {
     beforeEach(() => {
       mockIsFeatureEnabled.mockImplementation((key) => {
-        return key !== FeatureSwitchKey.PersonalModelProvider;
+        return (
+          key !== FeatureSwitchKey.PersonalModelProvider &&
+          key !== FeatureSwitchKey.ModelFirstModelProvider
+        );
       });
     });
 
-    it("GET returns 404 when personalModelProvider is off", async () => {
+    it("GET returns 404 when personal and model-first providers are off", async () => {
       const response = await GET(createTestRequest(listUrl()));
       expect(response.status).toBe(404);
     });
 
-    it("POST upsert returns 404 when personalModelProvider is off", async () => {
+    it("POST upsert returns 404 when personal and model-first providers are off", async () => {
       const response = await createProvider("anthropic-api-key", "k");
       expect(response.status).toBe(404);
     });
 
-    it("DELETE returns 404 when personalModelProvider is off", async () => {
+    it("DELETE returns 404 when personal and model-first providers are off", async () => {
       const request = createTestRequest(deleteUrl("anthropic-api-key"), {
         method: "DELETE",
       });
@@ -139,7 +142,7 @@ describe("Personal-tier (BYOK) model provider routes", () => {
       expect(response.status).toBe(404);
     });
 
-    it("POST setDefault returns 404 when personalModelProvider is off", async () => {
+    it("POST setDefault returns 404 when personal and model-first providers are off", async () => {
       const request = createTestRequest(setDefaultUrl("anthropic-api-key"), {
         method: "POST",
       });
@@ -147,7 +150,7 @@ describe("Personal-tier (BYOK) model provider routes", () => {
       expect(response.status).toBe(404);
     });
 
-    it("PATCH updateModel returns 404 when personalModelProvider is off", async () => {
+    it("PATCH updateModel returns 404 when personal and model-first providers are off", async () => {
       const request = createTestRequest(updateModelUrl("openai-api-key"), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -156,6 +159,24 @@ describe("Personal-tier (BYOK) model provider routes", () => {
       const response = await updateModelPATCH(request);
       expect(response.status).toBe(404);
     });
+  });
+
+  it("allows OAuth personal providers when model-first is on", async () => {
+    mockIsFeatureEnabled.mockImplementation((key) => {
+      return key === FeatureSwitchKey.ModelFirstModelProvider;
+    });
+
+    const listResponse = await GET(createTestRequest(listUrl()));
+    expect(listResponse.status).toBe(200);
+
+    const oauthResponse = await createProvider(
+      "claude-code-oauth-token",
+      "sk-ant-test",
+    );
+    expect(oauthResponse.status).toBe(201);
+
+    const byokResponse = await createProvider("anthropic-api-key", "k");
+    expect(byokResponse.status).toBe(404);
   });
 
   // ---------------------------------------------------------------------------

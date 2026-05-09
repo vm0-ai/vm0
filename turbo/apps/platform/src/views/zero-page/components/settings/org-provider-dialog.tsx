@@ -27,6 +27,7 @@ import {
   orgSubmitDialog$,
   orgUpdateFormUseDefaultModel$,
 } from "../../../../signals/zero-page/settings/org-model-providers.ts";
+import { modelFirstModelProviderEnabled$ } from "../../../../signals/external/feature-switch.ts";
 import {
   OAuthFields,
   ApiKeyFields,
@@ -47,6 +48,7 @@ export function OrgProviderDialog() {
   const submit = useSet(orgSubmitDialog$);
   const setUseDefaultModel = useSet(orgUpdateFormUseDefaultModel$);
   const pageSignal = useGet(pageSignal$);
+  const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
 
   if (!dialog.providerType) {
     return (
@@ -123,6 +125,7 @@ export function OrgProviderDialog() {
               secret={formValues.secret}
               selectedModel={formValues.selectedModel}
               useDefaultModel={formValues.useDefaultModel}
+              hideModelSelector={modelFirstEnabled}
               onSecretChange={setSecret}
               onModelChange={setModel}
               onUseDefaultModelChange={setUseDefaultModel}
@@ -137,6 +140,7 @@ export function OrgProviderDialog() {
               secret={formValues.secret}
               selectedModel={formValues.selectedModel}
               useDefaultModel={formValues.useDefaultModel}
+              hideModelSelector={modelFirstEnabled}
               onSecretChange={setSecret}
               onModelChange={setModel}
               onUseDefaultModelChange={setUseDefaultModel}
@@ -153,6 +157,7 @@ export function OrgProviderDialog() {
               secrets={formValues.secrets}
               selectedModel={formValues.selectedModel}
               useDefaultModel={formValues.useDefaultModel}
+              hideModelSelector={modelFirstEnabled}
               onAuthMethodChange={setAuthMethod}
               onSecretFieldChange={setSecretField}
               onModelChange={setModel}
@@ -167,6 +172,7 @@ export function OrgProviderDialog() {
               providerType={providerType}
               selectedModel={formValues.selectedModel}
               useDefaultModel={formValues.useDefaultModel}
+              hideModelSelector={modelFirstEnabled}
               onModelChange={setModel}
               onUseDefaultModelChange={setUseDefaultModel}
             />

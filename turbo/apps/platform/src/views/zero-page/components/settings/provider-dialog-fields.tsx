@@ -33,6 +33,7 @@ export function OAuthFields({
   secret,
   selectedModel,
   useDefaultModel,
+  hideModelSelector = false,
   onSecretChange,
   onModelChange,
   onUseDefaultModelChange,
@@ -42,6 +43,7 @@ export function OAuthFields({
   secret: string;
   selectedModel: string;
   useDefaultModel: boolean;
+  hideModelSelector?: boolean;
   onSecretChange: (value: string) => void;
   onModelChange: (value: string) => void;
   onUseDefaultModelChange: (value: boolean) => void;
@@ -66,13 +68,15 @@ export function OAuthFields({
         {error && <p className="text-xs text-destructive">{error}</p>}
         <ClaudeCodeSetupPrompt />
       </div>
-      <ModelSelector
-        providerType="claude-code-oauth-token"
-        selectedModel={selectedModel}
-        useDefaultModel={useDefaultModel}
-        onModelChange={onModelChange}
-        onUseDefaultModelChange={onUseDefaultModelChange}
-      />
+      {!hideModelSelector && (
+        <ModelSelector
+          providerType="claude-code-oauth-token"
+          selectedModel={selectedModel}
+          useDefaultModel={useDefaultModel}
+          onModelChange={onModelChange}
+          onUseDefaultModelChange={onUseDefaultModelChange}
+        />
+      )}
     </>
   );
 }
@@ -82,6 +86,7 @@ export function ApiKeyFields({
   secret,
   selectedModel,
   useDefaultModel,
+  hideModelSelector = false,
   onSecretChange,
   onModelChange,
   onUseDefaultModelChange,
@@ -93,6 +98,7 @@ export function ApiKeyFields({
   secret: string;
   selectedModel: string;
   useDefaultModel: boolean;
+  hideModelSelector?: boolean;
   onSecretChange: (value: string) => void;
   onModelChange: (value: string) => void;
   onUseDefaultModelChange: (value: boolean) => void;
@@ -130,13 +136,15 @@ export function ApiKeyFields({
           <p className="text-xs text-muted-foreground">{helpText}</p>
         )}
       </div>
-      <ModelSelector
-        providerType={providerType}
-        selectedModel={selectedModel}
-        useDefaultModel={useDefaultModel}
-        onModelChange={onModelChange}
-        onUseDefaultModelChange={onUseDefaultModelChange}
-      />
+      {!hideModelSelector && (
+        <ModelSelector
+          providerType={providerType}
+          selectedModel={selectedModel}
+          useDefaultModel={useDefaultModel}
+          onModelChange={onModelChange}
+          onUseDefaultModelChange={onUseDefaultModelChange}
+        />
+      )}
     </>
   );
 }
@@ -147,6 +155,7 @@ export function MultiAuthFields({
   secrets,
   selectedModel,
   useDefaultModel,
+  hideModelSelector = false,
   onAuthMethodChange,
   onSecretFieldChange,
   onModelChange,
@@ -159,6 +168,7 @@ export function MultiAuthFields({
   secrets: Record<string, string>;
   selectedModel: string;
   useDefaultModel: boolean;
+  hideModelSelector?: boolean;
   onAuthMethodChange: (value: string) => void;
   onSecretFieldChange: (key: string, value: string) => void;
   onModelChange: (value: string) => void;
@@ -240,13 +250,15 @@ export function MultiAuthFields({
           );
         })}
 
-      <ModelSelector
-        providerType={providerType}
-        selectedModel={selectedModel}
-        useDefaultModel={useDefaultModel}
-        onModelChange={onModelChange}
-        onUseDefaultModelChange={onUseDefaultModelChange}
-      />
+      {!hideModelSelector && (
+        <ModelSelector
+          providerType={providerType}
+          selectedModel={selectedModel}
+          useDefaultModel={useDefaultModel}
+          onModelChange={onModelChange}
+          onUseDefaultModelChange={onUseDefaultModelChange}
+        />
+      )}
     </>
   );
 }
@@ -259,16 +271,18 @@ export function NoSecretFields({
   providerType,
   selectedModel,
   useDefaultModel,
+  hideModelSelector = false,
   onModelChange,
   onUseDefaultModelChange,
 }: {
   providerType: ModelProviderType;
   selectedModel: string;
   useDefaultModel: boolean;
+  hideModelSelector?: boolean;
   onModelChange: (value: string) => void;
   onUseDefaultModelChange: (value: boolean) => void;
 }) {
-  if (!hasModelSelection(providerType)) {
+  if (hideModelSelector || !hasModelSelection(providerType)) {
     return null;
   }
 

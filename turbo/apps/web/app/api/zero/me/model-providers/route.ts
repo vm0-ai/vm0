@@ -1,6 +1,9 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import { hasAuthMethods } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  hasAuthMethods,
+  type ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
@@ -25,6 +28,19 @@ import { isBadRequest } from "@vm0/api-services/errors";
 
 const log = logger("api:zero-me-model-providers");
 
+function isPersonalProviderApiEnabled(
+  params: Parameters<typeof isFeatureEnabled>[1],
+): boolean {
+  return (
+    isFeatureEnabled(FeatureSwitchKey.PersonalModelProvider, params) ||
+    isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, params)
+  );
+}
+
+function isModelFirstPersonalProviderType(type: ModelProviderType): boolean {
+  return type === "claude-code-oauth-token" || type === "codex-oauth-token";
+}
+
 const router = tsr.router(zeroPersonalModelProvidersMainContract, {
   list: async ({ headers }) => {
     initServices();
@@ -38,20 +54,29 @@ const router = tsr.router(zeroPersonalModelProvidersMainContract, {
       org.orgId,
       authCtx.userId,
     );
-    const personalEnabled = isFeatureEnabled(
-      FeatureSwitchKey.PersonalModelProvider,
-      { userId: authCtx.userId, orgId: org.orgId, overrides },
-    );
+    const personalEnabled = isPersonalProviderApiEnabled({
+      userId: authCtx.userId,
+      orgId: org.orgId,
+      overrides,
+    });
     if (!personalEnabled) {
       return createErrorResponse("NOT_FOUND", "Not found");
     }
 
     const providers = await listUserModelProviders(org.orgId, authCtx.userId);
+    const visibleProviders = isFeatureEnabled(
+      FeatureSwitchKey.PersonalModelProvider,
+      { userId: authCtx.userId, orgId: org.orgId, overrides },
+    )
+      ? providers
+      : providers.filter((provider) => {
+          return isModelFirstPersonalProviderType(provider.type);
+        });
 
     return {
       status: 200 as const,
       body: {
-        modelProviders: providers.map((p) => {
+        modelProviders: visibleProviders.map((p) => {
           return {
             id: p.id,
             type: p.type,
@@ -85,15 +110,26 @@ const router = tsr.router(zeroPersonalModelProvidersMainContract, {
       org.orgId,
       authCtx.userId,
     );
-    const personalEnabled = isFeatureEnabled(
-      FeatureSwitchKey.PersonalModelProvider,
-      { userId: authCtx.userId, orgId: org.orgId, overrides },
-    );
+    const personalEnabled = isPersonalProviderApiEnabled({
+      userId: authCtx.userId,
+      orgId: org.orgId,
+      overrides,
+    });
     if (!personalEnabled) {
       return createErrorResponse("NOT_FOUND", "Not found");
     }
 
     const { type, secret, authMethod, secrets, selectedModel } = body;
+    const fullPersonalProviderEnabled = isFeatureEnabled(
+      FeatureSwitchKey.PersonalModelProvider,
+      { userId: authCtx.userId, orgId: org.orgId, overrides },
+    );
+    if (
+      !fullPersonalProviderEnabled &&
+      !isModelFirstPersonalProviderType(type)
+    ) {
+      return createErrorResponse("NOT_FOUND", `Provider "${type}" not found`);
+    }
 
     if (type === "openai-api-key") {
       const codexBetaEnabled = isFeatureEnabled(FeatureSwitchKey.CodexBeta, {

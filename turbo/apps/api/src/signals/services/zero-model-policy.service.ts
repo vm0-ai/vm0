@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, notInArray } from "drizzle-orm";
 import {
   MODEL_PROVIDER_TYPES,
   SUPPORTED_RUN_MODELS,
@@ -94,6 +94,10 @@ async function ensureOrgModelPolicies(
   userId: string,
 ): Promise<OrgModelPolicyRow[]> {
   const existing = await loadRows(db, orgId);
+  if (existing.length > 0) {
+    return existing;
+  }
+
   const existingModels = new Set(
     existing.map((policy) => {
       return policy.model;
@@ -222,8 +226,8 @@ async function validateUpdatePolicies(
   orgId: string,
   policies: UpdateOrgModelPolicy[],
 ): Promise<ServiceResult<UpdateOrgModelPolicy[]>> {
-  if (policies.length !== SUPPORTED_RUN_MODELS.length) {
-    return bad("Request must include every supported model exactly once");
+  if (policies.length === 0) {
+    return bad("Request must include at least one model");
   }
 
   const seenModels = new Set<string>();
@@ -253,12 +257,6 @@ async function validateUpdatePolicies(
     const routeError = await validateOrgProviderRoute(db, orgId, policy);
     if (routeError) {
       return bad(routeError);
-    }
-  }
-
-  for (const model of SUPPORTED_RUN_MODELS) {
-    if (!seenModels.has(model)) {
-      return bad(`Missing model "${model}"`);
     }
   }
 
@@ -418,6 +416,9 @@ export const updateOrgModelPolicies$ = command(
     signal: AbortSignal,
   ): Promise<ServiceResult<OrgModelPoliciesResponse>> => {
     const db = set(writeDb$);
+    await ensureOrgModelPolicies(db, params.orgId, params.userId);
+    signal.throwIfAborted();
+
     const validation = await validateUpdatePolicies(
       db,
       params.orgId,
@@ -428,11 +429,31 @@ export const updateOrgModelPolicies$ = command(
       return validation;
     }
 
-    await ensureOrgModelPolicies(db, params.orgId, params.userId);
-    signal.throwIfAborted();
-
     const now = nowDate();
     await db.transaction(async (tx) => {
+      await tx
+        .insert(orgModelPolicies)
+        .values(
+          validation.data.map((policy, index) => {
+            return {
+              orgId: params.orgId,
+              model: policy.model,
+              enabled: policy.enabled,
+              sortOrder: TEMP_SORT_ORDER_START - validation.data.length - index,
+              defaultProviderType: policy.defaultProviderType,
+              credentialScope: policy.credentialScope,
+              modelProviderId: policy.modelProviderId,
+              createdByUserId: params.userId,
+              updatedByUserId: params.userId,
+              createdAt: now,
+              updatedAt: now,
+            };
+          }),
+        )
+        .onConflictDoNothing({
+          target: [orgModelPolicies.orgId, orgModelPolicies.model],
+        });
+
       for (const [index, policy] of validation.data.entries()) {
         await tx
           .update(orgModelPolicies)
@@ -448,6 +469,19 @@ export const updateOrgModelPolicies$ = command(
             ),
           );
       }
+
+      await tx.delete(orgModelPolicies).where(
+        and(
+          eq(orgModelPolicies.orgId, params.orgId),
+          inArray(orgModelPolicies.model, [...SUPPORTED_RUN_MODELS]),
+          notInArray(
+            orgModelPolicies.model,
+            validation.data.map((policy) => {
+              return policy.model;
+            }),
+          ),
+        ),
+      );
 
       for (const policy of validation.data) {
         await tx

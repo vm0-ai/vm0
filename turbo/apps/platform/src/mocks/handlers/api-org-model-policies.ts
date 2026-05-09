@@ -1,6 +1,6 @@
 import {
-  SUPPORTED_RUN_MODELS,
   getCanonicalModelDisplayName,
+  getDefaultOrgModelPolicySeed,
   type OrgModelPolicy,
   type OrgModelPoliciesResponse,
   type UpdateOrgModelPolicy,
@@ -14,16 +14,16 @@ function policyId(index: number): string {
 
 function makeDefaultPolicies(): OrgModelPolicy[] {
   const now = "2026-05-08T00:00:00.000Z";
-  return SUPPORTED_RUN_MODELS.map((model, index) => {
+  return getDefaultOrgModelPolicySeed().map((seed, index) => {
     return {
       id: policyId(index),
-      model,
-      modelLabel: getCanonicalModelDisplayName(model),
-      enabled: true,
-      sortOrder: index,
-      defaultProviderType: "vm0",
-      credentialScope: "org",
-      modelProviderId: null,
+      model: seed.model,
+      modelLabel: getCanonicalModelDisplayName(seed.model),
+      enabled: seed.enabled,
+      sortOrder: seed.sortOrder,
+      defaultProviderType: seed.defaultProviderType,
+      credentialScope: seed.credentialScope,
+      modelProviderId: seed.modelProviderId,
       routeStatus: "valid",
       routeStatusReason: null,
       createdAt: now,
