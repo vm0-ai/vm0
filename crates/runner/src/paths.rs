@@ -1,3 +1,22 @@
+//! Runner-local filesystem layout helpers.
+//!
+//! This module centralizes the paths the runner uses under
+//! `/var/lib/vm0-runner` plus per-runner state rooted at a configured
+//! `base_dir`. [`HomePaths`] describes shared runner home directories such as
+//! images, logs, locks, dependencies, CA material, and storage archives.
+//! [`RunnerPaths`] describes state scoped to one runner process. Rootfs builds
+//! are addressed through [`RootfsPaths`] under `HomePaths::images_dir()`, and
+//! snapshots are nested below a rootfs through [`SnapshotPaths`]. [`LogPaths`]
+//! formats per-run log files under `HomePaths::logs_dir()`.
+//!
+//! Untrusted manifest-derived path components, currently storage name/version
+//! pairs, are hashed before being embedded in directory or lock names. This
+//! keeps cache paths compact, avoids path traversal and separator ambiguity,
+//! and gives host cache paths and guest `file://` URLs a shared keying scheme.
+//! Lock paths are owned by `HomePaths`, but their location is chosen per
+//! resource; most shared-resource locks live in `locks/`, while the
+//! debootstrap lock intentionally lives next to the debootstrap cache.
+
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
