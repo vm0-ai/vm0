@@ -109,11 +109,6 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool) -> (bool, Strin
         ),
     );
 
-    let child = match spawn_write_files_command(use_sudo) {
-        Ok(c) => c,
-        Err(e) => return (false, format!("Failed to spawn write command: {e}")),
-    };
-
     let mut batch = Vec::with_capacity(BATCH_MAGIC.len() + 4 + 14 + path.len() + content.len());
     if let Err(e) = write_batch_header(&mut batch, 1)
         .and_then(|_| write_batch_file_header(&mut batch, 0, path, content.len() as u64))
@@ -121,6 +116,11 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool) -> (bool, Strin
     {
         return (false, format!("Failed to encode write batch: {e}"));
     }
+
+    let child = match spawn_write_files_command(use_sudo) {
+        Ok(c) => c,
+        Err(e) => return (false, format!("Failed to spawn write command: {e}")),
+    };
 
     wait_write_file_child(child, &batch, SystemThreadSpawner)
 }
