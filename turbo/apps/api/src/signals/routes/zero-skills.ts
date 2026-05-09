@@ -3,7 +3,6 @@ import { zeroSkillsCollectionContract } from "@vm0/api-contracts/contracts/zero-
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import { zeroSkillList } from "../services/zero-catalog-data.service";
 import type { RouteEntry } from "../route";
 
@@ -16,16 +15,13 @@ const listSkillsInner$ = computed(async (get) => {
 export const zeroSkillsRoutes: readonly RouteEntry[] = [
   {
     route: zeroSkillsCollectionContract.list,
-    handler: shadowCompareRoute({
-      route: zeroSkillsCollectionContract.list,
-      handler: authRoute(
-        {
-          requireOrganization: true,
-          missingOrganizationStatus: 401,
-          requiredCapability: "agent:read",
-        },
-        listSkillsInner$,
-      ),
-    }),
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "agent:read",
+      },
+      listSkillsInner$,
+    ),
   },
 ];
