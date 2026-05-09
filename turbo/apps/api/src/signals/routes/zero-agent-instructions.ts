@@ -49,9 +49,6 @@ export const zeroAgentInstructionsRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroSkillsDetailContract.get,
-    handler: shadowCompareRoute({
-      route: zeroSkillsDetailContract.get,
-      handler: authRoute(agentReadAuth, getSkillDetailInner$),
-    }),
+    handler: authRoute(agentReadAuth, getSkillDetailInner$),
   },
 ];
