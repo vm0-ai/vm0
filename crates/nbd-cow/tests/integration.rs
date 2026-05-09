@@ -59,6 +59,22 @@ fn keep_cow_policy() -> nbd_cow::DestroyRetryPolicy {
     destroy_policy()
 }
 
+fn claim_free_device_for_direct_connect() -> nbd_cow::device_lock::NbdDeviceClaim {
+    for index in 0..nbd_cow::netlink::nbds_max() {
+        if !nbd_cow::netlink::device_appears_free(index) {
+            continue;
+        }
+
+        match nbd_cow::device_lock::try_acquire_device_claim(index) {
+            Ok(Some(claim)) if nbd_cow::netlink::device_appears_free(index) => return claim,
+            Ok(Some(_)) | Ok(None) => {}
+            Err(e) => eprintln!("skipping nbd{index}: failed to acquire device lock: {e}"),
+        }
+    }
+
+    panic!("no free NBD device");
+}
+
 // ---------------------------------------------------------------------------
 // Full device lifecycle tests (require root + nbd module)
 // ---------------------------------------------------------------------------
@@ -477,9 +493,8 @@ async fn connect_device_specific_index() {
     let cow = tmp.path().join("cow.img");
     let size: u64 = 64 * 1024 * 1024;
 
-    let device_index = (0..nbd_cow::netlink::nbds_max())
-        .find(|index| nbd_cow::netlink::device_appears_free(*index))
-        .expect("free NBD device");
+    let claim = claim_free_device_for_direct_connect();
+    let device_index = claim.index();
 
     let mut client_fds = Vec::new();
     let mut server_handles = Vec::new();
