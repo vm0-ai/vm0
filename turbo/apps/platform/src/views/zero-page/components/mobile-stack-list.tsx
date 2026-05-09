@@ -34,9 +34,10 @@ interface MobileStackSectionProps {
 }
 
 /**
- * One grouped card. Hairline dividers between consecutive `MobileStackRow`
- * children appear automatically via the `[&>button+button]:border-t`
- * descendant selector — no `isLast` prop needed at the row level.
+ * One grouped card. Rows inside sit flush against each other — no hairline
+ * dividers; vertical separation comes from the row's hover/active surface
+ * and the rounded card border alone. Multiple sections in a `MobileStackList`
+ * pick up the gap-6 outer spacing instead.
  */
 export function MobileStackSection({
   children,
@@ -50,9 +51,7 @@ export function MobileStackSection({
           {label}
         </span>
       )}
-      <div className="zero-card overflow-hidden [&>button+button]:border-t [&>button+button]:border-border/50">
-        {children}
-      </div>
+      <div className="zero-card overflow-hidden">{children}</div>
     </div>
   );
 }
