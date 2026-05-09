@@ -1703,6 +1703,15 @@ mod tests {
         guest.write_all(&frame).await.unwrap();
     }
 
+    fn assert_bounded_event_stream_closed(
+        event_rx: &mut mpsc::UnboundedReceiver<BoundedExecOutputEvent>,
+    ) {
+        assert!(matches!(
+            event_rx.try_recv(),
+            Err(mpsc::error::TryRecvError::Disconnected)
+        ));
+    }
+
     #[tokio::test]
     async fn wait_for_connection_removes_listener_socket_on_abort() {
         let unique = std::time::SystemTime::now()
@@ -2035,6 +2044,7 @@ mod tests {
         );
 
         let result = host.bounded_exec(&request).await.unwrap();
+        drop(request);
         assert_eq!(result.stdout, b"done");
         assert_eq!(
             event_rx.recv().await.unwrap(),
@@ -2045,10 +2055,7 @@ mod tests {
                 truncated: false,
             }
         );
-        assert!(matches!(
-            event_rx.try_recv(),
-            Err(mpsc::error::TryRecvError::Empty)
-        ));
+        assert_bounded_event_stream_closed(&mut event_rx);
     }
 
     #[tokio::test]
@@ -2100,6 +2107,7 @@ mod tests {
         );
 
         let result = host.bounded_exec(&request).await.unwrap();
+        drop(request);
         assert_eq!(result.stdout, b"done");
         assert_eq!(
             event_rx.recv().await.unwrap(),
@@ -2119,10 +2127,7 @@ mod tests {
                 truncated: true,
             }
         );
-        assert!(matches!(
-            event_rx.try_recv(),
-            Err(mpsc::error::TryRecvError::Empty)
-        ));
+        assert_bounded_event_stream_closed(&mut event_rx);
     }
 
     #[tokio::test]
@@ -2174,6 +2179,7 @@ mod tests {
         );
 
         let result = host.bounded_exec(&request).await.unwrap();
+        drop(request);
         assert_eq!(result.stdout, b"done");
         assert_eq!(
             event_rx.recv().await.unwrap(),
@@ -2253,6 +2259,7 @@ mod tests {
         );
 
         let result = host.bounded_exec(&request).await.unwrap();
+        drop(request);
         assert_eq!(result.stdout, b"done");
         assert_eq!(
             event_rx.recv().await.unwrap(),
@@ -2263,10 +2270,7 @@ mod tests {
                 truncated: true,
             }
         );
-        assert!(matches!(
-            event_rx.try_recv(),
-            Err(mpsc::error::TryRecvError::Empty)
-        ));
+        assert_bounded_event_stream_closed(&mut event_rx);
     }
 
     #[tokio::test]
@@ -2323,6 +2327,7 @@ mod tests {
         );
 
         let result = host.bounded_exec(&request).await.unwrap();
+        drop(request);
         assert_eq!(result.stdout, b"done");
         assert_eq!(
             event_rx.recv().await.unwrap(),
@@ -2342,10 +2347,7 @@ mod tests {
                 truncated: true,
             }
         );
-        assert!(matches!(
-            event_rx.try_recv(),
-            Err(mpsc::error::TryRecvError::Empty)
-        ));
+        assert_bounded_event_stream_closed(&mut event_rx);
     }
 
     #[tokio::test]
@@ -2397,6 +2399,7 @@ mod tests {
         );
 
         let result = host.bounded_exec(&request).await.unwrap();
+        drop(request);
         assert_eq!(result.stdout, b"done");
         assert_eq!(
             event_rx.recv().await.unwrap(),
@@ -2470,12 +2473,10 @@ mod tests {
             simple_bounded_request("ignore-bad-chunks", Some(bounded_stream_request(event_tx)));
 
         let result = host.bounded_exec(&request).await.unwrap();
+        drop(request);
 
         assert_eq!(result.stdout, b"done");
-        assert!(matches!(
-            event_rx.try_recv(),
-            Err(mpsc::error::TryRecvError::Empty)
-        ));
+        assert_bounded_event_stream_closed(&mut event_rx);
         assert_eq!(registration_counts(&host), (0, 0, 0, 0));
     }
 
@@ -2528,12 +2529,10 @@ mod tests {
         let request = simple_bounded_request("late-chunk", Some(bounded_stream_request(event_tx)));
 
         let result = host.bounded_exec(&request).await.unwrap();
+        drop(request);
 
         assert_eq!(result.stdout, b"done");
-        assert!(matches!(
-            event_rx.try_recv(),
-            Err(mpsc::error::TryRecvError::Empty)
-        ));
+        assert_bounded_event_stream_closed(&mut event_rx);
         assert_eq!(registration_counts(&host), (0, 0, 0, 0));
     }
 
