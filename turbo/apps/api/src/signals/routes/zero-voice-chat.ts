@@ -1,5 +1,7 @@
 import { computed } from "ccstate";
 import { zeroVoiceChatContract } from "@vm0/api-contracts/contracts/zero-voice-chat";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -7,16 +9,58 @@ import { pathParamsOf } from "../context/request";
 import { shadowCompareRoute } from "../context/shadow-compare";
 import { notFound } from "../../lib/error";
 import type { RouteEntry } from "../route";
+import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   voiceChatSessionList,
   voiceChatSessionDetail,
   voiceChatTaskList,
 } from "../services/zero-voice-chat.service";
 
+const voiceChatDisabled = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Voice-chat is not enabled",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
 const listSessionsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
+  const overrides = await get(
+    userFeatureSwitchOverrides(auth.orgId, auth.userId),
+  );
+  const enabled = isFeatureEnabled(FeatureSwitchKey.Trinity, {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    overrides,
+  });
+  if (!enabled) {
+    return voiceChatDisabled;
+  }
   const sessions = await get(voiceChatSessionList(auth.orgId, auth.userId));
-  return { status: 200 as const, body: { sessions } };
+  return {
+    status: 200 as const,
+    body: {
+      sessions: sessions.map((session) => {
+        return {
+          id: session.id,
+          orgId: session.orgId,
+          userId: session.userId,
+          agentId: session.agentId,
+          mode: "chat" as const,
+          conversationSummary: session.conversationSummary,
+          workingTasksSummary: session.workingTasksSummary,
+          finishedTasksSummary: session.finishedTasksSummary,
+          summarySeq: session.summarySeq,
+          summaryVersion: session.summaryVersion,
+          lastSummaryAt: session.lastSummaryAt?.toISOString() ?? null,
+          createdAt: session.createdAt.toISOString(),
+        };
+      }),
+    },
+  };
 });
 
 const getSessionInner$ = computed(async (get) => {
@@ -59,13 +103,10 @@ const listTasksInner$ = computed(async (get) => {
 export const zeroVoiceChatRoutes: readonly RouteEntry[] = [
   {
     route: zeroVoiceChatContract.listSessions,
-    handler: shadowCompareRoute({
-      route: zeroVoiceChatContract.listSessions,
-      handler: authRoute(
-        { requireOrganization: true, missingOrganizationStatus: 401 },
-        listSessionsInner$,
-      ),
-    }),
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      listSessionsInner$,
+    ),
   },
   {
     route: zeroVoiceChatContract.getSession,
