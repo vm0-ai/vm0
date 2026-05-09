@@ -1926,7 +1926,7 @@ impl VsockHost {
 
     /// Send a single write_file message and validate the response.
     async fn write_file_inline(&self, path: &str, content: &[u8], sudo: bool) -> io::Result<()> {
-        let payload = vsock_proto::encode_write_file(path, content, sudo, false)
+        let payload = vsock_proto::encode_write_file(path, content, sudo)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
         let timeout = Duration::from_secs(300);
         let resp = self.request(MSG_WRITE_FILE, &payload, timeout).await?;
@@ -4972,12 +4972,10 @@ mod tests {
             let msgs = decoder.decode(&buf[..n]).unwrap();
             assert_eq!(msgs[0].msg_type, MSG_WRITE_FILE);
 
-            let (path, content, sudo, append) =
-                vsock_proto::decode_write_file(&msgs[0].payload).unwrap();
+            let (path, content, sudo) = vsock_proto::decode_write_file(&msgs[0].payload).unwrap();
             assert_eq!(path, "/tmp/test.txt");
             assert_eq!(content, b"hello");
             assert!(!sudo);
-            assert!(!append);
 
             let payload = vsock_proto::encode_write_file_result(true, "");
             let resp = vsock_proto::encode(MSG_WRITE_FILE_RESULT, msgs[0].seq, &payload).unwrap();
@@ -5083,11 +5081,9 @@ mod tests {
             assert_eq!(msgs.len(), 1);
             assert_eq!(msgs[0].msg_type, MSG_WRITE_FILE);
 
-            let (path, chunk, _sudo, append) =
-                vsock_proto::decode_write_file(&msgs[0].payload).unwrap();
+            let (path, chunk, _sudo) = vsock_proto::decode_write_file(&msgs[0].payload).unwrap();
             assert_eq!(path, "/tmp/exact-limit.bin");
             assert_eq!(chunk, content_clone);
-            assert!(!append);
 
             let payload = vsock_proto::encode_write_file_result(true, "");
             let resp = vsock_proto::encode(MSG_WRITE_FILE_RESULT, msgs[0].seq, &payload).unwrap();

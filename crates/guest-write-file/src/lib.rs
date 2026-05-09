@@ -8,7 +8,6 @@ const BATCH_MAGIC: &[u8; 8] = b"VM0WFB1\n";
 
 #[derive(Debug, Eq, PartialEq)]
 struct Args {
-    append: bool,
     batch: bool,
     create_parents: bool,
     path: Option<PathBuf>,
@@ -18,7 +17,6 @@ fn parse_args<I>(args: I) -> Result<Args, String>
 where
     I: IntoIterator<Item = String>,
 {
-    let mut append = false;
     let mut batch = false;
     let mut create_parents = false;
     let mut path = None;
@@ -27,10 +25,6 @@ where
     for arg in args {
         if !positional_only {
             match arg.as_str() {
-                "--append" => {
-                    append = true;
-                    continue;
-                }
                 "--batch" => {
                     batch = true;
                     continue;
@@ -55,12 +49,6 @@ where
         }
     }
 
-    if append && create_parents {
-        return Err("--append and --create-parents cannot be used together".to_string());
-    }
-    if append && batch {
-        return Err("--append and --batch cannot be used together".to_string());
-    }
     if batch && path.is_some() {
         return Err("--batch does not accept a path argument".to_string());
     }
@@ -69,7 +57,6 @@ where
     }
 
     Ok(Args {
-        append,
         batch,
         create_parents,
         path,
@@ -84,7 +71,7 @@ fn run(args: Args, mut stdin: impl Read) -> io::Result<()> {
         .path
         .as_ref()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing path"))?;
-    write_file_from_reader(path, args.append, args.create_parents, &mut stdin, None)
+    write_file_from_reader(path, args.create_parents, &mut stdin, None)
 }
 
 fn run_batch(create_parents: bool, mut stdin: impl Read) -> io::Result<()> {
@@ -106,7 +93,7 @@ fn run_batch(create_parents: bool, mut stdin: impl Read) -> io::Result<()> {
             io::Error::new(io::ErrorKind::InvalidData, "invalid UTF-8 in batch path")
         })?);
         let content_len = read_u64(&mut stdin)?;
-        write_file_from_reader(&path, false, create_parents, &mut stdin, Some(content_len))?;
+        write_file_from_reader(&path, create_parents, &mut stdin, Some(content_len))?;
     }
     Ok(())
 }
@@ -131,7 +118,6 @@ fn read_u64(reader: &mut impl Read) -> io::Result<u64> {
 
 fn write_file_from_reader(
     path: &Path,
-    append: bool,
     create_parents: bool,
     input: &mut impl Read,
     exact_len: Option<u64>,
@@ -143,7 +129,7 @@ fn write_file_from_reader(
         fs::create_dir_all(parent)?;
     }
 
-    let mut file = open_output_file(path, append)?;
+    let mut file = open_output_file(path)?;
     match exact_len {
         Some(len) => copy_exact_len(input, &mut file, len)?,
         None => {
@@ -168,19 +154,15 @@ fn copy_exact_len(input: &mut impl Read, output: &mut impl Write, len: u64) -> i
     Ok(())
 }
 
-fn open_output_file(path: &Path, append: bool) -> io::Result<File> {
-    let file = output_options(append).open(path)?;
+fn open_output_file(path: &Path) -> io::Result<File> {
+    let file = output_options().open(path)?;
     prepare_output_file(&file)?;
     Ok(file)
 }
 
-fn output_options(append: bool) -> OpenOptions {
+fn output_options() -> OpenOptions {
     let mut options = OpenOptions::new();
-    options
-        .create(true)
-        .write(true)
-        .append(append)
-        .truncate(!append);
+    options.create(true).write(true).truncate(true);
 
     #[cfg(unix)]
     {
@@ -248,7 +230,7 @@ where
             let _ = writeln!(stderr, "guest-write-file: {e}");
             let _ = writeln!(
                 stderr,
-                "usage: guest-write-file [--append | --create-parents] <path> | --batch [--create-parents]"
+                "usage: guest-write-file [--create-parents] <path> | --batch [--create-parents]"
             );
             return 2;
         }
@@ -290,30 +272,9 @@ mod tests {
         assert_eq!(
             args,
             Args {
-                append: false,
                 batch: false,
                 create_parents: true,
                 path: Some(PathBuf::from("/tmp/out.txt")),
-            }
-        );
-    }
-
-    #[test]
-    fn parse_append_after_separator_path_starting_with_dash() {
-        let args = parse_args([
-            "--append".to_string(),
-            "--".to_string(),
-            "-literal".to_string(),
-        ])
-        .unwrap();
-
-        assert_eq!(
-            args,
-            Args {
-                append: true,
-                batch: false,
-                create_parents: false,
-                path: Some(PathBuf::from("-literal")),
             }
         );
     }
@@ -333,25 +294,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_append_with_create_parents() {
-        let err = parse_args([
-            "--append".to_string(),
-            "--create-parents".to_string(),
-            "/tmp/a".to_string(),
-        ])
-        .unwrap_err();
-
-        assert!(err.contains("cannot be used together"));
-    }
-
-    #[test]
     fn parse_batch_without_path() {
         let args = parse_args(["--batch".to_string(), "--create-parents".to_string()]).unwrap();
 
         assert_eq!(
             args,
             Args {
-                append: false,
                 batch: true,
                 create_parents: true,
                 path: None,
@@ -375,7 +323,6 @@ mod tests {
 
         run(
             Args {
-                append: false,
                 batch: true,
                 create_parents: true,
                 path: None,
@@ -404,7 +351,6 @@ mod tests {
 
         let err = run(
             Args {
-                append: false,
                 batch: true,
                 create_parents: true,
                 path: None,

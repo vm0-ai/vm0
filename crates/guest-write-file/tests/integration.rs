@@ -91,19 +91,6 @@ fn create_mode_creates_missing_parents_and_writes_content() {
 }
 
 #[test]
-fn append_mode_appends_existing_file() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("out.txt");
-    std::fs::write(&path, b"first").unwrap();
-    let path_str = path.to_str().unwrap();
-
-    let output = run_helper(&["--append", path_str], b"second");
-
-    assert!(output.status.success(), "stderr={:?}", output.stderr);
-    assert_eq!(std::fs::read(path).unwrap(), b"firstsecond");
-}
-
-#[test]
 fn create_mode_truncates_existing_file() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("out.txt");
@@ -126,44 +113,6 @@ fn create_mode_writes_empty_file() {
 
     assert!(output.status.success(), "stderr={:?}", output.stderr);
     assert_eq!(std::fs::read(path).unwrap(), b"");
-}
-
-#[test]
-fn append_mode_creates_missing_file_when_parent_exists() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("out.txt");
-    let path_str = path.to_str().unwrap();
-
-    let output = run_helper(&["--append", path_str], b"hello");
-
-    assert!(output.status.success(), "stderr={:?}", output.stderr);
-    assert_eq!(std::fs::read(path).unwrap(), b"hello");
-}
-
-#[test]
-fn append_mode_does_not_create_missing_parents() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("missing/out.txt");
-    let path_str = path.to_str().unwrap();
-
-    let output = run_helper(&["--append", path_str], b"hello");
-
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("No such file"));
-    assert!(!path.exists());
-}
-
-#[test]
-fn append_mode_rejects_create_parents() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("missing/out.txt");
-    let path_str = path.to_str().unwrap();
-
-    let output = run_helper(&["--append", "--create-parents", path_str], b"hello");
-
-    assert_eq!(output.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("cannot be used together"));
-    assert!(!path.exists());
 }
 
 #[test]

@@ -1,10 +1,9 @@
 //! Direct guest file writer used by vsock-guest.
 //!
-//! Usage: `guest-write-file [--append | --create-parents] <path>`.
+//! Usage: `guest-write-file [--create-parents] <path> | --batch [--create-parents]`.
 //!
-//! Content is read from stdin. Create mode truncates or creates the target.
-//! Append mode creates the target file when its parent already exists, matching
-//! shell `>>`, but does not create missing parents.
+//! Content is read from stdin. Single-file mode truncates or creates the target.
+//! Batch mode reads the vm0 write-files batch stream from stdin.
 
 use std::io;
 

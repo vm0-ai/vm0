@@ -140,7 +140,6 @@ pub const SPAWN_WATCH_FLAG_STREAM_STDOUT: u8 = 0x02;
 
 // Write-file payload flags.
 pub const WRITE_FILE_FLAG_SUDO: u8 = 0x01;
-pub const WRITE_FILE_FLAG_APPEND: u8 = 0x02;
 
 // Write-files payload flags.
 pub const WRITE_FILES_FLAG_SUDO: u8 = 0x01;
@@ -733,12 +732,7 @@ pub fn encode_bounded_exec_output_chunk(
 ///
 /// Returns `Err` if path exceeds 65535 bytes (u16 field limit).
 /// Total message size is validated by [`encode`].
-pub fn encode_write_file(
-    path: &str,
-    content: &[u8],
-    sudo: bool,
-    append: bool,
-) -> Result<Vec<u8>, ProtocolError> {
+pub fn encode_write_file(path: &str, content: &[u8], sudo: bool) -> Result<Vec<u8>, ProtocolError> {
     let path_bytes = path.as_bytes();
     if path_bytes.len() > u16::MAX as usize {
         return Err(ProtocolError::PayloadTooLarge("path", path_bytes.len()));
@@ -747,9 +741,6 @@ pub fn encode_write_file(
     let mut flags = 0u8;
     if sudo {
         flags |= WRITE_FILE_FLAG_SUDO;
-    }
-    if append {
-        flags |= WRITE_FILE_FLAG_APPEND;
     }
     let mut p = Vec::with_capacity(7 + path_len as usize + content.len());
     p.extend_from_slice(&path_len.to_be_bytes());
@@ -1212,8 +1203,8 @@ fn decode_output_pair_at(
     Ok((stdout, stderr))
 }
 
-/// Decode write_file payload. Returns `(path, content, sudo, append)`.
-pub fn decode_write_file(payload: &[u8]) -> Result<(&str, &[u8], bool, bool), ProtocolError> {
+/// Decode write_file payload. Returns `(path, content, sudo)`.
+pub fn decode_write_file(payload: &[u8]) -> Result<(&str, &[u8], bool), ProtocolError> {
     let path_len = read_u16_at(payload, 0)
         .ok_or(ProtocolError::InvalidPayload("write_file too short"))? as usize;
     let path = std::str::from_utf8(
@@ -1224,11 +1215,7 @@ pub fn decode_write_file(payload: &[u8]) -> Result<(&str, &[u8], bool, bool), Pr
     .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in path"))?;
     let flags = read_u8_at(payload, 2 + path_len)
         .ok_or(ProtocolError::InvalidPayload("write_file too short"))?;
-    reject_unknown_flags(
-        flags,
-        WRITE_FILE_FLAG_SUDO | WRITE_FILE_FLAG_APPEND,
-        "write_file unknown flags",
-    )?;
+    reject_unknown_flags(flags, WRITE_FILE_FLAG_SUDO, "write_file unknown flags")?;
     let content_len = read_u32_at(payload, 3 + path_len)
         .ok_or(ProtocolError::InvalidPayload("write_file too short"))?
         as usize;
@@ -1242,12 +1229,7 @@ pub fn decode_write_file(payload: &[u8]) -> Result<(&str, &[u8], bool, bool), Pr
         7 + path_len + content_len,
         "write_file trailing bytes",
     )?;
-    Ok((
-        path,
-        content,
-        (flags & WRITE_FILE_FLAG_SUDO) != 0,
-        (flags & WRITE_FILE_FLAG_APPEND) != 0,
-    ))
+    Ok((path, content, (flags & WRITE_FILE_FLAG_SUDO) != 0))
 }
 
 /// Decode write_file_result payload. Returns `(success, error)`.
@@ -3137,53 +3119,33 @@ mod tests {
 
     #[test]
     fn write_file_payload_roundtrip() {
-        let payload = encode_write_file("/tmp/test.txt", b"content", false, false).unwrap();
-        let (path, content, sudo, append) = decode_write_file(&payload).unwrap();
+        let payload = encode_write_file("/tmp/test.txt", b"content", false).unwrap();
+        let (path, content, sudo) = decode_write_file(&payload).unwrap();
         assert_eq!(path, "/tmp/test.txt");
         assert_eq!(content, b"content");
         assert!(!sudo);
-        assert!(!append);
     }
 
     #[test]
     fn write_file_with_sudo() {
-        let payload = encode_write_file("/etc/hosts", b"127.0.0.1", true, false).unwrap();
-        let (path, content, sudo, append) = decode_write_file(&payload).unwrap();
+        let payload = encode_write_file("/etc/hosts", b"127.0.0.1", true).unwrap();
+        let (path, content, sudo) = decode_write_file(&payload).unwrap();
         assert_eq!(path, "/etc/hosts");
         assert_eq!(content, b"127.0.0.1");
         assert!(sudo);
-        assert!(!append);
-    }
-
-    #[test]
-    fn write_file_with_append() {
-        let payload = encode_write_file("/tmp/out.log", b"more data", false, true).unwrap();
-        let (path, content, sudo, append) = decode_write_file(&payload).unwrap();
-        assert_eq!(path, "/tmp/out.log");
-        assert_eq!(content, b"more data");
-        assert!(!sudo);
-        assert!(append);
-    }
-
-    #[test]
-    fn write_file_with_sudo_and_append() {
-        let payload = encode_write_file("/etc/conf", b"line", true, true).unwrap();
-        let (_, _, sudo, append) = decode_write_file(&payload).unwrap();
-        assert!(sudo);
-        assert!(append);
     }
 
     #[test]
     fn write_file_path_too_long() {
         let long_path = "a".repeat(65536);
-        let err = encode_write_file(&long_path, b"", false, false).unwrap_err();
+        let err = encode_write_file(&long_path, b"", false).unwrap_err();
         assert!(matches!(err, ProtocolError::PayloadTooLarge("path", 65536)));
     }
 
     #[test]
     fn write_file_content_too_large() {
         let big = vec![0u8; MAX_MESSAGE_SIZE];
-        let payload = encode_write_file("/tmp/f", &big, false, false).unwrap();
+        let payload = encode_write_file("/tmp/f", &big, false).unwrap();
         let err = encode(MSG_WRITE_FILE, 1, &payload).unwrap_err();
         assert!(matches!(err, ProtocolError::MessageTooLarge(_)));
     }

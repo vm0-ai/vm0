@@ -97,24 +97,16 @@ pub(crate) fn handle_exec(
 }
 
 /// Handle write_file message
-fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -> (bool, String) {
+fn handle_write_file(path: &str, content: &[u8], use_sudo: bool) -> (bool, String) {
     log(
         "INFO",
         &format!(
-            "write_file: path={} size={} sudo={} append={}",
+            "write_file: path={} size={} sudo={}",
             path,
             content.len(),
             use_sudo,
-            append,
         ),
     );
-
-    if append {
-        return (
-            false,
-            "append write_file is no longer supported".to_string(),
-        );
-    }
 
     let child = match spawn_write_files_command(use_sudo) {
         Ok(c) => c,
@@ -603,9 +595,9 @@ pub(crate) fn handle_message(msg: &RawMessage) -> io::Result<MessageOutcome> {
             vsock_proto::encode(MSG_PONG, msg.seq, &[]).map_err(to_io_error)?,
         )),
         MSG_WRITE_FILE => {
-            let (path, content, use_sudo, append) =
+            let (path, content, use_sudo) =
                 vsock_proto::decode_write_file(&msg.payload).map_err(to_io_error)?;
-            let (success, error) = handle_write_file(path, content, use_sudo, append);
+            let (success, error) = handle_write_file(path, content, use_sudo);
             let payload = vsock_proto::encode_write_file_result(success, &error);
             Ok(MessageOutcome::Response(
                 vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload)
