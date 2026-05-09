@@ -72,10 +72,7 @@ const orgAuth = {
 export const zeroComposesRoutes: readonly RouteEntry[] = [
   {
     route: zeroComposesMainContract.getByName,
-    handler: shadowCompareRoute({
-      route: zeroComposesMainContract.getByName,
-      handler: authRoute(orgAuth, getComposeByNameInner$),
-    }),
+    handler: authRoute(orgAuth, getComposeByNameInner$),
   },
   {
     route: zeroComposesListContract.list,
