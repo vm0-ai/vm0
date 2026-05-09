@@ -9,7 +9,6 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import { notFound } from "../../lib/error";
 import {
   zeroAgentDetail,
@@ -103,9 +102,6 @@ export const zeroAgentsRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroAgentCustomConnectorsContract.get,
-    handler: shadowCompareRoute({
-      route: zeroAgentCustomConnectorsContract.get,
-      handler: authRoute(agentReadAuth, getAgentCustomConnectorsInner$),
-    }),
+    handler: authRoute(agentReadAuth, getAgentCustomConnectorsInner$),
   },
 ];
