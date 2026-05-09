@@ -52,7 +52,15 @@ const listDomainsInner$ = computed(async (get) => {
 
 const membersInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const body = await get(zeroOrgMembersList(auth.orgId, "member"));
+  const body = await get(
+    zeroOrgMembersList({
+      orgId: auth.orgId,
+      userId: auth.userId,
+      // Fall back to "member" when the auth context lacks an explicit role
+      // (rare: Zero tokens whose membership lookup did not return a role).
+      callerRole: auth.orgRole ?? "member",
+    }),
+  );
   return { status: 200 as const, body };
 });
 

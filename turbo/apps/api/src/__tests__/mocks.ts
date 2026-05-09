@@ -21,11 +21,13 @@ export interface ApiTestMocks {
       readonly getOrganization: AsyncMock;
       readonly getOrganizationDomainList: AsyncMock;
       readonly getOrganizationInvitationList: AsyncMock;
+      readonly getOrganizationMembershipList: AsyncMock;
     };
     readonly users: {
       readonly getUserList: AsyncMock;
       readonly getOrganizationMembershipList: AsyncMock;
     };
+    readonly fetchMembershipRequests: AsyncMock;
   };
   readonly s3: {
     readonly send: AsyncMock;
@@ -72,12 +74,15 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
         vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       getOrganizationInvitationList:
         vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      getOrganizationMembershipList:
+        vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     users: {
       getUserList: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       getOrganizationMembershipList:
         vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
+    fetchMembershipRequests: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   };
 
   const slack = {
@@ -223,6 +228,12 @@ vi.mock("../signals/external/telegram-client", () => {
   };
 });
 
+vi.mock("../signals/external/clerk-membership-requests", () => {
+  return {
+    fetchClerkMembershipRequests: apiTestMocks.clerk.fetchMembershipRequests,
+  };
+});
+
 vi.mock("../signals/external/axiom", () => {
   return {
     // Wrap the underlying vi.fn() in a ccstate `computed` so `get(queryAxiom(apl))`
@@ -280,8 +291,10 @@ export function resetApiTestMocks(): void {
   apiTestMocks.clerk.organizations.getOrganization.mockReset();
   apiTestMocks.clerk.organizations.getOrganizationDomainList.mockReset();
   apiTestMocks.clerk.organizations.getOrganizationInvitationList.mockReset();
+  apiTestMocks.clerk.organizations.getOrganizationMembershipList.mockReset();
   apiTestMocks.clerk.users.getUserList.mockReset();
   apiTestMocks.clerk.users.getOrganizationMembershipList.mockReset();
+  apiTestMocks.clerk.fetchMembershipRequests.mockReset();
   apiTestMocks.s3.send.mockReset();
   apiTestMocks.slack.conversations.list.mockReset();
   apiTestMocks.slack.files.info.mockReset();

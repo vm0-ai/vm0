@@ -13,6 +13,8 @@ import type {
 } from "@vm0/api-contracts/contracts/org-members";
 
 import { db$ } from "../external/db";
+import { clerk$ } from "../external/clerk";
+import { fetchClerkMembershipRequests } from "../external/clerk-membership-requests";
 
 export function zeroOrgDetail(
   orgId: string,
@@ -119,50 +121,166 @@ export function zeroOrgDomainsList(
   });
 }
 
+interface OrgMembersListArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly callerRole: OrgRole;
+}
+
+interface ClerkUserProfile {
+  readonly email: string;
+  readonly firstName: string | null;
+  readonly lastName: string | null;
+  readonly imageUrl: string;
+}
+
+interface ClerkUserLike {
+  readonly id: string;
+  readonly emailAddresses: readonly {
+    readonly id: string;
+    readonly emailAddress: string;
+  }[];
+  readonly primaryEmailAddressId: string | null;
+  readonly firstName: string | null;
+  readonly lastName: string | null;
+  readonly imageUrl: string;
+}
+
+function mapClerkOrgRole(clerkRole: string): OrgRole {
+  return clerkRole === "org:admin" ? "admin" : "member";
+}
+
+async function fetchUserProfileMap(
+  client: ReturnType<typeof clerk$.read>,
+  userIds: readonly string[],
+): Promise<Map<string, ClerkUserProfile>> {
+  const map = new Map<string, ClerkUserProfile>();
+  if (userIds.length === 0) {
+    return map;
+  }
+  const users = (await client.users.getUserList({ userId: [...userIds] })) as {
+    readonly data: readonly ClerkUserLike[];
+  };
+  for (const user of users.data) {
+    const primary = user.emailAddresses.find((e) => {
+      return e.id === user.primaryEmailAddressId;
+    });
+    map.set(user.id, {
+      email: primary?.emailAddress ?? "",
+      firstName: user.firstName,
+      lastName: user.lastName,
+      imageUrl: user.imageUrl,
+    });
+  }
+  return map;
+}
+
 export function zeroOrgMembersList(
-  orgId: string,
-  callerRole: OrgRole,
+  args: OrgMembersListArgs,
 ): Computed<Promise<OrgMembersResponse>> {
   return computed(async (get): Promise<OrgMembersResponse> => {
-    const db = get(db$);
+    const client = get(clerk$);
 
-    const [members, orgRow] = await Promise.all([
-      db
-        .select({
-          userId: orgMembersCache.userId,
-          role: orgMembersCache.role,
-        })
-        .from(orgMembersCache)
-        .where(eq(orgMembersCache.orgId, orgId)),
-      db
-        .select({
-          slug: orgCache.slug,
-          cachedAt: orgCache.cachedAt,
-        })
-        .from(orgCache)
-        .where(eq(orgCache.orgId, orgId))
-        .limit(1),
-    ]);
+    const [org, memberships, invitations] = (await Promise.all([
+      client.organizations.getOrganization({ organizationId: args.orgId }),
+      client.organizations.getOrganizationMembershipList({
+        organizationId: args.orgId,
+      }),
+      client.organizations.getOrganizationInvitationList({
+        organizationId: args.orgId,
+        status: ["pending"],
+      }),
+    ])) as [
+      { readonly slug: string | null; readonly createdAt: number },
+      {
+        readonly data: readonly {
+          readonly publicUserData?: { readonly userId?: string };
+          readonly role: string;
+          readonly createdAt?: number;
+        }[];
+      },
+      {
+        readonly data: readonly {
+          readonly id: string;
+          readonly emailAddress: string;
+          readonly role: string;
+          readonly createdAt: number;
+        }[];
+      },
+    ];
 
-    const createdAt = orgRow[0]?.cachedAt?.toISOString() ?? "";
+    const memberUserIds = memberships.data
+      .map((m) => {
+        return m.publicUserData?.userId;
+      })
+      .filter((id): id is string => {
+        return Boolean(id);
+      });
+    const memberProfiles = await fetchUserProfileMap(client, memberUserIds);
 
-    const memberList: OrgMember[] = members.map((m) => {
+    const memberList: OrgMember[] = memberships.data.map((membership) => {
+      const uid = membership.publicUserData?.userId ?? "";
+      const profile = memberProfiles.get(uid);
       return {
-        userId: m.userId,
-        email: "",
-        firstName: null,
-        lastName: null,
-        imageUrl: "",
-        role: m.role as OrgRole,
-        joinedAt: "",
+        userId: uid,
+        email: profile?.email ?? "",
+        firstName: profile?.firstName ?? null,
+        lastName: profile?.lastName ?? null,
+        imageUrl: profile?.imageUrl ?? "",
+        role: mapClerkOrgRole(membership.role),
+        joinedAt: membership.createdAt
+          ? new Date(membership.createdAt).toISOString()
+          : "",
       };
     });
 
+    const pendingInvitations =
+      args.callerRole === "admin"
+        ? invitations.data.map((inv) => {
+            return {
+              id: inv.id,
+              email: inv.emailAddress,
+              role: mapClerkOrgRole(inv.role),
+              createdAt: new Date(inv.createdAt).toISOString(),
+            };
+          })
+        : [];
+
+    let membershipRequests: NonNullable<
+      OrgMembersResponse["membershipRequests"]
+    > = [];
+    if (args.callerRole === "admin") {
+      const requestsData = await fetchClerkMembershipRequests(args.orgId);
+      const requestUserIds = requestsData
+        .map((r) => {
+          return r.public_user_data?.user_id;
+        })
+        .filter((id): id is string => {
+          return Boolean(id);
+        });
+      const requestProfiles = await fetchUserProfileMap(client, requestUserIds);
+      membershipRequests = requestsData.map((req) => {
+        const uid = req.public_user_data?.user_id ?? "";
+        const profile = requestProfiles.get(uid);
+        return {
+          id: req.id,
+          userId: uid,
+          email: profile?.email ?? "",
+          firstName: profile?.firstName ?? null,
+          lastName: profile?.lastName ?? null,
+          imageUrl: profile?.imageUrl ?? "",
+          createdAt: new Date(req.created_at).toISOString(),
+        };
+      });
+    }
+
     return {
-      slug: orgRow[0]?.slug ?? orgId,
-      role: callerRole,
+      slug: org.slug ?? args.orgId,
+      role: args.callerRole,
       members: memberList,
-      createdAt,
+      pendingInvitations,
+      membershipRequests,
+      createdAt: new Date(org.createdAt).toISOString(),
     };
   });
 }
