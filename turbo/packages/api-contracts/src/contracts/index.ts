@@ -254,6 +254,7 @@ export {
   MODEL_PROVIDER_TYPES,
   SUPPORTED_RUN_MODELS,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
+  DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getFrameworkForType,
   getSecretNameForType,
   getEnvironmentMapping,

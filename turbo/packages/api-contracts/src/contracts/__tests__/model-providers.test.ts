@@ -24,6 +24,7 @@ import {
   getSecretsForAuthMethod,
   modelProviderCredentialScopeSchema,
   supportedRunModelSchema,
+  DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   SUPPORTED_RUN_MODELS,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   VM0_MODEL_TO_PROVIDER,
@@ -149,11 +150,10 @@ describe("model-first canonical catalog", () => {
       "gpt-5.5",
     ]);
     expect(getDefaultOrgModelPolicySeed()).toEqual(
-      DEFAULT_ORG_MODEL_POLICY_MODELS.map((model, index) => {
+      DEFAULT_ORG_MODEL_POLICY_MODELS.map((model) => {
         return {
           model,
-          enabled: true,
-          sortOrder: index,
+          isDefault: model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
           defaultProviderType: "vm0",
           credentialScope: "org",
           modelProviderId: null,

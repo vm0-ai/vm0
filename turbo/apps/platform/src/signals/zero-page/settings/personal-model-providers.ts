@@ -91,8 +91,7 @@ export const setCodexPasteDialogStatePersonal$ = command(
 function toOrgModelPolicyUpdate(policy: OrgModelPolicy): UpdateOrgModelPolicy {
   return {
     model: policy.model,
-    enabled: policy.enabled,
-    sortOrder: policy.sortOrder,
+    isDefault: policy.isDefault,
     defaultProviderType: policy.defaultProviderType,
     credentialScope: policy.credentialScope,
     modelProviderId: policy.modelProviderId,
@@ -121,17 +120,14 @@ function applyPersonalAuthRouteToPolicies(
   if (!found) {
     updates.push({
       model: route.model,
-      enabled: true,
-      sortOrder: updates.length,
+      isDefault: updates.length === 0,
       defaultProviderType: route.providerType,
       credentialScope: "member",
       modelProviderId: null,
     });
   }
 
-  return updates.map((policy, index) => {
-    return { ...policy, sortOrder: index };
-  });
+  return updates;
 }
 
 export const updateCodexPasteContentPersonal$ = command(

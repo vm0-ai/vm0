@@ -1,6 +1,7 @@
 import { command } from "ccstate";
-import { and, asc, eq, inArray, notInArray } from "drizzle-orm";
+import { and, eq, inArray, notInArray } from "drizzle-orm";
 import {
+  DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   MODEL_PROVIDER_TYPES,
   SUPPORTED_RUN_MODELS,
   getCanonicalModelDisplayName,
@@ -33,7 +34,6 @@ type ServiceResult<T> =
   | { readonly ok: false; readonly message: string };
 
 const ORG_SENTINEL_USER_ID = "__org__";
-const TEMP_SORT_ORDER_START = -100_000;
 
 function ok<T>(data: T): ServiceResult<T> {
   return { ok: true, data };
@@ -72,20 +72,18 @@ function loadRows(db: Db, orgId: string): Promise<OrgModelPolicyRow[]> {
         eq(orgModelPolicies.orgId, orgId),
         inArray(orgModelPolicies.model, [...SUPPORTED_RUN_MODELS]),
       ),
-    )
-    .orderBy(asc(orgModelPolicies.sortOrder));
+    );
 }
 
-function nextAvailableSortOrder(
-  preferred: number,
-  usedSortOrders: Set<number>,
-): number {
-  let next = preferred;
-  while (usedSortOrders.has(next)) {
-    next += 1;
-  }
-  usedSortOrders.add(next);
-  return next;
+function getSupportedModelRank(model: string): number {
+  const index = SUPPORTED_RUN_MODELS.indexOf(model as SupportedRunModel);
+  return index === -1 ? SUPPORTED_RUN_MODELS.length : index;
+}
+
+function sortRowsByCatalog(rows: OrgModelPolicyRow[]): OrgModelPolicyRow[] {
+  return [...rows].sort((a, b) => {
+    return getSupportedModelRank(a.model) - getSupportedModelRank(b.model);
+  });
 }
 
 async function ensureOrgModelPolicies(
@@ -95,7 +93,30 @@ async function ensureOrgModelPolicies(
 ): Promise<OrgModelPolicyRow[]> {
   const existing = await loadRows(db, orgId);
   if (existing.length > 0) {
-    return existing;
+    if (
+      existing.some((policy) => {
+        return policy.isDefault;
+      })
+    ) {
+      return sortRowsByCatalog(existing);
+    }
+
+    const fallbackDefault =
+      existing.find((policy) => {
+        return policy.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
+      }) ?? sortRowsByCatalog(existing)[0];
+    if (fallbackDefault) {
+      await db
+        .update(orgModelPolicies)
+        .set({
+          isDefault: true,
+          updatedByUserId: userId,
+          updatedAt: nowDate(),
+        })
+        .where(eq(orgModelPolicies.id, fallbackDefault.id));
+      return sortRowsByCatalog(await loadRows(db, orgId));
+    }
+    return sortRowsByCatalog(existing);
   }
 
   const existingModels = new Set(
@@ -103,12 +124,6 @@ async function ensureOrgModelPolicies(
       return policy.model;
     }),
   );
-  const usedSortOrders = new Set(
-    existing.map((policy) => {
-      return policy.sortOrder;
-    }),
-  );
-
   const missing = getDefaultOrgModelPolicySeed()
     .filter((seed) => {
       return !existingModels.has(seed.model);
@@ -117,7 +132,6 @@ async function ensureOrgModelPolicies(
       return {
         ...seed,
         orgId,
-        sortOrder: nextAvailableSortOrder(seed.sortOrder, usedSortOrders),
         createdByUserId: userId,
         updatedByUserId: userId,
       };
@@ -134,7 +148,7 @@ async function ensureOrgModelPolicies(
       target: [orgModelPolicies.orgId, orgModelPolicies.model],
     });
 
-  return loadRows(db, orgId);
+  return sortRowsByCatalog(await loadRows(db, orgId));
 }
 
 async function listOrgProviderRoutes(
@@ -231,7 +245,7 @@ async function validateUpdatePolicies(
   }
 
   const seenModels = new Set<string>();
-  const seenSortOrders = new Set<number>();
+  let defaultCount = 0;
 
   for (const policy of policies) {
     if (!parseSupportedModel(policy.model)) {
@@ -249,10 +263,9 @@ async function validateUpdatePolicies(
     }
     seenModels.add(policy.model);
 
-    if (seenSortOrders.has(policy.sortOrder)) {
-      return bad(`Duplicate sort order "${policy.sortOrder}"`);
+    if (policy.isDefault) {
+      defaultCount += 1;
     }
-    seenSortOrders.add(policy.sortOrder);
 
     const routeError = await validateOrgProviderRoute(db, orgId, policy);
     if (routeError) {
@@ -260,11 +273,11 @@ async function validateUpdatePolicies(
     }
   }
 
-  return ok(
-    [...policies].sort((a, b) => {
-      return a.sortOrder - b.sortOrder;
-    }),
-  );
+  if (defaultCount !== 1) {
+    return bad("Request must include exactly one default model");
+  }
+
+  return ok([...policies]);
 }
 
 function getRouteStatus(params: {
@@ -342,8 +355,7 @@ function serializePolicy(
     id: policy.id,
     model,
     modelLabel: getCanonicalModelDisplayName(model),
-    enabled: policy.enabled,
-    sortOrder: policy.sortOrder,
+    isDefault: policy.isDefault,
     defaultProviderType: providerType,
     credentialScope,
     modelProviderId: policy.modelProviderId ?? null,
@@ -359,7 +371,7 @@ function selectWorkspaceDefaultPolicy(
 ): OrgModelPolicy | null {
   return (
     policies.find((policy) => {
-      return policy.enabled && policy.routeStatus === "valid";
+      return policy.isDefault;
     }) ?? null
   );
 }
@@ -434,12 +446,11 @@ export const updateOrgModelPolicies$ = command(
       await tx
         .insert(orgModelPolicies)
         .values(
-          validation.data.map((policy, index) => {
+          validation.data.map((policy) => {
             return {
               orgId: params.orgId,
               model: policy.model,
-              enabled: policy.enabled,
-              sortOrder: TEMP_SORT_ORDER_START - validation.data.length - index,
+              isDefault: false,
               defaultProviderType: policy.defaultProviderType,
               credentialScope: policy.credentialScope,
               modelProviderId: policy.modelProviderId,
@@ -454,22 +465,6 @@ export const updateOrgModelPolicies$ = command(
           target: [orgModelPolicies.orgId, orgModelPolicies.model],
         });
 
-      for (const [index, policy] of validation.data.entries()) {
-        await tx
-          .update(orgModelPolicies)
-          .set({
-            sortOrder: TEMP_SORT_ORDER_START - index,
-            updatedAt: now,
-            updatedByUserId: params.userId,
-          })
-          .where(
-            and(
-              eq(orgModelPolicies.orgId, params.orgId),
-              eq(orgModelPolicies.model, policy.model),
-            ),
-          );
-      }
-
       await tx.delete(orgModelPolicies).where(
         and(
           eq(orgModelPolicies.orgId, params.orgId),
@@ -483,12 +478,16 @@ export const updateOrgModelPolicies$ = command(
         ),
       );
 
+      await tx
+        .update(orgModelPolicies)
+        .set({ isDefault: false })
+        .where(eq(orgModelPolicies.orgId, params.orgId));
+
       for (const policy of validation.data) {
         await tx
           .update(orgModelPolicies)
           .set({
-            enabled: policy.enabled,
-            sortOrder: policy.sortOrder,
+            isDefault: policy.isDefault,
             defaultProviderType: policy.defaultProviderType,
             credentialScope: policy.credentialScope,
             modelProviderId: policy.modelProviderId,

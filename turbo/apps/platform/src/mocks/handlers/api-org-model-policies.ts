@@ -19,8 +19,7 @@ function makeDefaultPolicies(): OrgModelPolicy[] {
       id: policyId(index),
       model: seed.model,
       modelLabel: getCanonicalModelDisplayName(seed.model),
-      enabled: seed.enabled,
-      sortOrder: seed.sortOrder,
+      isDefault: seed.isDefault,
       defaultProviderType: seed.defaultProviderType,
       credentialScope: seed.credentialScope,
       modelProviderId: seed.modelProviderId,
@@ -35,12 +34,10 @@ function makeDefaultPolicies(): OrgModelPolicy[] {
 let mockOrgModelPolicies: OrgModelPolicy[] = makeDefaultPolicies();
 
 function response(): OrgModelPoliciesResponse {
-  const policies = [...mockOrgModelPolicies].sort((a, b) => {
-    return a.sortOrder - b.sortOrder;
-  });
+  const policies = [...mockOrgModelPolicies];
   const workspaceDefault =
     policies.find((policy) => {
-      return policy.enabled && policy.routeStatus === "valid";
+      return policy.isDefault;
     }) ?? null;
   return {
     policies,
@@ -61,8 +58,7 @@ function applyUpdate(policy: UpdateOrgModelPolicy): OrgModelPolicy {
     id: existing?.id ?? crypto.randomUUID(),
     model: policy.model,
     modelLabel: getCanonicalModelDisplayName(policy.model),
-    enabled: policy.enabled,
-    sortOrder: policy.sortOrder,
+    isDefault: policy.isDefault,
     defaultProviderType: policy.defaultProviderType,
     credentialScope: policy.credentialScope,
     modelProviderId: policy.modelProviderId,

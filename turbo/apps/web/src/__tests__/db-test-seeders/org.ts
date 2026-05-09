@@ -565,8 +565,7 @@ export async function enableModelFirstModelProviderForUser(
 export async function insertOrgModelPolicy(params: {
   orgId: string;
   model: string;
-  sortOrder: number;
-  enabled?: boolean;
+  isDefault?: boolean;
   defaultProviderType?: string;
   credentialScope?: string;
   modelProviderId?: string | null;
@@ -577,8 +576,7 @@ export async function insertOrgModelPolicy(params: {
     .values({
       orgId: params.orgId,
       model: params.model,
-      sortOrder: params.sortOrder,
-      enabled: params.enabled ?? true,
+      isDefault: params.isDefault ?? false,
       defaultProviderType: params.defaultProviderType ?? "vm0",
       credentialScope: params.credentialScope ?? "org",
       modelProviderId: params.modelProviderId ?? null,

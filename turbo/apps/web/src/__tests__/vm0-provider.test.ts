@@ -121,6 +121,28 @@ describe("VM0 managed model provider", () => {
       );
     });
 
+    it("should prefer a model-specific key when a model is provided", async () => {
+      const vendor = uniqueId("test-vendor");
+      await insertVm0ApiKeys([
+        {
+          vendor,
+          model: "other-model",
+          apiKey: "sk-test-other-model",
+        },
+        {
+          vendor,
+          model: "target-model",
+          apiKey: "sk-test-target-model",
+        },
+      ]);
+
+      const result = await getTestVm0ApiKey(vendor, "target-model");
+      expect(result).toStrictEqual({
+        apiKey: "sk-test-target-model",
+        model: "target-model",
+      });
+    });
+
     it("should return null for vendor with no keys", async () => {
       const result = await getTestVm0ApiKey("nonexistent-vendor");
       expect(result).toBeNull();

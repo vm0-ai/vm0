@@ -32,8 +32,8 @@ export {
 /**
  * Get a VM0 API key from the pool for a vendor.
  */
-export async function getTestVm0ApiKey(vendor: string) {
-  return getVm0ApiKey(vendor);
+export async function getTestVm0ApiKey(vendor: string, model?: string) {
+  return getVm0ApiKey(vendor, model);
 }
 
 /**

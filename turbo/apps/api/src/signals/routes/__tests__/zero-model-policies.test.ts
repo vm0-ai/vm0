@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { createStore, command } from "ccstate";
 import {
+  DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   type ModelProviderType,
   type OrgModelPoliciesResponse,
@@ -108,8 +109,7 @@ function toUpdate(data: OrgModelPoliciesResponse): UpdateOrgModelPolicy[] {
   return data.policies.map((policy) => {
     return {
       model: policy.model,
-      enabled: policy.enabled,
-      sortOrder: policy.sortOrder,
+      isDefault: policy.isDefault,
       defaultProviderType: policy.defaultProviderType,
       credentialScope: policy.credentialScope,
       modelProviderId: policy.modelProviderId,
@@ -119,12 +119,11 @@ function toUpdate(data: OrgModelPoliciesResponse): UpdateOrgModelPolicy[] {
 
 function makeVm0Policy(
   model: UpdateOrgModelPolicy["model"],
-  sortOrder: number,
+  isDefault = false,
 ): UpdateOrgModelPolicy {
   return {
     model,
-    enabled: true,
-    sortOrder,
+    isDefault,
     defaultProviderType: "vm0",
     credentialScope: "org",
     modelProviderId: null,
@@ -160,7 +159,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
   });
 
-  it("lists seeded curated models in rank order when enabled", async () => {
+  it("lists seeded curated models and the explicit default when enabled", async () => {
     const fixture = await seedFixture({
       [FeatureSwitchKey.ModelFirstModelProvider]: true,
     });
@@ -179,16 +178,19 @@ describe("GET/PUT /api/zero/model-policies", () => {
       }),
     ).toStrictEqual(DEFAULT_ORG_MODEL_POLICY_MODELS);
     expect(response.body.policies[0]).toMatchObject({
-      enabled: true,
-      sortOrder: 0,
       defaultProviderType: "vm0",
       credentialScope: "org",
       modelProviderId: null,
       routeStatus: "valid",
     });
     expect(response.body.workspaceDefaultModel).toBe(
-      DEFAULT_ORG_MODEL_POLICY_MODELS[0],
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
     );
+    expect(
+      response.body.policies.find((policy) => {
+        return policy.isDefault;
+      })?.model,
+    ).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
   });
 
   it("requires admins for policy reads and writes", async () => {
@@ -210,7 +212,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     expect(updateResponse.status).toBe(403);
   });
 
-  it("persists enablement and ordering and updates the workspace default", async () => {
+  it("updates the explicit workspace default", async () => {
     const fixture = await seedFixture({
       [FeatureSwitchKey.ModelFirstModelProvider]: true,
     });
@@ -222,8 +224,12 @@ describe("GET/PUT /api/zero/model-policies", () => {
     );
     const updates = toUpdate(listResponse.body);
 
-    updates[0] = { ...updates[0]!, enabled: false, sortOrder: 1 };
-    updates[1] = { ...updates[1]!, sortOrder: 0 };
+    updates[1] = { ...updates[1]!, isDefault: true };
+    for (let index = 0; index < updates.length; index += 1) {
+      if (index !== 1) {
+        updates[index] = { ...updates[index]!, isDefault: false };
+      }
+    }
 
     const response = await accept(
       client.update({
@@ -233,12 +239,14 @@ describe("GET/PUT /api/zero/model-policies", () => {
       [200],
     );
 
-    const [firstPolicy, secondPolicy] = response.body.policies;
-    expect(firstPolicy).toBeDefined();
-    expect(secondPolicy).toBeDefined();
-    expect(firstPolicy!.model).toBe(DEFAULT_ORG_MODEL_POLICY_MODELS[1]);
-    expect(secondPolicy!.model).toBe(DEFAULT_ORG_MODEL_POLICY_MODELS[0]);
-    expect(secondPolicy!.enabled).toBeFalsy();
+    const firstPolicy = response.body.policies.find((policy) => {
+      return policy.model === DEFAULT_ORG_MODEL_POLICY_MODELS[0];
+    });
+    const secondPolicy = response.body.policies.find((policy) => {
+      return policy.model === DEFAULT_ORG_MODEL_POLICY_MODELS[1];
+    });
+    expect(firstPolicy?.isDefault).toBeFalsy();
+    expect(secondPolicy?.isDefault).toBeTruthy();
     expect(response.body.workspaceDefaultModel).toBe(
       DEFAULT_ORG_MODEL_POLICY_MODELS[1],
     );
@@ -256,7 +264,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     );
     const updates = [
       ...toUpdate(listResponse.body),
-      makeVm0Policy("claude-opus-4-6", listResponse.body.policies.length),
+      makeVm0Policy("claude-opus-4-6"),
     ];
 
     const response = await accept(
@@ -271,7 +279,13 @@ describe("GET/PUT /api/zero/model-policies", () => {
       response.body.policies.map((policy) => {
         return policy.model;
       }),
-    ).toStrictEqual([...DEFAULT_ORG_MODEL_POLICY_MODELS, "claude-opus-4-6"]);
+    ).toStrictEqual([
+      "claude-opus-4-7",
+      "claude-opus-4-6",
+      "claude-sonnet-4-6",
+      "deepseek-v4-pro",
+      "gpt-5.5",
+    ]);
   });
 
   it("allows compatible org provider routes", async () => {
@@ -293,8 +307,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       ...toUpdate(listResponse.body),
       {
         model: "glm-5.1",
-        enabled: true,
-        sortOrder: listResponse.body.policies.length,
+        isDefault: false,
         defaultProviderType: "openrouter-api-key",
         credentialScope: "org",
         modelProviderId: providerId,

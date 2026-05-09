@@ -226,15 +226,17 @@ describe("org-providers-tab — stale banner reconnect", () => {
       "section",
     );
     expect(defaultSection).toBeDefined();
-    expect(within(defaultSection!).getByText("Claude Opus 4.7")).toBeDefined();
+    expect(
+      within(defaultSection!).getByText("Claude Sonnet 4.6"),
+    ).toBeDefined();
 
     click(within(defaultSection!).getByRole("combobox"));
     const listbox = await screen.findByRole("listbox");
-    click(within(listbox).getByText("Claude Sonnet 4.6"));
+    click(within(listbox).getByText("Claude Opus 4.7"));
 
     await waitFor(() => {
       expect(
-        within(defaultSection!).getByText("Claude Sonnet 4.6"),
+        within(defaultSection!).getByText("Claude Opus 4.7"),
       ).toBeDefined();
     });
   });

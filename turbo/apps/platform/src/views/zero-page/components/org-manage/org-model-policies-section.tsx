@@ -166,27 +166,20 @@ function findProviderByType(
 function toUpdate(policy: OrgModelPolicy): UpdateOrgModelPolicy {
   return {
     model: policy.model,
-    enabled: policy.enabled,
-    sortOrder: policy.sortOrder,
+    isDefault: policy.isDefault,
     defaultProviderType: policy.defaultProviderType,
     credentialScope: policy.credentialScope,
     modelProviderId: policy.modelProviderId,
   };
 }
 
-function normalizeSortOrder(
-  policies: UpdateOrgModelPolicy[],
-): UpdateOrgModelPolicy[] {
-  return policies.map((policy, index) => {
-    return { ...policy, sortOrder: index };
-  });
-}
-
-function makeDefaultPolicy(model: SupportedRunModel): UpdateOrgModelPolicy {
+function makeDefaultPolicy(
+  model: SupportedRunModel,
+  isDefault: boolean,
+): UpdateOrgModelPolicy {
   return {
     model,
-    enabled: true,
-    sortOrder: 0,
+    isDefault,
     defaultProviderType: "vm0",
     credentialScope: "org",
     modelProviderId: null,
@@ -208,18 +201,31 @@ function upsertPolicy(
   if (!found) {
     updates.push(update);
   }
-  return normalizeSortOrder(updates);
+  return updates;
 }
 
 function removePolicy(
   policies: OrgModelPolicy[],
   model: SupportedRunModel,
 ): UpdateOrgModelPolicy[] {
-  return normalizeSortOrder(
-    policies.flatMap((policy) => {
-      return policy.model === model ? [] : [toUpdate(policy)];
-    }),
-  );
+  const removed = policies.find((policy) => {
+    return policy.model === model;
+  });
+  const updates = policies.flatMap((policy) => {
+    return policy.model === model ? [] : [toUpdate(policy)];
+  });
+  if (
+    removed?.isDefault &&
+    !updates.some((policy) => {
+      return policy.isDefault;
+    }) &&
+    updates[0]
+  ) {
+    return updates.map((policy, index) => {
+      return { ...policy, isDefault: index === 0 };
+    });
+  }
+  return updates;
 }
 
 function makePolicyDefault(
@@ -230,14 +236,14 @@ function makePolicyDefault(
     return policy.model === model;
   });
   if (!selected) {
-    return normalizeSortOrder(policies.map(toUpdate));
+    return policies.map(toUpdate);
   }
-  return normalizeSortOrder([
-    { ...toUpdate(selected), enabled: true },
-    ...policies.flatMap((policy) => {
-      return policy.model === model ? [] : [toUpdate(policy)];
-    }),
-  ]);
+  return policies.map((policy) => {
+    return {
+      ...toUpdate(policy),
+      isDefault: policy.model === model,
+    };
+  });
 }
 
 function DefaultModelSection({
@@ -666,7 +672,9 @@ function buildPolicyUpdate(params: {
   const existing = params.policies.find((policy) => {
     return policy.model === params.model;
   });
-  const base = existing ? toUpdate(existing) : makeDefaultPolicy(params.model);
+  const base = existing
+    ? toUpdate(existing)
+    : makeDefaultPolicy(params.model, params.policies.length === 0);
 
   if (params.routeKind === "built-in") {
     return {

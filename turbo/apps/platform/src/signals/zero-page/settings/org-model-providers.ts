@@ -165,20 +165,11 @@ const internalOrgModelPolicyRouteAfterAdd$ =
 function toOrgModelPolicyUpdate(policy: OrgModelPolicy): UpdateOrgModelPolicy {
   return {
     model: policy.model,
-    enabled: policy.enabled,
-    sortOrder: policy.sortOrder,
+    isDefault: policy.isDefault,
     defaultProviderType: policy.defaultProviderType,
     credentialScope: policy.credentialScope,
     modelProviderId: policy.modelProviderId,
   };
-}
-
-function normalizeOrgModelPolicyUpdates(
-  policies: UpdateOrgModelPolicy[],
-): UpdateOrgModelPolicy[] {
-  return policies.map((policy, index) => {
-    return { ...policy, sortOrder: index };
-  });
 }
 
 function applyOrgProviderRouteToPolicies(
@@ -204,15 +195,14 @@ function applyOrgProviderRouteToPolicies(
   if (!found) {
     updates.push({
       model: route.model,
-      enabled: true,
-      sortOrder: updates.length,
+      isDefault: updates.length === 0,
       defaultProviderType: provider.type,
       credentialScope: "org",
       modelProviderId: provider.id,
     });
   }
 
-  return normalizeOrgModelPolicyUpdates(updates);
+  return updates;
 }
 
 // ---------------------------------------------------------------------------

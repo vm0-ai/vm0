@@ -1,6 +1,6 @@
 {
-  "id": "4cff1c21-f42f-4ab0-82a3-1d75bad7ae8e",
-  "prevId": "66fa0818-3c1b-4280-9545-dd0a7cd58782",
+  "id": "d42a95fa-f305-4b41-83ae-2cea0af4bfbd",
+  "prevId": "4cff1c21-f42f-4ab0-82a3-1d75bad7ae8e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -591,12 +591,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "last_event_sequence": {
-          "name": "last_event_sequence",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "org_id": {
           "name": "org_id",
           "type": "text",
@@ -631,6 +625,12 @@
         "runner_group": {
           "name": "runner_group",
           "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_event_sequence": {
+          "name": "last_event_sequence",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         }
@@ -4690,11 +4690,12 @@
           "notNull": true,
           "default": true
         },
-        "sort_order": {
-          "name": "sort_order",
-          "type": "integer",
+        "is_default": {
+          "name": "is_default",
+          "type": "boolean",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": false
         },
         "default_provider_type": {
           "name": "default_provider_type",
@@ -4765,29 +4766,24 @@
           "method": "btree",
           "with": {}
         },
-        "idx_org_model_policies_org_sort_order": {
-          "name": "idx_org_model_policies_org_sort_order",
+        "idx_org_model_policies_one_default_per_org": {
+          "name": "idx_org_model_policies_one_default_per_org",
           "columns": [
             {
               "expression": "org_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
-            },
-            {
-              "expression": "sort_order",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
             }
           ],
           "isUnique": true,
+          "where": "is_default = true",
           "concurrently": false,
           "method": "btree",
           "with": {}
         },
-        "idx_org_model_policies_enabled_sort": {
-          "name": "idx_org_model_policies_enabled_sort",
+        "idx_org_model_policies_enabled": {
+          "name": "idx_org_model_policies_enabled",
           "columns": [
             {
               "expression": "org_id",
@@ -4797,12 +4793,6 @@
             },
             {
               "expression": "enabled",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "sort_order",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

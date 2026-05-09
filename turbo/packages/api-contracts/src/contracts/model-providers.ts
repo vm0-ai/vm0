@@ -81,6 +81,9 @@ export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
   "gpt-5.5",
 ] as const satisfies readonly SupportedRunModel[];
 
+export const DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL =
+  "claude-sonnet-4-6" as const satisfies SupportedRunModel;
+
 export const supportedRunModelSchema = z.enum(SUPPORTED_RUN_MODELS);
 
 export const modelProviderCredentialScopeSchema = z.enum(["org", "member"]);
@@ -91,8 +94,7 @@ export type ModelProviderCredentialScope = z.infer<
 
 export interface DefaultOrgModelPolicySeed {
   model: SupportedRunModel;
-  enabled: true;
-  sortOrder: number;
+  isDefault: boolean;
   defaultProviderType: "vm0";
   credentialScope: "org";
   modelProviderId: null;
@@ -131,11 +133,10 @@ export function getCanonicalModelDisplayName(model: string): string {
 }
 
 export function getDefaultOrgModelPolicySeed(): DefaultOrgModelPolicySeed[] {
-  return DEFAULT_ORG_MODEL_POLICY_MODELS.map((model, index) => {
+  return DEFAULT_ORG_MODEL_POLICY_MODELS.map((model) => {
     return {
       model,
-      enabled: true,
-      sortOrder: index,
+      isDefault: model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
       defaultProviderType: "vm0",
       credentialScope: "org",
       modelProviderId: null,
@@ -1441,8 +1442,7 @@ export const orgModelPolicySchema = z.object({
   id: z.uuid(),
   model: supportedRunModelSchema,
   modelLabel: z.string(),
-  enabled: z.boolean(),
-  sortOrder: z.number().int(),
+  isDefault: z.boolean(),
   defaultProviderType: modelProviderTypeSchema,
   credentialScope: modelProviderCredentialScopeSchema,
   modelProviderId: z.uuid().nullable(),
@@ -1456,8 +1456,7 @@ export type OrgModelPolicy = z.infer<typeof orgModelPolicySchema>;
 
 export const updateOrgModelPolicySchema = z.object({
   model: supportedRunModelSchema,
-  enabled: z.boolean(),
-  sortOrder: z.number().int().nonnegative(),
+  isDefault: z.boolean(),
   defaultProviderType: modelProviderTypeSchema,
   credentialScope: modelProviderCredentialScopeSchema,
   modelProviderId: z.uuid().nullable(),
