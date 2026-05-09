@@ -769,7 +769,7 @@ function ChatThreadsTitle() {
         return setCollapsed(!collapsed);
       }}
     >
-      <span className="flex flex-1 items-center gap-1 truncate text-[14px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
+      <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
         {titleLabel}
         <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           <IconChevronRight
@@ -790,7 +790,7 @@ function ChatThreadsTitle() {
                   e.stopPropagation();
                   setSearchOpen(true);
                 }}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-muted transition-colors"
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
                 aria-label="Search chats"
               >
                 <IconSearch size={15} stroke={2.5} />
