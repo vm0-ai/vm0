@@ -27,7 +27,6 @@ export interface ApiTestMocks {
       readonly getUserList: AsyncMock;
       readonly getOrganizationMembershipList: AsyncMock;
     };
-    readonly fetchMembershipRequests: AsyncMock;
   };
   readonly s3: {
     readonly send: AsyncMock;
@@ -82,7 +81,6 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       getOrganizationMembershipList:
         vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
-    fetchMembershipRequests: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   };
 
   const slack = {
@@ -228,12 +226,6 @@ vi.mock("../signals/external/telegram-client", () => {
   };
 });
 
-vi.mock("../signals/external/clerk-membership-requests", () => {
-  return {
-    fetchClerkMembershipRequests: apiTestMocks.clerk.fetchMembershipRequests,
-  };
-});
-
 vi.mock("../signals/external/axiom", () => {
   return {
     // Wrap the underlying vi.fn() in a ccstate `computed` so `get(queryAxiom(apl))`
@@ -294,7 +286,6 @@ export function resetApiTestMocks(): void {
   apiTestMocks.clerk.organizations.getOrganizationMembershipList.mockReset();
   apiTestMocks.clerk.users.getUserList.mockReset();
   apiTestMocks.clerk.users.getOrganizationMembershipList.mockReset();
-  apiTestMocks.clerk.fetchMembershipRequests.mockReset();
   apiTestMocks.s3.send.mockReset();
   apiTestMocks.slack.conversations.list.mockReset();
   apiTestMocks.slack.files.info.mockReset();

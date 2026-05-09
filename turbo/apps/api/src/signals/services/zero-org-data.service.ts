@@ -11,6 +11,7 @@ import type {
   OrgMembersResponse,
   OrgRole,
 } from "@vm0/api-contracts/contracts/org-members";
+import type { User } from "@clerk/backend";
 
 import { db$ } from "../external/db";
 import { clerk$ } from "../external/clerk";
@@ -134,20 +135,15 @@ interface ClerkUserProfile {
   readonly imageUrl: string;
 }
 
-interface ClerkUserLike {
-  readonly id: string;
-  readonly emailAddresses: readonly {
-    readonly id: string;
-    readonly emailAddress: string;
-  }[];
-  readonly primaryEmailAddressId: string | null;
-  readonly firstName: string | null;
-  readonly lastName: string | null;
-  readonly imageUrl: string;
-}
-
 function mapClerkOrgRole(clerkRole: string): OrgRole {
   return clerkRole === "org:admin" ? "admin" : "member";
+}
+
+function userPrimaryEmail(user: User): string {
+  const primary = user.emailAddresses.find((e) => {
+    return e.id === user.primaryEmailAddressId;
+  });
+  return primary?.emailAddress ?? "";
 }
 
 async function fetchUserProfileMap(
@@ -158,15 +154,10 @@ async function fetchUserProfileMap(
   if (userIds.length === 0) {
     return map;
   }
-  const users = (await client.users.getUserList({ userId: [...userIds] })) as {
-    readonly data: readonly ClerkUserLike[];
-  };
+  const users = await client.users.getUserList({ userId: [...userIds] });
   for (const user of users.data) {
-    const primary = user.emailAddresses.find((e) => {
-      return e.id === user.primaryEmailAddressId;
-    });
     map.set(user.id, {
-      email: primary?.emailAddress ?? "",
+      email: userPrimaryEmail(user),
       firstName: user.firstName,
       lastName: user.lastName,
       imageUrl: user.imageUrl,
@@ -181,7 +172,7 @@ export function zeroOrgMembersList(
   return computed(async (get): Promise<OrgMembersResponse> => {
     const client = get(clerk$);
 
-    const [org, memberships, invitations] = (await Promise.all([
+    const [org, memberships, invitations] = await Promise.all([
       client.organizations.getOrganization({ organizationId: args.orgId }),
       client.organizations.getOrganizationMembershipList({
         organizationId: args.orgId,
@@ -190,24 +181,7 @@ export function zeroOrgMembersList(
         organizationId: args.orgId,
         status: ["pending"],
       }),
-    ])) as [
-      { readonly slug: string | null; readonly createdAt: number },
-      {
-        readonly data: readonly {
-          readonly publicUserData?: { readonly userId?: string };
-          readonly role: string;
-          readonly createdAt?: number;
-        }[];
-      },
-      {
-        readonly data: readonly {
-          readonly id: string;
-          readonly emailAddress: string;
-          readonly role: string;
-          readonly createdAt: number;
-        }[];
-      },
-    ];
+    ]);
 
     const memberUserIds = memberships.data
       .map((m) => {
