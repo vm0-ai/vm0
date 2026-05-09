@@ -1478,6 +1478,39 @@ fn validate_write_files_result(
     Ok(())
 }
 
+fn handle_write_files_response(
+    resp: RawMessage,
+    expected_count: usize,
+    early_response: bool,
+) -> io::Result<()> {
+    if resp.msg_type == MSG_ERROR {
+        let msg = vsock_proto::decode_error(&resp.payload)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        return Err(io::Error::other(msg));
+    }
+
+    if early_response {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "write_files response before stream finished: 0x{:02X}",
+                resp.msg_type
+            ),
+        ));
+    }
+
+    if resp.msg_type != MSG_WRITE_FILES_RESULT {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("unexpected response type: 0x{:02X}", resp.msg_type),
+        ));
+    }
+
+    let entries = vsock_proto::decode_write_files_result(&resp.payload)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+    validate_write_files_result(&entries, expected_count)
+}
+
 async fn exec_on_shared(
     shared: &Arc<Shared>,
     command: &str,
@@ -2113,40 +2146,49 @@ impl VsockHost {
             }
         }
         let _pending_guard = PendingRequestGuard::new(Arc::clone(&self.shared), seq);
+        let mut rx = rx;
 
-        send_write_files_stream(&self.shared, seq, prepared, sudo, Self::WRITE_FILES_TIMEOUT)
-            .await?;
-
-        let resp = tokio::select! {
+        let early_resp = tokio::select! {
             biased;
-            result = rx => {
-                result.map_err(|_| io::Error::new(
+            result = send_write_files_stream(
+                &self.shared,
+                seq,
+                prepared,
+                sudo,
+                Self::WRITE_FILES_TIMEOUT,
+            ) => {
+                result?;
+                None
+            }
+            result = &mut rx => {
+                self.shared.poison_connection();
+                Some(result.map_err(|_| io::Error::new(
                     io::ErrorKind::ConnectionReset,
                     "connection closed",
-                ))?
-            }
-            _ = tokio::time::sleep(Self::WRITE_FILES_TIMEOUT) => {
-                self.shared.poison_connection();
-                return Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"));
+                ))?)
             }
         };
 
-        if resp.msg_type == MSG_ERROR {
-            let msg = vsock_proto::decode_error(&resp.payload)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-            return Err(io::Error::other(msg));
-        }
+        let resp = match early_resp {
+            Some(resp) => return handle_write_files_response(resp, expected_count, true),
+            None => {
+                tokio::select! {
+                    biased;
+                    result = &mut rx => {
+                        result.map_err(|_| io::Error::new(
+                            io::ErrorKind::ConnectionReset,
+                            "connection closed",
+                        ))?
+                    }
+                    _ = tokio::time::sleep(Self::WRITE_FILES_TIMEOUT) => {
+                        self.shared.poison_connection();
+                        return Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"));
+                    }
+                }
+            }
+        };
 
-        if resp.msg_type != MSG_WRITE_FILES_RESULT {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("unexpected response type: 0x{:02X}", resp.msg_type),
-            ));
-        }
-
-        let entries = vsock_proto::decode_write_files_result(&resp.payload)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        validate_write_files_result(&entries, expected_count)
+        handle_write_files_response(resp, expected_count, false)
     }
 
     /// Spawn a process on the guest and monitor for exit.
@@ -5256,6 +5298,62 @@ mod tests {
         let _ = timeout_tx.send(());
         let err = send.await.unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
+
+        release_guest.notify_one();
+        guest_task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_write_files_early_guest_error_stops_stream() {
+        let (host_stream, mut guest) = make_pair();
+        set_send_buffer(&host_stream, 4096).unwrap();
+
+        let release_guest = std::sync::Arc::new(Notify::new());
+        let guest_task = {
+            let release_guest = std::sync::Arc::clone(&release_guest);
+            tokio::spawn(async move {
+                let mut decoder = Decoder::new();
+                mock_handshake(&mut guest, &mut decoder).await;
+
+                let mut buf = [0u8; 4096];
+                loop {
+                    let n = guest.read(&mut buf).await.unwrap();
+                    assert_ne!(n, 0, "connection closed before write_files start");
+                    for msg in decoder.decode(&buf[..n]).unwrap() {
+                        if msg.msg_type == MSG_WRITE_FILES_START {
+                            let payload = vsock_proto::encode_error("early write failure");
+                            let resp = vsock_proto::encode(MSG_ERROR, msg.seq, &payload).unwrap();
+                            guest.write_all(&resp).await.unwrap();
+                            release_guest.notified().await;
+
+                            let mut drain = [0u8; 4096];
+                            loop {
+                                let n = guest.read(&mut drain).await.unwrap();
+                                if n == 0 {
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+        };
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let content = vec![b'x'; 8 * 1024 * 1024];
+        let files = [WriteFileRequest {
+            path: "/tmp/large.bin",
+            source: WriteFileSource::Bytes(&content),
+        }];
+
+        let err = tokio::time::timeout(Duration::from_secs(5), host.write_files(&files, false))
+            .await
+            .expect("early guest error must stop streaming promptly")
+            .unwrap_err();
+        assert!(err.to_string().contains("early write failure"));
         host.wait_until_closed(Duration::from_secs(5))
             .await
             .unwrap();
