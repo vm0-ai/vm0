@@ -87,18 +87,7 @@ describe("getConnectorManagedSecretNames", () => {
 
 describe("getConnectorEnvironmentMapping", () => {
   it("returns non-empty mapping for connector types that surface env vars to the sandbox", () => {
-    // Platform-proxied connectors may legitimately have no
-    // environmentMapping — the user's sandbox code calls the public endpoint
-    // directly and the proxy injects auth at request time, so no env var
-    // needs to be surfaced. Other auth methods (OAuth, api-token) always
-    // provide at least one env var.
     for (const type of connectorTypeSchema.options) {
-      const authMethods = getConnectorAuthMethods(type);
-      const isPlatformOnly =
-        "platform" in authMethods &&
-        !("oauth" in authMethods) &&
-        !("api-token" in authMethods);
-      if (isPlatformOnly) continue;
       const mapping = getConnectorEnvironmentMapping(type);
       expect(
         Object.keys(mapping).length,

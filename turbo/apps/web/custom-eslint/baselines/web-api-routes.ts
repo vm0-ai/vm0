@@ -217,7 +217,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/org/route.ts",
   "app/api/zero/permission-access-requests/route.ts",
   "app/api/zero/permission-policies/route.ts",
-  "app/api/zero/platform-connectors/[type]/route.ts",
   "app/api/zero/push-subscriptions/route.ts",
   "app/api/zero/queue-position/route.ts",
   "app/api/zero/realtime/token/route.ts",

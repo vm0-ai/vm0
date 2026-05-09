@@ -3,7 +3,6 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestOrg,
-  insertTestPlatformConnector,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -69,24 +68,6 @@ describe("GET /api/zero/connectors", () => {
     expect(response.status).toBe(401);
   });
 
-  // Regression: when a connector is removed from CONNECTOR_TYPES, rows in
-  // `connectors` (OAuth) and `user_platform_connectors` (platform) with that
-  // stale type become orphaned. The list endpoint must stay usable — silently
-  // drop the orphan instead of failing the whole response.
-  it("skips platform rows whose type no longer exists in the contract", async () => {
-    const userId = uniqueId("zcon-orphan-pl");
-    const { orgId } = await setupOrg(userId);
-    await insertTestPlatformConnector(orgId, userId, "__removed_connector__");
-
-    const response = await GET(createTestRequest(connectorsUrl()));
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    const orphan = data.connectors.find((c: { type: string }) => {
-      return c.type === "__removed_connector__";
-    });
-    expect(orphan).toBeUndefined();
-  });
-
   it("skips oauth rows whose type no longer exists in the contract", async () => {
     const userId = uniqueId("zcon-orphan-oa");
     const { orgId } = await setupOrg(userId);
@@ -102,20 +83,5 @@ describe("GET /api/zero/connectors", () => {
       return c.type === "__removed_connector__";
     });
     expect(orphan).toBeUndefined();
-  });
-
-  it("surfaces a platform row for openai with authMethod=platform", async () => {
-    const userId = uniqueId("zcon-openai-pl");
-    const { orgId } = await setupOrg(userId);
-    await insertTestPlatformConnector(orgId, userId, "openai");
-
-    const response = await GET(createTestRequest(connectorsUrl()));
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    const openai = data.connectors.find((c: { type: string }) => {
-      return c.type === "openai";
-    });
-    expect(openai).toBeDefined();
-    expect(openai.authMethod).toBe("platform");
   });
 });

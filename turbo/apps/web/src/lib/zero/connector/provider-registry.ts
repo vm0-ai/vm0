@@ -387,8 +387,6 @@ export function getConfiguredConnectorTypes(currentEnv: Env): ConnectorType[] {
       configured.push(connectorType);
     } else if (getConnectorDefaultAuthMethod(connectorType) === "api-token") {
       configured.push(connectorType);
-    } else if (getConnectorDefaultAuthMethod(connectorType) === "platform") {
-      configured.push(connectorType);
     }
   }
 

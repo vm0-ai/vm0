@@ -27,17 +27,6 @@ describe("firewall secret name consistency", () => {
   for (const connectorType of connectorTypes) {
     if (!isFirewallConnectorType(connectorType)) continue;
 
-    // Platform-proxied connectors inject platform-level secrets via their
-    // firewall placeholders — those secrets are resolved from a platform
-    // pool, not from user-declared authMethod secrets. The "placeholder
-    // must be in connector secrets" invariant is BYOK-only.
-    const authMethods = getConnectorAuthMethods(connectorType);
-    const isPlatformOnly =
-      "platform" in authMethods &&
-      !("oauth" in authMethods) &&
-      !("api-token" in authMethods);
-    if (isPlatformOnly) continue;
-
     it(`${connectorType} → firewall placeholder keys match connector secret names`, () => {
       // Collect env var names the connector exposes.
       // If environmentMapping exists (OAuth), use ONLY those keys —

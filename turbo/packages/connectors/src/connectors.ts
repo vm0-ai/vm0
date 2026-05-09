@@ -217,17 +217,8 @@ export interface ConnectorOAuthConfig {
  * - `api-token` — user supplies an API token via the UI. No DB row:
  *   enablement is derived from the presence of required secrets/variables.
  * - `api` — legacy placeholder; no active consumers.
- * - `platform` — platform-supplied credentials. The user does not supply any
- *   secret; they accept terms and the platform injects its own auth at proxy
- *   time. Enablement is a DB row (`authMethod = "platform"`, OAuth columns
- *   NULL) — the connector-layer analog of the `vm0` meta-provider on the
- *   model-provider side.
  */
-export type ConnectorAuthMethodType =
-  | "oauth"
-  | "api-token"
-  | "api"
-  | "platform";
+export type ConnectorAuthMethodType = "oauth" | "api-token" | "api";
 
 export type ConnectorDisplayCategory =
   | "ai-general-models"

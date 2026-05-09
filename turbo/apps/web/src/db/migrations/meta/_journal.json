@@ -2465,6 +2465,13 @@
       "when": 1778298054089,
       "tag": "0351_minor_senator_kelly",
       "breakpoints": true
+    },
+    {
+      "idx": 352,
+      "version": "7",
+      "when": 1778310215241,
+      "tag": "0352_drop_user_platform_connectors",
+      "breakpoints": true
     }
   ]
 }

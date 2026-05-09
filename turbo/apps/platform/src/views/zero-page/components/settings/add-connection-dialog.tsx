@@ -17,7 +17,6 @@ import {
   allConnectorTypes$,
   pollingConnectorType$,
   connectAndSettle$,
-  enablePlatformConnector$,
   submitApiToken$,
   setTokenFormValue$,
   clearTokenForm$,
@@ -28,7 +27,6 @@ import {
 } from "../../../../signals/zero-page/settings/connectors.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
-import { Vm0ManagedBadge } from "./vm0-managed-badge.tsx";
 import { detach, onDomEventFn, Reason } from "../../../../signals/utils.ts";
 import { GoogleOAuthNotice } from "../../zero-directed-shared.tsx";
 
@@ -81,12 +79,6 @@ type PostConnectOptions = {
 type SubmitApiTokenFn = (
   type: ConnectorType,
   inputSecrets: Record<string, string>,
-  options: PostConnectOptions,
-  signal: AbortSignal,
-) => Promise<void>;
-
-type EnablePlatformConnectorFn = (
-  type: ConnectorType,
   options: PostConnectOptions,
   signal: AbortSignal,
 ) => Promise<void>;
@@ -186,62 +178,6 @@ function ApiTokenForm({
 }
 
 // ---------------------------------------------------------------------------
-// Platform confirmation form (platform-supplied connectors — no credentials, just terms)
-// ---------------------------------------------------------------------------
-
-function PlatformConfirmationForm({
-  type,
-  onSuccess,
-  showPermissionDialogOnConnect,
-  enable,
-  submitting,
-}: {
-  type: ConnectorType;
-  onSuccess: () => void | Promise<void>;
-  showPermissionDialogOnConnect: boolean;
-  enable: EnablePlatformConnectorFn;
-  submitting: boolean;
-}) {
-  const config = CONNECTOR_TYPES[type];
-  const platformConfig = config.authMethods.platform;
-  const pageSignal = useGet(pageSignal$);
-
-  if (!platformConfig) {
-    return null;
-  }
-
-  const handleEnable = onDomEventFn(async () => {
-    if (submitting) {
-      return;
-    }
-    await enable(
-      type,
-      {
-        showPermissionDialog: showPermissionDialogOnConnect,
-      },
-      pageSignal,
-    );
-    await onSuccess();
-  });
-
-  return (
-    <div className="flex flex-col gap-3">
-      {platformConfig.helpText && (
-        <div
-          className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
-          dangerouslySetInnerHTML={{
-            __html: renderMarkdown(platformConfig.helpText),
-          }}
-        />
-      )}
-      <Button onClick={handleEnable} disabled={submitting} className="w-full">
-        {submitting ? "Enabling..." : (platformConfig.label ?? "Enable")}
-      </Button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Connect modal content (OAuth button + token form, or just token form)
 // ---------------------------------------------------------------------------
 
@@ -256,21 +192,15 @@ function ConnectModalContent({
 }) {
   const [settleLoadable, connectAndSettle] = useLoadableSet(connectAndSettle$);
   const [apiTokenLoadable, submitApiToken] = useLoadableSet(submitApiToken$);
-  const [platformLoadable, enablePlatformConnector] = useLoadableSet(
-    enablePlatformConnector$,
-  );
   const pageSignal = useGet(pageSignal$);
   const pollingType = useGet(pollingConnectorType$);
   const settling = settleLoadable.state === "loading";
-  const credentialSubmitting =
-    apiTokenLoadable.state === "loading" ||
-    platformLoadable.state === "loading";
+  const credentialSubmitting = apiTokenLoadable.state === "loading";
   const isPolling = pollingType === item.type;
 
   const config = CONNECTOR_TYPES[item.type];
   const hasOAuth = item.availableAuthMethods.includes("oauth");
   const hasApiToken = item.availableAuthMethods.includes("api-token");
-  const hasPlatform = item.availableAuthMethods.includes("platform");
 
   // While OAuth is in progress, only show connecting state
   if (isPolling) {
@@ -337,27 +267,6 @@ function ConnectModalContent({
           submitting={credentialSubmitting}
         />
       )}
-
-      {hasApiToken && hasPlatform && (
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full zero-border-t" />
-          </div>
-          <div className="relative flex justify-center text-xs">
-            <span className="bg-background px-2 text-muted-foreground">or</span>
-          </div>
-        </div>
-      )}
-
-      {hasPlatform && (
-        <PlatformConfirmationForm
-          type={item.type}
-          onSuccess={onSuccess}
-          showPermissionDialogOnConnect={showPermissionDialogOnConnect}
-          enable={enablePlatformConnector}
-          submitting={credentialSubmitting}
-        />
-      )}
     </div>
   );
 }
@@ -408,7 +317,6 @@ export function ConnectModal({
         {item.connected && (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
             <span>{connectedStatusText(item)}</span>
-            {item.connector?.authMethod === "platform" && <Vm0ManagedBadge />}
           </p>
         )}
 

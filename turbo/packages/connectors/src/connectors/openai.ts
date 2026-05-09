@@ -24,11 +24,6 @@ export const openai = {
           },
         },
       },
-      platform: {
-        label: "Enable",
-        helpText: "No credentials needed. Usage is billed to your org credits.",
-        secrets: {},
-      },
     },
     defaultAuthMethod: "api-token",
   },

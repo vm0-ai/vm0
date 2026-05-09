@@ -268,7 +268,6 @@ function ConnectStepContent() {
     }
     if (
       connector?.availableAuthMethods.includes("api-token") ||
-      connector?.availableAuthMethods.includes("platform") ||
       isGoogleOAuthConnector(type)
     ) {
       setSelectedConnector(type);

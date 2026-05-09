@@ -1,7 +1,6 @@
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { initServices } from "../../lib/init-services";
 import { userConnectors } from "@vm0/db/schema/user-connector";
-import { userPlatformConnectors } from "@vm0/db/schema/user-platform-connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
@@ -58,26 +57,6 @@ export async function insertTestConnectorSecret(
     userId,
     orgId,
   });
-}
-
-/**
- * Enable a platform-supplied connector for a test user by inserting a row
- * directly into `user_platform_connectors`.
- *
- * @why-db-direct Tests that verify cascade deletion need to seed the
- * enablement row without exercising the POST route (which carries its own
- * auth + feature-flag requirements orthogonal to what's being verified).
- */
-export async function insertTestPlatformConnector(
-  orgId: string,
-  userId: string,
-  type: string,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .insert(userPlatformConnectors)
-    .values({ orgId, userId, type })
-    .onConflictDoNothing();
 }
 
 /**

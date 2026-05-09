@@ -17,11 +17,9 @@ import {
   connectorTypeSchema,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
-import { userPlatformConnectors } from "@vm0/db/schema/user-platform-connector";
 import { variables } from "@vm0/db/schema/variable";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -60,28 +58,6 @@ function storedConnectorRowToResponse(
     externalEmail: row.externalEmail,
     oauthScopes: parseOauthScopes(row.oauthScopes),
     needsReconnect: row.needsReconnect,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
-}
-
-function platformRowToResponse(
-  row: {
-    readonly id: string;
-    readonly createdAt: Date;
-    readonly updatedAt: Date;
-  },
-  type: ConnectorType,
-): ConnectorResponse {
-  return {
-    id: row.id,
-    type,
-    authMethod: "platform",
-    externalId: null,
-    externalUsername: null,
-    externalEmail: null,
-    oauthScopes: null,
-    needsReconnect: false,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -142,7 +118,7 @@ export function zeroConnectorList(args: {
 }): Computed<Promise<ConnectorListResponse>> {
   return computed(async (get): Promise<ConnectorListResponse> => {
     const db = get(db$);
-    const [oauthRows, platformRows, derivedTypes] = await Promise.all([
+    const [oauthRows, derivedTypes] = await Promise.all([
       db
         .select({
           id: connectors.id,
@@ -163,36 +139,16 @@ export function zeroConnectorList(args: {
             eq(connectors.userId, args.userId),
           ),
         ),
-      db
-        .select({
-          id: userPlatformConnectors.id,
-          type: userPlatformConnectors.type,
-          createdAt: userPlatformConnectors.createdAt,
-          updatedAt: userPlatformConnectors.updatedAt,
-        })
-        .from(userPlatformConnectors)
-        .where(
-          and(
-            eq(userPlatformConnectors.orgId, args.orgId),
-            eq(userPlatformConnectors.userId, args.userId),
-          ),
-        ),
       get(apiTokenConnectorTypes(args)),
     ]);
 
-    const dbConnectors: ConnectorResponse[] = [
-      ...oauthRows.flatMap((row) => {
-        const parsed = connectorTypeSchema.safeParse(row.type);
-        if (!parsed.success) {
-          return [];
-        }
-        return [storedConnectorRowToResponse(row, parsed.data)];
-      }),
-      ...platformRows.flatMap((row) => {
-        const parsed = connectorTypeSchema.safeParse(row.type);
-        return parsed.success ? [platformRowToResponse(row, parsed.data)] : [];
-      }),
-    ];
+    const dbConnectors: ConnectorResponse[] = oauthRows.flatMap((row) => {
+      const parsed = connectorTypeSchema.safeParse(row.type);
+      if (!parsed.success) {
+        return [];
+      }
+      return [storedConnectorRowToResponse(row, parsed.data)];
+    });
 
     const dbTypes = new Set(
       dbConnectors.map((connector) => {
@@ -243,54 +199,32 @@ function storedConnectorByType(args: {
 }): Computed<Promise<ConnectorResponse | null>> {
   return computed(async (get): Promise<ConnectorResponse | null> => {
     const db = get(db$);
-    const [oauthRows, platformRows] = await Promise.all([
-      db
-        .select({
-          id: connectors.id,
-          type: connectors.type,
-          authMethod: connectors.authMethod,
-          externalId: connectors.externalId,
-          externalUsername: connectors.externalUsername,
-          externalEmail: connectors.externalEmail,
-          oauthScopes: connectors.oauthScopes,
-          needsReconnect: connectors.needsReconnect,
-          createdAt: connectors.createdAt,
-          updatedAt: connectors.updatedAt,
-        })
-        .from(connectors)
-        .where(
-          and(
-            eq(connectors.orgId, args.orgId),
-            eq(connectors.userId, args.userId),
-            eq(connectors.type, args.type),
-          ),
-        )
-        .limit(1),
-      db
-        .select({
-          id: userPlatformConnectors.id,
-          createdAt: userPlatformConnectors.createdAt,
-          updatedAt: userPlatformConnectors.updatedAt,
-        })
-        .from(userPlatformConnectors)
-        .where(
-          and(
-            eq(userPlatformConnectors.orgId, args.orgId),
-            eq(userPlatformConnectors.userId, args.userId),
-            eq(userPlatformConnectors.type, args.type),
-          ),
-        )
-        .limit(1),
-    ]);
+    const oauthRows = await db
+      .select({
+        id: connectors.id,
+        type: connectors.type,
+        authMethod: connectors.authMethod,
+        externalId: connectors.externalId,
+        externalUsername: connectors.externalUsername,
+        externalEmail: connectors.externalEmail,
+        oauthScopes: connectors.oauthScopes,
+        needsReconnect: connectors.needsReconnect,
+        createdAt: connectors.createdAt,
+        updatedAt: connectors.updatedAt,
+      })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, args.orgId),
+          eq(connectors.userId, args.userId),
+          eq(connectors.type, args.type),
+        ),
+      )
+      .limit(1);
 
     const oauthRow = oauthRows[0];
     if (oauthRow) {
       return storedConnectorRowToResponse(oauthRow, args.type);
-    }
-
-    const platformRow = platformRows[0];
-    if (platformRow) {
-      return platformRowToResponse(platformRow, args.type);
     }
 
     return null;
@@ -426,9 +360,6 @@ export function zeroConnectorSearch(args: {
       overrides,
     });
     const keyword = args.keyword?.toLowerCase();
-    const platformGloballyEnabled =
-      featureStates[FeatureSwitchKey.PlatformConnectors];
-
     return (Object.keys(CONNECTOR_TYPES) as ConnectorType[]).flatMap((type) => {
       const config = CONNECTOR_TYPES[type];
       const flag = config.featureFlag;
@@ -437,12 +368,8 @@ export function zeroConnectorSearch(args: {
       const showApiToken =
         "api-token" in config.authMethods &&
         (flagEnabled || !config.strictFeatureFlag);
-      const showPlatform =
-        flagEnabled &&
-        platformGloballyEnabled &&
-        "platform" in config.authMethods;
 
-      if (!showOauth && !showApiToken && !showPlatform) {
+      if (!showOauth && !showApiToken) {
         return [];
       }
 
@@ -453,10 +380,6 @@ export function zeroConnectorSearch(args: {
       if (showApiToken) {
         authMethods.push("api-token");
       }
-      if (showPlatform) {
-        authMethods.push("platform");
-      }
-
       const item = {
         id: type,
         label: config.label,
