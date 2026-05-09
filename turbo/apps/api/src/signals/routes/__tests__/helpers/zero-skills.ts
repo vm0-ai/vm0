@@ -233,7 +233,14 @@ export function mockSkillContent(
 export const seedAgentForInstructions$ = command(
   async (
     { set },
-    args: { orgId: string; userId: string; name?: string },
+    args: {
+      orgId: string;
+      userId: string;
+      name?: string;
+      displayName?: string | null;
+      description?: string | null;
+      sound?: string | null;
+    },
     signal: AbortSignal,
   ): Promise<{ agentId: string }> => {
     const db = set(writeDb$);
@@ -253,6 +260,9 @@ export const seedAgentForInstructions$ = command(
         orgId: args.orgId,
         owner: args.userId,
         name,
+        displayName: args.displayName ?? null,
+        description: args.description ?? null,
+        sound: args.sound ?? null,
       })
       .onConflictDoNothing();
     signal.throwIfAborted();
