@@ -12,7 +12,6 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Switch,
 } from "@vm0/ui";
 import {
   Dialog,
@@ -37,10 +36,7 @@ import {
   type ScheduleFormData,
 } from "../../signals/schedule-page/schedule-form.ts";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
-import {
-  modelFirstModelProviderEnabled$,
-  personalModelProviderEnabled$,
-} from "../../signals/external/feature-switch.ts";
+import { modelFirstModelProviderEnabled$ } from "../../signals/external/feature-switch.ts";
 import {
   MODEL_FIRST_SELECTION_PROVIDER_ID,
   ModelProviderPicker,
@@ -569,14 +565,12 @@ function ScheduleDialogModelControls({
   orgProviders,
   agentModelDefault,
   modelFirstEnabled,
-  personalProviderEnabled,
 }: {
   form: ScheduleFormData;
   updateForm: (patch: Partial<ScheduleFormData>) => void;
   orgProviders: { modelProviders: ModelProviderResponse[] } | undefined;
   agentModelDefault: ModelProviderSelection | null;
   modelFirstEnabled: boolean;
-  personalProviderEnabled: boolean;
 }) {
   const showModelPicker =
     orgProviders &&
@@ -605,27 +599,6 @@ function ScheduleDialogModelControls({
             agentDefault={agentModelDefault}
             inheritLabel="agent"
           />
-        </div>
-      )}
-
-      {personalProviderEnabled && !modelFirstEnabled && (
-        <div className="flex items-start gap-2">
-          <Switch
-            id="schedule-prefer-personal"
-            checked={form.preferPersonalProvider}
-            onCheckedChange={(v) => {
-              updateForm({ preferPersonalProvider: v });
-            }}
-            aria-label="Use personal provider"
-            className="mt-0.5"
-          />
-          <label
-            htmlFor="schedule-prefer-personal"
-            className="text-sm text-muted-foreground leading-snug"
-          >
-            Use the caller&apos;s personal provider when available, fall back to
-            the selected one above.
-          </label>
         </div>
       )}
     </>
@@ -659,7 +632,6 @@ function ScheduleFormDialogInner({
   const agentModelDefault = useLastResolved(dialogAgentModelDefault$) ?? null;
 
   const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
-  const personalProviderEnabled = useGet(personalModelProviderEnabled$);
   const init = modelFirstEnabled
     ? { ...baseInit, modelProviderId: null }
     : baseInit;
@@ -854,7 +826,6 @@ function ScheduleFormDialogInner({
             orgProviders={orgProviders}
             agentModelDefault={agentModelDefault}
             modelFirstEnabled={modelFirstEnabled}
-            personalProviderEnabled={personalProviderEnabled}
           />
         </div>
 

@@ -578,7 +578,6 @@ export function AgentChatPage() {
               (modelFirstEnabled || composerProviders.providers.length > 0)
                 ? {
                     providers: composerProviders.providers,
-                    tiers: composerProviders.tiers,
                     value: modelSelection,
                     onChange: setModelSelection,
                     // No prior session exists on the landing page.

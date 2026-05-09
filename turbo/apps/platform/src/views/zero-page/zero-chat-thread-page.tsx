@@ -1917,12 +1917,10 @@ function shouldAutoFocusComposer({
 
 interface ChatComposerModelProviders {
   providers: ModelProviderResponse[];
-  tiers?: Map<string, "personal" | "org">;
 }
 
 interface ChatComposerModelPickerConfig {
   providers: ModelProviderResponse[];
-  tiers?: Map<string, "personal" | "org">;
   value: ModelProviderSelection | null;
   onChange: (value: ModelProviderSelection | null) => void;
   sessionProviderType: ModelProviderType | null;
@@ -1949,7 +1947,6 @@ function resolveChatComposerModelPicker(params: {
   }
   return {
     providers: params.composerProviders.providers,
-    tiers: params.composerProviders.tiers,
     value: params.modelSelection,
     onChange: params.setModelSelection,
     sessionProviderType: params.sessionProviderType,

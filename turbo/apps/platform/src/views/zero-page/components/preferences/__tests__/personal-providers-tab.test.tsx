@@ -73,9 +73,8 @@ async function openModelConfiguration() {
 }
 
 describe("personal-providers-tab — feature switch gating", () => {
-  it("hides the Personal Models tab when both model provider switches are off", async () => {
+  it("hides the Personal Models tab when modelFirstModelProvider is off", async () => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.PersonalModelProvider]: false,
       [FeatureSwitchKey.ModelFirstModelProvider]: false,
     });
     mockPreferences();
@@ -88,21 +87,8 @@ describe("personal-providers-tab — feature switch gating", () => {
     expect(screen.queryByText("Personal Models")).not.toBeInTheDocument();
   });
 
-  it("shows the Personal Models tab when personalModelProvider is on", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.PersonalModelProvider]: true,
-    });
-    mockPreferences();
-    detachedSetupPage({ context, path: "/settings" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Personal Models")).toBeInTheDocument();
-    });
-  });
-
   it("shows the Personal Models tab when modelFirstModelProvider is on", async () => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.PersonalModelProvider]: false,
       [FeatureSwitchKey.ModelFirstModelProvider]: true,
     });
     mockPreferences();

@@ -430,7 +430,6 @@ const sendNewThreadMessage$ = command(
           resolveEffectiveAgentDefaultSelection({
             agent,
             providers: composerProviders.providers,
-            tiers: composerProviders.tiers,
           })?.selectedModel ?? undefined;
       }
     }
