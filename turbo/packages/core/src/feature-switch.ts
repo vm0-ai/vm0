@@ -351,13 +351,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.VoiceChatRealtimeBilling]: {
     maintainer: "lancy@vm0.ai",
     description:
-      "Switch the voice-chat token endpoint to mint a VM0 relay-bootstrap " +
-      "instead of an OpenAI client_secret. When OFF, browsers receive the " +
-      "legacy ephemeral OpenAI token. When ON, the route runs credit + " +
-      "pricing admission and mints a short-lived HMAC relay token; the " +
-      "browser opens a WebSocket to /api/zero/voice-chat/relay (sub-issue " +
-      "#12139). Staff-only during rollout; operator flips per org via the " +
-      "feature-switch overrides API.",
+      "Gate voice-chat realtime billing (Plan D, Epic #12128). When OFF, " +
+      "the token route mints an OpenAI ephemeral token without admission " +
+      "checks and the /session-started, /usage, and /session-ended " +
+      "endpoints are 200 no-ops — the org gets unmetered voice-chat. " +
+      "When ON, the token route runs credit + pricing admission, " +
+      "/session-started inserts an audit row in voice_chat_realtime_" +
+      "sessions, and the browser self-reports response.done + " +
+      "transcription.completed usage events for billing. Staff-only " +
+      "during rollout; operator flips per org via the feature-switch " +
+      "overrides API.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

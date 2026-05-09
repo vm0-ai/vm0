@@ -98,6 +98,9 @@ const internalWakeLock$ = state<WakeLockSentinel | null>(null);
 // `transcription.completed` usage to /api/zero/voice-chat-candidate/:id/usage.
 // Mirror of the main path; see voice-chat-session.ts for design rationale.
 const internalUsageReporter$ = state<UsageReporter | null>(null);
+// `relaySessionId` is the audit-row id from /session-started; the field
+// name is a wire-format artifact from the original relay design (Epic
+// #12128 pre-pivot). Plan D keeps the name for contract stability.
 const internalRelaySessionId$ = state<string | null>(null);
 
 const resetSessionSignal$ = resetSignal();

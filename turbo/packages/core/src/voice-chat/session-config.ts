@@ -1,13 +1,10 @@
 // Static session configuration pushed to OpenAI when configuring the Realtime
-// Talker session. Lives in @vm0/core because two server runtimes consume it:
-//
-//   1. apps/web's createEphemeralToken() — legacy browser-direct path.
-//   2. apps/api's voice-chat-relay openai-realtime-client — server-relayed path.
-//
-// Bytewise equality of the resulting `session.update` (and the legacy REST body)
-// is load-bearing for the realtime-billing rollout: both paths must configure
-// the Talker identically so OpenAI usage events line up across the cutover.
-// Do not duplicate this file — both consumers must import from here.
+// Talker session. Lives in @vm0/core because two consumers in apps/web import
+// it: the production /token route's createEphemeralToken and the candidate-
+// route mirror. Keeping the config in one place makes sure the production and
+// candidate paths configure the Talker identically so OpenAI usage events line
+// up across the A/B comparison. Do not duplicate this file — both consumers
+// must import from here.
 
 const TOOL_PROMPT_PARAM = {
   type: "object",

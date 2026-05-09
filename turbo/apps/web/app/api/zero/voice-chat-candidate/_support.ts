@@ -109,8 +109,10 @@ interface VoiceChatGates {
   voiceChatEnabled: boolean;
   /**
    * FeatureSwitchKey.VoiceChatRealtimeBilling — when ON, the token route
-   * mints a VM0 relay-bootstrap instead of an OpenAI client_secret
-   * (Epic #12128). Default OFF; staff-org rollout.
+   * runs credit + pricing admission and the /session-started, /usage,
+   * /session-ended endpoints record + accept browser-reported usage
+   * (Plan D, Epic #12128). When OFF, those endpoints are 200 no-ops.
+   * Default OFF; staff-org rollout.
    */
   realtimeBillingEnabled: boolean;
 }

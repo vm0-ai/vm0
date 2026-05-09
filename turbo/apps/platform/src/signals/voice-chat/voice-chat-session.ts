@@ -93,6 +93,9 @@ const internalWakeLock$ = state<WakeLockSentinel | null>(null);
 // audit row created by /session-started; null means the
 // VoiceChatRealtimeBilling switch is OFF (server returns `id: null` no-op).
 const internalUsageReporter$ = state<UsageReporter | null>(null);
+// `relaySessionId` is the audit-row id from /session-started; the field
+// name is a wire-format artifact from the original relay design (Epic
+// #12128 pre-pivot). Plan D keeps the name for contract stability.
 const internalRelaySessionId$ = state<string | null>(null);
 
 const resetSessionSignal$ = resetSignal();

@@ -166,7 +166,6 @@ describe("POST /api/zero/voice-chat/token", () => {
       const body = await response.json();
       expect(response.status).toBe(200);
       expect(body.client_secret.value).toBe("ek_test_value");
-      expect(body).not.toHaveProperty("relayToken");
       expect(received?.model).toBe("gpt-realtime-2");
       expect(received?.modalities).toEqual(["text", "audio"]);
       expect(typeof received?.instructions).toBe("string");
@@ -264,7 +263,6 @@ describe("POST /api/zero/voice-chat/token", () => {
       const body = await response.json();
       expect(response.status).toBe(200);
       expect(body.client_secret.value).toBe("ek_admitted");
-      expect(body).not.toHaveProperty("relayToken");
     });
   });
 });
