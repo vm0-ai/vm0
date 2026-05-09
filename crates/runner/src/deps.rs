@@ -1,14 +1,14 @@
 //! Third-party dependency metadata: versions, checksums, and download URLs.
 
-pub const FIRECRACKER_VERSION: &str = "v1.14.1";
+pub const FIRECRACKER_VERSION: &str = "v1.14.4";
 pub const KERNEL_VERSION: &str = "6.1.155";
 pub const MITMPROXY_VERSION: &str = "12.2.1";
 
 // SHA256 checksums for installed artifacts, keyed by arch.
 pub const FIRECRACKER_SHA256_X86_64: &str =
-    "ef68f03e2dcaa4c07347a4b11989bedb350c982e62da7a3f74bc40f4f840e0ce";
+    "7319bdf6204fede870227497ab1a3342af42c02c6692ca65e7c293ef1f3dad08";
 pub const FIRECRACKER_SHA256_AARCH64: &str =
-    "d1bc4cbd166a3b572cdb55019634aed48a5426e2253f126b18654596367d2bf4";
+    "ee26e30435be822ec9de225d1255110bf3f5aa296e748d9416df53afa392b665";
 pub const KERNEL_SHA256_X86_64: &str =
     "e41c7048bd2475e7e788153823fcb9166a7e0b78c4c443bd6446d015fa735f53";
 pub const KERNEL_SHA256_AARCH64: &str =
@@ -22,7 +22,7 @@ pub const MITMDUMP_SHA256_AARCH64: &str =
 /// own (incomplete) certifi CA store; we override it with the host's system store.
 pub const SYSTEM_CA_BUNDLE: &str = "/etc/ssl/certs/ca-certificates.crt";
 
-/// "v1.14.1" → "v1.14"
+/// "v1.14.4" → "v1.14"
 const FIRECRACKER_MINOR: &str = strip_patch(FIRECRACKER_VERSION);
 
 #[allow(clippy::panic, clippy::indexing_slicing)] // compile-time only
