@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
 import { orgCache } from "@vm0/db/schema/org-cache";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
@@ -12,6 +11,11 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
+import {
+  deleteOrgMembership$,
+  seedOrgMembership$,
+  type OrgMembershipFixture,
+} from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -31,32 +35,38 @@ interface SeedOrgArgs {
   readonly tier?: "free" | "pro" | "team";
 }
 
-async function seedOrg(args: SeedOrgArgs): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(orgCache).values({
-    orgId: args.orgId,
-    slug: args.slug ?? `org-${args.orgId.slice(-8)}`,
-    name: args.name ?? "",
-  });
-  await writeDb.insert(orgMembersCache).values({
-    orgId: args.orgId,
-    userId: args.userId,
-    role: args.role,
-  });
+async function seedOrg(args: SeedOrgArgs): Promise<OrgMembershipFixture> {
+  const fixture = await store.set(
+    seedOrgMembership$,
+    {
+      orgId: args.orgId,
+      userId: args.userId,
+      role: args.role,
+      slug: args.slug,
+      name: args.name,
+    },
+    context.signal,
+  );
   if (args.tier) {
+    const writeDb = store.set(writeDb$);
     await writeDb.insert(orgMetadata).values({
       orgId: args.orgId,
       tier: args.tier,
     });
   }
+  return fixture;
 }
 
-async function seedOrgCacheOnly(orgId: string, slug?: string): Promise<void> {
+async function seedOrgCacheOnly(
+  orgId: string,
+  slug?: string,
+): Promise<OrgMembershipFixture> {
   const writeDb = store.set(writeDb$);
   await writeDb.insert(orgCache).values({
     orgId,
     slug: slug ?? `org-${orgId.slice(-8)}`,
   });
+  return { orgId, userId: "" };
 }
 
 async function setOrgTier(
@@ -70,21 +80,22 @@ async function setOrgTier(
     .onConflictDoUpdate({ target: orgMetadata.orgId, set: { tier } });
 }
 
-async function deleteOrg(orgId: string): Promise<void> {
+async function deleteOrgComposite(
+  fixture: OrgMembershipFixture,
+): Promise<void> {
   const writeDb = store.set(writeDb$);
-  await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
-  await writeDb.delete(orgMembersCache).where(eq(orgMembersCache.orgId, orgId));
-  await writeDb.delete(orgCache).where(eq(orgCache.orgId, orgId));
+  await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
+  await store.set(deleteOrgMembership$, fixture, context.signal);
 }
 
 describe("GET /api/zero/org", () => {
-  const seededOrgIds: string[] = [];
+  const seededFixtures: OrgMembershipFixture[] = [];
 
   afterEach(async () => {
-    while (seededOrgIds.length > 0) {
-      const orgId = seededOrgIds.pop();
-      if (orgId) {
-        await deleteOrg(orgId);
+    while (seededFixtures.length > 0) {
+      const fixture = seededFixtures.pop();
+      if (fixture) {
+        await deleteOrgComposite(fixture);
       }
     }
   });
@@ -93,8 +104,9 @@ describe("GET /api/zero/org", () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     const slug = `org-${randomUUID().slice(0, 8)}`;
-    await seedOrg({ orgId, userId, role: "admin", slug, name: "Test Org" });
-    seededOrgIds.push(orgId);
+    seededFixtures.push(
+      await seedOrg({ orgId, userId, role: "admin", slug, name: "Test Org" }),
+    );
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroOrgContract);
@@ -131,8 +143,7 @@ describe("GET /api/zero/org", () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     const slug = `org-${randomUUID().slice(0, 8)}`;
-    await seedOrg({ orgId, userId, role: "admin", slug });
-    seededOrgIds.push(orgId);
+    seededFixtures.push(await seedOrg({ orgId, userId, role: "admin", slug }));
 
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
@@ -158,13 +169,13 @@ describe("GET /api/zero/org", () => {
 });
 
 describe("GET /api/zero/org — org resolution", () => {
-  const seededOrgIds: string[] = [];
+  const seededFixtures: OrgMembershipFixture[] = [];
 
   afterEach(async () => {
-    while (seededOrgIds.length > 0) {
-      const orgId = seededOrgIds.pop();
-      if (orgId) {
-        await deleteOrg(orgId);
+    while (seededFixtures.length > 0) {
+      const fixture = seededFixtures.pop();
+      if (fixture) {
+        await deleteOrgComposite(fixture);
       }
     }
   });
@@ -172,8 +183,7 @@ describe("GET /api/zero/org — org resolution", () => {
   it("resolves org from session context", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    await seedOrg({ orgId, userId, role: "admin" });
-    seededOrgIds.push(orgId);
+    seededFixtures.push(await seedOrg({ orgId, userId, role: "admin" }));
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroOrgContract);
@@ -201,9 +211,12 @@ describe("GET /api/zero/org — org resolution", () => {
     const userId = `user_${randomUUID()}`;
     const orgId1 = `org_${randomUUID()}`;
     const orgId2 = `org_${randomUUID()}`;
-    await seedOrg({ orgId: orgId1, userId, role: "admin" });
-    await seedOrg({ orgId: orgId2, userId, role: "admin" });
-    seededOrgIds.push(orgId1, orgId2);
+    seededFixtures.push(
+      await seedOrg({ orgId: orgId1, userId, role: "admin" }),
+    );
+    seededFixtures.push(
+      await seedOrg({ orgId: orgId2, userId, role: "admin" }),
+    );
     mocks.clerk.session(userId, orgId2);
 
     const client = setupApp({ context })(zeroOrgContract);
@@ -219,8 +232,9 @@ describe("GET /api/zero/org — org resolution", () => {
   it("returns tier from org table", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    await seedOrg({ orgId, userId, role: "admin", tier: "pro" });
-    seededOrgIds.push(orgId);
+    seededFixtures.push(
+      await seedOrg({ orgId, userId, role: "admin", tier: "pro" }),
+    );
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroOrgContract);
@@ -236,8 +250,7 @@ describe("GET /api/zero/org — org resolution", () => {
   it("returns default free tier for new org", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    await seedOrg({ orgId, userId, role: "admin" });
-    seededOrgIds.push(orgId);
+    seededFixtures.push(await seedOrg({ orgId, userId, role: "admin" }));
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroOrgContract);
@@ -252,8 +265,7 @@ describe("GET /api/zero/org — org resolution", () => {
   it("reflects updated tier value", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    await seedOrg({ orgId, userId, role: "admin" });
-    seededOrgIds.push(orgId);
+    seededFixtures.push(await seedOrg({ orgId, userId, role: "admin" }));
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroOrgContract);
@@ -276,8 +288,7 @@ describe("GET /api/zero/org — org resolution", () => {
   it("returns free tier for brand-new org without metadata", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    await seedOrgCacheOnly(orgId);
-    seededOrgIds.push(orgId);
+    seededFixtures.push(await seedOrgCacheOnly(orgId));
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroOrgContract);
@@ -293,8 +304,7 @@ describe("GET /api/zero/org — org resolution", () => {
   it("returns member with correct role", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    await seedOrg({ orgId, userId, role: "admin" });
-    seededOrgIds.push(orgId);
+    seededFixtures.push(await seedOrg({ orgId, userId, role: "admin" }));
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroOrgContract);

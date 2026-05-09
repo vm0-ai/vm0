@@ -2,16 +2,18 @@ import { randomUUID } from "node:crypto";
 
 import { integrationsTelegramBotListContract } from "@vm0/api-contracts/contracts/integrations";
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { mockEnv } from "../../../lib/env";
-import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
+import {
+  deleteOrgMembership$,
+  seedOrgMembership$,
+  type OrgMembershipFixture,
+} from "./helpers/zero-org-membership";
 import {
   deleteTelegramFixture$,
   freezeTelegramFixture,
@@ -54,28 +56,9 @@ function mintZeroToken(args: {
   });
 }
 
-async function seedMembership(orgId: string, userId: string): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(orgMembersCache).values({
-    orgId,
-    userId,
-    role: "member",
-    cachedAt: new Date(now()),
-  });
-}
-
-async function deleteMembership(orgId: string, userId: string): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .delete(orgMembersCache)
-    .where(
-      and(eq(orgMembersCache.orgId, orgId), eq(orgMembersCache.userId, userId)),
-    );
-}
-
 describe("GET /api/zero/integrations/telegram/bots", () => {
   const fixtures: TelegramFixture[] = [];
-  const memberships: { orgId: string; userId: string }[] = [];
+  const memberships: OrgMembershipFixture[] = [];
 
   beforeEach(() => {
     configureOfficialBotEnv();
@@ -91,7 +74,7 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
     while (memberships.length > 0) {
       const membership = memberships.pop();
       if (membership) {
-        await deleteMembership(membership.orgId, membership.userId);
+        await store.set(deleteOrgMembership$, membership, context.signal);
       }
     }
   });
@@ -109,8 +92,12 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
     const userId = `user_${randomUUID()}`;
     const otherOrgId = `org_${randomUUID()}`;
 
-    await seedMembership(orgId, userId);
-    memberships.push({ orgId, userId });
+    const membership = await store.set(
+      seedOrgMembership$,
+      { orgId, userId, seedOrgCache: false },
+      context.signal,
+    );
+    memberships.push(membership);
 
     const ownerBotId = newTelegramBotId();
     const orgBotId = newTelegramBotId();
@@ -195,8 +182,12 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
 
-    await seedMembership(orgId, userId);
-    memberships.push({ orgId, userId });
+    const membership = await store.set(
+      seedOrgMembership$,
+      { orgId, userId, seedOrgCache: false },
+      context.signal,
+    );
+    memberships.push(membership);
 
     const token = mintZeroToken({
       userId,
