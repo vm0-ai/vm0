@@ -735,6 +735,15 @@ mod tests {
         assert_eq!(nlmsg_seq_from_msg(&msg), 43);
     }
 
+    #[test]
+    fn next_seq_wraps_without_returning_zero() {
+        let (sock, _peer) = test_genl_socket_pair();
+        sock.next_seq.set(u32::MAX);
+
+        assert_eq!(sock.next_seq(), u32::MAX);
+        assert_eq!(sock.next_seq(), 1);
+    }
+
     // --- parse_nl_msg tests ---
 
     #[test]
@@ -792,6 +801,17 @@ mod tests {
             result,
             Err(NbdCowError::NetlinkErrno { errno, .. }) if errno == libc::EBUSY
         ));
+    }
+
+    #[test]
+    fn recv_genl_ack_ignores_stale_error_sequence() {
+        let (sock, peer) = test_genl_socket_pair();
+        send_test_nl(&peer, &nlmsg_error_msg(1, -libc::EBUSY));
+        send_test_nl(&peer, &nlmsg_error_msg(2, 0));
+
+        let result = recv_genl_ack(&sock, 2);
+
+        assert!(result.is_ok());
     }
 
     #[test]
