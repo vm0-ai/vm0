@@ -85,10 +85,6 @@ pub const MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES: usize = 1024;
 pub const MAX_WRITE_FILES_COUNT: usize = 1024;
 /// Maximum guest path length accepted by write_files.
 pub const MAX_WRITE_FILES_PATH_BYTES: usize = u16::MAX as usize;
-/// Maximum per-file content length accepted by write_files.
-pub const MAX_WRITE_FILES_FILE_BYTES: u64 = 512 * 1024 * 1024;
-/// Maximum aggregate content length accepted by one write_files stream.
-pub const MAX_WRITE_FILES_TOTAL_BYTES: u64 = 512 * 1024 * 1024;
 /// Maximum payload chunk bytes emitted by host implementations.
 pub const MAX_WRITE_FILES_CHUNK_BYTES: usize = 4 * 1024 * 1024;
 
@@ -776,12 +772,6 @@ pub fn encode_write_files_start(
             file_count as usize,
         ));
     }
-    if total_bytes > MAX_WRITE_FILES_TOTAL_BYTES {
-        return Err(ProtocolError::PayloadTooLarge(
-            "write_files total_bytes",
-            total_bytes as usize,
-        ));
-    }
     let mut p = Vec::with_capacity(13);
     p.push(if sudo { WRITE_FILES_FLAG_SUDO } else { 0 });
     p.extend_from_slice(&file_count.to_be_bytes());
@@ -799,12 +789,6 @@ pub fn encode_write_files_file(
         return Err(ProtocolError::PayloadTooLarge(
             "write_files path",
             path_bytes.len(),
-        ));
-    }
-    if content_len > MAX_WRITE_FILES_FILE_BYTES {
-        return Err(ProtocolError::PayloadTooLarge(
-            "write_files content_len",
-            content_len as usize,
         ));
     }
     let path_len = path_bytes.len() as u16;
@@ -1265,12 +1249,6 @@ pub fn decode_write_files_start(payload: &[u8]) -> Result<DecodedWriteFilesStart
             file_count as usize,
         ));
     }
-    if total_bytes > MAX_WRITE_FILES_TOTAL_BYTES {
-        return Err(ProtocolError::PayloadTooLarge(
-            "write_files total_bytes",
-            total_bytes as usize,
-        ));
-    }
     Ok(DecodedWriteFilesStart {
         sudo: (flags & WRITE_FILES_FLAG_SUDO) != 0,
         file_count,
@@ -1293,12 +1271,6 @@ pub fn decode_write_files_file(payload: &[u8]) -> Result<DecodedWriteFilesFile<'
     ensure_no_trailing_bytes(payload, offset, "write_files_file trailing bytes")?;
     if path_len > MAX_WRITE_FILES_PATH_BYTES {
         return Err(ProtocolError::PayloadTooLarge("write_files path", path_len));
-    }
-    if content_len > MAX_WRITE_FILES_FILE_BYTES {
-        return Err(ProtocolError::PayloadTooLarge(
-            "write_files content_len",
-            content_len as usize,
-        ));
     }
     Ok(DecodedWriteFilesFile {
         file_index,
@@ -3179,6 +3151,19 @@ mod tests {
         assert_eq!(decoded.file_index, 7);
         assert_eq!(decoded.path, "/tmp/a.txt");
         assert_eq!(decoded.content_len, 42);
+    }
+
+    #[test]
+    fn write_files_allows_large_declared_lengths() {
+        let large = 8 * 1024 * 1024 * 1024u64;
+
+        let start_payload = encode_write_files_start(false, 1, large).unwrap();
+        let start = decode_write_files_start(&start_payload).unwrap();
+        assert_eq!(start.total_bytes, large);
+
+        let file_payload = encode_write_files_file(0, "/tmp/large.bin", large).unwrap();
+        let file = decode_write_files_file(&file_payload).unwrap();
+        assert_eq!(file.content_len, large);
     }
 
     #[test]

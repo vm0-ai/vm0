@@ -152,15 +152,6 @@ pub enum WriteFileSource<'a> {
     File { path: &'a Path, len: u64 },
 }
 
-impl WriteFileSource<'_> {
-    fn len(&self) -> u64 {
-        match self {
-            Self::Bytes(bytes) => bytes.len() as u64,
-            Self::File { len, .. } => *len,
-        }
-    }
-}
-
 pub struct WriteFileRequest<'a> {
     pub path: &'a str,
     pub source: WriteFileSource<'a>,
@@ -1167,18 +1158,6 @@ async fn send_bounded_exec_cancel_on_shared_with_timeout(
 async fn prepare_write_files<'a>(
     files: &'a [WriteFileRequest<'a>],
 ) -> io::Result<Vec<PreparedWriteFile<'a>>> {
-    if files.len() > vsock_proto::MAX_WRITE_FILES_COUNT {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!(
-                "write_files file count exceeds limit: {} > {}",
-                files.len(),
-                vsock_proto::MAX_WRITE_FILES_COUNT
-            ),
-        ));
-    }
-
-    let mut total = 0u64;
     let mut prepared = Vec::with_capacity(files.len());
     for file in files {
         if file.path.is_empty() {
@@ -1193,26 +1172,6 @@ async fn prepare_write_files<'a>(
                 format!("write_files path too long: {}", file.path.len()),
             ));
         }
-        let len = file.source.len();
-        if len > vsock_proto::MAX_WRITE_FILES_FILE_BYTES {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("write_files file too large: {len}"),
-            ));
-        }
-        total = total.checked_add(len).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "write_files total size overflow",
-            )
-        })?;
-        if total > vsock_proto::MAX_WRITE_FILES_TOTAL_BYTES {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("write_files total bytes exceed limit: {total}"),
-            ));
-        }
-
         let source = match &file.source {
             WriteFileSource::Bytes(bytes) => PreparedWriteFileSource::Bytes(bytes),
             WriteFileSource::File { path, len } => {
@@ -1227,6 +1186,33 @@ async fn prepare_write_files<'a>(
     }
 
     Ok(prepared)
+}
+
+fn write_files_total_bytes(files: &[PreparedWriteFile<'_>]) -> io::Result<u64> {
+    files.iter().try_fold(0u64, |total, file| {
+        total.checked_add(file.source.len()).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "write_files total size overflow",
+            )
+        })
+    })
+}
+
+fn prepared_batch<'files, 'data>(
+    files: &'files [PreparedWriteFile<'data>],
+    start: usize,
+    end: usize,
+) -> io::Result<&'files [PreparedWriteFile<'data>]> {
+    files.get(start..end).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "write_files batch range out of bounds: {start}..{end} of {}",
+                files.len()
+            ),
+        )
+    })
 }
 
 async fn validate_file_source_len(path: &Path, expected_len: u64) -> io::Result<()> {
@@ -1261,7 +1247,7 @@ fn file_source_len_error(path: &Path, expected_len: u64, actual_len: u64) -> io:
 async fn send_write_files_stream(
     shared: &Arc<Shared>,
     seq: u32,
-    files: Vec<PreparedWriteFile<'_>>,
+    files: &[PreparedWriteFile<'_>],
     sudo: bool,
     timeout: Duration,
 ) -> io::Result<()> {
@@ -1274,7 +1260,7 @@ async fn send_write_files_stream(
 async fn send_write_files_stream_until(
     shared: &Arc<Shared>,
     seq: u32,
-    files: Vec<PreparedWriteFile<'_>>,
+    files: &[PreparedWriteFile<'_>],
     sudo: bool,
     timeout: impl Future<Output = ()>,
 ) -> io::Result<()> {
@@ -1284,7 +1270,7 @@ async fn send_write_files_stream_until(
             "write_files file count exceeds u32",
         )
     })?;
-    let total_bytes = files.iter().map(|file| file.source.len()).sum::<u64>();
+    let total_bytes = write_files_total_bytes(files)?;
     let mut writer = shared.writer.lock().await;
     {
         let guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -2034,6 +2020,10 @@ impl VsockHost {
     /// Write multiple files on the guest with the same shell-like
     /// create/truncate/write semantics as [`Self::write_file`].
     ///
+    /// Large calls may be split across multiple bounded protocol streams; this
+    /// is transparent to callers and each target file is still sent exactly
+    /// once.
+    ///
     /// This is not a cross-file transaction: failures may leave files that
     /// were already written, and the currently active file may be partial.
     pub async fn write_files<'a>(
@@ -2041,12 +2031,49 @@ impl VsockHost {
         files: &'a [WriteFileRequest<'a>],
         sudo: bool,
     ) -> io::Result<()> {
-        let expected_count = files.len();
         let prepared = prepare_write_files(files).await?;
         if prepared.is_empty() {
             return Ok(());
         }
 
+        let mut batch_start = 0usize;
+        let mut batch_bytes = 0u64;
+        for (index, file) in prepared.iter().enumerate() {
+            let batch_count = index - batch_start;
+            let would_exceed_count = batch_count >= vsock_proto::MAX_WRITE_FILES_COUNT;
+            let would_overflow_total = batch_bytes.checked_add(file.source.len()).is_none();
+            if batch_count > 0 && (would_exceed_count || would_overflow_total) {
+                self.write_files_batch(prepared_batch(&prepared, batch_start, index)?, sudo)
+                    .await?;
+                batch_start = index;
+                batch_bytes = 0;
+            }
+
+            batch_bytes = batch_bytes.checked_add(file.source.len()).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "write_files total size overflow",
+                )
+            })?;
+        }
+
+        if batch_start < prepared.len() {
+            self.write_files_batch(
+                prepared_batch(&prepared, batch_start, prepared.len())?,
+                sudo,
+            )
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    async fn write_files_batch(
+        &self,
+        prepared: &[PreparedWriteFile<'_>],
+        sudo: bool,
+    ) -> io::Result<()> {
+        let expected_count = prepared.len();
         let seq = self.shared.next_seq();
         let (tx, rx) = oneshot::channel();
         {
@@ -5195,7 +5222,7 @@ mod tests {
         let seq = host.shared.next_seq();
         let (timeout_tx, timeout_rx) = oneshot::channel::<()>();
 
-        let send = send_write_files_stream_until(&host.shared, seq, files, false, async {
+        let send = send_write_files_stream_until(&host.shared, seq, &files, false, async {
             let _ = timeout_rx.await;
         });
         tokio::pin!(send);
@@ -5354,6 +5381,94 @@ mod tests {
         .await
         .unwrap();
         guest_task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_write_files_batches_by_protocol_file_count() {
+        let (host_stream, mut guest) = make_pair();
+
+        let guest_task = tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut batches = Vec::new();
+            let mut current: Option<(u32, u32, u32)> = None;
+            let mut buf = [0u8; 64 * 1024];
+            loop {
+                let n = guest.read(&mut buf).await.unwrap();
+                assert_ne!(
+                    n, 0,
+                    "connection closed before write_files batches completed"
+                );
+                for msg in decoder.decode(&buf[..n]).unwrap() {
+                    match msg.msg_type {
+                        MSG_WRITE_FILES_START => {
+                            assert!(current.is_none(), "nested write_files stream");
+                            let start =
+                                vsock_proto::decode_write_files_start(&msg.payload).unwrap();
+                            assert_eq!(start.total_bytes, 0);
+                            current = Some((msg.seq, start.file_count, 0));
+                        }
+                        MSG_WRITE_FILES_FILE => {
+                            let Some((seq, file_count, seen)) = current.as_mut() else {
+                                panic!("file before start");
+                            };
+                            assert_eq!(msg.seq, *seq);
+                            let file = vsock_proto::decode_write_files_file(&msg.payload).unwrap();
+                            assert!(file.file_index < *file_count);
+                            assert_eq!(file.content_len, 0);
+                            *seen += 1;
+                        }
+                        MSG_WRITE_FILES_FINISH => {
+                            let Some((seq, file_count, seen)) = current.take() else {
+                                panic!("finish before start");
+                            };
+                            assert_eq!(msg.seq, seq);
+                            assert_eq!(seen, file_count);
+                            let entries = (0..file_count)
+                                .map(|file_index| vsock_proto::WriteFilesResultEntry {
+                                    file_index,
+                                    success: true,
+                                    error: String::new(),
+                                })
+                                .collect::<Vec<_>>();
+                            let payload = vsock_proto::encode_write_files_result(&entries).unwrap();
+                            let resp =
+                                vsock_proto::encode(MSG_WRITE_FILES_RESULT, seq, &payload).unwrap();
+                            guest.write_all(&resp).await.unwrap();
+                            batches.push(file_count);
+                            if batches.len() == 2 {
+                                return batches;
+                            }
+                        }
+                        other => panic!("unexpected message type: {other:#x}"),
+                    }
+                }
+            }
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let paths = (0..=vsock_proto::MAX_WRITE_FILES_COUNT)
+            .map(|index| format!("/tmp/empty-{index}"))
+            .collect::<Vec<_>>();
+        let files = paths
+            .iter()
+            .map(|path| WriteFileRequest {
+                path: path.as_str(),
+                source: WriteFileSource::Bytes(b""),
+            })
+            .collect::<Vec<_>>();
+
+        host.write_files(&files, false).await.unwrap();
+
+        let batches = guest_task.await.unwrap();
+        assert_eq!(
+            batches,
+            vec![
+                u32::try_from(vsock_proto::MAX_WRITE_FILES_COUNT).unwrap(),
+                1
+            ]
+        );
     }
 
     #[tokio::test]
@@ -5592,6 +5707,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_prepare_write_files_allows_large_sparse_file_source() {
+        let source = std::env::temp_dir().join(format!(
+            "vm0-vsock-host-large-source-{}-{}.bin",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let large_len = 8 * 1024 * 1024 * 1024u64;
+        let file = std::fs::File::create(&source).unwrap();
+        file.set_len(large_len).unwrap();
+        drop(file);
+        let requests = [WriteFileRequest {
+            path: "/tmp/large.bin",
+            source: WriteFileSource::File {
+                path: &source,
+                len: large_len,
+            },
+        }];
+
+        let prepared = prepare_write_files(&requests).await.unwrap();
+
+        let _ = tokio::fs::remove_file(&source).await;
+        assert_eq!(prepared.len(), 1);
+        assert_eq!(prepared.first().unwrap().source.len(), large_len);
+    }
+
+    #[tokio::test]
     async fn test_write_files_missing_lazy_file_source_closes_connection() {
         let (host_stream, mut guest) = make_pair();
         let guest_task = tokio::spawn(async move {
@@ -5635,7 +5779,7 @@ mod tests {
         }];
 
         let err =
-            send_write_files_stream_until(&host.shared, seq, files, false, std::future::pending())
+            send_write_files_stream_until(&host.shared, seq, &files, false, std::future::pending())
                 .await
                 .unwrap_err();
 
