@@ -32,7 +32,7 @@
     "@vm0/db": "workspace:*",
     "ccstate": "^5.3.0",
     "drizzle-orm": "^0.45.2",
-    "hono": "^4.12.16",
+    "hono": "^4.12.18",
     "pg": "^8.20.0",
     "stripe": "^20.4.1",
     "undici": "^6.24.1",
