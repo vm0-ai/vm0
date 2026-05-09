@@ -100,10 +100,7 @@ const searchConnectorsInner$ = computed(async (get) => {
 export const zeroConnectorsRoutes: readonly RouteEntry[] = [
   {
     route: zeroComputerConnectorContract.get,
-    handler: shadowCompareRoute({
-      route: zeroComputerConnectorContract.get,
-      handler: authRoute(connectorReadAuth, getComputerConnectorInner$),
-    }),
+    handler: authRoute(connectorReadAuth, getComputerConnectorInner$),
   },
   {
     route: zeroConnectorsSearchContract.search,
