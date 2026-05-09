@@ -74,10 +74,7 @@ export const zeroRunsRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroRunRunnerContract.getRunner,
-    handler: shadowCompareRoute({
-      route: zeroRunRunnerContract.getRunner,
-      handler: authRoute(runReadAuth, getRunRunnerInner$),
-    }),
+    handler: authRoute(runReadAuth, getRunRunnerInner$),
   },
   {
     route: zeroRunsByIdContract.getById,

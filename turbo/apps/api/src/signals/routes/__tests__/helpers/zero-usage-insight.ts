@@ -35,6 +35,7 @@ interface SeedRunArgs {
   readonly scheduleId?: string;
   readonly chatThreadId?: string;
   readonly status?: string;
+  readonly sandboxReuseResult?: string | null;
 }
 
 interface SeedScheduleArgs {
@@ -264,6 +265,7 @@ export const seedRun$ = command(
         prompt: "test prompt",
         status: args.status ?? "pending",
         sessionId: session.id,
+        sandboxReuseResult: args.sandboxReuseResult ?? null,
       })
       .returning({ id: agentRuns.id });
     signal.throwIfAborted();
