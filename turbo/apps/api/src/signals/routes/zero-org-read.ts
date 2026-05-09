@@ -27,7 +27,10 @@ const adminRequired = Object.freeze({
 });
 
 const getOrgInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
+  const auth = get(authContext$);
+  if (!auth.orgId) {
+    return notFound("Organization not found");
+  }
   const org = await get(zeroOrgDetail(auth.orgId, auth.userId));
   if (!org) {
     return notFound("Organization not found");
@@ -59,13 +62,7 @@ const membersInner$ = computed(async (get) => {
 export const zeroOrgReadRoutes: readonly RouteEntry[] = [
   {
     route: zeroOrgContract.get,
-    handler: shadowCompareRoute({
-      route: zeroOrgContract.get,
-      handler: authRoute(
-        { requireOrganization: true, missingOrganizationStatus: 401 },
-        getOrgInner$,
-      ),
-    }),
+    handler: authRoute({ acceptAnySandboxCapability: true }, getOrgInner$),
   },
   {
     route: zeroOrgListContract.list,
