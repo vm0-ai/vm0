@@ -23,7 +23,7 @@
     "@sentry/vite-plugin": "^4.9.0",
     "@tabler/icons-react": "^3.36.1",
     "@tiptap/core": "3.21.0",
-    "@tiptap/markdown": "3.21.0",
+    "@tiptap/markdown": "3.23.1",
     "@tiptap/pm": "3.21.0",
     "@tiptap/react": "3.21.0",
     "@tiptap/starter-kit": "3.21.0",
