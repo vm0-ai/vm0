@@ -2,10 +2,10 @@
 //!
 //! Sits between `filter_unchanged_storages` and `download_storages` in
 //! `run_in_sandbox`. For each eligible manifest entry, checks a host-local
-//! cache keyed by `(vasStorageName, vasVersionId)`. On hit, reads the cached
-//! tarball from disk and pushes it into the guest via vsock; on miss,
-//! downloads the archive from R2 into the cache first. Either way, the
-//! entry's `archive_url` is rewritten to
+//! cache keyed by `(vasStorageName, vasVersionId)`. On hit, stages the cached
+//! tarball into the guest with a batched `write_files` vsock stream; on miss,
+//! downloads the archive from R2 into the cache first and then stages it with
+//! the same path. Either way, the entry's `archive_url` is rewritten to
 //! `file:///tmp/vm0-storage-cache/<hash(name)>-<hash(version)>.tar.gz`
 //! so `guest-download` reads from the local stage instead of re-fetching.
 //! Keying on both name and version keeps the guest file injective in the
@@ -18,10 +18,6 @@
 //! If the probe says an entry is cache-eligible but the full response exceeds
 //! [`CACHE_MAX_SIZE`], the cache fails closed instead of handing the same
 //! inconsistent URL to the guest.
-//!
-//! Merge-order contract: this module produces `file://` URLs, which only
-//! `guest-download` understands after #10805. The PR adding this module
-//! must not merge before #10805 is on `main`.
 
 use std::collections::{HashMap, HashSet};
 use std::io;

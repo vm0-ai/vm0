@@ -2,6 +2,7 @@
 //!
 //! All mocks succeed by default with exit code 0 and empty output.
 //! Use [`MockSandbox::push_exec_result`], [`MockSandbox::push_write_file_result`],
+//! [`MockSandbox::push_write_files_result`],
 //! [`MockSandbox::push_bounded_exec_response`],
 //! or [`MockSandboxControl::push_exec_remote_response`] to queue custom responses
 //! consumed in FIFO order.
@@ -375,7 +376,8 @@ impl Default for MockSandboxOverrides {
 ///
 /// Queue custom results with [`push_exec_result`](Self::push_exec_result)
 /// [`push_bounded_exec_response`](Self::push_bounded_exec_response), and
-/// [`push_write_file_result`](Self::push_write_file_result).
+/// [`push_write_file_result`](Self::push_write_file_result), and
+/// [`push_write_files_result`](Self::push_write_files_result).
 /// When a queue is empty, the operation returns its default success value.
 pub struct MockSandbox {
     id: String,

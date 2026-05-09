@@ -1309,11 +1309,12 @@ async fn send_write_files_stream_until(
     }
 
     let stream = async {
+        let start = vsock_proto::encode_write_files_start(sudo, file_count, total_bytes)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+
         // Active after START; any cancellation or write/read failure before
         // FINISH poisons the connection so the guest stream cannot hang.
         let mut write_guard = FrameWriteGuard::new(Arc::clone(shared));
-        let start = vsock_proto::encode_write_files_start(sudo, file_count, total_bytes)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
         write_proto_frame(&mut writer, MSG_WRITE_FILES_START, seq, &start).await?;
 
         let mut read_buf = vec![0u8; vsock_proto::MAX_WRITE_FILES_CHUNK_BYTES];
