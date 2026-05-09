@@ -1216,7 +1216,25 @@ fn prepared_batch<'files, 'data>(
 }
 
 async fn validate_file_source_len(path: &Path, expected_len: u64) -> io::Result<()> {
-    let actual_len = tokio::fs::metadata(path).await?.len();
+    let metadata = tokio::fs::metadata(path).await?;
+    validate_file_source_metadata(path, expected_len, &metadata)
+}
+
+fn validate_file_source_metadata(
+    path: &Path,
+    expected_len: u64,
+    metadata: &std::fs::Metadata,
+) -> io::Result<()> {
+    if !metadata.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "write_files source is not a regular file: {}",
+                path.display()
+            ),
+        ));
+    }
+    let actual_len = metadata.len();
     if actual_len != expected_len {
         return Err(file_source_len_error(path, expected_len, actual_len));
     }
@@ -1225,10 +1243,8 @@ async fn validate_file_source_len(path: &Path, expected_len: u64) -> io::Result<
 
 async fn open_prepared_file_source(path: &Path, expected_len: u64) -> io::Result<tokio::fs::File> {
     let file = tokio::fs::File::open(path).await?;
-    let actual_len = file.metadata().await?.len();
-    if actual_len != expected_len {
-        return Err(file_source_len_error(path, expected_len, actual_len));
-    }
+    let metadata = file.metadata().await?;
+    validate_file_source_metadata(path, expected_len, &metadata)?;
     Ok(file)
 }
 
@@ -5672,6 +5688,48 @@ mod tests {
             .unwrap_err();
         let _ = tokio::fs::remove_file(&source).await;
         assert!(err.to_string().contains("source length changed"));
+    }
+
+    #[tokio::test]
+    async fn test_write_files_rejects_non_file_source_before_sending() {
+        let (host_stream, mut guest) = make_pair();
+        let source = std::env::temp_dir().join(format!(
+            "vm0-vsock-host-source-dir-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        tokio::fs::create_dir(&source).await.unwrap();
+
+        let guest_task = tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+            let mut buf = [0u8; 1];
+            let _ = guest.read(&mut buf).await;
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let err = host
+            .write_files(
+                &[WriteFileRequest {
+                    path: "/tmp/archive.tar.gz",
+                    source: WriteFileSource::File {
+                        path: &source,
+                        len: 0,
+                    },
+                }],
+                false,
+            )
+            .await
+            .unwrap_err();
+        let _ = tokio::fs::remove_dir(&source).await;
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("not a regular file"));
+
+        drop(host);
+        guest_task.await.unwrap();
     }
 
     #[tokio::test]

@@ -98,7 +98,15 @@ pub struct ExecResult {
 
 pub enum WriteFileSource<'a> {
     Bytes(&'a [u8]),
-    File { path: &'a Path, len: u64 },
+    /// Stream bytes from a regular host-side file.
+    ///
+    /// `len` must match the file's metadata length. Implementations may check
+    /// this before and during streaming, so callers must keep the source file
+    /// unchanged until the write finishes.
+    File {
+        path: &'a Path,
+        len: u64,
+    },
 }
 
 pub struct WriteFileRequest<'a> {
