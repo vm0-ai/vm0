@@ -8,6 +8,7 @@ import {
 import { command } from "ccstate";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
+import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroSkills } from "@vm0/db/schema/zero-skill";
 import { eq } from "drizzle-orm";
@@ -267,5 +268,30 @@ export const seedAgentForInstructions$ = command(
       .onConflictDoNothing();
     signal.throwIfAborted();
     return { agentId };
+  },
+);
+
+export const seedUserConnector$ = command(
+  async (
+    { set },
+    args: {
+      orgId: string;
+      userId: string;
+      agentId: string;
+      connectorType: string;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const db = set(writeDb$);
+    await db
+      .insert(userConnectors)
+      .values({
+        orgId: args.orgId,
+        userId: args.userId,
+        agentId: args.agentId,
+        connectorType: args.connectorType,
+      })
+      .onConflictDoNothing();
+    signal.throwIfAborted();
   },
 );
