@@ -205,8 +205,7 @@ function MobileFullScreenTopBar({
 // iOS Settings-style master list rendered when the dialog opens on mobile.
 // Tapping a row pushes to the existing tab content as a sub-page. The page
 // title now lives in the top bar, so this surface only renders the
-// description and the grouped rows. Rows are intentionally icon-less here
-// to match the workspace-settings visual (less busy than agent / schedule).
+// description and the grouped rows.
 function MobileMasterList({
   groups,
   onSelect,
@@ -225,9 +224,11 @@ function MobileMasterList({
           return (
             <MobileStackSection key={group.label} label={group.label}>
               {group.items.map((item) => {
+                const Icon = item.icon;
                 return (
                   <MobileStackRow
                     key={item.id}
+                    icon={<Icon size={18} />}
                     label={item.label}
                     onClick={() => {
                       onSelect(item.id);

@@ -104,10 +104,10 @@ export function MobileStackRow({
       {icon && (
         <span
           className={cn(
-            "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl",
             destructive
               ? "bg-red-100 text-destructive dark:bg-red-950/40"
-              : "bg-gray-200 text-foreground/70",
+              : "bg-gray-100 text-foreground/70",
           )}
         >
           {icon}
