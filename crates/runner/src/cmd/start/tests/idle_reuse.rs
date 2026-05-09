@@ -778,10 +778,15 @@ async fn park_evicts_via_guest_session_id() {
             result: Ok(sandbox::BoundedExecResult {
                 termination: sandbox::BoundedExecTermination::Exited { exit_code: 0 },
                 duration: Duration::ZERO,
-                stdout: b"sess-evict".to_vec(),
-                stderr: Vec::new(),
-                stdout_truncated: false,
-                stderr_truncated: false,
+                stdout: sandbox::BoundedExecOutput::Captured {
+                    bytes: b"sess-evict".to_vec(),
+                    truncated: false,
+                },
+                stderr: sandbox::BoundedExecOutput::Captured {
+                    bytes: Vec::new(),
+                    truncated: false,
+                },
+                diagnostic: None,
             }),
         },
     });

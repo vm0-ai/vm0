@@ -1228,10 +1228,9 @@ mod tests {
                 result: Ok(BoundedExecResult {
                     termination: BoundedExecTermination::Exited { exit_code: 0 },
                     duration: Duration::from_millis(10),
-                    stdout: b"sess-1".to_vec(),
-                    stderr: Vec::new(),
-                    stdout_truncated: false,
-                    stderr_truncated: false,
+                    stdout: captured_output(b"sess-1", false),
+                    stderr: captured_output(b"", false),
+                    diagnostic: None,
                 }),
             },
         });
@@ -1245,9 +1244,8 @@ mod tests {
             env: &[],
             sudo: true,
             stdin: None,
-            stdout_limit_bytes: 100,
-            stderr_limit_bytes: 100,
-            stream: None,
+            stdout: capture_output(100),
+            stderr: capture_output(100),
         };
         let session_request = BoundedExecRequest {
             cmd: "cat /tmp/vm0-session-run.txt 2>/dev/null",
@@ -1255,9 +1253,8 @@ mod tests {
             env: &[],
             sudo: false,
             stdin: None,
-            stdout_limit_bytes: 100,
-            stderr_limit_bytes: 100,
-            stream: None,
+            stdout: capture_output(100),
+            stderr: capture_output(100),
         };
 
         let setup = sandbox.bounded_exec(&setup_request).await.unwrap();
@@ -1268,9 +1265,9 @@ mod tests {
             setup.termination,
             BoundedExecTermination::Exited { exit_code: 0 }
         );
-        assert!(setup.stdout.is_empty());
-        assert_eq!(matched.stdout, b"sess-1");
-        assert!(fallback.stdout.is_empty());
+        assert_captured_output(&setup.stdout, b"", false);
+        assert_captured_output(&matched.stdout, b"sess-1", false);
+        assert_captured_output(&fallback.stdout, b"", false);
         assert_eq!(overrides.bounded_exec_calls().len(), 3);
     }
 

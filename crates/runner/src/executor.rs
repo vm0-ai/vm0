@@ -20,8 +20,9 @@ use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
 use sandbox::{
-    BoundedExecRequest, BoundedExecTermination, ExecRequest, Sandbox, SandboxConfig,
-    SandboxFactory, SandboxId, SpawnOutputMode,
+    BoundedExecCapturePolicy, BoundedExecOutput, BoundedExecOutputRequest, BoundedExecRequest,
+    BoundedExecTermination, ExecRequest, Sandbox, SandboxConfig, SandboxFactory, SandboxId,
+    SpawnOutputMode,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -37,6 +38,13 @@ const EXIT_SIGNAL_KILL: i32 = 9;
 /// Default timeout for guest commands (5 minutes).
 const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 const EXEC_ERROR_OUTPUT_PREVIEW_BYTES: usize = 8 * 1024;
+
+fn capture_bounded_output(limit_bytes: u32) -> BoundedExecOutputRequest {
+    BoundedExecOutputRequest {
+        capture: BoundedExecCapturePolicy::Capture { limit_bytes },
+        stream: None,
+    }
+}
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
@@ -656,9 +664,8 @@ async fn run_in_sandbox(
             env: &[],
             sudo: true,
             stdin: None,
-            stdout_limit_bytes: 64 * 1024,
-            stderr_limit_bytes: 8 * 1024,
-            stream: None,
+            stdout: capture_bounded_output(64 * 1024),
+            stderr: capture_bounded_output(8 * 1024),
         };
         match sandbox.bounded_exec(&dmesg_req).await {
             Ok(dmesg)
@@ -667,10 +674,11 @@ async fn run_in_sandbox(
                     BoundedExecTermination::Exited { exit_code: 0 }
                 ) =>
             {
-                if dmesg.stdout_truncated {
+                let (stdout, stdout_truncated) = bounded_exec_captured_output(&dmesg.stdout);
+                if stdout_truncated {
                     warn!(run_id = %context.run_id, "dmesg OOM check output was truncated");
                 }
-                if dmesg_indicates_oom(&String::from_utf8_lossy(&dmesg.stdout)) {
+                if dmesg_indicates_oom(&String::from_utf8_lossy(stdout)) {
                     warn!(run_id = %context.run_id, "OOM kill detected via dmesg");
                     // Return exit code 1 with descriptive message instead of raw 137,
                     // so callers see a clear error rather than an opaque signal code.
@@ -730,9 +738,8 @@ async fn read_guest_error_file(sandbox: &dyn Sandbox, run_id: RunId) -> Option<S
             env: &[],
             sudo: false,
             stdin: None,
-            stdout_limit_bytes: 16 * 1024,
-            stderr_limit_bytes: 4 * 1024,
-            stream: None,
+            stdout: capture_bounded_output(16 * 1024),
+            stderr: capture_bounded_output(4 * 1024),
         })
         .await
     {
@@ -740,13 +747,16 @@ async fn read_guest_error_file(sandbox: &dyn Sandbox, run_id: RunId) -> Option<S
             if matches!(
                 result.termination,
                 BoundedExecTermination::Exited { exit_code: 0 }
-            ) && !result.stdout.is_empty()
-                && !result.stdout_truncated =>
+            ) && {
+                let (stdout, stdout_truncated) = bounded_exec_captured_output(&result.stdout);
+                !stdout.is_empty() && !stdout_truncated
+            } =>
         {
-            let msg = String::from_utf8_lossy(&result.stdout).trim().to_string();
+            let (stdout, _) = bounded_exec_captured_output(&result.stdout);
+            let msg = String::from_utf8_lossy(stdout).trim().to_string();
             Some(msg).filter(|s| !s.is_empty())
         }
-        Ok(result) if result.stdout_truncated => {
+        Ok(result) if bounded_exec_output_truncated(&result.stdout) => {
             warn!(run_id = %run_id, path = %error_path, "guest checkpoint error file was truncated");
             None
         }
@@ -772,9 +782,8 @@ async fn read_guest_session_id(sandbox: &dyn Sandbox, run_id: RunId) -> Option<S
             env: &[],
             sudo: false,
             stdin: None,
-            stdout_limit_bytes: 4 * 1024,
-            stderr_limit_bytes: 4 * 1024,
-            stream: None,
+            stdout: capture_bounded_output(4 * 1024),
+            stderr: capture_bounded_output(4 * 1024),
         })
         .await
     {
@@ -782,13 +791,16 @@ async fn read_guest_session_id(sandbox: &dyn Sandbox, run_id: RunId) -> Option<S
             if matches!(
                 result.termination,
                 BoundedExecTermination::Exited { exit_code: 0 }
-            ) && !result.stdout.is_empty()
-                && !result.stdout_truncated =>
+            ) && {
+                let (stdout, stdout_truncated) = bounded_exec_captured_output(&result.stdout);
+                !stdout.is_empty() && !stdout_truncated
+            } =>
         {
-            let id = String::from_utf8_lossy(&result.stdout).trim().to_string();
+            let (stdout, _) = bounded_exec_captured_output(&result.stdout);
+            let id = String::from_utf8_lossy(stdout).trim().to_string();
             Some(id).filter(|s| !s.is_empty())
         }
-        Ok(result) if result.stdout_truncated => {
+        Ok(result) if bounded_exec_output_truncated(&result.stdout) => {
             warn!(run_id = %run_id, path = %path, "guest session id file was truncated");
             None
         }
@@ -812,7 +824,31 @@ fn describe_bounded_exec_termination(termination: BoundedExecTermination) -> &'s
     }
 }
 
-fn bounded_exec_output_summary(stdout: &[u8], stderr: &[u8]) -> String {
+fn bounded_exec_captured_output(output: &BoundedExecOutput) -> (&[u8], bool) {
+    match output {
+        BoundedExecOutput::Captured { bytes, truncated } => (bytes.as_slice(), *truncated),
+        BoundedExecOutput::Discarded => (&[], false),
+    }
+}
+
+fn bounded_exec_output_truncated(output: &BoundedExecOutput) -> bool {
+    match output {
+        BoundedExecOutput::Captured { truncated, .. } => *truncated,
+        BoundedExecOutput::Discarded => false,
+    }
+}
+
+fn bounded_exec_outputs_truncated(stdout: &BoundedExecOutput, stderr: &BoundedExecOutput) -> bool {
+    bounded_exec_output_truncated(stdout) || bounded_exec_output_truncated(stderr)
+}
+
+fn bounded_exec_output_summary(stdout: &BoundedExecOutput, stderr: &BoundedExecOutput) -> String {
+    let (stdout, _) = bounded_exec_captured_output(stdout);
+    let (stderr, _) = bounded_exec_captured_output(stderr);
+    bounded_exec_bytes_summary(stdout, stderr)
+}
+
+fn bounded_exec_bytes_summary(stdout: &[u8], stderr: &[u8]) -> String {
     let stderr = bounded_exec_output_preview(stderr);
     let stdout = bounded_exec_output_preview(stdout);
     match (stdout.is_empty(), stderr.is_empty()) {
@@ -1007,9 +1043,8 @@ pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
             env: &[],
             sudo: true,
             stdin: None,
-            stdout_limit_bytes: 4 * 1024,
-            stderr_limit_bytes: 16 * 1024,
-            stream: None,
+            stdout: capture_bounded_output(4 * 1024),
+            stderr: capture_bounded_output(16 * 1024),
         })
         .await?;
     match result.termination {
@@ -1057,9 +1092,8 @@ pub(crate) async fn reseed_guest_entropy(sandbox: &dyn Sandbox) -> RunnerResult<
             env: &[],
             sudo: true,
             stdin: None,
-            stdout_limit_bytes: 4 * 1024,
-            stderr_limit_bytes: 16 * 1024,
-            stream: None,
+            stdout: capture_bounded_output(4 * 1024),
+            stderr: capture_bounded_output(16 * 1024),
         })
         .await?;
 
@@ -1122,9 +1156,8 @@ async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) 
             env: &[],
             sudo: true,
             stdin: None,
-            stdout_limit_bytes: 4 * 1024,
-            stderr_limit_bytes: 16 * 1024,
-            stream: None,
+            stdout: capture_bounded_output(4 * 1024),
+            stderr: capture_bounded_output(16 * 1024),
         })
         .await
     {
@@ -1134,21 +1167,25 @@ async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) 
                 BoundedExecTermination::Exited { exit_code: 0 }
             ) =>
         {
-            if result.stdout_truncated || result.stderr_truncated {
+            let stdout_truncated = bounded_exec_output_truncated(&result.stdout);
+            let stderr_truncated = bounded_exec_output_truncated(&result.stderr);
+            if stdout_truncated || stderr_truncated {
                 tracing::warn!(
                     tz = %tz,
-                    stdout_truncated = result.stdout_truncated,
-                    stderr_truncated = result.stderr_truncated,
+                    stdout_truncated,
+                    stderr_truncated,
                     "guest timezone setup output was truncated"
                 );
             }
         }
         Ok(result) => {
+            let stdout_truncated = bounded_exec_output_truncated(&result.stdout);
+            let stderr_truncated = bounded_exec_output_truncated(&result.stderr);
             tracing::warn!(
                 tz = %tz,
                 termination = ?result.termination,
-                stdout_truncated = result.stdout_truncated,
-                stderr_truncated = result.stderr_truncated,
+                stdout_truncated,
+                stderr_truncated,
                 "failed to set guest timezone"
             );
         }
@@ -1294,9 +1331,8 @@ async fn download_storages(
             env: &download_env,
             sudo: false,
             stdin: None,
-            stdout_limit_bytes: 1024 * 1024,
-            stderr_limit_bytes: 1024 * 1024,
-            stream: None,
+            stdout: capture_bounded_output(1024 * 1024),
+            stderr: capture_bounded_output(1024 * 1024),
         })
         .await?;
 
@@ -1304,17 +1340,19 @@ async fn download_storages(
         BoundedExecTermination::Exited { exit_code: 0 } => {
             // Truncated output only means diagnostics were clipped; the
             // command exit status remains the success source of truth.
-            if result.stdout_truncated || result.stderr_truncated {
+            let stdout_truncated = bounded_exec_output_truncated(&result.stdout);
+            let stderr_truncated = bounded_exec_output_truncated(&result.stderr);
+            if stdout_truncated || stderr_truncated {
                 warn!(
                     run_id = %context.run_id,
-                    stdout_truncated = result.stdout_truncated,
-                    stderr_truncated = result.stderr_truncated,
+                    stdout_truncated,
+                    stderr_truncated,
                     "storage download output was truncated"
                 );
             }
         }
         BoundedExecTermination::Exited { exit_code } => {
-            let truncated = if result.stdout_truncated || result.stderr_truncated {
+            let truncated = if bounded_exec_outputs_truncated(&result.stdout, &result.stderr) {
                 " (output truncated)"
             } else {
                 ""
@@ -1325,7 +1363,7 @@ async fn download_storages(
             )));
         }
         termination => {
-            let truncated = if result.stdout_truncated || result.stderr_truncated {
+            let truncated = if bounded_exec_outputs_truncated(&result.stdout, &result.stderr) {
                 " (output truncated)"
             } else {
                 ""
@@ -2197,7 +2235,7 @@ mod tests {
 
     #[test]
     fn bounded_exec_output_summary_redacts_url_queries() {
-        let summary = bounded_exec_output_summary(
+        let summary = bounded_exec_bytes_summary(
             b"",
             b"HTTP 403 url=https://r2.example.com/archive.tar.gz?X-Amz-Signature=secret&X-Amz-Credential=credential",
         );
@@ -2424,12 +2462,55 @@ mod tests {
             result: Ok(BoundedExecResult {
                 termination,
                 duration: Duration::ZERO,
-                stdout: stdout.into(),
-                stderr: stderr.into(),
-                stdout_truncated: false,
-                stderr_truncated: false,
+                stdout: BoundedExecOutput::Captured {
+                    bytes: stdout.into(),
+                    truncated: false,
+                },
+                stderr: BoundedExecOutput::Captured {
+                    bytes: stderr.into(),
+                    truncated: false,
+                },
+                diagnostic: None,
             }),
         }
+    }
+
+    fn truncated_bounded_exec_response(
+        termination: BoundedExecTermination,
+        stdout: impl Into<Vec<u8>>,
+        stdout_truncated: bool,
+        stderr: impl Into<Vec<u8>>,
+        stderr_truncated: bool,
+    ) -> BoundedExecResponse {
+        BoundedExecResponse {
+            events: Vec::new(),
+            result: Ok(BoundedExecResult {
+                termination,
+                duration: Duration::ZERO,
+                stdout: BoundedExecOutput::Captured {
+                    bytes: stdout.into(),
+                    truncated: stdout_truncated,
+                },
+                stderr: BoundedExecOutput::Captured {
+                    bytes: stderr.into(),
+                    truncated: stderr_truncated,
+                },
+                diagnostic: None,
+            }),
+        }
+    }
+
+    fn assert_capture_call(
+        output: &sandbox_mock::BoundedExecOutputCall,
+        expected_limit_bytes: u32,
+    ) {
+        assert_eq!(
+            output.capture,
+            BoundedExecCapturePolicy::Capture {
+                limit_bytes: expected_limit_bytes
+            }
+        );
+        assert_eq!(output.stream, None);
     }
 
     fn sandbox_write_file_error(message: impl Into<String>) -> SandboxError {
@@ -2456,10 +2537,8 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert!(calls[0].cmd.starts_with("date -s "));
         assert!(calls[0].sudo);
-        assert_eq!(calls[0].stdout_limit_bytes, 4 * 1024);
-        assert_eq!(calls[0].stderr_limit_bytes, 16 * 1024);
-        assert!(!calls[0].stream_stdout);
-        assert!(!calls[0].stream_stderr);
+        assert_capture_call(&calls[0].stdout, 4 * 1024);
+        assert_capture_call(&calls[0].stderr, 16 * 1024);
     }
 
     #[tokio::test]
@@ -2494,8 +2573,8 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert!(calls[0].cmd.starts_with("guest-reseed "));
         assert!(calls[0].sudo);
-        assert_eq!(calls[0].stdout_limit_bytes, 4 * 1024);
-        assert_eq!(calls[0].stderr_limit_bytes, 16 * 1024);
+        assert_capture_call(&calls[0].stdout, 4 * 1024);
+        assert_capture_call(&calls[0].stderr, 16 * 1024);
     }
 
     #[tokio::test]
@@ -2536,8 +2615,8 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert!(calls[0].cmd.contains("America/New_York"));
         assert!(calls[0].sudo);
-        assert_eq!(calls[0].stdout_limit_bytes, 4 * 1024);
-        assert_eq!(calls[0].stderr_limit_bytes, 16 * 1024);
+        assert_capture_call(&calls[0].stdout, 4 * 1024);
+        assert_capture_call(&calls[0].stderr, 16 * 1024);
     }
 
     #[tokio::test]
@@ -2579,8 +2658,8 @@ mod tests {
         assert_eq!(msg.as_deref(), Some("checkpoint error: disk full"));
         let calls = sandbox.bounded_exec_calls();
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].stdout_limit_bytes, 16 * 1024);
-        assert_eq!(calls[0].stderr_limit_bytes, 4 * 1024);
+        assert_capture_call(&calls[0].stdout, 16 * 1024);
+        assert_capture_call(&calls[0].stderr, 4 * 1024);
     }
 
     #[tokio::test]
@@ -2621,17 +2700,13 @@ mod tests {
     #[tokio::test]
     async fn read_guest_error_file_returns_none_on_truncated_stdout() {
         let sandbox = MockSandbox::new("test");
-        sandbox.push_bounded_exec_response(BoundedExecResponse {
-            events: Vec::new(),
-            result: Ok(BoundedExecResult {
-                termination: BoundedExecTermination::Exited { exit_code: 0 },
-                duration: Duration::ZERO,
-                stdout: b"partial checkpoint error".to_vec(),
-                stderr: Vec::new(),
-                stdout_truncated: true,
-                stderr_truncated: false,
-            }),
-        });
+        sandbox.push_bounded_exec_response(truncated_bounded_exec_response(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            b"partial checkpoint error".to_vec(),
+            true,
+            Vec::new(),
+            false,
+        ));
         let msg = read_guest_error_file(&sandbox, RunId::nil()).await;
         assert!(msg.is_none());
     }
@@ -2648,24 +2723,20 @@ mod tests {
         assert_eq!(id.as_deref(), Some("sess-123"));
         let calls = sandbox.bounded_exec_calls();
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].stdout_limit_bytes, 4 * 1024);
-        assert_eq!(calls[0].stderr_limit_bytes, 4 * 1024);
+        assert_capture_call(&calls[0].stdout, 4 * 1024);
+        assert_capture_call(&calls[0].stderr, 4 * 1024);
     }
 
     #[tokio::test]
     async fn read_guest_session_id_ignores_truncated_stdout() {
         let sandbox = MockSandbox::new("test");
-        sandbox.push_bounded_exec_response(BoundedExecResponse {
-            events: Vec::new(),
-            result: Ok(BoundedExecResult {
-                termination: BoundedExecTermination::Exited { exit_code: 0 },
-                duration: Duration::ZERO,
-                stdout: b"sess-partial".to_vec(),
-                stderr: Vec::new(),
-                stdout_truncated: true,
-                stderr_truncated: false,
-            }),
-        });
+        sandbox.push_bounded_exec_response(truncated_bounded_exec_response(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            b"sess-partial".to_vec(),
+            true,
+            Vec::new(),
+            false,
+        ));
         let id = read_guest_session_id(&sandbox, RunId::nil()).await;
         assert!(id.is_none());
     }
@@ -2694,8 +2765,8 @@ mod tests {
             vec![("VM0_RUN_ID".into(), ctx.run_id.to_string())]
         );
         assert!(!calls[0].sudo);
-        assert!(!calls[0].stream_stdout);
-        assert!(!calls[0].stream_stderr);
+        assert_eq!(calls[0].stdout.stream, None);
+        assert_eq!(calls[0].stderr.stream, None);
     }
 
     #[test]
@@ -2747,24 +2818,20 @@ mod tests {
             calls[0].env,
             vec![("VM0_RUN_ID".into(), ctx.run_id.to_string())]
         );
-        assert_eq!(calls[0].stdout_limit_bytes, 1024 * 1024);
-        assert_eq!(calls[0].stderr_limit_bytes, 1024 * 1024);
+        assert_capture_call(&calls[0].stdout, 1024 * 1024);
+        assert_capture_call(&calls[0].stderr, 1024 * 1024);
     }
 
     #[tokio::test]
     async fn download_storages_failure_marks_truncated_output() {
         let sandbox = MockSandbox::new("test");
-        sandbox.push_bounded_exec_response(BoundedExecResponse {
-            events: Vec::new(),
-            result: Ok(BoundedExecResult {
-                termination: BoundedExecTermination::Exited { exit_code: 1 },
-                duration: Duration::ZERO,
-                stdout: b"partial stdout".to_vec(),
-                stderr: b"partial stderr".to_vec(),
-                stdout_truncated: true,
-                stderr_truncated: false,
-            }),
-        });
+        sandbox.push_bounded_exec_response(truncated_bounded_exec_response(
+            BoundedExecTermination::Exited { exit_code: 1 },
+            b"partial stdout".to_vec(),
+            true,
+            b"partial stderr".to_vec(),
+            false,
+        ));
         let ctx = minimal_context();
         let manifest = GuestDownloadManifest {
             storages: vec![],
@@ -2783,17 +2850,13 @@ mod tests {
     #[tokio::test]
     async fn download_storages_allows_truncated_output_on_success() {
         let sandbox = MockSandbox::new("test");
-        sandbox.push_bounded_exec_response(BoundedExecResponse {
-            events: Vec::new(),
-            result: Ok(BoundedExecResult {
-                termination: BoundedExecTermination::Exited { exit_code: 0 },
-                duration: Duration::ZERO,
-                stdout: b"partial stdout".to_vec(),
-                stderr: b"partial stderr".to_vec(),
-                stdout_truncated: false,
-                stderr_truncated: true,
-            }),
-        });
+        sandbox.push_bounded_exec_response(truncated_bounded_exec_response(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            b"partial stdout".to_vec(),
+            false,
+            b"partial stderr".to_vec(),
+            true,
+        ));
         let ctx = minimal_context();
         let manifest = GuestDownloadManifest {
             storages: vec![],

@@ -34,6 +34,22 @@ pub const SNAPSHOT_COMPLETE_MARKER_CONTENT: &[u8] = b"snapshot-complete-v1\n";
 
 use crate::factory::{DESTROY_RETRIES, DESTROY_RETRY_DELAY};
 
+fn capture_bounded_output(limit_bytes: u32) -> vsock_host::BoundedExecOutputRequest {
+    vsock_host::BoundedExecOutputRequest {
+        capture: vsock_host::BoundedExecCapturePolicy::Capture { limit_bytes },
+        stream: None,
+    }
+}
+
+fn bounded_exec_captured_output(output: &vsock_host::BoundedExecOutput) -> (&[u8], bool) {
+    match output {
+        vsock_host::BoundedExecOutput::Captured { bytes, truncated } => {
+            (bytes.as_slice(), *truncated)
+        }
+        vsock_host::BoundedExecOutput::Discarded => (&[], false),
+    }
+}
+
 fn cow_destroy_retry_policy() -> DestroyRetryPolicy {
     DestroyRetryPolicy {
         attempts: DESTROY_RETRIES,
@@ -2008,9 +2024,8 @@ async fn run_with_firecracker(
             env: &[],
             sudo: false,
             stdin: None,
-            stdout_limit_bytes: 64 * 1024,
-            stderr_limit_bytes: 256 * 1024,
-            stream: None,
+            stdout: capture_bounded_output(64 * 1024),
+            stderr: capture_bounded_output(256 * 1024),
         })
         .await
         .map_err(|e| SnapshotError::Setup(format!("pre-warm bounded exec: {e}")))?;
@@ -2018,21 +2033,24 @@ async fn run_with_firecracker(
         vsock_host::BoundedExecTermination::Exited { exit_code: 0 } => {
             // Truncated output only means diagnostics were clipped; a zero
             // exit status still means pre-warm succeeded.
-            if prewarm_result.stdout_truncated || prewarm_result.stderr_truncated {
+            let (_, stdout_truncated) = bounded_exec_captured_output(&prewarm_result.stdout);
+            let (_, stderr_truncated) = bounded_exec_captured_output(&prewarm_result.stderr);
+            if stdout_truncated || stderr_truncated {
                 tracing::warn!(
-                    stdout_truncated = prewarm_result.stdout_truncated,
-                    stderr_truncated = prewarm_result.stderr_truncated,
+                    stdout_truncated,
+                    stderr_truncated,
                     "pre-warm output was truncated"
                 );
             }
         }
         vsock_host::BoundedExecTermination::Exited { exit_code } => {
-            if prewarm_result.stderr_truncated {
+            let (stderr, stderr_truncated) = bounded_exec_captured_output(&prewarm_result.stderr);
+            if stderr_truncated {
                 return Err(SnapshotError::Setup(
                     "pre-warm failed: stderr output was truncated".into(),
                 ));
             }
-            let stderr = String::from_utf8_lossy(&prewarm_result.stderr);
+            let stderr = String::from_utf8_lossy(stderr);
             return Err(SnapshotError::Setup(format!(
                 "pre-warm failed (exit code {exit_code}): {}",
                 stderr.trim(),

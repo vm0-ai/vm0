@@ -1215,8 +1215,8 @@ async fn bounded_exec_on_shared_with_request_timeout(
         }
     }
     let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
-    let _bounded_output_guard =
-        has_bounded_stream(request).then(|| PendingBoundedOutputGuard::new(Arc::clone(shared), seq));
+    let _bounded_output_guard = has_bounded_stream(request)
+        .then(|| PendingBoundedOutputGuard::new(Arc::clone(shared), seq));
 
     write_frame_on_shared(shared, &data).await?;
 
@@ -1535,10 +1535,14 @@ impl VsockHost {
             }
             Ok(r) => {
                 cleanup_guard.cleanup_now().await;
+                let stderr = match &r.stderr {
+                    BoundedExecOutput::Captured { bytes, .. } => bytes.as_slice(),
+                    BoundedExecOutput::Discarded => &[],
+                };
                 Err(io::Error::other(format!(
                     "failed to rename temp file to {path}: termination={:?}, stderr={}",
                     r.termination,
-                    String::from_utf8_lossy(&r.stderr),
+                    String::from_utf8_lossy(stderr),
                 )))
             }
             Err(e) => {
@@ -3876,7 +3880,7 @@ mod tests {
 
         let request = simple_bounded_request("after-timeout", None);
         let result = host.bounded_exec(&request).await.unwrap();
-        assert_eq!(result.stdout, b"ok");
+        assert_host_captured_output(&result.stdout, b"ok", false);
         tokio::time::timeout(Duration::from_secs(5), guest_task)
             .await
             .expect("guest task should finish after follow-up bounded_exec")
