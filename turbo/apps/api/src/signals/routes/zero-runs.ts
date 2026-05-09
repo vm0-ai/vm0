@@ -8,7 +8,6 @@ import {
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import { notFound } from "../../lib/error";
 import {
   zeroOrgTier,
@@ -78,9 +77,6 @@ export const zeroRunsRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroRunsByIdContract.getById,
-    handler: shadowCompareRoute({
-      route: zeroRunsByIdContract.getById,
-      handler: authRoute(runReadAuth, getRunByIdInner$),
-    }),
+    handler: authRoute(runReadAuth, getRunByIdInner$),
   },
 ];
