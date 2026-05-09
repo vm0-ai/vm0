@@ -19,11 +19,11 @@ import type {
 } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
-  connectPersonalCodexOAuth$,
   disconnectPersonalOAuthCredential$,
   personalActionPromise$,
   personalConfiguredProviders$,
   personalOpenOAuthCredentialDialog$,
+  setCodexPasteDialogStatePersonal$,
 } from "../../../../signals/zero-page/settings/personal-model-providers.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
@@ -48,7 +48,7 @@ function OAuthCredentialsSection() {
   const providersLoadable = useLastLoadable(personalConfiguredProviders$);
   const features = useLastResolved(featureSwitch$);
   const openCredentialDialog = useSet(personalOpenOAuthCredentialDialog$);
-  const connectCodexOAuth = useSet(connectPersonalCodexOAuth$);
+  const openCodexPasteDialog = useSet(setCodexPasteDialogStatePersonal$);
   const disconnectCredential = useSet(disconnectPersonalOAuthCredential$);
   const actionLoadable = useLoadable(personalActionPromise$);
   const pageSignal = useGet(pageSignal$);
@@ -63,15 +63,18 @@ function OAuthCredentialsSection() {
   const openAIStatus = getOpenAIStatus(openAI);
   const disconnecting = actionLoadable.state === "loading";
   const connectOpenAI = () => {
-    detach(connectCodexOAuth(pageSignal), Reason.DomCallback);
+    openCodexPasteDialog({
+      open: true,
+      mode: openAI?.needsReconnect ? "reconnect" : "connect",
+    });
   };
 
   return (
     <section className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Manage OAuth access used when workspace model routes require your
-        personal Claude Code
-        {codexOauthEnabled ? " or ChatGPT" : ""} authorization.
+        Manage personal credentials used when workspace model routes require
+        your Claude Code token
+        {codexOauthEnabled ? " or ChatGPT auth.json" : ""}.
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {isLoading ? (
@@ -120,7 +123,7 @@ function OAuthCredentialsSection() {
               <OAuthCredentialCard
                 type="codex-oauth-token"
                 title="ChatGPT (Codex)"
-                description="Connect a ChatGPT account for Codex-backed model routes."
+                description="Paste Codex auth.json for Codex-backed model routes."
                 status={openAIStatus}
                 menuItems={
                   openAI

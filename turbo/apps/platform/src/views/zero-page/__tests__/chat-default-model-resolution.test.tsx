@@ -391,7 +391,7 @@ describe("chat composer — default model resolution", () => {
     });
   });
 
-  it("blocks agent chat submit and opens ChatGPT OAuth from the model warning", async () => {
+  it("blocks agent chat submit and opens ChatGPT auth.json paste from the model warning", async () => {
     const user = userEvent.setup();
     const openSpy = vi
       .spyOn(window, "open")
@@ -442,15 +442,11 @@ describe("chat composer — default model resolution", () => {
     );
     await user.click(warning);
 
-    await waitFor(() => {
-      expect(openSpy).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
-        ),
-        "_blank",
-        expect.any(String),
-      );
-    });
+    await expect(
+      screen.findByTestId("codex-paste-textarea"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Connect Codex")).toBeInTheDocument();
+    expect(openSpy).not.toHaveBeenCalled();
   });
 
   // CHAT-DM-003: Updating the agent's model (e.g. from Opus 4.7 -> 4.6 via
@@ -473,7 +469,7 @@ describe("chat composer — default model resolution", () => {
     await expectComposerShowsModel("Claude Opus 4.6");
   });
 
-  it("blocks thread submit and opens ChatGPT OAuth from the model warning", async () => {
+  it("blocks thread submit and opens ChatGPT auth.json paste from the model warning", async () => {
     const user = userEvent.setup();
     const openSpy = vi
       .spyOn(window, "open")
@@ -524,15 +520,11 @@ describe("chat composer — default model resolution", () => {
     );
     await user.click(warning);
 
-    await waitFor(() => {
-      expect(openSpy).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
-        ),
-        "_blank",
-        expect.any(String),
-      );
-    });
+    await expect(
+      screen.findByTestId("codex-paste-textarea"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Connect Codex")).toBeInTheDocument();
+    expect(openSpy).not.toHaveBeenCalled();
   });
 
   // CHAT-DM-004: When the agent is reset to "use org default" (both fields

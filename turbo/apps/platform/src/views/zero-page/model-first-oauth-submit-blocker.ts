@@ -5,19 +5,20 @@ import type {
 } from "@vm0/api-contracts/contracts/model-providers";
 import { useSet } from "ccstate-react";
 import {
-  connectPersonalCodexOAuth$,
   personalOpenOAuthCredentialDialog$,
+  setCodexPasteDialogStatePersonal$,
 } from "../../signals/zero-page/settings/personal-model-providers.ts";
 import type { ModelFirstPersonalOauthState } from "../../signals/zero-page/model-first-personal-oauth.ts";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
-import { detach, Reason } from "../../signals/utils.ts";
 
 type MemberOauthProviderType = "claude-code-oauth-token" | "codex-oauth-token";
+type CodexPasteDialogMode = "connect" | "reconnect";
 
 interface ModelConfigurationSubmitBlocker {
   message: string;
   actionLabel: string;
   providerType: MemberOauthProviderType;
+  codexPasteMode: CodexPasteDialogMode;
   onAction: () => void;
 }
 
@@ -29,7 +30,7 @@ function isMemberOauthProviderType(
 
 function getMemberOauthProviderLabel(type: MemberOauthProviderType): string {
   return type === "codex-oauth-token"
-    ? "ChatGPT (Codex) OAuth"
+    ? "ChatGPT (Codex) auth.json"
     : "Claude Code OAuth";
 }
 
@@ -91,6 +92,7 @@ function resolveModelConfigurationSubmitBlocker(params: {
   });
   return {
     providerType,
+    codexPasteMode: existingProvider?.needsReconnect ? "reconnect" : "connect",
     message: existingProvider?.needsReconnect
       ? `${label} needs to be reconnected before you can use ${modelLabel}.`
       : `This workspace routes ${modelLabel} through your personal ${label}. Configure it before sending.`,
@@ -102,7 +104,10 @@ export function resolveChatComposerSubmitBlocker(params: {
   state: ModelFirstPersonalOauthState | null | undefined;
   modelSelection: ModelProviderSelection | null;
   agentModelDefault: ModelProviderSelection | null;
-  onAction: (providerType: MemberOauthProviderType) => void;
+  onAction: (
+    providerType: MemberOauthProviderType,
+    codexPasteMode: CodexPasteDialogMode,
+  ) => void;
 }): ModelConfigurationSubmitBlocker | undefined {
   const selectedModel =
     params.modelSelection?.selectedModel ??
@@ -117,18 +122,21 @@ export function resolveChatComposerSubmitBlocker(params: {
     ? {
         ...blocker,
         onAction: () => {
-          params.onAction(blocker.providerType);
+          params.onAction(blocker.providerType, blocker.codexPasteMode);
         },
       }
     : undefined;
 }
 
-export function usePersonalOauthConfigurationAction(signal: AbortSignal) {
-  const connectCodexOAuth = useSet(connectPersonalCodexOAuth$);
+export function usePersonalOauthConfigurationAction() {
+  const openCodexPasteDialog = useSet(setCodexPasteDialogStatePersonal$);
   const openCredentialDialog = useSet(personalOpenOAuthCredentialDialog$);
-  return (providerType: MemberOauthProviderType) => {
+  return (
+    providerType: MemberOauthProviderType,
+    codexPasteMode: CodexPasteDialogMode,
+  ) => {
     if (providerType === "codex-oauth-token") {
-      detach(connectCodexOAuth(signal), Reason.DomCallback);
+      openCodexPasteDialog({ open: true, mode: codexPasteMode });
       return;
     }
     openCredentialDialog(providerType);

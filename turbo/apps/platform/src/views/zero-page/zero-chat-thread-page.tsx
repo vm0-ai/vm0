@@ -1997,8 +1997,7 @@ function ChatThreadComposer({
     sending,
   });
   const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
-  const openPersonalOauthConfiguration =
-    usePersonalOauthConfigurationAction(pageSignal);
+  const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
 
   const modelPicker = resolveChatComposerModelPicker({
     composerProviders,

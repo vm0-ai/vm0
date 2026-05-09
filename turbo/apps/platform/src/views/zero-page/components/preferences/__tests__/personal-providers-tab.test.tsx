@@ -45,7 +45,7 @@ function makeProvider(
       type === "codex-oauth-token"
         ? "CHATGPT_ACCESS_TOKEN"
         : "CLAUDE_CODE_OAUTH_TOKEN",
-    authMethod: type === "codex-oauth-token" ? "oauth" : null,
+    authMethod: type === "codex-oauth-token" ? "auth_json" : null,
     secretNames:
       type === "codex-oauth-token"
         ? [
@@ -113,7 +113,7 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          /Manage OAuth access used when workspace model routes/,
+          /Manage personal credentials used when workspace model routes/,
         ),
       ).toBeInTheDocument();
     });
@@ -134,7 +134,7 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          /Manage OAuth access used when workspace model routes/,
+          /Manage personal credentials used when workspace model routes/,
         ),
       ).toBeInTheDocument();
     });
@@ -152,9 +152,7 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
     );
     expect(screen.getByText("ChatGPT (Codex)")).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "Connect a ChatGPT account for Codex-backed model routes.",
-      ),
+      screen.getByText("Paste Codex auth.json for Codex-backed model routes."),
     ).toBeInTheDocument();
     expect(screen.queryByText("Not connected")).not.toBeInTheDocument();
     expect(screen.queryByText("Personal default")).not.toBeInTheDocument();
@@ -255,7 +253,7 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
     expect(screen.queryByText("Reconnect")).not.toBeInTheDocument();
   });
 
-  it("disconnects ChatGPT (Codex) OAuth from the fixed card", async () => {
+  it("disconnects ChatGPT (Codex) auth.json from the fixed card", async () => {
     setMockFeatureSwitches({
       [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: true,
@@ -327,8 +325,8 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
   });
 });
 
-describe("personal-providers-tab — ChatGPT (Codex) OAuth flow", () => {
-  it("clicking ChatGPT (Codex) connect opens the OpenAI OAuth route", async () => {
+describe("personal-providers-tab — ChatGPT (Codex) auth.json flow", () => {
+  it("clicking ChatGPT (Codex) connect opens the auth.json paste dialog", async () => {
     const openSpy = vi
       .spyOn(window, "open")
       .mockReturnValue({ closed: true } as Window);
@@ -343,21 +341,14 @@ describe("personal-providers-tab — ChatGPT (Codex) OAuth flow", () => {
     await openModelConfiguration();
     click(await screen.findByLabelText("Connect ChatGPT (Codex)"));
 
-    await waitFor(() => {
-      expect(openSpy).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
-        ),
-        "_blank",
-        expect.any(String),
-      );
-    });
-    expect(
-      screen.queryByTestId("codex-paste-textarea"),
-    ).not.toBeInTheDocument();
+    await expect(
+      screen.findByTestId("codex-paste-textarea"),
+    ).resolves.toBeInTheDocument();
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(screen.getByText("Connect Codex")).toBeInTheDocument();
   });
 
-  it("shows stale ChatGPT (Codex) OAuth without offering reconnect", async () => {
+  it("opens the auth.json reconnect dialog for stale ChatGPT (Codex)", async () => {
     setMockFeatureSwitches({
       [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: true,
@@ -382,9 +373,13 @@ describe("personal-providers-tab — ChatGPT (Codex) OAuth flow", () => {
       ),
     );
     expect(screen.getByText("Disconnect")).toBeInTheDocument();
+    click(screen.getByText("Replace"));
+    await expect(
+      screen.findByText("Re-connect Codex"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByTestId("codex-paste-textarea")).toBeInTheDocument();
     expect(
       screen.queryByText("Your ChatGPT session expired."),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText("Reconnect")).not.toBeInTheDocument();
   });
 });

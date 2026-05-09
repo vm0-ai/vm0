@@ -26,8 +26,6 @@ import {
   orgModelPolicies$,
   updateOrgModelPolicies$,
 } from "../../external/org-model-policies.ts";
-import { apiBaseForNavigation$ } from "../../fetch.ts";
-import { createDeferredPromise } from "../../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Codex auth.json paste dialog (personal scope, mirrors org-side dialog from
@@ -247,38 +245,6 @@ const internalPersonalActionPromise$ = state<Promise<unknown> | null>(null);
 export const personalActionPromise$ = computed((get) => {
   return get(internalPersonalActionPromise$);
 });
-
-const CODEX_OAUTH_AUTHORIZE_PATH =
-  "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize";
-const OAUTH_POPUP_CLOSED_POLL_MS = 500;
-
-function waitForOAuthPopupClosed(
-  authWindow: Window,
-  signal: AbortSignal,
-): Promise<void> {
-  const closed = createDeferredPromise<void>(signal);
-  const intervalId = window.setInterval(
-    checkClosed,
-    OAUTH_POPUP_CLOSED_POLL_MS,
-  );
-
-  function cleanup() {
-    window.clearInterval(intervalId);
-    signal.removeEventListener("abort", cleanup);
-  }
-
-  function checkClosed() {
-    if (authWindow.closed && !closed.settled()) {
-      cleanup();
-      closed.resolve();
-    }
-  }
-
-  signal.addEventListener("abort", cleanup, { once: true });
-  checkClosed();
-
-  return closed.promise;
-}
 
 function validatePersonalProviderForm(params: {
   providerType: ModelProviderType;
@@ -577,36 +543,6 @@ export const disconnectPersonalOAuthCredential$ = command(
       await set(deletePersonalModelProvider$, providerType, signal);
       signal.throwIfAborted();
       toast.success(`${providerLabel} disconnected`);
-    })();
-
-    set(internalPersonalActionPromise$, promise);
-    signal.addEventListener("abort", () => {
-      set(internalPersonalActionPromise$, null);
-    });
-
-    await promise;
-    signal.throwIfAborted();
-  },
-);
-
-export const connectPersonalCodexOAuth$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const apiBase = await get(apiBaseForNavigation$);
-    signal.throwIfAborted();
-
-    const promise = (async () => {
-      const authWindow = window.open(
-        `${apiBase}${CODEX_OAUTH_AUTHORIZE_PATH}`,
-        "_blank",
-        "width=600,height=700",
-      );
-      if (!authWindow) {
-        throw new Error("Failed to open OpenAI OAuth window");
-      }
-
-      await waitForOAuthPopupClosed(authWindow, signal);
-      signal.throwIfAborted();
-      set(reloadPersonalModelProviders$);
     })();
 
     set(internalPersonalActionPromise$, promise);

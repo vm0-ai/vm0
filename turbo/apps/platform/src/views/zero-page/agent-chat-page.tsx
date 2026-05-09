@@ -490,8 +490,7 @@ export function AgentChatPage() {
   const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
   const agentModelDefault = useLastResolved(chatPageAgentModelDefault$) ?? null;
   const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
-  const openPersonalOauthConfiguration =
-    usePersonalOauthConfigurationAction(pageSignal);
+  const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
 
   const handleSendMessage = (message: string, options?: { goal?: boolean }) => {
     if (!currentChatAgentId) {
