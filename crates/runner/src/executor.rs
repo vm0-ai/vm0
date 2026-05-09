@@ -2341,6 +2341,22 @@ mod tests {
     }
 
     #[test]
+    fn bounded_exec_failure_summary_omits_whitespace_only_diagnostic() {
+        let result = BoundedExecResult {
+            termination: BoundedExecTermination::StartFailed,
+            duration: Duration::ZERO,
+            stdout: BoundedExecOutput::Discarded,
+            stderr: BoundedExecOutput::Discarded,
+            diagnostic: Some("  \n\t  ".into()),
+        };
+
+        let summary = BoundedExecFailureSummary::new("guest clock sync", &result).message();
+
+        assert_eq!(summary, "guest clock sync failed (start failed)");
+        assert!(!summary.contains("diagnostic:"));
+    }
+
+    #[test]
     fn bounded_exec_failure_summary_marks_truncated_outputs() {
         let result = BoundedExecResult {
             termination: BoundedExecTermination::Exited { exit_code: 1 },
@@ -2449,6 +2465,23 @@ mod tests {
         assert!(!summary.contains(stdout_tail));
         assert!(!summary.contains(stderr_tail));
         assert!(!summary.contains("diagnostic:"));
+    }
+
+    #[test]
+    fn bounded_exec_failure_summary_truncates_utf8_on_char_boundary() {
+        let result = BoundedExecResult {
+            termination: BoundedExecTermination::WaitFailed,
+            duration: Duration::ZERO,
+            stdout: BoundedExecOutput::Discarded,
+            stderr: BoundedExecOutput::Discarded,
+            diagnostic: Some("边".repeat(EXEC_ERROR_OUTPUT_PREVIEW_BYTES)),
+        };
+
+        let summary = BoundedExecFailureSummary::new("guest-reseed", &result).message();
+
+        assert!(summary.contains("diagnostic:"));
+        assert!(summary.ends_with("..."));
+        assert!(std::str::from_utf8(summary.as_bytes()).is_ok());
     }
 
     /// Real `sudo dmesg | grep 'oom-kill'` output captured from prod-3.
