@@ -21,7 +21,7 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 | **guest-mock-claude** | Mock Claude CLI for testing — executes bash commands and outputs Claude-compatible JSONL |
 | **guest-mock-codex** | Mock Codex CLI for testing — emits Codex JSONL protocol on stdout and persists zstd-compressed session files |
 | **guest-reseed** | Entropy reseed after snapshot restore — injects host entropy via RNDADDENTROPY and forces CRNG reseed via RNDRESEEDCRNG |
-| **guest-write-file** | Direct file writer for vsock `write_file` — writes stdin to guest files without shell startup overhead |
+| **guest-write-file** | Direct file writer for vsock `write_file`/`write_files` — writes stdin and batch streams to guest files without shell startup overhead |
 | **ably-subscriber** | Ably Pub/Sub subscribe-only realtime client — WebSocket/MessagePack protocol with token auth and automatic reconnection |
 
 ## Architecture

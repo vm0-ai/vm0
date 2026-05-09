@@ -1160,18 +1160,7 @@ async fn prepare_write_files<'a>(
 ) -> io::Result<Vec<PreparedWriteFile<'a>>> {
     let mut prepared = Vec::with_capacity(files.len());
     for file in files {
-        if file.path.is_empty() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "write_files path must not be empty",
-            ));
-        }
-        if file.path.len() > vsock_proto::MAX_WRITE_FILES_PATH_BYTES {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("write_files path too long: {}", file.path.len()),
-            ));
-        }
+        validate_guest_write_path("write_files", file.path)?;
         let source = match &file.source {
             WriteFileSource::Bytes(bytes) => PreparedWriteFileSource::Bytes(bytes),
             WriteFileSource::File { path, len } => {
@@ -1186,6 +1175,22 @@ async fn prepare_write_files<'a>(
     }
 
     Ok(prepared)
+}
+
+fn validate_guest_write_path(operation: &str, path: &str) -> io::Result<()> {
+    if path.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{operation} path must not be empty"),
+        ));
+    }
+    if path.len() > vsock_proto::MAX_WRITE_FILES_PATH_BYTES {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{operation} path too long: {}", path.len()),
+        ));
+    }
+    Ok(())
 }
 
 fn write_files_total_bytes(files: &[PreparedWriteFile<'_>]) -> io::Result<u64> {
@@ -1989,6 +1994,7 @@ impl VsockHost {
     ///
     /// Non-sudo writes create missing parent directories on the guest.
     pub async fn write_file(&self, path: &str, content: &[u8], sudo: bool) -> io::Result<()> {
+        validate_guest_write_path("write_file", path)?;
         if content.len() <= Self::WRITE_FILE_INLINE_LIMIT {
             return self.write_file_inline(path, content, sudo).await;
         }
@@ -5293,6 +5299,55 @@ mod tests {
         host.write_file("/tmp/exact-limit.bin", &content, false)
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_write_file_rejects_empty_path_before_sending() {
+        let (host_stream, mut guest) = make_pair();
+        let (first_msg_tx, mut first_msg_rx) = oneshot::channel();
+
+        let guest_task = tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            assert_ne!(n, 0, "connection closed before follow-up exec");
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs.len(), 1);
+            let _ = first_msg_tx.send(msgs[0].msg_type);
+            assert_eq!(
+                msgs[0].msg_type, MSG_EXEC,
+                "empty write_file path must not send a write_file frame"
+            );
+
+            let decoded = vsock_proto::decode_exec(&msgs[0].payload).unwrap();
+            assert_eq!(decoded.command, "after-empty-write-file-path");
+
+            let payload = vsock_proto::encode_exec_result(0, b"ok", b"");
+            let resp = vsock_proto::encode(MSG_EXEC_RESULT, msgs[0].seq, &payload).unwrap();
+            guest.write_all(&resp).await.unwrap();
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let write_file = host.write_file("", b"data", false);
+        tokio::pin!(write_file);
+        let err = tokio::select! {
+            result = &mut write_file => result.unwrap_err(),
+            Ok(msg_type) = &mut first_msg_rx => panic!(
+                "empty write_file path sent frame type 0x{msg_type:02X}"
+            ),
+        };
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("path must not be empty"));
+
+        let result = host
+            .exec("after-empty-write-file-path", 5000, &[], false)
+            .await
+            .unwrap();
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout, b"ok");
+        guest_task.await.unwrap();
     }
 
     #[tokio::test]
