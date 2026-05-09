@@ -5,7 +5,6 @@ import { badRequestMessage } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import { zeroUsageInsight$ } from "../services/zero-usage-insight.service";
 import type { RouteEntry } from "../route";
 
@@ -48,12 +47,9 @@ const getUsageInsightInner$ = command(
 export const zeroUsageInsightRoutes: readonly RouteEntry[] = [
   {
     route: zeroUsageInsightContract.get,
-    handler: shadowCompareRoute({
-      route: zeroUsageInsightContract.get,
-      handler: authRoute(
-        { requireOrganization: true, missingOrganizationStatus: 401 },
-        getUsageInsightInner$,
-      ),
-    }),
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      getUsageInsightInner$,
+    ),
   },
 ];
