@@ -209,12 +209,15 @@ pub trait Sandbox: Send + Sync + Any {
     /// process crashes during execution, or if the host/guest transport fails.
     async fn bounded_exec(&self, request: &BoundedExecRequest<'_>) -> Result<BoundedExecResult>;
     /// Write `content` to `path` inside the guest, creating parent
-    /// directories and truncating the file as needed. Returns an error if
-    /// the sandbox is not running or if the backing process crashes.
+    /// directories and truncating the file as needed. This has shell-like
+    /// create/truncate/write semantics: a failed write may leave an empty or
+    /// partial target. Returns an error if the sandbox is not running or if
+    /// the backing process crashes.
     async fn write_file(&self, path: &str, content: &[u8]) -> Result<()>;
     /// Write a batch of files inside the guest, creating parent directories
-    /// and truncating files as needed. Returns an error if the sandbox is not
-    /// running or if the backing process crashes.
+    /// and truncating files as needed. This is not a cross-file transaction:
+    /// already-written files are not rolled back on later failure. Returns an
+    /// error if the sandbox is not running or if the backing process crashes.
     async fn write_files(&self, files: &[WriteFileRequest<'_>]) -> Result<()>;
     /// Spawn `request.cmd` in the guest and return a handle for later
     /// supervision via [`wait_exit`](Self::wait_exit).

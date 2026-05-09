@@ -1,4 +1,7 @@
 //! Direct guest file writer used by vsock-guest.
+//!
+//! Writes use shell-like create/truncate/write semantics. A failed write may
+//! leave an empty or partial target.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};

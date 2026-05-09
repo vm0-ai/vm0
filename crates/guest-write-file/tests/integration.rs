@@ -7,6 +7,23 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 const BIN: &str = env!("CARGO_BIN_EXE_guest-write-file");
+const BATCH_MAGIC: &[u8; 8] = b"VM0WFB1\n";
+
+fn batch_payload(files: &[(&Path, &[u8])]) -> Vec<u8> {
+    let mut payload = Vec::new();
+    payload.extend_from_slice(BATCH_MAGIC);
+    payload.extend_from_slice(&(files.len() as u32).to_be_bytes());
+    for (index, (path, content)) in files.iter().enumerate() {
+        let path = path.to_string_lossy();
+        let path_bytes = path.as_bytes();
+        payload.extend_from_slice(&(index as u32).to_be_bytes());
+        payload.extend_from_slice(&(path_bytes.len() as u16).to_be_bytes());
+        payload.extend_from_slice(path_bytes);
+        payload.extend_from_slice(&(content.len() as u64).to_be_bytes());
+        payload.extend_from_slice(content);
+    }
+    payload
+}
 
 fn run_helper(args: &[&str], stdin: &[u8]) -> std::process::Output {
     run_helper_with_current_dir(args, stdin, None)
@@ -129,6 +146,49 @@ fn path_starting_with_dash_is_treated_as_path_after_separator() {
     assert_eq!(
         std::fs::read(dir.path().join("-literal.txt")).unwrap(),
         b"hello"
+    );
+}
+
+#[test]
+fn batch_mode_writes_multiple_files_with_parents() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = dir.path().join("one.txt");
+    let second = dir.path().join("nested/two.txt");
+    let empty = dir.path().join("nested/empty.txt");
+    let payload = batch_payload(&[(&first, b"one"), (&second, b"two"), (&empty, b"")]);
+
+    let output = run_helper(&["--batch", "--create-parents"], &payload);
+
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(std::fs::read(first).unwrap(), b"one");
+    assert_eq!(std::fs::read(second).unwrap(), b"two");
+    assert_eq!(std::fs::read(empty).unwrap(), b"");
+}
+
+#[test]
+fn batch_mode_truncated_content_returns_error_after_truncating_target() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("out.txt");
+    std::fs::write(&target, b"original").unwrap();
+    let path = target.to_string_lossy();
+    let path_bytes = path.as_bytes();
+    let mut payload = Vec::new();
+    payload.extend_from_slice(BATCH_MAGIC);
+    payload.extend_from_slice(&1u32.to_be_bytes());
+    payload.extend_from_slice(&0u32.to_be_bytes());
+    payload.extend_from_slice(&(path_bytes.len() as u16).to_be_bytes());
+    payload.extend_from_slice(path_bytes);
+    payload.extend_from_slice(&10u64.to_be_bytes());
+    payload.extend_from_slice(b"short");
+
+    let output = run_helper(&["--batch"], &payload);
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("guest-write-file"));
+    assert_eq!(
+        std::fs::read(&target).unwrap(),
+        b"",
+        "batch mode uses shell-like truncate-before-write semantics"
     );
 }
 

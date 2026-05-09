@@ -1956,6 +1956,9 @@ impl VsockHost {
     /// Larger content uses the streamed write_files protocol as a one-file
     /// batch so large and multi-file writes share one guest write engine.
     ///
+    /// Semantics match shell redirection: create/truncate the target, then
+    /// write bytes. A failed write may leave an empty or partial target.
+    ///
     /// Non-sudo writes create missing parent directories on the guest.
     pub async fn write_file(&self, path: &str, content: &[u8], sudo: bool) -> io::Result<()> {
         if content.len() <= Self::WRITE_FILE_INLINE_LIMIT {
@@ -2002,6 +2005,11 @@ impl VsockHost {
         Ok(())
     }
 
+    /// Write multiple files on the guest with the same shell-like
+    /// create/truncate/write semantics as [`Self::write_file`].
+    ///
+    /// This is not a cross-file transaction: failures may leave files that
+    /// were already written, and the currently active file may be partial.
     pub async fn write_files<'a>(
         &self,
         files: &'a [WriteFileRequest<'a>],

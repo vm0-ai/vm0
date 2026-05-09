@@ -917,8 +917,8 @@ async fn test_write_file_chunked() {
 
     let file_path = h.dir.join("chunked'quote.bin");
     let file_path_str = file_path.to_string_lossy().to_string();
-    // 16 MB content exceeds the 15 MB chunk limit, triggering the staging +
-    // shell rename path. The quote in the file name covers shell escaping.
+    // 16 MB content exceeds the 15 MB inline limit and exercises the streamed
+    // write_files path. The quote in the file name covers path framing.
     let content = vec![0xABu8; 16 * 1024 * 1024];
 
     h.write_file(&file_path_str, &content, false)
@@ -929,13 +929,6 @@ async fn test_write_file_chunked() {
     assert_eq!(written.len(), content.len());
     assert_eq!(written, content);
 
-    // Temp file should not remain
-    let temp_prefix = format!("{file_path_str}.vm0tmp-");
-    let temp_remains = std::fs::read_dir(file_path.parent().unwrap())
-        .expect("failed to read temp dir")
-        .flatten()
-        .any(|entry| entry.path().to_string_lossy().starts_with(&temp_prefix));
-    assert!(!temp_remains, "temp file was not cleaned up");
     h.finish();
 }
 
