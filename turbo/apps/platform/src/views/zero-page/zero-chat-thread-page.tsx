@@ -1727,7 +1727,6 @@ function useChatThreadKeyDown(thread: ChatThreadSignals) {
 }
 
 function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
-  const features = useLastResolved(featureSwitch$);
   const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
   const hasOlderHistory = useLastResolved(thread.hasOlderHistory$) ?? false;
   const [loadHistoryLoadable, loadHistory] = useLoadableSet(
@@ -1764,20 +1763,18 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
               className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
               style={{ visibility: skeletonVisible ? "hidden" : "visible" }}
             >
-              {!sessionError &&
-                !skeletonVisible &&
-                hasOlderHistory && (
-                  <div className="flex justify-center">
-                    <button
-                      type="button"
-                      disabled={loadingHistory}
-                      onClick={onLoadHistory}
-                      className="inline-flex h-8 items-center rounded-lg border border-border bg-background px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Load history
-                    </button>
-                  </div>
-                )}
+              {!sessionError && !skeletonVisible && hasOlderHistory && (
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    disabled={loadingHistory}
+                    onClick={onLoadHistory}
+                    className="inline-flex h-8 items-center rounded-lg border border-border bg-background px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Load history
+                  </button>
+                </div>
+              )}
               {sessionError && (
                 <div className="flex-1 flex items-center justify-center py-16">
                   <div className="flex items-center gap-2 text-destructive">
