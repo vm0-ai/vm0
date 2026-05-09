@@ -49,6 +49,19 @@ const listSessionsInner$ = computed(async (get) => {
 
 const getSessionInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
+  const overrides = await get(
+    userFeatureSwitchOverrides(auth.orgId, auth.userId),
+  );
+  const enabled = isFeatureEnabled(FeatureSwitchKey.Trinity, {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    overrides,
+  });
+  if (!enabled) {
+    // Web pattern: collapse flag-disabled into 404 to avoid leaking
+    // session existence (contract does not declare 403 for getSession).
+    return notFound("Voice-chat session not found");
+  }
   const params = get(pathParamsOf(zeroVoiceChatContract.getSession));
   const session = await get(
     voiceChatSessionDetail(auth.orgId, auth.userId, params.id),
@@ -59,7 +72,7 @@ const getSessionInner$ = computed(async (get) => {
   return {
     status: 200 as const,
     body: {
-      session,
+      session: serializeVoiceChatSession(session),
       recentTaskLogs: "",
       finishedTasksFullText: "",
       talkerInstructions: "",
@@ -94,13 +107,10 @@ export const zeroVoiceChatRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroVoiceChatContract.getSession,
-    handler: shadowCompareRoute({
-      route: zeroVoiceChatContract.getSession,
-      handler: authRoute(
-        { requireOrganization: true, missingOrganizationStatus: 401 },
-        getSessionInner$,
-      ),
-    }),
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      getSessionInner$,
+    ),
   },
   {
     route: zeroVoiceChatContract.listTasks,
