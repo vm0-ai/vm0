@@ -336,6 +336,25 @@ mod tests {
     }
 
     #[test]
+    fn batch_writes_empty_file_with_parents() {
+        let temp = tempfile::tempdir().unwrap();
+        let target = temp.path().join("nested").join("empty.txt");
+        let payload = batch_payload(&[(&target, b"")]);
+
+        run(
+            Args {
+                batch: true,
+                create_parents: true,
+                path: None,
+            },
+            payload.as_slice(),
+        )
+        .unwrap();
+
+        assert_eq!(std::fs::read(&target).unwrap(), b"");
+    }
+
+    #[test]
     fn batch_truncated_content_preserves_write_file_truncate_semantics() {
         let temp = tempfile::tempdir().unwrap();
         let target = temp.path().join("out.txt");

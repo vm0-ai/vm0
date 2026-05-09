@@ -5219,6 +5219,110 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_write_files_empty_batch_does_not_send_request() {
+        let (host_stream, mut guest) = make_pair();
+
+        let guest_task = tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            assert_ne!(n, 0, "connection closed before follow-up exec");
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs.len(), 1);
+            assert_eq!(msgs[0].msg_type, MSG_EXEC);
+
+            let decoded = vsock_proto::decode_exec(&msgs[0].payload).unwrap();
+            assert_eq!(decoded.command, "after-empty-write-files");
+
+            let payload = vsock_proto::encode_exec_result(0, b"ok", b"");
+            let resp = vsock_proto::encode(MSG_EXEC_RESULT, msgs[0].seq, &payload).unwrap();
+            guest.write_all(&resp).await.unwrap();
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let empty: &[WriteFileRequest<'_>] = &[];
+        host.write_files(empty, false).await.unwrap();
+        let result = host
+            .exec("after-empty-write-files", 5000, &[], false)
+            .await
+            .unwrap();
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout, b"ok");
+        guest_task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_write_files_zero_length_file_sends_no_chunk() {
+        let (host_stream, mut guest) = make_pair();
+
+        let guest_task = tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut seq = None;
+            let mut saw_file = false;
+            let mut buf = [0u8; 4096];
+            loop {
+                let n = guest.read(&mut buf).await.unwrap();
+                assert_ne!(n, 0, "connection closed before write_files finish");
+                for msg in decoder.decode(&buf[..n]).unwrap() {
+                    seq.get_or_insert(msg.seq);
+                    assert_eq!(Some(msg.seq), seq);
+                    match msg.msg_type {
+                        MSG_WRITE_FILES_START => {
+                            let start =
+                                vsock_proto::decode_write_files_start(&msg.payload).unwrap();
+                            assert_eq!(start.file_count, 1);
+                            assert_eq!(start.total_bytes, 0);
+                        }
+                        MSG_WRITE_FILES_FILE => {
+                            let file = vsock_proto::decode_write_files_file(&msg.payload).unwrap();
+                            assert_eq!(file.file_index, 0);
+                            assert_eq!(file.path, "/tmp/empty");
+                            assert_eq!(file.content_len, 0);
+                            saw_file = true;
+                        }
+                        MSG_WRITE_FILES_CHUNK => {
+                            panic!("zero-length file must not send an empty chunk");
+                        }
+                        MSG_WRITE_FILES_FINISH => {
+                            assert!(saw_file);
+                            let payload = vsock_proto::encode_write_files_result(&[
+                                vsock_proto::WriteFilesResultEntry {
+                                    file_index: 0,
+                                    success: true,
+                                    error: String::new(),
+                                },
+                            ])
+                            .unwrap();
+                            let resp =
+                                vsock_proto::encode(MSG_WRITE_FILES_RESULT, msg.seq, &payload)
+                                    .unwrap();
+                            guest.write_all(&resp).await.unwrap();
+                            return;
+                        }
+                        other => panic!("unexpected message type: {other:#x}"),
+                    }
+                }
+            }
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        host.write_files(
+            &[WriteFileRequest {
+                path: "/tmp/empty",
+                source: WriteFileSource::Bytes(b""),
+            }],
+            false,
+        )
+        .await
+        .unwrap();
+        guest_task.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn test_write_files_surfaces_per_file_failure() {
         let (host_stream, mut guest) = make_pair();
 
@@ -5272,6 +5376,64 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("disk full"));
+    }
+
+    #[tokio::test]
+    async fn test_write_files_rejects_duplicate_result_index() {
+        let (host_stream, mut guest) = make_pair();
+
+        let guest_task = tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = [0u8; 4096];
+            loop {
+                let n = guest.read(&mut buf).await.unwrap();
+                assert_ne!(n, 0);
+                for msg in decoder.decode(&buf[..n]).unwrap() {
+                    if msg.msg_type == MSG_WRITE_FILES_FINISH {
+                        let payload = vsock_proto::encode_write_files_result(&[
+                            vsock_proto::WriteFilesResultEntry {
+                                file_index: 0,
+                                success: true,
+                                error: String::new(),
+                            },
+                            vsock_proto::WriteFilesResultEntry {
+                                file_index: 0,
+                                success: true,
+                                error: String::new(),
+                            },
+                        ])
+                        .unwrap();
+                        let resp =
+                            vsock_proto::encode(MSG_WRITE_FILES_RESULT, msg.seq, &payload).unwrap();
+                        guest.write_all(&resp).await.unwrap();
+                        return;
+                    }
+                }
+            }
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let err = host
+            .write_files(
+                &[
+                    WriteFileRequest {
+                        path: "/tmp/a",
+                        source: WriteFileSource::Bytes(b"a"),
+                    },
+                    WriteFileRequest {
+                        path: "/tmp/b",
+                        source: WriteFileSource::Bytes(b"b"),
+                    },
+                ],
+                false,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("duplicate result index"));
+        guest_task.await.unwrap();
     }
 
     #[tokio::test]

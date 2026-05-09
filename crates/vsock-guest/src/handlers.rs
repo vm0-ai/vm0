@@ -961,6 +961,42 @@ mod tests {
     }
 
     #[test]
+    fn write_files_batch_queue_close_preserves_backlog() {
+        let queue = BatchWriteQueue::new();
+
+        queue
+            .send_with_limit(BatchWrite::Bytes(vec![1, 2, 3]), Duration::ZERO, 8)
+            .unwrap();
+        queue.close_input();
+
+        match queue.recv() {
+            Some(BatchWrite::Bytes(bytes)) => assert_eq!(bytes, vec![1, 2, 3]),
+            _ => panic!("expected queued bytes after close_input"),
+        }
+        assert!(queue.recv().is_none());
+    }
+
+    #[test]
+    fn write_files_batch_queue_rejects_oversized_item_without_closing() {
+        let queue = BatchWriteQueue::new();
+
+        let err = queue
+            .send_with_limit(BatchWrite::Bytes(vec![0; 9]), Duration::ZERO, 8)
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+
+        queue
+            .send_with_limit(BatchWrite::Bytes(vec![1]), Duration::ZERO, 8)
+            .unwrap();
+        queue.close_input();
+        match queue.recv() {
+            Some(BatchWrite::Bytes(bytes)) => assert_eq!(bytes, vec![1]),
+            _ => panic!("expected queue to remain usable after oversized item rejection"),
+        }
+        assert!(queue.recv().is_none());
+    }
+
+    #[test]
     fn write_file_kills_lingering_process_group_after_parent_exit() {
         let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
         let child = spawn_write_file_test_child("sleep 60 <&0 >/dev/null 2>/dev/null & exit 0");
