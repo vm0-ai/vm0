@@ -85,6 +85,8 @@ import {
   MobileStackRow,
   MobileStackSection,
 } from "./components/mobile-stack-list.tsx";
+import { readDemoFlag } from "./lib/demo-flag.ts";
+import { buildDemoAgents, buildDemoSchedules } from "./lib/demo-fixtures.ts";
 import {
   buildCombinedSchedule,
   ScheduleEditFields,
@@ -1371,12 +1373,17 @@ export function ZeroScheduleDetailPage() {
       ? String(params.scheduleId)
       : null;
 
+  const isDemoMode = readDemoFlag();
+
   const entriesLoadable = useLastLoadable(allOrgScheduleEntries$);
-  const entries: OrgScheduleEntry[] =
+  const liveEntries: OrgScheduleEntry[] =
     entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
+  const entries = isDemoMode ? buildDemoSchedules() : liveEntries;
 
   const agentsLoadable = useLastLoadable(agents$);
-  const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
+  const liveAgents =
+    agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
+  const agents = isDemoMode ? buildDemoAgents() : liveAgents;
 
   const schedulesLoaded = useGet(allOrgSchedulesLoaded$);
   const slackData = useLastLoadable(slackOrgData$);
@@ -1388,9 +1395,10 @@ export function ZeroScheduleDetailPage() {
   }
 
   if (
-    !schedulesLoaded ||
-    entriesLoadable.state !== "hasData" ||
-    slackData.state !== "hasData"
+    !isDemoMode &&
+    (!schedulesLoaded ||
+      entriesLoadable.state !== "hasData" ||
+      slackData.state !== "hasData")
   ) {
     return <ScheduleDetailSkeleton />;
   }

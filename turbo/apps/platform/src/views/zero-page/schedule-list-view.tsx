@@ -54,7 +54,7 @@ function ScheduleListRow<T extends ScheduleEntry>({
   return (
     <tr
       className={cn(
-        "border-b border-border/50 last:border-0 transition-colors",
+        "transition-colors",
         clickable && "hover:bg-muted/25 cursor-pointer",
         dimmed && "opacity-75",
       )}
