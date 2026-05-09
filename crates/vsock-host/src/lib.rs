@@ -168,7 +168,7 @@ pub struct WriteFileRequest<'a> {
 
 enum PreparedWriteFileSource<'a> {
     Bytes(&'a [u8]),
-    File { file: tokio::fs::File, len: u64 },
+    File { path: &'a Path, len: u64 },
 }
 
 impl PreparedWriteFileSource<'_> {
@@ -1216,20 +1216,8 @@ async fn prepare_write_files<'a>(
         let source = match &file.source {
             WriteFileSource::Bytes(bytes) => PreparedWriteFileSource::Bytes(bytes),
             WriteFileSource::File { path, len } => {
-                let file = tokio::fs::File::open(path).await?;
-                let actual_len = file.metadata().await?.len();
-                if actual_len != *len {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        format!(
-                            "write_files source length changed for {}: expected {}, got {}",
-                            path.display(),
-                            len,
-                            actual_len
-                        ),
-                    ));
-                }
-                PreparedWriteFileSource::File { file, len: *len }
+                validate_file_source_len(path, *len).await?;
+                PreparedWriteFileSource::File { path, len: *len }
             }
         };
         prepared.push(PreparedWriteFile {
@@ -1239,6 +1227,35 @@ async fn prepare_write_files<'a>(
     }
 
     Ok(prepared)
+}
+
+async fn validate_file_source_len(path: &Path, expected_len: u64) -> io::Result<()> {
+    let actual_len = tokio::fs::metadata(path).await?.len();
+    if actual_len != expected_len {
+        return Err(file_source_len_error(path, expected_len, actual_len));
+    }
+    Ok(())
+}
+
+async fn open_prepared_file_source(path: &Path, expected_len: u64) -> io::Result<tokio::fs::File> {
+    let file = tokio::fs::File::open(path).await?;
+    let actual_len = file.metadata().await?.len();
+    if actual_len != expected_len {
+        return Err(file_source_len_error(path, expected_len, actual_len));
+    }
+    Ok(file)
+}
+
+fn file_source_len_error(path: &Path, expected_len: u64, actual_len: u64) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidInput,
+        format!(
+            "write_files source length changed for {}: expected {}, got {}",
+            path.display(),
+            expected_len,
+            actual_len
+        ),
+    )
 }
 
 async fn send_write_files_stream(
@@ -1257,7 +1274,7 @@ async fn send_write_files_stream(
 async fn send_write_files_stream_until(
     shared: &Arc<Shared>,
     seq: u32,
-    mut files: Vec<PreparedWriteFile<'_>>,
+    files: Vec<PreparedWriteFile<'_>>,
     sudo: bool,
     timeout: impl Future<Output = ()>,
 ) -> io::Result<()> {
@@ -1293,7 +1310,7 @@ async fn send_write_files_stream_until(
         write_proto_frame(&mut writer, MSG_WRITE_FILES_START, seq, &start).await?;
 
         let mut read_buf = vec![0u8; vsock_proto::MAX_WRITE_FILES_CHUNK_BYTES];
-        for (index, file) in files.iter_mut().enumerate() {
+        for (index, file) in files.iter().enumerate() {
             let file_index = u32::try_from(index).map_err(|_| {
                 io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -1301,11 +1318,17 @@ async fn send_write_files_stream_until(
                 )
             })?;
             let len = file.source.len();
+            let mut source_file = match &file.source {
+                PreparedWriteFileSource::Bytes(_) => None,
+                PreparedWriteFileSource::File { path, len } => {
+                    Some(open_prepared_file_source(path, *len).await?)
+                }
+            };
             let payload = vsock_proto::encode_write_files_file(file_index, &file.path, len)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
             write_proto_frame(&mut writer, MSG_WRITE_FILES_FILE, seq, &payload).await?;
 
-            match &mut file.source {
+            match &file.source {
                 PreparedWriteFileSource::Bytes(bytes) => {
                     for chunk in bytes.chunks(vsock_proto::MAX_WRITE_FILES_CHUNK_BYTES) {
                         let payload = vsock_proto::encode_write_files_chunk(file_index, chunk)
@@ -1316,14 +1339,17 @@ async fn send_write_files_stream_until(
                             .await?;
                     }
                 }
-                PreparedWriteFileSource::File { file, len } => {
+                PreparedWriteFileSource::File { len, .. } => {
+                    let source_file = source_file
+                        .as_mut()
+                        .ok_or_else(|| io::Error::other("write_files source file not open"))?;
                     let mut remaining = *len;
                     while remaining > 0 {
                         let max = remaining.min(read_buf.len() as u64) as usize;
                         let read_chunk = read_buf.get_mut(..max).ok_or_else(|| {
                             io::Error::other("write_files read length exceeds buffer")
                         })?;
-                        let n = file.read(read_chunk).await?;
+                        let n = source_file.read(read_chunk).await?;
                         if n == 0 {
                             return Err(io::Error::new(
                                 io::ErrorKind::UnexpectedEof,
@@ -5531,6 +5557,38 @@ mod tests {
             .unwrap_err();
         let _ = tokio::fs::remove_file(&source).await;
         assert!(err.to_string().contains("source length changed"));
+    }
+
+    #[tokio::test]
+    async fn test_prepare_write_files_keeps_file_sources_lazy() {
+        let source = std::env::temp_dir().join(format!(
+            "vm0-vsock-host-lazy-source-{}-{}.tar.gz",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        tokio::fs::write(&source, b"archive").await.unwrap();
+        let requests = [WriteFileRequest {
+            path: "/tmp/archive.tar.gz",
+            source: WriteFileSource::File {
+                path: &source,
+                len: 7,
+            },
+        }];
+
+        let prepared = prepare_write_files(&requests).await.unwrap();
+
+        let _ = tokio::fs::remove_file(&source).await;
+        assert_eq!(prepared.len(), 1);
+        match &prepared[0].source {
+            PreparedWriteFileSource::File { path, len } => {
+                assert_eq!(*path, source.as_path());
+                assert_eq!(*len, 7);
+            }
+            PreparedWriteFileSource::Bytes(_) => panic!("expected lazy file source"),
+        }
     }
 
     #[tokio::test]
