@@ -417,7 +417,7 @@ function UnsupportedBrowser({ reason }: { readonly reason: string | null }) {
             <div className="flex items-center gap-6 bg-muted/40 px-6 py-7">
               <div className="min-w-0 flex-1">
                 <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-                  Set up BB0
+                  BB0 setup needs Web Bluetooth
                 </h1>
                 <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
                   Open this page in a Chromium-based browser over HTTPS or
