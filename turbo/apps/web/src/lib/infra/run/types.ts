@@ -135,7 +135,7 @@ export interface ExecutionContext {
 
   // Provider-derived framework when zero-layer resolution ran. Source of
   // truth for downstream framework-aware logic (dispatch + validation).
-  // Falls back to compose framework via extractCliAgentType when undefined
+  // Falls back to compose framework via resolveRuntimeFramework when undefined
   // (CLI path, no provider context).
   resolvedFramework?: string;
 

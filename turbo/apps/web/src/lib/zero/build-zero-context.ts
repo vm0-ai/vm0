@@ -29,6 +29,7 @@ import type { ConversationResolution } from "../infra/run/resolvers";
 import type { AdditionalVolume } from "../infra/storage/types";
 import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "./memory";
 import { expandEnvironmentFromCompose } from "../infra/run/environment";
+import { resolveRuntimeFramework } from "../infra/run/utils";
 import { getUserPreferences } from "./user/user-preferences-service";
 import { getApiTokenConnectorTypes } from "./connector/connector-service";
 import {
@@ -270,7 +271,7 @@ async function resolveSecretsAndEnvironment(
   const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some((v) => {
     return firstAgent?.environment?.[v] !== undefined;
   });
-  const framework = firstAgent?.framework || "claude-code";
+  const framework = resolveRuntimeFramework({ agentCompose });
 
   // Run all secret resolution and variable fetching in parallel.
   // The three resolve functions have independent DB queries (different secret types),
@@ -1098,7 +1099,7 @@ export async function buildZeroExecutionContext(
       // Provider-derived framework — source of truth for downstream
       // dispatch (execution-preparer) and admission validation. Undefined
       // on the CLI path (no provider context); dispatch falls back to
-      // compose framework via extractCliAgentType.
+      // compose framework via resolveRuntimeFramework.
       resolvedFramework,
     },
     timings: {

@@ -102,11 +102,7 @@ export async function getRunAgentEvents(
   }
 
   const framework =
-    extractFrameworkFromCompose(
-      runWithCompose.composeContent as Parameters<
-        typeof extractFrameworkFromCompose
-      >[0],
-    ) ?? "claude-code";
+    extractFrameworkFromCompose(runWithCompose.composeContent) ?? "claude-code";
 
   const { since, limit, order } = query;
 

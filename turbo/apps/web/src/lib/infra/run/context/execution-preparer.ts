@@ -8,7 +8,6 @@ import {
 } from "../../../infra/storage/storage-service";
 import type { StorageManifest } from "../../../infra/storage/types";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
-import { getValidatedFramework } from "@vm0/core/frameworks";
 import { DEFAULT_PROFILE } from "@vm0/api-contracts/contracts/runners";
 import { badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../../shared/logger";
@@ -17,7 +16,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
-import { extractCliAgentType } from "../utils";
+import { resolveRuntimeFramework } from "../utils";
 
 const log = logger("context:preparer");
 
@@ -82,16 +81,14 @@ export async function prepareForExecution(
   const orgId = context.orgId;
   log.debug(`Preparing execution context for run ${context.runId}...`);
 
-  // Extract configuration from agent compose. resolvedFramework wins over
-  // the compose-declared framework so a thread eager-pinned to a provider
-  // whose framework differs from compose (e.g., compose=claude-code +
-  // provider=openai-api-key → codex) actually launches the right binary.
+  // Resolve runtime framework once; runner payloads still call this
+  // `cliAgentType` at the protocol boundary.
   const workingDir = extractWorkingDir(context.agentCompose);
-  const cliAgentType =
-    context.resolvedFramework ?? extractCliAgentType(context.agentCompose);
-  const runtimeFramework = context.resolvedFramework
-    ? getValidatedFramework(context.resolvedFramework)
-    : undefined;
+  const runtimeFramework = resolveRuntimeFramework({
+    resolvedFramework: context.resolvedFramework,
+    agentCompose: context.agentCompose,
+  });
+  const cliAgentType = runtimeFramework;
   const runnerGroup = resolveRunnerGroup(context.agentCompose);
   const profile = resolveRunnerProfile(context.agentCompose);
 

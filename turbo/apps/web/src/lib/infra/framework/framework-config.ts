@@ -105,18 +105,17 @@ interface ComposeContentLike {
  * one agent post-resolve). Returns `null` when no framework can be found,
  * leaving the caller to decide on a default.
  */
-export function extractFrameworkFromCompose(
-  content: ComposeContentLike | null | undefined,
-): string | null {
-  if (!content) {
+export function extractFrameworkFromCompose(content: unknown): string | null {
+  const compose = content as ComposeContentLike | null | undefined;
+  if (!compose) {
     return null;
   }
 
-  if (content.agent?.framework) {
-    return content.agent.framework;
+  if (compose.agent?.framework) {
+    return compose.agent.framework;
   }
 
-  const agents = content.agents;
+  const agents = compose.agents;
   if (agents) {
     const firstKey = Object.keys(agents)[0];
     if (firstKey) {
