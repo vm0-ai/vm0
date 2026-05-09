@@ -6,10 +6,10 @@ import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import { notFound } from "../../lib/error";
 import type { RouteEntry } from "../route";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import { voiceChatTalkerPayload } from "../services/voice-chat-talker.service";
 import {
   serializeVoiceChatSession,
   serializeVoiceChatTask,
@@ -70,17 +70,12 @@ const getSessionInner$ = computed(async (get) => {
   if (!session) {
     return notFound("Voice-chat session not found");
   }
+  const talker = await get(voiceChatTalkerPayload(session));
   return {
     status: 200 as const,
     body: {
       session: serializeVoiceChatSession(session),
-      // Talker payload deferred — see #12463 (port `buildTalkerPayload`).
-      // Web computes these via `buildTalkerPayload(session)`; API currently
-      // returns empty/zero for Stage 2 scoping.
-      recentTaskLogs: "",
-      finishedTasksFullText: "",
-      talkerInstructions: "",
-      talkerInstructionTokens: 0,
+      ...talker,
     },
   };
 });

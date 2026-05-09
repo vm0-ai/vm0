@@ -4,6 +4,7 @@ import { zeroVoiceChatContract } from "@vm0/api-contracts/contracts/zero-voice-c
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { now } from "../../../lib/time";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -11,6 +12,7 @@ import {
 import {
   deleteVoiceChatFixture$,
   seedVoiceChatFixture$,
+  seedVoiceChatTask$,
   type VoiceChatFixture,
 } from "./helpers/zero-voice-chat";
 
@@ -197,11 +199,82 @@ describe("GET /api/zero/voice-chat/:id (getSession)", () => {
     expect(response.body.session.id).toBe(sessionId);
     expect(response.body.session.userId).toBe(fixture.userId);
     expect(response.body.session.orgId).toBe(fixture.orgId);
-    // Talker payload is currently hardcoded empty in api — see follow-up
-    // issue (deferred from this Stage 2 migration).
+    // No tasks seeded: lifecycle sections are empty, but the base
+    // instruction is still substantial so tokens are well above zero.
     expect(response.body.recentTaskLogs).toBe("");
     expect(response.body.finishedTasksFullText).toBe("");
-    expect(response.body.talkerInstructions).toBe("");
-    expect(response.body.talkerInstructionTokens).toBe(0);
+    expect(response.body.talkerInstructions).toContain(
+      "You are the Talker brain of Zero",
+    );
+    expect(response.body.talkerInstructions).toContain(
+      "(none — nothing is being worked on)",
+    );
+    expect(response.body.talkerInstructions).toContain(
+      "(none — no tasks have finished yet in this session)",
+    );
+    expect(response.body.talkerInstructionTokens).toBeGreaterThan(500);
+  });
+
+  it("populates the talker payload from in-flight and finished tasks", async () => {
+    const fixture = await track(
+      store.set(
+        seedVoiceChatFixture$,
+        { trinityEnabled: true, sessions: [{}] },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const sessionId = fixture.sessionIds[0]!;
+
+    const inFlightId = await store.set(
+      seedVoiceChatTask$,
+      sessionId,
+      {
+        status: "running",
+        prompt: "draft the launch email",
+        startedAt: new Date(now() - 30_000),
+      },
+      context.signal,
+    );
+    const finishedId = await store.set(
+      seedVoiceChatTask$,
+      sessionId,
+      {
+        status: "done",
+        prompt: "list quarterly goals",
+        result: "Goal 1: ship voice-chat. Goal 2: cut launch email.",
+        finishedAt: new Date(now() - 5000),
+      },
+      context.signal,
+    );
+
+    const client = setupApp({ context })(zeroVoiceChatContract);
+    const response = await accept(
+      client.getSession({
+        params: { id: sessionId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    // Recent lifecycle log: the running task is within the 3-minute window.
+    expect(response.body.recentTaskLogs).toContain(inFlightId);
+    expect(response.body.recentTaskLogs).toContain("draft the launch email");
+
+    // Finished tasks full text: the done task's prompt and id appear.
+    expect(response.body.finishedTasksFullText).toContain(finishedId);
+    expect(response.body.finishedTasksFullText).toContain(
+      "list quarterly goals",
+    );
+
+    // Talker instructions embed both the in-flight prompt and the finished
+    // task's compacted result body.
+    expect(response.body.talkerInstructions).toContain(
+      "draft the launch email",
+    );
+    expect(response.body.talkerInstructions).toContain(
+      "Goal 1: ship voice-chat",
+    );
+    expect(response.body.talkerInstructionTokens).toBeGreaterThan(500);
   });
 });

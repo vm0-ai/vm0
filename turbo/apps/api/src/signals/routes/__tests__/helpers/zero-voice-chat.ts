@@ -64,6 +64,14 @@ export const seedVoiceChatFixture$ = command(
 
 interface TaskSeed {
   readonly status: "pending" | "queued" | "running" | "done" | "failed";
+  readonly prompt?: string;
+  readonly result?: string | null;
+  readonly assistantMessages?: readonly {
+    readonly type: "assistant";
+    readonly content: string;
+    readonly at: string;
+  }[];
+  readonly startedAt?: Date;
   readonly finishedAt?: Date;
 }
 
@@ -80,8 +88,15 @@ export const seedVoiceChatTask$ = command(
       id,
       sessionId,
       callId: `call_${randomUUID()}`,
-      prompt: "test",
+      prompt: values.prompt ?? "test",
       status: values.status,
+      ...(values.result !== undefined ? { result: values.result } : {}),
+      ...(values.assistantMessages !== undefined
+        ? { assistantMessages: [...values.assistantMessages] }
+        : {}),
+      ...(values.startedAt !== undefined
+        ? { startedAt: values.startedAt }
+        : {}),
       ...(values.finishedAt !== undefined
         ? { finishedAt: values.finishedAt }
         : {}),

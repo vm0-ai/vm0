@@ -13,7 +13,7 @@ type DbWriteMethod =
   | "refreshMaterializedView"
   | "batch";
 
-type ReadonlyDb = Omit<Db, DbWriteMethod>;
+export type ReadonlyDb = Omit<Db, DbWriteMethod>;
 
 export const db$ = computed((): ReadonlyDb => {
   return db();
