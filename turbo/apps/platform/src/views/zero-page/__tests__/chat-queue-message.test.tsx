@@ -522,6 +522,7 @@ describe("chat pending message queue", () => {
       // The textarea from line 508 still references the same DOM element
       // after cancel, but getActiveRunTextarea() would fail because the
       // placeholder reverts from "Type your next message" to PLACEHOLDER.
+      textarea = (await screen.findByRole("textbox")) as HTMLTextAreaElement;
       await waitFor(() => {
         expect(textarea.value).toBe("message to be recalled");
       });
