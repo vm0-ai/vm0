@@ -104,7 +104,7 @@ export function MobileStackRow({
             "flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px]",
             destructive
               ? "bg-red-100 text-destructive dark:bg-red-950/40"
-              : "bg-gray-100 text-foreground/70",
+              : "bg-gray-50 text-foreground/70",
           )}
         >
           {icon}

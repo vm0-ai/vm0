@@ -69,7 +69,7 @@ const MOBILE_TABS: readonly MobileTab[] = [
 // to mirror the fully-rounded outer dock.
 const TAB_BASE =
   "flex flex-1 flex-col items-center justify-center gap-1 px-2 py-2 rounded-full text-[10px] leading-none no-underline transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30";
-const TAB_ACTIVE = "bg-gray-100 text-foreground font-semibold";
+const TAB_ACTIVE = "bg-gray-50 text-foreground font-semibold";
 const TAB_INACTIVE = "text-muted-foreground font-medium";
 const ICON_SIZE = 24;
 const ICON_STROKE = 1.6;

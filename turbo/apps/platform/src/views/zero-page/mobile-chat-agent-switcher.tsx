@@ -50,7 +50,7 @@ export function MobileChatAgentSwitcher() {
             <span
               className={cn(
                 "flex h-12 w-12 items-center justify-center rounded-full transition-colors",
-                active ? "bg-gray-100" : "bg-transparent",
+                active ? "bg-gray-50" : "bg-transparent",
               )}
             >
               <AvatarFromUrl
