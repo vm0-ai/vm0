@@ -1881,6 +1881,45 @@ mod tests {
     }
 
     #[test]
+    fn decode_bounded_exec_rejects_truncated_output_policy_lengths() {
+        let mut capture_limit_truncated = Vec::new();
+        capture_limit_truncated.extend_from_slice(&1_u32.to_be_bytes());
+        capture_limit_truncated.push(0);
+        capture_limit_truncated.push(BOUNDED_EXEC_CAPTURE_CAPTURE);
+        capture_limit_truncated.extend_from_slice(&1_u32.to_be_bytes()[..3]);
+        let err = decode_bounded_exec(&capture_limit_truncated).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec output capture limit truncated")
+        ));
+
+        let mut stream_limit_truncated = Vec::new();
+        stream_limit_truncated.extend_from_slice(&1_u32.to_be_bytes());
+        stream_limit_truncated.push(0);
+        stream_limit_truncated.push(BOUNDED_EXEC_CAPTURE_DISCARD);
+        stream_limit_truncated.push(BOUNDED_EXEC_STREAM_MODE_STREAM);
+        stream_limit_truncated.extend_from_slice(&1_u32.to_be_bytes()[..3]);
+        let err = decode_bounded_exec(&stream_limit_truncated).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec output stream limit truncated")
+        ));
+
+        let mut stream_chunk_limit_truncated = Vec::new();
+        stream_chunk_limit_truncated.extend_from_slice(&1_u32.to_be_bytes());
+        stream_chunk_limit_truncated.push(0);
+        stream_chunk_limit_truncated.push(BOUNDED_EXEC_CAPTURE_DISCARD);
+        stream_chunk_limit_truncated.push(BOUNDED_EXEC_STREAM_MODE_STREAM);
+        stream_chunk_limit_truncated.extend_from_slice(&1_u32.to_be_bytes());
+        stream_chunk_limit_truncated.extend_from_slice(&1_u32.to_be_bytes()[..3]);
+        let err = decode_bounded_exec(&stream_chunk_limit_truncated).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec output stream chunk limit truncated")
+        ));
+    }
+
+    #[test]
     fn decode_bounded_exec_rejects_truncated_command() {
         let mut payload = Vec::new();
         payload.extend_from_slice(&1_u32.to_be_bytes());
@@ -2232,6 +2271,63 @@ mod tests {
     }
 
     #[test]
+    fn decode_bounded_exec_result_rejects_truncated_output_len() {
+        let mut payload = Vec::new();
+        payload.push(BOUNDED_EXEC_TERMINATION_EXITED);
+        payload.extend_from_slice(&0_i32.to_be_bytes());
+        payload.extend_from_slice(&0_u64.to_be_bytes());
+        payload.push(BOUNDED_EXEC_OUTPUT_CAPTURED);
+        payload.push(0);
+        payload.extend_from_slice(&3_u32.to_be_bytes()[..3]);
+
+        let err = decode_bounded_exec_result(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec_result output_len truncated")
+        ));
+    }
+
+    #[test]
+    fn decode_bounded_exec_result_rejects_invalid_output_truncated_flag() {
+        let mut payload = encode_bounded_exec_result(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            0,
+            captured_output(b"", false),
+            captured_output(b"", false),
+            None,
+        )
+        .unwrap();
+        payload[14] = 2;
+
+        let err = decode_bounded_exec_result(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec_result invalid output truncated flag")
+        ));
+    }
+
+    #[test]
+    fn decode_bounded_exec_result_rejects_invalid_utf8_diagnostic() {
+        let mut payload = encode_bounded_exec_result(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            0,
+            captured_output(b"", false),
+            captured_output(b"", false),
+            None,
+        )
+        .unwrap();
+        let diagnostic_len_offset = payload.len() - 4;
+        payload[diagnostic_len_offset..].copy_from_slice(&1_u32.to_be_bytes());
+        payload.push(0xFF);
+
+        let err = decode_bounded_exec_result(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("invalid UTF-8 in bounded_exec_result diagnostic")
+        ));
+    }
+
+    #[test]
     fn decode_bounded_exec_result_rejects_truncated_diagnostic() {
         let mut payload = encode_bounded_exec_result(
             BoundedExecTermination::Exited { exit_code: 0 },
@@ -2353,6 +2449,21 @@ mod tests {
         assert!(matches!(
             err,
             ProtocolError::InvalidPayload("bounded_exec_output_chunk chunk truncated")
+        ));
+    }
+
+    #[test]
+    fn decode_bounded_exec_output_chunk_rejects_truncated_chunk_len() {
+        let mut payload = Vec::new();
+        payload.push(BOUNDED_EXEC_STREAM_STDOUT);
+        payload.push(0);
+        payload.extend_from_slice(&0_u32.to_be_bytes());
+        payload.extend_from_slice(&3_u32.to_be_bytes()[..3]);
+
+        let err = decode_bounded_exec_output_chunk(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec_output_chunk chunk_len truncated")
         ));
     }
 
