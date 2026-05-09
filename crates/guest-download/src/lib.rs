@@ -182,6 +182,8 @@ pub fn run(manifest_path: &str) -> bool {
         true,
     );
 
+    let local_stage_archives = local_stage_archives(&tasks);
+
     // Pre-create all target directories before parallel downloads.
     // This avoids races between parent-child mount paths (e.g. /home/user/.claude
     // and /home/user/.claude/skills/foo) when they land in the same concurrent chunk.
@@ -192,14 +194,14 @@ pub fn run(manifest_path: &str) -> bool {
                 "Failed to create directory {}: {e}",
                 task.mount_path
             );
+            cleanup_local_stage_archives(&local_stage_archives);
             return false;
         }
     }
 
-    let local_stage_archives = local_stage_archives(&tasks);
     let success = download_all_parallel(tasks);
+    cleanup_local_stage_archives(&local_stage_archives);
     if success {
-        cleanup_local_stage_archives(&local_stage_archives);
         normalize_instruction_files(&manifest.storages);
     }
     success

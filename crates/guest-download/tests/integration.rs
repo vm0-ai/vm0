@@ -1291,6 +1291,44 @@ fn file_scheme_extraction_success() {
     assert!(!staged.exists());
 }
 
+#[test]
+fn file_scheme_staged_archive_removed_after_failed_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let staged = write_stage_archive(
+        "file-scheme-staged-archive-failed-run",
+        b"not a gzip archive",
+    )
+    .unwrap();
+
+    let mount = dir.path().join("mount");
+    let url = format!("file://{}", staged.display());
+    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
+
+    let result = run_guest_download(manifest.to_str().unwrap());
+
+    assert!(!result);
+    assert!(!staged.exists());
+}
+
+#[test]
+fn file_scheme_staged_archive_removed_after_mount_create_failure() {
+    let tar_gz = create_tar_gz(&[("hello.txt", b"hello")]).unwrap();
+
+    let dir = tempfile::tempdir().unwrap();
+    let staged = write_stage_archive("file-scheme-staged-archive-mount-failure", &tar_gz).unwrap();
+    let blocked_parent = dir.path().join("not-a-dir");
+    std::fs::write(&blocked_parent, "file").unwrap();
+
+    let mount = blocked_parent.join("mount");
+    let url = format!("file://{}", staged.display());
+    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
+
+    let result = run_guest_download(manifest.to_str().unwrap());
+
+    assert!(!result);
+    assert!(!staged.exists());
+}
+
 // Security regression: file:// archives use the same extraction path as HTTP,
 // but this is the production path for runner-staged storage cache tarballs.
 #[test]
