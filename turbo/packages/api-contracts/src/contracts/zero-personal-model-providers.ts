@@ -5,9 +5,7 @@ import {
   modelProviderListResponseSchema,
   upsertModelProviderRequestSchema,
   upsertModelProviderResponseSchema,
-  modelProviderResponseSchema,
   modelProviderTypeSchema,
-  updateModelRequestSchema,
 } from "./model-providers";
 
 const c = initContract();
@@ -16,8 +14,8 @@ const c = initContract();
  * Zero personal (user-level) model providers main contract for /api/zero/me/model-providers
  *
  * Personal-tier per Epic #11868: providers scoped to the authenticated user
- * within an org, no admin gate. Endpoints are gated on the
- * `personalModelProvider` feature switch and return 404 when off.
+ * within an org, no admin gate. List/upsert are gated on model-first provider
+ * controls and return 404 when unavailable.
  *
  * GET: List the requesting user's personal model providers
  * POST: Create or update a personal model provider for the requesting user
@@ -81,57 +79,3 @@ export const zeroPersonalModelProvidersByTypeContract = c.router({
 
 export type ZeroPersonalModelProvidersByTypeContract =
   typeof zeroPersonalModelProvidersByTypeContract;
-
-/**
- * Zero personal model providers default contract for /api/zero/me/model-providers/:type/default
- *
- * POST: Set one of the requesting user's personal providers as their default
- */
-export const zeroPersonalModelProvidersDefaultContract = c.router({
-  setDefault: {
-    method: "POST",
-    path: "/api/zero/me/model-providers/:type/default",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      type: modelProviderTypeSchema,
-    }),
-    body: z.undefined(),
-    responses: {
-      200: modelProviderResponseSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Set a personal model provider as the user's default",
-  },
-});
-
-export type ZeroPersonalModelProvidersDefaultContract =
-  typeof zeroPersonalModelProvidersDefaultContract;
-
-/**
- * Zero personal model providers update model contract for /api/zero/me/model-providers/:type/model
- *
- * PATCH: Update model selection for one of the user's personal providers
- */
-export const zeroPersonalModelProvidersUpdateModelContract = c.router({
-  updateModel: {
-    method: "PATCH",
-    path: "/api/zero/me/model-providers/:type/model",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      type: modelProviderTypeSchema,
-    }),
-    body: updateModelRequestSchema,
-    responses: {
-      200: modelProviderResponseSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Update model selection for a personal model provider",
-  },
-});
-
-export type ZeroPersonalModelProvidersUpdateModelContract =
-  typeof zeroPersonalModelProvidersUpdateModelContract;

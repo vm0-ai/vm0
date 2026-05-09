@@ -35,9 +35,10 @@ function isModelProviderOAuthEnabled(params: {
   userId: string;
   overrides: Partial<Record<FeatureSwitchKey, boolean>>;
 }): boolean {
-  const baseEnabled =
-    isFeatureEnabled(FeatureSwitchKey.PersonalModelProvider, params) ||
-    isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, params);
+  const baseEnabled = isFeatureEnabled(
+    FeatureSwitchKey.ModelFirstModelProvider,
+    params,
+  );
   return (
     baseEnabled && isFeatureEnabled(FeatureSwitchKey.CodexOauthProvider, params)
   );

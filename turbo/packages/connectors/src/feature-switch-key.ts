@@ -56,7 +56,6 @@ export enum FeatureSwitchKey {
   ZapierConnector = "zapierConnector",
   CodexBeta = "codexBeta",
   CodexOauthProvider = "codexOauthProvider",
-  PersonalModelProvider = "personalModelProvider",
   ModelFirstModelProvider = "modelFirstModelProvider",
   VoiceChatRealtimeBilling = "voiceChatRealtimeBilling",
 }

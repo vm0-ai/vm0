@@ -105,11 +105,8 @@ export interface ZeroAgentForRun {
   modelProviderId: string | null;
   selectedModel: string | null;
   /**
-   * Per-Epic #11868: when true, runs that resolve through this agent prefer
-   * the caller's personal-tier model providers before falling back to the
-   * org default (gated additionally by the `personalModelProvider` feature
-   * switch). Off by default; honored only when the schedule (if any) does
-   * not override it.
+   * Legacy personal-tier preference. Retained for stored agent/schedule shape;
+   * the retired personal-provider resolver path treats it as false.
    */
   preferPersonalProvider: boolean;
 }
@@ -174,12 +171,9 @@ export interface CreateZeroRunParams {
   /** Per-agent or per-schedule selected model override. */
   selectedModelOverride?: string;
   /**
-   * Personal-tier preference (Epic #11868). When defined, overrides the
-   * agent's stored `preferPersonalProvider` — schedule-driven runs pass
-   * the schedule's flag here so schedule overrides agent (mirrors the
-   * existing modelProviderId/selectedModel override semantics). Honored
-   * only when the `personalModelProvider` feature switch is on for the
-   * caller; otherwise treated as false.
+   * Legacy personal-tier preference. When defined, it still overrides the
+   * stored field for compatibility, but the retired resolver path treats it
+   * as false.
    */
   preferPersonalProvider?: boolean;
   callbacks?: Array<{ url: string; secret: string; payload: unknown }>;

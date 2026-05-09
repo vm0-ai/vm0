@@ -13,7 +13,6 @@ export {
   insertUserDefaultModelProvider,
   insertUserMultiAuthModelProvider,
   insertUserNonDefaultModelProvider,
-  enablePersonalModelProviderForUser,
   enableModelFirstModelProviderForUser,
   insertOrgModelPolicy,
   deleteTestModelProvider,

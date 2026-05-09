@@ -35,7 +35,6 @@ import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { MODEL_PROVIDER_HANDLER_KEY } from "../handler-key-bridge";
 import { PROVIDER_HANDLERS } from "../connector/provider-registry";
-import { isPersonalTierEligible } from "../personal-tier-gate";
 import {
   isModelFirstModelProviderEnabled,
   resolveModelFirstRouteDescriptor,
@@ -829,15 +828,10 @@ async function resolveLegacyModelRoute(
   params: ResolveModelRouteParams,
   timings?: ResolveModelProviderSecretTimings,
 ): Promise<ResolvedModelRoute> {
-  const personalEligibilityStart = Date.now();
-  const personalEligible = await isPersonalTierEligible(
-    params.orgId,
-    params.userId,
-    params.preferPersonalProvider,
-  );
   if (timings) {
-    timings.personalEligibility = Date.now() - personalEligibilityStart;
+    timings.personalEligibility = 0;
   }
+  const personalEligible = false;
 
   const defaultProviderStart = Date.now();
   const defaultProvider = await resolveDefaultProviderRow({
@@ -910,11 +904,10 @@ export async function resolveModelRoute(
  *
  * @param modelProviderId - Optional specific provider ID to use instead of org default
  * @param selectedModelOverride - Optional model override (takes precedence over provider's selectedModel)
- * @param preferPersonalProvider - When true AND `personalModelProvider` switch
- *   is on for the caller, the resolver consults the user's personal-tier
- *   providers before the org default. Off-by-default; matches today's
- *   behavior when omitted/false. Sourced from `zero_agents.preferPersonalProvider`
- *   (or schedule's column when running a schedule).
+ * @param preferPersonalProvider - Legacy personal-tier preference sourced from
+ *   `zero_agents.preferPersonalProvider` or schedules. The old resolver path
+ *   is retired and treats this as false; model-first member OAuth uses policy
+ *   credential scope instead.
  */
 export async function resolveModelProviderSecrets(
   orgId: string,

@@ -1444,33 +1444,6 @@ export function deleteUserModelProvider(
 }
 
 /**
- * Set a user-level model provider as the user's personal default.
- *
- * Personal default is workspace-scoped per (orgId, userId), so a user's
- * personal default is independent of the org default — both can coexist
- * thanks to `idx_model_providers_one_default_per_user`.
- */
-export function setUserModelProviderDefault(
-  orgId: string,
-  userId: string,
-  type: ModelProviderType,
-): Promise<ModelProviderInfo> {
-  return setModelProviderDefault(orgId, userId, type);
-}
-
-/**
- * Update model selection for a user-level provider
- */
-export function updateUserModelProviderModel(
-  orgId: string,
-  userId: string,
-  type: ModelProviderType,
-  selectedModel?: string,
-): Promise<ModelProviderInfo> {
-  return updateModelProviderModel(orgId, userId, type, selectedModel);
-}
-
-/**
  * Get the user-level default model provider for a framework.
  *
  * Mirrors `getOrgDefaultModelProvider` but scoped to (orgId, userId).

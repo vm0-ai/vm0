@@ -17,8 +17,6 @@ import {
   listUserModelProviders,
   upsertUserModelProvider,
   deleteUserModelProvider,
-  setUserModelProviderDefault,
-  updateUserModelProviderModel,
   getUserDefaultModelProvider,
   getUserAnyDefaultModelProvider,
   getUserModelProviderByType,
@@ -129,42 +127,6 @@ describe("model-provider-service — user-tier", () => {
         "codex",
       );
       expect(userDefault?.type).toBe("openai-api-key");
-    });
-  });
-
-  describe("setUserModelProviderDefault", () => {
-    it("flips the user's default without touching the org default", async () => {
-      const { orgId, userId } = await context.setupUser();
-
-      // Org default — anthropic
-      await createTestOrgModelProvider("anthropic-api-key", "org-key");
-      // User has two personal providers — anthropic becomes default
-      await createTestUserModelProvider(
-        orgId,
-        userId,
-        "anthropic-api-key",
-        "user-anthro",
-      );
-      await createTestUserModelProvider(
-        orgId,
-        userId,
-        "openai-api-key",
-        "user-openai",
-      );
-
-      const updated = await setUserModelProviderDefault(
-        orgId,
-        userId,
-        "openai-api-key",
-      );
-      expect(updated.isDefault).toBe(true);
-      expect(updated.type).toBe("openai-api-key");
-
-      const userList = await listUserModelProviders(orgId, userId);
-      const userAnthro = userList.find((p) => {
-        return p.type === "anthropic-api-key";
-      });
-      expect(userAnthro?.isDefault).toBe(false);
     });
   });
 
@@ -299,34 +261,6 @@ describe("model-provider-service — user-tier", () => {
         orgProvider.id,
       );
       expect(orgRow?.isDefault).toBe(true);
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // updateUserModelProviderModel
-  // ---------------------------------------------------------------------------
-
-  describe("updateUserModelProviderModel", () => {
-    it("updates only the selectedModel field", async () => {
-      const { orgId, userId } = await context.setupUser();
-
-      await createTestUserModelProvider(
-        orgId,
-        userId,
-        "openai-api-key",
-        "user-key",
-        "gpt-5",
-      );
-
-      const updated = await updateUserModelProviderModel(
-        orgId,
-        userId,
-        "openai-api-key",
-        "gpt-5.5",
-      );
-
-      expect(updated.selectedModel).toBe("gpt-5.5");
-      expect(updated.type).toBe("openai-api-key");
     });
   });
 });

@@ -206,10 +206,8 @@ interface BuildZeroContextParams {
   modelProviderCredentialScope?: string;
   selectedModelOverride?: string;
   /**
-   * Personal-tier preference (Epic #11868). Threaded into the resolver so
-   * runs that resolve through agents/schedules with the flag set consult
-   * user-tier providers before the org default. Honored only when the
-   * `personalModelProvider` feature switch is on for the caller.
+   * Legacy personal-tier preference. Retained for stored agent/schedule shape;
+   * the retired personal-provider resolver path treats it as false.
    */
   preferPersonalProvider?: boolean;
   // API start time for E2E timing metrics
