@@ -322,17 +322,23 @@ export async function seedTestChatRounds(params: {
       }),
     );
 
-    await tx.insert(chatMessages).values(
-      rows.map((row) => {
-        return {
-          chatThreadId: params.chatThreadId,
-          runId: row.runId,
-          role: "user",
-          content: row.prompt,
-          createdAt: row.createdAt,
-        };
-      }),
-    );
+    const insertedMessages = await tx
+      .insert(chatMessages)
+      .values(
+        rows.map((row) => {
+          return {
+            chatThreadId: params.chatThreadId,
+            runId: row.runId,
+            role: "user" as const,
+            content: row.prompt,
+            createdAt: row.createdAt,
+          };
+        }),
+      )
+      .returning({ id: chatMessages.id });
+    if (insertedMessages.length !== rows.length) {
+      throw new Error("Failed to seed chat messages");
+    }
   });
 }
 

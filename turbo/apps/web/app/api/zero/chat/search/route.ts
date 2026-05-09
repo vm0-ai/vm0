@@ -17,6 +17,7 @@ import {
   isNotNull,
   isNull,
   lt,
+  sql,
 } from "drizzle-orm";
 import { z } from "zod";
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
@@ -70,6 +71,18 @@ interface ChatMessageRow {
  */
 const chatRoleSchema = z.enum(["user", "assistant"]);
 
+function effectiveChatMessageRunId() {
+  return chatMessages.runId;
+}
+
+function visibleChatMessageCondition() {
+  return sql<boolean>`NOT EXISTS (
+    SELECT 1
+    FROM ${chatMessages} AS revoker
+    WHERE revoker.revokes_message_id = ${chatMessages.id}
+  )`;
+}
+
 function toChatMessage(row: ChatMessageRow): ChatSearchMessage {
   if (row.content === null) {
     // WHERE clauses in this route guarantee non-null content; hitting this
@@ -97,7 +110,7 @@ const messageColumns = {
   content: chatMessages.content,
   createdAt: chatMessages.createdAt,
   sequenceNumber: chatMessages.sequenceNumber,
-  runId: chatMessages.runId,
+  runId: effectiveChatMessageRunId(),
 };
 
 const router = tsr.router(chatSearchContract, {
@@ -121,6 +134,7 @@ const router = tsr.router(chatSearchContract, {
       eq(agentComposes.orgId, org.orgId),
       isNotNull(chatMessages.content),
       isNull(chatMessages.archivedAt),
+      visibleChatMessageCondition(),
       ilike(chatMessages.content, pattern),
     ];
     if (sinceDate) matchConditions.push(gte(chatMessages.createdAt, sinceDate));
@@ -164,6 +178,7 @@ const router = tsr.router(chatSearchContract, {
                     lt(chatMessages.createdAt, m.createdAt),
                     isNotNull(chatMessages.content),
                     isNull(chatMessages.archivedAt),
+                    visibleChatMessageCondition(),
                   ),
                 )
                 .orderBy(desc(chatMessages.createdAt))
@@ -179,6 +194,7 @@ const router = tsr.router(chatSearchContract, {
                     gt(chatMessages.createdAt, m.createdAt),
                     isNotNull(chatMessages.content),
                     isNull(chatMessages.archivedAt),
+                    visibleChatMessageCondition(),
                   ),
                 )
                 .orderBy(asc(chatMessages.createdAt))

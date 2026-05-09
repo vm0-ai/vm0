@@ -114,8 +114,11 @@ export function ZeroChatListPage() {
       : recentSessions;
 
   const onNewChat = (pane: OptimisticChatPane) => {
+    if (!currentChatAgentId) {
+      return;
+    }
     detach(
-      createNewChat(currentChatAgentId ?? null, pane, rootSignal),
+      createNewChat(currentChatAgentId, pane, rootSignal),
       Reason.DomCallback,
     );
   };
@@ -171,7 +174,8 @@ export function ZeroChatListPage() {
       </div>
 
       {/* New chat button — full-width on desktop, hidden on mobile-native
-          (replaced by the FAB below) */}
+          (replaced by the FAB below). Disabled when there's no current agent
+          to compose against, or when a previous create is still in flight. */}
       {!mobileRedesign && (
         <div className="shrink-0 px-4 py-2">
           <button
@@ -179,7 +183,7 @@ export function ZeroChatListPage() {
             onClick={(event) => {
               onNewChat(event.altKey ? "sidebar" : "main");
             }}
-            disabled={creating}
+            disabled={!currentChatAgentId || creating}
             className="flex w-full h-10 items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
             <IconPlus size={16} stroke={2} />

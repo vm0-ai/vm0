@@ -13,7 +13,7 @@ import {
   getChatThreadIdForRun,
   PREVIOUS_CONTEXT_MESSAGES,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
-import { autoSendPendingMessageOnRunComplete } from "../../../../../src/lib/zero/chat-thread/auto-send-pending-message";
+import { autoSendQueuedMessageOnRunComplete } from "../../../../../src/lib/zero/chat-thread/auto-send-queued-message";
 import { formatChatRunErrorMessage } from "../../../../../src/lib/zero/chat-thread/chat-run-error-message";
 import {
   generateChatTitle,
@@ -464,7 +464,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // user hasn't queued anything; otherwise this clears the pending columns
   // and dispatches a fresh run, mirroring the user's "send next" intent
   // without requiring an open browser tab.
-  await autoSendPendingMessageOnRunComplete({
+  await autoSendQueuedMessageOnRunComplete({
     runId,
     agentId: payload.agentId,
     apiStartTime,

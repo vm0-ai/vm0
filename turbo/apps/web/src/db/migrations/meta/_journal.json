@@ -2472,6 +2472,34 @@
       "when": 1778310215241,
       "tag": "0352_drop_user_platform_connectors",
       "breakpoints": true
+    },
+    {
+      "idx": 353,
+      "version": "7",
+      "when": 1778310215242,
+      "tag": "0353_clear_pete_wisdom",
+      "breakpoints": true
+    },
+    {
+      "idx": 354,
+      "version": "7",
+      "when": 1778310215243,
+      "tag": "0354_backfill_user_message_run",
+      "breakpoints": true
+    },
+    {
+      "idx": 355,
+      "version": "7",
+      "when": 1778310215244,
+      "tag": "0355_high_snowbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 356,
+      "version": "7",
+      "when": 1778310215245,
+      "tag": "0356_dazzling_raza",
+      "breakpoints": true
     }
   ]
 }

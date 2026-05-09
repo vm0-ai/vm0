@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.100.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.18...runner-rs-v0.100.19) (2026-05-09)
+
+
+### Documentation
+
+* clarify status run replacement semantics ([#12287](https://github.com/vm0-ai/vm0/issues/12287)) ([09c4eb2](https://github.com/vm0-ai/vm0/commit/09c4eb255c566fcd03f14c79c3328eeeae95a2a4))
+* document runner path layout ([#12289](https://github.com/vm0-ai/vm0/issues/12289)) ([e37c3b9](https://github.com/vm0-ai/vm0/commit/e37c3b908114949c320ab72c379c80ee15909624))
+
 ## [0.100.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.17...runner-rs-v0.100.18) (2026-05-09)
 
 ## [0.100.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.16...runner-rs-v0.100.17) (2026-05-09)

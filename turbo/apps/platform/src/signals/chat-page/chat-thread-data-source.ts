@@ -1,6 +1,6 @@
 import type { Command, Computed } from "ccstate";
 import type {
-  PendingMessage,
+  ModelSelectionRequest,
   PagedChatMessage,
   PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -14,6 +14,7 @@ export interface ChatThreadRealtimeHandlers {
 export interface InitialPage {
   messages: PagedChatMessage[];
   hasHistoryBefore: boolean;
+  needsHistoryBackfill?: boolean;
 }
 
 export interface PatchDraftArgs {
@@ -22,25 +23,21 @@ export interface PatchDraftArgs {
   attachments: PersistedAttachment[] | null;
 }
 
-export interface AppendPendingMessageArgs {
+export interface AppendQueuedMessageArgs {
   threadId: string;
-  content: string | undefined;
-  attachments: PersistedAttachment[] | undefined;
-  /**
-   * Pre-generated UUID the client uses for the optimistic queued bubble.
-   * The server persists it and reuses it as `chat_messages.id` on
-   * auto-send so the optimistic row reconciles with the real one.
-   */
-  clientMessageId: string | undefined;
+  agentId: string;
+  content: string | null;
+  attachments: PersistedAttachment[] | null;
+  clientMessageId: string;
+  hasTextContent: boolean;
+  modelSelection: ModelSelectionRequest | null;
 }
 
-export interface RecallPendingMessageArgs {
+export interface RecallMessageArgs {
   threadId: string;
-}
-
-export interface RecallPendingMessageResult {
-  draftContent: string | null;
-  draftAttachments: PersistedAttachment[] | null;
+  agentId: string;
+  revokesMessageId: string;
+  clientMessageId: string;
 }
 
 export interface ListMessagesAfterArgs {
@@ -73,13 +70,13 @@ export interface ChatThreadDataSource {
   reloadThread$: Command<void, []>;
   initialPage$: Computed<Promise<InitialPage>>;
   patchDraft$: Command<Promise<void>, [PatchDraftArgs, AbortSignal]>;
-  appendPendingMessage$: Command<
-    Promise<PendingMessage>,
-    [AppendPendingMessageArgs, AbortSignal]
+  appendQueuedMessage$: Command<
+    Promise<PagedChatMessage>,
+    [AppendQueuedMessageArgs, AbortSignal]
   >;
-  recallPendingMessage$: Command<
-    Promise<RecallPendingMessageResult>,
-    [RecallPendingMessageArgs, AbortSignal]
+  recallMessage$: Command<
+    Promise<PagedChatMessage>,
+    [RecallMessageArgs, AbortSignal]
   >;
   listMessagesAfter$: Command<
     Promise<{ messages: PagedChatMessage[]; reachedEnd: boolean }>,

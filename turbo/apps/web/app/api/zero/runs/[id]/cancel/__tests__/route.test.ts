@@ -13,12 +13,6 @@ import {
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { generateSandboxToken } from "../../../../../../../src/lib/auth/sandbox-token";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
-import {
-  addTestRunToThread,
-  insertTestChatThread,
-  setTestChatThreadPendingMessage,
-} from "../../../../../../../src/__tests__/db-test-seeders/agents";
-import { getTestChatThreadPendingMessage } from "../../../../../../../src/__tests__/db-test-assertions/agents";
 
 const context = testContext();
 
@@ -119,46 +113,6 @@ describe("POST /api/zero/runs/:id/cancel", () => {
       ),
     );
     expect(response.status).toBe(401);
-  });
-
-  it("should cancel a running run while the thread has a queued pending message", async () => {
-    // The Stop button on the composer recalls the queued message into the
-    // draft and then calls this cancel endpoint. The recall and cancel
-    // round-trips race in practice, so the cancel route must succeed even
-    // when the thread row still carries pending_message_* columns at the
-    // moment the request lands.
-    const userId = uniqueId("zcanc-pend");
-    await setupOrg(userId);
-    const compose = await createTestCompose(`agent-${uniqueId("zcanc")}`);
-    const threadId = await insertTestChatThread(
-      userId,
-      compose.composeId,
-      "Cancel with pending",
-    );
-    const { runId } = await seedTestRun(userId, compose.composeId, {
-      status: "running",
-      chatThreadId: threadId,
-    });
-    await addTestRunToThread(threadId, runId, userId);
-    await setTestChatThreadPendingMessage(threadId, {
-      content: "draft to recall",
-      attachments: null,
-    });
-
-    const response = await POST(
-      createTestRequest(cancelUrl(runId), { method: "POST" }),
-    );
-    expect(response.status).toBe(200);
-
-    const data = await response.json();
-    expect(data.id).toBe(runId);
-    expect(data.status).toBe("cancelled");
-
-    // Cancel does not touch pending_message_* columns — that responsibility
-    // belongs to the recall endpoint the client invokes alongside this one.
-    const pending = await getTestChatThreadPendingMessage(threadId);
-    expect(pending?.pendingMessageContent).toBe("draft to recall");
-    expect(pending?.pendingMessageCreatedAt).not.toBeNull();
   });
 
   it("should return 403 for sandbox token without agent-run:write capability", async () => {

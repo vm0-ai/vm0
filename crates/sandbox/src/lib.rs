@@ -41,7 +41,7 @@ pub use snapshot::{
     PendingSnapshotPublish, SnapshotCreateConfig, SnapshotError, SnapshotOutput, SnapshotProvider,
 };
 pub use types::{
-    BoundedExecOutputEvent, BoundedExecRequest, BoundedExecResult, BoundedExecStream,
-    BoundedExecStreamRequest, BoundedExecTermination, ExecRequest, ExecResult, ProcessExit,
-    SpawnHandle, SpawnOutputMode,
+    BoundedExecCapturePolicy, BoundedExecOutput, BoundedExecOutputEvent, BoundedExecOutputRequest,
+    BoundedExecRequest, BoundedExecResult, BoundedExecStream, BoundedExecStreamPolicy,
+    BoundedExecTermination, ExecRequest, ExecResult, ProcessExit, SpawnHandle, SpawnOutputMode,
 };

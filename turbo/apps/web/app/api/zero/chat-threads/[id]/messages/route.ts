@@ -56,15 +56,27 @@ const router = tsr.router(chatThreadMessagesContract, {
             row.attachFiles && row.attachFiles.length > 0
               ? await resolveAttachFileUrls(userId, row.attachFiles)
               : undefined;
-          return {
+          const role = row.role as "user" | "assistant";
+          const message = {
             id: row.id,
-            role: row.role as "user" | "assistant",
+            role,
             content: row.content,
             runId: row.runId ?? undefined,
+            revokesMessageId: row.revokesMessageId ?? undefined,
             error: effectiveError,
-            status: row.runStatus ?? undefined,
             attachFiles,
             createdAt: row.createdAt.toISOString(),
+          };
+          if (role !== "assistant") {
+            return {
+              ...message,
+              role: "user" as const,
+            };
+          }
+          return {
+            ...message,
+            role: "assistant" as const,
+            status: row.runStatus ?? undefined,
           };
         }),
       );

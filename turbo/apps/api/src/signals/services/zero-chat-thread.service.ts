@@ -1,4 +1,4 @@
-import { command, computed, type Computed } from "ccstate";
+import { computed, type Computed } from "ccstate";
 import {
   type ChatSearchMessage,
   type ChatSearchResult,
@@ -6,7 +6,6 @@ import {
   type ChatThreadDetail,
   type ChatThreadListItem,
   type PagedChatMessage,
-  type PendingMessage,
   type PersistedAttachment,
   type ResolvedAttachFile,
   persistedAttachmentSchema,
@@ -41,9 +40,8 @@ import {
 import { z } from "zod";
 
 import { env } from "../../lib/env";
-import { db$, writeDb$ } from "../external/db";
+import { db$ } from "../external/db";
 import { listS3Objects } from "../external/s3";
-import { nowDate } from "../external/time";
 
 const REPORT_ERROR_STREAK_THRESHOLD = 2;
 
@@ -102,6 +100,7 @@ type ChatMessageRow = {
   readonly runStatus: string | null;
   readonly runError: string | null;
   readonly attachFiles: readonly string[] | null;
+  readonly revokesMessageId: string | null;
 };
 
 type ChatSearchMessageRow = {
@@ -120,7 +119,6 @@ type ChatThreadRow = {
   readonly agentComposeId: string;
   readonly draftContent: string | null;
   readonly draftAttachments: readonly PersistedAttachment[] | null;
-  readonly pendingMessage: PendingMessage | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: string | null;
@@ -131,27 +129,30 @@ type ChatThreadRow = {
   readonly updatedAt: Date;
 };
 
-type PendingMessageColumns = {
-  readonly pendingMessageContent: string | null;
-  readonly pendingMessageAttachments: readonly PersistedAttachment[] | null;
-  readonly pendingMessageCreatedAt: Date | null;
-  readonly pendingMessageUpdatedAt: Date | null;
-  // Optional so existing selects that don't pull the client id can still
-  // call toPendingMessage; missing field collapses to null in the DTO.
-  readonly pendingMessageClientId?: string | null;
-};
+function effectiveChatMessageRunId() {
+  return chatMessages.runId;
+}
+
+function visibleChatMessageCondition() {
+  return sql<boolean>`NOT EXISTS (
+    SELECT 1
+    FROM ${chatMessages} AS revoker
+    WHERE revoker.revokes_message_id = ${chatMessages.id}
+  )`;
+}
 
 const messageColumns = {
   id: chatMessages.id,
   role: chatMessages.role,
   content: chatMessages.content,
-  runId: chatMessages.runId,
+  runId: effectiveChatMessageRunId(),
   error: chatMessages.error,
   sequenceNumber: chatMessages.sequenceNumber,
   createdAt: chatMessages.createdAt,
   runStatus: agentRuns.status,
   runError: agentRuns.error,
   attachFiles: chatMessages.attachFiles,
+  revokesMessageId: chatMessages.revokesMessageId,
 } as const;
 
 const searchMessageColumns = {
@@ -161,7 +162,7 @@ const searchMessageColumns = {
   content: chatMessages.content,
   createdAt: chatMessages.createdAt,
   sequenceNumber: chatMessages.sequenceNumber,
-  runId: chatMessages.runId,
+  runId: effectiveChatMessageRunId(),
 } as const;
 
 function escapeLikePattern(value: string): string {
@@ -249,7 +250,6 @@ function ownedChatThread(
         .array()
         .nullable()
         .parse(thread.draftAttachments ?? null),
-      pendingMessage: toPendingMessage(thread),
       modelProviderId: thread.modelProviderId ?? null,
       modelProviderType: thread.modelProviderType ?? null,
       modelProviderCredentialScope: thread.modelProviderCredentialScope ?? null,
@@ -261,248 +261,6 @@ function ownedChatThread(
     };
   });
 }
-
-function parsePersistedAttachments(
-  attachments: readonly PersistedAttachment[] | null,
-): readonly PersistedAttachment[] | null {
-  return persistedAttachmentSchema
-    .array()
-    .nullable()
-    .parse(attachments ?? null);
-}
-
-function toPendingMessage(row: PendingMessageColumns): PendingMessage | null {
-  if (!row.pendingMessageCreatedAt || !row.pendingMessageUpdatedAt) {
-    return null;
-  }
-  const attachments = parsePersistedAttachments(row.pendingMessageAttachments);
-
-  return {
-    content: row.pendingMessageContent ?? null,
-    attachments: attachments ? [...attachments] : null,
-    createdAt: row.pendingMessageCreatedAt.toISOString(),
-    updatedAt: row.pendingMessageUpdatedAt.toISOString(),
-    clientMessageId: row.pendingMessageClientId ?? null,
-  };
-}
-
-function appendPendingText(
-  currentContent: string | null,
-  nextContent: string | null,
-): string | null {
-  if (nextContent === null) {
-    return currentContent;
-  }
-  if (currentContent === null || currentContent === "") {
-    return nextContent;
-  }
-  return `${currentContent}\n${nextContent}`;
-}
-
-export const appendZeroChatThreadPendingMessage$ = command(
-  async (
-    { set },
-    args: {
-      readonly threadId: string;
-      readonly userId: string;
-      readonly content: string | null;
-      readonly attachments: readonly PersistedAttachment[] | null;
-      readonly clientMessageId: string | null;
-    },
-    signal: AbortSignal,
-  ): Promise<PendingMessage | null> => {
-    const db = set(writeDb$);
-    const result = await db.transaction(async (tx) => {
-      const [thread] = await tx
-        .select({
-          pendingMessageContent: chatThreads.pendingMessageContent,
-          pendingMessageAttachments: chatThreads.pendingMessageAttachments,
-          pendingMessageCreatedAt: chatThreads.pendingMessageCreatedAt,
-          pendingMessageUpdatedAt: chatThreads.pendingMessageUpdatedAt,
-          pendingMessageClientId: chatThreads.pendingMessageClientId,
-        })
-        .from(chatThreads)
-        .where(
-          and(
-            eq(chatThreads.id, args.threadId),
-            eq(chatThreads.userId, args.userId),
-          ),
-        )
-        .for("update")
-        .limit(1);
-
-      if (!thread) {
-        return null;
-      }
-
-      const currentAttachments =
-        parsePersistedAttachments(thread.pendingMessageAttachments) ?? [];
-      const nextAttachments = [
-        ...currentAttachments,
-        ...(args.attachments ?? []),
-      ];
-      const now = nowDate();
-      // First append wins the client id — the queued bubble that issued
-      // it is the one we'll reconcile with on auto-send. Subsequent
-      // appends coalesce content/attachments into the same row but keep
-      // the original id.
-      const nextClientId =
-        thread.pendingMessageClientId ?? args.clientMessageId ?? null;
-      const [updated] = await tx
-        .update(chatThreads)
-        .set({
-          draftContent: null,
-          draftAttachments: null,
-          pendingMessageContent: appendPendingText(
-            thread.pendingMessageContent ?? null,
-            args.content,
-          ),
-          pendingMessageAttachments:
-            nextAttachments.length > 0 ? nextAttachments : null,
-          pendingMessageCreatedAt: thread.pendingMessageCreatedAt ?? now,
-          pendingMessageUpdatedAt: now,
-          pendingMessageClientId: nextClientId,
-        })
-        .where(
-          and(
-            eq(chatThreads.id, args.threadId),
-            eq(chatThreads.userId, args.userId),
-          ),
-        )
-        .returning({
-          pendingMessageContent: chatThreads.pendingMessageContent,
-          pendingMessageAttachments: chatThreads.pendingMessageAttachments,
-          pendingMessageCreatedAt: chatThreads.pendingMessageCreatedAt,
-          pendingMessageUpdatedAt: chatThreads.pendingMessageUpdatedAt,
-          pendingMessageClientId: chatThreads.pendingMessageClientId,
-        });
-
-      return updated ? toPendingMessage(updated) : null;
-    });
-    signal.throwIfAborted();
-    return result;
-  },
-);
-
-export const deleteZeroChatThreadPendingMessage$ = command(
-  async (
-    { set },
-    args: { readonly threadId: string; readonly userId: string },
-    signal: AbortSignal,
-  ): Promise<boolean> => {
-    const db = set(writeDb$);
-    const found = await db.transaction(async (tx) => {
-      const [thread] = await tx
-        .select({ id: chatThreads.id })
-        .from(chatThreads)
-        .where(
-          and(
-            eq(chatThreads.id, args.threadId),
-            eq(chatThreads.userId, args.userId),
-          ),
-        )
-        .for("update")
-        .limit(1);
-
-      if (!thread) {
-        return false;
-      }
-
-      await tx
-        .update(chatThreads)
-        .set({
-          pendingMessageContent: null,
-          pendingMessageAttachments: null,
-          pendingMessageCreatedAt: null,
-          pendingMessageUpdatedAt: null,
-        })
-        .where(
-          and(
-            eq(chatThreads.id, args.threadId),
-            eq(chatThreads.userId, args.userId),
-          ),
-        );
-
-      return true;
-    });
-    signal.throwIfAborted();
-    return found;
-  },
-);
-
-export const recallZeroChatThreadPendingMessage$ = command(
-  async (
-    { set },
-    args: { readonly threadId: string; readonly userId: string },
-    signal: AbortSignal,
-  ): Promise<
-    | {
-        readonly ok: true;
-        readonly draftContent: string | null;
-        readonly draftAttachments: readonly PersistedAttachment[] | null;
-      }
-    | {
-        readonly ok: false;
-        readonly reason: "thread-not-found" | "pending-not-found";
-      }
-  > => {
-    const db = set(writeDb$);
-    const result = await db.transaction(async (tx) => {
-      const [thread] = await tx
-        .select({
-          pendingMessageContent: chatThreads.pendingMessageContent,
-          pendingMessageAttachments: chatThreads.pendingMessageAttachments,
-          pendingMessageCreatedAt: chatThreads.pendingMessageCreatedAt,
-          pendingMessageUpdatedAt: chatThreads.pendingMessageUpdatedAt,
-        })
-        .from(chatThreads)
-        .where(
-          and(
-            eq(chatThreads.id, args.threadId),
-            eq(chatThreads.userId, args.userId),
-          ),
-        )
-        .for("update")
-        .limit(1);
-
-      if (!thread) {
-        return { ok: false as const, reason: "thread-not-found" as const };
-      }
-
-      const pendingMessage = toPendingMessage(thread);
-      if (!pendingMessage) {
-        return { ok: false as const, reason: "pending-not-found" as const };
-      }
-
-      await tx
-        .update(chatThreads)
-        .set({
-          draftContent: pendingMessage.content,
-          draftAttachments: pendingMessage.attachments
-            ? [...pendingMessage.attachments]
-            : null,
-          pendingMessageContent: null,
-          pendingMessageAttachments: null,
-          pendingMessageCreatedAt: null,
-          pendingMessageUpdatedAt: null,
-        })
-        .where(
-          and(
-            eq(chatThreads.id, args.threadId),
-            eq(chatThreads.userId, args.userId),
-          ),
-        );
-
-      return {
-        ok: true as const,
-        draftContent: pendingMessage.content,
-        draftAttachments: pendingMessage.attachments,
-      };
-    });
-    signal.throwIfAborted();
-    return result;
-  },
-);
 
 function resolveAttachFileUrls(
   userId: string,
@@ -600,6 +358,13 @@ function formatChatRunErrorMessage(params: {
   });
 }
 
+function chatMessageStatus(row: ChatMessageRow): string | undefined {
+  if (row.role !== "assistant") {
+    return undefined;
+  }
+  return row.runStatus ?? undefined;
+}
+
 function toStoredMessage(
   threadId: string,
   userId: string,
@@ -626,14 +391,26 @@ function toStoredMessage(
           ? await get(resolveAttachFileUrls(userId, row.attachFiles))
           : undefined;
 
-      return {
-        role: messageRoleSchema.parse(row.role),
+      const role = messageRoleSchema.parse(row.role);
+      const message = {
+        role,
         content: row.content,
         runId: row.runId ?? undefined,
+        revokesMessageId: row.revokesMessageId ?? undefined,
         error: effectiveError,
-        status: row.runStatus ?? undefined,
         attachFiles: attachFiles ? [...attachFiles] : undefined,
         createdAt: row.createdAt.toISOString(),
+      };
+      if (role !== "assistant") {
+        return {
+          ...message,
+          role: "user" as const,
+        };
+      }
+      return {
+        ...message,
+        role: "assistant" as const,
+        status: chatMessageStatus(row),
       };
     },
   );
@@ -665,15 +442,27 @@ function toPagedMessage(
         ? await get(resolveAttachFileUrls(userId, row.attachFiles))
         : undefined;
 
-    return {
+    const role = messageRoleSchema.parse(row.role);
+    const message = {
       id: row.id,
-      role: messageRoleSchema.parse(row.role),
+      role,
       content: row.content,
       runId: row.runId ?? undefined,
+      revokesMessageId: row.revokesMessageId ?? undefined,
       error: effectiveError,
-      status: row.runStatus ?? undefined,
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       createdAt: row.createdAt.toISOString(),
+    };
+    if (role !== "assistant") {
+      return {
+        ...message,
+        role: "user" as const,
+      };
+    }
+    return {
+      ...message,
+      role: "assistant" as const,
+      status: chatMessageStatus(row),
     };
   });
 }
@@ -689,8 +478,13 @@ function chatThreadMessages(
       const rows = await get(db$)
         .select(messageColumns)
         .from(chatMessages)
-        .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
-        .where(eq(chatMessages.chatThreadId, threadId))
+        .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+        .where(
+          and(
+            eq(chatMessages.chatThreadId, threadId),
+            visibleChatMessageCondition(),
+          ),
+        )
         .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
 
       return await Promise.all(
@@ -801,7 +595,6 @@ export function zeroChatThreadDetail(args: {
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]
         : null,
-      pendingMessage: thread.pendingMessage,
       modelProviderId: thread.modelProviderId,
       modelProviderType: formatLatestSessionProviderType(
         thread.modelProviderType,
@@ -836,6 +629,7 @@ export function zeroChatThreadList(args: {
         ),
       })
       .from(chatMessages)
+      .where(visibleChatMessageCondition())
       .as("last_message");
 
     const filters = [
@@ -1025,6 +819,7 @@ export function zeroChatSearch(args: {
       eq(agentComposes.orgId, args.orgId),
       isNotNull(chatMessages.content),
       isNull(chatMessages.archivedAt),
+      visibleChatMessageCondition(),
       ilike(chatMessages.content, pattern),
     ];
     if (sinceDate) {
@@ -1066,6 +861,7 @@ export function zeroChatSearch(args: {
                     lt(chatMessages.createdAt, match.createdAt),
                     isNotNull(chatMessages.content),
                     isNull(chatMessages.archivedAt),
+                    visibleChatMessageCondition(),
                   ),
                 )
                 .orderBy(desc(chatMessages.createdAt))
@@ -1081,6 +877,7 @@ export function zeroChatSearch(args: {
                     gt(chatMessages.createdAt, match.createdAt),
                     isNotNull(chatMessages.content),
                     isNull(chatMessages.archivedAt),
+                    visibleChatMessageCondition(),
                   ),
                 )
                 .orderBy(asc(chatMessages.createdAt))
@@ -1136,8 +933,8 @@ export function zeroChatThreadMessagesPage(args: {
       const latestRows = await db
         .select(messageColumns)
         .from(chatMessages)
-        .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
-        .where(threadFilter)
+        .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+        .where(and(threadFilter, visibleChatMessageCondition()))
         .orderBy(
           desc(chatMessages.createdAt),
           desc(chatMessages.sequenceNumber),
@@ -1171,8 +968,14 @@ export function zeroChatThreadMessagesPage(args: {
         rows = await db
           .select(messageColumns)
           .from(chatMessages)
-          .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
-          .where(and(threadFilter, cursorAfterCondition))
+          .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+          .where(
+            and(
+              threadFilter,
+              cursorAfterCondition,
+              visibleChatMessageCondition(),
+            ),
+          )
           .orderBy(
             asc(chatMessages.createdAt),
             asc(chatMessages.sequenceNumber),
@@ -1182,8 +985,14 @@ export function zeroChatThreadMessagesPage(args: {
         const previousRows = await db
           .select(messageColumns)
           .from(chatMessages)
-          .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
-          .where(and(threadFilter, cursorBeforeCondition))
+          .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+          .where(
+            and(
+              threadFilter,
+              cursorBeforeCondition,
+              visibleChatMessageCondition(),
+            ),
+          )
           .orderBy(
             desc(chatMessages.createdAt),
             desc(chatMessages.sequenceNumber),

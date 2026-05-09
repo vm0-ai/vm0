@@ -42,7 +42,6 @@ export {
   setTestChatThreadPinnedAt,
   setTestChatThreadRenamedAt,
   setTestChatThreadDraft,
-  setTestChatThreadPendingMessage,
 } from "../db-test-seeders/agents";
 
 export {
@@ -50,9 +49,9 @@ export {
   getTestAgentComposeName,
   getTestChatThreadLastReadAt,
   getTestChatThreadLastReadMessageId,
-  getTestChatThreadPendingMessage,
   getTestChatThreadPinnedAt,
   getTestChatThreadRenamedAt,
+  getTestUserMessageRunStorage,
 } from "../db-test-assertions/agents";
 
 // ---------------------------------------------------------------------------

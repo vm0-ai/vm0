@@ -186,9 +186,14 @@ pub trait Sandbox: Send + Sync + Any {
     /// Returns an error if the sandbox is not running or if the backing
     /// process crashes during execution.
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult>;
-    /// Run `request.cmd` in the guest with structured termination status,
-    /// bounded final stdout/stderr buffers, and optional request-scoped
-    /// stdout/stderr stream events.
+    /// Run `request.cmd` in the guest with structured termination status and
+    /// independently configured stdout/stderr output policies.
+    ///
+    /// Each stream can discard final output, capture bounded final bytes, emit
+    /// request-scoped stream events, or stream and capture at the same time.
+    /// `Discard` is distinct from `Capture { limit_bytes: 0 }`: capture-zero
+    /// still drains and reports truncation when output exists, while discarded
+    /// non-streamed output may be connected to `/dev/null`.
     ///
     /// Returns an error if the sandbox is not running, if the backing
     /// process crashes during execution, or if the host/guest transport fails.

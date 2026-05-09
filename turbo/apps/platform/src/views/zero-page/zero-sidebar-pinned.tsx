@@ -100,11 +100,19 @@ function AgentListDialogContainer() {
       ? (displayNameLoadable.data ?? "Zero")
       : "Zero";
   const subagents = useLastResolved(subagents$) ?? [];
+  const defaultAgentId = useLastResolved(defaultAgentId$);
   const createNewChat = useSet(createNewChatThreadOptimistically$);
   const setExpanded = useSet(setSidebarExpanded$);
   const rootSignal = useGet(rootSignal$);
   const onNewChat = (agentId: string | null) => {
-    detach(createNewChat(agentId, "main", rootSignal), Reason.DomCallback);
+    const resolvedAgentId = agentId ?? defaultAgentId;
+    if (!resolvedAgentId) {
+      return;
+    }
+    detach(
+      createNewChat(resolvedAgentId, "main", rootSignal),
+      Reason.DomCallback,
+    );
     setExpanded(false);
   };
   return (

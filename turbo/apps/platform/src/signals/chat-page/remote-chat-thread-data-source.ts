@@ -3,8 +3,7 @@ import {
   chatThreadByIdContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
-  chatThreadPendingMessageAppendContract,
-  chatThreadPendingMessageRecallContract,
+  chatMessagesContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroRunsCancelContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { accept } from "../../lib/accept.ts";
@@ -16,13 +15,12 @@ import type {
   CancelRunsArgs,
   ChatThreadDataSource,
   InitialPage,
-  AppendPendingMessageArgs,
+  AppendQueuedMessageArgs,
   ListMessagesAfterArgs,
   ListMessagesBeforeArgs,
   MarkReadArgs,
   PatchDraftArgs,
-  RecallPendingMessageArgs,
-  RecallPendingMessageResult,
+  RecallMessageArgs,
   SubscribeRealtimeArgs,
 } from "./chat-thread-data-source.ts";
 
@@ -46,58 +44,73 @@ const patchDraft$ = command(
   },
 );
 
-const appendPendingMessage$ = command(
+const appendQueuedMessage$ = command(
   async (
     { get },
     {
       threadId,
+      agentId,
       content,
       attachments,
       clientMessageId,
-    }: AppendPendingMessageArgs,
+      hasTextContent,
+      modelSelection,
+    }: AppendQueuedMessageArgs,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(chatThreadPendingMessageAppendContract, {
-      apiBase: "api",
-    });
-    const body = {
-      ...(content !== undefined ? { content } : {}),
-      ...(attachments !== undefined ? { attachments } : {}),
-      ...(clientMessageId !== undefined ? { clientMessageId } : {}),
-    };
+    const client = get(zeroClient$)(chatMessagesContract);
     const result = await accept(
-      client.append({
-        params: { id: threadId },
-        body,
+      client.send({
+        body: {
+          agentId,
+          prompt: content ?? "",
+          threadId,
+          hasTextContent,
+          clientMessageId,
+          modelSelection,
+          attachFiles: attachments ?? undefined,
+        },
         fetchOptions: { signal },
       }),
-      [200],
-    );
-    signal.throwIfAborted();
-    return result.body.pendingMessage;
-  },
-);
-
-const recallPendingMessage$ = command(
-  async (
-    { get },
-    { threadId }: RecallPendingMessageArgs,
-    signal: AbortSignal,
-  ): Promise<RecallPendingMessageResult> => {
-    const client = get(zeroClient$)(chatThreadPendingMessageRecallContract, {
-      apiBase: "api",
-    });
-    const result = await accept(
-      client.recall({
-        params: { id: threadId },
-        fetchOptions: { signal },
-      }),
-      [200],
+      [201],
     );
     signal.throwIfAborted();
     return {
-      draftContent: result.body.draftContent,
-      draftAttachments: result.body.draftAttachments,
+      id: clientMessageId,
+      role: "user" as const,
+      content,
+      attachFiles: attachments ?? undefined,
+      createdAt: result.body.createdAt ?? new Date().toISOString(),
+    };
+  },
+);
+
+const recallMessage$ = command(
+  async (
+    { get },
+    { threadId, agentId, revokesMessageId, clientMessageId }: RecallMessageArgs,
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(chatMessagesContract);
+    const result = await accept(
+      client.send({
+        body: {
+          agentId,
+          threadId,
+          revokesMessageId,
+          clientMessageId,
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    return {
+      id: clientMessageId,
+      role: "user" as const,
+      content: null,
+      revokesMessageId,
+      createdAt: result.body.createdAt ?? new Date().toISOString(),
     };
   },
 );
@@ -122,13 +135,18 @@ const listMessagesAfter$ = command(
       threadId,
       sinceId,
       count: result.body.messages.length,
-      runStatuses: result.body.messages
-        .filter((m) => {
-          return m.runId;
-        })
-        .map((m) => {
-          return { id: m.id, runId: m.runId, status: m.status };
-        }),
+      runStatuses: result.body.messages.flatMap((m) => {
+        if (m.role !== "assistant" || !m.runId) {
+          return [];
+        }
+        return [
+          {
+            id: m.id,
+            runId: m.runId,
+            status: m.status,
+          },
+        ];
+      }),
     });
     return {
       messages: result.body.messages,
@@ -224,15 +242,6 @@ const subscribeRealtime$ = command(
         handlers.onRunChanged$,
         signal,
       ),
-      // Server's auto-send-on-run-complete clears the queued message and
-      // dispatches a new run; reloadThread via the run-changed handler so
-      // the queued card disappears and the freshly-created run shows up.
-      set(
-        setAblyLoop$,
-        `chatThreadPendingMessageChanged:${threadId}`,
-        handlers.onRunChanged$,
-        signal,
-      ),
     ]);
     signal.throwIfAborted();
   },
@@ -267,7 +276,6 @@ export function createRemoteChatThreadDataSource(
       isLegacySession: false,
       draftContent: body.draftContent ?? null,
       draftAttachments: body.draftAttachments ?? null,
-      pendingMessage: body.pendingMessage ?? null,
       modelProviderId: body.modelProviderId ?? null,
       selectedModel: body.selectedModel ?? null,
     };
@@ -304,8 +312,8 @@ export function createRemoteChatThreadDataSource(
     reloadThread$,
     initialPage$,
     patchDraft$,
-    appendPendingMessage$,
-    recallPendingMessage$,
+    appendQueuedMessage$,
+    recallMessage$,
     listMessagesAfter$,
     listMessagesBefore$,
     cancelRuns$,

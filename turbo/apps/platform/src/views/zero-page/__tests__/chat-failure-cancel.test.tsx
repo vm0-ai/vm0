@@ -168,7 +168,7 @@ describe("send vs stop button visibility during active run", () => {
     const user = userEvent.setup();
     const appendedContents: (string | undefined)[] = [];
     mockChatLifecycle({
-      onPendingMessageAppend: (body) => {
+      onQueuedMessageAppend: (body) => {
         appendedContents.push(body.content);
       },
     });

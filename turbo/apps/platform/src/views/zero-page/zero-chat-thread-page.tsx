@@ -14,7 +14,6 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
   IconAlertCircle,
-  IconArrowBackUp,
   IconHandStop,
   IconPhoto,
   IconChartLine,
@@ -25,6 +24,7 @@ import {
   IconPin,
   IconVolume2,
   IconArrowBarToUp,
+  IconArrowBackUp,
   IconBrandGoogleDrive,
   IconDownload,
   IconFile,
@@ -52,10 +52,7 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
-import type {
-  ChatThreadArtifactFile,
-  PendingMessage,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -1728,6 +1725,8 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const sessionError = resolveSessionError(threadDataLoadable, groupsLoadable);
   const messagesLoading = groupsLoadable.state === "loading";
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
+  const { activeGroups, queuedGroups } =
+    splitQueuedMessagesForThinkingIndicator(groups);
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const manualHistoryEnabled =
@@ -1795,7 +1794,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
                     </p>
                   </div>
                 )}
-              {groups.map((group) => {
+              {activeGroups.map((group) => {
                 return (
                   <PagedGroupRow
                     key={group.beginMessageId}
@@ -1804,8 +1803,16 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
                   />
                 );
               })}
-              <ThinkingIndicator thread={thread} />
-              <QueuedUserMessageRow thread={thread} />
+              <ThinkingIndicator thread={thread} groups={activeGroups} />
+              {queuedGroups.map((group) => {
+                return (
+                  <PagedGroupRow
+                    key={group.beginMessageId}
+                    group={group}
+                    thread={thread}
+                  />
+                );
+              })}
             </div>
           </main>
         </div>
@@ -1828,30 +1835,60 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
+function splitQueuedMessagesForThinkingIndicator(
+  groups: GroupedChatMessageGroup[],
+): {
+  activeGroups: GroupedChatMessageGroup[];
+  queuedGroups: GroupedChatMessageGroup[];
+} {
+  const activeGroups: GroupedChatMessageGroup[] = [];
+  const queuedMessages: EnrichedChatMessage[] = [];
+
+  for (const group of groups) {
+    if (group.role !== "user") {
+      activeGroups.push(group);
+      continue;
+    }
+
+    const activeMessages: EnrichedChatMessage[] = [];
+    for (const message of group.messages) {
+      if (message.isQueued) {
+        queuedMessages.push(message);
+      } else {
+        activeMessages.push(message);
+      }
+    }
+
+    if (activeMessages.length > 0) {
+      activeGroups.push({
+        ...group,
+        beginMessageId: activeMessages[0]!.id,
+        messages: activeMessages,
+      });
+    }
+  }
+
+  return {
+    activeGroups,
+    queuedGroups:
+      queuedMessages.length > 0
+        ? [
+            {
+              beginMessageId: queuedMessages[0]!.id,
+              role: "user",
+              messages: queuedMessages,
+            },
+          ]
+        : [],
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Composer wrapper — reads chat signals from thread prop
 // ---------------------------------------------------------------------------
 
-function canQueuePendingMessage({
-  queueMessageEnabled,
-  activeRunCount,
-  allFinishedResolved,
-  allFinished,
-  queueLoading,
-}: {
-  queueMessageEnabled: boolean;
-  activeRunCount: number;
-  allFinishedResolved: boolean;
-  allFinished: boolean;
-  queueLoading: boolean;
-}): boolean {
-  return (
-    queueMessageEnabled &&
-    activeRunCount > 0 &&
-    allFinishedResolved &&
-    !allFinished &&
-    !queueLoading
-  );
+function canQueueMessage({ sending }: { sending: boolean }): boolean {
+  return sending;
 }
 
 function shouldAutoFocusComposer({
@@ -1883,12 +1920,11 @@ function ChatThreadComposer({
   const allFinishedResolved = allFinishedLoadable.state === "hasData";
   const allFinished = allFinishedResolved ? allFinishedLoadable.data : false;
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
-  const [queueLoadable, queueMessage] = useLoadableSet(thread.queueMessage$);
+  const [, queueMessage] = useLoadableSet(thread.queueMessage$);
   const sending = !allFinished || sendLoadable.state === "loading";
   const input = useGet(thread.draft.input$);
   const setInput = useSet(thread.draft.setInput$);
   const cancelRun = useSet(thread.cancelRun$);
-  const recallPendingMessage = useSet(thread.recallPendingMessage$);
   const setInputRef = useSet(thread.setInputRef$);
   const scheduleDraftSync = useSet(thread.scheduleDraftSync$);
   const pageSignal = useGet(pageSignal$);
@@ -1910,15 +1946,8 @@ function ChatThreadComposer({
   // render the whole action cluster as a skeleton so we don't flash stale
   // picker state or a wrong send/stop button.
   const skeletonVisible = useGet(thread.skeletonVisible$);
-  const features = useLastResolved(featureSwitch$);
-  const queueMessageEnabled =
-    features?.[FeatureSwitchKey.QueueMessage] ?? false;
-  const queueWhileSending = canQueuePendingMessage({
-    queueMessageEnabled,
-    activeRunCount: threadData?.activeRunIds.length ?? 0,
-    allFinishedResolved: allFinishedLoadable.state === "hasData",
-    allFinished,
-    queueLoading: queueLoadable.state === "loading",
+  const queueWhileSending = canQueueMessage({
+    sending,
   });
 
   const handleInputChange = (text: string) => {
@@ -1962,18 +1991,7 @@ function ChatThreadComposer({
             onCancel={
               allFinishedResolved
                 ? () => {
-                    // Recall any queued pending message back into the draft
-                    // before cancelling so the auto-send hook on the cancel
-                    // callback finds an empty pending and is a no-op. The
-                    // recall is optimistic — the draft repopulates
-                    // synchronously while the server clear races the cancel.
-                    detach(
-                      (async () => {
-                        await recallPendingMessage(rootSignal);
-                        await cancelRun(pageSignal);
-                      })(),
-                      Reason.DomCallback,
-                    );
+                    detach(cancelRun(pageSignal), Reason.DomCallback);
                   }
                 : undefined
             }
@@ -2054,8 +2072,13 @@ function ChatSkeleton() {
 // Thinking indicator — shown the entire time a run is active
 // ---------------------------------------------------------------------------
 
-function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
-  const groups = useLastResolved(thread.groupedChatMessages$) ?? [];
+function ThinkingIndicator({
+  thread,
+  groups,
+}: {
+  thread: ChatThreadSignals;
+  groups: GroupedChatMessageGroup[];
+}) {
   const allFinishedLoadable = useLastLoadable(thread.allFinished$);
   const runActive =
     allFinishedLoadable.state === "hasData" && !allFinishedLoadable.data;
@@ -2068,7 +2091,11 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
 
   const lastGroup = groups[groups.length - 1];
   const lastIsAssistant = lastGroup?.role === "assistant";
-  const waitingForAssistant = !!lastGroup && !lastIsAssistant;
+  const waitingForAssistant =
+    lastGroup?.role === "user" &&
+    lastGroup.messages.some((message) => {
+      return !message.isRecalled;
+    });
   const running = runActive || waitingForAssistant;
   const rotatingLabel = useGet(thread.rotatingPhrase$);
   const donePhrase = useGet(thread.donePhrase$);
@@ -2098,10 +2125,15 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
     return null;
   }
 
+  if (!lastIsAssistant && !running) {
+    return null;
+  }
+
   // Shared inline row with fixed h-5 to prevent layout jump on transition
   if (lastIsAssistant || !running) {
     return (
       <div
+        data-thinking-indicator
         data-role="assistant-thinking"
         className="-mt-5 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start"
       >
@@ -2135,6 +2167,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   // Waiting for first assistant response — show bubble with avatar
   return (
     <div
+      data-thinking-indicator
       data-role="assistant"
       className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
@@ -2664,6 +2697,90 @@ function UserMessageAttachments({
   );
 }
 
+function userMessageAriaLabel({
+  isQueued,
+  isRecalled,
+}: {
+  isQueued: boolean;
+  isRecalled: boolean;
+}): string | undefined {
+  if (isQueued) {
+    return "Queued message";
+  }
+  if (isRecalled) {
+    return "Recalled message";
+  }
+  return undefined;
+}
+
+function UserMessageStatusLabel({
+  isQueued,
+  isRecalled,
+}: {
+  isQueued: boolean;
+  isRecalled: boolean;
+}) {
+  if (!isQueued && !isRecalled) {
+    return null;
+  }
+  return (
+    <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${
+          isQueued ? "bg-primary/70" : "bg-muted-foreground/60"
+        }`}
+      />
+      {isQueued ? "Queued" : "Recalled"}
+    </div>
+  );
+}
+
+function UserMessageActions({
+  canCopy,
+  canRecall,
+  copied,
+  onCopy,
+  onRecall,
+}: {
+  canCopy: boolean;
+  canRecall: boolean;
+  copied: boolean;
+  onCopy: () => void;
+  onRecall: () => void;
+}) {
+  if (!canCopy && !canRecall) {
+    return null;
+  }
+  return (
+    <div className="flex justify-end gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+      {canRecall && (
+        <button
+          type="button"
+          onClick={onRecall}
+          className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+          aria-label="Recall message"
+        >
+          <IconArrowBackUp size={18} stroke={1.5} />
+        </button>
+      )}
+      {canCopy && (
+        <button
+          type="button"
+          onClick={onCopy}
+          className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+          aria-label="Copy message"
+        >
+          {copied ? (
+            <IconCheck size={18} stroke={1.5} />
+          ) : (
+            <IconCopy size={18} stroke={1.5} />
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function PagedUserMessage({
   message,
   thread,
@@ -2697,10 +2814,19 @@ function PagedUserMessage({
   const copiedId = useGet(thread.copiedMessageId$);
   const copied = copiedId === message.id;
   const copyMessage = useSet(thread.copyMessage$);
+  const recallMessage = useSet(thread.recallMessage$);
+  const focusInput = useSet(thread.focusInput$);
   const allAttachments = resolveAttachments(message, parsed);
   const clipboardAttachments = clipboardAttachmentsFromMessage(message, parsed);
   const copyText = strippedContent;
   const canCopy = copyText.trim().length > 0 || clipboardAttachments.length > 0;
+  const isQueued = message.isQueued;
+  const isRecalled = message.isRecalled;
+  const canRecall =
+    isQueued &&
+    !isRecalled &&
+    message.runId === undefined &&
+    message.revokesMessageId === undefined;
 
   const handleCopy = () => {
     if (!canCopy) {
@@ -2716,11 +2842,29 @@ function PagedUserMessage({
     );
   };
 
+  const handleRecall = () => {
+    if (!canRecall) {
+      return;
+    }
+    detach(
+      (async () => {
+        await recallMessage(message, pageSignal);
+        focusInput();
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
   return (
-    <div data-role="user" className="group">
+    <div
+      data-role="user"
+      className="group"
+      aria-label={userMessageAriaLabel({ isQueued, isRecalled })}
+    >
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
+          <UserMessageStatusLabel isQueued={isQueued} isRecalled={isRecalled} />
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm max-md:text-[16px] leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
             {bodyBlocks.length > 0 && (
               <div className="px-4 py-3">
@@ -2736,132 +2880,13 @@ function PagedUserMessage({
               onImageClick={openLightbox}
             />
           </div>
-          {canCopy && (
-            <div className="flex justify-end mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-                aria-label="Copy message"
-              >
-                {copied ? (
-                  <IconCheck size={18} stroke={1.5} />
-                ) : (
-                  <IconCopy size={18} stroke={1.5} />
-                )}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function QueuedUserMessageRow({ thread }: { thread: ChatThreadSignals }) {
-  // pendingMessage$ already applies the recall mask + (after #PR) the
-  // dedup-by-client-id check, so this row only renders while the queued
-  // bubble has no real-message counterpart in the list.
-  const pendingMessage = useLastResolved(thread.pendingMessage$) ?? null;
-  const isOptimistic =
-    useLastResolved(thread.pendingMessageIsOptimistic$) ?? false;
-  if (!pendingMessage) {
-    return null;
-  }
-  return (
-    <QueuedUserMessage
-      pendingMessage={pendingMessage}
-      thread={thread}
-      isOptimistic={isOptimistic}
-    />
-  );
-}
-
-function persistedAttachmentsToResolved(
-  attachments: readonly {
-    id: string;
-    url: string;
-    filename: string;
-    contentType: string;
-    size: number;
-  }[],
-): ReturnType<typeof resolveAttachments> {
-  return attachments.map((a) => {
-    const kind = classifyChatAttachment({
-      filename: a.filename,
-      url: a.url,
-      contentType: a.contentType,
-    });
-    return {
-      filename: a.filename,
-      url: a.url,
-      contentType: a.contentType,
-      isImage: kind === "image" || isImageFilename(a.filename),
-      kind,
-    };
-  });
-}
-
-function QueuedUserMessage({
-  pendingMessage,
-  thread,
-  isOptimistic,
-}: {
-  pendingMessage: PendingMessage;
-  thread: ChatThreadSignals;
-  isOptimistic: boolean;
-}) {
-  const content = pendingMessage.content?.trim() ?? "";
-  const attachments = persistedAttachmentsToResolved(
-    pendingMessage.attachments ?? [],
-  );
-  const recallPendingMessage = useSet(thread.recallPendingMessage$);
-  const rootSignal = useGet(rootSignal$);
-  const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const bodyBlocks = enrichBlocksWithTextPreviews(
-    parseBodyRenderBlocks(content).blocks,
-  );
-
-  const handleRecall = () => {
-    detach(recallPendingMessage(rootSignal), Reason.DomCallback);
-  };
-
-  return (
-    <div data-role="user" className="group" aria-label="Queued message">
-      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-        <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
-        <div className="flex flex-col items-end w-full">
-          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-            Queued
-          </div>
-          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm max-md:text-[16px] leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
-            {bodyBlocks.length > 0 && (
-              <div className="px-4 py-3">
-                <BodyContentBlocks
-                  blocks={bodyBlocks}
-                  openLightbox={openImageLightbox}
-                  hardBreaks
-                />
-              </div>
-            )}
-            <UserMessageAttachments
-              attachments={attachments}
-              onImageClick={openImageLightbox}
-            />
-          </div>
-          <div className="flex justify-end mt-1">
-            <button
-              type="button"
-              onClick={handleRecall}
-              disabled={isOptimistic}
-              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-              aria-label="Recall queued message"
-            >
-              <IconArrowBackUp size={13} stroke={1.75} />
-              Recall
-            </button>
-          </div>
+          <UserMessageActions
+            canCopy={canCopy}
+            canRecall={canRecall}
+            copied={copied}
+            onCopy={handleCopy}
+            onRecall={handleRecall}
+          />
         </div>
       </div>
     </div>

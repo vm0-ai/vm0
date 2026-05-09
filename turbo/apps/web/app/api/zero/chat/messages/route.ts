@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { after } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
@@ -19,13 +19,20 @@ import {
 import { resolveOrgWithMetadata } from "../../../../../src/lib/zero/org/resolve-org";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatMessages } from "@vm0/db/schema/chat-message";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   buildWebChatPrompt,
   buildWebAttachFilesPrompt,
   buildWebChatIncompleteContext,
   type WebChatIncompleteRound,
 } from "../../../../../src/lib/zero/integration-prompt";
-import { isApiError, providerDeleted } from "@vm0/api-services/errors";
+import {
+  badRequest,
+  isApiError,
+  providerDeleted,
+} from "@vm0/api-services/errors";
 import { getModelProviderById } from "../../../../../src/lib/zero/model-provider/model-provider-service";
 import { resolvePreferredModelProviderPin } from "../../../../../src/lib/zero/model-provider/resolve-preferred-model-provider-pin";
 import {
@@ -116,6 +123,177 @@ interface ResolvedThread {
   sessionId: string | undefined;
   incompleteContext: string;
   isNewThread: boolean;
+}
+
+async function activeRunExistsForThread(threadId: string): Promise<boolean> {
+  const [run] = await globalThis.services.db
+    .select({ id: zeroRuns.id })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, threadId),
+        inArray(agentRuns.status, ["queued", "pending", "running"]),
+      ),
+    )
+    .limit(1);
+  return run !== undefined;
+}
+
+async function appendUnassociatedUserMessage(params: {
+  threadId: string;
+  userId: string;
+  prompt: string;
+  attachFiles: AttachFile[] | undefined;
+  clientMessageId: string | undefined;
+}): Promise<{ createdAt: Date }> {
+  return globalThis.services.db.transaction(async (tx) => {
+    await tx
+      .update(chatThreads)
+      .set({
+        draftContent: null,
+        draftAttachments: null,
+      })
+      .where(
+        and(
+          eq(chatThreads.id, params.threadId),
+          eq(chatThreads.userId, params.userId),
+        ),
+      );
+
+    const attachFileIds = params.attachFiles?.map((file) => {
+      return file.id;
+    });
+
+    const inserted = await tx
+      .insert(chatMessages)
+      .values({
+        ...(params.clientMessageId ? { id: params.clientMessageId } : {}),
+        chatThreadId: params.threadId,
+        role: "user",
+        content: params.prompt,
+        runId: null,
+        attachFiles:
+          attachFileIds && attachFileIds.length > 0 ? attachFileIds : null,
+      })
+      .onConflictDoNothing({ target: chatMessages.id })
+      .returning({ createdAt: chatMessages.createdAt });
+
+    const [insertedMessage] = inserted;
+    if (insertedMessage) {
+      return insertedMessage;
+    }
+
+    if (!params.clientMessageId) {
+      throw new Error("Failed to insert unassociated user message");
+    }
+
+    const [existing] = await tx
+      .select({ createdAt: chatMessages.createdAt })
+      .from(chatMessages)
+      .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
+      .where(
+        and(
+          eq(chatMessages.id, params.clientMessageId),
+          eq(chatMessages.chatThreadId, params.threadId),
+          eq(chatThreads.userId, params.userId),
+          eq(chatMessages.role, "user"),
+          isNull(chatMessages.runId),
+        ),
+      )
+      .limit(1);
+
+    if (!existing) {
+      throw new Error("Failed to resolve unassociated user message");
+    }
+    return existing;
+  });
+}
+
+async function appendRecallUserMessage(params: {
+  threadId: string;
+  userId: string;
+  revokesMessageId: string;
+  clientMessageId: string | undefined;
+}): Promise<{ id: string; createdAt: Date }> {
+  return globalThis.services.db.transaction(async (tx) => {
+    const [existingRevoker] = await tx
+      .select({
+        id: chatMessages.id,
+        role: chatMessages.role,
+        runId: chatMessages.runId,
+        createdAt: chatMessages.createdAt,
+      })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.chatThreadId, params.threadId),
+          eq(chatMessages.revokesMessageId, params.revokesMessageId),
+        ),
+      )
+      .limit(1);
+
+    if (existingRevoker) {
+      if (existingRevoker.role === "user" && existingRevoker.runId === null) {
+        return { id: existingRevoker.id, createdAt: existingRevoker.createdAt };
+      }
+      throw badRequest("Only queued user messages can be recalled");
+    }
+
+    const [target] = await tx
+      .select({ id: chatMessages.id })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.id, params.revokesMessageId),
+          eq(chatMessages.chatThreadId, params.threadId),
+          eq(chatMessages.role, "user"),
+          isNull(chatMessages.runId),
+          isNull(chatMessages.revokesMessageId),
+        ),
+      )
+      .limit(1);
+
+    if (!target) {
+      throw badRequest("Only queued user messages can be recalled");
+    }
+
+    const [inserted] = await tx
+      .insert(chatMessages)
+      .values({
+        ...(params.clientMessageId ? { id: params.clientMessageId } : {}),
+        chatThreadId: params.threadId,
+        role: "user",
+        content: null,
+        runId: null,
+        revokesMessageId: params.revokesMessageId,
+        attachFiles: null,
+      })
+      .onConflictDoNothing()
+      .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
+
+    if (inserted) {
+      return inserted;
+    }
+
+    const [resolved] = await tx
+      .select({ id: chatMessages.id, createdAt: chatMessages.createdAt })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.chatThreadId, params.threadId),
+          eq(chatMessages.revokesMessageId, params.revokesMessageId),
+          eq(chatMessages.role, "user"),
+          isNull(chatMessages.runId),
+        ),
+      )
+      .limit(1);
+
+    if (!resolved) {
+      throw new Error("Failed to insert recall user message");
+    }
+    return resolved;
+  });
 }
 
 interface ThreadModelPin {
@@ -390,6 +568,29 @@ async function validateThreadModelSelectionLock(params: {
   return modelSelectionBadRequest("Cannot change model on an existing thread");
 }
 
+async function validateSendModelSelection(params: {
+  orgId: string;
+  threadId: string | undefined;
+  modelSelection: IncomingModelSelection;
+  modelFirstEnabled: boolean;
+  emit: (op: string, ms: number) => void;
+}) {
+  const ownershipError = await validateLegacyModelSelectionOwnership({
+    orgId: params.orgId,
+    modelSelection: params.modelSelection,
+    modelFirstEnabled: params.modelFirstEnabled,
+    emit: params.emit,
+  });
+  if (ownershipError) return ownershipError;
+
+  return validateThreadModelSelectionLock({
+    threadId: params.threadId,
+    modelSelection: params.modelSelection,
+    modelFirstEnabled: params.modelFirstEnabled,
+    emit: params.emit,
+  });
+}
+
 /**
  * Resolve an existing thread or create a new one.
  * Returns thread metadata needed for run creation and title generation.
@@ -502,10 +703,58 @@ function groupIncompleteRoundsByRunId(
   });
 }
 
+interface RecallSendBody {
+  agentId: string;
+  threadId: string;
+  revokesMessageId: string;
+  clientMessageId?: string;
+}
+
+function isRecallSendBody(body: {
+  revokesMessageId?: string;
+}): body is RecallSendBody {
+  return body.revokesMessageId !== undefined;
+}
+
+async function handleRecallSend(
+  body: RecallSendBody,
+  authorization: string | undefined,
+) {
+  const authCtx = await requireAuth(authorization, {
+    requiredCapability: "agent-run:write",
+  });
+  if (isAuthError(authCtx)) return authCtx;
+
+  await getChatThread(body.threadId, authCtx.userId);
+  const message = await appendRecallUserMessage({
+    threadId: body.threadId,
+    userId: authCtx.userId,
+    revokesMessageId: body.revokesMessageId,
+    clientMessageId: body.clientMessageId,
+  });
+  await publishUserSignal(
+    [authCtx.userId],
+    `chatThreadMessageCreated:${body.threadId}`,
+  );
+  await publishThreadListChanged(authCtx.userId);
+  return {
+    status: 201 as const,
+    body: {
+      runId: null,
+      threadId: body.threadId,
+      createdAt: message.createdAt.toISOString(),
+    },
+  };
+}
+
 const router = tsr.router(chatMessagesContract, {
   send: async ({ body, headers }) => {
     const apiStartTime = Date.now();
     initServices();
+
+    if (isRecallSendBody(body)) {
+      return handleRecallSend(body, headers.authorization);
+    }
 
     // Dims object is mutated in place as details become known. Each Phase-1
     // sub-stage emits a span carrying the dims snapshot at emit time.
@@ -563,22 +812,14 @@ const router = tsr.router(chatMessagesContract, {
       authCtx.userId,
     );
 
-    const modelSelectionOwnershipError =
-      await validateLegacyModelSelectionOwnership({
-        orgId: callerOrg.orgId,
-        modelSelection: body.modelSelection,
-        modelFirstEnabled,
-        emit,
-      });
-    if (modelSelectionOwnershipError) return modelSelectionOwnershipError;
-
-    const modelSelectionLockError = await validateThreadModelSelectionLock({
+    const modelSelectionError = await validateSendModelSelection({
+      orgId: callerOrg.orgId,
       threadId: body.threadId,
       modelSelection: body.modelSelection,
       modelFirstEnabled,
       emit,
     });
-    if (modelSelectionLockError) return modelSelectionLockError;
+    if (modelSelectionError) return modelSelectionError;
 
     try {
       // Existing-thread sends pass the agent's pin literally — `resolveThread`
@@ -614,6 +855,29 @@ const router = tsr.router(chatMessagesContract, {
           eagerPin,
           dims,
         );
+
+      if (await activeRunExistsForThread(threadId)) {
+        const message = await appendUnassociatedUserMessage({
+          threadId,
+          userId: authCtx.userId,
+          prompt: body.prompt,
+          attachFiles: body.attachFiles,
+          clientMessageId: body.clientMessageId,
+        });
+        await publishUserSignal(
+          [authCtx.userId],
+          `chatThreadMessageCreated:${threadId}`,
+        );
+        await publishThreadListChanged(authCtx.userId);
+        return {
+          status: 201 as const,
+          body: {
+            runId: null,
+            threadId,
+            createdAt: message.createdAt.toISOString(),
+          },
+        };
+      }
 
       const overrideT = await timed(async () => {
         return resolveRunModelOverride(

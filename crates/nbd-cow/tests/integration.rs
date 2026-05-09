@@ -59,6 +59,29 @@ fn keep_cow_policy() -> nbd_cow::DestroyRetryPolicy {
     destroy_policy()
 }
 
+fn claim_free_device_for_direct_connect() -> nbd_cow::device_lock::NbdDeviceClaim {
+    for index in 0..nbd_cow::netlink::nbds_max() {
+        if !nbd_cow::netlink::device_appears_free(index) {
+            continue;
+        }
+
+        match nbd_cow::device_lock::try_acquire_device_claim(index) {
+            Ok(Some(claim)) if nbd_cow::netlink::device_appears_free(index) => return claim,
+            Ok(Some(_)) | Ok(None) => {}
+            Err(e) => eprintln!("skipping nbd{index}: failed to acquire device lock: {e}"),
+        }
+    }
+
+    panic!("no free NBD device");
+}
+
+fn nbd_pid(device_index: u32) -> Option<u32> {
+    let pid_path = format!("/sys/block/nbd{device_index}/pid");
+    std::fs::read_to_string(pid_path)
+        .ok()
+        .and_then(|contents| contents.trim().parse().ok())
+}
+
 // ---------------------------------------------------------------------------
 // Full device lifecycle tests (require root + nbd module)
 // ---------------------------------------------------------------------------
@@ -477,9 +500,8 @@ async fn connect_device_specific_index() {
     let cow = tmp.path().join("cow.img");
     let size: u64 = 64 * 1024 * 1024;
 
-    let device_index = (0..nbd_cow::netlink::nbds_max())
-        .find(|index| nbd_cow::netlink::device_appears_free(*index))
-        .expect("free NBD device");
+    let claim = claim_free_device_for_direct_connect();
+    let device_index = claim.index();
 
     let mut client_fds = Vec::new();
     let mut server_handles = Vec::new();
@@ -495,8 +517,15 @@ async fn connect_device_specific_index() {
     .expect("cow layer");
     let cow_layer = std::sync::Arc::new(tokio::sync::RwLock::new(cow_layer));
 
+    let mut setup_result = Ok::<(), nbd_cow::error::NbdCowError>(());
     for _ in 0..nbd_cow::NUM_CONNECTIONS {
-        let (client_fd, server_fd) = nbd_cow::netlink::create_socketpair().expect("socketpair");
+        let (client_fd, server_fd) = match nbd_cow::netlink::create_socketpair() {
+            Ok(fds) => fds,
+            Err(e) => {
+                setup_result = Err(e);
+                break;
+            }
+        };
         client_fds.push(client_fd);
         let cow = cow_layer.clone();
         let token = shutdown.clone();
@@ -505,21 +534,36 @@ async fn connect_device_specific_index() {
         }));
     }
 
-    nbd_cow::netlink::connect_device(device_index, &client_fds, size, nbd_cow::BLOCK_SIZE as u64)
-        .expect("connect_device");
-
-    assert!(
-        nbd_cow::netlink::verify_device_size(device_index, size).await,
-        "device should have correct size"
-    );
+    let connect_tid = unsafe { libc::gettid() } as u32;
+    let connect_attempted = setup_result.is_ok();
+    let connect_result = setup_result.and_then(|()| {
+        nbd_cow::netlink::connect_device(
+            device_index,
+            &client_fds,
+            size,
+            nbd_cow::BLOCK_SIZE as u64,
+        )
+    });
+    let connected = connect_result.is_ok();
+    let device_has_correct_size = if connected {
+        nbd_cow::netlink::verify_device_size(device_index, size).await
+    } else {
+        false
+    };
 
     // Clean up
     shutdown.cancel();
     for h in server_handles {
         h.abort();
+        let _ = h.await;
     }
     drop(client_fds);
-    let _ = nbd_cow::netlink::disconnect(device_index);
+    if connected || (connect_attempted && nbd_pid(device_index) == Some(connect_tid)) {
+        let _ = nbd_cow::netlink::disconnect(device_index);
+    }
+
+    connect_result.expect("socketpair setup or connect_device");
+    assert!(device_has_correct_size, "device should have correct size");
 }
 
 /// After destroy + release, the pool should not hand back the same device

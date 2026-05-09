@@ -38,9 +38,11 @@ export {
 
 export type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 
-export interface EnrichedChatMessage extends PagedChatMessage {
+export type EnrichedChatMessage = PagedChatMessage & {
   blocks: BodyRenderBlock[];
-}
+  isQueued: boolean;
+  isRecalled: boolean;
+};
 
 /** A group of consecutive messages with the same role. */
 export interface GroupedChatMessageGroup {

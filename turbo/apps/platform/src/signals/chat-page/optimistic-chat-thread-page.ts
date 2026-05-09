@@ -1,5 +1,4 @@
 import { command, computed } from "ccstate";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import { clerk$ } from "../auth.ts";
 import { patchThreadMeta$ } from "../external/idb-thread-meta-store.ts";
 import {
@@ -7,6 +6,7 @@ import {
   chatThreadsContract,
   type ChatThreadListItem,
   type ModelSelectionRequest,
+  type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
@@ -19,9 +19,16 @@ import {
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { loadRightThread$ } from "./chat-thread-panes.ts";
 import { talkDraft$ } from "../zero-page/chat-draft.ts";
-import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
-import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
-import { createLocalChatThreadDataSource } from "./local-chat-thread-data-source.ts";
+import {
+  createChatThreadSignals,
+  ensureDraft$,
+  type ChatThreadSignals,
+} from "./create-chat-thread.ts";
+import {
+  createLocalChatThreadDataSource,
+  type LocalChatThreadDataSource,
+} from "./local-chat-thread-data-source.ts";
+import type { AppendQueuedMessageArgs } from "./chat-thread-data-source.ts";
 import { createPendingChatThread } from "./pending-chat-thread.ts";
 import {
   prepareUserMessageFromDraft$,
@@ -91,6 +98,42 @@ interface SendNewThreadMessageResult {
 
 interface SendNewThreadMessagePending extends PendingChatThread {
   sendResult: Promise<SendNewThreadMessageResult>;
+}
+
+type OptimisticThreadMessage = PagedChatMessage & {
+  optimisticAssociation?: "run" | "queue";
+};
+
+async function appendQueuedMessage(
+  createClient: ZeroClientFactory,
+  threadId: string,
+  append: AppendQueuedMessageArgs,
+  signal: AbortSignal,
+): Promise<void> {
+  if (
+    append.content === null &&
+    (!append.attachments || append.attachments.length === 0)
+  ) {
+    return;
+  }
+
+  const client = createClient(chatMessagesContract);
+  await accept(
+    client.send({
+      body: {
+        agentId: append.agentId,
+        prompt: append.content ?? "",
+        threadId,
+        hasTextContent: append.hasTextContent,
+        clientMessageId: append.clientMessageId,
+        modelSelection: append.modelSelection,
+        attachFiles: append.attachments ?? undefined,
+      },
+      fetchOptions: { signal },
+    }),
+    [201],
+  );
+  signal.throwIfAborted();
 }
 
 const routeMainOptimisticChatThread$ = command(
@@ -168,6 +211,45 @@ const routeOptimisticChatThread$ = command(
   },
 );
 
+const mintOptimisticPendingThread$ = command(
+  async (
+    { set },
+    args: {
+      threadId: string;
+      agentId: string;
+      messages?: OptimisticThreadMessage[];
+      pendingRunId?: string;
+    },
+    signal: AbortSignal,
+  ): Promise<{
+    createdAt: string;
+    pendingThread: ChatThreadSignals;
+    dataSource: LocalChatThreadDataSource;
+  }> => {
+    L.debug("optimistic thread minted", {
+      threadId: args.threadId,
+      agentId: args.agentId,
+    });
+    await set(writeThreadAgentToCache$, args.threadId, args.agentId, signal);
+    const createdAt = new Date().toISOString();
+    const dataSource = createLocalChatThreadDataSource({
+      threadData: createPendingChatThread(
+        args.threadId,
+        args.agentId,
+        args.pendingRunId,
+      ),
+      messages: args.messages ?? [],
+    });
+    const { draft } = set(ensureDraft$, args.threadId);
+    const pendingThread = createChatThreadSignals(
+      args.threadId,
+      draft,
+      dataSource,
+    );
+    return { createdAt, pendingThread, dataSource };
+  },
+);
+
 async function createChatThread(
   createClient: ZeroClientFactory,
   agentId: string,
@@ -192,44 +274,23 @@ async function createChatThread(
 const createNewChatThread$ = command(
   async (
     { get, set },
-    agentComposeId: string | null,
+    agentId: string,
     pane: OptimisticChatPane,
     signal: AbortSignal,
-  ): Promise<PendingChatThread | null> => {
-    const resolvedComposeId =
-      agentComposeId ?? (await get(zeroOnboardingStatus$)).defaultAgentId;
-    signal.throwIfAborted();
-
-    if (!resolvedComposeId) {
-      toast.error("No agent available for new chat session");
-      return null;
-    }
-
+  ): Promise<PendingChatThread> => {
     const threadId = crypto.randomUUID();
-    L.debug("createNewChatThread$ optimistic thread minted", {
-      threadId,
-      agentId: resolvedComposeId,
-    });
-    await set(writeThreadAgentToCache$, threadId, resolvedComposeId, signal);
-    const createdAt = new Date().toISOString();
-    const dataSource = createLocalChatThreadDataSource({
-      threadData: createPendingChatThread(threadId, resolvedComposeId),
-      messages: [],
-    });
-    const { draft: threadDraft } = set(ensureDraft$, threadId);
-    const localThread = createChatThreadSignals(
-      threadId,
-      threadDraft,
-      dataSource,
+    const { createdAt, pendingThread } = await set(
+      mintOptimisticPendingThread$,
+      { threadId, agentId },
+      signal,
     );
-    set(localThread.hideSkeleton$);
 
     const createClient = get(zeroClient$);
     L.debug("createNewChatThread$ POST chat-threads start", { threadId });
     const settleResult = (async (): Promise<void> => {
       await createChatThread(
         createClient,
-        resolvedComposeId,
+        agentId,
         signal,
         undefined,
         threadId,
@@ -241,10 +302,10 @@ const createNewChatThread$ = command(
     return {
       pane,
       threadId,
-      agentId: resolvedComposeId,
+      agentId,
       createdAt,
       running: false,
-      pendingThread: localThread,
+      pendingThread,
       settleResult,
     };
   },
@@ -253,7 +314,7 @@ const createNewChatThread$ = command(
 export const createNewChatThreadOptimistically$ = command(
   async (
     { get, set },
-    agentComposeId: string | null,
+    agentId: string,
     pane: OptimisticChatPane,
     signal: AbortSignal,
   ) => {
@@ -265,15 +326,7 @@ export const createNewChatThreadOptimistically$ = command(
       return;
     }
 
-    const result = await set(
-      createNewChatThread$,
-      agentComposeId,
-      targetPane,
-      signal,
-    );
-    if (!result) {
-      return;
-    }
+    const result = await set(createNewChatThread$, agentId, targetPane, signal);
 
     await set(routeOptimisticChatThread$, result, signal);
   },
@@ -398,39 +451,31 @@ const sendNewThreadMessage$ = command(
     }
 
     const threadId = crypto.randomUUID();
-    L.debug("sendNewThreadMessage$ optimistic thread minted", {
-      threadId,
-      agentId,
-    });
-    await set(writeThreadAgentToCache$, threadId, agentId, signal);
     const clientMessageId = crypto.randomUUID();
-    const createdAt = new Date().toISOString();
-    const dataSource = createLocalChatThreadDataSource({
-      threadData: createPendingChatThread(
+    const messageCreatedAt = new Date().toISOString();
+    const { createdAt, pendingThread, dataSource } = await set(
+      mintOptimisticPendingThread$,
+      {
         threadId,
         agentId,
-        `pending-${threadId}`,
-      ),
-      messages: [
-        {
-          id: clientMessageId,
-          role: "user",
-          content: prepared.prompt,
-          attachFiles: prepared.attachments,
-          createdAt,
-        },
-      ],
-    });
-    const { draft: threadDraft } = set(ensureDraft$, threadId);
-    const localThread = createChatThreadSignals(
-      threadId,
-      threadDraft,
-      dataSource,
+        pendingRunId: `pending-${threadId}`,
+        messages: [
+          {
+            id: clientMessageId,
+            role: "user",
+            content: prepared.prompt,
+            attachFiles: prepared.attachments,
+            optimisticAssociation: "run",
+            createdAt: messageCreatedAt,
+          },
+        ],
+      },
+      signal,
     );
-    set(localThread.hideSkeleton$);
     set(draft.clear$);
 
-    const client = get(zeroClient$)(chatMessagesContract);
+    const createClient = get(zeroClient$);
+    const client = createClient(chatMessagesContract);
     L.debug("sendNewThreadMessage$ POST chat/messages start", {
       threadId,
       clientMessageId,
@@ -452,10 +497,23 @@ const sendNewThreadMessage$ = command(
         [201],
       );
       signal.throwIfAborted();
+      if (result.body.runId === null) {
+        throw new Error("New chat thread send did not create a run");
+      }
       L.debug("sendNewThreadMessage$ POST chat/messages 201", {
         threadId: result.body.threadId,
         runId: result.body.runId,
       });
+      const queuedAppends = dataSource.takeQueuedMessageAppends();
+      for (const append of queuedAppends) {
+        signal.throwIfAborted();
+        await appendQueuedMessage(
+          createClient,
+          result.body.threadId,
+          append,
+          signal,
+        );
+      }
       set(reloadChatThreads$);
 
       return { threadId: result.body.threadId, runId: result.body.runId };
@@ -467,7 +525,7 @@ const sendNewThreadMessage$ = command(
       agentId,
       createdAt,
       running: true,
-      pendingThread: localThread,
+      pendingThread,
       sendResult,
       settleResult: toVoid(sendResult),
     };

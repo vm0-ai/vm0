@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { randomUUID } from "node:crypto";
 import { HttpResponse } from "msw";
 import { clerkClient } from "@clerk/nextjs/server";
 import { POST } from "../route";
@@ -18,6 +19,8 @@ import {
   getTestChatMessagesByThread,
   countUserRows,
   completeTestRun,
+  setTestRunStatus,
+  getTestUserMessageRunStorage,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   setTestSessionFramework,
@@ -42,6 +45,7 @@ import { http } from "../../../../../../src/__tests__/msw";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 import { createQueryCounter } from "../../../../../../src/__tests__/db-query-counter";
 import { GET as getChatThreadById } from "../../../chat-threads/[id]/route";
+import { GET as getChatThreadMessages } from "../../../chat-threads/[id]/messages/route";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -140,6 +144,18 @@ describe("POST /api/zero/chat/messages", () => {
       expect(data.runId).toBeTruthy();
       expect(data.threadId).toBeTruthy();
       expect(data.createdAt).toBeTruthy();
+
+      await context.mocks.flushAfter();
+
+      const storage = await getTestUserMessageRunStorage({
+        threadId: data.threadId,
+        content: "hello world",
+      });
+      if (!storage) {
+        throw new Error("Expected user message to be persisted");
+      }
+      expect(storage.messageRunId).toBe(data.runId);
+      expect(storage.revokesMessageId).toBeNull();
     });
 
     it("should create a new thread with the provided clientThreadId", async () => {
@@ -161,8 +177,7 @@ describe("POST /api/zero/chat/messages", () => {
       expect(data.threadId).toBe(clientThreadId);
     });
 
-    it("should reuse existing thread when threadId is provided", async () => {
-      // First create a thread via the unified endpoint
+    it("should append an unassociated user message when the thread has an active run", async () => {
       const firstResponse = await POST(
         createTestRequest(URL, {
           method: "POST",
@@ -176,8 +191,8 @@ describe("POST /api/zero/chat/messages", () => {
       expect(firstResponse.status).toBe(201);
       const firstData = await firstResponse.json();
       const threadId = firstData.threadId;
+      await context.mocks.flushAfter();
 
-      // Send second message to same thread
       const secondResponse = await POST(
         createTestRequest(URL, {
           method: "POST",
@@ -193,6 +208,173 @@ describe("POST /api/zero/chat/messages", () => {
       expect(secondResponse.status).toBe(201);
       const secondData = await secondResponse.json();
       expect(secondData.threadId).toBe(threadId);
+      expect(secondData.runId).toBeNull();
+
+      const messages = await getTestChatMessagesByThread(threadId);
+      const queuedMessage = messages.find((message) => {
+        return message.role === "user" && message.content === "second message";
+      });
+      expect(queuedMessage).toBeDefined();
+      expect(queuedMessage!.runId).toBeNull();
+      expect(queuedMessage!.revokesMessageId).toBeNull();
+    });
+
+    it("should recall only an unassociated user message", async () => {
+      const firstResponse = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "first message",
+          }),
+        }),
+      );
+      expect(firstResponse.status).toBe(201);
+      const firstData = await firstResponse.json();
+      await context.mocks.flushAfter();
+
+      const secondResponse = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "queued message",
+            threadId: firstData.threadId,
+          }),
+        }),
+      );
+      expect(secondResponse.status).toBe(201);
+
+      const queuedStorage = await getTestUserMessageRunStorage({
+        threadId: firstData.threadId,
+        content: "queued message",
+        runId: null,
+        revokesMessageId: null,
+      });
+      if (!queuedStorage) {
+        throw new Error("Expected queued user message storage");
+      }
+
+      const recallResponse = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            threadId: firstData.threadId,
+            revokesMessageId: queuedStorage.messageId,
+            clientMessageId: randomUUID(),
+          }),
+        }),
+      );
+
+      expect(recallResponse.status).toBe(201);
+      const recallData = await recallResponse.json();
+      expect(recallData.runId).toBeNull();
+
+      const messages = await getTestChatMessagesByThread(firstData.threadId);
+      const recallMessage = messages.find((message) => {
+        return message.revokesMessageId === queuedStorage.messageId;
+      });
+      expect(recallMessage).toBeDefined();
+      expect(recallMessage!.role).toBe("user");
+      expect(recallMessage!.runId).toBeNull();
+      expect(recallMessage!.content).toBeNull();
+
+      const pageResponse = await getChatThreadMessages(
+        createTestRequest(
+          `http://localhost:3000/api/zero/chat-threads/${firstData.threadId}/messages`,
+        ),
+      );
+      expect(pageResponse.status).toBe(200);
+      const page = await pageResponse.json();
+      const visibleQueued = page.messages.find((message: { id: string }) => {
+        return message.id === queuedStorage.messageId;
+      });
+      const visibleRecall = page.messages.find(
+        (message: { id: string; revokesMessageId?: string }) => {
+          return message.id === recallMessage!.id;
+        },
+      );
+      expect(visibleQueued).toBeDefined();
+      expect(visibleRecall).toBeDefined();
+      expect(visibleRecall!.revokesMessageId).toBe(queuedStorage.messageId);
+    });
+
+    it("should reject recall for a run-associated user message", async () => {
+      const firstResponse = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "first message",
+          }),
+        }),
+      );
+      expect(firstResponse.status).toBe(201);
+      const firstData = await firstResponse.json();
+      await context.mocks.flushAfter();
+
+      const storage = await getTestUserMessageRunStorage({
+        threadId: firstData.threadId,
+        content: "first message",
+        runId: firstData.runId,
+      });
+      if (!storage) {
+        throw new Error("Expected run-associated user message storage");
+      }
+
+      const recallResponse = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            threadId: firstData.threadId,
+            revokesMessageId: storage.messageId,
+            clientMessageId: randomUUID(),
+          }),
+        }),
+      );
+
+      expect(recallResponse.status).toBe(400);
+    });
+
+    it("should create a new run for an existing thread after the active run completes", async () => {
+      const firstResponse = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "first message",
+          }),
+        }),
+      );
+      expect(firstResponse.status).toBe(201);
+      const firstData = await firstResponse.json();
+      await context.mocks.flushAfter();
+      await completeTestRun(user.userId, firstData.runId);
+
+      const secondResponse = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "second message",
+            threadId: firstData.threadId,
+          }),
+        }),
+      );
+
+      expect(secondResponse.status).toBe(201);
+      const secondData = await secondResponse.json();
+      expect(secondData.threadId).toBe(firstData.threadId);
+      expect(secondData.runId).toBeTruthy();
       expect(secondData.runId).not.toBe(firstData.runId);
     });
 
@@ -976,7 +1158,11 @@ describe("POST /api/zero/chat/messages", () => {
           }),
         );
         expect(create.status).toBe(201);
-        const { threadId } = await create.json();
+        const { threadId, runId } = await create.json();
+        await context.mocks.flushAfter();
+        await setTestRunStatus(runId, "completed");
+        const completedRun = await getTestRun(runId);
+        expect(completedRun.status).toBe("completed");
 
         const override = await getTestChatThreadModelOverride(threadId);
         expect(override.modelProviderId).toBeNull();
@@ -1113,7 +1299,9 @@ describe("POST /api/zero/chat/messages", () => {
           }),
         );
         expect(create.status).toBe(201);
-        const { threadId } = await create.json();
+        const { threadId, runId } = await create.json();
+        await context.mocks.flushAfter();
+        await setTestRunStatus(runId, "completed");
 
         // Agent owner switches the agent's default provider after the
         // thread is created — the thread must keep its original pin.
@@ -1157,10 +1345,18 @@ describe("POST /api/zero/chat/messages", () => {
           }),
         );
         expect(create.status).toBe(201);
-        const { threadId } = await create.json();
+        const { threadId, runId } = await create.json();
+        await context.mocks.flushAfter();
+        await setTestRunStatus(runId, "completed");
+        const completedRun = await getTestRun(runId);
+        expect(completedRun.status).toBe("completed");
 
         // Provider is deleted by the org admin between sends. The thread
         // must surface PROVIDER_DELETED rather than silently fall back.
+        const pinnedOverride = await getTestChatThreadModelOverride(threadId);
+        expect(pinnedOverride.modelProviderId).toBe(providerId);
+        expect(pinnedOverride.selectedModel).toBe("claude-opus-4-7");
+
         await deleteTestModelProvider(providerId);
 
         const followUp = await POST(

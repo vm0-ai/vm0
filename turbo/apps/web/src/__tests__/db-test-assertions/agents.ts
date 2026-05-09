@@ -1,11 +1,11 @@
-import { and, eq } from "drizzle-orm";
-import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
@@ -171,34 +171,55 @@ export async function getTestChatThreadLastReadAt(
 }
 
 /**
- * Read the pending-message columns on a chat thread.
+ * Read raw user-message run storage for append-only immutability assertions.
  *
- * @why-db-direct Auto-send tests assert that the callback clears all four
- * pending_message_* columns; the contract returns a normalized
- * `PendingMessage | null` so cannot distinguish "row had nulls" from
- * "row was never written."
+ * @why-db-direct Public chat APIs hide revoked queued rows, while these tests
+ * assert the append-only storage shape directly.
  */
-export async function getTestChatThreadPendingMessage(
-  threadId: string,
-): Promise<
+export async function getTestUserMessageRunStorage(params: {
+  threadId: string;
+  content: string | null;
+  runId?: string | null;
+  revokesMessageId?: string | null;
+}): Promise<
   | {
-      pendingMessageContent: string | null;
-      pendingMessageAttachments: PersistedAttachment[] | null;
-      pendingMessageCreatedAt: Date | null;
-      pendingMessageUpdatedAt: Date | null;
+      messageId: string;
+      messageRunId: string | null;
+      revokesMessageId: string | null;
     }
   | undefined
 > {
   initServices();
+  const conditions = [
+    eq(chatMessages.chatThreadId, params.threadId),
+    eq(chatMessages.role, "user"),
+    params.content === null
+      ? isNull(chatMessages.content)
+      : eq(chatMessages.content, params.content),
+  ];
+  if (params.runId !== undefined) {
+    conditions.push(
+      params.runId === null
+        ? isNull(chatMessages.runId)
+        : eq(chatMessages.runId, params.runId),
+    );
+  }
+  if (params.revokesMessageId !== undefined) {
+    conditions.push(
+      params.revokesMessageId === null
+        ? isNull(chatMessages.revokesMessageId)
+        : eq(chatMessages.revokesMessageId, params.revokesMessageId),
+    );
+  }
   const [row] = await globalThis.services.db
     .select({
-      pendingMessageContent: chatThreads.pendingMessageContent,
-      pendingMessageAttachments: chatThreads.pendingMessageAttachments,
-      pendingMessageCreatedAt: chatThreads.pendingMessageCreatedAt,
-      pendingMessageUpdatedAt: chatThreads.pendingMessageUpdatedAt,
+      messageId: chatMessages.id,
+      messageRunId: chatMessages.runId,
+      revokesMessageId: chatMessages.revokesMessageId,
     })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, threadId))
+    .from(chatMessages)
+    .where(and(...conditions))
+    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber))
     .limit(1);
   return row;
 }

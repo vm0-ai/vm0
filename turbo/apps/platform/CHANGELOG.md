@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.339.0](https://github.com/vm0-ai/vm0/compare/app-v0.338.2...app-v0.339.0) (2026-05-09)
+
+
+### Features
+
+* add model-first policy admin controls ([#12180](https://github.com/vm0-ai/vm0/issues/12180)) ([ff5b8c9](https://github.com/vm0-ai/vm0/commit/ff5b8c9b8d5fe06ff0120724f509d5baa873ade2))
+* switch zero model pickers to model-first ([#12286](https://github.com/vm0-ai/vm0/issues/12286)) ([4c0dafc](https://github.com/vm0-ai/vm0/commit/4c0dafcfef16f977d9dda8d4ed72c03aa8b310fb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.4.0
+    * @vm0/connectors bumped to 1.1.1
+    * @vm0/core bumped to 8.264.4
+
 ## [0.338.2](https://github.com/vm0-ai/vm0/compare/app-v0.338.1...app-v0.338.2) (2026-05-09)
 
 

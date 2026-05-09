@@ -14,6 +14,7 @@ import {
 import { formatChatRunErrorMessage } from "./chat-run-error-message";
 import {
   type ChatThreadArtifactRun,
+  type ChatThreadDetail,
   type PersistedAttachment,
   type ResolvedAttachFile,
   persistedAttachmentSchema,
@@ -22,6 +23,19 @@ import { listS3Objects } from "../../infra/s3/s3-client";
 import { env } from "../../../env";
 import { EXT_MIMETYPE_MAP } from "../../shared/mimetype";
 import { buildFileUrl } from "../uploads/file-url";
+
+function visibleChatMessageCondition() {
+  return sql<boolean>`NOT EXISTS (
+      SELECT 1
+      FROM ${chatMessages} AS revoker
+      WHERE revoker.revokes_message_id = ${chatMessages.id}
+    )
+    AND NOT (
+      ${chatMessages.role} = 'user'
+      AND ${chatMessages.runId} IS NULL
+      AND ${chatMessages.revokesMessageId} IS NOT NULL
+    )`;
+}
 
 /**
  * Create a new chat thread.
@@ -116,6 +130,7 @@ export async function listChatThreads(
       ),
     })
     .from(chatMessages)
+    .where(visibleChatMessageCondition())
     .as("last_message");
 
   const filters = [
@@ -195,7 +210,12 @@ export async function markThreadRead(
   const [latestMessage] = await globalThis.services.db
     .select({ id: chatMessages.id })
     .from(chatMessages)
-    .where(eq(chatMessages.chatThreadId, threadId))
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, threadId),
+        visibleChatMessageCondition(),
+      ),
+    )
     .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
     .limit(1);
 
@@ -224,7 +244,6 @@ export async function getChatThread(
   agentComposeId: string;
   draftContent: string | null;
   draftAttachments: PersistedAttachment[] | null;
-  pendingMessage: ChatThreadPendingMessage | null;
   modelProviderId: string | null;
   modelProviderType: string | null;
   modelProviderCredentialScope: string | null;
@@ -253,7 +272,6 @@ export async function getChatThread(
       .array()
       .nullable()
       .parse(thread.draftAttachments ?? null),
-    pendingMessage: toChatThreadPendingMessage(thread),
     modelProviderId: thread.modelProviderId ?? null,
     modelProviderType: thread.modelProviderType ?? null,
     modelProviderCredentialScope: thread.modelProviderCredentialScope ?? null,
@@ -277,47 +295,6 @@ function hasDraftValue(
     (draftContent !== null && draftContent !== "") ||
     (draftAttachments !== null && draftAttachments.length > 0)
   );
-}
-
-type ChatThreadPendingMessage = {
-  content: string | null;
-  attachments: PersistedAttachment[] | null;
-  createdAt: Date;
-  updatedAt: Date;
-  clientMessageId: string | null;
-};
-
-type PendingMessageColumns = {
-  pendingMessageContent: string | null;
-  pendingMessageAttachments: PersistedAttachment[] | null;
-  pendingMessageCreatedAt: Date | null;
-  pendingMessageUpdatedAt: Date | null;
-  pendingMessageClientId?: string | null;
-};
-
-function parsePersistedAttachments(
-  attachments: PersistedAttachment[] | null,
-): PersistedAttachment[] | null {
-  return persistedAttachmentSchema
-    .array()
-    .nullable()
-    .parse(attachments ?? null);
-}
-
-function toChatThreadPendingMessage(
-  row: PendingMessageColumns,
-): ChatThreadPendingMessage | null {
-  if (!row.pendingMessageCreatedAt || !row.pendingMessageUpdatedAt) {
-    return null;
-  }
-
-  return {
-    content: row.pendingMessageContent ?? null,
-    attachments: parsePersistedAttachments(row.pendingMessageAttachments),
-    createdAt: row.pendingMessageCreatedAt,
-    updatedAt: row.pendingMessageUpdatedAt,
-    clientMessageId: row.pendingMessageClientId ?? null,
-  };
 }
 
 /**
@@ -462,15 +439,17 @@ export async function renameChatThread(
   await publishThreadListChanged(userId);
 }
 
-type ChatMessage = {
-  role: "user" | "assistant";
-  content: string | null;
-  runId?: string;
-  error?: string;
-  status?: string;
-  attachFiles?: ResolvedAttachFile[];
-  createdAt: string;
-};
+type ChatMessage = ChatThreadDetail["chatMessages"][number];
+
+function chatMessageStatus(row: {
+  role: string;
+  runStatus: string | null;
+}): string | undefined {
+  if (row.role !== "assistant") {
+    return undefined;
+  }
+  return row.runStatus ?? undefined;
+}
 
 /**
  * Resolve file IDs to permanent file URLs with metadata for the frontend.
@@ -608,14 +587,27 @@ export async function getChatThreadMessages(
           ? await resolveAttachFileUrls(userId, row.attachFiles)
           : undefined;
 
-      return {
-        role: row.role as "user" | "assistant",
+      const role = row.role as "user" | "assistant";
+      const message = {
+        id: row.id,
+        role,
         content: row.content,
         runId: row.runId ?? undefined,
+        revokesMessageId: row.revokesMessageId ?? undefined,
         error: effectiveError,
-        status: row.runStatus ?? undefined,
         attachFiles,
         createdAt: row.createdAt.toISOString(),
+      };
+      if (role !== "assistant") {
+        return {
+          ...message,
+          role: "user" as const,
+        };
+      }
+      return {
+        ...message,
+        role: "assistant" as const,
+        status: chatMessageStatus(row),
       };
     }),
   );

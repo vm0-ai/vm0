@@ -20,17 +20,35 @@ import { CHAT_REQUEST_OPS, timed } from "./request-span-ops";
  */
 export const PREVIOUS_CONTEXT_MESSAGES = 10;
 
+function effectiveChatMessageRunId() {
+  return chatMessages.runId;
+}
+
+function visibleChatMessageCondition() {
+  return sql<boolean>`NOT EXISTS (
+      SELECT 1
+      FROM ${chatMessages} AS revoker
+      WHERE revoker.revokes_message_id = ${chatMessages.id}
+    )
+    AND NOT (
+      ${chatMessages.role} = 'user'
+      AND ${chatMessages.runId} IS NULL
+      AND ${chatMessages.revokesMessageId} IS NOT NULL
+    )`;
+}
+
 const messageRowProjection = {
   id: chatMessages.id,
   role: chatMessages.role,
   content: chatMessages.content,
-  runId: chatMessages.runId,
+  runId: effectiveChatMessageRunId(),
   error: chatMessages.error,
   sequenceNumber: chatMessages.sequenceNumber,
   createdAt: chatMessages.createdAt,
   runStatus: agentRuns.status,
   runError: agentRuns.error,
   attachFiles: chatMessages.attachFiles,
+  revokesMessageId: chatMessages.revokesMessageId,
 } as const;
 
 type MessageRow = {
@@ -44,6 +62,7 @@ type MessageRow = {
   runStatus: string | null;
   runError: string | null;
   attachFiles: ChatMessageAttachFiles | null;
+  revokesMessageId: string | null;
 };
 
 /**
@@ -78,6 +97,7 @@ export async function insertChatMessage(params: {
   runId: string | null;
   error?: string | null;
   attachFiles?: ChatMessageAttachFiles;
+  revokesMessageId?: string | null;
   id?: string;
   spanDims?: ChatSpanDimensions;
 }): Promise<{ id: string; createdAt: Date }> {
@@ -90,6 +110,7 @@ export async function insertChatMessage(params: {
         role: params.role,
         content: params.content,
         runId: params.runId,
+        revokesMessageId: params.revokesMessageId ?? null,
         error: params.error ?? null,
         attachFiles: params.attachFiles ?? null,
       })
@@ -242,13 +263,15 @@ export async function publishThreadListChanged(userId: string): Promise<void> {
 }
 
 /**
- * Get all messages for a thread with run status, ordered by createdAt ASC.
+ * Get all message events for a thread with run status, ordered by createdAt ASC.
  *
  * Unbounded — only callers that truly need the full thread (e.g., the SPA's
- * thread-bootstrap endpoint) should use this. Prompt-context builders must
- * use `getLatestMessagesByThreadId`, which bounds the scan to `LIMIT N` and
- * pushes usability filters into SQL so thread length does not compound
- * latency on every send.
+ * thread-bootstrap endpoint) should use this. This intentionally does not
+ * apply visibility/revoke filters: chat message APIs are the append-only event
+ * stream, and clients derive their own display projection. Prompt-context
+ * builders must use `getLatestMessagesByThreadId`, which bounds the scan to
+ * `LIMIT N` and pushes usability filters into SQL so thread length does not
+ * compound latency on every send.
  */
 export async function getMessagesByThreadId(
   chatThreadId: string,
@@ -256,7 +279,7 @@ export async function getMessagesByThreadId(
   return globalThis.services.db
     .select(messageRowProjection)
     .from(chatMessages)
-    .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
+    .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
     .where(eq(chatMessages.chatThreadId, chatThreadId))
     .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
 }
@@ -285,17 +308,18 @@ export async function getLatestMessagesByThreadId(
     eq(chatMessages.chatThreadId, chatThreadId),
     isNotNull(chatMessages.content),
     inArray(chatMessages.role, ["user", "assistant"]),
+    visibleChatMessageCondition(),
   ];
   if (options?.excludeRunId !== undefined) {
     conditions.push(
-      sql`(${chatMessages.runId} IS NULL OR ${chatMessages.runId} != ${options.excludeRunId})`,
+      sql`(${effectiveChatMessageRunId()} IS NULL OR ${effectiveChatMessageRunId()} != ${options.excludeRunId})`,
     );
   }
 
   const rows = await globalThis.services.db
     .select(messageRowProjection)
     .from(chatMessages)
-    .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
+    .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
     .where(and(...conditions))
     .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
     .limit(limit);
@@ -311,7 +335,7 @@ export async function getLatestMessagesByThreadId(
 }
 
 /**
- * Fetch chat messages for a thread, rendered in natural chronological order
+ * Fetch chat message events for a thread, rendered in natural chronological order
  * (createdAt ASC, sequenceNumber ASC).
  *
  * - When `sinceId` is provided: returns up to `limit` messages strictly after
@@ -339,6 +363,7 @@ export async function getPagedMessages(
     runStatus: string | null;
     runError: string | null;
     attachFiles: ChatMessageAttachFiles | null;
+    revokesMessageId: string | null;
   }>;
   hasHistoryBefore: boolean;
 }> {
@@ -348,13 +373,14 @@ export async function getPagedMessages(
     id: chatMessages.id,
     role: chatMessages.role,
     content: chatMessages.content,
-    runId: chatMessages.runId,
+    runId: effectiveChatMessageRunId(),
     error: chatMessages.error,
     sequenceNumber: chatMessages.sequenceNumber,
     createdAt: chatMessages.createdAt,
     runStatus: agentRuns.status,
     runError: agentRuns.error,
     attachFiles: chatMessages.attachFiles,
+    revokesMessageId: chatMessages.revokesMessageId,
   };
 
   if (sinceId !== undefined && beforeId !== undefined) {
@@ -365,7 +391,7 @@ export async function getPagedMessages(
     const rows = await db
       .select(columns)
       .from(chatMessages)
-      .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
+      .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
       .where(eq(chatMessages.chatThreadId, chatThreadId))
       .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
       .limit(limit + 1);
@@ -399,7 +425,7 @@ export async function getPagedMessages(
       messages: await db
         .select(columns)
         .from(chatMessages)
-        .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
+        .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
         .where(
           and(
             eq(chatMessages.chatThreadId, chatThreadId),
@@ -415,7 +441,7 @@ export async function getPagedMessages(
   const rows = await db
     .select(columns)
     .from(chatMessages)
-    .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
+    .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
     .where(
       and(eq(chatMessages.chatThreadId, chatThreadId), cursorBeforeCondition),
     )
@@ -539,18 +565,24 @@ export async function getIncompleteRoundsSinceLastSuccess(
       runStatus: agentRuns.status,
     })
     .from(chatMessages)
-    .innerJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
+    .innerJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
     .where(
       and(
         eq(chatMessages.chatThreadId, chatThreadId),
+        visibleChatMessageCondition(),
         inArray(agentRuns.status, ["cancelled", "failed", "timeout"]),
         inArray(chatMessages.role, ["user", "assistant"]),
         sql`${chatMessages.createdAt} > COALESCE(
           (
             SELECT MAX(cm2.created_at)
             FROM chat_messages cm2
-            INNER JOIN agent_runs ar2 ON cm2.run_id = ar2.id
+            INNER JOIN agent_runs ar2 ON ar2.id = cm2.run_id
             WHERE cm2.chat_thread_id = ${chatThreadId}
+              AND NOT EXISTS (
+                SELECT 1
+                FROM chat_messages revoker2
+                WHERE revoker2.revokes_message_id = cm2.id
+              )
               AND ar2.result ? 'agentSessionId'
               AND jsonb_typeof(ar2.result->'agentSessionId') = 'string'
           ),

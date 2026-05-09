@@ -508,52 +508,6 @@ export async function setTestChatThreadDraft(
 }
 
 /**
- * Set pending_message_* fields on a chat thread directly.
- *
- * @why-db-direct The pending-message append/recall routes are exercised in
- * their own service tests; tests that need a thread with a pre-seeded queued
- * message — such as the chat callback's auto-send path — bypass the route
- * to avoid the auth/active-run plumbing those routes require.
- */
-export async function setTestChatThreadPendingMessage(
-  threadId: string,
-  pendingMessage: {
-    content: string | null;
-    attachments: Array<{
-      id: string;
-      url: string;
-      filename: string;
-      contentType: string;
-      size: number;
-    }> | null;
-  } | null,
-): Promise<void> {
-  initServices();
-  if (!pendingMessage) {
-    await globalThis.services.db
-      .update(chatThreads)
-      .set({
-        pendingMessageContent: null,
-        pendingMessageAttachments: null,
-        pendingMessageCreatedAt: null,
-        pendingMessageUpdatedAt: null,
-      })
-      .where(eq(chatThreads.id, threadId));
-    return;
-  }
-  const now = new Date();
-  await globalThis.services.db
-    .update(chatThreads)
-    .set({
-      pendingMessageContent: pendingMessage.content,
-      pendingMessageAttachments: pendingMessage.attachments,
-      pendingMessageCreatedAt: now,
-      pendingMessageUpdatedAt: now,
-    })
-    .where(eq(chatThreads.id, threadId));
-}
-
-/**
  * Insert a chat thread directly in the database.
  * Returns the thread ID.
  *
@@ -660,16 +614,24 @@ export async function addTestRunToThread(
   prompt?: string,
 ): Promise<void> {
   initServices();
-  await globalThis.services.db.insert(chatMessages).values({
-    chatThreadId: threadId,
-    role: "user",
-    content: prompt ?? "test prompt",
-    runId,
+  await globalThis.services.db.transaction(async (tx) => {
+    const [message] = await tx
+      .insert(chatMessages)
+      .values({
+        chatThreadId: threadId,
+        role: "user",
+        content: prompt ?? "test prompt",
+        runId,
+      })
+      .returning({ id: chatMessages.id });
+    if (!message) {
+      throw new Error("Failed to seed chat message");
+    }
+    await tx
+      .update(zeroRuns)
+      .set({ chatThreadId: threadId })
+      .where(eq(zeroRuns.id, runId));
   });
-  await globalThis.services.db
-    .update(zeroRuns)
-    .set({ chatThreadId: threadId })
-    .where(eq(zeroRuns.id, runId));
 }
 
 /**

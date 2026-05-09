@@ -14,28 +14,21 @@ import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
   type PagedChatMessage,
-  type PendingMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
-  AppendPendingMessageArgs,
+  AppendQueuedMessageArgs,
   ChatThreadDataSource,
+  InitialPage,
+  ListMessagesAfterArgs,
+  ListMessagesBeforeArgs,
   PatchDraftArgs,
   CancelRunsArgs,
+  RecallMessageArgs,
   SubscribeRealtimeArgs,
 } from "../chat-thread-data-source.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
-
-function createEmptyPendingMessage(): PendingMessage {
-  return {
-    content: null,
-    attachments: null,
-    createdAt: "2026-05-01T00:00:00Z",
-    updatedAt: "2026-05-01T00:00:00Z",
-    clientMessageId: null,
-  };
-}
 
 /**
  * Base MSW handlers required for setupChatPage$ to complete:
@@ -71,6 +64,98 @@ function setupBaseHandlers(threadId: string) {
 function createThreadSignals(threadId: string) {
   const { draft } = context.store.set(ensureDraft$, threadId);
   return createChatThreadSignals(threadId, draft);
+}
+
+function createStaticDataSource({
+  threadId,
+  initialPage,
+  listMessagesAfter,
+  listMessagesBefore,
+}: {
+  threadId: string;
+  initialPage: InitialPage;
+  listMessagesAfter?: (
+    args: ListMessagesAfterArgs,
+  ) => Promise<{ messages: PagedChatMessage[]; reachedEnd: boolean }>;
+  listMessagesBefore?: (
+    args: ListMessagesBeforeArgs,
+  ) => Promise<{ messages: PagedChatMessage[]; hasMore: boolean }>;
+}): ChatThreadDataSource {
+  return {
+    getThread$: computed(() => {
+      return Promise.resolve({
+        id: threadId,
+        title: null,
+        agentId: "agent-1",
+        latestSessionId: null,
+        lastReadMessageId: null,
+        latestSessionProviderType: null,
+        activeRunIds: [],
+        activeRuns: [],
+        isLegacySession: false,
+        draftContent: null,
+        draftAttachments: null,
+        modelProviderId: null,
+        selectedModel: null,
+      });
+    }),
+    reloadThread$: command(() => {}),
+    initialPage$: computed(() => {
+      return Promise.resolve(initialPage);
+    }),
+    patchDraft$: command(
+      (_ctx, _args: PatchDraftArgs, _signal: AbortSignal) => {
+        return Promise.resolve();
+      },
+    ),
+    appendQueuedMessage$: command(
+      (_ctx, args: AppendQueuedMessageArgs, _signal: AbortSignal) => {
+        return Promise.resolve({
+          id: args.clientMessageId,
+          role: "user",
+          content: args.content,
+          attachFiles: args.attachments ?? undefined,
+          createdAt: "2026-05-01T00:00:00Z",
+        });
+      },
+    ),
+    recallMessage$: command(
+      (_ctx, args: RecallMessageArgs, _signal: AbortSignal) => {
+        return Promise.resolve({
+          id: args.clientMessageId,
+          role: "user",
+          content: null,
+          revokesMessageId: args.revokesMessageId,
+          createdAt: "2026-05-01T00:00:00Z",
+        });
+      },
+    ),
+    listMessagesAfter$: command((_ctx, args) => {
+      return (
+        listMessagesAfter?.(args) ??
+        Promise.resolve({ messages: [], reachedEnd: true })
+      );
+    }),
+    listMessagesBefore$: command((_ctx, args) => {
+      return (
+        listMessagesBefore?.(args) ??
+        Promise.resolve({ messages: [], hasMore: false })
+      );
+    }),
+    cancelRuns$: command(
+      (_ctx, _args: CancelRunsArgs, _signal: AbortSignal) => {
+        return Promise.resolve();
+      },
+    ),
+    markRead$: command(() => {
+      return Promise.resolve(null);
+    }),
+    subscribeRealtime$: command(
+      (_ctx, _args: SubscribeRealtimeArgs, _signal: AbortSignal) => {
+        return Promise.resolve();
+      },
+    ),
+  };
 }
 
 describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftClear$", () => {
@@ -213,6 +298,148 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
 });
 
 describe("fetchNextPage$ cursor", () => {
+  it("groups assistant messages across queued user messages", async () => {
+    const threadId = "thread-group-queued";
+    const mockDataSource = createStaticDataSource({
+      threadId,
+      initialPage: {
+        hasHistoryBefore: false,
+        messages: [
+          {
+            id: "assistant-before",
+            role: "assistant",
+            content: "before",
+            runId: "run-1",
+            createdAt: "2026-05-01T00:00:00Z",
+          },
+          {
+            id: "queued-user",
+            role: "user",
+            content: "queued",
+            createdAt: "2026-05-01T00:00:01Z",
+          },
+          {
+            id: "assistant-after",
+            role: "assistant",
+            content: "after",
+            runId: "run-1",
+            createdAt: "2026-05-01T00:00:02Z",
+          },
+        ],
+      },
+    });
+
+    const { draft } = context.store.set(ensureDraft$, threadId);
+    const thread = createChatThreadSignals(threadId, draft, mockDataSource);
+
+    const groups = await context.store.get(thread.groupedChatMessages$);
+
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.role).toBe("assistant");
+    expect(
+      groups[0]?.messages.map((message) => {
+        return message.id;
+      }),
+    ).toStrictEqual(["assistant-before", "assistant-after"]);
+    expect(groups[1]?.role).toBe("user");
+    expect(groups[1]?.messages[0]?.id).toBe("queued-user");
+    expect(groups[1]?.messages[0]?.isQueued).toBeTruthy();
+  });
+
+  it("projects recall events as recalled pending user messages", async () => {
+    const threadId = "thread-recalled-queued";
+    const mockDataSource = createStaticDataSource({
+      threadId,
+      initialPage: {
+        hasHistoryBefore: false,
+        messages: [
+          {
+            id: "queued-user",
+            role: "user",
+            content: "queued",
+            createdAt: "2026-05-01T00:00:00Z",
+          },
+          {
+            id: "assistant-after",
+            role: "assistant",
+            content: "after",
+            runId: "run-1",
+            createdAt: "2026-05-01T00:00:01Z",
+          },
+          {
+            id: "recall-event",
+            role: "user",
+            content: null,
+            revokesMessageId: "queued-user",
+            createdAt: "2026-05-01T00:00:02Z",
+          },
+        ],
+      },
+    });
+
+    const { draft } = context.store.set(ensureDraft$, threadId);
+    const thread = createChatThreadSignals(threadId, draft, mockDataSource);
+
+    const groups = await context.store.get(thread.groupedChatMessages$);
+
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.role).toBe("assistant");
+    expect(groups[0]?.messages[0]?.id).toBe("assistant-after");
+    expect(groups[1]?.role).toBe("user");
+    expect(groups[1]?.messages).toHaveLength(1);
+    expect(groups[1]?.messages[0]?.id).toBe("recall-event");
+    expect(groups[1]?.messages[0]?.content).toBe("queued");
+    expect(groups[1]?.messages[0]?.isQueued).toBeFalsy();
+    expect(groups[1]?.messages[0]?.isRecalled).toBeTruthy();
+  });
+
+  it("auto backfills an unknown cached history boundary during subscribe", async () => {
+    const threadId = "thread-history-boundary-backfill";
+    const firstMessageId = "11111111-1111-4111-8111-111111111111";
+    const secondMessageId = "22222222-2222-4222-8222-222222222222";
+    const beforeIds: string[] = [];
+    const initialMessages: PagedChatMessage[] = [
+      {
+        id: firstMessageId,
+        role: "user",
+        content: "hi",
+        createdAt: "2026-05-01T00:00:00Z",
+      },
+      {
+        id: secondMessageId,
+        role: "assistant",
+        content: "hello",
+        createdAt: "2026-05-01T00:00:01Z",
+      },
+    ];
+
+    const mockDataSource = createStaticDataSource({
+      threadId,
+      initialPage: {
+        messages: initialMessages,
+        hasHistoryBefore: false,
+        needsHistoryBackfill: true,
+      },
+      listMessagesBefore: (args) => {
+        beforeIds.push(args.beforeId);
+        return Promise.resolve({ messages: [], hasMore: false });
+      },
+    });
+
+    const { draft } = context.store.set(ensureDraft$, threadId);
+    const thread = createChatThreadSignals(threadId, draft, mockDataSource);
+
+    await expect(
+      context.store.get(thread.hasOlderHistory$),
+    ).resolves.toBeFalsy();
+    await context.store.set(thread.subscribeChatThread$, context.signal);
+
+    expect(beforeIds).toStrictEqual([firstMessageId]);
+    await expect(
+      context.store.get(thread.hasOlderHistory$),
+    ).resolves.toBeFalsy();
+  });
+
   it("uses the last server-validated message ID, not the optimistic message ID", async () => {
     const threadId = "thread-cursor-test";
     const serverMessages: PagedChatMessage[] = [
@@ -246,7 +473,6 @@ describe("fetchNextPage$ cursor", () => {
           isLegacySession: false,
           draftContent: null,
           draftAttachments: null,
-          pendingMessage: null,
           modelProviderId: null,
           selectedModel: null,
         });
@@ -263,17 +489,28 @@ describe("fetchNextPage$ cursor", () => {
           return Promise.resolve();
         },
       ),
-      appendPendingMessage$: command(
-        (_ctx, _args: AppendPendingMessageArgs, _signal: AbortSignal) => {
-          return Promise.resolve(createEmptyPendingMessage());
+      appendQueuedMessage$: command(
+        (_ctx, args: AppendQueuedMessageArgs, _signal: AbortSignal) => {
+          return Promise.resolve({
+            id: args.clientMessageId,
+            role: "user",
+            content: args.content,
+            attachFiles: args.attachments ?? undefined,
+            createdAt: "2026-05-01T00:00:00Z",
+          });
         },
       ),
-      recallPendingMessage$: command(() => {
-        return Promise.resolve({
-          draftContent: null,
-          draftAttachments: null,
-        });
-      }),
+      recallMessage$: command(
+        (_ctx, args: RecallMessageArgs, _signal: AbortSignal) => {
+          return Promise.resolve({
+            id: args.clientMessageId,
+            role: "user",
+            content: null,
+            revokesMessageId: args.revokesMessageId,
+            createdAt: "2026-05-01T00:00:00Z",
+          });
+        },
+      ),
       listMessagesAfter$: command((_, args) => {
         capturedSinceId = args.sinceId;
         return Promise.resolve({ messages: [], reachedEnd: true });
@@ -307,6 +544,7 @@ describe("fetchNextPage$ cursor", () => {
       id: crypto.randomUUID(),
       role: "user",
       content: "optimistic message",
+      optimisticAssociation: "run",
       createdAt: new Date().toISOString(),
     });
 
@@ -361,7 +599,6 @@ describe("fetchNextPage$ cursor", () => {
           isLegacySession: false,
           draftContent: null,
           draftAttachments: null,
-          pendingMessage: null,
           modelProviderId: null,
           selectedModel: null,
         });
@@ -378,17 +615,28 @@ describe("fetchNextPage$ cursor", () => {
           return Promise.resolve();
         },
       ),
-      appendPendingMessage$: command(
-        (_ctx, _args: AppendPendingMessageArgs, _signal: AbortSignal) => {
-          return Promise.resolve(createEmptyPendingMessage());
+      appendQueuedMessage$: command(
+        (_ctx, args: AppendQueuedMessageArgs, _signal: AbortSignal) => {
+          return Promise.resolve({
+            id: args.clientMessageId,
+            role: "user",
+            content: args.content,
+            attachFiles: args.attachments ?? undefined,
+            createdAt: "2026-05-01T00:00:00Z",
+          });
         },
       ),
-      recallPendingMessage$: command(() => {
-        return Promise.resolve({
-          draftContent: null,
-          draftAttachments: null,
-        });
-      }),
+      recallMessage$: command(
+        (_ctx, args: RecallMessageArgs, _signal: AbortSignal) => {
+          return Promise.resolve({
+            id: args.clientMessageId,
+            role: "user",
+            content: null,
+            revokesMessageId: args.revokesMessageId,
+            createdAt: "2026-05-01T00:00:00Z",
+          });
+        },
+      ),
       listMessagesAfter$: command((_ctx, args) => {
         capturedSinceIds.push(args.sinceId);
         // First call (no anchor): return the full page the server has now.
@@ -496,7 +744,6 @@ describe("fetchNextPage$ cursor", () => {
           isLegacySession: false,
           draftContent: null,
           draftAttachments: null,
-          pendingMessage: null,
           modelProviderId: null,
           selectedModel: null,
         });
@@ -513,17 +760,28 @@ describe("fetchNextPage$ cursor", () => {
           return Promise.resolve();
         },
       ),
-      appendPendingMessage$: command(
-        (_ctx, _args: AppendPendingMessageArgs, _signal: AbortSignal) => {
-          return Promise.resolve(createEmptyPendingMessage());
+      appendQueuedMessage$: command(
+        (_ctx, args: AppendQueuedMessageArgs, _signal: AbortSignal) => {
+          return Promise.resolve({
+            id: args.clientMessageId,
+            role: "user",
+            content: args.content,
+            attachFiles: args.attachments ?? undefined,
+            createdAt: "2026-05-01T00:00:00Z",
+          });
         },
       ),
-      recallPendingMessage$: command(() => {
-        return Promise.resolve({
-          draftContent: null,
-          draftAttachments: null,
-        });
-      }),
+      recallMessage$: command(
+        (_ctx, args: RecallMessageArgs, _signal: AbortSignal) => {
+          return Promise.resolve({
+            id: args.clientMessageId,
+            role: "user",
+            content: null,
+            revokesMessageId: args.revokesMessageId,
+            createdAt: "2026-05-01T00:00:00Z",
+          });
+        },
+      ),
       listMessagesAfter$: command((_ctx, _args) => {
         callCount++;
         const pages = [page1, page2, page3];

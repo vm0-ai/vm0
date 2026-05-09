@@ -28,8 +28,8 @@
 //! | 0x0A | H→G       | shutdown          | (empty) |
 //! | 0x0B | G→H       | shutdown_ack      | (empty) |
 //! | 0x0C | G→H       | stdout_chunk      | `[4B pid][data]` |
-//! | 0x0D | H→G       | bounded_exec      | `[4B timeout_ms][1B flags][4B stdout_limit][4B stderr_limit][4B stream_chunk_limit][4B stdout_stream_limit][4B stderr_stream_limit][4B cmd_len][command][4B env_count]([4B key_len][key][4B val_len][value])*[4B stdin_len][stdin]` |
-//! | 0x0E | G→H       | bounded_exec_result | `[1B termination][1B flags][4B exit_code][8B duration_ms][4B stdout_len][stdout][4B stderr_len][stderr]` |
+//! | 0x0D | H→G       | bounded_exec      | `[4B timeout_ms][1B flags][stdout_policy][stderr_policy][4B cmd_len][command][4B env_count]([4B key_len][key][4B val_len][value])*[4B stdin_len][stdin]` |
+//! | 0x0E | G→H       | bounded_exec_result | `[1B termination][4B exit_code][8B duration_ms][stdout_output][stderr_output][4B diagnostic_len][diagnostic]` |
 //! | 0x0F | G→H       | bounded_exec_output_chunk | `[1B stream][1B flags][4B sequence][4B chunk_len][chunk]` |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
@@ -37,9 +37,12 @@
 //! `seq` as the bounded exec request. They are separate from pid-scoped
 //! `MSG_STDOUT_CHUNK` messages used by `spawn_watch`.
 //!
-//! Bounded exec stream tags are `0 = stdout` and `1 = stderr`. Termination
-//! tags are `0 = exited`, `1 = timed_out`, `2 = cancelled`,
-//! `3 = start_failed`, and `4 = wait_failed`.
+//! Bounded exec stream tags are `0 = stdout` and `1 = stderr`. Bounded exec
+//! output policies use capture tags `0 = discard`, `1 = capture` and stream
+//! tags `0 = none`, `1 = stream`. Bounded exec result outputs use tags
+//! `0 = discarded`, `1 = captured`. Termination tags are `0 = exited`,
+//! `1 = timed_out`, `2 = cancelled`, `3 = start_failed`, and
+//! `4 = wait_failed`.
 
 /// Header size (4-byte length prefix).
 pub const HEADER_SIZE: usize = 4;
@@ -50,8 +53,9 @@ pub const MAX_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
 /// Minimum body size: type (1) + seq (4).
 pub const MIN_BODY_SIZE: usize = 5;
 
-/// Fixed bytes in a bounded_exec_result payload before stdout/stderr contents.
-pub const BOUNDED_EXEC_RESULT_FIXED_PAYLOAD_BYTES: usize = 1 + 1 + 4 + 8 + 4 + 4;
+/// Fixed bytes in a bounded_exec_result payload before captured output and diagnostic contents.
+pub const BOUNDED_EXEC_RESULT_FIXED_PAYLOAD_BYTES: usize =
+    1 + 4 + 8 + (1 + 1 + 4) + (1 + 1 + 4) + 4;
 /// Fixed bytes in a bounded_exec_output_chunk payload before chunk contents.
 pub const BOUNDED_EXEC_OUTPUT_CHUNK_FIXED_PAYLOAD_BYTES: usize = 1 + 1 + 4 + 4;
 /// Maximum combined stdout+stderr bytes that fit in one bounded_exec_result frame.
@@ -98,27 +102,22 @@ pub const WRITE_FILE_FLAG_APPEND: u8 = 0x02;
 
 // Bounded-exec payload flags.
 pub const BOUNDED_EXEC_FLAG_SUDO: u8 = 0x01;
-pub const BOUNDED_EXEC_FLAG_STREAM_STDOUT: u8 = 0x02;
-pub const BOUNDED_EXEC_FLAG_STREAM_STDERR: u8 = 0x04;
-pub const BOUNDED_EXEC_FLAG_STDIN_PRESENT: u8 = 0x08;
-
-// Bounded-exec-result payload flags.
-pub const BOUNDED_EXEC_RESULT_FLAG_STDOUT_TRUNCATED: u8 = 0x01;
-pub const BOUNDED_EXEC_RESULT_FLAG_STDERR_TRUNCATED: u8 = 0x02;
+pub const BOUNDED_EXEC_FLAG_STDIN_PRESENT: u8 = 0x02;
 
 // Bounded-exec-output-chunk payload flags.
 pub const BOUNDED_EXEC_OUTPUT_CHUNK_FLAG_TRUNCATED: u8 = 0x01;
 
-const BOUNDED_EXEC_KNOWN_FLAGS: u8 = BOUNDED_EXEC_FLAG_SUDO
-    | BOUNDED_EXEC_FLAG_STREAM_STDOUT
-    | BOUNDED_EXEC_FLAG_STREAM_STDERR
-    | BOUNDED_EXEC_FLAG_STDIN_PRESENT;
-const BOUNDED_EXEC_RESULT_KNOWN_FLAGS: u8 =
-    BOUNDED_EXEC_RESULT_FLAG_STDOUT_TRUNCATED | BOUNDED_EXEC_RESULT_FLAG_STDERR_TRUNCATED;
+const BOUNDED_EXEC_KNOWN_FLAGS: u8 = BOUNDED_EXEC_FLAG_SUDO | BOUNDED_EXEC_FLAG_STDIN_PRESENT;
 const BOUNDED_EXEC_OUTPUT_CHUNK_KNOWN_FLAGS: u8 = BOUNDED_EXEC_OUTPUT_CHUNK_FLAG_TRUNCATED;
 
 const BOUNDED_EXEC_STREAM_STDOUT: u8 = 0;
 const BOUNDED_EXEC_STREAM_STDERR: u8 = 1;
+const BOUNDED_EXEC_CAPTURE_DISCARD: u8 = 0;
+const BOUNDED_EXEC_CAPTURE_CAPTURE: u8 = 1;
+const BOUNDED_EXEC_STREAM_MODE_NONE: u8 = 0;
+const BOUNDED_EXEC_STREAM_MODE_STREAM: u8 = 1;
+const BOUNDED_EXEC_OUTPUT_DISCARDED: u8 = 0;
+const BOUNDED_EXEC_OUTPUT_CAPTURED: u8 = 1;
 
 const BOUNDED_EXEC_TERMINATION_EXITED: u8 = 0;
 const BOUNDED_EXEC_TERMINATION_TIMED_OUT: u8 = 1;
@@ -139,6 +138,30 @@ pub enum BoundedExecTermination {
     Cancelled,
     StartFailed,
     WaitFailed,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum BoundedExecCapturePolicy {
+    Discard,
+    Capture { limit_bytes: u32 },
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct BoundedExecStreamPolicy {
+    pub limit_bytes: u32,
+    pub chunk_limit_bytes: u32,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct BoundedExecOutputPolicy {
+    pub capture: BoundedExecCapturePolicy,
+    pub stream: Option<BoundedExecStreamPolicy>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum BoundedExecOutput<'a> {
+    Discarded,
+    Captured { bytes: &'a [u8], truncated: bool },
 }
 
 /// Protocol error.
@@ -373,38 +396,25 @@ pub struct BoundedExecRequest<'a> {
     pub env: &'a [(&'a str, &'a str)],
     pub sudo: bool,
     pub stdin: Option<&'a [u8]>,
-    pub stdout_limit_bytes: u32,
-    pub stderr_limit_bytes: u32,
-    /// Whether stdout should be emitted through request-scoped
-    /// `MSG_BOUNDED_EXEC_OUTPUT_CHUNK` messages.
-    pub stream_stdout: bool,
-    /// Whether stderr should be emitted through request-scoped
-    /// `MSG_BOUNDED_EXEC_OUTPUT_CHUNK` messages.
-    pub stream_stderr: bool,
-    pub stream_chunk_limit_bytes: u32,
-    /// Maximum emitted stdout bytes when `stream_stdout` is enabled.
-    /// Execution layers should ignore this field when stdout streaming is off.
-    pub stdout_stream_limit_bytes: u32,
-    /// Maximum emitted stderr bytes when `stream_stderr` is enabled.
-    /// Execution layers should ignore this field when stderr streaming is off.
-    pub stderr_stream_limit_bytes: u32,
+    pub stdout: BoundedExecOutputPolicy,
+    pub stderr: BoundedExecOutputPolicy,
 }
 
 /// Encode bounded_exec payload.
 ///
 /// Wire format:
-/// `[4B timeout_ms][1B flags][4B stdout_limit][4B stderr_limit]`
-/// `[4B stream_chunk_limit][4B stdout_stream_limit][4B stderr_stream_limit]`
+/// `[4B timeout_ms][1B flags][stdout_policy][stderr_policy]`
 /// `[4B cmd_len][command][4B env_count]([4B key_len][key][4B val_len][value])*`
 /// `[4B stdin_len][stdin]`.
 ///
-/// This encoder preserves protocol fields as provided. Execution policy, such
-/// as whether non-zero stream limits are valid when a stream flag is disabled,
-/// belongs in the host/guest execution layers.
+/// Each output policy is encoded as `[1B capture_tag]([4B capture_limit])`
+/// `[1B stream_tag]([4B stream_limit][4B stream_chunk_limit])`.
 pub fn encode_bounded_exec(request: &BoundedExecRequest<'_>) -> Result<Vec<u8>, ProtocolError> {
     let command = request.command.as_bytes();
     let stdin = request.stdin.unwrap_or_default();
-    let mut capacity = 25;
+    let mut capacity = 5;
+    add_bounded_exec_output_policy_capacity(&mut capacity, "stdout policy", request.stdout)?;
+    add_bounded_exec_output_policy_capacity(&mut capacity, "stderr policy", request.stderr)?;
     add_len_prefixed_capacity(&mut capacity, "command", command)?;
     add_payload_capacity(&mut capacity, "env", 4)?;
     for (key, val) in request.env {
@@ -419,21 +429,12 @@ pub fn encode_bounded_exec(request: &BoundedExecRequest<'_>) -> Result<Vec<u8>, 
     if request.sudo {
         flags |= BOUNDED_EXEC_FLAG_SUDO;
     }
-    if request.stream_stdout {
-        flags |= BOUNDED_EXEC_FLAG_STREAM_STDOUT;
-    }
-    if request.stream_stderr {
-        flags |= BOUNDED_EXEC_FLAG_STREAM_STDERR;
-    }
     if request.stdin.is_some() {
         flags |= BOUNDED_EXEC_FLAG_STDIN_PRESENT;
     }
     p.push(flags);
-    p.extend_from_slice(&request.stdout_limit_bytes.to_be_bytes());
-    p.extend_from_slice(&request.stderr_limit_bytes.to_be_bytes());
-    p.extend_from_slice(&request.stream_chunk_limit_bytes.to_be_bytes());
-    p.extend_from_slice(&request.stdout_stream_limit_bytes.to_be_bytes());
-    p.extend_from_slice(&request.stderr_stream_limit_bytes.to_be_bytes());
+    append_bounded_exec_output_policy(&mut p, request.stdout);
+    append_bounded_exec_output_policy(&mut p, request.stderr);
     append_len_prefixed_bytes(&mut p, "command", command)?;
     p.extend_from_slice(&checked_u32_len("env", request.env.len())?.to_be_bytes());
     for (key, val) in request.env {
@@ -442,6 +443,44 @@ pub fn encode_bounded_exec(request: &BoundedExecRequest<'_>) -> Result<Vec<u8>, 
     }
     append_len_prefixed_bytes(&mut p, "stdin", stdin)?;
     Ok(p)
+}
+
+fn add_bounded_exec_output_policy_capacity(
+    capacity: &mut usize,
+    field: &'static str,
+    policy: BoundedExecOutputPolicy,
+) -> Result<(), ProtocolError> {
+    add_payload_capacity(capacity, field, 1)?;
+    if matches!(policy.capture, BoundedExecCapturePolicy::Capture { .. }) {
+        add_payload_capacity(capacity, field, 4)?;
+    }
+    add_payload_capacity(capacity, field, 1)?;
+    if policy.stream.is_some() {
+        add_payload_capacity(capacity, field, 8)?;
+    }
+    Ok(())
+}
+
+fn append_bounded_exec_output_policy(p: &mut Vec<u8>, policy: BoundedExecOutputPolicy) {
+    match policy.capture {
+        BoundedExecCapturePolicy::Discard => {
+            p.push(BOUNDED_EXEC_CAPTURE_DISCARD);
+        }
+        BoundedExecCapturePolicy::Capture { limit_bytes } => {
+            p.push(BOUNDED_EXEC_CAPTURE_CAPTURE);
+            p.extend_from_slice(&limit_bytes.to_be_bytes());
+        }
+    }
+    match policy.stream {
+        None => {
+            p.push(BOUNDED_EXEC_STREAM_MODE_NONE);
+        }
+        Some(stream) => {
+            p.push(BOUNDED_EXEC_STREAM_MODE_STREAM);
+            p.extend_from_slice(&stream.limit_bytes.to_be_bytes());
+            p.extend_from_slice(&stream.chunk_limit_bytes.to_be_bytes());
+        }
+    }
 }
 
 fn bounded_exec_stream_tag(stream: BoundedExecStream) -> u8 {
@@ -467,32 +506,66 @@ fn bounded_exec_termination_tag(termination: BoundedExecTermination) -> (u8, i32
 pub fn encode_bounded_exec_result(
     termination: BoundedExecTermination,
     duration_ms: u64,
-    stdout: &[u8],
-    stderr: &[u8],
-    stdout_truncated: bool,
-    stderr_truncated: bool,
+    stdout: BoundedExecOutput<'_>,
+    stderr: BoundedExecOutput<'_>,
+    diagnostic: Option<&str>,
 ) -> Result<Vec<u8>, ProtocolError> {
     let (termination_tag, exit_code) = bounded_exec_termination_tag(termination);
-    let mut flags = 0u8;
-    if stdout_truncated {
-        flags |= BOUNDED_EXEC_RESULT_FLAG_STDOUT_TRUNCATED;
-    }
-    if stderr_truncated {
-        flags |= BOUNDED_EXEC_RESULT_FLAG_STDERR_TRUNCATED;
-    }
 
-    let mut capacity = 14;
-    add_len_prefixed_capacity(&mut capacity, "stdout", stdout)?;
-    add_len_prefixed_capacity(&mut capacity, "stderr", stderr)?;
+    let diagnostic = diagnostic.unwrap_or_default().as_bytes();
+    let mut capacity = 13;
+    add_bounded_exec_output_capacity(&mut capacity, "stdout", stdout)?;
+    add_bounded_exec_output_capacity(&mut capacity, "stderr", stderr)?;
+    add_len_prefixed_capacity(&mut capacity, "diagnostic", diagnostic)?;
+    let body_len = MIN_BODY_SIZE
+        .checked_add(capacity)
+        .ok_or(ProtocolError::PayloadTooLarge(
+            "bounded_exec_result",
+            usize::MAX,
+        ))?;
+    if body_len > MAX_MESSAGE_SIZE {
+        return Err(ProtocolError::MessageTooLarge(body_len));
+    }
 
     let mut p = Vec::with_capacity(capacity);
     p.push(termination_tag);
-    p.push(flags);
     p.extend_from_slice(&exit_code.to_be_bytes());
     p.extend_from_slice(&duration_ms.to_be_bytes());
-    append_len_prefixed_bytes(&mut p, "stdout", stdout)?;
-    append_len_prefixed_bytes(&mut p, "stderr", stderr)?;
+    append_bounded_exec_output(&mut p, "stdout", stdout)?;
+    append_bounded_exec_output(&mut p, "stderr", stderr)?;
+    append_len_prefixed_bytes(&mut p, "diagnostic", diagnostic)?;
     Ok(p)
+}
+
+fn add_bounded_exec_output_capacity(
+    capacity: &mut usize,
+    field: &'static str,
+    output: BoundedExecOutput<'_>,
+) -> Result<(), ProtocolError> {
+    add_payload_capacity(capacity, field, 1)?;
+    if let BoundedExecOutput::Captured { bytes, .. } = output {
+        add_payload_capacity(capacity, field, 1)?;
+        add_len_prefixed_capacity(capacity, field, bytes)?;
+    }
+    Ok(())
+}
+
+fn append_bounded_exec_output(
+    p: &mut Vec<u8>,
+    field: &'static str,
+    output: BoundedExecOutput<'_>,
+) -> Result<(), ProtocolError> {
+    match output {
+        BoundedExecOutput::Discarded => {
+            p.push(BOUNDED_EXEC_OUTPUT_DISCARDED);
+        }
+        BoundedExecOutput::Captured { bytes, truncated } => {
+            p.push(BOUNDED_EXEC_OUTPUT_CAPTURED);
+            p.push(u8::from(truncated));
+            append_len_prefixed_bytes(p, field, bytes)?;
+        }
+    }
+    Ok(())
 }
 
 /// Encode bounded_exec_output_chunk payload.
@@ -887,23 +960,17 @@ pub struct DecodedBoundedExec<'a> {
     pub env: Vec<(&'a str, &'a str)>,
     pub sudo: bool,
     pub stdin: Option<&'a [u8]>,
-    pub stdout_limit_bytes: u32,
-    pub stderr_limit_bytes: u32,
-    pub stream_stdout: bool,
-    pub stream_stderr: bool,
-    pub stream_chunk_limit_bytes: u32,
-    pub stdout_stream_limit_bytes: u32,
-    pub stderr_stream_limit_bytes: u32,
+    pub stdout: BoundedExecOutputPolicy,
+    pub stderr: BoundedExecOutputPolicy,
 }
 
 #[derive(Debug)]
 pub struct DecodedBoundedExecResult<'a> {
     pub termination: BoundedExecTermination,
     pub duration_ms: u64,
-    pub stdout: &'a [u8],
-    pub stderr: &'a [u8],
-    pub stdout_truncated: bool,
-    pub stderr_truncated: bool,
+    pub stdout: BoundedExecOutput<'a>,
+    pub stderr: BoundedExecOutput<'a>,
+    pub diagnostic: Option<&'a str>,
 }
 
 #[derive(Debug)]
@@ -1063,6 +1130,89 @@ fn decode_bounded_exec_stream(tag: u8) -> Result<BoundedExecStream, ProtocolErro
     }
 }
 
+fn decode_bounded_exec_output_policy(
+    payload: &[u8],
+    offset: &mut usize,
+) -> Result<BoundedExecOutputPolicy, ProtocolError> {
+    let capture_tag = read_u8_cursor(payload, offset, "bounded_exec output capture tag truncated")?;
+    let capture = match capture_tag {
+        BOUNDED_EXEC_CAPTURE_DISCARD => BoundedExecCapturePolicy::Discard,
+        BOUNDED_EXEC_CAPTURE_CAPTURE => {
+            let limit_bytes = read_u32_cursor(
+                payload,
+                offset,
+                "bounded_exec output capture limit truncated",
+            )?;
+            BoundedExecCapturePolicy::Capture { limit_bytes }
+        }
+        _ => {
+            return Err(ProtocolError::InvalidPayload(
+                "bounded_exec output invalid capture tag",
+            ));
+        }
+    };
+
+    let stream_tag = read_u8_cursor(payload, offset, "bounded_exec output stream tag truncated")?;
+    let stream = match stream_tag {
+        BOUNDED_EXEC_STREAM_MODE_NONE => None,
+        BOUNDED_EXEC_STREAM_MODE_STREAM => {
+            let limit_bytes = read_u32_cursor(
+                payload,
+                offset,
+                "bounded_exec output stream limit truncated",
+            )?;
+            let chunk_limit_bytes = read_u32_cursor(
+                payload,
+                offset,
+                "bounded_exec output stream chunk limit truncated",
+            )?;
+            Some(BoundedExecStreamPolicy {
+                limit_bytes,
+                chunk_limit_bytes,
+            })
+        }
+        _ => {
+            return Err(ProtocolError::InvalidPayload(
+                "bounded_exec output invalid stream tag",
+            ));
+        }
+    };
+
+    Ok(BoundedExecOutputPolicy { capture, stream })
+}
+
+fn decode_bounded_exec_output<'a>(
+    payload: &'a [u8],
+    offset: &mut usize,
+) -> Result<BoundedExecOutput<'a>, ProtocolError> {
+    let output_tag = read_u8_cursor(payload, offset, "bounded_exec_result output tag truncated")?;
+    match output_tag {
+        BOUNDED_EXEC_OUTPUT_DISCARDED => Ok(BoundedExecOutput::Discarded),
+        BOUNDED_EXEC_OUTPUT_CAPTURED => {
+            let truncated =
+                read_u8_cursor(payload, offset, "bounded_exec_result output truncated flag")?;
+            if truncated > 1 {
+                return Err(ProtocolError::InvalidPayload(
+                    "bounded_exec_result invalid output truncated flag",
+                ));
+            }
+            let bytes = read_len_prefixed_bytes_cursor(
+                payload,
+                offset,
+                "bounded_exec_result output_len truncated",
+                "bounded_exec_result output truncated",
+            )?;
+            Ok(BoundedExecOutput::Captured {
+                bytes,
+                truncated: truncated == 1,
+            })
+        }
+        _ => Err(ProtocolError::InvalidPayload(
+            "bounded_exec_result invalid output tag",
+        )),
+    }
+}
+
 /// Decode bounded_exec payload into a [`DecodedBoundedExec`] struct.
 pub fn decode_bounded_exec(payload: &[u8]) -> Result<DecodedBoundedExec<'_>, ProtocolError> {
     let mut offset = 0usize;
@@ -1073,25 +1223,8 @@ pub fn decode_bounded_exec(payload: &[u8]) -> Result<DecodedBoundedExec<'_>, Pro
         BOUNDED_EXEC_KNOWN_FLAGS,
         "bounded_exec unknown flags",
     )?;
-    let stdout_limit_bytes =
-        read_u32_cursor(payload, &mut offset, "bounded_exec stdout_limit truncated")?;
-    let stderr_limit_bytes =
-        read_u32_cursor(payload, &mut offset, "bounded_exec stderr_limit truncated")?;
-    let stream_chunk_limit_bytes = read_u32_cursor(
-        payload,
-        &mut offset,
-        "bounded_exec stream_chunk_limit truncated",
-    )?;
-    let stdout_stream_limit_bytes = read_u32_cursor(
-        payload,
-        &mut offset,
-        "bounded_exec stdout_stream_limit truncated",
-    )?;
-    let stderr_stream_limit_bytes = read_u32_cursor(
-        payload,
-        &mut offset,
-        "bounded_exec stderr_stream_limit truncated",
-    )?;
+    let stdout = decode_bounded_exec_output_policy(payload, &mut offset)?;
+    let stderr = decode_bounded_exec_output_policy(payload, &mut offset)?;
     let command = read_len_prefixed_str_cursor(
         payload,
         &mut offset,
@@ -1139,13 +1272,8 @@ pub fn decode_bounded_exec(payload: &[u8]) -> Result<DecodedBoundedExec<'_>, Pro
         env,
         sudo: flags & BOUNDED_EXEC_FLAG_SUDO != 0,
         stdin: stdin_present.then_some(stdin_bytes),
-        stdout_limit_bytes,
-        stderr_limit_bytes,
-        stream_stdout: flags & BOUNDED_EXEC_FLAG_STREAM_STDOUT != 0,
-        stream_stderr: flags & BOUNDED_EXEC_FLAG_STREAM_STDERR != 0,
-        stream_chunk_limit_bytes,
-        stdout_stream_limit_bytes,
-        stderr_stream_limit_bytes,
+        stdout,
+        stderr,
     })
 }
 
@@ -1159,16 +1287,6 @@ pub fn decode_bounded_exec_result(
         &mut offset,
         "bounded_exec_result payload too short",
     )?;
-    let flags = read_u8_cursor(
-        payload,
-        &mut offset,
-        "bounded_exec_result payload too short",
-    )?;
-    reject_unknown_flags(
-        flags,
-        BOUNDED_EXEC_RESULT_KNOWN_FLAGS,
-        "bounded_exec_result unknown flags",
-    )?;
     validate_bounded_exec_termination_tag(termination_tag)?;
     let exit_code = read_i32_cursor(
         payload,
@@ -1180,18 +1298,21 @@ pub fn decode_bounded_exec_result(
         &mut offset,
         "bounded_exec_result duration_ms truncated",
     )?;
-    let stdout = read_len_prefixed_bytes_cursor(
+    let stdout = decode_bounded_exec_output(payload, &mut offset)?;
+    let stderr = decode_bounded_exec_output(payload, &mut offset)?;
+    let diagnostic_bytes = read_len_prefixed_bytes_cursor(
         payload,
         &mut offset,
-        "bounded_exec_result stdout_len truncated",
-        "bounded_exec_result stdout truncated",
+        "bounded_exec_result diagnostic_len truncated",
+        "bounded_exec_result diagnostic truncated",
     )?;
-    let stderr = read_len_prefixed_bytes_cursor(
-        payload,
-        &mut offset,
-        "bounded_exec_result stderr_len truncated",
-        "bounded_exec_result stderr truncated",
-    )?;
+    let diagnostic = if diagnostic_bytes.is_empty() {
+        None
+    } else {
+        Some(std::str::from_utf8(diagnostic_bytes).map_err(|_| {
+            ProtocolError::InvalidPayload("invalid UTF-8 in bounded_exec_result diagnostic")
+        })?)
+    };
     ensure_no_trailing_bytes(payload, offset, "bounded_exec_result trailing bytes")?;
 
     Ok(DecodedBoundedExecResult {
@@ -1199,8 +1320,7 @@ pub fn decode_bounded_exec_result(
         duration_ms,
         stdout,
         stderr,
-        stdout_truncated: flags & BOUNDED_EXEC_RESULT_FLAG_STDOUT_TRUNCATED != 0,
-        stderr_truncated: flags & BOUNDED_EXEC_RESULT_FLAG_STDERR_TRUNCATED != 0,
+        diagnostic,
     })
 }
 
@@ -1489,14 +1609,62 @@ mod tests {
             env: &[("TOKEN", "secret"), ("HOME", "/home/user")],
             sudo: true,
             stdin: Some(b"input"),
-            stdout_limit_bytes: 1024,
-            stderr_limit_bytes: 2048,
-            stream_stdout: true,
-            stream_stderr: true,
-            stream_chunk_limit_bytes: 256,
-            stdout_stream_limit_bytes: 4096,
-            stderr_stream_limit_bytes: 8192,
+            stdout: BoundedExecOutputPolicy {
+                capture: BoundedExecCapturePolicy::Capture { limit_bytes: 1024 },
+                stream: Some(BoundedExecStreamPolicy {
+                    limit_bytes: 4096,
+                    chunk_limit_bytes: 256,
+                }),
+            },
+            stderr: BoundedExecOutputPolicy {
+                capture: BoundedExecCapturePolicy::Capture { limit_bytes: 2048 },
+                stream: Some(BoundedExecStreamPolicy {
+                    limit_bytes: 8192,
+                    chunk_limit_bytes: 256,
+                }),
+            },
         }
+    }
+
+    fn capture_policy(limit_bytes: u32) -> BoundedExecOutputPolicy {
+        BoundedExecOutputPolicy {
+            capture: BoundedExecCapturePolicy::Capture { limit_bytes },
+            stream: None,
+        }
+    }
+
+    fn discard_policy() -> BoundedExecOutputPolicy {
+        BoundedExecOutputPolicy {
+            capture: BoundedExecCapturePolicy::Discard,
+            stream: None,
+        }
+    }
+
+    fn captured_output(bytes: &[u8], truncated: bool) -> BoundedExecOutput<'_> {
+        BoundedExecOutput::Captured { bytes, truncated }
+    }
+
+    fn assert_captured_output(
+        output: BoundedExecOutput<'_>,
+        expected_bytes: &[u8],
+        expected_truncated: bool,
+    ) {
+        match output {
+            BoundedExecOutput::Captured { bytes, truncated } => {
+                assert_eq!(bytes, expected_bytes);
+                assert_eq!(truncated, expected_truncated);
+            }
+            BoundedExecOutput::Discarded => panic!("expected captured output"),
+        }
+    }
+
+    fn append_discard_output_policies(payload: &mut Vec<u8>) {
+        payload.extend_from_slice(&[
+            BOUNDED_EXEC_CAPTURE_DISCARD,
+            BOUNDED_EXEC_STREAM_MODE_NONE,
+            BOUNDED_EXEC_CAPTURE_DISCARD,
+            BOUNDED_EXEC_STREAM_MODE_NONE,
+        ]);
     }
 
     #[test]
@@ -1510,13 +1678,28 @@ mod tests {
         assert_eq!(d.env, request.env);
         assert!(d.sudo);
         assert_eq!(d.stdin, Some(b"input".as_slice()));
-        assert_eq!(d.stdout_limit_bytes, 1024);
-        assert_eq!(d.stderr_limit_bytes, 2048);
-        assert!(d.stream_stdout);
-        assert!(d.stream_stderr);
-        assert_eq!(d.stream_chunk_limit_bytes, 256);
-        assert_eq!(d.stdout_stream_limit_bytes, 4096);
-        assert_eq!(d.stderr_stream_limit_bytes, 8192);
+        assert_eq!(
+            d.stdout.capture,
+            BoundedExecCapturePolicy::Capture { limit_bytes: 1024 }
+        );
+        assert_eq!(
+            d.stdout.stream,
+            Some(BoundedExecStreamPolicy {
+                limit_bytes: 4096,
+                chunk_limit_bytes: 256,
+            })
+        );
+        assert_eq!(
+            d.stderr.capture,
+            BoundedExecCapturePolicy::Capture { limit_bytes: 2048 }
+        );
+        assert_eq!(
+            d.stderr.stream,
+            Some(BoundedExecStreamPolicy {
+                limit_bytes: 8192,
+                chunk_limit_bytes: 256,
+            })
+        );
     }
 
     #[test]
@@ -1527,13 +1710,8 @@ mod tests {
             env: &[],
             sudo: false,
             stdin: None,
-            stdout_limit_bytes: 0,
-            stderr_limit_bytes: 0,
-            stream_stdout: false,
-            stream_stderr: false,
-            stream_chunk_limit_bytes: 0,
-            stdout_stream_limit_bytes: 0,
-            stderr_stream_limit_bytes: 0,
+            stdout: discard_policy(),
+            stderr: capture_policy(0),
         };
         let payload = encode_bounded_exec(&request).unwrap();
         let d = decode_bounded_exec(&payload).unwrap();
@@ -1543,8 +1721,45 @@ mod tests {
         assert!(d.env.is_empty());
         assert!(!d.sudo);
         assert_eq!(d.stdin, None);
-        assert!(!d.stream_stdout);
-        assert!(!d.stream_stderr);
+        assert_eq!(d.stdout.capture, BoundedExecCapturePolicy::Discard);
+        assert!(d.stdout.stream.is_none());
+        assert_eq!(
+            d.stderr.capture,
+            BoundedExecCapturePolicy::Capture { limit_bytes: 0 }
+        );
+        assert!(d.stderr.stream.is_none());
+    }
+
+    #[test]
+    fn bounded_exec_payload_roundtrip_stream_only() {
+        let request = BoundedExecRequest {
+            timeout_ms: 1,
+            command: "true",
+            env: &[],
+            sudo: false,
+            stdin: None,
+            stdout: BoundedExecOutputPolicy {
+                capture: BoundedExecCapturePolicy::Discard,
+                stream: Some(BoundedExecStreamPolicy {
+                    limit_bytes: 4096,
+                    chunk_limit_bytes: 512,
+                }),
+            },
+            stderr: discard_policy(),
+        };
+        let payload = encode_bounded_exec(&request).unwrap();
+        let d = decode_bounded_exec(&payload).unwrap();
+
+        assert_eq!(d.stdout.capture, BoundedExecCapturePolicy::Discard);
+        assert_eq!(
+            d.stdout.stream,
+            Some(BoundedExecStreamPolicy {
+                limit_bytes: 4096,
+                chunk_limit_bytes: 512,
+            })
+        );
+        assert_eq!(d.stderr.capture, BoundedExecCapturePolicy::Discard);
+        assert!(d.stderr.stream.is_none());
     }
 
     #[test]
@@ -1600,9 +1815,7 @@ mod tests {
         let mut payload = Vec::new();
         payload.extend_from_slice(&1_u32.to_be_bytes());
         payload.push(0);
-        for _ in 0..5 {
-            payload.extend_from_slice(&0_u32.to_be_bytes());
-        }
+        append_discard_output_policies(&mut payload);
         payload.extend_from_slice(&0_u32.to_be_bytes()); // empty command
         payload.extend_from_slice(&0_u32.to_be_bytes()); // empty env
 
@@ -1626,13 +1839,92 @@ mod tests {
     }
 
     #[test]
+    fn decode_bounded_exec_rejects_invalid_output_capture_tag() {
+        let request = BoundedExecRequest {
+            timeout_ms: 1,
+            command: "true",
+            env: &[],
+            sudo: false,
+            stdin: None,
+            stdout: discard_policy(),
+            stderr: discard_policy(),
+        };
+        let mut payload = encode_bounded_exec(&request).unwrap();
+        payload[5] = 0x80;
+
+        let err = decode_bounded_exec(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec output invalid capture tag")
+        ));
+    }
+
+    #[test]
+    fn decode_bounded_exec_rejects_invalid_output_stream_tag() {
+        let request = BoundedExecRequest {
+            timeout_ms: 1,
+            command: "true",
+            env: &[],
+            sudo: false,
+            stdin: None,
+            stdout: discard_policy(),
+            stderr: discard_policy(),
+        };
+        let mut payload = encode_bounded_exec(&request).unwrap();
+        payload[6] = 0x80;
+
+        let err = decode_bounded_exec(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec output invalid stream tag")
+        ));
+    }
+
+    #[test]
+    fn decode_bounded_exec_rejects_truncated_output_policy_lengths() {
+        let mut capture_limit_truncated = Vec::new();
+        capture_limit_truncated.extend_from_slice(&1_u32.to_be_bytes());
+        capture_limit_truncated.push(0);
+        capture_limit_truncated.push(BOUNDED_EXEC_CAPTURE_CAPTURE);
+        capture_limit_truncated.extend_from_slice(&1_u32.to_be_bytes()[..3]);
+        let err = decode_bounded_exec(&capture_limit_truncated).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec output capture limit truncated")
+        ));
+
+        let mut stream_limit_truncated = Vec::new();
+        stream_limit_truncated.extend_from_slice(&1_u32.to_be_bytes());
+        stream_limit_truncated.push(0);
+        stream_limit_truncated.push(BOUNDED_EXEC_CAPTURE_DISCARD);
+        stream_limit_truncated.push(BOUNDED_EXEC_STREAM_MODE_STREAM);
+        stream_limit_truncated.extend_from_slice(&1_u32.to_be_bytes()[..3]);
+        let err = decode_bounded_exec(&stream_limit_truncated).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec output stream limit truncated")
+        ));
+
+        let mut stream_chunk_limit_truncated = Vec::new();
+        stream_chunk_limit_truncated.extend_from_slice(&1_u32.to_be_bytes());
+        stream_chunk_limit_truncated.push(0);
+        stream_chunk_limit_truncated.push(BOUNDED_EXEC_CAPTURE_DISCARD);
+        stream_chunk_limit_truncated.push(BOUNDED_EXEC_STREAM_MODE_STREAM);
+        stream_chunk_limit_truncated.extend_from_slice(&1_u32.to_be_bytes());
+        stream_chunk_limit_truncated.extend_from_slice(&1_u32.to_be_bytes()[..3]);
+        let err = decode_bounded_exec(&stream_chunk_limit_truncated).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec output stream chunk limit truncated")
+        ));
+    }
+
+    #[test]
     fn decode_bounded_exec_rejects_truncated_command() {
         let mut payload = Vec::new();
         payload.extend_from_slice(&1_u32.to_be_bytes());
         payload.push(0);
-        for _ in 0..5 {
-            payload.extend_from_slice(&0_u32.to_be_bytes());
-        }
+        append_discard_output_policies(&mut payload);
         payload.extend_from_slice(&3_u32.to_be_bytes());
         payload.extend_from_slice(b"ab");
 
@@ -1648,9 +1940,7 @@ mod tests {
         let mut payload = Vec::new();
         payload.extend_from_slice(&1_u32.to_be_bytes());
         payload.push(0);
-        for _ in 0..5 {
-            payload.extend_from_slice(&0_u32.to_be_bytes());
-        }
+        append_discard_output_policies(&mut payload);
         payload.extend_from_slice(&0_u32.to_be_bytes()); // empty command
         payload.extend_from_slice(&1_u32.to_be_bytes()); // one env pair
         payload.extend_from_slice(&1_u32.to_be_bytes()); // key len
@@ -1670,9 +1960,7 @@ mod tests {
         let mut payload = Vec::new();
         payload.extend_from_slice(&1_u32.to_be_bytes());
         payload.push(0);
-        for _ in 0..5 {
-            payload.extend_from_slice(&0_u32.to_be_bytes());
-        }
+        append_discard_output_policies(&mut payload);
         payload.extend_from_slice(&1_u32.to_be_bytes());
         payload.push(0xFF);
         payload.extend_from_slice(&0_u32.to_be_bytes());
@@ -1690,9 +1978,7 @@ mod tests {
         let mut payload = Vec::new();
         payload.extend_from_slice(&1_u32.to_be_bytes());
         payload.push(0);
-        for _ in 0..5 {
-            payload.extend_from_slice(&0_u32.to_be_bytes());
-        }
+        append_discard_output_policies(&mut payload);
         payload.extend_from_slice(&0_u32.to_be_bytes()); // empty command
         payload.extend_from_slice(&1_u32.to_be_bytes()); // one env pair
         payload.extend_from_slice(&1_u32.to_be_bytes()); // key len
@@ -1712,9 +1998,7 @@ mod tests {
         let mut payload = Vec::new();
         payload.extend_from_slice(&1_u32.to_be_bytes());
         payload.push(0);
-        for _ in 0..5 {
-            payload.extend_from_slice(&0_u32.to_be_bytes());
-        }
+        append_discard_output_policies(&mut payload);
         payload.extend_from_slice(&0_u32.to_be_bytes()); // empty command
         payload.extend_from_slice(&1_u32.to_be_bytes()); // one env pair
         payload.extend_from_slice(&1_u32.to_be_bytes()); // key len
@@ -1735,9 +2019,7 @@ mod tests {
         let mut payload = Vec::new();
         payload.extend_from_slice(&1_u32.to_be_bytes());
         payload.push(0);
-        for _ in 0..5 {
-            payload.extend_from_slice(&0_u32.to_be_bytes());
-        }
+        append_discard_output_policies(&mut payload);
         payload.extend_from_slice(&0_u32.to_be_bytes()); // empty command
         payload.extend_from_slice(&u32::MAX.to_be_bytes());
 
@@ -1765,10 +2047,9 @@ mod tests {
         let payload = encode_bounded_exec_result(
             BoundedExecTermination::Exited { exit_code: 42 },
             123,
-            b"out",
-            b"err",
-            false,
-            true,
+            captured_output(b"out", false),
+            captured_output(b"err", true),
+            Some("diagnostic"),
         )
         .unwrap();
         let d = decode_bounded_exec_result(&payload).unwrap();
@@ -1778,21 +2059,19 @@ mod tests {
             BoundedExecTermination::Exited { exit_code: 42 }
         );
         assert_eq!(d.duration_ms, 123);
-        assert_eq!(d.stdout, b"out");
-        assert_eq!(d.stderr, b"err");
-        assert!(!d.stdout_truncated);
-        assert!(d.stderr_truncated);
+        assert_captured_output(d.stdout, b"out", false);
+        assert_captured_output(d.stderr, b"err", true);
+        assert_eq!(d.diagnostic, Some("diagnostic"));
     }
 
     #[test]
-    fn bounded_exec_result_empty_output_roundtrip() {
+    fn bounded_exec_result_captured_empty_output_roundtrip() {
         let payload = encode_bounded_exec_result(
             BoundedExecTermination::Exited { exit_code: 0 },
             0,
-            b"",
-            b"",
-            false,
-            false,
+            captured_output(b"", false),
+            captured_output(b"", false),
+            None,
         )
         .unwrap();
         let d = decode_bounded_exec_result(&payload).unwrap();
@@ -1802,31 +2081,77 @@ mod tests {
             BoundedExecTermination::Exited { exit_code: 0 }
         );
         assert_eq!(d.duration_ms, 0);
-        assert!(d.stdout.is_empty());
-        assert!(d.stderr.is_empty());
-        assert!(!d.stdout_truncated);
-        assert!(!d.stderr_truncated);
+        assert_captured_output(d.stdout, b"", false);
+        assert_captured_output(d.stderr, b"", false);
+        assert_eq!(d.diagnostic, None);
     }
 
     #[test]
-    fn bounded_exec_result_truncation_flags_roundtrip_independently() {
-        for (stdout_truncated, stderr_truncated) in
-            [(false, false), (true, false), (false, true), (true, true)]
-        {
-            let payload = encode_bounded_exec_result(
-                BoundedExecTermination::Exited { exit_code: 0 },
-                1,
-                b"out",
-                b"err",
-                stdout_truncated,
-                stderr_truncated,
-            )
-            .unwrap();
-            let d = decode_bounded_exec_result(&payload).unwrap();
+    fn bounded_exec_result_fixed_payload_constant_matches_captured_empty_frame() {
+        let payload = encode_bounded_exec_result(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            0,
+            captured_output(b"", false),
+            captured_output(b"", false),
+            None,
+        )
+        .unwrap();
 
-            assert_eq!(d.stdout_truncated, stdout_truncated);
-            assert_eq!(d.stderr_truncated, stderr_truncated);
-        }
+        assert_eq!(payload.len(), BOUNDED_EXEC_RESULT_FIXED_PAYLOAD_BYTES);
+        assert_eq!(
+            MIN_BODY_SIZE
+                + BOUNDED_EXEC_RESULT_FIXED_PAYLOAD_BYTES
+                + MAX_BOUNDED_EXEC_RESULT_OUTPUT_BYTES,
+            MAX_MESSAGE_SIZE
+        );
+    }
+
+    #[test]
+    fn bounded_exec_result_rejects_diagnostic_past_message_budget() {
+        let stdout = vec![0u8; MAX_BOUNDED_EXEC_RESULT_OUTPUT_BYTES];
+
+        let err = encode_bounded_exec_result(
+            BoundedExecTermination::WaitFailed,
+            0,
+            captured_output(&stdout, true),
+            captured_output(b"", false),
+            Some("diagnostic"),
+        )
+        .unwrap_err();
+
+        assert!(matches!(err, ProtocolError::MessageTooLarge(_)));
+    }
+
+    #[test]
+    fn bounded_exec_result_discarded_output_roundtrip() {
+        let payload = encode_bounded_exec_result(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            1,
+            BoundedExecOutput::Discarded,
+            captured_output(b"err", false),
+            None,
+        )
+        .unwrap();
+        let d = decode_bounded_exec_result(&payload).unwrap();
+
+        assert_eq!(d.stdout, BoundedExecOutput::Discarded);
+        assert_captured_output(d.stderr, b"err", false);
+    }
+
+    #[test]
+    fn bounded_exec_result_truncation_roundtrips_per_captured_output() {
+        let payload = encode_bounded_exec_result(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            1,
+            captured_output(b"out", true),
+            captured_output(b"err", false),
+            None,
+        )
+        .unwrap();
+        let d = decode_bounded_exec_result(&payload).unwrap();
+
+        assert_captured_output(d.stdout, b"out", true);
+        assert_captured_output(d.stderr, b"err", false);
     }
 
     #[test]
@@ -1837,25 +2162,34 @@ mod tests {
             BoundedExecTermination::StartFailed,
             BoundedExecTermination::WaitFailed,
         ] {
-            let payload =
-                encode_bounded_exec_result(termination, 999, b"partial", b"diagnostic", true, true)
-                    .unwrap();
+            let payload = encode_bounded_exec_result(
+                termination,
+                999,
+                captured_output(b"partial", true),
+                BoundedExecOutput::Discarded,
+                Some("diagnostic"),
+            )
+            .unwrap();
             let d = decode_bounded_exec_result(&payload).unwrap();
 
             assert_eq!(d.termination, termination);
             assert_eq!(d.duration_ms, 999);
-            assert_eq!(d.stdout, b"partial");
-            assert_eq!(d.stderr, b"diagnostic");
-            assert!(d.stdout_truncated);
-            assert!(d.stderr_truncated);
+            assert_captured_output(d.stdout, b"partial", true);
+            assert_eq!(d.stderr, BoundedExecOutput::Discarded);
+            assert_eq!(d.diagnostic, Some("diagnostic"));
         }
     }
 
     #[test]
     fn decode_bounded_exec_result_rejects_invalid_termination_tag() {
-        let mut payload =
-            encode_bounded_exec_result(BoundedExecTermination::TimedOut, 0, b"", b"", false, false)
-                .unwrap();
+        let mut payload = encode_bounded_exec_result(
+            BoundedExecTermination::TimedOut,
+            0,
+            captured_output(b"", false),
+            captured_output(b"", false),
+            None,
+        )
+        .unwrap();
         payload[0] = 0xFF;
 
         let err = decode_bounded_exec_result(&payload).unwrap_err();
@@ -1875,22 +2209,27 @@ mod tests {
     }
 
     #[test]
-    fn decode_bounded_exec_result_rejects_unknown_flags() {
-        let mut payload =
-            encode_bounded_exec_result(BoundedExecTermination::TimedOut, 0, b"", b"", false, false)
-                .unwrap();
-        payload[1] = 0x80;
+    fn decode_bounded_exec_result_rejects_invalid_output_tag() {
+        let mut payload = encode_bounded_exec_result(
+            BoundedExecTermination::TimedOut,
+            0,
+            captured_output(b"", false),
+            captured_output(b"", false),
+            None,
+        )
+        .unwrap();
+        payload[13] = 0x80;
 
         let err = decode_bounded_exec_result(&payload).unwrap_err();
         assert!(matches!(
             err,
-            ProtocolError::InvalidPayload("bounded_exec_result unknown flags")
+            ProtocolError::InvalidPayload("bounded_exec_result invalid output tag")
         ));
     }
 
     #[test]
     fn decode_bounded_exec_result_rejects_truncated_exit_code() {
-        let payload = [BOUNDED_EXEC_TERMINATION_EXITED, 0, 0, 0, 0];
+        let payload = [BOUNDED_EXEC_TERMINATION_EXITED, 0, 0, 0];
 
         let err = decode_bounded_exec_result(&payload).unwrap_err();
         assert!(matches!(
@@ -1903,7 +2242,6 @@ mod tests {
     fn decode_bounded_exec_result_rejects_truncated_duration() {
         let mut payload = Vec::new();
         payload.push(BOUNDED_EXEC_TERMINATION_EXITED);
-        payload.push(0);
         payload.extend_from_slice(&0_i32.to_be_bytes());
         payload.extend_from_slice(&0_u64.to_be_bytes()[..7]);
 
@@ -1915,31 +2253,88 @@ mod tests {
     }
 
     #[test]
-    fn decode_bounded_exec_result_rejects_truncated_stdout() {
+    fn decode_bounded_exec_result_rejects_truncated_output() {
         let mut payload = Vec::new();
         payload.push(BOUNDED_EXEC_TERMINATION_EXITED);
-        payload.push(0);
         payload.extend_from_slice(&0_i32.to_be_bytes());
         payload.extend_from_slice(&0_u64.to_be_bytes());
+        payload.push(BOUNDED_EXEC_OUTPUT_CAPTURED);
+        payload.push(0);
         payload.extend_from_slice(&3_u32.to_be_bytes());
         payload.extend_from_slice(b"ab");
 
         let err = decode_bounded_exec_result(&payload).unwrap_err();
         assert!(matches!(
             err,
-            ProtocolError::InvalidPayload("bounded_exec_result stdout truncated")
+            ProtocolError::InvalidPayload("bounded_exec_result output truncated")
         ));
     }
 
     #[test]
-    fn decode_bounded_exec_result_rejects_truncated_stderr() {
+    fn decode_bounded_exec_result_rejects_truncated_output_len() {
+        let mut payload = Vec::new();
+        payload.push(BOUNDED_EXEC_TERMINATION_EXITED);
+        payload.extend_from_slice(&0_i32.to_be_bytes());
+        payload.extend_from_slice(&0_u64.to_be_bytes());
+        payload.push(BOUNDED_EXEC_OUTPUT_CAPTURED);
+        payload.push(0);
+        payload.extend_from_slice(&3_u32.to_be_bytes()[..3]);
+
+        let err = decode_bounded_exec_result(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec_result output_len truncated")
+        ));
+    }
+
+    #[test]
+    fn decode_bounded_exec_result_rejects_invalid_output_truncated_flag() {
         let mut payload = encode_bounded_exec_result(
             BoundedExecTermination::Exited { exit_code: 0 },
             0,
-            b"out",
-            b"err",
-            false,
-            false,
+            captured_output(b"", false),
+            captured_output(b"", false),
+            None,
+        )
+        .unwrap();
+        payload[14] = 2;
+
+        let err = decode_bounded_exec_result(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec_result invalid output truncated flag")
+        ));
+    }
+
+    #[test]
+    fn decode_bounded_exec_result_rejects_invalid_utf8_diagnostic() {
+        let mut payload = encode_bounded_exec_result(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            0,
+            captured_output(b"", false),
+            captured_output(b"", false),
+            None,
+        )
+        .unwrap();
+        let diagnostic_len_offset = payload.len() - 4;
+        payload[diagnostic_len_offset..].copy_from_slice(&1_u32.to_be_bytes());
+        payload.push(0xFF);
+
+        let err = decode_bounded_exec_result(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("invalid UTF-8 in bounded_exec_result diagnostic")
+        ));
+    }
+
+    #[test]
+    fn decode_bounded_exec_result_rejects_truncated_diagnostic() {
+        let mut payload = encode_bounded_exec_result(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            0,
+            captured_output(b"out", false),
+            captured_output(b"err", false),
+            Some("diagnostic"),
         )
         .unwrap();
         payload.pop();
@@ -1947,7 +2342,7 @@ mod tests {
         let err = decode_bounded_exec_result(&payload).unwrap_err();
         assert!(matches!(
             err,
-            ProtocolError::InvalidPayload("bounded_exec_result stderr truncated")
+            ProtocolError::InvalidPayload("bounded_exec_result diagnostic truncated")
         ));
     }
 
@@ -1956,10 +2351,9 @@ mod tests {
         let mut payload = encode_bounded_exec_result(
             BoundedExecTermination::Exited { exit_code: 0 },
             0,
-            b"out",
-            b"err",
-            false,
-            false,
+            captured_output(b"out", false),
+            captured_output(b"err", false),
+            None,
         )
         .unwrap();
         payload.push(0);
@@ -2059,6 +2453,21 @@ mod tests {
     }
 
     #[test]
+    fn decode_bounded_exec_output_chunk_rejects_truncated_chunk_len() {
+        let mut payload = Vec::new();
+        payload.push(BOUNDED_EXEC_STREAM_STDOUT);
+        payload.push(0);
+        payload.extend_from_slice(&0_u32.to_be_bytes());
+        payload.extend_from_slice(&3_u32.to_be_bytes()[..3]);
+
+        let err = decode_bounded_exec_output_chunk(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("bounded_exec_output_chunk chunk_len truncated")
+        ));
+    }
+
+    #[test]
     fn decode_bounded_exec_output_chunk_rejects_trailing_bytes() {
         let mut payload =
             encode_bounded_exec_output_chunk(BoundedExecStream::Stdout, 0, b"ok", false).unwrap();
@@ -2077,10 +2486,9 @@ mod tests {
         let result_payload = encode_bounded_exec_result(
             BoundedExecTermination::Exited { exit_code: 0 },
             15,
-            b"out",
-            b"err",
-            false,
-            false,
+            captured_output(b"out", false),
+            captured_output(b"err", false),
+            None,
         )
         .unwrap();
         let chunk_payload =

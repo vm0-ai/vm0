@@ -14,6 +14,7 @@
 //!   by the kernel within ~60s if there is pending I/O. Idle orphans still
 //!   require `runner gc`.
 
+use std::cell::Cell;
 use std::os::unix::io::{FromRawFd, OwnedFd};
 use std::path::Path;
 
@@ -150,8 +151,8 @@ pub fn connect_device(
     ));
     attrs.extend_from_slice(&sockets_nla);
 
-    send_genl_msg(&sock, family_id, NBD_CMD_CONNECT, &attrs)?;
-    recv_genl_ack(&sock)?;
+    let seq = send_genl_msg(&sock, family_id, NBD_CMD_CONNECT, &attrs)?;
+    recv_genl_completion(&sock, seq)?;
 
     Ok(())
 }
@@ -191,8 +192,8 @@ pub fn disconnect(device_index: u32) -> Result<()> {
     let family_id = resolve_nbd_family(&sock)?;
 
     let attrs = build_nla(NBD_ATTR_INDEX, &device_index.to_ne_bytes());
-    send_genl_msg(&sock, family_id, NBD_CMD_DISCONNECT, &attrs)?;
-    recv_genl_ack(&sock)?;
+    let seq = send_genl_msg(&sock, family_id, NBD_CMD_DISCONNECT, &attrs)?;
+    recv_genl_completion(&sock, seq)?;
 
     Ok(())
 }
@@ -201,6 +202,15 @@ pub fn disconnect(device_index: u32) -> Result<()> {
 
 struct GenlSocket {
     fd: OwnedFd,
+    next_seq: Cell<u32>,
+}
+
+impl GenlSocket {
+    fn next_seq(&self) -> u32 {
+        let seq = self.next_seq.get();
+        self.next_seq.set(seq.wrapping_add(1).max(1));
+        seq
+    }
 }
 
 fn open_genl_socket() -> Result<GenlSocket> {
@@ -225,7 +235,8 @@ fn open_genl_socket() -> Result<GenlSocket> {
     }
 
     // Set a receive timeout so recv() doesn't block forever if the
-    // kernel never sends an ACK (e.g., nbd module unloaded mid-call).
+    // kernel never sends a completion message (e.g., nbd module unloaded
+    // mid-call).
     let timeout = libc::timeval {
         tv_sec: 5,
         tv_usec: 0,
@@ -243,18 +254,31 @@ fn open_genl_socket() -> Result<GenlSocket> {
         return Err(NbdCowError::Io(std::io::Error::last_os_error()));
     }
 
-    Ok(GenlSocket { fd })
+    Ok(GenlSocket {
+        fd,
+        next_seq: Cell::new(1),
+    })
 }
 
 fn resolve_nbd_family(sock: &GenlSocket) -> Result<u16> {
     // Build CTRL_CMD_GETFAMILY request for "nbd"
     let name = b"nbd\0";
     let attrs = build_nla(CTRL_ATTR_FAMILY_NAME, name);
-    send_genl_msg_raw(sock, GENL_ID_CTRL, CTRL_CMD_GETFAMILY, 1, &attrs)?;
+    // The family reply itself confirms success. Requesting a success ACK here
+    // would leave an extra datagram queued before the following NBD command.
+    let seq = send_genl_msg_raw(sock, GENL_ID_CTRL, CTRL_CMD_GETFAMILY, 1, &attrs, false)?;
 
     // Parse response to get family ID
     let mut buf = vec![0u8; 4096];
-    let n = recv_nl(sock, &mut buf)?;
+    let n = recv_nl_for_seq(sock, &mut buf, seq)?;
+    match parse_nl_msg(&buf, n)? {
+        NlMsg::Reply => {}
+        NlMsg::Ack => {
+            return Err(NbdCowError::Netlink(
+                "unexpected ACK while resolving NBD family".into(),
+            ));
+        }
+    }
     let msg = buf
         .get(..n)
         .ok_or_else(|| NbdCowError::Netlink("recv length exceeds buffer".into()))?;
@@ -305,8 +329,8 @@ fn resolve_nbd_family(sock: &GenlSocket) -> Result<u16> {
 // NBD genl family version (from kernel: NBD_GENL_VERSION = 0x1)
 const NBD_GENL_VERSION: u8 = 1;
 
-fn send_genl_msg(sock: &GenlSocket, family_id: u16, cmd: u8, attrs: &[u8]) -> Result<()> {
-    send_genl_msg_raw(sock, family_id, cmd, NBD_GENL_VERSION, attrs)
+fn send_genl_msg(sock: &GenlSocket, family_id: u16, cmd: u8, attrs: &[u8]) -> Result<u32> {
+    send_genl_msg_raw(sock, family_id, cmd, NBD_GENL_VERSION, attrs, true)
 }
 
 fn send_genl_msg_raw(
@@ -315,7 +339,22 @@ fn send_genl_msg_raw(
     cmd: u8,
     version: u8,
     attrs: &[u8],
-) -> Result<()> {
+    request_ack: bool,
+) -> Result<u32> {
+    let seq = sock.next_seq();
+    let msg = build_genl_msg(msg_type, cmd, version, attrs, seq, request_ack);
+    send_nl(sock, &msg)?;
+    Ok(seq)
+}
+
+fn build_genl_msg(
+    msg_type: u16,
+    cmd: u8,
+    version: u8,
+    attrs: &[u8],
+    seq: u32,
+    request_ack: bool,
+) -> Vec<u8> {
     // nlmsghdr (16) + genlmsghdr (4) + attrs
     let total_len = 16 + 4 + attrs.len();
     assert!(total_len <= u32::MAX as usize, "netlink message too large");
@@ -329,9 +368,16 @@ fn send_genl_msg_raw(
         s.copy_from_slice(&msg_type.to_ne_bytes());
     }
     if let Some(s) = msg.get_mut(6..8) {
-        s.copy_from_slice(&(NLM_F_REQUEST | NLM_F_ACK).to_ne_bytes());
+        let mut flags = NLM_F_REQUEST;
+        if request_ack {
+            flags |= NLM_F_ACK;
+        }
+        s.copy_from_slice(&flags.to_ne_bytes());
     }
-    // seq and pid left as 0
+    if let Some(s) = msg.get_mut(8..12) {
+        s.copy_from_slice(&seq.to_ne_bytes());
+    }
+    // pid left as 0
 
     // genlmsghdr: cmd(1) + version(1) + reserved(2)
     if let Some(b) = msg.get_mut(16) {
@@ -346,6 +392,10 @@ fn send_genl_msg_raw(
         dest.copy_from_slice(attrs);
     }
 
+    msg
+}
+
+fn send_nl(sock: &GenlSocket, msg: &[u8]) -> Result<()> {
     let ret = unsafe {
         libc::send(
             std::os::unix::io::AsRawFd::as_raw_fd(&sock.fd),
@@ -382,12 +432,38 @@ fn recv_nl(sock: &GenlSocket, buf: &mut [u8]) -> Result<usize> {
     }
 }
 
+fn recv_nl_for_seq(sock: &GenlSocket, buf: &mut [u8], expected_seq: u32) -> Result<usize> {
+    loop {
+        let n = recv_nl(sock, buf)?;
+        if nlmsg_seq(buf, n)? == expected_seq {
+            return Ok(n);
+        }
+    }
+}
+
 /// Result of parsing a single netlink message.
 enum NlMsg {
     /// NLMSG_ERROR with error=0 (ACK).
     Ack,
     /// Non-error message (genetlink reply or broadcast).
     Reply,
+}
+
+fn nlmsg_seq(buf: &[u8], n: usize) -> Result<u32> {
+    let received = buf
+        .get(..n)
+        .ok_or_else(|| NbdCowError::Netlink("recv length exceeds buffer".into()))?;
+    if received.len() < 16 {
+        return Err(NbdCowError::Netlink("message too short".into()));
+    }
+    let seq = u32::from_ne_bytes(
+        received
+            .get(8..12)
+            .ok_or_else(|| NbdCowError::Netlink("seq slice".into()))?
+            .try_into()
+            .map_err(|_| NbdCowError::Netlink("seq conversion".into()))?,
+    );
+    Ok(seq)
 }
 
 /// Parse a single netlink message from the buffer. Returns `NlMsg` on
@@ -421,7 +497,6 @@ fn parse_nl_msg(buf: &[u8], n: usize) -> Result<NlMsg> {
             .try_into()
             .map_err(|_| NbdCowError::Netlink("msg_type conversion".into()))?,
     );
-
     if msg_type == NLMSG_ERROR {
         let error = i32::from_ne_bytes(
             msg.get(16..20)
@@ -442,15 +517,17 @@ fn parse_nl_msg(buf: &[u8], n: usize) -> Result<NlMsg> {
     Ok(NlMsg::Reply)
 }
 
-fn recv_genl_ack(sock: &GenlSocket) -> Result<()> {
+fn recv_genl_completion(sock: &GenlSocket, expected_seq: u32) -> Result<()> {
     let mut buf = vec![0u8; 4096];
-    let n = recv_nl(sock, &mut buf)?;
-    match parse_nl_msg(&buf, n)? {
-        NlMsg::Ack => Ok(()),
-        NlMsg::Reply => {
-            // Non-error, non-ACK message — ignore (e.g., unsolicited broadcast).
-            Ok(())
-        }
+    let n = recv_nl_for_seq(sock, &mut buf, expected_seq)?;
+    parse_genl_completion(&buf, n)
+}
+
+fn parse_genl_completion(buf: &[u8], n: usize) -> Result<()> {
+    match parse_nl_msg(buf, n)? {
+        // NBD connect returns a genetlink reply on success; other commands may
+        // complete with a netlink ACK. Non-zero NLMSG_ERROR is handled above.
+        NlMsg::Ack | NlMsg::Reply => Ok(()),
     }
 }
 
@@ -513,6 +590,69 @@ fn build_nested_nla(nla_type: u16, payload: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn nlmsg_flags(msg: &[u8]) -> u16 {
+        u16::from_ne_bytes(msg[6..8].try_into().unwrap())
+    }
+
+    fn nlmsg_seq_from_msg(msg: &[u8]) -> u32 {
+        u32::from_ne_bytes(msg[8..12].try_into().unwrap())
+    }
+
+    fn nlmsg_error_msg(seq: u32, error: i32) -> Vec<u8> {
+        let mut buf = vec![0u8; 24];
+        buf[0..4].copy_from_slice(&24u32.to_ne_bytes());
+        buf[4..6].copy_from_slice(&NLMSG_ERROR.to_ne_bytes());
+        buf[8..12].copy_from_slice(&seq.to_ne_bytes());
+        buf[16..20].copy_from_slice(&error.to_ne_bytes());
+        buf
+    }
+
+    fn set_test_recv_timeout(fd: &OwnedFd) {
+        let timeout = libc::timeval {
+            tv_sec: 0,
+            tv_usec: 100_000,
+        };
+        let ret = unsafe {
+            libc::setsockopt(
+                std::os::unix::io::AsRawFd::as_raw_fd(fd),
+                libc::SOL_SOCKET,
+                libc::SO_RCVTIMEO,
+                std::ptr::from_ref(&timeout).cast(),
+                std::mem::size_of::<libc::timeval>() as u32,
+            )
+        };
+        assert_eq!(ret, 0);
+    }
+
+    fn test_genl_socket_pair() -> (GenlSocket, OwnedFd) {
+        let mut fds = [0i32; 2];
+        let ret = unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_DGRAM, 0, fds.as_mut_ptr()) };
+        assert_eq!(ret, 0);
+
+        let recv_fd = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+        let send_fd = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+        set_test_recv_timeout(&recv_fd);
+        (
+            GenlSocket {
+                fd: recv_fd,
+                next_seq: std::cell::Cell::new(1),
+            },
+            send_fd,
+        )
+    }
+
+    fn send_test_nl(peer: &OwnedFd, msg: &[u8]) {
+        let ret = unsafe {
+            libc::send(
+                std::os::unix::io::AsRawFd::as_raw_fd(peer),
+                msg.as_ptr().cast(),
+                msg.len(),
+                0,
+            )
+        };
+        assert_eq!(ret, msg.len() as isize);
+    }
 
     #[test]
     fn random_offset_zero_max() {
@@ -579,6 +719,69 @@ mod tests {
         assert_eq!(nla.len(), 8); // 4+2 padded to 8
     }
 
+    // --- build_genl_msg tests ---
+
+    #[test]
+    fn build_genl_msg_can_omit_ack_for_family_lookup() {
+        let attrs = build_nla(CTRL_ATTR_FAMILY_NAME, b"nbd\0");
+        let msg = build_genl_msg(GENL_ID_CTRL, CTRL_CMD_GETFAMILY, 1, &attrs, 42, false);
+
+        assert_eq!(nlmsg_flags(&msg), NLM_F_REQUEST);
+        assert_eq!(nlmsg_seq_from_msg(&msg), 42);
+    }
+
+    #[test]
+    fn build_genl_msg_requests_ack_for_nbd_command() {
+        let attrs = build_nla(NBD_ATTR_INDEX, &7u32.to_ne_bytes());
+        let msg = build_genl_msg(0x19, NBD_CMD_CONNECT, NBD_GENL_VERSION, &attrs, 43, true);
+
+        assert_eq!(nlmsg_flags(&msg), NLM_F_REQUEST | NLM_F_ACK);
+        assert_eq!(nlmsg_seq_from_msg(&msg), 43);
+    }
+
+    #[test]
+    fn next_seq_wraps_without_returning_zero() {
+        let (sock, _peer) = test_genl_socket_pair();
+        sock.next_seq.set(u32::MAX);
+
+        assert_eq!(sock.next_seq(), u32::MAX);
+        assert_eq!(sock.next_seq(), 1);
+    }
+
+    #[test]
+    fn recv_nl_for_seq_ignores_stale_family_reply() {
+        let (sock, peer) = test_genl_socket_pair();
+        let expected_seq = 42;
+
+        let stale_attrs = build_nla(CTRL_ATTR_FAMILY_ID, &999u16.to_ne_bytes());
+        let stale_reply = build_genl_msg(
+            GENL_ID_CTRL,
+            CTRL_CMD_GETFAMILY,
+            1,
+            &stale_attrs,
+            expected_seq + 1,
+            false,
+        );
+        let matching_attrs = build_nla(CTRL_ATTR_FAMILY_ID, &123u16.to_ne_bytes());
+        let matching_reply = build_genl_msg(
+            GENL_ID_CTRL,
+            CTRL_CMD_GETFAMILY,
+            1,
+            &matching_attrs,
+            expected_seq,
+            false,
+        );
+
+        send_test_nl(&peer, &stale_reply);
+        send_test_nl(&peer, &matching_reply);
+
+        let mut buf = vec![0u8; 4096];
+        let n = recv_nl_for_seq(&sock, &mut buf, expected_seq).unwrap();
+        assert!(matches!(parse_nl_msg(&buf, n), Ok(NlMsg::Reply)));
+        let family_id = u16::from_ne_bytes(buf[24..26].try_into().unwrap());
+        assert_eq!(family_id, 123);
+    }
+
     // --- parse_nl_msg tests ---
 
     #[test]
@@ -589,12 +792,15 @@ mod tests {
         buf[0..4].copy_from_slice(&len.to_ne_bytes());
         let msg_type: u16 = NLMSG_ERROR;
         buf[4..6].copy_from_slice(&msg_type.to_ne_bytes());
+        let seq = 42u32;
+        buf[8..12].copy_from_slice(&seq.to_ne_bytes());
         // NLMSG_ERROR body: error code at offset 16 (4 bytes), error=0 means ACK
         let error: i32 = 0;
         buf[16..20].copy_from_slice(&error.to_ne_bytes());
 
         let result = parse_nl_msg(&buf, 24);
         assert!(matches!(result, Ok(NlMsg::Ack)));
+        assert_eq!(nlmsg_seq(&buf, 24).unwrap(), 42);
     }
 
     #[test]
@@ -605,9 +811,72 @@ mod tests {
         // Use a non-NLMSG_ERROR type
         let msg_type: u16 = 0x0019; // arbitrary genetlink family id
         buf[4..6].copy_from_slice(&msg_type.to_ne_bytes());
+        let seq = 43u32;
+        buf[8..12].copy_from_slice(&seq.to_ne_bytes());
 
         let result = parse_nl_msg(&buf, 20);
         assert!(matches!(result, Ok(NlMsg::Reply)));
+        assert_eq!(nlmsg_seq(&buf, 20).unwrap(), 43);
+    }
+
+    #[test]
+    fn parse_genl_completion_accepts_reply() {
+        let msg = build_genl_msg(0x19, NBD_CMD_CONNECT, NBD_GENL_VERSION, &[], 44, false);
+        let result = parse_genl_completion(&msg, msg.len());
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn recv_genl_completion_ignores_stale_sequence() {
+        let (sock, peer) = test_genl_socket_pair();
+        send_test_nl(&peer, &nlmsg_error_msg(1, 0));
+        send_test_nl(&peer, &nlmsg_error_msg(2, -libc::EBUSY));
+
+        let result = recv_genl_completion(&sock, 2);
+
+        assert!(matches!(
+            result,
+            Err(NbdCowError::NetlinkErrno { errno, .. }) if errno == libc::EBUSY
+        ));
+    }
+
+    #[test]
+    fn recv_genl_completion_ignores_stale_error_sequence() {
+        let (sock, peer) = test_genl_socket_pair();
+        send_test_nl(&peer, &nlmsg_error_msg(1, -libc::EBUSY));
+        send_test_nl(&peer, &nlmsg_error_msg(2, 0));
+
+        let result = recv_genl_completion(&sock, 2);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn recv_genl_completion_accepts_reply_after_stale_error_sequence() {
+        let (sock, peer) = test_genl_socket_pair();
+        let reply = build_genl_msg(0x19, NBD_CMD_CONNECT, NBD_GENL_VERSION, &[], 2, false);
+        send_test_nl(&peer, &nlmsg_error_msg(1, -libc::EBUSY));
+        send_test_nl(&peer, &reply);
+
+        let result = recv_genl_completion(&sock, 2);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn recv_genl_completion_ignores_stale_reply_sequence() {
+        let (sock, peer) = test_genl_socket_pair();
+        let stale_reply = build_genl_msg(0x19, NBD_CMD_CONNECT, NBD_GENL_VERSION, &[], 1, false);
+        send_test_nl(&peer, &stale_reply);
+        send_test_nl(&peer, &nlmsg_error_msg(2, -libc::EBUSY));
+
+        let result = recv_genl_completion(&sock, 2);
+
+        assert!(matches!(
+            result,
+            Err(NbdCowError::NetlinkErrno { errno, .. }) if errno == libc::EBUSY
+        ));
     }
 
     #[test]

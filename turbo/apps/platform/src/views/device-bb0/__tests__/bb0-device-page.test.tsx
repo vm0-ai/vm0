@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -63,7 +63,7 @@ describe("bb0 device page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: "bb0 setup needs Web Bluetooth" }),
+        screen.getByRole("heading", { name: "BB0 setup needs Web Bluetooth" }),
       ).toBeInTheDocument();
     });
 
@@ -72,7 +72,7 @@ describe("bb0 device page", () => {
     ).toBeInTheDocument();
   });
 
-  it("allows entering a device code before Wi-Fi is sent from the page", async () => {
+  it("disables device code input until Wi-Fi has been sent", async () => {
     mockSupportedWebBluetooth(context.signal);
 
     detachedSetupPage({
@@ -83,12 +83,7 @@ describe("bb0 device page", () => {
     const deviceCodeInput = await screen.findByLabelText("Device code");
     const confirmButton = screen.getByText("Confirm code");
 
-    expect(deviceCodeInput).toBeEnabled();
+    expect(deviceCodeInput).toBeDisabled();
     expect(confirmButton).toBeDisabled();
-
-    await fill(deviceCodeInput, "abcd2345");
-
-    expect(deviceCodeInput).toHaveValue("ABCD-2345");
-    expect(confirmButton).toBeEnabled();
   });
 });

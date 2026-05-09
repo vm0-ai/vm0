@@ -13,7 +13,6 @@ import {
   chatThreadByIdContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
-import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -572,7 +571,7 @@ describe("zero chat thread page - queueMessage$ scrolls to bottom on append", ()
 
       // Wait for the active-run composer placeholder to show, then queue
       // another message — `queueMessage$` should fire an autoScroll after the
-      // pending-message append succeeds.
+      // queued user message append succeeds.
       const queueComposer = await waitFor(() => {
         return screen.getByPlaceholderText(
           /Type your next message/,
@@ -598,109 +597,19 @@ describe("zero chat thread page - queueMessage$ scrolls to bottom on append", ()
   });
 });
 
-// CHAT-SCROLL-012: when the server consumes the queue (the previous run
-// finishes and the queued message becomes a real user message), the queued-
-// message card unmounts and the message-list area grows. `subscribeChatThread
-// $`'s `onRunChanged$` callback tracks pending-message presence across
-// reloads; when it transitions from non-null to null, it schedules an
-// animationFrame that re-runs `autoScroll$` so the viewport stays pinned.
-describe("zero chat thread page - autoscroll when queued message is consumed", () => {
-  it("scrolls to bottom after onRunChanged$ clears the pending message (CHAT-SCROLL-012)", async () => {
-    const threadId = "thread-queue-consume";
-    const ctrl = mockChatLifecycle({
-      threadId,
-      historyMessages: [
-        {
-          role: "user",
-          content: "First user turn",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-        {
-          role: "assistant",
-          content: "Working on it",
-          runId: "run-active",
-          status: "running",
-          createdAt: "2026-03-10T00:00:01Z",
-        },
-      ],
-      pendingMessage: {
-        content: "queued in flight",
-        attachments: null,
-        createdAt: "2026-03-10T00:00:02Z",
-        updatedAt: "2026-03-10T00:00:02Z",
-        clientMessageId: null,
-      },
-    });
-
-    const observer = patchScrollHeightOnMount(1500);
-
-    try {
-      detachedSetupPage({
-        context,
-        path: `/chats/${threadId}`,
-        featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
-      });
-
-      // Wait for the queued card and the run-update subscription. The
-      // subscription must exist before we publish the simulated event,
-      // otherwise the callback never fires.
-      await waitFor(() => {
-        expect(screen.getByLabelText("Queued message")).toBeInTheDocument();
-        expect(
-          hasSubscription(`chatThreadRunUpdated:${threadId}`),
-        ).toBeTruthy();
-      });
-
-      const scrollContainer = document.querySelector<HTMLElement>(
-        "[data-scroll-container]",
-      );
-      expect(scrollContainer).not.toBeNull();
-
-      // Bump the container's scrollHeight to a larger value so the post-clear
-      // autoScroll has somewhere new to land. If we kept the same scrollHeight
-      // the assertion would still pass after the initial scroll — making the
-      // test indistinguishable from "no second scroll fired."
-      Object.defineProperty(scrollContainer!, "scrollHeight", {
-        get: () => {
-          return 2400;
-        },
-        configurable: true,
-      });
-      // Park the viewport off the bottom so we can prove autoScroll re-snaps.
-      scrollContainer!.scrollTop = 0;
-
-      // Server-side consume: drop the queued pending message, then publish
-      // the run-updated event so onRunChanged$ reloads the thread, sees the
-      // pending → null transition, and schedules the autoScroll.
-      ctrl.clearPendingMessage();
-      triggerAblyEvent(`chatThreadRunUpdated:${threadId}`);
-
-      await waitFor(() => {
-        expect(
-          screen.queryByLabelText("Queued message"),
-        ).not.toBeInTheDocument();
-        expect(scrollContainer!.scrollTop).toBe(scrollContainer!.scrollHeight);
-      });
-    } finally {
-      observer.disconnect();
-    }
-  });
-});
-
-// CHAT-SCROLL-011: opening a thread that already has a queued message must
-// scroll past the queued-message card on initial paint. `setupChatThreadInit
-// Scroll$` awaits `groupedChatMessages$`, then — when `threadData$.pendingMess
-// age` is set — schedules a second `animationFrame` that snaps scrollTop to
-// scrollHeight after the queued-message card renders below the message list.
+// CHAT-SCROLL-011: opening a thread that already has a queued user message
+// scrolls to the latest rendered message, because queued messages now live in
+// the normal paged message list.
 describe("zero chat thread page - opening a thread with a queued message", () => {
-  it("scrolls past the queued-message card on initial paint when pendingMessage is set (CHAT-SCROLL-011)", async () => {
+  it("scrolls past a queued user message on initial paint (CHAT-SCROLL-011)", async () => {
     const threadId = "thread-queue-open";
     mockChatLifecycle({
       threadId,
-      historyMessages: [
+      chatMessages: [
         {
           role: "user",
           content: "Hi while waiting",
+          runId: "run-active",
           createdAt: "2026-03-10T00:00:00Z",
         },
         {
@@ -710,14 +619,12 @@ describe("zero chat thread page - opening a thread with a queued message", () =>
           status: "running",
           createdAt: "2026-03-10T00:00:01Z",
         },
+        {
+          role: "user",
+          content: "queued before reload",
+          createdAt: "2026-03-10T00:00:02Z",
+        },
       ],
-      pendingMessage: {
-        content: "queued before reload",
-        attachments: null,
-        createdAt: "2026-03-10T00:00:02Z",
-        updatedAt: "2026-03-10T00:00:02Z",
-        clientMessageId: null,
-      },
     });
 
     const observer = patchScrollHeightOnMount(1200);
@@ -729,9 +636,6 @@ describe("zero chat thread page - opening a thread with a queued message", () =>
         featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
       });
 
-      // Wait for the queued-message card to render — this is the row that
-      // grows the scrollable content past the message list and is the reason
-      // we need a second `scrollToBottom$` after the first one.
       await waitFor(() => {
         expect(screen.getByLabelText("Queued message")).toBeInTheDocument();
       });

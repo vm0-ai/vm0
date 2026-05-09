@@ -62,6 +62,7 @@ describe("POST /api/zero/chat/messages — incomplete rounds context", () => {
       agentId,
       prompt: "hello new thread",
     });
+    await completeTestRun(user.userId, first.runId);
 
     const second = await sendMessage({
       agentId,
@@ -289,14 +290,15 @@ describe("POST /api/zero/chat/messages — incomplete rounds context", () => {
   });
 
   it("handles a long thread (≥100 messages) without scanning all of history", async () => {
-    // Seed 50 successive non-cancelled rounds so the thread is well past the
+    // Seed 50 successive completed rounds so the thread is well past the
     // PREVIOUS_CONTEXT_MESSAGES bound and past the incomplete-rounds 20-cap.
     // The old `getMessagesByThreadId` scan + JS filter would read every row
     // on every send; under the bounded rewrite this send must still succeed
-    // in reasonable time. Loop rounds are seeded directly (status=pending, not
-    // 'cancelled'/'failed'/'timeout') so they don't pay the POST + dispatch
+    // in reasonable time. Loop rounds are seeded directly (status=completed)
+    // so they don't pay the POST + dispatch
     // cost and still satisfy the assertion that no incomplete block appears.
     const first = await sendMessage({ agentId, prompt: "round 0" });
+    await completeTestRun(user.userId, first.runId);
     await seedTestChatRounds({
       userId: user.userId,
       orgId: user.orgId,
@@ -305,7 +307,7 @@ describe("POST /api/zero/chat/messages — incomplete rounds context", () => {
       prompts: Array.from({ length: 49 }, (_, index) => {
         return `round ${index + 1}`;
       }),
-      status: "pending",
+      status: "completed",
     });
 
     const final = await sendMessage({

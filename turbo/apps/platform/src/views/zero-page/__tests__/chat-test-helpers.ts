@@ -12,9 +12,7 @@ import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
   chatMessagesContract,
-  chatThreadPendingMessageAppendContract,
-  chatThreadPendingMessageRecallContract,
-  type PendingMessage,
+  type PagedChatMessage,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
@@ -174,65 +172,48 @@ interface MockLifecycleControl {
   completeRun: (content?: string) => void;
   failRun: (error: string) => void;
   cancelRun: () => void;
-  /**
-   * Drop the queued pending message — simulates the server consuming the
-   * queue when the previous run finishes. The next chatThreadByIdContract.get
-   * will respond with `pendingMessage: null`.
-   */
-  clearPendingMessage: () => void;
+}
+
+type MockPagedMessage =
+  | (Omit<Extract<PagedChatMessage, { role: "user" }>, "id"> & {
+      id?: string;
+    })
+  | (Omit<Extract<PagedChatMessage, { role: "assistant" }>, "id"> & {
+      id?: string;
+    });
+
+function isRecallMessageBody(body: { revokesMessageId?: string }): body is {
+  revokesMessageId: string;
+  threadId: string;
+  clientMessageId?: string;
+} {
+  return body.revokesMessageId !== undefined;
 }
 
 export function mockChatLifecycle(options?: {
   threadId?: string;
-  historyMessages?: {
-    role: "user" | "assistant";
-    content: string | null;
-    runId?: string;
-    error?: string;
-    status?: string;
-    createdAt: string;
-    attachFiles?: {
-      id: string;
-      filename: string;
-      contentType: string;
-      size: number;
-      url: string;
-    }[];
-  }[];
-  chatMessages?: {
-    role: "user" | "assistant";
-    content: string | null;
-    runId?: string;
-    error?: string;
-    status?: string;
-    createdAt: string;
-    attachFiles?: {
-      id: string;
-      filename: string;
-      contentType: string;
-      size: number;
-      url: string;
-    }[];
-  }[];
+  historyMessages?: MockPagedMessage[];
+  chatMessages?: MockPagedMessage[];
   threadTitle?: string | null;
-  pendingMessage?: PendingMessage | null;
-  onPendingMessageAppend?: (body: {
+  onQueuedMessageAppend?: (body: {
     content?: string;
     attachments?: PersistedAttachment[];
-    clientMessageId?: string;
+    clientMessageId: string;
   }) => void;
-  onPendingMessageRecall?: () => void;
-  /**
-   * Promise the recall handler awaits before responding. Lets a test observe
-   * the in-flight loading state before letting the request complete.
-   */
-  recallGate?: Promise<void>;
+  onRecallMessageAppend?: (body: {
+    revokesMessageId: string;
+    clientMessageId: string;
+  }) => void;
   /**
    * Promise the append handler awaits before responding. Lets a test observe
-   * the optimistic pending state (disabled Recall button) before the server
-   * round-trip completes.
+   * the optimistic queued row before the server round-trip completes.
    */
   appendGate?: Promise<void>;
+  /**
+   * Promise the initial send handler awaits before responding. Lets tests
+   * keep the new-thread optimistic view mounted while interacting with it.
+   */
+  sendGate?: Promise<void>;
   onRunCreate?: () => void;
 }): MockLifecycleControl {
   let threadId = options?.threadId ?? "thread-test-1";
@@ -248,7 +229,7 @@ export function mockChatLifecycle(options?: {
   let runPrompt: string | null = null;
   let runAssociated = false;
   let threadTitle: string | null = options?.threadTitle ?? null;
-  let pendingMessage: PendingMessage | null = options?.pendingMessage ?? null;
+  const queuedMessages: MockPagedMessage[] = [];
   // Version counter: bumped whenever the run reaches a terminal state so
   // subsequent polls discover a "new" assistant message row (simulating the
   // real server inserting event-backed rows on run completion).
@@ -270,22 +251,7 @@ export function mockChatLifecycle(options?: {
         };
       });
 
-      const pagedMessages: {
-        id: string;
-        role: "user" | "assistant";
-        content: string | null;
-        runId?: string;
-        error?: string;
-        status?: string;
-        createdAt: string;
-        attachFiles?: {
-          id: string;
-          filename: string;
-          contentType: string;
-          size: number;
-          url: string;
-        }[];
-      }[] = [];
+      const pagedMessages: (MockPagedMessage & { id: string })[] = [];
 
       for (const message of historicalMessages) {
         pagedMessages.push(message);
@@ -294,8 +260,15 @@ export function mockChatLifecycle(options?: {
       // Seed with pre-existing chatMessages (e.g. history on resume)
       for (let i = 0; i < chatMessages.length; i++) {
         pagedMessages.push({
-          id: `msg-seed-${i}`,
+          id: chatMessages[i]!.id ?? `msg-seed-${i}`,
           ...chatMessages[i]!,
+        });
+      }
+
+      for (const message of queuedMessages) {
+        pagedMessages.push({
+          id: message.id ?? `queued-${pagedMessages.length}`,
+          ...message,
         });
       }
 
@@ -305,6 +278,7 @@ export function mockChatLifecycle(options?: {
           id: "msg-user-sent",
           role: "user",
           content: runPrompt ?? "Hello",
+          runId: "run-test-1",
           createdAt: "2026-03-10T00:00:01Z",
         });
         pagedMessages.push({
@@ -358,15 +332,16 @@ export function mockChatLifecycle(options?: {
     mockApi(chatThreadByIdContract.get, ({ respond }) => {
       const terminal = new Set(["completed", "failed", "cancelled", "timeout"]);
       const seedActiveRunIds = chatMessages
-        .filter((m): m is typeof m & { runId: string; status: string } => {
+        .filter((m) => {
+          const status = m.role === "assistant" ? m.status : undefined;
           return (
             m.runId !== undefined &&
-            m.status !== undefined &&
-            !terminal.has(m.status)
+            status !== undefined &&
+            !terminal.has(status)
           );
         })
         .map((m) => {
-          return m.runId;
+          return m.runId!;
         });
       const lifecycleActiveRunIds =
         runAssociated && !terminal.has(runStatus) ? ["run-test-1"] : [];
@@ -382,63 +357,8 @@ export function mockChatLifecycle(options?: {
         updatedAt: "2026-03-10T00:00:00Z",
         draftContent: null,
         draftAttachments: null,
-        pendingMessage,
       });
     }),
-    mockApi(
-      chatThreadPendingMessageAppendContract.append,
-      async ({ body, respond }) => {
-        options?.onPendingMessageAppend?.(body);
-        if (options?.appendGate) {
-          await options.appendGate;
-        }
-        const now = new Date().toISOString();
-        const nextContent =
-          body.content === undefined
-            ? (pendingMessage?.content ?? null)
-            : pendingMessage?.content
-              ? `${pendingMessage.content}\n${body.content}`
-              : body.content;
-        const nextAttachments = [
-          ...(pendingMessage?.attachments ?? []),
-          ...(body.attachments ?? []),
-        ];
-        pendingMessage = {
-          content: nextContent,
-          attachments: nextAttachments.length > 0 ? nextAttachments : null,
-          createdAt: pendingMessage?.createdAt ?? now,
-          updatedAt: now,
-          clientMessageId:
-            pendingMessage?.clientMessageId ?? body.clientMessageId ?? null,
-        };
-        return respond(200, { pendingMessage });
-      },
-    ),
-    mockApi(
-      chatThreadPendingMessageRecallContract.recall,
-      async ({ respond }) => {
-        // Fire the callback when the request arrives, before any gating —
-        // tests use this to assert that recall reached the backend even
-        // when the response is intentionally held open.
-        options?.onPendingMessageRecall?.();
-        if (options?.recallGate) {
-          await options.recallGate;
-        }
-        if (!pendingMessage) {
-          return respond(404, {
-            error: { message: "Pending message not found", code: "NOT_FOUND" },
-          });
-        }
-        const draftContent = pendingMessage.content;
-        const draftAttachments = pendingMessage.attachments;
-        pendingMessage = null;
-        return respond(200, {
-          draftContent,
-          draftAttachments,
-          pendingMessage: null,
-        });
-      },
-    ),
     mockApi(chatThreadsContract.list, ({ respond }) => {
       return respond(200, { threads: threadList });
     }),
@@ -451,8 +371,71 @@ export function mockChatLifecycle(options?: {
       });
     }),
     // Unified chat message endpoint (creates thread + run + association)
-    mockApi(chatMessagesContract.send, ({ body, respond }) => {
+    mockApi(chatMessagesContract.send, async ({ body, respond }) => {
+      if (isRecallMessageBody(body)) {
+        const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
+        const now = new Date().toISOString();
+        options?.onRecallMessageAppend?.({
+          revokesMessageId: body.revokesMessageId,
+          clientMessageId,
+        });
+        queuedMessages.push({
+          id: clientMessageId,
+          role: "user" as const,
+          content: null,
+          revokesMessageId: body.revokesMessageId,
+          createdAt: now,
+        });
+        return respond(201, {
+          runId: null,
+          threadId: body.threadId,
+          createdAt: now,
+        });
+      }
+
+      const terminal = new Set(["completed", "failed", "cancelled", "timeout"]);
+      const hasSeedActiveRun = chatMessages.some((m) => {
+        const status = m.role === "assistant" ? m.status : undefined;
+        return (
+          m.runId !== undefined && status !== undefined && !terminal.has(status)
+        );
+      });
+      const hasActiveRun =
+        hasSeedActiveRun || (runAssociated && !terminal.has(runStatus));
       threadId = body.clientThreadId ?? threadId;
+      if (hasActiveRun) {
+        const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
+        const attachFiles = body.attachFiles?.map((file) => {
+          return {
+            ...file,
+            url: `/f/test/${file.id}/${file.filename}`,
+          };
+        });
+        options?.onQueuedMessageAppend?.({
+          content: body.prompt,
+          attachments: attachFiles,
+          clientMessageId,
+        });
+        if (options?.appendGate) {
+          await options.appendGate;
+        }
+        const now = new Date().toISOString();
+        queuedMessages.push({
+          id: clientMessageId,
+          role: "user" as const,
+          content: body.prompt,
+          attachFiles,
+          createdAt: now,
+        });
+        return respond(201, {
+          runId: null,
+          threadId,
+          createdAt: now,
+        });
+      }
+      if (options?.sendGate) {
+        await options.sendGate;
+      }
       if (body.prompt) {
         runPrompt = body.prompt;
       }
@@ -562,12 +545,10 @@ export function mockChatLifecycle(options?: {
     },
     cancelRun: () => {
       runStatus = "cancelled";
+      runError = "Run cancelled";
       assistantVersion++;
       updateChatRun(threadId);
       createChatMessage(threadId);
-    },
-    clearPendingMessage: () => {
-      pendingMessage = null;
     },
   };
 }
