@@ -105,7 +105,9 @@ describe("mobile-native schedule detail - index view (MOBILE-SCHED-001)", () => 
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
     await waitFor(() => {
-      expect(screen.getAllByText("Daily morning briefing")[0]).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Daily morning briefing")[0],
+      ).toBeInTheDocument();
     });
 
     expect(

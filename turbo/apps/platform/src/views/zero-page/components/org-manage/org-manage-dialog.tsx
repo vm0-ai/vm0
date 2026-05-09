@@ -444,7 +444,8 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
                 className={cn(
                   "flex-1 overflow-y-auto pb-16 [scrollbar-gutter:stable]",
                   showMobileDetail ? "px-5 pt-4" : "px-4 sm:px-10",
-                  !showMobileDetail && (hideHeader ? "pt-6 sm:pt-8" : "pt-4 sm:pt-6"),
+                  !showMobileDetail &&
+                    (hideHeader ? "pt-6 sm:pt-8" : "pt-4 sm:pt-6"),
                 )}
               >
                 <TabContent tab={activeTab} />

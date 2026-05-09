@@ -364,7 +364,6 @@
   svg[class*="tabler-icon"] {
     stroke-width: var(--icon-stroke-width);
   }
-
 }
 
 @layer components {

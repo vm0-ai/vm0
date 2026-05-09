@@ -157,11 +157,9 @@ describe("org manage dialog - interaction", () => {
       ).toBeInTheDocument();
     });
 
-    const membersRow = screen
-      .getAllByRole("button")
-      .find((el) => {
-        return /^Members$/.test(el.textContent?.trim() ?? "");
-      });
+    const membersRow = screen.getAllByRole("button").find((el) => {
+      return /^Members$/.test(el.textContent?.trim() ?? "");
+    });
     expect(membersRow).toBeDefined();
     click(membersRow!);
 
@@ -187,11 +185,9 @@ describe("org manage dialog - interaction", () => {
     await openDialog();
 
     const membersRow = await waitFor(() => {
-      return screen
-        .getAllByRole("button")
-        .find((el) => {
-          return /^Members$/.test(el.textContent?.trim() ?? "");
-        })!;
+      return screen.getAllByRole("button").find((el) => {
+        return /^Members$/.test(el.textContent?.trim() ?? "");
+      })!;
     });
     click(membersRow);
 

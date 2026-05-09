@@ -1,8 +1,4 @@
-import {
-  useGet,
-  useLastLoadable,
-  useSet,
-} from "ccstate-react";
+import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { IconArrowLeft, IconSearch, IconX } from "@tabler/icons-react";
 import { cn } from "@vm0/ui";
 import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
@@ -74,8 +70,7 @@ export function ZeroSearchPage() {
   const navigate = useSet(detachedNavigateTo$);
 
   const recentLoadable = useLastLoadable(chatThreads$);
-  const recent =
-    recentLoadable.state === "hasData" ? recentLoadable.data : [];
+  const recent = recentLoadable.state === "hasData" ? recentLoadable.data : [];
   const loading = recentLoadable.state === "loading";
 
   const trimmed = term.trim().toLowerCase();

@@ -26,7 +26,10 @@ import { createRule } from "../utils.ts";
 const FORBIDDEN: { token: string; suggestion: string }[] = [
   { token: "text-[15px]", suggestion: "text-[14px] or text-[16px]" },
   { token: "text-[17px]", suggestion: "text-[16px]" },
-  { token: "max-md:h-10", suggestion: "h-9 (desktop) / h-11 (CTA) / inherit baseline (input)" },
+  {
+    token: "max-md:h-10",
+    suggestion: "h-9 (desktop) / h-11 (CTA) / inherit baseline (input)",
+  },
   { token: "max-md:text-[15px]", suggestion: "max-md:text-[14px]" },
   { token: "max-md:text-[17px]", suggestion: "max-md:text-[16px]" },
 ];
@@ -57,10 +60,7 @@ export default createRule({
     },
   },
   create(context) {
-    function reportHits(
-      node: TSESTree.Node,
-      value: string,
-    ) {
+    function reportHits(node: TSESTree.Node, value: string) {
       for (const hit of findHits(value)) {
         context.report({
           node,

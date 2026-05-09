@@ -78,10 +78,7 @@ import {
   setScheduleListTab$,
 } from "../../signals/schedule-page/schedule-list-tab.ts";
 import { readDemoFlag } from "./lib/demo-flag.ts";
-import {
-  buildDemoAgents,
-  buildDemoSchedules,
-} from "./lib/demo-fixtures.ts";
+import { buildDemoAgents, buildDemoSchedules } from "./lib/demo-fixtures.ts";
 
 export type CombinedEntry = ScheduleEntry & {
   agentLabel: string;
@@ -198,10 +195,7 @@ export function ScheduleEditFields({
           Time
         </label>
         <Select value={freq} onValueChange={setFreq}>
-          <SelectTrigger
-            id="schedule-dialog-freq"
-            className="w-full"
-          >
+          <SelectTrigger id="schedule-dialog-freq" className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -229,10 +223,7 @@ export function ScheduleEditFields({
               return setLoopMinutes(Number(v));
             }}
           >
-            <SelectTrigger
-              id="schedule-dialog-loop"
-              className="w-full"
-            >
+            <SelectTrigger id="schedule-dialog-loop" className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -325,10 +316,7 @@ export function ScheduleEditFields({
             Timezone
           </label>
           <Select value={timezone} onValueChange={setTimezone}>
-            <SelectTrigger
-              id="schedule-dialog-tz"
-              className="w-full"
-            >
+            <SelectTrigger id="schedule-dialog-tz" className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

@@ -389,11 +389,7 @@ function NewCustomConnectorHeaderButton() {
 // Per-route action cluster on the right of the mobile top bar. Account avatar
 // only appears on the chat-list (Home) tab; per-page primary actions live in
 // the same slot so each surface has at most one or two icons + the avatar.
-function MobileTopBarPageActions({
-  activeId,
-}: {
-  activeId: RouteKey | null;
-}) {
+function MobileTopBarPageActions({ activeId }: { activeId: RouteKey | null }) {
   if (activeId === "chatList") {
     return (
       <>
@@ -567,9 +563,7 @@ function scheduleDetailSectionLabel(tab: ScheduleDetailTab): string {
 // back arrow to return there instead of being orphan pages on mobile.
 function isAccountSubRoute(route: RouteKey | null): boolean {
   return (
-    route === "settings" ||
-    route === "usage" ||
-    route === "settingsApiKeys"
+    route === "settings" || route === "usage" || route === "settingsApiKeys"
   );
 }
 
@@ -622,10 +616,7 @@ function MobileTopBarLeftSlot({
   if (activeId === "agentDetail" && agentSectionTab !== null) {
     return <BackToAgentOverviewButton />;
   }
-  if (
-    activeId === "agentDetail" ||
-    activeId === "agentPermissions"
-  ) {
+  if (activeId === "agentDetail" || activeId === "agentPermissions") {
     return (
       <BackButton
         pathname="/agents"
@@ -679,7 +670,11 @@ function resolveTopBarSurface(
   const showBreadcrumb =
     breadcrumb !== null &&
     (!mobileNativeOn || isChatPage || (hasDetailName && !isBackTitleRoute));
-  if (mobileNativeOn && activeId === "agentDetail" && agentSectionTab !== null) {
+  if (
+    mobileNativeOn &&
+    activeId === "agentDetail" &&
+    agentSectionTab !== null
+  ) {
     return {
       showBreadcrumb: false,
       centeredTitle: agentDetailSectionLabel(agentSectionTab),

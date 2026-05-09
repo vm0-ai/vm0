@@ -2118,7 +2118,9 @@ function ThinkingIndicator({
       </button>
     </p>
   ) : (
-    <p className="zero-shimmer-text text-xs max-md:text-sm truncate">{rotatingLabel}</p>
+    <p className="zero-shimmer-text text-xs max-md:text-sm truncate">
+      {rotatingLabel}
+    </p>
   );
 
   if (!lastGroup) {
@@ -3004,7 +3006,11 @@ function PagedGroupPrimaryActions({
                 className="p-1 max-md:p-2 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
                 aria-label="View run logs"
               >
-                <IconChartLine size={18} stroke={1.5} className="max-md:h-5 max-md:w-5" />
+                <IconChartLine
+                  size={18}
+                  stroke={1.5}
+                  className="max-md:h-5 max-md:w-5"
+                />
               </Link>
             </TooltipTrigger>
             <TooltipContent side="bottom">View activity logs</TooltipContent>
@@ -3022,9 +3028,17 @@ function PagedGroupPrimaryActions({
                 aria-label="Copy message"
               >
                 {copied ? (
-                  <IconCheck size={18} stroke={1.5} className="max-md:h-5 max-md:w-5" />
+                  <IconCheck
+                    size={18}
+                    stroke={1.5}
+                    className="max-md:h-5 max-md:w-5"
+                  />
                 ) : (
-                  <IconCopy size={18} stroke={1.5} className="max-md:h-5 max-md:w-5" />
+                  <IconCopy
+                    size={18}
+                    stroke={1.5}
+                    className="max-md:h-5 max-md:w-5"
+                  />
                 )}
               </button>
             </TooltipTrigger>
@@ -3045,9 +3059,17 @@ function PagedGroupPrimaryActions({
                 aria-label={isPlayingThis ? "Stop reading" : "Read aloud"}
               >
                 {isPlayingThis ? (
-                  <IconPlayerStop size={18} stroke={1.5} className="max-md:h-5 max-md:w-5" />
+                  <IconPlayerStop
+                    size={18}
+                    stroke={1.5}
+                    className="max-md:h-5 max-md:w-5"
+                  />
                 ) : (
-                  <IconVolume2 size={18} stroke={1.5} className="max-md:h-5 max-md:w-5" />
+                  <IconVolume2
+                    size={18}
+                    stroke={1.5}
+                    className="max-md:h-5 max-md:w-5"
+                  />
                 )}
               </button>
             </TooltipTrigger>

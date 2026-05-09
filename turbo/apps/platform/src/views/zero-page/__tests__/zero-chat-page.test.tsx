@@ -93,9 +93,7 @@ describe("zero chat page - suggested prompts", () => {
     click(promptCard);
 
     await waitFor(() => {
-      const textarea = screen.getByPlaceholderText(
-        "Ask me anything…",
-      );
+      const textarea = screen.getByPlaceholderText("Ask me anything…");
       expect(textarea).toHaveValue(expectedPrompt);
     });
   });
@@ -107,9 +105,7 @@ describe("zero chat page - composer", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByPlaceholderText(
-          "Ask me anything…",
-        ),
+        screen.getByPlaceholderText("Ask me anything…"),
       ).toBeInTheDocument();
     });
   });
@@ -149,9 +145,7 @@ describe("zero chat page - composer", () => {
     await renderChatPage();
 
     const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(
-        "Ask me anything…",
-      );
+      return screen.getByPlaceholderText("Ask me anything…");
     });
 
     await fill(textarea, "Hello");
@@ -586,9 +580,7 @@ describe("zero chat page - ideation page", () => {
 
     // Should navigate back to chat page with the prompt set
     await waitFor(() => {
-      const textarea = screen.getByPlaceholderText(
-        "Ask me anything…",
-      );
+      const textarea = screen.getByPlaceholderText("Ask me anything…");
       expect(textarea).toHaveValue(
         "Set up a daily standup report that pulls data from GitHub, Sentry, Axiom, and Plausible every morning, generates a pptx, and posts it to #all-vm0",
       );

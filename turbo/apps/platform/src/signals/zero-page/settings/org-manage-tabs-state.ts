@@ -184,7 +184,7 @@ export const setDeleteConfirm$ = command(({ set }, value: string) => {
 // for all stateful logic.
 // ---------------------------------------------------------------------------
 
-export type GeneralEditingField = "name" | "slug" | null;
+type GeneralEditingField = "name" | "slug" | null;
 
 const internalGeneralEditingField$ = state<GeneralEditingField>(null);
 

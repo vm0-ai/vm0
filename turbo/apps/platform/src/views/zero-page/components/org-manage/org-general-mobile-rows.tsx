@@ -105,9 +105,7 @@ export function MobileFieldEditSheet({
             disabled={!dirty || saving}
             className={cn(
               "justify-self-end text-[16px] font-semibold px-2 py-1",
-              dirty && !saving
-                ? "text-primary"
-                : "text-muted-foreground/50",
+              dirty && !saving ? "text-primary" : "text-muted-foreground/50",
             )}
           >
             {saving ? "Saving..." : "Save"}
@@ -262,4 +260,3 @@ export function MobileSectionFooter({ children }: MobileSectionFooterProps) {
     </p>
   );
 }
-

@@ -461,9 +461,7 @@ describe("mobile workspace drawer - opens on trigger click (MOBILE-DRAWER-001)",
     click(trigger);
 
     await waitFor(() => {
-      expect(
-        screen.getByTestId("mobile-workspace-drawer"),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("mobile-workspace-drawer")).toBeInTheDocument();
     });
   });
 });
@@ -535,9 +533,7 @@ describe("mobile top bar - agent detail shows back arrow + name title (MOBILE-TO
         "My Agent",
       );
     });
-    expect(
-      screen.getByTestId("mobile-back-to-agents"),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("mobile-back-to-agents")).toBeInTheDocument();
     expect(screen.queryByTestId("breadcrumb-name")).not.toBeInTheDocument();
   });
 });
@@ -636,9 +632,7 @@ describe("mobile workspace drawer - drops the user identity card (MOBILE-DRAWER-
     await waitFor(() => {
       return screen.getByTestId("mobile-workspace-drawer");
     });
-    expect(
-      screen.queryByTestId("drawer-account-link"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("drawer-account-link")).not.toBeInTheDocument();
   });
 });
 
@@ -730,9 +724,7 @@ describe("mobile workspace drawer - no close X button (MOBILE-DRAWER-004)", () =
     const drawer = await waitFor(() => {
       return screen.getByTestId("mobile-workspace-drawer");
     });
-    expect(
-      drawer.querySelector('button[aria-label="Close"]'),
-    ).toBeNull();
+    expect(drawer.querySelector('button[aria-label="Close"]')).toBeNull();
   });
 });
 

@@ -23,9 +23,7 @@ interface MobileStackListProps {
 
 /** Outer container — vertically stacks multiple `MobileStackSection`s. */
 export function MobileStackList({ children, className }: MobileStackListProps) {
-  return (
-    <div className={cn("flex flex-col gap-6", className)}>{children}</div>
-  );
+  return <div className={cn("flex flex-col gap-6", className)}>{children}</div>;
 }
 
 interface MobileStackSectionProps {

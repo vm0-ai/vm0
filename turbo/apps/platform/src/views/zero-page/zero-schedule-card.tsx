@@ -274,8 +274,7 @@ export function ZeroScheduleCard({
 }: ZeroScheduleCardProps) {
   const signal = useGet(pageSignal$);
   const features = useLastResolved(featureSwitch$);
-  const mobileNativeOn =
-    features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
+  const mobileNativeOn = features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
   const isMobile = useGet(isMobileViewport$);
   const mobileRedesign = mobileNativeOn && isMobile;
   const scheduleViewMode = useGet(scheduleViewMode$);
@@ -515,149 +514,151 @@ export function ZeroScheduleCard({
         <CardContent className="p-0 flex flex-col">
           {!mobileRedesign && (
             <header className="flex flex-wrap items-end justify-between gap-4 px-5 pt-5 pb-4 border-b border-border/50">
-            <div className="min-w-0">
-              <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                {title}
-              </h2>
-              <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
-                onClick={openAddSchedule}
-              >
-                <IconPlus size={14} stroke={2} />
-                Add schedule
-              </Button>
-              <Tabs
-                value={scheduleViewMode}
-                onValueChange={(v) => {
-                  return setScheduleViewMode(v as "list" | "calendar");
-                }}
-                className="shrink-0"
-              >
-                <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-                  <TabsTrigger
-                    value="list"
-                    className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-                  >
-                    <IconList size={14} stroke={1.5} />
-                    List
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="calendar"
-                    className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-                  >
-                    <IconLayoutGrid size={14} stroke={1.5} />
-                    Calendar
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
-          </header>
-        )}
-        {effectiveViewMode === "list" && (
-          <ScheduleListView
-            entries={scheduleList}
-            togglingIds={togglingIds}
-            runningIds={runningIds}
-            onEdit={openEditSchedule}
-            onToggle={handleToggle}
-            onDelete={handleDelete}
-            onRunNow={handleRunNow}
-            onOpenDetails={onOpenDetails}
-          />
-        )}
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold tracking-tight text-foreground">
+                  {title}
+                </h2>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  {subtitle}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+                  onClick={openAddSchedule}
+                >
+                  <IconPlus size={14} stroke={2} />
+                  Add schedule
+                </Button>
+                <Tabs
+                  value={scheduleViewMode}
+                  onValueChange={(v) => {
+                    return setScheduleViewMode(v as "list" | "calendar");
+                  }}
+                  className="shrink-0"
+                >
+                  <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+                    <TabsTrigger
+                      value="list"
+                      className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                    >
+                      <IconList size={14} stroke={1.5} />
+                      List
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="calendar"
+                      className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                    >
+                      <IconLayoutGrid size={14} stroke={1.5} />
+                      Calendar
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+            </header>
+          )}
+          {effectiveViewMode === "list" && (
+            <ScheduleListView
+              entries={scheduleList}
+              togglingIds={togglingIds}
+              runningIds={runningIds}
+              onEdit={openEditSchedule}
+              onToggle={handleToggle}
+              onDelete={handleDelete}
+              onRunNow={handleRunNow}
+              onOpenDetails={onOpenDetails}
+            />
+          )}
 
-        {effectiveViewMode === "calendar" && (
-          <ScheduleCalendarView
-            entries={scheduleList}
-            onEdit={openEditSchedule}
+          {effectiveViewMode === "calendar" && (
+            <ScheduleCalendarView
+              entries={scheduleList}
+              onEdit={openEditSchedule}
+            />
+          )}
+          <ScheduleFormDialog
+            open={addScheduleOpen}
+            onClose={() => {
+              return detach(
+                setAddScheduleOpen(false, signal),
+                Reason.DomCallback,
+              );
+            }}
+            onSave={handleCreateSave}
+            saving={!!saving}
+            mode="create"
           />
-        )}
-        <ScheduleFormDialog
-          open={addScheduleOpen}
-          onClose={() => {
-            return detach(
-              setAddScheduleOpen(false, signal),
-              Reason.DomCallback,
-            );
-          }}
-          onSave={handleCreateSave}
-          saving={!!saving}
-          mode="create"
-        />
-        <ScheduleFormDialog
-          open={editingScheduleId !== null}
-          onClose={() => {
-            return detach(
-              setEditingScheduleId(null, signal),
-              Reason.DomCallback,
-            );
-          }}
-          onSave={handleEditSave}
-          saving={!!saving}
-          mode="edit"
-          initialValues={
-            editingEntry
-              ? {
-                  prompt: editingEntry.prompt,
-                  description: editingEntry.description ?? "",
-                  freq: parseScheduleTimeString(editingEntry.time).freq,
-                  date: parseScheduleTimeString(editingEntry.time).date,
-                  hour: parseScheduleTimeString(editingEntry.time).hour,
-                  minute: parseScheduleTimeString(editingEntry.time).minute,
-                  timezone:
-                    editingEntry.timezone ??
-                    parseScheduleTimeString(editingEntry.time).timezone,
-                  loopMinutes: parseScheduleTimeString(editingEntry.time)
-                    .loopMinutes,
-                }
-              : undefined
-          }
-        />
-        <Dialog
-          open={pendingDelete !== null}
-          onOpenChange={(open) => {
-            if (!open && !deleting) {
-              setPendingDelete(null);
+          <ScheduleFormDialog
+            open={editingScheduleId !== null}
+            onClose={() => {
+              return detach(
+                setEditingScheduleId(null, signal),
+                Reason.DomCallback,
+              );
+            }}
+            onSave={handleEditSave}
+            saving={!!saving}
+            mode="edit"
+            initialValues={
+              editingEntry
+                ? {
+                    prompt: editingEntry.prompt,
+                    description: editingEntry.description ?? "",
+                    freq: parseScheduleTimeString(editingEntry.time).freq,
+                    date: parseScheduleTimeString(editingEntry.time).date,
+                    hour: parseScheduleTimeString(editingEntry.time).hour,
+                    minute: parseScheduleTimeString(editingEntry.time).minute,
+                    timezone:
+                      editingEntry.timezone ??
+                      parseScheduleTimeString(editingEntry.time).timezone,
+                    loopMinutes: parseScheduleTimeString(editingEntry.time)
+                      .loopMinutes,
+                  }
+                : undefined
             }
-          }}
-        >
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Delete schedule?</DialogTitle>
-              <DialogDescription>
-                This will permanently delete the schedule{" "}
-                <span className="font-medium text-foreground">
-                  {pendingDelete?.name}
-                </span>
-                . This action cannot be undone.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                disabled={deleting}
-                onClick={() => {
-                  return setPendingDelete(null);
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                disabled={deleting}
-                onClick={confirmDelete}
-              >
-                {deleting ? "Deleting…" : "Delete"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          />
+          <Dialog
+            open={pendingDelete !== null}
+            onOpenChange={(open) => {
+              if (!open && !deleting) {
+                setPendingDelete(null);
+              }
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete schedule?</DialogTitle>
+                <DialogDescription>
+                  This will permanently delete the schedule{" "}
+                  <span className="font-medium text-foreground">
+                    {pendingDelete?.name}
+                  </span>
+                  . This action cannot be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  disabled={deleting}
+                  onClick={() => {
+                    return setPendingDelete(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={deleting}
+                  onClick={confirmDelete}
+                >
+                  {deleting ? "Deleting…" : "Delete"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </CardContent>
       </Card>
     </>

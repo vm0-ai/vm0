@@ -65,7 +65,9 @@ function AppearanceSettings() {
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-sm max-md:text-[16px] font-medium text-foreground">Theme</div>
+          <div className="text-sm max-md:text-[16px] font-medium text-foreground">
+            Theme
+          </div>
           <div className="text-sm max-md:text-[16px] text-muted-foreground max-md:leading-snug">
             Your preferred color scheme
           </div>

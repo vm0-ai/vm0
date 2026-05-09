@@ -341,9 +341,7 @@ function ScheduleListCard<T extends ScheduleEntry>({
         >
           {showAgent && agentLabel && (
             <>
-              <span className="text-muted-foreground">
-                {agentLabel}
-              </span>
+              <span className="text-muted-foreground">{agentLabel}</span>
               {" · "}
             </>
           )}

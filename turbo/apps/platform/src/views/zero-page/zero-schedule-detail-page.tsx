@@ -1064,7 +1064,6 @@ function ScheduleDetailView({
         onDelete={onDelete}
         onInstructionSavePrompt={onInstructionSavePrompt}
       />
-
     );
   }
 
@@ -1211,7 +1210,11 @@ function ScheduleDetailView({
                   detach(onRunNow(), Reason.DomCallback);
                 }}
               >
-                <IconPlayerPlay size={14} stroke={1.5} className="max-md:h-4 max-md:w-4" />
+                <IconPlayerPlay
+                  size={14}
+                  stroke={1.5}
+                  className="max-md:h-4 max-md:w-4"
+                />
                 {running ? "Starting…" : "Run now"}
               </Button>
             </div>

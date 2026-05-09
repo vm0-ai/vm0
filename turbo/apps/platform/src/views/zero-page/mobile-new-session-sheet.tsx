@@ -7,9 +7,7 @@ import {
   SheetDescription,
 } from "@vm0/ui";
 import { sortedAgents$ } from "../../signals/agent.ts";
-import {
-  setChatAgentId$,
-} from "../../signals/agent-chat.ts";
+import { setChatAgentId$ } from "../../signals/agent-chat.ts";
 import { createNewChatThreadOptimistically$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import {
   mobileNewSessionSheetOpen$,
@@ -36,10 +34,7 @@ export function MobileNewSessionSheet() {
   const onPick = (agentId: string) => {
     setOpen(false);
     setAgentId(agentId);
-    detach(
-      createNewChat(agentId, "main", rootSignal),
-      Reason.DomCallback,
-    );
+    detach(createNewChat(agentId, "main", rootSignal), Reason.DomCallback);
   };
 
   return (

@@ -19,19 +19,17 @@ export const isMobileViewport$ = computed((get) => {
   return get(internalIsMobileViewport$);
 });
 
-export const watchMobileViewport$ = command(
-  ({ set }, signal: AbortSignal) => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    const mql = window.matchMedia(MOBILE_MEDIA_QUERY);
-    const onChange = () => {
-      set(internalIsMobileViewport$, mql.matches);
-    };
-    onChange();
-    mql.addEventListener("change", onChange);
-    signal.addEventListener("abort", () => {
-      mql.removeEventListener("change", onChange);
-    });
-  },
-);
+export const watchMobileViewport$ = command(({ set }, signal: AbortSignal) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const mql = window.matchMedia(MOBILE_MEDIA_QUERY);
+  const onChange = () => {
+    set(internalIsMobileViewport$, mql.matches);
+  };
+  onChange();
+  mql.addEventListener("change", onChange);
+  signal.addEventListener("abort", () => {
+    mql.removeEventListener("change", onChange);
+  });
+});

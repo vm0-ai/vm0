@@ -244,10 +244,7 @@ function MobileProfileEditSheets({ org }: { readonly org: OrgResponse }) {
         const result = await client.update({ body });
         if (result.status !== 200) {
           setSaveError(
-            extractErrorMessage(
-              result,
-              `Failed to update (${result.status})`,
-            ),
+            extractErrorMessage(result, `Failed to update (${result.status})`),
           );
           return;
         }
@@ -272,11 +269,7 @@ function MobileProfileEditSheets({ org }: { readonly org: OrgResponse }) {
   };
 
   const initialValue =
-    editingField === "name"
-      ? name
-      : editingField === "slug"
-        ? slug
-        : "";
+    editingField === "name" ? name : editingField === "slug" ? slug : "";
 
   return (
     <MobileFieldEditSheet
@@ -600,8 +593,8 @@ function ProfileSection({
 
       {isMobile && (
         <MobileSectionFooter>
-          Tap a field to edit. Slug is the URL-friendly identifier and is
-          used in workspace links.
+          Tap a field to edit. Slug is the URL-friendly identifier and is used
+          in workspace links.
         </MobileSectionFooter>
       )}
 
@@ -818,8 +811,8 @@ function DangerZoneSection({
             <DialogHeader>
               <DialogTitle>Leave workspace?</DialogTitle>
               <DialogDescription>
-                You will no longer have access to this workspace. You can
-                rejoin only if an admin invites you again.
+                You will no longer have access to this workspace. You can rejoin
+                only if an admin invites you again.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>

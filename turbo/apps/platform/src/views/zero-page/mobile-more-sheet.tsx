@@ -88,9 +88,7 @@ export function MobileMoreSheet() {
       >
         <SheetHeader className="sr-only">
           <SheetTitle>More</SheetTitle>
-          <SheetDescription>
-            Insights and where Zero works.
-          </SheetDescription>
+          <SheetDescription>Insights and where Zero works.</SheetDescription>
         </SheetHeader>
         <div className="flex justify-center pt-2.5">
           <span

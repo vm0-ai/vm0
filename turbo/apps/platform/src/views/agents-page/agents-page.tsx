@@ -168,9 +168,7 @@ export function AgentsPage() {
         </div>
       </header>
 
-      <main
-        className={`flex-1 overflow-auto px-4 sm:px-6 pb-8 pt-3`}
-      >
+      <main className={`flex-1 overflow-auto px-4 sm:px-6 pb-8 pt-3`}>
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
           {effectiveViewMode === "grid" ? (
             <AgentGridView />

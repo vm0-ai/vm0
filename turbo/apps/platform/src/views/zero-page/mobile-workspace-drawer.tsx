@@ -11,11 +11,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@vm0/ui";
-import {
-  IconSettings,
-  IconPlus,
-  IconMail,
-} from "@tabler/icons-react";
+import { IconSettings, IconPlus, IconMail } from "@tabler/icons-react";
 import { clerk$, currentOrgInfo$ } from "../../signals/auth.ts";
 import { detach, Reason, withCleanup } from "../../signals/utils.ts";
 import {
@@ -35,10 +31,7 @@ import {
   acceptingInvitationId$,
   setAcceptingInvitationId$,
 } from "../../signals/select-org/org-switcher-ui.ts";
-import {
-  OrgAvatar,
-  PendingInvitationsBadge,
-} from "./zero-org-switcher.tsx";
+import { OrgAvatar, PendingInvitationsBadge } from "./zero-org-switcher.tsx";
 
 // Mobile drawer rows align to the mobile-more-sheet rhythm:
 // - 40px avatar (OrgAvatar size="lg") next to a 16px primary / 14px secondary
@@ -62,11 +55,7 @@ function CurrentWorkspaceRow({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="flex items-center gap-3 px-3 py-3 rounded-xl bg-muted">
-      <OrgAvatar
-        name={orgName}
-        imageUrl={currentOrg?.imageUrl}
-        size="lg"
-      />
+      <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} size="lg" />
       <div className="min-w-0 flex-1">
         <p className="text-[16px] font-semibold leading-tight truncate text-foreground">
           {orgName}

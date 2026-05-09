@@ -67,11 +67,9 @@ const internalSwipeOpenThreadId$ = state<string | null>(null);
 export const swipeOpenThreadId$ = computed((get) => {
   return get(internalSwipeOpenThreadId$);
 });
-export const setSwipeOpenThreadId$ = command(
-  ({ set }, id: string | null) => {
-    set(internalSwipeOpenThreadId$, id);
-  },
-);
+export const setSwipeOpenThreadId$ = command(({ set }, id: string | null) => {
+  set(internalSwipeOpenThreadId$, id);
+});
 
 // ---------------------------------------------------------------------------
 // Mobile connectors search bar visibility — the page header search input is

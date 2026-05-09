@@ -646,8 +646,7 @@ function ConnectorsDesktopHeader({
 function MobileConnectorsSearchBar() {
   const open = useGet(mobileConnectorsSearchOpen$);
   const features = useLastResolved(featureSwitch$);
-  const mobileNativeOn =
-    features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
+  const mobileNativeOn = features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
   const isMobile = useGet(isMobileViewport$);
   const search = useGet(connectorsSearch$);
   const setSearch = useSet(setConnectorsSearch$);
@@ -714,8 +713,7 @@ export function ZeroConnectorsPage() {
   const search = useGet(connectorsSearch$);
   const setSearch = useSet(setConnectorsSearch$);
 
-  const mobileNativeOn =
-    features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
+  const mobileNativeOn = features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
 
   const allConnectors = patchDemoConnectors(
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [],

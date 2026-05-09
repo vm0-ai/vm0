@@ -98,9 +98,9 @@ describe("mobile-native agent detail - index view (MOBILE-AGENT-001)", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByTestId("mobile-agent-display-name"),
-      ).toHaveTextContent("Lisa");
+      expect(screen.getByTestId("mobile-agent-display-name")).toHaveTextContent(
+        "Lisa",
+      );
     });
 
     expect(screen.getByTestId("mobile-agent-chat-cta")).toHaveTextContent(
@@ -132,9 +132,7 @@ describe("mobile-native agent detail - index view (MOBILE-AGENT-001)", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Lisa" }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Lisa" })).toBeInTheDocument();
     });
 
     expect(
@@ -162,9 +160,7 @@ describe("mobile-native agent detail - row tap pushes section (MOBILE-AGENT-002)
     await waitFor(() => {
       expect(search()).toBe("?tab=authorization");
     });
-    expect(
-      screen.getByTestId("mobile-agent-section-view"),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("mobile-agent-section-view")).toBeInTheDocument();
     // Index list rows should no longer be rendered when in section view.
     expect(
       screen.queryByTestId("mobile-agent-section-connectors"),
