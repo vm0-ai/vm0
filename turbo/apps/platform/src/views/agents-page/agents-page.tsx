@@ -547,7 +547,7 @@ function AgentListRow({
         <AgentAvatarImg
           name={agent.id}
           alt={displayName}
-          className="h-11 w-11 max-md:h-14 max-md:w-14 shrink-0 rounded-xl object-cover object-top"
+          className="h-12 w-12 shrink-0 rounded-xl object-cover object-top"
         />
         <div className="flex-1 min-w-0 flex flex-col gap-0.5">
           <span className="truncate text-[16px] leading-snug font-medium text-foreground">

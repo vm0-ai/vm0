@@ -320,8 +320,8 @@ function ScheduleListCard<T extends ScheduleEntry>({
           <span className="sr-only">Open schedule {entry.prompt}</span>
         </Link>
       )}
-      <span className="shrink-0 flex h-11 w-11 items-center justify-center rounded-xl max-md:h-12 max-md:w-12 text-muted-foreground pointer-events-none">
-        <IconCalendarClock size={26} className="max-md:size-[28px]" stroke={1.6} />
+      <span className="shrink-0 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-foreground/80 pointer-events-none">
+        <IconCalendarClock size={22} stroke={1.6} />
       </span>
       {/* Text content — pointer-events disabled so clicks pass through to the Link overlay */}
       <div className="min-w-0 flex-1 flex flex-col gap-0.5 pointer-events-none">
