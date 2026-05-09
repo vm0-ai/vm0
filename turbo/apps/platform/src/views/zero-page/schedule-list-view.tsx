@@ -335,7 +335,7 @@ function ScheduleListCard<T extends ScheduleEntry>({
         </span>
         <span
           className={cn(
-            "truncate text-xs max-md:text-[16px] text-muted-foreground",
+            "truncate text-[14px] text-muted-foreground",
             dimmed && "text-muted-foreground/80",
           )}
         >

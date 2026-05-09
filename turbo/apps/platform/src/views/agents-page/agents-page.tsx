@@ -511,10 +511,10 @@ function AgentCard({ agent }: AgentProps) {
           className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
         />
         <div className="flex-1 min-w-0">
-          <span className="text-sm max-md:text-[16px] font-medium text-foreground truncate block">
+          <span className="text-[16px] font-medium text-foreground truncate block">
             {displayName}
           </span>
-          <p className="text-[16px] sm:text-[14px] text-muted-foreground mt-0.5 line-clamp-1">
+          <p className="text-[14px] text-muted-foreground mt-0.5 line-clamp-1">
             {description}
           </p>
         </div>
@@ -554,7 +554,7 @@ function AgentListRow({
             {displayName}
           </span>
           {description && (
-            <span className="truncate text-xs max-md:text-[16px] text-muted-foreground">
+            <span className="truncate text-[14px] text-muted-foreground">
               {description}
             </span>
           )}
