@@ -2,7 +2,6 @@ import { apiKeysContract } from "@vm0/api-contracts/contracts/api-keys";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -20,6 +19,16 @@ const mocks = createZeroRouteMocks(context);
 describe("GET /api/zero/api-keys", () => {
   const track = createFixtureTracker<ApiKeysFixture>((fixture) => {
     return store.set(deleteApiKeys$, fixture, context.signal);
+  });
+
+  it("returns 401 when the request is unauthenticated", async () => {
+    const client = setupApp({ context })(apiKeysContract);
+
+    const response = await accept(client.list({ headers: {} }), [401]);
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
   });
 
   it("returns the current user's API keys sorted by creation time", async () => {
@@ -59,7 +68,6 @@ describe("GET /api/zero/api-keys", () => {
       ),
     );
     mocks.clerk.session(fixture.userId, null);
-    mockApiShadowCompareRoutes([apiKeysContract.list]);
 
     const client = setupApp({ context })(apiKeysContract);
 
@@ -92,7 +100,6 @@ describe("GET /api/zero/api-keys", () => {
   it("returns an empty list when the user has no API keys", async () => {
     const fixture = await track(store.set(seedApiKeys$, [], context.signal));
     mocks.clerk.session(fixture.userId, null);
-    mockApiShadowCompareRoutes([apiKeysContract.list]);
 
     const client = setupApp({ context })(apiKeysContract);
 
@@ -104,5 +111,43 @@ describe("GET /api/zero/api-keys", () => {
     );
 
     expect(response.body).toStrictEqual({ apiKeys: [] });
+  });
+
+  it("list excludes the full token and only exposes the prefix", async () => {
+    const fixture = await track(
+      store.set(
+        seedApiKeys$,
+        [
+          {
+            name: "Deploy key",
+            token: "vm0_pat_deploy_key_full_token_value",
+            createdAt: new Date("2026-03-04T00:00:00.000Z"),
+            expiresAt: new Date("2026-04-04T00:00:00.000Z"),
+          },
+        ],
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, null);
+
+    const client = setupApp({ context })(apiKeysContract);
+
+    const response = await accept(
+      client.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.apiKeys).toStrictEqual([
+      {
+        id: expect.any(String),
+        name: "Deploy key",
+        tokenPrefix: "vm0_pat_depl\u2026",
+        createdAt: "2026-03-04T00:00:00.000Z",
+        expiresAt: "2026-04-04T00:00:00.000Z",
+        lastUsedAt: null,
+      },
+    ]);
   });
 });
