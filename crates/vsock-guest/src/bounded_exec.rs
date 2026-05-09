@@ -1,4 +1,5 @@
-use std::io::{self, Write};
+use std::io;
+use std::os::fd::{AsRawFd, RawFd};
 use std::process::{Child, ChildStdin};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -28,6 +29,7 @@ const THREAD_BOUNDED_STDOUT: &str = "vsock-bounded-stdout";
 const THREAD_BOUNDED_STDERR: &str = "vsock-bounded-stderr";
 const THREAD_BOUNDED_STDIN: &str = "vsock-bounded-stdin";
 const STREAM_CHUNK_WRITE_DEADLINE: Duration = Duration::from_secs(2);
+const STDIN_WRITE_POLL_TIMEOUT_MS: libc::c_int = 100;
 
 pub(crate) struct BoundedExecWorkerRequest {
     pub(crate) seq: u32,
@@ -111,6 +113,23 @@ struct BoundedExecResultFrame<'a> {
     stdout: vsock_proto::BoundedExecOutput<'a>,
     stderr: vsock_proto::BoundedExecOutput<'a>,
     diagnostic: Option<&'a str>,
+}
+
+struct BoundedStdinWorker {
+    handle: JoinHandle<()>,
+    error_rx: mpsc::Receiver<String>,
+    done_rx: mpsc::Receiver<()>,
+}
+
+impl BoundedStdinWorker {
+    fn is_pending(&self) -> bool {
+        matches!(self.done_rx.try_recv(), Err(mpsc::TryRecvError::Empty))
+    }
+
+    fn finish(self) -> mpsc::Receiver<String> {
+        let _ = self.handle.join();
+        self.error_rx
+    }
 }
 
 #[derive(Debug)]
@@ -277,6 +296,7 @@ fn run_bounded_exec<S>(
         mut child,
         env_script,
     } = spawned;
+    let child_pid = child.id();
     let _env_script = env_script;
 
     let stdout = if request.stdout.requires_pipe() {
@@ -339,6 +359,7 @@ fn run_bounded_exec<S>(
 
     let drain_cancel = Arc::new(AtomicBool::new(false));
     let command_cancel = Arc::new(AtomicBool::new(false));
+    let stdin_cancel = Arc::new(AtomicBool::new(false));
     let (drain_done_tx, drain_done_rx) = mpsc::channel::<()>();
 
     let stdout_worker = match stdout {
@@ -423,11 +444,18 @@ fn run_bounded_exec<S>(
 
     let stdin_worker = match (stdin, request.stdin) {
         (Some(stdin), Some(stdin_bytes)) => {
-            match spawn_stdin_writer(stdin, stdin_bytes, command_cancel.clone(), spawner.clone()) {
+            match spawn_stdin_writer(
+                stdin,
+                stdin_bytes,
+                command_cancel.clone(),
+                stdin_cancel.clone(),
+                spawner.clone(),
+            ) {
                 Ok(worker) => Some(worker),
                 Err(e) => {
                     drain_cancel.store(true, Ordering::Release);
                     command_cancel.store(true, Ordering::Release);
+                    stdin_cancel.store(true, Ordering::Release);
                     kill_and_reap_child(child);
                     if let Some((stdout_handle, _)) = stdout_worker {
                         let _ = stdout_handle.join();
@@ -469,6 +497,23 @@ fn run_bounded_exec<S>(
     {
         drain_cancel.store(true, Ordering::Release);
     }
+    if matches!(outcome, WaitOutcome::Exited(_) | WaitOutcome::WaitFailed(_))
+        && stdin_worker
+            .as_ref()
+            .is_some_and(BoundedStdinWorker::is_pending)
+    {
+        // The direct child is gone, but a descendant may still hold stdin open
+        // without reading it. Signal the process group before waiting for
+        // stdout/stderr drain so inherited output fds do not burn the whole
+        // drain deadline.
+        kill_process_group_best_effort(child_pid);
+    }
+    if matches!(
+        outcome,
+        WaitOutcome::TimedOut | WaitOutcome::Cancelled | WaitOutcome::WaitFailed(_)
+    ) {
+        stdin_cancel.store(true, Ordering::Release);
+    }
 
     let expected_drains =
         usize::from(stdout_worker.is_some()) + usize::from(stderr_worker.is_some());
@@ -482,10 +527,8 @@ fn run_bounded_exec<S>(
 
     let stdout_output = finish_drain_worker(request.stdout, stdout_worker);
     let stderr_output = finish_drain_worker(request.stderr, stderr_worker);
-    let stdin_error_rx = stdin_worker.map(|(stdin_handle, stdin_error_rx)| {
-        let _ = stdin_handle.join();
-        stdin_error_rx
-    });
+    stdin_cancel.store(true, Ordering::Release);
+    let stdin_error_rx = stdin_worker.map(BoundedStdinWorker::finish);
 
     let mut diagnostic = None;
     let mut termination = match outcome {
@@ -597,7 +640,7 @@ fn spawn_bounded_drain<R, S>(
     spawner: S,
 ) -> io::Result<(JoinHandle<()>, mpsc::Receiver<BoundedDrainResult>)>
 where
-    R: std::os::unix::io::AsRawFd + Send + 'static,
+    R: AsRawFd + Send + 'static,
     S: ThreadSpawner,
 {
     let BoundedDrainWorker {
@@ -665,20 +708,28 @@ fn finish_drain_worker(
 }
 
 fn spawn_stdin_writer<S>(
-    mut stdin: ChildStdin,
+    stdin: ChildStdin,
     stdin_bytes: Vec<u8>,
     command_cancel: Arc<AtomicBool>,
+    stdin_cancel: Arc<AtomicBool>,
     spawner: S,
-) -> io::Result<(JoinHandle<()>, mpsc::Receiver<String>)>
+) -> io::Result<BoundedStdinWorker>
 where
     S: ThreadSpawner,
 {
     let (error_tx, error_rx) = mpsc::channel();
+    let (done_tx, done_rx) = mpsc::channel();
     let handle = spawner.spawn_unit(
         THREAD_BOUNDED_STDIN,
         Box::new(move || {
-            let write_result = stdin.write_all(&stdin_bytes);
+            let write_result = write_stdin_cancellable(
+                &stdin,
+                &stdin_bytes,
+                command_cancel.as_ref(),
+                stdin_cancel.as_ref(),
+            );
             drop(stdin);
+            let _ = done_tx.send(());
             if let Err(e) = write_result {
                 if e.kind() == io::ErrorKind::BrokenPipe {
                     return;
@@ -688,7 +739,130 @@ where
             }
         }),
     )?;
-    Ok((handle, error_rx))
+    Ok(BoundedStdinWorker {
+        handle,
+        error_rx,
+        done_rx,
+    })
+}
+
+fn kill_process_group_best_effort(child_pid: u32) {
+    // SAFETY: child_pid came from Command::spawn; ESRCH is fine because the
+    // process group may already be gone by the time the stdin writer lags.
+    let _ = unsafe { libc::kill(-(child_pid as i32), libc::SIGKILL) };
+}
+
+fn write_stdin_cancellable(
+    stdin: &ChildStdin,
+    bytes: &[u8],
+    command_cancel: &AtomicBool,
+    stdin_cancel: &AtomicBool,
+) -> io::Result<()> {
+    let fd = stdin.as_raw_fd();
+    set_fd_nonblocking(fd)?;
+    let mut written = 0usize;
+    while written < bytes.len() {
+        if command_cancel.load(Ordering::Acquire) || stdin_cancel.load(Ordering::Acquire) {
+            return Ok(());
+        }
+
+        let Some(remaining) = bytes.get(written..) else {
+            return Err(io::Error::other("stdin write offset exceeded input length"));
+        };
+        match write_nonblocking(fd, remaining) {
+            Ok(0) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::WriteZero,
+                    "stdin write returned zero bytes",
+                ));
+            }
+            Ok(n) => {
+                written = written
+                    .checked_add(n)
+                    .filter(|next| *next <= bytes.len())
+                    .ok_or_else(|| io::Error::other("stdin write exceeded input length"))?;
+            }
+            Err(e) if e.kind() == io::ErrorKind::BrokenPipe => return Ok(()),
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                wait_stdin_writable(fd, command_cancel, stdin_cancel)?
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
+}
+
+fn set_fd_nonblocking(fd: RawFd) -> io::Result<()> {
+    // SAFETY: fcntl is called with a valid fd owned by ChildStdin.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if flags & libc::O_NONBLOCK != 0 {
+        return Ok(());
+    }
+
+    // SAFETY: fcntl only updates descriptor flags for this owned fd.
+    let ret = unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) };
+    if ret < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+fn write_nonblocking(fd: RawFd, bytes: &[u8]) -> io::Result<usize> {
+    // SAFETY: bytes is a valid readable buffer and write does not retain it.
+    let ret = unsafe { libc::write(fd, bytes.as_ptr().cast::<libc::c_void>(), bytes.len()) };
+    if ret < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(ret as usize)
+}
+
+fn wait_stdin_writable(
+    fd: RawFd,
+    command_cancel: &AtomicBool,
+    stdin_cancel: &AtomicBool,
+) -> io::Result<()> {
+    loop {
+        if command_cancel.load(Ordering::Acquire) || stdin_cancel.load(Ordering::Acquire) {
+            return Ok(());
+        }
+
+        let mut pfd = libc::pollfd {
+            fd,
+            events: libc::POLLOUT,
+            revents: 0,
+        };
+        // SAFETY: pfd points to one initialized descriptor entry.
+        let ret = unsafe { libc::poll(&mut pfd, 1, STDIN_WRITE_POLL_TIMEOUT_MS) };
+        if ret < 0 {
+            let err = io::Error::last_os_error();
+            if err.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(err);
+        }
+        if ret == 0 {
+            continue;
+        }
+        if pfd.revents & libc::POLLNVAL != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "stdin fd is invalid",
+            ));
+        }
+        if pfd.revents & (libc::POLLERR | libc::POLLHUP) != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "stdin pipe is no longer writable",
+            ));
+        }
+        if pfd.revents & libc::POLLOUT != 0 {
+            return Ok(());
+        }
+    }
 }
 
 fn kill_and_send_wait_failed(

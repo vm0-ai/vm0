@@ -411,6 +411,30 @@ fn bounded_exec_broken_pipe_stdin_keeps_child_exit_status() {
 }
 
 #[test]
+fn bounded_exec_stdin_writer_exits_when_grandchild_holds_stdin() {
+    let orphan = OrphanProcessGuard::new("bounded-exec-stdin-orphan");
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let stdin = vec![b'x'; 8 * 1024 * 1024];
+    let command = format!(
+        "python3 -c \"import os,time; p=os.fork(); (os.write(os.open('{}', os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o600), str(p).encode()), os._exit(0)) if p else (os.dup2(os.open('/dev/null', os.O_WRONLY), 1), os.dup2(os.open('/dev/null', os.O_WRONLY), 2), time.sleep(30))\"",
+        orphan.pid_path()
+    );
+    let request = bounded_request(&command, &[], Some(stdin.as_slice()));
+    send_bounded_exec(&mut host_stream, 37, &request);
+    let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 37);
+
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    let orphan_pid = read_pid_file(orphan.pid_path());
+    wait_for_pid_exit(orphan_pid, "bounded exec stdin cleanup");
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn bounded_exec_streams_stdout_before_final_result() {
     let (handle, mut host_stream) = start_guest_connection();
 
