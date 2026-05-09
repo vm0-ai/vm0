@@ -210,7 +210,7 @@ function MobileMasterList({
   readonly onSelect: (id: OrgManageTab) => void;
 }) {
   return (
-    <div className="flex-1 overflow-y-auto px-5 pt-2 pb-10 [scrollbar-gutter:stable]">
+    <div className="flex-1 overflow-y-auto px-5 pt-2 pb-16 [scrollbar-gutter:stable]">
       <p className="text-[14px] text-muted-foreground leading-snug">
         Manage workspace profile, members, integrations, and billing.
       </p>
@@ -447,7 +447,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
               )}
               <div
                 className={cn(
-                  "flex-1 overflow-y-auto pb-10 [scrollbar-gutter:stable]",
+                  "flex-1 overflow-y-auto pb-16 [scrollbar-gutter:stable]",
                   showMobileDetail ? "px-5 pt-4" : "px-4 sm:px-10",
                   !showMobileDetail && (hideHeader ? "pt-6 sm:pt-8" : "pt-4 sm:pt-6"),
                 )}

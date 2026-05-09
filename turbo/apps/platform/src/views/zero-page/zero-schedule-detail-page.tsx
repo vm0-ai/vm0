@@ -244,7 +244,7 @@ function ScheduleNotFound() {
           Schedule
         </span>
       </nav>
-      <div className="flex-1 flex flex-col items-center justify-center gap-3 px-4 pb-20">
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 px-4 pb-16">
         <ZeroNoPermissionIllustration className="h-32 w-auto max-w-[220px] object-contain opacity-90" />
         <h2 className="text-lg font-semibold text-foreground">
           Schedule not found

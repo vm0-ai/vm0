@@ -161,7 +161,7 @@ export function ZeroAccountHubPage() {
       className="flex flex-1 flex-col min-h-0 overflow-auto"
       data-testid="account-hub-page"
     >
-      <div className="mx-auto w-full max-w-[640px] flex flex-col gap-6 px-4 pt-3 md:pt-4 pb-12">
+      <div className="mx-auto w-full max-w-[640px] flex flex-col gap-6 px-4 pt-2 md:pt-4 pb-16">
         <AccountIdentityCard />
         <AccountSection>
           <AccountRow

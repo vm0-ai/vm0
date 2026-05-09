@@ -820,7 +820,7 @@ export function ZeroConnectorsPage() {
       />
       <MobileConnectorsSearchBar />
 
-      <main className="flex-1 px-4 sm:px-6 pt-3 pb-16">
+      <main className="flex-1 px-4 sm:px-6 pt-2 md:pt-3 pb-16">
         <div className="relative mx-auto w-full max-w-[900px]">
           {activeTab === "builtin" &&
             allTypesLoadable.state === "hasData" &&

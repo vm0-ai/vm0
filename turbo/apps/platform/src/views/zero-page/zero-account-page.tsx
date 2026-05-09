@@ -253,7 +253,7 @@ export function ZeroPreferencesPage() {
         </div>
       </header>
 
-      <main className="shrink-0 px-4 sm:px-6 pt-3 pb-16">
+      <main className="shrink-0 px-4 sm:px-6 pt-2 md:pt-3 pb-16">
         <div className="mx-auto max-w-[900px] flex flex-col gap-8">
           <Tabs
             value={tab}
