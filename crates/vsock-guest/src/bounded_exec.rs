@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::io;
 use std::os::fd::{AsRawFd, RawFd};
 use std::process::{Child, ChildStdin};
@@ -119,6 +120,7 @@ struct BoundedStdinWorker {
     handle: JoinHandle<()>,
     error_rx: mpsc::Receiver<String>,
     done_rx: mpsc::Receiver<()>,
+    pipe_link: Option<String>,
 }
 
 impl BoundedStdinWorker {
@@ -507,6 +509,12 @@ fn run_bounded_exec<S>(
         // stdout/stderr drain so inherited output fds do not burn the whole
         // drain deadline.
         kill_process_group_best_effort(child_pid);
+        if let Some(pipe_link) = stdin_worker
+            .as_ref()
+            .and_then(|worker| worker.pipe_link.as_deref())
+        {
+            kill_processes_holding_pipe(pipe_link);
+        }
     }
     if matches!(
         outcome,
@@ -719,6 +727,7 @@ where
 {
     let (error_tx, error_rx) = mpsc::channel();
     let (done_tx, done_rx) = mpsc::channel();
+    let pipe_link = stdin_pipe_link(&stdin);
     let handle = spawner.spawn_unit(
         THREAD_BOUNDED_STDIN,
         Box::new(move || {
@@ -743,6 +752,7 @@ where
         handle,
         error_rx,
         done_rx,
+        pipe_link,
     })
 }
 
@@ -750,6 +760,64 @@ fn kill_process_group_best_effort(child_pid: u32) {
     // SAFETY: child_pid came from Command::spawn; ESRCH is fine because the
     // process group may already be gone by the time the stdin writer lags.
     let _ = unsafe { libc::kill(-(child_pid as i32), libc::SIGKILL) };
+}
+
+fn stdin_pipe_link(stdin: &ChildStdin) -> Option<String> {
+    let path = format!("/proc/self/fd/{}", stdin.as_raw_fd());
+    std::fs::read_link(path)
+        .ok()
+        .map(|target| target.to_string_lossy().into_owned())
+}
+
+fn kill_processes_holding_pipe(pipe_link: &str) {
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return;
+    };
+
+    let self_pid = std::process::id();
+    // SAFETY: getpgrp has no preconditions.
+    let self_pgid = unsafe { libc::getpgrp() };
+    let mut killed_pgroups = HashSet::new();
+
+    for entry in entries.flatten() {
+        let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else {
+            continue;
+        };
+        if pid == self_pid {
+            continue;
+        }
+
+        let fd_dir = entry.path().join("fd");
+        let Ok(fds) = std::fs::read_dir(fd_dir) else {
+            continue;
+        };
+        let mut holds_pipe = false;
+        for fd in fds.flatten() {
+            let Ok(target) = std::fs::read_link(fd.path()) else {
+                continue;
+            };
+            if target.to_string_lossy() == pipe_link {
+                holds_pipe = true;
+                break;
+            }
+        }
+        if !holds_pipe {
+            continue;
+        }
+
+        // SAFETY: pid came from /proc. getpgid may fail if the process exits.
+        let pgid = unsafe { libc::getpgid(pid as libc::pid_t) };
+        if pgid > 0 && pgid != self_pgid && killed_pgroups.insert(pgid) {
+            // SAFETY: pgid is positive and not our own process group.
+            let ret = unsafe { libc::kill(-pgid, libc::SIGKILL) };
+            if ret == 0 {
+                continue;
+            }
+        }
+
+        // SAFETY: pid came from /proc and may already be gone; errors ignored.
+        let _ = unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
+    }
 }
 
 fn write_stdin_cancellable(
