@@ -1,0 +1,179 @@
+import { randomUUID } from "node:crypto";
+
+import { zeroBillingInvoicesContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { createStore } from "ccstate";
+
+import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { mockListStripeInvoices } from "../../external/stripe-client";
+import {
+  deleteInvoicesOrg$,
+  seedInvoicesOrg$,
+  type InvoicesOrgFixture,
+} from "./helpers/zero-billing-invoices";
+import {
+  createFixtureTracker,
+  createZeroRouteMocks,
+} from "./helpers/zero-route-test";
+
+const context = testContext();
+const store = createStore();
+const mocks = createZeroRouteMocks(context);
+
+describe("GET /api/zero/billing/invoices", () => {
+  const track = createFixtureTracker<InvoicesOrgFixture>((fixture) => {
+    return store.set(deleteInvoicesOrg$, fixture, context.signal);
+  });
+
+  it("returns 401 when the request is unauthenticated", async () => {
+    const client = setupApp({ context })(zeroBillingInvoicesContract);
+
+    const response = await accept(client.get({ headers: {} }), [401]);
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
+  it("returns 403 for a non-admin org member", async () => {
+    const fixture = await track(
+      store.set(seedInvoicesOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const client = setupApp({ context })(zeroBillingInvoicesContract);
+
+    const response = await accept(
+      client.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Only org admins can view invoices",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("returns invoices for an admin's org with active subscription", async () => {
+    const customerId = `cus-inv-${randomUUID().slice(0, 8)}`;
+    const fixture = await track(
+      store.set(
+        seedInvoicesOrg$,
+        {
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: `sub-inv-${randomUUID().slice(0, 8)}`,
+          subscriptionStatus: "active",
+          tier: "pro",
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    mockListStripeInvoices(() => {
+      return Promise.resolve([
+        {
+          id: "inv_001",
+          number: "INV-2026-001",
+          created: 1_740_000_000,
+          amount_paid: 4000,
+          status: "paid",
+          hosted_invoice_url: "https://stripe.com/invoice/inv_001",
+        },
+        {
+          id: "inv_002",
+          number: "INV-2026-002",
+          created: 1_737_400_000,
+          amount_paid: 4000,
+          status: "paid",
+          hosted_invoice_url: "https://stripe.com/invoice/inv_002",
+        },
+      ]);
+    });
+
+    const client = setupApp({ context })(zeroBillingInvoicesContract);
+
+    const response = await accept(
+      client.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      invoices: [
+        {
+          id: "inv_001",
+          number: "INV-2026-001",
+          date: 1_740_000_000,
+          amount: 4000,
+          status: "paid",
+          hostedInvoiceUrl: "https://stripe.com/invoice/inv_001",
+        },
+        {
+          id: "inv_002",
+          number: "INV-2026-002",
+          date: 1_737_400_000,
+          amount: 4000,
+          status: "paid",
+          hostedInvoiceUrl: "https://stripe.com/invoice/inv_002",
+        },
+      ],
+    });
+  });
+
+  it("returns an empty list when the org has no Stripe customer", async () => {
+    const fixture = await track(
+      store.set(seedInvoicesOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroBillingInvoicesContract);
+
+    const response = await accept(
+      client.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ invoices: [] });
+  });
+
+  it("returns an empty list when Stripe returns no invoices", async () => {
+    const fixture = await track(
+      store.set(
+        seedInvoicesOrg$,
+        {
+          stripeCustomerId: `cus-empty-${randomUUID().slice(0, 8)}`,
+          stripeSubscriptionId: `sub-empty-${randomUUID().slice(0, 8)}`,
+          subscriptionStatus: "active",
+          tier: "pro",
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    mockListStripeInvoices(() => {
+      return Promise.resolve([]);
+    });
+
+    const client = setupApp({ context })(zeroBillingInvoicesContract);
+
+    const response = await accept(
+      client.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ invoices: [] });
+  });
+});
