@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{self, Read};
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -8,14 +8,14 @@ use std::time::Duration;
 
 use vsock_proto::{
     self, MSG_BOUNDED_EXEC, MSG_BOUNDED_EXEC_CANCEL, MSG_EXEC, MSG_EXEC_RESULT, MSG_READY,
-    MSG_SPAWN_WATCH,
+    MSG_SPAWN_WATCH, MSG_WRITE_FILES_START, RawMessage,
 };
 
 use crate::bounded_exec::{
     BoundedExecCleanup, BoundedExecWorkerRequest, spawn_bounded_exec_worker,
 };
 use crate::error::to_io_error;
-use crate::handlers::{MessageOutcome, handle_exec, handle_message};
+use crate::handlers::{MessageOutcome, handle_exec, handle_message, handle_write_files_stream};
 use crate::log::log;
 use crate::monitor::{SpawnWatchRequest, handle_spawn_watch};
 use crate::threading::{SystemThreadSpawner, ThreadSpawner};
@@ -40,6 +40,46 @@ struct ExecWorkerRequest {
     env: Vec<(String, String)>,
     sudo: bool,
     seq: u32,
+}
+
+struct MessageReader {
+    reader: UnixStream,
+    decoder: vsock_proto::Decoder,
+    queue: VecDeque<RawMessage>,
+    buf: [u8; READ_BUFFER_SIZE],
+}
+
+impl MessageReader {
+    fn new(reader: UnixStream, decoder: vsock_proto::Decoder) -> Self {
+        Self {
+            reader,
+            decoder,
+            queue: VecDeque::new(),
+            buf: [0u8; READ_BUFFER_SIZE],
+        }
+    }
+
+    fn next_message(&mut self) -> io::Result<Option<RawMessage>> {
+        if let Some(msg) = self.queue.pop_front() {
+            return Ok(Some(msg));
+        }
+        loop {
+            let n = self.reader.read(&mut self.buf)?;
+            if n == 0 {
+                return Ok(None);
+            }
+            for msg in self
+                .decoder
+                .decode(self.buf.get(..n).unwrap_or_default())
+                .map_err(to_io_error)?
+            {
+                self.queue.push_back(msg);
+            }
+            if let Some(msg) = self.queue.pop_front() {
+                return Ok(Some(msg));
+            }
+        }
+    }
 }
 
 /// Signals all command work spawned for this host connection when the
@@ -116,13 +156,13 @@ pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
 fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEnd> {
     // Clone the stream to get separate reader and writer
     // This avoids deadlock: reader can block while writer sends process_exit
-    let mut reader = stream.try_clone()?;
+    let reader = stream.try_clone()?;
     let writer = GuestWriter::new(stream);
     let connection_cancel = Arc::new(AtomicBool::new(false));
     let _cancel_on_drop = ConnectionCancelGuard(connection_cancel.clone());
     let bounded_exec_cancels = Arc::new(Mutex::new(HashMap::<u32, Arc<AtomicBool>>::new()));
 
-    let mut decoder = vsock_proto::Decoder::new();
+    let decoder = vsock_proto::Decoder::new();
 
     // Send ready signal
     {
@@ -131,124 +171,113 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
     }
     log("INFO", "Sent ready signal");
 
-    let mut buf = [0u8; READ_BUFFER_SIZE];
-    loop {
-        // Read from stream (reader is separate, no lock needed)
-        let n = reader.read(&mut buf)?;
-
-        if n == 0 {
-            break;
-        }
-
-        // n <= buf.len() is guaranteed by read()
-        for msg in decoder
-            .decode(buf.get(..n).unwrap_or_default())
-            .map_err(to_io_error)?
-        {
-            // Command-style messages run in background threads to avoid
-            // blocking the event loop. A blocking child process (e.g. reading a
-            // pipe fd) would otherwise stall all subsequent messages.
-            if msg.msg_type == MSG_SPAWN_WATCH {
-                let d = vsock_proto::decode_spawn_watch(&msg.payload).map_err(to_io_error)?;
-                // handle_spawn_watch writes the response itself (before
-                // spawning the streaming thread) to prevent a race where
-                // stdout chunks could arrive at the host before the result.
-                handle_spawn_watch(
-                    SpawnWatchRequest {
-                        timeout_ms: d.exec.timeout_ms,
-                        command: d.exec.command,
-                        env: &d.exec.env,
-                        sudo: d.exec.sudo,
-                        stream_stdout: d.stream_stdout,
-                        stdout_log_path: d.stdout_log_path,
-                    },
-                    msg.seq,
-                    writer.clone(),
-                    connection_cancel.clone(),
-                )?;
-            } else if msg.msg_type == MSG_BOUNDED_EXEC {
-                log(
-                    "INFO",
-                    &format!("Received: type=0x{:02X} seq={}", msg.msg_type, msg.seq),
-                );
-                let decoded =
-                    vsock_proto::decode_bounded_exec(&msg.payload).map_err(to_io_error)?;
-                let request_cancel = Arc::new(AtomicBool::new(false));
-                {
-                    let mut cancels = bounded_exec_cancels
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner());
-                    if let Some(previous) = cancels.insert(msg.seq, request_cancel.clone()) {
-                        previous.store(true, Ordering::Release);
-                    }
-                }
-                let cleanup_cancels = Arc::clone(&bounded_exec_cancels);
-                let cleanup_cancel = Arc::clone(&request_cancel);
-                let cleanup_seq = msg.seq;
-                let cleanup: BoundedExecCleanup = Box::new(move || {
-                    let mut cancels = cleanup_cancels.lock().unwrap_or_else(|e| e.into_inner());
-                    if cancels
-                        .get(&cleanup_seq)
-                        .is_some_and(|current| Arc::ptr_eq(current, &cleanup_cancel))
-                    {
-                        cancels.remove(&cleanup_seq);
-                    }
-                });
-                spawn_bounded_exec_worker(
-                    BoundedExecWorkerRequest::from_decoded(msg.seq, decoded),
-                    writer.clone(),
-                    connection_cancel.clone(),
-                    request_cancel,
-                    cleanup,
-                )?;
-            } else if msg.msg_type == MSG_BOUNDED_EXEC_CANCEL {
-                if let Some(cancel) = bounded_exec_cancels
+    let mut message_reader = MessageReader::new(reader, decoder);
+    while let Some(msg) = message_reader.next_message()? {
+        // Command-style messages run in background threads to avoid
+        // blocking the event loop. A blocking child process (e.g. reading a
+        // pipe fd) would otherwise stall all subsequent messages.
+        if msg.msg_type == MSG_SPAWN_WATCH {
+            let d = vsock_proto::decode_spawn_watch(&msg.payload).map_err(to_io_error)?;
+            // handle_spawn_watch writes the response itself (before
+            // spawning the streaming thread) to prevent a race where
+            // stdout chunks could arrive at the host before the result.
+            handle_spawn_watch(
+                SpawnWatchRequest {
+                    timeout_ms: d.exec.timeout_ms,
+                    command: d.exec.command,
+                    env: &d.exec.env,
+                    sudo: d.exec.sudo,
+                    stream_stdout: d.stream_stdout,
+                    stdout_log_path: d.stdout_log_path,
+                },
+                msg.seq,
+                writer.clone(),
+                connection_cancel.clone(),
+            )?;
+        } else if msg.msg_type == MSG_WRITE_FILES_START {
+            let response = handle_write_files_stream(&msg, || message_reader.next_message())?;
+            writer.write_frame(&response)?;
+        } else if msg.msg_type == MSG_BOUNDED_EXEC {
+            log(
+                "INFO",
+                &format!("Received: type=0x{:02X} seq={}", msg.msg_type, msg.seq),
+            );
+            let decoded = vsock_proto::decode_bounded_exec(&msg.payload).map_err(to_io_error)?;
+            let request_cancel = Arc::new(AtomicBool::new(false));
+            {
+                let mut cancels = bounded_exec_cancels
                     .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .get(&msg.seq)
-                {
-                    cancel.store(true, Ordering::Release);
+                    .unwrap_or_else(|e| e.into_inner());
+                if let Some(previous) = cancels.insert(msg.seq, request_cancel.clone()) {
+                    previous.store(true, Ordering::Release);
                 }
-            } else if msg.msg_type == MSG_EXEC {
-                // Legacy buffered exec path. New request/response command
-                // execution should use MSG_BOUNDED_EXEC.
-                log(
-                    "INFO",
-                    &format!("Received: type=0x{:02X} seq={}", msg.msg_type, msg.seq),
-                );
-                let d = vsock_proto::decode_exec(&msg.payload).map_err(to_io_error)?;
-                let timeout_ms = d.timeout_ms;
-                let command = d.command.to_owned();
-                let env: Vec<(String, String)> = d
-                    .env
-                    .iter()
-                    .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
-                    .collect();
-                let sudo = d.sudo;
-                let seq = msg.seq;
-                spawn_exec_worker(
-                    ExecWorkerRequest {
-                        timeout_ms,
-                        command,
-                        env,
-                        sudo,
-                        seq,
-                    },
-                    writer.clone(),
-                    connection_cancel.clone(),
-                )?;
-            } else {
-                match handle_message(&msg)? {
-                    MessageOutcome::Response(response) => {
-                        writer.write_frame(&response)?;
+            }
+            let cleanup_cancels = Arc::clone(&bounded_exec_cancels);
+            let cleanup_cancel = Arc::clone(&request_cancel);
+            let cleanup_seq = msg.seq;
+            let cleanup: BoundedExecCleanup = Box::new(move || {
+                let mut cancels = cleanup_cancels.lock().unwrap_or_else(|e| e.into_inner());
+                if cancels
+                    .get(&cleanup_seq)
+                    .is_some_and(|current| Arc::ptr_eq(current, &cleanup_cancel))
+                {
+                    cancels.remove(&cleanup_seq);
+                }
+            });
+            spawn_bounded_exec_worker(
+                BoundedExecWorkerRequest::from_decoded(msg.seq, decoded),
+                writer.clone(),
+                connection_cancel.clone(),
+                request_cancel,
+                cleanup,
+            )?;
+        } else if msg.msg_type == MSG_BOUNDED_EXEC_CANCEL {
+            if let Some(cancel) = bounded_exec_cancels
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(&msg.seq)
+            {
+                cancel.store(true, Ordering::Release);
+            }
+        } else if msg.msg_type == MSG_EXEC {
+            // Legacy buffered exec path. New request/response command
+            // execution should use MSG_BOUNDED_EXEC.
+            log(
+                "INFO",
+                &format!("Received: type=0x{:02X} seq={}", msg.msg_type, msg.seq),
+            );
+            let d = vsock_proto::decode_exec(&msg.payload).map_err(to_io_error)?;
+            let timeout_ms = d.timeout_ms;
+            let command = d.command.to_owned();
+            let env: Vec<(String, String)> = d
+                .env
+                .iter()
+                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+                .collect();
+            let sudo = d.sudo;
+            let seq = msg.seq;
+            spawn_exec_worker(
+                ExecWorkerRequest {
+                    timeout_ms,
+                    command,
+                    env,
+                    sudo,
+                    seq,
+                },
+                writer.clone(),
+                connection_cancel.clone(),
+            )?;
+        } else {
+            match handle_message(&msg)? {
+                MessageOutcome::Response(response) => {
+                    writer.write_frame(&response)?;
+                }
+                MessageOutcome::Shutdown(response) => {
+                    if let Err(e) = writer.write_frame(&response) {
+                        log("WARN", &format!("Failed to send shutdown_ack: {e}"));
                     }
-                    MessageOutcome::Shutdown(response) => {
-                        if let Err(e) = writer.write_frame(&response) {
-                            log("WARN", &format!("Failed to send shutdown_ack: {e}"));
-                        }
-                        log("INFO", "Shutdown complete, exiting");
-                        return Ok(ConnectionEnd::Shutdown);
-                    }
+                    log("INFO", "Shutdown complete, exiting");
+                    return Ok(ConnectionEnd::Shutdown);
                 }
             }
         }

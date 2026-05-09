@@ -1,14 +1,17 @@
+use std::collections::HashSet;
 use std::io::{self, Write};
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::Arc;
 #[cfg(any(debug_assertions, feature = "test-support"))]
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
+use std::thread::JoinHandle;
 
 use vsock_proto::{
     self, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
-    RawMessage,
+    MSG_WRITE_FILES_ABORT, MSG_WRITE_FILES_CHUNK, MSG_WRITE_FILES_FILE, MSG_WRITE_FILES_FINISH,
+    MSG_WRITE_FILES_RESULT, RawMessage, WriteFilesResultEntry,
 };
 
 use crate::drain::drain_into_vec_cancellable;
@@ -30,6 +33,7 @@ const THREAD_WRITE_STDERR: &str = "vsock-write-stderr";
 const THREAD_WRITE_STDIN: &str = "vsock-write-stdin";
 const WRITE_TIMEOUT_MS: u32 = 30_000;
 const GUEST_WRITE_FILE_PATH: &str = "/sbin/guest-write-file";
+const BATCH_MAGIC: &[u8; 8] = b"VM0WFB1\n";
 #[cfg(any(debug_assertions, feature = "test-support"))]
 static DEBUG_GUEST_WRITE_FILE_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
 
@@ -105,12 +109,27 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -
         ),
     );
 
-    let child = match spawn_write_file_command(path, use_sudo, append) {
+    if append {
+        return (
+            false,
+            "append write_file is no longer supported".to_string(),
+        );
+    }
+
+    let child = match spawn_write_files_command(use_sudo) {
         Ok(c) => c,
         Err(e) => return (false, format!("Failed to spawn write command: {e}")),
     };
 
-    wait_write_file_child(child, content, SystemThreadSpawner)
+    let mut batch = Vec::with_capacity(BATCH_MAGIC.len() + 4 + 14 + path.len() + content.len());
+    if let Err(e) = write_batch_header(&mut batch, 1)
+        .and_then(|_| write_batch_file_header(&mut batch, 0, path, content.len() as u64))
+        .and_then(|_| batch.write_all(content))
+    {
+        return (false, format!("Failed to encode write batch: {e}"));
+    }
+
+    wait_write_file_child(child, &batch, SystemThreadSpawner)
 }
 
 fn wait_write_file_child<S>(child: Child, content: &[u8], spawner: S) -> (bool, String)
@@ -233,21 +252,42 @@ where
     })
 }
 
-fn spawn_write_file_command(path: &str, use_sudo: bool, append: bool) -> io::Result<Child> {
+fn spawn_write_files_command(use_sudo: bool) -> io::Result<Child> {
     let mut command = Command::new(guest_write_file_path());
-    if append {
-        command.arg("--append");
-    } else if !use_sudo {
+    command.arg("--batch");
+    if !use_sudo {
         command.arg("--create-parents");
     }
     command
-        .arg("--")
-        .arg(path)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
     apply_write_file_identity(&mut command, use_sudo)?;
     spawn_in_own_process_group(&mut command)
+}
+
+fn write_batch_header(writer: &mut impl Write, file_count: u32) -> io::Result<()> {
+    writer.write_all(BATCH_MAGIC)?;
+    writer.write_all(&file_count.to_be_bytes())
+}
+
+fn write_batch_file_header(
+    writer: &mut impl Write,
+    file_index: u32,
+    path: &str,
+    content_len: u64,
+) -> io::Result<()> {
+    let path_bytes = path.as_bytes();
+    let path_len = u16::try_from(path_bytes.len()).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "write_files path too long for helper protocol",
+        )
+    })?;
+    writer.write_all(&file_index.to_be_bytes())?;
+    writer.write_all(&path_len.to_be_bytes())?;
+    writer.write_all(path_bytes)?;
+    writer.write_all(&content_len.to_be_bytes())
 }
 
 fn guest_write_file_path() -> PathBuf {
@@ -272,6 +312,280 @@ pub(crate) fn set_debug_guest_write_file_path(path: PathBuf) -> Result<(), PathB
         .lock()
         .unwrap_or_else(|e| e.into_inner()) = Some(path);
     Ok(())
+}
+
+struct BatchChild {
+    child: Child,
+    stdin: ChildStdin,
+    stderr_handle: JoinHandle<Vec<u8>>,
+    done_rx: std::sync::mpsc::Receiver<()>,
+    cancel: Arc<AtomicBool>,
+}
+
+impl BatchChild {
+    fn spawn(use_sudo: bool) -> Result<Self, String> {
+        let mut child = spawn_write_files_command(use_sudo)
+            .map_err(|e| format!("Failed to spawn write command: {e}"))?;
+        let stdin = match child.stdin.take() {
+            Some(stdin) => stdin,
+            None => {
+                kill_and_reap_child(child);
+                return Err("missing stdin pipe".to_string());
+            }
+        };
+        let stderr = match child.stderr.take() {
+            Some(stderr) => stderr,
+            None => {
+                kill_and_reap_child(child);
+                return Err("missing stderr pipe".to_string());
+            }
+        };
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+        let drain_cancel = cancel.clone();
+        let stderr_handle = match SystemThreadSpawner.spawn_vec(
+            THREAD_WRITE_STDERR,
+            Box::new(move || {
+                let buf = drain_into_vec_cancellable(stderr, &drain_cancel);
+                let _ = done_tx.send(());
+                buf
+            }),
+        ) {
+            Ok(handle) => handle,
+            Err(e) => {
+                cancel.store(true, std::sync::atomic::Ordering::Release);
+                kill_and_reap_child(child);
+                return Err(format!("Failed to spawn stderr drain thread: {e}"));
+            }
+        };
+
+        Ok(Self {
+            child,
+            stdin,
+            stderr_handle,
+            done_rx,
+            cancel,
+        })
+    }
+
+    fn kill(mut self) {
+        self.cancel
+            .store(true, std::sync::atomic::Ordering::Release);
+        let _ = self.stdin.flush();
+        drop(self.stdin);
+        kill_and_reap_child(self.child);
+        let _ = await_drain_deadline(&self.done_rx, 1, &self.cancel);
+        let _ = self.stderr_handle.join();
+    }
+
+    fn finish(mut self) -> (bool, String) {
+        let child_pid = self.child.id();
+        let _ = self.stdin.flush();
+        drop(self.stdin);
+        let outcome = wait_with_kill_timeout(self.child, WRITE_TIMEOUT_MS);
+        if matches!(outcome, WaitOutcome::Exited(_) | WaitOutcome::WaitFailed(_)) {
+            let _ = unsafe { kill_process_tree(child_pid) };
+        }
+        let _ = await_drain_deadline(&self.done_rx, 1, &self.cancel);
+        let stderr = self.stderr_handle.join().unwrap_or_default();
+        match outcome {
+            WaitOutcome::TimedOut => (false, "write timed out".to_string()),
+            WaitOutcome::Cancelled => (false, "write cancelled".to_string()),
+            WaitOutcome::WaitFailed(msg) => (false, format!("write wait failed: {msg}")),
+            WaitOutcome::Exited(status) => {
+                let exit_code = extract_exit_code(status);
+                if exit_code == 0 {
+                    (true, String::new())
+                } else {
+                    (
+                        false,
+                        format!("write failed: {}", String::from_utf8_lossy(&stderr)),
+                    )
+                }
+            }
+        }
+    }
+}
+
+fn write_files_result_response(
+    seq: u32,
+    file_count: u32,
+    success: bool,
+    error: &str,
+) -> io::Result<Vec<u8>> {
+    let entries: Vec<WriteFilesResultEntry> = (0..file_count)
+        .map(|file_index| WriteFilesResultEntry {
+            file_index,
+            success,
+            error: if success {
+                String::new()
+            } else {
+                error.to_string()
+            },
+        })
+        .collect();
+    let payload = vsock_proto::encode_write_files_result(&entries).map_err(to_io_error)?;
+    vsock_proto::encode(MSG_WRITE_FILES_RESULT, seq, &payload).map_err(to_io_error)
+}
+
+fn error_response(seq: u32, message: impl AsRef<str>) -> io::Result<Vec<u8>> {
+    let payload = vsock_proto::encode_error(message.as_ref());
+    vsock_proto::encode(MSG_ERROR, seq, &payload).map_err(to_io_error)
+}
+
+pub(crate) fn handle_write_files_stream<F>(
+    start_msg: &RawMessage,
+    mut next_msg: F,
+) -> io::Result<Vec<u8>>
+where
+    F: FnMut() -> io::Result<Option<RawMessage>>,
+{
+    let start = vsock_proto::decode_write_files_start(&start_msg.payload).map_err(to_io_error)?;
+    let mut child = match BatchChild::spawn(start.sudo) {
+        Ok(child) => child,
+        Err(error) => {
+            return write_files_result_response(start_msg.seq, start.file_count, false, &error);
+        }
+    };
+    if let Err(e) = write_batch_header(&mut child.stdin, start.file_count) {
+        let error = e.to_string();
+        child.kill();
+        return write_files_result_response(start_msg.seq, start.file_count, false, &error);
+    }
+
+    let mut seen = HashSet::new();
+    let mut current: Option<(u32, u64)> = None;
+    let mut received_total = 0u64;
+
+    loop {
+        let Some(msg) = next_msg()? else {
+            child.kill();
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "connection closed during write_files stream",
+            ));
+        };
+        if msg.seq != start_msg.seq {
+            child.kill();
+            return error_response(start_msg.seq, "write_files stream received wrong seq");
+        }
+        match msg.msg_type {
+            MSG_WRITE_FILES_FILE => {
+                if current.is_some() {
+                    child.kill();
+                    return error_response(
+                        start_msg.seq,
+                        "write_files file started before prior file completed",
+                    );
+                }
+                let file =
+                    vsock_proto::decode_write_files_file(&msg.payload).map_err(to_io_error)?;
+                if file.file_index >= start.file_count {
+                    child.kill();
+                    return error_response(start_msg.seq, "write_files file index out of range");
+                }
+                if !seen.insert(file.file_index) {
+                    child.kill();
+                    return error_response(start_msg.seq, "write_files duplicate file index");
+                }
+                if received_total
+                    .checked_add(file.content_len)
+                    .is_none_or(|n| n > start.total_bytes)
+                {
+                    child.kill();
+                    return error_response(
+                        start_msg.seq,
+                        "write_files content length exceeds total",
+                    );
+                }
+                if let Err(e) = write_batch_file_header(
+                    &mut child.stdin,
+                    file.file_index,
+                    file.path,
+                    file.content_len,
+                ) {
+                    let error = e.to_string();
+                    child.kill();
+                    return write_files_result_response(
+                        start_msg.seq,
+                        start.file_count,
+                        false,
+                        &error,
+                    );
+                }
+                if file.content_len > 0 {
+                    current = Some((file.file_index, file.content_len));
+                }
+                received_total += file.content_len;
+            }
+            MSG_WRITE_FILES_CHUNK => {
+                let chunk =
+                    vsock_proto::decode_write_files_chunk(&msg.payload).map_err(to_io_error)?;
+                let Some((file_index, remaining)) = current else {
+                    child.kill();
+                    return error_response(start_msg.seq, "write_files chunk without active file");
+                };
+                if chunk.file_index != file_index {
+                    child.kill();
+                    return error_response(start_msg.seq, "write_files chunk index mismatch");
+                }
+                let chunk_len = chunk.chunk.len() as u64;
+                if chunk_len > remaining {
+                    child.kill();
+                    return error_response(start_msg.seq, "write_files chunk exceeds file length");
+                }
+                if let Err(e) = child.stdin.write_all(chunk.chunk) {
+                    let error = e.to_string();
+                    child.kill();
+                    return write_files_result_response(
+                        start_msg.seq,
+                        start.file_count,
+                        false,
+                        &error,
+                    );
+                }
+                let next_remaining = remaining - chunk_len;
+                current = (next_remaining > 0).then_some((file_index, next_remaining));
+            }
+            MSG_WRITE_FILES_FINISH => {
+                if current.is_some() {
+                    child.kill();
+                    return error_response(
+                        start_msg.seq,
+                        "write_files finish before file content complete",
+                    );
+                }
+                if seen.len() != start.file_count as usize || received_total != start.total_bytes {
+                    child.kill();
+                    return error_response(
+                        start_msg.seq,
+                        "write_files finish before all files received",
+                    );
+                }
+                let (success, error) = child.finish();
+                return write_files_result_response(
+                    start_msg.seq,
+                    start.file_count,
+                    success,
+                    &error,
+                );
+            }
+            MSG_WRITE_FILES_ABORT => {
+                let _ = vsock_proto::decode_write_files_abort(&msg.payload);
+                child.kill();
+                return write_files_result_response(
+                    start_msg.seq,
+                    start.file_count,
+                    false,
+                    "write_files aborted",
+                );
+            }
+            _ => {
+                child.kill();
+                return error_response(start_msg.seq, "unexpected message in write_files stream");
+            }
+        }
+    }
 }
 
 /// Handle incoming message and return the connection-loop outcome.

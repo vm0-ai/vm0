@@ -97,6 +97,23 @@ pub struct WriteFileCall {
     pub content: Vec<u8>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum WriteFilesCallSource {
+    Bytes(Vec<u8>),
+    File { path: PathBuf, len: u64 },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WriteFilesCallEntry {
+    pub path: String,
+    pub source: WriteFilesCallSource,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WriteFilesCall {
+    pub files: Vec<WriteFilesCallEntry>,
+}
+
 enum LifecycleBehavior {
     Result(Result<()>),
     Panic(String),
@@ -368,6 +385,8 @@ pub struct MockSandbox {
     bounded_exec_calls: Mutex<Vec<BoundedExecCall>>,
     write_file_results: Mutex<VecDeque<Result<()>>>,
     write_file_calls: Mutex<Vec<WriteFileCall>>,
+    write_files_results: Mutex<VecDeque<Result<()>>>,
+    write_files_calls: Mutex<Vec<WriteFilesCall>>,
     overrides: Option<Arc<MockSandboxOverrides>>,
     /// Holds the stdout channel sender alive when simulating a non-closing
     /// channel (e.g. wait_exit_error override). Without this, the sender is
@@ -385,6 +404,8 @@ impl MockSandbox {
             bounded_exec_calls: Mutex::new(Vec::new()),
             write_file_results: Mutex::new(VecDeque::new()),
             write_file_calls: Mutex::new(Vec::new()),
+            write_files_results: Mutex::new(VecDeque::new()),
+            write_files_calls: Mutex::new(Vec::new()),
             overrides: None,
             stdout_tx: Mutex::new(None),
         }
@@ -399,6 +420,8 @@ impl MockSandbox {
             bounded_exec_calls: Mutex::new(Vec::new()),
             write_file_results: Mutex::new(VecDeque::new()),
             write_file_calls: Mutex::new(Vec::new()),
+            write_files_results: Mutex::new(VecDeque::new()),
+            write_files_calls: Mutex::new(Vec::new()),
             overrides: Some(overrides),
             stdout_tx: Mutex::new(None),
         }
@@ -435,6 +458,18 @@ impl MockSandbox {
 
     pub fn write_file_calls(&self) -> Vec<WriteFileCall> {
         self.write_file_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Queue a write_files result. Results are consumed in FIFO order.
+    /// When the queue is empty, write_files returns `Ok(())`.
+    pub fn push_write_files_result(&self, result: Result<()>) {
+        self.write_files_results
+            .lock_ignoring_poison()
+            .push_back(result);
+    }
+
+    pub fn write_files_calls(&self) -> Vec<WriteFilesCall> {
+        self.write_files_calls.lock_ignoring_poison().clone()
     }
 }
 
@@ -484,6 +519,24 @@ fn bounded_exec_call_from_request(request: &BoundedExecRequest<'_>) -> BoundedEx
         stdin: request.stdin.map(<[u8]>::to_vec),
         stdout: output_call_from_request(&request.stdout),
         stderr: output_call_from_request(&request.stderr),
+    }
+}
+
+fn write_files_call_from_request(files: &[WriteFileRequest<'_>]) -> WriteFilesCall {
+    WriteFilesCall {
+        files: files
+            .iter()
+            .map(|file| WriteFilesCallEntry {
+                path: file.path.to_string(),
+                source: match &file.source {
+                    WriteFileSource::Bytes(bytes) => WriteFilesCallSource::Bytes(bytes.to_vec()),
+                    WriteFileSource::File { path, len } => WriteFilesCallSource::File {
+                        path: path.to_path_buf(),
+                        len: *len,
+                    },
+                },
+            })
+            .collect(),
     }
 }
 
@@ -642,6 +695,16 @@ impl Sandbox for MockSandbox {
                 content: content.to_vec(),
             });
         self.write_file_results
+            .lock_ignoring_poison()
+            .pop_front()
+            .unwrap_or(Ok(()))
+    }
+
+    async fn write_files(&self, files: &[WriteFileRequest<'_>]) -> Result<()> {
+        self.write_files_calls
+            .lock_ignoring_poison()
+            .push(write_files_call_from_request(files));
+        self.write_files_results
             .lock_ignoring_poison()
             .pop_front()
             .unwrap_or(Ok(()))

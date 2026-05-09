@@ -12,6 +12,7 @@ use sandbox::{
     BoundedExecRequest, BoundedExecResult, BoundedExecStream, BoundedExecTermination, ExecRequest,
     ExecResult, ProcessExit, Sandbox, SandboxConfig, SandboxError, SandboxIdleTransition,
     SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason, SpawnHandle,
+    WriteFileRequest, WriteFileSource,
 };
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::{mpsc, watch};
@@ -24,6 +25,7 @@ use vsock_host::{
     BoundedExecStream as HostBoundedExecStream,
     BoundedExecStreamPolicy as HostBoundedExecStreamPolicy,
     BoundedExecTermination as HostBoundedExecTermination, VsockHost,
+    WriteFileRequest as HostWriteFileRequest, WriteFileSource as HostWriteFileSource,
 };
 
 use crate::api::ApiError;
@@ -1529,6 +1531,32 @@ impl Sandbox for FirecrackerSandbox {
         }
     }
 
+    async fn write_files(&self, files: &[WriteFileRequest<'_>]) -> sandbox::Result<()> {
+        let operation = SandboxOperation::WriteFiles;
+        let guest = self.operation_guest(operation).await?;
+        let host_files: Vec<HostWriteFileRequest<'_>> = files
+            .iter()
+            .map(|file| HostWriteFileRequest {
+                path: file.path,
+                source: match &file.source {
+                    WriteFileSource::Bytes(bytes) => HostWriteFileSource::Bytes(bytes),
+                    WriteFileSource::File { path, len } => {
+                        HostWriteFileSource::File { path, len: *len }
+                    }
+                },
+            })
+            .collect();
+
+        tokio::select! {
+            result = guest.write_files(&host_files, false) => {
+                result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))
+            }
+            () = wait_for_backend_crash(self.state_tx.subscribe()) => {
+                Err(Self::backend_crashed_error(operation))
+            }
+        }
+    }
+
     async fn spawn_watch(
         &self,
         request: &ExecRequest<'_>,
@@ -2073,6 +2101,7 @@ mod tests {
             SandboxOperation::Exec,
             SandboxOperation::BoundedExec,
             SandboxOperation::WriteFile,
+            SandboxOperation::WriteFiles,
             SandboxOperation::SpawnWatch,
             SandboxOperation::WaitExit,
         ] {
@@ -2092,6 +2121,7 @@ mod tests {
             SandboxOperation::Exec,
             SandboxOperation::BoundedExec,
             SandboxOperation::WriteFile,
+            SandboxOperation::WriteFiles,
             SandboxOperation::SpawnWatch,
             SandboxOperation::WaitExit,
         ] {

@@ -36,6 +36,12 @@
 //! | 0x12 | H→G       | control_quiesce   | (empty) |
 //! | 0x13 | G→H       | control_quiesce_ack | `[1B status]` |
 //! | 0x14 | H→G       | bounded_exec_cancel | (empty) |
+//! | 0x15 | H→G       | write_files_start | `[1B flags][4B file_count][8B total_bytes]` (flags: `SUDO=0x01`) |
+//! | 0x16 | H→G       | write_files_file  | `[4B file_index][2B path_len][path][8B content_len]` |
+//! | 0x17 | H→G       | write_files_chunk | `[4B file_index][4B chunk_len][chunk]` |
+//! | 0x18 | H→G       | write_files_finish | (empty) |
+//! | 0x19 | H→G       | write_files_abort | `[2B error_len][error]` |
+//! | 0x1A | G→H       | write_files_result | `[4B result_count]([4B file_index][1B success][2B error_len][error])*` |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
 //! Bounded exec output chunks are request-scoped: they use the same non-zero
@@ -75,6 +81,16 @@ pub const MAX_BOUNDED_EXEC_OUTPUT_CHUNK_BYTES: usize =
     MAX_MESSAGE_SIZE - MIN_BODY_SIZE - BOUNDED_EXEC_OUTPUT_CHUNK_FIXED_PAYLOAD_BYTES;
 /// Minimum stream chunk limit accepted by bounded exec implementations.
 pub const MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES: usize = 1024;
+/// Maximum file count accepted by a single write_files stream.
+pub const MAX_WRITE_FILES_COUNT: usize = 1024;
+/// Maximum guest path length accepted by write_files.
+pub const MAX_WRITE_FILES_PATH_BYTES: usize = u16::MAX as usize;
+/// Maximum per-file content length accepted by write_files.
+pub const MAX_WRITE_FILES_FILE_BYTES: u64 = 512 * 1024 * 1024;
+/// Maximum aggregate content length accepted by one write_files stream.
+pub const MAX_WRITE_FILES_TOTAL_BYTES: u64 = 512 * 1024 * 1024;
+/// Maximum payload chunk bytes emitted by host implementations.
+pub const MAX_WRITE_FILES_CHUNK_BYTES: usize = 4 * 1024 * 1024;
 
 // Message type constants.
 pub const MSG_READY: u8 = 0x00;
@@ -98,6 +114,12 @@ pub const MSG_CONTROL_HELLO_ACK: u8 = 0x11;
 pub const MSG_CONTROL_QUIESCE: u8 = 0x12;
 pub const MSG_CONTROL_QUIESCE_ACK: u8 = 0x13;
 pub const MSG_BOUNDED_EXEC_CANCEL: u8 = 0x14;
+pub const MSG_WRITE_FILES_START: u8 = 0x15;
+pub const MSG_WRITE_FILES_FILE: u8 = 0x16;
+pub const MSG_WRITE_FILES_CHUNK: u8 = 0x17;
+pub const MSG_WRITE_FILES_FINISH: u8 = 0x18;
+pub const MSG_WRITE_FILES_ABORT: u8 = 0x19;
+pub const MSG_WRITE_FILES_RESULT: u8 = 0x1A;
 pub const MSG_ERROR: u8 = 0xFF;
 
 /// Default vsock port for host-guest communication.
@@ -120,6 +142,9 @@ pub const SPAWN_WATCH_FLAG_STREAM_STDOUT: u8 = 0x02;
 pub const WRITE_FILE_FLAG_SUDO: u8 = 0x01;
 pub const WRITE_FILE_FLAG_APPEND: u8 = 0x02;
 
+// Write-files payload flags.
+pub const WRITE_FILES_FLAG_SUDO: u8 = 0x01;
+
 // Bounded-exec payload flags.
 pub const BOUNDED_EXEC_FLAG_SUDO: u8 = 0x01;
 pub const BOUNDED_EXEC_FLAG_STDIN_PRESENT: u8 = 0x02;
@@ -129,6 +154,7 @@ pub const BOUNDED_EXEC_OUTPUT_CHUNK_FLAG_TRUNCATED: u8 = 0x01;
 
 const BOUNDED_EXEC_KNOWN_FLAGS: u8 = BOUNDED_EXEC_FLAG_SUDO | BOUNDED_EXEC_FLAG_STDIN_PRESENT;
 const BOUNDED_EXEC_OUTPUT_CHUNK_KNOWN_FLAGS: u8 = BOUNDED_EXEC_OUTPUT_CHUNK_FLAG_TRUNCATED;
+const WRITE_FILES_KNOWN_FLAGS: u8 = WRITE_FILES_FLAG_SUDO;
 
 const BOUNDED_EXEC_STREAM_STDOUT: u8 = 0;
 const BOUNDED_EXEC_STREAM_STDERR: u8 = 1;
@@ -195,6 +221,33 @@ pub struct DecodedControlHello<'a> {
 pub enum ControlQuiesceStatus {
     Ready,
     Busy,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct DecodedWriteFilesStart {
+    pub sudo: bool,
+    pub file_count: u32,
+    pub total_bytes: u64,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct DecodedWriteFilesFile<'a> {
+    pub file_index: u32,
+    pub path: &'a str,
+    pub content_len: u64,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct DecodedWriteFilesChunk<'a> {
+    pub file_index: u32,
+    pub chunk: &'a [u8],
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct WriteFilesResultEntry {
+    pub file_index: u32,
+    pub success: bool,
+    pub error: String,
 }
 
 /// Protocol error.
@@ -721,6 +774,114 @@ pub fn encode_write_file_result(success: bool, error: &str) -> Vec<u8> {
     p
 }
 
+pub fn encode_write_files_start(
+    sudo: bool,
+    file_count: u32,
+    total_bytes: u64,
+) -> Result<Vec<u8>, ProtocolError> {
+    if file_count as usize > MAX_WRITE_FILES_COUNT {
+        return Err(ProtocolError::PayloadTooLarge(
+            "write_files file_count",
+            file_count as usize,
+        ));
+    }
+    if total_bytes > MAX_WRITE_FILES_TOTAL_BYTES {
+        return Err(ProtocolError::PayloadTooLarge(
+            "write_files total_bytes",
+            total_bytes as usize,
+        ));
+    }
+    let mut p = Vec::with_capacity(13);
+    p.push(if sudo { WRITE_FILES_FLAG_SUDO } else { 0 });
+    p.extend_from_slice(&file_count.to_be_bytes());
+    p.extend_from_slice(&total_bytes.to_be_bytes());
+    Ok(p)
+}
+
+pub fn encode_write_files_file(
+    file_index: u32,
+    path: &str,
+    content_len: u64,
+) -> Result<Vec<u8>, ProtocolError> {
+    let path_bytes = path.as_bytes();
+    if path_bytes.len() > MAX_WRITE_FILES_PATH_BYTES {
+        return Err(ProtocolError::PayloadTooLarge(
+            "write_files path",
+            path_bytes.len(),
+        ));
+    }
+    if content_len > MAX_WRITE_FILES_FILE_BYTES {
+        return Err(ProtocolError::PayloadTooLarge(
+            "write_files content_len",
+            content_len as usize,
+        ));
+    }
+    let path_len = path_bytes.len() as u16;
+    let mut p = Vec::with_capacity(14 + path_bytes.len());
+    p.extend_from_slice(&file_index.to_be_bytes());
+    p.extend_from_slice(&path_len.to_be_bytes());
+    p.extend_from_slice(path_bytes);
+    p.extend_from_slice(&content_len.to_be_bytes());
+    Ok(p)
+}
+
+pub fn encode_write_files_chunk(file_index: u32, chunk: &[u8]) -> Result<Vec<u8>, ProtocolError> {
+    if chunk.is_empty() {
+        return Err(ProtocolError::InvalidPayload("write_files chunk empty"));
+    }
+    if chunk.len() > MAX_WRITE_FILES_CHUNK_BYTES {
+        return Err(ProtocolError::PayloadTooLarge(
+            "write_files chunk",
+            chunk.len(),
+        ));
+    }
+    let mut p = Vec::with_capacity(8 + chunk.len());
+    p.extend_from_slice(&file_index.to_be_bytes());
+    p.extend_from_slice(&checked_u32_len("write_files chunk", chunk.len())?.to_be_bytes());
+    p.extend_from_slice(chunk);
+    Ok(p)
+}
+
+pub fn encode_write_files_abort(error: &str) -> Vec<u8> {
+    let err = error.as_bytes();
+    let err_len = err.len().min(u16::MAX as usize) as u16;
+    let mut p = Vec::with_capacity(2 + err_len as usize);
+    p.extend_from_slice(&err_len.to_be_bytes());
+    p.extend_from_slice(err.get(..err_len as usize).unwrap_or(err));
+    p
+}
+
+pub fn encode_write_files_result(
+    entries: &[WriteFilesResultEntry],
+) -> Result<Vec<u8>, ProtocolError> {
+    if entries.len() > MAX_WRITE_FILES_COUNT {
+        return Err(ProtocolError::PayloadTooLarge(
+            "write_files result_count",
+            entries.len(),
+        ));
+    }
+    let mut capacity = 4usize;
+    for entry in entries {
+        add_payload_capacity(&mut capacity, "write_files result", 7)?;
+        add_payload_capacity(
+            &mut capacity,
+            "write_files result error",
+            entry.error.len().min(u16::MAX as usize),
+        )?;
+    }
+    let mut p = Vec::with_capacity(capacity);
+    p.extend_from_slice(&checked_u32_len("write_files result_count", entries.len())?.to_be_bytes());
+    for entry in entries {
+        let err = entry.error.as_bytes();
+        let err_len = err.len().min(u16::MAX as usize) as u16;
+        p.extend_from_slice(&entry.file_index.to_be_bytes());
+        p.push(u8::from(entry.success));
+        p.extend_from_slice(&err_len.to_be_bytes());
+        p.extend_from_slice(err.get(..err_len as usize).unwrap_or(err));
+    }
+    Ok(p)
+}
+
 /// Encode spawn_watch_result payload: `[4B pid]`.
 pub fn encode_spawn_watch_result(pid: u32) -> Vec<u8> {
     pid.to_be_bytes().to_vec()
@@ -1063,6 +1224,11 @@ pub fn decode_write_file(payload: &[u8]) -> Result<(&str, &[u8], bool, bool), Pr
     .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in path"))?;
     let flags = read_u8_at(payload, 2 + path_len)
         .ok_or(ProtocolError::InvalidPayload("write_file too short"))?;
+    reject_unknown_flags(
+        flags,
+        WRITE_FILE_FLAG_SUDO | WRITE_FILE_FLAG_APPEND,
+        "write_file unknown flags",
+    )?;
     let content_len = read_u32_at(payload, 3 + path_len)
         .ok_or(ProtocolError::InvalidPayload("write_file too short"))?
         as usize;
@@ -1071,6 +1237,11 @@ pub fn decode_write_file(payload: &[u8]) -> Result<(&str, &[u8], bool, bool), Pr
         .ok_or(ProtocolError::InvalidPayload(
             "write_file content truncated",
         ))?;
+    ensure_no_trailing_bytes(
+        payload,
+        7 + path_len + content_len,
+        "write_file trailing bytes",
+    )?;
     Ok((
         path,
         content,
@@ -1091,7 +1262,138 @@ pub fn decode_write_file_result(payload: &[u8]) -> Result<(bool, &str), Protocol
         ProtocolError::InvalidPayload("write_file_result error truncated"),
     )?)
     .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in error"))?;
+    ensure_no_trailing_bytes(payload, 3 + err_len, "write_file_result trailing bytes")?;
     Ok((success, error))
+}
+
+pub fn decode_write_files_start(payload: &[u8]) -> Result<DecodedWriteFilesStart, ProtocolError> {
+    let mut offset = 0usize;
+    let flags = read_u8_cursor(payload, &mut offset, "write_files_start too short")?;
+    reject_unknown_flags(
+        flags,
+        WRITE_FILES_KNOWN_FLAGS,
+        "write_files_start unknown flags",
+    )?;
+    let file_count = read_u32_cursor(payload, &mut offset, "write_files_start too short")?;
+    let total_bytes = read_u64_cursor(payload, &mut offset, "write_files_start too short")?;
+    ensure_no_trailing_bytes(payload, offset, "write_files_start trailing bytes")?;
+    if file_count as usize > MAX_WRITE_FILES_COUNT {
+        return Err(ProtocolError::PayloadTooLarge(
+            "write_files file_count",
+            file_count as usize,
+        ));
+    }
+    if total_bytes > MAX_WRITE_FILES_TOTAL_BYTES {
+        return Err(ProtocolError::PayloadTooLarge(
+            "write_files total_bytes",
+            total_bytes as usize,
+        ));
+    }
+    Ok(DecodedWriteFilesStart {
+        sudo: (flags & WRITE_FILES_FLAG_SUDO) != 0,
+        file_count,
+        total_bytes,
+    })
+}
+
+pub fn decode_write_files_file(payload: &[u8]) -> Result<DecodedWriteFilesFile<'_>, ProtocolError> {
+    let mut offset = 0usize;
+    let file_index = read_u32_cursor(payload, &mut offset, "write_files_file too short")?;
+    let path_len = read_u16_cursor(payload, &mut offset, "write_files_file too short")? as usize;
+    let path = std::str::from_utf8(read_bytes_cursor(
+        payload,
+        &mut offset,
+        path_len,
+        "write_files_file path truncated",
+    )?)
+    .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in write_files path"))?;
+    let content_len = read_u64_cursor(payload, &mut offset, "write_files_file too short")?;
+    ensure_no_trailing_bytes(payload, offset, "write_files_file trailing bytes")?;
+    if path_len > MAX_WRITE_FILES_PATH_BYTES {
+        return Err(ProtocolError::PayloadTooLarge("write_files path", path_len));
+    }
+    if content_len > MAX_WRITE_FILES_FILE_BYTES {
+        return Err(ProtocolError::PayloadTooLarge(
+            "write_files content_len",
+            content_len as usize,
+        ));
+    }
+    Ok(DecodedWriteFilesFile {
+        file_index,
+        path,
+        content_len,
+    })
+}
+
+pub fn decode_write_files_chunk(
+    payload: &[u8],
+) -> Result<DecodedWriteFilesChunk<'_>, ProtocolError> {
+    let mut offset = 0usize;
+    let file_index = read_u32_cursor(payload, &mut offset, "write_files_chunk too short")?;
+    let chunk_len = read_u32_cursor(payload, &mut offset, "write_files_chunk too short")? as usize;
+    if chunk_len == 0 {
+        return Err(ProtocolError::InvalidPayload("write_files chunk empty"));
+    }
+    if chunk_len > MAX_WRITE_FILES_CHUNK_BYTES {
+        return Err(ProtocolError::PayloadTooLarge(
+            "write_files chunk",
+            chunk_len,
+        ));
+    }
+    let chunk = read_bytes_cursor(
+        payload,
+        &mut offset,
+        chunk_len,
+        "write_files_chunk data truncated",
+    )?;
+    ensure_no_trailing_bytes(payload, offset, "write_files_chunk trailing bytes")?;
+    Ok(DecodedWriteFilesChunk { file_index, chunk })
+}
+
+pub fn decode_write_files_abort(payload: &[u8]) -> Result<&str, ProtocolError> {
+    let err_len = read_u16_at(payload, 0)
+        .ok_or(ProtocolError::InvalidPayload("write_files_abort too short"))?
+        as usize;
+    let error = std::str::from_utf8(payload.get(2..2 + err_len).ok_or(
+        ProtocolError::InvalidPayload("write_files_abort error truncated"),
+    )?)
+    .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in write_files abort"))?;
+    ensure_no_trailing_bytes(payload, 2 + err_len, "write_files_abort trailing bytes")?;
+    Ok(error)
+}
+
+pub fn decode_write_files_result(
+    payload: &[u8],
+) -> Result<Vec<WriteFilesResultEntry>, ProtocolError> {
+    let mut offset = 0usize;
+    let count = read_u32_cursor(payload, &mut offset, "write_files_result too short")? as usize;
+    if count > MAX_WRITE_FILES_COUNT {
+        return Err(ProtocolError::PayloadTooLarge(
+            "write_files result_count",
+            count,
+        ));
+    }
+    let mut entries = Vec::with_capacity(count);
+    for _ in 0..count {
+        let file_index = read_u32_cursor(payload, &mut offset, "write_files_result too short")?;
+        let success = read_u8_cursor(payload, &mut offset, "write_files_result too short")? == 1;
+        let err_len =
+            read_u16_cursor(payload, &mut offset, "write_files_result too short")? as usize;
+        let error = std::str::from_utf8(read_bytes_cursor(
+            payload,
+            &mut offset,
+            err_len,
+            "write_files_result error truncated",
+        )?)
+        .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in write_files result"))?;
+        entries.push(WriteFilesResultEntry {
+            file_index,
+            success,
+            error: error.to_string(),
+        });
+    }
+    ensure_no_trailing_bytes(payload, offset, "write_files_result trailing bytes")?;
+    Ok(entries)
 }
 
 /// Decode spawn_watch_result payload. Returns `pid`.
@@ -1165,6 +1467,15 @@ fn read_u8_cursor(
 ) -> Result<u8, ProtocolError> {
     let start = advance_offset(offset, 1, msg)?;
     read_u8_at(payload, start).ok_or(ProtocolError::InvalidPayload(msg))
+}
+
+fn read_u16_cursor(
+    payload: &[u8],
+    offset: &mut usize,
+    msg: &'static str,
+) -> Result<u16, ProtocolError> {
+    let start = advance_offset(offset, 2, msg)?;
+    read_u16_at(payload, start).ok_or(ProtocolError::InvalidPayload(msg))
 }
 
 fn read_u32_cursor(
@@ -2888,6 +3199,89 @@ mod tests {
         let (success, error) = decode_write_file_result(&payload).unwrap();
         assert!(!success);
         assert_eq!(error, "permission denied");
+    }
+
+    #[test]
+    fn write_files_start_roundtrip() {
+        let payload = encode_write_files_start(true, 2, 123).unwrap();
+        let decoded = decode_write_files_start(&payload).unwrap();
+        assert!(decoded.sudo);
+        assert_eq!(decoded.file_count, 2);
+        assert_eq!(decoded.total_bytes, 123);
+    }
+
+    #[test]
+    fn write_files_file_roundtrip() {
+        let payload = encode_write_files_file(7, "/tmp/a.txt", 42).unwrap();
+        let decoded = decode_write_files_file(&payload).unwrap();
+        assert_eq!(decoded.file_index, 7);
+        assert_eq!(decoded.path, "/tmp/a.txt");
+        assert_eq!(decoded.content_len, 42);
+    }
+
+    #[test]
+    fn write_files_chunk_roundtrip() {
+        let payload = encode_write_files_chunk(3, b"abc").unwrap();
+        let decoded = decode_write_files_chunk(&payload).unwrap();
+        assert_eq!(decoded.file_index, 3);
+        assert_eq!(decoded.chunk, b"abc");
+    }
+
+    #[test]
+    fn write_files_result_roundtrip() {
+        let entries = vec![
+            WriteFilesResultEntry {
+                file_index: 0,
+                success: true,
+                error: String::new(),
+            },
+            WriteFilesResultEntry {
+                file_index: 1,
+                success: false,
+                error: "disk full".to_string(),
+            },
+        ];
+        let payload = encode_write_files_result(&entries).unwrap();
+        assert_eq!(decode_write_files_result(&payload).unwrap(), entries);
+    }
+
+    #[test]
+    fn write_files_rejects_trailing_bytes() {
+        let mut payload = encode_write_files_file(0, "/tmp/a", 0).unwrap();
+        payload.push(0);
+        let err = decode_write_files_file(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("write_files_file trailing bytes")
+        ));
+    }
+
+    #[test]
+    fn write_files_rejects_oversized_chunk() {
+        let chunk = vec![0; MAX_WRITE_FILES_CHUNK_BYTES + 1];
+        let err = encode_write_files_chunk(0, &chunk).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::PayloadTooLarge("write_files chunk", _)
+        ));
+    }
+
+    #[test]
+    fn write_files_rejects_empty_chunk() {
+        let err = encode_write_files_chunk(0, b"").unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("write_files chunk empty")
+        ));
+
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&0u32.to_be_bytes());
+        payload.extend_from_slice(&0u32.to_be_bytes());
+        let err = decode_write_files_chunk(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("write_files chunk empty")
+        ));
     }
 
     #[test]

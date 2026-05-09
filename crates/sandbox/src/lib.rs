@@ -47,4 +47,5 @@ pub use types::{
     BoundedExecCapturePolicy, BoundedExecOutput, BoundedExecOutputEvent, BoundedExecOutputRequest,
     BoundedExecRequest, BoundedExecResult, BoundedExecStream, BoundedExecStreamPolicy,
     BoundedExecTermination, ExecRequest, ExecResult, ProcessExit, SpawnHandle, SpawnOutputMode,
+    WriteFileRequest, WriteFileSource,
 };

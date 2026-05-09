@@ -24,7 +24,8 @@
 //! # Operations
 //! Once running, callers invoke [`exec`](Sandbox::exec) /
 //! [`bounded_exec`](Sandbox::bounded_exec) /
-//! [`write_file`](Sandbox::write_file) / [`spawn_watch`](Sandbox::spawn_watch) /
+//! [`write_file`](Sandbox::write_file) / [`write_files`](Sandbox::write_files) /
+//! [`spawn_watch`](Sandbox::spawn_watch) /
 //! [`wait_exit`](Sandbox::wait_exit) via the host-to-guest IPC channel
 //! (vsock, in the Firecracker backend). Operations race against a crash
 //! notifier so that a dying backend process surfaces as a specific
@@ -38,6 +39,7 @@ use async_trait::async_trait;
 use crate::error::Result;
 use crate::types::{
     BoundedExecRequest, BoundedExecResult, ExecRequest, ExecResult, ProcessExit, SpawnHandle,
+    WriteFileRequest,
 };
 
 /// A process-isolation environment that runs guest workloads for the runner.
@@ -63,8 +65,9 @@ use crate::types::{
 /// # Operations
 /// Once running, callers invoke [`exec`](Self::exec) /
 /// [`bounded_exec`](Self::bounded_exec) / [`write_file`](Self::write_file) /
-/// [`spawn_watch`](Self::spawn_watch) / [`wait_exit`](Self::wait_exit) via
-/// the host-to-guest IPC channel (vsock, in the Firecracker backend).
+/// [`write_files`](Self::write_files) / [`spawn_watch`](Self::spawn_watch) /
+/// [`wait_exit`](Self::wait_exit) via the host-to-guest IPC channel (vsock,
+/// in the Firecracker backend).
 /// Operations race against a crash notifier so that a dying backend process
 /// surfaces as a specific error rather than an opaque IPC timeout.
 ///
@@ -209,6 +212,10 @@ pub trait Sandbox: Send + Sync + Any {
     /// directories and truncating the file as needed. Returns an error if
     /// the sandbox is not running or if the backing process crashes.
     async fn write_file(&self, path: &str, content: &[u8]) -> Result<()>;
+    /// Write a batch of files inside the guest, creating parent directories
+    /// and truncating files as needed. Returns an error if the sandbox is not
+    /// running or if the backing process crashes.
+    async fn write_files(&self, files: &[WriteFileRequest<'_>]) -> Result<()>;
     /// Spawn `request.cmd` in the guest and return a handle for later
     /// supervision via [`wait_exit`](Self::wait_exit).
     ///

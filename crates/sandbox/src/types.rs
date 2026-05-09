@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -93,6 +94,16 @@ pub struct ExecResult {
     pub exit_code: i32,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
+}
+
+pub enum WriteFileSource<'a> {
+    Bytes(&'a [u8]),
+    File { path: &'a Path, len: u64 },
+}
+
+pub struct WriteFileRequest<'a> {
+    pub path: &'a str,
+    pub source: WriteFileSource<'a>,
 }
 
 pub struct SpawnHandle {

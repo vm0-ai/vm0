@@ -88,6 +88,8 @@ pub enum SandboxOperation {
     BoundedExec,
     /// [`Sandbox::write_file`](crate::Sandbox::write_file).
     WriteFile,
+    /// [`Sandbox::write_files`](crate::Sandbox::write_files).
+    WriteFiles,
     /// [`Sandbox::spawn_watch`](crate::Sandbox::spawn_watch).
     SpawnWatch,
     /// [`Sandbox::wait_exit`](crate::Sandbox::wait_exit).
@@ -100,6 +102,7 @@ impl fmt::Display for SandboxOperation {
             Self::Exec => f.write_str("exec"),
             Self::BoundedExec => f.write_str("bounded exec"),
             Self::WriteFile => f.write_str("write file"),
+            Self::WriteFiles => f.write_str("write files"),
             Self::SpawnWatch => f.write_str("spawn watch"),
             Self::WaitExit => f.write_str("wait exit"),
         }
