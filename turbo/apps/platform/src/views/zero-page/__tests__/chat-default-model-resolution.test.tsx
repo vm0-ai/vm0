@@ -71,9 +71,6 @@ const AGENT_ID = "e0000000-0000-4000-a000-000000000010";
 const ANTHROPIC_PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
 const MOONSHOT_PROVIDER_ID = "00000000-0000-4000-a000-000000000002";
 const ZAI_PROVIDER_ID = "00000000-0000-4000-a000-000000000003";
-const PERSONAL_OPENAI_PROVIDER_ID = "00000000-0000-4000-a000-000000000004";
-const VM0_PROVIDER_ID = "00000000-0000-4000-a000-000000000005";
-const PERSONAL_CODEX_PROVIDER_ID = "00000000-0000-4000-a000-000000000006";
 
 const THREAD_ID = "thread-default-model-1";
 
@@ -536,76 +533,6 @@ describe("chat composer — default model resolution", () => {
         expect.any(String),
       );
     });
-  });
-
-  it("shows the personal default when the agent prefers personal providers", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.PersonalModelProvider]: true,
-    });
-    mockOrgProviders({
-      defaultProviderId: MOONSHOT_PROVIDER_ID,
-      defaultSelectedModel: "kimi-k2.5",
-    });
-    setMockPersonalModelProviders([
-      buildProvider({
-        id: PERSONAL_OPENAI_PROVIDER_ID,
-        type: "openai-api-key",
-        framework: "codex",
-        secretName: "OPENAI_API_KEY",
-        isDefault: true,
-        selectedModel: "gpt-5.4",
-      }),
-    ]);
-    mockAgent({
-      modelProviderId: ANTHROPIC_PROVIDER_ID,
-      selectedModel: "claude-opus-4-7",
-      preferPersonalProvider: true,
-    });
-
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
-    await expectAgentChatLoaded();
-
-    await expectComposerShowsModel("GPT-5.4");
-  });
-
-  it("uses the personal provider default when the agent model is incompatible", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.PersonalModelProvider]: true,
-    });
-    setMockOrgModelProviders([
-      buildProvider({
-        id: VM0_PROVIDER_ID,
-        type: "vm0",
-        framework: "claude-code",
-        secretName: null,
-        isDefault: true,
-        selectedModel: "deepseek-v4-pro",
-      }),
-    ]);
-    setMockPersonalModelProviders([
-      buildProvider({
-        id: PERSONAL_CODEX_PROVIDER_ID,
-        type: "codex-oauth-token",
-        framework: "codex",
-        secretName: null,
-        authMethod: "auth_json",
-        isDefault: true,
-        selectedModel: null,
-      }),
-    ]);
-    mockAgent({
-      modelProviderId: VM0_PROVIDER_ID,
-      selectedModel: "deepseek-v4-pro",
-      preferPersonalProvider: true,
-    });
-
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
-    await expectAgentChatLoaded();
-
-    await expectComposerShowsModel("GPT-5.5");
-    expect(
-      screen.queryByRole("combobox", { name: "DeepSeek V4 Pro" }),
-    ).not.toBeInTheDocument();
   });
 
   // CHAT-DM-004: When the agent is reset to "use org default" (both fields

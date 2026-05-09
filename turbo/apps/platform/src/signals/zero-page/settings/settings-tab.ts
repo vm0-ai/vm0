@@ -54,11 +54,6 @@ const internalPreferPersonalProvider$ = state(false);
 export const settingsPreferPersonalProvider$ = computed((get) => {
   return get(internalPreferPersonalProvider$);
 });
-export const setSettingsPreferPersonalProvider$ = command(
-  ({ set }, value: boolean) => {
-    set(internalPreferPersonalProvider$, value);
-  },
-);
 
 // ---------------------------------------------------------------------------
 // Saved settings state (for dirty detection)

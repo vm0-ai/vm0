@@ -60,10 +60,10 @@ export const chatPageModelSelection$ = computed(
     if (user.kind === "set") {
       return user.value;
     }
-    // Priority: preferred personal default > agent default > workspace
-    // default. Seed here (rather than letting the picker fall back to its
-    // null-value display) so the model shown next to Send is the exact
-    // model the send body will carry. See the matching note in
+    // Priority: agent default > workspace default. Seed here (rather than
+    // letting the picker fall back to its null-value display) so the model
+    // shown next to Send is the exact model the send body will carry. See
+    // the matching note in
     // `createModelSelection` (create-chat-thread.ts) for the full
     // display/run mismatch reasoning.
     const agent = await get(currentChatAgent$);
@@ -75,7 +75,6 @@ export const chatPageModelSelection$ = computed(
     return resolveEffectiveAgentDefaultSelection({
       agent,
       providers: composerProviders.providers,
-      tiers: composerProviders.tiers,
     });
   },
 );
@@ -91,7 +90,6 @@ export const chatPageAgentModelDefault$ = computed(
     return resolveEffectiveAgentDefaultSelection({
       agent,
       providers: composerProviders.providers,
-      tiers: composerProviders.tiers,
     });
   },
 );
