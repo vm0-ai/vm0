@@ -517,8 +517,15 @@ async fn connect_device_specific_index() {
     .expect("cow layer");
     let cow_layer = std::sync::Arc::new(tokio::sync::RwLock::new(cow_layer));
 
+    let mut setup_result = Ok::<(), nbd_cow::error::NbdCowError>(());
     for _ in 0..nbd_cow::NUM_CONNECTIONS {
-        let (client_fd, server_fd) = nbd_cow::netlink::create_socketpair().expect("socketpair");
+        let (client_fd, server_fd) = match nbd_cow::netlink::create_socketpair() {
+            Ok(fds) => fds,
+            Err(e) => {
+                setup_result = Err(e);
+                break;
+            }
+        };
         client_fds.push(client_fd);
         let cow = cow_layer.clone();
         let token = shutdown.clone();
@@ -528,12 +535,15 @@ async fn connect_device_specific_index() {
     }
 
     let connect_tid = unsafe { libc::gettid() } as u32;
-    let connect_result = nbd_cow::netlink::connect_device(
-        device_index,
-        &client_fds,
-        size,
-        nbd_cow::BLOCK_SIZE as u64,
-    );
+    let connect_attempted = setup_result.is_ok();
+    let connect_result = setup_result.and_then(|()| {
+        nbd_cow::netlink::connect_device(
+            device_index,
+            &client_fds,
+            size,
+            nbd_cow::BLOCK_SIZE as u64,
+        )
+    });
     let connected = connect_result.is_ok();
     let device_has_correct_size = if connected {
         nbd_cow::netlink::verify_device_size(device_index, size).await
@@ -548,11 +558,11 @@ async fn connect_device_specific_index() {
         let _ = h.await;
     }
     drop(client_fds);
-    if connected || nbd_pid(device_index) == Some(connect_tid) {
+    if connected || (connect_attempted && nbd_pid(device_index) == Some(connect_tid)) {
         let _ = nbd_cow::netlink::disconnect(device_index);
     }
 
-    connect_result.expect("connect_device");
+    connect_result.expect("socketpair setup or connect_device");
     assert!(device_has_correct_size, "device should have correct size");
 }
 
