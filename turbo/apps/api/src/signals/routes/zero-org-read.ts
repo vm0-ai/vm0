@@ -6,7 +6,6 @@ import { zeroOrgMembersContract } from "@vm0/api-contracts/contracts/zero-org-me
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import { notFound } from "../../lib/error";
 import type { RouteEntry } from "../route";
 import {
@@ -85,12 +84,9 @@ export const zeroOrgReadRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroOrgMembersContract.members,
-    handler: shadowCompareRoute({
-      route: zeroOrgMembersContract.members,
-      handler: authRoute(
-        { requireOrganization: true, missingOrganizationStatus: 401 },
-        membersInner$,
-      ),
-    }),
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      membersInner$,
+    ),
   },
 ];

@@ -5,7 +5,6 @@ import { http, HttpResponse } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
-import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -147,7 +146,6 @@ function mockClerkMembershipRequestsStatus(
 
 describe("GET /api/zero/org/members", () => {
   it("returns 401 when not authenticated", async () => {
-    mockApiShadowCompareRoutes([zeroOrgMembersContract.members]);
     const client = setupApp({ context })(zeroOrgMembersContract);
 
     const response = await accept(client.members({ headers: {} }), [401]);
@@ -210,7 +208,6 @@ describe("GET /api/zero/org/members", () => {
       },
     ]);
     mocks.clerk.session(adminUserId, orgId, "org:admin");
-    mockApiShadowCompareRoutes([zeroOrgMembersContract.members]);
 
     const client = setupApp({ context })(zeroOrgMembersContract);
     const response = await accept(
@@ -274,7 +271,6 @@ describe("GET /api/zero/org/members", () => {
       },
     ]);
     mocks.clerk.session(userId, orgId, "org:member");
-    mockApiShadowCompareRoutes([zeroOrgMembersContract.members]);
 
     const client = setupApp({ context })(zeroOrgMembersContract);
     const response = await accept(
@@ -301,7 +297,6 @@ describe("GET /api/zero/org/members", () => {
     mockClerkNoInvitations();
     mockClerkMembershipRequests(orgId, []);
     mocks.clerk.session(userId, orgId, "org:admin");
-    mockApiShadowCompareRoutes([zeroOrgMembersContract.members]);
 
     const client = setupApp({ context })(zeroOrgMembersContract);
     const response = await accept(
@@ -341,7 +336,6 @@ describe("GET /api/zero/org/members", () => {
     ]);
     mockClerkMembershipRequestsStatus(orgId, 404);
     mocks.clerk.session(adminUserId, orgId, "org:admin");
-    mockApiShadowCompareRoutes([zeroOrgMembersContract.members]);
 
     const client = setupApp({ context })(zeroOrgMembersContract);
     const response = await accept(
