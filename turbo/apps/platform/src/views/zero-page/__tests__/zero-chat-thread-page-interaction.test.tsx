@@ -233,6 +233,7 @@ describe("zero chat thread page - copy message button", () => {
         {
           role: "user",
           content: "Hello",
+          runId: "run-legacy-1",
           createdAt: "2026-03-10T00:00:00Z",
         },
         {
