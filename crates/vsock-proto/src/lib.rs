@@ -517,6 +517,15 @@ pub fn encode_bounded_exec_result(
     add_bounded_exec_output_capacity(&mut capacity, "stdout", stdout)?;
     add_bounded_exec_output_capacity(&mut capacity, "stderr", stderr)?;
     add_len_prefixed_capacity(&mut capacity, "diagnostic", diagnostic)?;
+    let body_len = MIN_BODY_SIZE
+        .checked_add(capacity)
+        .ok_or(ProtocolError::PayloadTooLarge(
+            "bounded_exec_result",
+            usize::MAX,
+        ))?;
+    if body_len > MAX_MESSAGE_SIZE {
+        return Err(ProtocolError::MessageTooLarge(body_len));
+    }
 
     let mut p = Vec::with_capacity(capacity);
     p.push(termination_tag);
@@ -2056,6 +2065,22 @@ mod tests {
                 + MAX_BOUNDED_EXEC_RESULT_OUTPUT_BYTES,
             MAX_MESSAGE_SIZE
         );
+    }
+
+    #[test]
+    fn bounded_exec_result_rejects_diagnostic_past_message_budget() {
+        let stdout = vec![0u8; MAX_BOUNDED_EXEC_RESULT_OUTPUT_BYTES];
+
+        let err = encode_bounded_exec_result(
+            BoundedExecTermination::WaitFailed,
+            0,
+            captured_output(&stdout, true),
+            captured_output(b"", false),
+            Some("diagnostic"),
+        )
+        .unwrap_err();
+
+        assert!(matches!(err, ProtocolError::MessageTooLarge(_)));
     }
 
     #[test]
