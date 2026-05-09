@@ -1118,24 +1118,6 @@ export function ZeroChatComposer({
     }
   };
 
-  const handleKeyboardSend = () => {
-    const handlers: Record<KeyboardSendAction, (() => void) | undefined> = {
-      none: undefined,
-      send: handleSend,
-      queue: () => {
-        onQueue?.(input.trim());
-      },
-    };
-    handlers[
-      resolveKeyboardSendAction({
-        canSend,
-        sending,
-        queueWhileSending,
-        hasQueueHandler: onQueue !== undefined,
-      })
-    ]?.();
-  };
-
   const sendModeLoadable = useLastLoadable(sendMode$);
   const sendMode =
     sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";

@@ -7,7 +7,11 @@ import {
   type PendingMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { changeChatPendingMessage } from "../../../mocks/mock-helpers.ts";
 import { server } from "../../../mocks/server.ts";
@@ -469,7 +473,7 @@ describe("chat pending message queue", () => {
       /Type your next message/,
     ) as HTMLTextAreaElement;
     expect(textarea.value).toBe("queued content");
-    expect(recallCalled).toBe(true);
+    expect(recallCalled).toBeTruthy();
 
     // Cancel also fires: run ends and Send button is restored
     ctrl.cancelRun();
