@@ -1245,6 +1245,7 @@ async fn send_write_files_stream(
     seq: u32,
     mut files: Vec<PreparedWriteFile<'_>>,
     sudo: bool,
+    timeout: Duration,
 ) -> io::Result<()> {
     let file_count = u32::try_from(files.len()).map_err(|_| {
         io::Error::new(
@@ -1264,63 +1265,84 @@ async fn send_write_files_stream(
         }
     }
 
-    // Active after START; any cancellation or write/read failure before
-    // FINISH poisons the connection so the guest stream cannot hang.
-    let mut write_guard = FrameWriteGuard::new(Arc::clone(shared));
-    let start = vsock_proto::encode_write_files_start(sudo, file_count, total_bytes)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
-    write_proto_frame(&mut writer, MSG_WRITE_FILES_START, seq, &start).await?;
-
-    let mut read_buf = vec![0u8; vsock_proto::MAX_WRITE_FILES_CHUNK_BYTES];
-    for (index, file) in files.iter_mut().enumerate() {
-        let file_index = u32::try_from(index).map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "write_files file index exceeds u32",
-            )
-        })?;
-        let len = file.source.len();
-        let payload = vsock_proto::encode_write_files_file(file_index, &file.path, len)
+    let stream_result = tokio::time::timeout(timeout, async {
+        // Active after START; any cancellation or write/read failure before
+        // FINISH poisons the connection so the guest stream cannot hang.
+        let mut write_guard = FrameWriteGuard::new(Arc::clone(shared));
+        let start = vsock_proto::encode_write_files_start(sudo, file_count, total_bytes)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
-        write_proto_frame(&mut writer, MSG_WRITE_FILES_FILE, seq, &payload).await?;
+        write_proto_frame(&mut writer, MSG_WRITE_FILES_START, seq, &start).await?;
 
-        match &mut file.source {
-            PreparedWriteFileSource::Bytes(bytes) => {
-                for chunk in bytes.chunks(vsock_proto::MAX_WRITE_FILES_CHUNK_BYTES) {
-                    let payload = vsock_proto::encode_write_files_chunk(file_index, chunk)
-                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
-                    write_proto_frame(&mut writer, MSG_WRITE_FILES_CHUNK, seq, &payload).await?;
-                }
-            }
-            PreparedWriteFileSource::File { file, len } => {
-                let mut remaining = *len;
-                while remaining > 0 {
-                    let max = remaining.min(read_buf.len() as u64) as usize;
-                    let read_chunk = read_buf.get_mut(..max).ok_or_else(|| {
-                        io::Error::other("write_files read length exceeds buffer")
-                    })?;
-                    let n = file.read(read_chunk).await?;
-                    if n == 0 {
-                        return Err(io::Error::new(
-                            io::ErrorKind::UnexpectedEof,
-                            "write_files source ended before expected length",
-                        ));
+        let mut read_buf = vec![0u8; vsock_proto::MAX_WRITE_FILES_CHUNK_BYTES];
+        for (index, file) in files.iter_mut().enumerate() {
+            let file_index = u32::try_from(index).map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "write_files file index exceeds u32",
+                )
+            })?;
+            let len = file.source.len();
+            let payload = vsock_proto::encode_write_files_file(file_index, &file.path, len)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+            write_proto_frame(&mut writer, MSG_WRITE_FILES_FILE, seq, &payload).await?;
+
+            match &mut file.source {
+                PreparedWriteFileSource::Bytes(bytes) => {
+                    for chunk in bytes.chunks(vsock_proto::MAX_WRITE_FILES_CHUNK_BYTES) {
+                        let payload = vsock_proto::encode_write_files_chunk(file_index, chunk)
+                            .map_err(|e| {
+                                io::Error::new(io::ErrorKind::InvalidInput, e.to_string())
+                            })?;
+                        write_proto_frame(&mut writer, MSG_WRITE_FILES_CHUNK, seq, &payload)
+                            .await?;
                     }
-                    remaining -= n as u64;
-                    let payload_chunk = read_chunk
-                        .get(..n)
-                        .ok_or_else(|| io::Error::other("write_files read length exceeds chunk"))?;
-                    let payload = vsock_proto::encode_write_files_chunk(file_index, payload_chunk)
-                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
-                    write_proto_frame(&mut writer, MSG_WRITE_FILES_CHUNK, seq, &payload).await?;
+                }
+                PreparedWriteFileSource::File { file, len } => {
+                    let mut remaining = *len;
+                    while remaining > 0 {
+                        let max = remaining.min(read_buf.len() as u64) as usize;
+                        let read_chunk = read_buf.get_mut(..max).ok_or_else(|| {
+                            io::Error::other("write_files read length exceeds buffer")
+                        })?;
+                        let n = file.read(read_chunk).await?;
+                        if n == 0 {
+                            return Err(io::Error::new(
+                                io::ErrorKind::UnexpectedEof,
+                                "write_files source ended before expected length",
+                            ));
+                        }
+                        remaining -= n as u64;
+                        let payload_chunk = read_chunk.get(..n).ok_or_else(|| {
+                            io::Error::other("write_files read length exceeds chunk")
+                        })?;
+                        let payload =
+                            vsock_proto::encode_write_files_chunk(file_index, payload_chunk)
+                                .map_err(|e| {
+                                    io::Error::new(io::ErrorKind::InvalidInput, e.to_string())
+                                })?;
+                        write_proto_frame(&mut writer, MSG_WRITE_FILES_CHUNK, seq, &payload)
+                            .await?;
+                    }
                 }
             }
         }
-    }
 
-    write_proto_frame(&mut writer, MSG_WRITE_FILES_FINISH, seq, &[]).await?;
-    write_guard.disarm();
-    Ok(())
+        write_proto_frame(&mut writer, MSG_WRITE_FILES_FINISH, seq, &[]).await?;
+        write_guard.disarm();
+        Ok(())
+    })
+    .await;
+
+    match stream_result {
+        Ok(result) => result,
+        Err(_) => {
+            shared.poison_connection();
+            Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "write_files stream timeout",
+            ))
+        }
+    }
 }
 
 async fn write_proto_frame(
@@ -1985,7 +2007,8 @@ impl VsockHost {
         }
         let _pending_guard = PendingRequestGuard::new(Arc::clone(&self.shared), seq);
 
-        send_write_files_stream(&self.shared, seq, prepared, sudo).await?;
+        send_write_files_stream(&self.shared, seq, prepared, sudo, Self::WRITE_FILES_TIMEOUT)
+            .await?;
 
         let resp = tokio::select! {
             biased;
@@ -5063,6 +5086,72 @@ mod tests {
         host.write_file("/tmp/big.bin", &content, false)
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_write_files_stream_timeout_closes_connection() {
+        let (host_stream, mut guest) = make_pair();
+        set_send_buffer(&host_stream, 4096).unwrap();
+
+        let frame_started = std::sync::Arc::new(Notify::new());
+        let release_guest = std::sync::Arc::new(Notify::new());
+
+        let guest_task = {
+            let frame_started = std::sync::Arc::clone(&frame_started);
+            let release_guest = std::sync::Arc::clone(&release_guest);
+            tokio::spawn(async move {
+                let mut decoder = Decoder::new();
+                mock_handshake(&mut guest, &mut decoder).await;
+
+                for expected_type in [MSG_WRITE_FILES_START, MSG_WRITE_FILES_FILE] {
+                    let mut len = [0u8; vsock_proto::HEADER_SIZE];
+                    guest.read_exact(&mut len).await.unwrap();
+                    let body_len = u32::from_be_bytes(len) as usize;
+                    let mut body = vec![0u8; body_len];
+                    guest.read_exact(&mut body).await.unwrap();
+                    assert_eq!(body.first().copied(), Some(expected_type));
+                }
+
+                let mut len = [0u8; vsock_proto::HEADER_SIZE];
+                guest.read_exact(&mut len).await.unwrap();
+                let chunk_body_len = u32::from_be_bytes(len) as usize;
+                let mut msg_type = [0u8; 1];
+                guest.read_exact(&mut msg_type).await.unwrap();
+                assert_eq!(msg_type[0], MSG_WRITE_FILES_CHUNK);
+                assert!(
+                    chunk_body_len > 1024 * 1024,
+                    "test needs a large chunk body so the host blocks while guest stops reading",
+                );
+                frame_started.notify_one();
+
+                release_guest.notified().await;
+            })
+        };
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let content = vec![b'x'; 8 * 1024 * 1024];
+        let files = vec![PreparedWriteFile {
+            path: "/tmp/large.bin".to_string(),
+            source: PreparedWriteFileSource::Bytes(&content),
+        }];
+        let seq = host.shared.next_seq();
+
+        let send =
+            send_write_files_stream(&host.shared, seq, files, false, Duration::from_millis(50));
+        tokio::pin!(send);
+        tokio::select! {
+            _ = frame_started.notified() => {}
+            result = &mut send => panic!("write_files stream completed before blocking: {result:?}"),
+        }
+
+        let err = send.await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
+
+        release_guest.notify_one();
+        guest_task.await.unwrap();
     }
 
     #[tokio::test]

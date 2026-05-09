@@ -2,10 +2,10 @@ use std::collections::HashSet;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::Arc;
 #[cfg(any(debug_assertions, feature = "test-support"))]
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, mpsc};
 use std::thread::JoinHandle;
 
 use vsock_proto::{
@@ -34,6 +34,7 @@ const THREAD_WRITE_STDIN: &str = "vsock-write-stdin";
 const WRITE_TIMEOUT_MS: u32 = 30_000;
 const GUEST_WRITE_FILE_PATH: &str = "/sbin/guest-write-file";
 const BATCH_MAGIC: &[u8; 8] = b"VM0WFB1\n";
+const WRITE_FILES_CHUNK_DATA_OFFSET: usize = 8;
 #[cfg(any(debug_assertions, feature = "test-support"))]
 static DEBUG_GUEST_WRITE_FILE_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
 
@@ -306,18 +307,43 @@ pub(crate) fn set_debug_guest_write_file_path(path: PathBuf) -> Result<(), PathB
     Ok(())
 }
 
+enum BatchWrite {
+    Bytes(Vec<u8>),
+    WriteFilesChunkPayload(Vec<u8>),
+}
+
+impl BatchWrite {
+    fn write_to(self, stdin: &mut ChildStdin) -> io::Result<()> {
+        match self {
+            Self::Bytes(bytes) => stdin.write_all(&bytes),
+            Self::WriteFilesChunkPayload(payload) => {
+                let chunk = payload
+                    .get(WRITE_FILES_CHUNK_DATA_OFFSET..)
+                    .ok_or_else(|| io::Error::other("write_files chunk payload too short"))?;
+                stdin.write_all(chunk)
+            }
+        }
+    }
+}
+
 struct BatchChild {
     child: Child,
-    stdin: ChildStdin,
+    stdin_tx: Option<mpsc::Sender<BatchWrite>>,
+    stdin_handle: JoinHandle<io::Result<()>>,
+    stdin_done_rx: mpsc::Receiver<()>,
     stderr_handle: JoinHandle<Vec<u8>>,
-    done_rx: std::sync::mpsc::Receiver<()>,
+    stderr_done_rx: mpsc::Receiver<()>,
     cancel: Arc<AtomicBool>,
 }
 
 impl BatchChild {
     fn spawn(use_sudo: bool) -> Result<Self, String> {
-        let mut child = spawn_write_files_command(use_sudo)
+        let child = spawn_write_files_command(use_sudo)
             .map_err(|e| format!("Failed to spawn write command: {e}"))?;
+        Self::from_child(child)
+    }
+
+    fn from_child(mut child: Child) -> Result<Self, String> {
         let stdin = match child.stdin.take() {
             Some(stdin) => stdin,
             None => {
@@ -332,53 +358,112 @@ impl BatchChild {
                 return Err("missing stderr pipe".to_string());
             }
         };
+
+        // Keep helper stdin writes off the connection loop. The protocol total
+        // byte cap bounds this queue if the helper stops reading.
+        let (stdin_tx, stdin_rx) = mpsc::channel::<BatchWrite>();
+        let (stdin_done_tx, stdin_done_rx) = mpsc::channel::<()>();
+        let stdin_handle = match std::thread::Builder::new()
+            .name(THREAD_WRITE_STDIN.to_string())
+            .spawn(move || {
+                let mut stdin = stdin;
+                let result = (|| {
+                    for write in stdin_rx {
+                        write.write_to(&mut stdin)?;
+                    }
+                    stdin.flush()
+                })();
+                let _ = stdin_done_tx.send(());
+                result
+            }) {
+            Ok(handle) => handle,
+            Err(e) => {
+                kill_and_reap_child(child);
+                return Err(format!("Failed to spawn stdin writer thread: {e}"));
+            }
+        };
+
         let cancel = Arc::new(AtomicBool::new(false));
-        let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+        let (stderr_done_tx, stderr_done_rx) = mpsc::channel::<()>();
         let drain_cancel = cancel.clone();
         let stderr_handle = match SystemThreadSpawner.spawn_vec(
             THREAD_WRITE_STDERR,
             Box::new(move || {
                 let buf = drain_into_vec_cancellable(stderr, &drain_cancel);
-                let _ = done_tx.send(());
+                let _ = stderr_done_tx.send(());
                 buf
             }),
         ) {
             Ok(handle) => handle,
             Err(e) => {
                 cancel.store(true, std::sync::atomic::Ordering::Release);
+                drop(stdin_tx);
                 kill_and_reap_child(child);
+                let _ = stdin_handle.join();
                 return Err(format!("Failed to spawn stderr drain thread: {e}"));
             }
         };
 
         Ok(Self {
             child,
-            stdin,
+            stdin_tx: Some(stdin_tx),
+            stdin_handle,
+            stdin_done_rx,
             stderr_handle,
-            done_rx,
+            stderr_done_rx,
             cancel,
         })
+    }
+
+    fn write_bytes(&self, bytes: Vec<u8>) -> io::Result<()> {
+        let tx = self
+            .stdin_tx
+            .as_ref()
+            .ok_or_else(|| io::Error::other("write command stdin already closed"))?;
+        tx.send(BatchWrite::Bytes(bytes))
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "write command stdin closed"))
+    }
+
+    fn write_chunk_payload(&self, payload: Vec<u8>) -> io::Result<()> {
+        let tx = self
+            .stdin_tx
+            .as_ref()
+            .ok_or_else(|| io::Error::other("write command stdin already closed"))?;
+        tx.send(BatchWrite::WriteFilesChunkPayload(payload))
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "write command stdin closed"))
     }
 
     fn kill(mut self) {
         self.cancel
             .store(true, std::sync::atomic::Ordering::Release);
-        let _ = self.stdin.flush();
-        drop(self.stdin);
+        drop(self.stdin_tx.take());
         kill_and_reap_child(self.child);
-        let _ = await_drain_deadline(&self.done_rx, 1, &self.cancel);
+        let _ = self.stdin_handle.join();
+        let _ = await_drain_deadline(&self.stderr_done_rx, 1, &self.cancel);
         let _ = self.stderr_handle.join();
     }
 
-    fn finish(mut self) -> (bool, String) {
+    fn finish(self) -> (bool, String) {
+        self.finish_with_timeout(WRITE_TIMEOUT_MS)
+    }
+
+    fn finish_with_timeout(mut self, timeout_ms: u32) -> (bool, String) {
         let child_pid = self.child.id();
-        let _ = self.stdin.flush();
-        drop(self.stdin);
-        let outcome = wait_with_kill_timeout(self.child, WRITE_TIMEOUT_MS);
-        if matches!(outcome, WaitOutcome::Exited(_) | WaitOutcome::WaitFailed(_)) {
+        drop(self.stdin_tx.take());
+        let outcome = wait_with_kill_timeout(self.child, timeout_ms);
+        if matches!(outcome, WaitOutcome::Exited(_) | WaitOutcome::WaitFailed(_))
+            && matches!(
+                self.stdin_done_rx.try_recv(),
+                Err(mpsc::TryRecvError::Empty)
+            )
+        {
             let _ = unsafe { kill_process_tree(child_pid) };
         }
-        let _ = await_drain_deadline(&self.done_rx, 1, &self.cancel);
+        let stdin_result = match self.stdin_handle.join() {
+            Ok(result) => result,
+            Err(panic) => std::panic::resume_unwind(panic),
+        };
+        let _ = await_drain_deadline(&self.stderr_done_rx, 1, &self.cancel);
         let stderr = self.stderr_handle.join().unwrap_or_default();
         match outcome {
             WaitOutcome::TimedOut => (false, "write timed out".to_string()),
@@ -387,7 +472,10 @@ impl BatchChild {
             WaitOutcome::Exited(status) => {
                 let exit_code = extract_exit_code(status);
                 if exit_code == 0 {
-                    (true, String::new())
+                    match stdin_result {
+                        Ok(()) => (true, String::new()),
+                        Err(e) => (false, format!("Failed to write to stdin: {e}")),
+                    }
                 } else {
                     (
                         false,
@@ -433,13 +521,16 @@ where
     F: FnMut() -> io::Result<Option<RawMessage>>,
 {
     let start = vsock_proto::decode_write_files_start(&start_msg.payload).map_err(to_io_error)?;
-    let mut child = match BatchChild::spawn(start.sudo) {
+    let child = match BatchChild::spawn(start.sudo) {
         Ok(child) => child,
         Err(error) => {
             return write_files_result_response(start_msg.seq, start.file_count, false, &error);
         }
     };
-    if let Err(e) = write_batch_header(&mut child.stdin, start.file_count) {
+    let mut batch_header = Vec::with_capacity(BATCH_MAGIC.len() + 4);
+    if let Err(e) = write_batch_header(&mut batch_header, start.file_count)
+        .and_then(|_| child.write_bytes(batch_header))
+    {
         let error = e.to_string();
         child.kill();
         return write_files_result_response(start_msg.seq, start.file_count, false, &error);
@@ -490,12 +581,15 @@ where
                         "write_files content length exceeds total",
                     );
                 }
+                let mut file_header = Vec::with_capacity(14 + file.path.len());
                 if let Err(e) = write_batch_file_header(
-                    &mut child.stdin,
+                    &mut file_header,
                     file.file_index,
                     file.path,
                     file.content_len,
-                ) {
+                )
+                .and_then(|_| child.write_bytes(file_header))
+                {
                     let error = e.to_string();
                     child.kill();
                     return write_files_result_response(
@@ -526,7 +620,7 @@ where
                     child.kill();
                     return error_response(start_msg.seq, "write_files chunk exceeds file length");
                 }
-                if let Err(e) = child.stdin.write_all(chunk.chunk) {
+                if let Err(e) = child.write_chunk_payload(msg.payload) {
                     let error = e.to_string();
                     child.kill();
                     return write_files_result_response(
@@ -685,6 +779,36 @@ mod tests {
 
         assert!(!success);
         assert_eq!(error, "write timed out");
+        assert!(!pid_alive(pid), "child pid {pid} should have been reaped");
+    }
+
+    #[test]
+    fn write_files_batch_timeout_kills_child_while_stdin_writer_is_blocked() {
+        let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
+        let child = spawn_write_file_test_child("sleep 60; cat >/dev/null");
+        let pid = child.id();
+        let batch = BatchChild::from_child(child).unwrap();
+
+        batch.write_bytes(vec![b'x'; 1024 * 1024]).unwrap();
+        let (success, error) = batch.finish_with_timeout(10);
+
+        assert!(!success);
+        assert_eq!(error, "write timed out");
+        assert!(!pid_alive(pid), "child pid {pid} should have been reaped");
+    }
+
+    #[test]
+    fn write_files_batch_kills_lingering_process_group_after_parent_exit() {
+        let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
+        let child = spawn_write_file_test_child("sleep 60 <&0 >/dev/null 2>/dev/null & exit 0");
+        let pid = child.id();
+        let batch = BatchChild::from_child(child).unwrap();
+
+        batch.write_bytes(vec![b'x'; 1024 * 1024]).unwrap();
+        let (success, error) = batch.finish_with_timeout(1_000);
+
+        assert!(!success);
+        assert!(error.contains("Failed to write to stdin"), "got: {error}");
         assert!(!pid_alive(pid), "child pid {pid} should have been reaped");
     }
 
