@@ -7,6 +7,7 @@
 
 use guest_common::{log_error, log_info, log_warn, telemetry::record_sandbox_op};
 use serde::Deserialize;
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
@@ -102,6 +103,7 @@ const MAX_RETRIES: u32 = 3;
 const RETRY_DELAY: Duration = Duration::from_secs(1);
 const TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_CONCURRENT: usize = 4;
+const GUEST_STAGE_DIR: &str = "/tmp/vm0-storage-cache";
 
 /// Global HTTP agent with timeout and system certificate verification.
 /// Uses platform verifier to trust system CA certificates (including proxy CA).
@@ -194,8 +196,10 @@ pub fn run(manifest_path: &str) -> bool {
         }
     }
 
+    let local_stage_archives = local_stage_archives(&tasks);
     let success = download_all_parallel(tasks);
     if success {
+        cleanup_local_stage_archives(&local_stage_archives);
         normalize_instruction_files(&manifest.storages);
     }
     success
@@ -300,6 +304,55 @@ fn append_download_tasks(
                 allow_404,
             });
         }
+    }
+}
+
+fn local_stage_archive_path(url: &str) -> Option<PathBuf> {
+    let path = Path::new(url.strip_prefix("file://")?);
+    let normalized = normalize_path(path);
+    if normalized.starts_with(Path::new(GUEST_STAGE_DIR)) {
+        Some(normalized)
+    } else {
+        None
+    }
+}
+
+fn local_stage_archives(tasks: &[DownloadTask]) -> BTreeSet<PathBuf> {
+    tasks
+        .iter()
+        .filter_map(|task| local_stage_archive_path(&task.url))
+        .collect()
+}
+
+fn cleanup_local_stage_archives(paths: &BTreeSet<PathBuf>) {
+    if paths.is_empty() {
+        return;
+    }
+
+    for path in paths {
+        match fs::remove_file(path) {
+            Ok(()) => log_info!(LOG_TAG, "Removed local stage archive {}", path.display()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => log_warn!(
+                LOG_TAG,
+                "Failed to remove local stage archive {}: {}",
+                path.display(),
+                e
+            ),
+        }
+    }
+
+    match fs::remove_dir(GUEST_STAGE_DIR) {
+        Ok(()) => log_info!(LOG_TAG, "Removed empty local stage dir {GUEST_STAGE_DIR}"),
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
+            ) => {}
+        Err(e) => log_warn!(
+            LOG_TAG,
+            "Failed to remove local stage dir {GUEST_STAGE_DIR}: {e}"
+        ),
     }
 }
 
@@ -685,6 +738,26 @@ mod tests {
         guest_common::log::clear_system_log_file();
     }
 
+    fn write_test_archive(path: &Path, entries: &[(&str, &[u8])]) {
+        let file = fs::File::create(path).unwrap();
+        let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+
+        for (entry_path, contents) in entries {
+            let mut header = tar::Header::new_gnu();
+            header.set_path(entry_path).unwrap();
+            header.set_size(contents.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder
+                .append(&header, std::io::Cursor::new(*contents))
+                .unwrap();
+        }
+
+        let encoder = builder.into_inner().unwrap();
+        encoder.finish().unwrap();
+    }
+
     // -- normalize_path tests --
 
     #[test]
@@ -824,6 +897,59 @@ mod tests {
         assert!(is_valid_url(&Some(
             "file:///tmp/vm0-storage-cache/abc.tar.gz".to_string()
         )));
+    }
+
+    #[test]
+    fn local_stage_archive_path_accepts_only_stage_dir() {
+        assert_eq!(
+            local_stage_archive_path("file:///tmp/vm0-storage-cache/abc.tar.gz").unwrap(),
+            PathBuf::from("/tmp/vm0-storage-cache/abc.tar.gz")
+        );
+        assert_eq!(
+            local_stage_archive_path("file:///tmp/vm0-storage-cache/../outside.tar.gz"),
+            None
+        );
+        assert_eq!(
+            local_stage_archive_path("https://example.com/a.tar.gz"),
+            None
+        );
+    }
+
+    #[test]
+    fn run_removes_local_stage_archive_after_duplicate_success() {
+        disable_system_log();
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let stage_dir = Path::new(GUEST_STAGE_DIR);
+        fs::create_dir_all(stage_dir).unwrap();
+        let archive_path = stage_dir.join(format!("guest-download-test-{unique}.tar.gz"));
+        write_test_archive(&archive_path, &[("data.txt", b"hello")]);
+
+        let dir = tempfile::tempdir().unwrap();
+        let manifest_path = dir.path().join("manifest.json");
+        let mount_a = dir.path().join("mount-a");
+        let mount_b = dir.path().join("mount-b");
+        let archive_url = format!("file://{}", archive_path.display());
+        let manifest = serde_json::json!({
+            "storages": [
+                {"mountPath": mount_a.to_string_lossy(), "archiveUrl": archive_url.clone()},
+                {"mountPath": mount_b.to_string_lossy(), "archiveUrl": archive_url}
+            ]
+        });
+        fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+
+        assert!(run(manifest_path.to_str().unwrap()));
+        assert_eq!(
+            fs::read_to_string(mount_a.join("data.txt")).unwrap(),
+            "hello"
+        );
+        assert_eq!(
+            fs::read_to_string(mount_b.join("data.txt")).unwrap(),
+            "hello"
+        );
+        assert!(!archive_path.exists());
     }
 
     #[test]
