@@ -1,6 +1,6 @@
 import type { MouseEvent, ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
-import { IconCpu } from "@tabler/icons-react";
+import { IconChevronDown, IconChevronUp, IconCpu } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Select,
@@ -862,12 +862,16 @@ function ShowMoreToggleRow({
   hiddenCount: number;
   onToggle: () => void;
 }) {
+  const label = expanded
+    ? "Show fewer models"
+    : `Show all models (+${hiddenCount})`;
+
   return (
     <div
       role="button"
       tabIndex={0}
       aria-expanded={expanded}
-      className="rounded-md px-2 py-1.5 text-sm text-muted-foreground cursor-pointer hover:bg-accent transition-colors"
+      className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground cursor-pointer hover:bg-accent transition-colors"
       onClick={(e) => {
         e.preventDefault();
         onToggle();
@@ -879,7 +883,12 @@ function ShowMoreToggleRow({
         }
       }}
     >
-      {expanded ? "Show fewer models" : `Show all models (+${hiddenCount})`}
+      <span>{label}</span>
+      {expanded ? (
+        <IconChevronUp size={14} className="shrink-0" aria-hidden="true" />
+      ) : (
+        <IconChevronDown size={14} className="shrink-0" aria-hidden="true" />
+      )}
     </div>
   );
 }
