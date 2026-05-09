@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tempfile::TempDir;
 
 static RUN_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
+const GUEST_STAGE_DIR: &str = "/tmp/vm0-storage-cache";
 
 enum TarEntry<'a> {
     File(&'a str, &'a [u8]),
@@ -171,6 +172,38 @@ fn unique_run_id(test_name: &str) -> String {
         std::process::id(),
         RUN_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
     )
+}
+
+fn unique_stage_archive_path(test_name: &str) -> PathBuf {
+    PathBuf::from(GUEST_STAGE_DIR).join(format!(
+        "{test_name}-{}-{}.tar.gz",
+        std::process::id(),
+        RUN_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ))
+}
+
+fn write_stage_archive(test_name: &str, bytes: &[u8]) -> std::io::Result<PathBuf> {
+    let path = unique_stage_archive_path(test_name);
+    let parent = path
+        .parent()
+        .ok_or_else(|| std::io::Error::other("stage archive path has no parent"))?;
+
+    for _ in 0..3 {
+        std::fs::create_dir_all(parent)?;
+        match std::fs::write(&path, bytes) {
+            Ok(()) => return Ok(path),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e),
+        }
+    }
+
+    Err(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!(
+            "failed to write staged archive {} after retries",
+            path.display()
+        ),
+    ))
 }
 
 struct RunFileCleanup {
@@ -1234,17 +1267,15 @@ fn symlink_missing_link_target_skipped() {
 // file:// scheme — host-staged tarballs (epic #10800)
 // ---------------------------------------------------------------------------
 
-// Successful file:// extraction: the local tarball is read and its contents are
-// extracted into the mount path. The staged tarball is intentionally left in
-// place — /tmp is wiped on VM teardown, and deleting it early breaks runs where
-// two manifest entries share the same staged path.
+// Successful file:// extraction: the local tarball is read from the guest stage
+// directory, its contents are extracted into the mount path, and the staged
+// tarball is removed after the run succeeds.
 #[test]
 fn file_scheme_extraction_success() {
     let tar_gz = create_tar_gz(&[("hello.txt", b"hello from file")]).unwrap();
 
     let dir = tempfile::tempdir().unwrap();
-    let staged = dir.path().join("staged.tar.gz");
-    std::fs::write(&staged, &tar_gz).unwrap();
+    let staged = write_stage_archive("file-scheme-extraction-success", &tar_gz).unwrap();
 
     let mount = dir.path().join("mount");
     let url = format!("file://{}", staged.display());
@@ -1257,8 +1288,7 @@ fn file_scheme_extraction_success() {
         std::fs::read_to_string(mount.join("hello.txt")).unwrap(),
         "hello from file"
     );
-    // Staged tarball is preserved — runner cleans /tmp on VM teardown.
-    assert!(staged.exists());
+    assert!(!staged.exists());
 }
 
 // Security regression: file:// archives use the same extraction path as HTTP,
@@ -1282,8 +1312,7 @@ fn file_scheme_malicious_entries_are_skipped_while_safe_entries_extract() {
     let outside_file = dir.path().join("outside.txt");
     std::fs::write(&outside_file, "outside").unwrap();
 
-    let staged = dir.path().join("staged.tar.gz");
-    std::fs::write(&staged, &tar_gz).unwrap();
+    let staged = write_stage_archive("file-scheme-malicious-entries", &tar_gz).unwrap();
 
     let mount = dir.path().join("mount");
     let url = format!("file://{}", staged.display());
@@ -1313,8 +1342,7 @@ fn file_scheme_preexisting_symlink_ancestor_blocks_nested_entry() {
     .unwrap();
 
     let dir = tempfile::tempdir().unwrap();
-    let staged = dir.path().join("staged.tar.gz");
-    std::fs::write(&staged, &tar_gz).unwrap();
+    let staged = write_stage_archive("file-scheme-preexisting-symlink", &tar_gz).unwrap();
 
     let mount = dir.path().join("mount");
     let outside = dir.path().join("outside");
@@ -1349,7 +1377,7 @@ fn file_scheme_preexisting_symlink_ancestor_blocks_nested_entry() {
 #[test]
 fn file_scheme_missing_storage_fatal() {
     let dir = tempfile::tempdir().unwrap();
-    let missing = dir.path().join("never-existed.tar.gz");
+    let missing = unique_stage_archive_path("file-scheme-missing-storage");
     assert!(!missing.exists());
 
     let mount = dir.path().join("mount");
@@ -1367,7 +1395,7 @@ fn file_scheme_missing_storage_fatal() {
 #[test]
 fn file_scheme_missing_artifact_fatal() {
     let dir = tempfile::tempdir().unwrap();
-    let missing = dir.path().join("never-existed.tar.gz");
+    let missing = unique_stage_archive_path("file-scheme-missing-artifact");
     assert!(!missing.exists());
 
     let mount = dir.path().join("artifact_mount");

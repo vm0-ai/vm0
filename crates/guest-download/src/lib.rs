@@ -310,7 +310,7 @@ fn append_download_tasks(
 fn local_stage_archive_path(url: &str) -> Option<PathBuf> {
     let path = Path::new(url.strip_prefix("file://")?);
     let normalized = normalize_path(path);
-    if normalized.starts_with(Path::new(GUEST_STAGE_DIR)) {
+    if normalized.parent() == Some(Path::new(GUEST_STAGE_DIR)) {
         Some(normalized)
     } else {
         None
@@ -354,6 +354,39 @@ fn cleanup_local_stage_archives(paths: &BTreeSet<PathBuf>) {
             "Failed to remove local stage dir {GUEST_STAGE_DIR}: {e}"
         ),
     }
+}
+
+fn open_local_stage_archive(path: &Path) -> Result<fs::File, DownloadError> {
+    let stage_metadata = fs::symlink_metadata(GUEST_STAGE_DIR).map_err(|e| {
+        DownloadError::fatal(format!(
+            "Failed to inspect local stage dir {GUEST_STAGE_DIR}: {e}"
+        ))
+    })?;
+    if !stage_metadata.is_dir() {
+        return Err(DownloadError::fatal(format!(
+            "Refusing local archive because {GUEST_STAGE_DIR} is not a directory"
+        )));
+    }
+
+    let archive_metadata = fs::symlink_metadata(path).map_err(|e| {
+        DownloadError::fatal(format!(
+            "Failed to inspect local archive {}: {e}",
+            path.display()
+        ))
+    })?;
+    if !archive_metadata.is_file() {
+        return Err(DownloadError::fatal(format!(
+            "Refusing local archive that is not a regular file: {}",
+            path.display()
+        )));
+    }
+
+    fs::File::open(path).map_err(|e| {
+        DownloadError::fatal(format!(
+            "Failed to open local archive {}: {e}",
+            path.display()
+        ))
+    })
 }
 
 fn valid_instruction_filename(filename: &str) -> bool {
@@ -592,11 +625,14 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadErro
     // Obtain a reader for the archive bytes. HTTP is the production path today;
     // file:// is used by the runner-side storage cache (epic #10800) to feed
     // host-staged tarballs that were pushed into the guest over vsock.
-    let reader: Box<dyn Read> = if let Some(path) = url.strip_prefix("file://") {
-        log_info!(LOG_TAG, "Reading local archive from {path}");
-        let file = fs::File::open(path).map_err(|e| {
-            DownloadError::fatal(format!("Failed to open local archive {path}: {e}"))
+    let reader: Box<dyn Read> = if url.starts_with("file://") {
+        let path = local_stage_archive_path(url).ok_or_else(|| {
+            DownloadError::fatal(format!(
+                "Refusing local archive outside {GUEST_STAGE_DIR}: {url}"
+            ))
         })?;
+        log_info!(LOG_TAG, "Reading local archive from {}", path.display());
+        let file = open_local_stage_archive(&path)?;
         Box::new(file)
     } else {
         let response = HTTP_AGENT.get(url).call().map_err(|e| {
@@ -910,9 +946,71 @@ mod tests {
             None
         );
         assert_eq!(
+            local_stage_archive_path("file:///tmp/vm0-storage-cache/nested/abc.tar.gz"),
+            None
+        );
+        assert_eq!(
+            local_stage_archive_path("file:///tmp/vm0-storage-cache-evil/abc.tar.gz"),
+            None
+        );
+        assert_eq!(
             local_stage_archive_path("https://example.com/a.tar.gz"),
             None
         );
+    }
+
+    #[test]
+    fn download_and_extract_rejects_file_url_outside_stage_dir() {
+        disable_system_log();
+        let dir = tempfile::tempdir().unwrap();
+        let archive_path = dir.path().join("outside.tar.gz");
+        write_test_archive(&archive_path, &[("data.txt", b"nope")]);
+        let target = dir.path().join("target");
+        let url = format!("file://{}", archive_path.display());
+
+        let err = download_and_extract(&url, target.to_str().unwrap()).unwrap_err();
+
+        assert!(!err.retriable);
+        assert!(
+            err.message.contains(GUEST_STAGE_DIR),
+            "got: {}",
+            err.message
+        );
+        assert!(!target.join("data.txt").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn download_and_extract_rejects_stage_archive_symlink() {
+        disable_system_log();
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let stage_dir = Path::new(GUEST_STAGE_DIR);
+        fs::create_dir_all(stage_dir).unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let outside_archive = dir.path().join("outside.tar.gz");
+        write_test_archive(&outside_archive, &[("data.txt", b"nope")]);
+
+        let archive_path = stage_dir.join(format!("guest-download-symlink-test-{unique}.tar.gz"));
+        let _ = fs::remove_file(&archive_path);
+        std::os::unix::fs::symlink(&outside_archive, &archive_path).unwrap();
+
+        let target = dir.path().join("target");
+        let url = format!("file://{}", archive_path.display());
+        let err = download_and_extract(&url, target.to_str().unwrap()).unwrap_err();
+
+        assert!(!err.retriable);
+        assert!(
+            err.message.contains("not a regular file"),
+            "got: {}",
+            err.message
+        );
+        assert!(!target.join("data.txt").exists());
+
+        fs::remove_file(&archive_path).unwrap();
     }
 
     #[test]
