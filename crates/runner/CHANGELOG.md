@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.14...runner-rs-v0.100.15) (2026-05-09)
+
+
+### Bug Fixes
+
+* normalize instructions filename by runtime framework ([#12245](https://github.com/vm0-ai/vm0/issues/12245)) ([55b4846](https://github.com/vm0-ai/vm0/commit/55b484668ed1b559e2bf16f74ad3fcc4b4559c1f))
+
 ## [0.100.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.13...runner-rs-v0.100.14) (2026-05-08)
 
 ## [0.100.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.12...runner-rs-v0.100.13) (2026-05-08)

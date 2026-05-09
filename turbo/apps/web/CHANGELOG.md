@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.346.0](https://github.com/vm0-ai/vm0/compare/web-v12.345.0...web-v12.346.0) (2026-05-09)
+
+
+### Features
+
+* show send button (not stop) when running with input content ([#12228](https://github.com/vm0-ai/vm0/issues/12228)) ([989683d](https://github.com/vm0-ai/vm0/commit/989683df880cb42e51af036691865ceb7cb99298))
+
+
+### Bug Fixes
+
+* normalize instructions filename by runtime framework ([#12245](https://github.com/vm0-ai/vm0/issues/12245)) ([55b4846](https://github.com/vm0-ai/vm0/commit/55b484668ed1b559e2bf16f74ad3fcc4b4559c1f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.3.1
+    * @vm0/core bumped to 8.264.2
+    * @vm0/db bumped to 1.2.2
+
 ## [12.345.0](https://github.com/vm0-ai/vm0/compare/web-v12.344.2...web-v12.345.0) (2026-05-08)
 
 

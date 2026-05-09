@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.338.0](https://github.com/vm0-ai/vm0/compare/app-v0.337.0...app-v0.338.0) (2026-05-09)
+
+
+### Features
+
+* show send button (not stop) when running with input content ([#12228](https://github.com/vm0-ai/vm0/issues/12228)) ([989683d](https://github.com/vm0-ai/vm0/commit/989683df880cb42e51af036691865ceb7cb99298))
+
+
+### Bug Fixes
+
+* clear optimistic pending on recall so queued card disappears synchronously ([#12251](https://github.com/vm0-ai/vm0/issues/12251)) ([272088e](https://github.com/vm0-ai/vm0/commit/272088ef9bce90634286047e724c06a6672dcebe))
+* **platform:** swap pinned thread trigger to kebab on desktop hover ([#12177](https://github.com/vm0-ai/vm0/issues/12177)) ([387406d](https://github.com/vm0-ai/vm0/commit/387406dcb8205463d941ca6dca3290a82d4a4bef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.3.1
+    * @vm0/core bumped to 8.264.2
+
 ## [0.337.0](https://github.com/vm0-ai/vm0/compare/app-v0.336.3...app-v0.337.0) (2026-05-08)
 
 
