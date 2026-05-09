@@ -62,6 +62,7 @@ import noDuplicateRouteParam from "./rules/no-duplicate-route-param.ts";
 import noRawMswHttp from "./rules/no-raw-msw-http.ts";
 import noMockApiRawAsync from "./rules/no-mockapi-raw-async.ts";
 import noReactClassComponent from "./rules/no-react-class-component.ts";
+import noMobileTypeScaleOutliers from "./rules/no-mobile-type-scale-outliers.ts";
 
 const plugin = {
   meta: {
@@ -102,6 +103,7 @@ const plugin = {
     "no-raw-msw-http": noRawMswHttp,
     "no-mockapi-raw-async": noMockApiRawAsync,
     "no-react-class-component": noReactClassComponent,
+    "no-mobile-type-scale-outliers": noMobileTypeScaleOutliers,
   },
 };
 

@@ -47,6 +47,7 @@ export default [
       "ccstate/no-void-statement": "error",
       "ccstate/no-abort-swallower": "error",
       "ccstate/no-react-class-component": "error",
+      "ccstate/no-mobile-type-scale-outliers": "error",
       "ccstate/require-accept": "error",
       "ccstate/require-client-signal": "error",
       "ccstate/command-async-signal": "error",

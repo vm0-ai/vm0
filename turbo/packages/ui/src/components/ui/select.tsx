@@ -12,6 +12,8 @@ const SelectGroup = SelectPrimitive.Group;
 
 const SelectValue = SelectPrimitive.Value;
 
+// Same baseline as Input — desktop h-9/text-sm, mobile h-12/text-[16px] —
+// so a Select reads identically to a text field at every viewport width.
 const SelectTrigger = React.forwardRef<
   React.ComponentRef<typeof SelectPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
@@ -20,7 +22,7 @@ const SelectTrigger = React.forwardRef<
     <SelectPrimitive.Trigger
       ref={ref}
       className={cn(
-        "flex h-9 w-full items-center justify-start gap-2 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1 [&>span]:text-left [&>span]:w-full",
+        "flex h-9 max-md:h-12 w-full items-center justify-start gap-2 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 max-md:py-2.5 text-sm max-md:text-[16px] text-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1 [&>span]:text-left [&>span]:w-full",
         className,
       )}
       {...props}
@@ -134,7 +136,7 @@ const SelectItem = React.forwardRef<
     <SelectPrimitive.Item
       ref={ref}
       className={cn(
-        "relative flex w-full cursor-pointer select-none items-center rounded-md py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors",
+        "relative flex w-full cursor-pointer select-none items-center rounded-md py-1.5 max-md:py-2.5 pl-2 pr-8 text-sm max-md:text-[16px] outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors",
         className,
       )}
       {...props}

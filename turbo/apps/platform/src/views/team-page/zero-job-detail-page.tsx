@@ -272,7 +272,7 @@ function AgentTabNav({
       {/* Mobile: Select dropdown */}
       <div className="sm:hidden">
         <Select value={activeTab} onValueChange={onTabChange}>
-          <SelectTrigger className="h-11 w-full text-[16px]">
+          <SelectTrigger className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

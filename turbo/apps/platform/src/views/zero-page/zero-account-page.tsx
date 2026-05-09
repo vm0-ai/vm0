@@ -85,7 +85,7 @@ function AppearanceSettings() {
                 }}
                 className={cn(
                   "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  "max-md:flex-1 max-md:justify-center max-md:h-10 max-md:px-2 max-md:text-[14px]",
+                  "max-md:flex-1 max-md:justify-center max-md:h-11 max-md:px-2 max-md:text-[14px]",
                   currentPref === value
                     ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
                     : "zero-chip text-muted-foreground hover:text-foreground",
@@ -161,7 +161,7 @@ function SendModeSettings() {
                 }}
                 className={cn(
                   "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  "max-md:flex-1 max-md:justify-center max-md:h-10 max-md:px-2 max-md:text-[14px]",
+                  "max-md:flex-1 max-md:justify-center max-md:h-11 max-md:px-2 max-md:text-[14px]",
                   isActive
                     ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
                     : "zero-chip text-muted-foreground hover:text-foreground",

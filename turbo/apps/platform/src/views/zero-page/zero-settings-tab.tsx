@@ -248,7 +248,7 @@ export function ZeroSettingsTab({
                     return setAgentName(e.target.value);
                   }}
                   placeholder="What should we call them?"
-                  className="h-9 max-md:h-11 w-full text-[16px] sm:text-sm"
+                  className="w-full"
                   aria-label="Name"
                 />
               </div>
@@ -341,7 +341,6 @@ export function ZeroSettingsTab({
                   providers={orgProviders.modelProviders}
                   value={modelSelection}
                   onChange={setModelSelection}
-                  triggerClassName="h-9 max-md:h-11 text-[16px] sm:text-sm"
                 />
               </InlineSettingsRow>
             )}

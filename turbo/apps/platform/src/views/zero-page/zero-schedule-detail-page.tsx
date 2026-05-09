@@ -420,7 +420,7 @@ function ScheduleSettingsForm({
           <InlineSettingsRow label="Agent" wideControls>
             <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
               <Select value={form.agentId} disabled>
-                <SelectTrigger className="h-9 max-md:h-11 w-full max-md:text-[16px]">
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select agent" />
                 </SelectTrigger>
                 <SelectContent>
@@ -448,7 +448,6 @@ function ScheduleSettingsForm({
                   return updateForm({ description: e.target.value });
                 }}
                 placeholder="Leave blank to auto-generate"
-                className="h-9 max-md:h-11 max-md:text-[16px]"
                 disabled={saving}
               />
             </div>
@@ -535,7 +534,6 @@ function ScheduleSettingsForm({
                   }}
                   agentDefault={agentModelDefault}
                   inheritLabel="agent"
-                  triggerClassName="h-9 max-md:h-11 text-[16px] sm:text-sm"
                 />
               </div>
             </InlineSettingsRow>
@@ -1193,7 +1191,7 @@ function ScheduleDetailView({
                     }
                   }}
                 >
-                  <SelectTrigger className="h-11 w-full text-[16px]">
+                  <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

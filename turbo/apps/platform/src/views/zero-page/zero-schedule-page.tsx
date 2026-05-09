@@ -195,7 +195,7 @@ export function ScheduleEditFields({
         <Select value={freq} onValueChange={setFreq}>
           <SelectTrigger
             id="schedule-dialog-freq"
-            className="h-9 max-md:h-11 w-full max-md:text-[16px]"
+            className="w-full"
           >
             <SelectValue />
           </SelectTrigger>
@@ -226,7 +226,7 @@ export function ScheduleEditFields({
           >
             <SelectTrigger
               id="schedule-dialog-loop"
-              className="h-9 max-md:h-11 w-full max-md:text-[16px]"
+              className="w-full"
             >
               <SelectValue />
             </SelectTrigger>
@@ -257,7 +257,7 @@ export function ScheduleEditFields({
             onChange={(e) => {
               return setDate(e.target.value);
             }}
-            className="h-9 max-md:h-11 w-full max-md:text-[16px]"
+            className="w-full"
           />
         </div>
       )}
@@ -272,7 +272,7 @@ export function ScheduleEditFields({
                   return setHour(Number(v));
                 }}
               >
-                <SelectTrigger className="h-9 max-md:h-11 w-full max-md:text-[16px]">
+                <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -294,7 +294,7 @@ export function ScheduleEditFields({
                   return setMinute(Number(v));
                 }}
               >
-                <SelectTrigger className="h-9 max-md:h-11 w-full max-md:text-[16px]">
+                <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -322,7 +322,7 @@ export function ScheduleEditFields({
           <Select value={timezone} onValueChange={setTimezone}>
             <SelectTrigger
               id="schedule-dialog-tz"
-              className="h-9 max-md:h-11 w-full max-md:text-[16px]"
+              className="w-full"
             >
               <SelectValue />
             </SelectTrigger>
