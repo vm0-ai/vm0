@@ -826,6 +826,21 @@ mod tests {
     }
 
     #[test]
+    fn recv_genl_completion_ignores_stale_reply_sequence() {
+        let (sock, peer) = test_genl_socket_pair();
+        let stale_reply = build_genl_msg(0x19, NBD_CMD_CONNECT, NBD_GENL_VERSION, &[], 1, false);
+        send_test_nl(&peer, &stale_reply);
+        send_test_nl(&peer, &nlmsg_error_msg(2, -libc::EBUSY));
+
+        let result = recv_genl_completion(&sock, 2);
+
+        assert!(matches!(
+            result,
+            Err(NbdCowError::NetlinkErrno { errno, .. }) if errno == libc::EBUSY
+        ));
+    }
+
+    #[test]
     fn parse_nl_msg_error_errno() {
         let mut buf = vec![0u8; 24];
         let len = 24u32;
