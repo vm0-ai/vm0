@@ -81,7 +81,7 @@ pub const MAX_BOUNDED_EXEC_OUTPUT_CHUNK_BYTES: usize =
     MAX_MESSAGE_SIZE - MIN_BODY_SIZE - BOUNDED_EXEC_OUTPUT_CHUNK_FIXED_PAYLOAD_BYTES;
 /// Minimum stream chunk limit accepted by bounded exec implementations.
 pub const MIN_BOUNDED_EXEC_STREAM_CHUNK_BYTES: usize = 1024;
-/// Maximum file count accepted by a single write_files stream.
+/// Maximum file_count/result_count accepted by one write_files protocol exchange.
 pub const MAX_WRITE_FILES_COUNT: usize = 1024;
 /// Maximum guest path length accepted by write_files.
 pub const MAX_WRITE_FILES_PATH_BYTES: usize = u16::MAX as usize;
