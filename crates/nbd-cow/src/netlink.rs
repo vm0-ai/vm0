@@ -599,6 +599,43 @@ mod tests {
         u32::from_ne_bytes(msg[8..12].try_into().unwrap())
     }
 
+    fn nlmsg_error_msg(seq: u32, error: i32) -> Vec<u8> {
+        let mut buf = vec![0u8; 24];
+        buf[0..4].copy_from_slice(&24u32.to_ne_bytes());
+        buf[4..6].copy_from_slice(&NLMSG_ERROR.to_ne_bytes());
+        buf[8..12].copy_from_slice(&seq.to_ne_bytes());
+        buf[16..20].copy_from_slice(&error.to_ne_bytes());
+        buf
+    }
+
+    fn test_genl_socket_pair() -> (GenlSocket, OwnedFd) {
+        let mut fds = [0i32; 2];
+        let ret = unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_DGRAM, 0, fds.as_mut_ptr()) };
+        assert_eq!(ret, 0);
+
+        let recv_fd = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+        let send_fd = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+        (
+            GenlSocket {
+                fd: recv_fd,
+                next_seq: std::cell::Cell::new(1),
+            },
+            send_fd,
+        )
+    }
+
+    fn send_test_nl(peer: &OwnedFd, msg: &[u8]) {
+        let ret = unsafe {
+            libc::send(
+                std::os::unix::io::AsRawFd::as_raw_fd(peer),
+                msg.as_ptr().cast(),
+                msg.len(),
+                0,
+            )
+        };
+        assert_eq!(ret, msg.len() as isize);
+    }
+
     #[test]
     fn random_offset_zero_max() {
         assert_eq!(random_offset(0), 0);
@@ -727,6 +764,20 @@ mod tests {
         let result = parse_genl_ack(&msg, msg.len());
 
         assert!(matches!(result, Err(NbdCowError::Netlink(_))));
+    }
+
+    #[test]
+    fn recv_genl_ack_ignores_stale_sequence() {
+        let (sock, peer) = test_genl_socket_pair();
+        send_test_nl(&peer, &nlmsg_error_msg(1, 0));
+        send_test_nl(&peer, &nlmsg_error_msg(2, -libc::EBUSY));
+
+        let result = recv_genl_ack(&sock, 2);
+
+        assert!(matches!(
+            result,
+            Err(NbdCowError::NetlinkErrno { errno, .. }) if errno == libc::EBUSY
+        ));
     }
 
     #[test]
