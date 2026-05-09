@@ -814,6 +814,18 @@ mod tests {
     }
 
     #[test]
+    fn recv_genl_completion_accepts_reply_after_stale_error_sequence() {
+        let (sock, peer) = test_genl_socket_pair();
+        let reply = build_genl_msg(0x19, NBD_CMD_CONNECT, NBD_GENL_VERSION, &[], 2, false);
+        send_test_nl(&peer, &nlmsg_error_msg(1, -libc::EBUSY));
+        send_test_nl(&peer, &reply);
+
+        let result = recv_genl_completion(&sock, 2);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
     fn parse_nl_msg_error_errno() {
         let mut buf = vec![0u8; 24];
         let len = 24u32;
