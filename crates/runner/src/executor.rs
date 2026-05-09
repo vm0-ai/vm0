@@ -1241,13 +1241,25 @@ fn is_valid_session_id(id: &str) -> bool {
 ///
 /// Priority (lowest → highest):
 ///   1. `environment` (user-provided env, includes expanded vars)
-///   2. `user_timezone` TZ (unless `environment` already sets TZ)
-///   3. System variables (VM0_*, secrets, etc.) — always win
+///   2. scrub runner-owned keys from that copied user env
+///   3. `user_timezone` TZ (unless `environment` already sets TZ)
+///   4. System variables (VM0_*, secrets, etc.) — always win
 fn build_env_json(
     context: &ExecutionContext,
     api_url: &str,
     sandbox_id: &str,
     reuse_result: SandboxReuseResult,
+) -> HashMap<String, String> {
+    let host_env = HostEnv::from_process();
+    build_env_json_with_host_env(context, api_url, sandbox_id, reuse_result, &host_env)
+}
+
+fn build_env_json_with_host_env(
+    context: &ExecutionContext,
+    api_url: &str,
+    sandbox_id: &str,
+    reuse_result: SandboxReuseResult,
+    host_env: &HostEnv,
 ) -> HashMap<String, String> {
     let mut env = HashMap::new();
 
@@ -1257,6 +1269,7 @@ fn build_env_json(
             env.insert(k.clone(), v.clone());
         }
     }
+    scrub_runner_owned_env(&mut env);
 
     // --- User timezone ---
     // Respects explicit TZ in user environment.
@@ -1301,25 +1314,8 @@ fn build_env_json(
     );
 
     // Vercel bypass
-    if let Ok(bypass) = std::env::var("VERCEL_AUTOMATION_BYPASS_SECRET") {
-        env.insert("VERCEL_PROTECTION_BYPASS".into(), bypass);
-    }
-
-    // Pass USE_MOCK_CLAUDE from host environment for testing
-    // (skip if debugNoMockClaude is set in execution context)
-    if let Ok(val) = std::env::var("USE_MOCK_CLAUDE")
-        && !context.debug_no_mock_claude.unwrap_or(false)
-    {
-        env.insert("USE_MOCK_CLAUDE".into(), val);
-    }
-
-    // Pass USE_MOCK_CODEX from host environment for testing
-    // (skip if debugNoMockCodex is set in execution context).
-    // Mirrors the USE_MOCK_CLAUDE path above.
-    if let Ok(val) = std::env::var("USE_MOCK_CODEX")
-        && !context.debug_no_mock_codex.unwrap_or(false)
-    {
-        env.insert("USE_MOCK_CODEX".into(), val);
+    if let Some(bypass) = &host_env.vercel_automation_bypass_secret {
+        env.insert("VERCEL_PROTECTION_BYPASS".into(), bypass.clone());
     }
 
     // Artifacts config (multi-mount).
@@ -1383,6 +1379,97 @@ fn build_env_json(
         env.insert("VM0_SECRET_VALUES".into(), encoded.join(","));
     }
 
+    match effective_cli_framework(&context.cli_agent_type) {
+        EffectiveCliFramework::ClaudeCode => insert_claude_code_env(&mut env, context, host_env),
+        EffectiveCliFramework::Codex => insert_codex_env(&mut env, context, host_env),
+    }
+
+    // Feature flags (JSON-encoded map of flag name → enabled)
+    if let Some(flags) = &context.feature_flags
+        && !flags.is_empty()
+        && let Ok(json) = serde_json::to_string(flags)
+    {
+        env.insert("VM0_FEATURE_FLAGS".into(), json);
+    }
+
+    env
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct HostEnv {
+    vercel_automation_bypass_secret: Option<String>,
+    use_mock_claude: Option<String>,
+    use_mock_codex: Option<String>,
+}
+
+impl HostEnv {
+    fn from_process() -> Self {
+        Self {
+            vercel_automation_bypass_secret: std::env::var("VERCEL_AUTOMATION_BYPASS_SECRET").ok(),
+            use_mock_claude: std::env::var("USE_MOCK_CLAUDE").ok(),
+            use_mock_codex: std::env::var("USE_MOCK_CODEX").ok(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EffectiveCliFramework {
+    ClaudeCode,
+    Codex,
+}
+
+fn effective_cli_framework(cli_agent_type: &str) -> EffectiveCliFramework {
+    if normalized_cli_agent_type(cli_agent_type) == "codex" {
+        EffectiveCliFramework::Codex
+    } else {
+        // Guest-agent currently falls back unknown CLI_AGENT_TYPE values to
+        // Claude Code. Keep runner env gating aligned with that behavior.
+        EffectiveCliFramework::ClaudeCode
+    }
+}
+
+const RUNNER_OWNED_ENV_KEYS: &[&str] = &[
+    "VM0_API_URL",
+    "VM0_RUN_ID",
+    "VM0_API_TOKEN",
+    "VM0_SANDBOX_ID",
+    "VM0_SANDBOX_REUSE_RESULT",
+    "VM0_PROMPT",
+    "VM0_APPEND_SYSTEM_PROMPT",
+    "VM0_WORKING_DIR",
+    "VM0_API_START_TIME",
+    "CLI_AGENT_TYPE",
+    "VM0_ARTIFACTS",
+    "VM0_RESUME_SESSION_ID",
+    "VM0_SECRET_VALUES",
+    "VM0_FEATURE_FLAGS",
+    "USE_MOCK_CLAUDE",
+    "USE_MOCK_CODEX",
+    "VERCEL_PROTECTION_BYPASS",
+    "VM0_DISALLOWED_TOOLS",
+    "VM0_TOOLS",
+    "VM0_SETTINGS",
+];
+
+fn scrub_runner_owned_env(env: &mut HashMap<String, String>) {
+    for key in RUNNER_OWNED_ENV_KEYS {
+        env.remove(*key);
+    }
+}
+
+fn insert_claude_code_env(
+    env: &mut HashMap<String, String>,
+    context: &ExecutionContext,
+    host_env: &HostEnv,
+) {
+    // Pass USE_MOCK_CLAUDE from host environment for testing
+    // (skip if debugNoMockClaude is set in execution context)
+    if let Some(val) = &host_env.use_mock_claude
+        && !context.debug_no_mock_claude.unwrap_or(false)
+    {
+        env.insert("USE_MOCK_CLAUDE".into(), val.clone());
+    }
+
     // Disallowed tools (comma-separated for guest-agent)
     if let Some(tools) = &context.disallowed_tools
         && !tools.is_empty()
@@ -1403,16 +1490,20 @@ fn build_env_json(
     {
         env.insert("VM0_SETTINGS".into(), settings.clone());
     }
+}
 
-    // Feature flags (JSON-encoded map of flag name → enabled)
-    if let Some(flags) = &context.feature_flags
-        && !flags.is_empty()
-        && let Ok(json) = serde_json::to_string(flags)
+fn insert_codex_env(
+    env: &mut HashMap<String, String>,
+    context: &ExecutionContext,
+    host_env: &HostEnv,
+) {
+    // Pass USE_MOCK_CODEX from host environment for testing
+    // (skip if debugNoMockCodex is set in execution context).
+    if let Some(val) = &host_env.use_mock_codex
+        && !context.debug_no_mock_codex.unwrap_or(false)
     {
-        env.insert("VM0_FEATURE_FLAGS".into(), json);
+        env.insert("USE_MOCK_CODEX".into(), val.clone());
     }
-
-    env
 }
 
 fn normalized_cli_agent_type(cli_agent_type: &str) -> &str {
@@ -1498,8 +1589,16 @@ mod tests {
     }
 
     fn build_env_for_test(ctx: &ExecutionContext, api_url: &str) -> HashMap<String, String> {
+        build_env_for_test_with_host_env(ctx, api_url, &HostEnv::default())
+    }
+
+    fn build_env_for_test_with_host_env(
+        ctx: &ExecutionContext,
+        api_url: &str,
+        host_env: &HostEnv,
+    ) -> HashMap<String, String> {
         let sid = SandboxId::new_v4().to_string();
-        build_env_json(ctx, api_url, &sid, SandboxReuseResult::Reused)
+        build_env_json_with_host_env(ctx, api_url, &sid, SandboxReuseResult::Reused, host_env)
     }
 
     fn minimal_context() -> ExecutionContext {
@@ -1569,7 +1668,13 @@ mod tests {
             (SandboxReuseResult::ProfileMismatch, "profileMismatch"),
             (SandboxReuseResult::UnparkFailed, "unparkFailed"),
         ] {
-            let env = build_env_json(&ctx, "http://localhost", &sid, variant);
+            let env = build_env_json_with_host_env(
+                &ctx,
+                "http://localhost",
+                &sid,
+                variant,
+                &HostEnv::default(),
+            );
             assert_eq!(env.get("VM0_SANDBOX_REUSE_RESULT").unwrap(), expected);
         }
     }
@@ -1587,6 +1692,138 @@ mod tests {
         ctx.cli_agent_type = "custom-agent".into();
         let env = build_env_for_test(&ctx, "http://localhost");
         assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "custom-agent");
+    }
+
+    #[test]
+    fn build_env_json_claude_code_gets_only_claude_framework_env() {
+        let mut ctx = minimal_context();
+        ctx.disallowed_tools = Some(vec!["CronCreate".into(), "CronDelete".into()]);
+        ctx.tools = Some(vec!["Bash".into(), "Edit".into()]);
+        ctx.settings = Some(r#"{"hooks":{}}"#.into());
+
+        let env = build_env_for_test_with_host_env(
+            &ctx,
+            "http://localhost",
+            &HostEnv {
+                use_mock_claude: Some("true".into()),
+                use_mock_codex: Some("1".into()),
+                ..HostEnv::default()
+            },
+        );
+
+        assert_eq!(env.get("USE_MOCK_CLAUDE").unwrap(), "true");
+        assert_eq!(
+            env.get("VM0_DISALLOWED_TOOLS").unwrap(),
+            "CronCreate,CronDelete"
+        );
+        assert_eq!(env.get("VM0_TOOLS").unwrap(), "Bash,Edit");
+        assert_eq!(env.get("VM0_SETTINGS").unwrap(), r#"{"hooks":{}}"#);
+        assert!(!env.contains_key("USE_MOCK_CODEX"));
+    }
+
+    #[test]
+    fn build_env_json_codex_gets_only_codex_framework_env() {
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "codex".into();
+        ctx.disallowed_tools = Some(vec!["CronCreate".into(), "CronDelete".into()]);
+        ctx.tools = Some(vec!["Bash".into(), "Edit".into()]);
+        ctx.settings = Some(r#"{"hooks":{}}"#.into());
+
+        let env = build_env_for_test_with_host_env(
+            &ctx,
+            "http://localhost",
+            &HostEnv {
+                use_mock_claude: Some("true".into()),
+                use_mock_codex: Some("1".into()),
+                ..HostEnv::default()
+            },
+        );
+
+        assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "codex");
+        assert_eq!(env.get("USE_MOCK_CODEX").unwrap(), "1");
+        assert!(!env.contains_key("USE_MOCK_CLAUDE"));
+        assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
+        assert!(!env.contains_key("VM0_TOOLS"));
+        assert!(!env.contains_key("VM0_SETTINGS"));
+    }
+
+    #[test]
+    fn build_env_json_unknown_framework_preserves_claude_compatible_env() {
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "custom-agent".into();
+        ctx.disallowed_tools = Some(vec!["CronCreate".into()]);
+        ctx.tools = Some(vec!["Bash".into()]);
+        ctx.settings = Some(r#"{"hooks":{}}"#.into());
+
+        let env = build_env_for_test_with_host_env(
+            &ctx,
+            "http://localhost",
+            &HostEnv {
+                use_mock_claude: Some("true".into()),
+                use_mock_codex: Some("1".into()),
+                ..HostEnv::default()
+            },
+        );
+
+        assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "custom-agent");
+        assert_eq!(env.get("USE_MOCK_CLAUDE").unwrap(), "true");
+        assert_eq!(env.get("VM0_DISALLOWED_TOOLS").unwrap(), "CronCreate");
+        assert_eq!(env.get("VM0_TOOLS").unwrap(), "Bash");
+        assert_eq!(env.get("VM0_SETTINGS").unwrap(), r#"{"hooks":{}}"#);
+        assert!(!env.contains_key("USE_MOCK_CODEX"));
+    }
+
+    #[test]
+    fn build_env_json_scrubs_user_provided_runner_owned_env() {
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "codex".into();
+        ctx.environment = Some(HashMap::from([
+            ("CUSTOM_ENV".into(), "kept".into()),
+            ("VM0_PROMPT".into(), "user prompt".into()),
+            ("VM0_API_TOKEN".into(), "stolen".into()),
+            ("VM0_FEATURE_FLAGS".into(), r#"{"bad":true}"#.into()),
+            ("CLI_AGENT_TYPE".into(), "claude-code".into()),
+            ("USE_MOCK_CLAUDE".into(), "true".into()),
+            ("USE_MOCK_CODEX".into(), "1".into()),
+            ("VERCEL_PROTECTION_BYPASS".into(), "user-bypass".into()),
+            ("VM0_DISALLOWED_TOOLS".into(), "CronCreate".into()),
+            ("VM0_TOOLS".into(), "Bash".into()),
+            ("VM0_SETTINGS".into(), r#"{"hooks":{}}"#.into()),
+        ]));
+
+        let env = build_env_for_test(&ctx, "http://localhost");
+
+        assert_eq!(env.get("CUSTOM_ENV").unwrap(), "kept");
+        assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
+        assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
+        assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "codex");
+        assert!(!env.contains_key("VM0_FEATURE_FLAGS"));
+        assert!(!env.contains_key("USE_MOCK_CLAUDE"));
+        assert!(!env.contains_key("USE_MOCK_CODEX"));
+        assert!(!env.contains_key("VERCEL_PROTECTION_BYPASS"));
+        assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
+        assert!(!env.contains_key("VM0_TOOLS"));
+        assert!(!env.contains_key("VM0_SETTINGS"));
+    }
+
+    #[test]
+    fn build_env_json_codex_keeps_shared_runner_env() {
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "codex".into();
+        ctx.append_system_prompt = Some("Use terse answers.".into());
+        ctx.resume_session = Some(ResumeSession {
+            session_id: "sess-123".into(),
+            session_history: "{}".into(),
+        });
+
+        let env = build_env_for_test(&ctx, "http://localhost");
+
+        assert_eq!(
+            env.get("VM0_APPEND_SYSTEM_PROMPT").unwrap(),
+            "Use terse answers."
+        );
+        assert_eq!(env.get("VM0_RESUME_SESSION_ID").unwrap(), "sess-123");
+        assert_eq!(env.get("VM0_WORKING_DIR").unwrap(), "/workspace");
     }
 
     #[test]
@@ -1831,75 +2068,66 @@ mod tests {
         assert_eq!(env.get("ONLY_ENV").unwrap(), "env-value");
     }
 
-    /// SAFETY: set_var/remove_var are unsafe in edition 2024 due to potential
-    /// data races. These tests are acceptable because cargo test runs each
-    /// test in its own thread by default, and no other tests read this var.
     #[test]
     fn build_env_json_with_mock_claude() {
-        let saved = std::env::var("USE_MOCK_CLAUDE").ok();
-        // SAFETY: no concurrent tests read USE_MOCK_CLAUDE.
-        unsafe { std::env::set_var("USE_MOCK_CLAUDE", "true") };
-
         let ctx = minimal_context();
-        let env = build_env_for_test(&ctx, "http://localhost");
+        let env = build_env_for_test_with_host_env(
+            &ctx,
+            "http://localhost",
+            &HostEnv {
+                use_mock_claude: Some("true".into()),
+                ..HostEnv::default()
+            },
+        );
         assert_eq!(env.get("USE_MOCK_CLAUDE").unwrap(), "true");
-
-        // Restore
-        match saved {
-            Some(v) => unsafe { std::env::set_var("USE_MOCK_CLAUDE", v) },
-            None => unsafe { std::env::remove_var("USE_MOCK_CLAUDE") },
-        }
+        assert!(!env.contains_key("USE_MOCK_CODEX"));
     }
 
     #[test]
     fn build_env_json_mock_claude_suppressed_by_debug_flag() {
-        let saved = std::env::var("USE_MOCK_CLAUDE").ok();
-        // SAFETY: no concurrent tests read USE_MOCK_CLAUDE.
-        unsafe { std::env::set_var("USE_MOCK_CLAUDE", "true") };
-
         let mut ctx = minimal_context();
         ctx.debug_no_mock_claude = Some(true);
-        let env = build_env_for_test(&ctx, "http://localhost");
+        let env = build_env_for_test_with_host_env(
+            &ctx,
+            "http://localhost",
+            &HostEnv {
+                use_mock_claude: Some("true".into()),
+                ..HostEnv::default()
+            },
+        );
         assert!(!env.contains_key("USE_MOCK_CLAUDE"));
-
-        // Restore
-        match saved {
-            Some(v) => unsafe { std::env::set_var("USE_MOCK_CLAUDE", v) },
-            None => unsafe { std::env::remove_var("USE_MOCK_CLAUDE") },
-        }
     }
 
     #[test]
     fn build_env_json_with_mock_codex() {
-        let saved = std::env::var("USE_MOCK_CODEX").ok();
-        // SAFETY: no concurrent tests read USE_MOCK_CODEX.
-        unsafe { std::env::set_var("USE_MOCK_CODEX", "1") };
-
-        let ctx = minimal_context();
-        let env = build_env_for_test(&ctx, "http://localhost");
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "codex".into();
+        let env = build_env_for_test_with_host_env(
+            &ctx,
+            "http://localhost",
+            &HostEnv {
+                use_mock_codex: Some("1".into()),
+                ..HostEnv::default()
+            },
+        );
         assert_eq!(env.get("USE_MOCK_CODEX").unwrap(), "1");
-
-        match saved {
-            Some(v) => unsafe { std::env::set_var("USE_MOCK_CODEX", v) },
-            None => unsafe { std::env::remove_var("USE_MOCK_CODEX") },
-        }
+        assert!(!env.contains_key("USE_MOCK_CLAUDE"));
     }
 
     #[test]
     fn build_env_json_mock_codex_suppressed_by_debug_flag() {
-        let saved = std::env::var("USE_MOCK_CODEX").ok();
-        // SAFETY: no concurrent tests read USE_MOCK_CODEX.
-        unsafe { std::env::set_var("USE_MOCK_CODEX", "1") };
-
         let mut ctx = minimal_context();
+        ctx.cli_agent_type = "codex".into();
         ctx.debug_no_mock_codex = Some(true);
-        let env = build_env_for_test(&ctx, "http://localhost");
+        let env = build_env_for_test_with_host_env(
+            &ctx,
+            "http://localhost",
+            &HostEnv {
+                use_mock_codex: Some("1".into()),
+                ..HostEnv::default()
+            },
+        );
         assert!(!env.contains_key("USE_MOCK_CODEX"));
-
-        match saved {
-            Some(v) => unsafe { std::env::set_var("USE_MOCK_CODEX", v) },
-            None => unsafe { std::env::remove_var("USE_MOCK_CODEX") },
-        }
     }
 
     #[test]
