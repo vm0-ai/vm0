@@ -2,19 +2,47 @@ import { command, computed, state } from "ccstate";
 import type { SendMode } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { updateUserPreference$, userPreferences$ } from "./user-preferences.ts";
 import { sendMode$ } from "../../send-mode.ts";
+import { searchParams$, updateSearchParams$ } from "../../route.ts";
 
 // ---------------------------------------------------------------------------
 // Preferences tab state
 // ---------------------------------------------------------------------------
 
-const internalPreferencesTab$ = state("appearance");
+export type PreferencesTab =
+  | "appearance"
+  | "timezone"
+  | "model-configuration"
+  | "debug";
+
+const DEFAULT_PREFERENCES_TAB: PreferencesTab = "appearance";
+
+function normalizePreferencesTab(value: string | null): PreferencesTab {
+  if (value === "personal-providers") {
+    return "model-configuration";
+  }
+  if (
+    value === "timezone" ||
+    value === "model-configuration" ||
+    value === "debug"
+  ) {
+    return value;
+  }
+  return DEFAULT_PREFERENCES_TAB;
+}
 
 export const preferencesTab$ = computed((get) => {
-  return get(internalPreferencesTab$);
+  return normalizePreferencesTab(get(searchParams$).get("tab"));
 });
 
-export const setPreferencesTab$ = command(({ set }, value: string) => {
-  set(internalPreferencesTab$, value);
+export const setPreferencesTab$ = command(({ get, set }, value: string) => {
+  const tab = normalizePreferencesTab(value);
+  const next = new URLSearchParams(get(searchParams$));
+  if (tab === DEFAULT_PREFERENCES_TAB) {
+    next.delete("tab");
+  } else {
+    next.set("tab", tab);
+  }
+  set(updateSearchParams$, next);
 });
 
 // ---------------------------------------------------------------------------

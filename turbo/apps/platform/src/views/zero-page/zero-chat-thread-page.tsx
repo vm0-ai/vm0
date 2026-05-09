@@ -53,6 +53,10 @@ import {
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  ModelProviderResponse,
+  ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -123,7 +127,13 @@ import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thre
 import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
+import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
 import { composerModelProviders$ } from "../../signals/zero-page/composer-model-providers.ts";
+import { modelFirstPersonalOauthState$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
+import {
+  resolveChatComposerSubmitBlocker,
+  usePersonalOauthConfigurationAction,
+} from "./model-first-oauth-submit-blocker.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
@@ -151,6 +161,8 @@ import {
 } from "../../signals/chat-page/artifact-google-drive-sync.ts";
 import { apiBaseForNavigation$ } from "../../signals/fetch.ts";
 import { createZipBlob } from "../../lib/zip.ts";
+import { PersonalProviderDialog } from "./components/settings/personal-provider-dialog.tsx";
+import { PersonalCodexAuthPasteDialog } from "./components/settings/codex-auth-paste-dialog.tsx";
 
 const CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP =
   "Connect Google Drive to upload artifacts";
@@ -1903,6 +1915,50 @@ function shouldAutoFocusComposer({
   );
 }
 
+interface ChatComposerModelProviders {
+  providers: ModelProviderResponse[];
+  tiers?: Map<string, "personal" | "org">;
+}
+
+interface ChatComposerModelPickerConfig {
+  providers: ModelProviderResponse[];
+  tiers?: Map<string, "personal" | "org">;
+  value: ModelProviderSelection | null;
+  onChange: (value: ModelProviderSelection | null) => void;
+  sessionProviderType: ModelProviderType | null;
+  disabled: boolean;
+  agentDefault: ModelProviderSelection | null;
+  showUseDefault?: boolean;
+}
+
+function resolveChatComposerModelPicker(params: {
+  composerProviders: ChatComposerModelProviders | undefined;
+  modelFirstEnabled: boolean;
+  modelSelection: ModelProviderSelection | null;
+  setModelSelection: (value: ModelProviderSelection | null) => void;
+  sessionProviderType: ModelProviderType | null;
+  disabled: boolean;
+  agentDefault: ModelProviderSelection | null;
+}): ChatComposerModelPickerConfig | undefined {
+  if (
+    !params.composerProviders ||
+    (!params.modelFirstEnabled &&
+      params.composerProviders.providers.length === 0)
+  ) {
+    return undefined;
+  }
+  return {
+    providers: params.composerProviders.providers,
+    tiers: params.composerProviders.tiers,
+    value: params.modelSelection,
+    onChange: params.setModelSelection,
+    sessionProviderType: params.sessionProviderType,
+    disabled: params.disabled,
+    agentDefault: params.agentDefault,
+    showUseDefault: !params.modelFirstEnabled,
+  };
+}
+
 function ChatThreadComposer({
   thread,
   autoFocus: autoFocusProp = true,
@@ -1948,6 +2004,27 @@ function ChatThreadComposer({
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const queueWhileSending = canQueueMessage({
     sending,
+  });
+  const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
+  const openPersonalOauthConfiguration =
+    usePersonalOauthConfigurationAction(pageSignal);
+
+  const modelPicker = resolveChatComposerModelPicker({
+    composerProviders,
+    modelFirstEnabled,
+    modelSelection,
+    setModelSelection,
+    sessionProviderType: threadData?.latestSessionProviderType ?? null,
+    // Lock as soon as the thread has a user message — provider must stay
+    // consistent within a session to maintain continuity.
+    disabled: hasUserMessages,
+    agentDefault: agentModelDefault,
+  });
+  const submitBlockerProps = resolveChatComposerSubmitBlocker({
+    state: modelFirstOauthState,
+    modelSelection,
+    agentModelDefault,
+    onAction: openPersonalOauthConfiguration,
   });
 
   const handleInputChange = (text: string) => {
@@ -2006,26 +2083,11 @@ function ChatThreadComposer({
             setComposerFileInput$={thread.setComposerFileInput$}
             setInputRef={setInputRef}
             actionsLoading={skeletonVisible}
-            modelPicker={
-              composerProviders &&
-              (modelFirstEnabled || composerProviders.providers.length > 0)
-                ? {
-                    providers: composerProviders.providers,
-                    tiers: composerProviders.tiers,
-                    value: modelSelection,
-                    onChange: setModelSelection,
-                    sessionProviderType:
-                      threadData?.latestSessionProviderType ?? null,
-                    // Lock as soon as the thread has a user message — provider
-                    // must stay consistent within a session to maintain
-                    // continuity.
-                    disabled: hasUserMessages,
-                    agentDefault: agentModelDefault,
-                    showUseDefault: !modelFirstEnabled,
-                  }
-                : undefined
-            }
+            modelPicker={modelPicker}
+            submitBlocker={submitBlockerProps}
           />
+          <PersonalProviderDialog />
+          <PersonalCodexAuthPasteDialog />
         </div>
       </div>
     </footer>

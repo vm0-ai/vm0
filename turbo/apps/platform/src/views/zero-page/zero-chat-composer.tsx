@@ -10,6 +10,7 @@ import {
 } from "ccstate-react";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
+  IconAlertTriangle,
   IconArrowUp,
   IconLoader2,
   IconMicrophone,
@@ -215,6 +216,11 @@ interface ZeroChatComposerProps {
     agentDefault?: ModelProviderSelection | null;
     /** Hide the "Use default" row in compact chat pickers. */
     showUseDefault?: boolean;
+  };
+  submitBlocker?: {
+    message: string;
+    actionLabel: string;
+    onAction: () => void;
   };
 }
 
@@ -833,6 +839,33 @@ function resolveKeyboardSendAction({
   return sending ? "queue" : "send";
 }
 
+function ModelConfigurationWarning({
+  blocker,
+}: {
+  blocker: NonNullable<ZeroChatComposerProps["submitBlocker"]>;
+}) {
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={blocker.onAction}
+            aria-label={`${blocker.actionLabel}: ${blocker.message}`}
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-amber-600 transition-colors hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
+          >
+            <IconAlertTriangle size={15} stroke={1.75} />
+            <span className="hidden sm:inline">{blocker.actionLabel}</span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-xs text-xs leading-relaxed">
+          {blocker.message}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main composer
 // ---------------------------------------------------------------------------
@@ -855,6 +888,7 @@ export function ZeroChatComposer({
   onDraftChange,
   actionsLoading = false,
   modelPicker,
+  submitBlocker,
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
   const setShowAddDialog = useSet(setShowAddDialog$);
@@ -892,6 +926,7 @@ export function ZeroChatComposer({
     input,
     visibleAttachmentCount: visibleAttachments.length,
   });
+  const canSubmit = canSend && !submitBlocker;
 
   // File upload handlers (paste / drag-drop)
   const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -1087,7 +1122,7 @@ export function ZeroChatComposer({
   };
 
   const sendAction = resolveKeyboardSendAction({
-    canSend,
+    canSend: canSubmit,
     sending,
     queueWhileSending,
     hasQueueHandler: onQueue !== undefined,
@@ -1113,6 +1148,9 @@ export function ZeroChatComposer({
   // Routes a button click to the queue path while the current thread is sending,
   // otherwise to the normal send path.
   const handleButtonSend = () => {
+    if (submitBlocker) {
+      return;
+    }
     if (sending && queueWhileSending && onQueue) {
       onQueue(input.trim());
     } else {
@@ -1291,6 +1329,9 @@ export function ZeroChatComposer({
                   />
                 ) : (
                   <>
+                    {submitBlocker && (
+                      <ModelConfigurationWarning blocker={submitBlocker} />
+                    )}
                     {modelPicker && (
                       <ModelProviderPicker
                         providers={modelPicker.providers}

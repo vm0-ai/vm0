@@ -2,11 +2,10 @@ import { command, computed, state } from "ccstate";
 import {
   zeroPersonalModelProvidersMainContract,
   zeroPersonalModelProvidersByTypeContract,
-  zeroPersonalModelProvidersDefaultContract,
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import type {
-  UpsertModelProviderRequest,
   ModelProviderType,
+  UpsertModelProviderRequest,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
@@ -52,27 +51,6 @@ export const createPersonalModelProvider$ = command(
     });
 
     return result.body;
-  },
-);
-
-/**
- * Set a personal model provider as the user's default.
- */
-export const setDefaultPersonalModelProvider$ = command(
-  async ({ get, set }, type: ModelProviderType, _signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroPersonalModelProvidersDefaultContract);
-    await accept(
-      client.setDefault({
-        params: { type },
-        fetchOptions: { signal: _signal },
-      }),
-      [200],
-    );
-
-    set(internalReloadPersonalModelProviders$, (x) => {
-      return x + 1;
-    });
   },
 );
 

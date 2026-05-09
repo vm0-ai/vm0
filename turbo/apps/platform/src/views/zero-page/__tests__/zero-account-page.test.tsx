@@ -15,6 +15,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { searchParams$ } from "../../../signals/route.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -28,8 +29,8 @@ function mockPreferencesAPI(
   });
 }
 
-function renderPreferencesPage() {
-  detachedSetupPage({ context, path: "/settings" });
+function renderPreferencesPage(path = "/settings") {
+  detachedSetupPage({ context, path });
 }
 
 function makeDeferred() {
@@ -87,6 +88,20 @@ describe("zero-account-page - send mode display", () => {
 });
 
 describe("zero-account-page - tab switching", () => {
+  it("opens the tab from the tab search param", async () => {
+    mockPreferencesAPI({
+      timezone: "Etc/UTC",
+      pinnedAgentIds: [],
+      sendMode: "enter",
+    });
+    await renderPreferencesPage("/settings?tab=timezone");
+
+    await waitFor(() => {
+      expect(screen.getByText("Time zone")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Theme")).not.toBeInTheDocument();
+  });
+
   it("switches to timezone tab when clicking Time Zone (PREF-D-004)", async () => {
     mockPreferencesAPI({
       timezone: "Etc/UTC",
@@ -104,7 +119,27 @@ describe("zero-account-page - tab switching", () => {
     await waitFor(() => {
       expect(screen.getByText("Time zone")).toBeInTheDocument();
     });
+    expect(context.store.get(searchParams$).get("tab")).toBe("timezone");
     expect(screen.queryByText("Theme")).not.toBeInTheDocument();
+  });
+
+  it("removes the tab search param when switching back to Appearance", async () => {
+    mockPreferencesAPI({
+      timezone: "Etc/UTC",
+      pinnedAgentIds: [],
+      sendMode: "enter",
+    });
+    await renderPreferencesPage("/settings?tab=timezone");
+
+    await waitFor(() => {
+      expect(screen.getByText("Time zone")).toBeInTheDocument();
+    });
+    click(screen.getByText("Appearance"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Theme")).toBeInTheDocument();
+    });
+    expect(context.store.get(searchParams$).has("tab")).toBeFalsy();
   });
 });
 

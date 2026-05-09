@@ -78,6 +78,13 @@ import {
   typewriterDisplayed$,
   typewriterRef$,
 } from "../../signals/view-component-state.ts";
+import { modelFirstPersonalOauthState$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
+import {
+  resolveChatComposerSubmitBlocker,
+  usePersonalOauthConfigurationAction,
+} from "./model-first-oauth-submit-blocker.ts";
+import { PersonalProviderDialog } from "./components/settings/personal-provider-dialog.tsx";
+import { PersonalCodexAuthPasteDialog } from "./components/settings/codex-auth-paste-dialog.tsx";
 
 function getTagline(
   agentName: string,
@@ -482,6 +489,9 @@ export function AgentChatPage() {
   const resetModelSelection = useSet(resetChatPageModelSelection$);
   const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
   const agentModelDefault = useLastResolved(chatPageAgentModelDefault$) ?? null;
+  const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
+  const openPersonalOauthConfiguration =
+    usePersonalOauthConfigurationAction(pageSignal);
 
   const handleSendMessage = (message: string) => {
     if (!currentChatAgentId) {
@@ -524,6 +534,13 @@ export function AgentChatPage() {
     handleSendMessage(text);
     resetModelSelection();
   };
+
+  const submitBlockerProps = resolveChatComposerSubmitBlocker({
+    state: modelFirstOauthState,
+    modelSelection,
+    agentModelDefault,
+    onAction: openPersonalOauthConfiguration,
+  });
 
   return (
     <div className="relative flex flex-1 flex-col min-h-0">
@@ -571,11 +588,14 @@ export function AgentChatPage() {
                   }
                 : undefined
             }
+            submitBlocker={submitBlockerProps}
           />
 
           <SuggestedPromptsGrid onSelectPrompt={setInput} />
         </div>
       </main>
+      <PersonalProviderDialog />
+      <PersonalCodexAuthPasteDialog />
       {lightboxUrl && <AttachmentLightbox />}
     </div>
   );

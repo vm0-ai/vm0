@@ -28,6 +28,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   preferencesTab$,
   setPreferencesTab$,
+  type PreferencesTab,
   updateSendMode$,
   pendingSendMode$,
   captureNetworkBodiesRemaining$,
@@ -225,12 +226,33 @@ function CaptureNetworkBodiesSettings() {
   );
 }
 
+function resolveVisiblePreferencesTab(
+  tab: PreferencesTab,
+  {
+    showDebug,
+    showModelConfiguration,
+  }: { showDebug: boolean; showModelConfiguration: boolean },
+): PreferencesTab {
+  if (tab === "debug" && !showDebug) {
+    return "appearance";
+  }
+  if (tab === "model-configuration" && !showModelConfiguration) {
+    return "appearance";
+  }
+  return tab;
+}
+
 export function ZeroPreferencesPage() {
   const features = useLastResolved(featureSwitch$);
   const showDebug = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
-  const showPersonal =
-    features?.[FeatureSwitchKey.PersonalModelProvider] ?? false;
+  const showModelConfiguration =
+    (features?.[FeatureSwitchKey.PersonalModelProvider] ?? false) ||
+    (features?.[FeatureSwitchKey.ModelFirstModelProvider] ?? false);
   const tab = useGet(preferencesTab$);
+  const activeTab = resolveVisiblePreferencesTab(tab, {
+    showDebug,
+    showModelConfiguration,
+  });
   const setTab = useSet(setPreferencesTab$);
 
   return (
@@ -249,7 +271,7 @@ export function ZeroPreferencesPage() {
       <main className="shrink-0 px-4 sm:px-6 pt-3 pb-16">
         <div className="mx-auto max-w-[900px] flex flex-col gap-8">
           <Tabs
-            value={tab}
+            value={activeTab}
             onValueChange={(v) => {
               return setTab(v);
             }}
@@ -267,12 +289,12 @@ export function ZeroPreferencesPage() {
               >
                 Time Zone
               </TabsTrigger>
-              {showPersonal && (
+              {showModelConfiguration && (
                 <TabsTrigger
-                  value="personal-providers"
+                  value="model-configuration"
                   className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
                 >
-                  Model Providers
+                  Personal Models
                 </TabsTrigger>
               )}
               {showDebug && (
@@ -286,17 +308,16 @@ export function ZeroPreferencesPage() {
             </TabsList>
 
             <div className="mt-4">
-              {tab === "appearance" && (
+              {activeTab === "appearance" && (
                 <div className="flex flex-col gap-6">
                   <AppearanceSettings />
                   <SendModeSettings />
                 </div>
               )}
-              {tab === "timezone" && <TimezoneSettings />}
-              {tab === "personal-providers" && showPersonal && (
-                <PersonalProvidersTab />
-              )}
-              {tab === "debug" && showDebug && (
+              {activeTab === "timezone" && <TimezoneSettings />}
+              {activeTab === "model-configuration" &&
+                showModelConfiguration && <PersonalProvidersTab />}
+              {activeTab === "debug" && showDebug && (
                 <div className="flex flex-col gap-6">
                   <CaptureNetworkBodiesSettings />
                 </div>

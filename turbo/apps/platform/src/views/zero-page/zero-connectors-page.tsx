@@ -472,11 +472,12 @@ function AvailableConnectorCard({
           {connector.label}
         </span>
         {isPolling ? (
-          <IconLoader2
-            size={16}
-            stroke={1.5}
-            className="shrink-0 text-muted-foreground animate-spin"
-          />
+          <span
+            className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground"
+            aria-hidden="true"
+          >
+            <IconLoader2 size={16} stroke={1.5} className="animate-spin" />
+          </span>
         ) : (
           <span
             className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground"

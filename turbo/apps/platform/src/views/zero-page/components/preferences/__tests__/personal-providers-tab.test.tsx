@@ -1,25 +1,27 @@
-/**
- * Integration tests for the Personal model providers tab in Preferences.
- * Covers feature switch gating, vm0 exclusion, CodexBeta carryover,
- * and CRUD round-trips against the MSW personal-tier handlers.
- */
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import {
+  zeroPersonalModelProvidersByTypeContract,
+  zeroPersonalModelProvidersMainContract,
+} from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import type {
   ModelProviderResponse,
   ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import { server } from "../../../../../mocks/server.ts";
 import { testContext } from "../../../../../signals/__tests__/test-helpers.ts";
 import {
   detachedSetupPage,
   click,
 } from "../../../../../__tests__/page-helper.ts";
+import { createMockApi } from "../../../../../mocks/msw-contract.ts";
 import { setMockFeatureSwitches } from "../../../../../mocks/handlers/api-feature-switches.helpers.ts";
 import { setMockPersonalModelProviders } from "../../../../../mocks/handlers/api-personal-model-providers.ts";
 import { setMockUserPreferences } from "../../../../../mocks/handlers/api-user-preferences.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockPreferences(): void {
   setMockUserPreferences({
@@ -38,13 +40,21 @@ function makeProvider(
   return {
     id: crypto.randomUUID(),
     type,
-    framework: "claude-code",
+    framework: type === "codex-oauth-token" ? "codex" : "claude-code",
     secretName:
-      type === "claude-code-oauth-token"
-        ? "CLAUDE_CODE_OAUTH_TOKEN"
-        : "ANTHROPIC_API_KEY",
-    authMethod: null,
-    secretNames: null,
+      type === "codex-oauth-token"
+        ? "CHATGPT_ACCESS_TOKEN"
+        : "CLAUDE_CODE_OAUTH_TOKEN",
+    authMethod: type === "codex-oauth-token" ? "oauth" : null,
+    secretNames:
+      type === "codex-oauth-token"
+        ? [
+            "CHATGPT_ACCESS_TOKEN",
+            "CHATGPT_REFRESH_TOKEN",
+            "CHATGPT_ACCOUNT_ID",
+            "CHATGPT_ID_TOKEN",
+          ]
+        : null,
     isDefault: false,
     selectedModel: null,
     createdAt: now,
@@ -55,10 +65,18 @@ function makeProvider(
   };
 }
 
+async function openModelConfiguration() {
+  await waitFor(() => {
+    expect(screen.getByText("Personal Models")).toBeInTheDocument();
+  });
+  click(screen.getByText("Personal Models"));
+}
+
 describe("personal-providers-tab — feature switch gating", () => {
-  it("hides the Model Providers tab when personalModelProvider is off", async () => {
+  it("hides the Personal Models tab when both model provider switches are off", async () => {
     setMockFeatureSwitches({
       [FeatureSwitchKey.PersonalModelProvider]: false,
+      [FeatureSwitchKey.ModelFirstModelProvider]: false,
     });
     mockPreferences();
     detachedSetupPage({ context, path: "/settings" });
@@ -67,10 +85,10 @@ describe("personal-providers-tab — feature switch gating", () => {
       expect(screen.getByText("Time Zone")).toBeInTheDocument();
     });
 
-    expect(screen.queryByText("Model Providers")).not.toBeInTheDocument();
+    expect(screen.queryByText("Personal Models")).not.toBeInTheDocument();
   });
 
-  it("shows the Model Providers tab when personalModelProvider is on", async () => {
+  it("shows the Personal Models tab when personalModelProvider is on", async () => {
     setMockFeatureSwitches({
       [FeatureSwitchKey.PersonalModelProvider]: true,
     });
@@ -78,300 +96,272 @@ describe("personal-providers-tab — feature switch gating", () => {
     detachedSetupPage({ context, path: "/settings" });
 
     await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
+      expect(screen.getByText("Personal Models")).toBeInTheDocument();
+    });
+  });
+
+  it("shows the Personal Models tab when modelFirstModelProvider is on", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.PersonalModelProvider]: false,
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+    mockPreferences();
+    detachedSetupPage({ context, path: "/settings" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Personal Models")).toBeInTheDocument();
     });
   });
 });
 
-describe("personal-providers-tab — empty state and vm0 filter", () => {
-  it("shows 'No providers configured' empty state when list is empty", async () => {
+describe("personal-providers-tab — OAuth-only configuration", () => {
+  it("opens directly from the model-configuration tab search param", async () => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.PersonalModelProvider]: true,
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+      [FeatureSwitchKey.CodexOauthProvider]: true,
     });
     mockPreferences();
     setMockPersonalModelProviders([]);
-    detachedSetupPage({ context, path: "/settings" });
+    detachedSetupPage({ context, path: "/settings?tab=model-configuration" });
 
     await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /Manage OAuth access used when workspace model routes/,
+        ),
+      ).toBeInTheDocument();
     });
-    click(screen.getByText("Model Providers"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Personal model providers")).toBeInTheDocument();
-    });
-    expect(screen.getByText("No providers configured")).toBeInTheDocument();
+    expect(screen.getByText("ChatGPT (Codex)")).toBeInTheDocument();
   });
 
-  it("does not list vm0 in the add provider dialog (Epic Decision 4)", async () => {
+  it("renders fixed OAuth actions without default or add-provider UI", async () => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.PersonalModelProvider]: true,
-    });
-    mockPreferences();
-    setMockPersonalModelProviders([]);
-    detachedSetupPage({ context, path: "/settings" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
-    });
-    click(screen.getByText("Model Providers"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("personal-add-provider-button"),
-      ).toBeInTheDocument();
-    });
-    click(screen.getByTestId("personal-add-provider-button"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Add personal model provider"),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.queryByTestId("personal-provider-card-vm0"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("excludes openai-api-key when codex-beta is off (CodexBeta carryover)", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.PersonalModelProvider]: true,
-      [FeatureSwitchKey.CodexBeta]: false,
-    });
-    mockPreferences();
-    setMockPersonalModelProviders([]);
-    detachedSetupPage({ context, path: "/settings" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
-    });
-    click(screen.getByText("Model Providers"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("personal-add-provider-button"),
-      ).toBeInTheDocument();
-    });
-    click(screen.getByTestId("personal-add-provider-button"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Add personal model provider"),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.queryByTestId("personal-provider-card-openai-api-key"),
-    ).not.toBeInTheDocument();
-    // Anthropic should still be selectable.
-    expect(
-      screen.getByTestId("personal-provider-card-anthropic-api-key"),
-    ).toBeInTheDocument();
-  });
-});
-
-describe("personal-providers-tab — provider list rendering", () => {
-  it("renders seeded personal providers as tiles", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.PersonalModelProvider]: true,
-    });
-    mockPreferences();
-    setMockPersonalModelProviders([
-      makeProvider("anthropic-api-key", { isDefault: true }),
-      makeProvider("openai-api-key"),
-    ]);
-    detachedSetupPage({ context, path: "/settings" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
-    });
-    click(screen.getByText("Model Providers"));
-
-    // Wait for the tab content to mount before asserting tile presence.
-    await waitFor(() => {
-      expect(screen.getByText("Personal model providers")).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("personal-provider-tile-anthropic-api-key"),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.getByTestId("personal-provider-tile-openai-api-key"),
-    ).toBeInTheDocument();
-  });
-
-  it("shows the seeded default provider in the personal default selector", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.PersonalModelProvider]: true,
-    });
-    mockPreferences();
-    setMockPersonalModelProviders([
-      makeProvider("anthropic-api-key", { isDefault: true }),
-    ]);
-    detachedSetupPage({ context, path: "/settings" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
-    });
-    click(screen.getByText("Model Providers"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Personal default")).toBeInTheDocument();
-    });
-    // The default selector trigger renders the label of the current default.
-    expect(screen.getByRole("combobox")).toHaveTextContent(/Anthropic/i);
-  });
-});
-
-// ===========================================================================
-// codex-oauth-token paste flow on personal scope (#12024)
-//
-// Mirrors the org-side coverage in zero-page/__tests__/
-// org-add-provider-dialog-codex.test.tsx. Verifies:
-// - The Codex card is gated on FeatureSwitchKey.CodexOauthProvider
-// - Clicking the Codex card opens the paste dialog (not the generic form)
-// - The stale-provider banner appears when needsReconnect=true
-// - Banner button opens the paste dialog in reconnect mode
-// ===========================================================================
-
-describe("personal-providers-tab — codex paste flow", () => {
-  function makeStaleCodexProvider(): ModelProviderResponse {
-    const now = new Date().toISOString();
-    return {
-      id: "00000000-0000-4000-a000-000000000020",
-      type: "codex-oauth-token",
-      framework: "codex",
-      secretName: "CHATGPT_ACCESS_TOKEN",
-      authMethod: "auth_json",
-      secretNames: [
-        "CHATGPT_ACCESS_TOKEN",
-        "CHATGPT_REFRESH_TOKEN",
-        "CHATGPT_ACCOUNT_ID",
-        "CHATGPT_ID_TOKEN",
-      ],
-      isDefault: false,
-      selectedModel: null,
-      createdAt: now,
-      updatedAt: now,
-      needsReconnect: true,
-      lastRefreshErrorCode: "refresh_token_expired",
-      workspaceName: "Personal Acme",
-      planType: "plus",
-    };
-  }
-
-  it("hides the Codex card when the codexOauthProvider feature switch is off", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.PersonalModelProvider]: true,
-      // CodexOauthProvider deliberately omitted → defaults to off
-    });
-    mockPreferences();
-    setMockPersonalModelProviders([]);
-    detachedSetupPage({ context, path: "/settings" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
-    });
-    click(screen.getByText("Model Providers"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("personal-add-provider-button"),
-      ).toBeInTheDocument();
-    });
-    click(screen.getByTestId("personal-add-provider-button"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Add personal model provider"),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.queryByTestId("personal-provider-card-codex-oauth-token"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("clicking the Codex card opens the paste dialog (not the generic form)", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.PersonalModelProvider]: true,
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: true,
     });
     mockPreferences();
     setMockPersonalModelProviders([]);
     detachedSetupPage({ context, path: "/settings" });
 
-    await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
-    });
-    click(screen.getByText("Model Providers"));
+    await openModelConfiguration();
 
     await waitFor(() => {
       expect(
-        screen.getByTestId("personal-add-provider-button"),
+        screen.getByText(
+          /Manage OAuth access used when workspace model routes/,
+        ),
       ).toBeInTheDocument();
     });
-    click(screen.getByTestId("personal-add-provider-button"));
-
-    const codexCard = await screen.findByTestId(
-      "personal-provider-card-codex-oauth-token",
+    expect(
+      screen.getByTestId("oauth-card-claude-code-oauth-token"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("oauth-card-codex-oauth-token"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Connect Claude Code OAuth")).toHaveClass(
+      "cursor-pointer",
     );
-    click(codexCard);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("dialog", { name: /Connect Codex/i }),
-      ).toBeInTheDocument();
-    });
-
-    // The textarea is present (paste-modal UX), not a 5-field generic form
-    expect(screen.getByTestId("codex-paste-textarea")).toBeInTheDocument();
+    expect(screen.getByLabelText("Connect ChatGPT (Codex)")).toHaveClass(
+      "cursor-pointer",
+    );
+    expect(screen.getByText("ChatGPT (Codex)")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Connect a ChatGPT account for Codex-backed model routes.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Not connected")).not.toBeInTheDocument();
+    expect(screen.queryByText("Personal default")).not.toBeInTheDocument();
+    expect(screen.queryByText("Add credential")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("No providers configured"),
+    ).not.toBeInTheDocument();
   });
 
-  it("renders the stale-provider banner when a personal codex provider needs reconnection", async () => {
+  it("opens the Claude Code OAuth write dialog without a model selector", async () => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.PersonalModelProvider]: true,
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: true,
     });
     mockPreferences();
-    setMockPersonalModelProviders([makeStaleCodexProvider()]);
+    setMockPersonalModelProviders([]);
     detachedSetupPage({ context, path: "/settings" });
 
-    await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
-    });
-    click(screen.getByText("Model Providers"));
+    await openModelConfiguration();
+    click(await screen.findByLabelText("Connect Claude Code OAuth"));
 
     await waitFor(() => {
       expect(
-        screen.getByText("ChatGPT session needs reconnection"),
+        screen.getByText("Configure Claude Code OAuth"),
       ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Claude OAuth token")).toBeInTheDocument();
+    expect(screen.queryByText("Select model")).not.toBeInTheDocument();
+  });
+
+  it("shows saved OAuth state on the fixed cards", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+      [FeatureSwitchKey.CodexOauthProvider]: true,
+    });
+    mockPreferences();
+    setMockPersonalModelProviders([
+      makeProvider("claude-code-oauth-token"),
+      makeProvider("codex-oauth-token", { workspaceName: "Personal Acme" }),
+    ]);
+    detachedSetupPage({ context, path: "/settings" });
+
+    await openModelConfiguration();
+
+    await waitFor(() => {
+      expect(screen.getByText("ChatGPT (Codex)")).toBeInTheDocument();
     });
     expect(
-      screen.getByText("Your ChatGPT session expired. Re-connect to continue."),
+      within(
+        screen.getByTestId("oauth-card-claude-code-oauth-token"),
+      ).getByText("Connected"),
     ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("oauth-card-codex-oauth-token")).getByText(
+        "Connected",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Connected as Personal Acme"),
+    ).not.toBeInTheDocument();
+    click(
+      within(
+        screen.getByTestId("oauth-card-claude-code-oauth-token"),
+      ).getByLabelText("More options"),
+    );
+    expect(screen.getByText("Replace")).toBeInTheDocument();
+    expect(screen.getByText("Disconnect")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("oauth-card-codex-oauth-token")).getByLabelText(
+        "More options",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Reconnect")).not.toBeInTheDocument();
   });
 
-  it("re-paste auth.json banner button opens the paste dialog in reconnect mode", async () => {
+  it("disconnects ChatGPT (Codex) OAuth from the fixed card", async () => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.PersonalModelProvider]: true,
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: true,
     });
     mockPreferences();
-    setMockPersonalModelProviders([makeStaleCodexProvider()]);
+    setMockPersonalModelProviders([
+      makeProvider("codex-oauth-token", { workspaceName: "Personal Acme" }),
+    ]);
     detachedSetupPage({ context, path: "/settings" });
 
-    await waitFor(() => {
-      expect(screen.getByText("Model Providers")).toBeInTheDocument();
-    });
-    click(screen.getByText("Model Providers"));
-
-    const reconnectBtn = await screen.findByText("Re-paste auth.json");
-    click(reconnectBtn);
+    await openModelConfiguration();
+    click(
+      within(
+        await screen.findByTestId("oauth-card-codex-oauth-token"),
+      ).getByLabelText("More options"),
+    );
+    click(await screen.findByText("Disconnect"));
 
     await waitFor(() => {
       expect(
-        screen.getByRole("dialog", { name: /Re-connect Codex/i }),
+        screen.getByLabelText("Connect ChatGPT (Codex)"),
       ).toBeInTheDocument();
     });
+    expect(screen.queryByLabelText("More options")).not.toBeInTheDocument();
+  });
+
+  it("keeps OAuth cards visible while the provider list refreshes", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+      [FeatureSwitchKey.CodexOauthProvider]: true,
+    });
+    mockPreferences();
+    const provider = makeProvider("codex-oauth-token", {
+      workspaceName: "Personal Acme",
+    });
+    let listRequests = 0;
+    server.use(
+      mockApi(
+        zeroPersonalModelProvidersMainContract.list,
+        ({ respond, never }) => {
+          listRequests++;
+          if (listRequests === 1) {
+            return respond(200, { modelProviders: [provider] });
+          }
+          return never();
+        },
+      ),
+      mockApi(
+        zeroPersonalModelProvidersByTypeContract.delete,
+        ({ respond }) => {
+          return respond(204);
+        },
+      ),
+    );
+
+    detachedSetupPage({ context, path: "/settings?tab=model-configuration" });
+
+    const card = await screen.findByTestId("oauth-card-codex-oauth-token");
+    click(within(card).getByLabelText("More options"));
+    click(await screen.findByText("Disconnect"));
+
+    await waitFor(() => {
+      expect(listRequests).toBeGreaterThan(1);
+    });
+    expect(
+      screen.getByTestId("oauth-card-codex-oauth-token"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("oauth-card-skeleton")).not.toBeInTheDocument();
+  });
+});
+
+describe("personal-providers-tab — ChatGPT (Codex) input flow", () => {
+  it("clicking ChatGPT (Codex) connect opens the auth.json input dialog", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+      [FeatureSwitchKey.CodexOauthProvider]: true,
+    });
+    mockPreferences();
+    setMockPersonalModelProviders([]);
+    detachedSetupPage({ context, path: "/settings" });
+
+    await openModelConfiguration();
+    click(await screen.findByLabelText("Connect ChatGPT (Codex)"));
+
+    await expect(
+      screen.findByTestId("codex-paste-textarea"),
+    ).resolves.toBeInTheDocument();
+  });
+
+  it("shows stale ChatGPT (Codex) OAuth without offering reconnect", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+      [FeatureSwitchKey.CodexOauthProvider]: true,
+    });
+    mockPreferences();
+    setMockPersonalModelProviders([
+      makeProvider("codex-oauth-token", {
+        needsReconnect: true,
+        lastRefreshErrorCode: "refresh_token_expired",
+      }),
+    ]);
+    detachedSetupPage({ context, path: "/settings" });
+
+    await openModelConfiguration();
+    await waitFor(() => {
+      expect(screen.getByText("Attention")).toBeInTheDocument();
+    });
+
+    click(
+      within(screen.getByTestId("oauth-card-codex-oauth-token")).getByLabelText(
+        "More options",
+      ),
+    );
+    expect(screen.getByText("Disconnect")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Your ChatGPT session expired."),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Reconnect")).not.toBeInTheDocument();
   });
 });
