@@ -20,6 +20,7 @@ import {
   formatTelegramPrivateConnectPrompt,
   formatTelegramUserDisplayName,
   getWorkspaceAgentDisplayLabel,
+  isTelegramReplyToBotUsername,
 } from "./shared";
 import { fetchTelegramContext } from "../context";
 import { runAgentForTelegram } from "./run-agent";
@@ -151,6 +152,7 @@ export async function handleTelegramMention(
       userLink.id,
       userLink.vm0UserId,
       composeId,
+      installation.botUsername,
     );
 
   // 9. Fetch context (exclude current message to avoid duplication with prompt)
@@ -224,17 +226,16 @@ async function resolveThreadSession(
   userLinkId: string,
   vm0UserId: string,
   composeId: string,
+  botUsername: string | null,
 ): Promise<{
   rootMessageId: string | undefined;
   existingSessionId: string | undefined;
   lastProcessedMessageId: string | undefined;
 }> {
   let rootMessageId: string | undefined;
-  if (
-    message.reply_to_message?.from?.is_bot &&
-    message.reply_to_message.message_id
-  ) {
-    rootMessageId = String(message.reply_to_message.message_id);
+  const replyToMessage = message.reply_to_message;
+  if (isTelegramReplyToBotUsername(message, botUsername) && replyToMessage) {
+    rootMessageId = String(replyToMessage.message_id);
   }
 
   let existingSessionId: string | undefined;

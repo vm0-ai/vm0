@@ -29,6 +29,7 @@ import {
 import {
   formatTelegramUserDisplayName,
   hasTelegramMessageContextContent,
+  isTelegramReplyToBotUsername,
   storeTelegramMessage,
 } from "../../../../../src/lib/zero/telegram/handlers/shared";
 import { logger } from "../../../../../src/lib/shared/logger";
@@ -164,8 +165,11 @@ export async function POST(
           );
         });
 
-      // Check if reply to bot's message
-      const isReplyToBot = message.reply_to_message?.from?.is_bot === true;
+      // Check if reply to this bot's message
+      const isReplyToBot = isTelegramReplyToBotUsername(
+        message,
+        installation.botUsername,
+      );
 
       if (hasBotMention || isReplyToBot) {
         await handleTelegramMention({ message }, telegramBotId, apiStartTime);
@@ -291,7 +295,7 @@ function isOfficialMentionOrReply(
   message: TelegramHandlerUpdate["message"],
   botUsername: string | null,
 ): boolean {
-  const isReplyToBot = message.reply_to_message?.from?.is_bot === true;
+  const isReplyToBot = isTelegramReplyToBotUsername(message, botUsername);
   if (isReplyToBot) return true;
   if (!botUsername) return false;
 
