@@ -73,6 +73,9 @@ const getSessionInner$ = computed(async (get) => {
     status: 200 as const,
     body: {
       session: serializeVoiceChatSession(session),
+      // Talker payload deferred — see #12463 (port `buildTalkerPayload`).
+      // Web computes these via `buildTalkerPayload(session)`; API currently
+      // returns empty/zero for Stage 2 scoping.
       recentTaskLogs: "",
       finishedTasksFullText: "",
       talkerInstructions: "",
