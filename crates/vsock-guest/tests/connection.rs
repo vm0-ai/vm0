@@ -417,7 +417,7 @@ fn bounded_exec_stdin_writer_exits_when_grandchild_holds_stdin() {
 
     let stdin = vec![b'x'; 8 * 1024 * 1024];
     let command = format!(
-        "python3 -c \"import os,time; p=os.fork(); (os.write(os.open('{}', os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o600), str(p).encode()), os._exit(0)) if p else (os.setsid(), os.dup2(os.open('/dev/null', os.O_WRONLY), 1), os.dup2(os.open('/dev/null', os.O_WRONLY), 2), time.sleep(30))\"",
+        "python3 -c \"import os,signal; p=os.fork(); (os.write(os.open('{}', os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o600), str(p).encode()), os._exit(0)) if p else (os.setsid(), os.dup2(os.open('/dev/null', os.O_WRONLY), 1), os.dup2(os.open('/dev/null', os.O_WRONLY), 2), signal.pause())\"",
         orphan.pid_path()
     );
     let request = bounded_request(&command, &[], Some(stdin.as_slice()));
