@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.21.3](https://github.com/vm0-ai/vm0/compare/api-v1.21.2...api-v1.21.3) (2026-05-09)
+
+
+### Bug Fixes
+
+* route api axiom session queries to sessions token ([#12266](https://github.com/vm0-ai/vm0/issues/12266)) ([4de2fce](https://github.com/vm0-ai/vm0/commit/4de2fce52314c259978e1ddb2a8c81baae8d2abf))
+
 ## [1.21.2](https://github.com/vm0-ai/vm0/compare/api-v1.21.1...api-v1.21.2) (2026-05-09)
 
 

@@ -2556,7 +2556,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.100.16"
+version = "0.100.17"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2770,7 +2770,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "async-trait",
  "base64",
@@ -3675,7 +3675,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "nix",
  "tokio",
@@ -3688,7 +3688,7 @@ version = "0.11.0"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.19"
+version = "0.9.20"
 dependencies = [
  "guest-write-file",
  "tokio",
