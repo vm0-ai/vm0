@@ -110,16 +110,6 @@ async function queryLatestOutputEvent(
   return undefined;
 }
 
-async function queryAllOutputEvents(runId: string): Promise<RunOutputEvent[]> {
-  const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
-  const apl = `['${dataset}']
-| where runId == "${escapeAplString(runId)}"
-| where ${OUTPUT_EVENT_FILTER}
-| order by sequenceNumber asc`;
-
-  return queryAxiom<RunOutputEvent>(apl, FRESH_AXIOM_QUERY_OPTIONS);
-}
-
 async function waitForVisibleOutput(
   runId: string,
   options: RunOutputQueryOptions,
@@ -168,37 +158,6 @@ export async function extractRunOutput(
   return buildRunOutput(event, error);
 }
 
-/**
- * Extract ALL structured run outputs from Axiom (ordered by sequence number).
- *
- * A run may produce multiple output events (e.g. intermediate task
- * notifications followed by a final summary). This returns one RunOutput
- * per output event so callers can post each one individually.
- */
-export async function extractAllRunOutputs(
-  runId: string,
-  error?: string | null,
-  optionsInput?: RunOutputOptionsInput,
-): Promise<RunOutput[]> {
-  const options = normalizeOptions(optionsInput);
-  await waitForVisibleOutput(runId, options);
-
-  const events = (await queryAllOutputEvents(runId)).filter(isOutputEvent);
-
-  if (events.length === 0) {
-    return [
-      {
-        result: null,
-        error: error ?? null,
-      },
-    ];
-  }
-
-  return events.map((event) => {
-    return buildRunOutput(event, error);
-  });
-}
-
 function extractCodexAgentMessageText(
   item: CodexItem | undefined,
 ): string | null {
@@ -241,27 +200,6 @@ function buildRunOutput(
     result,
     error: error ?? null,
   };
-}
-
-/**
- * Get ALL formatted run output texts (one per output event).
- *
- * Convenience wrapper for channels that post each output as a separate message.
- */
-export async function getAllRunOutputTexts(
-  runId: string,
-  optionsInput?: RunOutputOptionsInput,
-): Promise<string[]> {
-  const outputs = await extractAllRunOutputs(runId, undefined, optionsInput);
-  const texts: string[] = [];
-
-  for (const output of outputs) {
-    if (output.result) {
-      texts.push(output.result);
-    }
-  }
-
-  return texts;
 }
 
 /**

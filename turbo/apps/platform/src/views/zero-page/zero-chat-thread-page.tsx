@@ -1958,10 +1958,15 @@ function ChatThreadComposer({
             onCancel={
               allFinishedResolved
                 ? () => {
+                    // Recall any queued pending message back into the draft
+                    // before cancelling so the auto-send hook on the cancel
+                    // callback finds an empty pending and is a no-op. The
+                    // recall is optimistic — the draft repopulates
+                    // synchronously while the server clear races the cancel.
                     detach(
                       (async () => {
                         await recallPendingMessage(rootSignal);
-                        await cancelRun(rootSignal);
+                        await cancelRun(pageSignal);
                       })(),
                       Reason.DomCallback,
                     );

@@ -1873,6 +1873,38 @@ mod tests {
         (handle, started_rx, dropped_rx)
     }
 
+    fn stdout_eof_notifying_log_reader_for_test<R>(
+        id: &str,
+        reader: R,
+    ) -> (
+        tokio::task::JoinHandle<()>,
+        tokio::sync::oneshot::Receiver<()>,
+    )
+    where
+        R: AsyncRead + Unpin + Send + 'static,
+    {
+        let id = id.to_owned();
+        let (eof_tx, eof_rx) = tokio::sync::oneshot::channel();
+        let handle = tokio::spawn(async move {
+            let mut lines = BufReader::new(reader).lines();
+            loop {
+                match lines.next_line().await {
+                    Ok(Some(line)) => {
+                        if !line.is_empty() {
+                            ProcessLogStream::Stdout.log(&id, &line);
+                        }
+                    }
+                    Ok(None) => {
+                        let _ = eof_tx.send(());
+                        break;
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+        (handle, eof_rx)
+    }
+
     fn pid_is_running(pid: u32) -> bool {
         let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
             return false;
@@ -2269,14 +2301,17 @@ mod tests {
         );
 
         drop(stdin);
-        wait_for_state(&state, SandboxState::Stopped).await;
-
-        let result = tokio::time::timeout(
-            Duration::from_millis(50),
-            wait_for_backend_crash(state_tx.subscribe()),
+        let exit_state = tokio::time::timeout(
+            Duration::from_secs(1),
+            wait_for_process_exit(state_tx.subscribe()),
         )
-        .await;
-        assert!(result.is_err(), "crash wait should have timed out");
+        .await
+        .unwrap();
+        assert_eq!(exit_state, SandboxState::Stopped);
+        assert_eq!(
+            SandboxState::from_u8(state.load(Ordering::Acquire)),
+            SandboxState::Stopped
+        );
 
         handle.wait().await;
     }
@@ -2313,16 +2348,6 @@ mod tests {
             SandboxState::Stopped
         );
 
-        let result = tokio::time::timeout(
-            Duration::from_millis(50),
-            wait_for_backend_crash(state_tx.subscribe()),
-        )
-        .await;
-        assert!(
-            result.is_err(),
-            "startup exit should not be classified as crash"
-        );
-
         handle.wait().await;
     }
 
@@ -2330,31 +2355,35 @@ mod tests {
     async fn stdout_eof_does_not_mark_running_process_crashed() {
         let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
         let state_publish_lock = Arc::new(Mutex::new(()));
-        let (state_tx, _state_rx) = watch::channel(SandboxState::Running);
+        let (state_tx, state_rx) = watch::channel(SandboxState::Running);
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
-        let child = stdout_closing_process();
-
-        let handle = monitor_process(
-            "test-sandbox",
-            child,
-            Arc::clone(&state),
-            Arc::clone(&state_publish_lock),
-            state_tx.clone(),
+        let mut child = stdout_closing_process();
+        let stdout = child.stdout.take().expect("stdout should be piped");
+        let stderr = child.stderr.take().map(|stderr| {
+            spawn_process_log_reader("test-sandbox", ProcessLogStream::Stderr, stderr)
+        });
+        let (stdout_reader, stdout_eof_rx) =
+            stdout_eof_notifying_log_reader_for_test("test-sandbox", stdout);
+        let readers = ProcessLogReaders::new_for_test(Some(stdout_reader), stderr);
+        let context = ProcessMonitorContext {
+            state: Arc::clone(&state),
+            state_publish_lock: Arc::clone(&state_publish_lock),
+            state_tx: state_tx.clone(),
             guest,
-            CancellationToken::new(),
-        );
+            runtime_cancel: CancellationToken::new(),
+        };
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        let handle = monitor_process_with_log_readers("test-sandbox", child, context, readers);
+
+        tokio::time::timeout(Duration::from_secs(1), stdout_eof_rx)
+            .await
+            .expect("stdout reader should observe EOF")
+            .expect("stdout EOF notification sender should stay alive");
         assert_eq!(
             SandboxState::from_u8(state.load(Ordering::Acquire)),
             SandboxState::Running
         );
-        let result = tokio::time::timeout(
-            Duration::from_millis(50),
-            wait_for_backend_crash(state_tx.subscribe()),
-        )
-        .await;
-        assert!(result.is_err(), "stdout EOF alone must not signal crash");
+        assert_eq!(*state_rx.borrow(), SandboxState::Running);
 
         publish_process_state(
             &state,

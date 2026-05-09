@@ -31,6 +31,7 @@ import {
   modelProviderFrameworkSchema,
   type ModelProviderType,
 } from "../model-providers";
+import { findMatchingPermissions } from "@vm0/connectors/firewall-rule-matcher";
 
 describe("model-first canonical catalog", () => {
   it("exposes the curated flat model list only", () => {
@@ -494,20 +495,43 @@ describe("codex-oauth-token codex provider", () => {
     });
   });
 
-  it("firewall allows the known ChatGPT Codex backend routes", () => {
+  it("firewall allows the entire ChatGPT Codex backend subtree under GET/POST", () => {
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
     expect(config.apis[0]!.permissions).toEqual([
       {
         name: "codex:api",
-        rules: [
-          "GET /models",
-          "GET /responses",
-          "POST /responses",
-          "POST /analytics-events/events",
-        ],
+        rules: ["GET /{path*}", "POST /{path*}"],
       },
     ]);
   });
+
+  it.each([
+    ["GET", "/models"],
+    ["GET", "/responses"],
+    ["POST", "/responses"],
+    ["POST", "/responses/compact"],
+    ["GET", "/responses/abc123"],
+    ["POST", "/analytics-events/events"],
+  ] as const)("codex:api permission matches %s %s", (method, path) => {
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
+    const fwConfig = { name: config.name, apis: [config.apis[0]!] };
+    expect(findMatchingPermissions(method, path, fwConfig)).toEqual([
+      "codex:api",
+    ]);
+  });
+
+  it.each([
+    ["DELETE", "/responses/abc123"],
+    ["PUT", "/responses/abc123"],
+    ["PATCH", "/settings"],
+  ] as const)(
+    "codex:api permission rejects %s %s (method narrowing)",
+    (method, path) => {
+      const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
+      const fwConfig = { name: config.name, apis: [config.apis[0]!] };
+      expect(findMatchingPermissions(method, path, fwConfig)).toEqual([]);
+    },
+  );
 
   it("firewall denies auth.openai.com via defaultPolicies + permission rule", () => {
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
@@ -519,6 +543,26 @@ describe("codex-oauth-token codex provider", () => {
       { name: "denied", rules: ["ANY /*"] },
     ]);
   });
+
+  it.each([
+    ["GET", "/"],
+    ["POST", "/oauth/token"],
+    ["DELETE", "/sessions/abc"],
+  ] as const)(
+    "auth.openai.com matches no allow permission for %s %s",
+    (method, path) => {
+      // The `ANY /*` rule on apis[1] is a literal-segment match on "*" and
+      // never matches real traffic — that's intentional. The deny is
+      // delivered by defaultPolicies.unknownPolicy: "deny" (asserted just
+      // above), so traffic to auth.openai.com must NOT resolve to any
+      // permission name on apis[1]. This pins behavior so a future edit
+      // to `apis[1].permissions` (e.g. adding an allow rule) breaks the
+      // test rather than silently widening auth.openai.com.
+      const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
+      const fwConfig = { name: config.name, apis: [config.apis[1]!] };
+      expect(findMatchingPermissions(method, path, fwConfig)).toEqual([]);
+    },
+  );
 
   it("CHATGPT_ACCESS_TOKEN placeholder is an opaque marker (not a JWT)", () => {
     // Codex doesn't read this env var in ChatGPT mode — it reads the real

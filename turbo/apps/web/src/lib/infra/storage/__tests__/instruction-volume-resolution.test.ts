@@ -49,6 +49,7 @@ describe("Instruction Volume Resolution", () => {
     expect(manifest.storages[0]!.vasStorageName).toBe(storageName);
     expect(manifest.storages[0]!.vasVersionId).toBe(versionId);
     expect(manifest.storages[0]!.mountPath).toBe("/home/user/.claude");
+    expect(manifest.storages[0]!.instructionsTargetFilename).toBe("CLAUDE.md");
   });
 
   it("mounts instructions using the runtime framework override", async () => {
@@ -72,5 +73,6 @@ describe("Instruction Volume Resolution", () => {
     expect(manifest.storages[0]!.vasStorageName).toBe(storageName);
     expect(manifest.storages[0]!.vasVersionId).toBe(versionId);
     expect(manifest.storages[0]!.mountPath).toBe("/home/user/.codex");
+    expect(manifest.storages[0]!.instructionsTargetFilename).toBe("AGENTS.md");
   });
 });

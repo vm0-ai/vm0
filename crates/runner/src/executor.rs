@@ -1021,6 +1021,7 @@ fn filter_unchanged_storages(
                 } else {
                     s.archive_url.clone()
                 },
+                instructions_target_filename: s.instructions_target_filename.clone(),
                 cached: unchanged,
                 ..s.clone()
             }
@@ -1443,6 +1444,7 @@ mod tests {
             archive_url: archive_url.into(),
             vas_storage_name: name.into(),
             vas_version_id: version.into(),
+            instructions_target_filename: None,
         }
     }
 
@@ -3324,6 +3326,7 @@ mod tests {
         GuestDownloadStorageEntry {
             mount_path: mount_path.into(),
             archive_url: url.map(str::to_string),
+            instructions_target_filename: None,
             cached: false,
             vas_storage_name: name.into(),
             vas_version_id: ver.into(),

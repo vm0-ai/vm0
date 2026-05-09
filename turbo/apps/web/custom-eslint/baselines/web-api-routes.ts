@@ -4,8 +4,20 @@
  *
  * When a route is migrated out of apps/web, remove its entry here as part of
  * the same change. Do not add new entries without an intentional exception.
+ *
+ * Intentional exception (Epic #12128, Plan D): the voice-chat realtime
+ * billing surface lives in apps/web because the relay design is killed by
+ * Vercel's lack of WebSocket-upgrade support. The browser self-reports
+ * `response.done` and `transcription.completed` usage to these
+ * Vercel-served endpoints; apps/api would not be a viable home today.
  */
 export const WEB_API_ROUTE_BASELINE = [
+  "app/api/zero/voice-chat/[id]/usage/route.ts",
+  "app/api/zero/voice-chat/[id]/session-started/route.ts",
+  "app/api/zero/voice-chat/[id]/session-ended/route.ts",
+  "app/api/zero/voice-chat-candidate/[id]/usage/route.ts",
+  "app/api/zero/voice-chat-candidate/[id]/session-started/route.ts",
+  "app/api/zero/voice-chat-candidate/[id]/session-ended/route.ts",
   "app/api/agent/checkpoints/[id]/route.ts",
   "app/api/agent/composes/[id]/instructions/route.ts",
   "app/api/agent/composes/[id]/metadata/route.ts",

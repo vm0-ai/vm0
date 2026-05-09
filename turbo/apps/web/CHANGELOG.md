@@ -1,5 +1,28 @@
 # Changelog
 
+## [12.345.0](https://github.com/vm0-ai/vm0/compare/web-v12.344.2...web-v12.345.0) (2026-05-08)
+
+
+### Features
+
+* **platform:** keep Send visible while typing during a run, recall queue on Stop ([#12229](https://github.com/vm0-ai/vm0/issues/12229)) ([6b96766](https://github.com/vm0-ai/vm0/commit/6b96766998e30d916a16a212076b9d1c8a90d757))
+* **voice-chat:** browser-reported realtime usage with session lifecycle (plan d) ([#12227](https://github.com/vm0-ai/vm0/issues/12227)) ([fa94d09](https://github.com/vm0-ai/vm0/commit/fa94d09b5e8b3cbcf9dc4435dbb5aec7e99fa674))
+
+
+### Bug Fixes
+
+* mount zero resources for resolved framework ([#12223](https://github.com/vm0-ai/vm0/issues/12223)) ([18440d8](https://github.com/vm0-ai/vm0/commit/18440d806fd3c554093fe72dc100b7c335fa4932))
+* **slack:** post only the latest agent output (closes [#12234](https://github.com/vm0-ai/vm0/issues/12234)) ([#12236](https://github.com/vm0-ai/vm0/issues/12236)) ([b287cdd](https://github.com/vm0-ai/vm0/commit/b287cdd22e95c4ac05bc6b51c67bd94ee065659b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.3.0
+    * @vm0/core bumped to 8.264.1
+    * @vm0/db bumped to 1.2.1
+
 ## [12.344.2](https://github.com/vm0-ai/vm0/compare/web-v12.344.1...web-v12.344.2) (2026-05-08)
 
 

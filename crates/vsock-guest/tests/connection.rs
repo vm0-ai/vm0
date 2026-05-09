@@ -748,6 +748,7 @@ fn bounded_exec_slow_request_does_not_block_fast_request() {
 fn slow_exec_does_not_block_fast_exec() {
     use std::os::unix::net::UnixStream as StdUnixStream;
 
+    let slow_pid_path = unique_pid_path("slow-exec");
     let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
 
     // Run handle_connection in a background thread (it blocks on read)
@@ -762,13 +763,18 @@ fn slow_exec_does_not_block_fast_exec() {
     let mut body = vec![0u8; body_len];
     host_stream.read_exact(&mut body).unwrap();
 
-    // Send a slow exec (sleep 5) — we won't wait for its result
-    let slow_payload = vsock_proto::encode_exec(5000, "sleep 5", &[], false);
+    // Send a slow exec and wait until its child shell has actually started.
+    // This keeps the ordering deterministic without a fixed timing delay.
+    let slow_command = format!("echo $$ > '{}'; sleep 5", slow_pid_path.as_str());
+    let slow_payload = vsock_proto::encode_exec(5000, &slow_command, &[], false);
     let slow_msg = vsock_proto::encode(MSG_EXEC, 1, &slow_payload).unwrap();
     host_stream.write_all(&slow_msg).unwrap();
 
-    // Give it a moment to start processing
-    thread::sleep(Duration::from_millis(100));
+    let slow_pid = read_pid_file(slow_pid_path.as_str());
+    assert!(
+        pid_alive(slow_pid),
+        "slow exec should still be running before fast exec"
+    );
 
     // Send a fast exec — this should return quickly despite the slow one
     let fast_payload = vsock_proto::encode_exec(5000, "echo ok", &[], false);
