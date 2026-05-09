@@ -615,6 +615,20 @@ mod tests {
 
         let recv_fd = unsafe { OwnedFd::from_raw_fd(fds[0]) };
         let send_fd = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+        let timeout = libc::timeval {
+            tv_sec: 1,
+            tv_usec: 0,
+        };
+        let ret = unsafe {
+            libc::setsockopt(
+                std::os::unix::io::AsRawFd::as_raw_fd(&recv_fd),
+                libc::SOL_SOCKET,
+                libc::SO_RCVTIMEO,
+                std::ptr::from_ref(&timeout).cast(),
+                std::mem::size_of::<libc::timeval>() as u32,
+            )
+        };
+        assert_eq!(ret, 0);
         (
             GenlSocket {
                 fd: recv_fd,
