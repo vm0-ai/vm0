@@ -122,9 +122,6 @@ export const zeroConnectorsRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroConnectorsByTypeContract.get,
-    handler: shadowCompareRoute({
-      route: zeroConnectorsByTypeContract.get,
-      handler: authRoute(connectorReadAuth, getConnectorByTypeInner$),
-    }),
+    handler: authRoute(connectorReadAuth, getConnectorByTypeInner$),
   },
 ];
