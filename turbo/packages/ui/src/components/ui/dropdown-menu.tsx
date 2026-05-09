@@ -39,7 +39,7 @@ const DropdownMenuItem = React.forwardRef<
     <DropdownMenuPrimitive.Item
       ref={ref}
       className={cn(
-        "relative flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 max-md:py-2.5 text-sm max-md:text-[16px] outline-none transition-colors focus:bg-accent hover:bg-accent data-[highlighted]:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+        "relative flex cursor-default select-none items-center gap-2 rounded-md max-md:rounded-lg px-2 py-1.5 max-md:py-2.5 text-sm max-md:text-[16px] outline-none transition-colors focus:bg-accent hover:bg-accent data-[highlighted]:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
         className,
       )}
       {...props}
@@ -70,7 +70,7 @@ const DropdownMenuSubTrigger = React.forwardRef<
     <DropdownMenuPrimitive.SubTrigger
       ref={ref}
       className={cn(
-        "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 max-md:py-2.5 text-sm max-md:text-[16px] outline-none focus:bg-accent hover:bg-accent data-[highlighted]:bg-accent data-[state=open]:bg-accent [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+        "flex cursor-default select-none items-center gap-2 rounded-md max-md:rounded-lg px-2 py-1.5 max-md:py-2.5 text-sm max-md:text-[16px] outline-none focus:bg-accent hover:bg-accent data-[highlighted]:bg-accent data-[state=open]:bg-accent [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
         className,
       )}
       {...props}

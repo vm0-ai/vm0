@@ -141,7 +141,7 @@ export function ZeroChatListPage() {
         {/* Always-visible search bar — desktop / non-redesign mobile only.
             Mobile-native sends the search icon to the dedicated /search page. */}
         {!mobileRedesign && (
-          <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 h-10">
+          <div className="flex items-center gap-2 rounded-lg max-md:rounded-xl bg-muted/50 px-3 h-10">
             <IconSearch
               size={16}
               stroke={2}
@@ -184,7 +184,7 @@ export function ZeroChatListPage() {
               onNewChat(event.altKey ? "sidebar" : "main");
             }}
             disabled={!currentChatAgentId || creating}
-            className="flex w-full h-10 items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+            className="flex w-full h-10 items-center justify-center gap-2 rounded-lg max-md:rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
             <IconPlus size={16} stroke={2} />
             New chat
