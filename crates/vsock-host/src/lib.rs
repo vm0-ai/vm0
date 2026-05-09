@@ -1326,6 +1326,9 @@ impl VsockHost {
     /// This is request/response scoped like [`exec`](Self::exec), but it
     /// returns structured termination, bounded final buffers, and optional
     /// request-scoped stdout/stderr stream events.
+    /// [`BoundedExecOutput::Discarded`] means final capture was disabled for
+    /// that stream; `diagnostic` carries bounded-exec setup/wait details and is
+    /// independent of stdout/stderr capture.
     pub async fn bounded_exec(
         &self,
         request: &BoundedExecRequest<'_>,
