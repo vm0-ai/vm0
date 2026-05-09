@@ -194,7 +194,12 @@ export const deleteUsageInsightFixture$ = command(
 export const seedCompose$ = command(
   async (
     { set },
-    args: { orgId: string; userId: string; name?: string },
+    args: {
+      orgId: string;
+      userId: string;
+      name?: string;
+      displayName?: string | null;
+    },
     signal: AbortSignal,
   ): Promise<ComposeResult> => {
     const db = set(writeDb$);
@@ -214,6 +219,7 @@ export const seedCompose$ = command(
         orgId: args.orgId,
         owner: args.userId,
         name,
+        displayName: args.displayName ?? null,
       })
       .onConflictDoNothing();
     signal.throwIfAborted();

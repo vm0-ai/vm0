@@ -84,10 +84,7 @@ const searchLogsInner$ = computed(async (get) => {
 export const zeroLogsRoutes: readonly RouteEntry[] = [
   {
     route: logsListContract.list,
-    handler: shadowCompareRoute({
-      route: logsListContract.list,
-      handler: authRoute(runReadAuth, getLogsListInner$),
-    }),
+    handler: authRoute(runReadAuth, getLogsListInner$),
   },
   {
     route: logsByIdContract.getById,
