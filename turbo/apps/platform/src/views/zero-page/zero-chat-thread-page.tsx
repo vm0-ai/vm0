@@ -2114,7 +2114,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
             <div className="flex flex-col gap-1.5 h-5 justify-center">
               <div className="h-px w-full bg-border/40" />
               <div className="flex items-center gap-2">
-                <p className="text-[11px] max-md:text-[14px] italic text-muted-foreground/40 font-serif shrink-0">
+                <p className="text-xs max-md:text-[14px] italic text-muted-foreground/40 font-serif shrink-0">
                   {donePhrase}
                 </p>
                 <div className="h-px flex-1 bg-border/40" />
