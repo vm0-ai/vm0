@@ -6,6 +6,7 @@ import { orgCache } from "@vm0/db/schema/org-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
 
+import { env } from "../../lib/env";
 import { db$ } from "../external/db";
 import { listConversations } from "../../lib/slack-client";
 import { decryptSecretValue } from "./crypto.utils";
@@ -38,6 +39,38 @@ function hasAllBotScopes(storedScopes: string | null): boolean {
   return SLACK_BOT_SCOPES.every((s) => {
     return stored.has(s);
   });
+}
+
+function buildSlackInstallUrl(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly reinstall: boolean;
+}): string | null {
+  const clientId = env("SLACK_CLIENT_ID");
+  if (!clientId) {
+    return null;
+  }
+  const url = new URL(`${env("VM0_API_URL")}/api/zero/slack/oauth/install`);
+  url.searchParams.set("orgId", args.orgId);
+  url.searchParams.set("vm0UserId", args.userId);
+  if (args.reinstall) {
+    url.searchParams.set("reinstall", "1");
+  }
+  return url.toString();
+}
+
+function buildSlackConnectUrl(args: {
+  readonly orgId: string;
+  readonly userId: string;
+}): string | null {
+  const clientId = env("SLACK_CLIENT_ID");
+  if (!clientId) {
+    return null;
+  }
+  const url = new URL(`${env("VM0_API_URL")}/api/zero/slack/oauth/connect`);
+  url.searchParams.set("orgId", args.orgId);
+  url.searchParams.set("vm0UserId", args.userId);
+  return url.toString();
 }
 
 interface SlackOrgStatusResult {
@@ -102,13 +135,37 @@ export function zeroSlackOrgStatus(args: {
       }
     }
 
+    function computeScopeFields(
+      installationRow: typeof slackOrgInstallations.$inferSelect,
+    ): { scopeMismatch: boolean | null; reinstallUrl: string | null } {
+      if (!isAdmin) {
+        return { scopeMismatch: null, reinstallUrl: null };
+      }
+      const scopeMismatch = !hasAllBotScopes(installationRow.botScopes);
+      const reinstallUrl = scopeMismatch
+        ? buildSlackInstallUrl({
+            orgId: args.orgId,
+            userId: args.userId,
+            reinstall: true,
+          })
+        : null;
+      return { scopeMismatch, reinstallUrl };
+    }
+
     if (!installation) {
+      const installUrl = isAdmin
+        ? buildSlackInstallUrl({
+            orgId: args.orgId,
+            userId: args.userId,
+            reinstall: false,
+          })
+        : null;
       return {
         isConnected: false,
         isInstalled: false,
         isAdmin,
         workspaceName: null,
-        installUrl: null,
+        installUrl,
         connectUrl: null,
         defaultAgentName,
         agentOrgSlug,
@@ -132,15 +189,11 @@ export function zeroSlackOrgStatus(args: {
       .limit(1);
 
     if (!connection) {
-      const scopeFields = isAdmin
-        ? {
-            scopeMismatch: !hasAllBotScopes(installation.botScopes),
-            reinstallUrl: null as string | null,
-          }
-        : {
-            scopeMismatch: null as boolean | null,
-            reinstallUrl: null as string | null,
-          };
+      const scopeFields = computeScopeFields(installation);
+      const connectUrl = buildSlackConnectUrl({
+        orgId: args.orgId,
+        userId: args.userId,
+      });
 
       return {
         isConnected: false,
@@ -148,22 +201,14 @@ export function zeroSlackOrgStatus(args: {
         isAdmin,
         workspaceName: installation.slackWorkspaceName ?? null,
         installUrl: null,
-        connectUrl: null,
+        connectUrl,
         defaultAgentName,
         agentOrgSlug,
         ...scopeFields,
       };
     }
 
-    const scopeFields = isAdmin
-      ? {
-          scopeMismatch: !hasAllBotScopes(installation.botScopes),
-          reinstallUrl: null as string | null,
-        }
-      : {
-          scopeMismatch: null as boolean | null,
-          reinstallUrl: null as string | null,
-        };
+    const scopeFields = computeScopeFields(installation);
 
     return {
       isConnected: true,
