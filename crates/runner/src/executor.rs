@@ -21,8 +21,8 @@ use std::time::{Duration, Instant};
 use futures_util::FutureExt;
 use sandbox::{
     BoundedExecCapturePolicy, BoundedExecOutput, BoundedExecOutputRequest, BoundedExecRequest,
-    BoundedExecTermination, ExecRequest, Sandbox, SandboxConfig, SandboxFactory, SandboxId,
-    SpawnOutputMode,
+    BoundedExecResult, BoundedExecTermination, ExecRequest, Sandbox, SandboxConfig, SandboxFactory,
+    SandboxId, SpawnOutputMode,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -838,29 +838,118 @@ fn bounded_exec_output_truncated(output: &BoundedExecOutput) -> bool {
     }
 }
 
-fn bounded_exec_outputs_truncated(stdout: &BoundedExecOutput, stderr: &BoundedExecOutput) -> bool {
-    bounded_exec_output_truncated(stdout) || bounded_exec_output_truncated(stderr)
+struct BoundedExecFailureSummary {
+    operation: &'static str,
+    termination: BoundedExecTermination,
+    diagnostic_preview: Option<String>,
+    stderr_preview: Option<String>,
+    stdout_preview: Option<String>,
+    stdout_truncated: bool,
+    stderr_truncated: bool,
 }
 
-fn bounded_exec_output_summary(stdout: &BoundedExecOutput, stderr: &BoundedExecOutput) -> String {
-    let (stdout, _) = bounded_exec_captured_output(stdout);
-    let (stderr, _) = bounded_exec_captured_output(stderr);
-    bounded_exec_bytes_summary(stdout, stderr)
+impl BoundedExecFailureSummary {
+    fn new(operation: &'static str, result: &BoundedExecResult) -> Self {
+        Self {
+            operation,
+            termination: result.termination,
+            diagnostic_preview: result
+                .diagnostic
+                .as_deref()
+                .and_then(bounded_exec_text_preview_if_present),
+            stderr_preview: bounded_exec_output_preview_if_present(&result.stderr),
+            stdout_preview: bounded_exec_output_preview_if_present(&result.stdout),
+            stdout_truncated: bounded_exec_output_truncated(&result.stdout),
+            stderr_truncated: bounded_exec_output_truncated(&result.stderr),
+        }
+    }
+
+    fn exit_code(&self) -> Option<i32> {
+        match self.termination {
+            BoundedExecTermination::Exited { exit_code } => Some(exit_code),
+            _ => None,
+        }
+    }
+
+    fn termination_description(&self) -> String {
+        match self.termination {
+            BoundedExecTermination::Exited { exit_code } => format!("exit code {exit_code}"),
+            termination => describe_bounded_exec_termination(termination).to_string(),
+        }
+    }
+
+    fn output_truncated(&self) -> bool {
+        self.stdout_truncated || self.stderr_truncated
+    }
+
+    fn message(&self) -> String {
+        let truncated = if self.output_truncated() {
+            " (output truncated)"
+        } else {
+            ""
+        };
+        format!(
+            "{} failed ({}){}{}",
+            self.operation,
+            self.termination_description(),
+            truncated,
+            self.detail_suffix()
+        )
+    }
+
+    fn detail_suffix(&self) -> String {
+        let mut details = Vec::new();
+        if let Some(diagnostic) = &self.diagnostic_preview {
+            details.push(format!("diagnostic: {diagnostic}"));
+        }
+        if let Some(stderr) = &self.stderr_preview {
+            details.push(format!("stderr: {stderr}"));
+        }
+        if let Some(stdout) = &self.stdout_preview {
+            details.push(format!("stdout: {stdout}"));
+        }
+
+        if details.is_empty() {
+            String::new()
+        } else {
+            format!(": {}", details.join("; "))
+        }
+    }
 }
 
-fn bounded_exec_bytes_summary(stdout: &[u8], stderr: &[u8]) -> String {
-    let stderr = bounded_exec_output_preview(stderr);
-    let stdout = bounded_exec_output_preview(stdout);
-    match (stdout.is_empty(), stderr.is_empty()) {
-        (true, true) => String::new(),
-        (false, false) => format!(": stderr: {stderr}; stdout: {stdout}"),
-        (true, false) => format!(": {stderr}"),
-        (false, true) => format!(": {}", stdout),
+fn bounded_exec_failure_message(operation: &'static str, result: &BoundedExecResult) -> String {
+    BoundedExecFailureSummary::new(operation, result).message()
+}
+
+fn bounded_exec_output_preview_if_present(output: &BoundedExecOutput) -> Option<String> {
+    let (bytes, _) = bounded_exec_captured_output(output);
+    bounded_exec_bytes_preview_if_present(bytes)
+}
+
+fn bounded_exec_bytes_preview_if_present(bytes: &[u8]) -> Option<String> {
+    let preview = bounded_exec_output_preview(bytes);
+    if preview.is_empty() {
+        None
+    } else {
+        Some(preview)
+    }
+}
+
+fn bounded_exec_text_preview_if_present(text: &str) -> Option<String> {
+    let preview = bounded_exec_text_preview(text);
+    if preview.is_empty() {
+        None
+    } else {
+        Some(preview)
     }
 }
 
 fn bounded_exec_output_preview(output: &[u8]) -> String {
-    let output = redact_http_url_queries(String::from_utf8_lossy(output).trim());
+    bounded_exec_text_preview(&String::from_utf8_lossy(output))
+}
+
+fn bounded_exec_text_preview(output: &str) -> String {
+    let output = redact_http_url_queries(output.trim());
     if output.len() <= EXEC_ERROR_OUTPUT_PREVIEW_BYTES {
         return output;
     }
@@ -1049,17 +1138,10 @@ pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
         .await?;
     match result.termination {
         BoundedExecTermination::Exited { exit_code: 0 } => {}
-        BoundedExecTermination::Exited { exit_code } => {
-            return Err(RunnerError::Internal(format!(
-                "guest clock sync failed (exit code {exit_code}){}",
-                bounded_exec_output_summary(&result.stdout, &result.stderr)
-            )));
-        }
-        termination => {
-            return Err(RunnerError::Internal(format!(
-                "guest clock sync failed ({}){}",
-                describe_bounded_exec_termination(termination),
-                bounded_exec_output_summary(&result.stdout, &result.stderr)
+        _ => {
+            return Err(RunnerError::Internal(bounded_exec_failure_message(
+                "guest clock sync",
+                &result,
             )));
         }
     }
@@ -1099,17 +1181,10 @@ pub(crate) async fn reseed_guest_entropy(sandbox: &dyn Sandbox) -> RunnerResult<
 
     match result.termination {
         BoundedExecTermination::Exited { exit_code: 0 } => {}
-        BoundedExecTermination::Exited { exit_code } => {
-            return Err(RunnerError::Internal(format!(
-                "guest-reseed failed (exit code {exit_code}){}",
-                bounded_exec_output_summary(&result.stdout, &result.stderr)
-            )));
-        }
-        termination => {
-            return Err(RunnerError::Internal(format!(
-                "guest-reseed failed ({}){}",
-                describe_bounded_exec_termination(termination),
-                bounded_exec_output_summary(&result.stdout, &result.stderr)
+        _ => {
+            return Err(RunnerError::Internal(bounded_exec_failure_message(
+                "guest-reseed",
+                &result,
             )));
         }
     }
@@ -1179,13 +1254,16 @@ async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) 
             }
         }
         Ok(result) => {
-            let stdout_truncated = bounded_exec_output_truncated(&result.stdout);
-            let stderr_truncated = bounded_exec_output_truncated(&result.stderr);
+            let summary = BoundedExecFailureSummary::new("guest timezone setup", &result);
             tracing::warn!(
                 tz = %tz,
-                termination = ?result.termination,
-                stdout_truncated,
-                stderr_truncated,
+                termination = ?summary.termination,
+                exit_code = ?summary.exit_code(),
+                stdout_truncated = summary.stdout_truncated,
+                stderr_truncated = summary.stderr_truncated,
+                diagnostic_preview = ?summary.diagnostic_preview.as_deref(),
+                stderr_preview = ?summary.stderr_preview.as_deref(),
+                stdout_preview = ?summary.stdout_preview.as_deref(),
                 "failed to set guest timezone"
             );
         }
@@ -1351,27 +1429,10 @@ async fn download_storages(
                 );
             }
         }
-        BoundedExecTermination::Exited { exit_code } => {
-            let truncated = if bounded_exec_outputs_truncated(&result.stdout, &result.stderr) {
-                " (output truncated)"
-            } else {
-                ""
-            };
-            return Err(RunnerError::Internal(format!(
-                "storage download failed (exit code {exit_code}){truncated}{}",
-                bounded_exec_output_summary(&result.stdout, &result.stderr)
-            )));
-        }
-        termination => {
-            let truncated = if bounded_exec_outputs_truncated(&result.stdout, &result.stderr) {
-                " (output truncated)"
-            } else {
-                ""
-            };
-            return Err(RunnerError::Internal(format!(
-                "storage download failed ({}){truncated}{}",
-                describe_bounded_exec_termination(termination),
-                bounded_exec_output_summary(&result.stdout, &result.stderr)
+        _ => {
+            return Err(RunnerError::Internal(bounded_exec_failure_message(
+                "storage download",
+                &result,
             )));
         }
     }
@@ -2234,16 +2295,124 @@ mod tests {
     }
 
     #[test]
-    fn bounded_exec_output_summary_redacts_url_queries() {
-        let summary = bounded_exec_bytes_summary(
-            b"",
-            b"HTTP 403 url=https://r2.example.com/archive.tar.gz?X-Amz-Signature=secret&X-Amz-Credential=credential",
+    fn bounded_exec_failure_summary_includes_diagnostic_before_outputs() {
+        let result = BoundedExecResult {
+            termination: BoundedExecTermination::StartFailed,
+            duration: Duration::ZERO,
+            stdout: BoundedExecOutput::Captured {
+                bytes: b"stdout detail".to_vec(),
+                truncated: false,
+            },
+            stderr: BoundedExecOutput::Captured {
+                bytes: b"stderr detail".to_vec(),
+                truncated: false,
+            },
+            diagnostic: Some("spawn failed".into()),
+        };
+
+        let summary = BoundedExecFailureSummary::new("storage download", &result).message();
+
+        assert_eq!(
+            summary,
+            "storage download failed (start failed): diagnostic: spawn failed; stderr: stderr detail; stdout: stdout detail"
         );
+    }
+
+    #[test]
+    fn bounded_exec_failure_summary_omits_absent_diagnostic_and_empty_outputs() {
+        let result = BoundedExecResult {
+            termination: BoundedExecTermination::TimedOut,
+            duration: Duration::ZERO,
+            stdout: BoundedExecOutput::Captured {
+                bytes: Vec::new(),
+                truncated: false,
+            },
+            stderr: BoundedExecOutput::Captured {
+                bytes: b"  \n ".to_vec(),
+                truncated: false,
+            },
+            diagnostic: None,
+        };
+
+        let summary = BoundedExecFailureSummary::new("guest clock sync", &result).message();
+
+        assert_eq!(summary, "guest clock sync failed (timed out)");
+        assert!(!summary.contains("diagnostic:"));
+    }
+
+    #[test]
+    fn bounded_exec_failure_summary_marks_truncated_outputs() {
+        let result = BoundedExecResult {
+            termination: BoundedExecTermination::Exited { exit_code: 1 },
+            duration: Duration::ZERO,
+            stdout: BoundedExecOutput::Captured {
+                bytes: b"partial stdout".to_vec(),
+                truncated: true,
+            },
+            stderr: BoundedExecOutput::Captured {
+                bytes: Vec::new(),
+                truncated: false,
+            },
+            diagnostic: None,
+        };
+
+        let summary = BoundedExecFailureSummary::new("storage download", &result).message();
+
+        assert!(summary.contains("storage download failed (exit code 1)"));
+        assert!(summary.contains("(output truncated)"));
+        assert!(summary.contains("stdout: partial stdout"));
+    }
+
+    #[test]
+    fn bounded_exec_failure_summary_redacts_url_queries() {
+        let result = BoundedExecResult {
+            termination: BoundedExecTermination::WaitFailed,
+            duration: Duration::ZERO,
+            stdout: BoundedExecOutput::Captured {
+                bytes: b"stdout url=https://stdout.example.com/file?token=stdout-secret".to_vec(),
+                truncated: false,
+            },
+            stderr: BoundedExecOutput::Captured {
+                bytes: b"stderr url=https://stderr.example.com/file?token=stderr-secret".to_vec(),
+                truncated: false,
+            },
+            diagnostic: Some(
+                "diagnostic url=https://r2.example.com/archive.tar.gz?X-Amz-Signature=secret&X-Amz-Credential=credential"
+                    .into(),
+            ),
+        };
+
+        let summary = BoundedExecFailureSummary::new("guest-reseed", &result).message();
 
         assert!(summary.contains("https://r2.example.com/archive.tar.gz?[redacted]"));
+        assert!(summary.contains("https://stderr.example.com/file?[redacted]"));
+        assert!(summary.contains("https://stdout.example.com/file?[redacted]"));
         assert!(!summary.contains("X-Amz-Signature"));
         assert!(!summary.contains("secret"));
         assert!(!summary.contains("credential"));
+    }
+
+    #[test]
+    fn bounded_exec_failure_summary_truncates_long_diagnostic() {
+        let tail = "tail-after-limit";
+        let result = BoundedExecResult {
+            termination: BoundedExecTermination::WaitFailed,
+            duration: Duration::ZERO,
+            stdout: BoundedExecOutput::Discarded,
+            stderr: BoundedExecOutput::Discarded,
+            diagnostic: Some(format!(
+                "{}{tail}",
+                "d".repeat(EXEC_ERROR_OUTPUT_PREVIEW_BYTES + 8)
+            )),
+        };
+
+        let summary = BoundedExecFailureSummary::new("guest-reseed", &result).message();
+
+        assert!(summary.contains("diagnostic:"));
+        assert!(summary.contains("..."));
+        assert!(!summary.contains(tail));
+        assert!(!summary.contains("stderr:"));
+        assert!(!summary.contains("stdout:"));
     }
 
     /// Real `sudo dmesg | grep 'oom-kill'` output captured from prod-3.
@@ -2457,6 +2626,15 @@ mod tests {
         stdout: impl Into<Vec<u8>>,
         stderr: impl Into<Vec<u8>>,
     ) -> BoundedExecResponse {
+        bounded_exec_response_with_diagnostic(termination, stdout, stderr, None)
+    }
+
+    fn bounded_exec_response_with_diagnostic(
+        termination: BoundedExecTermination,
+        stdout: impl Into<Vec<u8>>,
+        stderr: impl Into<Vec<u8>>,
+        diagnostic: Option<&str>,
+    ) -> BoundedExecResponse {
         BoundedExecResponse {
             events: Vec::new(),
             result: Ok(BoundedExecResult {
@@ -2470,7 +2648,7 @@ mod tests {
                     bytes: stderr.into(),
                     truncated: false,
                 },
-                diagnostic: None,
+                diagnostic: diagnostic.map(ToOwned::to_owned),
             }),
         }
     }
@@ -2562,6 +2740,30 @@ mod tests {
         ));
         let err = fix_guest_clock(&sandbox).await.unwrap_err();
         assert!(err.to_string().contains("timed out"), "got: {err}");
+        assert!(!err.to_string().contains("diagnostic:"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn fix_guest_clock_fails_on_start_failed_with_diagnostic() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_bounded_exec_response(bounded_exec_response_with_diagnostic(
+            BoundedExecTermination::StartFailed,
+            Vec::new(),
+            Vec::new(),
+            Some("date binary missing"),
+        ));
+
+        let err = fix_guest_clock(&sandbox).await.unwrap_err();
+        let msg = err.to_string();
+
+        assert!(
+            msg.contains("guest clock sync failed (start failed)"),
+            "got: {msg}"
+        );
+        assert!(
+            msg.contains("diagnostic: date binary missing"),
+            "got: {msg}"
+        );
     }
 
     #[tokio::test]
@@ -2602,6 +2804,29 @@ mod tests {
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(msg.contains("guest-reseed failed"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn reseed_guest_entropy_fails_on_wait_failed_with_diagnostic() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_bounded_exec_response(bounded_exec_response_with_diagnostic(
+            BoundedExecTermination::WaitFailed,
+            Vec::new(),
+            Vec::new(),
+            Some("Failed to wait: waitpid failed"),
+        ));
+
+        let err = reseed_guest_entropy(&sandbox).await.unwrap_err();
+        let msg = err.to_string();
+
+        assert!(
+            msg.contains("guest-reseed failed (wait failed)"),
+            "got: {msg}"
+        );
+        assert!(
+            msg.contains("diagnostic: Failed to wait: waitpid failed"),
+            "got: {msg}"
+        );
     }
 
     #[tokio::test]
@@ -2820,6 +3045,39 @@ mod tests {
         );
         assert_capture_call(&calls[0].stdout, 1024 * 1024);
         assert_capture_call(&calls[0].stderr, 1024 * 1024);
+    }
+
+    #[tokio::test]
+    async fn download_storages_failure_includes_diagnostic_stdout_and_stderr() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_bounded_exec_response(bounded_exec_response_with_diagnostic(
+            BoundedExecTermination::Exited { exit_code: 42 },
+            b"stdout detail".to_vec(),
+            b"stderr detail".to_vec(),
+            Some("download worker failed"),
+        ));
+        let ctx = minimal_context();
+        let manifest = GuestDownloadManifest {
+            storages: vec![],
+            artifacts: vec![],
+            cleanup_paths: vec![],
+        };
+
+        let err = download_storages(&sandbox, &ctx, &manifest)
+            .await
+            .unwrap_err();
+        let msg = err.to_string();
+
+        assert!(
+            msg.contains("storage download failed (exit code 42)"),
+            "got: {msg}"
+        );
+        assert!(
+            msg.contains("diagnostic: download worker failed"),
+            "got: {msg}"
+        );
+        assert!(msg.contains("stderr: stderr detail"), "got: {msg}");
+        assert!(msg.contains("stdout: stdout detail"), "got: {msg}");
     }
 
     #[tokio::test]
