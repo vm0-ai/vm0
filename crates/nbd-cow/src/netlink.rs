@@ -608,20 +608,14 @@ mod tests {
         buf
     }
 
-    fn test_genl_socket_pair() -> (GenlSocket, OwnedFd) {
-        let mut fds = [0i32; 2];
-        let ret = unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_DGRAM, 0, fds.as_mut_ptr()) };
-        assert_eq!(ret, 0);
-
-        let recv_fd = unsafe { OwnedFd::from_raw_fd(fds[0]) };
-        let send_fd = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+    fn set_test_recv_timeout(fd: &OwnedFd) {
         let timeout = libc::timeval {
             tv_sec: 0,
             tv_usec: 100_000,
         };
         let ret = unsafe {
             libc::setsockopt(
-                std::os::unix::io::AsRawFd::as_raw_fd(&recv_fd),
+                std::os::unix::io::AsRawFd::as_raw_fd(fd),
                 libc::SOL_SOCKET,
                 libc::SO_RCVTIMEO,
                 std::ptr::from_ref(&timeout).cast(),
@@ -629,6 +623,17 @@ mod tests {
             )
         };
         assert_eq!(ret, 0);
+    }
+
+    fn test_genl_socket_pair() -> (GenlSocket, OwnedFd) {
+        let mut fds = [0i32; 2];
+        let ret = unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_DGRAM, 0, fds.as_mut_ptr()) };
+        assert_eq!(ret, 0);
+
+        let recv_fd = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+        let send_fd = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+        set_test_recv_timeout(&recv_fd);
+        set_test_recv_timeout(&send_fd);
         (
             GenlSocket {
                 fd: recv_fd,
@@ -648,6 +653,21 @@ mod tests {
             )
         };
         assert_eq!(ret, msg.len() as isize);
+    }
+
+    fn recv_test_nl(peer: &OwnedFd) -> Vec<u8> {
+        let mut buf = vec![0u8; 4096];
+        let n = unsafe {
+            libc::recv(
+                std::os::unix::io::AsRawFd::as_raw_fd(peer),
+                buf.as_mut_ptr().cast(),
+                buf.len(),
+                0,
+            )
+        };
+        assert!(n > 0, "recv failed: {}", std::io::Error::last_os_error());
+        buf.truncate(n as usize);
+        buf
     }
 
     #[test]
@@ -742,6 +762,41 @@ mod tests {
 
         assert_eq!(sock.next_seq(), u32::MAX);
         assert_eq!(sock.next_seq(), 1);
+    }
+
+    #[test]
+    fn resolve_nbd_family_ignores_stale_reply_and_reads_matching_family_id() {
+        let (sock, peer) = test_genl_socket_pair();
+        let resolver = std::thread::spawn(move || resolve_nbd_family(&sock));
+
+        let request = recv_test_nl(&peer);
+        let request_seq = nlmsg_seq(&request, request.len()).unwrap();
+        assert_eq!(nlmsg_flags(&request) & NLM_F_ACK, 0);
+
+        let stale_attrs = build_nla(CTRL_ATTR_FAMILY_ID, &999u16.to_ne_bytes());
+        let stale_reply = build_genl_msg(
+            GENL_ID_CTRL,
+            CTRL_CMD_GETFAMILY,
+            1,
+            &stale_attrs,
+            request_seq + 1,
+            false,
+        );
+        let matching_attrs = build_nla(CTRL_ATTR_FAMILY_ID, &123u16.to_ne_bytes());
+        let matching_reply = build_genl_msg(
+            GENL_ID_CTRL,
+            CTRL_CMD_GETFAMILY,
+            1,
+            &matching_attrs,
+            request_seq,
+            false,
+        );
+
+        send_test_nl(&peer, &stale_reply);
+        send_test_nl(&peer, &matching_reply);
+
+        let family_id = resolver.join().unwrap().unwrap();
+        assert_eq!(family_id, 123);
     }
 
     // --- parse_nl_msg tests ---
