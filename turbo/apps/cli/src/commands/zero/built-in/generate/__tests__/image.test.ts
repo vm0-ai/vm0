@@ -1,5 +1,5 @@
 /**
- * Tests for zero official generate image command
+ * Tests for zero built-in generate image command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
 import { server } from "../../../../../mocks/server";
-import { zeroOfficialCommand } from "../../index";
+import { zeroBuiltInCommand } from "../../index";
 
 const IMAGE_URL = "http://localhost:3000/api/zero/image-io/generate";
 const IMAGE_RESULT = {
@@ -34,7 +34,7 @@ const IMAGE_RESULT = {
   },
 };
 
-describe("zero official generate image command", () => {
+describe("zero built-in generate image command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -77,7 +77,7 @@ describe("zero official generate image command", () => {
       }),
     );
 
-    await zeroOfficialCommand.parseAsync([
+    await zeroBuiltInCommand.parseAsync([
       "node",
       "cli",
       "generate",
@@ -110,7 +110,7 @@ describe("zero official generate image command", () => {
       }),
     );
 
-    await zeroOfficialCommand.parseAsync([
+    await zeroBuiltInCommand.parseAsync([
       "node",
       "cli",
       "generate",
@@ -152,7 +152,7 @@ describe("zero official generate image command", () => {
     );
 
     await expect(async () => {
-      await zeroOfficialCommand.parseAsync([
+      await zeroBuiltInCommand.parseAsync([
         "node",
         "cli",
         "generate",

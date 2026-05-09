@@ -12,23 +12,30 @@ import { listZeroConnectors } from "../../../lib/api/domains/zero-connectors";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "./platform-url";
 
-type OfficialGenerationType = "image" | "voice";
-type DoctorGenerationType = ConnectorGenerationType | OfficialGenerationType;
+type BuiltInGenerationType = "image" | "voice";
+type DoctorGenerationType = ConnectorGenerationType | BuiltInGenerationType;
 
-interface BuiltInGenerationOption {
-  description: string;
+interface BuiltInGenerationProvider {
+  label: string;
+  model: string;
+  command: string;
+  reason: string;
 }
 
-const BUILT_IN_GENERATION_OPTIONS: Partial<
-  Record<DoctorGenerationType, BuiltInGenerationOption>
+const BUILT_IN_GENERATION_PROVIDERS: Partial<
+  Record<DoctorGenerationType, BuiltInGenerationProvider>
 > = {
   image: {
-    description:
-      "If the user did not explicitly request a specific connector or provider, you can use the official generation capability. Run `zero official generate image -h` for options.",
+    label: "Built-in",
+    model: "gpt-image-2",
+    command: "zero built-in generate image -h",
+    reason: "available without connector setup",
   },
   voice: {
-    description:
-      "If the user did not explicitly request a specific connector or provider, you can use the official generation capability. Run `zero official generate voice -h` for options.",
+    label: "Built-in",
+    model: "gpt-4o-mini-tts",
+    command: "zero built-in generate voice -h",
+    reason: "available without connector setup",
   },
 };
 
@@ -101,7 +108,7 @@ function getAvailableGenerationTypes(): DoctorGenerationType[] {
 
   return GENERATION_TYPE_ORDER.filter((type) => {
     return (
-      type in BUILT_IN_GENERATION_OPTIONS ||
+      type in BUILT_IN_GENERATION_PROVIDERS ||
       available.has(getConnectorGenerationType(type))
     );
   });
@@ -164,7 +171,7 @@ function getAction(
     if (agentId) {
       return {
         actionLabel: `Connect and authorize ${label}`,
-        actionUrl: `${platformOrigin}/connectors/${type}/authorize?agentId=${agentId}`,
+        actionUrl: `${platformOrigin}/connectors/${type}/connect?agentId=${agentId}`,
       };
     }
 
@@ -273,13 +280,14 @@ function renderActions(candidates: GenerationCandidate[]): void {
   }
 }
 
-function renderBuiltInOption(generationType: DoctorGenerationType): void {
-  const option = BUILT_IN_GENERATION_OPTIONS[generationType];
-  if (!option) return;
+function renderBuiltInProvider(generationType: DoctorGenerationType): void {
+  const provider = BUILT_IN_GENERATION_PROVIDERS[generationType];
+  if (!provider) return;
 
   console.log("");
-  console.log("Fallback option:");
-  console.log(`  ${option.description}`);
+  console.log("Built-in provider:");
+  console.log(`  vm0  ${provider.label}  Model: ${provider.model}`);
+  console.log(`  Use: ${provider.command}`);
 }
 
 function renderText(params: {
@@ -306,13 +314,14 @@ function renderText(params: {
     console.log("");
   }
 
+  console.log("Connectors:");
   if (ready.length > 0) {
     renderRows(ready);
   } else {
-    console.log(`No ready ${generationType} generation connectors found.`);
+    console.log(`  No ready ${generationType} generation connectors found.`);
   }
 
-  renderBuiltInOption(generationType);
+  renderBuiltInProvider(generationType);
 
   if (showAll && other.length > 0) {
     console.log("");
@@ -321,7 +330,7 @@ function renderText(params: {
     renderRows(other);
   }
 
-  if (ready.length === 0 || showAll) {
+  if (showAll) {
     renderActions(other);
   }
 }
@@ -383,8 +392,8 @@ export const generateCommand = new Command()
               agentId: agentId ?? null,
               choices: ready,
               otherCandidates: other,
-              builtInOption:
-                BUILT_IN_GENERATION_OPTIONS[generationType] ?? null,
+              builtInProvider:
+                BUILT_IN_GENERATION_PROVIDERS[generationType] ?? null,
             },
             null,
             2,

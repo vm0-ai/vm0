@@ -4,13 +4,13 @@ import { voiceCommand } from "./voice";
 
 export const generateCommand = new Command()
   .name("generate")
-  .description("Generate assets with official Zero services")
+  .description("Generate assets with built-in vm0 services")
   .addCommand(imageCommand)
   .addCommand(voiceCommand)
   .addHelpText(
     "after",
     `
 Examples:
-  Generate image:   zero official generate image --prompt "A watercolor fox"
-  Generate speech:  zero official generate voice --text "Hello"`,
+  Generate image:   zero built-in generate image --prompt "A watercolor fox"
+  Generate speech:  zero built-in generate voice --text "Hello"`,
   );

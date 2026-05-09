@@ -1,5 +1,5 @@
 /**
- * Tests for zero official generate voice command
+ * Tests for zero built-in generate voice command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
 import { server } from "../../../../../mocks/server";
-import { zeroOfficialCommand } from "../../index";
+import { zeroBuiltInCommand } from "../../index";
 
 const SPEECH_URL = "http://localhost:3000/api/zero/voice-io/speech";
 const VOICE_RESULT = {
@@ -26,7 +26,7 @@ const VOICE_RESULT = {
   voice: "cedar",
 };
 
-describe("zero official generate voice command", () => {
+describe("zero built-in generate voice command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -61,7 +61,7 @@ describe("zero official generate voice command", () => {
       }),
     );
 
-    await zeroOfficialCommand.parseAsync([
+    await zeroBuiltInCommand.parseAsync([
       "node",
       "cli",
       "generate",
@@ -88,7 +88,7 @@ describe("zero official generate voice command", () => {
       }),
     );
 
-    await zeroOfficialCommand.parseAsync([
+    await zeroBuiltInCommand.parseAsync([
       "node",
       "cli",
       "generate",
@@ -129,7 +129,7 @@ describe("zero official generate voice command", () => {
     );
 
     await expect(async () => {
-      await zeroOfficialCommand.parseAsync([
+      await zeroBuiltInCommand.parseAsync([
         "node",
         "cli",
         "generate",
