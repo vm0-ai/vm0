@@ -2752,6 +2752,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn download_storages_failure_marks_truncated_output() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_bounded_exec_response(BoundedExecResponse {
+            events: Vec::new(),
+            result: Ok(BoundedExecResult {
+                termination: BoundedExecTermination::Exited { exit_code: 1 },
+                duration: Duration::ZERO,
+                stdout: b"partial stdout".to_vec(),
+                stderr: b"partial stderr".to_vec(),
+                stdout_truncated: true,
+                stderr_truncated: false,
+            }),
+        });
+        let ctx = minimal_context();
+        let manifest = GuestDownloadManifest {
+            storages: vec![],
+            artifacts: vec![],
+            cleanup_paths: vec![],
+        };
+
+        let err = download_storages(&sandbox, &ctx, &manifest)
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("(output truncated)"), "got: {err}");
+        assert!(err.to_string().contains("partial stderr"), "got: {err}");
+    }
+
+    #[tokio::test]
     async fn download_storages_allows_truncated_output_on_success() {
         let sandbox = MockSandbox::new("test");
         sandbox.push_bounded_exec_response(BoundedExecResponse {

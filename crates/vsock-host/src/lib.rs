@@ -4301,6 +4301,76 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_write_file_chunked_cleans_up_on_mv_timeout() {
+        let (host_stream, mut guest) = make_pair();
+
+        let chunk_limit = VsockHost::WRITE_FILE_CHUNK_LIMIT;
+        let content = vec![0xABu8; chunk_limit + 100];
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = vec![0u8; chunk_limit + 4096];
+            let mut exec_count = 0u32;
+            let mut temp_path = None::<String>;
+            loop {
+                let n = guest.read(&mut buf).await.unwrap();
+                if n == 0 {
+                    break;
+                }
+                let msgs = decoder.decode(&buf[..n]).unwrap();
+                for msg in msgs {
+                    if msg.msg_type == MSG_WRITE_FILE {
+                        let (path, _chunk, _sudo, _append) =
+                            vsock_proto::decode_write_file(&msg.payload).unwrap();
+                        if let Some(temp_path) = &temp_path {
+                            assert_eq!(path, temp_path);
+                        } else {
+                            assert!(path.starts_with("/tmp/big.bin.vm0tmp-"));
+                            temp_path = Some(path.to_string());
+                        }
+                        let payload = vsock_proto::encode_write_file_result(true, "");
+                        let resp =
+                            vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload).unwrap();
+                        guest.write_all(&resp).await.unwrap();
+                    } else if msg.msg_type == MSG_BOUNDED_EXEC {
+                        exec_count += 1;
+                        let decoded = vsock_proto::decode_bounded_exec(&msg.payload).unwrap();
+                        let temp_path = temp_path.as_ref().expect("temp path");
+                        if decoded.command.contains("mv -f --") {
+                            assert!(decoded.command.contains(temp_path));
+                            write_bounded_exec_result_full(
+                                &mut guest,
+                                msg.seq,
+                                vsock_proto::BoundedExecTermination::TimedOut,
+                                &[],
+                                b"",
+                                false,
+                                false,
+                            )
+                            .await;
+                        } else {
+                            assert!(decoded.command.contains("rm -f --"));
+                            assert!(decoded.command.contains(temp_path));
+                            write_bounded_exec_result(&mut guest, msg.seq, &[]).await;
+                            assert_eq!(exec_count, 2); // mv then rm
+                            return;
+                        }
+                    }
+                }
+            }
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let err = host
+            .write_file("/tmp/big.bin", &content, false)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("TimedOut"), "got: {err}");
+    }
+
+    #[tokio::test]
     async fn test_write_file_chunked_cleans_up_when_cancelled() {
         let (host_stream, mut guest) = make_pair();
 
