@@ -79,10 +79,10 @@ export const zeroComposesRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroComposesListContract.list,
-    handler: shadowCompareRoute({
-      route: zeroComposesListContract.list,
-      handler: authRoute({}, listComposesInner$),
-    }),
+    handler: authRoute(
+      { acceptAnySandboxCapability: true },
+      listComposesInner$,
+    ),
   },
   {
     route: zeroComposesByIdContract.getById,
