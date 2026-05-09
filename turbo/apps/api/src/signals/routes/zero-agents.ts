@@ -95,10 +95,7 @@ export const zeroAgentsRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroAgentsByIdContract.get,
-    handler: shadowCompareRoute({
-      route: zeroAgentsByIdContract.get,
-      handler: authRoute(agentReadAuth, getAgentInner$),
-    }),
+    handler: authRoute(agentReadAuth, getAgentInner$),
   },
   {
     route: zeroUserConnectorsContract.get,
