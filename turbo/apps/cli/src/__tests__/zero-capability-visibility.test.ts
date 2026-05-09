@@ -25,7 +25,7 @@ function buildCommands(): Command[] {
     new Command("telegram"),
     new Command("variable"),
     new Command("whoami"),
-    new Command("official"),
+    new Command("built-in"),
     new Command("web"),
   ];
 }
@@ -147,7 +147,7 @@ describe("registerZeroCommands", () => {
       "slack",
       "telegram",
       "variable",
-      "official",
+      "built-in",
     ]);
   });
 
@@ -246,7 +246,7 @@ describe("registerZeroCommands", () => {
     expect(hiddenCommandNames(prog)).toContain("telegram");
   });
 
-  it("should show official when file:write capability is present", () => {
+  it("should show built-in when file:write capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
       capabilities: ["file:write"],
@@ -255,7 +255,7 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(visibleCommandNames(prog)).toContain("official");
+    expect(visibleCommandNames(prog)).toContain("built-in");
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 

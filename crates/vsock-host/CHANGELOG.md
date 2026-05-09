@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.10.2](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.10.1...vsock-host-v0.10.2) (2026-05-09)
+
+
+### Performance Improvements
+
+* **vsock-host:** cap bounded exec stream forwarding ([#12267](https://github.com/vm0-ai/vm0/issues/12267)) ([9a8063a](https://github.com/vm0-ai/vm0/commit/9a8063af272ea95005ce8f2d5c37eba2d64105e5))
+
+## [0.10.1](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.10.0...vsock-host-v0.10.1) (2026-05-09)
+
+
+### Bug Fixes
+
+* **vsock-host:** poison interrupted frame writes ([#12247](https://github.com/vm0-ai/vm0/issues/12247)) ([1860100](https://github.com/vm0-ai/vm0/commit/1860100ba26eecb7db2cd10fa2d63974e2016a76))
+
 ## [0.10.0](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.9.12...vsock-host-v0.10.0) (2026-05-08)
 
 

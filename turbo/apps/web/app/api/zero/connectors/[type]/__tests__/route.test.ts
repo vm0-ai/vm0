@@ -6,8 +6,6 @@ import {
   createTestRequest,
   createTestOrg,
   createTestSecret,
-  insertTestPlatformConnector,
-  countPlatformConnectorRows,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -123,45 +121,16 @@ describe("DELETE /api/zero/connectors/:type", () => {
     expect(response.status).toBe(401);
   });
 
-  it("clears both tables when OAuth and platform rows coexist on the same type", async () => {
-    // Data-model-wise unlikely (UI enforces single authMethod per type), but
-    // cheap to pin: DELETE must not leave the platform row behind after the
-    // OAuth branch fires. Use `github` as the carrier type — the platform
-    // table only stores varchar, so co-existence is representable at the DB
-    // level even though CONNECTOR_TYPES[github] has no platform authMethod.
-    const userId = uniqueId("zcdel-dual");
-    const { orgId } = await setupOrg(userId);
-    await context.createConnector(orgId, { userId, type: "github" });
-    await insertTestPlatformConnector(orgId, userId, "github");
-    expect(await countPlatformConnectorRows(orgId, userId, "github")).toBe(1);
-
-    const response = await DELETE(
-      createTestRequest(connectorUrl("github"), { method: "DELETE" }),
-    );
-    expect(response.status).toBe(204);
-
-    expect(await countPlatformConnectorRows(orgId, userId, "github")).toBe(0);
-    const after = await GET(createTestRequest(connectorUrl("github")));
-    expect(after.status).toBe(404);
-  });
-
-  it("clears api-token secret alongside platform row for openai", async () => {
-    // openai is the first connector that legitimately supports both
-    // api-token and platform auth methods. If a user sets the API key AND
-    // clicks Enable, DELETE must wipe both — otherwise the secret lingers
-    // and the connector still shows as connected via api-token derivation.
+  it("clears api-token secret for openai", async () => {
     const userId = uniqueId("zcdel-openai-dual");
-    const { orgId } = await setupOrg(userId);
+    await setupOrg(userId);
     await createTestSecret("OPENAI_TOKEN", "sk-test-key");
-    await insertTestPlatformConnector(orgId, userId, "openai");
-    expect(await countPlatformConnectorRows(orgId, userId, "openai")).toBe(1);
 
     const response = await DELETE(
       createTestRequest(connectorUrl("openai"), { method: "DELETE" }),
     );
     expect(response.status).toBe(204);
 
-    expect(await countPlatformConnectorRows(orgId, userId, "openai")).toBe(0);
     const after = await GET(createTestRequest(connectorUrl("openai")));
     expect(after.status).toBe(404);
   });

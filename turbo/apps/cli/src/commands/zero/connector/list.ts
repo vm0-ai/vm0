@@ -4,12 +4,14 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { listZeroConnectors } from "../../../lib/api";
-import { getActiveOrg } from "../../../lib/api/config";
+import { listZeroConnectors, searchZeroConnectors } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { resolveAgentContext } from "./agent-context";
 import { padEndAnsi, renderConnectedAsCell, stripAnsi } from "./connected-as";
+
+function isConnectorType(type: string): type is ConnectorType {
+  return type in CONNECTOR_TYPES;
+}
 
 export const listCommand = new Command()
   .name("list")
@@ -18,9 +20,9 @@ export const listCommand = new Command()
   .option("--agent <id>", "Show per-agent authorization column")
   .action(
     withErrorHandler(async (options: { agent?: string }) => {
-      const [{ connectors }, orgId, agentCtx] = await Promise.all([
+      const [{ connectors }, availableCatalog, agentCtx] = await Promise.all([
         listZeroConnectors(),
-        getActiveOrg(),
+        searchZeroConnectors(),
         resolveAgentContext(options.agent),
       ]);
       const connectedMap = new Map(
@@ -29,21 +31,11 @@ export const listCommand = new Command()
         }),
       );
 
-      const allTypesRaw = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
-      const allTypes: ConnectorType[] = [];
-      for (const type of allTypesRaw) {
-        const config = CONNECTOR_TYPES[type];
-        const flag = config.featureFlag;
-        const hasApiToken = "api-token" in config.authMethods;
-        if (
-          flag &&
-          !isFeatureEnabled(flag, { orgId }) &&
-          (!hasApiToken || config.strictFeatureFlag)
-        ) {
-          continue;
-        }
-        allTypes.push(type);
-      }
+      const allTypes = availableCatalog.connectors
+        .map((connector) => {
+          return connector.id;
+        })
+        .filter(isConnectorType);
 
       const typeWidth = Math.max(
         4,

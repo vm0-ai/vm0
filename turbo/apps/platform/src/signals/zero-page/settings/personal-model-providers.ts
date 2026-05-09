@@ -8,8 +8,11 @@ import {
   getSecretsForAuthMethod,
   hasAuthMethods,
   hasModelSelection,
+  type OrgModelPolicy,
+  type SupportedRunModel,
   type ModelProviderType,
   type ModelProviderResponse,
+  type UpdateOrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   createPersonalModelProvider$,
@@ -21,6 +24,10 @@ import {
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { zeroClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
+import {
+  orgModelPolicies$,
+  updateOrgModelPolicies$,
+} from "../../external/org-model-policies.ts";
 
 // ---------------------------------------------------------------------------
 // Add provider dialog (list of provider type cards)
@@ -48,6 +55,14 @@ interface CodexPasteDialogState {
   mode: CodexPasteDialogMode;
 }
 
+interface ModelPolicyRouteAfterPersonalAuth {
+  providerType: ModelProviderType;
+  model: SupportedRunModel;
+}
+
+const internalPersonalModelPolicyRouteAfterAuth$ =
+  state<ModelPolicyRouteAfterPersonalAuth | null>(null);
+
 const internalCodexPasteDialogStatePersonal$ = state<CodexPasteDialogState>({
   open: false,
   mode: "connect",
@@ -68,9 +83,52 @@ export const setCodexPasteDialogStatePersonal$ = command(
     set(internalCodexPasteDialogStatePersonal$, next);
     if (!next.open) {
       set(internalCodexPasteContentPersonal$, "");
+      set(internalPersonalModelPolicyRouteAfterAuth$, null);
     }
   },
 );
+
+function toOrgModelPolicyUpdate(policy: OrgModelPolicy): UpdateOrgModelPolicy {
+  return {
+    model: policy.model,
+    isDefault: policy.isDefault,
+    defaultProviderType: policy.defaultProviderType,
+    credentialScope: policy.credentialScope,
+    modelProviderId: policy.modelProviderId,
+  };
+}
+
+function applyPersonalAuthRouteToPolicies(
+  policies: OrgModelPolicy[],
+  route: ModelPolicyRouteAfterPersonalAuth,
+): UpdateOrgModelPolicy[] {
+  let found = false;
+  const updates = policies.map((policy) => {
+    const update = toOrgModelPolicyUpdate(policy);
+    if (policy.model !== route.model) {
+      return update;
+    }
+    found = true;
+    return {
+      ...update,
+      defaultProviderType: route.providerType,
+      credentialScope: "member" as const,
+      modelProviderId: null,
+    };
+  });
+
+  if (!found) {
+    updates.push({
+      model: route.model,
+      isDefault: updates.length === 0,
+      defaultProviderType: route.providerType,
+      credentialScope: "member",
+      modelProviderId: null,
+    });
+  }
+
+  return updates;
+}
 
 export const updateCodexPasteContentPersonal$ = command(
   ({ set }, paste: string) => {
@@ -103,8 +161,27 @@ export const submitCodexAuthJsonPersonal$ = command(
     );
     signal.throwIfAborted();
 
+    const pendingRoute = get(internalPersonalModelPolicyRouteAfterAuth$);
+    if (pendingRoute && pendingRoute.providerType === "codex-oauth-token") {
+      const policyResponse = await get(orgModelPolicies$);
+      signal.throwIfAborted();
+      await set(
+        updateOrgModelPolicies$,
+        {
+          policies: applyPersonalAuthRouteToPolicies(
+            policyResponse.policies,
+            pendingRoute,
+          ),
+          toast: false,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+    }
+
     set(reloadPersonalModelProviders$);
     set(internalCodexPasteContentPersonal$, "");
+    set(internalPersonalModelPolicyRouteAfterAuth$, null);
     set(internalCodexPasteDialogStatePersonal$, (prev) => {
       return { ...prev, open: false };
     });
@@ -131,6 +208,10 @@ const internalPersonalDialogState$ = state<DialogState>({
 
 export const personalDialogState$ = computed((get) => {
   return get(internalPersonalDialogState$);
+});
+
+export const personalDialogHideModelSelector$ = computed((get) => {
+  return get(internalPersonalModelPolicyRouteAfterAuth$) !== null;
 });
 
 // ---------------------------------------------------------------------------
@@ -195,6 +276,74 @@ export const personalActionPromise$ = computed((get) => {
   return get(internalPersonalActionPromise$);
 });
 
+function validatePersonalProviderForm(params: {
+  providerType: ModelProviderType;
+  formValues: DialogFormValues;
+  mode: DialogState["mode"];
+  requireSecret: boolean;
+}): Record<string, string> {
+  const { providerType, formValues, mode, requireSecret } = params;
+  const errors: Record<string, string> = {};
+
+  if (hasAuthMethods(providerType)) {
+    const secretsConfig = getSecretsForAuthMethod(
+      providerType,
+      formValues.authMethod,
+    );
+    if (!secretsConfig) {
+      return errors;
+    }
+    for (const [key, config] of Object.entries(secretsConfig)) {
+      // Derived secrets are populated by a server-side parser, not the form.
+      // Skip required-field validation for them (#12024).
+      if (config.derived) {
+        continue;
+      }
+      if (config.required && !formValues.secrets[key]?.trim()) {
+        errors[key] = `${config.label} is required`;
+      }
+    }
+    return errors;
+  }
+
+  if ((mode === "add" || requireSecret) && getSecretNameForType(providerType)) {
+    if (!formValues.secret.trim()) {
+      errors["secret"] =
+        providerType === "claude-code-oauth-token"
+          ? "OAuth token is required"
+          : "API key is required";
+    }
+  }
+
+  return errors;
+}
+
+function buildPersonalProviderRequest(
+  providerType: ModelProviderType,
+  formValues: DialogFormValues,
+  skipModelSelection: boolean,
+): Record<string, unknown> {
+  const request: Record<string, unknown> = { type: providerType };
+
+  if (hasAuthMethods(providerType)) {
+    request.authMethod = formValues.authMethod;
+    request.secrets = formValues.secrets;
+  } else if (formValues.secret.trim()) {
+    request.secret = formValues.secret;
+  }
+
+  if (
+    !skipModelSelection &&
+    hasModelSelection(providerType) &&
+    !formValues.useDefaultModel &&
+    formValues.selectedModel
+  ) {
+    request.selectedModel = formValues.selectedModel;
+  }
+
+  return request;
+}
+
 // ---------------------------------------------------------------------------
 // Derived state
 // ---------------------------------------------------------------------------
@@ -221,6 +370,7 @@ export const personalDefaultProvider$ = computed(async (get) => {
 
 export const personalOpenAddDialog$ = command(
   ({ set }, providerType: ModelProviderType) => {
+    set(internalPersonalModelPolicyRouteAfterAuth$, null);
     const defaultAuth = hasAuthMethods(providerType)
       ? (getDefaultAuthMethod(providerType) ?? "")
       : "";
@@ -246,6 +396,7 @@ export const personalOpenAddDialog$ = command(
 
 export const personalOpenEditDialog$ = command(
   ({ set }, provider: ModelProviderResponse) => {
+    set(internalPersonalModelPolicyRouteAfterAuth$, null);
     set(internalPersonalFormValues$, {
       secret: "",
       selectedModel: provider.selectedModel ?? "",
@@ -268,6 +419,7 @@ export const personalCloseDialog$ = command(({ set }) => {
     mode: "add",
     providerType: null,
   });
+  set(internalPersonalModelPolicyRouteAfterAuth$, null);
   set(internalPersonalFormValues$, {
     secret: "",
     selectedModel: "",
@@ -358,62 +510,27 @@ export const personalSubmitDialog$ = command(
     }
 
     const providerType = dialogState.providerType;
-    const isMultiAuth = hasAuthMethods(providerType);
+    const pendingRoute = get(internalPersonalModelPolicyRouteAfterAuth$);
+    const pendingRouteMatchesProvider =
+      pendingRoute?.providerType === providerType;
 
-    // Validate
-    const errors: Record<string, string> = {};
-
-    if (isMultiAuth) {
-      const secretsConfig = getSecretsForAuthMethod(
-        providerType,
-        formValues.authMethod,
-      );
-      if (secretsConfig) {
-        for (const [key, config] of Object.entries(secretsConfig)) {
-          // Derived secrets are populated by a server-side parser, not the
-          // form. Skip required-field validation for them (#12024).
-          if (config.derived) {
-            continue;
-          }
-          if (config.required && !formValues.secrets[key]?.trim()) {
-            errors[key] = `${config.label} is required`;
-          }
-        }
-      }
-    } else if (
-      dialogState.mode === "add" &&
-      getSecretNameForType(providerType)
-    ) {
-      if (!formValues.secret.trim()) {
-        errors["secret"] =
-          providerType === "claude-code-oauth-token"
-            ? "OAuth token is required"
-            : "API key is required";
-      }
-    }
+    const errors = validatePersonalProviderForm({
+      providerType,
+      formValues,
+      mode: dialogState.mode,
+      requireSecret: pendingRouteMatchesProvider,
+    });
 
     if (Object.keys(errors).length > 0) {
       set(internalPersonalFormErrors$, errors);
       return;
     }
 
-    // Build request
-    const request: Record<string, unknown> = { type: providerType };
-
-    if (isMultiAuth) {
-      request.authMethod = formValues.authMethod;
-      request.secrets = formValues.secrets;
-    } else if (formValues.secret.trim()) {
-      request.secret = formValues.secret;
-    }
-
-    if (
-      hasModelSelection(providerType) &&
-      !formValues.useDefaultModel &&
-      formValues.selectedModel
-    ) {
-      request.selectedModel = formValues.selectedModel;
-    }
+    const request = buildPersonalProviderRequest(
+      providerType,
+      formValues,
+      pendingRouteMatchesProvider,
+    );
 
     const promise = (async () => {
       await set(
@@ -422,6 +539,23 @@ export const personalSubmitDialog$ = command(
         signal,
       );
       signal.throwIfAborted();
+
+      if (pendingRouteMatchesProvider && pendingRoute) {
+        const policyResponse = await get(orgModelPolicies$);
+        signal.throwIfAborted();
+        await set(
+          updateOrgModelPolicies$,
+          {
+            policies: applyPersonalAuthRouteToPolicies(
+              policyResponse.policies,
+              pendingRoute,
+            ),
+            toast: false,
+          },
+          signal,
+        );
+        signal.throwIfAborted();
+      }
 
       const providerLabel =
         MODEL_PROVIDER_TYPES[providerType]?.label ?? providerType;
@@ -435,6 +569,7 @@ export const personalSubmitDialog$ = command(
         providerType: null,
       });
       set(internalPersonalAddProviderDialogOpen$, false);
+      set(internalPersonalModelPolicyRouteAfterAuth$, null);
       set(internalPersonalFormValues$, {
         secret: "",
         selectedModel: "",

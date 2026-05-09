@@ -48,12 +48,28 @@ const {
   return {};
 });
 
+const {
+  get: getOptionalOverrideEnv,
+  set: setOptionalOverrideEnv,
+  clear: clearOptionalOverrideEnv,
+} = testOverride<Readonly<Record<string, string | undefined>>>(() => {
+  return {};
+});
+
 export function env<K extends EnvKey>(name: K): EnvShape[K] {
   const overrideEnv = getOverrideEnv();
   if (Object.prototype.hasOwnProperty.call(overrideEnv, name)) {
     return overrideEnv[name] as EnvShape[K];
   }
   return baseEnv[name];
+}
+
+export function optionalEnv(name: string): string | undefined {
+  const overrideEnv = getOptionalOverrideEnv();
+  if (Object.prototype.hasOwnProperty.call(overrideEnv, name)) {
+    return overrideEnv[name];
+  }
+  return process.env[name] || undefined;
 }
 
 export function mockEnv<K extends EnvKey>(name: K, value: EnvShape[K]): void {
@@ -64,6 +80,14 @@ export function mockEnv<K extends EnvKey>(name: K, value: EnvShape[K]): void {
   });
 }
 
+export function mockOptionalEnv(name: string, value: string | undefined): void {
+  setOptionalOverrideEnv({
+    ...getOptionalOverrideEnv(),
+    [name]: value,
+  });
+}
+
 export function clearMockedEnv(): void {
   clearOverrideEnv();
+  clearOptionalOverrideEnv();
 }

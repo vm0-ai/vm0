@@ -168,13 +168,15 @@ export const voiceChatTasks = pgTable(
 );
 
 /**
- * Server-side OpenAI Realtime relay attempts for a voice-chat session.
- *
- * One row per relay connection. Reconnects (browser drops, network blips,
+ * Audit rows for browser-direct OpenAI Realtime sessions (Plan D, Epic
+ * #12128). One row per browser session; reconnects (network blips,
  * deliberate end-and-resume) create new rows so the `usage_event` audit
- * trail can be correlated by relay session, not by voice-chat session.
+ * trail can be correlated by realtime session, not by voice-chat session.
  *
- * Status flow: starting → active → ended | error.
+ * Lifecycle: /session-started inserts with `status: "active"`;
+ * /session-ended flips to `"ended"`. The `"starting"` and `"error"`
+ * status values are reserved for any future server-side relay path but
+ * are unreachable from the current Plan D code.
  */
 export const voiceChatRealtimeSessions = pgTable(
   "voice_chat_realtime_sessions",

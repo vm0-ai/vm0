@@ -1,12 +1,19 @@
 import { describe, it, expect } from "vitest";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { allConnectorTypes$ } from "../settings/connectors.ts";
+import { zeroAuthorizedConnectors$ } from "../zero-connectors.ts";
+import { authorizeConnector$ as directedAuthorizeConnector$ } from "../../connectors-page/directed-authorize-type.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ConnectorType } from "@vm0/connectors/connectors";
+import { server } from "../../../mocks/server.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
+const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 describe("connectors", () => {
   it("should show gmail connector without any feature switch", async () => {
@@ -84,6 +91,40 @@ describe("connectors", () => {
     // GitHub should be connected and at position 0
     expect(connectorTypes[0].type).toBe("github" as ConnectorType);
     expect(connectorTypes[0].connected).toBeTruthy();
+  });
+
+  it("refreshes chat composer authorization state after directed authorize", async () => {
+    let enabledTypes: string[] = [];
+    server.use(
+      mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+        return respond(200, { enabledTypes });
+      }),
+      mockApi(zeroUserConnectorsContract.update, ({ body, respond }) => {
+        enabledTypes = body.enabledTypes;
+        return respond(200, { enabledTypes });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    await expect(
+      context.store.get(zeroAuthorizedConnectors$),
+    ).resolves.toStrictEqual([]);
+
+    await context.store.set(
+      directedAuthorizeConnector$,
+      "github",
+      DEFAULT_AGENT_ID,
+      context.signal,
+    );
+
+    await expect(
+      context.store.get(zeroAuthorizedConnectors$),
+    ).resolves.toStrictEqual(["github"]);
   });
 });
 

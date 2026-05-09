@@ -176,15 +176,11 @@ export function buildSchedulePrompt(opts: { triggerType: string }): string {
 
 /**
  * Build the full appendSystemPrompt for Web Chat integration.
- *
- * The user is interacting through the web chat UI, so the final result of the
- * run will be rendered directly to them. Keep this in mind when producing
- * output — there is no separate delivery step.
  */
 export function buildWebChatPrompt(): string {
   const header = buildIntegrationPrompt("Web");
   const description =
-    "You are communicating with the user through the web chat UI. The final result you return will be displayed to the user directly in the chat.";
+    "You are communicating with the user through the web chat UI.";
   return [header, description].join("\n\n");
 }
 

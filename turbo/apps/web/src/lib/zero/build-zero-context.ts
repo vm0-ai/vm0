@@ -11,10 +11,12 @@ import type {
   Firewalls,
   NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
+import type { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   getModelProviderFirewall,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import type { SupportedFramework } from "@vm0/core/frameworks";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { badRequest, notFound } from "@vm0/api-services/errors";
@@ -29,6 +31,7 @@ import type { ConversationResolution } from "../infra/run/resolvers";
 import type { AdditionalVolume } from "../infra/storage/types";
 import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "./memory";
 import { expandEnvironmentFromCompose } from "../infra/run/environment";
+import { resolveRuntimeFramework } from "../infra/run/utils";
 import { getUserPreferences } from "./user/user-preferences-service";
 import { getApiTokenConnectorTypes } from "./connector/connector-service";
 import {
@@ -57,6 +60,7 @@ import {
   checkFrameworkCompatibility,
   applyResolutionDefaults,
 } from "./context/resolve-source";
+import { loadFeatureSwitchOverrides } from "./user/feature-switches-service";
 
 // Re-exports for API compatibility
 export {
@@ -224,6 +228,8 @@ interface BuildZeroContextParams {
   allowedCustomConnectorIds?: string[];
   // Pre-fetched user timezone from Phase 1 — skips getUserPreferences() when provided
   preloadedUserTimezone?: string;
+  // Pre-fetched Lab feature switch overrides from Phase 1.
+  featureSwitchOverrides?: Partial<Record<FeatureSwitchKey, boolean>>;
   // Origin of the run request, injected into the sandbox as VM0_RUN_SOURCE.
   triggerSource?: string;
 }
@@ -255,7 +261,7 @@ async function resolveSecretsAndEnvironment(
     | Record<string, SecretConnectorMetadata>
     | undefined;
   resolvedModelProvider: ModelProviderType | undefined;
-  resolvedFramework: string;
+  resolvedFramework: SupportedFramework;
   modelProviderConfig: ExpandedFirewallConfig | undefined;
   modelProviderId: string | null | undefined;
   modelProviderCredentialScope: string | undefined;
@@ -270,7 +276,7 @@ async function resolveSecretsAndEnvironment(
   const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some((v) => {
     return firstAgent?.environment?.[v] !== undefined;
   });
-  const framework = firstAgent?.framework || "claude-code";
+  const framework = resolveRuntimeFramework({ agentCompose });
 
   // Run all secret resolution and variable fetching in parallel.
   // The three resolve functions have independent DB queries (different secret types),
@@ -470,6 +476,9 @@ async function resolveSecretsAndEnvironment(
     }
   }
   timings.billableFirewalls = Date.now() - billableFirewallsStart;
+  const resolvedFramework = resolveRuntimeFramework({
+    resolvedFramework: resolvedModelProviderResult.framework ?? framework,
+  });
 
   return {
     secrets,
@@ -479,7 +488,7 @@ async function resolveSecretsAndEnvironment(
     resolvedModelProvider: resolvedModelProviderResult.resolvedModelProvider,
     // Provider-derived framework when resolution ran; otherwise the compose
     // framework. Source-of-truth for downstream framework-aware logic.
-    resolvedFramework: resolvedModelProviderResult.framework ?? framework,
+    resolvedFramework,
     modelProviderConfig,
     modelProviderId: resolvedModelProviderResult.modelProviderId,
     modelProviderCredentialScope: resolvedModelProviderResult.credentialScope,
@@ -512,8 +521,8 @@ interface BuildZeroContextResult {
   modelProviderId: string | null | undefined;
   /** Model-first credential scope, if provider resolution used model policy. */
   modelProviderCredentialScope: string | undefined;
-  /** Provider-derived framework, source-of-truth for downstream. */
-  resolvedFramework: string;
+  /** Final framework for this execution context. */
+  framework: SupportedFramework;
   /** The logical model name selected by the user, for model usage billing. */
   selectedModel: string | undefined;
 }
@@ -666,12 +675,14 @@ interface ResolvedCliContext {
   firewalls?: Firewalls;
   networkPolicies?: NetworkPolicies;
   userTimezone?: string;
+  featureSwitchOverrides?: Partial<Record<FeatureSwitchKey, boolean>>;
 
   // Model provider metadata (for zero_runs upsert)
   resolvedModelProvider?: ModelProviderType;
   modelProviderId?: string | null;
   modelProviderCredentialScope?: string;
   selectedModel?: string;
+  framework: SupportedFramework;
 
   billableFirewalls: string[];
   modelUsageProvider?: string;
@@ -761,6 +772,7 @@ export async function resolveCliRunContext(
     return {
       artifacts,
       vars,
+      framework: resolveRuntimeFramework({ agentCompose }),
       billableFirewalls: [],
       timings: {
         resolveSource: resolveEnd - resolveStart,
@@ -782,7 +794,12 @@ export async function resolveCliRunContext(
 
   // Step 4: Resolve secrets, user preferences in parallel.
   const resolveSecretsStart = Date.now();
-  const [secretsResult, userPrefs, originalModelProvider] = await Promise.all([
+  const [
+    secretsResult,
+    userPrefs,
+    featureSwitchOverrides,
+    originalModelProvider,
+  ] = await Promise.all([
     resolveSecretsAndEnvironment(
       params.orgId,
       agentCompose,
@@ -799,6 +816,7 @@ export async function resolveCliRunContext(
       params.preferPersonalProvider,
     ),
     getUserPreferences(params.orgId, params.userId),
+    loadFeatureSwitchOverrides(params.orgId, params.userId),
     // Fetch previous run's model provider for compatibility check
     resolution?.previousRunId
       ? globalThis.services.db
@@ -858,10 +876,12 @@ export async function resolveCliRunContext(
     firewalls: permissionResult?.firewalls,
     networkPolicies: permissionResult?.networkPolicies,
     userTimezone,
+    featureSwitchOverrides,
     resolvedModelProvider,
     modelProviderId,
     modelProviderCredentialScope,
     selectedModel,
+    framework: resolvedFramework,
     billableFirewalls,
     modelUsageProvider,
     timings: {
@@ -1030,8 +1050,8 @@ export async function buildZeroExecutionContext(
   // - Provider: avoid mid-conversation base URL mismatches.
   // - Framework: persisted cliAgentSessionHistory is in the previous
   //   framework's format; switching binaries mid-thread can't replay it.
-  //   resolvedFramework is the source of truth (provider-derived since
-  //   #11649); the compose's `framework` field is no longer authoritative.
+  //   ExecutionContext.framework is the source of truth (provider-derived
+  //   since #11649); the compose's `framework` field is no longer authoritative.
   const compatibilityChecksStart = Date.now();
   checkProviderCompatibility(originalModelProvider, resolvedModelProvider);
   checkFrameworkCompatibility(resolution?.sessionFramework, resolvedFramework);
@@ -1077,6 +1097,7 @@ export async function buildZeroExecutionContext(
       additionalVolumes,
       environment: runtimeEnvironment,
       userTimezone,
+      featureSwitchOverrides: params.featureSwitchOverrides,
       firewalls: permissionResult?.firewalls,
       networkPolicies: permissionResult?.networkPolicies,
       disallowedTools: params.disallowedTools,
@@ -1095,11 +1116,7 @@ export async function buildZeroExecutionContext(
       modelUsageProvider,
       // API start time for E2E timing metrics
       apiStartTime: params.apiStartTime,
-      // Provider-derived framework — source of truth for downstream
-      // dispatch (execution-preparer) and admission validation. Undefined
-      // on the CLI path (no provider context); dispatch falls back to
-      // compose framework via extractCliAgentType.
-      resolvedFramework,
+      framework: resolvedFramework,
     },
     timings: {
       ...timingDetails,
@@ -1108,7 +1125,7 @@ export async function buildZeroExecutionContext(
     resolvedModelProvider,
     modelProviderId,
     modelProviderCredentialScope,
-    resolvedFramework,
+    framework: resolvedFramework,
     selectedModel,
   };
 }

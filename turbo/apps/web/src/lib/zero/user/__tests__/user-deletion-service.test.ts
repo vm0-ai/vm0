@@ -27,7 +27,6 @@ import {
   insertTestGithubUserLink,
   insertTestTelegramInstallation,
   insertTestTelegramUserLink,
-  insertTestPlatformConnector,
 } from "../../../../__tests__/api-test-helpers";
 import { createTestEmailThreadSession } from "../../../../__tests__/db-test-seeders/email";
 import {
@@ -371,12 +370,6 @@ describe("deleteUserData", () => {
     await createTestConnectorSession(userId, "github");
     await insertTestComposeJob({ userId });
 
-    // Platform connector enablement — separate table from OAuth, must also
-    // be cascaded on user deletion. The table stores varchar, so any string
-    // value exercises the delete path regardless of which (if any) platform
-    // connector is currently registered in the contract.
-    await insertTestPlatformConnector(orgId, userId, "__test_platform__");
-
     // Membership
     await insertOrgMembersCacheEntry({ orgId, userId, role: "admin" });
     await insertOrgMembersEntry({ orgId, userId });
@@ -396,7 +389,6 @@ describe("deleteUserData", () => {
       "secrets",
       "model_providers",
       "connectors",
-      "user_platform_connectors",
       "variables",
       "usage_daily",
       "export_jobs",

@@ -484,7 +484,7 @@ async function resolveVm0Provider(
   const concreteType = getVm0ConcreteProviderTypeForRoute(selectedModel);
   const vendor = getVm0Vendor(selectedModel);
   const apiModel = getProviderRuntimeModel("vm0", selectedModel);
-  const poolKey = await getVm0ApiKey(vendor);
+  const poolKey = await getVm0ApiKey(vendor, selectedModel);
   if (!poolKey) {
     throw badRequest(`No API key available for vendor "${vendor}"`);
   }

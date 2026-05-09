@@ -30,9 +30,8 @@ describe("isFeatureEnabled", () => {
   });
 
   it("should return true when orgId hash matches enabledOrgIdHashes", () => {
-    // PlatformConnectors has enabledOrgIdHashes: STAFF_ORG_ID_HASHES
     expect(
-      isFeatureEnabled(FeatureSwitchKey.PlatformConnectors, {
+      isFeatureEnabled(FeatureSwitchKey.ConnectorCategories, {
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
     ).toBe(true);
@@ -40,14 +39,14 @@ describe("isFeatureEnabled", () => {
 
   it("should return false when orgId does not match enabledOrgIdHashes", () => {
     expect(
-      isFeatureEnabled(FeatureSwitchKey.PlatformConnectors, {
+      isFeatureEnabled(FeatureSwitchKey.ConnectorCategories, {
         orgId: "org_nonexistent",
       }),
     ).toBe(false);
   });
 
   it("should return false when no orgId provided but switch has enabledOrgIdHashes", () => {
-    expect(isFeatureEnabled(FeatureSwitchKey.PlatformConnectors, {})).toBe(
+    expect(isFeatureEnabled(FeatureSwitchKey.ConnectorCategories, {})).toBe(
       false,
     );
   });
@@ -75,7 +74,7 @@ describe("isFeatureEnabled", () => {
 
   it("should return true when orgId matches even if userId does not", () => {
     expect(
-      isFeatureEnabled(FeatureSwitchKey.PlatformConnectors, {
+      isFeatureEnabled(FeatureSwitchKey.ConnectorCategories, {
         userId: "non-matching-user",
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
@@ -95,8 +94,6 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates({
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
-    // PlatformConnectors has STAFF_ORG_ID_HASHES and should be true
-    expect(states[FeatureSwitchKey.PlatformConnectors]).toBe(true);
     expect(states[FeatureSwitchKey.ConnectorCategories]).toBe(true);
     expect(states[FeatureSwitchKey.ModelFirstModelProvider]).toBe(false);
     // Globally enabled should still be true
@@ -109,7 +106,6 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates({
       orgId: "org_nonexistent",
     });
-    expect(states[FeatureSwitchKey.PlatformConnectors]).toBe(false);
     expect(states[FeatureSwitchKey.ConnectorCategories]).toBe(false);
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
   });

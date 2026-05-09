@@ -9,8 +9,9 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { server } from "../../../../../mocks/server.ts";
@@ -25,6 +26,8 @@ import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
 } from "../../../../../mocks/handlers/api-org-model-providers.ts";
+import { resetMockOrgModelPolicies } from "../../../../../mocks/handlers/api-org-model-policies.ts";
+import { setMockFeatureSwitches } from "../../../../../mocks/handlers/api-feature-switches.helpers.ts";
 import { setCodexPasteDialogState$ } from "../../../../../signals/zero-page/settings/org-model-providers.ts";
 
 vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
@@ -68,8 +71,27 @@ function makeFreshProvider(): ModelProviderResponse {
   };
 }
 
+function makeAnthropicProvider(): ModelProviderResponse {
+  return {
+    id: "00000000-0000-4000-a000-0000000000a2",
+    type: "anthropic-api-key",
+    framework: "claude-code",
+    secretName: "ANTHROPIC_API_KEY",
+    authMethod: null,
+    secretNames: null,
+    isDefault: true,
+    selectedModel: null,
+    needsReconnect: false,
+    lastRefreshErrorCode: null,
+    createdAt: "2026-05-06T00:00:00Z",
+    updatedAt: "2026-05-06T00:00:00Z",
+  };
+}
+
 beforeEach(() => {
   resetMockOrgModelProviders();
+  resetMockOrgModelPolicies();
+  setMockFeatureSwitches({});
   vi.mocked(toast.error).mockClear();
   vi.mocked(toast.success).mockClear();
 });
@@ -96,7 +118,350 @@ function findReconnectDialogTitle(): HTMLElement | null {
   return screen.queryByText("Re-connect Codex");
 }
 
+function getActionsButton(row: HTMLElement): HTMLElement {
+  const button = within(row)
+    .getAllByRole("button")
+    .find((item) => {
+      return /Actions for/i.test(item.getAttribute("aria-label") ?? "");
+    });
+  expect(button).toBeDefined();
+  return button!;
+}
+
+async function openModelPolicyDialog(row: HTMLElement): Promise<HTMLElement> {
+  click(getActionsButton(row));
+  click(await screen.findByText("Edit model"));
+  return getModelPolicyDialog();
+}
+
+function getModelPolicyDialog(): HTMLElement {
+  const dialog = screen.getAllByRole("dialog").find((item) => {
+    return Boolean(
+      within(item).queryByText(/Choose the model members can select/i),
+    );
+  });
+  expect(dialog).toBeDefined();
+  return dialog!;
+}
+
+function getOrgProviderDialog(): HTMLElement {
+  const dialog = screen.getAllByRole("dialog").find((item) => {
+    return Boolean(
+      within(item).queryByText(/(?:Add|Edit) workspace Anthropic/i),
+    );
+  });
+  expect(dialog).toBeDefined();
+  return dialog!;
+}
+
+function clickRouteChoice(dialog: HTMLElement, label: string): void {
+  const button = within(dialog).getByText(label).closest("button");
+  expect(button).toBeDefined();
+  click(button!);
+}
+
+function clickDialogButton(dialog: HTMLElement, label: string): void {
+  const button = within(dialog)
+    .getAllByRole("button")
+    .find((item) => {
+      return item.textContent?.trim() === label;
+    });
+  expect(button).toBeDefined();
+  click(button!);
+}
+
 describe("org-providers-tab — stale banner reconnect", () => {
+  it("keeps legacy default provider controls when model-first is off", async () => {
+    await openProvidersPage();
+
+    await expect(
+      screen.findByText("Default provider"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getAllByText("Model Providers").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Model")).not.toBeInTheDocument();
+    expect(screen.queryByText("Model Configuration")).not.toBeInTheDocument();
+    expect(screen.queryByText("Workspace default:")).not.toBeInTheDocument();
+    expect(screen.queryByText("Default model")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Members see models in this order/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows model policies instead of legacy default provider when model-first is on", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+
+    await openProvidersPage();
+
+    await expect(
+      screen.findByText(/Manage workspace models/i),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getAllByText("Models").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Model Configuration")).not.toBeInTheDocument();
+    expect(screen.getByText("Models Configuration")).toBeInTheDocument();
+    expect(screen.queryByText("Model Providers")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Members see models in this order/i),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Default model")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("org-model-policy-row-claude-opus-4-7"),
+    ).toHaveTextContent("Claude Opus 4.7");
+    expect(
+      screen.queryByText("Workspace default when no model is selected"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Workspace default:")).not.toBeInTheDocument();
+    expect(screen.queryByText("Default provider")).not.toBeInTheDocument();
+  });
+
+  it("changes the default model from the default selector", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+
+    await openProvidersPage();
+
+    const defaultSection = (await screen.findByText("Default model")).closest(
+      "section",
+    );
+    expect(defaultSection).toBeDefined();
+    expect(
+      within(defaultSection!).getByText("Claude Sonnet 4.6"),
+    ).toBeDefined();
+
+    click(within(defaultSection!).getByRole("combobox"));
+    const listbox = await screen.findByRole("listbox");
+    click(within(listbox).getByText("Claude Opus 4.7"));
+
+    await waitFor(() => {
+      expect(
+        within(defaultSection!).getByText("Claude Opus 4.7"),
+      ).toBeDefined();
+    });
+  });
+
+  it("adds a model from the model policy list", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+
+    await openProvidersPage();
+
+    expect(
+      screen.queryByTestId("org-model-policy-row-claude-opus-4-6"),
+    ).not.toBeInTheDocument();
+    click(await screen.findByText("Add model"));
+    const dialog = getModelPolicyDialog();
+    expect(within(dialog).getByText("Claude Opus 4.6")).toBeInTheDocument();
+    click(within(dialog).getByRole("combobox"));
+    const listbox = await screen.findByRole("listbox");
+    expect(
+      within(listbox).queryByText("Claude Opus 4.7"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(listbox).queryByText("Claude Sonnet 4.6"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(listbox).queryByText("DeepSeek V4 Pro"),
+    ).not.toBeInTheDocument();
+    expect(within(listbox).getByText("Claude Opus 4.6")).toBeInTheDocument();
+    click(within(listbox).getByText("Claude Opus 4.6"));
+    clickDialogButton(dialog, "Add model");
+
+    await expect(
+      screen.findByTestId("org-model-policy-row-claude-opus-4-6"),
+    ).resolves.toBeInTheDocument();
+  });
+
+  it("keeps the add model dialog open after closing nested API key edit", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+    setMockOrgModelProviders([makeAnthropicProvider()]);
+
+    await openProvidersPage();
+
+    click(await screen.findByText("Add model"));
+    const dialog = getModelPolicyDialog();
+    clickRouteChoice(dialog, "BYOK: workspace API key");
+    click(within(dialog).getByText("Edit API key"));
+
+    const providerDialog = getOrgProviderDialog();
+    click(within(providerDialog).getByText("Cancel"));
+
+    await waitFor(() => {
+      expect(
+        within(getModelPolicyDialog()).getByRole("heading", {
+          name: "Add model",
+        }),
+      ).toBeInTheDocument();
+      expect(
+        within(getModelPolicyDialog()).getByText(
+          /Choose the model members can select/i,
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("keeps the add model dialog open after closing nested API key add", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+
+    await openProvidersPage();
+
+    click(await screen.findByText("Add model"));
+    const dialog = getModelPolicyDialog();
+    clickRouteChoice(dialog, "BYOK: workspace API key");
+    clickDialogButton(dialog, "Add Anthropic API key");
+
+    const providerDialog = getOrgProviderDialog();
+    click(within(providerDialog).getByText("Cancel"));
+
+    await waitFor(() => {
+      expect(
+        within(getModelPolicyDialog()).getByRole("heading", {
+          name: "Add model",
+        }),
+      ).toBeInTheDocument();
+      expect(
+        within(getModelPolicyDialog()).getByText(
+          /Choose the model members can select/i,
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("closes the add model dialog after nested API key add succeeds", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+
+    await openProvidersPage();
+
+    click(await screen.findByText("Add model"));
+    const dialog = getModelPolicyDialog();
+    clickRouteChoice(dialog, "BYOK: workspace API key");
+    clickDialogButton(dialog, "Add Anthropic API key");
+
+    const providerDialog = getOrgProviderDialog();
+    await fill(
+      within(providerDialog).getByPlaceholderText("Enter your API key"),
+      "sk-ant-test",
+    );
+    click(within(providerDialog).getByText("Add"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/Choose the model members can select/i),
+      ).not.toBeInTheDocument();
+    });
+    await expect(
+      screen.findByTestId("org-model-policy-row-claude-opus-4-6"),
+    ).resolves.toBeInTheDocument();
+  });
+
+  it("deletes a model from the model policy list", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+
+    await openProvidersPage();
+
+    const row = await screen.findByTestId(
+      "org-model-policy-row-claude-sonnet-4-6",
+    );
+    click(getActionsButton(row));
+    click(await screen.findByText("Delete model"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("org-model-policy-row-claude-sonnet-4-6"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("hides ChatGPT Codex route options when the Codex OAuth provider switch is off", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+      [FeatureSwitchKey.CodexBeta]: true,
+      [FeatureSwitchKey.CodexOauthProvider]: false,
+    });
+
+    await openProvidersPage();
+
+    const row = await screen.findByTestId("org-model-policy-row-gpt-5.5");
+    const dialog = await openModelPolicyDialog(row);
+
+    expect(within(dialog).getByText("Built-in")).toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("BYOK: member OAuth"),
+    ).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByText(/ChatGPT \(Codex\)/i)).not.toBeInTheDocument();
+  });
+
+  it("stores OAuth routes as member credentials without token input", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+
+    await openProvidersPage();
+
+    const row = await screen.findByTestId(
+      "org-model-policy-row-claude-opus-4-7",
+    );
+    const dialog = await openModelPolicyDialog(row);
+    clickRouteChoice(dialog, "BYOK: member OAuth");
+    expect(within(dialog).getByText("Claude Code (OAuth token)")).toBeDefined();
+    expect(within(dialog).queryByRole("combobox")).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText(/OAuth routes are personal/i),
+    ).not.toBeInTheDocument();
+    clickDialogButton(dialog, "Save changes");
+
+    await expect(
+      within(row).findByText("Claude Code (OAuth token)"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Add personal Claude Code \(OAuth token\)/i),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText("sk-ant-XXXXXXX"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(row).queryByText(/OAuth requires each member/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("stores ChatGPT OAuth routes without opening paste auth", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+      [FeatureSwitchKey.CodexBeta]: true,
+      [FeatureSwitchKey.CodexOauthProvider]: true,
+    });
+
+    await openProvidersPage();
+
+    const row = await screen.findByTestId("org-model-policy-row-gpt-5.5");
+    const dialog = await openModelPolicyDialog(row);
+    clickRouteChoice(dialog, "BYOK: member OAuth");
+    expect(within(dialog).getByText("ChatGPT (Codex)")).toBeDefined();
+    expect(within(dialog).queryByRole("combobox")).not.toBeInTheDocument();
+    clickDialogButton(dialog, "Save changes");
+
+    await expect(
+      within(row).findByText("ChatGPT (Codex)"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: /Connect Codex/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(row).queryByText(/OAuth requires each member/i),
+    ).not.toBeInTheDocument();
+  });
+
   it("opens the paste dialog in reconnect mode when Re-paste button is clicked", async () => {
     setMockOrgModelProviders([makeStaleProvider()]);
     await openProvidersPage();

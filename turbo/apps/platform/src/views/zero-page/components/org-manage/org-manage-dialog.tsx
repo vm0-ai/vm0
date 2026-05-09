@@ -46,6 +46,7 @@ import {
   setMobileMasterMode$,
   type OrgManageTab,
 } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { modelFirstModelProviderEnabled$ } from "../../../../signals/external/feature-switch.ts";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -107,21 +108,23 @@ const BILLING_GROUP = {
   ],
 } as const satisfies SidebarGroup;
 
-const CONFIGURATION_GROUP = {
-  label: "Configuration",
-  items: [
-    {
-      id: "providers",
-      label: "Model Providers",
-      icon: IconCpu as NavIcon,
-    },
-    {
-      id: "domains",
-      label: "Domains",
-      icon: IconWorldWww as NavIcon,
-    },
-  ],
-} as const satisfies SidebarGroup;
+function getConfigurationGroup(modelFirstEnabled: boolean): SidebarGroup {
+  return {
+    label: "Configuration",
+    items: [
+      {
+        id: "providers",
+        label: modelFirstEnabled ? "Models" : "Model Providers",
+        icon: IconCpu as NavIcon,
+      },
+      {
+        id: "domains",
+        label: "Domains",
+        icon: IconWorldWww as NavIcon,
+      },
+    ],
+  };
+}
 
 const BASE_SIDEBAR_GROUPS = [
   {
@@ -266,15 +269,23 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
   const isMobile = useGet(isMobileViewport$);
   const masterMode = useGet(mobileMasterMode$);
   const setMasterMode = useSet(setMobileMasterMode$);
+  const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
 
   const sidebarGroups = [
     ...BASE_SIDEBAR_GROUPS.slice(0, 1),
-    ...(isAdmin ? [CONFIGURATION_GROUP] : []),
+    ...(isAdmin ? [getConfigurationGroup(modelFirstEnabled)] : []),
     ...BASE_SIDEBAR_GROUPS.slice(1),
     ...(isAdmin ? [BILLING_GROUP] : []),
   ];
 
-  const meta = TAB_META[activeTab];
+  const meta =
+    activeTab === "providers" && modelFirstEnabled
+      ? {
+          title: "Models Configuration",
+          description:
+            "Manage workspace models, set the default model, and choose how each model is routed.",
+        }
+      : TAB_META[activeTab];
   const isBillingSubPage = useGet(billingSubPage$);
   const hideHeader = activeTab === "billing" && isBillingSubPage;
 

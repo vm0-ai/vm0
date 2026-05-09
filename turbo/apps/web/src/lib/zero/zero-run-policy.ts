@@ -8,10 +8,14 @@ import {
 } from "@vm0/api-services/errors";
 import {
   MODEL_PROVIDER_TYPES,
+  type ModelProviderFramework,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { canAccessCompose } from "../infra/agent/compose-access";
-import { validateFrameworkApiKey } from "../infra/run/utils";
+import {
+  resolveRuntimeFramework,
+  validateFrameworkApiKey,
+} from "../infra/run/utils";
 import { logger } from "../shared/logger";
 import {
   MODEL_PROVIDER_ENV_VARS,
@@ -146,7 +150,12 @@ export async function validateComposeRequirements(
  * null only when no provider route exists; explicit compose env validation
  * happens separately in `checkModelProviderConfigured`.
  */
-async function resolveProviderTypeForAdmission(params: {
+interface ResolvedAdmissionProvider {
+  providerType: ModelProviderType | null;
+  providerFramework: ModelProviderFramework | null;
+}
+
+async function resolveProviderForAdmission(params: {
   orgId: string;
   userId: string;
   modelProvider?: string | null;
@@ -155,9 +164,9 @@ async function resolveProviderTypeForAdmission(params: {
   selectedModelOverride?: string | null;
   composeFramework: string;
   preferPersonalProvider?: boolean;
-}): Promise<ModelProviderType | null> {
+}): Promise<ResolvedAdmissionProvider> {
   if (params.modelProvider && !(params.modelProvider in MODEL_PROVIDER_TYPES)) {
-    return null;
+    return { providerType: null, providerFramework: null };
   }
   try {
     const route = await resolveModelRoute({
@@ -171,9 +180,14 @@ async function resolveProviderTypeForAdmission(params: {
       selectedModelOverride: params.selectedModelOverride ?? undefined,
       preferPersonalProvider: params.preferPersonalProvider,
     });
-    return route.provider.type;
+    return {
+      providerType: route.provider.type,
+      providerFramework: route.framework,
+    };
   } catch (error) {
-    if (isNoModelProvider(error)) return null;
+    if (isNoModelProvider(error)) {
+      return { providerType: null, providerFramework: null };
+    }
     throw error;
   }
 }
@@ -182,6 +196,7 @@ interface RunAdmissionContext {
   orgId: string;
   userId: string;
   providerType: ModelProviderType | null;
+  providerFramework?: ModelProviderFramework | null;
 }
 
 export async function resolveRunAdmissionContext(params: {
@@ -194,10 +209,12 @@ export async function resolveRunAdmissionContext(params: {
   composeFramework: string;
   preferPersonalProvider?: boolean;
 }): Promise<RunAdmissionContext> {
+  const provider = await resolveProviderForAdmission(params);
   return {
     orgId: params.orgId,
     userId: params.userId,
-    providerType: await resolveProviderTypeForAdmission(params),
+    providerType: provider.providerType,
+    providerFramework: provider.providerFramework,
   };
 }
 
@@ -240,7 +257,7 @@ export async function checkModelProviderConfigured(
   const firstAgent = composeContent.agents
     ? Object.values(composeContent.agents)[0]
     : undefined;
-  const framework = firstAgent?.framework || "claude-code";
+  const framework = resolveRuntimeFramework({ agentCompose: composeContent });
 
   const hasExplicitConfig = MODEL_PROVIDER_ENV_VARS.some((v) => {
     return firstAgent?.environment?.[v] !== undefined;

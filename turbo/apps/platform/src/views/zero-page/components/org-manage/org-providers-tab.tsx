@@ -36,23 +36,49 @@ import { ProviderIcon } from "../settings/provider-icons.tsx";
 import { OrgAddProviderDialog } from "../settings/org-add-provider-dialog.tsx";
 import { OrgProviderDialog } from "../settings/org-provider-dialog.tsx";
 import { OrgDeleteProviderDialog } from "../settings/org-delete-provider-dialog.tsx";
-import { CodexAuthPasteDialog } from "../settings/codex-auth-paste-dialog.tsx";
+import {
+  CodexAuthPasteDialog,
+  PersonalCodexAuthPasteDialog,
+} from "../settings/codex-auth-paste-dialog.tsx";
+import { PersonalProviderDialog } from "../settings/personal-provider-dialog.tsx";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { modelFirstModelProviderEnabled$ } from "../../../../signals/external/feature-switch.ts";
+import { OrgModelPoliciesSection } from "./org-model-policies-section.tsx";
 
 export function OrgProvidersTab() {
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
+  const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
+  const addDialogOpen = useGet(orgAddProviderDialogOpen$);
+  const setAddDialogOpen = useSet(setOrgAddProviderDialogOpen$);
 
   return (
     <div className="flex flex-col gap-8">
-      {isAdmin && <DefaultProviderSection />}
+      {isAdmin &&
+        (modelFirstEnabled ? (
+          <OrgModelPoliciesSection />
+        ) : (
+          <DefaultProviderSection />
+        ))}
       <StaleBannerSection />
-      <ProviderListSection isAdmin={isAdmin} />
+      {!modelFirstEnabled && <ProviderListSection isAdmin={isAdmin} />}
+      {isAdmin && (
+        <OrgAddProviderDialog
+          open={addDialogOpen}
+          onOpenChange={setAddDialogOpen}
+        />
+      )}
       <OrgDeleteProviderDialog />
       <OrgProviderDialog />
       <CodexAuthPasteDialog />
+      {isAdmin && modelFirstEnabled && (
+        <>
+          <PersonalProviderDialog />
+          <PersonalCodexAuthPasteDialog />
+        </>
+      )}
     </div>
   );
 }
@@ -270,7 +296,6 @@ function ProviderRowFooter({ provider }: { provider: ModelProviderResponse }) {
 
 function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
   const providersLoadable = useLoadable(orgConfiguredProviders$);
-  const addDialogOpen = useGet(orgAddProviderDialogOpen$);
   const setAddDialogOpen = useSet(setOrgAddProviderDialogOpen$);
   const openEdit = useSet(orgOpenEditDialog$);
   const openDelete = useSet(orgOpenDeleteDialog$);
@@ -412,13 +437,6 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
           </div>
         )}
       </div>
-
-      {isAdmin && (
-        <OrgAddProviderDialog
-          open={addDialogOpen}
-          onOpenChange={setAddDialogOpen}
-        />
-      )}
     </div>
   );
 }

@@ -35,5 +35,5 @@ pnpm check-types
 ```typescript
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
-console.log(FeatureSwitchKey.PlatformConnectors);
+console.log(FeatureSwitchKey.ConnectorCategories);
 ```

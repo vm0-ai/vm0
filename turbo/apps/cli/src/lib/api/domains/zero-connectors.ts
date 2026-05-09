@@ -3,6 +3,8 @@ import { type ConnectorType } from "@vm0/connectors/connectors";
 import {
   zeroConnectorsByTypeContract,
   zeroConnectorsMainContract,
+  zeroConnectorsSearchContract,
+  type ConnectorSearchResponse,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import type {
   ConnectorListResponse,
@@ -24,6 +26,28 @@ export async function listZeroConnectors(): Promise<ConnectorListResponse> {
   }
 
   handleError(result, "Failed to list connectors");
+}
+
+/**
+ * Search available connector definitions for the authenticated user.
+ * Omitting the keyword returns the server-side visible connector catalog.
+ */
+export async function searchZeroConnectors(
+  keyword?: string,
+): Promise<ConnectorSearchResponse> {
+  const config = await getClientConfig();
+  const client = initClient(zeroConnectorsSearchContract, config);
+
+  const result = await client.search({
+    headers: {},
+    query: keyword ? { keyword } : {},
+  });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to search connectors");
 }
 
 /**

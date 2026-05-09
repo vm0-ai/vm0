@@ -35,6 +35,9 @@ import { createZeroRun } from "../zero-run-service";
 import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "../memory";
 import { reloadEnv } from "../../../env";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
+import { updateUserFeatureSwitches } from "../user/feature-switches-service";
 
 // ---------------------------------------------------------------------------
 // Tests for createZeroRun parameters NOT exposed by the POST /api/zero/runs
@@ -128,6 +131,21 @@ describe("createZeroRun() — service-only parameters", () => {
   });
 
   describe("parameter forwarding", () => {
+    it("should propagate user feature switch overrides into runner feature flags", async () => {
+      await updateUserFeatureSwitches(user.orgId, user.userId, {
+        [FeatureSwitchKey.ComputerUse]: true,
+      });
+
+      const result = await createZeroRun(baseParams());
+      await context.mocks.flushAfter();
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      expect(
+        job!.executionContext.featureFlags?.[FeatureSwitchKey.ComputerUse],
+      ).toBe(true);
+    });
+
     it("should propagate scheduleId to run record", async () => {
       const agentName = uniqueId("sched-agent");
       const compose = await createTestCompose(agentName);

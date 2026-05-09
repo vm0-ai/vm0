@@ -158,6 +158,6 @@ describe("buildWebChatPrompt", () => {
     const result = buildWebChatPrompt();
 
     expect(result).toContain("web chat UI");
-    expect(result).toContain("displayed to the user directly");
+    expect(result).toContain("You are communicating with the user");
   });
 });

@@ -5,15 +5,17 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { searchConnectors } from "@vm0/connectors/connector-utils";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { listZeroConnectors } from "../../../lib/api";
-import { getActiveOrg } from "../../../lib/api/config";
+import { listZeroConnectors, searchZeroConnectors } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { resolveAgentContext } from "./agent-context";
 import { padEndAnsi, renderConnectedAsCell, stripAnsi } from "./connected-as";
 
 const DEFAULT_LIMIT = 5;
 const EXACT_MATCH_THRESHOLD = 80;
+
+function isConnectorType(type: string): type is ConnectorType {
+  return type in CONNECTOR_TYPES;
+}
 
 function parseLimit(raw: string): number {
   const n = Number.parseInt(raw, 10);
@@ -42,9 +44,9 @@ export const searchCommand = new Command()
           throw new Error("Keyword cannot be empty.");
         }
 
-        const [{ connectors }, orgId, agentCtx] = await Promise.all([
+        const [{ connectors }, availableCatalog, agentCtx] = await Promise.all([
           listZeroConnectors(),
-          getActiveOrg(),
+          searchZeroConnectors(),
           resolveAgentContext(options.agent),
         ]);
         const connectedMap = new Map(
@@ -53,21 +55,20 @@ export const searchCommand = new Command()
           }),
         );
 
-        const isTypeAvailable = (type: ConnectorType): boolean => {
-          const config = CONNECTOR_TYPES[type];
-          const flag = config.featureFlag;
-          const hasApiToken = "api-token" in config.authMethods;
-          return (
-            !flag ||
-            isFeatureEnabled(flag, { orgId }) ||
-            (hasApiToken && !config.strictFeatureFlag)
-          );
-        };
+        const availableTypes = new Set(
+          availableCatalog.connectors
+            .map((connector) => {
+              return connector.id;
+            })
+            .filter(isConnectorType),
+        );
 
         const { results, total } = searchConnectors(
           trimmed,
           options.limit,
-          isTypeAvailable,
+          (type) => {
+            return availableTypes.has(type);
+          },
         );
 
         if (results.length === 0) {

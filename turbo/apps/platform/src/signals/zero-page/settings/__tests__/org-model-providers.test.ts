@@ -11,6 +11,8 @@ import {
 import { getProviderShape } from "../../../../views/zero-page/components/settings/provider-ui-config.ts";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { createMockApi } from "../../../../mocks/msw-contract.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { detachedSetupPage } from "../../../../__tests__/page-helper.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -145,5 +147,50 @@ describe("org-model-providers vm0 provider", () => {
     // The selectedModel should be included in the request
     expect(capturedBody).not.toBeNull();
     expect(capturedBody!.selectedModel).toBe("claude-opus-4");
+  });
+
+  it("should omit selectedModel when model-first provider policies are enabled", async () => {
+    const { store, signal } = context;
+    let capturedBody: Record<string, unknown> | null = null;
+
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.ModelFirstModelProvider]: true },
+      withoutRender: true,
+    });
+
+    server.use(
+      mockApi(zeroModelProvidersMainContract.upsert, ({ body, respond }) => {
+        capturedBody = body as Record<string, unknown>;
+        return respond(201, {
+          provider: {
+            id: "a1b2c3d4-e5f6-4890-abcd-ef1234567890",
+            type: "vm0",
+            framework: "claude-code",
+            secretName: null,
+            authMethod: null,
+            secretNames: null,
+            isDefault: true,
+            selectedModel: null,
+            needsReconnect: false,
+            lastRefreshErrorCode: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          created: true,
+        });
+      }),
+    );
+
+    store.set(orgOpenAddDialog$, "vm0");
+
+    const formValues = store.get(orgDialogFormValues$);
+    expect(formValues.selectedModel).toBe("claude-sonnet-4-6");
+
+    await store.set(orgSubmitDialog$, signal);
+
+    expect(capturedBody).not.toBeNull();
+    expect(capturedBody).not.toHaveProperty("selectedModel");
   });
 });

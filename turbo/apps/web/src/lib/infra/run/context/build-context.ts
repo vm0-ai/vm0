@@ -1,10 +1,12 @@
 import { expandEnvironmentFromCompose } from "../environment/expand-environment";
+import type { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type {
   ContextArtifact,
   ExecutionContext,
   ResumeSession,
 } from "../types";
 import type { AdditionalVolume } from "../../storage/types";
+import type { SupportedFramework } from "@vm0/core/frameworks";
 import type {
   Firewalls,
   NetworkPolicies,
@@ -17,6 +19,7 @@ interface BuildInfraContextParams {
   orgId: string;
   agentComposeVersionId: string;
   agentCompose: unknown;
+  framework: SupportedFramework;
   prompt: string;
   sandboxToken: string;
   appendSystemPrompt?: string;
@@ -29,6 +32,7 @@ interface BuildInfraContextParams {
   additionalVolumes?: AdditionalVolume[];
   environment?: Record<string, string>;
   userTimezone?: string;
+  featureSwitchOverrides?: Partial<Record<FeatureSwitchKey, boolean>>;
   firewalls?: Firewalls;
   networkPolicies?: NetworkPolicies;
   disallowedTools?: string[];
@@ -75,6 +79,7 @@ export function buildInfraExecutionContext(
     orgId: params.orgId,
     agentComposeVersionId: params.agentComposeVersionId,
     agentCompose: params.agentCompose,
+    framework: params.framework,
     prompt: params.prompt,
     appendSystemPrompt: params.appendSystemPrompt,
     vars: params.vars,
@@ -87,6 +92,7 @@ export function buildInfraExecutionContext(
     additionalVolumes: params.additionalVolumes,
     environment,
     userTimezone: params.userTimezone,
+    featureSwitchOverrides: params.featureSwitchOverrides,
     firewalls: params.firewalls,
     networkPolicies: params.networkPolicies,
     disallowedTools: params.disallowedTools,

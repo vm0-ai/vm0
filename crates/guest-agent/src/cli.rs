@@ -541,6 +541,8 @@ pub async fn execute_cli(
     });
 
     let mut heartbeat_done = false;
+    let mut last_read_event_at: Option<Instant> = None;
+    let mut cli_exit_at: Option<Instant> = None;
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
             line_result = reader.next_line(), if !stdout_eof => {
@@ -556,6 +558,7 @@ pub async fn execute_cli(
                         }
 
                         if let Ok(mut event) = serde_json::from_str::<serde_json::Value>(stripped) {
+                            last_read_event_at = Some(Instant::now());
                             // First event is the CLI init (system/init or thread.started)
                             if seq == 0 {
                                 timing::record_e2e_from_api("api_to_cli_init");
@@ -618,6 +621,7 @@ pub async fn execute_cli(
             status = child.wait(), if cli_status.is_none() => {
                 match status {
                     Ok(s) => {
+                        cli_exit_at = Some(Instant::now());
                         log_info!(LOG_TAG, "CLI process exited (status: {s}), draining stdout");
                         cli_status = Some(s);
                         // CLI exited on its own (possibly in response to our
@@ -818,8 +822,22 @@ pub async fn execute_cli(
 
     let status = match cli_status {
         Some(s) => s,
-        None => child.wait().await?,
+        None => {
+            let status = child.wait().await?;
+            cli_exit_at = Some(Instant::now());
+            status
+        }
     };
+    if let (Some(last_read_event_at), Some(cli_exit_at)) = (last_read_event_at, cli_exit_at) {
+        record_sandbox_op(
+            "last_read_event_to_cli_exit",
+            cli_exit_at
+                .checked_duration_since(last_read_event_at)
+                .unwrap_or(Duration::ZERO),
+            true,
+            None,
+        );
+    }
     let exit_code = match status.code() {
         Some(code) => code,
         None => {

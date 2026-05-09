@@ -49,6 +49,9 @@ import {
   seedStalePendingRun,
 } from "../../../../../src/__tests__/db-test-seeders/runs";
 import { reloadEnv } from "../../../../../src/env";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Route-level setup for feature-switch override state
+import { updateUserFeatureSwitches } from "../../../../../src/lib/zero/user/feature-switches-service";
 
 const context = testContext();
 
@@ -169,6 +172,22 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       const job = await findTestRunnerJobEntry(data.runId);
       expect(job).toBeDefined();
+    });
+
+    it("should propagate user feature switch overrides through runner job dispatch", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      reloadEnv();
+      await updateUserFeatureSwitches(user.orgId, user.userId, {
+        [FeatureSwitchKey.ComputerUse]: true,
+      });
+
+      const data = await createTestRun(testComposeId, "Hello");
+
+      const job = await findTestRunnerJobEntry(data.runId);
+      expect(job).toBeDefined();
+      expect(
+        job!.executionContext.featureFlags?.[FeatureSwitchKey.ComputerUse],
+      ).toBe(true);
     });
 
     it("should always set lastHeartbeatAt", async () => {

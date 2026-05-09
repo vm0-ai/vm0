@@ -1,4 +1,3 @@
-import { getValidatedFramework } from "@vm0/core/frameworks";
 import { badRequest } from "@vm0/api-services/errors";
 import {
   getFrameworkForType,
@@ -7,6 +6,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import { resolveFrameworkApiKeyEnvVar } from "../../framework/framework-config";
 import type { AgentComposeYaml } from "../../agent-compose/types";
+import { resolveRuntimeFramework } from "./resolve-runtime-framework";
 
 /**
  * Validate that a compose's environment block declares the framework's
@@ -44,10 +44,10 @@ export function validateFrameworkApiKey(
   // framework is fallback for CLI/no-provider paths. Without this, a
   // compose=claude-code + provider=openai-api-key (codex) thread would
   // exit early on the claude-code branch and skip OPENAI_API_KEY checks.
-  const resolvedFrameworkName = providerType
-    ? getFrameworkForType(providerType)
-    : agent.framework;
-  const framework = getValidatedFramework(resolvedFrameworkName);
+  const framework = resolveRuntimeFramework({
+    providerType,
+    agentCompose: compose,
+  });
   if (framework === "claude-code") return;
 
   const requiredVar = resolveFrameworkApiKeyEnvVar(framework);

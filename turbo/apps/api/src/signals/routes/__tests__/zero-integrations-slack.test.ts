@@ -134,6 +134,12 @@ describe("GET /api/zero/integrations/slack", () => {
     expect(response.body.workspaceName).toBe("Test Workspace");
     expect(response.body.defaultAgentName).toBe("Slack Bot");
     expect(response.body.agentOrgSlug).toBe("test-org-slug");
+    // Admin + connected: scope fields should be present (botScopes null → mismatch)
+    expect(response.body).toHaveProperty("scopeMismatch");
+    expect(response.body).toHaveProperty("reinstallUrl");
+    // Connected: install/connect URLs should NOT be present
+    expect(response.body).not.toHaveProperty("installUrl");
+    expect(response.body).not.toHaveProperty("connectUrl");
   });
 
   it("returns isAdmin: false for non-admin users", async () => {
@@ -159,6 +165,12 @@ describe("GET /api/zero/integrations/slack", () => {
     );
 
     expect(response.body.isAdmin).toBeFalsy();
+    // Non-admin + connected: scope fields should NOT be present
+    expect(response.body).not.toHaveProperty("scopeMismatch");
+    expect(response.body).not.toHaveProperty("reinstallUrl");
+    // Connected: install/connect URLs should NOT be present
+    expect(response.body).not.toHaveProperty("installUrl");
+    expect(response.body).not.toHaveProperty("connectUrl");
   });
 
   it("returns isConnected: false when user has no connection", async () => {
@@ -190,6 +202,17 @@ describe("GET /api/zero/integrations/slack", () => {
     expect(response.body.isConnected).toBeFalsy();
     expect(response.body.isInstalled).toBeTruthy();
     expect(response.body.isAdmin).toBeTruthy();
+    // Not connected: install/connect URLs should be present
+    expect(response.body).toHaveProperty("installUrl");
+    expect(response.body).toHaveProperty("connectUrl");
+    // Admin + installed: scope fields should be present (botScopes null → mismatch)
+    expect(response.body).toHaveProperty("scopeMismatch");
+    expect(response.body).toHaveProperty("reinstallUrl");
+    // Not connected: workspace/environment fields should NOT be present
+    expect(response.body).not.toHaveProperty("workspaceName");
+    expect(response.body).not.toHaveProperty("defaultAgentName");
+    expect(response.body).not.toHaveProperty("agentOrgSlug");
+    expect(response.body).not.toHaveProperty("environment");
   });
 
   describe("environment field", () => {

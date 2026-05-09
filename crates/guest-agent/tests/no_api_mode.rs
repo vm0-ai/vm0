@@ -41,6 +41,8 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
     let _ = std::fs::remove_file(guest_agent::paths::event_error_flag());
     let _ = std::fs::remove_file(guest_agent::paths::session_id_file());
     let _ = std::fs::remove_file(guest_agent::paths::session_history_path_file());
+    let ops_file = guest_common::telemetry::sandbox_ops_log();
+    let _ = std::fs::remove_file(ops_file);
 
     let disabled = http
         .post_json("http://127.0.0.1:1/should-not-send", &json!({}), 1)
@@ -104,6 +106,20 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
     assert!(
         !std::path::Path::new(guest_agent::paths::event_error_flag()).exists(),
         "no-API execute_cli must not write event error flag"
+    );
+    let ops = std::fs::read_to_string(ops_file)?;
+    let cli_exit_metric_count = ops
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter(|entry| {
+            entry["action_type"] == "last_read_event_to_cli_exit"
+                && entry["success"] == true
+                && entry["duration_ms"].as_u64().is_some()
+        })
+        .count();
+    assert_eq!(
+        cli_exit_metric_count, 1,
+        "execute_cli should record exactly one last-read-event to CLI-exit sandbox op: {ops}"
     );
 
     let _ = std::fs::remove_file(guest_agent::paths::event_error_flag());

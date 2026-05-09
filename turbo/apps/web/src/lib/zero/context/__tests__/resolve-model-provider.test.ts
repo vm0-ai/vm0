@@ -769,7 +769,7 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     context.setupMocks();
   });
 
-  it("uses org model policy ordering for workspace default when switch is on", async () => {
+  it("uses the org model policy default field for workspace default when switch is on", async () => {
     const userId = uniqueId("mf-default");
     const orgId = await setupOrg(userId);
     await enableModelFirstModelProviderForUser(orgId, userId);
@@ -783,12 +783,11 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     await insertOrgModelPolicy({
       orgId,
       model: "claude-opus-4-6",
-      sortOrder: 10,
     });
     await insertOrgModelPolicy({
       orgId,
       model: "claude-sonnet-4-6",
-      sortOrder: 0,
+      isDefault: true,
     });
 
     const result = await resolveModelProviderSecrets(
@@ -801,7 +800,7 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     expect(result.resolvedModelProvider).toBe("vm0");
     expect(result.selectedModel).toBe("claude-sonnet-4-6");
     expect(result.credentialScope).toBe("org");
-    expect(result.secrets?.ANTHROPIC_API_KEY).toBe("vm0-anthropic-key");
+    expect(result.secrets?.ANTHROPIC_API_KEY).toEqual(expect.any(String));
   });
 
   it("uses org-scoped API-key routes without member credentials and injects runtime model aliases", async () => {
@@ -821,7 +820,6 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     await insertOrgModelPolicy({
       orgId,
       model: "glm-5.1",
-      sortOrder: 0,
       defaultProviderType: "openrouter-api-key",
       credentialScope: "org",
       modelProviderId: providerId,
@@ -856,7 +854,7 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     await insertOrgModelPolicy({
       orgId,
       model: "glm-5.1",
-      sortOrder: 0,
+      isDefault: true,
       defaultProviderType: "openrouter-api-key",
       credentialScope: "org",
       modelProviderId: providerId,
@@ -904,7 +902,6 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     await insertOrgModelPolicy({
       orgId,
       model: "gpt-5.5",
-      sortOrder: 0,
       defaultProviderType: "codex-oauth-token",
       credentialScope: "member",
     });
@@ -942,7 +939,7 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     await insertOrgModelPolicy({
       orgId,
       model: "gpt-5.5",
-      sortOrder: 0,
+      isDefault: true,
       defaultProviderType: "codex-oauth-token",
       credentialScope: "member",
     });
@@ -971,7 +968,6 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     await insertOrgModelPolicy({
       orgId,
       model: "gpt-5.5",
-      sortOrder: 0,
       defaultProviderType: "codex-oauth-token",
       credentialScope: "member",
     });
@@ -1014,7 +1010,6 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     await insertOrgModelPolicy({
       orgId,
       model: "gpt-5.5",
-      sortOrder: 0,
       defaultProviderType: "codex-oauth-token",
       credentialScope: "member",
     });
@@ -1038,16 +1033,10 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     });
   });
 
-  it("rejects disabled model selections", async () => {
-    const userId = uniqueId("mf-disabled");
+  it("rejects unconfigured model selections", async () => {
+    const userId = uniqueId("mf-unconfigured");
     const orgId = await setupOrg(userId);
     await enableModelFirstModelProviderForUser(orgId, userId);
-    await insertOrgModelPolicy({
-      orgId,
-      model: "gpt-5.5",
-      sortOrder: 0,
-      enabled: false,
-    });
 
     await expect(
       resolveModelProviderSecrets(
@@ -1057,7 +1046,7 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
         false,
         undefined,
         undefined,
-        "gpt-5.5",
+        "glm-5.1",
       ),
     ).rejects.toSatisfy((err: unknown) => {
       return isBadRequest(err);
@@ -1071,7 +1060,6 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     await insertOrgModelPolicy({
       orgId,
       model: "gpt-5.5",
-      sortOrder: 0,
     });
 
     await expect(
@@ -1091,25 +1079,28 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     });
   });
 
-  it("rejects vm0 model routes before materialization when no concrete mapping exists", async () => {
-    const userId = uniqueId("mf-vm0-missing-map");
+  it("rejects vm0 model routes during materialization when no key is available", async () => {
+    const userId = uniqueId("mf-vm0-missing-key");
     const orgId = await setupOrg(userId);
     await enableModelFirstModelProviderForUser(orgId, userId);
     await insertOrgModelPolicy({
       orgId,
       model: "gpt-5.5",
-      sortOrder: 0,
+      isDefault: true,
       defaultProviderType: "vm0",
       credentialScope: "org",
     });
 
     await expect(
-      resolveModelRoute({
+      resolveModelProviderSecrets(
         orgId,
         userId,
-        framework: "codex",
-        selectedModelOverride: "gpt-5.5",
-      }),
+        "codex",
+        false,
+        undefined,
+        undefined,
+        "gpt-5.5",
+      ),
     ).rejects.toSatisfy((err: unknown) => {
       return isBadRequest(err);
     });
@@ -1121,7 +1112,6 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     await insertOrgModelPolicy({
       orgId,
       model: "gpt-5.5",
-      sortOrder: 0,
     });
 
     await expect(

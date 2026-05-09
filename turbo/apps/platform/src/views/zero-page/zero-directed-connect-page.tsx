@@ -15,7 +15,6 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
   connectConnector$,
-  enablePlatformConnector$,
   justConnectedTypes$,
   pollingConnectorType$,
   submitApiToken$,
@@ -52,23 +51,14 @@ function runDirectedConnect(params: {
     options: { readonly showPermissionDialog?: boolean },
     signal: AbortSignal,
   ) => Promise<boolean>;
-  enable: (
-    type: ConnectorType,
-    options: { readonly showPermissionDialog?: boolean },
-    signal: AbortSignal,
-  ) => Promise<unknown>;
   onConnected: () => Promise<void>;
   openTokenDialog: () => void;
 }): void {
   const hasOAuth = params.authMethods.includes("oauth");
   const hasApiToken = params.authMethods.includes("api-token");
-  const hasPlatform = params.authMethods.includes("platform");
 
-  // Priority: OAuth launches the external popup; api-token (with or without
-  // platform) opens the modal so the user picks explicitly; platform-only
-  // falls through to silent enable. The api-token + platform combo MUST go
-  // through the modal — auto-enabling platform would bypass the api-token
-  // form entirely for a directed-connect link.
+  // Priority: OAuth launches the external popup; api-token opens the modal so
+  // the user can enter credentials.
   if (!hasOAuth && hasApiToken) {
     params.openTokenDialog();
     return;
@@ -76,22 +66,14 @@ function runDirectedConnect(params: {
   // Defensive fallback for the degenerate empty-authMethods case — the
   // contract disallows it today, so in practice this is unreachable after
   // the api-token branch above.
-  if (!hasOAuth && !hasPlatform) {
+  if (!hasOAuth) {
     params.openTokenDialog();
     return;
   }
   detach(
     (async () => {
       let connected = true;
-      if (hasOAuth) {
-        connected = await params.connect(
-          params.connectorType,
-          {},
-          params.signal,
-        );
-      } else {
-        await params.enable(params.connectorType, {}, params.signal);
-      }
+      connected = await params.connect(params.connectorType, {}, params.signal);
       if (connected) {
         await params.onConnected();
       }
@@ -284,7 +266,6 @@ function DirectedConnectCard() {
   const allLoadable = useLastLoadable(allConnectorTypes$);
   const tokenDialogOpen = useGet(tokenDialogOpen$);
   const setTokenDialogOpen = useSet(setTokenDialogOpen$);
-  const enable = useSet(enablePlatformConnector$);
 
   if (!type || !(type in CONNECTOR_TYPES)) {
     return null;
@@ -319,7 +300,6 @@ function DirectedConnectCard() {
       connectorType,
       signal,
       connect,
-      enable,
       onConnected: runPostConnectActions,
       openTokenDialog: () => {
         return setTokenDialogOpen(true);

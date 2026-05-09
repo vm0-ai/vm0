@@ -141,11 +141,9 @@ export { createTestSecret, createTestVariable } from "./secrets";
 export {
   createTestUserConnector,
   insertTestConnectorSecret,
-  insertTestPlatformConnector,
   createTestConnectorSession,
   findTestConnectorSecret,
   findTestConnectorTokenExpiresAt,
-  countPlatformConnectorRows,
   createTestConnector,
 } from "./connectors";
 export { createSignedCallbackRequest } from "./callbacks";

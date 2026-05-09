@@ -2,23 +2,33 @@ import { computed, type Computed } from "ccstate";
 import { Axiom } from "@axiomhq/js";
 import { env } from "../../lib/env";
 import { singleton } from "../../lib/singleton";
+import { getAxiomTokenEnvNameForApl } from "./axiom-datasets";
 
-const axiomClient = singleton(() => {
-  return new Axiom({ token: env("AXIOM_TOKEN_TELEMETRY") });
+const sessionsAxiomClient = singleton(() => {
+  return new Axiom({ token: env("AXIOM_TOKEN_SESSIONS") });
 });
-const axiomClient$ = computed(() => {
-  return axiomClient();
+
+const telemetryAxiomClient = singleton(() => {
+  return new Axiom({ token: env("AXIOM_TOKEN_TELEMETRY") });
 });
 
 export function getDatasetName(base: string): string {
   return `vm0-${base}-${env("AXIOM_DATASET_SUFFIX")}`;
 }
 
+function axiomClientForApl(apl: string): Axiom {
+  const tokenEnvName = getAxiomTokenEnvNameForApl(apl);
+  if (tokenEnvName === "AXIOM_TOKEN_SESSIONS") {
+    return sessionsAxiomClient();
+  }
+  return telemetryAxiomClient();
+}
+
 export function queryAxiom(
   apl: string,
 ): Computed<Promise<readonly Record<string, unknown>[]>> {
-  return computed(async (get): Promise<readonly Record<string, unknown>[]> => {
-    const client = await get(axiomClient$);
+  return computed(async (): Promise<readonly Record<string, unknown>[]> => {
+    const client = axiomClientForApl(apl);
     if (!client) {
       return [];
     }

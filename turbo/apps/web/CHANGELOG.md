@@ -1,5 +1,21 @@
 # Changelog
 
+## [12.346.1](https://github.com/vm0-ai/vm0/compare/web-v12.346.0...web-v12.346.1) (2026-05-09)
+
+
+### Bug Fixes
+
+* honor feature switch overrides in sandbox flags ([#12220](https://github.com/vm0-ai/vm0/issues/12220)) ([76d8a09](https://github.com/vm0-ai/vm0/commit/76d8a09185f7f63a5dea522899b7c1d9331748de))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.3.2
+    * @vm0/core bumped to 8.264.3
+    * @vm0/db bumped to 1.2.3
+
 ## [12.346.0](https://github.com/vm0-ai/vm0/compare/web-v12.345.0...web-v12.346.0) (2026-05-09)
 
 

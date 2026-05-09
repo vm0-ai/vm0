@@ -1,11 +1,13 @@
-import { command, computed, state } from "ccstate";
+import { command, computed } from "ccstate";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { reloadOnboardingStatus$ } from "./zero-onboarding.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { currentChatAgent$ } from "../agent-chat.ts";
 import { accept } from "../../lib/accept.ts";
-
-const authorizedConnectorsReload$ = state(0);
+import {
+  agentConnectorAuthorizationsReload$,
+  reloadAgentConnectorAuthorizations$,
+} from "./agent-connector-authorizations.ts";
 
 // ---------------------------------------------------------------------------
 // Authorized connectors: User↔Agent↔Connector (per-agent grant)
@@ -16,7 +18,7 @@ const authorizedConnectorsReload$ = state(0);
 
 /** Connectors the current user has authorized for the current agent. */
 const authorizedConnectors$ = computed(async (get) => {
-  get(authorizedConnectorsReload$);
+  get(agentConnectorAuthorizationsReload$);
   const agent = await get(currentChatAgent$);
   if (!agent) {
     return [];
@@ -81,8 +83,6 @@ const syncAuthorizedConnectors$ = command(
 
     await set(reloadOnboardingStatus$);
     signal.throwIfAborted();
-    set(authorizedConnectorsReload$, (x) => {
-      return x + 1;
-    });
+    set(reloadAgentConnectorAuthorizations$);
   },
 );

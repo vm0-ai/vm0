@@ -65,25 +65,6 @@ export const zeroConnectorsByTypeContract = c.router({
 });
 
 /**
- * Zero contract for POST /api/zero/platform-connectors/:type
- */
-export const zeroPlatformConnectorContract = c.router({
-  create: {
-    method: "POST",
-    path: "/api/zero/platform-connectors/:type",
-    headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorTypeSchema }),
-    body: z.object({}).optional(),
-    responses: {
-      200: connectorResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-    },
-    summary: "Enable a platform-supplied connector (idempotent)",
-  },
-});
-
-/**
  * Zero contract for GET /api/zero/connectors/:type/scope-diff
  * App-layer endpoint (direct service call, no proxy)
  */
@@ -103,11 +84,7 @@ export const zeroConnectorScopeDiffContract = c.router({
   },
 });
 
-const connectorSearchAuthMethodSchema = z.enum([
-  "oauth",
-  "api-token",
-  "platform",
-]);
+const connectorSearchAuthMethodSchema = z.enum(["oauth", "api-token"]);
 
 export type ConnectorSearchAuthMethod = z.infer<
   typeof connectorSearchAuthMethodSchema
@@ -123,6 +100,11 @@ const connectorSearchItemSchema = z.object({
 const connectorSearchResponseSchema = z.object({
   connectors: z.array(connectorSearchItemSchema),
 });
+
+export type ConnectorSearchItem = z.infer<typeof connectorSearchItemSchema>;
+export type ConnectorSearchResponse = z.infer<
+  typeof connectorSearchResponseSchema
+>;
 
 /**
  * Zero contract for GET /api/zero/connectors/search
@@ -230,8 +212,6 @@ export const zeroComputerConnectorContract = c.router({
 
 export type ZeroConnectorsMainContract = typeof zeroConnectorsMainContract;
 export type ZeroConnectorsByTypeContract = typeof zeroConnectorsByTypeContract;
-export type ZeroPlatformConnectorContract =
-  typeof zeroPlatformConnectorContract;
 export type ZeroConnectorScopeDiffContract =
   typeof zeroConnectorScopeDiffContract;
 export type ZeroConnectorsSearchContract = typeof zeroConnectorsSearchContract;

@@ -527,6 +527,10 @@ enum StartLoopEvent {
 }
 
 #[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct StartLoopCursor(usize);
+
+#[cfg(test)]
 #[derive(Clone, Default)]
 struct StartLoopTestObserver {
     inner: Arc<StartLoopTestObserverInner>,
@@ -550,12 +554,34 @@ impl StartLoopTestObserver {
         self.inner.notify.notify_waiters();
     }
 
+    fn cursor(&self) -> StartLoopCursor {
+        let events = self
+            .inner
+            .events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        StartLoopCursor(events.len())
+    }
+
     async fn wait_for<T>(
         &self,
         timeout: Duration,
         context: &'static str,
-        mut predicate: impl FnMut(&StartLoopEvent) -> Option<T>,
+        predicate: impl FnMut(&StartLoopEvent) -> Option<T>,
     ) -> T {
+        let (value, _) = self
+            .wait_after(StartLoopCursor(0), timeout, context, predicate)
+            .await;
+        value
+    }
+
+    async fn wait_after<T>(
+        &self,
+        cursor: StartLoopCursor,
+        timeout: Duration,
+        context: &'static str,
+        mut predicate: impl FnMut(&StartLoopEvent) -> Option<T>,
+    ) -> (T, StartLoopCursor) {
         let deadline = tokio::time::Instant::now() + timeout;
         loop {
             let notified = self.inner.notify.notified();
@@ -568,8 +594,16 @@ impl StartLoopTestObserver {
                     .events
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
-                if let Some(value) = events.iter().find_map(&mut predicate) {
-                    return value;
+                assert!(
+                    cursor.0 <= events.len(),
+                    "start-loop observer cursor {} is past event history length {}",
+                    cursor.0,
+                    events.len()
+                );
+                for (offset, event) in events[cursor.0..].iter().enumerate() {
+                    if let Some(value) = predicate(event) {
+                        return (value, StartLoopCursor(cursor.0 + offset + 1));
+                    }
                 }
             }
 
@@ -609,6 +643,69 @@ impl StartLoopTestObserver {
             },
         )
         .await
+    }
+}
+
+#[cfg(test)]
+mod start_loop_observer_tests {
+    use super::*;
+
+    fn idle_cleanup_expired_count(event: &StartLoopEvent) -> Option<usize> {
+        match event {
+            StartLoopEvent::IdleCleanupProcessed { expired_count } => Some(*expired_count),
+            _ => None,
+        }
+    }
+
+    #[tokio::test]
+    async fn start_loop_observer_wait_after_ignores_events_before_cursor() {
+        let observer = StartLoopTestObserver::default();
+
+        observer.record(StartLoopEvent::IdleCleanupProcessed { expired_count: 1 });
+        let cursor = observer.cursor();
+        observer.record(StartLoopEvent::IdleCleanupProcessed { expired_count: 2 });
+
+        let (expired_count, cursor) = observer
+            .wait_after(
+                cursor,
+                Duration::from_secs(1),
+                "second idle cleanup",
+                idle_cleanup_expired_count,
+            )
+            .await;
+        assert_eq!(
+            expired_count, 2,
+            "wait_after should ignore stale events before the cursor"
+        );
+
+        observer.record(StartLoopEvent::IdleCleanupProcessed { expired_count: 3 });
+        let (expired_count, _) = observer
+            .wait_after(
+                cursor,
+                Duration::from_secs(1),
+                "third idle cleanup",
+                idle_cleanup_expired_count,
+            )
+            .await;
+        assert_eq!(
+            expired_count, 3,
+            "next cursor should advance past the matched event"
+        );
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "start-loop observer cursor")]
+    async fn start_loop_observer_wait_after_rejects_cursor_past_history() {
+        let observer = StartLoopTestObserver::default();
+
+        observer
+            .wait_after(
+                StartLoopCursor(1),
+                Duration::from_secs(1),
+                "invalid cursor",
+                |_| Some(()),
+            )
+            .await;
     }
 }
 
