@@ -79,6 +79,7 @@
   },
   "nav": {
     "docs": "ドキュメント",
+    "docsDesc": "ガイドと製品ドキュメント",
     "blog": "ブログ",
     "skills": "Skills",
     "pricing": "料金",
@@ -279,6 +280,15 @@
       "Utilities": "ユーティリティ",
       "Other": "その他"
     }
+  },
+  "docs": {
+    "title": "ドキュメント",
+    "kicker": "ドキュメント",
+    "home": "ドキュメントホーム",
+    "description": "VM0 のガイド、リファレンス、セットアップ情報です。",
+    "backToDocs": "ドキュメントに戻る",
+    "lastUpdated": "最終更新日: {date}",
+    "empty": "ドキュメントを準備しています。"
   },
   "blog": {
     "title": "ブログ",

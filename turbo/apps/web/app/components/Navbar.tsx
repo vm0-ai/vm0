@@ -20,13 +20,17 @@ import { isBlogEnabled } from "../../src/env";
 
 interface NavbarProps {
   initialIsSignedIn?: boolean;
+  initialShowDocs?: boolean;
 }
 
 const GITHUB_URL = "https://github.com/vm0-ai/vm0";
 const STATUS_URL = "https://status.vm0.ai";
 const DEMO_URL = "https://calendar.app.google/csdygPrHHyNgxpTPA";
 
-export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
+export function Navbar({
+  initialIsSignedIn = false,
+  initialShowDocs = false,
+}: NavbarProps) {
   const { theme } = useTheme();
   const t = useTranslations("nav");
   const { isSignedIn: clerkIsSignedIn, isLoaded } = useUser();
@@ -77,7 +81,17 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
       }
     : null;
 
+  const docsItem: NavMenuItem | null = initialShowDocs
+    ? {
+        label: t("docs"),
+        description: t("docsDesc"),
+        href: "/docs",
+        icon: "/assets/nav/docs.svg",
+      }
+    : null;
+
   const resourcesItems: NavMenuItem[] = [
+    ...(docsItem ? [docsItem] : []),
     ...(blogItem ? [blogItem] : []),
     {
       label: t("support"),

@@ -79,6 +79,7 @@
   },
   "nav": {
     "docs": "Docs",
+    "docsDesc": "Guides and product documentation",
     "blog": "Blog",
     "skills": "Skills",
     "pricing": "Pricing",
@@ -279,6 +280,15 @@
       "Utilities": "Utilities",
       "Other": "Other"
     }
+  },
+  "docs": {
+    "title": "Docs",
+    "kicker": "Documentation",
+    "home": "Docs home",
+    "description": "Guides, references, and setup notes for building with VM0.",
+    "backToDocs": "Back to docs",
+    "lastUpdated": "Last updated {date}",
+    "empty": "Documentation is being prepared."
   },
   "blog": {
     "title": "Blog",

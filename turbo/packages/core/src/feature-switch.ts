@@ -246,6 +246,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Adds a Rename chat item to the sidebar thread kebab menu. When the user renames a thread, automated title generation is suppressed for that thread.",
     enabled: false,
   },
+  [FeatureSwitchKey.DocsSite]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Enable the authenticated Strapi-backed docs site routes, navigation entry, and docs pages. Staff-only during rollout; per-user toggle via Lab.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.FreshdeskConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Freshdesk helpdesk connector",

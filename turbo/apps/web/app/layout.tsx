@@ -19,6 +19,7 @@ import { env } from "../src/env";
 import "./globals.css";
 import "./landing.css";
 import "./blog.css";
+import "./docs.css";
 import "./use-cases.css";
 
 const notoSans = Noto_Sans({

@@ -80,6 +80,14 @@ describe("isFeatureEnabled", () => {
       }),
     ).toBe(true);
   });
+
+  it("should enable docs site for staff orgs", () => {
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.DocsSite, {
+        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      }),
+    ).toBe(true);
+  });
 });
 
 describe("getAllFeatureStates", () => {

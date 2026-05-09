@@ -79,6 +79,7 @@
   },
   "nav": {
     "docs": "Documentos",
+    "docsDesc": "Guías y documentación del producto",
     "blog": "Blog",
     "skills": "Skills",
     "pricing": "Precios",
@@ -279,6 +280,15 @@
       "Utilities": "Utilidades",
       "Other": "Otros"
     }
+  },
+  "docs": {
+    "title": "Documentos",
+    "kicker": "Documentación",
+    "home": "Inicio de documentos",
+    "description": "Guías, referencias y notas de configuración para VM0.",
+    "backToDocs": "Volver a documentos",
+    "lastUpdated": "Última actualización: {date}",
+    "empty": "La documentación se está preparando."
   },
   "blog": {
     "title": "Blog",

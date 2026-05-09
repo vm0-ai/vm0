@@ -25,14 +25,18 @@ function buildAlternates(
   return languages;
 }
 
+async function getDefaultPosts() {
+  if (!isBlogEnabled()) return [];
+
+  return getPosts(defaultLocale).catch(() => {
+    return [];
+  });
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Pre-fetch blog posts once so we can both emit post URLs and derive a
   // realistic lastmod for the /blog index from the most recent post.
-  const defaultPosts = isBlogEnabled()
-    ? await getPosts(defaultLocale).catch(() => {
-        return [];
-      })
-    : [];
+  const defaultPosts = await getDefaultPosts();
 
   const latestPostDate = defaultPosts.reduce<Date>((latest, post) => {
     const postDate = new Date(post.publishedAt);

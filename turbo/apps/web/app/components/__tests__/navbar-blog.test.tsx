@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ThemeProvider } from "../ThemeProvider";
 import { Navbar } from "../Navbar";
@@ -125,10 +126,10 @@ vi.mock("@radix-ui/react-popover", () => {
   };
 });
 
-function renderNavbar() {
+function renderNavbar(props: ComponentProps<typeof Navbar> = {}) {
   return renderToStaticMarkup(
     <ThemeProvider>
-      <Navbar />
+      <Navbar {...props} />
     </ThemeProvider>,
   );
 }
@@ -148,5 +149,10 @@ describe("Navbar blog link visibility", () => {
     const html = renderNavbar();
 
     expect(html).toContain('href="/blog"');
+  });
+
+  it("renders docs link only when the server-side feature gate allows it", () => {
+    expect(renderNavbar()).not.toContain('href="/docs"');
+    expect(renderNavbar({ initialShowDocs: true })).toContain('href="/docs"');
   });
 });
