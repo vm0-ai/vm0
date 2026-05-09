@@ -14,10 +14,9 @@ import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
   type PagedChatMessage,
-  type PendingMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
-  ReplacePendingMessageArgs,
+  AppendQueuedMessageArgs,
   ChatThreadDataSource,
   PatchDraftArgs,
   CancelRunsArgs,
@@ -26,16 +25,6 @@ import type {
 
 const context = testContext();
 const mockApi = createMockApi(context);
-
-function createEmptyPendingMessage(): PendingMessage {
-  return {
-    content: null,
-    attachments: null,
-    createdAt: "2026-05-01T00:00:00Z",
-    updatedAt: "2026-05-01T00:00:00Z",
-    clientMessageId: null,
-  };
-}
 
 /**
  * Base MSW handlers required for setupChatPage$ to complete:
@@ -246,7 +235,6 @@ describe("fetchNextPage$ cursor", () => {
           isLegacySession: false,
           draftContent: null,
           draftAttachments: null,
-          pendingMessage: null,
           modelProviderId: null,
           selectedModel: null,
         });
@@ -263,17 +251,17 @@ describe("fetchNextPage$ cursor", () => {
           return Promise.resolve();
         },
       ),
-      replacePendingMessage$: command(
-        (_ctx, _args: ReplacePendingMessageArgs, _signal: AbortSignal) => {
-          return Promise.resolve(createEmptyPendingMessage());
+      appendQueuedMessage$: command(
+        (_ctx, args: AppendQueuedMessageArgs, _signal: AbortSignal) => {
+          return Promise.resolve({
+            id: args.clientMessageId,
+            role: "user",
+            content: args.content,
+            attachFiles: args.attachments ?? undefined,
+            createdAt: "2026-05-01T00:00:00Z",
+          });
         },
       ),
-      recallPendingMessage$: command(() => {
-        return Promise.resolve({
-          draftContent: null,
-          draftAttachments: null,
-        });
-      }),
       listMessagesAfter$: command((_, args) => {
         capturedSinceId = args.sinceId;
         return Promise.resolve({ messages: [], reachedEnd: true });
@@ -361,7 +349,6 @@ describe("fetchNextPage$ cursor", () => {
           isLegacySession: false,
           draftContent: null,
           draftAttachments: null,
-          pendingMessage: null,
           modelProviderId: null,
           selectedModel: null,
         });
@@ -378,17 +365,17 @@ describe("fetchNextPage$ cursor", () => {
           return Promise.resolve();
         },
       ),
-      replacePendingMessage$: command(
-        (_ctx, _args: ReplacePendingMessageArgs, _signal: AbortSignal) => {
-          return Promise.resolve(createEmptyPendingMessage());
+      appendQueuedMessage$: command(
+        (_ctx, args: AppendQueuedMessageArgs, _signal: AbortSignal) => {
+          return Promise.resolve({
+            id: args.clientMessageId,
+            role: "user",
+            content: args.content,
+            attachFiles: args.attachments ?? undefined,
+            createdAt: "2026-05-01T00:00:00Z",
+          });
         },
       ),
-      recallPendingMessage$: command(() => {
-        return Promise.resolve({
-          draftContent: null,
-          draftAttachments: null,
-        });
-      }),
       listMessagesAfter$: command((_ctx, args) => {
         capturedSinceIds.push(args.sinceId);
         // First call (no anchor): return the full page the server has now.
@@ -496,7 +483,6 @@ describe("fetchNextPage$ cursor", () => {
           isLegacySession: false,
           draftContent: null,
           draftAttachments: null,
-          pendingMessage: null,
           modelProviderId: null,
           selectedModel: null,
         });
@@ -513,17 +499,17 @@ describe("fetchNextPage$ cursor", () => {
           return Promise.resolve();
         },
       ),
-      replacePendingMessage$: command(
-        (_ctx, _args: ReplacePendingMessageArgs, _signal: AbortSignal) => {
-          return Promise.resolve(createEmptyPendingMessage());
+      appendQueuedMessage$: command(
+        (_ctx, args: AppendQueuedMessageArgs, _signal: AbortSignal) => {
+          return Promise.resolve({
+            id: args.clientMessageId,
+            role: "user",
+            content: args.content,
+            attachFiles: args.attachments ?? undefined,
+            createdAt: "2026-05-01T00:00:00Z",
+          });
         },
       ),
-      recallPendingMessage$: command(() => {
-        return Promise.resolve({
-          draftContent: null,
-          draftAttachments: null,
-        });
-      }),
       listMessagesAfter$: command((_ctx, _args) => {
         callCount++;
         const pages = [page1, page2, page3];

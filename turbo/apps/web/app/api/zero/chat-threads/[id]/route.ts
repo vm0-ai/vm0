@@ -102,15 +102,6 @@ const router = tsr.router(chatThreadByIdContract, {
           updatedAt: thread.updatedAt.toISOString(),
           draftContent: thread.draftContent,
           draftAttachments: thread.draftAttachments,
-          pendingMessage: thread.pendingMessage
-            ? {
-                content: thread.pendingMessage.content,
-                attachments: thread.pendingMessage.attachments,
-                createdAt: thread.pendingMessage.createdAt.toISOString(),
-                updatedAt: thread.pendingMessage.updatedAt.toISOString(),
-                clientMessageId: thread.pendingMessage.clientMessageId,
-              }
-            : null,
           modelProviderId: thread.modelProviderId,
           modelProviderType: threadModelProviderType,
           modelProviderCredentialScope: threadModelProviderCredentialScope,

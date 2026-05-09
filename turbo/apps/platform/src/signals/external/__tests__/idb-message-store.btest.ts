@@ -36,6 +36,7 @@ describe("idb-message-store", () => {
     expect(latest).toHaveLength(2);
     expect(latest[0].id).toBe("m1");
     expect(latest[1].id).toBe("m2");
+    expect("threadId" in latest[0]).toBeFalsy();
   });
 
   it("readLatest respects limit", async () => {
@@ -123,6 +124,37 @@ describe("idb-message-store", () => {
     const readStore = readStore$;
 
     await expect(readStore.readLatest(THREAD, 10)).rejects.toThrow();
+  });
+
+  it("strips local fields and stale user status from cached rows", async () => {
+    const userId = USER + "-stale-user-status";
+    const { readStore: readStore$, writeStore: writeStore$ } =
+      createIdbMessageStores(userId, ORG);
+    await writeStore$.upsertMessages(THREAD, [
+      makeMsg("valid-1", THREAD, "2026-05-01T00:00:00Z"),
+    ]);
+
+    const { openDB } = await import("idb");
+    const db = await openDB(`vm0-chat-${userId}-${ORG}`, 2);
+    await db.put("chat_messages", {
+      id: "stale-1",
+      threadId: THREAD,
+      role: "user",
+      content: "stale user message",
+      createdAt: "2026-05-02T00:00:00Z",
+      status: "pending",
+    });
+
+    const latest = await readStore$.readLatest(THREAD, 10);
+    const stale = latest.find((message) => {
+      return message.id === "stale-1";
+    });
+    expect(stale).toStrictEqual({
+      id: "stale-1",
+      role: "user",
+      content: "stale user message",
+      createdAt: "2026-05-02T00:00:00Z",
+    });
   });
 
   it("messageExists returns true when message exists with matching threadId", async () => {

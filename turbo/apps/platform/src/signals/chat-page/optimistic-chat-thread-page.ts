@@ -3,7 +3,7 @@ import { clerk$ } from "../auth.ts";
 import { patchThreadMeta$ } from "../external/idb-thread-meta-store.ts";
 import {
   chatMessagesContract,
-  chatThreadPendingMessageReplaceContract,
+  chatThreadQueuedMessagesContract,
   chatThreadsContract,
   type ChatThreadListItem,
   type ModelSelectionRequest,
@@ -29,7 +29,7 @@ import {
   createLocalChatThreadDataSource,
   type LocalChatThreadDataSource,
 } from "./local-chat-thread-data-source.ts";
-import type { ReplacePendingMessageArgs } from "./chat-thread-data-source.ts";
+import type { AppendQueuedMessageArgs } from "./chat-thread-data-source.ts";
 import { createPendingChatThread } from "./pending-chat-thread.ts";
 import {
   prepareUserMessageFromDraft$,
@@ -96,40 +96,37 @@ interface SendNewThreadMessagePending extends PendingChatThread {
   sendResult: Promise<SendNewThreadMessageResult>;
 }
 
-async function replacePendingMessage(
+type OptimisticThreadMessage = PagedChatMessage & { isQueued?: boolean };
+
+async function appendQueuedMessage(
   createClient: ZeroClientFactory,
   threadId: string,
-  replacement: ReplacePendingMessageArgs,
+  append: AppendQueuedMessageArgs,
   signal: AbortSignal,
 ): Promise<void> {
   if (
-    replacement.content === null &&
-    (!replacement.attachments || replacement.attachments.length === 0)
+    append.content === null &&
+    (!append.attachments || append.attachments.length === 0)
   ) {
     return;
   }
 
-  const client = createClient(chatThreadPendingMessageReplaceContract, {
+  const client = createClient(chatThreadQueuedMessagesContract, {
     apiBase: "api",
   });
   await accept(
-    client.replace({
+    client.append({
       params: { id: threadId },
       body: {
-        ...(replacement.content !== null
-          ? { content: replacement.content }
+        ...(append.content !== null ? { content: append.content } : {}),
+        ...(append.attachments !== null && append.attachments.length > 0
+          ? { attachments: append.attachments }
           : {}),
-        ...(replacement.attachments !== null &&
-        replacement.attachments.length > 0
-          ? { attachments: replacement.attachments }
-          : {}),
-        ...(replacement.clientMessageId !== null
-          ? { clientMessageId: replacement.clientMessageId }
-          : {}),
+        clientMessageId: append.clientMessageId,
       },
       fetchOptions: { signal },
     }),
-    [200],
+    [201],
   );
   signal.throwIfAborted();
 }
@@ -215,7 +212,7 @@ const mintOptimisticPendingThread$ = command(
     args: {
       threadId: string;
       agentId: string;
-      messages?: PagedChatMessage[];
+      messages?: OptimisticThreadMessage[];
       pendingRunId?: string;
     },
     signal: AbortSignal,
@@ -453,6 +450,7 @@ const sendNewThreadMessage$ = command(
             role: "user",
             content: prepared.prompt,
             attachFiles: prepared.attachments,
+            isQueued: false,
             createdAt: messageCreatedAt,
           },
         ],
@@ -488,13 +486,13 @@ const sendNewThreadMessage$ = command(
         threadId: result.body.threadId,
         runId: result.body.runId,
       });
-      const replacement = dataSource.takePendingMessageReplacement();
-      if (replacement) {
+      const queuedAppends = dataSource.takeQueuedMessageAppends();
+      for (const append of queuedAppends) {
         signal.throwIfAborted();
-        await replacePendingMessage(
+        await appendQueuedMessage(
           createClient,
           result.body.threadId,
-          replacement,
+          append,
           signal,
         );
       }

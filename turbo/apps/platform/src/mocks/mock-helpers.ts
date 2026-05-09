@@ -22,15 +22,6 @@ export function updateChatRun(threadId: string): void {
   triggerAblyEvent(`chatThreadRunUpdated:${threadId}`);
 }
 
-/**
- * Simulate the server's auto-send-on-run-complete signal — the queued
- * pending message has been claimed and dispatched as a new run, so the
- * frontend reloads the thread to drop the queued card and show the new run.
- */
-export function changeChatPendingMessage(threadId: string): void {
-  triggerAblyEvent(`chatThreadPendingMessageChanged:${threadId}`);
-}
-
 /** Simulate the uploaded artifacts list changing for a thread. */
 export function updateChatArtifacts(threadId: string): void {
   triggerAblyEvent(`chatThreadArtifactsChanged:${threadId}`);

@@ -3,8 +3,7 @@ import {
   chatThreadByIdContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
-  chatThreadPendingMessageRecallContract,
-  chatThreadPendingMessageReplaceContract,
+  chatThreadQueuedMessagesContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroRunsCancelContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { accept } from "../../lib/accept.ts";
@@ -16,13 +15,11 @@ import type {
   CancelRunsArgs,
   ChatThreadDataSource,
   InitialPage,
+  AppendQueuedMessageArgs,
   ListMessagesAfterArgs,
   ListMessagesBeforeArgs,
   MarkReadArgs,
   PatchDraftArgs,
-  RecallPendingMessageArgs,
-  RecallPendingMessageResult,
-  ReplacePendingMessageArgs,
   SubscribeRealtimeArgs,
 } from "./chat-thread-data-source.ts";
 
@@ -46,7 +43,7 @@ const patchDraft$ = command(
   },
 );
 
-const replacePendingMessage$ = command(
+const appendQueuedMessage$ = command(
   async (
     { get },
     {
@@ -54,51 +51,27 @@ const replacePendingMessage$ = command(
       content,
       attachments,
       clientMessageId,
-    }: ReplacePendingMessageArgs,
+    }: AppendQueuedMessageArgs,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(chatThreadPendingMessageReplaceContract, {
+    const client = get(zeroClient$)(chatThreadQueuedMessagesContract, {
       apiBase: "api",
     });
     const body = {
       ...(content !== null ? { content } : {}),
       ...(attachments !== null ? { attachments } : {}),
-      ...(clientMessageId !== null ? { clientMessageId } : {}),
+      clientMessageId,
     };
     const result = await accept(
-      client.replace({
+      client.append({
         params: { id: threadId },
         body,
         fetchOptions: { signal },
       }),
-      [200],
+      [201],
     );
     signal.throwIfAborted();
-    return result.body.pendingMessage;
-  },
-);
-
-const recallPendingMessage$ = command(
-  async (
-    { get },
-    { threadId }: RecallPendingMessageArgs,
-    signal: AbortSignal,
-  ): Promise<RecallPendingMessageResult> => {
-    const client = get(zeroClient$)(chatThreadPendingMessageRecallContract, {
-      apiBase: "api",
-    });
-    const result = await accept(
-      client.recall({
-        params: { id: threadId },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    return {
-      draftContent: result.body.draftContent,
-      draftAttachments: result.body.draftAttachments,
-    };
+    return result.body.message;
   },
 );
 
@@ -122,13 +95,18 @@ const listMessagesAfter$ = command(
       threadId,
       sinceId,
       count: result.body.messages.length,
-      runStatuses: result.body.messages
-        .filter((m) => {
-          return m.runId;
-        })
-        .map((m) => {
-          return { id: m.id, runId: m.runId, status: m.status };
-        }),
+      runStatuses: result.body.messages.flatMap((m) => {
+        if (m.role !== "assistant" || !m.runId) {
+          return [];
+        }
+        return [
+          {
+            id: m.id,
+            runId: m.runId,
+            status: m.status,
+          },
+        ];
+      }),
     });
     return {
       messages: result.body.messages,
@@ -224,15 +202,6 @@ const subscribeRealtime$ = command(
         handlers.onRunChanged$,
         signal,
       ),
-      // Server's auto-send-on-run-complete clears the queued message and
-      // dispatches a new run; reloadThread via the run-changed handler so
-      // the queued card disappears and the freshly-created run shows up.
-      set(
-        setAblyLoop$,
-        `chatThreadPendingMessageChanged:${threadId}`,
-        handlers.onRunChanged$,
-        signal,
-      ),
     ]);
     signal.throwIfAborted();
   },
@@ -267,7 +236,6 @@ export function createRemoteChatThreadDataSource(
       isLegacySession: false,
       draftContent: body.draftContent ?? null,
       draftAttachments: body.draftAttachments ?? null,
-      pendingMessage: body.pendingMessage ?? null,
       modelProviderId: body.modelProviderId ?? null,
       selectedModel: body.selectedModel ?? null,
     };
@@ -304,8 +272,7 @@ export function createRemoteChatThreadDataSource(
     reloadThread$,
     initialPage$,
     patchDraft$,
-    replacePendingMessage$,
-    recallPendingMessage$,
+    appendQueuedMessage$,
     listMessagesAfter$,
     listMessagesBefore$,
     cancelRuns$,

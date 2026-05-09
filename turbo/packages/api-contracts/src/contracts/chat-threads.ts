@@ -68,30 +68,16 @@ const persistedAttachmentSchema = z.object({
   size: z.number(),
 });
 
-const pendingMessageSchema = z.object({
-  content: z.string().nullable(),
-  attachments: z.array(persistedAttachmentSchema).nullable(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  /**
-   * Client-generated UUID. The auto-send path uses this as the new
-   * `chat_messages.id` so the optimistic queued bubble reconciles with the
-   * real row by matching id once the server dispatches the queued message.
-   * Nullable for back-compat with rows queued before this field landed.
-   */
-  clientMessageId: z.string().uuid().nullable(),
-});
-
-const replacePendingMessageBodySchema = z
+const queuedUserMessageBodySchema = z
   .object({
     content: z.string().min(1).optional(),
     attachments: z.array(persistedAttachmentSchema).min(1).optional(),
     /**
-     * Pre-generated UUID the client uses for its optimistic queued-message
-     * bubble. Persisted on the thread and reused as `chat_messages.id`
-     * when the auto-send path dispatches the queued message.
+     * Pre-generated UUID the client uses as the immutable queued
+     * `chat_messages.id`, so the optimistic row reconciles with the server row
+     * by id and never needs a temp-id swap.
      */
-    clientMessageId: z.string().uuid().optional(),
+    clientMessageId: z.string().uuid(),
   })
   .refine(
     (body) => {
@@ -163,15 +149,46 @@ const summaryEntrySchema = z.union([
   textSummaryEntrySchema,
 ]);
 
-const storedChatMessageSchema = z.object({
-  role: z.enum(["user", "assistant"]),
+const storedChatMessageBaseSchema = z.object({
   content: z.string().nullable(),
   runId: z.string().optional(),
   error: z.string().optional(),
-  status: z.string().optional(),
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   createdAt: z.string(),
 });
+
+const storedChatMessageSchema = z.discriminatedUnion("role", [
+  storedChatMessageBaseSchema
+    .extend({
+      role: z.literal("user"),
+    })
+    .strict(),
+  storedChatMessageBaseSchema.extend({
+    role: z.literal("assistant"),
+    status: z.string().optional(),
+  }),
+]);
+
+const pagedChatMessageBaseSchema = z.object({
+  id: z.string(),
+  content: z.string().nullable(),
+  runId: z.string().optional(),
+  error: z.string().optional(),
+  attachFiles: z.array(resolvedAttachFileSchema).optional(),
+  createdAt: z.string(),
+});
+
+const pagedChatMessageSchema = z.discriminatedUnion("role", [
+  pagedChatMessageBaseSchema
+    .extend({
+      role: z.literal("user"),
+    })
+    .strict(),
+  pagedChatMessageBaseSchema.extend({
+    role: z.literal("assistant"),
+    status: z.string().optional(),
+  }),
+]);
 
 const chatThreadDetailSchema = z.object({
   id: z.string(),
@@ -206,7 +223,6 @@ const chatThreadDetailSchema = z.object({
   updatedAt: z.string(),
   draftContent: z.string().nullable().optional(),
   draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
-  pendingMessage: pendingMessageSchema.nullable().optional(),
   /**
    * Per-thread model override. Both fields set together or both null.
    * When set, the send route uses this combination (overriding the agent
@@ -416,56 +432,20 @@ export const chatThreadRenameContract = c.router({
   },
 });
 
-export const chatThreadPendingMessageReplaceContract = c.router({
-  replace: {
-    method: "PUT",
-    path: "/api/zero/chat-threads/:id/pending-message",
+export const chatThreadQueuedMessagesContract = c.router({
+  append: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:id/queued-messages",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string() }),
-    body: replacePendingMessageBodySchema,
+    body: queuedUserMessageBodySchema,
     responses: {
-      200: z.object({ pendingMessage: pendingMessageSchema }),
+      201: z.object({ message: pagedChatMessageSchema }),
       400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Replace a chat thread pending message",
-  },
-});
-
-export const chatThreadPendingMessageDeleteContract = c.router({
-  delete: {
-    method: "DELETE",
-    path: "/api/zero/chat-threads/:id/pending-message",
-    headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
-    body: c.noBody(),
-    responses: {
-      204: c.noBody(),
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Discard a chat thread pending message",
-  },
-});
-
-export const chatThreadPendingMessageRecallContract = c.router({
-  recall: {
-    method: "POST",
-    path: "/api/zero/chat-threads/:id/pending-message/recall",
-    headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
-    body: c.noBody(),
-    responses: {
-      200: z.object({
-        draftContent: z.string().nullable(),
-        draftAttachments: z.array(persistedAttachmentSchema).nullable(),
-        pendingMessage: z.null(),
-      }),
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Recall a chat thread pending message back into the draft",
+    summary: "Append a queued user message to a chat thread",
   },
 });
 
@@ -601,17 +581,6 @@ export const chatSearchContract = c.router({
  * Response includes `hasMore` for initial load and backward pagination so the
  * UI knows whether to offer upward scroll loading.
  */
-const pagedChatMessageSchema = z.object({
-  id: z.string(),
-  role: z.enum(["user", "assistant"]),
-  content: z.string().nullable(),
-  runId: z.string().optional(),
-  error: z.string().optional(),
-  status: z.string().optional(),
-  attachFiles: z.array(resolvedAttachFileSchema).optional(),
-  createdAt: z.string(),
-});
-
 export const chatThreadMessagesContract = c.router({
   list: {
     method: "GET",
@@ -682,12 +651,8 @@ export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
 export type ChatThreadPinContract = typeof chatThreadPinContract;
 export type ChatThreadUnpinContract = typeof chatThreadUnpinContract;
 export type ChatThreadRenameContract = typeof chatThreadRenameContract;
-export type ChatThreadPendingMessageReplaceContract =
-  typeof chatThreadPendingMessageReplaceContract;
-export type ChatThreadPendingMessageDeleteContract =
-  typeof chatThreadPendingMessageDeleteContract;
-export type ChatThreadPendingMessageRecallContract =
-  typeof chatThreadPendingMessageRecallContract;
+export type ChatThreadQueuedMessagesContract =
+  typeof chatThreadQueuedMessagesContract;
 export type ChatMessagesContract = typeof chatMessagesContract;
 export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
 export type ChatThreadArtifactsContract = typeof chatThreadArtifactsContract;
@@ -703,7 +668,6 @@ export {
   pagedChatMessageSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
-  pendingMessageSchema,
   attachFileSchema,
   resolvedAttachFileSchema,
   chatThreadArtifactFileSchema,
@@ -718,7 +682,6 @@ export type ChatThreadListItem = z.infer<typeof chatThreadListItemSchema>;
 export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
 export type PagedChatMessage = z.infer<typeof pagedChatMessageSchema>;
 export type PersistedAttachment = z.infer<typeof persistedAttachmentSchema>;
-export type PendingMessage = z.infer<typeof pendingMessageSchema>;
 export type AttachFile = z.infer<typeof attachFileSchema>;
 export type ResolvedAttachFile = z.infer<typeof resolvedAttachFileSchema>;
 export type ChatThreadArtifactFile = z.infer<

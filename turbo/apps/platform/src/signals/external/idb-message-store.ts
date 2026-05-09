@@ -34,6 +34,29 @@ interface ChatMessageWriteStore {
   ): Promise<void>;
 }
 
+function toApiMessage(raw: unknown): unknown {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return raw;
+  }
+
+  const row = raw as Record<string, unknown>;
+  const normalized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (key === "threadId") {
+      continue;
+    }
+    if (key === "status" && row.role === "user") {
+      continue;
+    }
+    normalized[key] = value;
+  }
+  return normalized;
+}
+
+function validateMessage(raw: unknown): PagedChatMessage {
+  return pagedChatMessageSchema.parse(toApiMessage(raw));
+}
+
 function createIdbMessageStores(userId: string, orgId: string) {
   const dbName = `vm0-chat-${userId}-${orgId}`;
   const storeName = "chat_messages";
@@ -61,10 +84,6 @@ function createIdbMessageStores(userId: string, orgId: string) {
       });
     }
     return dbPromise;
-  }
-
-  function validateMessage(raw: unknown): PagedChatMessage {
-    return pagedChatMessageSchema.parse(raw);
   }
 
   const readStore: ChatMessageReadStore = {

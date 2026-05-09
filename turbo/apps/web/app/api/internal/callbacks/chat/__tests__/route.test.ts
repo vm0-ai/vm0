@@ -16,10 +16,10 @@ import {
   addTestRunToThread,
   deleteTestChatThread,
   getTestChatMessagesByThread,
+  getTestUserMessageRunStorage,
   insertTestAssistantEventMessages,
+  insertTestChatMessage,
   insertOrgDefaultModelProvider,
-  setTestChatThreadPendingMessage,
-  getTestChatThreadPendingMessage,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../../../../src/__tests__/db-test-assertions/agents";
 import { reloadEnv } from "../../../../../../src/env";
@@ -1707,7 +1707,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     });
   });
 
-  describe("Auto-send Pending Message", () => {
+  describe("Auto-send queued user message", () => {
     beforeEach(async () => {
       // The auto-send path goes through createZeroRun, which requires the
       // org to have a default model provider configured. Other describes
@@ -1717,9 +1717,11 @@ describe("POST /api/internal/callbacks/chat", () => {
 
     it("should auto-send the queued message as a new run when the previous run completes", async () => {
       const { threadId, runId, secret } = await setupRunAndThread();
-      await setTestChatThreadPendingMessage(threadId, {
+      await insertTestChatMessage({
+        chatThreadId: threadId,
+        role: "user",
         content: "queued next turn",
-        attachments: null,
+        runId: null,
       });
       context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
 
@@ -1737,14 +1739,16 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       expect(response.status).toBe(200);
 
-      // Pending message columns are cleared on the thread row.
-      const pendingAfter = await getTestChatThreadPendingMessage(threadId);
-      expect(pendingAfter?.pendingMessageContent).toBeNull();
-      expect(pendingAfter?.pendingMessageCreatedAt).toBeNull();
-      expect(pendingAfter?.pendingMessageUpdatedAt).toBeNull();
+      // The queued row itself stays immutable; only user_message_run records
+      // the newly-created run association.
+      const storage = await getTestUserMessageRunStorage({
+        threadId,
+        content: "queued next turn",
+      });
+      expect(storage?.messageRunId).toBeNull();
+      expect(storage?.associatedRunId).toBeTruthy();
+      expect(storage?.associatedRunId).not.toBe(runId);
 
-      // A new user chat_message row exists for the queued content, attached
-      // to a different run than the one that just completed.
       const messages = await getTestChatMessagesByThread(threadId);
       const queuedRow = messages.find((m) => {
         return m.role === "user" && m.content === "queued next turn";
@@ -1753,12 +1757,6 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(queuedRow!.runId).toBeTruthy();
       expect(queuedRow!.runId).not.toBe(runId);
 
-      // Frontend reload signal: dedicated pending-message-change channel +
-      // run-created so subscribers refetch the thread state.
-      expect(mockAblyPublish).toHaveBeenCalledWith(
-        `chatThreadPendingMessageChanged:${threadId}`,
-        null,
-      );
       expect(mockAblyPublish).toHaveBeenCalledWith(
         `chatThreadRunCreated:${threadId}`,
         null,
@@ -1769,9 +1767,11 @@ describe("POST /api/internal/callbacks/chat", () => {
       const { threadId, runId, secret } = await setupRunAndThread({
         status: "failed",
       });
-      await setTestChatThreadPendingMessage(threadId, {
+      await insertTestChatMessage({
+        chatThreadId: threadId,
+        role: "user",
         content: "queued after failure",
-        attachments: null,
+        runId: null,
       });
 
       const response = await POST(
@@ -1788,8 +1788,14 @@ describe("POST /api/internal/callbacks/chat", () => {
       );
 
       expect(response.status).toBe(200);
-      const pendingAfter = await getTestChatThreadPendingMessage(threadId);
-      expect(pendingAfter?.pendingMessageContent).toBeNull();
+
+      const storage = await getTestUserMessageRunStorage({
+        threadId,
+        content: "queued after failure",
+      });
+      expect(storage?.messageRunId).toBeNull();
+      expect(storage?.associatedRunId).toBeTruthy();
+      expect(storage?.associatedRunId).not.toBe(runId);
 
       const messages = await getTestChatMessagesByThread(threadId);
       const queuedRow = messages.find((m) => {
@@ -1799,24 +1805,19 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(queuedRow!.runId).not.toBe(runId);
 
       expect(mockAblyPublish).toHaveBeenCalledWith(
-        `chatThreadPendingMessageChanged:${threadId}`,
+        `chatThreadRunCreated:${threadId}`,
         null,
       );
     });
 
     it("should preserve attachments when auto-sending", async () => {
       const { threadId, runId, secret } = await setupRunAndThread();
-      await setTestChatThreadPendingMessage(threadId, {
+      await insertTestChatMessage({
+        chatThreadId: threadId,
+        role: "user",
         content: "queued with files",
-        attachments: [
-          {
-            id: "att-1",
-            url: "https://example.com/notes.txt",
-            filename: "notes.txt",
-            contentType: "text/plain",
-            size: 12,
-          },
-        ],
+        runId: null,
+        attachFiles: ["att-1"],
       });
       context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
 
@@ -1839,9 +1840,11 @@ describe("POST /api/internal/callbacks/chat", () => {
       });
       expect(queuedRow).toBeDefined();
       expect(queuedRow!.attachFiles).toEqual(["att-1"]);
+      expect(queuedRow!.runId).toBeTruthy();
+      expect(queuedRow!.runId).not.toBe(runId);
     });
 
-    it("should not auto-send when no pending message is queued", async () => {
+    it("should not auto-send when no queued user message exists", async () => {
       const { threadId, runId, secret } = await setupRunAndThread();
       context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
 
@@ -1865,56 +1868,8 @@ describe("POST /api/internal/callbacks/chat", () => {
       });
       expect(userMessages).toHaveLength(1);
 
-      // No pending-message-change signal is published when there was
-      // nothing queued — wasted reloads on every run completion would
-      // hammer subscribers on idle threads.
       expect(mockAblyPublish).not.toHaveBeenCalledWith(
-        `chatThreadPendingMessageChanged:${threadId}`,
-        null,
-      );
-    });
-
-    it("should not auto-send when the pending message was recalled before the run terminates", async () => {
-      // Simulates the Stop-with-queue interaction: the user recalls the
-      // queued message (clearing pending columns) then cancels the run.
-      // The cancel surfaces as a "failed" callback. Auto-send must be a
-      // no-op because the pending columns are already empty.
-      const { threadId, runId, secret } = await setupRunAndThread({
-        status: "failed",
-      });
-
-      // Queue a message…
-      await setTestChatThreadPendingMessage(threadId, {
-        content: "recalled before cancel",
-        attachments: null,
-      });
-      // …then recall it (user clicked Stop, recall fired optimistically).
-      await setTestChatThreadPendingMessage(threadId, null);
-
-      const response = await POST(
-        createSignedCallbackRequest(
-          "http://localhost/api/internal/callbacks/chat",
-          {
-            runId,
-            status: "failed",
-            error: "Run cancelled by user",
-            payload: { threadId, agentId },
-          },
-          secret,
-        ),
-      );
-      expect(response.status).toBe(200);
-
-      // No additional user message row should have been created.
-      const messages = await getTestChatMessagesByThread(threadId);
-      const userMessages = messages.filter((m) => {
-        return m.role === "user" && m.content === "recalled before cancel";
-      });
-      expect(userMessages).toHaveLength(0);
-
-      // No pending-message-change signal since there was nothing to claim.
-      expect(mockAblyPublish).not.toHaveBeenCalledWith(
-        `chatThreadPendingMessageChanged:${threadId}`,
+        `chatThreadRunCreated:${threadId}`,
         null,
       );
     });

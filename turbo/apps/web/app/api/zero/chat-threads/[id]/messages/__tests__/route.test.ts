@@ -303,6 +303,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     expect(response.status).toBe(200);
     expect(data.messages).toHaveLength(1);
     expect(data.messages[0].role).toBe("user");
+    expect(data.messages[0]).not.toHaveProperty("status");
   });
 
   it("should resolve attach files to permanent /f/ URLs in paged messages", async () => {

@@ -15,7 +15,6 @@ import {
 } from "../auto-scroll.ts";
 import {
   createDraftSignals,
-  createRestoredAttachment,
   type DraftSignals,
 } from "../zero-page/chat-draft.ts";
 import {
@@ -30,15 +29,11 @@ import {
   type ChatThreadArtifactRun,
   type ModelSelectionRequest,
   type PagedChatMessage,
-  type PendingMessage,
-  type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import { composerModelProviders$ } from "../zero-page/composer-model-providers.ts";
 import { resolveEffectiveAgentDefaultSelection } from "../zero-page/model-provider-default.ts";
@@ -66,6 +61,17 @@ import {
 export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
 const L = logger("ChatThread");
+
+type OptimisticPagedChatMessage = PagedChatMessage & { isQueued?: boolean };
+
+function optimisticQueuedOverride(
+  msg: PagedChatMessage | OptimisticPagedChatMessage,
+): boolean | undefined {
+  if ("isQueued" in msg) {
+    return msg.isQueued === true;
+  }
+  return undefined;
+}
 
 // ---------------------------------------------------------------------------
 // Thinking-indicator constants and helpers
@@ -164,15 +170,6 @@ export interface ChatThreadSignals {
     [string, ModelSelectionRequest | null, AbortSignal]
   >;
   queueMessage$: Command<Promise<void>, [string, AbortSignal]>;
-  recallPendingMessage$: Command<Promise<void>, [AbortSignal]>;
-  // View-side pending message — masks the server value the moment the user
-  // recalls it so the queued card disappears synchronously, without waiting
-  // for the fire-and-forget server clear to round-trip.
-  pendingMessage$: Computed<Promise<PendingMessage | null>>;
-  // True when the rendered pending message is the optimistic, client-only
-  // bubble that hasn't been confirmed by the server yet. Used by the queued
-  // row to render the Recall button in a disabled state during this window.
-  pendingMessageIsOptimistic$: Computed<Promise<boolean>>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
   autoScroll$: Command<void, []>;
@@ -221,7 +218,7 @@ export interface ChatThreadSignals {
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   loadHistory$: Command<Promise<void>, [AbortSignal]>;
   subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;
-  insertOptimisticMessage$: Command<void, [PagedChatMessage]>;
+  insertOptimisticMessage$: Command<void, [OptimisticPagedChatMessage]>;
   // ── Thinking indicator ───────────────────────────────────────────────────
   blockColors$: Computed<[string, string, string]>;
   rotatingPhrase$: Computed<string>;
@@ -606,15 +603,15 @@ function mergeIntoGroups(
   return result;
 }
 
-type DeltaMessages$ = State<PagedChatMessage[]>;
+type DeltaMessages$ = State<OptimisticPagedChatMessage[]>;
 
 function createAppendDelta(deltaMessages$: DeltaMessages$) {
-  return command(({ set }, msgs: PagedChatMessage[]) => {
+  return command(({ set }, msgs: OptimisticPagedChatMessage[]) => {
     if (msgs.length === 0) {
       return;
     }
     set(deltaMessages$, (prev) => {
-      const byId = new Map<string, PagedChatMessage>();
+      const byId = new Map<string, OptimisticPagedChatMessage>();
       for (const m of prev) {
         byId.set(m.id, m);
       }
@@ -635,6 +632,50 @@ function createInitialPage(dataSource: ChatThreadDataSource) {
   return dataSource.initialPage$;
 }
 
+function createAllMessagesComputed({
+  initialPage$,
+  historyMessages$,
+  deltaMessages$,
+  optimisticSentUserMessageIds$,
+}: {
+  initialPage$: Computed<
+    Promise<{ messages: PagedChatMessage[]; hasHistoryBefore: boolean }>
+  >;
+  historyMessages$: State<PagedChatMessage[]>;
+  deltaMessages$: State<OptimisticPagedChatMessage[]>;
+  optimisticSentUserMessageIds$: State<Set<string>>;
+}): Computed<Promise<EnrichedChatMessage[]>> {
+  return computed(async (get): Promise<EnrichedChatMessage[]> => {
+    const initial = await get(initialPage$);
+    const history = get(historyMessages$);
+    const deltas = get(deltaMessages$);
+    const optimisticSentIds = get(optimisticSentUserMessageIds$);
+    const raw = [...history, ...initial.messages, ...deltas];
+    return raw.map((msg) => {
+      const { blocks } = parseBodyRenderBlocks(msg.content ?? "");
+      const isUnassociatedUser = msg.role === "user" && msg.runId === undefined;
+      const queuedOverride = optimisticQueuedOverride(msg);
+      const isQueued =
+        isUnassociatedUser &&
+        (queuedOverride ?? !optimisticSentIds.has(msg.id));
+      if (msg.role !== "assistant") {
+        return {
+          ...msg,
+          role: "user" as const,
+          blocks: enrichBlocksWithTextPreviews(blocks),
+          isQueued,
+        };
+      }
+      return {
+        ...msg,
+        role: "assistant" as const,
+        blocks: enrichBlocksWithTextPreviews(blocks),
+        isQueued,
+      };
+    });
+  });
+}
+
 function createPagedMessages(
   threadId: string,
   threadData$: Computed<Promise<ChatThread | null>>,
@@ -644,8 +685,9 @@ function createPagedMessages(
   const historyMessages$ = state<PagedChatMessage[]>([]);
   const initialPage$ = createInitialPage(dataSource);
 
-  const deltaMessages$ = state<PagedChatMessage[]>([]);
+  const deltaMessages$ = state<OptimisticPagedChatMessage[]>([]);
   const appendDeltaMessages$ = createAppendDelta(deltaMessages$);
+  const optimisticSentUserMessageIds$ = state(new Set<string>());
 
   // Tracks the last known server-validated message ID so optimistic
   // (client-generated) IDs never leak into sinceId calls.
@@ -653,15 +695,11 @@ function createPagedMessages(
   // advanced after each successful fetch to the last returned message.
   const nextCursorId$ = state<string | undefined>(undefined);
 
-  const allMessages$ = computed(async (get): Promise<EnrichedChatMessage[]> => {
-    const initial = await get(initialPage$);
-    const history = get(historyMessages$);
-    const deltas = get(deltaMessages$);
-    const raw = [...history, ...initial.messages, ...deltas];
-    return raw.map((msg) => {
-      const { blocks } = parseBodyRenderBlocks(msg.content ?? "");
-      return { ...msg, blocks: enrichBlocksWithTextPreviews(blocks) };
-    });
+  const allMessages$ = createAllMessagesComputed({
+    initialPage$,
+    historyMessages$,
+    deltaMessages$,
+    optimisticSentUserMessageIds$,
   });
 
   const groupedChatMessages$ = computed(
@@ -742,9 +780,28 @@ function createPagedMessages(
     return false;
   });
 
-  const insertOptimisticMessage$ = command(({ set }, msg: PagedChatMessage) => {
-    set(appendDeltaMessages$, [msg]);
-  });
+  const refreshLatestMessages$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      const result = await set(
+        dataSource.listMessagesAfter$,
+        { threadId, sinceId: undefined },
+        signal,
+      );
+      signal.throwIfAborted();
+      set(appendDeltaMessages$, result.messages);
+    },
+  );
+
+  const insertOptimisticMessage$ = command(
+    ({ get, set }, msg: OptimisticPagedChatMessage) => {
+      if (msg.role === "user" && msg.runId === undefined && !msg.isQueued) {
+        const next = new Set(get(optimisticSentUserMessageIds$));
+        next.add(msg.id);
+        set(optimisticSentUserMessageIds$, next);
+      }
+      set(appendDeltaMessages$, [msg]);
+    },
+  );
 
   const loadHistory$ = createLoadHistoryCommand({
     threadId,
@@ -761,6 +818,7 @@ function createPagedMessages(
     groupedChatMessages$,
     hasOlderHistory$,
     fetchNextPage$,
+    refreshLatestMessages$,
     loadHistory$,
     insertOptimisticMessage$,
   };
@@ -956,6 +1014,7 @@ interface RunTrackingDeps {
   threadData$: Computed<Promise<ChatThread | null>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
+  refreshLatestMessages$: Command<Promise<void>, [AbortSignal]>;
   autoScroll$: Command<void, []>;
   dataSource: ChatThreadDataSource;
 }
@@ -1011,6 +1070,7 @@ function createRunTracking({
   threadData$,
   latestChatMessageId$,
   fetchNextPage$,
+  refreshLatestMessages$,
   autoScroll$,
   dataSource,
 }: RunTrackingDeps) {
@@ -1032,86 +1092,64 @@ function createRunTracking({
     dataSource,
   });
 
-  const subscribeChatThread$ = command(
-    async ({ get, set }, signal: AbortSignal) => {
-      L.debug("subscribeChatThread$ start", { threadId });
+  const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
+    L.debug("subscribeChatThread$ start", { threadId });
 
-      // Catch up any messages that arrived since the initial page was loaded.
-      // On IDB cache hit this fetches messages that arrived after the cache
-      // was written; on cache miss `fetchNextPage$` issues a no-cursor fetch
-      // (since the contract treats `sinceId` as optional) and ingests the
-      // server's latest page. This must run before the subscribe loop below
-      // because that loop never resolves — `setAblyLoop$` blocks on the
-      // realtime channel for the lifetime of the thread.
-      L.debug("subscribeChatThread$ pre-subscribe fetchNextPage$ start", {
-        threadId,
-      });
-      await set(fetchNextPage$, signal);
-      L.debug("subscribeChatThread$ pre-subscribe fetchNextPage$ done", {
-        threadId,
-      });
+    // Catch up any messages that arrived since the initial page was loaded.
+    // On IDB cache hit this fetches messages that arrived after the cache
+    // was written; on cache miss `fetchNextPage$` issues a no-cursor fetch
+    // (since the contract treats `sinceId` as optional) and ingests the
+    // server's latest page. This must run before the subscribe loop below
+    // because that loop never resolves — `setAblyLoop$` blocks on the
+    // realtime channel for the lifetime of the thread.
+    L.debug("subscribeChatThread$ pre-subscribe fetchNextPage$ start", {
+      threadId,
+    });
+    await set(fetchNextPage$, signal);
+    L.debug("subscribeChatThread$ pre-subscribe fetchNextPage$ done", {
+      threadId,
+    });
 
-      // Track pending-message presence across reloads so we can re-scroll once
-      // the server consumes a queued message: `onRunChanged$` reloads the
-      // thread, the composer's queued card unmounts, and the message-list area
-      // grows. Re-running autoScroll on the next frame keeps the viewport
-      // pinned to the bottom across that layout shift. Gated on the feature
-      // switch so the run-update realtime callback stays byte-identical for
-      // users without the queue feature — no extra threadData$ read, no
-      // extra animationFrame.
-      const queueEnabled =
-        get(featureSwitch$)[FeatureSwitchKey.QueueMessage] ?? false;
-      const initialThread = queueEnabled ? await get(threadData$) : null;
-      signal.throwIfAborted();
-      let previouslyHadPending = Boolean(initialThread?.pendingMessage);
+    const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
+      L.debug("onMessageCreated$ fired", { threadId });
+      await set(fetchNextPage$, sig);
+      L.debug("onMessageCreated$ fetchNextPage$ done", { threadId });
+      await set(markThreadReadIfNeeded$, sig);
+      animationFrame(
+        () => {
+          set(autoScroll$);
+        },
+        { signal },
+      );
+      return false;
+    });
 
-      const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
-        L.debug("onMessageCreated$ fired", { threadId });
-        await set(fetchNextPage$, sig);
-        L.debug("onMessageCreated$ fetchNextPage$ done", { threadId });
-        await set(markThreadReadIfNeeded$, sig);
-        animationFrame(
-          () => {
-            set(autoScroll$);
-          },
-          { signal },
-        );
-        return false;
-      });
+    const onRunChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
+      L.debug("onRunChanged$ fired", { threadId });
+      set(reloadThread$);
+      await set(refreshLatestMessages$, sig);
+      sig.throwIfAborted();
+      await get(threadData$);
+      animationFrame(
+        () => {
+          set(autoScroll$);
+        },
+        { signal },
+      );
+      return false;
+    });
 
-      const onRunChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
-        L.debug("onRunChanged$ fired", { threadId });
-        set(reloadThread$);
-        if (!queueEnabled) {
-          return false;
-        }
-        const refreshed = await get(threadData$);
-        sig.throwIfAborted();
-        const hasPending = Boolean(refreshed?.pendingMessage);
-        if (previouslyHadPending && !hasPending) {
-          animationFrame(
-            () => {
-              set(autoScroll$);
-            },
-            { signal },
-          );
-        }
-        previouslyHadPending = hasPending;
-        return false;
-      });
-
-      L.debug("subscribeChatThread$ subscribeRealtime$ start", { threadId });
-      await Promise.all([
-        set(markThreadReadIfNeeded$, signal),
-        set(
-          dataSource.subscribeRealtime$,
-          { threadId, handlers: { onMessageCreated$, onRunChanged$ } },
-          signal,
-        ),
-      ]);
-      signal.throwIfAborted();
-    },
-  );
+    L.debug("subscribeChatThread$ subscribeRealtime$ start", { threadId });
+    await Promise.all([
+      set(markThreadReadIfNeeded$, signal),
+      set(
+        dataSource.subscribeRealtime$,
+        { threadId, handlers: { onMessageCreated$, onRunChanged$ } },
+        signal,
+      ),
+    ]);
+    signal.throwIfAborted();
+  });
 
   const cancelRun$ = command(async ({ get, set }, signal: AbortSignal) => {
     const thread = await get(threadData$);
@@ -1140,7 +1178,7 @@ interface SendMessageDeps {
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
-  insertOptimisticMessage$: Command<void, [PagedChatMessage]>;
+  insertOptimisticMessage$: Command<void, [OptimisticPagedChatMessage]>;
   scrollToBottom$: Command<void, []>;
 }
 
@@ -1256,50 +1294,27 @@ function createSendMessage(deps: SendMessageDeps) {
 interface QueueMessageDeps {
   threadId: string;
   threadData$: Computed<Promise<ChatThread | null>>;
-  pendingMessage$: Computed<Promise<PendingMessage | null>>;
   modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
-  reloadThread$: Command<void, []>;
+  insertOptimisticMessage$: Command<void, [OptimisticPagedChatMessage]>;
   scrollToBottom$: Command<void, []>;
   dataSource: ChatThreadDataSource;
-  setOptimisticPending$: Command<void, [PendingMessage | null]>;
-}
-
-function mergePendingText(
-  existing: string | null,
-  next: string | undefined,
-): string | null {
-  if (next === undefined) {
-    return existing;
-  }
-  return existing ? `${existing}\n${next}` : next;
-}
-
-function mergePendingAttachments(
-  existing: readonly PersistedAttachment[] | null | undefined,
-  next: readonly PersistedAttachment[] | undefined,
-): PersistedAttachment[] | null {
-  const attachments = [...(existing ?? []), ...(next ?? [])];
-  return attachments.length > 0 ? attachments : null;
 }
 
 function createQueueMessage(deps: QueueMessageDeps) {
   const {
     threadId,
     threadData$,
-    pendingMessage$,
     modelSelection$,
     draft,
     cancelDraftSync$,
     flushDraftClear$,
-    reloadThread$,
+    insertOptimisticMessage$,
     scrollToBottom$,
     dataSource,
-    setOptimisticPending$,
   } = deps;
-  let replacePendingMessageTail: Promise<void> = Promise.resolve();
 
   return command(async ({ get, set }, prompt: string, signal: AbortSignal) => {
     L.debug("queueMessage$ start", { threadId, promptLen: prompt.length });
@@ -1329,38 +1344,18 @@ function createQueueMessage(deps: QueueMessageDeps) {
     }
     signal.throwIfAborted();
 
-    const content = result.hasTextContent ? result.prompt : undefined;
-    const attachments = result.attachments;
-
     set(cancelDraftSync$);
     set(draft.clear$);
 
-    // Pre-generate the client message id so the eventual auto-sent
-    // chat_messages row uses it; the optimistic queued bubble is mounted
-    // with this id so the merge-by-id reconciliation drops the dupe when
-    // the real row arrives via Ably.
-    const existingPending = await get(pendingMessage$);
-    signal.throwIfAborted();
-    const clientMessageId =
-      existingPending?.clientMessageId ?? crypto.randomUUID();
-
-    // Render the queued bubble synchronously, before any network round-trip.
-    // `pendingMessage$` falls back to this slot until the server-confirmed
-    // pending row lands in `threadData$`, at which point the finally block
-    // below drops the optimistic copy.
+    const clientMessageId = crypto.randomUUID();
     const nowIso = new Date().toISOString();
-    const nextPending: PendingMessage = {
-      content: mergePendingText(existingPending?.content ?? null, content),
-      attachments: mergePendingAttachments(
-        existingPending?.attachments,
-        attachments,
-      ),
-      createdAt: existingPending?.createdAt ?? nowIso,
-      updatedAt: nowIso,
-      clientMessageId,
-    };
-    set(setOptimisticPending$, {
-      ...nextPending,
+    set(insertOptimisticMessage$, {
+      id: clientMessageId,
+      role: "user",
+      content: result.prompt,
+      isQueued: true,
+      attachFiles: result.attachments,
+      createdAt: nowIso,
     });
     animationFrame(
       () => {
@@ -1369,219 +1364,32 @@ function createQueueMessage(deps: QueueMessageDeps) {
       { signal },
     );
 
-    const replaceArgs = {
-      threadId,
-      content: nextPending.content,
-      attachments: nextPending.attachments,
-      clientMessageId: nextPending.clientMessageId,
-    };
-    const runReplace = async (): Promise<void> => {
-      await set(dataSource.replacePendingMessage$, replaceArgs, signal);
-    };
-    const previousReplacePendingMessage = replacePendingMessageTail;
-    const replacePendingMessage = (async (): Promise<void> => {
-      await Promise.allSettled([previousReplacePendingMessage]);
-      await runReplace();
-    })();
-    replacePendingMessageTail = (async (): Promise<void> => {
-      await Promise.allSettled([replacePendingMessage]);
-    })();
-
-    await Promise.all([set(flushDraftClear$, signal), replacePendingMessage]);
+    await Promise.all([
+      set(flushDraftClear$, signal),
+      set(
+        dataSource.appendQueuedMessage$,
+        {
+          threadId,
+          content: result.prompt,
+          attachments: result.attachments ?? null,
+          clientMessageId,
+        },
+        signal,
+      ),
+    ]);
     signal.throwIfAborted();
 
-    set(reloadThread$);
     set(reloadChatThreads$);
-    // Block until the refetched threadData$ resolves so the optimistic slot
-    // is only cleared after the server-confirmed pending row is in place;
-    // otherwise the queued bubble would flash off and back on.
-    const refreshed = await get(threadData$);
-    signal.throwIfAborted();
-    // Only retire the optimistic bubble when the server-confirmed pending
-    // row carries the same clientMessageId — proof that the backend actually
-    // accepted this queue. In the new-thread optimistic window the local
-    // data source is a no-op, so `refreshed.pendingMessage` stays null and
-    // we leave the bubble in place; the local signals instance is torn down
-    // when the page swaps to the real thread, taking the bubble with it.
-    if (refreshed?.pendingMessage?.clientMessageId === clientMessageId) {
-      set(setOptimisticPending$, null);
-    }
     L.debug("queueMessage$ done", { threadId });
   });
 }
 
-interface RecallMessageDeps {
-  threadId: string;
-  threadData$: Computed<Promise<ChatThread | null>>;
-  draft: DraftSignals;
-  cancelDraftSync$: Command<void, []>;
-  reloadThread$: Command<void, []>;
-  markPendingRecalled$: Command<void, [string]>;
-  dataSource: ChatThreadDataSource;
-}
+interface MessageCommandsDeps extends SendMessageDeps, QueueMessageDeps {}
 
-function createRecallPendingMessage(deps: RecallMessageDeps) {
-  const {
-    threadId,
-    threadData$,
-    draft,
-    cancelDraftSync$,
-    reloadThread$,
-    markPendingRecalled$,
-    dataSource,
-  } = deps;
-  return command(async ({ get, set }, signal: AbortSignal) => {
-    L.debug("recallPendingMessage$ start", { threadId });
-    const thread = await get(threadData$);
-    signal.throwIfAborted();
-    const pending = thread?.pendingMessage;
-    if (!pending) {
-      return;
-    }
-    // Optimistic local state — the queued card disappears and the draft
-    // refills synchronously, before the server round-trip. The mask hides
-    // the cached pendingMessage by updatedAt until threadData$ is refetched
-    // post-server-confirm, at which point the row is naturally gone.
-    set(cancelDraftSync$);
-    const restoredAttachments = (pending.attachments ?? []).map(
-      createRestoredAttachment,
-    );
-    set(draft.seed$, pending.content ?? "", restoredAttachments);
-    set(markPendingRecalled$, pending.updatedAt);
-
-    // Server clear. Callers detach the returned promise via useSet so the
-    // UI doesn't block on the round-trip — UX is already optimistic above.
-    await set(dataSource.recallPendingMessage$, { threadId }, signal);
-    signal.throwIfAborted();
-    set(reloadThread$);
-    set(reloadChatThreads$);
-    L.debug("recallPendingMessage$ done", { threadId });
-  });
-}
-
-interface MessageCommandsDeps
-  extends
-    SendMessageDeps,
-    Omit<QueueMessageDeps, "pendingMessage$" | "setOptimisticPending$">,
-    Omit<RecallMessageDeps, "markPendingRecalled$"> {}
-
-function createMessageCommands(
-  deps: MessageCommandsDeps & {
-    groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
-  },
-) {
-  const {
-    pendingMessage$,
-    pendingMessageIsOptimistic$,
-    markPendingRecalled$,
-    setOptimisticPending$,
-  } = createPendingMessageView(deps.threadData$, deps.groupedChatMessages$);
+function createMessageCommands(deps: MessageCommandsDeps) {
   return {
     sendMessage$: createSendMessage(deps),
-    queueMessage$: createQueueMessage({
-      ...deps,
-      pendingMessage$,
-      setOptimisticPending$,
-    }),
-    recallPendingMessage$: createRecallPendingMessage({
-      ...deps,
-      markPendingRecalled$,
-    }),
-    pendingMessage$,
-    pendingMessageIsOptimistic$,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Sub-factory: pending-message view (with optimistic recall mask + dedup)
-// ---------------------------------------------------------------------------
-
-function createPendingMessageView(
-  threadData$: Computed<Promise<ChatThread | null>>,
-  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>,
-) {
-  // Tracks the `updatedAt` of the pending message the user just recalled.
-  // While the cached `threadData$` still echoes that same pending row back
-  // (the fire-and-forget server clear hasn't landed yet), `pendingMessage$`
-  // returns null so the queued card disappears synchronously on click.
-  const internalRecalledUpdatedAt$ = state<string | null>(null);
-
-  // Client-only optimistic queued bubble. Set synchronously by `queueMessage$`
-  // before its POST flies, cleared in finally once the server-side pending row
-  // round-trips into `threadData$`. Lives on the thread signal so each thread
-  // has its own optimistic slot — switching threads does not leak state.
-  const internalOptimisticPending$ = state<PendingMessage | null>(null);
-
-  const setOptimisticPending$ = command(
-    ({ set }, value: PendingMessage | null) => {
-      set(internalOptimisticPending$, value);
-    },
-  );
-
-  // Shared compute: pick the active pending row (server-confirmed wins over
-  // optimistic) and remember which source it came from so the view layer can
-  // tell apart "in flight" from "confirmed".
-  const pendingMessageWithSource$ = computed(
-    async (
-      get,
-    ): Promise<{ pending: PendingMessage; isOptimistic: boolean } | null> => {
-      const thread = await get(threadData$);
-      const serverPending = thread?.pendingMessage ?? null;
-      const recalledUpdatedAt = get(internalRecalledUpdatedAt$);
-      const serverPendingActive =
-        serverPending && recalledUpdatedAt !== serverPending.updatedAt
-          ? serverPending
-          : null;
-      const optimistic = get(internalOptimisticPending$);
-      const source = serverPendingActive ?? optimistic;
-      if (!source) {
-        return null;
-      }
-      // Dedup by client message id: when auto-send claims the queued
-      // message, it inserts a chat_messages row reusing the queued
-      // bubble's pre-generated id. Once the realtime fetcher surfaces
-      // that row, the queued bubble must vacate so we don't paint the
-      // same user message twice.
-      if (source.clientMessageId) {
-        const groups = await get(groupedChatMessages$);
-        const matched = groups.some((group) => {
-          return group.messages.some((message) => {
-            return message.id === source.clientMessageId;
-          });
-        });
-        if (matched) {
-          return null;
-        }
-      }
-      return {
-        pending: source,
-        isOptimistic: serverPendingActive === null,
-      };
-    },
-  );
-
-  const pendingMessage$ = computed(
-    async (get): Promise<PendingMessage | null> => {
-      const view = await get(pendingMessageWithSource$);
-      return view?.pending ?? null;
-    },
-  );
-
-  const pendingMessageIsOptimistic$ = computed(async (get) => {
-    const view = await get(pendingMessageWithSource$);
-    return view?.isOptimistic ?? false;
-  });
-
-  const markPendingRecalled$ = command(({ set }, updatedAt: string) => {
-    set(internalRecalledUpdatedAt$, updatedAt);
-    set(internalOptimisticPending$, null);
-  });
-
-  return {
-    pendingMessage$,
-    pendingMessageIsOptimistic$,
-    markPendingRecalled$,
-    setOptimisticPending$,
+    queueMessage$: createQueueMessage(deps),
   };
 }
 
@@ -1677,6 +1485,7 @@ export function createChatThreadSignals(
     groupedChatMessages$,
     hasOlderHistory$,
     fetchNextPage$,
+    refreshLatestMessages$,
     loadHistory$: loadPagedHistory$,
     insertOptimisticMessage$,
   } = createPagedMessages(threadId, threadData$, dataSource);
@@ -1694,6 +1503,7 @@ export function createChatThreadSignals(
     threadData$,
     latestChatMessageId$,
     fetchNextPage$,
+    refreshLatestMessages$,
     autoScroll$: scrollSignals.autoScroll$,
     dataSource,
   });
@@ -1707,9 +1517,7 @@ export function createChatThreadSignals(
     flushDraftClear$,
     insertOptimisticMessage$,
     scrollToBottom$: scrollSignals.scrollToBottom$,
-    reloadThread$,
     dataSource,
-    groupedChatMessages$,
   });
 
   const { setInputRef$, focusInput$ } = createInputRef();

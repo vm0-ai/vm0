@@ -15,6 +15,7 @@ import {
 import { formatChatRunErrorMessage } from "./chat-run-error-message";
 import {
   type ChatThreadArtifactRun,
+  type ChatThreadDetail,
   type PersistedAttachment,
   type ResolvedAttachFile,
   persistedAttachmentSchema,
@@ -225,7 +226,6 @@ export async function getChatThread(
   agentComposeId: string;
   draftContent: string | null;
   draftAttachments: PersistedAttachment[] | null;
-  pendingMessage: ChatThreadPendingMessage | null;
   modelProviderId: string | null;
   modelProviderType: string | null;
   modelProviderCredentialScope: string | null;
@@ -254,7 +254,6 @@ export async function getChatThread(
       .array()
       .nullable()
       .parse(thread.draftAttachments ?? null),
-    pendingMessage: toChatThreadPendingMessage(thread),
     modelProviderId: thread.modelProviderId ?? null,
     modelProviderType: thread.modelProviderType ?? null,
     modelProviderCredentialScope: thread.modelProviderCredentialScope ?? null,
@@ -278,47 +277,6 @@ function hasDraftValue(
     (draftContent !== null && draftContent !== "") ||
     (draftAttachments !== null && draftAttachments.length > 0)
   );
-}
-
-type ChatThreadPendingMessage = {
-  content: string | null;
-  attachments: PersistedAttachment[] | null;
-  createdAt: Date;
-  updatedAt: Date;
-  clientMessageId: string | null;
-};
-
-type PendingMessageColumns = {
-  pendingMessageContent: string | null;
-  pendingMessageAttachments: PersistedAttachment[] | null;
-  pendingMessageCreatedAt: Date | null;
-  pendingMessageUpdatedAt: Date | null;
-  pendingMessageClientId?: string | null;
-};
-
-function parsePersistedAttachments(
-  attachments: PersistedAttachment[] | null,
-): PersistedAttachment[] | null {
-  return persistedAttachmentSchema
-    .array()
-    .nullable()
-    .parse(attachments ?? null);
-}
-
-function toChatThreadPendingMessage(
-  row: PendingMessageColumns,
-): ChatThreadPendingMessage | null {
-  if (!row.pendingMessageCreatedAt || !row.pendingMessageUpdatedAt) {
-    return null;
-  }
-
-  return {
-    content: row.pendingMessageContent ?? null,
-    attachments: parsePersistedAttachments(row.pendingMessageAttachments),
-    createdAt: row.pendingMessageCreatedAt,
-    updatedAt: row.pendingMessageUpdatedAt,
-    clientMessageId: row.pendingMessageClientId ?? null,
-  };
 }
 
 /**
@@ -463,15 +421,17 @@ export async function renameChatThread(
   await publishThreadListChanged(userId);
 }
 
-type ChatMessage = {
-  role: "user" | "assistant";
-  content: string | null;
-  runId?: string;
-  error?: string;
-  status?: string;
-  attachFiles?: ResolvedAttachFile[];
-  createdAt: string;
-};
+type ChatMessage = ChatThreadDetail["chatMessages"][number];
+
+function chatMessageStatus(row: {
+  role: string;
+  runStatus: string | null;
+}): string | undefined {
+  if (row.role !== "assistant") {
+    return undefined;
+  }
+  return row.runStatus ?? undefined;
+}
 
 /**
  * Resolve file IDs to permanent file URLs with metadata for the frontend.
@@ -614,14 +574,25 @@ export async function getChatThreadMessages(
           ? await resolveAttachFileUrls(userId, row.attachFiles)
           : undefined;
 
-      return {
-        role: row.role as "user" | "assistant",
+      const role = row.role as "user" | "assistant";
+      const message = {
+        role,
         content: row.content,
         runId: row.runId ?? undefined,
         error: effectiveError,
-        status: row.runStatus ?? undefined,
         attachFiles,
         createdAt: row.createdAt.toISOString(),
+      };
+      if (role !== "assistant") {
+        return {
+          ...message,
+          role: "user" as const,
+        };
+      }
+      return {
+        ...message,
+        role: "assistant" as const,
+        status: chatMessageStatus(row),
       };
     }),
   );

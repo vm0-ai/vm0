@@ -14,7 +14,6 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
   IconAlertCircle,
-  IconArrowBackUp,
   IconHandStop,
   IconPhoto,
   IconChartLine,
@@ -52,10 +51,7 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
-import type {
-  ChatThreadArtifactFile,
-  PendingMessage,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -1802,7 +1798,6 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
                 );
               })}
               <ThinkingIndicator thread={thread} />
-              <QueuedUserMessageRow thread={thread} />
             </div>
           </main>
         </div>
@@ -1829,7 +1824,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
 // Composer wrapper — reads chat signals from thread prop
 // ---------------------------------------------------------------------------
 
-function canQueuePendingMessage({
+function canQueueMessage({
   queueMessageEnabled,
   activeRunCount,
   allFinishedResolved,
@@ -1885,7 +1880,6 @@ function ChatThreadComposer({
   const input = useGet(thread.draft.input$);
   const setInput = useSet(thread.draft.setInput$);
   const cancelRun = useSet(thread.cancelRun$);
-  const recallPendingMessage = useSet(thread.recallPendingMessage$);
   const setInputRef = useSet(thread.setInputRef$);
   const scheduleDraftSync = useSet(thread.scheduleDraftSync$);
   const pageSignal = useGet(pageSignal$);
@@ -1909,7 +1903,7 @@ function ChatThreadComposer({
   const features = useLastResolved(featureSwitch$);
   const queueMessageEnabled =
     features?.[FeatureSwitchKey.QueueMessage] ?? false;
-  const queueWhileSending = canQueuePendingMessage({
+  const queueWhileSending = canQueueMessage({
     queueMessageEnabled,
     activeRunCount: threadData?.activeRunIds.length ?? 0,
     allFinishedResolved: allFinishedLoadable.state === "hasData",
@@ -1958,18 +1952,7 @@ function ChatThreadComposer({
             onCancel={
               allFinishedResolved
                 ? () => {
-                    // Recall any queued pending message back into the draft
-                    // before cancelling so the auto-send hook on the cancel
-                    // callback finds an empty pending and is a no-op. The
-                    // recall is optimistic — the draft repopulates
-                    // synchronously while the server clear races the cancel.
-                    detach(
-                      (async () => {
-                        await recallPendingMessage(rootSignal);
-                        await cancelRun(pageSignal);
-                      })(),
-                      Reason.DomCallback,
-                    );
+                    detach(cancelRun(pageSignal), Reason.DomCallback);
                   }
                 : undefined
             }
@@ -2695,6 +2678,7 @@ function PagedUserMessage({
   const clipboardAttachments = clipboardAttachmentsFromMessage(message, parsed);
   const copyText = strippedContent;
   const canCopy = copyText.trim().length > 0 || clipboardAttachments.length > 0;
+  const isQueued = message.isQueued;
 
   const handleCopy = () => {
     if (!canCopy) {
@@ -2711,10 +2695,20 @@ function PagedUserMessage({
   };
 
   return (
-    <div data-role="user" className="group">
+    <div
+      data-role="user"
+      className="group"
+      aria-label={isQueued ? "Queued message" : undefined}
+    >
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
+          {isQueued && (
+            <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
+              Queued
+            </div>
+          )}
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
             {bodyBlocks.length > 0 && (
               <div className="px-4 py-3">
@@ -2746,116 +2740,6 @@ function PagedUserMessage({
               </button>
             </div>
           )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function QueuedUserMessageRow({ thread }: { thread: ChatThreadSignals }) {
-  // pendingMessage$ already applies the recall mask + (after #PR) the
-  // dedup-by-client-id check, so this row only renders while the queued
-  // bubble has no real-message counterpart in the list.
-  const pendingMessage = useLastResolved(thread.pendingMessage$) ?? null;
-  const isOptimistic =
-    useLastResolved(thread.pendingMessageIsOptimistic$) ?? false;
-  if (!pendingMessage) {
-    return null;
-  }
-  return (
-    <QueuedUserMessage
-      pendingMessage={pendingMessage}
-      thread={thread}
-      isOptimistic={isOptimistic}
-    />
-  );
-}
-
-function persistedAttachmentsToResolved(
-  attachments: readonly {
-    id: string;
-    url: string;
-    filename: string;
-    contentType: string;
-    size: number;
-  }[],
-): ReturnType<typeof resolveAttachments> {
-  return attachments.map((a) => {
-    const kind = classifyChatAttachment({
-      filename: a.filename,
-      url: a.url,
-      contentType: a.contentType,
-    });
-    return {
-      filename: a.filename,
-      url: a.url,
-      contentType: a.contentType,
-      isImage: kind === "image" || isImageFilename(a.filename),
-      kind,
-    };
-  });
-}
-
-function QueuedUserMessage({
-  pendingMessage,
-  thread,
-  isOptimistic,
-}: {
-  pendingMessage: PendingMessage;
-  thread: ChatThreadSignals;
-  isOptimistic: boolean;
-}) {
-  const content = pendingMessage.content?.trim() ?? "";
-  const attachments = persistedAttachmentsToResolved(
-    pendingMessage.attachments ?? [],
-  );
-  const recallPendingMessage = useSet(thread.recallPendingMessage$);
-  const rootSignal = useGet(rootSignal$);
-  const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const bodyBlocks = enrichBlocksWithTextPreviews(
-    parseBodyRenderBlocks(content).blocks,
-  );
-
-  const handleRecall = () => {
-    detach(recallPendingMessage(rootSignal), Reason.DomCallback);
-  };
-
-  return (
-    <div data-role="user" className="group" aria-label="Queued message">
-      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-        <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
-        <div className="flex flex-col items-end w-full">
-          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-            Queued
-          </div>
-          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
-            {bodyBlocks.length > 0 && (
-              <div className="px-4 py-3">
-                <BodyContentBlocks
-                  blocks={bodyBlocks}
-                  openLightbox={openImageLightbox}
-                  hardBreaks
-                />
-              </div>
-            )}
-            <UserMessageAttachments
-              attachments={attachments}
-              onImageClick={openImageLightbox}
-            />
-          </div>
-          <div className="flex justify-end mt-1">
-            <button
-              type="button"
-              onClick={handleRecall}
-              disabled={isOptimistic}
-              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-              aria-label="Recall queued message"
-            >
-              <IconArrowBackUp size={13} stroke={1.75} />
-              Recall
-            </button>
-          </div>
         </div>
       </div>
     </div>

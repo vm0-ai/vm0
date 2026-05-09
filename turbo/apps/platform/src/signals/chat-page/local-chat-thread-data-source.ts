@@ -1,13 +1,9 @@
 import { command, computed } from "ccstate";
-import type {
-  PagedChatMessage,
-  PendingMessage,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ChatThread } from "../agent-chat.ts";
 import type {
+  AppendQueuedMessageArgs,
   ChatThreadDataSource,
-  RecallPendingMessageResult,
-  ReplacePendingMessageArgs,
 } from "./chat-thread-data-source.ts";
 
 const localPatchDraft$ = command((): Promise<void> => {
@@ -41,7 +37,7 @@ const localReloadThread$ = command(() => {
 });
 
 export interface LocalChatThreadDataSource extends ChatThreadDataSource {
-  takePendingMessageReplacement: () => ReplacePendingMessageArgs | null;
+  takeQueuedMessageAppends: () => AppendQueuedMessageArgs[];
 }
 
 export function createLocalChatThreadDataSource(input: {
@@ -49,7 +45,7 @@ export function createLocalChatThreadDataSource(input: {
   messages: PagedChatMessage[];
 }): LocalChatThreadDataSource {
   const { threadData, messages } = input;
-  let pendingMessageReplacement: ReplacePendingMessageArgs | null = null;
+  let queuedMessageAppends: AppendQueuedMessageArgs[] = [];
 
   const getThread$ = computed((): Promise<ChatThread | null> => {
     return Promise.resolve(threadData);
@@ -63,31 +59,26 @@ export function createLocalChatThreadDataSource(input: {
     return Promise.resolve();
   });
 
-  const localReplacePendingMessage$ = command(
+  const localAppendQueuedMessage$ = command(
     (
       _visitor,
-      args: ReplacePendingMessageArgs,
+      args: AppendQueuedMessageArgs,
       _signal: AbortSignal,
-    ): Promise<PendingMessage> => {
-      pendingMessageReplacement = {
-        ...args,
-        attachments: args.attachments ? [...args.attachments] : null,
-      };
-      const now = new Date().toISOString();
+    ): Promise<PagedChatMessage> => {
+      queuedMessageAppends = [
+        ...queuedMessageAppends,
+        {
+          ...args,
+          attachments: args.attachments ? [...args.attachments] : null,
+        },
+      ];
       return Promise.resolve({
+        id: args.clientMessageId,
+        role: "user",
         content: args.content,
-        attachments: args.attachments ? [...args.attachments] : null,
-        createdAt: now,
-        updatedAt: now,
-        clientMessageId: args.clientMessageId,
+        attachFiles: args.attachments ? [...args.attachments] : undefined,
+        createdAt: new Date().toISOString(),
       });
-    },
-  );
-
-  const localRecallPendingMessage$ = command(
-    (): Promise<RecallPendingMessageResult> => {
-      pendingMessageReplacement = null;
-      return Promise.resolve({ draftContent: null, draftAttachments: null });
     },
   );
 
@@ -96,17 +87,21 @@ export function createLocalChatThreadDataSource(input: {
     reloadThread$: localReloadThread$,
     initialPage$,
     patchDraft$: localPatchDraft$,
-    replacePendingMessage$: localReplacePendingMessage$,
-    recallPendingMessage$: localRecallPendingMessage$,
+    appendQueuedMessage$: localAppendQueuedMessage$,
     listMessagesAfter$: localListMessagesAfter$,
     listMessagesBefore$: localListMessagesBefore$,
     cancelRuns$,
     markRead$: localMarkRead$,
     subscribeRealtime$: localSubscribeRealtime$,
-    takePendingMessageReplacement: () => {
-      const replacement = pendingMessageReplacement;
-      pendingMessageReplacement = null;
-      return replacement;
+    takeQueuedMessageAppends: () => {
+      const appends = queuedMessageAppends.map((append) => {
+        return {
+          ...append,
+          attachments: append.attachments ? [...append.attachments] : null,
+        };
+      });
+      queuedMessageAppends = [];
+      return appends;
     },
   };
 }

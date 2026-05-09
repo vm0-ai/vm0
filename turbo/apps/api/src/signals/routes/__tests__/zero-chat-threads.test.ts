@@ -3,9 +3,7 @@ import { createStore } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
-  chatThreadPendingMessageReplaceContract,
-  chatThreadPendingMessageDeleteContract,
-  chatThreadPendingMessageRecallContract,
+  chatThreadQueuedMessagesContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatMessages } from "@vm0/db/schema/chat-message";
@@ -88,7 +86,6 @@ describe("GET /api/zero/chat-threads/:id", () => {
       activeRuns: [],
       draftContent: null,
       draftAttachments: null,
-      pendingMessage: null,
       modelProviderId: null,
       modelProviderType: null,
       modelProviderCredentialScope: null,
@@ -189,12 +186,12 @@ describe("GET /api/zero/chat-threads/:id", () => {
   });
 });
 
-describe("chat thread pending message routes", () => {
+describe("chat thread queued message routes", () => {
   const track = createFixtureTracker<ZeroChatThreadFixture>((fixture) => {
     return store.set(deleteZeroChatThread$, fixture, context.signal);
   });
 
-  it("creates a pending message and clears the draft", async () => {
+  it("appends a queued user message and clears the draft", async () => {
     const fixture = await track(
       store.set(seedZeroChatThread$, {}, context.signal),
     );
@@ -209,26 +206,27 @@ describe("chat thread pending message routes", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(
-      chatThreadPendingMessageReplaceContract,
-    );
+    const client = setupApp({ context })(chatThreadQueuedMessagesContract);
+    const clientMessageId = randomUUID();
 
     const response = await accept(
-      client.replace({
+      client.append({
         params: { id: fixture.threadId },
         headers: { authorization: "Bearer clerk-session" },
         body: {
-          content: "first pending",
-          attachments: [attachment("pending-att")],
+          content: "first queued",
+          clientMessageId,
         },
       }),
-      [200],
+      [201],
     );
 
-    expect(response.body.pendingMessage.content).toBe("first pending");
-    expect(response.body.pendingMessage.attachments).toStrictEqual([
-      attachment("pending-att"),
-    ]);
+    expect(response.body.message).toMatchObject({
+      id: clientMessageId,
+      role: "user",
+      content: "first queued",
+    });
+    expect(response.body.message).not.toHaveProperty("status");
 
     mockApiShadowCompareRoutes([chatThreadByIdContract.get]);
     const detailClient = setupApp({ context })(chatThreadByIdContract);
@@ -242,139 +240,44 @@ describe("chat thread pending message routes", () => {
 
     expect(detail.body.draftContent).toBeNull();
     expect(detail.body.draftAttachments).toBeNull();
-    expect(detail.body.pendingMessage?.content).toBe("first pending");
+    const queuedDetailMessage = detail.body.chatMessages.find((message) => {
+      return message.role === "user" && message.content === "first queued";
+    });
+    expect(queuedDetailMessage).toBeDefined();
+    expect(queuedDetailMessage?.runId).toBeUndefined();
   });
 
-  it("replaces content and attachments on the existing pending message", async () => {
+  it("keeps multiple queued sends as independent user messages", async () => {
     const fixture = await track(
       store.set(seedZeroChatThread$, {}, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    const client = setupApp({ context })(
-      chatThreadPendingMessageReplaceContract,
-    );
+    const client = setupApp({ context })(chatThreadQueuedMessagesContract);
 
     const first = await accept(
-      client.replace({
-        params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
-        body: { content: "first", attachments: [attachment("first")] },
-      }),
-      [200],
-    );
-    const second = await accept(
-      client.replace({
-        params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
-        body: { content: "second", attachments: [attachment("second")] },
-      }),
-      [200],
-    );
-
-    expect(second.body.pendingMessage.content).toBe("second");
-    expect(second.body.pendingMessage.attachments).toStrictEqual([
-      attachment("second"),
-    ]);
-    expect(second.body.pendingMessage.createdAt).toBe(
-      first.body.pendingMessage.createdAt,
-    );
-  });
-
-  it("discards a pending message without changing the draft", async () => {
-    const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const replaceClient = setupApp({ context })(
-      chatThreadPendingMessageReplaceContract,
-    );
-    await accept(
-      replaceClient.replace({
-        params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
-        body: { content: "discard me" },
-      }),
-      [200],
-    );
-    await store.set(
-      updateZeroChatThreadDraft$,
-      fixture,
-      { content: "keep draft" },
-      context.signal,
-    );
-
-    const deleteClient = setupApp({ context })(
-      chatThreadPendingMessageDeleteContract,
-    );
-    const response = await accept(
-      deleteClient.delete({
-        params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [204],
-    );
-
-    expect(response.status).toBe(204);
-
-    mockApiShadowCompareRoutes([chatThreadByIdContract.get]);
-    const detailClient = setupApp({ context })(chatThreadByIdContract);
-    const detail = await accept(
-      detailClient.get({
-        params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(detail.body.pendingMessage).toBeNull();
-    expect(detail.body.draftContent).toBe("keep draft");
-  });
-
-  it("recalls a pending message into the draft and clears it", async () => {
-    const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const replaceClient = setupApp({ context })(
-      chatThreadPendingMessageReplaceContract,
-    );
-    await accept(
-      replaceClient.replace({
+      client.append({
         params: { id: fixture.threadId },
         headers: { authorization: "Bearer clerk-session" },
         body: {
-          content: "bring me back",
-          attachments: [attachment("recall")],
+          content: "first",
+          clientMessageId: randomUUID(),
         },
       }),
-      [200],
+      [201],
     );
-    await store.set(
-      updateZeroChatThreadDraft$,
-      fixture,
-      {
-        content: "current draft",
-        attachments: [attachment("current")],
-      },
-      context.signal,
-    );
-
-    const recallClient = setupApp({ context })(
-      chatThreadPendingMessageRecallContract,
-    );
-    const response = await accept(
-      recallClient.recall({
+    const second = await accept(
+      client.append({
         params: { id: fixture.threadId },
         headers: { authorization: "Bearer clerk-session" },
+        body: {
+          content: "second",
+          clientMessageId: randomUUID(),
+        },
       }),
-      [200],
+      [201],
     );
 
-    expect(response.body).toStrictEqual({
-      draftContent: "bring me back",
-      draftAttachments: [attachment("recall")],
-      pendingMessage: null,
-    });
+    expect(first.body.message.id).not.toBe(second.body.message.id);
 
     mockApiShadowCompareRoutes([chatThreadByIdContract.get]);
     const detailClient = setupApp({ context })(chatThreadByIdContract);
@@ -386,24 +289,31 @@ describe("chat thread pending message routes", () => {
       [200],
     );
 
-    expect(detail.body.pendingMessage).toBeNull();
-    expect(detail.body.draftContent).toBe("bring me back");
-    expect(detail.body.draftAttachments).toStrictEqual([attachment("recall")]);
+    expect(
+      detail.body.chatMessages.filter((message) => {
+        return (
+          message.role === "user" &&
+          message.runId === undefined &&
+          (message.content === "first" || message.content === "second")
+        );
+      }),
+    ).toStrictEqual([
+      expect.objectContaining({ content: "first" }),
+      expect.objectContaining({ content: "second" }),
+    ]);
   });
 
-  it("requires authentication for replace", async () => {
+  it("requires authentication for append", async () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
     });
-    const client = setupApp({ context })(
-      chatThreadPendingMessageReplaceContract,
-    );
+    const client = setupApp({ context })(chatThreadQueuedMessagesContract);
 
     const response = await accept(
-      client.replace({
+      client.append({
         params: { id: "00000000-0000-0000-0000-000000000000" },
         headers: { authorization: "Bearer clerk-session" },
-        body: { content: "no auth" },
+        body: { content: "no auth", clientMessageId: randomUUID() },
       }),
       [401],
     );
@@ -416,40 +326,18 @@ describe("chat thread pending message routes", () => {
       store.set(seedZeroChatThread$, {}, context.signal),
     );
     mocks.clerk.session("other-user", fixture.orgId);
-    const client = setupApp({ context })(
-      chatThreadPendingMessageReplaceContract,
-    );
+    const client = setupApp({ context })(chatThreadQueuedMessagesContract);
 
     const response = await accept(
-      client.replace({
+      client.append({
         params: { id: fixture.threadId },
         headers: { authorization: "Bearer clerk-session" },
-        body: { content: "not mine" },
+        body: { content: "not mine", clientMessageId: randomUUID() },
       }),
       [404],
     );
 
     expect(response.body.error.message).toBe("Chat thread not found");
-  });
-
-  it("returns 404 when recalling without a pending message", async () => {
-    const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const client = setupApp({ context })(
-      chatThreadPendingMessageRecallContract,
-    );
-
-    const response = await accept(
-      client.recall({
-        params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-
-    expect(response.body.error.message).toBe("Pending message not found");
   });
 });
 

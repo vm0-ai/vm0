@@ -4,9 +4,7 @@ import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
   chatThreadMessagesContract,
-  chatThreadPendingMessageDeleteContract,
-  chatThreadPendingMessageReplaceContract,
-  chatThreadPendingMessageRecallContract,
+  chatThreadQueuedMessagesContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { z } from "zod";
@@ -23,9 +21,7 @@ import {
   zeroChatThreadDetail,
   zeroChatThreadList,
   zeroChatThreadMessagesPage,
-  deleteZeroChatThreadPendingMessage$,
-  recallZeroChatThreadPendingMessage$,
-  replaceZeroChatThreadPendingMessage$,
+  appendZeroChatThreadQueuedMessage$,
 } from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route";
 
@@ -143,103 +139,40 @@ const searchChatInner$ = computed(async (get) => {
   };
 });
 
-const replacePendingMessageInner$ = command(
+const appendQueuedMessageInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(authContext$);
-    const params = get(
-      pathParamsOf(chatThreadPendingMessageReplaceContract.replace),
-    );
+    const params = get(pathParamsOf(chatThreadQueuedMessagesContract.append));
 
     if (!isValidChatThreadId(params.id)) {
       return chatThreadNotFound();
     }
 
     const bodyResult = await get(
-      bodyResultOf(chatThreadPendingMessageReplaceContract.replace),
+      bodyResultOf(chatThreadQueuedMessagesContract.append),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
 
-    const pendingMessage = await set(
-      replaceZeroChatThreadPendingMessage$,
+    const message = await set(
+      appendZeroChatThreadQueuedMessage$,
       {
         threadId: params.id,
         userId: auth.userId,
         content: bodyResult.data.content ?? null,
         attachments: bodyResult.data.attachments ?? null,
-        clientMessageId: bodyResult.data.clientMessageId ?? null,
+        clientMessageId: bodyResult.data.clientMessageId,
       },
       signal,
     );
 
-    if (!pendingMessage) {
+    if (!message) {
       return chatThreadNotFound();
     }
 
-    return { status: 200 as const, body: { pendingMessage } };
-  },
-);
-
-const deletePendingMessageInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(authContext$);
-    const params = get(
-      pathParamsOf(chatThreadPendingMessageDeleteContract.delete),
-    );
-
-    if (!isValidChatThreadId(params.id)) {
-      return chatThreadNotFound();
-    }
-
-    const found = await set(
-      deleteZeroChatThreadPendingMessage$,
-      { threadId: params.id, userId: auth.userId },
-      signal,
-    );
-
-    if (!found) {
-      return chatThreadNotFound();
-    }
-
-    return { status: 204 as const, body: undefined };
-  },
-);
-
-const recallPendingMessageInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(authContext$);
-    const params = get(
-      pathParamsOf(chatThreadPendingMessageRecallContract.recall),
-    );
-
-    if (!isValidChatThreadId(params.id)) {
-      return chatThreadNotFound();
-    }
-
-    const result = await set(
-      recallZeroChatThreadPendingMessage$,
-      { threadId: params.id, userId: auth.userId },
-      signal,
-    );
-
-    if (!result.ok) {
-      return result.reason === "pending-not-found"
-        ? notFound("Pending message not found")
-        : chatThreadNotFound();
-    }
-
-    return {
-      status: 200 as const,
-      body: {
-        draftContent: result.draftContent,
-        draftAttachments: result.draftAttachments
-          ? [...result.draftAttachments]
-          : null,
-        pendingMessage: null,
-      },
-    };
+    return { status: 201 as const, body: { message } };
   },
 );
 
@@ -276,16 +209,8 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     }),
   },
   {
-    route: chatThreadPendingMessageReplaceContract.replace,
-    handler: authRoute({}, replacePendingMessageInner$),
-  },
-  {
-    route: chatThreadPendingMessageDeleteContract.delete,
-    handler: authRoute({}, deletePendingMessageInner$),
-  },
-  {
-    route: chatThreadPendingMessageRecallContract.recall,
-    handler: authRoute({}, recallPendingMessageInner$),
+    route: chatThreadQueuedMessagesContract.append,
+    handler: authRoute({}, appendQueuedMessageInner$),
   },
   {
     route: chatSearchContract.search,

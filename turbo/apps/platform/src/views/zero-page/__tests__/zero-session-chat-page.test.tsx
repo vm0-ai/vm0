@@ -7,23 +7,13 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadMessagesContract,
   chatThreadByIdContract,
+  type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 const context = testContext();
 const mockApi = createMockApi(context);
 
-function makeThreadMocks(
-  threadId: string,
-  messages: {
-    id: string;
-    role: "user" | "assistant";
-    content: string | null;
-    runId?: string;
-    status?: string;
-    error?: string;
-    createdAt: string;
-  }[],
-) {
+function makeThreadMocks(threadId: string, messages: PagedChatMessage[]) {
   server.use(
     mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
       if (query.sinceId) {

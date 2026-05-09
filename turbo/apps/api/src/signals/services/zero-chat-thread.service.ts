@@ -6,7 +6,6 @@ import {
   type ChatThreadDetail,
   type ChatThreadListItem,
   type PagedChatMessage,
-  type PendingMessage,
   type PersistedAttachment,
   type ResolvedAttachFile,
   persistedAttachmentSchema,
@@ -44,7 +43,6 @@ import { z } from "zod";
 import { env } from "../../lib/env";
 import { db$, writeDb$ } from "../external/db";
 import { listS3Objects } from "../external/s3";
-import { nowDate } from "../external/time";
 
 const REPORT_ERROR_STREAK_THRESHOLD = 2;
 
@@ -121,7 +119,6 @@ type ChatThreadRow = {
   readonly agentComposeId: string;
   readonly draftContent: string | null;
   readonly draftAttachments: readonly PersistedAttachment[] | null;
-  readonly pendingMessage: PendingMessage | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: string | null;
@@ -130,16 +127,6 @@ type ChatThreadRow = {
   readonly renamedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
-};
-
-type PendingMessageColumns = {
-  readonly pendingMessageContent: string | null;
-  readonly pendingMessageAttachments: readonly PersistedAttachment[] | null;
-  readonly pendingMessageCreatedAt: Date | null;
-  readonly pendingMessageUpdatedAt: Date | null;
-  // Optional so existing selects that don't pull the client id can still
-  // call toPendingMessage; missing field collapses to null in the DTO.
-  readonly pendingMessageClientId?: string | null;
 };
 
 function effectiveChatMessageRunId() {
@@ -256,7 +243,6 @@ function ownedChatThread(
         .array()
         .nullable()
         .parse(thread.draftAttachments ?? null),
-      pendingMessage: toPendingMessage(thread),
       modelProviderId: thread.modelProviderId ?? null,
       modelProviderType: thread.modelProviderType ?? null,
       modelProviderCredentialScope: thread.modelProviderCredentialScope ?? null,
@@ -269,31 +255,7 @@ function ownedChatThread(
   });
 }
 
-function parsePersistedAttachments(
-  attachments: readonly PersistedAttachment[] | null,
-): readonly PersistedAttachment[] | null {
-  return persistedAttachmentSchema
-    .array()
-    .nullable()
-    .parse(attachments ?? null);
-}
-
-function toPendingMessage(row: PendingMessageColumns): PendingMessage | null {
-  if (!row.pendingMessageCreatedAt || !row.pendingMessageUpdatedAt) {
-    return null;
-  }
-  const attachments = parsePersistedAttachments(row.pendingMessageAttachments);
-
-  return {
-    content: row.pendingMessageContent ?? null,
-    attachments: attachments ? [...attachments] : null,
-    createdAt: row.pendingMessageCreatedAt.toISOString(),
-    updatedAt: row.pendingMessageUpdatedAt.toISOString(),
-    clientMessageId: row.pendingMessageClientId ?? null,
-  };
-}
-
-export const replaceZeroChatThreadPendingMessage$ = command(
+export const appendZeroChatThreadQueuedMessage$ = command(
   async (
     { set },
     args: {
@@ -301,16 +263,14 @@ export const replaceZeroChatThreadPendingMessage$ = command(
       readonly userId: string;
       readonly content: string | null;
       readonly attachments: readonly PersistedAttachment[] | null;
-      readonly clientMessageId: string | null;
+      readonly clientMessageId: string;
     },
     signal: AbortSignal,
-  ): Promise<PendingMessage | null> => {
+  ): Promise<PagedChatMessage | null> => {
     const db = set(writeDb$);
-    const result = await db.transaction(async (tx) => {
+    const message = await db.transaction(async (tx) => {
       const [thread] = await tx
-        .select({
-          pendingMessageCreatedAt: chatThreads.pendingMessageCreatedAt,
-        })
+        .select({ id: chatThreads.id })
         .from(chatThreads)
         .where(
           and(
@@ -325,160 +285,84 @@ export const replaceZeroChatThreadPendingMessage$ = command(
         return null;
       }
 
-      const now = nowDate();
-      const [updated] = await tx
+      await tx
         .update(chatThreads)
         .set({
           draftContent: null,
           draftAttachments: null,
-          pendingMessageContent: args.content,
-          pendingMessageAttachments: args.attachments
-            ? [...args.attachments]
-            : null,
-          pendingMessageCreatedAt: thread.pendingMessageCreatedAt ?? now,
-          pendingMessageUpdatedAt: now,
-          pendingMessageClientId: args.clientMessageId,
         })
         .where(
           and(
             eq(chatThreads.id, args.threadId),
             eq(chatThreads.userId, args.userId),
           ),
-        )
+        );
+
+      const attachFileIds =
+        args.attachments && args.attachments.length > 0
+          ? args.attachments.map((attachment) => {
+              return attachment.id;
+            })
+          : null;
+
+      const inserted = await tx
+        .insert(chatMessages)
+        .values({
+          id: args.clientMessageId,
+          chatThreadId: args.threadId,
+          role: "user",
+          content: args.content,
+          runId: null,
+          attachFiles: attachFileIds,
+        })
+        .onConflictDoNothing({ target: chatMessages.id })
         .returning({
-          pendingMessageContent: chatThreads.pendingMessageContent,
-          pendingMessageAttachments: chatThreads.pendingMessageAttachments,
-          pendingMessageCreatedAt: chatThreads.pendingMessageCreatedAt,
-          pendingMessageUpdatedAt: chatThreads.pendingMessageUpdatedAt,
-          pendingMessageClientId: chatThreads.pendingMessageClientId,
+          id: chatMessages.id,
+          content: chatMessages.content,
+          createdAt: chatMessages.createdAt,
         });
 
-      return updated ? toPendingMessage(updated) : null;
-    });
-    signal.throwIfAborted();
-    return result;
-  },
-);
-
-export const deleteZeroChatThreadPendingMessage$ = command(
-  async (
-    { set },
-    args: { readonly threadId: string; readonly userId: string },
-    signal: AbortSignal,
-  ): Promise<boolean> => {
-    const db = set(writeDb$);
-    const found = await db.transaction(async (tx) => {
-      const [thread] = await tx
-        .select({ id: chatThreads.id })
-        .from(chatThreads)
-        .where(
-          and(
-            eq(chatThreads.id, args.threadId),
-            eq(chatThreads.userId, args.userId),
-          ),
-        )
-        .for("update")
-        .limit(1);
-
-      if (!thread) {
-        return false;
+      const [insertedMessage] = inserted;
+      if (insertedMessage) {
+        return insertedMessage;
       }
 
-      await tx
-        .update(chatThreads)
-        .set({
-          pendingMessageContent: null,
-          pendingMessageAttachments: null,
-          pendingMessageCreatedAt: null,
-          pendingMessageUpdatedAt: null,
-          pendingMessageClientId: null,
-        })
-        .where(
-          and(
-            eq(chatThreads.id, args.threadId),
-            eq(chatThreads.userId, args.userId),
-          ),
-        );
-
-      return true;
-    });
-    signal.throwIfAborted();
-    return found;
-  },
-);
-
-export const recallZeroChatThreadPendingMessage$ = command(
-  async (
-    { set },
-    args: { readonly threadId: string; readonly userId: string },
-    signal: AbortSignal,
-  ): Promise<
-    | {
-        readonly ok: true;
-        readonly draftContent: string | null;
-        readonly draftAttachments: readonly PersistedAttachment[] | null;
-      }
-    | {
-        readonly ok: false;
-        readonly reason: "thread-not-found" | "pending-not-found";
-      }
-  > => {
-    const db = set(writeDb$);
-    const result = await db.transaction(async (tx) => {
-      const [thread] = await tx
+      const [existing] = await tx
         .select({
-          pendingMessageContent: chatThreads.pendingMessageContent,
-          pendingMessageAttachments: chatThreads.pendingMessageAttachments,
-          pendingMessageCreatedAt: chatThreads.pendingMessageCreatedAt,
-          pendingMessageUpdatedAt: chatThreads.pendingMessageUpdatedAt,
+          id: chatMessages.id,
+          content: chatMessages.content,
+          createdAt: chatMessages.createdAt,
         })
-        .from(chatThreads)
+        .from(chatMessages)
+        .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
+        .leftJoin(
+          userMessageRun,
+          eq(userMessageRun.userMessageId, chatMessages.id),
+        )
         .where(
           and(
-            eq(chatThreads.id, args.threadId),
+            eq(chatMessages.id, args.clientMessageId),
+            eq(chatMessages.chatThreadId, args.threadId),
             eq(chatThreads.userId, args.userId),
+            eq(chatMessages.role, "user"),
+            isNull(userMessageRun.runId),
           ),
         )
-        .for("update")
         .limit(1);
 
-      if (!thread) {
-        return { ok: false as const, reason: "thread-not-found" as const };
-      }
-
-      const pendingMessage = toPendingMessage(thread);
-      if (!pendingMessage) {
-        return { ok: false as const, reason: "pending-not-found" as const };
-      }
-
-      await tx
-        .update(chatThreads)
-        .set({
-          draftContent: pendingMessage.content,
-          draftAttachments: pendingMessage.attachments
-            ? [...pendingMessage.attachments]
-            : null,
-          pendingMessageContent: null,
-          pendingMessageAttachments: null,
-          pendingMessageCreatedAt: null,
-          pendingMessageUpdatedAt: null,
-          pendingMessageClientId: null,
-        })
-        .where(
-          and(
-            eq(chatThreads.id, args.threadId),
-            eq(chatThreads.userId, args.userId),
-          ),
-        );
-
-      return {
-        ok: true as const,
-        draftContent: pendingMessage.content,
-        draftAttachments: pendingMessage.attachments,
-      };
+      return existing ?? null;
     });
     signal.throwIfAborted();
-    return result;
+    if (!message) {
+      return null;
+    }
+    return {
+      id: message.id,
+      role: "user",
+      content: message.content,
+      attachFiles: args.attachments ? [...args.attachments] : undefined,
+      createdAt: message.createdAt.toISOString(),
+    };
   },
 );
 
@@ -578,6 +462,13 @@ function formatChatRunErrorMessage(params: {
   });
 }
 
+function chatMessageStatus(row: ChatMessageRow): string | undefined {
+  if (row.role !== "assistant") {
+    return undefined;
+  }
+  return row.runStatus ?? undefined;
+}
+
 function toStoredMessage(
   threadId: string,
   userId: string,
@@ -604,14 +495,25 @@ function toStoredMessage(
           ? await get(resolveAttachFileUrls(userId, row.attachFiles))
           : undefined;
 
-      return {
-        role: messageRoleSchema.parse(row.role),
+      const role = messageRoleSchema.parse(row.role);
+      const message = {
+        role,
         content: row.content,
         runId: row.runId ?? undefined,
         error: effectiveError,
-        status: row.runStatus ?? undefined,
         attachFiles: attachFiles ? [...attachFiles] : undefined,
         createdAt: row.createdAt.toISOString(),
+      };
+      if (role !== "assistant") {
+        return {
+          ...message,
+          role: "user" as const,
+        };
+      }
+      return {
+        ...message,
+        role: "assistant" as const,
+        status: chatMessageStatus(row),
       };
     },
   );
@@ -643,15 +545,26 @@ function toPagedMessage(
         ? await get(resolveAttachFileUrls(userId, row.attachFiles))
         : undefined;
 
-    return {
+    const role = messageRoleSchema.parse(row.role);
+    const message = {
       id: row.id,
-      role: messageRoleSchema.parse(row.role),
+      role,
       content: row.content,
       runId: row.runId ?? undefined,
       error: effectiveError,
-      status: row.runStatus ?? undefined,
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       createdAt: row.createdAt.toISOString(),
+    };
+    if (role !== "assistant") {
+      return {
+        ...message,
+        role: "user" as const,
+      };
+    }
+    return {
+      ...message,
+      role: "assistant" as const,
+      status: chatMessageStatus(row),
     };
   });
 }
@@ -786,7 +699,6 @@ export function zeroChatThreadDetail(args: {
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]
         : null,
-      pendingMessage: thread.pendingMessage,
       modelProviderId: thread.modelProviderId,
       modelProviderType: formatLatestSessionProviderType(
         thread.modelProviderType,
