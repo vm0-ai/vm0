@@ -16,13 +16,14 @@
 
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
 use sandbox::{
-    BoundedExecCapturePolicy, BoundedExecOutput, BoundedExecOutputRequest, BoundedExecRequest,
-    BoundedExecResult, BoundedExecTermination, ExecRequest, Sandbox, SandboxConfig, SandboxFactory,
-    SandboxId, SpawnOutputMode,
+    BoundedExecCapturePolicy, BoundedExecOutput, BoundedExecOutputEvent, BoundedExecOutputRequest,
+    BoundedExecRequest, BoundedExecResult, BoundedExecStreamPolicy, BoundedExecTermination,
+    ExecRequest, Sandbox, SandboxConfig, SandboxFactory, SandboxId, SpawnOutputMode,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -1032,7 +1033,7 @@ fn host_dmesg_indicates_oom(dmesg: &str, pid: u32) -> bool {
 /// Drain stdout chunks from the vsock receiver and write them to a host file.
 async fn drain_stdout_to_file(
     mut rx: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
-    path: std::path::PathBuf,
+    path: PathBuf,
 ) {
     let file = tokio::fs::OpenOptions::new()
         .create(true)
@@ -1066,6 +1067,204 @@ const GUEST_SYSTEM_LOG_PREFIX: &str = "/tmp/vm0-system-";
 const GUEST_SYSTEM_LOG_SUFFIX: &str = ".log";
 const GUEST_METRICS_LOG_PREFIX: &str = "/tmp/vm0-metrics-";
 const GUEST_METRICS_LOG_SUFFIX: &str = ".jsonl";
+const GUEST_LOG_COPY_STREAM_LIMIT_BYTES: u32 = 128 * 1024 * 1024;
+const GUEST_LOG_COPY_STREAM_CHUNK_LIMIT_BYTES: u32 = 64 * 1024;
+const GUEST_LOG_COPY_STDERR_PREVIEW_BYTES: u32 = 16 * 1024;
+
+struct GuestLogStreamWriteResult {
+    bytes_written: u64,
+    truncated: bool,
+}
+
+fn guest_log_copy_stdout(
+    event_tx: tokio::sync::mpsc::UnboundedSender<BoundedExecOutputEvent>,
+) -> BoundedExecOutputRequest {
+    BoundedExecOutputRequest {
+        capture: BoundedExecCapturePolicy::Capture { limit_bytes: 0 },
+        stream: Some(BoundedExecStreamPolicy {
+            event_tx,
+            limit_bytes: GUEST_LOG_COPY_STREAM_LIMIT_BYTES,
+            chunk_limit_bytes: GUEST_LOG_COPY_STREAM_CHUNK_LIMIT_BYTES,
+        }),
+    }
+}
+
+fn guest_log_staging_path(host_path: &Path) -> PathBuf {
+    let extension = host_path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map_or_else(|| "tmp".to_string(), |extension| format!("{extension}.tmp"));
+    host_path.with_extension(extension)
+}
+
+async fn write_guest_log_stream_to_staging(
+    mut rx: tokio::sync::mpsc::UnboundedReceiver<BoundedExecOutputEvent>,
+    path: PathBuf,
+) -> std::io::Result<GuestLogStreamWriteResult> {
+    let mut file = tokio::fs::OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(&path)
+        .await?;
+    let mut bytes_written = 0u64;
+    let mut truncated = false;
+
+    while let Some(event) = rx.recv().await {
+        truncated |= event.truncated;
+        if !event.chunk.is_empty() {
+            tokio::io::AsyncWriteExt::write_all(&mut file, &event.chunk).await?;
+            bytes_written = bytes_written.saturating_add(event.chunk.len() as u64);
+        }
+    }
+
+    tokio::io::AsyncWriteExt::flush(&mut file).await?;
+
+    Ok(GuestLogStreamWriteResult {
+        bytes_written,
+        truncated,
+    })
+}
+
+async fn remove_guest_log_staging_file(run_id: RunId, log_kind: &str, staging_path: &Path) {
+    match tokio::fs::remove_file(staging_path).await {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            warn!(
+                run_id = %run_id,
+                log_kind,
+                error = %e,
+                path = %staging_path.display(),
+                "failed to remove guest log copy staging file"
+            );
+        }
+    }
+}
+
+async fn copy_guest_log_file(
+    sandbox: &dyn Sandbox,
+    run_id: RunId,
+    guest_path: &str,
+    host_path: &Path,
+    log_kind: &'static str,
+) {
+    let staging_path = guest_log_staging_path(host_path);
+    let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let writer = tokio::spawn(write_guest_log_stream_to_staging(
+        event_rx,
+        staging_path.clone(),
+    ));
+    let cat_cmd = format!("cat -- '{guest_path}'");
+
+    let result = {
+        let stdout = guest_log_copy_stdout(event_tx);
+        let stderr = capture_bounded_output(GUEST_LOG_COPY_STDERR_PREVIEW_BYTES);
+        sandbox
+            .bounded_exec(&BoundedExecRequest {
+                cmd: &cat_cmd,
+                timeout: DEFAULT_EXEC_TIMEOUT,
+                env: &[],
+                sudo: false,
+                stdin: None,
+                stdout,
+                stderr,
+            })
+            .await
+    };
+
+    let writer_result = match writer.await {
+        Ok(result) => result,
+        Err(e) => {
+            warn!(
+                run_id = %run_id,
+                log_kind,
+                error = %e,
+                path = %staging_path.display(),
+                "guest log copy writer task failed"
+            );
+            remove_guest_log_staging_file(run_id, log_kind, &staging_path).await;
+            return;
+        }
+    };
+
+    let result = match result {
+        Ok(result) => result,
+        Err(e) => {
+            warn!(
+                run_id = %run_id,
+                log_kind,
+                error = %e,
+                guest_path,
+                host_path = %host_path.display(),
+                "failed to read guest log"
+            );
+            remove_guest_log_staging_file(run_id, log_kind, &staging_path).await;
+            return;
+        }
+    };
+
+    if !matches!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    ) {
+        let summary = BoundedExecFailureSummary::new("guest log copy", &result);
+        warn!(
+            run_id = %run_id,
+            log_kind,
+            guest_path,
+            host_path = %host_path.display(),
+            termination = ?summary.termination,
+            exit_code = ?summary.exit_code(),
+            diagnostic_preview = ?summary.diagnostic_preview.as_deref(),
+            stderr_preview = ?summary.stderr_preview.as_deref(),
+            "failed to read guest log"
+        );
+        remove_guest_log_staging_file(run_id, log_kind, &staging_path).await;
+        return;
+    }
+
+    let writer_result = match writer_result {
+        Ok(result) => result,
+        Err(e) => {
+            warn!(
+                run_id = %run_id,
+                log_kind,
+                error = %e,
+                path = %staging_path.display(),
+                "failed to write streamed guest log to staging file"
+            );
+            remove_guest_log_staging_file(run_id, log_kind, &staging_path).await;
+            return;
+        }
+    };
+
+    if writer_result.truncated {
+        warn!(
+            run_id = %run_id,
+            log_kind,
+            bytes_written = writer_result.bytes_written,
+            stream_limit_bytes = GUEST_LOG_COPY_STREAM_LIMIT_BYTES,
+            guest_path,
+            host_path = %host_path.display(),
+            "guest log copy stream was truncated"
+        );
+        remove_guest_log_staging_file(run_id, log_kind, &staging_path).await;
+        return;
+    }
+
+    if let Err(e) = tokio::fs::rename(&staging_path, host_path).await {
+        warn!(
+            run_id = %run_id,
+            log_kind,
+            error = %e,
+            staging_path = %staging_path.display(),
+            host_path = %host_path.display(),
+            "failed to promote guest log copy staging file"
+        );
+        remove_guest_log_staging_file(run_id, log_kind, &staging_path).await;
+    }
+}
 
 /// Copy guest log files to host (best-effort, post-job).
 ///
@@ -1080,36 +1279,17 @@ async fn copy_guest_logs(sandbox: &dyn Sandbox, context: &ExecutionContext, log_
         (
             format!("{GUEST_SYSTEM_LOG_PREFIX}{run_id}{GUEST_SYSTEM_LOG_SUFFIX}"),
             log_paths.system_log(run_id),
+            "system",
         ),
         (
             format!("{GUEST_METRICS_LOG_PREFIX}{run_id}{GUEST_METRICS_LOG_SUFFIX}"),
             log_paths.metrics_log(run_id),
+            "metrics",
         ),
     ];
 
-    for (guest_path, host_path) in &files {
-        let cat_cmd = format!("cat '{guest_path}'");
-        let result = sandbox
-            .exec(&ExecRequest {
-                cmd: &cat_cmd,
-                timeout: DEFAULT_EXEC_TIMEOUT,
-                env: &[],
-                sudo: false,
-            })
-            .await;
-
-        let output = match result {
-            Ok(r) if r.exit_code == 0 => r.stdout,
-            Ok(_) => continue,
-            Err(e) => {
-                warn!(run_id = %run_id, error = %e, path = %guest_path, "failed to read guest log");
-                continue;
-            }
-        };
-
-        if let Err(e) = tokio::fs::write(host_path, &output).await {
-            warn!(run_id = %run_id, error = %e, path = %host_path.display(), "failed to write guest log to host");
-        }
+    for (guest_path, host_path, log_kind) in &files {
+        copy_guest_log_file(sandbox, run_id, guest_path, host_path, log_kind).await;
     }
 }
 
@@ -2919,18 +3099,10 @@ mod tests {
     // -----------------------------------------------------------------------
 
     use sandbox::{
-        BoundedExecResult, BoundedExecTermination, ExecResult, SandboxError,
-        SandboxInitializationPhase, SandboxOperation, SandboxOperationReason,
+        BoundedExecOutputEvent, BoundedExecResult, BoundedExecStream, BoundedExecTermination,
+        SandboxError, SandboxInitializationPhase, SandboxOperation, SandboxOperationReason,
     };
     use sandbox_mock::{BoundedExecResponse, MockSandbox};
-
-    fn sandbox_exec_error(message: impl Into<String>) -> SandboxError {
-        SandboxError::Operation {
-            operation: SandboxOperation::Exec,
-            reason: SandboxOperationReason::Guest,
-            message: message.into(),
-        }
-    }
 
     fn sandbox_bounded_exec_error(message: impl Into<String>) -> SandboxError {
         SandboxError::Operation {
@@ -2991,6 +3163,53 @@ mod tests {
                 stderr: BoundedExecOutput::Captured {
                     bytes: stderr.into(),
                     truncated: stderr_truncated,
+                },
+                diagnostic: None,
+            }),
+        }
+    }
+
+    fn bounded_exec_stream_event(
+        sequence: u32,
+        chunk: impl Into<Vec<u8>>,
+    ) -> BoundedExecOutputEvent {
+        BoundedExecOutputEvent {
+            stream: BoundedExecStream::Stdout,
+            sequence,
+            chunk: chunk.into(),
+            truncated: false,
+        }
+    }
+
+    fn bounded_exec_truncated_stream_event(
+        sequence: u32,
+        chunk: impl Into<Vec<u8>>,
+    ) -> BoundedExecOutputEvent {
+        BoundedExecOutputEvent {
+            stream: BoundedExecStream::Stdout,
+            sequence,
+            chunk: chunk.into(),
+            truncated: true,
+        }
+    }
+
+    fn bounded_exec_response_with_events(
+        termination: BoundedExecTermination,
+        events: Vec<BoundedExecOutputEvent>,
+        stderr: impl Into<Vec<u8>>,
+    ) -> BoundedExecResponse {
+        BoundedExecResponse {
+            events,
+            result: Ok(BoundedExecResult {
+                termination,
+                duration: Duration::ZERO,
+                stdout: BoundedExecOutput::Captured {
+                    bytes: Vec::new(),
+                    truncated: false,
+                },
+                stderr: BoundedExecOutput::Captured {
+                    bytes: stderr.into(),
+                    truncated: false,
                 },
                 diagnostic: None,
             }),
@@ -3588,12 +3807,51 @@ mod tests {
     // copy_guest_logs tests
     // -----------------------------------------------------------------------
 
+    fn assert_guest_log_copy_call(call: &sandbox_mock::BoundedExecCall, guest_path: &str) {
+        assert_eq!(call.cmd, format!("cat -- '{guest_path}'"));
+        assert_eq!(call.env, Vec::<(String, String)>::new());
+        assert!(!call.sudo);
+        assert_eq!(call.stdin, None);
+        assert_eq!(
+            call.stdout.capture,
+            BoundedExecCapturePolicy::Capture { limit_bytes: 0 }
+        );
+        assert_eq!(
+            call.stdout.stream,
+            Some(sandbox_mock::BoundedExecStreamCall {
+                limit_bytes: GUEST_LOG_COPY_STREAM_LIMIT_BYTES,
+                chunk_limit_bytes: GUEST_LOG_COPY_STREAM_CHUNK_LIMIT_BYTES,
+            })
+        );
+        assert_capture_call(&call.stderr, GUEST_LOG_COPY_STDERR_PREVIEW_BYTES);
+    }
+
+    async fn assert_no_guest_log_staging_files(dir: &std::path::Path) {
+        let mut entries = tokio::fs::read_dir(dir).await.unwrap();
+        while let Some(entry) = entries.next_entry().await.unwrap() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            assert!(
+                !name.ends_with(".tmp"),
+                "unexpected staging file left behind: {name}"
+            );
+        }
+    }
+
     #[tokio::test]
-    async fn copy_guest_logs_writes_files_to_host() {
+    async fn copy_guest_logs_streams_files_to_host() {
         let dir = tempfile::tempdir().unwrap();
         let log_paths = LogPaths::new(dir.path().to_path_buf());
         let sandbox = MockSandbox::new("test");
         let ctx = minimal_context();
+        let system_guest_path = format!(
+            "{GUEST_SYSTEM_LOG_PREFIX}{}{GUEST_SYSTEM_LOG_SUFFIX}",
+            ctx.run_id
+        );
+        let metrics_guest_path = format!(
+            "{GUEST_METRICS_LOG_PREFIX}{}{GUEST_METRICS_LOG_SUFFIX}",
+            ctx.run_id
+        );
 
         tokio::fs::write(
             log_paths.system_log(ctx.run_id),
@@ -3602,17 +3860,19 @@ mod tests {
         .await
         .unwrap();
 
-        // Queue two exec results: system log + metrics log
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 0,
-            stdout: b"system log line 1\nsystem log line 2\n".to_vec(),
-            stderr: Vec::new(),
-        }));
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 0,
-            stdout: b"{\"cpu\":0.5}\n".to_vec(),
-            stderr: Vec::new(),
-        }));
+        sandbox.push_bounded_exec_response(bounded_exec_response_with_events(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            vec![
+                bounded_exec_stream_event(0, b"system log line 1\n"),
+                bounded_exec_stream_event(1, b"system log line 2\n"),
+            ],
+            Vec::new(),
+        ));
+        sandbox.push_bounded_exec_response(bounded_exec_response_with_events(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            vec![bounded_exec_stream_event(0, b"{\"cpu\":0.5}\n")],
+            Vec::new(),
+        ));
 
         copy_guest_logs(&sandbox, &ctx, &log_paths).await;
 
@@ -3626,48 +3886,158 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(metrics_log, "{\"cpu\":0.5}\n");
+
+        let calls = sandbox.bounded_exec_calls();
+        assert_eq!(calls.len(), 2);
+        assert_guest_log_copy_call(&calls[0], &system_guest_path);
+        assert_guest_log_copy_call(&calls[1], &metrics_guest_path);
+        assert_no_guest_log_staging_files(dir.path()).await;
     }
 
     #[tokio::test]
-    async fn copy_guest_logs_skips_on_nonzero_exit() {
+    async fn copy_guest_logs_preserves_host_files_on_nonzero_exit() {
         let dir = tempfile::tempdir().unwrap();
         let log_paths = LogPaths::new(dir.path().to_path_buf());
         let sandbox = MockSandbox::new("test");
         let ctx = minimal_context();
 
-        // cat fails (file doesn't exist in guest)
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 1,
-            stdout: Vec::new(),
-            stderr: b"No such file".to_vec(),
-        }));
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 1,
-            stdout: Vec::new(),
-            stderr: Vec::new(),
-        }));
+        tokio::fs::write(log_paths.system_log(ctx.run_id), b"existing system\n")
+            .await
+            .unwrap();
+        tokio::fs::write(log_paths.metrics_log(ctx.run_id), b"existing metrics\n")
+            .await
+            .unwrap();
+
+        sandbox.push_bounded_exec_response(bounded_exec_response_with_events(
+            BoundedExecTermination::Exited { exit_code: 1 },
+            vec![bounded_exec_stream_event(0, b"partial system\n")],
+            b"No such file".to_vec(),
+        ));
+        sandbox.push_bounded_exec_response(bounded_exec_response_with_events(
+            BoundedExecTermination::Exited { exit_code: 1 },
+            vec![bounded_exec_stream_event(0, b"partial metrics\n")],
+            b"No such file".to_vec(),
+        ));
 
         copy_guest_logs(&sandbox, &ctx, &log_paths).await;
 
-        // Host files should not be created
-        assert!(!log_paths.system_log(ctx.run_id).exists());
-        assert!(!log_paths.metrics_log(ctx.run_id).exists());
+        assert_eq!(
+            tokio::fs::read_to_string(log_paths.system_log(ctx.run_id))
+                .await
+                .unwrap(),
+            "existing system\n"
+        );
+        assert_eq!(
+            tokio::fs::read_to_string(log_paths.metrics_log(ctx.run_id))
+                .await
+                .unwrap(),
+            "existing metrics\n"
+        );
+        assert_no_guest_log_staging_files(dir.path()).await;
     }
 
     #[tokio::test]
-    async fn copy_guest_logs_skips_on_exec_error() {
+    async fn copy_guest_logs_skips_missing_files_without_creating_host_files() {
         let dir = tempfile::tempdir().unwrap();
         let log_paths = LogPaths::new(dir.path().to_path_buf());
         let sandbox = MockSandbox::new("test");
         let ctx = minimal_context();
 
-        sandbox.push_exec_result(Err(sandbox_exec_error("vsock down")));
-        sandbox.push_exec_result(Err(sandbox_exec_error("vsock down")));
+        sandbox.push_bounded_exec_response(bounded_exec_response_with_events(
+            BoundedExecTermination::Exited { exit_code: 1 },
+            Vec::new(),
+            b"No such file".to_vec(),
+        ));
+        sandbox.push_bounded_exec_response(bounded_exec_response_with_events(
+            BoundedExecTermination::Exited { exit_code: 1 },
+            Vec::new(),
+            b"No such file".to_vec(),
+        ));
 
         copy_guest_logs(&sandbox, &ctx, &log_paths).await;
 
         assert!(!log_paths.system_log(ctx.run_id).exists());
         assert!(!log_paths.metrics_log(ctx.run_id).exists());
+        assert_no_guest_log_staging_files(dir.path()).await;
+    }
+
+    #[tokio::test]
+    async fn copy_guest_logs_preserves_host_files_on_bounded_exec_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_paths = LogPaths::new(dir.path().to_path_buf());
+        let sandbox = MockSandbox::new("test");
+        let ctx = minimal_context();
+
+        tokio::fs::write(log_paths.system_log(ctx.run_id), b"existing system\n")
+            .await
+            .unwrap();
+        tokio::fs::write(log_paths.metrics_log(ctx.run_id), b"existing metrics\n")
+            .await
+            .unwrap();
+
+        sandbox.push_bounded_exec_response(BoundedExecResponse {
+            events: Vec::new(),
+            result: Err(sandbox_bounded_exec_error("vsock down")),
+        });
+        sandbox.push_bounded_exec_response(BoundedExecResponse {
+            events: Vec::new(),
+            result: Err(sandbox_bounded_exec_error("vsock down")),
+        });
+
+        copy_guest_logs(&sandbox, &ctx, &log_paths).await;
+
+        assert_eq!(
+            tokio::fs::read_to_string(log_paths.system_log(ctx.run_id))
+                .await
+                .unwrap(),
+            "existing system\n"
+        );
+        assert_eq!(
+            tokio::fs::read_to_string(log_paths.metrics_log(ctx.run_id))
+                .await
+                .unwrap(),
+            "existing metrics\n"
+        );
+        assert_no_guest_log_staging_files(dir.path()).await;
+    }
+
+    #[tokio::test]
+    async fn copy_guest_logs_does_not_promote_truncated_stream() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_paths = LogPaths::new(dir.path().to_path_buf());
+        let sandbox = MockSandbox::new("test");
+        let ctx = minimal_context();
+
+        tokio::fs::write(log_paths.system_log(ctx.run_id), b"existing system\n")
+            .await
+            .unwrap();
+
+        sandbox.push_bounded_exec_response(bounded_exec_response_with_events(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            vec![bounded_exec_truncated_stream_event(0, b"partial system\n")],
+            Vec::new(),
+        ));
+        sandbox.push_bounded_exec_response(bounded_exec_response_with_events(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            vec![bounded_exec_stream_event(0, b"{\"cpu\":0.5}\n")],
+            Vec::new(),
+        ));
+
+        copy_guest_logs(&sandbox, &ctx, &log_paths).await;
+
+        assert_eq!(
+            tokio::fs::read_to_string(log_paths.system_log(ctx.run_id))
+                .await
+                .unwrap(),
+            "existing system\n"
+        );
+        assert_eq!(
+            tokio::fs::read_to_string(log_paths.metrics_log(ctx.run_id))
+                .await
+                .unwrap(),
+            "{\"cpu\":0.5}\n"
+        );
+        assert_no_guest_log_staging_files(dir.path()).await;
     }
 
     // -----------------------------------------------------------------------
