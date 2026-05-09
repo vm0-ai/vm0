@@ -147,10 +147,7 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   },
   {
     route: chatThreadByIdContract.get,
-    handler: shadowCompareRoute({
-      route: chatThreadByIdContract.get,
-      handler: authRoute({}, getChatThreadInner$),
-    }),
+    handler: authRoute({}, getChatThreadInner$),
   },
   {
     route: chatThreadArtifactsContract.list,
