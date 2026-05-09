@@ -78,6 +78,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
+import { patchDemoConnectors } from "./lib/demo-fixtures.ts";
 
 // Callback ref that attaches scroll tracking while enabled. Each call returns
 // a fresh ref callback; React only invokes it when the underlying element
@@ -716,8 +717,9 @@ export function ZeroConnectorsPage() {
   const mobileNativeOn =
     features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
 
-  const allConnectors =
-    allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
+  const allConnectors = patchDemoConnectors(
+    allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [],
+  );
   const disconnecting = disconnectLoadable.state === "loading";
 
   const filtered = allConnectors.filter((c) => {

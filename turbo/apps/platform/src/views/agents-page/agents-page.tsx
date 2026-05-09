@@ -35,6 +35,8 @@ import {
   defaultAgentName$,
   sortedAgents$,
 } from "../../signals/agent.ts";
+import { readDemoFlag } from "../zero-page/lib/demo-flag.ts";
+import { buildDemoAgents } from "../zero-page/lib/demo-fixtures.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { onDomEventFn } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
@@ -192,9 +194,13 @@ export function AgentsPage() {
 
 function AgentGridView() {
   const agentsLoadable = useLoadable(sortedAgents$);
-  const loading = agentsLoadable.state === "loading";
-  const agents =
-    agentsLoadable.state === "hasData" ? agentsLoadable.data : null;
+  const isDemoMode = readDemoFlag();
+  const loading = !isDemoMode && agentsLoadable.state === "loading";
+  const agents = isDemoMode
+    ? buildDemoAgents()
+    : agentsLoadable.state === "hasData"
+      ? agentsLoadable.data
+      : null;
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -233,9 +239,13 @@ function AgentGridView() {
 
 function AgentListView({ flat = false }: { flat?: boolean }) {
   const agentsLoadable = useLoadable(sortedAgents$);
-  const loading = agentsLoadable.state === "loading";
-  const agents =
-    agentsLoadable.state === "hasData" ? agentsLoadable.data : null;
+  const isDemoMode = readDemoFlag();
+  const loading = !isDemoMode && agentsLoadable.state === "loading";
+  const agents = isDemoMode
+    ? buildDemoAgents()
+    : agentsLoadable.state === "hasData"
+      ? agentsLoadable.data
+      : null;
 
   return (
     <div className={cn(flat ? "flex flex-col" : "zero-card overflow-hidden")}>

@@ -77,6 +77,11 @@ import {
   scheduleListTab$,
   setScheduleListTab$,
 } from "../../signals/schedule-page/schedule-list-tab.ts";
+import { readDemoFlag } from "./lib/demo-flag.ts";
+import {
+  buildDemoAgents,
+  buildDemoSchedules,
+} from "./lib/demo-fixtures.ts";
 
 export type CombinedEntry = ScheduleEntry & {
   agentLabel: string;
@@ -543,14 +548,19 @@ export function ZeroSchedulePage() {
       ? statusLoadable.data.defaultAgentId
       : null;
 
+  const isDemoMode = readDemoFlag();
+
   const entriesLoadable = useLastLoadable(allOrgScheduleEntries$);
-  const entries: OrgScheduleEntry[] =
+  const liveEntries: OrgScheduleEntry[] =
     entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
+  const entries = isDemoMode ? buildDemoSchedules() : liveEntries;
 
   const agentsLoadable = useLastLoadable(agents$);
-  const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
+  const liveAgents =
+    agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
+  const agents = isDemoMode ? buildDemoAgents() : liveAgents;
   const loaded = useGet(allOrgSchedulesLoaded$);
-  const isInitialLoading = !loaded;
+  const isInitialLoading = !isDemoMode && !loaded;
 
   const runScheduleNow = useSet(runScheduleNow$);
   const pageSignal = useGet(pageSignal$);

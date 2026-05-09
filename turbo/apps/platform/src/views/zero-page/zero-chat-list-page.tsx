@@ -59,6 +59,8 @@ import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { MobileChatAgentSwitcher } from "./mobile-chat-agent-switcher.tsx";
+import { readDemoFlag } from "./lib/demo-flag.ts";
+import { buildDemoChatSessions } from "./lib/demo-fixtures.ts";
 
 export function ZeroChatListPage() {
   const recentSessionsLoadable = useLastLoadable(chatThreads$);
@@ -71,8 +73,8 @@ export function ZeroChatListPage() {
   // straight from devtools:
   //   sessionStorage.setItem("vm0:chatlist-demo", "1"); location.reload();
   //   sessionStorage.removeItem("vm0:chatlist-demo"); location.reload();
-  const isDemoMode = readChatListDemoFlag();
-  const recentSessions = isDemoMode ? buildDemoSessions() : liveSessions;
+  const isDemoMode = readDemoFlag();
+  const recentSessions = isDemoMode ? buildDemoChatSessions() : liveSessions;
   const loading = recentSessionsLoadable.state === "loading";
   const error =
     recentSessionsLoadable.state === "hasError"
@@ -585,129 +587,3 @@ function ChatListItem({
   );
 }
 
-const CHAT_LIST_DEMO_KEY = "vm0:chatlist-demo";
-
-function readChatListDemoFlag(): boolean {
-  if (typeof window === "undefined") {
-    return false;
-  }
-  // ?demo=1 promotes itself into sessionStorage so the flag survives the
-  // Clerk redirect (and any later route changes).
-  if (window.location.search.includes("demo=1")) {
-    window.sessionStorage.setItem(CHAT_LIST_DEMO_KEY, "1");
-    return true;
-  }
-  return window.sessionStorage.getItem(CHAT_LIST_DEMO_KEY) === "1";
-}
-
-// Mobile redesign preview data. Toggle via `?demo=1` or sessionStorage so the
-// chat list rows can be reviewed in the preview deploy with a representative
-// mix of states (unread, draft, scheduled, long titles, older dates).
-function buildDemoSessions(): ChatThreadListItem[] {
-  const now = Date.now();
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  const iso = (offset: number) => {
-    return new Date(now - offset).toISOString();
-  };
-  const agent = { id: "demo-agent", avatarUrl: null };
-  return [
-    {
-      id: "demo-1",
-      title: "Tomorrow's design review prep",
-      agent,
-      createdAt: iso(2 * hour),
-      updatedAt: iso(8 * minute),
-      isRead: false,
-      isArchived: false,
-      running: false,
-      lastMessagePreview:
-        "Pulled together the v3 frames + open questions. Want me to flag the ones that need a decision?",
-    },
-    {
-      id: "demo-2",
-      title: "Q2 launch copy — landing hero",
-      agent,
-      createdAt: iso(5 * hour),
-      updatedAt: iso(45 * minute),
-      isRead: true,
-      isArchived: false,
-      running: false,
-      hasDraft: true,
-      lastMessagePreview:
-        "Drafting three headline variants — short / medium / long-form. First pass uses the new positioning…",
-    },
-    {
-      id: "demo-3",
-      title: "Weekly competitor scan",
-      agent,
-      createdAt: iso(3 * day),
-      updatedAt: iso(2 * hour),
-      isRead: true,
-      isArchived: false,
-      running: true,
-      lastMessagePreview: null,
-    },
-    {
-      id: "demo-4",
-      title:
-        "Untangling the auth middleware migration plan with a much longer title",
-      agent,
-      createdAt: iso(2 * day),
-      updatedAt: iso(20 * hour),
-      isRead: false,
-      isArchived: false,
-      running: false,
-      lastMessagePreview:
-        "Looking at the rollout, I'd phase it: shadow-mode first, then dual-write, then cut over.",
-    },
-    {
-      id: "demo-5",
-      title: "Onboarding flow copy edits",
-      agent,
-      createdAt: iso(4 * day),
-      updatedAt: iso(1 * day + 4 * hour),
-      isRead: true,
-      isArchived: false,
-      running: false,
-      lastMessagePreview:
-        "Tightened the welcome screen copy. Want me to also revise the empty states?",
-    },
-    {
-      id: "demo-6",
-      title: "Pricing page A/B test results",
-      agent,
-      createdAt: iso(7 * day),
-      updatedAt: iso(2 * day),
-      isRead: true,
-      isArchived: false,
-      running: false,
-      lastMessagePreview:
-        "Variant B converted 12% better at p<0.01. Preparing the final write-up with the segment cuts.",
-    },
-    {
-      id: "demo-7",
-      title: "Customer call notes — Acme",
-      agent,
-      createdAt: iso(10 * day),
-      updatedAt: iso(5 * day),
-      isRead: true,
-      isArchived: false,
-      running: false,
-      lastMessagePreview:
-        "Acme is interested in the enterprise tier. They asked about SSO, SCIM, and audit-log retention.",
-    },
-    {
-      id: "demo-8",
-      title: null,
-      agent,
-      createdAt: iso(14 * day),
-      updatedAt: iso(12 * day),
-      isRead: true,
-      isArchived: false,
-      running: false,
-      lastMessagePreview: "Hi! What can I help you draft today?",
-    },
-  ];
-}
