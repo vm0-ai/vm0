@@ -2085,7 +2085,11 @@ function ThinkingIndicator({
 
   const lastGroup = groups[groups.length - 1];
   const lastIsAssistant = lastGroup?.role === "assistant";
-  const waitingForAssistant = !!lastGroup && !lastIsAssistant;
+  const waitingForAssistant =
+    lastGroup?.role === "user" &&
+    lastGroup.messages.some((message) => {
+      return !message.isRecalled;
+    });
   const running = runActive || waitingForAssistant;
   const rotatingLabel = useGet(thread.rotatingPhrase$);
   const donePhrase = useGet(thread.donePhrase$);
@@ -2112,6 +2116,10 @@ function ThinkingIndicator({
   );
 
   if (!lastGroup) {
+    return null;
+  }
+
+  if (!lastIsAssistant && !running) {
     return null;
   }
 

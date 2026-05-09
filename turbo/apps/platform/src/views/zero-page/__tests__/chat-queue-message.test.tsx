@@ -218,6 +218,47 @@ describe("chat queued user messages", () => {
     await expectRecalledMessages(["first queued", "second queued"]);
   });
 
+  it("stops the active run and recalls three queued messages without showing a thinking indicator", async () => {
+    const user = userEvent.setup({ delay: null });
+    const ctrl = mockChatLifecycle();
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+    });
+
+    await startActiveRun(user);
+    await sendQueuedMessage(user, "first queued");
+    await sendQueuedMessage(user, "second queued");
+    await sendQueuedMessage(user, "third queued");
+    await expectQueuedMessages([
+      "first queued",
+      "second queued",
+      "third queued",
+    ]);
+
+    click(screen.getByLabelText("Stop"));
+    ctrl.cancelRun();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Paused mid-thought — pick it back up whenever."),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+    });
+    await expectRecalledMessages([
+      "first queued",
+      "second queued",
+      "third queued",
+    ]);
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("replays queued sends when a new optimistic thread settles after two queued messages", async () => {
     const user = userEvent.setup({ delay: null });
     const sendDeferred = createDeferredPromise<void>(context.signal);

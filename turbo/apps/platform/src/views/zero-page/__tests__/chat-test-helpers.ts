@@ -545,6 +545,7 @@ export function mockChatLifecycle(options?: {
     },
     cancelRun: () => {
       runStatus = "cancelled";
+      runError = "Run cancelled";
       assistantVersion++;
       updateChatRun(threadId);
       createChatMessage(threadId);
