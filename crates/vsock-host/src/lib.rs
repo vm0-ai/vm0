@@ -3860,13 +3860,10 @@ mod tests {
         let request =
             simple_bounded_request("request-timeout", Some(bounded_stream_request(event_tx)));
 
-        let err = bounded_exec_on_shared_with_request_timeout(
-            &host.shared,
-            &request,
-            Duration::from_millis(1),
-        )
-        .await
-        .unwrap_err();
+        let err =
+            bounded_exec_on_shared_with_request_timeout(&host.shared, &request, Duration::ZERO)
+                .await
+                .unwrap_err();
 
         assert_eq!(err.kind(), io::ErrorKind::TimedOut);
         assert_eq!(

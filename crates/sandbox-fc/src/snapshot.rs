@@ -2014,14 +2014,24 @@ async fn run_with_firecracker(
         })
         .await
         .map_err(|e| SnapshotError::Setup(format!("pre-warm bounded exec: {e}")))?;
-    if prewarm_result.stderr_truncated {
-        return Err(SnapshotError::Setup(
-            "pre-warm failed: stderr output was truncated".into(),
-        ));
-    }
     match prewarm_result.termination {
-        vsock_host::BoundedExecTermination::Exited { exit_code: 0 } => {}
+        vsock_host::BoundedExecTermination::Exited { exit_code: 0 } => {
+            // Truncated output only means diagnostics were clipped; a zero
+            // exit status still means pre-warm succeeded.
+            if prewarm_result.stdout_truncated || prewarm_result.stderr_truncated {
+                tracing::warn!(
+                    stdout_truncated = prewarm_result.stdout_truncated,
+                    stderr_truncated = prewarm_result.stderr_truncated,
+                    "pre-warm output was truncated"
+                );
+            }
+        }
         vsock_host::BoundedExecTermination::Exited { exit_code } => {
+            if prewarm_result.stderr_truncated {
+                return Err(SnapshotError::Setup(
+                    "pre-warm failed: stderr output was truncated".into(),
+                ));
+            }
             let stderr = String::from_utf8_lossy(&prewarm_result.stderr);
             return Err(SnapshotError::Setup(format!(
                 "pre-warm failed (exit code {exit_code}): {}",

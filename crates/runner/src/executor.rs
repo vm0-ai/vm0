@@ -1300,24 +1300,38 @@ async fn download_storages(
         })
         .await?;
 
-    if result.stdout_truncated || result.stderr_truncated {
-        return Err(RunnerError::Internal(format!(
-            "storage download output truncated{}",
-            bounded_exec_output_summary(&result.stdout, &result.stderr)
-        )));
-    }
-
     match result.termination {
-        BoundedExecTermination::Exited { exit_code: 0 } => {}
+        BoundedExecTermination::Exited { exit_code: 0 } => {
+            // Truncated output only means diagnostics were clipped; the
+            // command exit status remains the success source of truth.
+            if result.stdout_truncated || result.stderr_truncated {
+                warn!(
+                    run_id = %context.run_id,
+                    stdout_truncated = result.stdout_truncated,
+                    stderr_truncated = result.stderr_truncated,
+                    "storage download output was truncated"
+                );
+            }
+        }
         BoundedExecTermination::Exited { exit_code } => {
+            let truncated = if result.stdout_truncated || result.stderr_truncated {
+                " (output truncated)"
+            } else {
+                ""
+            };
             return Err(RunnerError::Internal(format!(
-                "storage download failed (exit code {exit_code}){}",
+                "storage download failed (exit code {exit_code}){truncated}{}",
                 bounded_exec_output_summary(&result.stdout, &result.stderr)
             )));
         }
         termination => {
+            let truncated = if result.stdout_truncated || result.stderr_truncated {
+                " (output truncated)"
+            } else {
+                ""
+            };
             return Err(RunnerError::Internal(format!(
-                "storage download failed ({}){}",
+                "storage download failed ({}){truncated}{}",
                 describe_bounded_exec_termination(termination),
                 bounded_exec_output_summary(&result.stdout, &result.stderr)
             )));
@@ -2738,7 +2752,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn download_storages_fails_on_truncated_output() {
+    async fn download_storages_allows_truncated_output_on_success() {
         let sandbox = MockSandbox::new("test");
         sandbox.push_bounded_exec_response(BoundedExecResponse {
             events: Vec::new(),
@@ -2758,16 +2772,7 @@ mod tests {
             cleanup_paths: vec![],
         };
 
-        let err = download_storages(&sandbox, &ctx, &manifest)
-            .await
-            .unwrap_err();
-
-        assert!(
-            err.to_string()
-                .contains("storage download output truncated"),
-            "got: {err}"
-        );
-        assert!(err.to_string().contains("partial stderr"), "got: {err}");
+        download_storages(&sandbox, &ctx, &manifest).await.unwrap();
     }
 
     #[tokio::test]
