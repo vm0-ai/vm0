@@ -140,13 +140,10 @@ const searchChatInner$ = computed(async (get) => {
 export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadsContract.list,
-    handler: shadowCompareRoute({
-      route: chatThreadsContract.list,
-      handler: authRoute(
-        { requireOrganization: true, missingOrganizationStatus: 401 },
-        listChatThreadsInner$,
-      ),
-    }),
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      listChatThreadsInner$,
+    ),
   },
   {
     route: chatThreadByIdContract.get,

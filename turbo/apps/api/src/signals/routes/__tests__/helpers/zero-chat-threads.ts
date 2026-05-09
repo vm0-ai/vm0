@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
 import { command } from "ccstate";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatMessages } from "@vm0/db/schema/chat-message";
@@ -23,6 +24,11 @@ interface SeedChatThreadOptions {
   readonly title?: string | null;
   readonly pinnedAt?: Date | null;
   readonly renamedAt?: Date | null;
+  readonly lastReadMessageId?: string | null;
+  readonly draftContent?: string | null;
+  readonly draftAttachments?: readonly PersistedAttachment[] | null;
+  readonly createdAt?: Date;
+  readonly agentAvatarUrl?: string | null;
 }
 
 export const seedZeroChatThread$ = command(
@@ -49,6 +55,9 @@ export const seedZeroChatThread$ = command(
       orgId,
       owner: userId,
       name: `agent-${composeId.slice(0, 8)}`,
+      ...(options.agentAvatarUrl !== undefined
+        ? { avatarUrl: options.agentAvatarUrl }
+        : {}),
     });
     signal.throwIfAborted();
     await writeDb.insert(chatThreads).values({
@@ -58,6 +67,22 @@ export const seedZeroChatThread$ = command(
       title: options.title ?? "chat thread",
       pinnedAt: options.pinnedAt ?? null,
       renamedAt: options.renamedAt ?? null,
+      ...(options.lastReadMessageId !== undefined
+        ? { lastReadMessageId: options.lastReadMessageId }
+        : {}),
+      ...(options.draftContent !== undefined
+        ? { draftContent: options.draftContent }
+        : {}),
+      ...(options.draftAttachments !== undefined
+        ? {
+            draftAttachments: options.draftAttachments
+              ? [...options.draftAttachments]
+              : null,
+          }
+        : {}),
+      ...(options.createdAt !== undefined
+        ? { createdAt: options.createdAt }
+        : {}),
     });
     signal.throwIfAborted();
 
@@ -93,6 +118,7 @@ interface SeedChatMessageOptions {
   readonly attachFiles?: readonly string[];
   readonly createdAt?: Date;
   readonly sequenceNumber?: number | null;
+  readonly archivedAt?: Date | null;
 }
 
 export const seedZeroChatMessage$ = command(
@@ -112,6 +138,9 @@ export const seedZeroChatMessage$ = command(
       attachFiles: options.attachFiles ? [...options.attachFiles] : null,
       sequenceNumber: options.sequenceNumber ?? null,
       createdAt: options.createdAt ?? nowDate(),
+      ...(options.archivedAt !== undefined
+        ? { archivedAt: options.archivedAt }
+        : {}),
     });
     signal.throwIfAborted();
     return id;
