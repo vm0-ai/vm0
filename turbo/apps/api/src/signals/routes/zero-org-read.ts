@@ -56,10 +56,7 @@ export const zeroOrgReadRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroOrgListContract.list,
-    handler: shadowCompareRoute({
-      route: zeroOrgListContract.list,
-      handler: authRoute({}, listOrgsInner$),
-    }),
+    handler: authRoute({}, listOrgsInner$),
   },
   {
     route: zeroOrgDomainsContract.list,
