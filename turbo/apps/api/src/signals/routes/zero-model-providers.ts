@@ -3,7 +3,6 @@ import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zer
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import { zeroModelProviders } from "../services/zero-model-provider.service";
 import type { RouteEntry } from "../route";
 
@@ -16,12 +15,9 @@ const listModelProvidersInner$ = computed(async (get) => {
 export const zeroModelProvidersRoutes: readonly RouteEntry[] = [
   {
     route: zeroModelProvidersMainContract.list,
-    handler: shadowCompareRoute({
-      route: zeroModelProvidersMainContract.list,
-      handler: authRoute(
-        { requireOrganization: true, missingOrganizationStatus: 401 },
-        listModelProvidersInner$,
-      ),
-    }),
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      listModelProvidersInner$,
+    ),
   },
 ];
