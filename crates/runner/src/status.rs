@@ -139,8 +139,8 @@ impl StatusTracker {
         self.write_status(&state).await;
     }
 
-    /// Register an active run and flush the status file. No-op semantics
-    /// on duplicate `run_id`: the previous `sandbox_id` is overwritten.
+    /// Register an active run and flush the status file. On duplicate
+    /// `run_id`, the previous `sandbox_id` is overwritten.
     pub async fn add_run(&self, run_id: RunId, sandbox_id: SandboxId) {
         let mut state = self.state.lock().await;
         state.active_runs.insert(run_id, sandbox_id);
@@ -148,7 +148,8 @@ impl StatusTracker {
     }
 
     /// Register an active run and replace the idle VM list in the same status
-    /// write if the idle snapshot is current.
+    /// write if the idle snapshot is current. On duplicate `run_id`, the
+    /// previous `sandbox_id` is overwritten.
     ///
     /// This avoids a transient status.json gap during idle reuse where a sandbox
     /// has been removed from `idle_vms` but has not yet appeared in
