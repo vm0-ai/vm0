@@ -3,14 +3,25 @@ import { zeroSlackChannelsContract } from "@vm0/api-contracts/contracts/zero-sla
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import { zeroSlackChannels } from "../services/zero-slack-data.service";
 import type { RouteEntry } from "../route";
+
+const slackInstallationNotFound = Object.freeze({
+  status: 404 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "No Slack installation found for this org",
+      code: "NOT_FOUND",
+    }),
+  }),
+});
 
 const getSlackChannelsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const channels = await get(zeroSlackChannels({ orgId: auth.orgId }));
-
+  if (channels === null) {
+    return slackInstallationNotFound;
+  }
   return {
     status: 200 as const,
     body: { channels: [...channels] },
@@ -20,12 +31,9 @@ const getSlackChannelsInner$ = computed(async (get) => {
 export const zeroSlackChannelsRoutes: readonly RouteEntry[] = [
   {
     route: zeroSlackChannelsContract.list,
-    handler: shadowCompareRoute({
-      route: zeroSlackChannelsContract.list,
-      handler: authRoute(
-        { requireOrganization: true, missingOrganizationStatus: 401 },
-        getSlackChannelsInner$,
-      ),
-    }),
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      getSlackChannelsInner$,
+    ),
   },
 ];

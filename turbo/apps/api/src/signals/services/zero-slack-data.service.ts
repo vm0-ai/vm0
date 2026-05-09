@@ -218,11 +218,11 @@ interface SlackChannel {
 
 export function zeroSlackChannels(args: {
   readonly orgId: string;
-}): Computed<Promise<readonly SlackChannel[]>> {
+}): Computed<Promise<readonly SlackChannel[] | null>> {
   return computed(async (get) => {
     const installation = await get(zeroSlackOrgInstallation(args));
     if (!installation) {
-      return [];
+      return null;
     }
 
     const channels = await listConversations(installation.botToken);
