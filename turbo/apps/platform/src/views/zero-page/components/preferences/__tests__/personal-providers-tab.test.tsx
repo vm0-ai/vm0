@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -316,8 +316,11 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
   });
 });
 
-describe("personal-providers-tab — ChatGPT (Codex) input flow", () => {
-  it("clicking ChatGPT (Codex) connect opens the auth.json input dialog", async () => {
+describe("personal-providers-tab — ChatGPT (Codex) OAuth flow", () => {
+  it("clicking ChatGPT (Codex) connect opens the OpenAI OAuth route", async () => {
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockReturnValue({ closed: true } as Window);
     setMockFeatureSwitches({
       [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: true,
@@ -329,9 +332,18 @@ describe("personal-providers-tab — ChatGPT (Codex) input flow", () => {
     await openModelConfiguration();
     click(await screen.findByLabelText("Connect ChatGPT (Codex)"));
 
-    await expect(
-      screen.findByTestId("codex-paste-textarea"),
-    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
+        ),
+        "_blank",
+        expect.any(String),
+      );
+    });
+    expect(
+      screen.queryByTestId("codex-paste-textarea"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows stale ChatGPT (Codex) OAuth without offering reconnect", async () => {

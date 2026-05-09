@@ -5,11 +5,12 @@ import type {
 } from "@vm0/api-contracts/contracts/model-providers";
 import { useSet } from "ccstate-react";
 import {
+  connectPersonalCodexOAuth$,
   personalOpenOAuthCredentialDialog$,
-  setCodexPasteDialogStatePersonal$,
 } from "../../signals/zero-page/settings/personal-model-providers.ts";
 import type { ModelFirstPersonalOauthState } from "../../signals/zero-page/model-first-personal-oauth.ts";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
+import { detach, Reason } from "../../signals/utils.ts";
 
 type MemberOauthProviderType = "claude-code-oauth-token" | "codex-oauth-token";
 
@@ -122,12 +123,12 @@ export function resolveChatComposerSubmitBlocker(params: {
     : undefined;
 }
 
-export function usePersonalOauthConfigurationAction(_signal: AbortSignal) {
-  const openCodexPasteDialog = useSet(setCodexPasteDialogStatePersonal$);
+export function usePersonalOauthConfigurationAction(signal: AbortSignal) {
+  const connectCodexOAuth = useSet(connectPersonalCodexOAuth$);
   const openCredentialDialog = useSet(personalOpenOAuthCredentialDialog$);
   return (providerType: MemberOauthProviderType) => {
     if (providerType === "codex-oauth-token") {
-      openCodexPasteDialog({ open: true, mode: "connect" });
+      detach(connectCodexOAuth(signal), Reason.DomCallback);
       return;
     }
     openCredentialDialog(providerType);

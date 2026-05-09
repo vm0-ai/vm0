@@ -21,7 +21,7 @@
  * mock state it needs and mounts once.
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
@@ -394,8 +394,11 @@ describe("chat composer — default model resolution", () => {
     });
   });
 
-  it("blocks agent chat submit and opens ChatGPT auth input from the model warning", async () => {
+  it("blocks agent chat submit and opens ChatGPT OAuth from the model warning", async () => {
     const user = userEvent.setup();
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockReturnValue({ closed: true } as Window);
     let sendRequests = 0;
     setMockFeatureSwitches({
       [FeatureSwitchKey.ModelFirstModelProvider]: true,
@@ -442,9 +445,15 @@ describe("chat composer — default model resolution", () => {
     );
     await user.click(warning);
 
-    await expect(
-      screen.findByTestId("codex-paste-textarea"),
-    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
+        ),
+        "_blank",
+        expect.any(String),
+      );
+    });
   });
 
   // CHAT-DM-003: Updating the agent's model (e.g. from Opus 4.7 -> 4.6 via
@@ -467,8 +476,11 @@ describe("chat composer — default model resolution", () => {
     await expectComposerShowsModel("Claude Opus 4.6");
   });
 
-  it("blocks thread submit and opens ChatGPT auth input from the model warning", async () => {
+  it("blocks thread submit and opens ChatGPT OAuth from the model warning", async () => {
     const user = userEvent.setup();
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockReturnValue({ closed: true } as Window);
     let sendRequests = 0;
     setMockFeatureSwitches({
       [FeatureSwitchKey.ModelFirstModelProvider]: true,
@@ -515,9 +527,15 @@ describe("chat composer — default model resolution", () => {
     );
     await user.click(warning);
 
-    await expect(
-      screen.findByTestId("codex-paste-textarea"),
-    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
+        ),
+        "_blank",
+        expect.any(String),
+      );
+    });
   });
 
   it("shows the personal default when the agent prefers personal providers", async () => {

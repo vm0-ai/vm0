@@ -19,11 +19,11 @@ import type {
 } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
+  connectPersonalCodexOAuth$,
   disconnectPersonalOAuthCredential$,
   personalActionPromise$,
   personalConfiguredProviders$,
   personalOpenOAuthCredentialDialog$,
-  setCodexPasteDialogStatePersonal$,
 } from "../../../../signals/zero-page/settings/personal-model-providers.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
@@ -48,7 +48,7 @@ function OAuthCredentialsSection() {
   const providersLoadable = useLastLoadable(personalConfiguredProviders$);
   const features = useLastResolved(featureSwitch$);
   const openCredentialDialog = useSet(personalOpenOAuthCredentialDialog$);
-  const openCodexPasteDialog = useSet(setCodexPasteDialogStatePersonal$);
+  const connectCodexOAuth = useSet(connectPersonalCodexOAuth$);
   const disconnectCredential = useSet(disconnectPersonalOAuthCredential$);
   const actionLoadable = useLoadable(personalActionPromise$);
   const pageSignal = useGet(pageSignal$);
@@ -62,6 +62,9 @@ function OAuthCredentialsSection() {
   const openAI = findProvider(providers, "codex-oauth-token");
   const openAIStatus = getOpenAIStatus(openAI, codexOauthEnabled);
   const disconnecting = actionLoadable.state === "loading";
+  const connectOpenAI = () => {
+    detach(connectCodexOAuth(pageSignal), Reason.DomCallback);
+  };
 
   return (
     <section className="flex flex-col gap-3">
@@ -123,9 +126,7 @@ function OAuthCredentialsSection() {
                   ? [
                       {
                         label: "Replace",
-                        onSelect: () => {
-                          openCodexPasteDialog({ open: true, mode: "connect" });
-                        },
+                        onSelect: connectOpenAI,
                       },
                       {
                         label: "Disconnect",
@@ -143,9 +144,7 @@ function OAuthCredentialsSection() {
                     ]
                   : []
               }
-              onAction={() => {
-                openCodexPasteDialog({ open: true, mode: "connect" });
-              }}
+              onAction={connectOpenAI}
               testId="oauth-card-codex-oauth-token"
             />
           </>
