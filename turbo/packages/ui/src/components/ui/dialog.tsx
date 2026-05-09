@@ -46,10 +46,10 @@ const DialogContent = React.forwardRef<
       >
         {children}
         <DialogPrimitive.Close
-          className="absolute right-4 top-4 flex items-center justify-center size-9 rounded-lg transition-colors opacity-70 hover:opacity-100 hover:bg-accent focus:outline-none"
+          className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-card/70 backdrop-blur-xl border border-border/60 shadow-[0_1px_2px_rgb(0_0_0/0.04)] text-muted-foreground hover:text-foreground hover:bg-card hover:shadow-[0_2px_6px_rgb(0_0_0/0.06)] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
           aria-label="Close"
         >
-          <IconX size={20} className="text-foreground" />
+          <IconX size={20} stroke={1.8} />
         </DialogPrimitive.Close>
       </DialogPrimitive.Content>
     </DialogPortal>
@@ -63,10 +63,7 @@ const DialogHeader = ({
 }: React.HTMLAttributes<HTMLDivElement>) => {
   return (
     <div
-      className={cn(
-        "flex flex-col space-y-1.5 text-center sm:text-left",
-        className,
-      )}
+      className={cn("flex flex-col space-y-1.5 text-center", className)}
       {...props}
     />
   );
