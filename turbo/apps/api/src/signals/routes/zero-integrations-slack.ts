@@ -157,12 +157,21 @@ const getSlackStatusInner$ = computed(async (get) => {
     isConnected: status.isConnected,
     isInstalled: status.isInstalled,
     isAdmin: status.isAdmin,
-    workspaceName: status.workspaceName,
-    installUrl: status.installUrl,
-    connectUrl: status.connectUrl,
-    defaultAgentName: status.defaultAgentName,
-    agentOrgSlug: status.agentOrgSlug,
-    ...(environment !== undefined && { environment }),
+    ...(status.isConnected
+      ? {
+          workspaceName: status.workspaceName,
+          defaultAgentName: status.defaultAgentName,
+          agentOrgSlug: status.agentOrgSlug,
+          ...(environment !== undefined && { environment }),
+        }
+      : {
+          installUrl: status.installUrl,
+          connectUrl: status.connectUrl,
+        }),
+    ...(status.scopeMismatch !== null && {
+      scopeMismatch: status.scopeMismatch,
+      reinstallUrl: status.reinstallUrl,
+    }),
   };
 
   return { status: 200 as const, body };
