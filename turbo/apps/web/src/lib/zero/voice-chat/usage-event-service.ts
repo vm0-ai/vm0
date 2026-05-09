@@ -1,7 +1,6 @@
 // Server-side helper that converts a browser-reported voice-chat realtime
 // usage event into one or more `usage_event` rows, settles via
 // `processOrgUsageEvents`, and surfaces the post-settlement credit state.
-// Used by both `voice-chat` and `voice-chat-candidate` route handlers.
 //
 // Per Epic #12128 Plan D: the browser is the only source of usage signal —
 // missed events are accepted operational overhead. Idempotency is provided
