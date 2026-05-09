@@ -523,18 +523,18 @@ async fn connect_device_specific_index() {
     nbd_cow::netlink::connect_device(device_index, &client_fds, size, nbd_cow::BLOCK_SIZE as u64)
         .expect("connect_device");
 
-    assert!(
-        nbd_cow::netlink::verify_device_size(device_index, size).await,
-        "device should have correct size"
-    );
+    let device_has_correct_size = nbd_cow::netlink::verify_device_size(device_index, size).await;
 
     // Clean up
     shutdown.cancel();
     for h in server_handles {
         h.abort();
+        let _ = h.await;
     }
     drop(client_fds);
     let _ = nbd_cow::netlink::disconnect(device_index);
+
+    assert!(device_has_correct_size, "device should have correct size");
 }
 
 /// After destroy + release, the pool should not hand back the same device
