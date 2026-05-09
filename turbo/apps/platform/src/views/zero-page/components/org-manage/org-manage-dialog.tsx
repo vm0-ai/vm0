@@ -16,7 +16,6 @@ import {
 import {
   IconArrowLeft,
   IconBuilding,
-  IconChevronRight,
   IconCpu,
   IconUsers,
   IconCreditCard,
@@ -34,6 +33,11 @@ import { OrgUsageTab } from "./org-usage-tab.tsx";
 import { OrgInvoicesTab } from "./org-invoices-tab.tsx";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { isMobileViewport$ } from "../../../../signals/zero-page/mobile-viewport.ts";
+import {
+  MobileStackList,
+  MobileStackRow,
+  MobileStackSection,
+} from "../mobile-stack-list.tsx";
 import {
   orgManageTab$,
   setActiveOrgManageTab$,
@@ -201,7 +205,8 @@ function MobileFullScreenTopBar({
 // iOS Settings-style master list rendered when the dialog opens on mobile.
 // Tapping a row pushes to the existing tab content as a sub-page. The page
 // title now lives in the top bar, so this surface only renders the
-// description and the grouped rows.
+// description and the grouped rows. Rows are intentionally icon-less here
+// to match the workspace-settings visual (less busy than agent / schedule).
 function MobileMasterList({
   groups,
   onSelect,
@@ -215,47 +220,25 @@ function MobileMasterList({
         Manage workspace profile, members, integrations, and billing.
       </p>
 
-      <div className="flex flex-col gap-6 mt-6">
+      <MobileStackList className="mt-6">
         {groups.map((group) => {
           return (
-            <div key={group.label} className="flex flex-col gap-2">
-              <span className="px-1 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                {group.label}
-              </span>
-              <div
-                className="overflow-hidden rounded-xl bg-card"
-                style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-              >
-                {group.items.map((item, idx) => {
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => {
-                        onSelect(item.id);
-                      }}
-                      className={cn(
-                        "flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition-colors active:bg-muted/40",
-                        idx > 0 &&
-                          "border-t border-border/50",
-                      )}
-                    >
-                      <span className="text-[16px] font-medium text-foreground">
-                        {item.label}
-                      </span>
-                      <IconChevronRight
-                        size={18}
-                        stroke={1.5}
-                        className="shrink-0 text-muted-foreground/60"
-                      />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            <MobileStackSection key={group.label} label={group.label}>
+              {group.items.map((item) => {
+                return (
+                  <MobileStackRow
+                    key={item.id}
+                    label={item.label}
+                    onClick={() => {
+                      onSelect(item.id);
+                    }}
+                  />
+                );
+              })}
+            </MobileStackSection>
           );
         })}
-      </div>
+      </MobileStackList>
     </div>
   );
 }

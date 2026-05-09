@@ -23,7 +23,6 @@ import {
   IconX,
   IconMessageCircle,
   IconWand,
-  IconChevronRight,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -94,6 +93,10 @@ import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.
 import { PermissionsDrawer } from "../zero-page/components/settings/permissions-dialog.tsx";
 import noConnectorImg from "../zero-page/assets/no-connector.webp";
 import { JobCustomConnectorsSection } from "./job-custom-connectors-section.tsx";
+import {
+  MobileStackRow,
+  MobileStackSection,
+} from "../zero-page/components/mobile-stack-list.tsx";
 import {
   hasConnectorPermissions,
   savePermissionPolicies$,
@@ -982,44 +985,6 @@ function useTabVisibility(agentId: string, ownerId: string) {
 // "back to overview" navigation.
 // ---------------------------------------------------------------------------
 
-function MobileSectionRow({
-  icon,
-  label,
-  onClick,
-  testId,
-  isLast,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-  testId: string;
-  isLast?: boolean;
-}) {
-  return (
-    <>
-      <button
-        type="button"
-        onClick={onClick}
-        data-testid={testId}
-        className="flex items-center gap-3 px-5 py-4 w-full text-left transition-colors hover:bg-muted/50 active:bg-muted"
-      >
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-200 text-foreground/70">
-          {icon}
-        </span>
-        <span className="flex-1 min-w-0 text-[16px] font-medium text-foreground">
-          {label}
-        </span>
-        <IconChevronRight
-          size={18}
-          stroke={1.5}
-          className="text-muted-foreground/50 shrink-0"
-        />
-      </button>
-      {!isLast && <div className="mx-5 border-b border-border/50" />}
-    </>
-  );
-}
-
 function MobileAgentIndexView({
   agentId,
   displayName,
@@ -1089,9 +1054,9 @@ function MobileAgentIndexView({
             Chat with {displayName}
           </Button>
 
-          <div className="zero-card overflow-hidden">
+          <MobileStackSection>
             {showProfileAndInstructions && (
-              <MobileSectionRow
+              <MobileStackRow
                 icon={<IconFileText size={18} stroke={1.5} />}
                 label="Instructions"
                 testId="mobile-agent-section-instructions"
@@ -1101,7 +1066,7 @@ function MobileAgentIndexView({
               />
             )}
             {showProfileAndInstructions && (
-              <MobileSectionRow
+              <MobileStackRow
                 icon={<IconUserCircle size={18} stroke={1.5} />}
                 label="Profile"
                 testId="mobile-agent-section-profile"
@@ -1110,7 +1075,7 @@ function MobileAgentIndexView({
                 }}
               />
             )}
-            <MobileSectionRow
+            <MobileStackRow
               icon={<IconShield size={18} stroke={1.5} />}
               label="Connectors"
               testId="mobile-agent-section-connectors"
@@ -1118,16 +1083,15 @@ function MobileAgentIndexView({
                 setActiveTab("authorization");
               }}
             />
-            <MobileSectionRow
+            <MobileStackRow
               icon={<IconCalendar size={18} stroke={1.5} />}
               label="Scheduled"
               testId="mobile-agent-section-scheduled"
               onClick={() => {
                 setActiveTab("schedule");
               }}
-              isLast
             />
-          </div>
+          </MobileStackSection>
         </div>
       </main>
     </div>

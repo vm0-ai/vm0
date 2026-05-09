@@ -1,9 +1,7 @@
-import type { ReactNode } from "react";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import {
   IconAdjustmentsHorizontal,
   IconChartBar,
-  IconChevronRight,
   IconDatabaseExport,
   IconKey,
   IconLogout,
@@ -16,69 +14,11 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { apiBaseForNavigation$ } from "../../signals/fetch.ts";
-
-interface AccountRowProps {
-  readonly icon: (props: { size?: number; stroke?: number }) => ReactNode;
-  readonly label: string;
-  readonly onSelect: () => void;
-  readonly testId: string;
-  readonly destructive?: boolean;
-}
-
-function AccountRow({
-  icon: Icon,
-  label,
-  onSelect,
-  testId,
-  destructive,
-}: AccountRowProps) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      data-testid={testId}
-      className="flex w-full items-center gap-3 px-4 h-12 text-left transition-colors hover:bg-muted/40 active:bg-muted/60"
-    >
-      <span
-        className={`flex h-7 w-7 shrink-0 items-center justify-center ${
-          destructive ? "text-destructive" : "text-muted-foreground"
-        }`}
-      >
-        <Icon size={20} stroke={1.6} />
-      </span>
-      <span
-        className={`flex-1 min-w-0 truncate text-[16px] ${
-          destructive
-            ? "text-destructive font-medium"
-            : "text-foreground font-medium"
-        }`}
-      >
-        {label}
-      </span>
-      <IconChevronRight
-        size={16}
-        stroke={1.6}
-        className="shrink-0 text-muted-foreground/60"
-      />
-    </button>
-  );
-}
-
-/**
- * iOS Settings-style grouped section. Wraps a set of AccountRow children
- * in a single rounded white card with hairline separators between rows
- * (insetted to leave room for the leading icon).
- */
-function AccountSection({ children }: { children: ReactNode }) {
-  // zero-card carries the shared card surface (bg-card + border + shadow),
-  // so each section now reads as a real card lifted off the page bg, with
-  // hairline dividers between rows.
-  return (
-    <div className="zero-card overflow-hidden [&>button+button]:border-t [&>button+button]:border-border/50">
-      {children}
-    </div>
-  );
-}
+import {
+  MobileStackList,
+  MobileStackRow,
+  MobileStackSection,
+} from "./components/mobile-stack-list.tsx";
 
 function AccountIdentityCard() {
   const userLoadable = useLastLoadable(user$);
@@ -163,59 +103,61 @@ export function ZeroAccountHubPage() {
     >
       <div className="mx-auto w-full max-w-[640px] flex flex-col gap-6 px-4 pt-2 md:pt-4 pb-16">
         <AccountIdentityCard />
-        <AccountSection>
-          <AccountRow
-            icon={IconAdjustmentsHorizontal}
-            label="Preferences"
-            testId="account-hub-preferences"
-            onSelect={goPreferences}
-          />
-          <AccountRow
-            icon={IconChartBar}
-            label="Usage"
-            testId="account-hub-usage"
-            onSelect={goUsage}
-          />
-          {showApiKeys && (
-            <AccountRow
-              icon={IconKey}
-              label="API Keys"
-              testId="account-hub-api-keys"
-              onSelect={goApiKeys}
+        <MobileStackList>
+          <MobileStackSection>
+            <MobileStackRow
+              icon={<IconAdjustmentsHorizontal size={18} stroke={1.5} />}
+              label="Preferences"
+              testId="account-hub-preferences"
+              onClick={goPreferences}
             />
-          )}
-        </AccountSection>
-        <AccountSection>
-          <AccountRow
-            icon={IconUser}
-            label="Manage account"
-            testId="account-hub-manage"
-            onSelect={handleManage}
-          />
-          <AccountRow
-            icon={IconUserPlus}
-            label="Add account"
-            testId="account-hub-add"
-            onSelect={handleAddAccount}
-          />
-          {showExport && (
-            <AccountRow
-              icon={IconDatabaseExport}
-              label="Export data"
-              testId="account-hub-export"
-              onSelect={handleExport}
+            <MobileStackRow
+              icon={<IconChartBar size={18} stroke={1.5} />}
+              label="Usage"
+              testId="account-hub-usage"
+              onClick={goUsage}
             />
-          )}
-        </AccountSection>
-        <AccountSection>
-          <AccountRow
-            icon={IconLogout}
-            label="Sign out"
-            testId="account-hub-signout"
-            onSelect={handleSignOut}
-            destructive
-          />
-        </AccountSection>
+            {showApiKeys && (
+              <MobileStackRow
+                icon={<IconKey size={18} stroke={1.5} />}
+                label="API Keys"
+                testId="account-hub-api-keys"
+                onClick={goApiKeys}
+              />
+            )}
+          </MobileStackSection>
+          <MobileStackSection>
+            <MobileStackRow
+              icon={<IconUser size={18} stroke={1.5} />}
+              label="Manage account"
+              testId="account-hub-manage"
+              onClick={handleManage}
+            />
+            <MobileStackRow
+              icon={<IconUserPlus size={18} stroke={1.5} />}
+              label="Add account"
+              testId="account-hub-add"
+              onClick={handleAddAccount}
+            />
+            {showExport && (
+              <MobileStackRow
+                icon={<IconDatabaseExport size={18} stroke={1.5} />}
+                label="Export data"
+                testId="account-hub-export"
+                onClick={handleExport}
+              />
+            )}
+          </MobileStackSection>
+          <MobileStackSection>
+            <MobileStackRow
+              icon={<IconLogout size={18} stroke={1.5} />}
+              label="Sign out"
+              testId="account-hub-signout"
+              onClick={handleSignOut}
+              destructive
+            />
+          </MobileStackSection>
+        </MobileStackList>
       </div>
     </div>
   );

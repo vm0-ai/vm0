@@ -12,7 +12,6 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isMobileViewport$ } from "../../signals/zero-page/mobile-viewport.ts";
 import {
   IconCalendar,
-  IconChevronRight,
   IconCircleDot,
   IconFileText,
   IconPlayerPlay,
@@ -82,6 +81,10 @@ import {
 } from "../../signals/schedule-page/schedule-run-history.ts";
 import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
 import { InlineSettingsRow } from "./components/zero-inline-settings-row.tsx";
+import {
+  MobileStackRow,
+  MobileStackSection,
+} from "./components/mobile-stack-list.tsx";
 import {
   buildCombinedSchedule,
   ScheduleEditFields,
@@ -807,44 +810,6 @@ function ScheduleRunHistoryTab() {
 // Detail view
 // ---------------------------------------------------------------------------
 
-function MobileScheduleSectionRow({
-  icon,
-  label,
-  onClick,
-  testId,
-  isLast,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-  testId: string;
-  isLast?: boolean;
-}) {
-  return (
-    <>
-      <button
-        type="button"
-        onClick={onClick}
-        data-testid={testId}
-        className="flex items-center gap-3 px-5 py-4 w-full text-left transition-colors hover:bg-muted/50 active:bg-muted"
-      >
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-200 text-foreground/70">
-          {icon}
-        </span>
-        <span className="flex-1 min-w-0 text-[16px] font-medium text-foreground">
-          {label}
-        </span>
-        <IconChevronRight
-          size={18}
-          stroke={1.5}
-          className="text-muted-foreground/50 shrink-0"
-        />
-      </button>
-      {!isLast && <div className="mx-5 border-b border-border/50" />}
-    </>
-  );
-}
-
 function MobileScheduleIndexView({
   entry,
   running,
@@ -928,8 +893,8 @@ function MobileScheduleIndexView({
             {running ? "Starting…" : "Run now"}
           </Button>
 
-          <div className="zero-card overflow-hidden">
-            <MobileScheduleSectionRow
+          <MobileStackSection>
+            <MobileStackRow
               icon={<IconSettings size={18} stroke={1.5} />}
               label="Settings"
               testId="mobile-schedule-section-settings"
@@ -937,7 +902,7 @@ function MobileScheduleIndexView({
                 setActiveTab("settings");
               }}
             />
-            <MobileScheduleSectionRow
+            <MobileStackRow
               icon={<IconFileText size={18} stroke={1.5} />}
               label="Instructions"
               testId="mobile-schedule-section-instructions"
@@ -945,16 +910,15 @@ function MobileScheduleIndexView({
                 setActiveTab("instructions");
               }}
             />
-            <MobileScheduleSectionRow
+            <MobileStackRow
               icon={<IconRotateClockwise2 size={18} stroke={1.5} />}
               label="Run History"
               testId="mobile-schedule-section-history"
               onClick={() => {
                 setActiveTab("history");
               }}
-              isLast
             />
-          </div>
+          </MobileStackSection>
         </div>
       </main>
     </div>
