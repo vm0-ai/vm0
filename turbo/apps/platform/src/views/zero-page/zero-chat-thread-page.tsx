@@ -56,7 +56,10 @@ import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-t
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  featureSwitch$,
+  modelFirstModelProviderEnabled$,
+} from "../../signals/external/feature-switch.ts";
 import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
 import {
   autoReadEnabled$,
@@ -1937,6 +1940,7 @@ function ChatThreadComposer({
   const modelSelection = useLastResolved(thread.modelSelection$) ?? null;
   const setModelSelection = useSet(thread.setModelSelection$);
   const agentModelDefault = useLastResolved(thread.agentModelDefault$) ?? null;
+  const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
   // During thread switch the thread-level skeleton is visible and
   // `threadData` / `allFinished$` may still reflect the previous thread;
   // render the whole action cluster as a skeleton so we don't flash stale
@@ -2003,7 +2007,8 @@ function ChatThreadComposer({
             setInputRef={setInputRef}
             actionsLoading={skeletonVisible}
             modelPicker={
-              composerProviders && composerProviders.providers.length > 0
+              composerProviders &&
+              (modelFirstEnabled || composerProviders.providers.length > 0)
                 ? {
                     providers: composerProviders.providers,
                     tiers: composerProviders.tiers,
@@ -2016,6 +2021,7 @@ function ChatThreadComposer({
                     // continuity.
                     disabled: hasUserMessages,
                     agentDefault: agentModelDefault,
+                    showUseDefault: !modelFirstEnabled,
                   }
                 : undefined
             }

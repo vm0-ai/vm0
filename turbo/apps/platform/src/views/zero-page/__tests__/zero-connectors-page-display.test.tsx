@@ -25,7 +25,7 @@ describe("connectors page - count display", () => {
   it("ai categories render before non-ai categories (CONN-D-001)", async () => {
     mockConnectors([
       { type: "github" },
-      { type: "openai", authMethod: "platform" },
+      { type: "openai", authMethod: "api-token" },
     ]);
 
     detachedSetupPage({
@@ -90,7 +90,7 @@ describe("connectors page - grouped display", () => {
   it("does not render categories or the category menu when the feature switch is off", async () => {
     mockConnectors([
       { type: "github" },
-      { type: "openai", authMethod: "platform" },
+      { type: "openai", authMethod: "api-token" },
     ]);
 
     detachedSetupPage({ context, path: "/connectors" });
@@ -119,7 +119,7 @@ describe("connectors page - grouped display", () => {
 
     mockConnectors([
       { type: "github" },
-      { type: "openai", authMethod: "platform" },
+      { type: "openai", authMethod: "api-token" },
     ]);
 
     detachedSetupPage({
@@ -260,16 +260,6 @@ describe("connectors page - connector status indicators", () => {
 
     await waitFor(() => {
       expect(screen.getByText("@octocat")).toBeInTheDocument();
-    });
-  });
-
-  it("platform-auth connector renders the VM0 Managed badge", async () => {
-    mockConnectors([{ type: "openai", authMethod: "platform" }]);
-
-    detachedSetupPage({ context, path: "/connectors" });
-
-    await waitFor(() => {
-      expect(screen.getByText("VM0 Managed")).toBeInTheDocument();
     });
   });
 

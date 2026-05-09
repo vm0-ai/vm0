@@ -284,16 +284,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.PlatformConnectors]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Gate the entire platform-managed connector UI (Enable button and " +
-      "POST /api/zero/platform-connectors/:type). When off, only api-token " +
-      "and OAuth methods surface in connectors list/search, and the enable " +
-      "endpoint 404s. Staff-only during rollout.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.Trinity]: {
     maintainer: "ethan@vm0.ai",
     description:

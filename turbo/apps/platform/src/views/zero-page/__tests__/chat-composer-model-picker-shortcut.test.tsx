@@ -29,9 +29,11 @@ import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
 } from "../../../mocks/handlers/api-org-model-providers.ts";
+import { resetMockOrgModelPolicies } from "../../../mocks/handlers/api-org-model-policies.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import { setChatShortcutHelpOpen$ } from "../../../signals/chat-page/chat-shortcut-help.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const THREAD_ID = "thread-test-shortcut";
@@ -80,6 +82,7 @@ async function openThreadWithPicker(): Promise<HTMLTextAreaElement> {
 describe("chat composer — mod+alt+. opens the model picker", () => {
   beforeEach(() => {
     resetMockOrgModelProviders();
+    resetMockOrgModelPolicies();
   });
 
   // CHAT-SHORT-MP-001
@@ -103,6 +106,32 @@ describe("chat composer — mod+alt+. opens the model picker", () => {
     // Default model option is present inside the open listbox, confirming the
     // picker wired its provider data into the dropdown body.
     expect(screen.getAllByRole("option").length).toBeGreaterThan(0);
+  });
+
+  it("does not show the agent default option in the model-first chat picker", async () => {
+    const user = userEvent.setup();
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+    setMockOrgModelProviders([]);
+
+    await openThreadWithPicker();
+
+    await user.click(
+      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Use agent default")).not.toBeInTheDocument();
+    expect(screen.getByText("Models")).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Use agent default model"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /Claude Opus 4\.7/ }),
+    ).toBeInTheDocument();
   });
 
   // CHAT-SHORT-MP-002

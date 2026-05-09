@@ -391,6 +391,7 @@ const router = tsr.router(runsMainContract, {
           orgId: org.orgId,
           agentComposeVersionId: composeMeta.agentComposeVersionId,
           agentCompose: composeContent,
+          framework: resolved.framework,
           prompt: body.prompt,
           sandboxToken,
           appendSystemPrompt: body.appendSystemPrompt,

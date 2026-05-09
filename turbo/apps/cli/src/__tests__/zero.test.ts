@@ -31,7 +31,7 @@ describe("zero CLI program", () => {
       "whoami",
       "developer-support",
       "computer-use",
-      "official",
+      "built-in",
       "web",
     ];
     for (const name of expectedCommands) {

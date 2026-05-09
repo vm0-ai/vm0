@@ -1,18 +1,11 @@
 import { eq, and, sql } from "drizzle-orm";
 import { waitUntil } from "@vercel/functions";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
-import {
-  getValidatedFramework,
-  type SupportedFramework,
-} from "@vm0/core/frameworks";
+import type { SupportedFramework } from "@vm0/core/frameworks";
 import {
   getCustomSkillStorageName,
   getSkillStorageName,
 } from "@vm0/core/storage-names";
-import {
-  getFrameworkForType,
-  type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { orgTierSchema } from "@vm0/api-contracts/contracts/orgs";
 import { resolveFirewallPolicies } from "@vm0/connectors/firewalls";
@@ -36,6 +29,7 @@ import {
   type CreateRunParams,
   type CreateRunRecordResult,
 } from "../infra/run";
+import { resolveRuntimeFramework } from "../infra/run/utils";
 import { resolveFrameworkSkillsMountPath } from "../infra/framework/framework-config";
 import { resolveStartRunCompose } from "./zero-run-validation";
 import {
@@ -280,15 +274,6 @@ function buildSkillMountPath(
   skillName: string,
 ): string {
   return `${resolveFrameworkSkillsMountPath(framework)}/${skillName}`;
-}
-
-function resolveRunFramework(
-  composeFramework: string,
-  providerType: ModelProviderType | null,
-): SupportedFramework {
-  return getValidatedFramework(
-    providerType ? getFrameworkForType(providerType) : composeFramework,
-  );
 }
 
 function buildSystemSkillVolumes(
@@ -697,10 +682,9 @@ async function createZeroRunRecord(
   });
   const authorizeTime = Date.now();
 
-  const composeAgents = resolved.composeContent?.agents
-    ? Object.values(resolved.composeContent.agents)
-    : [];
-  const composeFramework = composeAgents[0]?.framework ?? "claude-code";
+  const composeFramework = resolveRuntimeFramework({
+    agentCompose: resolved.composeContent,
+  });
   const admissionContext = await resolveRunAdmissionContext({
     orgId: resolved.orgId,
     userId: params.userId,
@@ -711,10 +695,11 @@ async function createZeroRunRecord(
     composeFramework,
     preferPersonalProvider: effectiveModel.preferPersonalProvider,
   });
-  const runFramework = resolveRunFramework(
-    composeFramework,
-    admissionContext.providerType,
-  );
+  const runFramework = resolveRuntimeFramework({
+    providerFramework: admissionContext.providerFramework,
+    providerType: admissionContext.providerType,
+    agentCompose: resolved.composeContent,
+  });
 
   if (!params.sessionId) {
     await validateComposeRequirements(

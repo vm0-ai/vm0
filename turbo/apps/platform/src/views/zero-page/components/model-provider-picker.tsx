@@ -1,6 +1,7 @@
 import type { MouseEvent, ReactNode } from "react";
-import { useGet, useLastResolved, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { IconCpu } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Select,
   SelectContent,
@@ -20,25 +21,35 @@ import {
 import {
   areProvidersCompatible,
   getDefaultModel,
+  getCanonicalModelDisplayName,
   getModels,
+  getProvidersForModel,
   getVm0VisibleModels,
   MODEL_PROVIDER_TYPES,
   VM0_MODEL_TO_PROVIDER,
   type ModelProviderResponse,
   type ModelProviderType,
+  type OrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
   showAllVm0Models$,
   toggleShowAllVm0Models$,
 } from "../../../signals/zero-page/model-picker-ui";
-import { featureSwitch$ } from "../../../signals/external/feature-switch";
+import {
+  featureSwitch$,
+  modelFirstModelProviderEnabled$,
+} from "../../../signals/external/feature-switch";
+import { orgModelPolicies$ } from "../../../signals/external/org-model-policies";
 import {
   getUILabel,
   getVm0ModelMultiplier,
   isVm0PrimaryModel,
 } from "./settings/provider-ui-config";
 import { ProviderIcon } from "./settings/provider-icons";
+
+export const MODEL_FIRST_SELECTION_PROVIDER_ID =
+  "00000000-0000-4000-8000-000000000000";
 
 export interface ModelProviderSelection {
   modelProviderId: string;
@@ -92,6 +103,8 @@ interface ModelProviderPickerProps {
    * the agent itself falls back to workspace.
    */
   inheritLabel?: "agent" | "workspace";
+  /** When false, hide the "Use default" row from the dropdown. */
+  showUseDefault?: boolean;
   /**
    * Per-provider tier annotation (Wave 3 of Epic #11868). When provided,
    * the picker groups items into "Personal" and "Org" sections with
@@ -446,6 +459,366 @@ function DisabledPickerLabel({
   );
 }
 
+function isModelFirstPolicyVisible(
+  policy: OrgModelPolicy,
+  features: Parameters<typeof getVm0VisibleModels>[0] | undefined,
+): boolean {
+  if (policy.model.startsWith("gpt-")) {
+    return features?.[FeatureSwitchKey.CodexBeta] ?? false;
+  }
+  return true;
+}
+
+function getModelFirstIconType(model: string): ModelProviderType | undefined {
+  const vm0Entry = VM0_MODEL_TO_PROVIDER[model];
+  if (vm0Entry) {
+    return vm0Entry.concreteType as ModelProviderType;
+  }
+  return getProvidersForModel(model).find((type) => {
+    return type !== "vm0";
+  });
+}
+
+function resolveModelFirstDefault(
+  value: ModelProviderSelection | null,
+  agentDefault: ModelProviderSelection | null | undefined,
+  policies: OrgModelPolicy[],
+): {
+  resolved: ModelProviderSelection | null;
+  effectiveDefault: ModelProviderSelection | null;
+  defaultSource: DefaultSource;
+} {
+  const validWorkspaceDefault = policies.find((policy) => {
+    return policy.isDefault && policy.routeStatus === "valid";
+  });
+  const effectiveDefault =
+    agentDefault ??
+    (validWorkspaceDefault
+      ? {
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel: validWorkspaceDefault.model,
+        }
+      : null);
+  return {
+    resolved: value ?? effectiveDefault,
+    effectiveDefault,
+    defaultSource: agentDefault ? "agent" : "workspace",
+  };
+}
+
+function ModelFirstTriggerLabel({
+  selectedModel,
+  placeholder,
+  mobileIcon,
+}: {
+  selectedModel: string | null;
+  placeholder: string;
+  mobileIcon: boolean;
+}) {
+  if (!selectedModel) {
+    return (
+      <ResponsiveTriggerContent
+        mobileIcon={mobileIcon}
+        iconType={undefined}
+        label={<span>{placeholder}</span>}
+      />
+    );
+  }
+  const iconType = getModelFirstIconType(selectedModel);
+  return (
+    <ResponsiveTriggerContent
+      mobileIcon={mobileIcon}
+      iconType={iconType}
+      label={
+        <span className="truncate">
+          {getCanonicalModelDisplayName(selectedModel)}
+        </span>
+      }
+    />
+  );
+}
+
+function ModelFirstDisabledPickerLabel({
+  value,
+  placeholder,
+  mobileIconTrigger,
+  triggerClassName,
+  agentDefault,
+  policies,
+}: Pick<
+  ModelProviderPickerProps,
+  | "value"
+  | "placeholder"
+  | "compactTrigger"
+  | "mobileIconTrigger"
+  | "triggerClassName"
+  | "agentDefault"
+> & {
+  placeholder: string;
+  compactTrigger: boolean;
+  mobileIconTrigger: boolean;
+  policies: OrgModelPolicy[];
+}) {
+  const { resolved } = resolveModelFirstDefault(value, agentDefault, policies);
+  const selectedModel = resolved?.selectedModel ?? null;
+  return (
+    <span
+      aria-label={
+        selectedModel
+          ? getCanonicalModelDisplayName(selectedModel)
+          : placeholder
+      }
+      className={cn(
+        "inline-flex items-center px-2 text-sm text-muted-foreground cursor-default",
+        stripInteractiveClasses(triggerClassName),
+      )}
+    >
+      <ModelFirstTriggerLabel
+        selectedModel={selectedModel}
+        placeholder={placeholder}
+        mobileIcon={mobileIconTrigger}
+      />
+    </span>
+  );
+}
+
+function ModelFirstInheritToggleRow({
+  effectiveDefault,
+  defaultSource,
+  isInheriting,
+  onToggle,
+}: {
+  effectiveDefault: ModelProviderSelection | null;
+  defaultSource: DefaultSource;
+  isInheriting: boolean;
+  onToggle: (inherit: boolean) => void;
+}) {
+  const sourceLabel = defaultSource === "agent" ? "agent" : "workspace";
+  return (
+    <>
+      <SelectItem value={INHERIT_SENTINEL} className="hidden absolute">
+        Use {sourceLabel} default
+      </SelectItem>
+      <div
+        className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-sm cursor-pointer hover:bg-accent transition-colors"
+        onClick={(e) => {
+          e.preventDefault();
+          onToggle(!isInheriting);
+        }}
+      >
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className="font-medium text-foreground">
+            Use {sourceLabel} default
+          </span>
+          {effectiveDefault && (
+            <span className="truncate text-xs text-muted-foreground">
+              {getCanonicalModelDisplayName(effectiveDefault.selectedModel)}
+            </span>
+          )}
+        </div>
+        <Switch
+          size="sm"
+          checked={isInheriting}
+          onCheckedChange={onToggle}
+          onClick={(e: MouseEvent) => {
+            e.stopPropagation();
+          }}
+          aria-label={`Use ${sourceLabel} default model`}
+        />
+      </div>
+    </>
+  );
+}
+
+function modelFirstSelectionFromRaw(
+  raw: string,
+): ModelProviderSelection | null {
+  if (raw === INHERIT_SENTINEL) {
+    return null;
+  }
+  return {
+    modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+    selectedModel: raw,
+  };
+}
+
+function ModelFirstPolicyRow({ policy }: { policy: OrgModelPolicy }) {
+  const iconType = getModelFirstIconType(policy.model);
+  const multiplier = getVm0ModelMultiplier(policy.model);
+  return (
+    <SelectItem
+      key={policy.id}
+      value={policy.model}
+      disabled={policy.routeStatus !== "valid"}
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        {iconType && <ProviderIcon type={iconType} size={16} />}
+        <span className="truncate">
+          {policy.modelLabel || getCanonicalModelDisplayName(policy.model)}
+        </span>
+        {multiplier !== undefined && (
+          <MultiplierBadge multiplier={multiplier} />
+        )}
+      </span>
+    </SelectItem>
+  );
+}
+
+function ModelFirstPolicyItems({
+  policies,
+  explicitSelectedModel,
+  showSeparator = true,
+}: {
+  policies: OrgModelPolicy[];
+  explicitSelectedModel: string | null;
+  showSeparator?: boolean;
+}) {
+  const hasExplicitSelectedPolicy =
+    explicitSelectedModel === null ||
+    policies.some((policy) => {
+      return policy.model === explicitSelectedModel;
+    });
+  return (
+    <>
+      {showSeparator && (!hasExplicitSelectedPolicy || policies.length > 0) && (
+        <SelectSeparator className="my-0" />
+      )}
+      {!hasExplicitSelectedPolicy && explicitSelectedModel && (
+        <SelectItem value={explicitSelectedModel} className="hidden absolute">
+          {getCanonicalModelDisplayName(explicitSelectedModel)}
+        </SelectItem>
+      )}
+      {policies.length === 0 ? (
+        <div className="px-2 py-2 text-sm text-muted-foreground">
+          No configured models
+        </div>
+      ) : (
+        <SelectGroup>
+          <SelectLabel className="pl-2 pr-8 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
+            Models
+          </SelectLabel>
+          {policies.map((policy) => {
+            return <ModelFirstPolicyRow key={policy.id} policy={policy} />;
+          })}
+        </SelectGroup>
+      )}
+    </>
+  );
+}
+
+function ModelFirstModelPicker({
+  value,
+  onChange,
+  placeholder,
+  triggerClassName,
+  compactTrigger,
+  mobileIconTrigger,
+  open,
+  onOpenChange,
+  disabled,
+  agentDefault,
+  inheritLabel,
+  showUseDefault = true,
+}: ModelProviderPickerProps & {
+  placeholder: string;
+  compactTrigger: boolean;
+  mobileIconTrigger: boolean;
+}) {
+  const policiesLoadable = useLoadable(orgModelPolicies$);
+  const lastPolicies = useLastResolved(orgModelPolicies$);
+  const features = useLastResolved(featureSwitch$);
+  const policyResponse =
+    policiesLoadable.state === "hasData" ? policiesLoadable.data : lastPolicies;
+  const policies =
+    policyResponse?.policies.filter((policy) => {
+      return isModelFirstPolicyVisible(policy, features);
+    }) ?? [];
+  const {
+    resolved,
+    effectiveDefault,
+    defaultSource: autoDefaultSource,
+  } = resolveModelFirstDefault(value, agentDefault, policies);
+  const defaultSource = inheritLabel ?? autoDefaultSource;
+  const selectedModel = resolved?.selectedModel ?? null;
+  const explicitSelectedModel = value?.selectedModel ?? null;
+  const showModelPolicies = !showUseDefault || value !== null;
+  const triggerAriaLabel = selectedModel
+    ? getCanonicalModelDisplayName(selectedModel)
+    : placeholder;
+
+  if (disabled) {
+    return (
+      <ModelFirstDisabledPickerLabel
+        value={value}
+        placeholder={placeholder}
+        compactTrigger={compactTrigger}
+        mobileIconTrigger={mobileIconTrigger}
+        triggerClassName={triggerClassName}
+        agentDefault={agentDefault}
+        policies={policies}
+      />
+    );
+  }
+
+  return (
+    <Select
+      value={value ? value.selectedModel : INHERIT_SENTINEL}
+      onValueChange={(raw) => {
+        onChange(modelFirstSelectionFromRaw(raw));
+      }}
+      open={open}
+      onOpenChange={onOpenChange}
+    >
+      <SelectTrigger
+        aria-label={triggerAriaLabel}
+        className={cn("h-9 w-full", triggerClassName)}
+      >
+        <SelectValue placeholder={placeholder}>
+          <ModelFirstTriggerLabel
+            selectedModel={selectedModel}
+            placeholder={placeholder}
+            mobileIcon={mobileIconTrigger}
+          />
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent
+        className="max-h-none min-w-[260px]"
+        hideScrollButtons
+        viewportClassName="h-auto max-h-none"
+      >
+        {showUseDefault ? (
+          <ModelFirstInheritToggleRow
+            effectiveDefault={effectiveDefault}
+            defaultSource={defaultSource}
+            isInheriting={value === null}
+            onToggle={(inherit) => {
+              if (inherit) {
+                onChange(null);
+                onOpenChange?.(false);
+                return;
+              }
+              onChange(effectiveDefault);
+            }}
+          />
+        ) : (
+          value === null && (
+            <SelectItem value={INHERIT_SENTINEL} className="hidden absolute">
+              {placeholder}
+            </SelectItem>
+          )
+        )}
+        {showModelPolicies && (
+          <ModelFirstPolicyItems
+            policies={policies}
+            explicitSelectedModel={explicitSelectedModel}
+            showSeparator={showUseDefault}
+          />
+        )}
+      </SelectContent>
+    </Select>
+  );
+}
+
 interface ProviderGroup {
   provider: ModelProviderResponse;
   label: string;
@@ -746,6 +1119,11 @@ function ModelSelectDropdown({
         </SelectValue>
       </SelectTrigger>
       <SelectContent className="max-h-[280px] min-w-[260px]">
+        {!showUseDefault && value === null && (
+          <SelectItem value={INHERIT_SENTINEL} className="hidden absolute">
+            {placeholder}
+          </SelectItem>
+        )}
         {showUseDefault && (
           <InheritToggleRow
             effectiveDefault={effectiveDefault}
@@ -804,9 +1182,33 @@ export function ModelProviderPicker({
   disabled = false,
   agentDefault,
   inheritLabel,
+  showUseDefault = true,
   tiers,
 }: ModelProviderPickerProps) {
   const features = useLastResolved(featureSwitch$);
+  const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
+
+  if (modelFirstEnabled) {
+    return (
+      <ModelFirstModelPicker
+        providers={providers}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        triggerClassName={triggerClassName}
+        sessionProviderType={sessionProviderType}
+        compactTrigger={compactTrigger}
+        mobileIconTrigger={mobileIconTrigger}
+        open={open}
+        onOpenChange={onOpenChange}
+        disabled={disabled}
+        agentDefault={agentDefault}
+        inheritLabel={inheritLabel}
+        showUseDefault={showUseDefault}
+        tiers={tiers}
+      />
+    );
+  }
 
   if (disabled) {
     return (
@@ -850,7 +1252,7 @@ export function ModelProviderPicker({
       onChange={onChange}
       open={open}
       onOpenChange={onOpenChange}
-      showUseDefault
+      showUseDefault={showUseDefault}
       tiers={tiers}
     />
   );

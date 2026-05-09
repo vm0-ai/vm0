@@ -1252,7 +1252,7 @@ export function getOrgDefaultModelProvider(
  * Used as the cross-framework fallback by admission (Stage B) when
  * `getOrgDefaultModelProvider(orgId, composeFramework)` returns null. Per
  * Epic #11520, the provider's framework wins; admission accepts any default
- * and downstream stages route via `resolvedFramework`.
+ * and downstream stages route via the execution context framework.
  *
  * Returns null only when the org has no `isDefault: true` provider for any
  * framework. Telegram / Slack / chat-title callers keep using the strict

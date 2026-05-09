@@ -197,6 +197,38 @@ mod tests {
         assert!(msg.contains("invalid runner-dirname"), "got: {msg}");
     }
 
+    #[tokio::test]
+    async fn run_config_rejects_mismatched_profile_arg_lengths() {
+        let cases = [
+            (
+                "rootfs_hash",
+                vec!["vm0/default".into(), "vm0/default".into()],
+                vec!["dummy".into()],
+                vec!["dummy".into(), "dummy".into()],
+            ),
+            (
+                "snapshot_hash",
+                vec!["vm0/default".into(), "vm0/default".into()],
+                vec!["dummy".into(), "dummy".into()],
+                vec!["dummy".into()],
+            ),
+        ];
+
+        for (field, profile, rootfs_hash, snapshot_hash) in cases {
+            let mut args = args_with_dirname("runner-01");
+            args.profile = profile;
+            args.rootfs_hash = rootfs_hash;
+            args.snapshot_hash = snapshot_hash;
+
+            let err = run_config(args).await.unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("same number of times"),
+                "{field} mismatch returned unexpected error: {msg}"
+            );
+        }
+    }
+
     fn args_with_concurrency_factor(factor: f64) -> ConfigArgs {
         ConfigArgs {
             profile: vec!["vm0/default".into()],

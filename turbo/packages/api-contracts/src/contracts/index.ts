@@ -692,7 +692,6 @@ export {
 export {
   zeroConnectorsMainContract,
   zeroConnectorsByTypeContract,
-  zeroPlatformConnectorContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsSearchContract,
   zeroConnectorSessionsContract,
@@ -701,7 +700,6 @@ export {
   type ConnectorSearchAuthMethod,
   type ZeroConnectorsMainContract,
   type ZeroConnectorsByTypeContract,
-  type ZeroPlatformConnectorContract,
   type ZeroConnectorScopeDiffContract,
   type ZeroConnectorsSearchContract,
   type ZeroConnectorSessionsContract,

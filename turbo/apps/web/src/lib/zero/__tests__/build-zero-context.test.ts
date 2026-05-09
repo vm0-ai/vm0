@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   testContext,
   uniqueId,
@@ -13,6 +13,7 @@ import {
   completeTestRun,
   findTestRunnerJobEntry,
   insertVm0ApiKeys,
+  deleteInsertedVm0ApiKeys,
   insertTestConnectorSecret,
   insertUserDefaultModelProvider,
   enablePersonalModelProviderForUser,
@@ -44,6 +45,10 @@ import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "../memory";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 
 const context = testContext();
+
+afterEach(async () => {
+  await deleteInsertedVm0ApiKeys();
+});
 
 describe("Org-Level Runtime Resolution (Zero Layer)", () => {
   let user: UserContext;

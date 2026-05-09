@@ -70,6 +70,7 @@
         "src/views/zero-page/zero-sidebar-upgrade.tsx"
       ],
       "ignoreDependencies": [
+        "idb",
         "tailwindcss",
         "typescript-eslint",
         "@tailwindcss/typography"

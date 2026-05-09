@@ -1,6 +1,6 @@
 {
-  "id": "1d166047-dbb8-4ca0-8367-d2cdd9d87da8",
-  "prevId": "2ab30f0c-8610-4710-9a50-767214c4d0ac",
+  "id": "2ab30f0c-8610-4710-9a50-767214c4d0ac",
+  "prevId": "10e52b3c-7f5a-4e31-bec1-4043d20a01d6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -591,12 +591,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "last_event_sequence": {
-          "name": "last_event_sequence",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "org_id": {
           "name": "org_id",
           "type": "text",
@@ -631,6 +625,12 @@
         "runner_group": {
           "name": "runner_group",
           "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_event_sequence": {
+          "name": "last_event_sequence",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         }
@@ -1191,12 +1191,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "revokes_message_id": {
-          "name": "revokes_message_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "role": {
           "name": "role",
           "type": "text",
@@ -1284,21 +1278,6 @@
           "method": "btree",
           "with": {}
         },
-        "chat_messages_revokes_message_id_unique": {
-          "name": "chat_messages_revokes_message_id_unique",
-          "columns": [
-            {
-              "expression": "revokes_message_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "chat_messages_run_seq_unique": {
           "name": "chat_messages_run_seq_unique",
           "columns": [
@@ -1341,19 +1320,6 @@
           "tableTo": "agent_runs",
           "columnsFrom": [
             "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "chat_messages_revokes_message_id_chat_messages_id_fk": {
-          "name": "chat_messages_revokes_message_id_chat_messages_id_fk",
-          "tableFrom": "chat_messages",
-          "tableTo": "chat_messages",
-          "columnsFrom": [
-            "revokes_message_id"
           ],
           "columnsTo": [
             "id"
@@ -8500,86 +8466,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.user_platform_connectors": {
-      "name": "user_platform_connectors",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "type": {
-          "name": "type",
-          "type": "varchar(50)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_user_platform_connectors_org_user_type": {
-          "name": "idx_user_platform_connectors_org_user_type",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.users": {
       "name": "users",
       "schema": "",
@@ -10168,6 +10054,81 @@
         }
       },
       "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.user_message_run": {
+      "name": "user_message_run",
+      "schema": "",
+      "columns": {
+        "user_message_id": {
+          "name": "user_message_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_user_message_run_run_id": {
+          "name": "idx_user_message_run_run_id",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "user_message_run_user_message_id_chat_messages_id_fk": {
+          "name": "user_message_run_user_message_id_chat_messages_id_fk",
+          "tableFrom": "user_message_run",
+          "tableTo": "chat_messages",
+          "columnsFrom": [
+            "user_message_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "user_message_run_run_id_agent_runs_id_fk": {
+          "name": "user_message_run_run_id_agent_runs_id_fk",
+          "tableFrom": "user_message_run",
+          "tableTo": "agent_runs",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},

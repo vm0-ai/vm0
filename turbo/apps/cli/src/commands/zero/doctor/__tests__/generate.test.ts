@@ -103,14 +103,21 @@ describe("zero doctor generate command", () => {
     const text = output();
     expect(text).toContain("Image generation choices for current agent");
     expect(text).toContain(`Agent:    ${AGENT_ID}`);
+    expect(text).toContain("Connectors:");
     expect(text).toContain("fal");
     expect(text).toContain("fal.ai");
     expect(text).toContain("@fal-user");
     expect(text).toContain("openai");
     expect(text).toContain("OpenAI");
     expect(text).not.toContain("replicate-user");
-    expect(text).toContain("Fallback option:");
-    expect(text).toContain("zero official generate image -h");
+    expect(text).toContain("Built-in provider:");
+    expect(text).toContain("vm0");
+    expect(text).toContain("Built-in");
+    expect(text).toContain("Model: gpt-image-2");
+    expect(text).toContain("Use: zero built-in generate image -h");
+    expect(text).not.toContain("Fallback option:");
+    expect(text).not.toContain("Official provider:");
+    expect(text).not.toContain("Next actions:");
     expect(text).toContain(
       "Use --all to see every image generation candidate.",
     );
@@ -130,6 +137,7 @@ describe("zero doctor generate command", () => {
 
     const text = output();
     expect(text).toContain("Other image generation connectors");
+    expect(text).toContain("Connectors:");
     expect(text).toContain("Replicate");
     expect(text).toContain("connected, not authorized for current agent");
     expect(text).toContain("Luma AI");
@@ -140,7 +148,7 @@ describe("zero doctor generate command", () => {
       `[Authorize Replicate](http://localhost:3000/connectors/replicate/authorize?agentId=${AGENT_ID})`,
     );
     expect(text).toContain(
-      `[Connect and authorize Luma AI](http://localhost:3000/connectors/luma-ai/authorize?agentId=${AGENT_ID})`,
+      `[Connect and authorize Luma AI](http://localhost:3000/connectors/luma-ai/connect?agentId=${AGENT_ID})`,
     );
     expect(text).toContain(
       "[Reconnect OpenAI](http://localhost:3000/connectors)",
@@ -177,13 +185,15 @@ describe("zero doctor generate command", () => {
       ]),
     );
     expect(json).toMatchObject({
-      builtInOption: {
-        description: expect.stringContaining("zero official generate image -h"),
+      builtInProvider: {
+        label: "Built-in",
+        model: "gpt-image-2",
+        command: "zero built-in generate image -h",
       },
     });
   });
 
-  it("suggests the official voice command when no voice connector is ready", async () => {
+  it("suggests the built-in voice command when no voice connector is ready", async () => {
     server.use(
       stubConnectorsWithConfiguredTypes(
         [],
@@ -196,16 +206,18 @@ describe("zero doctor generate command", () => {
 
     const text = output();
     expect(text).toContain("Voice generation choices for current agent");
+    expect(text).toContain("Connectors:");
     expect(text).toContain("No ready voice generation connectors found.");
-    expect(text).toContain("Fallback option:");
-    expect(text).toContain(
-      "If the user did not explicitly request a specific connector or provider, you can use the official generation capability.",
-    );
-    expect(text).toContain("zero official generate voice -h");
-    expect(text).not.toContain('zero official generate voice --text "Hello"');
+    expect(text).toContain("Built-in provider:");
+    expect(text).toContain("Model: gpt-4o-mini-tts");
+    expect(text).toContain("Use: zero built-in generate voice -h");
+    expect(text).not.toContain("Fallback option:");
+    expect(text).not.toContain("Official provider:");
+    expect(text).not.toContain("Next actions:");
+    expect(text).not.toContain('zero built-in generate voice --text "Hello"');
   });
 
-  it("also shows the official voice fallback when a voice connector is ready", async () => {
+  it("also shows the built-in voice provider when a voice connector is ready", async () => {
     server.use(
       stubConnectorsWithConfiguredTypes(
         [connector("openai", "openai-user")],
@@ -218,10 +230,12 @@ describe("zero doctor generate command", () => {
 
     const text = output();
     expect(text).toContain("Voice generation choices for current agent");
+    expect(text).toContain("Connectors:");
     expect(text).toContain("OpenAI");
     expect(text).toContain("@openai-user");
-    expect(text).toContain("Fallback option:");
-    expect(text).toContain("zero official generate voice");
+    expect(text).toContain("Built-in provider:");
+    expect(text).toContain("Model: gpt-4o-mini-tts");
+    expect(text).toContain("zero built-in generate voice");
   });
 
   it("rejects unknown generation types with available type guidance", async () => {

@@ -19,7 +19,6 @@ import {
   insertOrgMembersEntry,
   countOrgRows,
   createTestSchedule,
-  insertTestPlatformConnector,
 } from "../../../../__tests__/api-test-helpers";
 import { createTestEmailThreadSession } from "../../../../__tests__/db-test-seeders/email";
 import {
@@ -324,12 +323,6 @@ describe("deleteOrgData", () => {
     await insertOrgMembersCacheEntry({ orgId, userId, role: "admin" });
     await insertOrgMembersEntry({ orgId, userId });
 
-    // Platform connector enablement — separate table from OAuth, must also
-    // be cascaded on org deletion. The table stores varchar, so any string
-    // value exercises the delete path regardless of which (if any) platform
-    // connector is currently registered in the contract.
-    await insertTestPlatformConnector(orgId, userId, "__test_platform__");
-
     // Execute deletion
     await deleteOrgData(orgId);
 
@@ -342,7 +335,6 @@ describe("deleteOrgData", () => {
       "secrets",
       "model_providers",
       "connectors",
-      "user_platform_connectors",
       "variables",
       "usage_daily",
       "export_jobs",

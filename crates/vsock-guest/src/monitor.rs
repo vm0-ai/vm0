@@ -213,17 +213,7 @@ where
 /// the readers would block on the inherited fds and continue forwarding
 /// `MSG_STDOUT_CHUNK` for an already-exited pid (or grow our stderr buffer
 /// indefinitely).
-fn spawn_streaming_monitor(
-    request: StreamingMonitorRequest,
-    spawner: impl ThreadSpawner,
-) -> io::Result<()> {
-    spawn_streaming_monitor_with_spawner(request, spawner)
-}
-
-fn spawn_streaming_monitor_with_spawner<S>(
-    request: StreamingMonitorRequest,
-    spawner: S,
-) -> io::Result<()>
+fn spawn_streaming_monitor<S>(request: StreamingMonitorRequest, spawner: S) -> io::Result<()>
 where
     S: ThreadSpawner,
 {
@@ -488,17 +478,7 @@ fn finish_streaming_setup_failure(failure: StreamingSetupFailure) {
 
 /// Buffered monitor: waits for process exit while concurrently draining
 /// stdout/stderr via the cancellable helper, then sends `MSG_PROCESS_EXIT`.
-fn spawn_buffered_monitor(
-    request: BufferedMonitorRequest,
-    spawner: impl ThreadSpawner,
-) -> io::Result<()> {
-    spawn_buffered_monitor_with_spawner(request, spawner)
-}
-
-fn spawn_buffered_monitor_with_spawner<S>(
-    request: BufferedMonitorRequest,
-    spawner: S,
-) -> io::Result<()>
+fn spawn_buffered_monitor<S>(request: BufferedMonitorRequest, spawner: S) -> io::Result<()>
 where
     S: ThreadSpawner,
 {

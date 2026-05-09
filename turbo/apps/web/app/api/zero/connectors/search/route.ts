@@ -7,7 +7,6 @@ import {
   type ConnectorType,
   CONNECTOR_TYPES,
 } from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
@@ -34,27 +33,18 @@ const router = tsr.router(zeroConnectorsSearchContract, {
     });
     const keyword = query.keyword?.toLowerCase();
 
-    const platformGloballyEnabled =
-      !!featureStates[FeatureSwitchKey.PlatformConnectors];
-
     const connectors = (
       Object.keys(CONNECTOR_TYPES) as ConnectorType[]
     ).flatMap((type) => {
       const config = CONNECTOR_TYPES[type];
       const flag = config.featureFlag;
       const flagEnabled = !flag || !!featureStates[flag];
-      // api-token is always available; oauth requires the per-connector
-      // flag; platform requires both the per-connector flag and the global
-      // PlatformConnectors flag.
+      // api-token is always available; oauth requires the per-connector flag.
       const showOauth = flagEnabled && "oauth" in config.authMethods;
       const showApiToken = "api-token" in config.authMethods;
-      const showPlatform =
-        flagEnabled &&
-        platformGloballyEnabled &&
-        "platform" in config.authMethods;
 
       // Hidden unless at least one auth method shows.
-      if (!showOauth && !showApiToken && !showPlatform) return [];
+      if (!showOauth && !showApiToken) return [];
 
       const availableAuthMethods: ConnectorSearchAuthMethod[] = [];
       if (showOauth) {
@@ -62,9 +52,6 @@ const router = tsr.router(zeroConnectorsSearchContract, {
       }
       if (showApiToken) {
         availableAuthMethods.push("api-token");
-      }
-      if (showPlatform) {
-        availableAuthMethods.push("platform");
       }
 
       const item = {

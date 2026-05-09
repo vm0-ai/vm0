@@ -1,3 +1,3 @@
 export { extractWorkingDir } from "./extract-working-dir";
-export { extractCliAgentType } from "./extract-cli-agent-type";
+export { resolveRuntimeFramework } from "./resolve-runtime-framework";
 export { validateFrameworkApiKey } from "./validate-framework-api-key";

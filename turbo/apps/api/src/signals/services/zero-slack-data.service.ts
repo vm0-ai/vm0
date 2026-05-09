@@ -11,6 +11,35 @@ import { listConversations } from "../../lib/slack-client";
 import { decryptSecretValue } from "./crypto.utils";
 import type { ApiOrgRole } from "../../types/auth";
 
+const SLACK_BOT_SCOPES: readonly string[] = [
+  "app_mentions:read",
+  "chat:write",
+  "channels:read",
+  "channels:history",
+  "groups:read",
+  "groups:history",
+  "im:history",
+  "im:write",
+  "commands",
+  "users:read",
+  "users:read.email",
+  "reactions:write",
+  "files:read",
+  "files:write",
+];
+
+function hasAllBotScopes(storedScopes: string | null): boolean {
+  if (storedScopes === null) {
+    return false;
+  }
+  const parsed: unknown = JSON.parse(storedScopes);
+  const scopes: string[] = Array.isArray(parsed) ? parsed : [];
+  const stored = new Set(scopes);
+  return SLACK_BOT_SCOPES.every((s) => {
+    return stored.has(s);
+  });
+}
+
 interface SlackOrgStatusResult {
   readonly isConnected: boolean;
   readonly isInstalled: boolean;
@@ -20,6 +49,8 @@ interface SlackOrgStatusResult {
   readonly connectUrl: string | null;
   readonly defaultAgentName: string | null;
   readonly agentOrgSlug: string | null;
+  readonly scopeMismatch: boolean | null;
+  readonly reinstallUrl: string | null;
 }
 
 export function zeroSlackOrgStatus(args: {
@@ -81,6 +112,8 @@ export function zeroSlackOrgStatus(args: {
         connectUrl: null,
         defaultAgentName,
         agentOrgSlug,
+        scopeMismatch: null,
+        reinstallUrl: null,
       };
     }
 
@@ -99,6 +132,16 @@ export function zeroSlackOrgStatus(args: {
       .limit(1);
 
     if (!connection) {
+      const scopeFields = isAdmin
+        ? {
+            scopeMismatch: !hasAllBotScopes(installation.botScopes),
+            reinstallUrl: null as string | null,
+          }
+        : {
+            scopeMismatch: null as boolean | null,
+            reinstallUrl: null as string | null,
+          };
+
       return {
         isConnected: false,
         isInstalled: true,
@@ -108,8 +151,19 @@ export function zeroSlackOrgStatus(args: {
         connectUrl: null,
         defaultAgentName,
         agentOrgSlug,
+        ...scopeFields,
       };
     }
+
+    const scopeFields = isAdmin
+      ? {
+          scopeMismatch: !hasAllBotScopes(installation.botScopes),
+          reinstallUrl: null as string | null,
+        }
+      : {
+          scopeMismatch: null as boolean | null,
+          reinstallUrl: null as string | null,
+        };
 
     return {
       isConnected: true,
@@ -120,6 +174,7 @@ export function zeroSlackOrgStatus(args: {
       connectUrl: null,
       defaultAgentName,
       agentOrgSlug,
+      ...scopeFields,
     };
   });
 }

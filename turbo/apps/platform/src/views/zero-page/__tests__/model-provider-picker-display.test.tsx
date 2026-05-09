@@ -13,6 +13,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
@@ -26,7 +27,9 @@ import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
 } from "../../../mocks/handlers/api-org-model-providers.ts";
+import { resetMockOrgModelPolicies } from "../../../mocks/handlers/api-org-model-policies.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -87,6 +90,7 @@ async function openProfileTab() {
 describe("model-provider-picker - display with null value", () => {
   beforeEach(() => {
     resetMockOrgModelProviders();
+    resetMockOrgModelPolicies();
   });
 
   // MPKR-D-001: When value is null and default provider has a selectedModel,
@@ -182,5 +186,50 @@ describe("model-provider-picker - display with null value", () => {
         screen.getByRole("combobox", { name: "Inherit from org default" }),
       ).toBeInTheDocument();
     });
+  });
+
+  it("shows the model-policy workspace default when model-first is enabled with no providers", async () => {
+    setupMockAgent();
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+    setMockOrgModelProviders([]);
+
+    await openProfileTab();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("hides model-policy rows while inheriting and shows all rows after opting out", async () => {
+    const user = userEvent.setup();
+    setupMockAgent();
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+    setMockOrgModelProviders([]);
+
+    await openProfileTab();
+
+    const trigger = await waitFor(() => {
+      return screen.getByRole("combobox", { name: "Claude Sonnet 4.6" });
+    });
+    await user.click(trigger);
+
+    expect(screen.getByLabelText("Use workspace default model")).toBeChecked();
+    expect(screen.queryByText("Models")).not.toBeInTheDocument();
+    expect(screen.queryByText("DeepSeek V4 Pro")).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Use workspace default model"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Models")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Claude Opus 4.7")).toBeInTheDocument();
+    expect(screen.getAllByText("Claude Sonnet 4.6").length).toBeGreaterThan(1);
+    expect(screen.getByText("DeepSeek V4 Pro")).toBeInTheDocument();
   });
 });

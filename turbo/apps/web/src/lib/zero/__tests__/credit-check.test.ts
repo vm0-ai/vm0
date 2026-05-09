@@ -525,6 +525,18 @@ describe("checkOrgCreditsForRunAdmission (resolved provider LLM wrapper)", () =>
     ).resolves.toBeUndefined();
   });
 
+  it("returns the provider framework for admission routes", async () => {
+    await insertOrgDefaultModelProvider(user.orgId, "openai-api-key");
+    const admission = await resolveRunAdmissionContext({
+      orgId: user.orgId,
+      userId: user.userId,
+      composeFramework: "claude-code",
+    });
+
+    expect(admission.providerType).toBe("openai-api-key");
+    expect(admission.providerFramework).toBe("codex");
+  });
+
   it("throws when default provider is vm0 and member creditEnabled is false", async () => {
     await insertOrgDefaultModelProvider(user.orgId, "vm0");
     await setOrgCredits(user.orgId, 10000);

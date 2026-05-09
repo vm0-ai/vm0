@@ -55,12 +55,6 @@ interface CreateUsageReporterOptions {
   readonly getAuthToken: () => Promise<string | null>;
   readonly voiceChatSessionId: string;
   /**
-   * Path prefix under `apiBase` for the usage endpoint. Defaults to
-   * `/api/zero/voice-chat`; the candidate variant overrides to
-   * `/api/zero/voice-chat-candidate`.
-   */
-  readonly pathPrefix?: string;
-  /**
    * Fired exactly once when the server responds with
    * `{ creditsExhausted: true }` to any usage event. Subsequent events
    * still drain, but the callback is suppressed to avoid double-firing
@@ -75,13 +69,9 @@ const DEFAULT_PATH_PREFIX = "/api/zero/voice-chat";
 export function buildUsageEventUrl(
   apiBase: string,
   voiceChatSessionId: string,
-  pathPrefix: string = DEFAULT_PATH_PREFIX,
 ): string {
   const trimmedBase = apiBase.endsWith("/") ? apiBase.slice(0, -1) : apiBase;
-  const normalizedPrefix = pathPrefix.startsWith("/")
-    ? pathPrefix
-    : `/${pathPrefix}`;
-  return `${trimmedBase}${normalizedPrefix}/${voiceChatSessionId}/usage`;
+  return `${trimmedBase}${DEFAULT_PATH_PREFIX}/${voiceChatSessionId}/usage`;
 }
 
 interface ParsedResponseBody {
@@ -101,11 +91,7 @@ function isResponseBody(value: unknown): value is ParsedResponseBody {
 export function createUsageReporter(
   options: CreateUsageReporterOptions,
 ): UsageReporter {
-  const url = buildUsageEventUrl(
-    options.apiBase,
-    options.voiceChatSessionId,
-    options.pathPrefix,
-  );
+  const url = buildUsageEventUrl(options.apiBase, options.voiceChatSessionId);
   // Track every payload sent so the keepalive flush can re-emit them on
   // unload. Plan D accepts duplicate-on-unload reports because the
   // server-side idempotency-key uniqueness collapses replays at the DB.

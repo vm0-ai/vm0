@@ -4,6 +4,7 @@ import { createStore } from "ccstate";
 import { secrets } from "@vm0/db/schema/secret";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { mockOptionalEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
 import {
   zeroConnectorList,
@@ -47,6 +48,22 @@ describe("zeroConnectorList", () => {
 
     const sorted = [...list.configuredTypes].sort();
     expect(list.configuredTypes).toStrictEqual(sorted);
+  });
+
+  it("returns configuredTypes from OAuth and computer runtime env", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+
+    mockOptionalEnv("AIRTABLE_OAUTH_CLIENT_ID", "airtable-client-id");
+    mockOptionalEnv("AIRTABLE_OAUTH_CLIENT_SECRET", "airtable-client-secret");
+    mockOptionalEnv("NGROK_API_KEY", "ngrok-api-key");
+    mockOptionalEnv("NGROK_COMPUTER_CONNECTOR_DOMAIN", "computer.example.com");
+
+    const list = await store.get(zeroConnectorList({ orgId, userId }));
+
+    expect(list.configuredTypes).toContain("airtable");
+    expect(list.configuredTypes).toContain("computer");
+    expect(list.configuredTypes).toContain("amplitude");
   });
 });
 

@@ -58,9 +58,6 @@ const listModelPoliciesInner$ = command(
     if (!(await isModelPolicyEnabled(get, auth.orgId, auth.userId))) {
       return modelPoliciesDisabled;
     }
-    if (auth.orgRole !== "admin") {
-      return adminRequired;
-    }
 
     const body = await set(
       listOrgModelPolicies$,
