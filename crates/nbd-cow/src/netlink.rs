@@ -152,7 +152,7 @@ pub fn connect_device(
     attrs.extend_from_slice(&sockets_nla);
 
     let seq = send_genl_msg(&sock, family_id, NBD_CMD_CONNECT, &attrs)?;
-    recv_genl_ack(&sock, seq)?;
+    recv_genl_completion(&sock, seq)?;
 
     Ok(())
 }
@@ -193,7 +193,7 @@ pub fn disconnect(device_index: u32) -> Result<()> {
 
     let attrs = build_nla(NBD_ATTR_INDEX, &device_index.to_ne_bytes());
     let seq = send_genl_msg(&sock, family_id, NBD_CMD_DISCONNECT, &attrs)?;
-    recv_genl_ack(&sock, seq)?;
+    recv_genl_completion(&sock, seq)?;
 
     Ok(())
 }
@@ -516,18 +516,17 @@ fn parse_nl_msg(buf: &[u8], n: usize) -> Result<NlMsg> {
     Ok(NlMsg::Reply)
 }
 
-fn recv_genl_ack(sock: &GenlSocket, expected_seq: u32) -> Result<()> {
+fn recv_genl_completion(sock: &GenlSocket, expected_seq: u32) -> Result<()> {
     let mut buf = vec![0u8; 4096];
     let n = recv_nl_for_seq(sock, &mut buf, expected_seq)?;
-    parse_genl_ack(&buf, n)
+    parse_genl_completion(&buf, n)
 }
 
-fn parse_genl_ack(buf: &[u8], n: usize) -> Result<()> {
+fn parse_genl_completion(buf: &[u8], n: usize) -> Result<()> {
     match parse_nl_msg(buf, n)? {
-        NlMsg::Ack => Ok(()),
-        NlMsg::Reply => Err(NbdCowError::Netlink(
-            "expected netlink ACK, got reply".into(),
-        )),
+        // NBD connect returns a genetlink reply on success; other commands may
+        // complete with a netlink ACK. Non-zero NLMSG_ERROR is handled above.
+        NlMsg::Ack | NlMsg::Reply => Ok(()),
     }
 }
 
@@ -782,20 +781,20 @@ mod tests {
     }
 
     #[test]
-    fn parse_genl_ack_rejects_reply() {
+    fn parse_genl_completion_accepts_reply() {
         let msg = build_genl_msg(0x19, NBD_CMD_CONNECT, NBD_GENL_VERSION, &[], 44, false);
-        let result = parse_genl_ack(&msg, msg.len());
+        let result = parse_genl_completion(&msg, msg.len());
 
-        assert!(matches!(result, Err(NbdCowError::Netlink(_))));
+        assert!(result.is_ok());
     }
 
     #[test]
-    fn recv_genl_ack_ignores_stale_sequence() {
+    fn recv_genl_completion_ignores_stale_sequence() {
         let (sock, peer) = test_genl_socket_pair();
         send_test_nl(&peer, &nlmsg_error_msg(1, 0));
         send_test_nl(&peer, &nlmsg_error_msg(2, -libc::EBUSY));
 
-        let result = recv_genl_ack(&sock, 2);
+        let result = recv_genl_completion(&sock, 2);
 
         assert!(matches!(
             result,
@@ -804,12 +803,12 @@ mod tests {
     }
 
     #[test]
-    fn recv_genl_ack_ignores_stale_error_sequence() {
+    fn recv_genl_completion_ignores_stale_error_sequence() {
         let (sock, peer) = test_genl_socket_pair();
         send_test_nl(&peer, &nlmsg_error_msg(1, -libc::EBUSY));
         send_test_nl(&peer, &nlmsg_error_msg(2, 0));
 
-        let result = recv_genl_ack(&sock, 2);
+        let result = recv_genl_completion(&sock, 2);
 
         assert!(result.is_ok());
     }
