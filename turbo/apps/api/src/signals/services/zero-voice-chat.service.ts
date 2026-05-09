@@ -1,5 +1,8 @@
 import { computed, type Computed } from "ccstate";
-import type { VoiceChatSession } from "@vm0/api-contracts/contracts/zero-voice-chat";
+import type {
+  VoiceChatSession,
+  VoiceChatTask,
+} from "@vm0/api-contracts/contracts/zero-voice-chat";
 import { voiceChatSessions, voiceChatTasks } from "@vm0/db/schema/voice-chat";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 
@@ -74,6 +77,32 @@ export function voiceChatSessionDetail(
       .limit(1);
     return session ?? null;
   });
+}
+
+/**
+ * Map a `voice_chat_tasks` row to the contract-shaped `VoiceChatTask` DTO.
+ * Mirrors web's `serializeVoiceChatTask` in
+ * `apps/web/app/api/zero/voice-chat/_support.ts` so the contract -> row
+ * mapping has a single source of truth across the api migration.
+ */
+export function serializeVoiceChatTask(
+  task: typeof voiceChatTasks.$inferSelect,
+): VoiceChatTask {
+  return {
+    id: task.id,
+    sessionId: task.sessionId,
+    runId: task.runId,
+    callId: task.callId,
+    prompt: task.prompt,
+    status: task.status as VoiceChatTask["status"],
+    result: task.result,
+    resultUpdatedAt: task.resultUpdatedAt?.toISOString() ?? null,
+    assistantMessages: task.assistantMessages,
+    error: task.error,
+    createdAt: task.createdAt.toISOString(),
+    startedAt: task.startedAt?.toISOString() ?? null,
+    finishedAt: task.finishedAt?.toISOString() ?? null,
+  };
 }
 
 export function voiceChatTaskList(

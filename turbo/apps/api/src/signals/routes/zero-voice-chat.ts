@@ -12,6 +12,7 @@ import type { RouteEntry } from "../route";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   serializeVoiceChatSession,
+  serializeVoiceChatTask,
   voiceChatSessionList,
   voiceChatSessionDetail,
   voiceChatTaskList,
@@ -70,18 +71,31 @@ const getSessionInner$ = computed(async (get) => {
 
 const listTasksInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
+  const overrides = await get(
+    userFeatureSwitchOverrides(auth.orgId, auth.userId),
+  );
+  const enabled = isFeatureEnabled(FeatureSwitchKey.Trinity, {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    overrides,
+  });
+  if (!enabled) {
+    // Web pattern: collapse flag-disabled into 404 to avoid leaking
+    // session existence (contract does not declare 403 for listTasks).
+    return notFound("Voice-chat session not found");
+  }
   const params = get(pathParamsOf(zeroVoiceChatContract.listTasks));
-
-  // Verify the session exists and belongs to the user
   const session = await get(
     voiceChatSessionDetail(auth.orgId, auth.userId, params.id),
   );
   if (!session) {
     return notFound("Voice-chat session not found");
   }
-
   const tasks = await get(voiceChatTaskList(params.id));
-  return { status: 200 as const, body: { tasks } };
+  return {
+    status: 200 as const,
+    body: { tasks: tasks.map(serializeVoiceChatTask) },
+  };
 });
 
 export const zeroVoiceChatRoutes: readonly RouteEntry[] = [
@@ -104,12 +118,9 @@ export const zeroVoiceChatRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroVoiceChatContract.listTasks,
-    handler: shadowCompareRoute({
-      route: zeroVoiceChatContract.listTasks,
-      handler: authRoute(
-        { requireOrganization: true, missingOrganizationStatus: 401 },
-        listTasksInner$,
-      ),
-    }),
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      listTasksInner$,
+    ),
   },
 ];

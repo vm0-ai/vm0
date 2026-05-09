@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { voiceChatSessions } from "@vm0/db/schema/voice-chat";
+import { voiceChatSessions, voiceChatTasks } from "@vm0/db/schema/voice-chat";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { writeDb$ } from "../../../external/db";
@@ -59,6 +59,35 @@ export const seedVoiceChatFixture$ = command(
     }
 
     return { orgId, userId, sessionIds };
+  },
+);
+
+interface TaskSeed {
+  readonly status: "pending" | "queued" | "running" | "done" | "failed";
+  readonly finishedAt?: Date;
+}
+
+export const seedVoiceChatTask$ = command(
+  async (
+    { set },
+    sessionId: string,
+    values: TaskSeed,
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const writeDb = set(writeDb$);
+    const id = randomUUID();
+    await writeDb.insert(voiceChatTasks).values({
+      id,
+      sessionId,
+      callId: `call_${randomUUID()}`,
+      prompt: "test",
+      status: values.status,
+      ...(values.finishedAt !== undefined
+        ? { finishedAt: values.finishedAt }
+        : {}),
+    });
+    signal.throwIfAborted();
+    return id;
   },
 );
 
