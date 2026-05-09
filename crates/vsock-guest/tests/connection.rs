@@ -1953,12 +1953,19 @@ fn exec_captures_grandchild_output_before_drain_deadline() {
     let _ = handle.join();
 }
 
-/// Returns true iff `pid` is still a live (or zombie-but-unreaped) process
-/// the test owner has permission to signal. Implemented via `kill(pid, 0)`,
-/// the canonical existence check. After bash dies via SIGPIPE the kernel
-/// reaps it (we're not its parent — it was reparented to PID 1 when its
-/// process group died), so this transitions to false.
+/// Returns true iff `pid` is still running. Zombies have already terminated
+/// and may remain visible until PID 1 reaps them, so they are treated as not
+/// alive for cleanup assertions.
 fn pid_alive(pid: u32) -> bool {
+    if let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+        let state = stat
+            .rfind(')')
+            .and_then(|close| stat.get(close + 2..))
+            .and_then(|fields| fields.split_whitespace().next());
+        if state == Some("Z") {
+            return false;
+        }
+    }
     // SAFETY: `kill` with sig=0 is a no-op existence check.
     unsafe { libc::kill(pid as i32, 0) == 0 }
 }

@@ -498,19 +498,23 @@ fn run_bounded_exec<S>(
     {
         drain_cancel.store(true, Ordering::Release);
     }
+    // The direct child may have exited or been killed, but a descendant can
+    // still hold stdin open without reading it. Clean up any process still
+    // holding this exact stdin pipe before waiting for stdout/stderr drain.
+    //
+    // Do this even if the stdin writer already finished: pipe capacity is
+    // platform-dependent, so a small-enough stdin payload can be fully buffered
+    // while a daemonized descendant still leaks the read end.
+    if let Some(pipe_link) = stdin_worker
+        .as_ref()
+        .and_then(|worker| worker.pipe_link.as_deref())
+    {
+        kill_processes_holding_pipe(pipe_link);
+    }
     if stdin_worker
         .as_ref()
         .is_some_and(BoundedStdinWorker::is_pending)
     {
-        // The direct child may have exited or been killed, but a descendant can
-        // still hold stdin open without reading it. Clean up any process still
-        // holding this exact stdin pipe before waiting for stdout/stderr drain.
-        if let Some(pipe_link) = stdin_worker
-            .as_ref()
-            .and_then(|worker| worker.pipe_link.as_deref())
-        {
-            kill_processes_holding_pipe(pipe_link);
-        }
         stdin_cancel.store(true, Ordering::Release);
     }
     if matches!(
