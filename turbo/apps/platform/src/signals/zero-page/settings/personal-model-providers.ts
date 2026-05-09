@@ -11,7 +11,6 @@ import {
   type OrgModelPolicy,
   type SupportedRunModel,
   type ModelProviderType,
-  type ModelProviderResponse,
   type UpdateOrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
@@ -19,7 +18,6 @@ import {
   deletePersonalModelProvider$,
   personalModelProviders$,
   reloadPersonalModelProviders$,
-  setDefaultPersonalModelProvider$,
 } from "../../external/personal-model-providers.ts";
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { zeroClient$ } from "../../api-client.ts";
@@ -28,20 +26,8 @@ import {
   orgModelPolicies$,
   updateOrgModelPolicies$,
 } from "../../external/org-model-policies.ts";
-
-// ---------------------------------------------------------------------------
-// Add provider dialog (list of provider type cards)
-// ---------------------------------------------------------------------------
-
-const internalPersonalAddProviderDialogOpen$ = state(false);
-export const personalAddProviderDialogOpen$ = computed((get) => {
-  return get(internalPersonalAddProviderDialogOpen$);
-});
-export const setPersonalAddProviderDialogOpen$ = command(
-  ({ set }, open: boolean) => {
-    set(internalPersonalAddProviderDialogOpen$, open);
-  },
-);
+import { apiBaseForNavigation$ } from "../../fetch.ts";
+import { createDeferredPromise } from "../../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Codex auth.json paste dialog (personal scope, mirrors org-side dialog from
@@ -62,6 +48,7 @@ interface ModelPolicyRouteAfterPersonalAuth {
 
 const internalPersonalModelPolicyRouteAfterAuth$ =
   state<ModelPolicyRouteAfterPersonalAuth | null>(null);
+const internalPersonalDialogHideModelSelector$ = state(false);
 
 const internalCodexPasteDialogStatePersonal$ = state<CodexPasteDialogState>({
   open: false,
@@ -211,25 +198,10 @@ export const personalDialogState$ = computed((get) => {
 });
 
 export const personalDialogHideModelSelector$ = computed((get) => {
-  return get(internalPersonalModelPolicyRouteAfterAuth$) !== null;
-});
-
-// ---------------------------------------------------------------------------
-// Delete dialog state
-// ---------------------------------------------------------------------------
-
-interface DeleteDialogState {
-  open: boolean;
-  providerType: ModelProviderType | null;
-}
-
-const internalPersonalDeleteDialogState$ = state<DeleteDialogState>({
-  open: false,
-  providerType: null,
-});
-
-export const personalDeleteDialogState$ = computed((get) => {
-  return get(internalPersonalDeleteDialogState$);
+  return (
+    get(internalPersonalDialogHideModelSelector$) ||
+    get(internalPersonalModelPolicyRouteAfterAuth$) !== null
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -275,6 +247,38 @@ const internalPersonalActionPromise$ = state<Promise<unknown> | null>(null);
 export const personalActionPromise$ = computed((get) => {
   return get(internalPersonalActionPromise$);
 });
+
+const CODEX_OAUTH_AUTHORIZE_PATH =
+  "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize";
+const OAUTH_POPUP_CLOSED_POLL_MS = 500;
+
+function waitForOAuthPopupClosed(
+  authWindow: Window,
+  signal: AbortSignal,
+): Promise<void> {
+  const closed = createDeferredPromise<void>(signal);
+  const intervalId = window.setInterval(
+    checkClosed,
+    OAUTH_POPUP_CLOSED_POLL_MS,
+  );
+
+  function cleanup() {
+    window.clearInterval(intervalId);
+    signal.removeEventListener("abort", cleanup);
+  }
+
+  function checkClosed() {
+    if (authWindow.closed && !closed.settled()) {
+      cleanup();
+      closed.resolve();
+    }
+  }
+
+  signal.addEventListener("abort", cleanup, { once: true });
+  checkClosed();
+
+  return closed.promise;
+}
 
 function validatePersonalProviderForm(params: {
   providerType: ModelProviderType;
@@ -355,22 +359,14 @@ export const personalConfiguredProviders$ = computed(async (get) => {
   });
 });
 
-export const personalDefaultProvider$ = computed(async (get) => {
-  const providers = await get(personalConfiguredProviders$);
-  return (
-    providers.find((p) => {
-      return p.isDefault;
-    }) ?? null
-  );
-});
-
 // ---------------------------------------------------------------------------
 // Commands: dialog open/close
 // ---------------------------------------------------------------------------
 
-export const personalOpenAddDialog$ = command(
+export const personalOpenOAuthCredentialDialog$ = command(
   ({ set }, providerType: ModelProviderType) => {
     set(internalPersonalModelPolicyRouteAfterAuth$, null);
+    set(internalPersonalDialogHideModelSelector$, true);
     const defaultAuth = hasAuthMethods(providerType)
       ? (getDefaultAuthMethod(providerType) ?? "")
       : "";
@@ -383,32 +379,13 @@ export const personalOpenAddDialog$ = command(
       selectedModel: defaultModel,
       authMethod: defaultAuth,
       secrets: {},
-      useDefaultModel: !defaultModel,
+      useDefaultModel: true,
     });
     set(internalPersonalFormErrors$, {});
     set(internalPersonalDialogState$, {
       open: true,
       mode: "add",
       providerType,
-    });
-  },
-);
-
-export const personalOpenEditDialog$ = command(
-  ({ set }, provider: ModelProviderResponse) => {
-    set(internalPersonalModelPolicyRouteAfterAuth$, null);
-    set(internalPersonalFormValues$, {
-      secret: "",
-      selectedModel: provider.selectedModel ?? "",
-      authMethod: provider.authMethod ?? "",
-      secrets: {},
-      useDefaultModel: !provider.selectedModel,
-    });
-    set(internalPersonalFormErrors$, {});
-    set(internalPersonalDialogState$, {
-      open: true,
-      mode: "edit",
-      providerType: provider.type,
     });
   },
 );
@@ -420,6 +397,7 @@ export const personalCloseDialog$ = command(({ set }) => {
     providerType: null,
   });
   set(internalPersonalModelPolicyRouteAfterAuth$, null);
+  set(internalPersonalDialogHideModelSelector$, false);
   set(internalPersonalFormValues$, {
     secret: "",
     selectedModel: "",
@@ -568,8 +546,8 @@ export const personalSubmitDialog$ = command(
         mode: "add",
         providerType: null,
       });
-      set(internalPersonalAddProviderDialogOpen$, false);
       set(internalPersonalModelPolicyRouteAfterAuth$, null);
+      set(internalPersonalDialogHideModelSelector$, false);
       set(internalPersonalFormValues$, {
         secret: "",
         selectedModel: "",
@@ -590,42 +568,15 @@ export const personalSubmitDialog$ = command(
   },
 );
 
-// ---------------------------------------------------------------------------
-// Commands: delete
-// ---------------------------------------------------------------------------
-
-export const personalOpenDeleteDialog$ = command(
-  ({ set }, providerType: ModelProviderType) => {
-    set(internalPersonalDeleteDialogState$, { open: true, providerType });
-  },
-);
-
-export const personalCloseDeleteDialog$ = command(({ set }) => {
-  set(internalPersonalDeleteDialogState$, {
-    open: false,
-    providerType: null,
-  });
-});
-
-export const personalConfirmDelete$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const deleteState = get(internalPersonalDeleteDialogState$);
-    if (!deleteState.providerType) {
-      return;
-    }
-
-    const providerType = deleteState.providerType;
+export const disconnectPersonalOAuthCredential$ = command(
+  async ({ set }, providerType: ModelProviderType, signal: AbortSignal) => {
     const providerLabel =
       MODEL_PROVIDER_TYPES[providerType]?.label ?? providerType;
 
     const promise = (async () => {
       await set(deletePersonalModelProvider$, providerType, signal);
       signal.throwIfAborted();
-      toast.success(`${providerLabel} removed successfully`);
-      set(internalPersonalDeleteDialogState$, {
-        open: false,
-        providerType: null,
-      });
+      toast.success(`${providerLabel} disconnected`);
     })();
 
     set(internalPersonalActionPromise$, promise);
@@ -638,18 +589,24 @@ export const personalConfirmDelete$ = command(
   },
 );
 
-// ---------------------------------------------------------------------------
-// Commands: set default provider
-// ---------------------------------------------------------------------------
-
-export const personalSetDefaultProvider$ = command(
-  async ({ set }, type: ModelProviderType, signal: AbortSignal) => {
-    const providerLabel = MODEL_PROVIDER_TYPES[type]?.label ?? type;
+export const connectPersonalCodexOAuth$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const apiBase = await get(apiBaseForNavigation$);
+    signal.throwIfAborted();
 
     const promise = (async () => {
-      await set(setDefaultPersonalModelProvider$, type, signal);
+      const authWindow = window.open(
+        `${apiBase}${CODEX_OAUTH_AUTHORIZE_PATH}`,
+        "_blank",
+        "width=600,height=700",
+      );
+      if (!authWindow) {
+        throw new Error("Failed to open OpenAI OAuth window");
+      }
+
+      await waitForOAuthPopupClosed(authWindow, signal);
       signal.throwIfAborted();
-      toast.success(`${providerLabel} set as your personal default`);
+      set(reloadPersonalModelProviders$);
     })();
 
     set(internalPersonalActionPromise$, promise);

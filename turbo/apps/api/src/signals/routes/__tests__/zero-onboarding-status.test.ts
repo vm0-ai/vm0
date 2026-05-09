@@ -4,10 +4,11 @@ import { onboardingStatusContract } from "@vm0/api-contracts/contracts/onboardin
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import {
   deleteOnboardingStatusOrg$,
+  seedCrossOrgDefaultAgent$,
   seedOnboardingStatusOrg$,
+  seedOrphanDefaultAgent$,
   type OnboardingStatusFixture,
 } from "./helpers/zero-onboarding-status";
 import {
@@ -24,9 +25,18 @@ describe("GET /api/zero/onboarding/status", () => {
     return store.set(deleteOnboardingStatusOrg$, fixture, context.signal);
   });
 
+  it("returns 401 when the request is unauthenticated", async () => {
+    const client = setupApp({ context })(onboardingStatusContract);
+
+    const response = await accept(client.getStatus({ headers: {} }), [401]);
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("returns onboarding required when the session has no active org", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
-    mockApiShadowCompareRoutes([onboardingStatusContract.getStatus]);
 
     const client = setupApp({ context })(onboardingStatusContract);
 
@@ -52,7 +62,6 @@ describe("GET /api/zero/onboarding/status", () => {
       store.set(seedOnboardingStatusOrg$, {}, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    mockApiShadowCompareRoutes([onboardingStatusContract.getStatus]);
 
     const client = setupApp({ context })(onboardingStatusContract);
 
@@ -73,22 +82,188 @@ describe("GET /api/zero/onboarding/status", () => {
     });
   });
 
-  it("returns completed onboarding with default agent metadata", async () => {
+  it("returns completed onboarding for admin with default agent and no metadata", async () => {
+    const fixture = await track(
+      store.set(
+        seedOnboardingStatusOrg$,
+        {
+          defaultAgent: {},
+          onboardingDone: true,
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(onboardingStatusContract);
+
+    const response = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      needsOnboarding: false,
+      isAdmin: true,
+      hasOrg: true,
+      hasDefaultAgent: true,
+      defaultAgentId: fixture.composeId,
+      defaultAgentMetadata: null,
+    });
+  });
+
+  it("returns default agent metadata when the compose has metadata", async () => {
     const fixture = await track(
       store.set(
         seedOnboardingStatusOrg$,
         {
           defaultAgent: {
-            displayName: "Support",
-            description: "Handles customer questions",
+            displayName: "My Agent",
+            sound: "friendly",
           },
           onboardingDone: true,
         },
         context.signal,
       ),
     );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(onboardingStatusContract);
+
+    const response = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      needsOnboarding: false,
+      isAdmin: true,
+      hasOrg: true,
+      hasDefaultAgent: true,
+      defaultAgentId: fixture.composeId,
+      defaultAgentMetadata: { displayName: "My Agent", sound: "friendly" },
+    });
+  });
+
+  it("returns needsOnboarding=true for admin with default agent but onboarding not completed", async () => {
+    const fixture = await track(
+      store.set(
+        seedOnboardingStatusOrg$,
+        {
+          defaultAgent: {},
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(onboardingStatusContract);
+
+    const response = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      needsOnboarding: true,
+      isAdmin: true,
+      hasOrg: true,
+      hasDefaultAgent: true,
+      defaultAgentId: fixture.composeId,
+      defaultAgentMetadata: null,
+    });
+  });
+
+  it("returns needsOnboarding=true for non-admin member who has not completed onboarding", async () => {
+    const fixture = await track(
+      store.set(seedOnboardingStatusOrg$, {}, context.signal),
+    );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    mockApiShadowCompareRoutes([onboardingStatusContract.getStatus]);
+
+    const client = setupApp({ context })(onboardingStatusContract);
+
+    const response = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      needsOnboarding: true,
+      isAdmin: false,
+      hasOrg: true,
+      hasDefaultAgent: false,
+      defaultAgentId: null,
+      defaultAgentMetadata: null,
+    });
+  });
+
+  it("treats orphan compose (missing zero_agents row) as no default agent", async () => {
+    const fixture = await track(
+      store.set(seedOrphanDefaultAgent$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(onboardingStatusContract);
+
+    const response = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      needsOnboarding: true,
+      isAdmin: true,
+      hasOrg: true,
+      hasDefaultAgent: false,
+      defaultAgentId: null,
+      defaultAgentMetadata: null,
+    });
+  });
+
+  it("ignores a default agent row from another org", async () => {
+    const fixture = await track(
+      store.set(seedCrossOrgDefaultAgent$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(onboardingStatusContract);
+
+    const response = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      needsOnboarding: true,
+      isAdmin: true,
+      hasOrg: true,
+      hasDefaultAgent: false,
+      defaultAgentId: null,
+      defaultAgentMetadata: null,
+    });
+  });
+
+  it("returns needsOnboarding=false for non-admin member after completing onboarding", async () => {
+    const fixture = await track(
+      store.set(
+        seedOnboardingStatusOrg$,
+        { onboardingDone: true },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const client = setupApp({ context })(onboardingStatusContract);
 
@@ -103,12 +278,9 @@ describe("GET /api/zero/onboarding/status", () => {
       needsOnboarding: false,
       isAdmin: false,
       hasOrg: true,
-      hasDefaultAgent: true,
-      defaultAgentId: fixture.composeId,
-      defaultAgentMetadata: {
-        displayName: "Support",
-        description: "Handles customer questions",
-      },
+      hasDefaultAgent: false,
+      defaultAgentId: null,
+      defaultAgentMetadata: null,
     });
   });
 });

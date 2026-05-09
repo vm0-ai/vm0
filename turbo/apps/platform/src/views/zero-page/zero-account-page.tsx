@@ -28,6 +28,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   preferencesTab$,
   setPreferencesTab$,
+  type PreferencesTab,
   updateSendMode$,
   pendingSendMode$,
   captureNetworkBodiesRemaining$,
@@ -51,10 +52,10 @@ function AppearanceSettings() {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm max-md:text-[16px] text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         Choose how the interface looks.
       </p>
-      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border max-md:flex-wrap max-md:gap-3">
+      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
             <IconPalette
@@ -65,17 +66,12 @@ function AppearanceSettings() {
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-sm max-md:text-[16px] font-medium text-foreground">
-            Theme
-          </div>
-          <div className="text-sm max-md:text-[16px] text-muted-foreground max-md:leading-snug">
+          <div className="text-sm font-medium text-foreground">Theme</div>
+          <div className="text-sm text-muted-foreground">
             Your preferred color scheme
           </div>
         </div>
-        {/* Mobile: `basis-full` forces the segmented control to wrap to its
-            own row so 3 buttons split the card width into thirds instead of
-            crowding the description. */}
-        <div className="flex gap-2 shrink-0 max-md:basis-full max-md:gap-2">
+        <div className="flex gap-2 shrink-0">
           {THEME_OPTIONS.map(({ value, label, icon: Icon }) => {
             return (
               <button
@@ -87,7 +83,6 @@ function AppearanceSettings() {
                 }}
                 className={cn(
                   "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  "max-md:flex-1 max-md:justify-center max-md:h-11 max-md:px-2 max-md:text-[14px]",
                   currentPref === value
                     ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
                     : "zero-chip text-muted-foreground hover:text-foreground",
@@ -123,10 +118,10 @@ function SendModeSettings() {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm max-md:text-[16px] text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         Choose how to send messages in chat.
       </p>
-      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border max-md:flex-wrap max-md:gap-3">
+      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
             <IconKeyboard
@@ -137,18 +132,16 @@ function SendModeSettings() {
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-sm max-md:text-[16px] font-medium text-foreground">
+          <div className="text-sm font-medium text-foreground">
             Send message with
           </div>
-          <div className="text-sm max-md:text-[16px] text-muted-foreground max-md:leading-snug">
+          <div className="text-sm text-muted-foreground">
             {(saving ?? current) === "enter"
               ? "Press Enter to send, Shift+Enter for new line"
               : "Press ⌘/Ctrl+Enter to send, Enter for new line"}
           </div>
         </div>
-        {/* Mobile: segmented control wraps below the icon+text row and the
-            two buttons split the width 50/50. */}
-        <div className="flex gap-2 shrink-0 max-md:basis-full max-md:gap-2">
+        <div className="flex gap-2 shrink-0">
           {SEND_OPTIONS.map(({ value, label }) => {
             const isActive =
               saving === value ? true : saving === null && current === value;
@@ -163,7 +156,6 @@ function SendModeSettings() {
                 }}
                 className={cn(
                   "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  "max-md:flex-1 max-md:justify-center max-md:h-11 max-md:px-2 max-md:text-[14px]",
                   isActive
                     ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
                     : "zero-chip text-muted-foreground hover:text-foreground",
@@ -205,7 +197,7 @@ function CaptureNetworkBodiesSettings() {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm max-md:text-[16px] text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         Capture HTTP request headers and bodies in network logs for debugging.
       </p>
       <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
@@ -215,10 +207,10 @@ function CaptureNetworkBodiesSettings() {
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-sm max-md:text-[16px] font-medium text-foreground">
+          <div className="text-sm font-medium text-foreground">
             Capture network bodies
           </div>
-          <div className="text-sm max-md:text-[16px] text-muted-foreground">
+          <div className="text-sm text-muted-foreground">
             {enabled
               ? `Enabled for the next ${remaining} run${remaining === 1 ? "" : "s"}`
               : "Disabled"}
@@ -234,12 +226,33 @@ function CaptureNetworkBodiesSettings() {
   );
 }
 
+function resolveVisiblePreferencesTab(
+  tab: PreferencesTab,
+  {
+    showDebug,
+    showModelConfiguration,
+  }: { showDebug: boolean; showModelConfiguration: boolean },
+): PreferencesTab {
+  if (tab === "debug" && !showDebug) {
+    return "appearance";
+  }
+  if (tab === "model-configuration" && !showModelConfiguration) {
+    return "appearance";
+  }
+  return tab;
+}
+
 export function ZeroPreferencesPage() {
   const features = useLastResolved(featureSwitch$);
   const showDebug = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
-  const showPersonal =
-    features?.[FeatureSwitchKey.PersonalModelProvider] ?? false;
+  const showModelConfiguration =
+    (features?.[FeatureSwitchKey.PersonalModelProvider] ?? false) ||
+    (features?.[FeatureSwitchKey.ModelFirstModelProvider] ?? false);
   const tab = useGet(preferencesTab$);
+  const activeTab = resolveVisiblePreferencesTab(tab, {
+    showDebug,
+    showModelConfiguration,
+  });
   const setTab = useSet(setPreferencesTab$);
 
   return (
@@ -255,19 +268,15 @@ export function ZeroPreferencesPage() {
         </div>
       </header>
 
-      <main className="shrink-0 px-4 sm:px-6 pt-2 md:pt-3 pb-16">
+      <main className="shrink-0 px-4 sm:px-6 pt-3 pb-16">
         <div className="mx-auto max-w-[900px] flex flex-col gap-8">
           <Tabs
-            value={tab}
+            value={activeTab}
             onValueChange={(v) => {
               return setTab(v);
             }}
           >
-            <TabsList
-              className={`zero-tabs h-9 gap-1 px-1 py-1 w-full md:w-auto md:inline-flex grid ${
-                showDebug ? "grid-cols-3" : "grid-cols-2"
-              }`}
-            >
+            <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
               <TabsTrigger
                 value="appearance"
                 className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
@@ -278,14 +287,14 @@ export function ZeroPreferencesPage() {
                 value="timezone"
                 className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
               >
-                Time Zone
+                Time zone
               </TabsTrigger>
-              {showPersonal && (
+              {showModelConfiguration && (
                 <TabsTrigger
-                  value="personal-providers"
+                  value="model-configuration"
                   className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
                 >
-                  Model providers
+                  Personal models
                 </TabsTrigger>
               )}
               {showDebug && (
@@ -299,17 +308,16 @@ export function ZeroPreferencesPage() {
             </TabsList>
 
             <div className="mt-4">
-              {tab === "appearance" && (
+              {activeTab === "appearance" && (
                 <div className="flex flex-col gap-6">
                   <AppearanceSettings />
                   <SendModeSettings />
                 </div>
               )}
-              {tab === "timezone" && <TimezoneSettings />}
-              {tab === "personal-providers" && showPersonal && (
-                <PersonalProvidersTab />
-              )}
-              {tab === "debug" && showDebug && (
+              {activeTab === "timezone" && <TimezoneSettings />}
+              {activeTab === "model-configuration" &&
+                showModelConfiguration && <PersonalProvidersTab />}
+              {activeTab === "debug" && showDebug && (
                 <div className="flex flex-col gap-6">
                   <CaptureNetworkBodiesSettings />
                 </div>

@@ -53,6 +53,7 @@ type ExtractedPreviewUrl = {
 const TEXT_PREVIEW_MAX_BYTES = 65_536;
 const PLATFORM_FILE_PATH_PATTERN = /^\/f\/[^/]+\/[^/]+\/[^/]+$/;
 const PLATFORM_FILE_HOST_SUFFIXES = ["vm0.ai", "vm6.ai", "vm7.ai"] as const;
+const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/f\/)[^\s<>"'()（）【】《》「」『』“”‘’，。；：！？、]+`;
 
 // ---------------------------------------------------------------------------
 // classifyChatAttachment helpers
@@ -333,9 +334,9 @@ function trimPreviewUrl(value: string): string {
 function extractPreviewUrlFromLine(line: string): ExtractedPreviewUrl | null {
   const candidate = stripMarkdownLineDecorations(line);
   const markdownLinkMatch = candidate.match(
-    /^\[([^\]]+)\]\((https?:\/\/[^)\s]+|\/f\/[^)\s]+)\)$/,
+    new RegExp(String.raw`^\[([^\]]+)\]\((${URL_TOKEN_PATTERN})\)$`),
   );
-  const bareUrlMatch = candidate.match(/^(https?:\/\/\S+|\/f\/\S+)$/);
+  const bareUrlMatch = candidate.match(new RegExp(`^(${URL_TOKEN_PATTERN})$`));
   if (markdownLinkMatch?.[2]) {
     return {
       url: trimPreviewUrl(markdownLinkMatch[2]),
@@ -350,7 +351,7 @@ function extractPreviewUrlFromLine(line: string): ExtractedPreviewUrl | null {
   }
 
   const urls = Array.from(
-    candidate.matchAll(/(?:https?:\/\/|\/f\/)[^\s<>"']+/g),
+    candidate.matchAll(new RegExp(URL_TOKEN_PATTERN, "g")),
     (match) => {
       return trimPreviewUrl(match[0]);
     },

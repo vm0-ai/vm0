@@ -19,7 +19,11 @@ use std::panic::AssertUnwindSafe;
 use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
-use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory, SandboxId, SpawnOutputMode};
+use sandbox::{
+    BoundedExecCapturePolicy, BoundedExecOutput, BoundedExecOutputRequest, BoundedExecRequest,
+    BoundedExecTermination, ExecRequest, Sandbox, SandboxConfig, SandboxFactory, SandboxId,
+    SpawnOutputMode,
+};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -33,6 +37,14 @@ const EXIT_SIGKILL: i32 = 137;
 const EXIT_SIGNAL_KILL: i32 = 9;
 /// Default timeout for guest commands (5 minutes).
 const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
+const EXEC_ERROR_OUTPUT_PREVIEW_BYTES: usize = 8 * 1024;
+
+fn capture_bounded_output(limit_bytes: u32) -> BoundedExecOutputRequest {
+    BoundedExecOutputRequest {
+        capture: BoundedExecCapturePolicy::Capture { limit_bytes },
+        stream: None,
+    }
+}
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
@@ -646,23 +658,43 @@ async fn run_in_sandbox(
     if !cancel.is_cancelled()
         && (exit.exit_code == EXIT_SIGKILL || exit.exit_code == EXIT_SIGNAL_KILL)
     {
-        let dmesg_req = ExecRequest {
+        let dmesg_req = BoundedExecRequest {
             cmd: "dmesg | tail -20 2>/dev/null",
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: true,
+            stdin: None,
+            stdout: capture_bounded_output(64 * 1024),
+            stderr: capture_bounded_output(8 * 1024),
         };
-        match sandbox.exec(&dmesg_req).await {
-            Ok(dmesg) if dmesg_indicates_oom(&String::from_utf8_lossy(&dmesg.stdout)) => {
-                warn!(run_id = %context.run_id, "OOM kill detected via dmesg");
-                // Return exit code 1 with descriptive message instead of raw 137,
-                // so callers see a clear error rather than an opaque signal code.
-                return Ok((1, Some("Agent process killed by OOM killer".into())));
+        match sandbox.bounded_exec(&dmesg_req).await {
+            Ok(dmesg)
+                if matches!(
+                    dmesg.termination,
+                    BoundedExecTermination::Exited { exit_code: 0 }
+                ) =>
+            {
+                let (stdout, stdout_truncated) = bounded_exec_captured_output(&dmesg.stdout);
+                if stdout_truncated {
+                    warn!(run_id = %context.run_id, "dmesg OOM check output was truncated");
+                }
+                if dmesg_indicates_oom(&String::from_utf8_lossy(stdout)) {
+                    warn!(run_id = %context.run_id, "OOM kill detected via dmesg");
+                    // Return exit code 1 with descriptive message instead of raw 137,
+                    // so callers see a clear error rather than an opaque signal code.
+                    return Ok((1, Some("Agent process killed by OOM killer".into())));
+                }
+            }
+            Ok(dmesg) => {
+                warn!(
+                    run_id = %context.run_id,
+                    termination = ?dmesg.termination,
+                    "dmesg OOM check did not complete successfully"
+                );
             }
             Err(e) => {
-                warn!(run_id = %context.run_id, error = %e, "failed to exec dmesg for OOM check");
+                warn!(run_id = %context.run_id, error = %e, "failed to run dmesg for OOM check");
             }
-            _ => {}
         }
     }
 
@@ -700,17 +732,33 @@ async fn read_guest_error_file(sandbox: &dyn Sandbox, run_id: RunId) -> Option<S
     let error_path = format!("/tmp/vm0-checkpoint-error-{run_id}");
     let cat_cmd = format!("cat {error_path} 2>/dev/null");
     match sandbox
-        .exec(&ExecRequest {
+        .bounded_exec(&BoundedExecRequest {
             cmd: &cat_cmd,
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
+            stdin: None,
+            stdout: capture_bounded_output(16 * 1024),
+            stderr: capture_bounded_output(4 * 1024),
         })
         .await
     {
-        Ok(result) if result.exit_code == 0 && !result.stdout.is_empty() => {
-            let msg = String::from_utf8_lossy(&result.stdout).trim().to_string();
+        Ok(result)
+            if matches!(
+                result.termination,
+                BoundedExecTermination::Exited { exit_code: 0 }
+            ) && {
+                let (stdout, stdout_truncated) = bounded_exec_captured_output(&result.stdout);
+                !stdout.is_empty() && !stdout_truncated
+            } =>
+        {
+            let (stdout, _) = bounded_exec_captured_output(&result.stdout);
+            let msg = String::from_utf8_lossy(stdout).trim().to_string();
             Some(msg).filter(|s| !s.is_empty())
+        }
+        Ok(result) if bounded_exec_output_truncated(&result.stdout) => {
+            warn!(run_id = %run_id, path = %error_path, "guest checkpoint error file was truncated");
+            None
         }
         _ => None,
     }
@@ -728,17 +776,33 @@ async fn read_guest_session_id(sandbox: &dyn Sandbox, run_id: RunId) -> Option<S
     let path = format!("/tmp/vm0-session-{run_id}.txt");
     let cmd = format!("cat {path} 2>/dev/null");
     match sandbox
-        .exec(&ExecRequest {
+        .bounded_exec(&BoundedExecRequest {
             cmd: &cmd,
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
+            stdin: None,
+            stdout: capture_bounded_output(4 * 1024),
+            stderr: capture_bounded_output(4 * 1024),
         })
         .await
     {
-        Ok(result) if result.exit_code == 0 && !result.stdout.is_empty() => {
-            let id = String::from_utf8_lossy(&result.stdout).trim().to_string();
+        Ok(result)
+            if matches!(
+                result.termination,
+                BoundedExecTermination::Exited { exit_code: 0 }
+            ) && {
+                let (stdout, stdout_truncated) = bounded_exec_captured_output(&result.stdout);
+                !stdout.is_empty() && !stdout_truncated
+            } =>
+        {
+            let (stdout, _) = bounded_exec_captured_output(&result.stdout);
+            let id = String::from_utf8_lossy(stdout).trim().to_string();
             Some(id).filter(|s| !s.is_empty())
+        }
+        Ok(result) if bounded_exec_output_truncated(&result.stdout) => {
+            warn!(run_id = %run_id, path = %path, "guest session id file was truncated");
+            None
         }
         _ => None,
     }
@@ -748,6 +812,81 @@ async fn read_guest_session_id(sandbox: &dyn Sandbox, run_id: RunId) -> Option<S
 fn dmesg_indicates_oom(stdout: &str) -> bool {
     let lower = stdout.to_lowercase();
     lower.contains("out of memory") || lower.contains("oom-kill") || lower.contains("oom_reaper")
+}
+
+fn describe_bounded_exec_termination(termination: BoundedExecTermination) -> &'static str {
+    match termination {
+        BoundedExecTermination::Exited { .. } => "exited",
+        BoundedExecTermination::TimedOut => "timed out",
+        BoundedExecTermination::Cancelled => "cancelled",
+        BoundedExecTermination::StartFailed => "start failed",
+        BoundedExecTermination::WaitFailed => "wait failed",
+    }
+}
+
+fn bounded_exec_captured_output(output: &BoundedExecOutput) -> (&[u8], bool) {
+    match output {
+        BoundedExecOutput::Captured { bytes, truncated } => (bytes.as_slice(), *truncated),
+        BoundedExecOutput::Discarded => (&[], false),
+    }
+}
+
+fn bounded_exec_output_truncated(output: &BoundedExecOutput) -> bool {
+    match output {
+        BoundedExecOutput::Captured { truncated, .. } => *truncated,
+        BoundedExecOutput::Discarded => false,
+    }
+}
+
+fn bounded_exec_outputs_truncated(stdout: &BoundedExecOutput, stderr: &BoundedExecOutput) -> bool {
+    bounded_exec_output_truncated(stdout) || bounded_exec_output_truncated(stderr)
+}
+
+fn bounded_exec_output_summary(stdout: &BoundedExecOutput, stderr: &BoundedExecOutput) -> String {
+    let (stdout, _) = bounded_exec_captured_output(stdout);
+    let (stderr, _) = bounded_exec_captured_output(stderr);
+    bounded_exec_bytes_summary(stdout, stderr)
+}
+
+fn bounded_exec_bytes_summary(stdout: &[u8], stderr: &[u8]) -> String {
+    let stderr = bounded_exec_output_preview(stderr);
+    let stdout = bounded_exec_output_preview(stdout);
+    match (stdout.is_empty(), stderr.is_empty()) {
+        (true, true) => String::new(),
+        (false, false) => format!(": stderr: {stderr}; stdout: {stdout}"),
+        (true, false) => format!(": {stderr}"),
+        (false, true) => format!(": {}", stdout),
+    }
+}
+
+fn bounded_exec_output_preview(output: &[u8]) -> String {
+    let output = redact_http_url_queries(String::from_utf8_lossy(output).trim());
+    if output.len() <= EXEC_ERROR_OUTPUT_PREVIEW_BYTES {
+        return output;
+    }
+
+    let mut end = EXEC_ERROR_OUTPUT_PREVIEW_BYTES;
+    while !output.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...", &output[..end])
+}
+
+fn redact_http_url_queries(input: &str) -> String {
+    input
+        .split_whitespace()
+        .map(|token| {
+            let Some(scheme_pos) = token.find("https://").or_else(|| token.find("http://")) else {
+                return token.to_string();
+            };
+            let Some(query_rel) = token[scheme_pos..].find('?') else {
+                return token.to_string();
+            };
+            let query_pos = scheme_pos + query_rel;
+            format!("{}?[redacted]", &token[..query_pos])
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Check host dmesg for a cgroup OOM kill of a specific firecracker process.
@@ -897,14 +1036,33 @@ pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
             .as_secs_f64()
     );
     let date_cmd = format!("date -s \"@{timestamp}\"");
-    sandbox
-        .exec(&ExecRequest {
+    let result = sandbox
+        .bounded_exec(&BoundedExecRequest {
             cmd: &date_cmd,
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
             sudo: true,
+            stdin: None,
+            stdout: capture_bounded_output(4 * 1024),
+            stderr: capture_bounded_output(16 * 1024),
         })
         .await?;
+    match result.termination {
+        BoundedExecTermination::Exited { exit_code: 0 } => {}
+        BoundedExecTermination::Exited { exit_code } => {
+            return Err(RunnerError::Internal(format!(
+                "guest clock sync failed (exit code {exit_code}){}",
+                bounded_exec_output_summary(&result.stdout, &result.stderr)
+            )));
+        }
+        termination => {
+            return Err(RunnerError::Internal(format!(
+                "guest clock sync failed ({}){}",
+                describe_bounded_exec_termination(termination),
+                bounded_exec_output_summary(&result.stdout, &result.stderr)
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -928,20 +1086,32 @@ pub(crate) async fn reseed_guest_entropy(sandbox: &dyn Sandbox) -> RunnerResult<
 
     let hex = hex::encode(&entropy);
     let result = sandbox
-        .exec(&ExecRequest {
+        .bounded_exec(&BoundedExecRequest {
             cmd: &format!("guest-reseed {hex}"),
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
             sudo: true,
+            stdin: None,
+            stdout: capture_bounded_output(4 * 1024),
+            stderr: capture_bounded_output(16 * 1024),
         })
         .await?;
 
-    if result.exit_code != 0 {
-        let stderr = String::from_utf8_lossy(&result.stderr);
-        return Err(RunnerError::Internal(format!(
-            "guest-reseed failed (exit code {}): {stderr}",
-            result.exit_code
-        )));
+    match result.termination {
+        BoundedExecTermination::Exited { exit_code: 0 } => {}
+        BoundedExecTermination::Exited { exit_code } => {
+            return Err(RunnerError::Internal(format!(
+                "guest-reseed failed (exit code {exit_code}){}",
+                bounded_exec_output_summary(&result.stdout, &result.stderr)
+            )));
+        }
+        termination => {
+            return Err(RunnerError::Internal(format!(
+                "guest-reseed failed ({}){}",
+                describe_bounded_exec_termination(termination),
+                bounded_exec_output_summary(&result.stdout, &result.stderr)
+            )));
+        }
     }
 
     Ok(())
@@ -979,16 +1149,49 @@ async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) 
          echo 'TZ={tz}' >> /etc/environment"
     );
     // Best-effort: don't fail the run if timezone setup fails.
-    if let Err(e) = sandbox
-        .exec(&ExecRequest {
+    match sandbox
+        .bounded_exec(&BoundedExecRequest {
             cmd: &cmd,
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
             sudo: true,
+            stdin: None,
+            stdout: capture_bounded_output(4 * 1024),
+            stderr: capture_bounded_output(16 * 1024),
         })
         .await
     {
-        tracing::warn!(tz = %tz, error = %e, "failed to set guest timezone");
+        Ok(result)
+            if matches!(
+                result.termination,
+                BoundedExecTermination::Exited { exit_code: 0 }
+            ) =>
+        {
+            let stdout_truncated = bounded_exec_output_truncated(&result.stdout);
+            let stderr_truncated = bounded_exec_output_truncated(&result.stderr);
+            if stdout_truncated || stderr_truncated {
+                tracing::warn!(
+                    tz = %tz,
+                    stdout_truncated,
+                    stderr_truncated,
+                    "guest timezone setup output was truncated"
+                );
+            }
+        }
+        Ok(result) => {
+            let stdout_truncated = bounded_exec_output_truncated(&result.stdout);
+            let stderr_truncated = bounded_exec_output_truncated(&result.stderr);
+            tracing::warn!(
+                tz = %tz,
+                termination = ?result.termination,
+                stdout_truncated,
+                stderr_truncated,
+                "failed to set guest timezone"
+            );
+        }
+        Err(e) => {
+            tracing::warn!(tz = %tz, error = %e, "failed to set guest timezone");
+        }
     }
 }
 
@@ -1122,19 +1325,55 @@ async fn download_storages(
     let download_env = guest_download_env(&run_id);
     info!(run_id = %context.run_id, "downloading storages");
     let result = sandbox
-        .exec(&ExecRequest {
+        .bounded_exec(&BoundedExecRequest {
             cmd: &download_cmd,
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &download_env,
             sudo: false,
+            stdin: None,
+            stdout: capture_bounded_output(1024 * 1024),
+            stderr: capture_bounded_output(1024 * 1024),
         })
         .await?;
 
-    if result.exit_code != 0 {
-        return Err(RunnerError::Internal(format!(
-            "storage download failed (exit code {})",
-            result.exit_code
-        )));
+    match result.termination {
+        BoundedExecTermination::Exited { exit_code: 0 } => {
+            // Truncated output only means diagnostics were clipped; the
+            // command exit status remains the success source of truth.
+            let stdout_truncated = bounded_exec_output_truncated(&result.stdout);
+            let stderr_truncated = bounded_exec_output_truncated(&result.stderr);
+            if stdout_truncated || stderr_truncated {
+                warn!(
+                    run_id = %context.run_id,
+                    stdout_truncated,
+                    stderr_truncated,
+                    "storage download output was truncated"
+                );
+            }
+        }
+        BoundedExecTermination::Exited { exit_code } => {
+            let truncated = if bounded_exec_outputs_truncated(&result.stdout, &result.stderr) {
+                " (output truncated)"
+            } else {
+                ""
+            };
+            return Err(RunnerError::Internal(format!(
+                "storage download failed (exit code {exit_code}){truncated}{}",
+                bounded_exec_output_summary(&result.stdout, &result.stderr)
+            )));
+        }
+        termination => {
+            let truncated = if bounded_exec_outputs_truncated(&result.stdout, &result.stderr) {
+                " (output truncated)"
+            } else {
+                ""
+            };
+            return Err(RunnerError::Internal(format!(
+                "storage download failed ({}){truncated}{}",
+                describe_bounded_exec_termination(termination),
+                bounded_exec_output_summary(&result.stdout, &result.stderr)
+            )));
+        }
     }
     Ok(())
 }
@@ -1994,6 +2233,19 @@ mod tests {
         assert!(dmesg_indicates_oom("OOM-kill: constraint=MEMCG"));
     }
 
+    #[test]
+    fn bounded_exec_output_summary_redacts_url_queries() {
+        let summary = bounded_exec_bytes_summary(
+            b"",
+            b"HTTP 403 url=https://r2.example.com/archive.tar.gz?X-Amz-Signature=secret&X-Amz-Credential=credential",
+        );
+
+        assert!(summary.contains("https://r2.example.com/archive.tar.gz?[redacted]"));
+        assert!(!summary.contains("X-Amz-Signature"));
+        assert!(!summary.contains("secret"));
+        assert!(!summary.contains("credential"));
+    }
+
     /// Real `sudo dmesg | grep 'oom-kill'` output captured from prod-3.
     const PROD3_OOM_GREP: &str = "\
         [1718300.650867] fc_vcpu 0 invoked oom-killer: gfp_mask=0xcc0(GFP_KERNEL), order=0, oom_score_adj=0\n\
@@ -2179,10 +2431,10 @@ mod tests {
     // -----------------------------------------------------------------------
 
     use sandbox::{
-        ExecResult, SandboxError, SandboxInitializationPhase, SandboxOperation,
-        SandboxOperationReason,
+        BoundedExecResult, BoundedExecTermination, ExecResult, SandboxError,
+        SandboxInitializationPhase, SandboxOperation, SandboxOperationReason,
     };
-    use sandbox_mock::MockSandbox;
+    use sandbox_mock::{BoundedExecResponse, MockSandbox};
 
     fn sandbox_exec_error(message: impl Into<String>) -> SandboxError {
         SandboxError::Operation {
@@ -2190,6 +2442,75 @@ mod tests {
             reason: SandboxOperationReason::Guest,
             message: message.into(),
         }
+    }
+
+    fn sandbox_bounded_exec_error(message: impl Into<String>) -> SandboxError {
+        SandboxError::Operation {
+            operation: SandboxOperation::BoundedExec,
+            reason: SandboxOperationReason::Guest,
+            message: message.into(),
+        }
+    }
+
+    fn bounded_exec_response(
+        termination: BoundedExecTermination,
+        stdout: impl Into<Vec<u8>>,
+        stderr: impl Into<Vec<u8>>,
+    ) -> BoundedExecResponse {
+        BoundedExecResponse {
+            events: Vec::new(),
+            result: Ok(BoundedExecResult {
+                termination,
+                duration: Duration::ZERO,
+                stdout: BoundedExecOutput::Captured {
+                    bytes: stdout.into(),
+                    truncated: false,
+                },
+                stderr: BoundedExecOutput::Captured {
+                    bytes: stderr.into(),
+                    truncated: false,
+                },
+                diagnostic: None,
+            }),
+        }
+    }
+
+    fn truncated_bounded_exec_response(
+        termination: BoundedExecTermination,
+        stdout: impl Into<Vec<u8>>,
+        stdout_truncated: bool,
+        stderr: impl Into<Vec<u8>>,
+        stderr_truncated: bool,
+    ) -> BoundedExecResponse {
+        BoundedExecResponse {
+            events: Vec::new(),
+            result: Ok(BoundedExecResult {
+                termination,
+                duration: Duration::ZERO,
+                stdout: BoundedExecOutput::Captured {
+                    bytes: stdout.into(),
+                    truncated: stdout_truncated,
+                },
+                stderr: BoundedExecOutput::Captured {
+                    bytes: stderr.into(),
+                    truncated: stderr_truncated,
+                },
+                diagnostic: None,
+            }),
+        }
+    }
+
+    fn assert_capture_call(
+        output: &sandbox_mock::BoundedExecOutputCall,
+        expected_limit_bytes: u32,
+    ) {
+        assert_eq!(
+            output.capture,
+            BoundedExecCapturePolicy::Capture {
+                limit_bytes: expected_limit_bytes
+            }
+        );
+        assert_eq!(output.stream, None);
     }
 
     fn sandbox_write_file_error(message: impl Into<String>) -> SandboxError {
@@ -2212,14 +2533,35 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         // Default mock returns exit 0 — clock fix should succeed.
         fix_guest_clock(&sandbox).await.unwrap();
+        let calls = sandbox.bounded_exec_calls();
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].cmd.starts_with("date -s "));
+        assert!(calls[0].sudo);
+        assert_capture_call(&calls[0].stdout, 4 * 1024);
+        assert_capture_call(&calls[0].stderr, 16 * 1024);
     }
 
     #[tokio::test]
-    async fn fix_guest_clock_propagates_exec_error() {
+    async fn fix_guest_clock_propagates_bounded_exec_error() {
         let sandbox = MockSandbox::new("test");
-        sandbox.push_exec_result(Err(sandbox_exec_error("timeout")));
+        sandbox.push_bounded_exec_response(BoundedExecResponse {
+            events: Vec::new(),
+            result: Err(sandbox_bounded_exec_error("timeout")),
+        });
         let result = fix_guest_clock(&sandbox).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn fix_guest_clock_fails_on_timeout_termination() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_bounded_exec_response(bounded_exec_response(
+            BoundedExecTermination::TimedOut,
+            Vec::new(),
+            Vec::new(),
+        ));
+        let err = fix_guest_clock(&sandbox).await.unwrap_err();
+        assert!(err.to_string().contains("timed out"), "got: {err}");
     }
 
     #[tokio::test]
@@ -2227,13 +2569,22 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         // write_file returns Ok by default, exec returns exit 0 by default.
         reseed_guest_entropy(&sandbox).await.unwrap();
+        let calls = sandbox.bounded_exec_calls();
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].cmd.starts_with("guest-reseed "));
+        assert!(calls[0].sudo);
+        assert_capture_call(&calls[0].stdout, 4 * 1024);
+        assert_capture_call(&calls[0].stderr, 16 * 1024);
     }
 
     #[tokio::test]
-    async fn reseed_guest_entropy_propagates_exec_error() {
+    async fn reseed_guest_entropy_propagates_bounded_exec_error() {
         let sandbox = MockSandbox::new("test");
         // Sandbox-level failure (vsock connection issue).
-        sandbox.push_exec_result(Err(sandbox_exec_error("reseed failed")));
+        sandbox.push_bounded_exec_response(BoundedExecResponse {
+            events: Vec::new(),
+            result: Err(sandbox_bounded_exec_error("reseed failed")),
+        });
         let result = reseed_guest_entropy(&sandbox).await;
         assert!(result.is_err());
     }
@@ -2242,11 +2593,11 @@ mod tests {
     async fn reseed_guest_entropy_fails_on_nonzero_exit() {
         let sandbox = MockSandbox::new("test");
         // guest-reseed exits with code 1 (e.g., ioctl failed).
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 1,
-            stdout: Vec::new(),
-            stderr: b"RNDADDENTROPY failed: Operation not permitted".to_vec(),
-        }));
+        sandbox.push_bounded_exec_response(bounded_exec_response(
+            BoundedExecTermination::Exited { exit_code: 1 },
+            Vec::new(),
+            b"RNDADDENTROPY failed: Operation not permitted".to_vec(),
+        ));
         let result = reseed_guest_entropy(&sandbox).await;
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
@@ -2260,16 +2611,21 @@ mod tests {
         ctx.user_timezone = Some("America/New_York".into());
         // Should exec one command and not panic.
         sync_guest_timezone(&sandbox, &ctx).await;
+        let calls = sandbox.bounded_exec_calls();
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].cmd.contains("America/New_York"));
+        assert!(calls[0].sudo);
+        assert_capture_call(&calls[0].stdout, 4 * 1024);
+        assert_capture_call(&calls[0].stderr, 16 * 1024);
     }
 
     #[tokio::test]
     async fn sync_guest_timezone_skips_when_none() {
         let sandbox = MockSandbox::new("test");
         let ctx = minimal_context();
-        // No timezone — should skip without calling exec.
-        // Push an error to detect if exec is called unexpectedly.
-        sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
+        // No timezone — should skip without calling bounded exec.
         sync_guest_timezone(&sandbox, &ctx).await;
+        assert!(sandbox.bounded_exec_calls().is_empty());
     }
 
     #[tokio::test]
@@ -2277,9 +2633,8 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let mut ctx = minimal_context();
         ctx.user_timezone = Some("$(rm -rf /)".into());
-        // Push an error to detect if exec is called — it should NOT be.
-        sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
         sync_guest_timezone(&sandbox, &ctx).await;
+        assert!(sandbox.bounded_exec_calls().is_empty());
     }
 
     #[tokio::test]
@@ -2287,30 +2642,34 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let mut ctx = minimal_context();
         ctx.user_timezone = Some(String::new());
-        sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
         sync_guest_timezone(&sandbox, &ctx).await;
+        assert!(sandbox.bounded_exec_calls().is_empty());
     }
 
     #[tokio::test]
     async fn read_guest_error_file_returns_content() {
         let sandbox = MockSandbox::new("test");
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 0,
-            stdout: b"checkpoint error: disk full".to_vec(),
-            stderr: Vec::new(),
-        }));
+        sandbox.push_bounded_exec_response(bounded_exec_response(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            b"checkpoint error: disk full".to_vec(),
+            Vec::new(),
+        ));
         let msg = read_guest_error_file(&sandbox, RunId::nil()).await;
         assert_eq!(msg.as_deref(), Some("checkpoint error: disk full"));
+        let calls = sandbox.bounded_exec_calls();
+        assert_eq!(calls.len(), 1);
+        assert_capture_call(&calls[0].stdout, 16 * 1024);
+        assert_capture_call(&calls[0].stderr, 4 * 1024);
     }
 
     #[tokio::test]
     async fn read_guest_error_file_returns_none_on_missing_file() {
         let sandbox = MockSandbox::new("test");
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 1, // cat fails — file not found
-            stdout: Vec::new(),
-            stderr: b"No such file".to_vec(),
-        }));
+        sandbox.push_bounded_exec_response(bounded_exec_response(
+            BoundedExecTermination::Exited { exit_code: 1 }, // cat fails — file not found
+            Vec::new(),
+            b"No such file".to_vec(),
+        ));
         let msg = read_guest_error_file(&sandbox, RunId::nil()).await;
         assert!(msg.is_none());
     }
@@ -2318,27 +2677,74 @@ mod tests {
     #[tokio::test]
     async fn read_guest_error_file_returns_none_on_empty_content() {
         let sandbox = MockSandbox::new("test");
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 0,
-            stdout: b"   \n  ".to_vec(), // whitespace-only
-            stderr: Vec::new(),
-        }));
+        sandbox.push_bounded_exec_response(bounded_exec_response(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            b"   \n  ".to_vec(), // whitespace-only
+            Vec::new(),
+        ));
         let msg = read_guest_error_file(&sandbox, RunId::nil()).await;
         assert!(msg.is_none());
     }
 
     #[tokio::test]
-    async fn read_guest_error_file_returns_none_on_exec_error() {
+    async fn read_guest_error_file_returns_none_on_bounded_exec_error() {
         let sandbox = MockSandbox::new("test");
-        sandbox.push_exec_result(Err(sandbox_exec_error("vsock timeout")));
+        sandbox.push_bounded_exec_response(BoundedExecResponse {
+            events: Vec::new(),
+            result: Err(sandbox_bounded_exec_error("vsock timeout")),
+        });
         let msg = read_guest_error_file(&sandbox, RunId::nil()).await;
         assert!(msg.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_guest_error_file_returns_none_on_truncated_stdout() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_bounded_exec_response(truncated_bounded_exec_response(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            b"partial checkpoint error".to_vec(),
+            true,
+            Vec::new(),
+            false,
+        ));
+        let msg = read_guest_error_file(&sandbox, RunId::nil()).await;
+        assert!(msg.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_guest_session_id_returns_content() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_bounded_exec_response(bounded_exec_response(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            b"sess-123\n".to_vec(),
+            Vec::new(),
+        ));
+        let id = read_guest_session_id(&sandbox, RunId::nil()).await;
+        assert_eq!(id.as_deref(), Some("sess-123"));
+        let calls = sandbox.bounded_exec_calls();
+        assert_eq!(calls.len(), 1);
+        assert_capture_call(&calls[0].stdout, 4 * 1024);
+        assert_capture_call(&calls[0].stderr, 4 * 1024);
+    }
+
+    #[tokio::test]
+    async fn read_guest_session_id_ignores_truncated_stdout() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_bounded_exec_response(truncated_bounded_exec_response(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            b"sess-partial".to_vec(),
+            true,
+            Vec::new(),
+            false,
+        ));
+        let id = read_guest_session_id(&sandbox, RunId::nil()).await;
+        assert!(id.is_none());
     }
 
     #[tokio::test]
     async fn download_storages_success() {
         let sandbox = MockSandbox::new("test");
-        // write_file succeeds by default, exec returns exit 0 by default.
+        // write_file succeeds by default, bounded exec returns exit 0 by default.
         let ctx = minimal_context();
         let manifest = GuestDownloadManifest {
             storages: vec![guest_storage(
@@ -2351,6 +2757,16 @@ mod tests {
             cleanup_paths: vec![],
         };
         download_storages(&sandbox, &ctx, &manifest).await.unwrap();
+        let calls = sandbox.bounded_exec_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].cmd, guest_download_command());
+        assert_eq!(
+            calls[0].env,
+            vec![("VM0_RUN_ID".into(), ctx.run_id.to_string())]
+        );
+        assert!(!calls[0].sudo);
+        assert_eq!(calls[0].stdout.stream, None);
+        assert_eq!(calls[0].stderr.stream, None);
     }
 
     #[test]
@@ -2380,11 +2796,11 @@ mod tests {
     async fn download_storages_nonzero_exit_code() {
         let sandbox = MockSandbox::new("test");
         // write_file succeeds, but exec returns non-zero.
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 1,
-            stdout: Vec::new(),
-            stderr: b"download failed".to_vec(),
-        }));
+        sandbox.push_bounded_exec_response(bounded_exec_response(
+            BoundedExecTermination::Exited { exit_code: 1 },
+            Vec::new(),
+            b"download failed".to_vec(),
+        ));
         let ctx = minimal_context();
         let manifest = GuestDownloadManifest {
             storages: vec![],
@@ -2395,6 +2811,87 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("storage download failed"));
+        assert!(err.to_string().contains("download failed"));
+        let calls = sandbox.bounded_exec_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls[0].env,
+            vec![("VM0_RUN_ID".into(), ctx.run_id.to_string())]
+        );
+        assert_capture_call(&calls[0].stdout, 1024 * 1024);
+        assert_capture_call(&calls[0].stderr, 1024 * 1024);
+    }
+
+    #[tokio::test]
+    async fn download_storages_failure_marks_truncated_output() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_bounded_exec_response(truncated_bounded_exec_response(
+            BoundedExecTermination::Exited { exit_code: 1 },
+            b"partial stdout".to_vec(),
+            true,
+            b"partial stderr".to_vec(),
+            false,
+        ));
+        let ctx = minimal_context();
+        let manifest = GuestDownloadManifest {
+            storages: vec![],
+            artifacts: vec![],
+            cleanup_paths: vec![],
+        };
+
+        let err = download_storages(&sandbox, &ctx, &manifest)
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("(output truncated)"), "got: {err}");
+        assert!(err.to_string().contains("partial stderr"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn download_storages_allows_truncated_output_on_success() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_bounded_exec_response(truncated_bounded_exec_response(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            b"partial stdout".to_vec(),
+            false,
+            b"partial stderr".to_vec(),
+            true,
+        ));
+        let ctx = minimal_context();
+        let manifest = GuestDownloadManifest {
+            storages: vec![],
+            artifacts: vec![],
+            cleanup_paths: vec![],
+        };
+
+        download_storages(&sandbox, &ctx, &manifest).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn download_storages_fails_on_timeout_termination() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_bounded_exec_response(bounded_exec_response(
+            BoundedExecTermination::TimedOut,
+            b"partial stdout".to_vec(),
+            b"partial stderr".to_vec(),
+        ));
+        let ctx = minimal_context();
+        let manifest = GuestDownloadManifest {
+            storages: vec![],
+            artifacts: vec![],
+            cleanup_paths: vec![],
+        };
+
+        let err = download_storages(&sandbox, &ctx, &manifest)
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("storage download failed (timed out)"),
+            "got: {err}"
+        );
+        assert!(err.to_string().contains("partial stderr"), "got: {err}");
     }
 
     #[tokio::test]
@@ -2431,10 +2928,10 @@ mod tests {
             session_history: "data".into(),
         };
         // Unknown frameworks must no-op silently (warn-and-skip) so a typo in
-        // CLI_AGENT_TYPE does not block the run. Pushing an exec error detects
-        // any accidental fallthrough into either framework's restore path.
-        sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
+        // CLI_AGENT_TYPE does not block the run.
         restore_session(&sandbox, &ctx, &session).await.unwrap();
+        assert!(sandbox.write_file_calls().is_empty());
+        assert!(sandbox.bounded_exec_calls().is_empty());
     }
 
     #[tokio::test]
@@ -3197,9 +3694,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
 
-        // Build a MockSandbox that fails on the first exec (fix_guest_clock)
+        // Build a MockSandbox that fails on the first bounded_exec (fix_guest_clock).
         let sandbox = MockSandbox::new("reuse-clock-fail");
-        sandbox.push_exec_result(Err(sandbox_exec_error("vsock broken")));
+        sandbox.push_bounded_exec_response(BoundedExecResponse {
+            events: Vec::new(),
+            result: Err(sandbox_bounded_exec_error("vsock broken")),
+        });
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (idle_sandbox, _lease) =
@@ -3221,14 +3721,17 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
 
-        // First exec (fix_guest_clock) succeeds, second (reseed_guest_entropy) fails
+        // First bounded_exec (fix_guest_clock) succeeds, second (reseed_guest_entropy) fails.
         let sandbox = MockSandbox::new("reuse-reseed-fail");
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 0,
-            stdout: Vec::new(),
-            stderr: Vec::new(),
-        }));
-        sandbox.push_exec_result(Err(sandbox_exec_error("reseed timeout")));
+        sandbox.push_bounded_exec_response(bounded_exec_response(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            Vec::new(),
+            Vec::new(),
+        ));
+        sandbox.push_bounded_exec_response(BoundedExecResponse {
+            events: Vec::new(),
+            result: Err(sandbox_bounded_exec_error("reseed timeout")),
+        });
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (idle_sandbox, _lease) =

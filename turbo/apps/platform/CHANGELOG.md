@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.340.0](https://github.com/vm0-ai/vm0/compare/app-v0.339.0...app-v0.340.0) (2026-05-09)
+
+
+### Features
+
+* add model-first personal oauth configuration ([#12304](https://github.com/vm0-ai/vm0/issues/12304)) ([3e65bac](https://github.com/vm0-ai/vm0/commit/3e65bac1f9eee23719d86d4b12de392587be75a2))
+
+
+### Bug Fixes
+
+* stop chat file links before annotation punctuation ([#12318](https://github.com/vm0-ai/vm0/issues/12318)) ([b776483](https://github.com/vm0-ai/vm0/commit/b776483bb4dbf6dae97e76b1353179466521e6f4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.5.0
+    * @vm0/core bumped to 8.265.0
+
 ## [0.339.0](https://github.com/vm0-ai/vm0/compare/app-v0.338.2...app-v0.339.0) (2026-05-09)
 
 

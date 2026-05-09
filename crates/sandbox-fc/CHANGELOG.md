@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.28.2...sandbox-fc-v0.29.0) (2026-05-09)
+
+
+### Features
+
+* add bounded exec output policies ([#12292](https://github.com/vm0-ai/vm0/issues/12292)) ([71f6ad9](https://github.com/vm0-ai/vm0/commit/71f6ad9aaadaa9bf6589a5915c51ab4c092547eb))
+
 ## [0.28.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.28.1...sandbox-fc-v0.28.2) (2026-05-09)
 
 ## [0.28.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.28.0...sandbox-fc-v0.28.1) (2026-05-09)

@@ -393,6 +393,7 @@ function toStoredMessage(
 
       const role = messageRoleSchema.parse(row.role);
       const message = {
+        id: row.id,
         role,
         content: row.content,
         runId: row.runId ?? undefined,
@@ -479,12 +480,7 @@ function chatThreadMessages(
         .select(messageColumns)
         .from(chatMessages)
         .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
-        .where(
-          and(
-            eq(chatMessages.chatThreadId, threadId),
-            visibleChatMessageCondition(),
-          ),
-        )
+        .where(eq(chatMessages.chatThreadId, threadId))
         .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
 
       return await Promise.all(

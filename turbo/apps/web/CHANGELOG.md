@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.348.0](https://github.com/vm0-ai/vm0/compare/web-v12.347.0...web-v12.348.0) (2026-05-09)
+
+
+### Features
+
+* add model-first personal oauth configuration ([#12304](https://github.com/vm0-ai/vm0/issues/12304)) ([3e65bac](https://github.com/vm0-ai/vm0/commit/3e65bac1f9eee23719d86d4b12de392587be75a2))
+* enable model-first for staff ([#12328](https://github.com/vm0-ai/vm0/issues/12328)) ([057ce1c](https://github.com/vm0-ai/vm0/commit/057ce1c11cd7d3ce6c7e0a24de7ac52e2bd41ea3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.5.0
+    * @vm0/core bumped to 8.265.0
+    * @vm0/db bumped to 1.3.1
+
 ## [12.347.0](https://github.com/vm0-ai/vm0/compare/web-v12.346.1...web-v12.347.0) (2026-05-09)
 
 

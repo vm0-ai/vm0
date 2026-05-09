@@ -76,6 +76,82 @@ export const seedOnboardingStatusOrg$ = command(
   },
 );
 
+// Seeds an org whose `default_agent_id` points to an `agent_composes` row that
+// has no matching `zero_agents` row — the partial-onboarding state where the
+// admin should re-enter full onboarding.
+export const seedOrphanDefaultAgent$ = command(
+  async (
+    { set },
+    _: void,
+    signal: AbortSignal,
+  ): Promise<OnboardingStatusFixture> => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const composeId = randomUUID();
+    const writeDb = set(writeDb$);
+
+    await writeDb.insert(agentComposes).values({
+      id: composeId,
+      userId,
+      orgId,
+      name: `agent-${composeId.slice(0, 8)}`,
+    });
+    signal.throwIfAborted();
+
+    await writeDb.insert(orgMetadata).values({
+      orgId,
+      defaultAgentId: composeId,
+    });
+    signal.throwIfAborted();
+
+    return { orgId, userId, composeId };
+  },
+);
+
+// Seeds an org whose `default_agent_id` points to a fully-formed compose owned
+// by a *different* org. The INNER JOIN filter on `agent_composes.orgId` must
+// reject the row so the target org appears to have no default agent.
+export const seedCrossOrgDefaultAgent$ = command(
+  async (
+    { set },
+    _: void,
+    signal: AbortSignal,
+  ): Promise<OnboardingStatusFixture> => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const otherOrgId = `org_${randomUUID()}`;
+    const otherUserId = `user_${randomUUID()}`;
+    const composeId = randomUUID();
+    const writeDb = set(writeDb$);
+
+    await writeDb.insert(agentComposes).values({
+      id: composeId,
+      userId: otherUserId,
+      orgId: otherOrgId,
+      name: `agent-${composeId.slice(0, 8)}`,
+    });
+    signal.throwIfAborted();
+    await writeDb.insert(zeroAgents).values({
+      id: composeId,
+      orgId: otherOrgId,
+      owner: otherUserId,
+      name: `agent-${composeId.slice(0, 8)}`,
+      displayName: null,
+      description: null,
+      sound: null,
+    });
+    signal.throwIfAborted();
+
+    await writeDb.insert(orgMetadata).values({
+      orgId,
+      defaultAgentId: composeId,
+    });
+    signal.throwIfAborted();
+
+    return { orgId, userId, composeId };
+  },
+);
+
 export const deleteOnboardingStatusOrg$ = command(
   async (
     { set },

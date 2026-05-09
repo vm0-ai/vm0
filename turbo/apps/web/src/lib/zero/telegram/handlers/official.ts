@@ -32,6 +32,7 @@ import {
   formatTelegramUserDisplayName,
   getAgentDisplayLabel,
   getWorkspaceAgent,
+  isTelegramReplyToBotUsername,
   lookupTelegramThreadSession,
   resolveSessionCompose,
   resolveTelegramAuditLogsUrl,
@@ -359,6 +360,7 @@ export async function handleOfficialTelegramMention(
       chatId,
       userLink,
       agent.composeId,
+      runtime.botUsername,
     );
 
   const { executionContext } = await fetchTelegramContext(
@@ -425,17 +427,16 @@ async function resolveOfficialThreadSession(
   chatId: string,
   userLink: OfficialUserLink,
   composeId: string,
+  botUsername: string | null,
 ): Promise<{
   rootMessageId: string | undefined;
   existingSessionId: string | undefined;
   lastProcessedMessageId: string | undefined;
 }> {
   let rootMessageId: string | undefined;
-  if (
-    message.reply_to_message?.from?.is_bot &&
-    message.reply_to_message.message_id
-  ) {
-    rootMessageId = String(message.reply_to_message.message_id);
+  const replyToMessage = message.reply_to_message;
+  if (isTelegramReplyToBotUsername(message, botUsername) && replyToMessage) {
+    rootMessageId = String(replyToMessage.message_id);
   }
 
   let existingSessionId: string | undefined;

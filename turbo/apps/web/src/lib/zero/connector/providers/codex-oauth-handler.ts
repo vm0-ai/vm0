@@ -1,29 +1,47 @@
 import { type ProviderHandler } from "../provider-types";
 import {
+  buildChatgptAuthorizationUrl,
+  exchangeChatgptCode,
   getChatgptRefreshSecretName,
   getChatgptSecretName,
   refreshChatgptToken,
 } from "./codex-oauth";
 
-const REFRESH_ONLY_MESSAGE =
-  "codex-oauth is refresh-only — providers are added via the codex auth.json paste flow, not OAuth code exchange";
-
 /**
- * Refresh-only handler for the codex-oauth-token model provider type.
+ * OAuth handler for the codex-oauth-token model provider type.
  *
- * The full OAuth flow (authorize/exchange/revoke) was removed in favor of the
- * paste-based codex auth.json flow. This handler stays registered in
- * PROVIDER_HANDLERS so the firewall refresh pipeline can call
- * refreshChatgptToken when ChatGPT returns 401. The buildAuthUrl/exchangeCode
- * stubs throw because the connectors framework no longer dispatches to this
- * handler (the codex-oauth connector entry was removed alongside the routes).
+ * The generic connector authorize endpoint still blocks `codex-oauth` so it
+ * cannot create connector rows. Dedicated model-provider OAuth routes use this
+ * handler to create `model_providers` rows with model-provider secrets.
  */
 export const codexOauthHandler: ProviderHandler = {
-  buildAuthUrl: () => {
-    throw new Error(REFRESH_ONLY_MESSAGE);
+  buildAuthUrl: (clientId, redirectUri, state) => {
+    return buildChatgptAuthorizationUrl(clientId, redirectUri, state);
   },
-  exchangeCode: async () => {
-    throw new Error(REFRESH_ONLY_MESSAGE);
+  exchangeCode: async (
+    clientId,
+    _clientSecret,
+    code,
+    redirectUri,
+    _state,
+    codeVerifier,
+  ) => {
+    if (!codeVerifier) {
+      throw new Error("ChatGPT OAuth requires PKCE code_verifier");
+    }
+    const result = await exchangeChatgptCode(
+      clientId,
+      code,
+      redirectUri,
+      codeVerifier,
+    );
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      expiresIn: result.expiresIn,
+      scopes: [],
+      userInfo: result.userInfo,
+    };
   },
   refreshToken: refreshChatgptToken,
   getClientId: () => {

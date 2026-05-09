@@ -79,28 +79,23 @@ export function PersonalProviderDialog() {
   const isEdit = dialog.mode === "edit";
   const label = getUILabel(providerType);
   const secretLabel = "secretLabel" in config ? config.secretLabel : undefined;
-  const subtitleSuffix =
-    secretLabel && !label.toLowerCase().includes(secretLabel.toLowerCase())
-      ? ` ${secretLabel.toLowerCase()}`
-      : "";
 
   const handleSubmit = () => {
     detach(submit(pageSignal), Reason.DomCallback);
   };
 
   const isMultiAuth = shape === "multi-auth";
+  const isOAuthConfiguration =
+    providerType === "claude-code-oauth-token" && hideModelSelector;
   const providerHelpText = "helpText" in config ? config.helpText : undefined;
-  const titleText = isMultiAuth
-    ? `${isEdit ? "Edit" : "Add"} ${label} provider (Personal)`
-    : isEdit
-      ? `Edit personal ${label}`
-      : `Add personal ${label}`;
-  const descriptionText =
-    isMultiAuth && providerHelpText
-      ? providerHelpText.replace(/\n/g, " ")
-      : isEdit
-        ? `Update your personal ${label}${subtitleSuffix}`
-        : `Add a personal ${label}${subtitleSuffix} for your account`;
+  const copy = getDialogCopy({
+    isOAuthConfiguration,
+    isMultiAuth,
+    isEdit,
+    label,
+    secretLabel,
+    providerHelpText,
+  });
 
   return (
     <Dialog
@@ -112,10 +107,10 @@ export function PersonalProviderDialog() {
       <DialogContent className={isMultiAuth ? "max-w-3xl" : "max-w-2xl"}>
         <DialogHeader>
           <DialogTitle className="font-normal leading-7">
-            {titleText}
+            {copy.title}
           </DialogTitle>
           <DialogDescription className="break-words">
-            {descriptionText}
+            {copy.description}
           </DialogDescription>
         </DialogHeader>
 
@@ -187,10 +182,70 @@ export function PersonalProviderDialog() {
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={isLoading}>
-            {isLoading ? "Saving..." : isEdit ? "Save changes" : "Add"}
+            {getSubmitLabel({ isLoading, isOAuthConfiguration, isEdit })}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
+}
+
+function getDialogCopy({
+  isOAuthConfiguration,
+  isMultiAuth,
+  isEdit,
+  label,
+  secretLabel,
+  providerHelpText,
+}: {
+  isOAuthConfiguration: boolean;
+  isMultiAuth: boolean;
+  isEdit: boolean;
+  label: string;
+  secretLabel: string | undefined;
+  providerHelpText: string | undefined;
+}): { title: string; description: string } {
+  if (isOAuthConfiguration) {
+    return {
+      title: "Configure Claude Code OAuth",
+      description:
+        "Paste a Claude Code OAuth token for workspace model routes that use your Claude credentials.",
+    };
+  }
+
+  if (isMultiAuth) {
+    return {
+      title: `${isEdit ? "Edit" : "Add"} ${label} provider (Personal)`,
+      description: providerHelpText?.replace(/\n/g, " ") ?? "",
+    };
+  }
+
+  const subtitleSuffix =
+    secretLabel && !label.toLowerCase().includes(secretLabel.toLowerCase())
+      ? ` ${secretLabel.toLowerCase()}`
+      : "";
+  return {
+    title: isEdit ? `Edit personal ${label}` : `Add personal ${label}`,
+    description: isEdit
+      ? `Update your personal ${label}${subtitleSuffix}`
+      : `Add a personal ${label}${subtitleSuffix} for your account`,
+  };
+}
+
+function getSubmitLabel({
+  isLoading,
+  isOAuthConfiguration,
+  isEdit,
+}: {
+  isLoading: boolean;
+  isOAuthConfiguration: boolean;
+  isEdit: boolean;
+}): string {
+  if (isLoading) {
+    return "Saving...";
+  }
+  if (isOAuthConfiguration) {
+    return "Save";
+  }
+  return isEdit ? "Save changes" : "Add";
 }

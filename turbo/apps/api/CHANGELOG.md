@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.22.1](https://github.com/vm0-ai/vm0/compare/api-v1.22.0...api-v1.22.1) (2026-05-09)
+
+
+### Bug Fixes
+
+* add missing id field and remove revoke filter from API thread messages ([#12339](https://github.com/vm0-ai/vm0/issues/12339)) ([26d28f2](https://github.com/vm0-ai/vm0/commit/26d28f224febb19de17741c3900176b37ba53ae1))
+
+
+### Refactoring
+
+* **api:** migrate feature switches get ([#12335](https://github.com/vm0-ai/vm0/issues/12335)) ([87c69cc](https://github.com/vm0-ai/vm0/commit/87c69cce5490d7a7511359af5642f1d77763da90))
+* **api:** migrate team get to api backend ([#12337](https://github.com/vm0-ai/vm0/issues/12337)) ([c065931](https://github.com/vm0-ai/vm0/commit/c065931b5e5cd9cafd7db7ccfa2f5a77ae95ca98))
+* **api:** migrate zero queue-position get to api backend ([#12336](https://github.com/vm0-ai/vm0/issues/12336)) ([5e4eee2](https://github.com/vm0-ai/vm0/commit/5e4eee257ea1ce6543379e1d220826cdf99ba4f3)), closes [#12332](https://github.com/vm0-ai/vm0/issues/12332)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.5.0
+    * @vm0/core bumped to 8.265.0
+    * @vm0/db bumped to 1.3.1
+
 ## [1.22.0](https://github.com/vm0-ai/vm0/compare/api-v1.21.4...api-v1.22.0) (2026-05-09)
 
 

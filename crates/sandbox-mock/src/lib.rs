@@ -8,8 +8,8 @@
 //!
 //! For advanced control, create [`MockSandboxOverrides`] and pass it via
 //! [`MockSandboxRuntime::with_overrides`]. This enables pattern-matched exec
-//! results, custom `wait_exit` exit codes, and blocking gates for lifecycle
-//! and cancellation testing.
+//! and bounded_exec results, custom `wait_exit` exit codes, and blocking gates
+//! for lifecycle and cancellation testing.
 //!
 //! ```toml
 //! [dev-dependencies]
@@ -49,6 +49,13 @@ pub struct ExecMatcher {
     pub exit_code: i32,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
+}
+
+/// Behavior override applied to bounded_exec calls whose command contains the pattern.
+pub struct BoundedExecMatcher {
+    /// Substring to match against `BoundedExecRequest.cmd`.
+    pub pattern: String,
+    pub response: BoundedExecResponse,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -110,6 +117,9 @@ pub struct MockSandboxOverrides {
     /// Pattern-matched exec results. First matching pattern wins and is
     /// consumed (one-shot).
     exec_matchers: Mutex<Vec<ExecMatcher>>,
+    /// Pattern-matched bounded_exec responses. First matching pattern wins and
+    /// is consumed (one-shot).
+    bounded_exec_matchers: Mutex<Vec<BoundedExecMatcher>>,
     /// FIFO bounded_exec responses consumed across all sandboxes built from
     /// these overrides. Empty queue → default success.
     bounded_exec_responses: Mutex<VecDeque<BoundedExecResponse>>,
@@ -158,6 +168,7 @@ impl MockSandboxOverrides {
     pub fn new() -> Self {
         Self {
             exec_matchers: Mutex::new(Vec::new()),
+            bounded_exec_matchers: Mutex::new(Vec::new()),
             bounded_exec_responses: Mutex::new(VecDeque::new()),
             wait_exit_code: None,
             wait_exit_gate: None,
@@ -205,6 +216,13 @@ impl MockSandboxOverrides {
     /// Register a pattern matcher consumed on first match.
     pub fn add_exec_matcher(&self, matcher: ExecMatcher) {
         self.exec_matchers.lock_ignoring_poison().push(matcher);
+    }
+
+    /// Register a bounded_exec pattern matcher consumed on first match.
+    pub fn add_bounded_exec_matcher(&self, matcher: BoundedExecMatcher) {
+        self.bounded_exec_matchers
+            .lock_ignoring_poison()
+            .push(matcher);
     }
 
     /// Queue a bounded_exec response consumed FIFO across all sandboxes built
@@ -339,7 +357,8 @@ impl Default for MockSandboxOverrides {
 /// A mock [`Sandbox`] that succeeds on all operations by default.
 ///
 /// Queue custom results with [`push_exec_result`](Self::push_exec_result)
-/// and [`push_write_file_result`](Self::push_write_file_result).
+/// [`push_bounded_exec_response`](Self::push_bounded_exec_response), and
+/// [`push_write_file_result`](Self::push_write_file_result).
 /// When a queue is empty, the operation returns its default success value.
 pub struct MockSandbox {
     id: String,
@@ -584,6 +603,17 @@ impl Sandbox for MockSandbox {
                 .bounded_exec_calls
                 .lock_ignoring_poison()
                 .push(call);
+            let matched_response = {
+                let mut matchers = overrides.bounded_exec_matchers.lock_ignoring_poison();
+                matchers
+                    .iter()
+                    .position(|m| request.cmd.contains(&m.pattern))
+                    .map(|idx| matchers.remove(idx).response)
+            };
+            if let Some(response) = matched_response {
+                emit_bounded_exec_events(request, response.events);
+                return response.result;
+            }
             if let Some(response) = overrides
                 .bounded_exec_responses
                 .lock_ignoring_poison()
@@ -1186,6 +1216,59 @@ mod tests {
             BoundedExecTermination::Exited { exit_code: 0 }
         );
         assert_eq!(overrides.bounded_exec_calls().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn overrides_match_bounded_exec_response_by_command() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.add_bounded_exec_matcher(BoundedExecMatcher {
+            pattern: "cat /tmp/vm0-session-".into(),
+            response: BoundedExecResponse {
+                events: vec![],
+                result: Ok(BoundedExecResult {
+                    termination: BoundedExecTermination::Exited { exit_code: 0 },
+                    duration: Duration::from_millis(10),
+                    stdout: captured_output(b"sess-1", false),
+                    stderr: captured_output(b"", false),
+                    diagnostic: None,
+                }),
+            },
+        });
+        let mut factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        factory.startup().await.unwrap();
+
+        let sandbox = factory.create(test_sandbox_config()).await.unwrap();
+        let setup_request = BoundedExecRequest {
+            cmd: "date -s @0",
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: true,
+            stdin: None,
+            stdout: capture_output(100),
+            stderr: capture_output(100),
+        };
+        let session_request = BoundedExecRequest {
+            cmd: "cat /tmp/vm0-session-run.txt 2>/dev/null",
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+            stdin: None,
+            stdout: capture_output(100),
+            stderr: capture_output(100),
+        };
+
+        let setup = sandbox.bounded_exec(&setup_request).await.unwrap();
+        let matched = sandbox.bounded_exec(&session_request).await.unwrap();
+        let fallback = sandbox.bounded_exec(&session_request).await.unwrap();
+
+        assert_eq!(
+            setup.termination,
+            BoundedExecTermination::Exited { exit_code: 0 }
+        );
+        assert_captured_output(&setup.stdout, b"", false);
+        assert_captured_output(&matched.stdout, b"sess-1", false);
+        assert_captured_output(&fallback.stdout, b"", false);
+        assert_eq!(overrides.bounded_exec_calls().len(), 3);
     }
 
     #[tokio::test]

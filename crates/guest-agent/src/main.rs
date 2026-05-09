@@ -255,8 +255,9 @@ async fn complete_execution(
     // snapshot timings, `checkpoint_total`, etc.) and is the EOF-consuming
     // final pass. Both go through the single-writer uploader, so the two
     // flushes never race the periodic tick on the pos files.
+    let agent_type = env::Framework::from_env().agent_type();
     if cli_exit_code == 0 && exit_code == 0 && env::has_api() {
-        log_info!(LOG_TAG, "claude-code completed successfully");
+        log_info!(LOG_TAG, "{agent_type} completed successfully");
 
         log_info!(LOG_TAG, "▷ Checkpoint");
         let cp_start = Instant::now();
@@ -316,9 +317,12 @@ async fn complete_execution(
         }
     } else {
         if cli_exit_code == 0 && exit_code == 0 {
-            log_info!(LOG_TAG, "claude-code completed successfully");
+            log_info!(LOG_TAG, "{agent_type} completed successfully");
         } else if cli_exit_code != 0 {
-            log_info!(LOG_TAG, "claude-code failed with exit code {cli_exit_code}");
+            log_info!(
+                LOG_TAG,
+                "{agent_type} failed with exit code {cli_exit_code}"
+            );
         }
 
         if env::has_api() {

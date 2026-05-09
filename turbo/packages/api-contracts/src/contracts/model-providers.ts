@@ -559,6 +559,35 @@ export const MODEL_PROVIDER_TYPES = {
       "~/.codex/auth.json contents to authorize ChatGPT (Plus / Pro / " +
       "Business / Edu / Enterprise) for Codex.",
     authMethods: {
+      oauth: {
+        label: "OpenAI OAuth",
+        helpText:
+          "Sign in with OpenAI to authorize ChatGPT (Plus / Pro / Business / Edu / Enterprise) for Codex.",
+        secrets: {
+          CHATGPT_ACCESS_TOKEN: {
+            label: "CHATGPT_ACCESS_TOKEN",
+            required: true,
+            derived: true,
+          },
+          CHATGPT_REFRESH_TOKEN: {
+            label: "CHATGPT_REFRESH_TOKEN",
+            required: true,
+            serverOnly: true,
+            derived: true,
+          },
+          CHATGPT_ACCOUNT_ID: {
+            label: "CHATGPT_ACCOUNT_ID",
+            required: true,
+            derived: true,
+          },
+          CHATGPT_ID_TOKEN: {
+            label: "CHATGPT_ID_TOKEN",
+            required: true,
+            serverOnly: true,
+            derived: true,
+          },
+        },
+      },
       // Paste-based auth: client posts CODEX_AUTH_JSON, server parses it via
       // codex-auth-json-parser.ts and persists the four derived CHATGPT_*
       // fields. The raw blob is NEVER stored. The wire-shape secret

@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.265.0](https://github.com/vm0-ai/vm0/compare/core-v8.264.4...core-v8.265.0) (2026-05-09)
+
+
+### Features
+
+* enable model-first for staff ([#12328](https://github.com/vm0-ai/vm0/issues/12328)) ([057ce1c](https://github.com/vm0-ai/vm0/commit/057ce1c11cd7d3ce6c7e0a24de7ac52e2bd41ea3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.5.0
+
 ## [8.264.4](https://github.com/vm0-ai/vm0/compare/core-v8.264.3...core-v8.264.4) (2026-05-09)
 
 

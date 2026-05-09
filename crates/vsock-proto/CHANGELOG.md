@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.11.0...vsock-proto-v0.12.0) (2026-05-09)
+
+
+### Features
+
+* add bounded exec output policies ([#12292](https://github.com/vm0-ai/vm0/issues/12292)) ([71f6ad9](https://github.com/vm0-ai/vm0/commit/71f6ad9aaadaa9bf6589a5915c51ab4c092547eb))
+
 ## [0.11.0](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.10.0...vsock-proto-v0.11.0) (2026-05-08)
 
 

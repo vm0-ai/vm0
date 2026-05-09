@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.18](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.17...nbd-cow-v0.4.18) (2026-05-09)
+
+
+### Bug Fixes
+
+* match nbd netlink completions by sequence ([#12298](https://github.com/vm0-ai/vm0/issues/12298)) ([a225c28](https://github.com/vm0-ai/vm0/commit/a225c28aa1b2171ea4f77f1feaed9e3920ef6030))
+
 ## [0.4.17](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.16...nbd-cow-v0.4.17) (2026-05-07)
 
 

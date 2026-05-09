@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.29.0...guest-agent-v0.29.1) (2026-05-09)
+
+
+### Bug Fixes
+
+* **guest-agent:** gate claude code event handling ([#12327](https://github.com/vm0-ai/vm0/issues/12327)) ([94a7634](https://github.com/vm0-ai/vm0/commit/94a7634254d9445f04bb3456d5c28e67bd15e189))
+
 ## [0.29.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.28.4...guest-agent-v0.29.0) (2026-05-09)
 
 

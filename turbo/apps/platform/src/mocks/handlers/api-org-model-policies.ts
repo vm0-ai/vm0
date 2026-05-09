@@ -50,6 +50,10 @@ export function resetMockOrgModelPolicies(): void {
   mockOrgModelPolicies = makeDefaultPolicies();
 }
 
+export function setMockOrgModelPolicies(policies: OrgModelPolicy[]): void {
+  mockOrgModelPolicies = policies;
+}
+
 function applyUpdate(policy: UpdateOrgModelPolicy): OrgModelPolicy {
   const existing = mockOrgModelPolicies.find((item) => {
     return item.model === policy.model;

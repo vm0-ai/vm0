@@ -21,7 +21,7 @@
  * mock state it needs and mounts once.
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
@@ -33,11 +33,14 @@ import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
-import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
+import type {
+  ModelProviderResponse,
+  OrgModelPolicy,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { mockUploadSuccess } from "../../../mocks/upload-helpers.ts";
@@ -49,6 +52,10 @@ import {
   setMockPersonalModelProviders,
   resetMockPersonalModelProviders,
 } from "../../../mocks/handlers/api-personal-model-providers.ts";
+import {
+  resetMockOrgModelPolicies,
+  setMockOrgModelPolicies,
+} from "../../../mocks/handlers/api-org-model-policies.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import {
   setMockOnboardingStatus,
@@ -131,6 +138,25 @@ function buildProvider(
     lastRefreshErrorCode: null,
     createdAt: "2024-01-01T00:00:00Z",
     updatedAt: "2024-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function buildMemberOauthPolicy(
+  overrides: Partial<OrgModelPolicy> = {},
+): OrgModelPolicy {
+  return {
+    id: "00000000-0000-4000-a000-000000000101",
+    model: "claude-opus-4-7",
+    modelLabel: "Claude Opus 4.7",
+    isDefault: true,
+    defaultProviderType: "claude-code-oauth-token",
+    credentialScope: "member",
+    modelProviderId: null,
+    routeStatus: "valid",
+    routeStatusReason: null,
+    createdAt: "2026-05-08T00:00:00.000Z",
+    updatedAt: "2026-05-08T00:00:00.000Z",
     ...overrides,
   };
 }
@@ -259,6 +285,7 @@ describe("chat composer — default model resolution", () => {
   beforeEach(() => {
     resetMockOrgModelProviders();
     resetMockPersonalModelProviders();
+    resetMockOrgModelPolicies();
     resetMockOnboardingStatus();
     setMockFeatureSwitches({});
     // Align onboarding default with the test agent so currentChatAgentId$
@@ -307,6 +334,128 @@ describe("chat composer — default model resolution", () => {
     await expectComposerShowsModel("Claude Opus 4.7");
   });
 
+  it("blocks agent chat submit and opens Claude Code OAuth token input from the model warning", async () => {
+    const user = userEvent.setup();
+    let sendRequests = 0;
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+    setMockOrgModelPolicies([buildMemberOauthPolicy()]);
+    setMockPersonalModelProviders([]);
+    mockAgent({ modelProviderId: null, selectedModel: null });
+    server.use(
+      mockApi(chatMessagesContract.send, ({ respond }) => {
+        sendRequests++;
+        return respond(201, {
+          runId: "run-1",
+          threadId: THREAD_ID,
+          status: "pending",
+          createdAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    await expectAgentChatLoaded();
+    await expectComposerShowsModel("Claude Opus 4.7");
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    await fill(textarea, "Hello");
+    await user.keyboard("{Enter}");
+
+    const sendButton = screen.getByLabelText("Send");
+    expect(sendButton).toBeDisabled();
+    expect(sendRequests).toBe(0);
+    expect(screen.queryByText(/This workspace routes/)).not.toBeInTheDocument();
+
+    const warning = (await screen.findByText("Model Configure")).closest(
+      "button",
+    )!;
+    expect(warning).toHaveAccessibleName(
+      /Model Configure: This workspace routes Claude Opus 4\.7/,
+    );
+    const modelTrigger = screen.getByRole("combobox", {
+      name: "Claude Opus 4.7",
+    });
+    expect(
+      warning.compareDocumentPosition(modelTrigger) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await user.click(warning);
+    await expect(
+      screen.findByText("Configure Claude Code OAuth"),
+    ).resolves.toBeInTheDocument();
+    await fill(screen.getByPlaceholderText("sk-ant-XXXXXXX"), "oauth-token");
+    await user.click(screen.getByText("Save"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).not.toBeDisabled();
+    });
+  });
+
+  it("blocks agent chat submit and opens ChatGPT OAuth from the model warning", async () => {
+    const user = userEvent.setup();
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockReturnValue({ closed: true } as Window);
+    let sendRequests = 0;
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+      [FeatureSwitchKey.CodexBeta]: true,
+      [FeatureSwitchKey.CodexOauthProvider]: true,
+    });
+    setMockOrgModelPolicies([
+      buildMemberOauthPolicy({
+        model: "gpt-5.5",
+        modelLabel: "GPT-5.5",
+        defaultProviderType: "codex-oauth-token",
+      }),
+    ]);
+    setMockPersonalModelProviders([]);
+    mockAgent({ modelProviderId: null, selectedModel: null });
+    server.use(
+      mockApi(chatMessagesContract.send, ({ respond }) => {
+        sendRequests++;
+        return respond(201, {
+          runId: "run-1",
+          threadId: THREAD_ID,
+          status: "pending",
+          createdAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    await expectAgentChatLoaded();
+    await expectComposerShowsModel("GPT-5.5");
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    await fill(textarea, "Hello");
+    await user.keyboard("{Enter}");
+
+    expect(screen.getByLabelText("Send")).toBeDisabled();
+    expect(sendRequests).toBe(0);
+
+    const warning = (await screen.findByText("Model Configure")).closest(
+      "button",
+    )!;
+    expect(warning).toHaveAccessibleName(
+      /Model Configure: This workspace routes GPT-5\.5/,
+    );
+    await user.click(warning);
+
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
+        ),
+        "_blank",
+        expect.any(String),
+      );
+    });
+  });
+
   // CHAT-DM-003: Updating the agent's model (e.g. from Opus 4.7 -> 4.6 via
   // the profile tab) flows through: mounting a fresh chat page against an
   // agent whose stored model is Opus 4.6 shows Opus 4.6. This pins the
@@ -325,6 +474,68 @@ describe("chat composer — default model resolution", () => {
     await expectAgentChatLoaded();
 
     await expectComposerShowsModel("Claude Opus 4.6");
+  });
+
+  it("blocks thread submit and opens ChatGPT OAuth from the model warning", async () => {
+    const user = userEvent.setup();
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockReturnValue({ closed: true } as Window);
+    let sendRequests = 0;
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+      [FeatureSwitchKey.CodexBeta]: true,
+      [FeatureSwitchKey.CodexOauthProvider]: true,
+    });
+    setMockOrgModelPolicies([
+      buildMemberOauthPolicy({
+        model: "gpt-5.5",
+        modelLabel: "GPT-5.5",
+        defaultProviderType: "codex-oauth-token",
+      }),
+    ]);
+    setMockPersonalModelProviders([]);
+    mockAgent({ modelProviderId: null, selectedModel: null });
+    mockThread({ modelProviderId: null, selectedModel: null });
+    server.use(
+      mockApi(chatMessagesContract.send, ({ respond }) => {
+        sendRequests++;
+        return respond(201, {
+          runId: "run-1",
+          threadId: THREAD_ID,
+          status: "pending",
+          createdAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    await expectComposerShowsModel("GPT-5.5");
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    await fill(textarea, "Hello");
+    await user.keyboard("{Enter}");
+
+    expect(screen.getByLabelText("Send")).toBeDisabled();
+    expect(sendRequests).toBe(0);
+
+    const warning = (await screen.findByText("Model Configure")).closest(
+      "button",
+    )!;
+    expect(warning).toHaveAccessibleName(
+      /Model Configure: This workspace routes GPT-5\.5/,
+    );
+    await user.click(warning);
+
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
+        ),
+        "_blank",
+        expect.any(String),
+      );
+    });
   });
 
   it("shows the personal default when the agent prefers personal providers", async () => {
