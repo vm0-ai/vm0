@@ -362,9 +362,7 @@ export function zeroConnectorSearch(args: {
       const flag = config.featureFlag;
       const flagEnabled = !flag || featureStates[flag];
       const showOauth = flagEnabled && "oauth" in config.authMethods;
-      const showApiToken =
-        "api-token" in config.authMethods &&
-        (flagEnabled || !config.strictFeatureFlag);
+      const showApiToken = "api-token" in config.authMethods;
 
       if (!showOauth && !showApiToken) {
         return [];

@@ -68,7 +68,7 @@ describe("zeroConnectorList", () => {
 });
 
 describe("zeroConnectorSearch", () => {
-  it("hides strict feature-flagged api-token connectors when the flag is disabled", async () => {
+  it("shows feature-flagged api-token connectors even when the flag is disabled", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
 
@@ -76,14 +76,14 @@ describe("zeroConnectorSearch", () => {
       zeroConnectorSearch({ orgId, userId, keyword: undefined }),
     );
 
-    expect(
-      connectors.some((connector) => {
-        return connector.id === "zapier";
-      }),
-    ).toBeFalsy();
+    const zapier = connectors.find((connector) => {
+      return connector.id === "zapier";
+    });
+    expect(zapier).toBeDefined();
+    expect(zapier?.authMethods).toStrictEqual(["api-token"]);
   });
 
-  it("shows strict feature-flagged api-token connectors when an override enables the flag", async () => {
+  it("shows feature-flagged api-token connectors when an override enables the flag", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
 
