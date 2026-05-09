@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.265.2](https://github.com/vm0-ai/vm0/compare/core-v8.265.1...core-v8.265.2) (2026-05-09)
+
+
+### Refactoring
+
+* remove fully-enabled OfficialTelegramBot and ChatManualHistory feature switches ([#12349](https://github.com/vm0-ai/vm0/issues/12349)) ([ed51160](https://github.com/vm0-ai/vm0/commit/ed511603a19ec14a0003fccba66250560c290165))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.6.0
+    * @vm0/connectors bumped to 1.1.2
+
 ## [8.265.1](https://github.com/vm0-ai/vm0/compare/core-v8.265.0...core-v8.265.1) (2026-05-09)
 
 

@@ -1,5 +1,56 @@
 # Changelog
 
+## [1.24.0](https://github.com/vm0-ai/vm0/compare/api-v1.23.1...api-v1.24.0) (2026-05-09)
+
+
+### Features
+
+* **api:** implement zero org members list clerk parity ([#12447](https://github.com/vm0-ai/vm0/issues/12447)) ([19f4888](https://github.com/vm0-ai/vm0/commit/19f4888f517dbf4cb277e0199e6e0242768cd374))
+* **api:** port build talker payload to voice-chat session get ([#12470](https://github.com/vm0-ai/vm0/issues/12470)) ([ab189cc](https://github.com/vm0-ai/vm0/commit/ab189ccbc6bfb3de4398e99d00cb02173342dab9)), closes [#12463](https://github.com/vm0-ai/vm0/issues/12463)
+
+
+### Refactoring
+
+* **api:** migrate agent instructions get ([#12409](https://github.com/vm0-ai/vm0/issues/12409)) ([c0a707b](https://github.com/vm0-ai/vm0/commit/c0a707b1cd2cadf6f08059a3bf8101c905fdf801))
+* **api:** migrate agents by id get to api backend ([#12435](https://github.com/vm0-ai/vm0/issues/12435)) ([ccb5cac](https://github.com/vm0-ai/vm0/commit/ccb5cac48c0b8c25b901d1697f0b97cfd47a7bad))
+* **api:** migrate agents list get ([#12431](https://github.com/vm0-ai/vm0/issues/12431)) ([e5acde9](https://github.com/vm0-ai/vm0/commit/e5acde91edb589968c450fd9adc46b18027f2b20))
+* **api:** migrate composes by id get to api backend ([#12429](https://github.com/vm0-ai/vm0/issues/12429)) ([b061f46](https://github.com/vm0-ai/vm0/commit/b061f464e2d803cd90a19a8a91427a7a6f1933c0)), closes [#12428](https://github.com/vm0-ai/vm0/issues/12428)
+* **api:** migrate composes by name get to api backend ([#12427](https://github.com/vm0-ai/vm0/issues/12427)) ([df66047](https://github.com/vm0-ai/vm0/commit/df66047b121c17400efbd57df59dcf39abb555fd))
+* **api:** migrate composes list get to api backend ([#12415](https://github.com/vm0-ai/vm0/issues/12415)) ([ea06420](https://github.com/vm0-ai/vm0/commit/ea06420c7ce356d49c1f16fdf178caf64d869ac7))
+* **api:** migrate org domains list get to api backend ([#12440](https://github.com/vm0-ai/vm0/issues/12440)) ([2c15a05](https://github.com/vm0-ai/vm0/commit/2c15a05dff7013d186cb774aad93942abc4f73c9)), closes [#12437](https://github.com/vm0-ai/vm0/issues/12437)
+* **api:** migrate org get to api backend ([#12449](https://github.com/vm0-ai/vm0/issues/12449)) ([325fe7a](https://github.com/vm0-ai/vm0/commit/325fe7a78cac71e1e4b9d7d7c459659b51ed05c9))
+* **api:** migrate org list get to api backend ([#12433](https://github.com/vm0-ai/vm0/issues/12433)) ([9b6d0b0](https://github.com/vm0-ai/vm0/commit/9b6d0b03d334acf78e4654f703b39f290ff13b0a)), closes [#12432](https://github.com/vm0-ai/vm0/issues/12432)
+* **api:** migrate org members get to api backend ([#12450](https://github.com/vm0-ai/vm0/issues/12450)) ([724045d](https://github.com/vm0-ai/vm0/commit/724045dc878e6ea647408bc4cdac417f03d19a2d)), closes [#12443](https://github.com/vm0-ai/vm0/issues/12443)
+* **api:** migrate run agent events get to api backend ([#12422](https://github.com/vm0-ai/vm0/issues/12422)) ([75f4efa](https://github.com/vm0-ai/vm0/commit/75f4efaca4354a0c57f64e69d47a1b72cee974a2))
+* **api:** migrate run context get ([#12420](https://github.com/vm0-ai/vm0/issues/12420)) ([fc9cc36](https://github.com/vm0-ai/vm0/commit/fc9cc367b9fbe67fa17b670353e86c36a267b985))
+* **api:** migrate run network logs get to api backend ([#12421](https://github.com/vm0-ai/vm0/issues/12421)) ([f2bd43b](https://github.com/vm0-ai/vm0/commit/f2bd43b86783e625f06b489ac6deb86802b3ed89)), closes [#12417](https://github.com/vm0-ai/vm0/issues/12417)
+* **api:** migrate runs get-by-id ([#12414](https://github.com/vm0-ai/vm0/issues/12414)) ([472839e](https://github.com/vm0-ai/vm0/commit/472839e416d1d879eb4d83ffddb691dbb9934b90))
+* **api:** migrate runs runner get to api backend ([#12408](https://github.com/vm0-ai/vm0/issues/12408)) ([73e76c8](https://github.com/vm0-ai/vm0/commit/73e76c897412e5724568913abffa724c851d7624))
+* **api:** migrate user connectors get ([#12439](https://github.com/vm0-ai/vm0/issues/12439)) ([de02718](https://github.com/vm0-ai/vm0/commit/de027181f14feb883b5eefcc07e7fd2e0c126375))
+* **api:** migrate voice chat list tasks get to api backend ([#12464](https://github.com/vm0-ai/vm0/issues/12464)) ([2c8bf7e](https://github.com/vm0-ai/vm0/commit/2c8bf7e020083701d4be11577944f5f489dcac8c)), closes [#12458](https://github.com/vm0-ai/vm0/issues/12458)
+* **api:** migrate voice-chat get session get to api backend ([#12460](https://github.com/vm0-ai/vm0/issues/12460)) ([9c9f0d8](https://github.com/vm0-ai/vm0/commit/9c9f0d8b7e34bec3267c327560b52a2b60cae278))
+* **api:** migrate voice-chat list-sessions get to api backend ([#12448](https://github.com/vm0-ai/vm0/issues/12448)) ([8be77ab](https://github.com/vm0-ai/vm0/commit/8be77ab96c1712c4babf219e3a33a2cd51104d25))
+* **api:** migrate zero chat threads list get to api backend ([#12485](https://github.com/vm0-ai/vm0/issues/12485)) ([64858fa](https://github.com/vm0-ai/vm0/commit/64858fadaaca5780c50fcd3e0e5219e9ebe07b59)), closes [#12482](https://github.com/vm0-ai/vm0/issues/12482)
+* **api:** migrate zero connectors by type get to api backend ([#12479](https://github.com/vm0-ai/vm0/issues/12479)) ([f071e6b](https://github.com/vm0-ai/vm0/commit/f071e6b636c248e6fdd7c939db8ef27a24a9463d)), closes [#12476](https://github.com/vm0-ai/vm0/issues/12476)
+* **api:** migrate zero connectors computer get to api backend ([#12473](https://github.com/vm0-ai/vm0/issues/12473)) ([442a1a7](https://github.com/vm0-ai/vm0/commit/442a1a768b1f115765fc4bf7d08a3128e534ca3c)), closes [#12471](https://github.com/vm0-ai/vm0/issues/12471)
+* **api:** migrate zero connectors list get to api backend ([#12467](https://github.com/vm0-ai/vm0/issues/12467)) ([535e9a7](https://github.com/vm0-ai/vm0/commit/535e9a7baba6a3d93f50f8779a62ce3a7d94ffd5))
+* **api:** migrate zero connectors scope diff get to api backend ([#12480](https://github.com/vm0-ai/vm0/issues/12480)) ([52431bb](https://github.com/vm0-ai/vm0/commit/52431bbf9a7391a0cc29f8943137855dee2c6df4))
+* **api:** migrate zero connectors search get to api backend ([#12474](https://github.com/vm0-ai/vm0/issues/12474)) ([3ca8039](https://github.com/vm0-ai/vm0/commit/3ca80390be85d1ca0f622d46c931e7f5c9c6b41c))
+* **api:** migrate zero logs get by id to api backend ([#12478](https://github.com/vm0-ai/vm0/issues/12478)) ([2328045](https://github.com/vm0-ai/vm0/commit/23280452e5b7f3dc7e264a888d54215bbc51e883)), closes [#12475](https://github.com/vm0-ai/vm0/issues/12475)
+* **api:** migrate zero logs list get to api backend ([#12469](https://github.com/vm0-ai/vm0/issues/12469)) ([4f0a3c3](https://github.com/vm0-ai/vm0/commit/4f0a3c36b3a9c64eeb138498289603d587a9714d)), closes [#12465](https://github.com/vm0-ai/vm0/issues/12465)
+* **api:** migrate zero logs search get to api backend ([#12483](https://github.com/vm0-ai/vm0/issues/12483)) ([8e21a71](https://github.com/vm0-ai/vm0/commit/8e21a71653e2031050640ca52f1523ef1e368780))
+* remove fully-enabled OfficialTelegramBot and ChatManualHistory feature switches ([#12349](https://github.com/vm0-ai/vm0/issues/12349)) ([ed51160](https://github.com/vm0-ai/vm0/commit/ed511603a19ec14a0003fccba66250560c290165))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.6.0
+    * @vm0/connectors bumped to 1.1.2
+    * @vm0/core bumped to 8.265.2
+    * @vm0/db bumped to 1.4.0
+
 ## [1.23.1](https://github.com/vm0-ai/vm0/compare/api-v1.23.0...api-v1.23.1) (2026-05-09)
 
 

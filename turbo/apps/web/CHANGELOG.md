@@ -1,5 +1,27 @@
 # Changelog
 
+## [12.349.0](https://github.com/vm0-ai/vm0/compare/web-v12.348.1...web-v12.349.0) (2026-05-09)
+
+
+### Features
+
+* **chat:** add append-only chat interrupt events ([#12404](https://github.com/vm0-ai/vm0/issues/12404)) ([947fb71](https://github.com/vm0-ai/vm0/commit/947fb714fa212a9d2dee6e8db6a50ea44800fad6))
+
+
+### Refactoring
+
+* remove fully-enabled OfficialTelegramBot and ChatManualHistory feature switches ([#12349](https://github.com/vm0-ai/vm0/issues/12349)) ([ed51160](https://github.com/vm0-ai/vm0/commit/ed511603a19ec14a0003fccba66250560c290165))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.6.0
+    * @vm0/connectors bumped to 1.1.2
+    * @vm0/core bumped to 8.265.2
+    * @vm0/db bumped to 1.4.0
+
 ## [12.348.1](https://github.com/vm0-ai/vm0/compare/web-v12.348.0...web-v12.348.1) (2026-05-09)
 
 
