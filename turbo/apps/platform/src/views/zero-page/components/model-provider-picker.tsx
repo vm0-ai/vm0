@@ -789,12 +789,10 @@ function ModelFirstModelPicker({
             onChange(effectiveDefault);
           }}
         />
-        {value !== null && (
-          <ModelFirstPolicyItems
-            policies={policies}
-            explicitSelectedModel={explicitSelectedModel}
-          />
-        )}
+        <ModelFirstPolicyItems
+          policies={policies}
+          explicitSelectedModel={explicitSelectedModel}
+        />
       </SelectContent>
     </Select>
   );
