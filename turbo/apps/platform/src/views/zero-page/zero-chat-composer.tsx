@@ -157,6 +157,7 @@ interface ZeroChatComposerProps {
    * Cancel the active run. When provided, the Send button switches to a Stop
    * button while sending and the composer is empty; with content present the
    * Send button stays visible and clicks queue the message instead.
+   * Clicking Stop while a queue exists recalls the queued text to draft.
    */
   onCancel?: () => void;
   displayName: string;
@@ -1118,6 +1119,16 @@ export function ZeroChatComposer({
   // the Send button stays visible so the click can queue the message.
   const showStopButton = Boolean(sending && onCancel) && !canSend;
 
+  // Routes a button click to queue (while an active run exists and the
+  // queue feature is on) or to the normal send path.
+  const handleButtonSend = () => {
+    if (sending && queueWhileSending && onQueue) {
+      onQueue(input.trim());
+    } else {
+      handleSend();
+    }
+  };
+
   const sendModeLoadable = useLastLoadable(sendMode$);
   const sendMode =
     sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
@@ -1335,11 +1346,8 @@ export function ZeroChatComposer({
                       <Button
                         size="sm"
                         className="rounded-lg h-9 w-9 p-0 shrink-0"
-                        onClick={handleButtonClick}
-                        disabled={
-                          !canSend ||
-                          (sending && (!queueWhileSending || !onQueue))
-                        }
+                        onClick={handleButtonSend}
+                        disabled={sendAction === "none"}
                         aria-label="Send"
                       >
                         <IconArrowUp size={18} stroke={2} />

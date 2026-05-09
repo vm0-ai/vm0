@@ -1874,40 +1874,34 @@ describe("POST /api/internal/callbacks/chat", () => {
       );
     });
 
-    it("should not auto-send when run is cancelled and pending message was already recalled", async () => {
-      // Simulate the frontend flow: user clicks Stop with a queued message.
-      // 1. Frontend recalls the pending message (clears it on server)
-      // 2. Frontend cancels the run
-      // 3. Callback fires for the cancelled run → no pending message to auto-send
-
-      const { threadId, runId, secret } = await setupRunAndThread();
-      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
-
-      // Seed a pending message, then immediately clear it (simulating recall before cancel)
-      await setTestChatThreadPendingMessage(threadId, {
-        content: "queued message",
-        attachments: [],
+    it("should not auto-send when the pending message was recalled before the run terminates", async () => {
+      // Simulates the Stop-with-queue interaction: the user recalls the
+      // queued message (clearing pending columns) then cancels the run.
+      // The cancel surfaces as a "failed" callback. Auto-send must be a
+      // no-op because the pending columns are already empty.
+      const { threadId, runId, secret } = await setupRunAndThread({
+        status: "failed",
       });
 
-      // Recall: clear pending message (frontend does this before cancel)
-      const recalled = await getTestChatThreadPendingMessage(threadId);
-      expect(recalled?.pendingMessageContent).toBe("queued message");
-
-      // Now clear it (simulating recall API call)
+      // Queue a message…
+      await setTestChatThreadPendingMessage(threadId, {
+        content: "recalled before cancel",
+        attachments: null,
+      });
+      // …then recall it (user clicked Stop, recall fired optimistically).
       await setTestChatThreadPendingMessage(threadId, null);
 
-      // Verify pending is gone — the row still exists but columns are null
-      const afterRecall = await getTestChatThreadPendingMessage(threadId);
-      expect(afterRecall?.pendingMessageContent).toBeNull();
-
-      // Now the cancel callback fires (as "failed" because cancelled maps to failed)
       const response = await POST(
         createSignedCallbackRequest(
           "http://localhost/api/internal/callbacks/chat",
           {
             runId,
             status: "failed",
+<<<<<<< HEAD
             error: "Run cancelled",
+=======
+            error: "Run cancelled by user",
+>>>>>>> origin/main
             payload: { threadId, agentId },
           },
           secret,
@@ -1915,6 +1909,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       );
       expect(response.status).toBe(200);
 
+<<<<<<< HEAD
       // No auto-sent row should appear — pending was already recalled
       const messages = await getTestChatMessagesByThread(threadId);
       const userMessages = messages.filter((m) => {
@@ -1925,6 +1920,20 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       // No pending-message-change signal since nothing was queued
       // (the pending was already cleared before the callback fired)
+=======
+      // No additional user message row should have been created.
+      const messages = await getTestChatMessagesByThread(threadId);
+      const userMessages = messages.filter((m) => {
+        return m.role === "user" && m.content === "recalled before cancel";
+      });
+      expect(userMessages).toHaveLength(0);
+
+      // No pending-message-change signal since there was nothing to claim.
+      expect(mockAblyPublish).not.toHaveBeenCalledWith(
+        `chatThreadPendingMessageChanged:${threadId}`,
+        null,
+      );
+>>>>>>> origin/main
     });
   });
 });

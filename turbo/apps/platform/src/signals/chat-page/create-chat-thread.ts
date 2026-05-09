@@ -1535,6 +1535,7 @@ function createPendingMessageView(
 
   const markPendingRecalled$ = command(({ set }, updatedAt: string) => {
     set(internalRecalledUpdatedAt$, updatedAt);
+    set(internalOptimisticPending$, null);
   });
 
   return {

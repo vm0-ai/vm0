@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  fill,
+} from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
   sendMessageInUI,
@@ -98,5 +103,106 @@ describe("chat failure and cancel", () => {
     // Textarea should be enabled and accessible
     const restoredTextarea = screen.getByPlaceholderText(PLACEHOLDER);
     expect(restoredTextarea).not.toBeDisabled();
+  });
+});
+
+const AGENT_PATH = "/agents/c0000000-0000-4000-a000-000000000001/chat";
+
+describe("send vs stop button visibility during active run", () => {
+  it("shows Stop button when running with empty input", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle();
+
+    detachedSetupPage({
+      context,
+      path: AGENT_PATH,
+      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+    });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, "Hello");
+
+    // Input cleared after send → Stop visible
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Send")).toBeNull();
+    });
+  });
+
+  it("shows Send button (not Stop) when running and input has content", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle();
+
+    detachedSetupPage({
+      context,
+      path: AGENT_PATH,
+      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+    });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, "Hello");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    const activeTextarea = await waitFor(() => {
+      return screen.getByPlaceholderText(
+        /Type your next message/,
+      ) as HTMLTextAreaElement;
+    });
+    await fill(activeTextarea, "something to queue");
+
+    // Input has content → Send replaces Stop
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).toBeNull();
+    });
+  });
+
+  it("clicking Send while running with content queues the message", async () => {
+    const user = userEvent.setup();
+    const appendedContents: (string | undefined)[] = [];
+    mockChatLifecycle({
+      onPendingMessageAppend: (body) => {
+        appendedContents.push(body.content);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: AGENT_PATH,
+      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+    });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, "Hello");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    const activeTextarea = await waitFor(() => {
+      return screen.getByPlaceholderText(
+        /Type your next message/,
+      ) as HTMLTextAreaElement;
+    });
+    await fill(activeTextarea, "queued via button");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(appendedContents).toContain("queued via button");
+    });
   });
 });
