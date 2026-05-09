@@ -566,14 +566,19 @@ impl Shared {
     }
 
     fn remove_bounded_output_sender(&self, seq: u32) {
-        let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if let ConnectionState::Connected {
-            bounded_output_senders,
-            ..
-        } = &mut *guard
-        {
-            bounded_output_senders.remove(&seq);
-        }
+        let removed = {
+            let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if let ConnectionState::Connected {
+                bounded_output_senders,
+                ..
+            } = &mut *guard
+            {
+                bounded_output_senders.remove(&seq)
+            } else {
+                None
+            }
+        };
+        drop(removed);
     }
 }
 
@@ -754,7 +759,7 @@ async fn reader_loop(
             } else if msg.msg_type == MSG_BOUNDED_EXEC_OUTPUT_CHUNK && msg.seq != 0 {
                 if let Ok(decoded) = vsock_proto::decode_bounded_exec_output_chunk(&msg.payload) {
                     let stream = proto_stream_to_host(decoded.stream);
-                    let forward_plan = {
+                    let (forward_plan, closed_registration) = {
                         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
                         match &mut *guard {
                             ConnectionState::Connected {
@@ -775,14 +780,15 @@ async fn reader_loop(
                                 } else {
                                     (None, false)
                                 };
-                                if remove_registration {
-                                    bounded_output_senders.remove(&msg.seq);
-                                }
-                                plan
+                                let closed_registration = remove_registration
+                                    .then(|| bounded_output_senders.remove(&msg.seq))
+                                    .flatten();
+                                (plan, closed_registration)
                             }
-                            ConnectionState::Closed { .. } => None,
+                            ConnectionState::Closed { .. } => (None, None),
                         }
                     };
+                    drop(closed_registration);
                     if let Some(forward_plan) = forward_plan {
                         for event_plan in forward_plan.events.iter() {
                             let event = BoundedExecOutputEvent {
@@ -807,7 +813,7 @@ async fn reader_loop(
                 // from pending_stdout to stdout_senders BEFORE dispatching the
                 // response — under one lock so the channel is keyed by pid in
                 // stdout_senders before any subsequent MSG_STDOUT_CHUNK arrives.
-                let response_sender = {
+                let (response_sender, bounded_output_sender) = {
                     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
                     match &mut *guard {
                         ConnectionState::Connected {
@@ -824,12 +830,15 @@ async fn reader_loop(
                             {
                                 stdout_senders.insert(pid, tx);
                             }
-                            bounded_output_senders.remove(&msg.seq);
-                            pending.remove(&msg.seq)
+                            (
+                                pending.remove(&msg.seq),
+                                bounded_output_senders.remove(&msg.seq),
+                            )
                         }
-                        ConnectionState::Closed { .. } => None,
+                        ConnectionState::Closed { .. } => (None, None),
                     }
                 };
+                drop(bounded_output_sender);
                 if let Some(tx) = response_sender {
                     let _ = tx.send(msg);
                 }
