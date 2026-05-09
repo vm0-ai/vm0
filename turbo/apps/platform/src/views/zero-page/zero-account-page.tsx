@@ -65,7 +65,7 @@ function AppearanceSettings() {
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-sm max-md:text-[17px] font-medium text-foreground">Theme</div>
+          <div className="text-sm max-md:text-[16px] font-medium text-foreground">Theme</div>
           <div className="text-sm max-md:text-[16px] text-muted-foreground max-md:leading-snug">
             Your preferred color scheme
           </div>
@@ -135,7 +135,7 @@ function SendModeSettings() {
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-sm max-md:text-[17px] font-medium text-foreground">
+          <div className="text-sm max-md:text-[16px] font-medium text-foreground">
             Send message with
           </div>
           <div className="text-sm max-md:text-[16px] text-muted-foreground max-md:leading-snug">
@@ -213,7 +213,7 @@ function CaptureNetworkBodiesSettings() {
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-sm max-md:text-[17px] font-medium text-foreground">
+          <div className="text-sm max-md:text-[16px] font-medium text-foreground">
             Capture network bodies
           </div>
           <div className="text-sm max-md:text-[16px] text-muted-foreground">

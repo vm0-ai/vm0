@@ -190,7 +190,7 @@ function MobileFullScreenTopBar({
         <IconArrowLeft size={20} stroke={1.8} />
       </button>
       <div className="absolute inset-x-12 top-0 bottom-0 flex items-center justify-center pointer-events-none">
-        <span className="text-[17px] font-medium text-foreground truncate">
+        <span className="text-[16px] font-medium text-foreground truncate">
           {title}
         </span>
       </div>
@@ -211,7 +211,7 @@ function MobileMasterList({
 }) {
   return (
     <div className="flex-1 overflow-y-auto px-5 pt-2 pb-10 [scrollbar-gutter:stable]">
-      <p className="text-[15px] text-muted-foreground leading-snug">
+      <p className="text-[14px] text-muted-foreground leading-snug">
         Manage workspace profile, members, integrations, and billing.
       </p>
 
@@ -266,7 +266,7 @@ function MobileMasterList({
 function MobileDetailIntro({ description }: { readonly description: string }) {
   return (
     <header className="shrink-0 px-5 pt-2 pb-1">
-      <p className="text-[15px] text-muted-foreground leading-snug">
+      <p className="text-[14px] text-muted-foreground leading-snug">
         {description}
       </p>
     </header>

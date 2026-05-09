@@ -753,7 +753,7 @@ function MobileTopBar() {
         >
           {breadcrumb.avatarAgentId && <AgentAvatarInTopBar />}
           <div className="flex items-center gap-2 min-w-0">
-            <div className="text-[17px] font-medium text-foreground flex items-center gap-1 min-w-0">
+            <div className="text-[16px] font-medium text-foreground flex items-center gap-1 min-w-0">
               <Link
                 pathname={breadcrumb.sectionPath}
                 className="hover:opacity-70 transition-opacity no-underline text-inherit"
@@ -776,7 +776,7 @@ function MobileTopBar() {
       {centeredTitle && (
         <h1
           data-testid="mobile-top-bar-title"
-          className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-[17px] font-semibold text-foreground truncate max-w-[55%]"
+          className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-[16px] font-semibold text-foreground truncate max-w-[55%]"
         >
           {centeredTitle}
         </h1>

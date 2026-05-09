@@ -327,7 +327,7 @@ function ScheduleListCard<T extends ScheduleEntry>({
       <div className="min-w-0 flex-1 flex flex-col gap-0.5 pointer-events-none">
         <span
           className={cn(
-            "truncate text-[16px] max-md:text-[17px] leading-snug font-medium text-foreground",
+            "truncate text-[16px] leading-snug font-medium text-foreground",
             dimmed && "text-muted-foreground",
           )}
         >
@@ -404,7 +404,7 @@ export function ScheduleListView<T extends ScheduleEntry>({
           className="h-24 w-24 object-contain opacity-80"
         />
         <div className="text-center">
-          <p className="text-[17px] font-medium text-foreground">
+          <p className="text-[16px] font-medium text-foreground">
             No runs scheduled
           </p>
           <p className="text-[16px] text-muted-foreground mt-1">

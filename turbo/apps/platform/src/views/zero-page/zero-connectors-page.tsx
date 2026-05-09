@@ -401,7 +401,7 @@ function GlobalConnectorCard({
         </span>
         <span
           data-testid="connector-card-label"
-          className="min-w-0 flex-1 text-sm max-md:text-[17px] font-medium text-foreground truncate"
+          className="min-w-0 flex-1 text-sm max-md:text-[16px] font-medium text-foreground truncate"
         >
           {connector.label}
         </span>
@@ -472,7 +472,7 @@ function AvailableConnectorCard({
         </span>
         <span
           data-testid="connector-card-label"
-          className="min-w-0 flex-1 text-sm max-md:text-[17px] font-medium text-foreground truncate"
+          className="min-w-0 flex-1 text-sm max-md:text-[16px] font-medium text-foreground truncate"
         >
           {connector.label}
         </span>

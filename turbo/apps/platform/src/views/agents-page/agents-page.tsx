@@ -409,7 +409,7 @@ function CreateTeammateDialogContent({
         <h1 className="text-[20px] font-semibold leading-7 text-foreground">
           Create a new agent
         </h1>
-        <p className="text-[15px] text-muted-foreground mt-1 leading-snug">
+        <p className="text-[14px] text-muted-foreground mt-1 leading-snug">
           Tap the avatar to customize, then give your agent a name.
         </p>
       </div>
@@ -511,7 +511,7 @@ function AgentCard({ agent }: AgentProps) {
           className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
         />
         <div className="flex-1 min-w-0">
-          <span className="text-sm max-md:text-[17px] font-medium text-foreground truncate block">
+          <span className="text-sm max-md:text-[16px] font-medium text-foreground truncate block">
             {displayName}
           </span>
           <p className="text-[16px] sm:text-[14px] text-muted-foreground mt-0.5 line-clamp-1">
@@ -550,7 +550,7 @@ function AgentListRow({
           className="h-11 w-11 max-md:h-14 max-md:w-14 shrink-0 rounded-xl object-cover object-top"
         />
         <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-          <span className="truncate text-[16px] max-md:text-[17px] leading-snug font-medium text-foreground">
+          <span className="truncate text-[16px] leading-snug font-medium text-foreground">
             {displayName}
           </span>
           {description && (

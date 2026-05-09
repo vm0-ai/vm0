@@ -380,7 +380,7 @@ function SuggestedPromptButton({
         stroke={2}
         className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
       />
-      <p className="text-sm max-md:text-[17px] font-semibold text-foreground pr-5">
+      <p className="text-sm max-md:text-[16px] font-semibold text-foreground pr-5">
         {item.title}
       </p>
       <p className="text-sm max-md:text-[16px] text-muted-foreground mt-1.5 leading-relaxed">
@@ -428,7 +428,7 @@ function IdeasUseCasesButton() {
         stroke={2}
         className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
       />
-      <p className="text-sm max-md:text-[17px] font-semibold text-foreground pr-5">
+      <p className="text-sm max-md:text-[16px] font-semibold text-foreground pr-5">
         Ideas &amp; use cases
       </p>
       <p className="text-sm max-md:text-[16px] text-muted-foreground mt-1.5 leading-relaxed">

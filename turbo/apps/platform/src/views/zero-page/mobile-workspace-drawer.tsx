@@ -285,7 +285,7 @@ export function MobileWorkspaceDrawer() {
             />
             <PendingInvitationsBadge />
           </span>
-          <span className="min-w-0 truncate text-[15px] font-semibold">
+          <span className="min-w-0 truncate text-[14px] font-semibold">
             {orgName}
           </span>
         </button>

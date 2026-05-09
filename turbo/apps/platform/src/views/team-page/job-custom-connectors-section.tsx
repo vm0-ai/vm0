@@ -46,7 +46,7 @@ function CustomConnectorPermissionRow({
         size={20}
       />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[17px] sm:text-sm font-medium text-foreground">
+        <div className="truncate text-[16px] sm:text-sm font-medium text-foreground">
           {connector.displayName}
         </div>
         <div className="truncate text-[14px] sm:text-xs text-muted-foreground font-mono">

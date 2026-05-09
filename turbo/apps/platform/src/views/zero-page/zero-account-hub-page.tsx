@@ -104,7 +104,7 @@ function AccountIdentityCard() {
       <div className="min-w-0 flex-1">
         <p
           data-testid="account-hub-name"
-          className="text-[17px] font-semibold leading-tight truncate text-foreground"
+          className="text-[16px] font-semibold leading-tight truncate text-foreground"
         >
           {name}
         </p>

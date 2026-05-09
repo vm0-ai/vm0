@@ -56,7 +56,7 @@ function ResultRow({ session }: { session: ChatThreadListItem }) {
         alt=""
         className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
       />
-      <span className="min-w-0 flex-1 truncate text-[17px] font-medium">
+      <span className="min-w-0 flex-1 truncate text-[16px] font-medium">
         {session.title ?? "New chat"}
       </span>
       {dateLabel && (
@@ -120,7 +120,7 @@ export function ZeroSearchPage() {
             }}
             placeholder="Search chats"
             data-testid="mobile-search-input"
-            className="flex-1 min-w-0 bg-transparent text-[17px] text-foreground placeholder:text-muted-foreground focus:outline-none"
+            className="flex-1 min-w-0 bg-transparent text-[16px] text-foreground placeholder:text-muted-foreground focus:outline-none"
           />
           {term && (
             <button

@@ -613,7 +613,7 @@ function ProfileSection({
           <div className="flex items-center gap-2 max-md:gap-2">
             <Button
               size="sm"
-              className="rounded-lg max-md:flex-1 max-md:h-11 max-md:text-[15px]"
+              className="rounded-lg max-md:flex-1 max-md:h-11 max-md:text-[14px]"
               onClick={onDomEventFn(handleSave)}
               disabled={saving}
             >
@@ -622,7 +622,7 @@ function ProfileSection({
             <Button
               variant="ghost"
               size="sm"
-              className="rounded-lg text-muted-foreground max-md:flex-1 max-md:h-11 max-md:text-[15px]"
+              className="rounded-lg text-muted-foreground max-md:flex-1 max-md:h-11 max-md:text-[14px]"
               onClick={handleDiscard}
               disabled={saving}
             >

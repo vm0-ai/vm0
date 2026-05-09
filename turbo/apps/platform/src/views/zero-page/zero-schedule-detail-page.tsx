@@ -880,7 +880,7 @@ function MobileScheduleIndexView({
               >
                 {summaryTitle}
               </h1>
-              <div className="mt-2 flex flex-wrap justify-center items-center gap-x-2 gap-y-0.5 text-[15px] text-muted-foreground leading-tight">
+              <div className="mt-2 flex flex-wrap justify-center items-center gap-x-2 gap-y-0.5 text-[14px] text-muted-foreground leading-tight">
                 <span className="flex items-center gap-1.5 whitespace-nowrap">
                   <span
                     className={cn(

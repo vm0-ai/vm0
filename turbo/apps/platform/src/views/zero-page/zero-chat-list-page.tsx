@@ -216,7 +216,7 @@ export function ZeroChatListPage() {
           disabled={creating}
           aria-label="New chat"
           data-testid="mobile-new-chat-fab"
-          className="md:hidden absolute right-4 bottom-4 flex h-12 items-center gap-2 rounded-full bg-primary px-5 text-[15px] font-semibold text-primary-foreground shadow-[0_10px_24px_-6px_hsl(var(--primary-700)/0.35)] hover:bg-primary/90 transition-colors disabled:opacity-50"
+          className="md:hidden absolute right-4 bottom-4 flex h-12 items-center gap-2 rounded-full bg-primary px-5 text-[14px] font-semibold text-primary-foreground shadow-[0_10px_24px_-6px_hsl(var(--primary-700)/0.35)] hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
           <IconPlus size={18} stroke={2} />
           New chat
