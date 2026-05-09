@@ -854,7 +854,7 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     await insertOrgModelPolicy({
       orgId,
       model: "glm-5.1",
-      sortOrder: 0,
+      isDefault: true,
       defaultProviderType: "openrouter-api-key",
       credentialScope: "org",
       modelProviderId: providerId,
@@ -939,7 +939,7 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     await insertOrgModelPolicy({
       orgId,
       model: "gpt-5.5",
-      sortOrder: 0,
+      isDefault: true,
       defaultProviderType: "codex-oauth-token",
       credentialScope: "member",
     });
@@ -1079,25 +1079,28 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     });
   });
 
-  it("rejects vm0 model routes before materialization when no concrete mapping exists", async () => {
-    const userId = uniqueId("mf-vm0-missing-map");
+  it("rejects vm0 model routes during materialization when no key is available", async () => {
+    const userId = uniqueId("mf-vm0-missing-key");
     const orgId = await setupOrg(userId);
     await enableModelFirstModelProviderForUser(orgId, userId);
     await insertOrgModelPolicy({
       orgId,
       model: "gpt-5.5",
-      sortOrder: 0,
+      isDefault: true,
       defaultProviderType: "vm0",
       credentialScope: "org",
     });
 
     await expect(
-      resolveModelRoute({
+      resolveModelProviderSecrets(
         orgId,
         userId,
-        framework: "codex",
-        selectedModelOverride: "gpt-5.5",
-      }),
+        "codex",
+        false,
+        undefined,
+        undefined,
+        "gpt-5.5",
+      ),
     ).rejects.toSatisfy((err: unknown) => {
       return isBadRequest(err);
     });
