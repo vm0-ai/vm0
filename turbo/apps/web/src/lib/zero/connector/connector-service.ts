@@ -150,26 +150,24 @@ export async function listConnectors(
   // `connectors.type` is varchar, so it can outlive a connector's removal from
   // the contract. Skip unknown types instead of throwing, so the list endpoint
   // stays usable while ops cleans up orphans.
-  const dbConnectors: ConnectorResponse[] = [
-    ...oauthRows.flatMap((row) => {
-      const parsed = connectorTypeSchema.safeParse(row.type);
-      if (!parsed.success) return [];
-      return [
-        {
-          id: row.id,
-          type: parsed.data,
-          authMethod: row.authMethod,
-          externalId: row.externalId,
-          externalUsername: row.externalUsername,
-          externalEmail: row.externalEmail,
-          oauthScopes: row.oauthScopes ? JSON.parse(row.oauthScopes) : null,
-          needsReconnect: row.needsReconnect,
-          createdAt: row.createdAt.toISOString(),
-          updatedAt: row.updatedAt.toISOString(),
-        },
-      ];
-    }),
-  ];
+  const dbConnectors: ConnectorResponse[] = oauthRows.flatMap((row) => {
+    const parsed = connectorTypeSchema.safeParse(row.type);
+    if (!parsed.success) return [];
+    return [
+      {
+        id: row.id,
+        type: parsed.data,
+        authMethod: row.authMethod,
+        externalId: row.externalId,
+        externalUsername: row.externalUsername,
+        externalEmail: row.externalEmail,
+        oauthScopes: row.oauthScopes ? JSON.parse(row.oauthScopes) : null,
+        needsReconnect: row.needsReconnect,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+      },
+    ];
+  });
 
   // DB record takes precedence over derived
   const dbTypeSet = new Set(
