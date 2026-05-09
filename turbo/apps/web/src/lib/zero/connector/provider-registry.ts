@@ -1,5 +1,5 @@
 import type { ConnectorType } from "@vm0/connectors/connectors";
-import { getConnectorDefaultAuthMethod } from "@vm0/connectors/connector-utils";
+import { getConfiguredConnectorTypes as getConfiguredConnectorTypesFromEnv } from "@vm0/connectors/connector-utils";
 import { type Env } from "../../../env";
 import {
   type AuthUrlResult,
@@ -376,24 +376,8 @@ export const PROVIDER_HANDLERS: Record<
  * configured in the current environment.
  */
 export function getConfiguredConnectorTypes(currentEnv: Env): ConnectorType[] {
-  const configured: ConnectorType[] = [];
-
-  for (const [type, handler] of Object.entries(PROVIDER_HANDLERS)) {
-    const connectorType = type as ConnectorType;
-    if (
-      handler.getClientId(currentEnv) &&
-      handler.getClientSecret(currentEnv)
-    ) {
-      configured.push(connectorType);
-    } else if (getConnectorDefaultAuthMethod(connectorType) === "api-token") {
-      configured.push(connectorType);
-    }
-  }
-
-  // computer connector: no OAuth — uses ngrok credentials instead
-  if (currentEnv.NGROK_API_KEY && currentEnv.NGROK_COMPUTER_CONNECTOR_DOMAIN) {
-    configured.push("computer");
-  }
-
-  return configured.sort();
+  return getConfiguredConnectorTypesFromEnv((name) => {
+    const value = currentEnv[name as keyof Env];
+    return typeof value === "string" ? value : undefined;
+  });
 }

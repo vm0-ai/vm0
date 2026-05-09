@@ -8,7 +8,7 @@ import type { ConnectorSearchAuthMethod } from "@vm0/api-contracts/contracts/zer
 import {
   deriveApiTokenConnectedTypes,
   getApiTokenFieldsByType,
-  getConnectorDefaultAuthMethod,
+  getConfiguredConnectorTypes,
   getConnectorProvidedSecretNames,
   getScopeDiff,
 } from "@vm0/connectors/connector-utils";
@@ -24,6 +24,7 @@ import { variables } from "@vm0/db/schema/variable";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
+import { optionalEnv } from "../../lib/env";
 import { db$ } from "../external/db";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
@@ -61,12 +62,6 @@ function storedConnectorRowToResponse(
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
-}
-
-function configuredConnectorTypes(): readonly ConnectorType[] {
-  return (Object.keys(CONNECTOR_TYPES) as ConnectorType[]).filter((type) => {
-    return getConnectorDefaultAuthMethod(type) === "api-token";
-  });
 }
 
 function apiTokenConnectorTypes(args: {
@@ -180,7 +175,9 @@ export function zeroConnectorList(args: {
     const connectorList = [...dbConnectors, ...derivedConnectors];
     return {
       connectors: connectorList,
-      configuredTypes: [...configuredConnectorTypes()].sort(),
+      configuredTypes: getConfiguredConnectorTypes((name) => {
+        return optionalEnv(name);
+      }),
       connectorProvidedSecretNames: [
         ...getConnectorProvidedSecretNames(
           connectorList.map((connector) => {

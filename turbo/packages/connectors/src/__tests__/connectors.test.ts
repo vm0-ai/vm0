@@ -8,6 +8,7 @@ import {
   getConnectorProvidedSecretNames,
   getConnectorAuthMethods,
   getConnectorOAuthConfig,
+  getConfiguredConnectorTypes,
   isGoogleOAuthConnector,
 } from "../connector-utils";
 
@@ -221,6 +222,100 @@ describe("getConnectorEnvironmentMapping", () => {
         ).toBe(true);
       }
     }
+  });
+});
+
+describe("getConfiguredConnectorTypes", () => {
+  const emptyEnv = () => {
+    return undefined;
+  };
+
+  it("includes api-token connectors without environment credentials", () => {
+    const configuredTypes = getConfiguredConnectorTypes(emptyEnv);
+
+    expect(configuredTypes).toContain("amplitude");
+    expect(configuredTypes).toContain("openai");
+  });
+
+  it("includes OAuth connectors only when client id and secret are configured", () => {
+    const env = new Map([
+      ["AIRTABLE_OAUTH_CLIENT_ID", "airtable-client-id"],
+      ["AIRTABLE_OAUTH_CLIENT_SECRET", "airtable-client-secret"],
+      ["SENTRY_OAUTH_CLIENT_ID", "sentry-client-id"],
+    ]);
+
+    const configuredTypes = getConfiguredConnectorTypes((name) => {
+      return env.get(name);
+    });
+
+    expect(configuredTypes).toContain("airtable");
+    expect(configuredTypes).not.toContain("sentry");
+  });
+
+  it("includes all connectors that share a configured OAuth app", () => {
+    const env = new Map([
+      ["GOOGLE_OAUTH_CLIENT_ID", "google-client-id"],
+      ["GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret"],
+    ]);
+
+    const configuredTypes = getConfiguredConnectorTypes((name) => {
+      return env.get(name);
+    });
+
+    expect(configuredTypes).toEqual(
+      expect.arrayContaining([
+        "gmail",
+        "google-calendar",
+        "google-docs",
+        "google-drive",
+        "google-meet",
+        "google-sheets",
+      ]),
+    );
+  });
+
+  it("includes active OAuth connectors when their runtime env is configured", () => {
+    const oauthTypesWithoutRuntimeClientCredentials = new Set([
+      "codex-oauth",
+      "mailchimp",
+    ]);
+    const activeOAuthTypes = connectorTypeSchema.options.filter((type) => {
+      return (
+        getConnectorOAuthConfig(type) &&
+        !oauthTypesWithoutRuntimeClientCredentials.has(type)
+      );
+    });
+
+    const configuredTypes = getConfiguredConnectorTypes(() => {
+      return "configured";
+    });
+
+    expect(configuredTypes).toEqual(expect.arrayContaining(activeOAuthTypes));
+  });
+
+  it("includes computer only when both ngrok env vars are configured", () => {
+    const partialComputerEnv = new Map([["NGROK_API_KEY", "ngrok-api-key"]]);
+    const fullComputerEnv = new Map([
+      ["NGROK_API_KEY", "ngrok-api-key"],
+      ["NGROK_COMPUTER_CONNECTOR_DOMAIN", "computer.example.com"],
+    ]);
+
+    expect(
+      getConfiguredConnectorTypes((name) => {
+        return partialComputerEnv.get(name);
+      }),
+    ).not.toContain("computer");
+    expect(
+      getConfiguredConnectorTypes((name) => {
+        return fullComputerEnv.get(name);
+      }),
+    ).toContain("computer");
+  });
+
+  it("returns connector types in sorted order", () => {
+    const configuredTypes = getConfiguredConnectorTypes(emptyEnv);
+
+    expect(configuredTypes).toStrictEqual([...configuredTypes].sort());
   });
 });
 
