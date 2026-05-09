@@ -1032,3 +1032,150 @@ fn send_bounded_exec_output_chunk(
 fn duration_ms(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+    use std::os::unix::net::UnixStream;
+
+    use crate::threading::test_support::FailingThreadSpawner;
+
+    fn capture_output(limit_bytes: u32) -> BoundedOutputRequest {
+        BoundedOutputRequest {
+            capture: vsock_proto::BoundedExecCapturePolicy::Capture { limit_bytes },
+            stream: None,
+        }
+    }
+
+    fn bounded_request(seq: u32, command: &str) -> BoundedExecWorkerRequest {
+        BoundedExecWorkerRequest {
+            seq,
+            timeout_ms: 5_000,
+            command: command.to_string(),
+            env: Vec::new(),
+            sudo: false,
+            stdin: None,
+            stdout: capture_output(1024),
+            stderr: capture_output(1024),
+        }
+    }
+
+    fn read_message(stream: &mut UnixStream) -> vsock_proto::RawMessage {
+        let mut hdr = [0u8; 4];
+        stream.read_exact(&mut hdr).unwrap();
+        let body_len = u32::from_be_bytes(hdr) as usize;
+        let mut body = vec![0u8; body_len];
+        stream.read_exact(&mut body).unwrap();
+
+        let mut full = Vec::with_capacity(4 + body_len);
+        full.extend_from_slice(&hdr);
+        full.extend_from_slice(&body);
+        let mut decoder = vsock_proto::Decoder::new();
+        let mut messages = decoder.decode(&full).unwrap();
+        assert_eq!(messages.len(), 1);
+        messages.remove(0)
+    }
+
+    fn assert_bounded_exec_result(
+        stream: &mut UnixStream,
+        seq: u32,
+        expected_termination: BoundedExecTermination,
+        expected_diagnostic: &str,
+    ) {
+        let msg = read_message(stream);
+        assert_eq!(msg.msg_type, MSG_BOUNDED_EXEC_RESULT);
+        assert_eq!(msg.seq, seq);
+        let decoded = vsock_proto::decode_bounded_exec_result(&msg.payload).unwrap();
+        assert_eq!(decoded.termination, expected_termination);
+        let diagnostic = decoded.diagnostic.unwrap_or_default();
+        assert!(
+            diagnostic.contains(expected_diagnostic),
+            "expected diagnostic to contain {expected_diagnostic:?}, got {diagnostic:?}",
+        );
+    }
+
+    #[test]
+    fn bounded_exec_worker_spawn_failure_returns_start_failed_result() {
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let writer = GuestWriter::new(guest);
+
+        spawn_bounded_exec_worker_with_spawner(
+            bounded_request(41, "echo should-not-run"),
+            writer,
+            Arc::new(AtomicBool::new(false)),
+            FailingThreadSpawner::fail_once(THREAD_BOUNDED_EXEC_WORKER),
+        )
+        .unwrap();
+
+        assert_bounded_exec_result(
+            &mut host,
+            41,
+            BoundedExecTermination::StartFailed,
+            "bounded exec worker thread",
+        );
+    }
+
+    #[test]
+    fn stdout_drain_spawn_failure_returns_wait_failed_result() {
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+
+        run_bounded_exec(
+            bounded_request(42, "sleep 60"),
+            GuestWriter::new(guest),
+            Arc::new(AtomicBool::new(false)),
+            FailingThreadSpawner::fail_once(THREAD_BOUNDED_STDOUT),
+        );
+
+        assert_bounded_exec_result(
+            &mut host,
+            42,
+            BoundedExecTermination::WaitFailed,
+            "stdout drain thread",
+        );
+    }
+
+    #[test]
+    fn stderr_drain_spawn_failure_returns_wait_failed_result() {
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+
+        run_bounded_exec(
+            bounded_request(43, "sleep 60"),
+            GuestWriter::new(guest),
+            Arc::new(AtomicBool::new(false)),
+            FailingThreadSpawner::fail_once(THREAD_BOUNDED_STDERR),
+        );
+
+        assert_bounded_exec_result(
+            &mut host,
+            43,
+            BoundedExecTermination::WaitFailed,
+            "stderr drain thread",
+        );
+    }
+
+    #[test]
+    fn stdin_writer_spawn_failure_returns_wait_failed_result() {
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let mut request = bounded_request(44, "sleep 60");
+        request.stdin = Some(vec![b'x'; 1024]);
+
+        run_bounded_exec(
+            request,
+            GuestWriter::new(guest),
+            Arc::new(AtomicBool::new(false)),
+            FailingThreadSpawner::fail_once(THREAD_BOUNDED_STDIN),
+        );
+
+        assert_bounded_exec_result(
+            &mut host,
+            44,
+            BoundedExecTermination::WaitFailed,
+            "stdin writer thread",
+        );
+    }
+}
