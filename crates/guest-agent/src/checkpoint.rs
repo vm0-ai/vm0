@@ -4,7 +4,6 @@ use crate::artifact;
 use crate::constants;
 use crate::content_hash;
 use crate::env;
-use crate::env::Framework;
 use crate::error::AgentError;
 use crate::http::HttpClient;
 use crate::paths;
@@ -387,10 +386,7 @@ async fn create_checkpoint_impl(http: &HttpClient, mode: CheckpointMode) -> Resu
     )?;
 
     // Build and send checkpoint payload (session history hash only, content uploaded to S3)
-    let cli_agent_type = match Framework::from_env() {
-        Framework::ClaudeCode => "claude-code",
-        Framework::Codex => "codex",
-    };
+    let cli_agent_type = env::Framework::from_env().agent_type();
     let mut payload = json!({
         "runId": env::run_id(),
         "cliAgentType": cli_agent_type,

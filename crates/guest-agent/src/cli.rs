@@ -79,9 +79,67 @@ impl TerminationState {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct CliFrameworkBehavior {
+    framework: env::Framework,
+}
+
+impl CliFrameworkBehavior {
+    fn new(framework: env::Framework) -> Self {
+        Self { framework }
+    }
+
+    fn agent_type(self) -> &'static str {
+        self.framework.agent_type()
+    }
+
+    fn handles_claude_result_event(self, event: &serde_json::Value) -> bool {
+        matches!(self.framework, env::Framework::ClaudeCode)
+            && event.get("type").and_then(|v| v.as_str()) == Some("result")
+    }
+
+    fn uses_claude_tool_watchdog(self) -> bool {
+        matches!(self.framework, env::Framework::ClaudeCode)
+    }
+
+    fn track_claude_tool_events(
+        self,
+        event: &serde_json::Value,
+        tracker: &mut HashMap<String, (String, Instant)>,
+    ) {
+        if !self.uses_claude_tool_watchdog() {
+            return;
+        }
+
+        for tool_event in events::extract_claude_tool_info(event) {
+            match tool_event {
+                events::ClaudeToolEvent::Use { id, name } => {
+                    tracker.insert(id.to_string(), (name.to_string(), Instant::now()));
+                }
+                events::ClaudeToolEvent::Result { tool_use_id } => {
+                    tracker.remove(tool_use_id);
+                }
+            }
+        }
+    }
+}
+
+async fn tick_optional_interval(interval: &mut Option<tokio::time::Interval>) {
+    match interval {
+        Some(interval) => {
+            interval.tick().await;
+        }
+        None => std::future::pending::<()>().await,
+    }
+}
+
 /// Build the CLI command + args based on `CLI_AGENT_TYPE`.
 pub fn build_cli_command() -> Result<Vec<String>, AgentError> {
-    match env::Framework::from_env() {
+    build_cli_command_for_framework(env::Framework::from_env())
+}
+
+fn build_cli_command_for_framework(framework: env::Framework) -> Result<Vec<String>, AgentError> {
+    match framework {
         env::Framework::ClaudeCode => Ok(build_claude_command(env::use_mock_claude())),
         env::Framework::Codex => Ok(build_codex_command(env::use_mock_codex())),
     }
@@ -402,9 +460,11 @@ pub async fn execute_cli(
     mut heartbeat_handle: tokio::task::JoinHandle<Result<(), AgentError>>,
     http: HttpClient,
 ) -> Result<CliExecutionResult, AgentError> {
-    log_info!(LOG_TAG, "Starting claude-code execution...");
+    let framework = env::Framework::from_env();
+    let behavior = CliFrameworkBehavior::new(framework);
+    log_info!(LOG_TAG, "Starting {} execution...", behavior.agent_type());
 
-    let cmd = build_cli_command()?;
+    let cmd = build_cli_command_for_framework(framework)?;
     let (bin, args) = cmd
         .split_first()
         .ok_or_else(|| AgentError::Execution("empty command".into()))?;
@@ -419,7 +479,7 @@ pub async fn execute_cli(
         // leave a CLI process running in the VM.
         .kill_on_drop(true);
 
-    match env::Framework::from_env() {
+    match framework {
         env::Framework::ClaudeCode => {
             // Suppress Claude CLI features that are unnecessary or harmful in a
             // sandbox: startup network calls (statsig, Datadog, Segment, GCS
@@ -492,11 +552,11 @@ pub async fn execute_cli(
     tokio::pin!(drain_deadline);
 
     // Forced termination: some conditions require reaping the CLI process
-    // group before returning. In --print mode, post-result reap arms a
-    // delayed SIGTERM after `type=result`; fatal watchdog/heartbeat paths
-    // send SIGTERM immediately. Both paths share the same SIGKILL escalation
-    // deadline so no forced termination can fall through to an unbounded
-    // child.wait().
+    // group before returning. For Claude Code --print mode, post-result
+    // reap arms a delayed SIGTERM after `type=result`; fatal watchdog /
+    // heartbeat paths send SIGTERM immediately. Both paths share the same
+    // SIGKILL escalation deadline so no forced termination can fall through
+    // to an unbounded child.wait().
     // See: https://github.com/vm0-ai/vm0/issues/10879
     // See: https://github.com/vm0-ai/vm0/issues/11667
     let termination_deadline = tokio::time::sleep(Duration::MAX);
@@ -511,11 +571,15 @@ pub async fn execute_cli(
     // parallel tool calls correctly.
     // See: https://github.com/anthropics/claude-code/issues/11650
     let mut stuck_tool_tracker: HashMap<String, (String, Instant)> = HashMap::new();
-    let stuck_tool_interval = Duration::from_secs(constants::STUCK_TOOL_CHECK_INTERVAL_SECS);
-    let mut stuck_tool_check = tokio::time::interval_at(
-        tokio::time::Instant::now() + stuck_tool_interval,
-        stuck_tool_interval,
-    );
+    let mut stuck_tool_check = if behavior.uses_claude_tool_watchdog() {
+        let stuck_tool_interval = Duration::from_secs(constants::STUCK_TOOL_CHECK_INTERVAL_SECS);
+        Some(tokio::time::interval_at(
+            tokio::time::Instant::now() + stuck_tool_interval,
+            stuck_tool_interval,
+        ))
+    } else {
+        None
+    };
     // MAINTENANCE: update if Claude Code adds new network tools that can hang.
     const STUCK_TOOL_NAMES: &[&str] = &["WebSearch", "WebFetch"];
 
@@ -563,8 +627,8 @@ pub async fn execute_cli(
                             if seq == 0 {
                                 timing::record_e2e_from_api("api_to_cli_init");
                             }
-                            // Print result to stdout if applicable
-                            if event.get("type").and_then(|v| v.as_str()) == Some("result") {
+                            // Print Claude Code final result to stdout if applicable.
+                            if behavior.handles_claude_result_event(&event) {
                                 if let Some(result) = event.get("result").and_then(|v| v.as_str())
                                 {
                                     println!("{result}");
@@ -583,17 +647,8 @@ pub async fn execute_cli(
                                     );
                                 }
                             }
-                            // Extract tool info BEFORE masking (masker may replace tool names)
-                            for tool_event in events::extract_claude_tool_info(&event) {
-                                match tool_event {
-                                    events::ClaudeToolEvent::Use { id, name } => {
-                                        stuck_tool_tracker.insert(id.to_string(), (name.to_string(), Instant::now()));
-                                    }
-                                    events::ClaudeToolEvent::Result { tool_use_id } => {
-                                        stuck_tool_tracker.remove(tool_use_id);
-                                    }
-                                }
-                            }
+                            // Extract tool info BEFORE masking (masker may replace tool names).
+                            behavior.track_claude_tool_events(&event, &mut stuck_tool_tracker);
                             // Prepare event (fast: mask secrets, add seq) and enqueue
                             // for background sending.  Never blocks the reading loop.
                             if let Some(payload) = events::prepare_event(&mut event, seq, masker)
@@ -707,7 +762,7 @@ pub async fn execute_cli(
                 );
                 break Ok(());
             }
-            _ = stuck_tool_check.tick() => {
+            _ = tick_optional_interval(&mut stuck_tool_check) => {
                 let timeout_secs = env::stuck_tool_timeout_secs();
                 // Find the oldest network tool that has exceeded the timeout.
                 let stuck = stuck_tool_tracker
@@ -1259,6 +1314,83 @@ mod tests {
     fn build_claude_args_prompt_always_last() {
         let args = build_claude_args_for_test("", "", "", "", "", "my prompt");
         assert_eq!(args.last().unwrap(), "my prompt");
+    }
+
+    // -----------------------------------------------------------------
+    // CliFrameworkBehavior
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn framework_behavior_uses_agent_type_strings_for_logs() {
+        assert_eq!(
+            CliFrameworkBehavior::new(env::Framework::ClaudeCode).agent_type(),
+            "claude-code"
+        );
+        assert_eq!(
+            CliFrameworkBehavior::new(env::Framework::Codex).agent_type(),
+            "codex"
+        );
+    }
+
+    #[test]
+    fn framework_behavior_handles_result_events_only_for_claude_code() {
+        let result_event = serde_json::json!({
+            "type": "result",
+            "result": "done"
+        });
+        let codex_terminal_event = serde_json::json!({
+            "type": "turn.completed",
+            "usage": {"input_tokens": 1, "output_tokens": 2}
+        });
+
+        assert!(
+            CliFrameworkBehavior::new(env::Framework::ClaudeCode)
+                .handles_claude_result_event(&result_event)
+        );
+        assert!(
+            !CliFrameworkBehavior::new(env::Framework::Codex)
+                .handles_claude_result_event(&result_event)
+        );
+        assert!(
+            !CliFrameworkBehavior::new(env::Framework::ClaudeCode)
+                .handles_claude_result_event(&codex_terminal_event)
+        );
+    }
+
+    #[test]
+    fn framework_behavior_tracks_claude_tools_only_for_claude_code() {
+        let tool_use = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "content": [{"type": "tool_use", "id": "tool-1", "name": "WebFetch"}]
+            }
+        });
+        let tool_result = serde_json::json!({
+            "type": "user",
+            "message": {
+                "content": [{"type": "tool_result", "tool_use_id": "tool-1"}]
+            }
+        });
+        let mut tracker = HashMap::new();
+
+        CliFrameworkBehavior::new(env::Framework::Codex)
+            .track_claude_tool_events(&tool_use, &mut tracker);
+        assert!(tracker.is_empty());
+
+        CliFrameworkBehavior::new(env::Framework::ClaudeCode)
+            .track_claude_tool_events(&tool_use, &mut tracker);
+        assert_eq!(
+            tracker.get("tool-1").map(|(name, _)| name.as_str()),
+            Some("WebFetch")
+        );
+
+        CliFrameworkBehavior::new(env::Framework::Codex)
+            .track_claude_tool_events(&tool_result, &mut tracker);
+        assert!(tracker.contains_key("tool-1"));
+
+        CliFrameworkBehavior::new(env::Framework::ClaudeCode)
+            .track_claude_tool_events(&tool_result, &mut tracker);
+        assert!(tracker.is_empty());
     }
 
     // -----------------------------------------------------------------

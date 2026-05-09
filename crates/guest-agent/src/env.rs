@@ -27,6 +27,14 @@ impl Framework {
     pub fn from_env() -> Self {
         *FRAMEWORK
     }
+
+    /// Stable CLI agent type string used in runner/web contracts and logs.
+    pub fn agent_type(self) -> &'static str {
+        match self {
+            Framework::ClaudeCode => "claude-code",
+            Framework::Codex => "codex",
+        }
+    }
 }
 
 static FRAMEWORK: LazyLock<Framework> = LazyLock::new(|| match cli_agent_type() {
