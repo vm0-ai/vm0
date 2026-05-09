@@ -13,7 +13,7 @@ use std::sync::Once;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use vsock_host::VsockHost;
+use vsock_host::{VsockHost, WriteFileRequest, WriteFileSource};
 
 static WRITE_FILE_HELPER: Once = Once::new();
 const WRITE_FILE_HELPER_BIN: &str = env!("CARGO_BIN_EXE_guest-write-file-test-helper");
@@ -367,6 +367,85 @@ async fn test_write_file_unwritable_path_fails() {
 
     h.finish();
 }
+
+#[tokio::test]
+async fn test_write_files_writes_bytes_file_source_and_empty_file() {
+    let h = Harness::new().await;
+
+    let source_path = h.dir.join("source.bin");
+    let source_content = b"from file source";
+    std::fs::write(&source_path, source_content).expect("failed to write source file");
+
+    let bytes_path = h.dir.join("batch/bytes.txt");
+    let file_source_path = h.dir.join("batch/from-file.bin");
+    let empty_path = h.dir.join("batch/empty quote '.txt");
+    let bytes_path_str = bytes_path.to_string_lossy().to_string();
+    let file_source_path_str = file_source_path.to_string_lossy().to_string();
+    let empty_path_str = empty_path.to_string_lossy().to_string();
+    let files = [
+        WriteFileRequest {
+            path: &bytes_path_str,
+            source: WriteFileSource::Bytes(b"from bytes"),
+        },
+        WriteFileRequest {
+            path: &file_source_path_str,
+            source: WriteFileSource::File {
+                path: &source_path,
+                len: source_content.len() as u64,
+            },
+        },
+        WriteFileRequest {
+            path: &empty_path_str,
+            source: WriteFileSource::Bytes(b""),
+        },
+    ];
+
+    h.write_files(&files, false)
+        .await
+        .expect("write_files failed");
+
+    assert_eq!(std::fs::read(&bytes_path).unwrap(), b"from bytes");
+    assert_eq!(std::fs::read(&file_source_path).unwrap(), source_content);
+    assert_eq!(std::fs::read(&empty_path).unwrap(), b"");
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_write_files_invalid_path_fails_before_partial_write() {
+    let h = Harness::new().await;
+
+    let should_not_write = h.dir.join("batch/should-not-write.txt");
+    let should_not_write_str = should_not_write.to_string_lossy().to_string();
+    let files = [
+        WriteFileRequest {
+            path: &should_not_write_str,
+            source: WriteFileSource::Bytes(b"must not be written"),
+        },
+        WriteFileRequest {
+            path: "",
+            source: WriteFileSource::Bytes(b"invalid"),
+        },
+    ];
+
+    let err = h
+        .write_files(&files, false)
+        .await
+        .expect_err("invalid write_files path should fail");
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert!(
+        !should_not_write.exists(),
+        "write_files must validate the whole batch before sending any file"
+    );
+
+    let result = h
+        .exec("echo after-invalid-write-files", 5000, &[], false)
+        .await
+        .expect("connection should remain usable after local validation failure");
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(result.stdout, b"after-invalid-write-files\n");
+    h.finish();
+}
+
 // ── spawn_watch ──────────────────────────────────────────────────────
 
 #[tokio::test]
