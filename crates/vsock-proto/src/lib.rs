@@ -48,6 +48,10 @@
 //! `0 = discarded`, `1 = captured`. Termination tags are `0 = exited`,
 //! `1 = timed_out`, `2 = cancelled`, `3 = start_failed`, and
 //! `4 = wait_failed`.
+//!
+//! `exec` / `exec_result` are legacy buffered request/response messages kept
+//! for existing callers. All new request/response command execution should use
+//! `bounded_exec` plus `bounded_exec_result` / `bounded_exec_output_chunk`.
 
 /// Header size (4-byte length prefix).
 pub const HEADER_SIZE: usize = 4;
@@ -318,7 +322,10 @@ pub fn encode_control_quiesce_ack(status: ControlQuiesceStatus) -> Vec<u8> {
     }]
 }
 
-/// Encode exec payload: `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)`.
+/// Encode legacy exec payload: `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)`.
+///
+/// Deprecated for new code: use [`encode_bounded_exec`] for request/response
+/// command execution.
 ///
 /// The env section is only appended when `env` is non-empty, keeping the
 /// payload backward-compatible with old decoders that don't expect it.
@@ -920,7 +927,10 @@ fn decode_exec_inner(payload: &[u8], sudo_flag: u8) -> Result<DecodedExecInner<'
     })
 }
 
-/// Decode exec payload into a [`DecodedExec`] struct.
+/// Decode legacy exec payload into a [`DecodedExec`] struct.
+///
+/// Deprecated for new code: use [`decode_bounded_exec`] for request/response
+/// command execution.
 pub fn decode_exec(payload: &[u8]) -> Result<DecodedExec<'_>, ProtocolError> {
     decode_exec_inner(payload, EXEC_FLAG_SUDO).map(|d| d.exec)
 }

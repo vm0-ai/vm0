@@ -276,7 +276,7 @@ pub(crate) fn set_debug_guest_write_file_path(path: PathBuf) -> Result<(), PathB
 
 /// Handle incoming message and return the connection-loop outcome.
 ///
-/// `MSG_EXEC` and `MSG_SPAWN_WATCH` are handled separately in
+/// Legacy `MSG_EXEC` and current `MSG_SPAWN_WATCH` are handled separately in
 /// `handle_connection` because they run in background threads.
 pub(crate) fn handle_message(msg: &RawMessage) -> io::Result<MessageOutcome> {
     log(

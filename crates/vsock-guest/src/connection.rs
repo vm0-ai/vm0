@@ -210,6 +210,8 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                     cancel.store(true, Ordering::Release);
                 }
             } else if msg.msg_type == MSG_EXEC {
+                // Legacy buffered exec path. New request/response command
+                // execution should use MSG_BOUNDED_EXEC.
                 log(
                     "INFO",
                     &format!("Received: type=0x{:02X} seq={}", msg.msg_type, msg.seq),

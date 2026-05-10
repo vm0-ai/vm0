@@ -1232,6 +1232,9 @@ async fn exec_on_shared_with_request_timeout(
     sudo: bool,
     request_timeout: Duration,
 ) -> io::Result<ExecResult> {
+    // Legacy MSG_EXEC implementation. Keep it for existing callers only; new
+    // request/response command execution should use bounded_exec so output,
+    // termination, streaming, and cancellation semantics are explicit.
     if timeout_ms == 0 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -1672,7 +1675,12 @@ impl VsockHost {
         request_raw_on_shared(&self.shared, msg_type, seq, payload, timeout).await
     }
 
-    /// Execute a command on the guest.
+    /// Legacy buffered command execution.
+    ///
+    /// Deprecated for new code: use [`bounded_exec`](Self::bounded_exec) for
+    /// all request/response command execution. Bounded exec returns structured
+    /// termination, bounded final output, optional request-scoped streaming,
+    /// and explicit transport cancellation semantics.
     ///
     /// `timeout_ms` must be positive. Callers needing unbounded commands
     /// should use [`spawn_watch`](Self::spawn_watch), which decouples the
@@ -1690,9 +1698,10 @@ impl VsockHost {
 
     /// Execute a command on the guest using the bounded exec protocol.
     ///
-    /// This is request/response scoped like [`exec`](Self::exec), but it
-    /// returns structured termination, bounded final buffers, and optional
-    /// request-scoped stdout/stderr stream events.
+    /// This is the preferred request/response command execution API and
+    /// supersedes legacy [`exec`](Self::exec). It returns structured
+    /// termination, bounded final buffers, and optional request-scoped
+    /// stdout/stderr stream events.
     /// [`BoundedExecOutput::Discarded`] means final capture was disabled for
     /// that stream; `diagnostic` carries bounded-exec setup/wait details and is
     /// independent of stdout/stderr capture.
