@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.27.0](https://github.com/vm0-ai/vm0/compare/api-v1.26.0...api-v1.27.0) (2026-05-10)
+
+
+### Features
+
+* **api:** migrate internal telegram-typing post to api backend ([#12525](https://github.com/vm0-ai/vm0/issues/12525)) ([29f62cf](https://github.com/vm0-ai/vm0/commit/29f62cfee65a19b6d23e5d9f6be80f41a3dac067))
+* **api:** port custom-connectors create post to api backend ([#12524](https://github.com/vm0-ai/vm0/issues/12524)) ([b4421a8](https://github.com/vm0-ai/vm0/commit/b4421a8f8eebabd8c187879e79ffcb124bd729eb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.7.0
+    * @vm0/core bumped to 8.267.1
+    * @vm0/db bumped to 1.4.2
+
 ## [1.26.0](https://github.com/vm0-ai/vm0/compare/api-v1.25.0...api-v1.26.0) (2026-05-10)
 
 
