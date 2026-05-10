@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.341.1](https://github.com/vm0-ai/vm0/compare/app-v0.341.0...app-v0.341.1) (2026-05-10)
+
+
+### Bug Fixes
+
+* **app:** collapse mobile sidebar when selecting a thread from non-chat pages ([#12495](https://github.com/vm0-ai/vm0/issues/12495)) ([2e2e75e](https://github.com/vm0-ai/vm0/commit/2e2e75ebe1a85be70f9dff534df78bdd82041204))
+
 ## [0.341.0](https://github.com/vm0-ai/vm0/compare/app-v0.340.1...app-v0.341.0) (2026-05-09)
 
 

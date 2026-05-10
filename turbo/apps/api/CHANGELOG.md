@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.24.2](https://github.com/vm0-ai/vm0/compare/api-v1.24.1...api-v1.24.2) (2026-05-10)
+
+
+### Bug Fixes
+
+* **api:** drop visibility filter from zeroChatThreadMessagesPage ([#12498](https://github.com/vm0-ai/vm0/issues/12498)) ([26aca91](https://github.com/vm0-ai/vm0/commit/26aca9170d7e69418c3912065644f8aa104bf4da))
+* **api:** port axiom event watermark to mask indexing lag ([#12502](https://github.com/vm0-ai/vm0/issues/12502)) ([f79c79e](https://github.com/vm0-ai/vm0/commit/f79c79e353231372d78955bcf5a984adfcc1c187))
+
 ## [1.24.1](https://github.com/vm0-ai/vm0/compare/api-v1.24.0...api-v1.24.1) (2026-05-10)
 
 
