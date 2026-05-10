@@ -91,7 +91,7 @@ const deleteComposeInner$ = command(
 
 const updateComposeMetadataInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(authContext$);
+    const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(zeroComposesMetadataContract.update));
     const bodyResult = await get(
       bodyResultOf(zeroComposesMetadataContract.update),
@@ -106,6 +106,7 @@ const updateComposeMetadataInner$ = command(
       {
         composeId: params.id,
         userId: auth.userId,
+        orgId: auth.orgId,
         body: bodyResult.data,
       },
       signal,
@@ -146,6 +147,6 @@ export const zeroComposesRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroComposesMetadataContract.update,
-    handler: authRoute({}, updateComposeMetadataInner$),
+    handler: authRoute(orgAuth, updateComposeMetadataInner$),
   },
 ];

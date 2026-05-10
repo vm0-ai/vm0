@@ -294,6 +294,7 @@ export const updateComposeMetadata$ = command(
     args: {
       readonly composeId: string;
       readonly userId: string;
+      readonly orgId: string;
       readonly body: {
         readonly displayName?: string | null;
         readonly description?: string | null;
@@ -304,29 +305,22 @@ export const updateComposeMetadata$ = command(
   ): Promise<NotFoundResponse | undefined> => {
     const writeDb = set(writeDb$);
 
-    // Ownership check is intentionally stricter than apps/web's PATCH handler:
-    // web uses canAccessCompose(userId, orgId, compose) which permits org-mate
-    // access, while apps/api scopes mutations to the owning user only — matching
-    // the existing deleteCompose$ pattern. The cross-user-isolation test in
-    // zero-composes-metadata-update.test.ts pins this behaviour; do not relax
-    // to canAccessCompose without updating that test and revisiting #12558.
+    // Match apps/web's access semantics: canAccessCompose allows the compose's
+    // owner OR any user in the compose's org. Migration policy keeps logic
+    // unchanged — do not narrow to user-only without explicit approval.
     const [compose] = await writeDb
       .select({
         id: agentComposes.id,
-        name: agentComposes.name,
+        userId: agentComposes.userId,
         orgId: agentComposes.orgId,
+        name: agentComposes.name,
       })
       .from(agentComposes)
-      .where(
-        and(
-          eq(agentComposes.id, args.composeId),
-          eq(agentComposes.userId, args.userId),
-        ),
-      )
+      .where(eq(agentComposes.id, args.composeId))
       .limit(1);
     signal.throwIfAborted();
 
-    if (!compose) {
+    if (!compose || !canAccessCompose(args.userId, args.orgId, compose)) {
       return notFound("Agent compose not found");
     }
 
@@ -336,7 +330,7 @@ export const updateComposeMetadata$ = command(
       .values({
         id: compose.id,
         orgId: compose.orgId,
-        owner: args.userId,
+        owner: compose.userId,
         name: compose.name,
         displayName: body.displayName ?? null,
         description: body.description ?? null,

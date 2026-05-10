@@ -99,7 +99,7 @@ describe("PATCH /api/zero/composes/:id/metadata", () => {
     });
   });
 
-  it("returns 404 for a compose owned by another user (cross-user isolation)", async () => {
+  it("allows a non-owner same-org member to update (canAccessCompose semantics)", async () => {
     const owner = await track(
       store.set(
         seedTeamCompose$,
@@ -120,8 +120,65 @@ describe("PATCH /api/zero/composes/:id/metadata", () => {
       throw new Error("Expected seeded compose");
     }
 
-    // Authenticate as a different user in the same org.
+    // Authenticate as a different user in the same org. Web's
+    // canAccessCompose admits org-mate access to PATCH metadata; the api
+    // mirrors that policy verbatim per the migration's logic-unchanged rule.
     mocks.clerk.session(`user_${randomUUID()}`, owner.orgId);
+
+    const client = setupApp({ context })(zeroComposesMetadataContract);
+    const response = await accept(
+      client.update({
+        params: { id: composeId },
+        body: { displayName: "Org-mate Display" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(response.body).toStrictEqual({ ok: true });
+
+    // displayName updated; description / sound preserved (UPDATE-on-conflict
+    // path because the owner already had a zero_agents row seeded).
+    const writeDb = store.set(writeDb$);
+    const [row] = await writeDb
+      .select({
+        displayName: zeroAgents.displayName,
+        description: zeroAgents.description,
+        sound: zeroAgents.sound,
+      })
+      .from(zeroAgents)
+      .where(eq(zeroAgents.id, composeId));
+    expect(row?.displayName).toBe("Org-mate Display");
+    expect(row?.description).toBe("owner desc");
+    expect(row?.sound).toBe("owner sound");
+  });
+
+  it("returns 404 for a compose in another org (cross-org isolation)", async () => {
+    const owner = await track(
+      store.set(
+        seedTeamCompose$,
+        {
+          composes: [
+            {
+              displayName: "owner display",
+              description: "owner desc",
+              sound: "owner sound",
+            },
+          ],
+        },
+        context.signal,
+      ),
+    );
+    const composeId = owner.composeIds[0];
+    if (!composeId) {
+      throw new Error("Expected seeded compose");
+    }
+
+    // Authenticate as a different user in a different org. canAccessCompose
+    // rejects: neither orgs match nor user owns the compose.
+    mocks.clerk.session(
+      `user_${randomUUID()}`,
+      `org_${randomUUID().slice(0, 8)}`,
+    );
 
     const client = setupApp({ context })(zeroComposesMetadataContract);
     const response = await accept(
