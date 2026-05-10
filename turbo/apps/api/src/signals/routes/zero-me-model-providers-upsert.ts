@@ -3,6 +3,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   hasAuthMethods,
+  type ModelProviderResponse,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
@@ -14,7 +15,6 @@ import { badRequestMessage } from "../../lib/error";
 import { handleCodexAuthJsonPaste } from "../services/codex-auth-json-paste-handler";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
-  modelProviderResponse,
   upsertUserModelProvider$,
   upsertUserMultiAuthModelProvider$,
   type ModelProviderInfo,
@@ -53,22 +53,42 @@ function isPersonalProviderApiEnabled(
   );
 }
 
+function toModelProviderResponse(
+  provider: ModelProviderInfo,
+): ModelProviderResponse {
+  // `provider.type` is statically `ModelProviderType`, so no parse is needed —
+  // the response shape is a direct projection of `ModelProviderInfo`.
+  return {
+    id: provider.id,
+    type: provider.type,
+    framework: provider.framework,
+    secretName: provider.secretName,
+    authMethod: provider.authMethod,
+    secretNames: provider.secretNames,
+    isDefault: provider.isDefault,
+    selectedModel: provider.selectedModel,
+    workspaceName: provider.workspaceName,
+    planType: provider.planType,
+    needsReconnect: provider.needsReconnect,
+    lastRefreshErrorCode: provider.lastRefreshErrorCode,
+    createdAt: provider.createdAt.toISOString(),
+    updatedAt: provider.updatedAt.toISOString(),
+  };
+}
+
 function shapeUpsertResult(
   provider: ModelProviderInfo,
   created: boolean,
-):
-  | { readonly status: 200 | 201; readonly body: unknown }
-  | { readonly status: 500; readonly body: unknown } {
-  const body = modelProviderResponse(provider);
-  if (!body) {
-    return {
-      status: 500 as const,
-      body: { error: { message: "Internal server error", code: "INTERNAL" } },
-    };
-  }
+): {
+  readonly status: 200 | 201;
+  readonly body: {
+    readonly provider: ModelProviderResponse;
+    readonly created: boolean;
+  };
+} {
   return {
     status: (created ? 201 : 200) as 200 | 201,
-    body: { provider: body, created },
+    body: { provider: toModelProviderResponse(provider), created },
   };
 }
 
