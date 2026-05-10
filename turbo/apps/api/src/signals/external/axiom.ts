@@ -38,9 +38,6 @@ export async function queryAxiomDirect<T = Record<string, unknown>>(
   options?: QueryAxiomOptions,
 ): Promise<readonly T[]> {
   const client = axiomClientForApl(apl);
-  if (!client) {
-    return [];
-  }
   const axiomOptions =
     options?.noCache !== undefined ? { noCache: options.noCache } : undefined;
   const result = await client.query(apl, axiomOptions);

@@ -193,9 +193,12 @@ describe("GET /api/zero/runs/:id/telemetry/agent", () => {
   it("waits for the axiom watermark and passes noCache when lastEventSequence is set", async () => {
     // First call = visibility poll (returns the contiguous prefix). Second
     // call = the actual events query, which must receive { noCache: true }.
+    // Trailing default fails fast and clearly if a refactor ever extends the
+    // visibility poll past the first call (rather than returning undefined).
     context.mocks.axiom.query
       .mockResolvedValueOnce([{ sequenceNumber: 0 }, { sequenceNumber: 1 }])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([]);
     const fixture = await track(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
     );
