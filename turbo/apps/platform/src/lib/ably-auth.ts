@@ -25,6 +25,16 @@ type AuthCallback = NonNullable<AuthOptions["authCallback"]>;
  * the promise (Ably's API is node-style callback, not awaitable) and
  * `try/catch` to bridge that error surface into the callback's error
  * argument — both patterns are restricted inside `signals/`.
+ *
+ * Note: the fetch intentionally does NOT bind to `signal` via
+ * `fetchOptions: { signal }`. Aborting the fetch while MSW is still
+ * resolving the handler races MSW's handler-lookup pipeline and surfaces
+ * as an "unhandled exception during the handler lookup" stderr in tests.
+ * The signal is honoured at the callback boundary instead (`signal.aborted`
+ * checked after the await), which matches the documented teardown
+ * contract — Ably's callback is not invoked once `setupRealtime$` has
+ * called `ably.close()`. The wasted in-flight POST during teardown is
+ * negligible (single-shot, fast endpoint).
  */
 export function createAblyAuthCallback(
   client: RealtimeTokenClient,
@@ -36,16 +46,20 @@ export function createAblyAuthCallback(
         // eslint-disable-next-line no-restricted-syntax -- bridging Ably's node-style auth callback into our promise-based `accept()` helper; justified per eslint.config.js "If genuinely needed (JSON.parse, clipboard, polling), add an inline eslint-disable with justification"
         try {
           const res = await accept(
-            client.create({ body: {}, fetchOptions: { signal } }),
+            client.create({ body: {} }),
             [200],
             { toast: false },
           );
+          // Teardown guard: setupRealtime$'s abort listener runs ably.close()
+          // before this callback returns, so calling Ably's callback after
+          // abort would be spurious. Mirrors the catch branch's check below.
+          if (signal.aborted) {
+            return;
+          }
           callback(null, res.body);
         } catch (error) {
-          // Signal aborts happen because `setupRealtime$` already called
-          // `ably.close()` — reporting that to Ably's callback would be
-          // spurious noise (and in tests would trip the mock's "failed"
-          // path during teardown).
+          // Endpoint errors after abort are also spurious — same teardown
+          // window as the success path.
           if (signal.aborted) {
             return;
           }
