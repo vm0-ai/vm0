@@ -426,7 +426,7 @@ async fn handle_connection(
     tokio::select! {
         biased;
         () = shutdown.cancelled() => Ok(()),
-        () = wait_for_client_disconnect(&mut reader) => Ok(()),
+        () = wait_for_client_disconnect_or_extra_bytes(&mut reader) => Ok(()),
         result = execute(request, &mut writer, &guest, &shutdown) => result,
     }
 }
@@ -445,16 +445,12 @@ async fn write_response_frame(
     }
 }
 
-/// The control protocol has one request per connection. EOF after that request
-/// means the client can no longer consume streamed output.
-async fn wait_for_client_disconnect(reader: &mut (impl AsyncRead + Unpin)) {
+/// The control protocol has one request per connection. EOF means the client
+/// can no longer consume streamed output; extra bytes after the request are a
+/// protocol violation and cancel the in-flight command as well.
+async fn wait_for_client_disconnect_or_extra_bytes(reader: &mut (impl AsyncRead + Unpin)) {
     let mut buf = [0u8; 1];
-    loop {
-        match reader.read(&mut buf).await {
-            Ok(0) | Err(_) => return,
-            Ok(_) => {}
-        }
-    }
+    let _ = reader.read(&mut buf).await;
 }
 
 /// Execute an [`ExecRequest`] against the sandbox's VsockHost.
@@ -1494,6 +1490,55 @@ mod tests {
             .unwrap()
             .unwrap();
         drop(client);
+
+        tokio::time::timeout(Duration::from_secs(1), cancel_seen_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        guest_task.await.unwrap();
+        handle.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn control_client_extra_bytes_cancel_in_flight_vsock_bounded_exec() {
+        let dir = tempfile::tempdir().unwrap();
+        let vsock_base = dir.path().join("vsock");
+        let host_task = {
+            let vsock_base = vsock_base.display().to_string();
+            tokio::spawn(async move {
+                VsockHost::wait_for_connection(&vsock_base, Duration::from_secs(5)).await
+            })
+        };
+        let (exec_seen_tx, exec_seen_rx) = oneshot::channel();
+        let (cancel_seen_tx, cancel_seen_rx) = oneshot::channel();
+        let guest_task = tokio::spawn(mock_guest_holds_exec(
+            vsock_base,
+            exec_seen_tx,
+            cancel_seen_tx,
+        ));
+        let vsock = host_task.await.unwrap().unwrap();
+
+        let sock_path = dir.path().join("control.sock");
+        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
+        let mut handle = bind_server(sock_path.clone(), guest)
+            .unwrap()
+            .spawn(CancellationToken::new());
+
+        wait_for_socket_exists(&sock_path).await;
+        let mut client = UnixStream::connect(&sock_path).await.unwrap();
+        let request = ExecRequest {
+            command: "sleep 30".into(),
+            timeout_secs: 30,
+            sudo: false,
+        };
+        let request_json = serde_json::to_vec(&request).unwrap();
+        write_frame(&mut client, &request_json).await.unwrap();
+
+        tokio::time::timeout(Duration::from_secs(1), exec_seen_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        client.write_all(b"x").await.unwrap();
 
         tokio::time::timeout(Duration::from_secs(1), cancel_seen_rx)
             .await
