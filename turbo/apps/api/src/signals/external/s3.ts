@@ -3,8 +3,10 @@ import {
   DeleteObjectsCommand,
   GetObjectCommand,
   ListObjectsV2Command,
+  PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 import { env } from "../../lib/env";
 
@@ -122,6 +124,29 @@ export function downloadS3Buffer(
       }),
       totalLength,
     );
+  });
+}
+
+/**
+ * Generate a presigned PUT URL so the browser/CLI can upload a file body
+ * directly to R2. The body never passes through the api runtime, which
+ * bypasses the Vercel ~4.5 MB body cap. Callers materialize the URL once
+ * per upload; the signature is short-lived and not persistable.
+ */
+export function generatePresignedPutUrl(
+  bucket: string,
+  key: string,
+  contentType: string,
+  expiresIn: number,
+): Computed<Promise<string>> {
+  return computed((get): Promise<string> => {
+    const client = get(s3Client$);
+    const command = new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      ContentType: contentType,
+    });
+    return getSignedUrl(client, command, { expiresIn });
   });
 }
 

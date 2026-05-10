@@ -33,6 +33,7 @@ export interface ApiTestMocks {
   };
   readonly s3: {
     readonly send: AsyncMock;
+    readonly getSignedUrl: AsyncMock;
   };
   readonly slack: {
     readonly conversations: {
@@ -124,6 +125,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     clerk,
     s3: {
       send: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      getSignedUrl: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     slack,
     stripe,
@@ -171,6 +173,14 @@ vi.mock("@aws-sdk/client-s3", () => {
     }
   }
 
+  class PutObjectCommand {
+    readonly input: unknown;
+
+    constructor(input: unknown) {
+      this.input = input;
+    }
+  }
+
   class S3Client {
     send(command: unknown): Promise<unknown> {
       return apiTestMocks.s3.send(command);
@@ -181,7 +191,16 @@ vi.mock("@aws-sdk/client-s3", () => {
     DeleteObjectsCommand,
     GetObjectCommand,
     ListObjectsV2Command,
+    PutObjectCommand,
     S3Client,
+  };
+});
+
+vi.mock("@aws-sdk/s3-request-presigner", () => {
+  return {
+    getSignedUrl: (...args: unknown[]): Promise<unknown> => {
+      return apiTestMocks.s3.getSignedUrl(...args);
+    },
   };
 });
 
@@ -325,6 +344,10 @@ export function resetApiTestMocks(): void {
   apiTestMocks.clerk.users.getUserList.mockReset();
   apiTestMocks.clerk.users.getOrganizationMembershipList.mockReset();
   apiTestMocks.s3.send.mockReset();
+  apiTestMocks.s3.getSignedUrl.mockReset();
+  apiTestMocks.s3.getSignedUrl.mockResolvedValue(
+    "https://r2.example.com/upload?sig=test",
+  );
   apiTestMocks.slack.conversations.list.mockReset();
   apiTestMocks.slack.files.info.mockReset();
   apiTestMocks.slack.fetchFile.mockReset();

@@ -103,6 +103,9 @@ importers:
       '@aws-sdk/client-s3':
         specifier: ^3.1045.0
         version: 3.1045.0
+      '@aws-sdk/s3-request-presigner':
+        specifier: ^3.1045.0
+        version: 3.1045.0
       '@axiomhq/js':
         specifier: ^1.5.0
         version: 1.5.0

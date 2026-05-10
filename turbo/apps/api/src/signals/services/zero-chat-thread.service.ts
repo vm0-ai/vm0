@@ -40,6 +40,7 @@ import {
 import { z } from "zod";
 
 import { env } from "../../lib/env";
+import { buildFileUrl } from "../../lib/file-url";
 import { db$, writeDb$ } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { listS3Objects } from "../external/s3";
@@ -190,19 +191,6 @@ function inferMimetype(filename: string): string {
   return ext
     ? (EXT_MIMETYPE_MAP[ext] ?? "application/octet-stream")
     : "application/octet-stream";
-}
-
-const CLERK_USER_ID_PREFIX = "user_";
-
-function publicFileUserIdSegment(userId: string): string {
-  return userId.startsWith(CLERK_USER_ID_PREFIX)
-    ? userId.slice(CLERK_USER_ID_PREFIX.length)
-    : userId;
-}
-
-function buildFileUrl(userId: string, id: string, filename: string): string {
-  const publicUserId = publicFileUserIdSegment(userId);
-  return `${env("VM0_API_URL")}/f/${encodeURIComponent(publicUserId)}/${id}/${encodeURIComponent(filename)}`;
 }
 
 function hasAgentSessionId(
