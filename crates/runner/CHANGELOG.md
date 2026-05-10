@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.23...runner-rs-v0.100.24) (2026-05-10)
+
+
+### Performance Improvements
+
+* **runner:** stream guest log copies ([#12418](https://github.com/vm0-ai/vm0/issues/12418)) ([a842925](https://github.com/vm0-ai/vm0/commit/a8429251f3554335ace57e1a78c105cf881c193b))
+
 ## [0.100.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.22...runner-rs-v0.100.23) (2026-05-09)
 
 

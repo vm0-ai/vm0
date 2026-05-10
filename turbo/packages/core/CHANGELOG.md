@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.267.0](https://github.com/vm0-ai/vm0/compare/core-v8.266.0...core-v8.267.0) (2026-05-10)
+
+
+### Features
+
+* **platform:** add api-backend-mutations feature switch + client routing ([#12507](https://github.com/vm0-ai/vm0/issues/12507)) ([48f4662](https://github.com/vm0-ai/vm0/commit/48f466249435008cc6f569eb952b0dfd8a5edefb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.6.1
+    * @vm0/connectors bumped to 1.2.0
+
 ## [8.266.0](https://github.com/vm0-ai/vm0/compare/core-v8.265.2...core-v8.266.0) (2026-05-10)
 
 
