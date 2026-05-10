@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.25.0](https://github.com/vm0-ai/vm0/compare/api-v1.24.3...api-v1.25.0) (2026-05-10)
+
+
+### Features
+
+* **api:** port chat-threads mark-read post to api backend ([#12511](https://github.com/vm0-ai/vm0/issues/12511)) ([e37f0e8](https://github.com/vm0-ai/vm0/commit/e37f0e8d774013073d6e0c11174c464b79e84f6f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.6.1
+    * @vm0/connectors bumped to 1.2.0
+    * @vm0/core bumped to 8.267.0
+    * @vm0/db bumped to 1.4.1
+
 ## [1.24.3](https://github.com/vm0-ai/vm0/compare/api-v1.24.2...api-v1.24.3) (2026-05-10)
 
 
