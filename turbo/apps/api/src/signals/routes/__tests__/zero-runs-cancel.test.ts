@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { zeroRunsCancelContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
@@ -799,6 +800,294 @@ describe("POST /api/zero/runs/:id/cancel", () => {
 
     // Already-pending → atomic claim returns no rows → no Stripe.
     expect(context.mocks.stripe.invoices.create).not.toHaveBeenCalled();
+
+    await writeDb
+      .delete(usagePricing)
+      .where(
+        and(
+          eq(usagePricing.kind, "model"),
+          eq(usagePricing.provider, provider),
+          eq(usagePricing.category, "tokens.input"),
+        ),
+      );
+  });
+
+  it("disables a member when processed usage meets the cap on cancel", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "running",
+      },
+      context.signal,
+    );
+
+    const writeDb = store.set(writeDb$);
+    const provider = `test-provider-${randomUUID().slice(0, 8)}`;
+    // Paid org with billing period set so getOrgBillingPeriod resolves
+    // without hitting Stripe.
+    const periodEnd = new Date(now() + 30 * 24 * 60 * 60 * 1000);
+    await writeDb.insert(orgMetadata).values({
+      orgId: fixture.orgId,
+      credits: 1000,
+      tier: "team",
+      currentPeriodEnd: periodEnd,
+    });
+    // Member with a cap = 8 and creditEnabled = true.
+    await writeDb.insert(orgMembersMetadata).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      creditCap: 8,
+      creditEnabled: true,
+    });
+    // Pricing: 1 credit per 1000 input tokens.
+    await writeDb.insert(usagePricing).values({
+      kind: "model",
+      provider,
+      category: "tokens.input",
+      unitPrice: 1,
+      unitSize: 1000,
+    });
+    // Pre-existing processed usage from earlier in the period — 4 credits.
+    // The cancel will add 5 more → cumulative 9, exceeds cap.
+    await writeDb.insert(usageEvent).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      runId,
+      kind: "model",
+      provider,
+      category: "tokens.input",
+      quantity: 4000,
+      creditsCharged: 4,
+      status: "processed",
+      processedAt: nowDate(),
+      idempotencyKey: randomUUID(),
+    });
+    // Pending usage_event for this cancel: 5000 tokens → 5 credits.
+    await writeDb.insert(usageEvent).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      runId,
+      kind: "model",
+      provider,
+      category: "tokens.input",
+      quantity: 5000,
+      status: "pending",
+      idempotencyKey: randomUUID(),
+    });
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(zeroRunsCancelContract);
+    await accept(
+      client.cancel({
+        params: { id: runId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await clearAllDetached();
+
+    const [memberRow] = await writeDb
+      .select({ creditEnabled: orgMembersMetadata.creditEnabled })
+      .from(orgMembersMetadata)
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, fixture.orgId),
+          eq(orgMembersMetadata.userId, fixture.userId),
+        ),
+      );
+    expect(memberRow?.creditEnabled).toBeFalsy();
+
+    await writeDb
+      .delete(usagePricing)
+      .where(
+        and(
+          eq(usagePricing.kind, "model"),
+          eq(usagePricing.provider, provider),
+          eq(usagePricing.category, "tokens.input"),
+        ),
+      );
+  });
+
+  it("does not touch member caps when no usage events are processed", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    // Run in pending state — no usage_events accumulated; cancel triggers
+    // processOrgUsageEvents$ but pendingRecords is empty so the cap path
+    // short-circuits before reaching evaluateMemberCaps$.
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "pending",
+      },
+      context.signal,
+    );
+
+    const writeDb = store.set(writeDb$);
+    const periodEnd = new Date(now() + 30 * 24 * 60 * 60 * 1000);
+    await writeDb.insert(orgMetadata).values({
+      orgId: fixture.orgId,
+      credits: 1000,
+      tier: "team",
+      currentPeriodEnd: periodEnd,
+    });
+    // Member with a cap of 1 and creditEnabled = true. Even though their
+    // usage might already be over cap from prior periods, the cancel path
+    // must NOT re-evaluate when no events are processed.
+    await writeDb.insert(orgMembersMetadata).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      creditCap: 1,
+      creditEnabled: true,
+    });
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(zeroRunsCancelContract);
+    await accept(
+      client.cancel({
+        params: { id: runId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await clearAllDetached();
+
+    const [memberRow] = await writeDb
+      .select({ creditEnabled: orgMembersMetadata.creditEnabled })
+      .from(orgMembersMetadata)
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, fixture.orgId),
+          eq(orgMembersMetadata.userId, fixture.userId),
+        ),
+      );
+    expect(memberRow?.creditEnabled).toBeTruthy();
+  });
+
+  it("only re-evaluates the run-owner's cap, not other org members'", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "running",
+      },
+      context.signal,
+    );
+
+    const writeDb = store.set(writeDb$);
+    const provider = `test-provider-${randomUUID().slice(0, 8)}`;
+    const otherUserId = `user_other_${randomUUID().slice(0, 8)}`;
+    const periodEnd = new Date(now() + 30 * 24 * 60 * 60 * 1000);
+    await writeDb.insert(orgMetadata).values({
+      orgId: fixture.orgId,
+      credits: 1000,
+      tier: "team",
+      currentPeriodEnd: periodEnd,
+    });
+    // Run-owner: high cap, well under usage.
+    await writeDb.insert(orgMembersMetadata).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      creditCap: 1000,
+      creditEnabled: true,
+    });
+    // Other org member: low cap, already over usage from a prior batch
+    // — would normally be flipped off if re-evaluated, but cancel of the
+    // run-owner's run must not include the other user in affectedUserIds.
+    await writeDb.insert(orgMembersMetadata).values({
+      orgId: fixture.orgId,
+      userId: otherUserId,
+      creditCap: 1,
+      creditEnabled: true,
+    });
+    await writeDb.insert(usagePricing).values({
+      kind: "model",
+      provider,
+      category: "tokens.input",
+      unitPrice: 1,
+      unitSize: 1000,
+    });
+    await writeDb.insert(usageEvent).values({
+      orgId: fixture.orgId,
+      userId: otherUserId,
+      runId,
+      kind: "model",
+      provider,
+      category: "tokens.input",
+      quantity: 999_000,
+      creditsCharged: 999,
+      status: "processed",
+      processedAt: nowDate(),
+      idempotencyKey: randomUUID(),
+    });
+    // Pending event for the run-owner only.
+    await writeDb.insert(usageEvent).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      runId,
+      kind: "model",
+      provider,
+      category: "tokens.input",
+      quantity: 1000,
+      status: "pending",
+      idempotencyKey: randomUUID(),
+    });
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(zeroRunsCancelContract);
+    await accept(
+      client.cancel({
+        params: { id: runId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await clearAllDetached();
+
+    // The other user should remain enabled — they were not in the
+    // affectedUserIds set passed to evaluateMemberCaps$.
+    const [otherRow] = await writeDb
+      .select({ creditEnabled: orgMembersMetadata.creditEnabled })
+      .from(orgMembersMetadata)
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, fixture.orgId),
+          eq(orgMembersMetadata.userId, otherUserId),
+        ),
+      );
+    expect(otherRow?.creditEnabled).toBeTruthy();
 
     await writeDb
       .delete(usagePricing)
