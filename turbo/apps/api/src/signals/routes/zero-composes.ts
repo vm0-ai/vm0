@@ -1,4 +1,4 @@
-import { computed } from "ccstate";
+import { command, computed } from "ccstate";
 import {
   zeroComposesByIdContract,
   zeroComposesListContract,
@@ -8,8 +8,9 @@ import {
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
-import { notFound } from "../../lib/error";
+import { isNotFoundResponse, notFound } from "../../lib/error";
 import {
+  deleteCompose$,
   zeroComposeById,
   zeroComposeByName,
   zeroComposeList,
@@ -63,6 +64,29 @@ const listComposesInner$ = computed(async (get) => {
   return { status: 200 as const, body: { composes: [...result.composes] } };
 });
 
+const deleteComposeInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(authContext$);
+    const params = get(pathParamsOf(zeroComposesByIdContract.delete));
+    signal.throwIfAborted();
+
+    const result = await set(
+      deleteCompose$,
+      { composeId: params.id, userId: auth.userId },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (isNotFoundResponse(result)) {
+      return result;
+    }
+    if (result?.status === 409) {
+      return result;
+    }
+    return { status: 204 as const, body: undefined };
+  },
+);
+
 const orgAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
@@ -83,5 +107,9 @@ export const zeroComposesRoutes: readonly RouteEntry[] = [
   {
     route: zeroComposesByIdContract.getById,
     handler: authRoute(orgAuth, getComposeByIdInner$),
+  },
+  {
+    route: zeroComposesByIdContract.delete,
+    handler: authRoute({}, deleteComposeInner$),
   },
 ];
