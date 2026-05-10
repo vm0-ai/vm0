@@ -6,6 +6,7 @@ import { authRoute } from "../auth/auth-route";
 import { zeroCustomConnectorList } from "../services/zero-catalog-data.service";
 import type { RouteEntry } from "../route";
 import { zeroCustomConnectorsCreateRoutes } from "./zero-custom-connectors-create";
+import { zeroCustomConnectorSecretDeleteRoutes } from "./zero-custom-connectors-secret-delete";
 
 const listCustomConnectorsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -24,4 +25,5 @@ export const zeroCustomConnectorsRoutes: readonly RouteEntry[] = [
     ),
   },
   ...zeroCustomConnectorsCreateRoutes,
+  ...zeroCustomConnectorSecretDeleteRoutes,
 ];
