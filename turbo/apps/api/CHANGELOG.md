@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.30.0](https://github.com/vm0-ai/vm0/compare/api-v1.29.0...api-v1.30.0) (2026-05-10)
+
+
+### Features
+
+* **api:** port me/model-providers delete to api backend ([#12552](https://github.com/vm0-ai/vm0/issues/12552)) ([4fa5958](https://github.com/vm0-ai/vm0/commit/4fa59589f64793a28c9ae6dd850845efd9ecfafe))
+
+
+### Refactoring
+
+* **api:** migrate chat-threads post (create thread) to api backend ([#12553](https://github.com/vm0-ai/vm0/issues/12553)) ([0790f7d](https://github.com/vm0-ai/vm0/commit/0790f7d565440eac6da45fa37b99a2f74c712747))
+* **api:** migrate me/model-providers patch model to api backend (wave 5) ([#12559](https://github.com/vm0-ai/vm0/issues/12559)) ([097f4a4](https://github.com/vm0-ai/vm0/commit/097f4a449d1537ff308c51976f26a5899301537e)), closes [#12556](https://github.com/vm0-ai/vm0/issues/12556)
+
 ## [1.29.0](https://github.com/vm0-ai/vm0/compare/api-v1.28.0...api-v1.29.0) (2026-05-10)
 
 
