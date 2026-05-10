@@ -364,20 +364,24 @@ describe("createApp", () => {
     it.each([204, 205, 304])(
       "forwards null-body status %s without constructing a Response with a stream",
       async (statusCode) => {
+        // Uses a path that has not been migrated to apps/api so the request
+        // hits the legacy fallthrough proxy. Originally targeted PATCH
+        // /api/zero/chat-threads/:id; now that route is handled in api, so
+        // the test re-targets an unmigrated agent path.
         mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
         useUndiciMock()
           .get("https://www.vm0.ai")
           .intercept({
-            path: "/api/zero/chat-threads/abc",
+            path: "/api/agent/runs/abc",
             method: "PATCH",
           })
           .reply(statusCode, "");
 
         const app = createApp({ signal: context.signal });
-        const response = await app.request("/api/zero/chat-threads/abc", {
+        const response = await app.request("/api/agent/runs/abc", {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: '{"draftContent":"hello"}',
+          body: '{"foo":"bar"}',
         });
 
         expect(response.status).toBe(statusCode);
