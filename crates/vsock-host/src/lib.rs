@@ -1,7 +1,9 @@
 //! Host-side vsock endpoint for Firecracker VM communication.
 //!
-//! Connects to a guest agent via Unix domain socket (Firecracker forwards
-//! vsock connections to `{vsock_path}_{port}` UDS files).
+//! Connects to a guest control agent via Unix domain socket. During the
+//! migration away from guest-initiated sockets, this crate supports both the
+//! legacy `{vsock_path}_{port}` listener flow and Firecracker's host-initiated
+//! `CONNECT <port>` flow on the base vsock socket.
 //!
 //! ## Connection Flow
 //!
@@ -34,13 +36,15 @@ use tokio::time::{self, Instant};
 use vsock_proto::{
     BoundedExecStream as ProtoBoundedExecStream,
     BoundedExecTermination as ProtoBoundedExecTermination, Decoder, MSG_BOUNDED_EXEC,
-    MSG_BOUNDED_EXEC_OUTPUT_CHUNK, MSG_BOUNDED_EXEC_RESULT, MSG_ERROR, MSG_EXEC, MSG_EXEC_RESULT,
-    MSG_PING, MSG_PONG, MSG_PROCESS_EXIT, MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
-    MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK, MSG_WRITE_FILE,
-    MSG_WRITE_FILE_RESULT, RawMessage,
+    MSG_BOUNDED_EXEC_OUTPUT_CHUNK, MSG_BOUNDED_EXEC_RESULT, MSG_CONTROL_HELLO,
+    MSG_CONTROL_HELLO_ACK, MSG_ERROR, MSG_EXEC, MSG_EXEC_RESULT, MSG_PING, MSG_PONG,
+    MSG_PROCESS_EXIT, MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH,
+    MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, RawMessage,
 };
 
 const READ_BUF_SIZE: usize = 64 * 1024;
+const FIRECRACKER_CONNECT_ACK_MAX_BYTES: usize = 64;
+const FRAME_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Result of executing a command on the guest.
 #[derive(Debug, Clone)]
@@ -107,6 +111,12 @@ pub struct BoundedExecRequest<'a> {
     pub stdin: Option<&'a [u8]>,
     pub stdout: BoundedExecOutputRequest,
     pub stderr: BoundedExecOutputRequest,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ControlHandshake<'a> {
+    pub session_nonce: &'a [u8; vsock_proto::CONTROL_SESSION_NONCE_BYTES],
+    pub boot_generation: Option<&'a str>,
 }
 
 #[derive(Debug, Clone)]
@@ -1003,6 +1013,25 @@ async fn request_raw_on_shared(
     payload: &[u8],
     timeout: Duration,
 ) -> io::Result<RawMessage> {
+    request_raw_on_shared_with_write_timeout(
+        shared,
+        msg_type,
+        seq,
+        payload,
+        timeout,
+        FRAME_WRITE_TIMEOUT,
+    )
+    .await
+}
+
+async fn request_raw_on_shared_with_write_timeout(
+    shared: &Arc<Shared>,
+    msg_type: u8,
+    seq: u32,
+    payload: &[u8],
+    timeout: Duration,
+    write_timeout: Duration,
+) -> io::Result<RawMessage> {
     let data = vsock_proto::encode(msg_type, seq, payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
 
@@ -1030,7 +1059,7 @@ async fn request_raw_on_shared(
 
     // The guard removes the pending entry on write failure, timeout, or
     // cancellation before reader_loop dispatches a response.
-    write_frame_on_shared(shared, &data).await?;
+    write_frame_on_shared_with_timeout(shared, &data, write_timeout).await?;
 
     // `rx` returns `Ok(msg)` when the reader dispatches a response and
     // `Err(RecvError)` when `close()` drops the `Connected` variant. The
@@ -1050,6 +1079,14 @@ async fn request_raw_on_shared(
 }
 
 async fn write_frame_on_shared(shared: &Arc<Shared>, data: &[u8]) -> io::Result<()> {
+    write_frame_on_shared_with_timeout(shared, data, FRAME_WRITE_TIMEOUT).await
+}
+
+async fn write_frame_on_shared_with_timeout(
+    shared: &Arc<Shared>,
+    data: &[u8],
+    timeout: Duration,
+) -> io::Result<()> {
     let mut writer = shared.writer.lock().await;
     {
         let guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -1064,7 +1101,9 @@ async fn write_frame_on_shared(shared: &Arc<Shared>, data: &[u8]) -> io::Result<
     // Declare after `writer` so cancellation drops the guard before the writer
     // lock, preventing another request from writing before the poison close.
     let mut write_guard = FrameWriteGuard::new(Arc::clone(shared));
-    writer.write_all(data).await?;
+    time::timeout(timeout, writer.write_all(data))
+        .await
+        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "frame write timeout"))??;
     write_guard.disarm();
     Ok(())
 }
@@ -1259,6 +1298,35 @@ async fn bounded_exec_on_shared_with_request_timeout(
 }
 
 impl VsockHost {
+    /// Connect to Firecracker's base vsock UDS and initiate a guest control session.
+    ///
+    /// This uses Firecracker's host-initiated protocol:
+    /// `CONNECT <VSOCK_PORT>\n` followed by `OK <hostside_port>\n`, then the
+    /// vm0 control hello/ack handshake on the connected stream.
+    pub async fn connect_host_initiated(
+        vsock_path: &str,
+        timeout: Duration,
+        handshake: ControlHandshake<'_>,
+    ) -> io::Result<Self> {
+        let deadline = Instant::now() + timeout;
+        let mut stream = time::timeout_at(deadline, UnixStream::connect(vsock_path))
+            .await
+            .map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!(
+                        "firecracker vsock connect timeout after {}ms",
+                        timeout.as_millis()
+                    ),
+                )
+            })??;
+
+        Self::firecracker_connect(&mut stream, vsock_proto::VSOCK_PORT, deadline).await?;
+        let (stream, handshake_decoder) =
+            Self::control_handshake(stream, deadline, handshake).await?;
+        Self::from_handshaken_stream(stream, handshake_decoder)
+    }
+
     /// Wait for a guest to connect on the vsock UDS path.
     ///
     /// Creates a UDS listener at `{vsock_path}_{port}`, accepts the first
@@ -1300,7 +1368,10 @@ impl VsockHost {
     async fn from_stream(stream: UnixStream, deadline: Instant) -> io::Result<Self> {
         // Handshake on the unsplit stream (reader task not running yet).
         let (stream, handshake_decoder) = Self::handshake(stream, deadline).await?;
+        Self::from_handshaken_stream(stream, handshake_decoder)
+    }
 
+    fn from_handshaken_stream(stream: UnixStream, handshake_decoder: Decoder) -> io::Result<Self> {
         // Grab the raw fd BEFORE splitting — used by Drop to shutdown the
         // socket and unblock any pending reads (both our reader_loop and the
         // remote peer).
@@ -1336,6 +1407,76 @@ impl VsockHost {
         })
     }
 
+    async fn firecracker_connect(
+        stream: &mut UnixStream,
+        port: u32,
+        deadline: Instant,
+    ) -> io::Result<u32> {
+        let request = format!("CONNECT {port}\n");
+        Self::write_all_until(stream, request.as_bytes(), deadline, "firecracker CONNECT").await?;
+        Self::read_firecracker_ok(stream, deadline).await
+    }
+
+    async fn write_all_until(
+        stream: &mut UnixStream,
+        data: &[u8],
+        deadline: Instant,
+        context: &'static str,
+    ) -> io::Result<()> {
+        time::timeout_at(deadline, stream.write_all(data))
+            .await
+            .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, format!("{context} timeout")))?
+    }
+
+    async fn read_firecracker_ok(stream: &mut UnixStream, deadline: Instant) -> io::Result<u32> {
+        let mut line = Vec::with_capacity(FIRECRACKER_CONNECT_ACK_MAX_BYTES);
+        let mut byte = [0u8; 1];
+        loop {
+            let n = time::timeout_at(deadline, stream.read(&mut byte))
+                .await
+                .map_err(|_| {
+                    io::Error::new(io::ErrorKind::TimedOut, "firecracker CONNECT ack timeout")
+                })??;
+            if n == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "firecracker closed before CONNECT ack",
+                ));
+            }
+            line.push(byte[0]);
+            if byte[0] == b'\n' {
+                break;
+            }
+            if line.len() >= FIRECRACKER_CONNECT_ACK_MAX_BYTES {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "firecracker CONNECT ack too long",
+                ));
+            }
+        }
+
+        let line = std::str::from_utf8(&line)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid CONNECT ack utf8"))?;
+        let line = line.trim_end_matches('\n').trim_end_matches('\r');
+        let mut parts = line.split_ascii_whitespace();
+        let status = parts.next();
+        let port = parts.next();
+        if status != Some("OK") || parts.next().is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid CONNECT ack: {line:?}"),
+            ));
+        }
+        port.ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid CONNECT ack: {line:?}"),
+            )
+        })?
+        .parse::<u32>()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid CONNECT ack port"))
+    }
+
     /// Perform the connection handshake: ready → ping → pong.
     ///
     /// Returns the stream and decoder for reuse by the reader task.
@@ -1363,6 +1504,46 @@ impl VsockHost {
             m.msg_type == MSG_PONG && m.seq == ping_seq
         })
         .await?;
+
+        Ok((stream, decoder))
+    }
+
+    async fn control_handshake(
+        mut stream: UnixStream,
+        deadline: Instant,
+        handshake: ControlHandshake<'_>,
+    ) -> io::Result<(UnixStream, Decoder)> {
+        let mut decoder = Decoder::new();
+        let mut buf = Box::new([0u8; READ_BUF_SIZE]);
+        let seq = 1;
+        let payload = vsock_proto::encode_control_hello(
+            vsock_proto::CONTROL_PROTOCOL_VERSION,
+            handshake.session_nonce,
+            handshake.boot_generation,
+        )
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+        let hello = vsock_proto::encode(MSG_CONTROL_HELLO, seq, &payload)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+
+        Self::write_all_until(&mut stream, &hello, deadline, "control hello").await?;
+        let ack = Self::read_until_handshake(&mut stream, &mut decoder, &mut buf, deadline, |m| {
+            m.msg_type == MSG_CONTROL_HELLO_ACK && m.seq == seq
+        })
+        .await?;
+        let (version, nonce) = vsock_proto::decode_control_hello_ack(&ack.payload)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        if version != vsock_proto::CONTROL_PROTOCOL_VERSION {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("unsupported control protocol version: {version}"),
+            ));
+        }
+        if nonce != *handshake.session_nonce {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "control handshake nonce mismatch",
+            ));
+        }
 
         Ok((stream, decoder))
     }
@@ -1785,9 +1966,13 @@ mod tests {
     use super::*;
     use std::future::Future;
     use std::os::fd::AsRawFd;
+    use std::path::PathBuf;
     use std::pin::Pin;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::task::{Context, Poll, Wake, Waker};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    static UNIQUE_SOCKET_ID: AtomicU64 = AtomicU64::new(0);
 
     struct NoopWake;
 
@@ -1841,6 +2026,39 @@ mod tests {
     async fn host_from_stream(stream: UnixStream) -> io::Result<VsockHost> {
         let deadline = Instant::now() + Duration::from_secs(5);
         VsockHost::from_stream(stream, deadline).await
+    }
+
+    fn unique_socket_path(label: &str) -> PathBuf {
+        let id = UNIQUE_SOCKET_ID.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "vsock-host-{label}-{}-{id}.sock",
+            std::process::id()
+        ))
+    }
+
+    async fn read_line(stream: &mut UnixStream) -> Vec<u8> {
+        let mut line = Vec::new();
+        let mut byte = [0u8; 1];
+        loop {
+            let n = stream.read(&mut byte).await.unwrap();
+            assert_ne!(n, 0, "connection closed before line completed");
+            line.push(byte[0]);
+            if byte[0] == b'\n' {
+                return line;
+            }
+        }
+    }
+
+    async fn read_one_message(stream: &mut UnixStream, decoder: &mut Decoder) -> RawMessage {
+        let mut buf = [0u8; 1024];
+        loop {
+            let n = stream.read(&mut buf).await.unwrap();
+            assert_ne!(n, 0, "connection closed before frame completed");
+            let mut messages = decoder.decode(&buf[..n]).unwrap();
+            if !messages.is_empty() {
+                return messages.remove(0);
+            }
+        }
     }
 
     fn registration_counts(host: &VsockHost) -> (usize, usize, usize, usize) {
@@ -2083,6 +2301,230 @@ mod tests {
             !listener.exists(),
             "aborted listener should remove its socket path"
         );
+    }
+
+    #[tokio::test]
+    async fn connect_host_initiated_writes_connect_and_validates_control_handshake() {
+        let path = unique_socket_path("host-initiated");
+        let path_string = path.display().to_string();
+        let listener = UnixListener::bind(&path).unwrap();
+        let mut listener_socket = ListenerSocketGuard {
+            path: Some(path_string.clone()),
+        };
+        let nonce = *b"0123456789abcdef";
+
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            assert_eq!(
+                read_line(&mut stream).await,
+                format!("CONNECT {}\n", vsock_proto::VSOCK_PORT).as_bytes()
+            );
+            stream.write_all(b"OK 1073741824\n").await.unwrap();
+
+            let mut decoder = Decoder::new();
+            let hello = read_one_message(&mut stream, &mut decoder).await;
+            assert_eq!(hello.msg_type, MSG_CONTROL_HELLO);
+            assert_eq!(hello.seq, 1);
+            let decoded = vsock_proto::decode_control_hello(&hello.payload).unwrap();
+            assert_eq!(decoded.version, vsock_proto::CONTROL_PROTOCOL_VERSION);
+            assert_eq!(decoded.nonce, nonce);
+            assert_eq!(decoded.boot_generation, Some("boot-generation-1"));
+
+            let ack_payload =
+                vsock_proto::encode_control_hello_ack(decoded.version, &decoded.nonce);
+            let ack = vsock_proto::encode(MSG_CONTROL_HELLO_ACK, hello.seq, &ack_payload).unwrap();
+            stream.write_all(&ack).await.unwrap();
+        });
+
+        let host = VsockHost::connect_host_initiated(
+            &path_string,
+            Duration::from_secs(5),
+            ControlHandshake {
+                session_nonce: &nonce,
+                boot_generation: Some("boot-generation-1"),
+            },
+        )
+        .await
+        .unwrap();
+
+        drop(host);
+        server.await.unwrap();
+        listener_socket.remove();
+    }
+
+    #[tokio::test]
+    async fn connect_host_initiated_rejects_malformed_firecracker_ack() {
+        let path = unique_socket_path("host-initiated-bad-ack");
+        let path_string = path.display().to_string();
+        let listener = UnixListener::bind(&path).unwrap();
+        let mut listener_socket = ListenerSocketGuard {
+            path: Some(path_string.clone()),
+        };
+        let nonce = *b"0123456789abcdef";
+
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            assert_eq!(
+                read_line(&mut stream).await,
+                format!("CONNECT {}\n", vsock_proto::VSOCK_PORT).as_bytes()
+            );
+            stream.write_all(b"NOPE 1073741824\n").await.unwrap();
+        });
+
+        let err = match VsockHost::connect_host_initiated(
+            &path_string,
+            Duration::from_secs(5),
+            ControlHandshake {
+                session_nonce: &nonce,
+                boot_generation: None,
+            },
+        )
+        .await
+        {
+            Ok(_) => panic!("malformed Firecracker ack should fail"),
+            Err(err) => err,
+        };
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+
+        server.await.unwrap();
+        listener_socket.remove();
+    }
+
+    #[tokio::test]
+    async fn connect_host_initiated_times_out_on_partial_firecracker_ack() {
+        let path = unique_socket_path("host-initiated-partial-ack");
+        let path_string = path.display().to_string();
+        let listener = UnixListener::bind(&path).unwrap();
+        let mut listener_socket = ListenerSocketGuard {
+            path: Some(path_string.clone()),
+        };
+        let nonce = *b"0123456789abcdef";
+        let (release_tx, release_rx) = oneshot::channel::<()>();
+
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            assert_eq!(
+                read_line(&mut stream).await,
+                format!("CONNECT {}\n", vsock_proto::VSOCK_PORT).as_bytes()
+            );
+            stream.write_all(b"OK ").await.unwrap();
+            let _ = release_rx.await;
+        });
+
+        let err = match VsockHost::connect_host_initiated(
+            &path_string,
+            Duration::from_millis(50),
+            ControlHandshake {
+                session_nonce: &nonce,
+                boot_generation: None,
+            },
+        )
+        .await
+        {
+            Ok(_) => panic!("partial Firecracker ack should time out"),
+            Err(err) => err,
+        };
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+
+        let _ = release_tx.send(());
+        server.await.unwrap();
+        listener_socket.remove();
+    }
+
+    #[tokio::test]
+    async fn connect_host_initiated_rejects_wrong_control_nonce() {
+        let path = unique_socket_path("host-initiated-wrong-nonce");
+        let path_string = path.display().to_string();
+        let listener = UnixListener::bind(&path).unwrap();
+        let mut listener_socket = ListenerSocketGuard {
+            path: Some(path_string.clone()),
+        };
+        let nonce = *b"0123456789abcdef";
+        let wrong_nonce = *b"fedcba9876543210";
+
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            assert_eq!(
+                read_line(&mut stream).await,
+                format!("CONNECT {}\n", vsock_proto::VSOCK_PORT).as_bytes()
+            );
+            stream.write_all(b"OK 1073741824\n").await.unwrap();
+
+            let mut decoder = Decoder::new();
+            let hello = read_one_message(&mut stream, &mut decoder).await;
+            assert_eq!(hello.msg_type, MSG_CONTROL_HELLO);
+            let ack_payload = vsock_proto::encode_control_hello_ack(
+                vsock_proto::CONTROL_PROTOCOL_VERSION,
+                &wrong_nonce,
+            );
+            let ack = vsock_proto::encode(MSG_CONTROL_HELLO_ACK, hello.seq, &ack_payload).unwrap();
+            stream.write_all(&ack).await.unwrap();
+        });
+
+        let err = match VsockHost::connect_host_initiated(
+            &path_string,
+            Duration::from_secs(5),
+            ControlHandshake {
+                session_nonce: &nonce,
+                boot_generation: None,
+            },
+        )
+        .await
+        {
+            Ok(_) => panic!("wrong control nonce should fail"),
+            Err(err) => err,
+        };
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+
+        server.await.unwrap();
+        listener_socket.remove();
+    }
+
+    #[tokio::test]
+    async fn connect_host_initiated_rejects_wrong_control_version() {
+        let path = unique_socket_path("host-initiated-wrong-version");
+        let path_string = path.display().to_string();
+        let listener = UnixListener::bind(&path).unwrap();
+        let mut listener_socket = ListenerSocketGuard {
+            path: Some(path_string.clone()),
+        };
+        let nonce = *b"0123456789abcdef";
+
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            assert_eq!(
+                read_line(&mut stream).await,
+                format!("CONNECT {}\n", vsock_proto::VSOCK_PORT).as_bytes()
+            );
+            stream.write_all(b"OK 1073741824\n").await.unwrap();
+
+            let mut decoder = Decoder::new();
+            let hello = read_one_message(&mut stream, &mut decoder).await;
+            assert_eq!(hello.msg_type, MSG_CONTROL_HELLO);
+            let decoded = vsock_proto::decode_control_hello(&hello.payload).unwrap();
+            let ack_payload =
+                vsock_proto::encode_control_hello_ack(decoded.version + 1, &decoded.nonce);
+            let ack = vsock_proto::encode(MSG_CONTROL_HELLO_ACK, hello.seq, &ack_payload).unwrap();
+            stream.write_all(&ack).await.unwrap();
+        });
+
+        let err = match VsockHost::connect_host_initiated(
+            &path_string,
+            Duration::from_secs(5),
+            ControlHandshake {
+                session_nonce: &nonce,
+                boot_generation: None,
+            },
+        )
+        .await
+        {
+            Ok(_) => panic!("wrong control protocol version should fail"),
+            Err(err) => err,
+        };
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+
+        server.await.unwrap();
+        listener_socket.remove();
     }
 
     #[tokio::test]
@@ -3479,6 +3921,44 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+
+        release_guest.notify_one();
+        guest_task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_frame_write_timeout_removes_pending_and_closes_connection() {
+        let (host_stream, mut guest) = make_pair();
+        set_send_buffer(&host_stream, 4096).unwrap();
+
+        let release_guest = std::sync::Arc::new(Notify::new());
+        let guest_task = {
+            let release_guest = std::sync::Arc::clone(&release_guest);
+            tokio::spawn(async move {
+                let mut decoder = Decoder::new();
+                mock_handshake(&mut guest, &mut decoder).await;
+                release_guest.notified().await;
+            })
+        };
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let seq = host.shared.next_seq();
+        let payload = vec![b'x'; 8 * 1024 * 1024];
+        let err = request_raw_on_shared_with_write_timeout(
+            &host.shared,
+            MSG_EXEC,
+            seq,
+            &payload,
+            Duration::from_secs(30),
+            Duration::from_millis(1),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+        assert_eq!(registration_counts(&host), (0, 0, 0, 0));
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
 
         release_guest.notify_one();
         guest_task.await.unwrap();
