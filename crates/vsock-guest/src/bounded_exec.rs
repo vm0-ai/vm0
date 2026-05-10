@@ -299,6 +299,17 @@ fn run_bounded_exec<S>(
         return;
     }
 
+    if cancellation_requested(&connection_cancel, &request_cancel) {
+        send_cancelled_without_output(
+            request.seq,
+            started,
+            request.stdout,
+            request.stderr,
+            &writer,
+        );
+        return;
+    }
+
     let env_refs = env_refs(&request.env);
     let spawned = match spawn_bounded_exec_command(
         &request.command,
@@ -336,6 +347,18 @@ fn run_bounded_exec<S>(
         env_script,
     } = spawned;
     let _env_script = env_script;
+
+    if cancellation_requested(&connection_cancel, &request_cancel) {
+        kill_and_send_cancelled(
+            request.seq,
+            started,
+            child,
+            request.stdout,
+            request.stderr,
+            &writer,
+        );
+        return;
+    }
 
     let stdout = if request.stdout.requires_pipe() {
         match child.stdout.take() {
@@ -661,6 +684,10 @@ fn validate_request(request: &BoundedExecWorkerRequest) -> Result<(), String> {
     Ok(())
 }
 
+fn cancellation_requested(connection_cancel: &AtomicBool, request_cancel: &AtomicBool) -> bool {
+    connection_cancel.load(Ordering::Acquire) || request_cancel.load(Ordering::Acquire)
+}
+
 fn format_output_policy(policy: BoundedOutputRequest) -> String {
     let capture = match policy.capture {
         vsock_proto::BoundedExecCapturePolicy::Discard => "discard".to_string(),
@@ -965,6 +992,40 @@ fn wait_stdin_writable(
     }
 }
 
+fn send_cancelled_without_output(
+    seq: u32,
+    started: Instant,
+    stdout_policy: BoundedOutputRequest,
+    stderr_policy: BoundedOutputRequest,
+    writer: &GuestWriter,
+) {
+    let stdout = GuestBoundedOutput::empty_for_policy(stdout_policy);
+    let stderr = GuestBoundedOutput::empty_for_policy(stderr_policy);
+    let _ = send_bounded_exec_result(
+        BoundedExecResultFrame {
+            seq,
+            termination: BoundedExecTermination::Cancelled,
+            duration_ms: duration_ms(started),
+            stdout: stdout.as_proto(),
+            stderr: stderr.as_proto(),
+            diagnostic: None,
+        },
+        writer,
+    );
+}
+
+fn kill_and_send_cancelled(
+    seq: u32,
+    started: Instant,
+    child: Child,
+    stdout_policy: BoundedOutputRequest,
+    stderr_policy: BoundedOutputRequest,
+    writer: &GuestWriter,
+) {
+    kill_and_reap_child(child);
+    send_cancelled_without_output(seq, started, stdout_policy, stderr_policy, writer);
+}
+
 fn kill_and_send_wait_failed(
     seq: u32,
     started: Instant,
@@ -1227,6 +1288,32 @@ mod tests {
             44,
             BoundedExecTermination::WaitFailed,
             "stdin writer thread",
+        );
+    }
+
+    #[test]
+    fn request_cancel_before_spawn_returns_cancelled_without_running_command() {
+        let marker = std::env::temp_dir().join(format!(
+            "vsock-guest-cancel-before-spawn-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&marker);
+        let command = format!("touch {}", marker.display());
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+
+        run_bounded_exec(
+            bounded_request(45, &command),
+            GuestWriter::new(guest),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicBool::new(true)),
+            SystemThreadSpawner,
+        );
+
+        assert_bounded_exec_result(&mut host, 45, BoundedExecTermination::Cancelled, "");
+        assert!(
+            !marker.exists(),
+            "pre-cancelled bounded exec should not run the command",
         );
     }
 }
