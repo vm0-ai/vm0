@@ -692,14 +692,13 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     });
   });
 
-  it("excludes user-revoke ghost rows that revoke a queued message", async () => {
-    // Queued user messages start with run_id IS NULL. When the queue drains,
-    // a NEW user row (also with run_id IS NULL) is appended pointing at the
-    // queued row via revokes_message_id. The web visibility filter drops
-    // BOTH the original (revoked) row and the ghost revoker row; the api
-    // shadow used to drop only the original, which shifted the page window
-    // by one and surfaced as "response shadow divergence" warnings on
-    // GET /api/zero/chat-threads/:threadId/messages.
+  it("returns revoked rows and ghost revoker rows append-only, matching web", async () => {
+    // The /messages route is an append-only event stream; the client derives
+    // its own display projection. Web's getPagedMessages filters by
+    // chatThreadId only — no visibleChatMessageCondition. The api side must
+    // mirror that behavior or the shadow comparator surfaces divergences
+    // every time a user revokes a queued draft (the ghost revoker pattern:
+    // role='user', run_id IS NULL, revokes_message_id IS NOT NULL).
     const fixture = await track(
       store.set(seedZeroChatThread$, {}, context.signal),
     );
@@ -754,6 +753,6 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
       response.body.messages.map((m) => {
         return m.id;
       }),
-    ).toStrictEqual([visibleId]);
+    ).toStrictEqual([queuedId, revokerId, visibleId]);
   });
 });

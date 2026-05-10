@@ -944,7 +944,7 @@ export function zeroChatThreadMessagesPage(args: {
         .select(messageColumns)
         .from(chatMessages)
         .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
-        .where(and(threadFilter, visibleChatMessageCondition()))
+        .where(threadFilter)
         .orderBy(
           desc(chatMessages.createdAt),
           desc(chatMessages.sequenceNumber),
@@ -979,13 +979,7 @@ export function zeroChatThreadMessagesPage(args: {
           .select(messageColumns)
           .from(chatMessages)
           .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
-          .where(
-            and(
-              threadFilter,
-              cursorAfterCondition,
-              visibleChatMessageCondition(),
-            ),
-          )
+          .where(and(threadFilter, cursorAfterCondition))
           .orderBy(
             asc(chatMessages.createdAt),
             asc(chatMessages.sequenceNumber),
@@ -996,13 +990,7 @@ export function zeroChatThreadMessagesPage(args: {
           .select(messageColumns)
           .from(chatMessages)
           .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
-          .where(
-            and(
-              threadFilter,
-              cursorBeforeCondition,
-              visibleChatMessageCondition(),
-            ),
-          )
+          .where(and(threadFilter, cursorBeforeCondition))
           .orderBy(
             desc(chatMessages.createdAt),
             desc(chatMessages.sequenceNumber),
