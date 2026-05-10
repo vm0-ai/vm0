@@ -1219,8 +1219,12 @@ pub fn decode_write_file(payload: &[u8]) -> Result<(&str, &[u8], bool), Protocol
 /// Decode write_file_result payload. Returns `(success, error)`.
 pub fn decode_write_file_result(payload: &[u8]) -> Result<(bool, &str), ProtocolError> {
     let success = read_u8_at(payload, 0)
-        .ok_or(ProtocolError::InvalidPayload("write_file_result too short"))?
-        == 1;
+        .ok_or(ProtocolError::InvalidPayload("write_file_result too short"))?;
+    if success > 1 {
+        return Err(ProtocolError::InvalidPayload(
+            "write_file_result invalid success flag",
+        ));
+    }
     let err_len = read_u16_at(payload, 1)
         .ok_or(ProtocolError::InvalidPayload("write_file_result too short"))?
         as usize;
@@ -1229,7 +1233,7 @@ pub fn decode_write_file_result(payload: &[u8]) -> Result<(bool, &str), Protocol
     )?)
     .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in error"))?;
     ensure_no_trailing_bytes(payload, 3 + err_len, "write_file_result trailing bytes")?;
-    Ok((success, error))
+    Ok((success == 1, error))
 }
 
 pub fn decode_write_files_start(payload: &[u8]) -> Result<DecodedWriteFilesStart, ProtocolError> {
@@ -1330,7 +1334,12 @@ pub fn decode_write_files_result(
     let mut entries = Vec::with_capacity(count);
     for _ in 0..count {
         let file_index = read_u32_cursor(payload, &mut offset, "write_files_result too short")?;
-        let success = read_u8_cursor(payload, &mut offset, "write_files_result too short")? == 1;
+        let success = read_u8_cursor(payload, &mut offset, "write_files_result too short")?;
+        if success > 1 {
+            return Err(ProtocolError::InvalidPayload(
+                "write_files_result invalid success flag",
+            ));
+        }
         let err_len =
             read_u16_cursor(payload, &mut offset, "write_files_result too short")? as usize;
         let error = std::str::from_utf8(read_bytes_cursor(
@@ -1342,7 +1351,7 @@ pub fn decode_write_files_result(
         .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in write_files result"))?;
         entries.push(WriteFilesResultEntry {
             file_index,
-            success,
+            success: success == 1,
             error: error.to_string(),
         });
     }
@@ -3108,6 +3117,20 @@ mod tests {
     }
 
     #[test]
+    fn write_file_rejects_unknown_flags() {
+        let path = "/tmp/test.txt";
+        let mut payload = encode_write_file(path, b"content", false).unwrap();
+        payload[2 + path.len()] = 0x02;
+
+        let err = decode_write_file(&payload).unwrap_err();
+
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("write_file unknown flags")
+        ));
+    }
+
+    #[test]
     fn write_file_path_too_long() {
         let long_path = "a".repeat(65536);
         let err = encode_write_file(&long_path, b"", false).unwrap_err();
@@ -3133,6 +3156,16 @@ mod tests {
         let (success, error) = decode_write_file_result(&payload).unwrap();
         assert!(!success);
         assert_eq!(error, "permission denied");
+    }
+
+    #[test]
+    fn write_file_result_rejects_invalid_success_flag() {
+        let err = decode_write_file_result(&[2, 0, 0]).unwrap_err();
+
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("write_file_result invalid success flag")
+        ));
     }
 
     #[test]
@@ -3273,6 +3306,18 @@ mod tests {
         assert!(matches!(
             err,
             ProtocolError::InvalidPayload("invalid UTF-8 in write_files result")
+        ));
+
+        let err = decode_write_files_result(&[
+            0, 0, 0, 1, // result_count
+            0, 0, 0, 0, // file_index
+            2, // invalid success
+            0, 0, // err_len
+        ])
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("write_files_result invalid success flag")
         ));
 
         let mut payload = encode_write_files_result(&[]).unwrap();
