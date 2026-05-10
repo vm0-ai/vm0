@@ -204,3 +204,81 @@ export const deleteUserModelProvider$ = command(
     return undefined;
   },
 );
+
+/**
+ * Update a personal model provider's `selectedModel`. Single atomic
+ * `UPDATE … RETURNING` keyed on (orgId, userId, type) — strictly fewer
+ * round-trips than web's SELECT-then-UPDATE shape.
+ *
+ * The `secretName` field of the response body comes from a follow-up
+ * SELECT against `secrets.id`, only when `secretId` is non-null
+ * (multi-auth providers store secret references via `authMethod` and
+ * `getSecretNamesForAuthMethod` instead).
+ */
+export const updateUserModelProviderModel$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly type: ModelProviderType;
+      readonly selectedModel: string | undefined;
+    },
+    signal: AbortSignal,
+  ): Promise<
+    | NotFoundResponse
+    | { readonly status: 200; readonly body: ModelProviderResponse }
+  > => {
+    const writeDb = set(writeDb$);
+
+    const [updated] = await writeDb
+      .update(modelProviders)
+      .set({
+        selectedModel: args.selectedModel ?? null,
+        updatedAt: nowDate(),
+      })
+      .where(
+        and(
+          eq(modelProviders.orgId, args.orgId),
+          eq(modelProviders.userId, args.userId),
+          eq(modelProviders.type, args.type),
+        ),
+      )
+      .returning({
+        id: modelProviders.id,
+        type: modelProviders.type,
+        isDefault: modelProviders.isDefault,
+        selectedModel: modelProviders.selectedModel,
+        authMethod: modelProviders.authMethod,
+        secretId: modelProviders.secretId,
+        workspaceName: modelProviders.workspaceName,
+        planType: modelProviders.planType,
+        needsReconnect: modelProviders.needsReconnect,
+        lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
+        createdAt: modelProviders.createdAt,
+        updatedAt: modelProviders.updatedAt,
+      });
+    signal.throwIfAborted();
+
+    if (!updated) {
+      return notFound("Resource not found");
+    }
+
+    let secretName: string | null = null;
+    if (updated.secretId) {
+      const [secret] = await writeDb
+        .select({ name: secrets.name })
+        .from(secrets)
+        .where(eq(secrets.id, updated.secretId))
+        .limit(1);
+      signal.throwIfAborted();
+      secretName = secret?.name ?? null;
+    }
+
+    const body = modelProviderResponse({ ...updated, secretName });
+    if (!body) {
+      return notFound("Resource not found");
+    }
+    return { status: 200 as const, body };
+  },
+);
