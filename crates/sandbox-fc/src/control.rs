@@ -897,6 +897,18 @@ mod tests {
         }
     }
 
+    struct BrokenPipeStdout;
+
+    impl RemoteExecOutputSink for BrokenPipeStdout {
+        fn stdout(&mut self, _chunk: &[u8]) -> std::io::Result<()> {
+            Err(io::Error::new(io::ErrorKind::BrokenPipe, "stdout closed"))
+        }
+
+        fn stderr(&mut self, _chunk: &[u8]) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
     #[tokio::test]
     async fn exec_remote_empty_id() {
         let control = FirecrackerControl;
@@ -1612,6 +1624,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn send_exec_output_sink_error_cancels_in_flight_vsock_bounded_exec() {
+        let dir = tempfile::tempdir().unwrap();
+        let vsock_base = dir.path().join("vsock");
+        let host_task = {
+            let vsock_base = vsock_base.display().to_string();
+            tokio::spawn(async move {
+                VsockHost::wait_for_connection(&vsock_base, Duration::from_secs(5)).await
+            })
+        };
+        let (exec_seen_tx, exec_seen_rx) = oneshot::channel();
+        let (cancel_seen_tx, cancel_seen_rx) = oneshot::channel();
+        let guest_task = tokio::spawn(mock_guest_streams_then_holds_exec(
+            vsock_base,
+            exec_seen_tx,
+            cancel_seen_tx,
+        ));
+        let vsock = host_task.await.unwrap().unwrap();
+
+        let sock_path = dir.path().join("control.sock");
+        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
+        let mut handle = bind_server(sock_path.clone(), guest)
+            .unwrap()
+            .spawn(CancellationToken::new());
+
+        let request = ExecRequest {
+            command: "printf output".into(),
+            timeout_secs: 30,
+            sudo: false,
+        };
+        let mut output = BrokenPipeStdout;
+        let err = send_exec(&sock_path, &request, Duration::from_secs(5), &mut output)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, SandboxControlError::Io(e) if e.kind() == io::ErrorKind::BrokenPipe));
+
+        tokio::time::timeout(Duration::from_secs(1), exec_seen_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(1), cancel_seen_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        guest_task.await.unwrap();
+        handle.shutdown().await;
+    }
+
+    #[tokio::test]
     async fn bind_server_reports_bind_failure() {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
@@ -1736,6 +1796,51 @@ mod tests {
             },
         )
         .await;
+    }
+
+    async fn mock_guest_streams_then_holds_exec(
+        vsock_base: PathBuf,
+        exec_seen: oneshot::Sender<()>,
+        cancel_seen: oneshot::Sender<()>,
+    ) {
+        let listener_path = PathBuf::from(format!(
+            "{}_{}",
+            vsock_base.display(),
+            vsock_proto::VSOCK_PORT
+        ));
+        wait_for_socket_exists(&listener_path).await;
+
+        let mut stream = UnixStream::connect(&listener_path).await.unwrap();
+        let mut decoder = Decoder::new();
+        mock_vsock_handshake(&mut stream, &mut decoder).await;
+
+        let message = read_vsock_message(&mut stream, &mut decoder).await;
+        assert_eq!(message.msg_type, MSG_BOUNDED_EXEC);
+        let _ = exec_seen.send(());
+        write_bounded_exec_output_chunk(
+            &mut stream,
+            message.seq,
+            vsock_proto::BoundedExecStream::Stdout,
+            0,
+            b"partial\n",
+            false,
+        )
+        .await;
+
+        let mut buf = [0u8; 4096];
+        loop {
+            let n = stream.read(&mut buf).await.unwrap();
+            if n == 0 {
+                return;
+            }
+            let messages = decoder.decode(&buf[..n]).unwrap();
+            for message in messages {
+                if message.msg_type == MSG_BOUNDED_EXEC_CANCEL {
+                    let _ = cancel_seen.send(());
+                    return;
+                }
+            }
+        }
     }
 
     async fn write_bounded_exec_output_chunk(
