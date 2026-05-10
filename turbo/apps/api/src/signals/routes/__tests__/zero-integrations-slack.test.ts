@@ -15,7 +15,6 @@ import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import { writeDb$ } from "../../external/db";
 
 const context = testContext();
@@ -117,7 +116,6 @@ describe("GET /api/zero/integrations/slack", () => {
         };
       },
     });
-    mockApiShadowCompareRoutes([zeroIntegrationsSlackContract.getStatus]);
 
     const client = setupApp({ context })(zeroIntegrationsSlackContract);
 
@@ -153,7 +151,6 @@ describe("GET /api/zero/integrations/slack", () => {
         };
       },
     });
-    mockApiShadowCompareRoutes([zeroIntegrationsSlackContract.getStatus]);
 
     const client = setupApp({ context })(zeroIntegrationsSlackContract);
 
@@ -188,7 +185,6 @@ describe("GET /api/zero/integrations/slack", () => {
         };
       },
     });
-    mockApiShadowCompareRoutes([zeroIntegrationsSlackContract.getStatus]);
 
     const client = setupApp({ context })(zeroIntegrationsSlackContract);
 
@@ -281,7 +277,6 @@ describe("GET /api/zero/integrations/slack", () => {
       await seedUserVariable("VAR_A", "us-east-1");
 
       mockAdminAuth();
-      mockApiShadowCompareRoutes([zeroIntegrationsSlackContract.getStatus]);
 
       const client = setupApp({ context })(zeroIntegrationsSlackContract);
 
@@ -305,7 +300,6 @@ describe("GET /api/zero/integrations/slack", () => {
       await seedEnvironmentVersion();
 
       mockAdminAuth();
-      mockApiShadowCompareRoutes([zeroIntegrationsSlackContract.getStatus]);
 
       const client = setupApp({ context })(zeroIntegrationsSlackContract);
 
@@ -337,7 +331,6 @@ describe("GET /api/zero/integrations/slack", () => {
       await seedUserVariable("VAR_A", "us-east-1");
 
       mockAdminAuth();
-      mockApiShadowCompareRoutes([zeroIntegrationsSlackContract.getStatus]);
 
       const client = setupApp({ context })(zeroIntegrationsSlackContract);
 

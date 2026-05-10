@@ -3,7 +3,6 @@ import { userConnectors } from "@vm0/db/schema/user-connector";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import { writeDb$ } from "../../external/db";
 import {
   deleteOnboardingStatusOrg$,
@@ -47,7 +46,6 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
         },
       ]);
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    mockApiShadowCompareRoutes([zeroUserConnectorsContract.get]);
 
     const client = setupApp({ context })(zeroUserConnectorsContract);
     const response = await accept(

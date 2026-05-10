@@ -11,7 +11,6 @@ import { afterAll, afterEach, expect } from "vitest";
 import { createApp } from "../app-factory";
 import { closeDbPool } from "../lib/db";
 import { clearMockedEnv } from "../lib/env";
-import { clearMockApiShadowCompareRoutes } from "../signals/context/shadow-compare";
 import { clearMockListStripeInvoices } from "../signals/external/stripe-client";
 import { ROUTES, type RouteEntry } from "../signals/route";
 import { clearAllDetached } from "../signals/utils";
@@ -135,7 +134,6 @@ export function testContext(): TestContext {
 
     await clearAllDetached();
     clearMockedEnv();
-    clearMockApiShadowCompareRoutes();
     clearMockListStripeInvoices();
   });
 

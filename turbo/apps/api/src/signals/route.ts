@@ -1,8 +1,5 @@
 import type { AppRoute } from "@ts-rest/core";
 import { healthContract } from "@vm0/api-contracts/contracts/health";
-import { zeroRunAgentEventsContract } from "@vm0/api-contracts/contracts/zero-runs";
-
-import { promoteToApiSource } from "./context/shadow-compare";
 
 import { audioTranscriptionsV1Routes } from "./routes/audio-transcriptions-v1";
 import type { SignalRouteHandler } from "./context/route";
@@ -100,5 +97,3 @@ export const ROUTES: readonly RouteEntry[] = [
   ...audioTranscriptionsV1Routes,
   ...modelStatsRoutes,
 ];
-
-promoteToApiSource([zeroRunAgentEventsContract.getAgentEvents]);

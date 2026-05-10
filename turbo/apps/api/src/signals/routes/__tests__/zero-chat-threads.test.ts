@@ -8,7 +8,6 @@ import {
 import { chatMessages } from "@vm0/db/schema/chat-message";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import { writeDb$ } from "../../external/db";
 import {
   addRunToThread$,
@@ -59,7 +58,6 @@ describe("GET /api/zero/chat-threads/:id", () => {
         size: 42,
       },
     ]);
-    mockApiShadowCompareRoutes([chatThreadByIdContract.get]);
 
     const client = setupApp({ context })(chatThreadByIdContract);
 
@@ -143,7 +141,6 @@ describe("GET /api/zero/chat-threads/:id", () => {
         size: 256,
       },
     ]);
-    mockApiShadowCompareRoutes([chatThreadByIdContract.get]);
 
     const client = setupApp({ context })(chatThreadByIdContract);
 
@@ -170,7 +167,6 @@ describe("GET /api/zero/chat-threads/:id", () => {
       ),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    mockApiShadowCompareRoutes([chatThreadByIdContract.get]);
 
     const client = setupApp({ context })(chatThreadByIdContract);
 
@@ -381,10 +377,6 @@ describe("GET /api/zero/chat-threads/:id", () => {
       context.signal,
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    // The list route is still shadow-wrapped (separate Stage 2 issue). Mark
-    // it as shadow-compared in this test so the wrapper takes the api side
-    // instead of trying to fetch the (non-existent) web upstream.
-    mockApiShadowCompareRoutes([chatThreadsContract.list]);
     const listClient = setupApp({ context })(chatThreadsContract);
 
     const response = await accept(
@@ -653,7 +645,6 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
         size: 128,
       },
     ]);
-    mockApiShadowCompareRoutes([chatThreadMessagesContract.list]);
 
     const client = setupApp({ context })(chatThreadMessagesContract);
 
@@ -737,7 +728,6 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     ]);
 
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    mockApiShadowCompareRoutes([chatThreadMessagesContract.list]);
 
     const client = setupApp({ context })(chatThreadMessagesContract);
 
