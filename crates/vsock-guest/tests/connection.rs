@@ -380,7 +380,7 @@ fn bounded_exec_cancel_request_stops_in_flight_command() {
     let (handle, mut host_stream) = start_guest_connection();
     let pid_guard = OrphanProcessGuard::new("bounded-exec-cancel");
     let command = format!(
-        "printf '%s' $$ > {}; while true; do sleep 1; done",
+        "python3 -c \"import os, pathlib, signal; pathlib.Path('{}').write_text(str(os.getpid())); signal.pause()\"",
         pid_guard.pid_path()
     );
     let request = bounded_request(&command, &[], None);
