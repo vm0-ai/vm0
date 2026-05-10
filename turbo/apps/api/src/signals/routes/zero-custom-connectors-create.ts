@@ -8,6 +8,7 @@ import {
   createCustomConnector$,
   type CustomConnectorRow,
 } from "../services/zero-custom-connector.service";
+import { isBadRequestResponse } from "../../lib/error";
 import type { RouteEntry } from "../route";
 
 const adminRequired = Object.freeze({
@@ -19,17 +20,6 @@ const adminRequired = Object.freeze({
     }),
   }),
 });
-
-function isBadRequestResponse(
-  value: unknown,
-): value is { readonly status: 400; readonly body: unknown } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "status" in value &&
-    (value as { status: unknown }).status === 400
-  );
-}
 
 function serialiseRow(row: CustomConnectorRow) {
   return {

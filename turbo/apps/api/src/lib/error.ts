@@ -32,3 +32,32 @@ export function badRequest(issue: ZodLikeIssue) {
   const message = path ? `${path}: ${issue.message}` : issue.message;
   return httpError(400, "BAD_REQUEST", message);
 }
+
+type HttpResponseLike<S extends number> = {
+  readonly status: S;
+  readonly body: unknown;
+};
+
+function isHttpResponse<S extends number>(
+  value: unknown,
+  status: S,
+): value is HttpResponseLike<S> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "status" in value &&
+    (value as { status: unknown }).status === status
+  );
+}
+
+export function isBadRequestResponse(
+  value: unknown,
+): value is HttpResponseLike<400> {
+  return isHttpResponse(value, 400);
+}
+
+export function isNotFoundResponse(
+  value: unknown,
+): value is HttpResponseLike<404> {
+  return isHttpResponse(value, 404);
+}

@@ -1,13 +1,15 @@
 import { command } from "ccstate";
 import { randomUUID } from "node:crypto";
+import { and, eq } from "drizzle-orm";
 import {
   getAllBuiltinConnectorHosts,
   getBuiltinConnectorDisplayName,
 } from "@vm0/connectors/firewalls";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
+import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 
 import { writeDb$ } from "../external/db";
-import { badRequestMessage } from "../../lib/error";
+import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { safeUrlParse } from "../utils";
 
@@ -249,5 +251,50 @@ export const createCustomConnector$ = command(
     // Drizzle types `prefixes` as `unknown` (jsonb column); the value at
     // runtime is the string[] we just inserted.
     return { ...row, prefixes: row.prefixes as readonly string[] };
+  },
+);
+
+type NotFoundResponse = ReturnType<typeof notFound>;
+
+export const deleteCustomConnector$ = command(
+  async (
+    { set },
+    args: { readonly orgId: string; readonly id: string },
+    signal: AbortSignal,
+  ): Promise<NotFoundResponse | undefined> => {
+    const writeDb = set(writeDb$);
+    const deleted = await writeDb.transaction(async (tx) => {
+      const [existing] = await tx
+        .select({ id: orgCustomConnectors.id })
+        .from(orgCustomConnectors)
+        .where(
+          and(
+            eq(orgCustomConnectors.id, args.id),
+            eq(orgCustomConnectors.orgId, args.orgId),
+          ),
+        )
+        .limit(1);
+      if (!existing) {
+        return false;
+      }
+      await tx
+        .delete(orgCustomConnectorSecrets)
+        .where(eq(orgCustomConnectorSecrets.connectorId, args.id));
+      await tx
+        .delete(orgCustomConnectors)
+        .where(
+          and(
+            eq(orgCustomConnectors.id, args.id),
+            eq(orgCustomConnectors.orgId, args.orgId),
+          ),
+        );
+      return true;
+    });
+    signal.throwIfAborted();
+    if (!deleted) {
+      return notFound("Custom connector not found");
+    }
+    L.debug("custom connector deleted", { orgId: args.orgId, id: args.id });
+    return undefined;
   },
 );
