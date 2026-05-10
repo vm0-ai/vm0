@@ -1044,3 +1044,24 @@ export const createChatThread$ = command(
     return thread;
   },
 );
+
+export const deleteChatThread$ = command(
+  async (
+    { set },
+    args: { readonly threadId: string; readonly userId: string },
+    signal: AbortSignal,
+  ): Promise<{ deleted: boolean }> => {
+    const writeDb = set(writeDb$);
+    const deleted = await writeDb
+      .delete(chatThreads)
+      .where(
+        and(
+          eq(chatThreads.id, args.threadId),
+          eq(chatThreads.userId, args.userId),
+        ),
+      )
+      .returning({ id: chatThreads.id });
+    signal.throwIfAborted();
+    return { deleted: deleted.length > 0 };
+  },
+);
