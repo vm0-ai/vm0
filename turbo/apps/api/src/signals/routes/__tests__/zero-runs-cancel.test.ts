@@ -330,6 +330,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     );
 
     const writeDb = store.set(writeDb$);
+    const provider = `test-provider-${randomUUID().slice(0, 8)}`;
     // Seed initial credit balance.
     await writeDb.insert(orgMetadata).values({
       orgId: fixture.orgId,
@@ -339,7 +340,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     // Seed pricing: 1 credit per 1000 input tokens.
     await writeDb.insert(usagePricing).values({
       kind: "model",
-      provider: "test-provider",
+      provider,
       category: "tokens.input",
       unitPrice: 1,
       unitSize: 1000,
@@ -350,7 +351,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
       userId: fixture.userId,
       runId,
       kind: "model",
-      provider: "test-provider",
+      provider,
       category: "tokens.input",
       quantity: 5000,
       status: "pending",
@@ -393,7 +394,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
       .where(
         and(
           eq(usagePricing.kind, "model"),
-          eq(usagePricing.provider, "test-provider"),
+          eq(usagePricing.provider, provider),
           eq(usagePricing.category, "tokens.input"),
         ),
       );
@@ -527,5 +528,286 @@ describe("POST /api/zero/runs/:id/cancel", () => {
       .from(agentRunQueue)
       .where(eq(agentRunQueue.runId, queuedRunId));
     expect(queueRows).toHaveLength(1);
+  });
+
+  it("triggers Stripe auto-recharge when balance crosses threshold", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "running",
+      },
+      context.signal,
+    );
+
+    const writeDb = store.set(writeDb$);
+    const provider = `test-provider-${randomUUID().slice(0, 8)}`;
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    // Seed paid org with auto-recharge enabled at threshold=500.
+    await writeDb.insert(orgMetadata).values({
+      orgId: fixture.orgId,
+      credits: 600,
+      tier: "team",
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: null,
+      autoRechargeEnabled: true,
+      autoRechargeThreshold: 500,
+      autoRechargeAmount: 10_000,
+    });
+    await writeDb.insert(usagePricing).values({
+      kind: "model",
+      provider,
+      category: "tokens.input",
+      unitPrice: 1,
+      unitSize: 1,
+    });
+    // 200 quantity × $1 / 1 unit = 200 credits → balance drops 600 → 400 (≤ 500).
+    await writeDb.insert(usageEvent).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      runId,
+      kind: "model",
+      provider,
+      category: "tokens.input",
+      quantity: 200,
+      status: "pending",
+      idempotencyKey: randomUUID(),
+    });
+
+    // Stub Stripe responses.
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: customerId,
+      deleted: false,
+      invoice_settings: { default_payment_method: "pm_test" },
+    });
+    context.mocks.stripe.invoices.create.mockResolvedValue({
+      id: "in_test",
+    });
+    context.mocks.stripe.invoiceItems.create.mockResolvedValue({
+      id: "ii_test",
+    });
+    context.mocks.stripe.invoices.finalizeInvoice.mockResolvedValue({
+      id: "in_test",
+    });
+    context.mocks.stripe.invoices.pay.mockResolvedValue({
+      id: "in_test",
+      status: "paid",
+    });
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(zeroRunsCancelContract);
+    await accept(
+      client.cancel({
+        params: { id: runId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await clearAllDetached();
+
+    // Stripe invoice created with the expected metadata.
+    expect(context.mocks.stripe.invoices.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customer: customerId,
+        auto_advance: false,
+        default_payment_method: "pm_test",
+        metadata: expect.objectContaining({
+          type: "auto_recharge",
+          orgId: fixture.orgId,
+          creditsAmount: "10000",
+        }),
+      }),
+    );
+    expect(context.mocks.stripe.invoices.finalizeInvoice).toHaveBeenCalledWith(
+      "in_test",
+    );
+    expect(context.mocks.stripe.invoices.pay).toHaveBeenCalledWith("in_test");
+
+    // pendingAt set by the atomic claim.
+    const [orgRow] = await writeDb
+      .select({ pendingAt: orgMetadata.autoRechargePendingAt })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId));
+    expect(orgRow?.pendingAt).toBeInstanceOf(Date);
+
+    await writeDb
+      .delete(usagePricing)
+      .where(
+        and(
+          eq(usagePricing.kind, "model"),
+          eq(usagePricing.provider, provider),
+          eq(usagePricing.category, "tokens.input"),
+        ),
+      );
+  });
+
+  it("does not trigger auto-recharge when balance is above threshold", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "running",
+      },
+      context.signal,
+    );
+
+    const writeDb = store.set(writeDb$);
+    const provider = `test-provider-${randomUUID().slice(0, 8)}`;
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    await writeDb.insert(orgMetadata).values({
+      orgId: fixture.orgId,
+      credits: 100_000,
+      tier: "team",
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: null,
+      autoRechargeEnabled: true,
+      autoRechargeThreshold: 500,
+      autoRechargeAmount: 10_000,
+    });
+    await writeDb.insert(usagePricing).values({
+      kind: "model",
+      provider,
+      category: "tokens.input",
+      unitPrice: 1,
+      unitSize: 1,
+    });
+    await writeDb.insert(usageEvent).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      runId,
+      kind: "model",
+      provider,
+      category: "tokens.input",
+      quantity: 5,
+      status: "pending",
+      idempotencyKey: randomUUID(),
+    });
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(zeroRunsCancelContract);
+    await accept(
+      client.cancel({
+        params: { id: runId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await clearAllDetached();
+
+    // Balance well above threshold → atomic claim returns no rows → no Stripe.
+    expect(context.mocks.stripe.invoices.create).not.toHaveBeenCalled();
+
+    await writeDb
+      .delete(usagePricing)
+      .where(
+        and(
+          eq(usagePricing.kind, "model"),
+          eq(usagePricing.provider, provider),
+          eq(usagePricing.category, "tokens.input"),
+        ),
+      );
+  });
+
+  it("does not re-trigger auto-recharge when claim is already pending", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "running",
+      },
+      context.signal,
+    );
+
+    const writeDb = store.set(writeDb$);
+    const provider = `test-provider-${randomUUID().slice(0, 8)}`;
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    // pendingAt within the 10-min stale-threshold window → atomic claim
+    // refuses (already-pending).
+    await writeDb.insert(orgMetadata).values({
+      orgId: fixture.orgId,
+      credits: 400,
+      tier: "team",
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: null,
+      autoRechargeEnabled: true,
+      autoRechargeThreshold: 500,
+      autoRechargeAmount: 10_000,
+      autoRechargePendingAt: nowDate(),
+    });
+    await writeDb.insert(usagePricing).values({
+      kind: "model",
+      provider,
+      category: "tokens.input",
+      unitPrice: 1,
+      unitSize: 1,
+    });
+    await writeDb.insert(usageEvent).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      runId,
+      kind: "model",
+      provider,
+      category: "tokens.input",
+      quantity: 50,
+      status: "pending",
+      idempotencyKey: randomUUID(),
+    });
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(zeroRunsCancelContract);
+    await accept(
+      client.cancel({
+        params: { id: runId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await clearAllDetached();
+
+    // Already-pending → atomic claim returns no rows → no Stripe.
+    expect(context.mocks.stripe.invoices.create).not.toHaveBeenCalled();
+
+    await writeDb
+      .delete(usagePricing)
+      .where(
+        and(
+          eq(usagePricing.kind, "model"),
+          eq(usagePricing.provider, provider),
+          eq(usagePricing.category, "tokens.input"),
+        ),
+      );
   });
 });

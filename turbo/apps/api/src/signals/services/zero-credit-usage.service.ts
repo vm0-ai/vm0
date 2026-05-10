@@ -8,6 +8,7 @@ import { and, asc, eq, gt, lte, sql } from "drizzle-orm";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { logger } from "../../lib/log";
+import { triggerAutoRecharge$ } from "./zero-credit-recharge.service";
 
 const L = logger("CreditUsage");
 
@@ -121,12 +122,14 @@ async function deductFromExpiresRecords(
  * verbatim same key string as web so api and web serialize correctly on
  * the same org during rollout.
  *
- * Deferrals from web (each tracked as a sibling sub-issue under #12290):
- *  - `triggerAutoRecharge(orgId)` — Stripe-bound; runs as fire-and-
- *    forget after the tx commits. Without it, an api-routed cancel that
- *    crosses the recharge threshold won't trigger an immediate top-up;
- *    the next legitimate processOrgUsageEvents call (web cron or web
- *    cancel) will. Worst case: bounded by cron interval.
+ * After the transaction commits and credits are deducted, fires
+ * `triggerAutoRecharge$` to potentially top up the org via Stripe (only
+ * when balance crosses the recharge threshold). Errors in the Stripe
+ * path are caught inside the trigger Command (clearPendingFlag in
+ * catch); the await here is bounded by the route handler's outer
+ * waitUntil envelope so end-user latency is unaffected.
+ *
+ * Remaining deferral (sibling sub-issue under #12290):
  *  - `evaluateMemberCaps(orgId, affectedUserIds)` — per-user cap
  *    enforcement. Without it, member-cap-disable lags by up to one cron
  *    interval; spend admission still reads the cap on every request, so
@@ -136,7 +139,7 @@ export const processOrgUsageEvents$ = command(
   async ({ set }, orgId: string, signal: AbortSignal): Promise<void> => {
     const writeDb = set(writeDb$);
 
-    await writeDb.transaction(async (tx) => {
+    const totalCredits = await writeDb.transaction(async (tx) => {
       // Same advisory key as web: 'credit_' prefix + orgId.
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtext('credit_' || ${orgId}))`,
@@ -150,7 +153,7 @@ export const processOrgUsageEvents$ = command(
         );
 
       if (pendingRecords.length === 0) {
-        return;
+        return 0;
       }
 
       const pricingRecords = await tx.select().from(usagePricing);
@@ -231,9 +234,18 @@ export const processOrgUsageEvents$ = command(
         await deductFromExpiresRecords(tx, orgId, totalCredits);
       }
       signal.throwIfAborted();
+      return totalCredits;
     });
+    signal.throwIfAborted();
 
-    // Note: triggerAutoRecharge + evaluateMemberCaps deliberately
-    // skipped — see docblock above. Sibling sub-issues track the gaps.
+    if (totalCredits > 0) {
+      // Auto-recharge runs OUTSIDE the deduction transaction (Stripe
+      // can't be transactional with DB). triggerAutoRecharge$ catches
+      // its own errors (clearPendingFlag in catch); the await here is
+      // bounded by the route handler's outer waitUntil envelope.
+      // evaluateMemberCaps still deferred — sibling follow-up.
+      await set(triggerAutoRecharge$, orgId, signal);
+      signal.throwIfAborted();
+    }
   },
 );

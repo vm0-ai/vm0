@@ -1,5 +1,8 @@
+import type StripeSDK from "stripe";
 import { computed } from "ccstate";
 import { vi, type Mock } from "vitest";
+
+import { mockStripeClient } from "../signals/external/stripe-client";
 
 type AsyncMock = Mock<(...args: unknown[]) => Promise<unknown>>;
 type SyncMock = Mock<(...args: unknown[]) => void>;
@@ -46,6 +49,18 @@ export interface ApiTestMocks {
   readonly stripe: {
     readonly invoices: {
       readonly list: AsyncMock;
+      readonly create: AsyncMock;
+      readonly finalizeInvoice: AsyncMock;
+      readonly pay: AsyncMock;
+    };
+    readonly invoiceItems: {
+      readonly create: AsyncMock;
+    };
+    readonly customers: {
+      readonly retrieve: AsyncMock;
+    };
+    readonly subscriptions: {
+      readonly retrieve: AsyncMock;
     };
   };
   readonly telegram: {
@@ -99,6 +114,18 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   const stripe = {
     invoices: {
       list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      finalizeInvoice: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      pay: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
+    invoiceItems: {
+      create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
+    customers: {
+      retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
+    subscriptions: {
+      retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
   };
 
@@ -219,6 +246,18 @@ vi.mock("stripe", () => {
       return {
         invoices: {
           list: apiTestMocks.stripe.invoices.list,
+          create: apiTestMocks.stripe.invoices.create,
+          finalizeInvoice: apiTestMocks.stripe.invoices.finalizeInvoice,
+          pay: apiTestMocks.stripe.invoices.pay,
+        },
+        invoiceItems: {
+          create: apiTestMocks.stripe.invoiceItems.create,
+        },
+        customers: {
+          retrieve: apiTestMocks.stripe.customers.retrieve,
+        },
+        subscriptions: {
+          retrieve: apiTestMocks.stripe.subscriptions.retrieve,
         },
       };
     }),
@@ -329,6 +368,17 @@ export function resetApiTestMocks(): void {
   apiTestMocks.slack.files.info.mockReset();
   apiTestMocks.slack.fetchFile.mockReset();
   apiTestMocks.stripe.invoices.list.mockReset();
+  apiTestMocks.stripe.invoices.create.mockReset();
+  apiTestMocks.stripe.invoices.finalizeInvoice.mockReset();
+  apiTestMocks.stripe.invoices.pay.mockReset();
+  apiTestMocks.stripe.invoiceItems.create.mockReset();
+  apiTestMocks.stripe.customers.retrieve.mockReset();
+  apiTestMocks.stripe.subscriptions.retrieve.mockReset();
+  // Re-install the Stripe client override so getStripeClient() returns
+  // the centralized mock surface (the vi.mock("stripe") factory above
+  // doesn't compose with `new StripeSDK()` because vi.fn isn't a real
+  // constructor; we route through the testOverride instead).
+  mockStripeClient(apiTestMocks.stripe as unknown as StripeSDK);
   apiTestMocks.telegram.getMe.mockReset();
   apiTestMocks.telegram.getFile.mockReset();
   apiTestMocks.otel.registerOTel.mockReset();
