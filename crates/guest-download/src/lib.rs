@@ -124,6 +124,11 @@ static HTTP_AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| {
 /// Run the download process for the given manifest file.
 /// Returns `true` if all downloads succeeded, `false` otherwise.
 pub fn run(manifest_path: &str) -> bool {
+    run_with_retry_delay(manifest_path, RETRY_DELAY)
+}
+
+#[doc(hidden)]
+pub fn run_with_retry_delay(manifest_path: &str, retry_delay: Duration) -> bool {
     // Read and parse manifest
     let manifest_json = match fs::read_to_string(manifest_path) {
         Ok(json) => json,
@@ -199,7 +204,7 @@ pub fn run(manifest_path: &str) -> bool {
         }
     }
 
-    let success = download_all_parallel(tasks);
+    let success = download_all_parallel(tasks, retry_delay);
     cleanup_local_stage_archives(&local_stage_archives);
     if success {
         normalize_instruction_files(&manifest.storages);
@@ -594,7 +599,7 @@ fn remove_alternate_instruction_files(mount_path: &Path, target_filename: &str) 
 /// Download all tasks in parallel using std::thread.
 /// Limits concurrency to MAX_CONCURRENT to avoid spawning too many threads.
 /// Returns true if all downloads succeeded, false if any failed.
-fn download_all_parallel(tasks: Vec<DownloadTask>) -> bool {
+fn download_all_parallel(tasks: Vec<DownloadTask>, retry_delay: Duration) -> bool {
     if tasks.is_empty() {
         return true;
     }
@@ -626,7 +631,7 @@ fn download_all_parallel(tasks: Vec<DownloadTask>) -> bool {
                         task.mount_path
                     );
 
-                    match download_with_retry(&task.url, &task.mount_path) {
+                    match download_with_retry(&task.url, &task.mount_path, retry_delay) {
                         Ok(()) => {
                             let elapsed = start.elapsed();
                             record_sandbox_op(task.op_name, elapsed, true, None);
@@ -704,7 +709,11 @@ impl std::fmt::Display for DownloadError {
     }
 }
 
-fn download_with_retry(url: &str, target_path: &str) -> Result<(), DownloadError> {
+fn download_with_retry(
+    url: &str,
+    target_path: &str,
+    retry_delay: Duration,
+) -> Result<(), DownloadError> {
     let mut last_error = None;
 
     for attempt in 1..=MAX_RETRIES {
@@ -718,7 +727,7 @@ fn download_with_retry(url: &str, target_path: &str) -> Result<(), DownloadError
                     break;
                 }
                 if attempt < MAX_RETRIES {
-                    thread::sleep(RETRY_DELAY);
+                    thread::sleep(retry_delay);
                 }
             }
         }

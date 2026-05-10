@@ -1,10 +1,12 @@
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use httpmock::prelude::*;
-use std::io::Write;
+use std::io::{self, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard};
+use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
 static RUN_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -165,7 +167,71 @@ fn write_manifest(
 
 fn run_guest_download(manifest_path: &str) -> bool {
     guest_common::log::clear_system_log_file();
-    guest_download::run(manifest_path)
+    guest_download::run_with_retry_delay(manifest_path, Duration::ZERO)
+}
+
+fn start_retry_then_success_server(
+    body: Vec<u8>,
+) -> io::Result<(String, std::thread::JoinHandle<io::Result<()>>)> {
+    let listener = TcpListener::bind("127.0.0.1:0")?;
+    listener.set_nonblocking(true)?;
+    let addr = listener.local_addr()?;
+    let url = format!("http://{addr}/storage.tar.gz");
+
+    let handle = std::thread::spawn(move || -> io::Result<()> {
+        let mut first = accept_http_request(&listener)?;
+        write_http_response(&mut first, "500 Internal Server Error", &[])?;
+
+        let mut second = accept_http_request(&listener)?;
+        write_http_response(&mut second, "200 OK", &body)
+    });
+
+    Ok((url, handle))
+}
+
+fn accept_http_request(listener: &TcpListener) -> io::Result<TcpStream> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut stream = loop {
+        match listener.accept() {
+            Ok((stream, _)) => break stream,
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock && Instant::now() < deadline => {
+                std::thread::yield_now();
+            }
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "timed out waiting for retry test request",
+                ));
+            }
+            Err(e) => return Err(e),
+        }
+    };
+
+    let mut request = Vec::new();
+    let mut buf = [0u8; 1024];
+    loop {
+        let n = stream.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        let Some(chunk) = buf.get(..n) else {
+            return Err(io::Error::other("read length exceeded buffer"));
+        };
+        request.extend_from_slice(chunk);
+        if request.windows(4).any(|w| w == b"\r\n\r\n") {
+            break;
+        }
+    }
+    Ok(stream)
+}
+
+fn write_http_response(stream: &mut TcpStream, status: &str, body: &[u8]) -> io::Result<()> {
+    write!(
+        stream,
+        "HTTP/1.1 {status}\r\nContent-Length: {}\r\nContent-Type: application/gzip\r\nConnection: close\r\n\r\n",
+        body.len()
+    )?;
+    stream.write_all(body)
 }
 
 fn unique_run_id(test_name: &str) -> String {
@@ -756,43 +822,19 @@ fn artifact_500_fatal() {
 // ---------------------------------------------------------------------------
 #[test]
 fn retry_then_succeed() {
-    let server = MockServer::start();
     let tar_gz = create_tar_gz(&[("recovered.txt", b"recovered")]).unwrap();
-
-    // Start with a 500 mock
-    let mut fail_mock = server.mock(|when, then| {
-        when.method(GET).path("/storage.tar.gz");
-        then.status(500);
-    });
+    let (url, server) =
+        start_retry_then_success_server(tar_gz).expect("failed to start retry test server");
 
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("mount");
-    let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
-    let manifest_str = manifest.to_str().unwrap().to_string();
 
-    // Run in background thread so we can swap the mock during RETRY_DELAY
-    let handle = std::thread::spawn(move || run_guest_download(&manifest_str));
-
-    // Poll until the first request has been made, then swap mock before retry fires (RETRY_DELAY = 1s).
-    // Timeout after 5s to avoid infinite loop if the spawned thread panics before making a request.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while fail_mock.calls() < 1 {
-        assert!(
-            std::time::Instant::now() < deadline,
-            "timed out waiting for first mock hit"
-        );
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
-    fail_mock.delete();
-    server.mock(|when, then| {
-        when.method(GET).path("/storage.tar.gz");
-        then.status(200)
-            .header("content-type", "application/gzip")
-            .body(&tar_gz);
-    });
-
-    let result = handle.join().unwrap();
+    let result = run_guest_download(manifest.to_str().unwrap());
+    server
+        .join()
+        .expect("retry test server panicked")
+        .expect("retry test server failed");
     assert!(result);
     assert_eq!(
         std::fs::read_to_string(mount.join("recovered.txt")).unwrap(),
