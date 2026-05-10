@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { integrationsTelegramMessageContract } from "@vm0/api-contracts/contracts/integrations";
 
-import { authContext$ } from "../auth/auth-context";
+import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { sendMessage } from "../external/telegram-client";
@@ -14,16 +14,6 @@ import { telegramMessageSendFooterText } from "../services/zero-telegram-footer.
 import { buildTelegramResponse } from "../../lib/telegram-format";
 import type { RouteEntry } from "../route";
 
-const orgRequired = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Organization context is required",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
-
 const botNotFound = Object.freeze({
   status: 404 as const,
   body: Object.freeze({
@@ -35,10 +25,7 @@ const botNotFound = Object.freeze({
 });
 
 const sendMessageInner$ = command(async ({ get }, signal: AbortSignal) => {
-  const auth = get(authContext$);
-  if (!auth.orgId) {
-    return orgRequired;
-  }
+  const auth = get(organizationAuthContext$);
   const orgId = auth.orgId;
   const authRunId =
     "runId" in auth && typeof auth.runId === "string" ? auth.runId : undefined;

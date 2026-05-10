@@ -153,14 +153,7 @@ export async function sendMessage(
     body: JSON.stringify(payload),
   });
 
-  const data: unknown = await response
-    .json()
-    .then((value: unknown) => {
-      return value;
-    })
-    .catch(() => {
-      return null;
-    });
+  const data: unknown = await response.json();
 
   if (!response.ok) {
     const description =
