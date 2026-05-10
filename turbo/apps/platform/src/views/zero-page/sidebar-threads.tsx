@@ -185,7 +185,9 @@ function handleChatThreadClick(
 
   if (!onChatPage) {
     // Not on a chat thread page yet — let <Link> navigate normally so the
-    // route system bootstraps the chat page from scratch.
+    // route system bootstraps the chat page from scratch. Still collapse the
+    // mobile sidebar so the new page is visible after navigation.
+    closeSidebarOnSelect();
     return;
   }
 
