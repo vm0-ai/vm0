@@ -124,6 +124,14 @@ function buildVisibilityQuery(
  * is visible, or the timeout elapses. Returns a visibility result describing
  * the outcome — callers log non-`visible` outcomes and proceed regardless
  * (best-effort barrier, not a hard requirement).
+ *
+ * Single deadline-bounded loop:
+ * - On query error: short-circuit immediately. The caller's subsequent
+ *   events query hits the same Axiom service and will surface the real
+ *   failure without wasting the remaining poll window.
+ * - On visible prefix advance with a full batch: skip the sleep so the next
+ *   page is requested immediately (more pending data is likely indexed).
+ * - Otherwise: sleep one interval and re-poll until the deadline.
  */
 async function waitForAgentEventPrefixVisible(
   runId: string,
@@ -142,75 +150,58 @@ async function waitForAgentEventPrefixVisible(
   const deadline = startedAt + timeoutMs;
   let visibleThrough = -1;
   let attempts = 0;
-  let lastQueryError: unknown;
 
-  outer: while (nowFn() < deadline) {
-    do {
-      attempts++;
-      const apl = buildVisibilityQuery(
-        dataset,
-        runId,
+  while (nowFn() < deadline) {
+    attempts++;
+    const apl = buildVisibilityQuery(dataset, runId, visibleThrough, batchSize);
+
+    // A query failure here is virtually guaranteed to repeat against the
+    // events query that follows (same Axiom service, same dataset). Bail
+    // out immediately so the caller's next call surfaces the real error
+    // without burning the remainder of the timeout window. safeAsync
+    // re-raises AbortError so cancellation still propagates.
+    const queried = await safeAsync(() => {
+      return queryFn<AxiomAgentEventSequence>(apl, { noCache: true });
+    });
+    if ("error" in queried) {
+      return {
+        visible: false,
         visibleThrough,
-        batchSize,
-      );
+        targetSequence,
+        attempts,
+        elapsedMs: nowFn() - startedAt,
+        reason: "query_error",
+        error: queried.error,
+      };
+    }
 
-      // A transient query failure is a normal polling outcome and must NOT
-      // throw out of this best-effort barrier (callers proceed regardless).
-      // safeAsync re-raises AbortError so cancellation still propagates.
-      const queried = await safeAsync(() => {
-        return queryFn<AxiomAgentEventSequence>(apl, { noCache: true });
-      });
-      if ("error" in queried) {
-        lastQueryError = queried.error;
-        const remainingAfterErrorMs = deadline - nowFn();
-        if (remainingAfterErrorMs <= 0) {
-          break outer;
-        }
-        await sleepFn(Math.min(intervalMs, remainingAfterErrorMs));
-        continue outer;
-      }
-      const events = queried.ok;
-      lastQueryError = undefined;
+    const events = queried.ok;
+    const previousVisibleThrough = visibleThrough;
+    visibleThrough = advanceVisiblePrefix(events, visibleThrough);
 
-      const previousVisibleThrough = visibleThrough;
-      visibleThrough = advanceVisiblePrefix(events, visibleThrough);
+    if (visibleThrough >= targetSequence) {
+      return {
+        visible: true,
+        visibleThrough,
+        targetSequence,
+        attempts,
+        elapsedMs: nowFn() - startedAt,
+        reason: "visible",
+      };
+    }
 
-      if (visibleThrough >= targetSequence) {
-        return {
-          visible: true,
-          visibleThrough,
-          targetSequence,
-          attempts,
-          elapsedMs: nowFn() - startedAt,
-          reason: "visible",
-        };
-      }
-
-      if (
-        visibleThrough <= previousVisibleThrough ||
-        events.length < batchSize
-      ) {
-        break;
-      }
-    } while (nowFn() < deadline);
+    // Full batch with forward progress → more events likely already indexed.
+    // Re-query immediately without sleeping.
+    const madeProgress = visibleThrough > previousVisibleThrough;
+    if (madeProgress && events.length >= batchSize) {
+      continue;
+    }
 
     const remainingMs = deadline - nowFn();
     if (remainingMs <= 0) {
       break;
     }
     await sleepFn(Math.min(intervalMs, remainingMs));
-  }
-
-  if (lastQueryError) {
-    return {
-      visible: false,
-      visibleThrough,
-      targetSequence,
-      attempts,
-      elapsedMs: nowFn() - startedAt,
-      reason: "query_error",
-      error: lastQueryError,
-    };
   }
 
   return {
