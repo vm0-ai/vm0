@@ -15,6 +15,10 @@ import { shadowCompareRoute } from "../context/shadow-compare";
 import { notFound } from "../../lib/error";
 import { zeroComposeExists } from "../services/zero-compose-data.service";
 import {
+  applyGoogleDriveArtifactSyncStatuses,
+  googleDriveArtifactStatusLookup,
+} from "../services/google-drive-artifact-sync.service";
+import {
   zeroChatSearch,
   zeroChatThreadArtifacts,
   zeroChatThreadDetail,
@@ -105,14 +109,29 @@ const listChatThreadsInner$ = computed(async (get) => {
 const listChatThreadArtifactsInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadArtifactsContract.list));
-  const runs = await get(
-    zeroChatThreadArtifacts({ threadId: params.threadId, userId: auth.userId }),
-  );
+  const [runs, lookup] = await Promise.all([
+    get(
+      zeroChatThreadArtifacts({
+        threadId: params.threadId,
+        userId: auth.userId,
+      }),
+    ),
+    get(
+      googleDriveArtifactStatusLookup({
+        threadId: params.threadId,
+        orgId: auth.orgId,
+        userId: auth.userId,
+      }),
+    ),
+  ]);
   if (!runs) {
     return chatThreadNotFound();
   }
 
-  return { status: 200 as const, body: { runs: [...runs] } };
+  return {
+    status: 200 as const,
+    body: { runs: applyGoogleDriveArtifactSyncStatuses(runs, lookup) },
+  };
 });
 
 const searchChatInner$ = computed(async (get) => {

@@ -2,11 +2,19 @@ import { randomUUID } from "node:crypto";
 
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatMessages } from "@vm0/db/schema/chat-message";
+import { connectors } from "@vm0/db/schema/connector";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
+import { secrets } from "@vm0/db/schema/secret";
 import { createStore } from "ccstate";
+import { eq } from "drizzle-orm";
+import { http, HttpResponse } from "msw";
+import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { mockEnv } from "../../../lib/env";
+import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
+import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -65,9 +73,57 @@ async function seedChatMessage(args: {
   });
 }
 
+async function seedGoogleDriveConnector(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly accessToken: string;
+  readonly refreshToken?: string;
+}): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb.insert(connectors).values({
+    orgId: args.orgId,
+    userId: args.userId,
+    type: "google-drive",
+    authMethod: "oauth",
+    needsReconnect: false,
+  });
+  await writeDb.insert(secrets).values({
+    orgId: args.orgId,
+    userId: args.userId,
+    name: "GOOGLE_DRIVE_ACCESS_TOKEN",
+    type: "connector",
+    encryptedValue: encryptSecretForTests(args.accessToken),
+  });
+  if (args.refreshToken) {
+    await writeDb.insert(secrets).values({
+      orgId: args.orgId,
+      userId: args.userId,
+      name: "GOOGLE_DRIVE_REFRESH_TOKEN",
+      type: "connector",
+      encryptedValue: encryptSecretForTests(args.refreshToken),
+    });
+  }
+}
+
 describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
   const track = createFixtureTracker<UsageInsightFixture>((fixture) => {
     return store.set(deleteUsageInsightFixture$, fixture, context.signal);
+  });
+
+  // connectors + secrets are NOT cascaded by deleteUsageInsightFixture$;
+  // tests that seed Drive credentials track their orgId here for explicit
+  // cleanup so subsequent runs start clean.
+  const seededDriveOrgs: string[] = [];
+  afterEach(async () => {
+    while (seededDriveOrgs.length > 0) {
+      const orgId = seededDriveOrgs.pop();
+      if (!orgId) {
+        continue;
+      }
+      const writeDb = store.set(writeDb$);
+      await writeDb.delete(connectors).where(eq(connectors.orgId, orgId));
+      await writeDb.delete(secrets).where(eq(secrets.orgId, orgId));
+    }
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -135,6 +191,9 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
       size: 2048,
     });
     expect(response.body.runs[0]?.files[0]?.url).toContain("/f/");
+    expect(response.body.runs[0]?.files[0]?.googleDriveSync).toStrictEqual({
+      status: "disconnected",
+    });
   });
 
   it("uses chat message run ownership when zero run chat thread is missing", async () => {
@@ -198,6 +257,9 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
       contentType: "text/html",
       size: 512,
     });
+    expect(response.body.runs[0]?.files[0]?.googleDriveSync).toStrictEqual({
+      status: "disconnected",
+    });
   });
 
   it("returns 404 when the thread is owned by a different user (no leak)", async () => {
@@ -231,6 +293,167 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
     expect(response.body.error).toStrictEqual({
       message: "Chat thread not found",
       code: "NOT_FOUND",
+    });
+  });
+
+  it("returns googleDriveSync status synced when the artifact is mirrored to Drive", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const threadId = await store.set(
+      seedChatThread$,
+      { userId: fixture.userId, composeId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "completed",
+        chatThreadId: threadId,
+      },
+      context.signal,
+    );
+    await seedRunUploadedFile({
+      runId,
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      externalId: "file-1",
+      filename: "data.csv",
+      contentType: "text/csv",
+      sizeBytes: 2048,
+      url: `http://localhost:3000/f/${fixture.userId}/file-1/data.csv`,
+    });
+    await seedGoogleDriveConnector({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      accessToken: "drive-access-token",
+    });
+    seededDriveOrgs.push(fixture.orgId);
+
+    let observedAuth: string | null = null;
+    let observedQuery = "";
+    server.use(
+      http.get("https://www.googleapis.com/drive/v3/files", ({ request }) => {
+        const url = new URL(request.url);
+        observedAuth = request.headers.get("authorization");
+        observedQuery = url.searchParams.get("q") ?? "";
+        return HttpResponse.json({
+          files: [
+            {
+              id: "drive-file-id",
+              name: "data.csv",
+              webViewLink: "https://drive.google.com/file/d/drive-file-id/view",
+              appProperties: {
+                vm0Artifact: "true",
+                vm0ThreadId: threadId,
+                vm0RunId: runId,
+                vm0FileId: "file-1",
+              },
+            },
+          ],
+        });
+      }),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(chatThreadArtifactsContract);
+    const response = await accept(
+      client.list({
+        params: { threadId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(observedAuth).toBe("Bearer drive-access-token");
+    expect(observedQuery).toContain("vm0Artifact");
+    expect(observedQuery).toContain(`value='${threadId}'`);
+    expect(response.body.runs[0]?.files[0]?.googleDriveSync).toStrictEqual({
+      status: "synced",
+      id: "drive-file-id",
+      name: "data.csv",
+      webViewLink: "https://drive.google.com/file/d/drive-file-id/view",
+    });
+  });
+
+  it("returns googleDriveSync status unknown when Drive rejects the access token and refresh fails", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const threadId = await store.set(
+      seedChatThread$,
+      { userId: fixture.userId, composeId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "completed",
+        chatThreadId: threadId,
+      },
+      context.signal,
+    );
+    await seedRunUploadedFile({
+      runId,
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      externalId: "file-1",
+      filename: "data.csv",
+      contentType: "text/csv",
+      sizeBytes: 2048,
+      url: `http://localhost:3000/f/${fixture.userId}/file-1/data.csv`,
+    });
+    await seedGoogleDriveConnector({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      accessToken: "stale-token",
+      refreshToken: "refresh-token",
+    });
+    seededDriveOrgs.push(fixture.orgId);
+
+    // Mock OAuth client credentials so the refresh attempt actually runs;
+    // without them refreshDriveAccessToken short-circuits to null without
+    // exercising the upstream POST.
+    mockEnv("GOOGLE_OAUTH_CLIENT_ID", "test-client-id");
+    mockEnv("GOOGLE_OAUTH_CLIENT_SECRET", "test-client-secret");
+
+    server.use(
+      http.get("https://www.googleapis.com/drive/v3/files", () => {
+        return new HttpResponse(null, { status: 401 });
+      }),
+      http.post("https://oauth2.googleapis.com/token", () => {
+        return new HttpResponse(null, { status: 401 });
+      }),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(chatThreadArtifactsContract);
+    const response = await accept(
+      client.list({
+        params: { threadId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.runs[0]?.files[0]?.googleDriveSync).toStrictEqual({
+      status: "unknown",
     });
   });
 });

@@ -26,6 +26,8 @@ const SCHEMA = {
   AXIOM_TOKEN_TELEMETRY: z.string().min(1),
   AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]),
   STRIPE_SECRET_KEY: z.string().min(1),
+  GOOGLE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
   DB_POOL_MAX: z.coerce.number().int().min(1).default(10),
   DB_POOL_IDLE_TIMEOUT_MS: z.coerce.number().int().min(0).default(5000),
   DB_POOL_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(0).optional(),
