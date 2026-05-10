@@ -53,6 +53,7 @@ use vsock_proto::{
 const READ_BUF_SIZE: usize = 64 * 1024;
 const FIRECRACKER_CONNECT_ACK_MAX_BYTES: usize = 64;
 const FRAME_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
+const BOUNDED_EXEC_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Result of executing a command on the guest.
 #[derive(Debug, Clone)]
@@ -1156,9 +1157,25 @@ async fn write_frame_on_shared_with_timeout(
 }
 
 async fn send_bounded_exec_cancel_on_shared(shared: &Arc<Shared>, seq: u32) -> io::Result<()> {
+    send_bounded_exec_cancel_on_shared_with_timeout(shared, seq, BOUNDED_EXEC_CANCEL_WRITE_TIMEOUT)
+        .await
+}
+
+async fn send_bounded_exec_cancel_on_shared_with_timeout(
+    shared: &Arc<Shared>,
+    seq: u32,
+    timeout: Duration,
+) -> io::Result<()> {
     let data = vsock_proto::encode(MSG_BOUNDED_EXEC_CANCEL, seq, &[])
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
-    write_frame_on_shared(shared, &data).await
+    tokio::time::timeout(timeout, write_frame_on_shared(shared, &data))
+        .await
+        .unwrap_or_else(|_| {
+            Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "bounded_exec cancel write timed out",
+            ))
+        })
 }
 
 async fn exec_on_shared(
@@ -4091,6 +4108,45 @@ mod tests {
         drop(writer_guard);
 
         let result = host.exec("after-cancel", 5000, &[], false).await.unwrap();
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout, b"ok");
+        guest_task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_bounded_exec_cancel_write_timeout_while_waiting_for_writer_lock_keeps_connection()
+    {
+        let (host_stream, mut guest) = make_pair();
+
+        let guest_task = tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs.len(), 1);
+            assert_eq!(msgs[0].msg_type, MSG_EXEC);
+            let decoded = vsock_proto::decode_exec(&msgs[0].payload).unwrap();
+            assert_eq!(decoded.command, "after-cancel-timeout");
+
+            let payload = vsock_proto::encode_exec_result(0, b"ok", b"");
+            let resp = vsock_proto::encode(MSG_EXEC_RESULT, msgs[0].seq, &payload).unwrap();
+            guest.write_all(&resp).await.unwrap();
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let writer_guard = host.shared.writer.lock().await;
+        let err = send_bounded_exec_cancel_on_shared_with_timeout(&host.shared, 99, Duration::ZERO)
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+        drop(writer_guard);
+
+        let result = host
+            .exec("after-cancel-timeout", 5000, &[], false)
+            .await
+            .unwrap();
         assert_eq!(result.exit_code, 0);
         assert_eq!(result.stdout, b"ok");
         guest_task.await.unwrap();
