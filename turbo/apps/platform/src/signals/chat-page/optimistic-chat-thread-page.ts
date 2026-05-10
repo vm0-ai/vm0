@@ -53,7 +53,10 @@ import {
   resolveEffectiveAgentDefaultSelection,
   resolveModelFirstAgentDefaultSelection,
 } from "../zero-page/model-provider-default.ts";
-import { modelFirstModelProviderEnabled$ } from "../external/feature-switch.ts";
+import {
+  goalEnabled$,
+  modelFirstModelProviderEnabled$,
+} from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { logger } from "../log.ts";
 
@@ -92,6 +95,13 @@ interface SendNewThreadMessageRequest {
   agentId: string;
   prompt: string;
   modelSelection: ModelSelectionRequest | null;
+  /**
+   * When `true` the message is sent as a Codex-style goal — the API stamps
+   * the user row with `goal_remaining_turns` and the run-completion callback
+   * auto-continues the chain. Gated by `goalEnabled$`; if the switch is off
+   * the flag is dropped at the send site.
+   */
+  goal?: boolean;
 }
 
 interface SendNewThreadMessageResult {
@@ -462,7 +472,7 @@ export const sidebarChatThreads$ = computed(
 const sendNewThreadMessage$ = command(
   async (
     { get, set },
-    { agentId, prompt, modelSelection }: SendNewThreadMessageRequest,
+    { agentId, prompt, modelSelection, goal }: SendNewThreadMessageRequest,
     signal: AbortSignal,
   ): Promise<SendNewThreadMessagePending | null> => {
     const draft = get(talkDraft$);
@@ -538,6 +548,9 @@ const sendNewThreadMessage$ = command(
       clientMessageId,
     });
     const sendResult = (async (): Promise<SendNewThreadMessageResult> => {
+      // Goal flag is dropped at the send site if the switch is off so the
+      // gate is consistent with `createSendMessage` (existing-thread path).
+      const isGoal = goal === true && get(goalEnabled$);
       const result = await accept(
         client.send({
           body: {
@@ -548,6 +561,7 @@ const sendNewThreadMessage$ = command(
             clientMessageId,
             modelSelection,
             attachFiles: prepared.attachFiles,
+            ...(isGoal ? { goal: true } : {}),
           },
           fetchOptions: { signal },
         }),

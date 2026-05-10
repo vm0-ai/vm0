@@ -493,7 +493,7 @@ export function AgentChatPage() {
   const openPersonalOauthConfiguration =
     usePersonalOauthConfigurationAction(pageSignal);
 
-  const handleSendMessage = (message: string) => {
+  const handleSendMessage = (message: string, options?: { goal?: boolean }) => {
     if (!currentChatAgentId) {
       return;
     }
@@ -504,6 +504,7 @@ export function AgentChatPage() {
           agentId: currentChatAgentId,
           prompt: message,
           modelSelection,
+          goal: options?.goal,
         },
         rootSignal,
       ),
@@ -528,10 +529,10 @@ export function AgentChatPage() {
 
   const lightboxUrl = useGet(attachmentLightboxUrl$);
 
-  const handleSend = (text: string) => {
+  const handleSend = (text: string, options?: { goal?: boolean }) => {
     startTiming();
     setInput("");
-    handleSendMessage(text);
+    handleSendMessage(text, options);
     resetModelSelection();
   };
 
