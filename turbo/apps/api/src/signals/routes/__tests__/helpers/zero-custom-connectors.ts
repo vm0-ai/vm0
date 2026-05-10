@@ -14,6 +14,8 @@ export interface CustomConnectorFixture {
 }
 
 interface SeedValues {
+  readonly orgId?: string;
+  readonly userId?: string;
   readonly slug?: string;
   readonly displayName?: string;
   readonly prefixes?: readonly string[];
@@ -28,8 +30,8 @@ export const seedCustomConnectorOrg$ = command(
     values: SeedValues,
     signal: AbortSignal,
   ): Promise<CustomConnectorFixture> => {
-    const orgId = `org_${randomUUID()}`;
-    const userId = `user_${randomUUID()}`;
+    const orgId = values.orgId ?? `org_${randomUUID()}`;
+    const userId = values.userId ?? `user_${randomUUID()}`;
     const connectorId = randomUUID();
     const writeDb = set(writeDb$);
 
