@@ -26,6 +26,7 @@ import {
 } from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route";
 import { zeroChatThreadMarkReadRoutes } from "./zero-chat-threads-mark-read";
+import { zeroChatThreadRenameRoutes } from "./zero-chat-threads-rename";
 
 const chatThreadIdSchema = z.string().uuid();
 
@@ -188,4 +189,5 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     ),
   },
   ...zeroChatThreadMarkReadRoutes,
+  ...zeroChatThreadRenameRoutes,
 ];
