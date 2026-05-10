@@ -5,6 +5,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { zeroCustomConnectorList } from "../services/zero-catalog-data.service";
 import type { RouteEntry } from "../route";
+import { zeroCustomConnectorsCreateRoutes } from "./zero-custom-connectors-create";
 
 const listCustomConnectorsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -22,4 +23,5 @@ export const zeroCustomConnectorsRoutes: readonly RouteEntry[] = [
       listCustomConnectorsInner$,
     ),
   },
+  ...zeroCustomConnectorsCreateRoutes,
 ];
