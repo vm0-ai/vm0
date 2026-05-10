@@ -1163,6 +1163,31 @@ mod tests {
     }
 
     #[test]
+    fn write_files_stream_rejects_next_file_before_prior_content_complete() {
+        assert_write_files_stream_error(
+            write_files_start(21, 2, 2),
+            vec![
+                write_files_message(
+                    MSG_WRITE_FILES_FILE,
+                    21,
+                    vsock_proto::encode_write_files_file(0, "/tmp/a", 2).unwrap(),
+                ),
+                write_files_message(
+                    MSG_WRITE_FILES_CHUNK,
+                    21,
+                    vsock_proto::encode_write_files_chunk(0, b"x").unwrap(),
+                ),
+                write_files_message(
+                    MSG_WRITE_FILES_FILE,
+                    21,
+                    vsock_proto::encode_write_files_file(1, "/tmp/b", 0).unwrap(),
+                ),
+            ],
+            "write_files file started before prior file completed",
+        );
+    }
+
+    #[test]
     fn write_files_stream_rejects_wrong_seq() {
         assert_write_files_stream_error(
             write_files_start(15, 1, 0),
@@ -1185,6 +1210,27 @@ mod tests {
                 vsock_proto::encode_write_files_file(0, "/tmp/file", 2).unwrap(),
             )],
             "write_files content length exceeds total",
+        );
+    }
+
+    #[test]
+    fn write_files_stream_rejects_finish_before_declared_total_bytes() {
+        assert_write_files_stream_error(
+            write_files_start(22, 1, 2),
+            vec![
+                write_files_message(
+                    MSG_WRITE_FILES_FILE,
+                    22,
+                    vsock_proto::encode_write_files_file(0, "/tmp/file", 1).unwrap(),
+                ),
+                write_files_message(
+                    MSG_WRITE_FILES_CHUNK,
+                    22,
+                    vsock_proto::encode_write_files_chunk(0, b"x").unwrap(),
+                ),
+                write_files_message(MSG_WRITE_FILES_FINISH, 22, Vec::new()),
+            ],
+            "write_files finish before all files received",
         );
     }
 
