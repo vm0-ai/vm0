@@ -247,7 +247,7 @@ describe("zeroClient$ 401 redirect", () => {
   });
 });
 
-describe("zeroClient$ ApiBackendMutations routing", () => {
+describe("zeroClient$ apiBackendMutations routing", () => {
   it("routes POST contract requests to api host when flag is on", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({

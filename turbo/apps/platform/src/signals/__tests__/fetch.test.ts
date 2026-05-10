@@ -490,7 +490,7 @@ describe("401 refresh-and-retry", () => {
   });
 });
 
-describe("ApiBackendMutations routing", () => {
+describe("apiBackendMutations routing", () => {
   function captureMutationHosts(method: "post" | "put" | "patch" | "delete") {
     const hosts: string[] = [];
     server.use(

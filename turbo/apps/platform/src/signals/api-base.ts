@@ -64,13 +64,12 @@ export function resolveApiBaseForNavigation(useApiBackend: boolean): string {
   return browserOriginBase(target) ?? configuredApiBase(target);
 }
 
-const MUTATION_METHODS: ReadonlySet<string> = new Set([
-  "POST",
-  "PUT",
-  "PATCH",
-  "DELETE",
-]);
-
 export function isMutationMethod(method: string): boolean {
-  return MUTATION_METHODS.has(method.toUpperCase());
+  const upper = method.toUpperCase();
+  return (
+    upper === "POST" ||
+    upper === "PUT" ||
+    upper === "PATCH" ||
+    upper === "DELETE"
+  );
 }
