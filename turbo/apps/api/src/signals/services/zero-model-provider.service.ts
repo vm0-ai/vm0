@@ -1,16 +1,19 @@
-import { computed, type Computed } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import {
   getFrameworkForType,
   getSecretNamesForAuthMethod,
-  modelProviderTypeSchema,
   type ModelProviderListResponse,
   type ModelProviderResponse,
+  type ModelProviderType,
+  modelProviderTypeSchema,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
-import { db$ } from "../external/db";
+import { db$, writeDb$ } from "../external/db";
+import { notFound } from "../../lib/error";
+import { nowDate } from "../external/time";
 
 const ORG_SENTINEL_USER_ID = "__org__";
 
@@ -91,3 +94,113 @@ export function zeroModelProviders(
     };
   });
 }
+
+type NotFoundResponse = ReturnType<typeof notFound>;
+
+/**
+ * Delete a user-level model provider and cascade-delete its secrets.
+ *
+ * Mirrors apps/web's `deleteModelProvider` (via `deleteUserModelProvider`):
+ *   - Legacy single-secret providers: deleting the secret cascades the
+ *     model_provider row via FK (`onDelete: "cascade"` at the schema).
+ *   - Multi-auth providers: deletes the per-auth-method secrets by name,
+ *     then deletes the model_provider row explicitly.
+ *
+ * If the deleted row was the user's default provider, promotes the oldest
+ * remaining (orgId, userId) provider to default — matches web's invariant
+ * that a user always has at most one default and it transitions to a
+ * surviving row when the previous default is removed.
+ *
+ * Non-transactional, matching web. A partial failure (secret-delete
+ * succeeds, provider-delete fails) would leave an orphan provider row —
+ * web has the same gap; transactional rewrite is a separate follow-up.
+ */
+export const deleteUserModelProvider$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly type: ModelProviderType;
+    },
+    signal: AbortSignal,
+  ): Promise<NotFoundResponse | undefined> => {
+    const writeDb = set(writeDb$);
+
+    const [provider] = await writeDb
+      .select({
+        id: modelProviders.id,
+        isDefault: modelProviders.isDefault,
+        secretId: modelProviders.secretId,
+        authMethod: modelProviders.authMethod,
+      })
+      .from(modelProviders)
+      .where(
+        and(
+          eq(modelProviders.orgId, args.orgId),
+          eq(modelProviders.userId, args.userId),
+          eq(modelProviders.type, args.type),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!provider) {
+      return notFound("Resource not found");
+    }
+
+    const wasDefault = provider.isDefault;
+
+    if (provider.secretId) {
+      await writeDb.delete(secrets).where(eq(secrets.id, provider.secretId));
+      signal.throwIfAborted();
+    } else {
+      if (provider.authMethod) {
+        const secretNames = getSecretNamesForAuthMethod(
+          args.type,
+          provider.authMethod,
+        );
+        if (secretNames && secretNames.length > 0) {
+          await writeDb
+            .delete(secrets)
+            .where(
+              and(
+                eq(secrets.orgId, args.orgId),
+                eq(secrets.userId, args.userId),
+                inArray(secrets.name, [...secretNames]),
+              ),
+            );
+          signal.throwIfAborted();
+        }
+      }
+      await writeDb
+        .delete(modelProviders)
+        .where(eq(modelProviders.id, provider.id));
+      signal.throwIfAborted();
+    }
+
+    if (wasDefault) {
+      const [next] = await writeDb
+        .select({ id: modelProviders.id })
+        .from(modelProviders)
+        .where(
+          and(
+            eq(modelProviders.orgId, args.orgId),
+            eq(modelProviders.userId, args.userId),
+          ),
+        )
+        .orderBy(modelProviders.createdAt)
+        .limit(1);
+      signal.throwIfAborted();
+      if (next) {
+        await writeDb
+          .update(modelProviders)
+          .set({ isDefault: true, updatedAt: nowDate() })
+          .where(eq(modelProviders.id, next.id));
+        signal.throwIfAborted();
+      }
+    }
+
+    return undefined;
+  },
+);
