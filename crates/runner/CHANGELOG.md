@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.24...runner-rs-v0.100.25) (2026-05-10)
+
+
+### Refactoring
+
+* **runner:** stream exec over bounded exec ([#12518](https://github.com/vm0-ai/vm0/issues/12518)) ([ee551da](https://github.com/vm0-ai/vm0/commit/ee551dabe2c464564a576580a9d8811453ffd08d))
+
 ## [0.100.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.23...runner-rs-v0.100.24) (2026-05-10)
 
 

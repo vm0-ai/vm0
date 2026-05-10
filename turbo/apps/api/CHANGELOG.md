@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.31.0](https://github.com/vm0-ai/vm0/compare/api-v1.30.0...api-v1.31.0) (2026-05-10)
+
+
+### Features
+
+* **api:** migrate chat-threads patch [id] (update draft) to api backend ([#12569](https://github.com/vm0-ai/vm0/issues/12569)) ([d706640](https://github.com/vm0-ai/vm0/commit/d706640a6f3d25b2b54d693f5cd8ad4912868f62))
+* **api:** migrate me/model-providers post upsert to api backend (Wave 5 — completes family) ([#12591](https://github.com/vm0-ai/vm0/issues/12591)) ([acca625](https://github.com/vm0-ai/vm0/commit/acca625468e9d19e8c6eb8133a7ecb68998f4060))
+* **api:** port composes [id]/metadata PATCH to api backend (Wave 5) ([#12561](https://github.com/vm0-ai/vm0/issues/12561)) ([1fbaa00](https://github.com/vm0-ai/vm0/commit/1fbaa005166a28299f41f3eb9bf1381f4cebee2c))
+* **api:** port integrations/telegram/message POST to api backend (Wave 5) ([#12580](https://github.com/vm0-ai/vm0/issues/12580)) ([98e3521](https://github.com/vm0-ai/vm0/commit/98e3521495a16569204289e06a66abd5554aba3a))
+* **api:** port member-cap evaluation for runs cancel credit reconciliation ([#12594](https://github.com/vm0-ai/vm0/issues/12594)) ([55870bd](https://github.com/vm0-ai/vm0/commit/55870bde9e060eb54c0d0b2103d31dbd19355005))
+
+
+### Refactoring
+
+* **api:** migrate agents user-connectors put to api backend ([#12581](https://github.com/vm0-ai/vm0/issues/12581)) ([0bc5a98](https://github.com/vm0-ai/vm0/commit/0bc5a98f1690426a44b06bff95da6f1cf7a87dc4))
+* **api:** migrate chat-threads artifacts sync to api backend (wave 5) ([#12563](https://github.com/vm0-ai/vm0/issues/12563)) ([d24b397](https://github.com/vm0-ai/vm0/commit/d24b3974f2f1bc30af83af27f390646ac3be4878)), closes [#12562](https://github.com/vm0-ai/vm0/issues/12562)
+* **api:** migrate chat-threads delete [id] to api backend ([#12565](https://github.com/vm0-ai/vm0/issues/12565)) ([66ef7de](https://github.com/vm0-ai/vm0/commit/66ef7decc4b18a4c874ab6095cef8c004a2224af))
+* **api:** migrate runs cancel to api backend (wave 5) ([#12577](https://github.com/vm0-ai/vm0/issues/12577)) ([bc6f2e7](https://github.com/vm0-ai/vm0/commit/bc6f2e7b865804c5673ea0f1a0cdc9a390a15c58)), closes [#12570](https://github.com/vm0-ai/vm0/issues/12570)
+* **api:** migrate uploads complete post to api backend ([#12592](https://github.com/vm0-ai/vm0/issues/12592)) ([4b1f30f](https://github.com/vm0-ai/vm0/commit/4b1f30f890e7c62bf68b335081e7a1b5c9d5b5cb))
+* **api:** migrate uploads/prepare post to api backend (Wave 5) ([#12590](https://github.com/vm0-ai/vm0/issues/12590)) ([37bc690](https://github.com/vm0-ai/vm0/commit/37bc690f6744a96b48412b6a172e91e7e79fa3ec))
+* **api:** port runs cancel credit reconciliation atomic core (wave 5 follow-up) ([#12585](https://github.com/vm0-ai/vm0/issues/12585)) ([beee285](https://github.com/vm0-ai/vm0/commit/beee28545c51bf9098569c6b9145ec96cac97b8d))
+* **api:** port runs cancel queue-drain (wave 5 follow-up) ([#12582](https://github.com/vm0-ai/vm0/issues/12582)) ([46ce11e](https://github.com/vm0-ai/vm0/commit/46ce11eb79bae216df1f1ec899b63e52bd1c1c4a))
+* **api:** port stripe auto-recharge for runs cancel (wave 5 cascade) ([#12593](https://github.com/vm0-ai/vm0/issues/12593)) ([b6b5d8b](https://github.com/vm0-ai/vm0/commit/b6b5d8b37c7f78e7e99f2e670fe8cb794045b436)), closes [#12587](https://github.com/vm0-ai/vm0/issues/12587)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.8.0
+    * @vm0/core bumped to 8.267.3
+    * @vm0/db bumped to 1.4.4
+
 ## [1.30.0](https://github.com/vm0-ai/vm0/compare/api-v1.29.0...api-v1.30.0) (2026-05-10)
 
 
