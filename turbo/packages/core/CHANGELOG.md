@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.266.0](https://github.com/vm0-ai/vm0/compare/core-v8.265.2...core-v8.266.0) (2026-05-10)
+
+
+### Features
+
+* enable chat ux feature switches at org level for staff ([#12504](https://github.com/vm0-ai/vm0/issues/12504)) ([be55abf](https://github.com/vm0-ai/vm0/commit/be55abf671c588a36ac650e15ee4a9ae3283a226))
+
 ## [8.265.2](https://github.com/vm0-ai/vm0/compare/core-v8.265.1...core-v8.265.2) (2026-05-09)
 
 

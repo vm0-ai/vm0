@@ -1,5 +1,14 @@
 # Changelog
 
+## [12.349.1](https://github.com/vm0-ai/vm0/compare/web-v12.349.0...web-v12.349.1) (2026-05-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.266.0
+
 ## [12.349.0](https://github.com/vm0-ai/vm0/compare/web-v12.348.1...web-v12.349.0) (2026-05-09)
 
 
