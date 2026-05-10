@@ -1,8 +1,15 @@
 import { Command } from "commander";
 import { writeFile, mkdir } from "fs/promises";
-import { join } from "path";
+import { basename, join } from "path";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { callHost } from "../../../lib/computer-use/client";
+
+// `data.format` flows from the remote host response into a path; `basename`
+// strips any separators so a hostile value like `../../etc/passwd` cannot
+// escape the screenshot directory.
+function safeFormat(format: string): string {
+  return basename(format);
+}
 
 function mouseClickCommand(
   name: string,
@@ -49,7 +56,10 @@ export const clientScreenshotCommand = new Command()
       await mkdir(dir, { recursive: true });
 
       const timestamp = Date.now();
-      const filePath = join(dir, `screenshot-${timestamp}.${data.format}`);
+      const filePath = join(
+        dir,
+        `screenshot-${timestamp}.${safeFormat(data.format)}`,
+      );
       const buffer = Buffer.from(data.image, "base64");
       await writeFile(filePath, buffer);
 
@@ -96,7 +106,10 @@ export const clientZoomCommand = new Command()
         await mkdir(dir, { recursive: true });
 
         const timestamp = Date.now();
-        const filePath = join(dir, `zoom-${timestamp}.${data.format}`);
+        const filePath = join(
+          dir,
+          `zoom-${timestamp}.${safeFormat(data.format)}`,
+        );
         const buffer = Buffer.from(data.image, "base64");
         await writeFile(filePath, buffer);
 

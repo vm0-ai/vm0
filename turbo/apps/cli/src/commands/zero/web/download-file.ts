@@ -1,4 +1,4 @@
-import { join } from "path";
+import { basename, join } from "path";
 import { tmpdir } from "os";
 import { Command } from "commander";
 import { downloadWebFile } from "../../../lib/api";
@@ -7,9 +7,12 @@ import { withErrorHandler } from "../../../lib/command";
 /**
  * Derive a local output path for a web-uploaded file id.
  * Uses the system temp directory.
+ *
+ * `basename` strips any path separators from `fileId` so a hostile id like
+ * `../etc/passwd` cannot escape `tmpdir()`.
  */
 function defaultOutPath(fileId: string): string {
-  return join(tmpdir(), `web-${fileId}`);
+  return join(tmpdir(), `web-${basename(fileId)}`);
 }
 
 export const downloadFileCommand = new Command()

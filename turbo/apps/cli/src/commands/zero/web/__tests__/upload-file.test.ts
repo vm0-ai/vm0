@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdirSync, rmSync, writeFileSync } from "fs";
-import { join } from "path";
+import { basename, join } from "path";
 import { tmpdir } from "os";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
@@ -227,7 +227,7 @@ describe("zero web upload-file command", () => {
       ["clip.mp3", "audio/mpeg"],
       ["voice.wav", "audio/wav"],
     ])("should infer %s as %s", async (filename, expectedContentType) => {
-      const filePath = join(tmpDir, filename);
+      const filePath = join(tmpDir, basename(filename));
       writeFileSync(filePath, Buffer.from("fake bytes"));
 
       let putReceivedContentType: string | null = null;

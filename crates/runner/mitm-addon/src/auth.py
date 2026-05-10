@@ -161,9 +161,15 @@ def _fetch_firewall_headers_sync(
         body["forceRefresh"] = True
     data = json.dumps(body).encode()
     req = make_api_request(url, data, sandbox_token)
+    # `req` always targets ctx.options.vm0_api_url (operator-set at mitmdump
+    # launch), never user-controlled input — so the file://-scheme risk that
+    # both S310 and Semgrep's dynamic-urllib-use-detected rule guard against
+    # does not apply. Defense in depth: reject anything that isn't an http(s)
+    # URL before opening it.
+    if not req.full_url.startswith(("http://", "https://")):
+        raise ValueError(f"Unexpected URL scheme: {req.full_url!r}")
     try:
-        # S310 is satisfied by provenance: `req` always targets
-        # ctx.options.vm0_api_url (operator-set at mitmdump launch).
+        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
             return json.loads(resp.read())
     except urllib.error.HTTPError as e:

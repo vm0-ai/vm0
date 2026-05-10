@@ -75,8 +75,9 @@ export default async function PricingPage({ params }: PageProps) {
         id="json-ld-breadcrumb"
         type="application/ld+json"
         suppressHydrationWarning
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
-      />
+      >
+        {JSON.stringify(breadcrumbJsonLd)}
+      </script>
       <PricingPageClient />
     </>
   );

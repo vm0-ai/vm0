@@ -1,4 +1,4 @@
-import { join } from "path";
+import { basename, join } from "path";
 import { tmpdir } from "os";
 import { Command } from "commander";
 import { downloadSlackFile } from "../../../lib/api";
@@ -8,9 +8,12 @@ import { withErrorHandler } from "../../../lib/command";
  * Derive a local output path for a Slack file id.
  * Uses the system temp directory; extension is appended later once the
  * mimetype is known.
+ *
+ * `basename` strips any path separators from `fileId` so a hostile id like
+ * `../etc/passwd` cannot escape `tmpdir()`.
  */
 function defaultOutPath(fileId: string): string {
-  return join(tmpdir(), `slack-${fileId}`);
+  return join(tmpdir(), `slack-${basename(fileId)}`);
 }
 
 export const downloadFileCommand = new Command()

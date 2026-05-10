@@ -108,10 +108,12 @@ async function openPermissionsDrawer(connectorLabel: string) {
 
   click(screen.getByLabelText(`Manage ${connectorLabel} permissions`));
 
+  const expectedHeading = `${connectorLabel} permissions`.toLowerCase();
   await waitFor(() => {
     expect(
       screen.getByRole("heading", {
-        name: new RegExp(`${connectorLabel} permissions`, "i"),
+        name: (accessibleName) =>
+          accessibleName.toLowerCase().includes(expectedHeading),
       }),
     ).toBeInTheDocument();
   });

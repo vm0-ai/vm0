@@ -1,4 +1,4 @@
-import { join } from "path";
+import { basename, join } from "path";
 import { tmpdir } from "os";
 import { Command } from "commander";
 import { downloadTelegramFile } from "../../../lib/api";
@@ -7,9 +7,12 @@ import { withErrorHandler } from "../../../lib/command";
 /**
  * Derive a local output path for a Telegram file id.
  * Uses the system temp directory.
+ *
+ * `basename` strips any path separators from `fileId` so a hostile id like
+ * `../etc/passwd` cannot escape `tmpdir()`.
  */
 function defaultOutPath(fileId: string): string {
-  return join(tmpdir(), `telegram-${fileId}`);
+  return join(tmpdir(), `telegram-${basename(fileId)}`);
 }
 
 export const downloadFileCommand = new Command()

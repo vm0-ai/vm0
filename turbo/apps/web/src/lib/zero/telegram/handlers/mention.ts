@@ -278,13 +278,23 @@ function stripBotMention(
 ): string {
   if (!botUsername || !entities) return text;
 
-  // Find mention entities and remove them
-  const mentionText = `@${botUsername}`;
-  return text
-    .replace(new RegExp(`\\s*${escapeRegExp(mentionText)}\\s*`, "gi"), " ")
-    .trim();
-}
-
-function escapeRegExp(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const mention = `@${botUsername}`;
+  const mentionLower = mention.toLowerCase();
+  const lower = text.toLowerCase();
+  let result = "";
+  let cursor = 0;
+  for (;;) {
+    const idx = lower.indexOf(mentionLower, cursor);
+    if (idx === -1) {
+      result += text.slice(cursor);
+      break;
+    }
+    result += text.slice(cursor, idx).trimEnd();
+    result += " ";
+    cursor = idx + mention.length;
+    while (cursor < text.length && /\s/u.test(text.charAt(cursor))) {
+      cursor++;
+    }
+  }
+  return result.trim();
 }
