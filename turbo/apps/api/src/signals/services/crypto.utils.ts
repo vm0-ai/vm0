@@ -1,6 +1,30 @@
-import { createDecipheriv } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 import { env } from "../../lib/env";
+
+/**
+ * Encrypt a single secret value using AES-256-GCM.
+ *
+ * Reads `SECRETS_ENCRYPTION_KEY` from env so call sites stay clean — symmetric
+ * counterpart to `decryptSecretValue` below. Output format
+ * `iv:authTag:ciphertext` (all base64) matches what `encryptSecretForTests`
+ * already produces, so encrypt/decrypt round-trip is provably consistent.
+ */
+export function encryptSecretValue(plaintext: string): string {
+  const key = Buffer.from(env("SECRETS_ENCRYPTION_KEY"), "hex");
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv, { authTagLength: 16 });
+  const data = Buffer.concat([
+    cipher.update(plaintext, "utf8"),
+    cipher.final(),
+  ]);
+  const authTag = cipher.getAuthTag();
+  return [
+    iv.toString("base64"),
+    authTag.toString("base64"),
+    data.toString("base64"),
+  ].join(":");
+}
 
 export function decryptSecretValue(encrypted: string): string {
   const key = Buffer.from(env("SECRETS_ENCRYPTION_KEY"), "hex");

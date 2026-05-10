@@ -1,4 +1,4 @@
-import { command } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import {
@@ -8,7 +8,7 @@ import {
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 
-import { writeDb$ } from "../external/db";
+import { db$, writeDb$ } from "../external/db";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { safeUrlParse } from "../utils";
@@ -298,3 +298,31 @@ export const deleteCustomConnector$ = command(
     return undefined;
   },
 );
+
+/**
+ * Look up a custom connector by id, scoped to the caller's org so cross-org
+ * ids return null. Reusable by every per-id mutation route in this family
+ * (set-secret here, delete-secret + rename + delete in sibling PRs).
+ */
+export function getCustomConnectorById(args: {
+  readonly orgId: string;
+  readonly connectorId: string;
+}): Computed<Promise<CustomConnectorRow | null>> {
+  return computed(async (get): Promise<CustomConnectorRow | null> => {
+    const db = get(db$);
+    const [row] = await db
+      .select()
+      .from(orgCustomConnectors)
+      .where(
+        and(
+          eq(orgCustomConnectors.id, args.connectorId),
+          eq(orgCustomConnectors.orgId, args.orgId),
+        ),
+      )
+      .limit(1);
+    if (!row) {
+      return null;
+    }
+    return { ...row, prefixes: row.prefixes as readonly string[] };
+  });
+}
