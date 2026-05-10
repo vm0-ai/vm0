@@ -5,6 +5,7 @@ import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import type { RouteEntry } from "../route";
 import { userApiKeys } from "../services/zero-user-data.service";
+import { zeroApiKeysDeleteRoutes } from "./zero-api-keys-delete";
 
 const listApiKeysInner$ = computed(async (get): Promise<unknown> => {
   const auth = get(authContext$);
@@ -20,4 +21,5 @@ export const zeroApiKeysRoutes: readonly RouteEntry[] = [
     route: apiKeysContract.list,
     handler: authRoute({}, listApiKeysInner$),
   },
+  ...zeroApiKeysDeleteRoutes,
 ];

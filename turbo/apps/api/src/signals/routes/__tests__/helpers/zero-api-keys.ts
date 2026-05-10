@@ -8,6 +8,7 @@ import { writeDb$ } from "../../../external/db";
 
 export interface ApiKeysFixture {
   readonly userId: string;
+  readonly tokenIds: readonly string[];
 }
 
 interface ApiKeySeedValues {
@@ -24,27 +25,32 @@ export const seedApiKeys$ = command(
     rows: readonly ApiKeySeedValues[],
     signal: AbortSignal,
   ): Promise<ApiKeysFixture> => {
-    const fixture = { userId: `user_${randomUUID()}` };
+    const userId = `user_${randomUUID()}`;
     const writeDb = set(writeDb$);
+    const tokenIds: string[] = [];
 
     if (rows.length > 0) {
-      await writeDb.insert(cliTokens).values(
-        rows.map((row) => {
-          return {
-            id: randomUUID(),
-            userId: fixture.userId,
-            name: row.name,
-            token: row.token,
-            createdAt: row.createdAt,
-            expiresAt: row.expiresAt,
-            lastUsedAt: row.lastUsedAt ?? null,
-          };
+      const inserts = rows.map((row) => {
+        return {
+          id: randomUUID(),
+          userId,
+          name: row.name,
+          token: row.token,
+          createdAt: row.createdAt,
+          expiresAt: row.expiresAt,
+          lastUsedAt: row.lastUsedAt ?? null,
+        };
+      });
+      tokenIds.push(
+        ...inserts.map((row) => {
+          return row.id;
         }),
       );
+      await writeDb.insert(cliTokens).values(inserts);
       signal.throwIfAborted();
     }
 
-    return fixture;
+    return { userId, tokenIds };
   },
 );
 
