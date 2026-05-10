@@ -9,7 +9,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 
 import { db$, writeDb$ } from "../external/db";
 import { notFound } from "../../lib/error";
@@ -17,7 +17,7 @@ import { nowDate } from "../external/time";
 
 const ORG_SENTINEL_USER_ID = "__org__";
 
-function modelProviderResponse(row: {
+export function modelProviderResponse(row: {
   readonly id: string;
   readonly type: string;
   readonly isDefault: boolean;
@@ -280,5 +280,109 @@ export const updateUserModelProviderModel$ = command(
       return notFound("Resource not found");
     }
     return { status: 200 as const, body };
+  },
+);
+
+interface ModelProviderRowSnapshot {
+  readonly id: string;
+  readonly type: string;
+  readonly isDefault: boolean;
+  readonly selectedModel: string | null;
+  readonly authMethod: string | null;
+  readonly secretName: string | null;
+  readonly workspaceName: string | null;
+  readonly planType: string | null;
+  readonly needsReconnect: boolean;
+  readonly lastRefreshErrorCode: string | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+/**
+ * Set a user-level model provider as the user's default.
+ *
+ * Atomic: clears the user's previous default and stamps this row as default
+ * inside a single transaction. The order (clear → set) is forced by the
+ * partial unique index `idx_model_providers_one_default_per_user` —
+ * reversing would violate the at-most-one-default invariant.
+ *
+ * Fast-path: if the targeted provider is already default, returns the
+ * existing row without writing (matches web's no-op).
+ *
+ * Returns a row snapshot suitable for `modelProviderResponse(row)`. Returns
+ * `notFound("Resource not found")` when the user has no provider of this
+ * type.
+ */
+export const setUserModelProviderDefault$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly type: ModelProviderType;
+    },
+    signal: AbortSignal,
+  ): Promise<NotFoundResponse | ModelProviderRowSnapshot> => {
+    const writeDb = set(writeDb$);
+
+    const [target] = await writeDb
+      .select({
+        id: modelProviders.id,
+        type: modelProviders.type,
+        isDefault: modelProviders.isDefault,
+        selectedModel: modelProviders.selectedModel,
+        authMethod: modelProviders.authMethod,
+        secretName: secrets.name,
+        workspaceName: modelProviders.workspaceName,
+        planType: modelProviders.planType,
+        needsReconnect: modelProviders.needsReconnect,
+        lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
+        createdAt: modelProviders.createdAt,
+        updatedAt: modelProviders.updatedAt,
+      })
+      .from(modelProviders)
+      .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
+      .where(
+        and(
+          eq(modelProviders.orgId, args.orgId),
+          eq(modelProviders.userId, args.userId),
+          eq(modelProviders.type, args.type),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!target) {
+      return notFound("Resource not found");
+    }
+
+    if (target.isDefault) {
+      // Fast-path: already default, no write.
+      return target;
+    }
+
+    const updatedAt = nowDate();
+    // Atomic flip: clear other defaults first, then set this one. Order is
+    // forced by the partial unique index `idx_model_providers_one_default_per_user`.
+    await writeDb.transaction(async (tx) => {
+      await tx
+        .update(modelProviders)
+        .set({ isDefault: false, updatedAt })
+        .where(
+          and(
+            eq(modelProviders.orgId, args.orgId),
+            eq(modelProviders.userId, args.userId),
+            eq(modelProviders.isDefault, true),
+            ne(modelProviders.id, target.id),
+          ),
+        );
+      await tx
+        .update(modelProviders)
+        .set({ isDefault: true, updatedAt })
+        .where(eq(modelProviders.id, target.id));
+    });
+    signal.throwIfAborted();
+
+    return { ...target, isDefault: true, updatedAt };
   },
 );
