@@ -15,6 +15,9 @@ export interface ApiTestMocks {
     readonly error: SyncMock;
     readonly flush: AsyncMock;
   };
+  readonly ably: {
+    readonly publish: AsyncMock;
+  };
   readonly clerk: {
     readonly authenticateRequest: AsyncMock;
     readonly organizations: {
@@ -113,6 +116,9 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   };
 
   return {
+    ably: {
+      publish: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
     axiom,
     axiomLogging,
     clerk,
@@ -176,6 +182,18 @@ vi.mock("@clerk/backend", () => {
       return apiTestMocks.clerk;
     },
   };
+});
+
+vi.mock("ably", () => {
+  class MockRest {
+    readonly channels = {
+      get: () => {
+        return { publish: apiTestMocks.ably.publish };
+      },
+    };
+    readonly auth = { createTokenRequest: vi.fn() };
+  }
+  return { default: { Rest: MockRest } };
 });
 
 vi.mock("@sentry/node", () => {
@@ -278,6 +296,8 @@ export function getApiTestMocks(): ApiTestMocks {
 }
 
 export function resetApiTestMocks(): void {
+  apiTestMocks.ably.publish.mockReset();
+  apiTestMocks.ably.publish.mockResolvedValue(undefined);
   apiTestMocks.axiom.query.mockReset();
   apiTestMocks.axiomLogging.debug.mockReset();
   apiTestMocks.axiomLogging.info.mockReset();

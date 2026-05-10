@@ -134,7 +134,7 @@ function effectiveChatMessageRunId() {
   return chatMessages.runId;
 }
 
-function visibleChatMessageCondition() {
+export function visibleChatMessageCondition() {
   return sql<boolean>`NOT EXISTS (
       SELECT 1
       FROM ${chatMessages} AS revoker
