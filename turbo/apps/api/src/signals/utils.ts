@@ -26,7 +26,7 @@ export function isAbortError(error: unknown): boolean {
   );
 }
 
-function throwIfAbort(error: unknown): void {
+export function throwIfAbort(error: unknown): void {
   if (isAbortError(error)) {
     throw error;
   }

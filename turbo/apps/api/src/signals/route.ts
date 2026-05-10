@@ -36,6 +36,7 @@ import { zeroSchedulesRoutes } from "./routes/zero-schedules";
 import { zeroMeModelProvidersDeleteRoutes } from "./routes/zero-me-model-providers-delete";
 import { zeroMeModelProvidersSetDefaultRoutes } from "./routes/zero-me-model-providers-set-default";
 import { zeroMeModelProvidersUpdateModelRoutes } from "./routes/zero-me-model-providers-update-model";
+import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
 import { zeroSecretsRoutes } from "./routes/zero-secrets";
 import { zeroSkillsRoutes } from "./routes/zero-skills";
 import { zeroIntegrationsSlackRoutes } from "./routes/zero-integrations-slack";
@@ -85,6 +86,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroMeModelProvidersDeleteRoutes,
   ...zeroMeModelProvidersSetDefaultRoutes,
   ...zeroMeModelProvidersUpdateModelRoutes,
+  ...zeroMeModelProvidersUpsertRoutes,
   ...zeroVoiceChatRoutes,
   ...zeroVoiceIoQuotaRoutes,
   ...zeroWebDownloadRoutes,
