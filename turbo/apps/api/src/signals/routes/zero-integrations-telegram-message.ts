@@ -90,12 +90,15 @@ const sendMessageInner$ = command(async ({ get }, signal: AbortSignal) => {
   };
 });
 
+const telegramWriteAuth = {
+  requireOrganization: true,
+  missingOrganizationStatus: 401,
+  requiredCapability: "telegram:write",
+} as const;
+
 export const zeroIntegrationsTelegramMessageRoutes: readonly RouteEntry[] = [
   {
     route: integrationsTelegramMessageContract.sendMessage,
-    handler: authRoute(
-      { requiredCapability: "telegram:write" },
-      sendMessageInner$,
-    ),
+    handler: authRoute(telegramWriteAuth, sendMessageInner$),
   },
 ];

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
@@ -151,8 +151,8 @@ describe("POST /api/zero/integrations/telegram/message", () => {
 
   const memberships: OrgMembershipFixture[] = [];
 
-  // Per-test cleanup mirrors the typing-callback test pattern.
-  async function cleanupFixtures() {
+  // afterEach guarantees cleanup even when an assertion fails mid-test.
+  afterEach(async () => {
     while (fixtures.length > 0) {
       const fixture = fixtures.pop();
       if (fixture) {
@@ -165,7 +165,7 @@ describe("POST /api/zero/integrations/telegram/message", () => {
         await store.set(deleteOrgMembership$, membership, context.signal);
       }
     }
-  }
+  });
 
   it("returns 401 when no auth token is provided", async () => {
     const client = setupApp({ context })(integrationsTelegramMessageContract);
@@ -253,8 +253,6 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     expect(sentText).toContain(
       '<i>Sent via My Assistant · Triggered by <a href="tg://user?id=777000">@ada_telegram</a> · Claude Opus 4.7</i>',
     );
-
-    await cleanupFixtures();
   });
 
   it("falls back to Telegram display name in the footer when username is absent", async () => {
@@ -310,8 +308,6 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     expect(sentText).toContain(
       'Triggered by <a href="tg://user?id=777001">Ada Lovelace</a>',
     );
-
-    await cleanupFixtures();
   });
 
   it("returns 404 when the bot id is not owned by the org", async () => {
@@ -342,8 +338,6 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     expect(response.body).toStrictEqual({
       error: { message: "Telegram bot not found", code: "NOT_FOUND" },
     });
-
-    await cleanupFixtures();
   });
 
   it("returns 400 when Telegram rejects sendMessage with a 4xx", async () => {
@@ -385,8 +379,6 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     );
     expect(response.body.error.code).toBe("TELEGRAM_ERROR");
     expect(response.body.error.message).toContain("chat not found");
-
-    await cleanupFixtures();
   });
 
   it("returns 502 when Telegram returns a 5xx (api defensive mapping)", async () => {
@@ -428,7 +420,5 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     );
     expect(response.body.error.code).toBe("TELEGRAM_ERROR");
     expect(response.body.error.message).toContain("Service Unavailable");
-
-    await cleanupFixtures();
   });
 });
