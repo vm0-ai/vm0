@@ -8,7 +8,7 @@
  * that have no server-side implementation, so the `http.*` usage here is
  * intentional and should remain exempt from the Phase 3 capstone rule (#10091).
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../mocks/server.ts";
 import { fetch$ } from "../fetch.ts";
@@ -487,6 +487,125 @@ describe("401 refresh-and-retry", () => {
     expect(response.status).toBe(200);
     expect(receivedBodies).toStrictEqual([body, body]);
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
+  });
+});
+
+describe("apiBackendMutations routing", () => {
+  function captureMutationHosts(method: "post" | "put" | "patch" | "delete") {
+    const hosts: string[] = [];
+    server.use(
+      http[method]("*/api/zero/items", ({ request }) => {
+        hosts.push(new URL(request.url).host);
+        return new Response(null, { status: 200 });
+      }),
+    );
+    return hosts;
+  }
+
+  it("routes POST to api host when apiBackendMutations is on", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { apiBackendMutations: true },
+    });
+
+    const hosts = captureMutationHosts("post");
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/items", { method: "POST" });
+
+    expect(hosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("keeps POST on www when apiBackendMutations is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const hosts = captureMutationHosts("post");
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/items", { method: "POST" });
+
+    expect(hosts).toStrictEqual(["www.vm0.ai"]);
+  });
+
+  it("does not affect GET routing", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { apiBackendMutations: true },
+    });
+
+    const hosts: string[] = [];
+    server.use(
+      http.get("*/api/zero/items", ({ request }) => {
+        hosts.push(new URL(request.url).host);
+        return new Response(null, { status: 200 });
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/items");
+
+    expect(hosts).toStrictEqual(["www.vm0.ai"]);
+  });
+
+  it("apiBackend on forces mutations to api regardless of mutations flag", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { apiBackend: true, apiBackendMutations: false },
+    });
+
+    const hosts = captureMutationHosts("put");
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/items", { method: "PUT" });
+
+    expect(hosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("routes PATCH and DELETE the same way as POST", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { apiBackendMutations: true },
+    });
+
+    const patchHosts = captureMutationHosts("patch");
+    const deleteHosts = captureMutationHosts("delete");
+    const fch = context.store.get(fetch$);
+
+    await fch("/api/zero/items", { method: "PATCH" });
+    await fch("/api/zero/items", { method: "DELETE" });
+
+    expect(patchHosts).toStrictEqual(["api.vm0.ai"]);
+    expect(deleteHosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("classifies methods on a Request input", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { apiBackendMutations: true },
+    });
+
+    const hosts = captureMutationHosts("post");
+    const fch = context.store.get(fetch$);
+    await fch(new Request("/api/zero/items", { method: "POST" }));
+
+    expect(hosts).toStrictEqual(["api.vm0.ai"]);
   });
 });
 

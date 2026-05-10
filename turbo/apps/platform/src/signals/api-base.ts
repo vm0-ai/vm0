@@ -63,3 +63,13 @@ export function resolveApiBaseForNavigation(useApiBackend: boolean): string {
   }
   return browserOriginBase(target) ?? configuredApiBase(target);
 }
+
+export function isMutationMethod(method: string): boolean {
+  const upper = method.toUpperCase();
+  return (
+    upper === "POST" ||
+    upper === "PUT" ||
+    upper === "PATCH" ||
+    upper === "DELETE"
+  );
+}

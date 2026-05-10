@@ -1,8 +1,15 @@
 import { computed } from "ccstate";
-import { apiBackendEnabled$ } from "./external/feature-switch.ts";
+import {
+  apiBackendEnabled$,
+  apiBackendMutationsEnabled$,
+} from "./external/feature-switch.ts";
 import { clerk$ } from "./auth.ts";
 import { fetchFreshToken, handleUnauthorizedRedirect } from "./auth-retry.ts";
-import { resolveApiBase, resolveApiBaseForNavigation } from "./api-base.ts";
+import {
+  isMutationMethod,
+  resolveApiBase,
+  resolveApiBaseForNavigation,
+} from "./api-base.ts";
 
 /**
  * API base URL for opening external navigation (e.g. connector OAuth popup).
@@ -22,6 +29,23 @@ export const apiBaseForNavigation$ = computed(async (get) => {
  */
 export const apiBase$ = computed(async (get) => {
   return resolveApiBase(await get(apiBackendEnabled$));
+});
+
+/**
+ * API base URL for mutation requests (POST/PUT/PATCH/DELETE).
+ *
+ * Resolves to the api host when either the master ApiBackend flag is on,
+ * or the per-mutation ApiBackendMutations flag is on. The mutation flag
+ * exists so Stage 3 of the api-backend migration can flip mutations to
+ * api.vm0.ai per-org without flipping ApiBackend (which would also move
+ * GETs that may not be ready). Unported mutation routes still work because
+ * apps/api falls back to web for unmatched routes.
+ */
+export const apiBaseForMutation$ = computed(async (get) => {
+  if (await get(apiBackendEnabled$)) {
+    return resolveApiBase(true);
+  }
+  return resolveApiBase(await get(apiBackendMutationsEnabled$));
 });
 
 function mergeHeadersWithAutoIds(
@@ -96,11 +120,24 @@ function rewriteRequestUrl(
   );
 }
 
+function pickRequestMethod(
+  url: string | URL | Request,
+  options: RequestInit | undefined,
+): string {
+  if (url instanceof Request) {
+    return url.method;
+  }
+  return options?.method ?? "GET";
+}
+
 export const fetch$ = computed((get) => {
   return async (url: string | URL | Request, options?: RequestInit) => {
     const clerk = await get(clerk$);
     const initialToken = (await clerk.session?.getToken()) ?? null;
-    const apiBase = await get(apiBase$);
+    const method = pickRequestMethod(url, options);
+    const apiBase = isMutationMethod(method)
+      ? await get(apiBaseForMutation$)
+      : await get(apiBase$);
 
     const performFetch = async (token: string | null): Promise<Response> => {
       // Clone Request inputs so the body stream is available for retry.

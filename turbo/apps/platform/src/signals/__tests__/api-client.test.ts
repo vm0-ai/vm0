@@ -3,6 +3,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../mocks/server.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { testContext } from "./test-helpers.ts";
 import { detachedSetupPage } from "../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../__tests__/mock-auth.ts";
@@ -221,6 +222,141 @@ describe("zeroClient$ 401 redirect", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-1",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(zeroOrgContract.get, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, {
+          id: "org_1",
+          name: "Org",
+          slug: "org-1",
+          role: "admin",
+        });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroOrgContract, { apiBase: "api" });
+    const result = await client.get();
+
+    expect(result.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+  });
+});
+
+describe("zeroClient$ apiBackendMutations routing", () => {
+  it("routes POST contract requests to api host when flag is on", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { apiBackendMutations: true },
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(zeroFeatureSwitchesContract.update, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, { switches: {} });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroFeatureSwitchesContract);
+    const result = await client.update({ body: { switches: {} } });
+
+    expect(result.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("keeps POST contract requests on www when flag is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(zeroFeatureSwitchesContract.update, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, { switches: {} });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroFeatureSwitchesContract);
+    const result = await client.update({ body: { switches: {} } });
+
+    expect(result.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["www.vm0.ai"]);
+  });
+
+  it("does not affect GET contract requests on zeroClient$", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { apiBackendMutations: true },
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(zeroOrgContract.get, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, {
+          id: "org_1",
+          name: "Org",
+          slug: "org-1",
+          role: "admin",
+        });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroOrgContract);
+    const result = await client.get();
+
+    expect(result.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["www.vm0.ai"]);
+  });
+
+  it("apiBackend on forces mutations to api regardless of mutations flag", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { apiBackend: true, apiBackendMutations: false },
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(zeroFeatureSwitchesContract.update, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, { switches: {} });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroFeatureSwitchesContract);
+    const result = await client.update({ body: { switches: {} } });
+
+    expect(result.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("apiBase: 'api' override still wins for GET regardless of flag state", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
       withoutRender: true,
     });
 
