@@ -5480,21 +5480,28 @@ mod tests {
 
             let mut buf = [0u8; 4096];
             let n = guest.read(&mut buf).await.unwrap();
-            assert_ne!(n, 0, "connection closed before follow-up exec");
+            assert_ne!(n, 0, "connection closed before follow-up bounded_exec");
             let msgs = decoder.decode(&buf[..n]).unwrap();
             assert_eq!(msgs.len(), 1);
             let _ = first_msg_tx.send(msgs[0].msg_type);
             assert_eq!(
-                msgs[0].msg_type, MSG_EXEC,
+                msgs[0].msg_type, MSG_BOUNDED_EXEC,
                 "empty write_file path must not send a write_file frame"
             );
 
-            let decoded = vsock_proto::decode_exec(&msgs[0].payload).unwrap();
+            let decoded = vsock_proto::decode_bounded_exec(&msgs[0].payload).unwrap();
             assert_eq!(decoded.command, "after-empty-write-file-path");
 
-            let payload = vsock_proto::encode_exec_result(0, b"ok", b"");
-            let resp = vsock_proto::encode(MSG_EXEC_RESULT, msgs[0].seq, &payload).unwrap();
-            guest.write_all(&resp).await.unwrap();
+            write_bounded_exec_result_full(
+                &mut guest,
+                msgs[0].seq,
+                vsock_proto::BoundedExecTermination::Exited { exit_code: 0 },
+                b"ok",
+                b"",
+                false,
+                false,
+            )
+            .await;
         });
 
         let host = host_from_stream(host_stream).await.unwrap();
@@ -5509,12 +5516,13 @@ mod tests {
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
         assert!(err.to_string().contains("path must not be empty"));
 
-        let result = host
-            .exec("after-empty-write-file-path", 5000, &[], false)
-            .await
-            .unwrap();
-        assert_eq!(result.exit_code, 0);
-        assert_eq!(result.stdout, b"ok");
+        let request = simple_bounded_request("after-empty-write-file-path", None);
+        let result = host.bounded_exec(&request).await.unwrap();
+        assert_eq!(
+            result.termination,
+            BoundedExecTermination::Exited { exit_code: 0 }
+        );
+        assert_host_captured_output(&result.stdout, b"ok", false);
         guest_task.await.unwrap();
     }
 
@@ -5528,28 +5536,36 @@ mod tests {
 
             let mut buf = [0u8; 4096];
             let n = guest.read(&mut buf).await.unwrap();
-            assert_ne!(n, 0, "connection closed before follow-up exec");
+            assert_ne!(n, 0, "connection closed before follow-up bounded_exec");
             let msgs = decoder.decode(&buf[..n]).unwrap();
             assert_eq!(msgs.len(), 1);
-            assert_eq!(msgs[0].msg_type, MSG_EXEC);
+            assert_eq!(msgs[0].msg_type, MSG_BOUNDED_EXEC);
 
-            let decoded = vsock_proto::decode_exec(&msgs[0].payload).unwrap();
+            let decoded = vsock_proto::decode_bounded_exec(&msgs[0].payload).unwrap();
             assert_eq!(decoded.command, "after-empty-write-files");
 
-            let payload = vsock_proto::encode_exec_result(0, b"ok", b"");
-            let resp = vsock_proto::encode(MSG_EXEC_RESULT, msgs[0].seq, &payload).unwrap();
-            guest.write_all(&resp).await.unwrap();
+            write_bounded_exec_result_full(
+                &mut guest,
+                msgs[0].seq,
+                vsock_proto::BoundedExecTermination::Exited { exit_code: 0 },
+                b"ok",
+                b"",
+                false,
+                false,
+            )
+            .await;
         });
 
         let host = host_from_stream(host_stream).await.unwrap();
         let empty: &[WriteFileRequest<'_>] = &[];
         host.write_files(empty, false).await.unwrap();
-        let result = host
-            .exec("after-empty-write-files", 5000, &[], false)
-            .await
-            .unwrap();
-        assert_eq!(result.exit_code, 0);
-        assert_eq!(result.stdout, b"ok");
+        let request = simple_bounded_request("after-empty-write-files", None);
+        let result = host.bounded_exec(&request).await.unwrap();
+        assert_eq!(
+            result.termination,
+            BoundedExecTermination::Exited { exit_code: 0 }
+        );
+        assert_host_captured_output(&result.stdout, b"ok", false);
         guest_task.await.unwrap();
     }
 

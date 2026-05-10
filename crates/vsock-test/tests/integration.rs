@@ -13,7 +13,10 @@ use std::sync::Once;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use vsock_host::{VsockHost, WriteFileRequest, WriteFileSource};
+use vsock_host::{
+    BoundedExecCapturePolicy, BoundedExecOutput, BoundedExecOutputRequest, BoundedExecRequest,
+    BoundedExecTermination, VsockHost, WriteFileRequest, WriteFileSource,
+};
 
 static WRITE_FILE_HELPER: Once = Once::new();
 const WRITE_FILE_HELPER_BIN: &str = env!("CARGO_BIN_EXE_guest-write-file-test-helper");
@@ -57,6 +60,35 @@ fn shell_quote(value: &str) -> String {
 
 fn shell_quote_path(path: &Path) -> String {
     shell_quote(path.to_str().expect("test path must be valid UTF-8"))
+}
+
+fn bounded_exec_capture(limit_bytes: u32) -> BoundedExecOutputRequest {
+    BoundedExecOutputRequest {
+        capture: BoundedExecCapturePolicy::Capture { limit_bytes },
+        stream: None,
+    }
+}
+
+fn simple_bounded_exec_request(command: &str) -> BoundedExecRequest<'_> {
+    BoundedExecRequest {
+        command,
+        timeout_ms: 5000,
+        env: &[],
+        sudo: false,
+        stdin: None,
+        stdout: bounded_exec_capture(1024),
+        stderr: bounded_exec_capture(1024),
+    }
+}
+
+fn assert_bounded_stdout(output: &BoundedExecOutput, expected: &[u8]) {
+    match output {
+        BoundedExecOutput::Captured { bytes, truncated } => {
+            assert_eq!(bytes, expected);
+            assert!(!truncated);
+        }
+        BoundedExecOutput::Discarded => panic!("expected captured stdout"),
+    }
 }
 
 async fn wait_for_path(path: &Path, timeout: Duration) {
@@ -437,12 +469,16 @@ async fn test_write_files_invalid_path_fails_before_partial_write() {
         "write_files must validate the whole batch before sending any file"
     );
 
+    let request = simple_bounded_exec_request("echo after-invalid-write-files");
     let result = h
-        .exec("echo after-invalid-write-files", 5000, &[], false)
+        .bounded_exec(&request)
         .await
         .expect("connection should remain usable after local validation failure");
-    assert_eq!(result.exit_code, 0);
-    assert_eq!(result.stdout, b"after-invalid-write-files\n");
+    assert_eq!(
+        result.termination,
+        BoundedExecTermination::Exited { exit_code: 0 }
+    );
+    assert_bounded_stdout(&result.stdout, b"after-invalid-write-files\n");
     h.finish();
 }
 
