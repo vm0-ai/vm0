@@ -155,10 +155,7 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   },
   {
     route: chatThreadMessagesContract.list,
-    handler: shadowCompareRoute({
-      route: chatThreadMessagesContract.list,
-      handler: authRoute({}, listChatThreadMessagesInner$),
-    }),
+    handler: authRoute({}, listChatThreadMessagesInner$),
   },
   {
     route: chatSearchContract.search,
