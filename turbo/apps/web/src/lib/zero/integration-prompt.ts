@@ -185,6 +185,43 @@ export function buildWebChatPrompt(): string {
 }
 
 /**
+ * Sentinel literal the agent emits to signal goal completion. Detected by
+ * scanning the last assistant message's content for an exact substring match.
+ */
+export const GOAL_DONE_SENTINEL = "[GOAL_DONE]";
+
+export interface WebChatGoalContext {
+  /** Inclusive of the current turn — when `1`, this is the last turn. */
+  remainingTurns: number;
+}
+
+/**
+ * Append-only "rules of the game" block injected into the system prompt only
+ * when the run is goal-driven. The objective itself lives verbatim in the
+ * triggering user message body and repeats each turn — the rules tell the
+ * agent that repetition is the "continue" signal, not a redundant request.
+ */
+export function buildWebChatGoalPrompt(ctx: WebChatGoalContext): string {
+  const turnLabel = ctx.remainingTurns === 1 ? "turn" : "turns";
+  return [
+    "# Goal Mode",
+    "",
+    "You are operating in goal mode. The user message that triggered this run",
+    "may be a continuation of an earlier `/go` objective — the same message body",
+    "will repeat verbatim each turn until the goal is satisfied. Treat each",
+    "repetition as the signal to continue working on the objective, not as a",
+    "fresh request to start over.",
+    "",
+    `You have ${String(ctx.remainingTurns)} ${turnLabel} remaining (this one included).`,
+    "",
+    `When you believe the goal is satisfied, include the literal text \`${GOAL_DONE_SENTINEL}\``,
+    "somewhere in your final assistant message. The runtime detects this",
+    "sentinel and stops the goal chain. Only emit it after verifying concrete",
+    "deliverables — do not declare completion prematurely.",
+  ].join("\n");
+}
+
+/**
  * Build file-attachment blocks for files the user attached to their web message.
  * Only describes each attachment (name, type, id).
  * The agent learns how to download and read files from `zero web download-file -h`.

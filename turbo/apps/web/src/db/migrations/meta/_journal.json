@@ -2514,6 +2514,13 @@
       "when": 1778334621961,
       "tag": "0358_hard_mimic",
       "breakpoints": true
+    },
+    {
+      "idx": 359,
+      "version": "7",
+      "when": 1778388726707,
+      "tag": "0359_clammy_night_thrasher",
+      "breakpoints": true
     }
   ]
 }

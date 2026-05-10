@@ -217,6 +217,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.Goal]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable Codex-style goal mode in web chat: typing `/go <objective>` starts a self-continuing chain that runs up to 10 turns until the agent emits the [GOAL_DONE] sentinel, the budget is exhausted, the run fails, or the user interrupts.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.QueueMessage]: {
     maintainer: "linghan@vm0.ai",
     description:

@@ -450,6 +450,15 @@ export const chatMessagesContract = c.router({
         // Lets the client render an optimistic row and reconcile with the
         // server row by id — no temp-id swap, no React remount.
         clientMessageId: z.string().uuid().optional(),
+        /**
+         * Goal mode: when `true`, this message starts a self-continuing chain
+         * that runs up to a server-defined turn budget. Subsequent turns are
+         * appended automatically by the run-completion callback until the
+         * agent emits `[GOAL_DONE]`, the budget is exhausted, the run fails,
+         * or the user interrupts. Server applies the budget; clients cannot
+         * pick it. Gated by the Goal feature switch.
+         */
+        goal: z.boolean().optional(),
         // Test-only escape hatch: when the host runner has USE_MOCK_CODEX
         // set (CI default), allow the request to bypass the mock and execute
         // the real codex CLI. Mirrors `debugNoMockClaude` / `debugNoMockCodex`
@@ -474,6 +483,7 @@ export const chatMessagesContract = c.router({
         debugNoMockClaude: z.undefined().optional(),
         debugNoMockCodex: z.undefined().optional(),
         interruptsRunId: z.undefined().optional(),
+        goal: z.undefined().optional(),
       }),
       z.object({
         agentId: z.string().min(1),
@@ -489,6 +499,7 @@ export const chatMessagesContract = c.router({
         debugNoMockClaude: z.undefined().optional(),
         debugNoMockCodex: z.undefined().optional(),
         revokesMessageId: z.undefined().optional(),
+        goal: z.undefined().optional(),
       }),
     ]),
     responses: {

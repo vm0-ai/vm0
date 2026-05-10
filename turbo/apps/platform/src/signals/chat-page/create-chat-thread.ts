@@ -41,7 +41,10 @@ import type { ModelProviderSelection } from "../../views/zero-page/components/mo
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
-import { modelFirstModelProviderEnabled$ } from "../external/feature-switch.ts";
+import {
+  goalEnabled$,
+  modelFirstModelProviderEnabled$,
+} from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import { composerModelProviders$ } from "../zero-page/composer-model-providers.ts";
@@ -1428,6 +1431,32 @@ interface SendMessageDeps {
   scrollToBottom$: Command<void, []>;
 }
 
+/**
+ * Parse a leading `/go ` slash command. Returns the goal mode flag and the
+ * objective text (everything after `/go`). Only treats the prefix as a
+ * command when the Goal feature switch is enabled — otherwise the literal
+ * `/go` text is sent through unchanged so the agent can see it.
+ */
+const GOAL_PREFIX_RE = /^\/go(?:\s+([\s\S]*))?$/;
+function parseGoalCommand(
+  rawPrompt: string,
+  goalFeatureEnabled: boolean,
+): { isGoal: boolean; effectivePrompt: string } {
+  if (!goalFeatureEnabled) {
+    return { isGoal: false, effectivePrompt: rawPrompt };
+  }
+  const trimmed = rawPrompt.trim();
+  const match = GOAL_PREFIX_RE.exec(trimmed);
+  if (!match) {
+    return { isGoal: false, effectivePrompt: rawPrompt };
+  }
+  const objective = (match[1] ?? "").trim();
+  if (objective.length === 0) {
+    return { isGoal: false, effectivePrompt: rawPrompt };
+  }
+  return { isGoal: true, effectivePrompt: objective };
+}
+
 function createSendMessage(deps: SendMessageDeps) {
   const {
     threadId,
@@ -1452,6 +1481,11 @@ function createSendMessage(deps: SendMessageDeps) {
         L.debug("sendMessage$ no agentId, abort", { threadId });
         return;
       }
+      const goalFeatureEnabled = get(goalEnabled$);
+      const { isGoal, effectivePrompt } = parseGoalCommand(
+        prompt,
+        goalFeatureEnabled,
+      );
       let effectiveSelectedModel = modelSelection?.selectedModel;
       if (!effectiveSelectedModel) {
         const agent = await get(agentById(agentId));
@@ -1478,7 +1512,7 @@ function createSendMessage(deps: SendMessageDeps) {
       const result = await set(
         prepareUserMessageFromDraft$,
         draft,
-        prompt,
+        effectivePrompt,
         {
           excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
             effectiveSelectedModel,
@@ -1527,6 +1561,7 @@ function createSendMessage(deps: SendMessageDeps) {
               clientMessageId,
               modelSelection,
               attachFiles: result.attachFiles,
+              ...(isGoal ? { goal: true } : {}),
             },
             fetchOptions: { signal },
           }),

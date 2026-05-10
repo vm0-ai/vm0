@@ -55,6 +55,8 @@ const messageRowProjection = {
   attachFiles: chatMessages.attachFiles,
   revokesMessageId: chatMessages.revokesMessageId,
   interruptsRunId: chatMessages.interruptsRunId,
+  goalRemainingTurns: chatMessages.goalRemainingTurns,
+  goalOriginMessageId: chatMessages.goalOriginMessageId,
 } as const;
 
 type MessageRow = {
@@ -70,6 +72,8 @@ type MessageRow = {
   attachFiles: ChatMessageAttachFiles | null;
   revokesMessageId: string | null;
   interruptsRunId: string | null;
+  goalRemainingTurns: number | null;
+  goalOriginMessageId: string | null;
 };
 
 /**
@@ -106,6 +110,8 @@ export async function insertChatMessage(params: {
   attachFiles?: ChatMessageAttachFiles;
   revokesMessageId?: string | null;
   interruptsRunId?: string | null;
+  goalRemainingTurns?: number | null;
+  goalOriginMessageId?: string | null;
   id?: string;
   spanDims?: ChatSpanDimensions;
 }): Promise<{ id: string; createdAt: Date }> {
@@ -120,6 +126,8 @@ export async function insertChatMessage(params: {
         runId: params.runId,
         revokesMessageId: params.revokesMessageId ?? null,
         interruptsRunId: params.interruptsRunId ?? null,
+        goalRemainingTurns: params.goalRemainingTurns ?? null,
+        goalOriginMessageId: params.goalOriginMessageId ?? null,
         error: params.error ?? null,
         attachFiles: params.attachFiles ?? null,
       })

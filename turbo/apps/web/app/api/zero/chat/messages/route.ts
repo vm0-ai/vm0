@@ -25,14 +25,23 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   buildWebChatPrompt,
   buildWebAttachFilesPrompt,
+  buildWebChatGoalPrompt,
   buildWebChatIncompleteContext,
+  type WebChatGoalContext,
   type WebChatIncompleteRound,
 } from "../../../../../src/lib/zero/integration-prompt";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
+import { randomUUID } from "node:crypto";
 import {
   badRequest,
+  forbidden,
   isApiError,
   providerDeleted,
 } from "@vm0/api-services/errors";
+
+const GOAL_DEFAULT_BUDGET = 10;
 import { cancelRun } from "../../../../../src/lib/zero/zero-run-cancel";
 import { dispatchCancelSideEffects } from "../../../../../src/lib/infra/run/run-service";
 import {
@@ -83,12 +92,101 @@ import {
 
 const log = logger("zero:chat-messages");
 
-function buildAppendSystemPrompt(incompleteContext: string): string {
-  return [buildWebChatPrompt(), incompleteContext]
+function buildAppendSystemPrompt(
+  incompleteContext: string,
+  goalContext: WebChatGoalContext | null,
+): string {
+  return [
+    buildWebChatPrompt(),
+    goalContext ? buildWebChatGoalPrompt(goalContext) : "",
+    incompleteContext,
+  ]
     .filter((part) => {
       return typeof part === "string" && part.length > 0;
     })
     .join("\n\n");
+}
+
+interface GoalOriginRow {
+  messageId: string;
+  remainingTurns: number;
+}
+
+interface GoalSetup {
+  goalContext: WebChatGoalContext | null;
+  goalOriginRow: GoalOriginRow | null;
+}
+
+const GOAL_OFF: GoalSetup = { goalContext: null, goalOriginRow: null };
+
+function extractEmail(
+  claims: { email?: string } | undefined,
+): string | undefined {
+  return claims ? claims.email : undefined;
+}
+
+interface DispatchInsertGoalParams {
+  id: string | undefined;
+  goalRemainingTurns: number | null;
+  goalOriginMessageId: string | null;
+}
+
+/**
+ * Resolve the columns the dispatch-path `insertChatMessage` call needs to
+ * stamp on the user row: id (mints the self-FK origin when in goal mode,
+ * otherwise reuses the client-supplied uuid), and the two goal columns.
+ * Pulling this out of the `send` body keeps the route handler under the
+ * cyclomatic-complexity cap.
+ */
+function buildDispatchInsertGoalParams(
+  goalOriginRow: GoalOriginRow | null,
+  clientMessageId: string | undefined,
+): DispatchInsertGoalParams {
+  if (!goalOriginRow) {
+    return {
+      id: clientMessageId,
+      goalRemainingTurns: null,
+      goalOriginMessageId: null,
+    };
+  }
+  return {
+    id: goalOriginRow.messageId,
+    goalRemainingTurns: goalOriginRow.remainingTurns,
+    goalOriginMessageId: goalOriginRow.messageId,
+  };
+}
+
+/**
+ * Resolve goal-mode setup for a `send` request. Returns the empty setup when
+ * the body did not request goal mode; otherwise validates the feature switch
+ * (throwing 403 via `forbidden()` if disabled) and mints the origin message
+ * id used for the self-FK on `goal_origin_message_id`.
+ */
+async function resolveGoalSetup(
+  body: { goal?: boolean; clientMessageId?: string },
+  caller: { userId: string; email: string | undefined; orgId: string },
+): Promise<GoalSetup> {
+  if (body.goal !== true) {
+    return GOAL_OFF;
+  }
+  const overrides = await loadFeatureSwitchOverrides(
+    caller.orgId,
+    caller.userId,
+  );
+  const enabled = isFeatureEnabled(FeatureSwitchKey.Goal, {
+    userId: caller.userId,
+    email: caller.email,
+    orgId: caller.orgId,
+    overrides,
+  });
+  if (!enabled) {
+    throw forbidden("Goal mode is not available for this account");
+  }
+  const messageId = body.clientMessageId ?? randomUUID();
+  return {
+    goalContext: { remainingTurns: GOAL_DEFAULT_BUDGET },
+    goalOriginRow: { messageId, remainingTurns: GOAL_DEFAULT_BUDGET },
+  };
 }
 
 /**
@@ -153,6 +251,13 @@ async function appendUnassociatedUserMessage(params: {
   prompt: string;
   attachFiles: AttachFile[] | undefined;
   clientMessageId: string | undefined;
+  /**
+   * When set, the row is marked as a goal-mode origin: `goalRemainingTurns`
+   * carries the budget and `goalOriginMessageId` self-references the row id.
+   * The id is generated up-front (or reused from clientMessageId) so the
+   * self-FK lands in a single insert.
+   */
+  goalOrigin: { messageId: string; remainingTurns: number } | null;
 }): Promise<{ createdAt: Date }> {
   return globalThis.services.db.transaction(async (tx) => {
     await tx
@@ -172,16 +277,20 @@ async function appendUnassociatedUserMessage(params: {
       return file.id;
     });
 
+    const explicitId = params.goalOrigin?.messageId ?? params.clientMessageId;
+
     const inserted = await tx
       .insert(chatMessages)
       .values({
-        ...(params.clientMessageId ? { id: params.clientMessageId } : {}),
+        ...(explicitId ? { id: explicitId } : {}),
         chatThreadId: params.threadId,
         role: "user",
         content: params.prompt,
         runId: null,
         attachFiles:
           attachFileIds && attachFileIds.length > 0 ? attachFileIds : null,
+        goalRemainingTurns: params.goalOrigin?.remainingTurns ?? null,
+        goalOriginMessageId: params.goalOrigin?.messageId ?? null,
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
@@ -191,7 +300,7 @@ async function appendUnassociatedUserMessage(params: {
       return insertedMessage;
     }
 
-    if (!params.clientMessageId) {
+    if (!explicitId) {
       throw new Error("Failed to insert unassociated user message");
     }
 
@@ -201,7 +310,7 @@ async function appendUnassociatedUserMessage(params: {
       .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
       .where(
         and(
-          eq(chatMessages.id, params.clientMessageId),
+          eq(chatMessages.id, explicitId),
           eq(chatMessages.chatThreadId, params.threadId),
           eq(chatThreads.userId, params.userId),
           eq(chatMessages.role, "user"),
@@ -990,6 +1099,13 @@ const router = tsr.router(chatMessagesContract, {
     // provider lookup to the caller's org.
     const { org: callerOrg, orgMeta: callerOrgMeta } =
       await resolveOrgWithMetadata(authCtx);
+
+    const { goalContext, goalOriginRow } = await resolveGoalSetup(body, {
+      userId: authCtx.userId,
+      email: extractEmail(authCtx.sessionClaims),
+      orgId: callerOrg.orgId,
+    });
+
     const preloadedOrgMetadata = buildPreloadedOrgMetadata({
       org: callerOrg,
       orgMeta: callerOrgMeta,
@@ -1050,6 +1166,7 @@ const router = tsr.router(chatMessagesContract, {
           prompt,
           attachFiles: body.attachFiles,
           clientMessageId: body.clientMessageId,
+          goalOrigin: goalOriginRow,
         });
         await publishUserSignal(
           [authCtx.userId],
@@ -1163,7 +1280,10 @@ const router = tsr.router(chatMessagesContract, {
         selectedModelOverride: override.selectedModel ?? undefined,
         debugNoMockClaude: body.debugNoMockClaude,
         debugNoMockCodex: body.debugNoMockCodex,
-        appendSystemPrompt: buildAppendSystemPrompt(incompleteContext),
+        appendSystemPrompt: buildAppendSystemPrompt(
+          incompleteContext,
+          goalContext,
+        ),
         callbacks: [chatCallback],
         chatThreadId: threadId,
         preloadedAgent: agent,
@@ -1186,6 +1306,10 @@ const router = tsr.router(chatMessagesContract, {
       // publishThreadListChanged fire — those signals tell other devices to
       // refetch the thread list / paged-messages view, and they must see the
       // new row on refetch. The `await`s below preserve that ordering.
+      const dispatchGoalParams = buildDispatchInsertGoalParams(
+        goalOriginRow,
+        body.clientMessageId,
+      );
       waitUntil(
         (async () => {
           const signalsEnterAt = Date.now();
@@ -1201,7 +1325,9 @@ const router = tsr.router(chatMessagesContract, {
               attachFiles: body.attachFiles?.map((f: AttachFile) => {
                 return f.id;
               }),
-              id: body.clientMessageId,
+              id: dispatchGoalParams.id,
+              goalRemainingTurns: dispatchGoalParams.goalRemainingTurns,
+              goalOriginMessageId: dispatchGoalParams.goalOriginMessageId,
               spanDims: dims,
             });
           } catch (err: unknown) {
