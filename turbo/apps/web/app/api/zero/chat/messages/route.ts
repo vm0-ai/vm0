@@ -40,8 +40,6 @@ import {
   isApiError,
   providerDeleted,
 } from "@vm0/api-services/errors";
-
-const GOAL_DEFAULT_BUDGET = 10;
 import { cancelRun } from "../../../../../src/lib/zero/zero-run-cancel";
 import { dispatchCancelSideEffects } from "../../../../../src/lib/infra/run/run-service";
 import {
@@ -91,6 +89,8 @@ import {
 } from "../../../../../src/lib/zero/chat-thread/request-span-ops";
 
 const log = logger("zero:chat-messages");
+
+const GOAL_DEFAULT_BUDGET = 10;
 
 function buildAppendSystemPrompt(
   incompleteContext: string,

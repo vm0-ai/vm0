@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { type FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { POST } from "../route";
 import {
   createTestRequest,
@@ -15,17 +16,29 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../../src/env";
 
+/**
+ * Override `isFeatureEnabled` for the `Goal` switch only — every other key
+ * delegates to the real registry. A blanket `mockReturnValue(true)` would
+ * flip on `ModelFirstModelProvider` and route the request through a
+ * credit-checked vm0-managed provider path, breaking the 201 assertions
+ * with a 402 in tests that seed `anthropic-api-key` instead.
+ */
+let goalSwitchEnabled = true;
 vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@vm0/core/feature-switch")>();
   return {
     ...actual,
-    isFeatureEnabled: vi.fn().mockReturnValue(true),
+    isFeatureEnabled: vi.fn(
+      (key: FeatureSwitchKey, ctx: FeatureSwitchContext) => {
+        if (key === FeatureSwitchKey.Goal) {
+          return goalSwitchEnabled;
+        }
+        return actual.isFeatureEnabled(key, ctx);
+      },
+    ),
   };
 });
-
-const { isFeatureEnabled } = await import("@vm0/core/feature-switch");
-const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
 
 const context = testContext();
 
@@ -37,9 +50,7 @@ describe("POST /api/zero/chat/messages — goal mode", () => {
 
   beforeEach(async () => {
     context.setupMocks();
-    mockIsFeatureEnabled.mockImplementation(() => {
-      return true;
-    });
+    goalSwitchEnabled = true;
     user = await context.setupUser();
     const compose = await createTestCompose(uniqueId("chat-msg-goal"));
     agentId = await getTestZeroAgentId(user.orgId, compose.name);
@@ -127,9 +138,7 @@ describe("POST /api/zero/chat/messages — goal mode", () => {
   });
 
   it("returns 403 when the goal feature switch is disabled", async () => {
-    mockIsFeatureEnabled.mockImplementation((key: FeatureSwitchKey) => {
-      return key !== FeatureSwitchKey.Goal;
-    });
+    goalSwitchEnabled = false;
 
     const response = await POST(
       createTestRequest(URL, {

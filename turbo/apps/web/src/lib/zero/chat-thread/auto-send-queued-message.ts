@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, like, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -26,6 +26,10 @@ import {
 import { resolveAttachFileUrls } from "./chat-thread-service";
 
 const log = logger("auto-send-queued");
+
+function containsGoalDoneSentinel(content: string | null): boolean {
+  return content !== null && content.includes(GOAL_DONE_SENTINEL);
+}
 
 type QueuedUserMessage = {
   id: string;
@@ -154,18 +158,23 @@ async function maybeInsertGoalContinuation(runId: string): Promise<void> {
     return;
   }
 
-  const [sentinelHit] = await globalThis.services.db
-    .select({ id: chatMessages.id })
+  // Sentinel scope: only the *last* assistant message of the run, matched in
+  // application code (not SQL `LIKE`) so future tightening (e.g. last line
+  // only, end-of-message anchor) lives in one place. Casual mentions of the
+  // literal in earlier turns of the same run no longer false-positive.
+  const [lastAssistant] = await globalThis.services.db
+    .select({ content: chatMessages.content })
     .from(chatMessages)
     .where(
       and(
         eq(chatMessages.runId, runId),
         eq(chatMessages.role, "assistant"),
-        like(chatMessages.content, `%${GOAL_DONE_SENTINEL}%`),
+        isNotNull(chatMessages.content),
       ),
     )
+    .orderBy(desc(chatMessages.sequenceNumber), desc(chatMessages.createdAt))
     .limit(1);
-  if (sentinelHit) {
+  if (lastAssistant && containsGoalDoneSentinel(lastAssistant.content)) {
     log.info("Goal chain stopped by sentinel", {
       runId,
       goalOriginMessageId: trigger.goalOriginMessageId,
@@ -173,15 +182,23 @@ async function maybeInsertGoalContinuation(runId: string): Promise<void> {
     return;
   }
 
-  await globalThis.services.db.insert(chatMessages).values({
-    chatThreadId: trigger.threadId,
-    role: "user",
-    content: trigger.content,
-    runId: null,
-    attachFiles: trigger.attachFiles,
-    goalRemainingTurns: trigger.goalRemainingTurns - 1,
-    goalOriginMessageId: trigger.goalOriginMessageId,
-  });
+  // Idempotency: `goalContinuationOfRunId` is unique-indexed. If this callback
+  // fires twice for the same run (at-least-once delivery / retry), the second
+  // insert hits the unique constraint and `onConflictDoNothing` makes it a
+  // no-op — no duplicate continuation rows.
+  await globalThis.services.db
+    .insert(chatMessages)
+    .values({
+      chatThreadId: trigger.threadId,
+      role: "user",
+      content: trigger.content,
+      runId: null,
+      attachFiles: trigger.attachFiles,
+      goalRemainingTurns: trigger.goalRemainingTurns - 1,
+      goalOriginMessageId: trigger.goalOriginMessageId,
+      goalContinuationOfRunId: runId,
+    })
+    .onConflictDoNothing({ target: chatMessages.goalContinuationOfRunId });
 }
 
 function groupIncompleteRoundsByRunId(

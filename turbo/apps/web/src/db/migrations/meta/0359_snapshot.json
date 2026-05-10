@@ -1,5 +1,5 @@
 {
-  "id": "e1213d79-1444-42e9-bafc-7b15b0cc4f98",
+  "id": "8f8eaedf-679f-4eb5-aec5-816d4e286b18",
   "prevId": "8f5df126-698b-4945-9890-7da27acfd5dc",
   "version": "7",
   "dialect": "postgresql",
@@ -1251,6 +1251,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "goal_continuation_of_run_id": {
+          "name": "goal_continuation_of_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "archived_at": {
           "name": "archived_at",
           "type": "timestamp",
@@ -1367,6 +1373,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "chat_messages_goal_continuation_run_unique": {
+          "name": "chat_messages_goal_continuation_run_unique",
+          "columns": [
+            {
+              "expression": "goal_continuation_of_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -1428,6 +1449,19 @@
           "tableTo": "chat_messages",
           "columnsFrom": [
             "goal_origin_message_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "chat_messages_goal_continuation_of_run_id_agent_runs_id_fk": {
+          "name": "chat_messages_goal_continuation_of_run_id_agent_runs_id_fk",
+          "tableFrom": "chat_messages",
+          "tableTo": "agent_runs",
+          "columnsFrom": [
+            "goal_continuation_of_run_id"
           ],
           "columnsTo": [
             "id"

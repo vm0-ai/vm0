@@ -614,9 +614,10 @@ export async function addTestRunToThread(
   runId: string,
   _userId: string,
   prompt?: string,
-): Promise<void> {
+  goal?: { remainingTurns: number; originMessageId?: string },
+): Promise<{ messageId: string }> {
   initServices();
-  await globalThis.services.db.transaction(async (tx) => {
+  return globalThis.services.db.transaction(async (tx) => {
     const [message] = await tx
       .insert(chatMessages)
       .values({
@@ -624,15 +625,28 @@ export async function addTestRunToThread(
         role: "user",
         content: prompt ?? "test prompt",
         runId,
+        goalRemainingTurns: goal?.remainingTurns ?? null,
+        goalOriginMessageId: goal?.originMessageId ?? null,
       })
       .returning({ id: chatMessages.id });
     if (!message) {
       throw new Error("Failed to seed chat message");
     }
+    // When the seed row is itself the origin of a goal chain, set the
+    // self-FK in a follow-up UPDATE — Postgres can't satisfy `id` and
+    // `goal_origin_message_id` referencing the same generated UUID in a
+    // single INSERT.
+    if (goal && !goal.originMessageId) {
+      await tx
+        .update(chatMessages)
+        .set({ goalOriginMessageId: message.id })
+        .where(eq(chatMessages.id, message.id));
+    }
     await tx
       .update(zeroRuns)
       .set({ chatThreadId: threadId })
       .where(eq(zeroRuns.id, runId));
+    return { messageId: message.id };
   });
 }
 

@@ -83,6 +83,20 @@ export const chatMessages = pgTable(
       },
       { onDelete: "set null" },
     ),
+    /**
+     * Idempotency key for goal continuation rows. Set to the id of the
+     * just-completed run that the continuation was inserted in response to.
+     * `chat_messages_goal_continuation_run_unique` ensures at-least-once
+     * callback delivery cannot produce two continuation rows for the same
+     * source run — the second insert hits the constraint and `onConflictDoNothing`
+     * turns it into a no-op.
+     */
+    goalContinuationOfRunId: uuid("goal_continuation_of_run_id").references(
+      () => {
+        return agentRuns.id;
+      },
+      { onDelete: "set null" },
+    ),
     archivedAt: timestamp("archived_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
@@ -104,6 +118,9 @@ export const chatMessages = pgTable(
         table.sequenceNumber,
       ),
       index("idx_chat_messages_goal_origin").on(table.goalOriginMessageId),
+      uniqueIndex("chat_messages_goal_continuation_run_unique").on(
+        table.goalContinuationOfRunId,
+      ),
     ];
   },
 );

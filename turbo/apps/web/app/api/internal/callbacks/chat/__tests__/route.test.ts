@@ -73,8 +73,15 @@ describe("POST /api/internal/callbacks/chat", () => {
       status?: "completed" | "failed" | "running";
       result?: Record<string, unknown>;
       createdAt?: Date;
+      goal?: { remainingTurns: number; prompt?: string };
     } = {},
-  ) {
+  ): Promise<{
+    threadId: string;
+    runId: string;
+    secret: string;
+    sessionId: string;
+    originMessageId: string;
+  }> {
     const { status = "completed" } = options;
 
     // Create a chat thread via the route handler
@@ -101,8 +108,18 @@ describe("POST /api/internal/callbacks/chat", () => {
     // Create an agent session (used for session continuity via run result)
     const session = await createTestAgentSession(user.userId, agentId);
 
-    // Link run to thread by inserting user message and setting zeroRuns.chatThreadId
-    await addTestRunToThread(threadId, runId, user.userId);
+    // Link run to thread by inserting user message and setting zeroRuns.chatThreadId.
+    // Optionally tag the row as a goal-mode origin so the callback's goal
+    // continuation logic exercises against a goal-driven run.
+    const { messageId } = await addTestRunToThread(
+      threadId,
+      runId,
+      user.userId,
+      options.goal?.prompt,
+      options.goal
+        ? { remainingTurns: options.goal.remainingTurns }
+        : undefined,
+    );
 
     // Create a callback record
     const { secret } = await createTestCallback({
@@ -111,7 +128,13 @@ describe("POST /api/internal/callbacks/chat", () => {
       payload: { threadId, agentId },
     });
 
-    return { threadId, runId, secret, sessionId: session.id };
+    return {
+      threadId,
+      runId,
+      secret,
+      sessionId: session.id,
+      originMessageId: messageId,
+    };
   }
 
   async function setupRunInThread(options: {
@@ -1964,6 +1987,178 @@ describe("POST /api/internal/callbacks/chat", () => {
         `chatThreadRunCreated:${threadId}`,
         null,
       );
+    });
+  });
+
+  /**
+   * Goal mode: when a successful run was triggered by a goal-driven user
+   * message (`goal_remaining_turns IS NOT NULL`), the callback inserts a
+   * verbatim continuation row (`run_id = NULL`, budget − 1) keyed by
+   * `goal_continuation_of_run_id` so duplicate callbacks are idempotent.
+   * These tests cover the five stop conditions plus the idempotency guard.
+   */
+  describe("Goal Mode Continuation", () => {
+    beforeEach(async () => {
+      await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
+    });
+
+    it("inserts a continuation row when a goal-driven run completes successfully", async () => {
+      const { threadId, runId, secret, originMessageId } =
+        await setupRunAndThread({
+          goal: {
+            remainingTurns: 5,
+            prompt: "Run a long-horizon refactor",
+          },
+        });
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          { runId, status: "completed", payload: { threadId, agentId } },
+          secret,
+        ),
+      );
+      expect(response.status).toBe(200);
+
+      const messages = await getTestChatMessagesByThread(threadId);
+      const continuation = messages.find((m) => {
+        return (
+          m.role === "user" && m.runId === null && m.goalRemainingTurns === 4
+        );
+      });
+      expect(continuation).toBeDefined();
+      expect(continuation!.content).toBe("Run a long-horizon refactor");
+      expect(continuation!.goalOriginMessageId).toBe(originMessageId);
+    });
+
+    it("does not insert a continuation when the last assistant message contains [GOAL_DONE]", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread({
+        goal: { remainingTurns: 5 },
+      });
+      await insertTestAssistantEventMessages(runId, threadId, user.userId, [
+        { sequenceNumber: 0, content: "Done. [GOAL_DONE]" },
+      ]);
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          { runId, status: "completed", payload: { threadId, agentId } },
+          secret,
+        ),
+      );
+      expect(response.status).toBe(200);
+
+      const messages = await getTestChatMessagesByThread(threadId);
+      const continuations = messages.filter((m) => {
+        return m.role === "user" && m.goalRemainingTurns === 4;
+      });
+      expect(continuations).toHaveLength(0);
+    });
+
+    it("does not insert a continuation when the run failed", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread({
+        goal: { remainingTurns: 5 },
+      });
+      await markRunFailedForCallback(runId, "Something broke");
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "failed",
+            error: "Something broke",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+      expect(response.status).toBe(200);
+
+      const messages = await getTestChatMessagesByThread(threadId);
+      const continuations = messages.filter((m) => {
+        return m.role === "user" && m.goalRemainingTurns !== null;
+      });
+      // Only the original goal-driven row, no continuation.
+      expect(continuations).toHaveLength(1);
+    });
+
+    it("stops the chain when goal_remaining_turns is 1 (last turn)", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread({
+        goal: { remainingTurns: 1 },
+      });
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          { runId, status: "completed", payload: { threadId, agentId } },
+          secret,
+        ),
+      );
+      expect(response.status).toBe(200);
+
+      const messages = await getTestChatMessagesByThread(threadId);
+      const continuation = messages.find((m) => {
+        return m.role === "user" && m.runId === null;
+      });
+      expect(continuation).toBeUndefined();
+    });
+
+    it("does not insert a continuation when an interrupt row exists for the run", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread({
+        goal: { remainingTurns: 5 },
+      });
+      await insertTestChatMessage({
+        chatThreadId: threadId,
+        role: "user",
+        content: null,
+        runId: null,
+        interruptsRunId: runId,
+      });
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          { runId, status: "completed", payload: { threadId, agentId } },
+          secret,
+        ),
+      );
+      expect(response.status).toBe(200);
+
+      const messages = await getTestChatMessagesByThread(threadId);
+      const continuations = messages.filter((m) => {
+        return m.role === "user" && m.goalRemainingTurns === 4;
+      });
+      expect(continuations).toHaveLength(0);
+    });
+
+    it("is idempotent across duplicate callbacks (no double-insert)", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread({
+        goal: { remainingTurns: 5 },
+      });
+
+      // Fire the same terminal callback twice (simulates at-least-once
+      // delivery / retry). The unique index on
+      // `chat_messages_goal_continuation_run_unique` plus
+      // `onConflictDoNothing` collapses both into a single continuation row.
+      const buildRequest = () => {
+        return POST(
+          createSignedCallbackRequest(
+            "http://localhost/api/internal/callbacks/chat",
+            { runId, status: "completed", payload: { threadId, agentId } },
+            secret,
+          ),
+        );
+      };
+      const [r1, r2] = await Promise.all([buildRequest(), buildRequest()]);
+      expect(r1.status).toBe(200);
+      expect(r2.status).toBe(200);
+
+      const messages = await getTestChatMessagesByThread(threadId);
+      const continuations = messages.filter((m) => {
+        return m.role === "user" && m.goalRemainingTurns === 4;
+      });
+      expect(continuations).toHaveLength(1);
     });
   });
 });
