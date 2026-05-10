@@ -6,7 +6,10 @@ import {
   zeroAgentsMainContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { connectorTypeSchema } from "@vm0/connectors/connectors";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
+import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -14,6 +17,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { notFound } from "../../lib/error";
+import { recomposeAgentIfStale$ } from "../services/agent-compose.service";
 import {
   zeroAgentDetail,
   zeroAgentEnabledConnectorTypes,
@@ -175,6 +179,101 @@ const updateAgentCustomConnectorsInner$ = command(
   },
 );
 
+const updateAgentUserConnectorsBody$ = bodyResultOf(
+  zeroUserConnectorsContract.update,
+);
+
+const updateAgentUserConnectorsInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const params = get(pathParamsOf(zeroUserConnectorsContract.update));
+    const body = await get(updateAgentUserConnectorsBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+
+    const writeDb = set(writeDb$);
+    const [agent] = await writeDb
+      .select({
+        id: agentComposes.id,
+        name: agentComposes.name,
+        headVersionId: agentComposes.headVersionId,
+      })
+      .from(agentComposes)
+      .where(
+        and(
+          eq(agentComposes.orgId, auth.orgId),
+          eq(agentComposes.id, params.id),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!agent) {
+      return agentNotFound(params.id);
+    }
+
+    const uniqueTypes = Array.from(new Set(body.data.enabledTypes));
+    const invalidTypes = uniqueTypes.filter((t) => {
+      return !connectorTypeSchema.safeParse(t).success;
+    });
+    if (invalidTypes.length > 0) {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: `Invalid connector types: ${invalidTypes.join(", ")}`,
+            code: "VALIDATION_ERROR",
+          },
+        },
+      };
+    }
+
+    await writeDb.transaction(async (tx) => {
+      await tx
+        .delete(userConnectors)
+        .where(
+          and(
+            eq(userConnectors.orgId, auth.orgId),
+            eq(userConnectors.userId, auth.userId),
+            eq(userConnectors.agentId, params.id),
+          ),
+        );
+
+      if (uniqueTypes.length > 0) {
+        await tx.insert(userConnectors).values(
+          uniqueTypes.map((connectorType) => {
+            return {
+              orgId: auth.orgId,
+              userId: auth.userId,
+              agentId: params.id,
+              connectorType,
+            };
+          }),
+        );
+      }
+    });
+    signal.throwIfAborted();
+
+    await set(
+      recomposeAgentIfStale$,
+      {
+        userId: auth.userId,
+        agentComposeId: agent.id,
+        agentName: agent.name,
+        currentHeadVersionId: agent.headVersionId,
+      },
+      signal,
+    );
+
+    return {
+      status: 200 as const,
+      body: { enabledTypes: uniqueTypes },
+    };
+  },
+);
+
 const agentReadAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
@@ -201,5 +300,9 @@ export const zeroAgentsRoutes: readonly RouteEntry[] = [
   {
     route: zeroAgentCustomConnectorsContract.update,
     handler: authRoute(agentReadAuth, updateAgentCustomConnectorsInner$),
+  },
+  {
+    route: zeroUserConnectorsContract.update,
+    handler: authRoute(agentReadAuth, updateAgentUserConnectorsInner$),
   },
 ];
