@@ -3204,6 +3204,95 @@ mod tests {
     }
 
     #[test]
+    fn write_files_start_rejects_malformed_payloads() {
+        let err =
+            decode_write_files_start(&[0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("write_files_start unknown flags")
+        ));
+
+        let mut payload = encode_write_files_start(false, 1, 0).unwrap();
+        payload.push(0);
+        let err = decode_write_files_start(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("write_files_start trailing bytes")
+        ));
+
+        let mut payload = Vec::new();
+        payload.push(0);
+        payload.extend_from_slice(&((MAX_WRITE_FILES_COUNT as u32) + 1).to_be_bytes());
+        payload.extend_from_slice(&0u64.to_be_bytes());
+        let err = decode_write_files_start(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::PayloadTooLarge("write_files file_count", _)
+        ));
+    }
+
+    #[test]
+    fn write_files_abort_rejects_malformed_payloads() {
+        let err = decode_write_files_abort(&[0, 4, b'o']).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("write_files_abort error truncated")
+        ));
+
+        let err = decode_write_files_abort(&[0, 1, 0xFF]).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("invalid UTF-8 in write_files abort")
+        ));
+
+        let mut payload = encode_write_files_abort("cancelled");
+        payload.push(0);
+        let err = decode_write_files_abort(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("write_files_abort trailing bytes")
+        ));
+    }
+
+    #[test]
+    fn write_files_result_rejects_malformed_payloads() {
+        let err = decode_write_files_result(&[0, 0, 0, 1, 0]).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("write_files_result too short")
+        ));
+
+        let err = decode_write_files_result(&[
+            0, 0, 0, 1, // result_count
+            0, 0, 0, 0, // file_index
+            0, // success
+            0, 1, // err_len
+            0xFF,
+        ])
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("invalid UTF-8 in write_files result")
+        ));
+
+        let mut payload = encode_write_files_result(&[]).unwrap();
+        payload.push(0);
+        let err = decode_write_files_result(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("write_files_result trailing bytes")
+        ));
+
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&((MAX_WRITE_FILES_COUNT as u32) + 1).to_be_bytes());
+        let err = decode_write_files_result(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::PayloadTooLarge("write_files result_count", _)
+        ));
+    }
+
+    #[test]
     fn write_files_rejects_oversized_chunk() {
         let chunk = vec![0; MAX_WRITE_FILES_CHUNK_BYTES + 1];
         let err = encode_write_files_chunk(0, &chunk).unwrap_err();
