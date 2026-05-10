@@ -1,8 +1,8 @@
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-/// Buffer size for reading stdout chunks from a spawned process.
-const STDOUT_CHUNK_SIZE: usize = 8 * 1024;
+/// Default buffer size for reading process output from stdout/stderr pipes.
+const DEFAULT_DRAIN_READ_BYTES: usize = 64 * 1024;
 const DRAIN_POLL_TIMEOUT_MS: libc::c_int = 100;
 
 #[derive(Clone, Copy)]
@@ -36,7 +36,7 @@ pub(crate) fn drain_until_eof_or_cancelled<R>(
     R: std::os::unix::io::AsRawFd,
 {
     let raw_fd = pipe.as_raw_fd();
-    let mut chunk = [0u8; STDOUT_CHUNK_SIZE];
+    let mut chunk = [0u8; DEFAULT_DRAIN_READ_BYTES];
     loop {
         if cancel.load(Ordering::Acquire) {
             break;
@@ -121,7 +121,8 @@ pub(crate) fn drain_bounded_cancellable<R>(
 where
     R: std::os::unix::io::AsRawFd,
 {
-    let mut output = Vec::with_capacity(final_limit_bytes.unwrap_or(0).min(STDOUT_CHUNK_SIZE));
+    let mut output =
+        Vec::with_capacity(final_limit_bytes.unwrap_or(0).min(DEFAULT_DRAIN_READ_BYTES));
     let mut truncated = false;
     let mut stream_emitted = 0usize;
     let mut stream_truncated = false;
@@ -177,12 +178,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs::File;
-    use std::io::Write;
+    use std::fs::{File, OpenOptions};
+    use std::io::{Seek, SeekFrom, Write};
     use std::os::unix::io::FromRawFd;
+    use std::sync::atomic::AtomicUsize;
     use std::sync::{Arc, mpsc};
     use std::thread;
     use std::time::Duration;
+
+    static TEMP_INPUT_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
     fn pipe_pair() -> (File, File) {
         let mut fds = [0; 2];
@@ -192,6 +196,22 @@ mod tests {
 
         // SAFETY: pipe() initialized both fds and ownership is transferred to File.
         unsafe { (File::from_raw_fd(fds[0]), File::from_raw_fd(fds[1])) }
+    }
+
+    fn file_with_contents(contents: &[u8]) -> File {
+        let suffix = TEMP_INPUT_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path =
+            std::env::temp_dir().join(format!("vsock-drain-input-{}-{suffix}", std::process::id()));
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .unwrap();
+        file.write_all(contents).unwrap();
+        file.seek(SeekFrom::Start(0)).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        file
     }
 
     #[test]
@@ -298,6 +318,66 @@ mod tests {
         assert!(result.output.is_empty());
         assert!(!result.truncated);
         assert_eq!(chunks, vec![(b"abcdef".to_vec(), false)]);
+    }
+
+    #[test]
+    fn bounded_drain_stream_uses_default_read_size_for_large_chunks() {
+        let input = vec![b'x'; DEFAULT_DRAIN_READ_BYTES * 3];
+        let reader = file_with_contents(&input);
+
+        let cancel = AtomicBool::new(false);
+        let mut chunks = Vec::new();
+        let result = drain_bounded_cancellable(
+            reader,
+            &cancel,
+            None,
+            Some(BoundedStreamConfig {
+                chunk_limit_bytes: DEFAULT_DRAIN_READ_BYTES,
+                stream_limit_bytes: input.len(),
+            }),
+            |chunk, truncated| {
+                chunks.push((chunk.len(), truncated));
+                true
+            },
+        );
+
+        assert!(result.output.is_empty());
+        assert!(!result.truncated);
+        assert_eq!(
+            chunks,
+            vec![
+                (DEFAULT_DRAIN_READ_BYTES, false),
+                (DEFAULT_DRAIN_READ_BYTES, false),
+                (DEFAULT_DRAIN_READ_BYTES, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn bounded_drain_large_read_still_marks_stream_truncation() {
+        let input = vec![b'y'; DEFAULT_DRAIN_READ_BYTES + 123];
+        let stream_limit = DEFAULT_DRAIN_READ_BYTES / 2;
+        let reader = file_with_contents(&input);
+
+        let cancel = AtomicBool::new(false);
+        let mut chunks = Vec::new();
+        let result = drain_bounded_cancellable(
+            reader,
+            &cancel,
+            Some(input.len()),
+            Some(BoundedStreamConfig {
+                chunk_limit_bytes: DEFAULT_DRAIN_READ_BYTES,
+                stream_limit_bytes: stream_limit,
+            }),
+            |chunk, truncated| {
+                chunks.push((chunk.len(), truncated));
+                true
+            },
+        );
+
+        assert_eq!(result.output, input);
+        assert!(!result.truncated);
+        assert_eq!(chunks, vec![(stream_limit, false), (0, true)]);
     }
 
     #[test]
