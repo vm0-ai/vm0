@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.29.0](https://github.com/vm0-ai/vm0/compare/api-v1.28.0...api-v1.29.0) (2026-05-10)
+
+
+### Features
+
+* **api:** migrate variables delete [name] to api backend ([#12549](https://github.com/vm0-ai/vm0/issues/12549)) ([808c8ae](https://github.com/vm0-ai/vm0/commit/808c8aece8b067b69cf27e0ab7cdc635decf0ec5))
+* **api:** port secrets delete to api backend ([#12542](https://github.com/vm0-ai/vm0/issues/12542)) ([c2738af](https://github.com/vm0-ai/vm0/commit/c2738af9df9a12783a5143aaa12b976c09c3647b))
+
+
+### Refactoring
+
+* **api:** migrate composes delete to api backend (wave 5) ([#12548](https://github.com/vm0-ai/vm0/issues/12548)) ([f2e9359](https://github.com/vm0-ai/vm0/commit/f2e93593f8091c49cdc77271afac0d62ad7c7c93)), closes [#12544](https://github.com/vm0-ai/vm0/issues/12544)
+* **api:** migrate feature-switches post + delete to api backend ([#12546](https://github.com/vm0-ai/vm0/issues/12546)) ([8107427](https://github.com/vm0-ai/vm0/commit/810742718741213be6b0bd99906796771762d446))
+
+## [1.28.0](https://github.com/vm0-ai/vm0/compare/api-v1.27.1...api-v1.28.0) (2026-05-10)
+
+
+### Features
+
+* **api:** migrate custom-connectors put [id]/secret to api backend ([#12534](https://github.com/vm0-ai/vm0/issues/12534)) ([34e1242](https://github.com/vm0-ai/vm0/commit/34e12422714c98cfac944d061107bba0bca67218))
+* **api:** port custom-connectors delete to api backend ([#12535](https://github.com/vm0-ai/vm0/issues/12535)) ([eee2bdc](https://github.com/vm0-ai/vm0/commit/eee2bdc7e626e934dfcd5c71f8354b13891f7b53))
+
+
+### Refactoring
+
+* **api:** migrate custom-connectors patch [id] to api backend ([#12533](https://github.com/vm0-ai/vm0/issues/12533)) ([374097d](https://github.com/vm0-ai/vm0/commit/374097d077c280096a3850d2cceef10f6d4930ba))
+
 ## [1.27.1](https://github.com/vm0-ai/vm0/compare/api-v1.27.0...api-v1.27.1) (2026-05-10)
 
 

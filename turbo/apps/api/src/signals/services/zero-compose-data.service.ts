@@ -1,4 +1,4 @@
-import { computed, type Computed } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import type {
   ComposeListItem,
   ComposeResponse,
@@ -7,10 +7,16 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { storages } from "@vm0/db/schema/storage";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { and, desc, eq } from "drizzle-orm";
+import { getInstructionsStorageName } from "@vm0/core/storage-names";
+import { and, desc, eq, inArray } from "drizzle-orm";
 
-import { db$ } from "../external/db";
+import { db$, writeDb$ } from "../external/db";
+import { deleteS3Objects, listS3Objects } from "../external/s3";
+import { env } from "../../lib/env";
+import { conflict, notFound } from "../../lib/error";
 
 type ComposeContent = ComposeResponse["content"];
 
@@ -158,3 +164,125 @@ export function zeroComposeList(
     };
   });
 }
+
+type NotFoundResponse = ReturnType<typeof notFound>;
+type ConflictResponse = ReturnType<typeof conflict>;
+
+const ACTIVE_RUN_STATUSES = ["pending", "running"] as const;
+
+export const deleteCompose$ = command(
+  async (
+    { get, set },
+    args: { readonly composeId: string; readonly userId: string },
+    signal: AbortSignal,
+  ): Promise<NotFoundResponse | ConflictResponse | undefined> => {
+    const writeDb = set(writeDb$);
+
+    const result = await writeDb.transaction(async (tx) => {
+      const [compose] = await tx
+        .select({
+          id: agentComposes.id,
+          name: agentComposes.name,
+          orgId: agentComposes.orgId,
+        })
+        .from(agentComposes)
+        .where(
+          and(
+            eq(agentComposes.id, args.composeId),
+            eq(agentComposes.userId, args.userId),
+          ),
+        )
+        .limit(1);
+
+      if (!compose) {
+        return { kind: "not-found" as const };
+      }
+
+      const [activeRun] = await tx
+        .select({ id: agentRuns.id })
+        .from(agentRuns)
+        .innerJoin(
+          agentComposeVersions,
+          eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+        )
+        .where(
+          and(
+            eq(agentComposeVersions.composeId, args.composeId),
+            inArray(agentRuns.status, [...ACTIVE_RUN_STATUSES]),
+          ),
+        )
+        .limit(1);
+
+      if (activeRun) {
+        return { kind: "conflict" as const };
+      }
+
+      const versionRows = await tx
+        .select({ id: agentComposeVersions.id })
+        .from(agentComposeVersions)
+        .where(eq(agentComposeVersions.composeId, args.composeId));
+
+      if (versionRows.length > 0) {
+        await tx.delete(agentRuns).where(
+          inArray(
+            agentRuns.agentComposeVersionId,
+            versionRows.map((row) => {
+              return row.id;
+            }),
+          ),
+        );
+      }
+
+      await tx
+        .delete(agentComposes)
+        .where(eq(agentComposes.id, args.composeId));
+
+      const storageName = getInstructionsStorageName(compose.name);
+      const [storage] = await tx
+        .select({ id: storages.id, s3Prefix: storages.s3Prefix })
+        .from(storages)
+        .where(
+          and(
+            eq(storages.orgId, compose.orgId),
+            eq(storages.name, storageName),
+            eq(storages.type, "volume"),
+          ),
+        )
+        .limit(1);
+
+      if (storage) {
+        await tx.delete(storages).where(eq(storages.id, storage.id));
+      }
+
+      return {
+        kind: "deleted" as const,
+        s3Prefix: storage?.s3Prefix ?? null,
+      };
+    });
+    signal.throwIfAborted();
+
+    if (result.kind === "not-found") {
+      return notFound("Agent not found");
+    }
+    if (result.kind === "conflict") {
+      return conflict("Cannot delete agent: agent is currently running");
+    }
+
+    if (result.s3Prefix) {
+      const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+      const objects = await get(listS3Objects(bucket, result.s3Prefix));
+      signal.throwIfAborted();
+      await get(
+        deleteS3Objects(
+          bucket,
+          objects.map((obj) => {
+            return obj.key;
+          }),
+        ),
+      );
+      signal.throwIfAborted();
+    }
+
+    return undefined;
+  },
+);

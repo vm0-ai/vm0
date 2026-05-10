@@ -92,3 +92,88 @@ export const deleteOrgModelProviders$ = command(
     signal.throwIfAborted();
   },
 );
+
+export interface UserModelProviderFixture {
+  readonly orgId: string;
+  readonly userId: string;
+}
+
+interface SeedUserModelProviderValues {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly type: string;
+  readonly isDefault?: boolean;
+  readonly selectedModel?: string | null;
+  readonly secretName?: string | null;
+  readonly authMethod?: string | null;
+}
+
+export const seedUserModelProvider$ = command(
+  async (
+    { set },
+    values: SeedUserModelProviderValues,
+    signal: AbortSignal,
+  ): Promise<{ readonly id: string }> => {
+    const writeDb = set(writeDb$);
+
+    let secretId: string | null = null;
+    if (values.secretName) {
+      const [secret] = await writeDb
+        .insert(secrets)
+        .values({
+          name: values.secretName,
+          encryptedValue: encryptSecretForTests("test-secret-value"),
+          type: "model-provider",
+          userId: values.userId,
+          orgId: values.orgId,
+        })
+        .returning({ id: secrets.id });
+      signal.throwIfAborted();
+      secretId = secret?.id ?? null;
+    }
+
+    const [row] = await writeDb
+      .insert(modelProviders)
+      .values({
+        type: values.type,
+        secretId,
+        authMethod: values.authMethod ?? null,
+        isDefault: values.isDefault ?? false,
+        selectedModel: values.selectedModel ?? null,
+        userId: values.userId,
+        orgId: values.orgId,
+      })
+      .returning({ id: modelProviders.id });
+    signal.throwIfAborted();
+
+    return { id: row?.id ?? randomUUID() };
+  },
+);
+
+export const deleteUserModelProviders$ = command(
+  async (
+    { set },
+    fixture: UserModelProviderFixture,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const writeDb = set(writeDb$);
+    await writeDb
+      .delete(modelProviders)
+      .where(
+        and(
+          eq(modelProviders.orgId, fixture.orgId),
+          eq(modelProviders.userId, fixture.userId),
+        ),
+      );
+    signal.throwIfAborted();
+    await writeDb
+      .delete(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, fixture.orgId),
+          eq(secrets.userId, fixture.userId),
+        ),
+      );
+    signal.throwIfAborted();
+  },
+);

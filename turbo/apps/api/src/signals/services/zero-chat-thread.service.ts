@@ -1,4 +1,4 @@
-import { computed, type Computed } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import {
   type ChatSearchMessage,
   type ChatSearchResult,
@@ -40,7 +40,7 @@ import {
 import { z } from "zod";
 
 import { env } from "../../lib/env";
-import { db$ } from "../external/db";
+import { db$, writeDb$ } from "../external/db";
 import { listS3Objects } from "../external/s3";
 
 const REPORT_ERROR_STREAK_THRESHOLD = 2;
@@ -1011,3 +1011,36 @@ export function zeroChatThreadMessagesPage(args: {
     };
   });
 }
+
+export const createChatThread$ = command(
+  async (
+    { set },
+    args: {
+      readonly userId: string;
+      readonly agentComposeId: string;
+      readonly title: string | undefined;
+      readonly clientThreadId: string | undefined;
+    },
+    signal: AbortSignal,
+  ): Promise<{ id: string; createdAt: Date }> => {
+    const writeDb = set(writeDb$);
+    const [thread] = await writeDb
+      .insert(chatThreads)
+      .values({
+        ...(args.clientThreadId !== undefined
+          ? { id: args.clientThreadId }
+          : {}),
+        userId: args.userId,
+        agentComposeId: args.agentComposeId,
+        title: args.title ?? null,
+      })
+      .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
+    signal.throwIfAborted();
+
+    if (!thread) {
+      throw new Error("Failed to create chat thread");
+    }
+
+    return thread;
+  },
+);

@@ -32,6 +32,7 @@ import { zeroQueuePositionRoutes } from "./routes/zero-queue-position";
 import { zeroRunDetailRoutes } from "./routes/zero-run-detail";
 import { zeroRunsRoutes } from "./routes/zero-runs";
 import { zeroSchedulesRoutes } from "./routes/zero-schedules";
+import { zeroMeModelProvidersDeleteRoutes } from "./routes/zero-me-model-providers-delete";
 import { zeroSecretsRoutes } from "./routes/zero-secrets";
 import { zeroSkillsRoutes } from "./routes/zero-skills";
 import { zeroIntegrationsSlackRoutes } from "./routes/zero-integrations-slack";
@@ -77,6 +78,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroMemberCreditCapRoutes,
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
+  ...zeroMeModelProvidersDeleteRoutes,
   ...zeroVoiceChatRoutes,
   ...zeroVoiceIoQuotaRoutes,
   ...zeroWebDownloadRoutes,

@@ -1,5 +1,6 @@
 import { computed, type Computed } from "ccstate";
 import {
+  DeleteObjectsCommand,
   GetObjectCommand,
   ListObjectsV2Command,
   S3Client,
@@ -70,6 +71,28 @@ export function listS3Objects(
     } while (continuationToken);
 
     return objects;
+  });
+}
+
+export function deleteS3Objects(
+  bucket: string,
+  keys: readonly string[],
+): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    if (keys.length === 0) {
+      return;
+    }
+    const client = get(s3Client$);
+    await client.send(
+      new DeleteObjectsCommand({
+        Bucket: bucket,
+        Delete: {
+          Objects: keys.map((Key) => {
+            return { Key };
+          }),
+        },
+      }),
+    );
   });
 }
 

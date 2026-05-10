@@ -163,6 +163,14 @@ vi.mock("@aws-sdk/client-s3", () => {
     }
   }
 
+  class DeleteObjectsCommand {
+    readonly input: unknown;
+
+    constructor(input: unknown) {
+      this.input = input;
+    }
+  }
+
   class S3Client {
     send(command: unknown): Promise<unknown> {
       return apiTestMocks.s3.send(command);
@@ -170,6 +178,7 @@ vi.mock("@aws-sdk/client-s3", () => {
   }
 
   return {
+    DeleteObjectsCommand,
     GetObjectCommand,
     ListObjectsV2Command,
     S3Client,
