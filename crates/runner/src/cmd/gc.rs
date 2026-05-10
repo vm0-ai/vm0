@@ -1657,7 +1657,7 @@ async fn gc_storage_staging_dir(
     dry_run: bool,
 ) -> u64 {
     let lock_path = home.storage_lock_for_cache_key(name_hash, version_hash);
-    let _lock = match probe_lock(&lock_path) {
+    let lock = match probe_lock(&lock_path) {
         LockProbe::Free(l) => l,
         LockProbe::Held => {
             info!("storages/{name_hash}/{version_hash}.tmp: in use, skipping");
@@ -1694,9 +1694,40 @@ async fn gc_storage_staging_dir(
             "removed stale storage staging storages/{name_hash}/{version_hash}.tmp ({})",
             human_bytes(size)
         );
+        remove_storage_lock_after_stale_staging_eviction(
+            &lock_path,
+            &lock,
+            path,
+            name_hash,
+            version_hash,
+        )
+        .await;
     }
 
     size
+}
+
+async fn remove_storage_lock_after_stale_staging_eviction(
+    lock_path: &Path,
+    lock: &Flock<std::fs::File>,
+    staging_path: &Path,
+    name_hash: &str,
+    version_hash: &str,
+) {
+    let final_path = staging_path.with_file_name(version_hash);
+    match tokio::fs::metadata(&final_path).await {
+        Ok(_) => return,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            warn!(
+                "storages/{name_hash}/{version_hash}.tmp: failed to stat final cache dir {} before lock cleanup: {e}",
+                final_path.display()
+            );
+            return;
+        }
+    }
+
+    remove_storage_lock_after_eviction(lock_path, lock, name_hash, version_hash).await;
 }
 
 fn human_bytes(bytes: u64) -> String {
@@ -3940,6 +3971,56 @@ mod tests {
         assert_eq!(freed, tmp_size, "stale .tmp bytes must be reported");
         assert!(real.exists(), "real entry must survive");
         assert!(!tmp.exists(), "stale .tmp staging dir must be removed");
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_removes_orphan_lock_after_stale_tmp_without_final_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let t_old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let tmp = make_storage_staging_entry(&home, "foo", "v1", &[0u8; 128], t_old);
+        let lock_path = home.storage_lock("foo", "v1");
+        drop(lock::open_lock_file(&lock_path).unwrap());
+        assert!(lock_path.exists(), "test setup must create the lock file");
+
+        let freed = gc_storage_cache_with_cap(&home, 1 << 20, false)
+            .await
+            .unwrap();
+
+        assert!(freed > 0, "stale .tmp bytes must be reported");
+        assert!(!tmp.exists(), "stale .tmp staging dir must be removed");
+        assert!(
+            !lock_path.exists(),
+            "orphan lock should be removed when no final cache entry exists"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_keeps_lock_after_stale_tmp_when_final_entry_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let t_old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let real = make_storage_entry(&home, "foo", "v1", &[0u8; 128], t_old);
+        let tmp = make_storage_staging_entry(&home, "foo", "v1", &[0u8; 128], t_old);
+        let lock_path = home.storage_lock("foo", "v1");
+        drop(lock::open_lock_file(&lock_path).unwrap());
+        assert!(lock_path.exists(), "test setup must create the lock file");
+
+        let freed = gc_storage_cache_with_cap(&home, 1 << 20, false)
+            .await
+            .unwrap();
+
+        assert!(freed > 0, "stale .tmp bytes must be reported");
+        assert!(real.exists(), "real entry must survive");
+        assert!(!tmp.exists(), "stale .tmp staging dir must be removed");
+        assert!(
+            lock_path.exists(),
+            "lock should stay while the final cache entry still exists"
+        );
     }
 
     #[tokio::test]
