@@ -11,6 +11,7 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { notFound, runNotCancellable } from "../../lib/error";
+import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
 
 export interface CancelRunResult {
@@ -149,17 +150,20 @@ export const cancelRun$ = command(
  * Post-cancel side effects:
  *  - Notify the runner group to halt the cancelled run (if it was
  *    running on a runner).
- *  - Publish org-level `queue:changed` for UI refresh.
- *  - Publish user-level `runChanged:<runId>` for UI run row refresh.
- *  - Drain the org queue: promote one queued run to pending if a slot
- *    is now free. The runner picks up pending runs on its existing
- *    poll loop; queue dispatch (load compose + start sandbox) lands in
- *    the Stage 4 run-creation migration.
+ *  - Publish org-level `queue:changed` and user-level `runChanged`.
+ *  - Drain the org queue: promote one queued run to pending. The
+ *    runner picks up pending runs on its existing poll loop.
+ *  - Reconcile credits via `processOrgUsageEvents$` when the cancelled
+ *    run had been doing credit-relevant work (running/pending). The
+ *    transactional invariant (events marked processed iff credit
+ *    deduction succeeds) is preserved by `processOrgUsageEvents$`.
  *
- * Credit reconciliation (`processOrgUsageEvents`) remains deferred to
- * a sibling follow-up — the credit-deduction chain (deductOrgCredits +
- * expireCredits + triggerAutoRecharge + evaluateMemberCaps) requires
- * substantial infrastructure that doesn't yet exist on the api side.
+ * Deferrals (each tracked under #12290):
+ *  - `dispatchQueuedZeroRun` (drain dispatch path) — Stage 4
+ *    run-creation migration.
+ *  - `triggerAutoRecharge` (Stripe top-up) — sibling follow-up.
+ *  - `evaluateMemberCaps` (per-user cap enforcement) — sibling
+ *    follow-up.
  *
  * Fire-and-forget caller: invoke from the route handler via
  * `waitUntil(set(dispatchCancelSideEffects$, result, signal).catch(log))`.
@@ -189,5 +193,18 @@ export const dispatchCancelSideEffects$ = command(
     // provisioning) lands in Stage 4.
     await set(drainOrgQueue$, { orgId: result.orgId }, signal);
     signal.throwIfAborted();
+
+    // Reconcile credits when the cancelled run had been doing
+    // credit-relevant work. Web's invariant: only invoke when
+    // previousStatus ∈ {running, pending} — queued runs that never
+    // started accumulating usage_event rows skip this (no-op anyway
+    // since the pending-events query returns empty).
+    if (
+      result.previousStatus === "running" ||
+      result.previousStatus === "pending"
+    ) {
+      await set(processOrgUsageEvents$, result.orgId, signal);
+      signal.throwIfAborted();
+    }
   },
 );

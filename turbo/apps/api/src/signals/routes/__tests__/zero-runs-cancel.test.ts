@@ -3,8 +3,11 @@ import { randomUUID } from "node:crypto";
 import { zeroRunsCancelContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { usageEvent } from "@vm0/db/schema/usage-event";
+import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -304,6 +307,160 @@ describe("POST /api/zero/runs/:id/cancel", () => {
       .from(agentRunQueue)
       .where(eq(agentRunQueue.runId, queuedRunId));
     expect(queueRows).toHaveLength(0);
+  });
+
+  it("processes pending usage_event records and deducts credits on cancel", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "running",
+      },
+      context.signal,
+    );
+
+    const writeDb = store.set(writeDb$);
+    // Seed initial credit balance.
+    await writeDb.insert(orgMetadata).values({
+      orgId: fixture.orgId,
+      credits: 1000,
+      tier: "free",
+    });
+    // Seed pricing: 1 credit per 1000 input tokens.
+    await writeDb.insert(usagePricing).values({
+      kind: "model",
+      provider: "test-provider",
+      category: "tokens.input",
+      unitPrice: 1,
+      unitSize: 1000,
+    });
+    // Seed pending usage_event: 5000 input tokens → 5 credits.
+    await writeDb.insert(usageEvent).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      runId,
+      kind: "model",
+      provider: "test-provider",
+      category: "tokens.input",
+      quantity: 5000,
+      status: "pending",
+      idempotencyKey: randomUUID(),
+    });
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(zeroRunsCancelContract);
+    await accept(
+      client.cancel({
+        params: { id: runId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await clearAllDetached();
+
+    // Event marked processed with creditsCharged.
+    const [eventRow] = await writeDb
+      .select({
+        status: usageEvent.status,
+        creditsCharged: usageEvent.creditsCharged,
+      })
+      .from(usageEvent)
+      .where(eq(usageEvent.runId, runId));
+    expect(eventRow?.status).toBe("processed");
+    expect(eventRow?.creditsCharged).toBe(5);
+
+    // Org credits reduced by 5.
+    const [orgRow] = await writeDb
+      .select({ credits: orgMetadata.credits })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId));
+    expect(orgRow?.credits).toBe(995);
+
+    // Cleanup the inserted pricing row to avoid bleed across tests.
+    await writeDb
+      .delete(usagePricing)
+      .where(
+        and(
+          eq(usagePricing.kind, "model"),
+          eq(usagePricing.provider, "test-provider"),
+          eq(usagePricing.category, "tokens.input"),
+        ),
+      );
+  });
+
+  it("does not reconcile credits on the idempotent path (run already cancelled)", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "cancelled",
+      },
+      context.signal,
+    );
+
+    const writeDb = store.set(writeDb$);
+    await writeDb.insert(orgMetadata).values({
+      orgId: fixture.orgId,
+      credits: 1000,
+      tier: "free",
+    });
+    await writeDb.insert(usageEvent).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      runId,
+      kind: "model",
+      provider: "test-provider",
+      category: "tokens.input",
+      quantity: 5000,
+      status: "pending",
+      idempotencyKey: randomUUID(),
+    });
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(zeroRunsCancelContract);
+    await accept(
+      client.cancel({
+        params: { id: runId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await clearAllDetached();
+
+    // Idempotent path returns early — usage_event still pending, balance untouched.
+    const [eventRow] = await writeDb
+      .select({ status: usageEvent.status })
+      .from(usageEvent)
+      .where(eq(usageEvent.runId, runId));
+    expect(eventRow?.status).toBe("pending");
+
+    const [orgRow] = await writeDb
+      .select({ credits: orgMetadata.credits })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId));
+    expect(orgRow?.credits).toBe(1000);
   });
 
   it("idempotent path does not drain the queue", async () => {
