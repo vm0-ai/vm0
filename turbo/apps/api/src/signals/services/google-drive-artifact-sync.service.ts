@@ -1,19 +1,30 @@
-import { computed, type Computed } from "ccstate";
+import { randomUUID } from "node:crypto";
+
+import { command, computed, type Computed } from "ccstate";
 import type {
   ChatThreadArtifactGoogleDriveSync,
   ChatThreadArtifactRun,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
+import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { secrets } from "@vm0/db/schema/secret";
-import { and, eq } from "drizzle-orm";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { and, eq, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { optionalEnv } from "../../lib/env";
+import { env, optionalEnv } from "../../lib/env";
+import { badRequestMessage, notFound } from "../../lib/error";
 import { db$, type ReadonlyDb } from "../external/db";
+import { downloadS3Buffer } from "../external/s3";
 import { decryptSecretValue } from "./crypto.utils";
 
 const GOOGLE_DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
+const GOOGLE_DRIVE_UPLOAD_URL =
+  "https://www.googleapis.com/upload/drive/v3/files";
 const GOOGLE_DRIVE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_DRIVE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
 const GOOGLE_DRIVE_STATUS_TIMEOUT_MS = 2000;
 const GOOGLE_DRIVE_ARTIFACT_APP_PROPERTY = "vm0Artifact";
 const GOOGLE_DRIVE_THREAD_APP_PROPERTY = "vm0ThreadId";
@@ -318,3 +329,436 @@ export function googleDriveArtifactStatusLookup(args: {
     );
   });
 }
+
+// =====================================================================
+// Upload-side: sync a single artifact to the user's Google Drive.
+// Mirrors apps/web/src/lib/zero/chat-thread/artifact-google-drive-sync.ts.
+// =====================================================================
+
+const driveFolderSchema = z.object({ id: z.string(), name: z.string() });
+const driveFolderListSchema = z.object({
+  files: z.array(driveFolderSchema),
+});
+const driveUploadResponseSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  webViewLink: z.string().nullable().optional(),
+});
+
+const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
+  csv: "text/csv",
+  txt: "text/plain",
+  json: "application/json",
+  pdf: "application/pdf",
+  html: "text/html",
+  md: "text/markdown",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+};
+
+function inferMimetype(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  const mapped = ext ? EXT_MIMETYPE_MAP[ext] : undefined;
+  return mapped ?? "application/octet-stream";
+}
+
+interface ArtifactFileRow {
+  readonly runId: string;
+  readonly source: string;
+  readonly externalId: string;
+  readonly filename: string | null;
+  readonly contentType: string | null;
+  readonly url: string | null;
+  readonly metadata: Record<string, unknown>;
+}
+
+async function loadArtifactFile(
+  db: ReadonlyDb,
+  args: {
+    readonly threadId: string;
+    readonly runId: string;
+    readonly fileId: string;
+    readonly userId: string;
+  },
+): Promise<ArtifactFileRow | null> {
+  const [thread] = await db
+    .select({ id: chatThreads.id })
+    .from(chatThreads)
+    .where(
+      and(
+        eq(chatThreads.id, args.threadId),
+        eq(chatThreads.userId, args.userId),
+      ),
+    )
+    .limit(1);
+  if (!thread) {
+    return null;
+  }
+
+  const [row] = await db
+    .select({
+      runId: runUploadedFiles.runId,
+      source: runUploadedFiles.source,
+      externalId: runUploadedFiles.externalId,
+      filename: runUploadedFiles.filename,
+      contentType: runUploadedFiles.contentType,
+      url: runUploadedFiles.url,
+      metadata: runUploadedFiles.metadata,
+    })
+    .from(runUploadedFiles)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, runUploadedFiles.runId))
+    .where(
+      and(
+        eq(runUploadedFiles.userId, args.userId),
+        eq(runUploadedFiles.runId, args.runId),
+        eq(runUploadedFiles.externalId, args.fileId),
+        or(
+          eq(zeroRuns.chatThreadId, args.threadId),
+          sql`EXISTS (
+            SELECT 1
+            FROM ${chatMessages}
+            WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
+              AND ${chatMessages.chatThreadId} = ${args.threadId}
+          )`,
+        ),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+function resolveArtifactS3Key(
+  metadata: Record<string, unknown>,
+  userId: string,
+): string | null {
+  const value = metadata.s3Key;
+  if (typeof value !== "string") {
+    return null;
+  }
+  if (!value.startsWith(`uploads/${userId}/`)) {
+    return null;
+  }
+  return value;
+}
+
+type DriveTokenResult<T> =
+  | { readonly type: "ok"; readonly value: T }
+  | { readonly type: "unauthorized" };
+
+async function findDriveFolder(args: {
+  readonly accessToken: string;
+  readonly parentFolderId: string | null;
+  readonly name: string;
+}): Promise<DriveTokenResult<z.infer<typeof driveFolderSchema> | null>> {
+  const url = new URL(GOOGLE_DRIVE_FILES_URL);
+  url.searchParams.set(
+    "q",
+    [
+      `mimeType = '${GOOGLE_DRIVE_FOLDER_MIME_TYPE}'`,
+      `name = '${escapeQuery(args.name)}'`,
+      "trashed = false",
+      args.parentFolderId
+        ? `'${escapeQuery(args.parentFolderId)}' in parents`
+        : "'root' in parents",
+    ].join(" and "),
+  );
+  url.searchParams.set("fields", "files(id,name)");
+  url.searchParams.set("pageSize", "1");
+
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${args.accessToken}` },
+  });
+  if (response.status === 401) {
+    return { type: "unauthorized" };
+  }
+  if (!response.ok) {
+    throw badRequestMessage(
+      `Google Drive folder lookup failed with HTTP ${String(response.status)}`,
+    );
+  }
+  const parsed = driveFolderListSchema.parse(await response.json());
+  return { type: "ok", value: parsed.files[0] ?? null };
+}
+
+async function createDriveFolder(args: {
+  readonly accessToken: string;
+  readonly parentFolderId: string | null;
+  readonly name: string;
+}): Promise<DriveTokenResult<z.infer<typeof driveFolderSchema>>> {
+  const url = new URL(GOOGLE_DRIVE_FILES_URL);
+  url.searchParams.set("fields", "id,name");
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${args.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: args.name,
+      mimeType: GOOGLE_DRIVE_FOLDER_MIME_TYPE,
+      ...(args.parentFolderId ? { parents: [args.parentFolderId] } : {}),
+    }),
+  });
+  if (response.status === 401) {
+    return { type: "unauthorized" };
+  }
+  if (!response.ok) {
+    throw badRequestMessage(
+      `Google Drive folder creation failed with HTTP ${String(response.status)}`,
+    );
+  }
+  return {
+    type: "ok",
+    value: driveFolderSchema.parse(await response.json()),
+  };
+}
+
+async function ensureDriveFolder(args: {
+  readonly accessToken: string;
+  readonly parentFolderId: string | null;
+  readonly name: string;
+}): Promise<DriveTokenResult<z.infer<typeof driveFolderSchema>>> {
+  const existing = await findDriveFolder(args);
+  if (existing.type === "unauthorized") {
+    return existing;
+  }
+  if (existing.value) {
+    return { type: "ok", value: existing.value };
+  }
+  return await createDriveFolder(args);
+}
+
+async function ensureArtifactFolder(args: {
+  readonly accessToken: string;
+  readonly threadId: string;
+}): Promise<DriveTokenResult<string>> {
+  let parentFolderId: string | null = null;
+  for (const name of ["vm0-artifact", `chat-${args.threadId}`]) {
+    const folder = await ensureDriveFolder({
+      accessToken: args.accessToken,
+      parentFolderId,
+      name,
+    });
+    if (folder.type === "unauthorized") {
+      return folder;
+    }
+    parentFolderId = folder.value.id;
+  }
+  if (!parentFolderId) {
+    throw badRequestMessage(
+      "Google Drive artifact folder could not be resolved",
+    );
+  }
+  return { type: "ok", value: parentFolderId };
+}
+
+async function uploadDriveFile(args: {
+  readonly accessToken: string;
+  readonly parentFolderId: string;
+  readonly filename: string;
+  readonly threadId: string;
+  readonly runId: string;
+  readonly fileId: string;
+  readonly contentType: string;
+  readonly file: Buffer;
+}): Promise<Response> {
+  const boundary = `vm0-${randomUUID()}`;
+  const metadata = JSON.stringify({
+    name: args.filename,
+    mimeType: args.contentType,
+    parents: [args.parentFolderId],
+    appProperties: {
+      [GOOGLE_DRIVE_ARTIFACT_APP_PROPERTY]: "true",
+      [GOOGLE_DRIVE_THREAD_APP_PROPERTY]: args.threadId,
+      [GOOGLE_DRIVE_RUN_APP_PROPERTY]: args.runId,
+      [GOOGLE_DRIVE_FILE_APP_PROPERTY]: args.fileId,
+    },
+  });
+  const body = Buffer.concat([
+    Buffer.from(
+      [
+        `--${boundary}`,
+        "Content-Type: application/json; charset=UTF-8",
+        "",
+        metadata,
+        `--${boundary}`,
+        `Content-Type: ${args.contentType}`,
+        "",
+        "",
+      ].join("\r\n"),
+      "utf8",
+    ),
+    args.file,
+    Buffer.from(`\r\n--${boundary}--\r\n`, "utf8"),
+  ]);
+
+  const uploadUrl = new URL(GOOGLE_DRIVE_UPLOAD_URL);
+  uploadUrl.searchParams.set("uploadType", "multipart");
+  uploadUrl.searchParams.set("fields", "id,name,webViewLink");
+
+  return await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${args.accessToken}`,
+      "Content-Type": `multipart/related; boundary=${boundary}`,
+      "Content-Length": String(body.length),
+    },
+    body,
+  });
+}
+
+async function uploadArtifactWithToken(args: {
+  readonly accessToken: string;
+  readonly threadId: string;
+  readonly runId: string;
+  readonly fileId: string;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly file: Buffer;
+}): Promise<DriveTokenResult<Response>> {
+  const folder = await ensureArtifactFolder({
+    accessToken: args.accessToken,
+    threadId: args.threadId,
+  });
+  if (folder.type === "unauthorized") {
+    return folder;
+  }
+  const response = await uploadDriveFile({
+    accessToken: args.accessToken,
+    parentFolderId: folder.value,
+    filename: args.filename,
+    threadId: args.threadId,
+    runId: args.runId,
+    fileId: args.fileId,
+    contentType: args.contentType,
+    file: args.file,
+  });
+  if (response.status === 401) {
+    return { type: "unauthorized" };
+  }
+  return { type: "ok", value: response };
+}
+
+async function parseUploadResponse(
+  response: Response,
+): Promise<DriveSyncResult> {
+  if (!response.ok) {
+    throw badRequestMessage(
+      `Google Drive upload failed with HTTP ${String(response.status)}`,
+    );
+  }
+  const parsed = driveUploadResponseSchema.parse(await response.json());
+  return {
+    id: parsed.id,
+    name: parsed.name,
+    webViewLink: parsed.webViewLink ?? null,
+  };
+}
+
+type NotFoundResponse = ReturnType<typeof notFound>;
+type BadRequestResponse = ReturnType<typeof badRequestMessage>;
+
+/**
+ * Sync a chat-thread artifact file to the caller's connected Google Drive.
+ * Mirrors apps/web's `syncArtifactToGoogleDrive`.
+ *
+ * Error mapping (matches web verbatim where applicable):
+ *  - 404 "Artifact file not found" — thread missing/cross-user, or no row.
+ *  - 400 "Connect Google Drive before syncing artifacts" — connector
+ *    absent or `needsReconnect`.
+ *  - 400 "This artifact file cannot be synced to Google Drive" — file
+ *    metadata.s3Key is missing or doesn't match the caller's user prefix.
+ *  - 400 "Google Drive upload failed with HTTP <status>" — upload error
+ *    after refresh-token retry exhausted.
+ *  - 200 with `{ id, name, webViewLink }`.
+ */
+export const syncArtifactToGoogleDrive$ = command(
+  async (
+    { get },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly threadId: string;
+      readonly runId: string;
+      readonly fileId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<
+    | NotFoundResponse
+    | BadRequestResponse
+    | { readonly status: 200; readonly body: DriveSyncResult }
+  > => {
+    const db = get(db$);
+
+    const tokens = await loadDriveTokens(db, args.orgId, args.userId);
+    signal.throwIfAborted();
+    if (!tokens || tokens.needsReconnect) {
+      return badRequestMessage("Connect Google Drive before syncing artifacts");
+    }
+
+    const artifact = await loadArtifactFile(db, {
+      threadId: args.threadId,
+      runId: args.runId,
+      fileId: args.fileId,
+      userId: args.userId,
+    });
+    signal.throwIfAborted();
+    if (!artifact) {
+      return notFound("Artifact file not found");
+    }
+
+    const s3Key = resolveArtifactS3Key(artifact.metadata, args.userId);
+    if (!s3Key) {
+      return badRequestMessage(
+        "This artifact file cannot be synced to Google Drive",
+      );
+    }
+
+    const filename = artifact.filename ?? artifact.externalId;
+    const contentType = artifact.contentType ?? inferMimetype(filename);
+    const file = await get(
+      downloadS3Buffer(env("R2_USER_STORAGES_BUCKET_NAME"), s3Key),
+    );
+    signal.throwIfAborted();
+
+    let result = await uploadArtifactWithToken({
+      accessToken: tokens.accessToken,
+      threadId: args.threadId,
+      runId: args.runId,
+      fileId: args.fileId,
+      filename,
+      contentType,
+      file,
+    });
+    signal.throwIfAborted();
+
+    if (result.type === "unauthorized" && tokens.refreshToken) {
+      const refreshed = await refreshDriveAccessToken(tokens.refreshToken);
+      signal.throwIfAborted();
+      if (refreshed) {
+        result = await uploadArtifactWithToken({
+          accessToken: refreshed,
+          threadId: args.threadId,
+          runId: args.runId,
+          fileId: args.fileId,
+          filename,
+          contentType,
+          file,
+        });
+        signal.throwIfAborted();
+      }
+    }
+
+    if (result.type === "unauthorized") {
+      return badRequestMessage("Google Drive upload failed with HTTP 401");
+    }
+
+    return {
+      status: 200 as const,
+      body: await parseUploadResponse(result.value),
+    };
+  },
+);

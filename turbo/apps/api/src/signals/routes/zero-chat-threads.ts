@@ -25,6 +25,7 @@ import {
   zeroChatThreadMessagesPage,
 } from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route";
+import { zeroChatThreadsArtifactsSyncRoutes } from "./zero-chat-threads-artifacts-sync";
 import { zeroChatThreadCreateRoutes } from "./zero-chat-threads-create";
 import { zeroChatThreadMarkReadRoutes } from "./zero-chat-threads-mark-read";
 import { zeroChatThreadPinRoutes } from "./zero-chat-threads-pin";
@@ -191,6 +192,7 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
       searchChatInner$,
     ),
   },
+  ...zeroChatThreadsArtifactsSyncRoutes,
   ...zeroChatThreadCreateRoutes,
   ...zeroChatThreadMarkReadRoutes,
   ...zeroChatThreadPinRoutes,
