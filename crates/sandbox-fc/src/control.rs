@@ -104,6 +104,9 @@ const EXEC_STREAM_CHUNK_LIMIT_BYTES: u32 = 64 * 1024;
 /// Bound writes to `runner exec` clients so a connected but non-draining client
 /// cannot keep a control handler and bounded exec request alive indefinitely.
 const CONTROL_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Bound the initial request read so an idle or partial client cannot pin a
+/// control handler forever.
+const CONTROL_REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(10);
 const CONTROL_SERVER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 const CONTROL_HANDLER_SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
 
@@ -133,6 +136,20 @@ async fn write_frame(stream: &mut (impl AsyncWrite + Unpin), data: &[u8]) -> io:
     stream.write_all(data).await?;
     stream.flush().await?;
     Ok(())
+}
+
+async fn read_frame_with_timeout(
+    stream: &mut (impl AsyncRead + Unpin),
+    timeout: Duration,
+) -> io::Result<Vec<u8>> {
+    tokio::time::timeout(timeout, read_frame(stream))
+        .await
+        .unwrap_or_else(|_| {
+            Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "control socket request read timed out",
+            ))
+        })
 }
 
 // -----------------------------------------------------------------------
@@ -409,7 +426,7 @@ async fn handle_connection(
     let frame = tokio::select! {
         biased;
         () = shutdown.cancelled() => return Ok(()),
-        result = read_frame(&mut reader) => result?,
+        result = read_frame_with_timeout(&mut reader, CONTROL_REQUEST_READ_TIMEOUT) => result?,
     };
 
     let request = match serde_json::from_slice::<ExecRequest>(&frame) {
@@ -997,6 +1014,28 @@ mod tests {
         )
         .await
         .unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    }
+
+    #[tokio::test]
+    async fn request_frame_read_timeout_prevents_idle_handler_leak() {
+        struct PendingReader;
+
+        impl AsyncRead for PendingReader {
+            fn poll_read(
+                self: std::pin::Pin<&mut Self>,
+                _cx: &mut std::task::Context<'_>,
+                _buf: &mut tokio::io::ReadBuf<'_>,
+            ) -> std::task::Poll<io::Result<()>> {
+                std::task::Poll::Pending
+            }
+        }
+
+        let mut reader = PendingReader;
+        let err = read_frame_with_timeout(&mut reader, Duration::ZERO)
+            .await
+            .unwrap_err();
 
         assert_eq!(err.kind(), io::ErrorKind::TimedOut);
     }
