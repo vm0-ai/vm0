@@ -11,6 +11,7 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { notFound, runNotCancellable } from "../../lib/error";
+import { drainOrgQueue$ } from "./zero-run-queue.service";
 
 export interface CancelRunResult {
   readonly runId: string;
@@ -145,17 +146,30 @@ export const cancelRun$ = command(
 );
 
 /**
- * Post-cancel side effects. Mirrors web's `dispatchCancelSideEffects`
- * minus queue drain and credit processing (deferred to follow-up Wave
- * 5/6 PRs; runners reconcile via their existing periodic queue polling
- * fallback, and credit reconciliation happens at the next
- * usage-event batch).
+ * Post-cancel side effects:
+ *  - Notify the runner group to halt the cancelled run (if it was
+ *    running on a runner).
+ *  - Publish org-level `queue:changed` for UI refresh.
+ *  - Publish user-level `runChanged:<runId>` for UI run row refresh.
+ *  - Drain the org queue: promote one queued run to pending if a slot
+ *    is now free. The runner picks up pending runs on its existing
+ *    poll loop; queue dispatch (load compose + start sandbox) lands in
+ *    the Stage 4 run-creation migration.
+ *
+ * Credit reconciliation (`processOrgUsageEvents`) remains deferred to
+ * a sibling follow-up — the credit-deduction chain (deductOrgCredits +
+ * expireCredits + triggerAutoRecharge + evaluateMemberCaps) requires
+ * substantial infrastructure that doesn't yet exist on the api side.
  *
  * Fire-and-forget caller: invoke from the route handler via
  * `waitUntil(set(dispatchCancelSideEffects$, result, signal).catch(log))`.
  */
 export const dispatchCancelSideEffects$ = command(
-  async (_ctx, result: CancelRunResult, signal: AbortSignal): Promise<void> => {
+  async (
+    { set },
+    result: CancelRunResult,
+    signal: AbortSignal,
+  ): Promise<void> => {
     if (result.alreadyCancelled) {
       return;
     }
@@ -168,6 +182,12 @@ export const dispatchCancelSideEffects$ = command(
     await publishUserSignal([result.userId], `runChanged:${result.runId}`, {
       status: "cancelled",
     });
+    signal.throwIfAborted();
+
+    // Promote one queued run to pending; the runner picks it up on its
+    // next poll cycle. Queue dispatch (compose loading + sandbox
+    // provisioning) lands in Stage 4.
+    await set(drainOrgQueue$, { orgId: result.orgId }, signal);
     signal.throwIfAborted();
   },
 );

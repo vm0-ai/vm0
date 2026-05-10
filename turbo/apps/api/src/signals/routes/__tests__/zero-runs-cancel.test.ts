@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroRunsCancelContract } from "@vm0/api-contracts/contracts/zero-runs";
+import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
@@ -9,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
-import { now } from "../../external/time";
+import { now, nowDate } from "../../external/time";
 import { clearAllDetached } from "../../utils";
 import {
   createFixtureTracker,
@@ -230,5 +231,144 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     // Idempotent path: NO Ably publishes scheduled.
     await clearAllDetached();
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
+  });
+
+  it("drains the org queue and promotes the next queued run to pending", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId: runningRunId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "running",
+      },
+      context.signal,
+    );
+    const { runId: queuedRunId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "queued",
+      },
+      context.signal,
+    );
+
+    const writeDb = store.set(writeDb$);
+    await writeDb.insert(agentRunQueue).values({
+      runId: queuedRunId,
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      createdAt: nowDate(),
+      expiresAt: new Date(now() + 60_000),
+    });
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(zeroRunsCancelContract);
+    await accept(
+      client.cancel({
+        params: { id: runningRunId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await clearAllDetached();
+
+    // Cancelled run reflects the cancel.
+    const [cancelledRow] = await writeDb
+      .select({ status: agentRuns.status })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, runningRunId));
+    expect(cancelledRow?.status).toBe("cancelled");
+
+    // Queue drain promoted the queued run to pending.
+    const [queuedRow] = await writeDb
+      .select({ status: agentRuns.status })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, queuedRunId));
+    expect(queuedRow?.status).toBe("pending");
+
+    // Queue entry is gone.
+    const queueRows = await writeDb
+      .select()
+      .from(agentRunQueue)
+      .where(eq(agentRunQueue.runId, queuedRunId));
+    expect(queueRows).toHaveLength(0);
+  });
+
+  it("idempotent path does not drain the queue", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId: cancelledRunId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "cancelled",
+      },
+      context.signal,
+    );
+    const { runId: queuedRunId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "queued",
+      },
+      context.signal,
+    );
+
+    const writeDb = store.set(writeDb$);
+    await writeDb.insert(agentRunQueue).values({
+      runId: queuedRunId,
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      createdAt: nowDate(),
+      expiresAt: new Date(now() + 60_000),
+    });
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(zeroRunsCancelContract);
+    await accept(
+      client.cancel({
+        params: { id: cancelledRunId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await clearAllDetached();
+
+    // Idempotent path skipped dispatchCancelSideEffects$ entirely; the
+    // queue entry and queued run are untouched.
+    const [queuedRow] = await writeDb
+      .select({ status: agentRuns.status })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, queuedRunId));
+    expect(queuedRow?.status).toBe("queued");
+
+    const queueRows = await writeDb
+      .select()
+      .from(agentRunQueue)
+      .where(eq(agentRunQueue.runId, queuedRunId));
+    expect(queueRows).toHaveLength(1);
   });
 });
