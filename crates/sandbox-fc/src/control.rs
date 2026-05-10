@@ -930,6 +930,18 @@ mod tests {
         }
     }
 
+    struct BrokenPipeStderr;
+
+    impl RemoteExecOutputSink for BrokenPipeStderr {
+        fn stdout(&mut self, _chunk: &[u8]) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn stderr(&mut self, _chunk: &[u8]) -> std::io::Result<()> {
+            Err(io::Error::new(io::ErrorKind::BrokenPipe, "stderr closed"))
+        }
+    }
+
     #[tokio::test]
     async fn exec_remote_empty_id() {
         let control = FirecrackerControl;
@@ -1781,7 +1793,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn send_exec_output_sink_error_cancels_in_flight_vsock_bounded_exec() {
+    async fn send_exec_stdout_sink_error_cancels_in_flight_vsock_bounded_exec() {
         let dir = tempfile::tempdir().unwrap();
         let vsock_base = dir.path().join("vsock");
         let host_task = {
@@ -1796,6 +1808,7 @@ mod tests {
             vsock_base,
             exec_seen_tx,
             cancel_seen_tx,
+            vsock_proto::BoundedExecStream::Stdout,
         ));
         let vsock = host_task.await.unwrap().unwrap();
 
@@ -1811,6 +1824,55 @@ mod tests {
             sudo: false,
         };
         let mut output = BrokenPipeStdout;
+        let err = send_exec(&sock_path, &request, Duration::from_secs(5), &mut output)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, SandboxControlError::Io(e) if e.kind() == io::ErrorKind::BrokenPipe));
+
+        tokio::time::timeout(Duration::from_secs(1), exec_seen_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(1), cancel_seen_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        guest_task.await.unwrap();
+        handle.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn send_exec_stderr_sink_error_cancels_in_flight_vsock_bounded_exec() {
+        let dir = tempfile::tempdir().unwrap();
+        let vsock_base = dir.path().join("vsock-stderr-sink-error");
+        let host_task = {
+            let vsock_base = vsock_base.display().to_string();
+            tokio::spawn(async move {
+                VsockHost::wait_for_connection(&vsock_base, Duration::from_secs(5)).await
+            })
+        };
+        let (exec_seen_tx, exec_seen_rx) = oneshot::channel();
+        let (cancel_seen_tx, cancel_seen_rx) = oneshot::channel();
+        let guest_task = tokio::spawn(mock_guest_streams_then_holds_exec(
+            vsock_base,
+            exec_seen_tx,
+            cancel_seen_tx,
+            vsock_proto::BoundedExecStream::Stderr,
+        ));
+        let vsock = host_task.await.unwrap().unwrap();
+
+        let sock_path = dir.path().join("control.sock");
+        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
+        let mut handle = bind_server(sock_path.clone(), guest)
+            .unwrap()
+            .spawn(CancellationToken::new());
+
+        let request = ExecRequest {
+            command: "printf error >&2".into(),
+            timeout_secs: 30,
+            sudo: false,
+        };
+        let mut output = BrokenPipeStderr;
         let err = send_exec(&sock_path, &request, Duration::from_secs(5), &mut output)
             .await
             .unwrap_err();
@@ -1959,6 +2021,7 @@ mod tests {
         vsock_base: PathBuf,
         exec_seen: oneshot::Sender<()>,
         cancel_seen: oneshot::Sender<()>,
+        stream_kind: vsock_proto::BoundedExecStream,
     ) {
         let listener_path = PathBuf::from(format!(
             "{}_{}",
@@ -1977,7 +2040,7 @@ mod tests {
         write_bounded_exec_output_chunk(
             &mut stream,
             message.seq,
-            vsock_proto::BoundedExecStream::Stdout,
+            stream_kind,
             0,
             b"partial\n",
             false,
