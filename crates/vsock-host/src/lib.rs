@@ -5,12 +5,20 @@
 //! legacy `{vsock_path}_{port}` listener flow and Firecracker's host-initiated
 //! `CONNECT <port>` flow on the base vsock socket.
 //!
-//! ## Connection Flow
+//! ## Legacy Guest-Initiated Connection Flow
 //!
 //! 1. Host creates UDS listener at `{vsock_path}_{port}`
 //! 2. Guest boots and vsock-guest connects to CID=2
 //! 3. Firecracker forwards connection to Host's UDS listener
 //! 4. Host accepts, receives `ready`, sends `ping`, waits for `pong`
+//! 5. Connection established — host can send commands
+//!
+//! ## Host-Initiated Control Flow
+//!
+//! 1. Host connects to Firecracker's base vsock UDS path
+//! 2. Host writes `CONNECT <port>\n` and validates Firecracker's `OK` response
+//! 3. Host sends a versioned control hello with a freshness nonce
+//! 4. Guest returns a matching hello ack
 //! 5. Connection established — host can send commands
 //!
 //! ## Concurrency
@@ -2391,6 +2399,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn connect_host_initiated_fails_when_firecracker_socket_is_missing() {
+        let path = unique_socket_path("host-initiated-missing");
+        let nonce = *b"0123456789abcdef";
+
+        let err = match VsockHost::connect_host_initiated(
+            &path.display().to_string(),
+            Duration::from_secs(5),
+            ControlHandshake {
+                session_nonce: &nonce,
+                boot_generation: None,
+            },
+        )
+        .await
+        {
+            Ok(_) => panic!("missing Firecracker socket should fail"),
+            Err(err) => err,
+        };
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
+    }
+
+    #[tokio::test]
+    async fn connect_host_initiated_rejects_eof_before_firecracker_ack() {
+        let path = unique_socket_path("host-initiated-eof");
+        let path_string = path.display().to_string();
+        let listener = UnixListener::bind(&path).unwrap();
+        let mut listener_socket = ListenerSocketGuard {
+            path: Some(path_string.clone()),
+        };
+        let nonce = *b"0123456789abcdef";
+
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            assert_eq!(
+                read_line(&mut stream).await,
+                format!("CONNECT {}\n", vsock_proto::VSOCK_PORT).as_bytes()
+            );
+        });
+
+        let err = match VsockHost::connect_host_initiated(
+            &path_string,
+            Duration::from_secs(5),
+            ControlHandshake {
+                session_nonce: &nonce,
+                boot_generation: None,
+            },
+        )
+        .await
+        {
+            Ok(_) => panic!("EOF before Firecracker ack should fail"),
+            Err(err) => err,
+        };
+        assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+
+        server.await.unwrap();
+        listener_socket.remove();
+    }
+
+    #[tokio::test]
     async fn connect_host_initiated_times_out_on_partial_firecracker_ack() {
         let path = unique_socket_path("host-initiated-partial-ack");
         let path_string = path.display().to_string();
@@ -3930,7 +3996,6 @@ mod tests {
     async fn test_frame_write_timeout_removes_pending_and_closes_connection() {
         let (host_stream, mut guest) = make_pair();
         set_send_buffer(&host_stream, 4096).unwrap();
-
         let release_guest = std::sync::Arc::new(Notify::new());
         let guest_task = {
             let release_guest = std::sync::Arc::clone(&release_guest);
@@ -3950,7 +4015,7 @@ mod tests {
             seq,
             &payload,
             Duration::from_secs(30),
-            Duration::from_millis(1),
+            Duration::from_millis(50),
         )
         .await
         .unwrap_err();
@@ -3959,7 +4024,6 @@ mod tests {
         host.wait_until_closed(Duration::from_secs(5))
             .await
             .unwrap();
-
         release_guest.notify_one();
         guest_task.await.unwrap();
     }
