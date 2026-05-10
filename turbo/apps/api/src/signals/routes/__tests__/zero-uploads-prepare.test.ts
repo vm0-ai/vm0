@@ -83,8 +83,7 @@ describe("POST /api/zero/uploads/prepare", () => {
     const client = setupApp({ context })(zeroUploadsContract);
     const response = await accept(
       client.prepare({
-        // @ts-expect-error — intentionally malformed body to exercise validation
-        body: { filename: "" },
+        body: { filename: "" } as never,
         headers: { authorization: "Bearer clerk-session" },
       }),
       [400],
