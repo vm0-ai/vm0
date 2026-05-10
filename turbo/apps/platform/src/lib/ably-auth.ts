@@ -45,11 +45,9 @@ export function createAblyAuthCallback(
       (async () => {
         // eslint-disable-next-line no-restricted-syntax -- bridging Ably's node-style auth callback into our promise-based `accept()` helper; justified per eslint.config.js "If genuinely needed (JSON.parse, clipboard, polling), add an inline eslint-disable with justification"
         try {
-          const res = await accept(
-            client.create({ body: {} }),
-            [200],
-            { toast: false },
-          );
+          const res = await accept(client.create({ body: {} }), [200], {
+            toast: false,
+          });
           // The fetch above does not accept our signal, so check it
           // explicitly per ccstate skill ("AbortSignal Lifecycle"): aborts
           // surface as an AbortError that the catch re-throws to detach.
