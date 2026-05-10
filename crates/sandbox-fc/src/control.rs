@@ -101,6 +101,9 @@ const MAX_FRAME_SIZE: u32 = 64 * 1024 * 1024;
 const EXEC_STREAM_LIMIT_BYTES: u32 = 64 * 1024 * 1024;
 /// Bounded exec output chunk size used for control socket streaming.
 const EXEC_STREAM_CHUNK_LIMIT_BYTES: u32 = 64 * 1024;
+/// Bound writes to `runner exec` clients so a connected but non-draining client
+/// cannot keep a control handler and bounded exec request alive indefinitely.
+const CONTROL_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 const CONTROL_SERVER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 const CONTROL_HANDLER_SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
 
@@ -436,12 +439,28 @@ async fn write_response_frame(
     frame: &ExecResponseFrame,
     shutdown: &CancellationToken,
 ) -> io::Result<()> {
+    write_response_frame_with_timeout(stream, frame, shutdown, CONTROL_WRITE_TIMEOUT).await
+}
+
+async fn write_response_frame_with_timeout(
+    stream: &mut (impl AsyncWrite + Unpin),
+    frame: &ExecResponseFrame,
+    shutdown: &CancellationToken,
+    timeout: Duration,
+) -> io::Result<()> {
     let response_json = serde_json::to_vec(frame)
         .map_err(|e| io::Error::other(format!("serialize response: {e}")))?;
     tokio::select! {
         biased;
         () = shutdown.cancelled() => Ok(()),
-        result = write_frame(stream, &response_json) => result,
+        result = tokio::time::timeout(timeout, write_frame(stream, &response_json)) => {
+            result.unwrap_or_else(|_| {
+                Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "control socket write timed out",
+                ))
+            })
+        },
     }
 }
 
@@ -920,6 +939,50 @@ mod tests {
         write_frame(&mut stream, b"reply").await.unwrap();
         let reply = client.await.unwrap();
         assert_eq!(reply, b"reply");
+    }
+
+    #[tokio::test]
+    async fn write_response_frame_times_out_when_client_does_not_drain() {
+        struct PendingWriter;
+
+        impl AsyncWrite for PendingWriter {
+            fn poll_write(
+                self: std::pin::Pin<&mut Self>,
+                _cx: &mut std::task::Context<'_>,
+                _buf: &[u8],
+            ) -> std::task::Poll<io::Result<usize>> {
+                std::task::Poll::Pending
+            }
+
+            fn poll_flush(
+                self: std::pin::Pin<&mut Self>,
+                _cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<io::Result<()>> {
+                std::task::Poll::Pending
+            }
+
+            fn poll_shutdown(
+                self: std::pin::Pin<&mut Self>,
+                _cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<io::Result<()>> {
+                std::task::Poll::Ready(Ok(()))
+            }
+        }
+
+        let mut writer = PendingWriter;
+        let shutdown = CancellationToken::new();
+        let err = write_response_frame_with_timeout(
+            &mut writer,
+            &ExecResponseFrame::Error {
+                error: "stalled".into(),
+            },
+            &shutdown,
+            Duration::ZERO,
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
     }
 
     #[tokio::test]
