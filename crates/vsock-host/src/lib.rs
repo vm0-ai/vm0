@@ -2502,6 +2502,76 @@ mod tests {
         assert_eq!(port, 123);
     }
 
+    async fn assert_connect_host_initiated_rejects_unmatched_control_ack(
+        label: &str,
+        ack_msg_type: u8,
+        ack_seq: u32,
+    ) {
+        let path = unique_socket_path(label);
+        let path_string = path.display().to_string();
+        let listener = UnixListener::bind(&path).unwrap();
+        let mut listener_socket = ListenerSocketGuard {
+            path: Some(path_string.clone()),
+        };
+        let nonce = *b"0123456789abcdef";
+
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            assert_eq!(
+                read_line(&mut stream).await,
+                format!("CONNECT {}\n", vsock_proto::VSOCK_PORT).as_bytes()
+            );
+            stream.write_all(b"OK 1073741824\n").await.unwrap();
+
+            let mut decoder = Decoder::new();
+            let hello = read_one_message(&mut stream, &mut decoder).await;
+            assert_eq!(hello.msg_type, MSG_CONTROL_HELLO);
+            let decoded = vsock_proto::decode_control_hello(&hello.payload).unwrap();
+            let ack_payload =
+                vsock_proto::encode_control_hello_ack(decoded.version, &decoded.nonce);
+            let ack = vsock_proto::encode(ack_msg_type, ack_seq, &ack_payload).unwrap();
+            stream.write_all(&ack).await.unwrap();
+        });
+
+        let err = match VsockHost::connect_host_initiated(
+            &path_string,
+            Duration::from_secs(5),
+            ControlHandshake {
+                session_nonce: &nonce,
+                boot_generation: None,
+            },
+        )
+        .await
+        {
+            Ok(_) => panic!("unmatched control ack should fail"),
+            Err(err) => err,
+        };
+        assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+
+        server.await.unwrap();
+        listener_socket.remove();
+    }
+
+    #[tokio::test]
+    async fn connect_host_initiated_rejects_wrong_control_ack_type() {
+        assert_connect_host_initiated_rejects_unmatched_control_ack(
+            "host-initiated-wrong-control-ack-type",
+            MSG_PONG,
+            1,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn connect_host_initiated_rejects_wrong_control_ack_seq() {
+        assert_connect_host_initiated_rejects_unmatched_control_ack(
+            "host-initiated-wrong-control-ack-seq",
+            MSG_CONTROL_HELLO_ACK,
+            2,
+        )
+        .await;
+    }
+
     #[tokio::test]
     async fn connect_host_initiated_rejects_wrong_control_nonce() {
         let path = unique_socket_path("host-initiated-wrong-nonce");
