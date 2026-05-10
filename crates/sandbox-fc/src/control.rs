@@ -1577,6 +1577,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn control_server_forwards_non_exit_bounded_exec_status_and_diagnostic() {
+        let dir = tempfile::tempdir().unwrap();
+        let vsock_base = dir.path().join("vsock-non-exit-status");
+        let host_task = {
+            let vsock_base = vsock_base.display().to_string();
+            tokio::spawn(async move {
+                VsockHost::wait_for_connection(&vsock_base, Duration::from_secs(5)).await
+            })
+        };
+        let guest_task = tokio::spawn(mock_guest_finishes_bounded_exec(
+            vsock_base,
+            vsock_proto::BoundedExecTermination::WaitFailed,
+            Some("wait failed"),
+        ));
+        let vsock = host_task.await.unwrap().unwrap();
+
+        let sock_path = dir.path().join("control.sock");
+        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
+        let mut handle = bind_server(sock_path.clone(), guest)
+            .unwrap()
+            .spawn(CancellationToken::new());
+
+        let request = ExecRequest {
+            command: "broken-wait".into(),
+            timeout_secs: 5,
+            sudo: false,
+        };
+        let mut output = CollectRemoteExecOutput::default();
+        let status = send_exec(&sock_path, &request, Duration::from_secs(5), &mut output)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            status,
+            RemoteExecStatus {
+                termination: RemoteExecTermination::WaitFailed,
+                stdout_truncated: false,
+                stderr_truncated: false,
+                diagnostic: Some("wait failed".into()),
+            }
+        );
+        assert!(output.stdout.is_empty());
+        assert!(output.stderr.is_empty());
+
+        handle.shutdown().await;
+        guest_task.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn control_server_preserves_empty_truncation_markers() {
         let dir = tempfile::tempdir().unwrap();
         let vsock_base = dir.path().join("vsock-empty-truncation");
@@ -2013,8 +2062,34 @@ mod tests {
             vsock_proto::BoundedExecTermination::Exited {
                 exit_code: completion.exit_code,
             },
+            None,
         )
         .await;
+    }
+
+    async fn mock_guest_finishes_bounded_exec(
+        vsock_base: PathBuf,
+        termination: vsock_proto::BoundedExecTermination,
+        diagnostic: Option<&'static str>,
+    ) {
+        let listener_path = PathBuf::from(format!(
+            "{}_{}",
+            vsock_base.display(),
+            vsock_proto::VSOCK_PORT
+        ));
+        wait_for_socket_exists(&listener_path).await;
+
+        let mut stream = UnixStream::connect(&listener_path).await.unwrap();
+        let mut decoder = Decoder::new();
+        mock_vsock_handshake(&mut stream, &mut decoder).await;
+
+        let message = read_vsock_message(&mut stream, &mut decoder).await;
+        assert_eq!(message.msg_type, MSG_BOUNDED_EXEC);
+        let request = vsock_proto::decode_bounded_exec(&message.payload).unwrap();
+        assert!(request.stdout.stream.is_some());
+        assert!(request.stderr.stream.is_some());
+
+        write_bounded_exec_result(&mut stream, message.seq, termination, diagnostic).await;
     }
 
     async fn mock_guest_streams_then_holds_exec(
@@ -2086,13 +2161,14 @@ mod tests {
         stream: &mut UnixStream,
         seq: u32,
         termination: vsock_proto::BoundedExecTermination,
+        diagnostic: Option<&str>,
     ) {
         let payload = vsock_proto::encode_bounded_exec_result(
             termination,
             1,
             vsock_proto::BoundedExecOutput::Discarded,
             vsock_proto::BoundedExecOutput::Discarded,
-            None,
+            diagnostic,
         )
         .unwrap();
         let frame = vsock_proto::encode(MSG_BOUNDED_EXEC_RESULT, seq, &payload).unwrap();
