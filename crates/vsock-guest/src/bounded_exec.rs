@@ -1136,22 +1136,22 @@ mod tests {
         );
     }
 
-    fn noop_cleanup() -> BoundedExecCleanup {
-        Box::new(|| {})
-    }
-
     #[test]
     fn bounded_exec_worker_spawn_failure_returns_start_failed_result() {
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
+        let cleanup_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let cleanup_count_for_hook = Arc::clone(&cleanup_count);
 
         spawn_bounded_exec_worker_with_spawner(
             bounded_request(41, "echo should-not-run"),
             writer,
             Arc::new(AtomicBool::new(false)),
             Arc::new(AtomicBool::new(false)),
-            noop_cleanup(),
+            Box::new(move || {
+                cleanup_count_for_hook.fetch_add(1, Ordering::SeqCst);
+            }),
             FailingThreadSpawner::fail_once(THREAD_BOUNDED_EXEC_WORKER),
         )
         .unwrap();
@@ -1162,6 +1162,7 @@ mod tests {
             BoundedExecTermination::StartFailed,
             "bounded exec worker thread",
         );
+        assert_eq!(cleanup_count.load(Ordering::SeqCst), 1);
     }
 
     #[test]

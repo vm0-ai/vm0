@@ -497,6 +497,29 @@ mod tests {
         assert!(stderr.is_empty());
     }
 
+    #[tokio::test]
+    async fn stderr_broken_pipe_exits_success_without_config_error() {
+        let control = MockSandboxControl::new("/tmp");
+        control.push_exec_remote_response(MockRemoteExecResponse {
+            output: vec![MockRemoteExecOutput::Stderr(b"warning\n".to_vec())],
+            result: Ok(RemoteExecStatus::exited(0)),
+        });
+
+        let mut stdout = Vec::new();
+        let mut stderr = BrokenPipeWriter;
+        let result = run_exec_with_writers(
+            make_args("test-id", "echo warning"),
+            &control,
+            &mut stdout,
+            &mut stderr,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result, ExitCode::SUCCESS);
+        assert!(stdout.is_empty());
+    }
+
     // ---- argument quoting -------------------------------------------------
 
     #[tokio::test]
