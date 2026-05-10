@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.27.1](https://github.com/vm0-ai/vm0/compare/api-v1.27.0...api-v1.27.1) (2026-05-10)
+
+
+### Refactoring
+
+* **api:** migrate custom-connectors delete secret to api backend ([#12532](https://github.com/vm0-ai/vm0/issues/12532)) ([2fc9e02](https://github.com/vm0-ai/vm0/commit/2fc9e02efb83579c63c1082d453e11890a7c6a75)), closes [#12531](https://github.com/vm0-ai/vm0/issues/12531)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.7.1
+    * @vm0/connectors bumped to 1.3.0
+    * @vm0/core bumped to 8.267.2
+    * @vm0/db bumped to 1.4.3
+
 ## [1.27.0](https://github.com/vm0-ai/vm0/compare/api-v1.26.0...api-v1.27.0) (2026-05-10)
 
 
