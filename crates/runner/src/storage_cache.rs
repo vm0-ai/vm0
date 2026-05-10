@@ -27,7 +27,10 @@ use std::time::{Duration, Instant};
 use bytes::Bytes;
 use futures_util::stream::{self, StreamExt};
 use reqwest::Client;
-use sandbox::{ExecRequest, Sandbox, WriteFileRequest, WriteFileSource};
+use sandbox::{
+    BoundedExecCapturePolicy, BoundedExecOutput, BoundedExecOutputRequest, BoundedExecRequest,
+    BoundedExecTermination, Sandbox, WriteFileRequest, WriteFileSource,
+};
 use tokio::fs;
 use tracing::{debug, warn};
 
@@ -273,21 +276,51 @@ pub async fn populate_cache(
 async fn prepare_guest_stage_dir(sandbox: &dyn Sandbox) -> RunnerResult<()> {
     let cmd = format!("rm -rf -- {GUEST_STAGE_DIR} && mkdir -p -- {GUEST_STAGE_DIR}");
     let result = sandbox
-        .exec(&ExecRequest {
+        .bounded_exec(&BoundedExecRequest {
             cmd: &cmd,
             timeout: Duration::from_secs(10),
             env: &[],
             sudo: false,
+            stdin: None,
+            stdout: capture_bounded_output(4 * 1024),
+            stderr: capture_bounded_output(16 * 1024),
         })
         .await?;
-    if result.exit_code != 0 {
-        return Err(RunnerError::Internal(format!(
-            "prepare guest storage cache stage dir failed: exit_code={} stderr={}",
-            result.exit_code,
-            String::from_utf8_lossy(&result.stderr).trim()
-        )));
+
+    match result.termination {
+        BoundedExecTermination::Exited { exit_code: 0 } => Ok(()),
+        BoundedExecTermination::Exited { exit_code } => Err(RunnerError::Internal(format!(
+            "prepare guest storage cache stage dir failed: exit_code={exit_code} stderr={}",
+            bounded_output_preview(&result.stderr)
+        ))),
+        termination => Err(RunnerError::Internal(format!(
+            "prepare guest storage cache stage dir failed: termination={termination:?} stderr={}",
+            bounded_output_preview(&result.stderr)
+        ))),
     }
-    Ok(())
+}
+
+fn capture_bounded_output(limit_bytes: u32) -> BoundedExecOutputRequest {
+    BoundedExecOutputRequest {
+        capture: BoundedExecCapturePolicy::Capture { limit_bytes },
+        stream: None,
+    }
+}
+
+fn bounded_output_preview(output: &BoundedExecOutput) -> String {
+    match output {
+        BoundedExecOutput::Discarded => String::new(),
+        BoundedExecOutput::Captured { bytes, truncated } => {
+            let text = String::from_utf8_lossy(bytes).trim().to_string();
+            if *truncated && text.is_empty() {
+                "[truncated]".to_string()
+            } else if *truncated {
+                format!("{text} [truncated]")
+            } else {
+                text
+            }
+        }
+    }
 }
 
 fn collect_targets(manifest: &GuestDownloadManifest) -> Vec<CacheTarget> {
@@ -879,7 +912,7 @@ mod tests {
     use httpmock::Method::{GET, HEAD};
     use httpmock::prelude::*;
     use sandbox::{SandboxError, SandboxOperation, SandboxOperationReason};
-    use sandbox_mock::{MockSandbox, WriteFilesCallSource};
+    use sandbox_mock::{BoundedExecResponse, MockSandbox, WriteFilesCallSource};
     use tokio::io::AsyncWriteExt as _;
     use tokio::net::TcpListener;
 
@@ -1051,11 +1084,22 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let sandbox = MockSandbox::new("test");
-        sandbox.push_exec_result(Ok(sandbox::ExecResult {
-            exit_code: 1,
-            stdout: Vec::new(),
-            stderr: b"rm failed".to_vec(),
-        }));
+        sandbox.push_bounded_exec_response(BoundedExecResponse {
+            events: Vec::new(),
+            result: Ok(sandbox::BoundedExecResult {
+                termination: sandbox::BoundedExecTermination::Exited { exit_code: 1 },
+                duration: Duration::ZERO,
+                stdout: sandbox::BoundedExecOutput::Captured {
+                    bytes: Vec::new(),
+                    truncated: false,
+                },
+                stderr: sandbox::BoundedExecOutput::Captured {
+                    bytes: b"rm failed".to_vec(),
+                    truncated: false,
+                },
+                diagnostic: None,
+            }),
+        });
         let mut telemetry = new_telemetry();
 
         let name = "stage-prepare-failure";
