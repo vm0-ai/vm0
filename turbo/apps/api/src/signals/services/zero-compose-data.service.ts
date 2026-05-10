@@ -304,6 +304,12 @@ export const updateComposeMetadata$ = command(
   ): Promise<NotFoundResponse | undefined> => {
     const writeDb = set(writeDb$);
 
+    // Ownership check is intentionally stricter than apps/web's PATCH handler:
+    // web uses canAccessCompose(userId, orgId, compose) which permits org-mate
+    // access, while apps/api scopes mutations to the owning user only — matching
+    // the existing deleteCompose$ pattern. The cross-user-isolation test in
+    // zero-composes-metadata-update.test.ts pins this behaviour; do not relax
+    // to canAccessCompose without updating that test and revisiting #12558.
     const [compose] = await writeDb
       .select({
         id: agentComposes.id,
