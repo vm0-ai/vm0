@@ -35,6 +35,7 @@ import {
 
 import { db$, type Db } from "../external/db";
 import { getDatasetName, queryAxiom } from "../external/axiom";
+import { escapeAplString } from "../../lib/axiom-apl";
 import { now } from "../../lib/time";
 
 type ServiceDb = Pick<Db, "select" | "selectDistinct">;
@@ -462,10 +463,6 @@ export function zeroLogDetail(
   });
 }
 
-function escapeApl(value: string): string {
-  return value.replace(/\\/g, String.raw`\\`).replace(/"/g, String.raw`\"`);
-}
-
 interface LogSearchParams {
   userId: string;
   orgId: string;
@@ -541,10 +538,10 @@ async function getUserRunIds(
 
 function buildRunIdFilter(runIds: string[]): string {
   return runIds.length === 1
-    ? `| where runId == "${escapeApl(runIds[0]!)}"`
+    ? `| where runId == "${escapeAplString(runIds[0]!)}"`
     : `| where runId in (${runIds
         .map((id) => {
-          return `"${escapeApl(id)}"`;
+          return `"${escapeAplString(id)}"`;
         })
         .join(", ")})`;
 }
@@ -640,7 +637,7 @@ export function zeroLogSearch(
     const searchApl = `['${dataset}']
 | where _time > datetime("${sinceISO}")
 ${runIdFilter}
-| search "*${escapeApl(keyword)}*"
+| search "*${escapeAplString(keyword)}*"
 | order by _time desc
 | limit ${limit + 1}`;
 
@@ -661,7 +658,7 @@ ${runIdFilter}
       const contextConditions = matches.map((match) => {
         const seqMin = Math.max(0, match.sequenceNumber - before);
         const seqMax = match.sequenceNumber + after;
-        return `(runId == "${escapeApl(match.runId)}" and sequenceNumber >= ${seqMin} and sequenceNumber <= ${seqMax})`;
+        return `(runId == "${escapeAplString(match.runId)}" and sequenceNumber >= ${seqMin} and sequenceNumber <= ${seqMax})`;
       });
 
       const contextApl = `['${dataset}']

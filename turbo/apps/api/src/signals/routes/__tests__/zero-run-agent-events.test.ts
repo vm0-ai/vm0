@@ -190,6 +190,97 @@ describe("GET /api/zero/runs/:id/telemetry/agent", () => {
     });
   });
 
+  it("waits for the axiom watermark and passes noCache when lastEventSequence is set", async () => {
+    // First call = visibility poll (returns the contiguous prefix). Second
+    // call = the actual events query, which must receive { noCache: true }.
+    context.mocks.axiom.query
+      .mockResolvedValueOnce([{ sequenceNumber: 0 }, { sequenceNumber: 1 }])
+      .mockResolvedValueOnce([]);
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const compose = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: compose.composeId,
+        status: "completed",
+        lastEventSequence: 1,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroRunAgentEventsContract);
+
+    const response = await accept(
+      client.getAgentEvents({
+        params: { id: runId },
+        query: { limit: 10, order: "desc" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.events).toStrictEqual([]);
+    // The visibility poll uses the per-runId visibility query with noCache.
+    // The actual events query also gets noCache (the wait was attempted).
+    expect(context.mocks.axiom.query).toHaveBeenCalledTimes(2);
+    const calls = context.mocks.axiom.query.mock.calls;
+    expect(calls[0]?.[0]).toContain("project sequenceNumber");
+    expect(calls[0]?.[1]).toStrictEqual({ noCache: true });
+    expect(calls[1]?.[0]).toContain(`runId == "${runId}"`);
+    expect(calls[1]?.[1]).toStrictEqual({ noCache: true });
+  });
+
+  it("does not wait or pass noCache when watermark target is null", async () => {
+    context.mocks.axiom.query.mockResolvedValue([]);
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const compose = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    // lastEventSequence: 3 + since: 10 (desc) → since >= last → target = null
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: compose.composeId,
+        status: "completed",
+        lastEventSequence: 3,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroRunAgentEventsContract);
+
+    await accept(
+      client.getAgentEvents({
+        params: { id: runId },
+        query: { limit: 10, order: "desc", since: 10 },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    // Only the events query — no visibility poll. And no noCache option.
+    expect(context.mocks.axiom.query).toHaveBeenCalledTimes(1);
+    const [apl, opts] = context.mocks.axiom.query.mock.calls[0] ?? [];
+    expect(apl).toContain(`runId == "${runId}"`);
+    expect(opts).toBeUndefined();
+  });
+
   it("returns 403 for a sandbox token without agent-run:read capability", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;

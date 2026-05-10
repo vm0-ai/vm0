@@ -12,6 +12,11 @@ import { and, eq } from "drizzle-orm";
 
 import { db$, type Db } from "../external/db";
 import { getDatasetName, queryAxiom } from "../external/axiom";
+import {
+  getAgentEventPageWatermarkTarget,
+  waitForRunEventWatermarkVisible,
+} from "../../lib/agent-event-visibility";
+import { escapeAplString } from "../../lib/axiom-apl";
 
 type ServiceDb = Pick<Db, "select">;
 
@@ -240,16 +245,47 @@ interface AxiomAgentEvent {
   eventData: Record<string, unknown>;
 }
 
+// Decide whether the page read needs to wait for Axiom indexing and which
+// sequence to wait for. Mirrors apps/web/src/lib/infra/run/run-telemetry-service.ts.
+function getAgentEventsVisibilityTarget(
+  lastEventSequence: number | null,
+  since: number | undefined,
+  limit: number,
+  order: "asc" | "desc",
+): number | null {
+  if (lastEventSequence === null) {
+    return null;
+  }
+
+  if (order === "asc") {
+    return getAgentEventPageWatermarkTarget(
+      lastEventSequence,
+      since,
+      limit + 1,
+    );
+  }
+
+  if (since !== undefined && since >= lastEventSequence) {
+    return null;
+  }
+
+  return lastEventSequence;
+}
+
 export function zeroRunAgentEvents(
   params: AgentEventsParams,
 ): Computed<Promise<AgentEventsResponse | null>> {
   return computed(async (get): Promise<AgentEventsResponse | null> => {
     const db = get(db$);
 
-    // Verify ownership and get compose content for framework extraction
+    // Verify ownership and get compose content for framework extraction.
+    // `lastEventSequence` is needed for the watermark wait below — without it
+    // the api would fall through to a cached Axiom read for runs whose events
+    // are still in-flight to the indexer. See issue #12424.
     const [runWithCompose] = await db
       .select({
         id: agentRuns.id,
+        lastEventSequence: agentRuns.lastEventSequence,
         composeContent: agentComposeVersions.content,
       })
       .from(agentRuns)
@@ -274,17 +310,35 @@ export function zeroRunAgentEvents(
 
     const { since, limit, order } = params;
 
+    const watermarkTarget = getAgentEventsVisibilityTarget(
+      runWithCompose.lastEventSequence,
+      since,
+      limit,
+      order,
+    );
+    if (watermarkTarget !== null) {
+      await waitForRunEventWatermarkVisible(params.runId, watermarkTarget);
+    }
+
     const dataset = getDatasetName("agent-run-events");
+    // `since` is an exclusive sequenceNumber cursor (integer). The watermark
+    // wait above ensures Axiom can serve the contiguous prefix; the noCache
+    // hint below ensures we don't read a stale cached response.
     const sinceFilter =
       since !== undefined ? `| where sequenceNumber > ${since}` : "";
     const apl = `['${dataset}']
-| where runId == "${params.runId}"
+| where runId == "${escapeAplString(params.runId)}"
 ${sinceFilter}
 | order by sequenceNumber ${order}
 | limit ${limit + 1}`;
 
     const events = (
-      await get(queryAxiom(apl))
+      await get(
+        queryAxiom(
+          apl,
+          watermarkTarget !== null ? { noCache: true } : undefined,
+        ),
+      )
     ).slice() as unknown as AxiomAgentEvent[];
 
     const hasMore = events.length > limit;

@@ -24,20 +24,38 @@ function axiomClientForApl(apl: string): Axiom {
   return telemetryAxiomClient();
 }
 
+// Minimal options surface — only the `noCache` knob is wired today (used by
+// the agent-event watermark wait to bypass Axiom's per-request cache for
+// freshly-completed runs). Other options from web's queryAxiom (maxRetries,
+// streamingDuration, timeoutMs) intentionally NOT ported — see leader
+// guidance on issue #12424; add them when a caller actually needs them.
+export interface QueryAxiomOptions {
+  readonly noCache?: boolean;
+}
+
+export async function queryAxiomDirect<T = Record<string, unknown>>(
+  apl: string,
+  options?: QueryAxiomOptions,
+): Promise<readonly T[]> {
+  const client = axiomClientForApl(apl);
+  if (!client) {
+    return [];
+  }
+  const axiomOptions =
+    options?.noCache !== undefined ? { noCache: options.noCache } : undefined;
+  const result = await client.query(apl, axiomOptions);
+  return (
+    result.matches?.map((m) => {
+      return { _time: m._time, ...m.data } as T;
+    }) ?? []
+  );
+}
+
 export function queryAxiom(
   apl: string,
+  options?: QueryAxiomOptions,
 ): Computed<Promise<readonly Record<string, unknown>[]>> {
-  return computed(async (): Promise<readonly Record<string, unknown>[]> => {
-    const client = axiomClientForApl(apl);
-    if (!client) {
-      return [];
-    }
-
-    const result = await client.query(apl);
-    return (
-      result.matches?.map((m) => {
-        return { _time: m._time, ...m.data };
-      }) ?? []
-    );
+  return computed((): Promise<readonly Record<string, unknown>[]> => {
+    return queryAxiomDirect(apl, options);
   });
 }

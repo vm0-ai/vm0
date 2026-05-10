@@ -38,6 +38,7 @@ interface SeedRunArgs {
   readonly sandboxReuseResult?: string | null;
   readonly result?: Record<string, unknown> | null;
   readonly error?: string | null;
+  readonly lastEventSequence?: number | null;
 }
 
 interface SeedScheduleArgs {
@@ -276,6 +277,7 @@ export const seedRun$ = command(
         sandboxReuseResult: args.sandboxReuseResult ?? null,
         result: args.result ?? null,
         error: args.error ?? null,
+        lastEventSequence: args.lastEventSequence ?? null,
       })
       .returning({ id: agentRuns.id });
     signal.throwIfAborted();

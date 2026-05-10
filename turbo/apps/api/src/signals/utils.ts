@@ -63,6 +63,22 @@ export function isValidTimeZone(input: string): boolean {
   }
 }
 
+// Centralized guarded async — wraps a Promise-returning thunk so callers in
+// best-effort polling loops (e.g. agent-event-visibility) can branch on the
+// outcome without scattering try/catch around. AbortError is re-raised so
+// cancellation propagates correctly.
+export async function safeAsync<T>(
+  fn: () => Promise<T>,
+): Promise<{ readonly ok: T } | { readonly error: unknown }> {
+  // eslint-disable-next-line no-restricted-syntax -- centralized guarded async
+  try {
+    return { ok: await fn() };
+  } catch (error) {
+    throwIfAbort(error);
+    return { error };
+  }
+}
+
 export function detach(
   promise: Promise<unknown>,
   mechanism: Mechanism,
