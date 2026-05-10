@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.24.1](https://github.com/vm0-ai/vm0/compare/api-v1.24.0...api-v1.24.1) (2026-05-10)
+
+
+### Bug Fixes
+
+* **api:** port google drive artifact sync status to chat-threads artifacts get ([#12499](https://github.com/vm0-ai/vm0/issues/12499)) ([541165f](https://github.com/vm0-ai/vm0/commit/541165f97bacc3b3b93752e1655e7ccab9c67e3b)), closes [#12488](https://github.com/vm0-ai/vm0/issues/12488)
+
+
+### Refactoring
+
+* **api:** migrate zero chat search get to api backend ([#12494](https://github.com/vm0-ai/vm0/issues/12494)) ([a21a72a](https://github.com/vm0-ai/vm0/commit/a21a72a6c86d74c43653c435532b074661e376c6)), closes [#12491](https://github.com/vm0-ai/vm0/issues/12491)
+* **api:** migrate zero chat thread messages get to api backend ([#12492](https://github.com/vm0-ai/vm0/issues/12492)) ([7c3b418](https://github.com/vm0-ai/vm0/commit/7c3b41839c2feb30a2dcaf6149445f806e8454dd))
+* **api:** migrate zero chat threads artifacts list get to api backend ([#12489](https://github.com/vm0-ai/vm0/issues/12489)) ([bf4d50b](https://github.com/vm0-ai/vm0/commit/bf4d50bb44bf29cc8a8f720a9c5e6b4d62c2af95)), closes [#12486](https://github.com/vm0-ai/vm0/issues/12486) [#12488](https://github.com/vm0-ai/vm0/issues/12488)
+* **api:** migrate zero chat threads get by id to api backend ([#12487](https://github.com/vm0-ai/vm0/issues/12487)) ([549b84b](https://github.com/vm0-ai/vm0/commit/549b84b92d800475f85524668fe4817c70dded6b)), closes [#12484](https://github.com/vm0-ai/vm0/issues/12484)
+
 ## [1.24.0](https://github.com/vm0-ai/vm0/compare/api-v1.23.1...api-v1.24.0) (2026-05-09)
 
 
