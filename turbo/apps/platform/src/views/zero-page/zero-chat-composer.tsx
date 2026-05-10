@@ -327,6 +327,72 @@ function resolveComposerCanSend({
 }
 
 // ---------------------------------------------------------------------------
+// Send button — pulled out of the main composer render to keep
+// `ZeroChatComposer`'s cyclomatic complexity under the 20-cap. Renders the
+// plain Send button when goal mode is unavailable, or a split-button (Send
+// + chevron dropdown with "Send as goal") when the Goal feature switch is on.
+// ---------------------------------------------------------------------------
+
+interface SendOrGoalButtonProps {
+  goalEnabled: boolean;
+  disabled: boolean;
+  onSend: () => void;
+  onSendAsGoal: () => void;
+}
+
+function SendOrGoalButton({
+  goalEnabled,
+  disabled,
+  onSend,
+  onSendAsGoal,
+}: SendOrGoalButtonProps) {
+  if (!goalEnabled) {
+    return (
+      <Button
+        size="sm"
+        className="rounded-lg h-9 w-9 p-0 shrink-0"
+        onClick={onSend}
+        disabled={disabled}
+        aria-label="Send"
+      >
+        <IconArrowUp size={18} stroke={2} />
+      </Button>
+    );
+  }
+  return (
+    <div className="flex shrink-0">
+      <Button
+        size="sm"
+        className="rounded-l-lg rounded-r-none h-9 w-9 p-0 shrink-0"
+        onClick={onSend}
+        disabled={disabled}
+        aria-label="Send"
+      >
+        <IconArrowUp size={18} stroke={2} />
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="sm"
+            className="rounded-l-none rounded-r-lg h-9 w-6 p-0 shrink-0 border-l border-l-primary-foreground/20"
+            disabled={disabled}
+            aria-label="More send options"
+          >
+            <IconChevronDown size={14} stroke={2} />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuItem onClick={onSendAsGoal}>
+            <IconTarget size={14} stroke={1.5} />
+            Send as goal
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Connector sub-components
 // ---------------------------------------------------------------------------
 
@@ -1156,8 +1222,10 @@ export function ZeroChatComposer({
   // Goal mode: Send-as-goal is a peer of the regular Send action, exposed
   // via the dropdown next to the Send button when the Goal feature switch is
   // on. Goal sends bypass the queue path — a goal IS a fresh send, not a
-  // queued draft against an active run.
-  const goalFeatureEnabled = useLastResolved(goalEnabled$) ?? false;
+  // queued draft against an active run. `Boolean()` keeps the conversion
+  // branch-free so this read does not push `ZeroChatComposer` over the
+  // cyclomatic-complexity cap.
+  const goalFeatureEnabled = Boolean(useLastResolved(goalEnabled$));
   const handleSendAsGoal = () => {
     if (submitBlocker || !canSubmit) {
       return;
@@ -1382,49 +1450,13 @@ export function ZeroChatComposer({
                       >
                         <IconPlayerStop size={16} />
                       </Button>
-                    ) : goalFeatureEnabled ? (
-                      // Split-button variant: Send + chevron dropdown that
-                      // exposes the Goal alternative. Visible only when the
-                      // Goal feature switch is on.
-                      <div className="flex shrink-0">
-                        <Button
-                          size="sm"
-                          className="rounded-l-lg rounded-r-none h-9 w-9 p-0 shrink-0"
-                          onClick={handleButtonSend}
-                          disabled={sendAction === "none"}
-                          aria-label="Send"
-                        >
-                          <IconArrowUp size={18} stroke={2} />
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              size="sm"
-                              className="rounded-l-none rounded-r-lg h-9 w-6 p-0 shrink-0 border-l border-l-primary-foreground/20"
-                              disabled={sendAction === "none"}
-                              aria-label="More send options"
-                            >
-                              <IconChevronDown size={14} stroke={2} />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuItem onClick={handleSendAsGoal}>
-                              <IconTarget size={14} stroke={1.5} />
-                              Send as goal
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
                     ) : (
-                      <Button
-                        size="sm"
-                        className="rounded-lg h-9 w-9 p-0 shrink-0"
-                        onClick={handleButtonSend}
+                      <SendOrGoalButton
+                        goalEnabled={goalFeatureEnabled}
                         disabled={sendAction === "none"}
-                        aria-label="Send"
-                      >
-                        <IconArrowUp size={18} stroke={2} />
-                      </Button>
+                        onSend={handleButtonSend}
+                        onSendAsGoal={handleSendAsGoal}
+                      />
                     )}
                   </>
                 )}

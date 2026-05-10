@@ -119,14 +119,18 @@ describe("chat composer — Send-as-goal dropdown", () => {
 
     const trigger = await waitFor(() => {
       const t = findDropdownTrigger();
-      if (!t) throw new Error("dropdown trigger not rendered");
+      if (!t) {
+        throw new Error("dropdown trigger not rendered");
+      }
       return t;
     });
     await user.click(trigger);
 
     const goalItem = await waitFor(() => {
       const item = findGoalMenuItem();
-      if (!item) throw new Error("Send as goal menu item not rendered");
+      if (!item) {
+        throw new Error("Send as goal menu item not rendered");
+      }
       return item;
     });
     await user.click(goalItem);
@@ -134,7 +138,7 @@ describe("chat composer — Send-as-goal dropdown", () => {
     await waitFor(() => {
       expect(captured.current).toBeDefined();
     });
-    expect(captured.current?.goal).toBe(true);
+    expect(captured.current?.goal).toBeTruthy();
     expect(captured.current?.prompt).toBe(
       "Migrate the auth middleware off the legacy session store",
     );
