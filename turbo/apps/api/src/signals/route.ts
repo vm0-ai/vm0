@@ -39,6 +39,7 @@ import { zeroSecretsRoutes } from "./routes/zero-secrets";
 import { zeroSkillsRoutes } from "./routes/zero-skills";
 import { zeroIntegrationsSlackRoutes } from "./routes/zero-integrations-slack";
 import { zeroIntegrationsTelegramRoutes } from "./routes/zero-integrations-telegram";
+import { zeroIntegrationsTelegramMessageRoutes } from "./routes/zero-integrations-telegram-message";
 import { zeroSlackChannelsRoutes } from "./routes/zero-slack-channels";
 import { zeroSlackConnectRoutes } from "./routes/zero-slack-connect";
 import { zeroTeamRoutes } from "./routes/zero-team";
@@ -99,6 +100,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsSlackRoutes,
   ...zeroSlackChannelsRoutes,
   ...zeroIntegrationsTelegramRoutes,
+  ...zeroIntegrationsTelegramMessageRoutes,
   ...zeroTeamRoutes,
   ...zeroUsageInsightRoutes,
   ...chatThreadsV1Routes,
