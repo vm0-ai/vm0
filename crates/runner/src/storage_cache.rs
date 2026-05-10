@@ -27,7 +27,7 @@ use std::time::{Duration, Instant};
 use bytes::Bytes;
 use futures_util::stream::{self, StreamExt};
 use reqwest::Client;
-use sandbox::{Sandbox, WriteFileRequest, WriteFileSource};
+use sandbox::{ExecRequest, Sandbox, WriteFileRequest, WriteFileSource};
 use tokio::fs;
 use tracing::{debug, warn};
 
@@ -238,7 +238,12 @@ pub async fn populate_cache(
             })
             .collect::<Vec<_>>();
         let started = Instant::now();
-        let result = sandbox.write_files(&requests).await;
+        let result = async {
+            prepare_guest_stage_dir(sandbox).await?;
+            sandbox.write_files(&requests).await?;
+            Ok::<(), RunnerError>(())
+        }
+        .await;
         let error = result.as_ref().err().map(ToString::to_string);
         telemetry.record(
             "storage_cache_guest_stage",
@@ -261,6 +266,26 @@ pub async fn populate_cache(
         for target in &group.members {
             apply_outcome(manifest, target, &processed.outcome, telemetry);
         }
+    }
+    Ok(())
+}
+
+async fn prepare_guest_stage_dir(sandbox: &dyn Sandbox) -> RunnerResult<()> {
+    let cmd = format!("rm -rf -- {GUEST_STAGE_DIR} && mkdir -p -- {GUEST_STAGE_DIR}");
+    let result = sandbox
+        .exec(&ExecRequest {
+            cmd: &cmd,
+            timeout: Duration::from_secs(10),
+            env: &[],
+            sudo: false,
+        })
+        .await?;
+    if result.exit_code != 0 {
+        return Err(RunnerError::Internal(format!(
+            "prepare guest storage cache stage dir failed: exit_code={} stderr={}",
+            result.exit_code,
+            String::from_utf8_lossy(&result.stderr).trim()
+        )));
     }
     Ok(())
 }
@@ -1018,6 +1043,56 @@ mod tests {
                 .as_deref()
                 .is_some_and(|error| error.contains("stage failed")),
             "expected stage failure reason in {ops:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn guest_stage_prepare_failure_records_failed_telemetry_and_skips_write_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_exec_result(Ok(sandbox::ExecResult {
+            exit_code: 1,
+            stdout: Vec::new(),
+            stderr: b"rm failed".to_vec(),
+        }));
+        let mut telemetry = new_telemetry();
+
+        let name = "stage-prepare-failure";
+        let version = "v1";
+        let cache_dir = home.storage_cache_dir(name, version);
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        std::fs::write(cache_dir.join("archive.tar.gz"), tarball_bytes()).unwrap();
+
+        let original = "https://r2.example.com/stage-prepare-failure.tar.gz".to_string();
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        let err = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("prepare guest storage cache stage dir failed"),
+            "got: {err}"
+        );
+        assert!(err.to_string().contains("rm failed"), "got: {err}");
+        assert!(sandbox.write_files_calls().is_empty());
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        let ops = telemetry.pending_ops_snapshot();
+        let (_, success, error) = ops
+            .iter()
+            .find(|(k, _, _)| k == "storage_cache_guest_stage")
+            .expect("expected failed guest stage telemetry");
+        assert!(!success);
+        assert!(
+            error
+                .as_deref()
+                .is_some_and(|error| error.contains("rm failed")),
+            "expected stage prepare failure reason in {ops:?}"
         );
     }
 
