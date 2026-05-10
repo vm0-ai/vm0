@@ -2154,9 +2154,15 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(r1.status).toBe(200);
       expect(r2.status).toBe(200);
 
+      // Filter to queued continuation rows (run_id IS NULL). Auto-send may
+      // also stamp the goal columns onto the *claim* row it inserts when it
+      // dispatches the next run, so a `goalRemainingTurns === 4` filter alone
+      // would over-count the chain.
       const messages = await getTestChatMessagesByThread(threadId);
       const continuations = messages.filter((m) => {
-        return m.role === "user" && m.goalRemainingTurns === 4;
+        return (
+          m.role === "user" && m.runId === null && m.goalRemainingTurns === 4
+        );
       });
       expect(continuations).toHaveLength(1);
     });

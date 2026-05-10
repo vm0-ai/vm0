@@ -105,16 +105,26 @@ function buildAppendSystemPrompt(
  * claim it on the next iteration.
  *
  * Stop conditions, in order:
- *   1. The triggering message is not goal-driven (no goal_remaining_turns).
- *   2. The just-completed run did not reach `succeeded` — any error/cancel
- *      ends the chain. No retry.
+ *   1. The callback's terminal status is not `completed` — any error/cancel
+ *      ends the chain. No retry. The callback parameter is the source of
+ *      truth: by the time this runs the run row may already have been
+ *      updated, but the callback we're handling carries the authoritative
+ *      terminal verdict for this delivery.
+ *   2. The triggering message is not goal-driven (no goal_remaining_turns).
  *   3. A row with `interrupts_run_id = <runId>` exists — the user explicitly
  *      stopped the run.
  *   4. Any assistant message of the run contains `[GOAL_DONE]` — the agent
  *      voluntarily declared completion.
  *   5. `goal_remaining_turns <= 1` for the just-completed turn — budget spent.
  */
-async function maybeInsertGoalContinuation(runId: string): Promise<void> {
+async function maybeInsertGoalContinuation(
+  runId: string,
+  terminalStatus: "completed" | "failed",
+): Promise<void> {
+  if (terminalStatus !== "completed") {
+    return;
+  }
+
   const [trigger] = await globalThis.services.db
     .select({
       threadId: chatMessages.chatThreadId,
@@ -137,15 +147,6 @@ async function maybeInsertGoalContinuation(runId: string): Promise<void> {
     return;
   }
   if (trigger.goalRemainingTurns <= 1) {
-    return;
-  }
-
-  const [run] = await globalThis.services.db
-    .select({ status: agentRuns.status })
-    .from(agentRuns)
-    .where(eq(agentRuns.id, runId))
-    .limit(1);
-  if (!run || run.status !== "succeeded") {
     return;
   }
 
@@ -239,9 +240,10 @@ export async function autoSendQueuedMessageOnRunComplete(input: {
   runId: string;
   agentId: string;
   apiStartTime: number;
+  terminalStatus: "completed" | "failed";
 }): Promise<void> {
   initServices();
-  const { runId, agentId, apiStartTime } = input;
+  const { runId, agentId, apiStartTime, terminalStatus } = input;
 
   const chatThread = await getChatThreadIdForRun(runId);
   if (!chatThread) {
@@ -254,7 +256,7 @@ export async function autoSendQueuedMessageOnRunComplete(input: {
   // enqueue the next continuation row before consulting the FIFO picker.
   // The continuation is a fresh queued user message and will be picked up
   // immediately after — same code path as a real user-typed message.
-  await maybeInsertGoalContinuation(runId);
+  await maybeInsertGoalContinuation(runId, terminalStatus);
 
   const queuedMessage = await nextQueuedUserMessage(threadId);
   if (!queuedMessage) {

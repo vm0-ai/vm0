@@ -61,6 +61,10 @@ beforeEach(() => {
   // - "not wrapped in act(...)": unavoidable with our async bootstrap pattern
   //   (render() runs inside act, then route setup updates page$ outside act).
   //   Silently ignored.
+  // - "suspended inside an `act` scope, but the `act` call was not awaited":
+  //   React 19 variant of the same problem — timer-driven detached signals
+  //   (polling, fire-and-forget DOM commands) commit after the test scope
+  //   has closed. Same root cause as the "not wrapped in act" filter above.
   // - "Detached promise rejected": detach()'s bookkeeping log for non-abort
   //   rejections from DOM-callback flows. The UI surfaces these via toast;
   //   the log is for dev-console visibility, not a test assertion. Silently
@@ -73,6 +77,9 @@ beforeEach(() => {
       return;
     }
     if (str.includes("not wrapped in act(")) {
+      return;
+    }
+    if (str.includes("suspended inside an `act` scope")) {
       return;
     }
     if (str.includes("Detached promise rejected")) {

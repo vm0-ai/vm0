@@ -468,6 +468,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     runId,
     agentId: payload.agentId,
     apiStartTime,
+    terminalStatus: status === "completed" ? "completed" : "failed",
   });
 
   return NextResponse.json({ success: true });
