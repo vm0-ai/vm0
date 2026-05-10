@@ -4,9 +4,11 @@ use httpmock::prelude::*;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, MutexGuard};
 use tempfile::TempDir;
 
 static RUN_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
+static STAGE_DIR_TEST_LOCK: Mutex<()> = Mutex::new(());
 const GUEST_STAGE_DIR: &str = "/tmp/vm0-storage-cache";
 
 enum TarEntry<'a> {
@@ -204,6 +206,12 @@ fn write_stage_archive(test_name: &str, bytes: &[u8]) -> std::io::Result<PathBuf
             path.display()
         ),
     ))
+}
+
+fn stage_dir_test_guard() -> MutexGuard<'static, ()> {
+    STAGE_DIR_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
 }
 
 struct RunFileCleanup {
@@ -1272,6 +1280,7 @@ fn symlink_missing_link_target_skipped() {
 // tarball is removed after the run succeeds.
 #[test]
 fn file_scheme_extraction_success() {
+    let _stage_guard = stage_dir_test_guard();
     let tar_gz = create_tar_gz(&[("hello.txt", b"hello from file")]).unwrap();
 
     let dir = tempfile::tempdir().unwrap();
@@ -1293,6 +1302,7 @@ fn file_scheme_extraction_success() {
 
 #[test]
 fn file_scheme_staged_archive_removed_after_failed_run() {
+    let _stage_guard = stage_dir_test_guard();
     let dir = tempfile::tempdir().unwrap();
     let staged = write_stage_archive(
         "file-scheme-staged-archive-failed-run",
@@ -1312,6 +1322,7 @@ fn file_scheme_staged_archive_removed_after_failed_run() {
 
 #[test]
 fn file_scheme_all_staged_archives_removed_after_partial_failure() {
+    let _stage_guard = stage_dir_test_guard();
     let tar_gz = create_tar_gz(&[("ok.txt", b"ok")]).unwrap();
 
     let dir = tempfile::tempdir().unwrap();
@@ -1345,6 +1356,7 @@ fn file_scheme_all_staged_archives_removed_after_partial_failure() {
 
 #[test]
 fn file_scheme_staged_archive_removed_after_mount_create_failure() {
+    let _stage_guard = stage_dir_test_guard();
     let tar_gz = create_tar_gz(&[("hello.txt", b"hello")]).unwrap();
 
     let dir = tempfile::tempdir().unwrap();
@@ -1366,6 +1378,7 @@ fn file_scheme_staged_archive_removed_after_mount_create_failure() {
 // but this is the production path for runner-staged storage cache tarballs.
 #[test]
 fn file_scheme_malicious_entries_are_skipped_while_safe_entries_extract() {
+    let _stage_guard = stage_dir_test_guard();
     let tar_gz = create_tar_gz_entries(&[
         TarEntry::File("safe.txt", b"safe"),
         TarEntry::Symlink("evil_symlink", "../outside.txt"),
@@ -1406,6 +1419,7 @@ fn file_scheme_malicious_entries_are_skipped_while_safe_entries_extract() {
 // archive does not create the symlink; it is already present in the target.
 #[test]
 fn file_scheme_preexisting_symlink_ancestor_blocks_nested_entry() {
+    let _stage_guard = stage_dir_test_guard();
     let tar_gz = create_tar_gz_entries(&[
         TarEntry::File("safe.txt", b"safe"),
         TarEntry::File("escape/payload.txt", b"malicious"),
@@ -1447,6 +1461,7 @@ fn file_scheme_preexisting_symlink_ancestor_blocks_nested_entry() {
 // broken runner contract — fatal, no retry (status_code is None, retriable false).
 #[test]
 fn file_scheme_missing_storage_fatal() {
+    let _stage_guard = stage_dir_test_guard();
     let dir = tempfile::tempdir().unwrap();
     let missing = unique_stage_archive_path("file-scheme-missing-storage");
     assert!(!missing.exists());
@@ -1465,6 +1480,7 @@ fn file_scheme_missing_storage_fatal() {
 // file lands, so a missing file signals a broken contract, not an absent artifact.
 #[test]
 fn file_scheme_missing_artifact_fatal() {
+    let _stage_guard = stage_dir_test_guard();
     let dir = tempfile::tempdir().unwrap();
     let missing = unique_stage_archive_path("file-scheme-missing-artifact");
     assert!(!missing.exists());
