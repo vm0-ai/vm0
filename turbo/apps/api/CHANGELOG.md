@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.26.0](https://github.com/vm0-ai/vm0/compare/api-v1.25.0...api-v1.26.0) (2026-05-10)
+
+
+### Features
+
+* **api:** migrate chat-threads pin route to api backend ([#12517](https://github.com/vm0-ai/vm0/issues/12517)) ([f2188d4](https://github.com/vm0-ai/vm0/commit/f2188d40c16ba7f0cfa8ae048348fc3c002866bd))
+
+
+### Refactoring
+
+* **api:** migrate chat-threads rename post to api backend ([#12516](https://github.com/vm0-ai/vm0/issues/12516)) ([96604b5](https://github.com/vm0-ai/vm0/commit/96604b58d91d1e30f94606239a202a7661239468))
+* **api:** migrate chat-threads unpin post to api backend ([#12515](https://github.com/vm0-ai/vm0/issues/12515)) ([a9bcfba](https://github.com/vm0-ai/vm0/commit/a9bcfbad44cfb6d72a4177676776f4a1e6199060)), closes [#12514](https://github.com/vm0-ai/vm0/issues/12514)
+
 ## [1.25.0](https://github.com/vm0-ai/vm0/compare/api-v1.24.3...api-v1.25.0) (2026-05-10)
 
 
