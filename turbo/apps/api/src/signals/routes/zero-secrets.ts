@@ -8,6 +8,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import type { RouteEntry } from "../route";
 import { userSecrets, userVariables } from "../services/zero-user-data.service";
+import { zeroSecretsDeleteRoutes } from "./zero-secrets-delete";
 
 const listSecretsInner$ = computed(async (get): Promise<unknown> => {
   const auth = get(organizationAuthContext$);
@@ -46,4 +47,5 @@ export const zeroSecretsRoutes: readonly RouteEntry[] = [
       listVariablesInner$,
     ),
   },
+  ...zeroSecretsDeleteRoutes,
 ];
