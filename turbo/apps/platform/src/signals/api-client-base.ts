@@ -16,7 +16,10 @@ import {
 interface AuthedClientOptions {
   readonly baseUrl: string;
   readonly getClerk: () => Promise<ClerkLike>;
-  readonly resolvePath?: (path: string) => Promise<string> | string;
+  readonly resolvePath?: (
+    path: string,
+    ctx: { method: string },
+  ) => Promise<string> | string;
 }
 
 export function createAuthedTsRestClient<T extends AppRouter>(
@@ -32,7 +35,7 @@ export function createAuthedTsRestClient<T extends AppRouter>(
       const clerk = await options.getClerk();
       const initialToken = (await clerk.session?.getToken()) ?? null;
       const path = options.resolvePath
-        ? await options.resolvePath(args.path)
+        ? await options.resolvePath(args.path, { method: args.route.method })
         : args.path;
 
       const requestWithToken = (token: string | null) => {
