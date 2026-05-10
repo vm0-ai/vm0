@@ -31,6 +31,7 @@ import { zeroOrgReadRoutes } from "./routes/zero-org-read";
 import { zeroQueuePositionRoutes } from "./routes/zero-queue-position";
 import { zeroRunDetailRoutes } from "./routes/zero-run-detail";
 import { zeroRunsRoutes } from "./routes/zero-runs";
+import { zeroRunsCancelRoutes } from "./routes/zero-runs-cancel";
 import { zeroSchedulesRoutes } from "./routes/zero-schedules";
 import { zeroMeModelProvidersDeleteRoutes } from "./routes/zero-me-model-providers-delete";
 import { zeroMeModelProvidersSetDefaultRoutes } from "./routes/zero-me-model-providers-set-default";
@@ -89,6 +90,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroQueuePositionRoutes,
   ...zeroRunDetailRoutes,
   ...zeroRunsRoutes,
+  ...zeroRunsCancelRoutes,
   ...zeroSchedulesRoutes,
   ...zeroOnboardingStatusRoutes,
   ...zeroOrgReadRoutes,
