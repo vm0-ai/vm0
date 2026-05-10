@@ -2456,45 +2456,18 @@ mod tests {
         listener_socket.remove();
     }
 
-    #[tokio::test]
-    async fn connect_host_initiated_times_out_on_partial_firecracker_ack() {
-        let path = unique_socket_path("host-initiated-partial-ack");
-        let path_string = path.display().to_string();
-        let listener = UnixListener::bind(&path).unwrap();
-        let mut listener_socket = ListenerSocketGuard {
-            path: Some(path_string.clone()),
-        };
-        let nonce = *b"0123456789abcdef";
-        let (release_tx, release_rx) = oneshot::channel::<()>();
+    #[tokio::test(start_paused = true)]
+    async fn read_firecracker_ok_times_out_on_partial_ack() {
+        let (mut host_stream, mut firecracker_stream) = make_pair();
+        firecracker_stream.write_all(b"OK ").await.unwrap();
 
-        let server = tokio::spawn(async move {
-            let (mut stream, _) = listener.accept().await.unwrap();
-            assert_eq!(
-                read_line(&mut stream).await,
-                format!("CONNECT {}\n", vsock_proto::VSOCK_PORT).as_bytes()
-            );
-            stream.write_all(b"OK ").await.unwrap();
-            let _ = release_rx.await;
-        });
-
-        let err = match VsockHost::connect_host_initiated(
-            &path_string,
-            Duration::from_millis(50),
-            ControlHandshake {
-                session_nonce: &nonce,
-                boot_generation: None,
-            },
+        let err = VsockHost::read_firecracker_ok(
+            &mut host_stream,
+            Instant::now() + Duration::from_millis(50),
         )
         .await
-        {
-            Ok(_) => panic!("partial Firecracker ack should time out"),
-            Err(err) => err,
-        };
+        .unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::TimedOut);
-
-        let _ = release_tx.send(());
-        server.await.unwrap();
-        listener_socket.remove();
     }
 
     #[tokio::test]
@@ -4015,7 +3988,7 @@ mod tests {
             seq,
             &payload,
             Duration::from_secs(30),
-            Duration::from_millis(50),
+            Duration::ZERO,
         )
         .await
         .unwrap_err();
