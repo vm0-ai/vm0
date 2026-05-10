@@ -1,12 +1,11 @@
 /**
- * Composer `/go ` slash-command parser, exercised through the real send
- * pipeline. The parser lives in `createSendMessage` and is gated by the
- * `Goal` feature switch — when the switch is off, the literal `/go ...`
- * text is sent through unchanged so the agent can still see it.
+ * Composer Send-as-goal dropdown, exercised through the real send pipeline.
+ * The dropdown is gated by the `Goal` feature switch — when off the regular
+ * Send button is rendered without a chevron and there's no path to goal mode.
  *
  * Entry point: /chats/:id thread page
  * Mock (external): Web API via MSW (feature switch + send-body capture).
- * Real (internal): chat composer, send command, parseGoalCommand.
+ * Real (internal): chat composer, Send dropdown, send command.
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
@@ -50,12 +49,60 @@ function captureSendBody(): { current: CapturedSendBody | undefined } {
   return ref;
 }
 
-describe("chat composer — /go slash command", () => {
+// `aria-label` is not in textContent so the cheap text-based finders won't
+// see icon-only buttons. querySelector on the attribute is the project's
+// accepted workaround (mirrors the pattern in zero-chat-thread-page-display
+// tests).
+function findSendButton(): HTMLButtonElement | null {
+  return document.querySelector('button[aria-label="Send"]');
+}
+function findDropdownTrigger(): HTMLButtonElement | null {
+  return document.querySelector('button[aria-label="More send options"]');
+}
+function findGoalMenuItem(): HTMLElement | null {
+  const items = document.querySelectorAll<HTMLElement>('[role="menuitem"]');
+  for (const item of items) {
+    if (/Send as goal/i.test(item.textContent ?? "")) {
+      return item;
+    }
+  }
+  return null;
+}
+
+describe("chat composer — Send-as-goal dropdown", () => {
   beforeEach(() => {
     mockChatLifecycle({ threadId: THREAD_ID });
   });
 
-  it("strips the /go prefix and sets goal=true when the feature switch is on", async () => {
+  it("hides the dropdown chevron when the Goal feature switch is off", async () => {
+    setMockFeatureSwitches({ [FeatureSwitchKey.Goal]: false });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      ).toBeInTheDocument();
+    });
+
+    expect(findSendButton()).not.toBeNull();
+    expect(findDropdownTrigger()).toBeNull();
+  });
+
+  it("shows the dropdown chevron when the Goal feature switch is on", async () => {
+    setMockFeatureSwitches({ [FeatureSwitchKey.Goal]: true });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      ).toBeInTheDocument();
+    });
+
+    expect(findSendButton()).not.toBeNull();
+    expect(findDropdownTrigger()).not.toBeNull();
+  });
+
+  it("clicking 'Send as goal' sends the draft with goal=true", async () => {
     const user = userEvent.setup();
     setMockFeatureSwitches({ [FeatureSwitchKey.Goal]: true });
 
@@ -65,12 +112,24 @@ describe("chat composer — /go slash command", () => {
     const textarea = await waitFor(() => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
     });
-
-    await sendMessageInUI(
-      user,
+    await user.type(
       textarea,
-      "/go Migrate the auth middleware off the legacy session store",
+      "Migrate the auth middleware off the legacy session store",
     );
+
+    const trigger = await waitFor(() => {
+      const t = findDropdownTrigger();
+      if (!t) throw new Error("dropdown trigger not rendered");
+      return t;
+    });
+    await user.click(trigger);
+
+    const goalItem = await waitFor(() => {
+      const item = findGoalMenuItem();
+      if (!item) throw new Error("Send as goal menu item not rendered");
+      return item;
+    });
+    await user.click(goalItem);
 
     await waitFor(() => {
       expect(captured.current).toBeDefined();
@@ -81,27 +140,7 @@ describe("chat composer — /go slash command", () => {
     );
   });
 
-  it("sends the literal /go text when the feature switch is off", async () => {
-    const user = userEvent.setup();
-    setMockFeatureSwitches({ [FeatureSwitchKey.Goal]: false });
-
-    const captured = captureSendBody();
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
-
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-    });
-
-    await sendMessageInUI(user, textarea, "/go figure out the bug");
-
-    await waitFor(() => {
-      expect(captured.current).toBeDefined();
-    });
-    expect(captured.current?.goal).toBeUndefined();
-    expect(captured.current?.prompt).toBe("/go figure out the bug");
-  });
-
-  it("does not treat /go alone (no objective) as a goal command", async () => {
+  it("clicking the regular Send button does not set goal=true", async () => {
     const user = userEvent.setup();
     setMockFeatureSwitches({ [FeatureSwitchKey.Goal]: true });
 
@@ -112,32 +151,12 @@ describe("chat composer — /go slash command", () => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
     });
 
-    await sendMessageInUI(user, textarea, "/go");
+    await sendMessageInUI(user, textarea, "Just a regular question");
 
     await waitFor(() => {
       expect(captured.current).toBeDefined();
     });
     expect(captured.current?.goal).toBeUndefined();
-    expect(captured.current?.prompt).toBe("/go");
-  });
-
-  it("does not set goal=true for messages that don't start with /go", async () => {
-    const user = userEvent.setup();
-    setMockFeatureSwitches({ [FeatureSwitchKey.Goal]: true });
-
-    const captured = captureSendBody();
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
-
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-    });
-
-    await sendMessageInUI(user, textarea, "How do I run /go from the CLI?");
-
-    await waitFor(() => {
-      expect(captured.current).toBeDefined();
-    });
-    expect(captured.current?.goal).toBeUndefined();
-    expect(captured.current?.prompt).toBe("How do I run /go from the CLI?");
+    expect(captured.current?.prompt).toBe("Just a regular question");
   });
 });

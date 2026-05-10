@@ -12,12 +12,14 @@ import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
   IconAlertTriangle,
   IconArrowUp,
+  IconChevronDown,
   IconLoader2,
   IconMicrophone,
   IconPaperclip,
   IconPlayerStop,
   IconPlug,
   IconPlus,
+  IconTarget,
 } from "@tabler/icons-react";
 import {
   Dialog,
@@ -29,6 +31,10 @@ import {
   Button,
   Card,
   CardContent,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Input,
   Popover,
   PopoverContent,
@@ -48,6 +54,7 @@ import {
   Reason,
 } from "../../signals/utils.ts";
 import { sendMode$ } from "../../signals/send-mode.ts";
+import { goalEnabled$ } from "../../signals/external/feature-switch.ts";
 import { toggleSidebarOff$ } from "../../signals/zero-page/zero-nav.ts";
 import type { DraftSignals } from "../../signals/chat-page/create-chat-thread.ts";
 import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
@@ -150,7 +157,7 @@ function isIOSDevice(): boolean {
 interface ZeroChatComposerProps {
   input: string;
   onInputChange: (value: string) => void;
-  onSend: (message: string) => void;
+  onSend: (message: string, options?: { goal?: boolean }) => void;
   onQueue?: (message: string) => void;
   sending?: boolean;
   queueWhileSending?: boolean;
@@ -1146,6 +1153,19 @@ export function ZeroChatComposer({
     }
   };
 
+  // Goal mode: Send-as-goal is a peer of the regular Send action, exposed
+  // via the dropdown next to the Send button when the Goal feature switch is
+  // on. Goal sends bypass the queue path — a goal IS a fresh send, not a
+  // queued draft against an active run.
+  const goalFeatureEnabled = useLastResolved(goalEnabled$) ?? false;
+  const handleSendAsGoal = () => {
+    if (submitBlocker || !canSubmit) {
+      return;
+    }
+    detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
+    onSend(input.trim(), { goal: true });
+  };
+
   const sendModeLoadable = useLastLoadable(sendMode$);
   const sendMode =
     sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
@@ -1362,6 +1382,39 @@ export function ZeroChatComposer({
                       >
                         <IconPlayerStop size={16} />
                       </Button>
+                    ) : goalFeatureEnabled ? (
+                      // Split-button variant: Send + chevron dropdown that
+                      // exposes the Goal alternative. Visible only when the
+                      // Goal feature switch is on.
+                      <div className="flex shrink-0">
+                        <Button
+                          size="sm"
+                          className="rounded-l-lg rounded-r-none h-9 w-9 p-0 shrink-0"
+                          onClick={handleButtonSend}
+                          disabled={sendAction === "none"}
+                          aria-label="Send"
+                        >
+                          <IconArrowUp size={18} stroke={2} />
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="sm"
+                              className="rounded-l-none rounded-r-lg h-9 w-6 p-0 shrink-0 border-l border-l-primary-foreground/20"
+                              disabled={sendAction === "none"}
+                              aria-label="More send options"
+                            >
+                              <IconChevronDown size={14} stroke={2} />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuItem onClick={handleSendAsGoal}>
+                              <IconTarget size={14} stroke={1.5} />
+                              Send as goal
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     ) : (
                       <Button
                         size="sm"

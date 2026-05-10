@@ -230,7 +230,7 @@ export interface ChatThreadSignals {
   setModelSelection$: Command<void, [ModelProviderSelection | null]>;
   sendMessage$: Command<
     Promise<void>,
-    [string, ModelSelectionRequest | null, AbortSignal]
+    [string, ModelSelectionRequest | null, SendMessageOptions, AbortSignal]
   >;
   queueMessage$: Command<Promise<void>, [string, AbortSignal]>;
   recallMessage$: Command<Promise<void>, [EnrichedChatMessage, AbortSignal]>;
@@ -1432,29 +1432,14 @@ interface SendMessageDeps {
 }
 
 /**
- * Parse a leading `/go ` slash command. Returns the goal mode flag and the
- * objective text (everything after `/go`). Only treats the prefix as a
- * command when the Goal feature switch is enabled — otherwise the literal
- * `/go` text is sent through unchanged so the agent can see it.
+ * Per-send options. `goal: true` flags this send as starting a Codex-style
+ * goal chain — the API stamps the user row with `goal_remaining_turns` and
+ * the run-completion callback auto-continues until the agent emits
+ * `[GOAL_DONE]`, the run fails, the user interrupts, or the budget runs out.
+ * Gated by the `Goal` feature switch via `goalEnabled$`.
  */
-const GOAL_PREFIX_RE = /^\/go(?:\s+([\s\S]*))?$/;
-function parseGoalCommand(
-  rawPrompt: string,
-  goalFeatureEnabled: boolean,
-): { isGoal: boolean; effectivePrompt: string } {
-  if (!goalFeatureEnabled) {
-    return { isGoal: false, effectivePrompt: rawPrompt };
-  }
-  const trimmed = rawPrompt.trim();
-  const match = GOAL_PREFIX_RE.exec(trimmed);
-  if (!match) {
-    return { isGoal: false, effectivePrompt: rawPrompt };
-  }
-  const objective = (match[1] ?? "").trim();
-  if (objective.length === 0) {
-    return { isGoal: false, effectivePrompt: rawPrompt };
-  }
-  return { isGoal: true, effectivePrompt: objective };
+export interface SendMessageOptions {
+  goal?: boolean;
 }
 
 function createSendMessage(deps: SendMessageDeps) {
@@ -1471,6 +1456,7 @@ function createSendMessage(deps: SendMessageDeps) {
       { get, set },
       prompt: string,
       modelSelection: ModelSelectionRequest | null,
+      options: SendMessageOptions,
       signal: AbortSignal,
     ) => {
       L.debug("sendMessage$ start", { threadId, promptLen: prompt.length });
@@ -1481,11 +1467,10 @@ function createSendMessage(deps: SendMessageDeps) {
         L.debug("sendMessage$ no agentId, abort", { threadId });
         return;
       }
-      const goalFeatureEnabled = get(goalEnabled$);
-      const { isGoal, effectivePrompt } = parseGoalCommand(
-        prompt,
-        goalFeatureEnabled,
-      );
+      // Goal mode is opt-in per send (driven by the composer's "Send as goal"
+      // dropdown item). The Goal feature switch gates that UI affordance, so
+      // the explicit `options.goal` flag is the source of truth here.
+      const isGoal = options.goal === true && get(goalEnabled$);
       let effectiveSelectedModel = modelSelection?.selectedModel;
       if (!effectiveSelectedModel) {
         const agent = await get(agentById(agentId));
@@ -1512,7 +1497,7 @@ function createSendMessage(deps: SendMessageDeps) {
       const result = await set(
         prepareUserMessageFromDraft$,
         draft,
-        effectivePrompt,
+        prompt,
         {
           excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
             effectiveSelectedModel,
