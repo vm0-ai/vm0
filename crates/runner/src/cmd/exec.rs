@@ -146,8 +146,13 @@ where
             writeln!(output.stderr, "error: {msg}")?;
             Ok(ExitCode::FAILURE)
         }
+        Err(e) if is_broken_pipe_control_error(&e) => Ok(ExitCode::SUCCESS),
         Err(e) => Err(RunnerError::Config(e.to_string())),
     }
+}
+
+fn is_broken_pipe_control_error(error: &SandboxControlError) -> bool {
+    matches!(error, SandboxControlError::Io(e) if e.kind() == std::io::ErrorKind::BrokenPipe)
 }
 
 struct WriterOutputSink<'a, WOut, WErr> {
@@ -225,6 +230,8 @@ fn write_non_exit_error(
 
 #[cfg(test)]
 mod tests {
+    use std::io;
+
     use sandbox::SandboxControlError;
     use sandbox_mock::{MockRemoteExecOutput, MockRemoteExecResponse, MockSandboxControl};
 
@@ -453,6 +460,41 @@ mod tests {
         assert_eq!(result, ExitCode::FAILURE);
         assert!(stdout.is_empty());
         assert_eq!(stderr, b"error: command cancelled\n");
+    }
+
+    struct BrokenPipeWriter;
+
+    impl Write for BrokenPipeWriter {
+        fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+            Err(io::Error::new(io::ErrorKind::BrokenPipe, "closed pipe"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn stdout_broken_pipe_exits_success_without_config_error() {
+        let control = MockSandboxControl::new("/tmp");
+        control.push_exec_remote_response(MockRemoteExecResponse {
+            output: vec![MockRemoteExecOutput::Stdout(b"hello\n".to_vec())],
+            result: Ok(RemoteExecStatus::exited(0)),
+        });
+
+        let mut stdout = BrokenPipeWriter;
+        let mut stderr = Vec::new();
+        let result = run_exec_with_writers(
+            make_args("test-id", "echo hello"),
+            &control,
+            &mut stdout,
+            &mut stderr,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result, ExitCode::SUCCESS);
+        assert!(stderr.is_empty());
     }
 
     // ---- argument quoting -------------------------------------------------

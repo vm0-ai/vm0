@@ -35,6 +35,7 @@
 //! | 0x11 | G→H       | control_hello_ack | `[2B version][16B nonce]` |
 //! | 0x12 | H→G       | control_quiesce   | (empty) |
 //! | 0x13 | G→H       | control_quiesce_ack | `[1B status]` |
+//! | 0x14 | H→G       | bounded_exec_cancel | (empty) |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
 //! Bounded exec output chunks are request-scoped: they use the same non-zero
@@ -92,6 +93,7 @@ pub const MSG_CONTROL_HELLO: u8 = 0x10;
 pub const MSG_CONTROL_HELLO_ACK: u8 = 0x11;
 pub const MSG_CONTROL_QUIESCE: u8 = 0x12;
 pub const MSG_CONTROL_QUIESCE_ACK: u8 = 0x13;
+pub const MSG_BOUNDED_EXEC_CANCEL: u8 = 0x14;
 pub const MSG_ERROR: u8 = 0xFF;
 
 /// Default vsock port for host-guest communication.

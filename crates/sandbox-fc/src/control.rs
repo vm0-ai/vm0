@@ -23,7 +23,7 @@ use sandbox::{
     SandboxControlError,
 };
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
@@ -105,7 +105,7 @@ const CONTROL_SERVER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 const CONTROL_HANDLER_SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
 
 /// Read a length-prefixed frame from the stream.
-async fn read_frame(stream: &mut UnixStream) -> io::Result<Vec<u8>> {
+async fn read_frame(stream: &mut (impl AsyncRead + Unpin)) -> io::Result<Vec<u8>> {
     let len = stream.read_u32().await?;
     if len > MAX_FRAME_SIZE {
         return Err(io::Error::new(
@@ -119,7 +119,7 @@ async fn read_frame(stream: &mut UnixStream) -> io::Result<Vec<u8>> {
 }
 
 /// Write a length-prefixed frame to the stream.
-async fn write_frame(stream: &mut UnixStream, data: &[u8]) -> io::Result<()> {
+async fn write_frame(stream: &mut (impl AsyncWrite + Unpin), data: &[u8]) -> io::Result<()> {
     let len = u32::try_from(data.len()).map_err(|_| {
         io::Error::new(
             io::ErrorKind::InvalidData,
@@ -398,21 +398,22 @@ async fn shutdown_handlers(handlers: &mut JoinSet<()>) {
 
 /// Handle a single control socket connection.
 async fn handle_connection(
-    mut stream: UnixStream,
+    stream: UnixStream,
     guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
     shutdown: CancellationToken,
 ) -> io::Result<()> {
+    let (mut reader, mut writer) = stream.into_split();
     let frame = tokio::select! {
         biased;
         () = shutdown.cancelled() => return Ok(()),
-        result = read_frame(&mut stream) => result?,
+        result = read_frame(&mut reader) => result?,
     };
 
     let request = match serde_json::from_slice::<ExecRequest>(&frame) {
         Ok(request) => request,
         Err(e) => {
             return write_response_frame(
-                &mut stream,
+                &mut writer,
                 &ExecResponseFrame::Error {
                     error: format!("invalid request: {e}"),
                 },
@@ -425,12 +426,13 @@ async fn handle_connection(
     tokio::select! {
         biased;
         () = shutdown.cancelled() => Ok(()),
-        result = execute(request, &mut stream, &guest, &shutdown) => result,
+        () = wait_for_client_disconnect(&mut reader) => Ok(()),
+        result = execute(request, &mut writer, &guest, &shutdown) => result,
     }
 }
 
 async fn write_response_frame(
-    stream: &mut UnixStream,
+    stream: &mut (impl AsyncWrite + Unpin),
     frame: &ExecResponseFrame,
     shutdown: &CancellationToken,
 ) -> io::Result<()> {
@@ -443,10 +445,22 @@ async fn write_response_frame(
     }
 }
 
+/// The control protocol has one request per connection. EOF after that request
+/// means the client can no longer consume streamed output.
+async fn wait_for_client_disconnect(reader: &mut (impl AsyncRead + Unpin)) {
+    let mut buf = [0u8; 1];
+    loop {
+        match reader.read(&mut buf).await {
+            Ok(0) | Err(_) => return,
+            Ok(_) => {}
+        }
+    }
+}
+
 /// Execute an [`ExecRequest`] against the sandbox's VsockHost.
 async fn execute(
     request: ExecRequest,
-    stream: &mut UnixStream,
+    stream: &mut (impl AsyncWrite + Unpin),
     guest: &Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
     shutdown: &CancellationToken,
 ) -> io::Result<()> {
@@ -555,7 +569,7 @@ fn exec_stream_output_request(
 }
 
 async fn write_bounded_exec_output_event(
-    stream: &mut UnixStream,
+    stream: &mut (impl AsyncWrite + Unpin),
     event: BoundedExecOutputEvent,
     stdout_truncated: &mut bool,
     stderr_truncated: &mut bool,
@@ -846,8 +860,8 @@ mod tests {
     use super::*;
     use tokio::sync::oneshot;
     use vsock_proto::{
-        Decoder, MSG_BOUNDED_EXEC, MSG_BOUNDED_EXEC_OUTPUT_CHUNK, MSG_BOUNDED_EXEC_RESULT,
-        MSG_PING, MSG_PONG, MSG_READY, RawMessage,
+        Decoder, MSG_BOUNDED_EXEC, MSG_BOUNDED_EXEC_CANCEL, MSG_BOUNDED_EXEC_OUTPUT_CHUNK,
+        MSG_BOUNDED_EXEC_RESULT, MSG_PING, MSG_PONG, MSG_READY, RawMessage,
     };
 
     #[derive(Default)]
@@ -1393,7 +1407,12 @@ mod tests {
             })
         };
         let (exec_seen_tx, exec_seen_rx) = oneshot::channel();
-        let guest_task = tokio::spawn(mock_guest_holds_exec(vsock_base, exec_seen_tx));
+        let (cancel_seen_tx, cancel_seen_rx) = oneshot::channel();
+        let guest_task = tokio::spawn(mock_guest_holds_exec(
+            vsock_base,
+            exec_seen_tx,
+            cancel_seen_tx,
+        ));
         let vsock = host_task.await.unwrap().unwrap();
 
         let sock_path = dir.path().join("control.sock");
@@ -1428,8 +1447,60 @@ mod tests {
             .unwrap();
         assert!(client_result.is_err());
 
-        guest_task.abort();
-        let _ = guest_task.await;
+        tokio::time::timeout(Duration::from_secs(1), cancel_seen_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        guest_task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn control_client_disconnect_cancels_in_flight_vsock_bounded_exec() {
+        let dir = tempfile::tempdir().unwrap();
+        let vsock_base = dir.path().join("vsock");
+        let host_task = {
+            let vsock_base = vsock_base.display().to_string();
+            tokio::spawn(async move {
+                VsockHost::wait_for_connection(&vsock_base, Duration::from_secs(5)).await
+            })
+        };
+        let (exec_seen_tx, exec_seen_rx) = oneshot::channel();
+        let (cancel_seen_tx, cancel_seen_rx) = oneshot::channel();
+        let guest_task = tokio::spawn(mock_guest_holds_exec(
+            vsock_base,
+            exec_seen_tx,
+            cancel_seen_tx,
+        ));
+        let vsock = host_task.await.unwrap().unwrap();
+
+        let sock_path = dir.path().join("control.sock");
+        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
+        let mut handle = bind_server(sock_path.clone(), guest)
+            .unwrap()
+            .spawn(CancellationToken::new());
+
+        wait_for_socket_exists(&sock_path).await;
+        let mut client = UnixStream::connect(&sock_path).await.unwrap();
+        let request = ExecRequest {
+            command: "sleep 30".into(),
+            timeout_secs: 30,
+            sudo: false,
+        };
+        let request_json = serde_json::to_vec(&request).unwrap();
+        write_frame(&mut client, &request_json).await.unwrap();
+
+        tokio::time::timeout(Duration::from_secs(1), exec_seen_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        drop(client);
+
+        tokio::time::timeout(Duration::from_secs(1), cancel_seen_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        guest_task.await.unwrap();
+        handle.shutdown().await;
     }
 
     #[tokio::test]
@@ -1595,7 +1666,11 @@ mod tests {
         stream.write_all(&frame).await.unwrap();
     }
 
-    async fn mock_guest_holds_exec(vsock_base: PathBuf, exec_seen: oneshot::Sender<()>) {
+    async fn mock_guest_holds_exec(
+        vsock_base: PathBuf,
+        exec_seen: oneshot::Sender<()>,
+        cancel_seen: oneshot::Sender<()>,
+    ) {
         let listener_path = PathBuf::from(format!(
             "{}_{}",
             vsock_base.display(),
@@ -1608,6 +1683,8 @@ mod tests {
         mock_vsock_handshake(&mut stream, &mut decoder).await;
 
         let mut exec_seen = Some(exec_seen);
+        let mut cancel_seen = Some(cancel_seen);
+        let mut exec_seq = None;
         let mut buf = [0u8; 4096];
         loop {
             let n = stream.read(&mut buf).await.unwrap();
@@ -1617,10 +1694,15 @@ mod tests {
             let messages = decoder.decode(&buf[..n]).unwrap();
             for message in messages {
                 if message.msg_type == MSG_BOUNDED_EXEC {
+                    exec_seq = Some(message.seq);
                     if let Some(tx) = exec_seen.take() {
                         let _ = tx.send(());
                     }
-                    tokio::time::sleep(Duration::from_secs(30)).await;
+                } else if message.msg_type == MSG_BOUNDED_EXEC_CANCEL {
+                    assert_eq!(Some(message.seq), exec_seq);
+                    if let Some(tx) = cancel_seen.take() {
+                        let _ = tx.send(());
+                    }
                     return;
                 }
             }

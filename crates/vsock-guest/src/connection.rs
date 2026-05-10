@@ -1,13 +1,19 @@
+use std::collections::HashMap;
 use std::io::{self, Read};
 use std::os::unix::net::UnixStream;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use vsock_proto::{self, MSG_BOUNDED_EXEC, MSG_EXEC, MSG_EXEC_RESULT, MSG_READY, MSG_SPAWN_WATCH};
+use vsock_proto::{
+    self, MSG_BOUNDED_EXEC, MSG_BOUNDED_EXEC_CANCEL, MSG_EXEC, MSG_EXEC_RESULT, MSG_READY,
+    MSG_SPAWN_WATCH,
+};
 
-use crate::bounded_exec::{BoundedExecWorkerRequest, spawn_bounded_exec_worker};
+use crate::bounded_exec::{
+    BoundedExecCleanup, BoundedExecWorkerRequest, spawn_bounded_exec_worker,
+};
 use crate::error::to_io_error;
 use crate::handlers::{MessageOutcome, handle_exec, handle_message};
 use crate::log::log;
@@ -114,6 +120,7 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
     let writer = GuestWriter::new(stream);
     let connection_cancel = Arc::new(AtomicBool::new(false));
     let _cancel_on_drop = ConnectionCancelGuard(connection_cancel.clone());
+    let bounded_exec_cancels = Arc::new(Mutex::new(HashMap::<u32, Arc<AtomicBool>>::new()));
 
     let mut decoder = vsock_proto::Decoder::new();
 
@@ -166,11 +173,42 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                 );
                 let decoded =
                     vsock_proto::decode_bounded_exec(&msg.payload).map_err(to_io_error)?;
+                let request_cancel = Arc::new(AtomicBool::new(false));
+                {
+                    let mut cancels = bounded_exec_cancels
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
+                    if let Some(previous) = cancels.insert(msg.seq, request_cancel.clone()) {
+                        previous.store(true, Ordering::Release);
+                    }
+                }
+                let cleanup_cancels = Arc::clone(&bounded_exec_cancels);
+                let cleanup_cancel = Arc::clone(&request_cancel);
+                let cleanup_seq = msg.seq;
+                let cleanup: BoundedExecCleanup = Box::new(move || {
+                    let mut cancels = cleanup_cancels.lock().unwrap_or_else(|e| e.into_inner());
+                    if cancels
+                        .get(&cleanup_seq)
+                        .is_some_and(|current| Arc::ptr_eq(current, &cleanup_cancel))
+                    {
+                        cancels.remove(&cleanup_seq);
+                    }
+                });
                 spawn_bounded_exec_worker(
                     BoundedExecWorkerRequest::from_decoded(msg.seq, decoded),
                     writer.clone(),
                     connection_cancel.clone(),
+                    request_cancel,
+                    cleanup,
                 )?;
+            } else if msg.msg_type == MSG_BOUNDED_EXEC_CANCEL {
+                if let Some(cancel) = bounded_exec_cancels
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get(&msg.seq)
+                {
+                    cancel.store(true, Ordering::Release);
+                }
             } else if msg.msg_type == MSG_EXEC {
                 log(
                     "INFO",

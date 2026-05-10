@@ -44,8 +44,8 @@ use tokio::time::{self, Instant};
 use vsock_proto::{
     BoundedExecStream as ProtoBoundedExecStream,
     BoundedExecTermination as ProtoBoundedExecTermination, Decoder, MSG_BOUNDED_EXEC,
-    MSG_BOUNDED_EXEC_OUTPUT_CHUNK, MSG_BOUNDED_EXEC_RESULT, MSG_CONTROL_HELLO,
-    MSG_CONTROL_HELLO_ACK, MSG_ERROR, MSG_EXEC, MSG_EXEC_RESULT, MSG_PING, MSG_PONG,
+    MSG_BOUNDED_EXEC_CANCEL, MSG_BOUNDED_EXEC_OUTPUT_CHUNK, MSG_BOUNDED_EXEC_RESULT, MSG_ERROR,
+    MSG_CONTROL_HELLO, MSG_CONTROL_HELLO_ACK, MSG_EXEC, MSG_EXEC_RESULT, MSG_PING, MSG_PONG,
     MSG_PROCESS_EXIT, MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH,
     MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, RawMessage,
 };
@@ -528,6 +528,45 @@ impl PendingBoundedOutputGuard {
 impl Drop for PendingBoundedOutputGuard {
     fn drop(&mut self) {
         self.shared.remove_bounded_output_sender(self.seq);
+    }
+}
+
+struct PendingBoundedExecGuard {
+    shared: Arc<Shared>,
+    seq: u32,
+    cancel_on_drop: bool,
+}
+
+impl PendingBoundedExecGuard {
+    fn new(shared: Arc<Shared>, seq: u32) -> Self {
+        Self {
+            shared,
+            seq,
+            cancel_on_drop: true,
+        }
+    }
+
+    fn disarm_cancel(&mut self) {
+        self.cancel_on_drop = false;
+    }
+}
+
+impl Drop for PendingBoundedExecGuard {
+    fn drop(&mut self) {
+        self.shared.remove_pending(self.seq);
+        if !self.cancel_on_drop {
+            return;
+        }
+
+        let shared = Arc::clone(&self.shared);
+        let seq = self.seq;
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let _ = send_bounded_exec_cancel_on_shared(&shared, seq).await;
+            });
+        } else {
+            self.shared.poison_connection();
+        }
     }
 }
 
@@ -1116,6 +1155,12 @@ async fn write_frame_on_shared_with_timeout(
     Ok(())
 }
 
+async fn send_bounded_exec_cancel_on_shared(shared: &Arc<Shared>, seq: u32) -> io::Result<()> {
+    let data = vsock_proto::encode(MSG_BOUNDED_EXEC_CANCEL, seq, &[])
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+    write_frame_on_shared(shared, &data).await
+}
+
 async fn exec_on_shared(
     shared: &Arc<Shared>,
     command: &str,
@@ -1261,7 +1306,7 @@ async fn bounded_exec_on_shared_with_request_timeout(
             }
         }
     }
-    let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
+    let mut pending_guard = PendingBoundedExecGuard::new(Arc::clone(shared), seq);
     let _bounded_output_guard = has_bounded_stream(request)
         .then(|| PendingBoundedOutputGuard::new(Arc::clone(shared), seq));
 
@@ -1279,8 +1324,8 @@ async fn bounded_exec_on_shared_with_request_timeout(
             return Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"));
         }
     };
-
     if resp.msg_type == MSG_ERROR {
+        pending_guard.disarm_cancel();
         let msg = vsock_proto::decode_error(&resp.payload)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         return Err(io::Error::other(msg));
@@ -1293,6 +1338,7 @@ async fn bounded_exec_on_shared_with_request_timeout(
         ));
     }
 
+    pending_guard.disarm_cancel();
     let decoded = vsock_proto::decode_bounded_exec_result(&resp.payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
@@ -3970,9 +4016,14 @@ mod tests {
                 let n = guest.read(&mut buf).await.unwrap();
                 let msgs = decoder.decode(&buf[..n]).unwrap();
                 assert_eq!(msgs[0].msg_type, MSG_BOUNDED_EXEC);
+                let request_seq = msgs[0].seq;
                 request_seen.notify_one();
 
                 release_guest.notified().await;
+                let n = guest.read(&mut buf).await.unwrap();
+                let msgs = decoder.decode(&buf[..n]).unwrap();
+                assert_eq!(msgs[0].msg_type, MSG_BOUNDED_EXEC_CANCEL);
+                assert_eq!(msgs[0].seq, request_seq);
             });
         }
 
@@ -4505,18 +4556,27 @@ mod tests {
             let mut decoder = Decoder::new();
             mock_handshake(&mut guest, &mut decoder).await;
 
-            let mut saw_timeout_request = false;
+            let mut timeout_request_seq = None;
             let mut buf = [0u8; 4096];
             loop {
                 let n = guest.read(&mut buf).await.unwrap();
                 assert_ne!(n, 0, "connection closed before follow-up bounded_exec");
                 let msgs = decoder.decode(&buf[..n]).unwrap();
                 for msg in msgs {
+                    if msg.msg_type == MSG_BOUNDED_EXEC_CANCEL {
+                        assert_eq!(
+                            Some(msg.seq),
+                            timeout_request_seq,
+                            "cancel should target the timed-out bounded_exec"
+                        );
+                        continue;
+                    }
+
                     assert_eq!(msg.msg_type, MSG_BOUNDED_EXEC);
                     let decoded = vsock_proto::decode_bounded_exec(&msg.payload).unwrap();
-                    if !saw_timeout_request {
+                    if timeout_request_seq.is_none() {
                         assert_eq!(decoded.command, "request-timeout");
-                        saw_timeout_request = true;
+                        timeout_request_seq = Some(msg.seq);
                         continue;
                     }
 
