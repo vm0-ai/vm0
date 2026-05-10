@@ -4024,6 +4024,11 @@ mod tests {
         host.wait_until_closed(Duration::from_secs(5))
             .await
             .unwrap();
+        let err = host
+            .exec("after-timeout-write", 5000, &[], false)
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
         release_guest.notify_one();
         guest_task.await.unwrap();
     }
