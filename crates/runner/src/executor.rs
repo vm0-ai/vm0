@@ -3895,6 +3895,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn copy_guest_logs_promotes_empty_guest_logs() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_paths = LogPaths::new(dir.path().to_path_buf());
+        let sandbox = MockSandbox::new("test");
+        let ctx = minimal_context();
+
+        tokio::fs::write(log_paths.system_log(ctx.run_id), b"existing system\n")
+            .await
+            .unwrap();
+        tokio::fs::write(log_paths.metrics_log(ctx.run_id), b"existing metrics\n")
+            .await
+            .unwrap();
+
+        sandbox.push_bounded_exec_response(bounded_exec_response_with_events(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            Vec::new(),
+            Vec::new(),
+        ));
+        sandbox.push_bounded_exec_response(bounded_exec_response_with_events(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            Vec::new(),
+            Vec::new(),
+        ));
+
+        copy_guest_logs(&sandbox, &ctx, &log_paths).await;
+
+        assert_eq!(
+            tokio::fs::read(log_paths.system_log(ctx.run_id))
+                .await
+                .unwrap(),
+            b""
+        );
+        assert_eq!(
+            tokio::fs::read(log_paths.metrics_log(ctx.run_id))
+                .await
+                .unwrap(),
+            b""
+        );
+        assert_no_guest_log_staging_files(dir.path()).await;
+    }
+
+    #[tokio::test]
     async fn copy_guest_logs_preserves_host_files_on_nonzero_exit() {
         let dir = tempfile::tempdir().unwrap();
         let log_paths = LogPaths::new(dir.path().to_path_buf());
@@ -3997,6 +4039,44 @@ mod tests {
                 .await
                 .unwrap(),
             "existing metrics\n"
+        );
+        assert_no_guest_log_staging_files(dir.path()).await;
+    }
+
+    #[tokio::test]
+    async fn copy_guest_logs_removes_partial_stream_on_bounded_exec_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_paths = LogPaths::new(dir.path().to_path_buf());
+        let sandbox = MockSandbox::new("test");
+        let ctx = minimal_context();
+
+        tokio::fs::write(log_paths.system_log(ctx.run_id), b"existing system\n")
+            .await
+            .unwrap();
+
+        sandbox.push_bounded_exec_response(BoundedExecResponse {
+            events: vec![bounded_exec_stream_event(0, b"partial system\n")],
+            result: Err(sandbox_bounded_exec_error("vsock down")),
+        });
+        sandbox.push_bounded_exec_response(bounded_exec_response_with_events(
+            BoundedExecTermination::Exited { exit_code: 0 },
+            vec![bounded_exec_stream_event(0, b"{\"cpu\":0.5}\n")],
+            Vec::new(),
+        ));
+
+        copy_guest_logs(&sandbox, &ctx, &log_paths).await;
+
+        assert_eq!(
+            tokio::fs::read_to_string(log_paths.system_log(ctx.run_id))
+                .await
+                .unwrap(),
+            "existing system\n"
+        );
+        assert_eq!(
+            tokio::fs::read_to_string(log_paths.metrics_log(ctx.run_id))
+                .await
+                .unwrap(),
+            "{\"cpu\":0.5}\n"
         );
         assert_no_guest_log_staging_files(dir.path()).await;
     }
