@@ -11,7 +11,6 @@ import { z } from "zod";
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
-import { shadowCompareRoute } from "../context/shadow-compare";
 import { notFound } from "../../lib/error";
 import { zeroComposeExists } from "../services/zero-compose-data.service";
 import {
@@ -159,16 +158,13 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   },
   {
     route: chatSearchContract.search,
-    handler: shadowCompareRoute({
-      route: chatSearchContract.search,
-      handler: authRoute(
-        {
-          requireOrganization: true,
-          missingOrganizationStatus: 401,
-          requiredCapability: "chat-message:read",
-        },
-        searchChatInner$,
-      ),
-    }),
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-message:read",
+      },
+      searchChatInner$,
+    ),
   },
 ];
