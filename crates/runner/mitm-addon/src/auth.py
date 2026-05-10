@@ -169,7 +169,7 @@ def _fetch_firewall_headers_sync(
     if not req.full_url.startswith(("http://", "https://")):
         raise ValueError(f"Unexpected URL scheme: {req.full_url!r}")
     try:
-        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+        # nosemgrep: dynamic-urllib-use-detected
         with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
             return json.loads(resp.read())
     except urllib.error.HTTPError as e:

@@ -112,8 +112,9 @@ async function openPermissionsDrawer(connectorLabel: string) {
   await waitFor(() => {
     expect(
       screen.getByRole("heading", {
-        name: (accessibleName) =>
-          accessibleName.toLowerCase().includes(expectedHeading),
+        name: (accessibleName) => {
+          return accessibleName.toLowerCase().includes(expectedHeading);
+        },
       }),
     ).toBeInTheDocument();
   });
