@@ -96,7 +96,7 @@ function randomShortId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 6);
 }
 
-function validateDisplayName(raw: string): string | BadRequestResponse {
+export function validateDisplayName(raw: string): string | BadRequestResponse {
   const displayName = raw.trim();
   if (displayName.length < 1 || displayName.length > 128) {
     return badRequestMessage(
