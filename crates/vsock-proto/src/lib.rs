@@ -299,55 +299,6 @@ pub fn encode_control_hello(
     Ok(p)
 }
 
-pub fn decode_control_hello(payload: &[u8]) -> Result<DecodedControlHello<'_>, ProtocolError> {
-    let version =
-        read_u16_at(payload, 0).ok_or(ProtocolError::InvalidPayload("control_hello version"))?;
-    let nonce_start = 2;
-    let nonce_end = nonce_start + CONTROL_SESSION_NONCE_BYTES;
-    let nonce: [u8; CONTROL_SESSION_NONCE_BYTES] = payload
-        .get(nonce_start..nonce_end)
-        .ok_or(ProtocolError::InvalidPayload("control_hello nonce"))?
-        .try_into()
-        .map_err(|_| ProtocolError::InvalidPayload("control_hello nonce"))?;
-    let boot_generation_len = read_u16_at(payload, nonce_end).ok_or(
-        ProtocolError::InvalidPayload("control_hello boot_generation_len"),
-    )? as usize;
-    let boot_generation_start = nonce_end + 2;
-    let boot_generation_end = boot_generation_start
-        .checked_add(boot_generation_len)
-        .ok_or(ProtocolError::InvalidPayload(
-            "control_hello boot_generation_len",
-        ))?;
-    if boot_generation_end > payload.len() {
-        return Err(ProtocolError::InvalidPayload(
-            "control_hello boot_generation truncated",
-        ));
-    }
-    if boot_generation_end < payload.len() {
-        return Err(ProtocolError::InvalidPayload(
-            "control_hello trailing bytes",
-        ));
-    }
-    let boot_generation = if boot_generation_len == 0 {
-        None
-    } else {
-        let bytes = payload
-            .get(boot_generation_start..boot_generation_end)
-            .ok_or(ProtocolError::InvalidPayload(
-                "control_hello boot_generation truncated",
-            ))?;
-        Some(
-            std::str::from_utf8(bytes)
-                .map_err(|_| ProtocolError::InvalidPayload("control_hello boot_generation utf8"))?,
-        )
-    };
-    Ok(DecodedControlHello {
-        version,
-        nonce,
-        boot_generation,
-    })
-}
-
 pub fn encode_control_hello_ack(
     version: u16,
     nonce: &[u8; CONTROL_SESSION_NONCE_BYTES],
@@ -358,42 +309,11 @@ pub fn encode_control_hello_ack(
     p
 }
 
-pub fn decode_control_hello_ack(
-    payload: &[u8],
-) -> Result<(u16, [u8; CONTROL_SESSION_NONCE_BYTES]), ProtocolError> {
-    if payload.len() != 2 + CONTROL_SESSION_NONCE_BYTES {
-        return Err(ProtocolError::InvalidPayload(
-            "control_hello_ack invalid length",
-        ));
-    }
-    let version = read_u16_at(payload, 0)
-        .ok_or(ProtocolError::InvalidPayload("control_hello_ack version"))?;
-    let nonce: [u8; CONTROL_SESSION_NONCE_BYTES] = payload
-        .get(2..)
-        .ok_or(ProtocolError::InvalidPayload("control_hello_ack nonce"))?
-        .try_into()
-        .map_err(|_| ProtocolError::InvalidPayload("control_hello_ack nonce"))?;
-    Ok((version, nonce))
-}
-
 pub fn encode_control_quiesce_ack(status: ControlQuiesceStatus) -> Vec<u8> {
     vec![match status {
         ControlQuiesceStatus::Ready => 0,
         ControlQuiesceStatus::Busy => 1,
     }]
-}
-
-pub fn decode_control_quiesce_ack(payload: &[u8]) -> Result<ControlQuiesceStatus, ProtocolError> {
-    match payload {
-        [0] => Ok(ControlQuiesceStatus::Ready),
-        [1] => Ok(ControlQuiesceStatus::Busy),
-        [_] => Err(ProtocolError::InvalidPayload(
-            "control_quiesce_ack unknown status",
-        )),
-        _ => Err(ProtocolError::InvalidPayload(
-            "control_quiesce_ack invalid length",
-        )),
-    }
 }
 
 /// Encode exec payload: `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)`.
@@ -830,6 +750,86 @@ pub fn encode_error(message: &str) -> Vec<u8> {
 // ---------------------------------------------------------------------------
 // Decode
 // ---------------------------------------------------------------------------
+
+pub fn decode_control_hello(payload: &[u8]) -> Result<DecodedControlHello<'_>, ProtocolError> {
+    let version =
+        read_u16_at(payload, 0).ok_or(ProtocolError::InvalidPayload("control_hello version"))?;
+    let nonce_start = 2;
+    let nonce_end = nonce_start + CONTROL_SESSION_NONCE_BYTES;
+    let nonce: [u8; CONTROL_SESSION_NONCE_BYTES] = payload
+        .get(nonce_start..nonce_end)
+        .ok_or(ProtocolError::InvalidPayload("control_hello nonce"))?
+        .try_into()
+        .map_err(|_| ProtocolError::InvalidPayload("control_hello nonce"))?;
+    let boot_generation_len = read_u16_at(payload, nonce_end).ok_or(
+        ProtocolError::InvalidPayload("control_hello boot_generation_len"),
+    )? as usize;
+    let boot_generation_start = nonce_end + 2;
+    let boot_generation_end = boot_generation_start
+        .checked_add(boot_generation_len)
+        .ok_or(ProtocolError::InvalidPayload(
+            "control_hello boot_generation_len",
+        ))?;
+    if boot_generation_end > payload.len() {
+        return Err(ProtocolError::InvalidPayload(
+            "control_hello boot_generation truncated",
+        ));
+    }
+    if boot_generation_end < payload.len() {
+        return Err(ProtocolError::InvalidPayload(
+            "control_hello trailing bytes",
+        ));
+    }
+    let boot_generation = if boot_generation_len == 0 {
+        None
+    } else {
+        let bytes = payload
+            .get(boot_generation_start..boot_generation_end)
+            .ok_or(ProtocolError::InvalidPayload(
+                "control_hello boot_generation truncated",
+            ))?;
+        Some(
+            std::str::from_utf8(bytes)
+                .map_err(|_| ProtocolError::InvalidPayload("control_hello boot_generation utf8"))?,
+        )
+    };
+    Ok(DecodedControlHello {
+        version,
+        nonce,
+        boot_generation,
+    })
+}
+
+pub fn decode_control_hello_ack(
+    payload: &[u8],
+) -> Result<(u16, [u8; CONTROL_SESSION_NONCE_BYTES]), ProtocolError> {
+    if payload.len() != 2 + CONTROL_SESSION_NONCE_BYTES {
+        return Err(ProtocolError::InvalidPayload(
+            "control_hello_ack invalid length",
+        ));
+    }
+    let version = read_u16_at(payload, 0)
+        .ok_or(ProtocolError::InvalidPayload("control_hello_ack version"))?;
+    let nonce: [u8; CONTROL_SESSION_NONCE_BYTES] = payload
+        .get(2..)
+        .ok_or(ProtocolError::InvalidPayload("control_hello_ack nonce"))?
+        .try_into()
+        .map_err(|_| ProtocolError::InvalidPayload("control_hello_ack nonce"))?;
+    Ok((version, nonce))
+}
+
+pub fn decode_control_quiesce_ack(payload: &[u8]) -> Result<ControlQuiesceStatus, ProtocolError> {
+    match payload {
+        [0] => Ok(ControlQuiesceStatus::Ready),
+        [1] => Ok(ControlQuiesceStatus::Busy),
+        [_] => Err(ProtocolError::InvalidPayload(
+            "control_quiesce_ack unknown status",
+        )),
+        _ => Err(ProtocolError::InvalidPayload(
+            "control_quiesce_ack invalid length",
+        )),
+    }
+}
 
 struct DecodedExecInner<'a> {
     exec: DecodedExec<'a>,
