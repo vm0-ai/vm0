@@ -2,11 +2,17 @@ import { randomUUID } from "node:crypto";
 
 import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
 import { command } from "ccstate";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "@vm0/db/schema/agent-compose";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { eq } from "drizzle-orm";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { writeDb$ } from "../../../external/db";
 import { nowDate } from "../../../external/time";
@@ -97,9 +103,43 @@ export const deleteZeroChatThread$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const writeDb = set(writeDb$);
+
+    // Find run ids tied to this fixture's user (created by seedRun$ from
+    // helpers/zero-usage-insight.ts). Some tests don't seed runs at all, so
+    // this may be empty.
+    const runRows = await writeDb
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(eq(agentRuns.userId, fixture.userId));
+    signal.throwIfAborted();
+    const runIds = runRows.map((row) => {
+      return row.id;
+    });
+
+    // chat_messages first (FKs into chat_threads + agent_runs).
+    await writeDb
+      .delete(chatMessages)
+      .where(eq(chatMessages.chatThreadId, fixture.threadId));
+    signal.throwIfAborted();
+
+    if (runIds.length > 0) {
+      await writeDb.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
+      signal.throwIfAborted();
+      await writeDb.delete(agentRuns).where(inArray(agentRuns.id, runIds));
+      signal.throwIfAborted();
+    }
+
+    await writeDb
+      .delete(agentSessions)
+      .where(eq(agentSessions.userId, fixture.userId));
+    signal.throwIfAborted();
     await writeDb
       .delete(chatThreads)
       .where(eq(chatThreads.id, fixture.threadId));
+    signal.throwIfAborted();
+    await writeDb
+      .delete(agentComposeVersions)
+      .where(eq(agentComposeVersions.composeId, fixture.composeId));
     signal.throwIfAborted();
     await writeDb
       .delete(zeroAgents)
@@ -119,6 +159,7 @@ interface SeedChatMessageOptions {
   readonly createdAt?: Date;
   readonly sequenceNumber?: number | null;
   readonly archivedAt?: Date | null;
+  readonly runId?: string | null;
 }
 
 export const seedZeroChatMessage$ = command(
@@ -137,6 +178,7 @@ export const seedZeroChatMessage$ = command(
       content: options.content,
       attachFiles: options.attachFiles ? [...options.attachFiles] : null,
       sequenceNumber: options.sequenceNumber ?? null,
+      runId: options.runId ?? null,
       createdAt: options.createdAt ?? nowDate(),
       ...(options.archivedAt !== undefined
         ? { archivedAt: options.archivedAt }
@@ -144,5 +186,127 @@ export const seedZeroChatMessage$ = command(
     });
     signal.throwIfAborted();
     return id;
+  },
+);
+
+// Mirrors web's addTestRunToThread: links a previously-seeded run to a thread
+// by inserting the user-side chat_message row and stamping zero_runs.chatThreadId.
+export const addRunToThread$ = command(
+  async (
+    { set },
+    args: {
+      readonly threadId: string;
+      readonly runId: string;
+      readonly prompt?: string;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const writeDb = set(writeDb$);
+    await writeDb.insert(chatMessages).values({
+      chatThreadId: args.threadId,
+      role: "user",
+      content: args.prompt ?? "test prompt",
+      runId: args.runId,
+    });
+    signal.throwIfAborted();
+    await writeDb
+      .update(zeroRuns)
+      .set({ chatThreadId: args.threadId })
+      .where(eq(zeroRuns.id, args.runId));
+    signal.throwIfAborted();
+  },
+);
+
+// Mirrors web's insertTestAssistantEventMessages: bulk-insert assistant
+// chat_message rows backed by realtime events (runId + sequenceNumber). The
+// regression these guard (PR #12372) is that a later run-level error must NOT
+// mask the per-row content during the leftJoin in the read path.
+export const seedAssistantEventMessages$ = command(
+  async (
+    { set },
+    args: {
+      readonly threadId: string;
+      readonly runId: string;
+      readonly items: readonly {
+        readonly sequenceNumber: number;
+        readonly content: string;
+      }[];
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (args.items.length === 0) {
+      return;
+    }
+    const writeDb = set(writeDb$);
+    await writeDb
+      .insert(chatMessages)
+      .values(
+        args.items.map((item) => {
+          return {
+            chatThreadId: args.threadId,
+            runId: args.runId,
+            role: "assistant" as const,
+            content: item.content,
+            sequenceNumber: item.sequenceNumber,
+          };
+        }),
+      )
+      .onConflictDoNothing({
+        target: [chatMessages.runId, chatMessages.sequenceNumber],
+      });
+    signal.throwIfAborted();
+  },
+);
+
+// Mirrors web's updateTestChatThreadTitle (used by the AI title-generation
+// webhook). Tests that exercise post-completion title rewrite call this.
+export const updateChatThreadTitle$ = command(
+  async (
+    { set },
+    args: {
+      readonly threadId: string;
+      readonly userId: string;
+      readonly title: string;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const writeDb = set(writeDb$);
+    await writeDb
+      .update(chatThreads)
+      .set({ title: args.title, renamedAt: nowDate() })
+      .where(
+        and(
+          eq(chatThreads.id, args.threadId),
+          eq(chatThreads.userId, args.userId),
+        ),
+      );
+    signal.throwIfAborted();
+  },
+);
+
+// Mirrors web's transitionRunStatus: stamps a run with a new status +
+// completedAt + error. Used for the timeout-doesn't-mask-event-content test
+// (the regression #12372 fixed).
+export const transitionRunStatus$ = command(
+  async (
+    { set },
+    args: {
+      readonly runId: string;
+      readonly status: string;
+      readonly completedAt?: Date | null;
+      readonly error?: string | null;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const writeDb = set(writeDb$);
+    await writeDb
+      .update(agentRuns)
+      .set({
+        status: args.status,
+        completedAt: args.completedAt ?? null,
+        error: args.error ?? null,
+      })
+      .where(eq(agentRuns.id, args.runId));
+    signal.throwIfAborted();
   },
 );
