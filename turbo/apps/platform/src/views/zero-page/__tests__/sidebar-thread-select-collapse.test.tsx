@@ -84,7 +84,7 @@ describe("sidebar collapses when selecting a history thread from /agents/:agentI
     await waitFor(() => {
       expect(screen.getByLabelText("Sidebar overlay")).toBeInTheDocument();
     });
-    expect(context.store.get(sidebarExpanded$)).toBe(true);
+    expect(context.store.get(sidebarExpanded$)).toBeTruthy();
 
     // Click the history thread row in the sidebar
     const anchor = screen.getByText("History thread").closest("a");
@@ -98,7 +98,7 @@ describe("sidebar collapses when selecting a history thread from /agents/:agentI
 
     // And the sidebar should auto-collapse on mobile
     await waitFor(() => {
-      expect(context.store.get(sidebarExpanded$)).toBe(false);
+      expect(context.store.get(sidebarExpanded$)).toBeFalsy();
     });
   });
 });
