@@ -72,3 +72,32 @@ export async function getFile(
 export function buildFileDownloadUrl(token: string, filePath: string): string {
   return `https://api.telegram.org/file/bot${token}/${filePath}`;
 }
+
+/**
+ * Send a chat action (e.g. typing indicator) to a Telegram chat.
+ *
+ * Uses POST with a JSON body to match how the Telegram Bot API is invoked
+ * for state-changing methods. Response failures throw — callers that want
+ * best-effort behaviour wrap the call themselves.
+ */
+export async function sendChatAction(
+  token: string,
+  chatId: string,
+  action: string,
+): Promise<void> {
+  const url = `https://api.telegram.org/bot${token}/sendChatAction`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, action }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Telegram API error: ${response.status} ${response.statusText}`,
+    );
+  }
+  const data: unknown = await response.json();
+  if (isTelegramApiError(data)) {
+    throw new Error(`Telegram API error: ${data.description}`);
+  }
+}

@@ -1,5 +1,4 @@
 import { computed, type Computed } from "ccstate";
-import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
@@ -12,6 +11,10 @@ import { env } from "../../lib/env";
 import { db$ } from "../external/db";
 import { buildTelegramBotAvatarUrl } from "../external/telegram-avatar";
 import { getMe } from "../external/telegram-client";
+import {
+  getOfficialTelegramBotConfig,
+  OFFICIAL_TELEGRAM_BOT_ID,
+} from "../external/telegram-official";
 import { decryptSecretValue } from "./crypto.utils";
 
 interface TelegramBotListItem {
@@ -27,40 +30,6 @@ interface TelegramBotListItem {
     readonly configured: boolean;
     readonly usesDefaultAgent: boolean;
     readonly linkedTelegramUserId: string | null;
-  };
-}
-
-interface OfficialTelegramBotConfig {
-  readonly botId: string | null;
-  readonly botToken: string | null;
-  readonly botUsername: string | null;
-  readonly webhookSecret: string | null;
-  readonly configured: boolean;
-}
-
-function normalizeBotUsername(username: string | undefined): string | null {
-  const normalized = username?.trim().replace(/^@+/, "");
-  return normalized && normalized.length > 0 ? normalized : null;
-}
-
-function parseTelegramBotId(botToken: string | undefined): string | null {
-  const id = botToken?.split(":", 1)[0]?.trim();
-  return id && /^\d+$/.test(id) ? id : null;
-}
-
-function getOfficialTelegramBotConfig(): OfficialTelegramBotConfig {
-  const botToken = env("TELEGRAM_OFFICIAL_BOT_TOKEN") ?? null;
-  const webhookSecret = env("TELEGRAM_OFFICIAL_WEBHOOK_SECRET") ?? null;
-  const botId = parseTelegramBotId(botToken ?? undefined);
-  const botUsername = normalizeBotUsername(
-    env("TELEGRAM_OFFICIAL_BOT_USERNAME"),
-  );
-  return {
-    botId,
-    botToken,
-    botUsername,
-    webhookSecret,
-    configured: Boolean(botToken && botId && webhookSecret),
   };
 }
 

@@ -237,8 +237,12 @@ vi.mock("../signals/external/slack-file-fetcher", () => {
   };
 });
 
-vi.mock("../signals/external/telegram-client", () => {
+vi.mock("../signals/external/telegram-client", async () => {
+  const actual = await vi.importActual<
+    typeof import("../signals/external/telegram-client")
+  >("../signals/external/telegram-client");
   return {
+    ...actual,
     getMe: apiTestMocks.telegram.getMe,
     getFile: apiTestMocks.telegram.getFile,
   };

@@ -7,6 +7,7 @@ import { chatThreadsV1Routes } from "./routes/chat-threads-v1";
 import { deviceTokenRoutes } from "./routes/device-token";
 import { apiHealth$ } from "./routes/health";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
+import { internalEventConsumerTelegramTypingRoutes } from "./routes/internal-event-consumers-telegram-typing";
 import { modelStatsRoutes } from "./routes/model-stats";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
 import { zeroAgentsRoutes } from "./routes/zero-agents";
@@ -57,6 +58,7 @@ export const ROUTES: readonly RouteEntry[] = [
     handler: apiHealth$,
   },
   ...healthAuthProbeRoutes,
+  ...internalEventConsumerTelegramTypingRoutes,
   ...deviceTokenRoutes,
   ...zeroAgentInstructionsRoutes,
   ...zeroAgentsRoutes,
