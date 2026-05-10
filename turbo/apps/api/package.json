@@ -13,7 +13,7 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1041.0",
+    "@aws-sdk/client-s3": "^3.1045.0",
     "@axiomhq/js": "^1.5.0",
     "@axiomhq/logging": "^0.1.6",
     "@clerk/backend": "^3.4.1",
@@ -44,8 +44,8 @@
     "@ts-rest/core": "3.53.0-rc.1",
     "@types/node": "^24.3.0",
     "@types/pg": "^8.20.0",
-    "@typescript-eslint/rule-tester": "^8.59.1",
-    "@typescript-eslint/utils": "^8.59.1",
+    "@typescript-eslint/rule-tester": "^8.59.2",
+    "@typescript-eslint/utils": "^8.59.2",
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "eslint": "^9.34.0",

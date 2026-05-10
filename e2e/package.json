@@ -13,9 +13,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@clerk/testing": "^2.0.24",
+    "@clerk/testing": "^2.0.27",
     "@playwright/test": "^1.59.1",
-    "@types/node": "^25.6.0",
+    "@types/node": "^25.6.2",
     "dotenv": "^17.4.2"
   },
   "devDependencies": {
