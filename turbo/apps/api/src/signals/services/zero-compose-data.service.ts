@@ -15,6 +15,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { db$, writeDb$ } from "../external/db";
 import { deleteS3Objects, listS3Objects } from "../external/s3";
+import { nowDate } from "../external/time";
 import { env } from "../../lib/env";
 import { conflict, notFound } from "../../lib/error";
 
@@ -282,6 +283,73 @@ export const deleteCompose$ = command(
       );
       signal.throwIfAborted();
     }
+
+    return undefined;
+  },
+);
+
+export const updateComposeMetadata$ = command(
+  async (
+    { set },
+    args: {
+      readonly composeId: string;
+      readonly userId: string;
+      readonly body: {
+        readonly displayName?: string | null;
+        readonly description?: string | null;
+        readonly sound?: string | null;
+      };
+    },
+    signal: AbortSignal,
+  ): Promise<NotFoundResponse | undefined> => {
+    const writeDb = set(writeDb$);
+
+    const [compose] = await writeDb
+      .select({
+        id: agentComposes.id,
+        name: agentComposes.name,
+        orgId: agentComposes.orgId,
+      })
+      .from(agentComposes)
+      .where(
+        and(
+          eq(agentComposes.id, args.composeId),
+          eq(agentComposes.userId, args.userId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!compose) {
+      return notFound("Agent compose not found");
+    }
+
+    const { body } = args;
+    await writeDb
+      .insert(zeroAgents)
+      .values({
+        id: compose.id,
+        orgId: compose.orgId,
+        owner: args.userId,
+        name: compose.name,
+        displayName: body.displayName ?? null,
+        description: body.description ?? null,
+        sound: body.sound ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [zeroAgents.orgId, zeroAgents.name],
+        set: {
+          ...(body.displayName !== undefined && {
+            displayName: body.displayName,
+          }),
+          ...(body.description !== undefined && {
+            description: body.description,
+          }),
+          ...(body.sound !== undefined && { sound: body.sound }),
+          updatedAt: nowDate(),
+        },
+      });
+    signal.throwIfAborted();
 
     return undefined;
   },
