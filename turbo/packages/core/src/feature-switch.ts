@@ -208,12 +208,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Replace the Invite people button in the agent chat page header with a New button that creates a new chat thread",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatMessageStartButton]: {
     maintainer: "linghan@vm0.ai",
     description:
       "Show an icon button in assistant message group actions that scrolls back to the start of that message group.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.QueueMessage]: {
     maintainer: "linghan@vm0.ai",
@@ -227,12 +229,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Replace the sidebar's per-thread trash button with a kebab/pin menu that exposes Pin/Unpin and Delete. Pinned threads sort to the top of the agent's chat list. Mobile shows the menu trigger always; desktop shows it on hover.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatThreadRename]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Adds a Rename chat item to the sidebar thread kebab menu. When the user renames a thread, automated title generation is suppressed for that thread.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.FreshdeskConnector]: {
     maintainer: "ethan@vm0.ai",
