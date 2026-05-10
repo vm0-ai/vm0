@@ -2471,6 +2471,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_firecracker_ok_rejects_too_long_ack() {
+        let (mut host_stream, mut firecracker_stream) = make_pair();
+        firecracker_stream
+            .write_all(&[b'X'; FIRECRACKER_CONNECT_ACK_MAX_BYTES])
+            .await
+            .unwrap();
+
+        let err = VsockHost::read_firecracker_ok(
+            &mut host_stream,
+            Instant::now() + Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(err.to_string(), "firecracker CONNECT ack too long");
+    }
+
+    #[tokio::test]
+    async fn read_firecracker_ok_accepts_crlf_ack() {
+        let (mut host_stream, mut firecracker_stream) = make_pair();
+        firecracker_stream.write_all(b"OK 123\r\n").await.unwrap();
+
+        let port = VsockHost::read_firecracker_ok(
+            &mut host_stream,
+            Instant::now() + Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+        assert_eq!(port, 123);
+    }
+
+    #[tokio::test]
     async fn connect_host_initiated_rejects_wrong_control_nonce() {
         let path = unique_socket_path("host-initiated-wrong-nonce");
         let path_string = path.display().to_string();
@@ -2511,6 +2543,50 @@ mod tests {
         .await
         {
             Ok(_) => panic!("wrong control nonce should fail"),
+            Err(err) => err,
+        };
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+
+        server.await.unwrap();
+        listener_socket.remove();
+    }
+
+    #[tokio::test]
+    async fn connect_host_initiated_rejects_malformed_control_ack() {
+        let path = unique_socket_path("host-initiated-bad-control-ack");
+        let path_string = path.display().to_string();
+        let listener = UnixListener::bind(&path).unwrap();
+        let mut listener_socket = ListenerSocketGuard {
+            path: Some(path_string.clone()),
+        };
+        let nonce = *b"0123456789abcdef";
+
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            assert_eq!(
+                read_line(&mut stream).await,
+                format!("CONNECT {}\n", vsock_proto::VSOCK_PORT).as_bytes()
+            );
+            stream.write_all(b"OK 1073741824\n").await.unwrap();
+
+            let mut decoder = Decoder::new();
+            let hello = read_one_message(&mut stream, &mut decoder).await;
+            assert_eq!(hello.msg_type, MSG_CONTROL_HELLO);
+            let ack = vsock_proto::encode(MSG_CONTROL_HELLO_ACK, hello.seq, &[0, 1, 2]).unwrap();
+            stream.write_all(&ack).await.unwrap();
+        });
+
+        let err = match VsockHost::connect_host_initiated(
+            &path_string,
+            Duration::from_secs(5),
+            ControlHandshake {
+                session_nonce: &nonce,
+                boot_generation: None,
+            },
+        )
+        .await
+        {
+            Ok(_) => panic!("malformed control ack should fail"),
             Err(err) => err,
         };
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);

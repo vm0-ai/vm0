@@ -1730,6 +1730,31 @@ mod tests {
     }
 
     #[test]
+    fn control_hello_rejects_empty_boot_generation() {
+        let nonce = *b"0123456789abcdef";
+
+        let err = encode_control_hello(CONTROL_PROTOCOL_VERSION, &nonce, Some("")).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("control_hello boot_generation empty")
+        ));
+    }
+
+    #[test]
+    fn control_hello_rejects_oversized_boot_generation() {
+        let nonce = *b"0123456789abcdef";
+        let boot_generation = "x".repeat(u16::MAX as usize + 1);
+
+        let err = encode_control_hello(CONTROL_PROTOCOL_VERSION, &nonce, Some(&boot_generation))
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::PayloadTooLarge("boot_generation", size)
+                if size == boot_generation.len()
+        ));
+    }
+
+    #[test]
     fn control_hello_rejects_trailing_bytes() {
         let nonce = *b"0123456789abcdef";
         let mut payload = encode_control_hello(CONTROL_PROTOCOL_VERSION, &nonce, None).unwrap();
@@ -1753,6 +1778,22 @@ mod tests {
         assert!(matches!(
             err,
             ProtocolError::InvalidPayload("control_hello boot_generation truncated")
+        ));
+    }
+
+    #[test]
+    fn control_hello_rejects_non_utf8_boot_generation() {
+        let nonce = *b"0123456789abcdef";
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&CONTROL_PROTOCOL_VERSION.to_be_bytes());
+        payload.extend_from_slice(&nonce);
+        payload.extend_from_slice(&2_u16.to_be_bytes());
+        payload.extend_from_slice(&[0xff, 0xff]);
+
+        let err = decode_control_hello(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("control_hello boot_generation utf8")
         ));
     }
 
@@ -1789,6 +1830,15 @@ mod tests {
         assert!(matches!(
             err,
             ProtocolError::InvalidPayload("control_quiesce_ack unknown status")
+        ));
+    }
+
+    #[test]
+    fn control_quiesce_ack_rejects_bad_length() {
+        let err = decode_control_quiesce_ack(&[]).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("control_quiesce_ack invalid length")
         ));
     }
 
