@@ -1526,6 +1526,66 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn control_server_preserves_empty_truncation_markers() {
+        let dir = tempfile::tempdir().unwrap();
+        let vsock_base = dir.path().join("vsock-empty-truncation");
+        let host_task = {
+            let vsock_base = vsock_base.display().to_string();
+            tokio::spawn(async move {
+                VsockHost::wait_for_connection(&vsock_base, Duration::from_secs(5)).await
+            })
+        };
+        let guest_task = tokio::spawn(mock_guest_completes_bounded_exec(
+            vsock_base,
+            MockBoundedExecCompletion {
+                stdout: Vec::new(),
+                stderr: Vec::new(),
+                exit_code: 0,
+                stdout_truncated: true,
+                stderr_truncated: true,
+            },
+        ));
+        let vsock = host_task.await.unwrap().unwrap();
+
+        let sock_path = dir.path().join("control.sock");
+        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
+        let mut handle = bind_server(sock_path.clone(), guest)
+            .unwrap()
+            .spawn(CancellationToken::new());
+
+        let request = ExecRequest {
+            command: "printf large-output".into(),
+            timeout_secs: 5,
+            sudo: false,
+        };
+        let mut output = CollectRemoteExecOutput::default();
+        let status = send_exec(&sock_path, &request, Duration::from_secs(5), &mut output)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            status,
+            RemoteExecStatus {
+                termination: RemoteExecTermination::Exited { exit_code: 0 },
+                stdout_truncated: true,
+                stderr_truncated: true,
+                diagnostic: None,
+            }
+        );
+        assert!(
+            output.stdout.is_empty(),
+            "empty truncation marker should not emit stdout bytes",
+        );
+        assert!(
+            output.stderr.is_empty(),
+            "empty truncation marker should not emit stderr bytes",
+        );
+
+        handle.shutdown().await;
+        guest_task.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn control_server_shutdown_cancels_in_flight_vsock_bounded_exec() {
         let dir = tempfile::tempdir().unwrap();
         let vsock_base = dir.path().join("vsock");
