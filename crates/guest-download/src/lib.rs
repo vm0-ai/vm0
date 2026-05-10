@@ -888,9 +888,18 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadErro
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    static STAGE_DIR_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn disable_system_log() {
         guest_common::log::clear_system_log_file();
+    }
+
+    fn stage_dir_test_guard() -> MutexGuard<'static, ()> {
+        STAGE_DIR_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
     }
 
     fn write_test_archive(path: &Path, entries: &[(&str, &[u8])]) {
@@ -1101,6 +1110,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn download_and_extract_rejects_stage_archive_symlink() {
+        let _stage_guard = stage_dir_test_guard();
         disable_system_log();
         let unique = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1134,6 +1144,7 @@ mod tests {
 
     #[test]
     fn run_removes_local_stage_archive_after_duplicate_success() {
+        let _stage_guard = stage_dir_test_guard();
         disable_system_log();
         let unique = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
