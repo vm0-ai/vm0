@@ -513,21 +513,25 @@ async fn execute(
 
     let mut stdout_truncated = false;
     let mut stderr_truncated = false;
+    let mut event_rx_closed = false;
 
     let result = loop {
         tokio::select! {
             biased;
             () = shutdown.cancelled() => return Ok(()),
-            maybe_event = event_rx.recv() => {
-                if let Some(event) = maybe_event {
-                    write_bounded_exec_output_event(
-                        stream,
-                        event,
-                        &mut stdout_truncated,
-                        &mut stderr_truncated,
-                        shutdown,
-                    )
-                    .await?;
+            maybe_event = event_rx.recv(), if !event_rx_closed => {
+                match maybe_event {
+                    Some(event) => {
+                        write_bounded_exec_output_event(
+                            stream,
+                            event,
+                            &mut stdout_truncated,
+                            &mut stderr_truncated,
+                            shutdown,
+                        )
+                        .await?;
+                    }
+                    None => event_rx_closed = true,
                 }
             }
             result = &mut bounded_exec => break result,
@@ -1457,6 +1461,60 @@ mod tests {
                 termination: RemoteExecTermination::Exited { exit_code: 7 },
                 stdout_truncated: true,
                 stderr_truncated: false,
+                diagnostic: None,
+            }
+        );
+        assert_eq!(output.stdout, b"hello\n");
+        assert_eq!(output.stderr, b"warn\n");
+
+        handle.shutdown().await;
+        guest_task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn control_server_handles_closed_stream_channel_before_bounded_exec_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let vsock_base = dir.path().join("vsock-stream-closed");
+        let host_task = {
+            let vsock_base = vsock_base.display().to_string();
+            tokio::spawn(async move {
+                VsockHost::wait_for_connection(&vsock_base, Duration::from_secs(5)).await
+            })
+        };
+        let guest_task = tokio::spawn(mock_guest_completes_bounded_exec(
+            vsock_base,
+            MockBoundedExecCompletion {
+                stdout: b"hello\n".to_vec(),
+                stderr: b"warn\n".to_vec(),
+                exit_code: 0,
+                stdout_truncated: true,
+                stderr_truncated: true,
+            },
+        ));
+        let vsock = host_task.await.unwrap().unwrap();
+
+        let sock_path = dir.path().join("control.sock");
+        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
+        let mut handle = bind_server(sock_path.clone(), guest)
+            .unwrap()
+            .spawn(CancellationToken::new());
+
+        let request = ExecRequest {
+            command: "echo hello".into(),
+            timeout_secs: 5,
+            sudo: false,
+        };
+        let mut output = CollectRemoteExecOutput::default();
+        let status = send_exec(&sock_path, &request, Duration::from_secs(5), &mut output)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            status,
+            RemoteExecStatus {
+                termination: RemoteExecTermination::Exited { exit_code: 0 },
+                stdout_truncated: true,
+                stderr_truncated: true,
                 diagnostic: None,
             }
         );
