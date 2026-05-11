@@ -381,7 +381,7 @@ describe("POST /api/zero/slack/interactive", () => {
       expect(ephemeralArgs?.text).toContain("DeepSeek V4 Pro");
     });
 
-    it("clears the selected model when user picks the workspace default option", async () => {
+    it("clears the selected model when user picks the workspace default model", async () => {
       const workspaceId = uniqueId("T-ws");
       const slackUserId = uniqueId("U-slack");
       await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
@@ -410,7 +410,7 @@ describe("POST /api/zero/slack/interactive", () => {
         buildModelPickerSubmission({
           workspaceId,
           slackUserId,
-          selectedValue: "__workspace_default__",
+          selectedValue: "claude-sonnet-4-6",
           channelId: "C-origin",
         }),
       );

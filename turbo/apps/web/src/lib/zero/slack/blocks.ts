@@ -508,7 +508,6 @@ export const AGENT_PICKER_ORG_DEFAULT_VALUE = "__org_default__";
 export const MODEL_PICKER_CALLBACK_ID = "model_preference_modal";
 export const MODEL_PICKER_BLOCK_ID = "model_select_block";
 export const MODEL_PICKER_ACTION_ID = "model_select";
-export const MODEL_PICKER_WORKSPACE_DEFAULT_VALUE = "__workspace_default__";
 
 interface AgentPickerOption {
   composeId: string;
@@ -591,47 +590,46 @@ export function buildAgentPickerModal(args: {
 interface ModelPickerOption {
   model: string;
   label: string;
+  isDefault?: boolean;
 }
 
 /**
  * Build the "Switch Model" modal view.
  *
  * The caller passes only models configured for the workspace and available to
- * the user. The workspace default sentinel clears the personal model
- * preference, matching the platform's "use default" behavior.
+ * the user. The workspace default is annotated on its model option instead of
+ * being rendered as a separate option.
  */
 export function buildModelPickerModal(args: {
   options: ModelPickerOption[];
   currentSelectedModel: string | null;
-  workspaceDefaultName: string | null;
   privateMetadata?: string;
 }): View {
-  const workspaceDefaultLabel = args.workspaceDefaultName
-    ? `Use workspace default (${args.workspaceDefaultName})`
-    : "Use workspace default";
-
-  const selectOptions = [
-    {
+  const selectOptions = args.options.map((option) => {
+    return {
       text: {
         type: "plain_text" as const,
-        text: workspaceDefaultLabel.slice(0, 75),
+        text: formatModelPickerOptionLabel(option),
       },
-      value: MODEL_PICKER_WORKSPACE_DEFAULT_VALUE,
-    },
-    ...args.options.map((option) => {
-      return {
-        text: { type: "plain_text" as const, text: option.label.slice(0, 75) },
-        value: option.model,
-      };
-    }),
-  ];
+      value: option.model,
+    };
+  });
 
-  const initialOptionRaw = args.currentSelectedModel
+  const defaultModel =
+    args.options.find((option) => {
+      return option.isDefault;
+    })?.model ?? null;
+  const currentOption = args.currentSelectedModel
     ? selectOptions.find((option) => {
         return option.value === args.currentSelectedModel;
       })
-    : selectOptions[0];
-  const initialOption = initialOptionRaw ?? selectOptions[0];
+    : undefined;
+  const defaultOption = defaultModel
+    ? selectOptions.find((option) => {
+        return option.value === defaultModel;
+      })
+    : undefined;
+  const initialOption = currentOption ?? defaultOption ?? selectOptions[0];
 
   const view: View = {
     type: "modal",
@@ -664,6 +662,16 @@ export function buildModelPickerModal(args: {
   };
 
   return view;
+}
+
+function formatModelPickerOptionLabel(option: ModelPickerOption): string {
+  if (!option.isDefault) return option.label.slice(0, 75);
+
+  const suffix = " (workspace default)";
+  if (option.label.length + suffix.length <= 75) {
+    return `${option.label}${suffix}`;
+  }
+  return `${option.label.slice(0, 75 - suffix.length)}${suffix}`;
 }
 
 /**

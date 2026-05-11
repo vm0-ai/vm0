@@ -452,7 +452,10 @@ describe("POST /api/zero/slack/commands", () => {
           callback_id?: string;
           blocks?: Array<{
             element?: {
-              options?: Array<{ value: string }>;
+              options?: Array<{
+                value: string;
+                text?: { text?: string };
+              }>;
               initial_option?: { value: string };
             };
           }>;
@@ -468,10 +471,15 @@ describe("POST /api/zero/slack/commands", () => {
         inputBlock?.element?.options?.map((o) => {
           return o.value;
         }) ?? [];
-      expect(values).toContain("__workspace_default__");
+      const labels =
+        inputBlock?.element?.options?.map((o) => {
+          return o.text?.text;
+        }) ?? [];
+      expect(values).not.toContain("__workspace_default__");
       expect(values).toContain("claude-sonnet-4-6");
       expect(values).toContain("deepseek-v4-pro");
       expect(values).not.toContain("gpt-5.5");
+      expect(labels).toContain("Claude Sonnet 4.6 (workspace default)");
       expect(inputBlock?.element?.initial_option?.value).toBe(
         "deepseek-v4-pro",
       );

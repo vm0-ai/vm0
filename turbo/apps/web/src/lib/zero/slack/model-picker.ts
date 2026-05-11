@@ -21,8 +21,6 @@ interface SlackModelPickerState {
   enabled: boolean;
   options: SlackModelPickerOption[];
   currentSelectedModel: SupportedRunModel | null;
-  workspaceDefaultModel: SupportedRunModel | null;
-  workspaceDefaultName: string | null;
 }
 
 async function canUseModelRoute(params: {
@@ -61,8 +59,6 @@ export async function getSlackModelPickerState(params: {
       enabled: false,
       options: [],
       currentSelectedModel: null,
-      workspaceDefaultModel: null,
-      workspaceDefaultName: null,
     };
   }
 
@@ -97,18 +93,9 @@ export async function getSlackModelPickerState(params: {
     });
   }
 
-  const workspaceDefaultModel =
-    options.find((option) => {
-      return option.isDefault;
-    })?.model ?? null;
-
   return {
     enabled: true,
     options,
     currentSelectedModel,
-    workspaceDefaultModel,
-    workspaceDefaultName: workspaceDefaultModel
-      ? getCanonicalModelDisplayName(workspaceDefaultModel)
-      : null,
   };
 }

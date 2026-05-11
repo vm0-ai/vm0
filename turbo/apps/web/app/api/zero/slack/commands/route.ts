@@ -149,7 +149,7 @@ async function handleDisconnect(
 }
 
 const AGENT_PICKER_MAX_OPTIONS = 100;
-const MODEL_PICKER_MAX_OPTIONS = 99;
+const MODEL_PICKER_MAX_OPTIONS = 100;
 
 /**
  * Handle /zero switch command — opens the per-user agent picker modal.
@@ -276,7 +276,6 @@ async function handleModel(
   const modal = buildModelPickerModal({
     options: picker.options.slice(0, MODEL_PICKER_MAX_OPTIONS),
     currentSelectedModel: picker.currentSelectedModel,
-    workspaceDefaultName: picker.workspaceDefaultName,
     privateMetadata: JSON.stringify({ channelId: payload.channel_id }),
   });
 

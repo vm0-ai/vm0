@@ -22,7 +22,6 @@ import {
   MODEL_PICKER_ACTION_ID,
   MODEL_PICKER_BLOCK_ID,
   MODEL_PICKER_CALLBACK_ID,
-  MODEL_PICKER_WORKSPACE_DEFAULT_VALUE,
   buildAgentPickerModal,
 } from "../../../../../src/lib/zero/slack/blocks";
 import { refreshOrgAppHome } from "../../../../../src/lib/zero/slack-org/handlers/app-home";
@@ -427,20 +426,6 @@ async function handleModelPickerSubmit(
   );
   const channelId = parseViewChannelId(payload.view?.private_metadata);
 
-  if (selected === MODEL_PICKER_WORKSPACE_DEFAULT_VALUE) {
-    await applyModelSelection({
-      ctx,
-      botToken,
-      slackUserId: payload.user.id,
-      channelId,
-      selectedModel: null,
-      switchedTo: picker.workspaceDefaultName
-        ? `workspace default (${picker.workspaceDefaultName})`
-        : "workspace default",
-    });
-    return new Response("", { status: 200 });
-  }
-
   const option = picker.options.find((candidate) => {
     return candidate.model === selected;
   });
@@ -458,8 +443,10 @@ async function handleModelPickerSubmit(
     botToken,
     slackUserId: payload.user.id,
     channelId,
-    selectedModel: option.model,
-    switchedTo: option.label,
+    selectedModel: option.isDefault ? null : option.model,
+    switchedTo: option.isDefault
+      ? `workspace default (${option.label})`
+      : option.label,
   });
 
   return new Response("", { status: 200 });
