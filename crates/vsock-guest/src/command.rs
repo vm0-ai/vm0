@@ -117,9 +117,9 @@ pub(crate) struct CommandWorkerRequest {
     command: String,
     env: Vec<(String, String)>,
     sudo: bool,
+    label: String,
     stdout: CommandOutputPolicy,
     stderr: CommandOutputPolicy,
-    label: String,
 }
 
 impl CommandWorkerRequest {
@@ -134,9 +134,9 @@ impl CommandWorkerRequest {
                 .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
                 .collect(),
             sudo: decoded.sudo,
+            label: decoded.label.to_owned(),
             stdout: decoded.stdout,
             stderr: decoded.stderr,
-            label: decoded.label.to_owned(),
         }
     }
 }
@@ -833,9 +833,9 @@ mod tests {
             command: command.to_string(),
             env: Vec::new(),
             sudo: false,
+            label: "test".to_string(),
             stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: CommandOutputPolicy::Capture { limit_bytes: 1024 },
-            label: "test".to_string(),
         }
     }
 

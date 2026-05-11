@@ -1205,9 +1205,9 @@ impl VsockHost {
             request.command,
             request.env,
             request.sudo,
+            request.label,
             request.stdout,
             request.stderr,
-            request.label,
         )
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
 

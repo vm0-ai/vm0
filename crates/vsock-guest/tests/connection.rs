@@ -589,7 +589,7 @@ fn send_command_start_with_env(
     stderr: CommandOutputPolicy,
 ) {
     let payload =
-        vsock_proto::encode_command_start(timeout_ms, command, env, false, stdout, stderr, "test")
+        vsock_proto::encode_command_start(timeout_ms, command, env, false, "test", stdout, stderr)
             .unwrap();
     let msg = vsock_proto::encode(MSG_COMMAND_START, seq, &payload).unwrap();
     stream.write_all(&msg).unwrap();
