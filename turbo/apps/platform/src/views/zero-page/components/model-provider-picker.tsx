@@ -765,11 +765,7 @@ function ModelFirstModelPicker({
           />
         </SelectValue>
       </SelectTrigger>
-      <SelectContent
-        className="max-h-none min-w-[260px]"
-        hideScrollButtons
-        viewportClassName="h-auto max-h-none"
-      >
+      <SelectContent className="max-h-[280px] min-w-[260px]">
         {showUseDefault ? (
           <ModelFirstInheritToggleRow
             effectiveDefault={effectiveDefault}
