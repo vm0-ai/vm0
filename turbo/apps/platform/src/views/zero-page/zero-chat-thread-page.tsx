@@ -1963,34 +1963,13 @@ function usePersistModelFirstSelection(
   };
 }
 
-function ChatThreadComposer({
-  thread,
-  autoFocus: autoFocusProp = true,
-}: {
-  thread: ChatThreadSignals;
-  autoFocus?: boolean;
-}) {
-  const groups = useLastResolved(thread.groupedChatMessages$) ?? [];
-  const hasMessages = groups.length > 0;
-  const hasUserMessages = groups.some((g) => {
-    return g.role === "user";
-  });
-  const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
-  const allFinishedLoadable = useLastLoadable(thread.allFinished$);
-  const allFinishedResolved = allFinishedLoadable.state === "hasData";
-  const allFinished = allFinishedResolved ? allFinishedLoadable.data : false;
-  const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
-  const [, queueMessage] = useLoadableSet(thread.queueMessage$);
-  const sending = !allFinished || sendLoadable.state === "loading";
-  const input = useGet(thread.draft.input$);
-  const setInput = useSet(thread.draft.setInput$);
-  const cancelRun = useSet(thread.cancelRun$);
-  const setInputRef = useSet(thread.setInputRef$);
-  const scheduleDraftSync = useSet(thread.scheduleDraftSync$);
+function useChatComposerQueue(
+  thread: ChatThreadSignals,
+  groups: GroupedChatMessageGroup[],
+) {
   const recallMessage = useSet(thread.recallMessage$);
   const focusInput = useSet(thread.focusInput$);
   const pageSignal = useGet(pageSignal$);
-  const rootSignal = useGet(rootSignal$);
 
   const { queuedGroups } = splitQueuedMessagesForThinkingIndicator(groups);
   const queuedMessagesById = new Map(
@@ -2009,6 +1988,33 @@ function ChatThreadComposer({
     };
   });
 
+  const onRemoveQueuedItem = (id: string) => {
+    const message = queuedMessagesById.get(id);
+    if (!message) {
+      return;
+    }
+    detach(
+      (async () => {
+        await recallMessage(message, pageSignal);
+        focusInput();
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  return { queuedItems, onRemoveQueuedItem };
+}
+
+function useChatComposerModel(
+  thread: ChatThreadSignals,
+  {
+    hasUserMessages,
+    pageSignal,
+  }: {
+    hasUserMessages: boolean;
+    pageSignal: AbortSignal;
+  },
+) {
   // Per-thread composer state lives in ccstate signals on the factory so the
   // initial value seeds from threadData once it resolves (a React useState
   // initializer would snapshot `undefined` on first render). `modelSelection$`
@@ -2020,14 +2026,6 @@ function ChatThreadComposer({
   const setModelSelection = useSet(thread.setModelSelection$);
   const agentModelDefault = useLastResolved(thread.agentModelDefault$) ?? null;
   const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
-  // During thread switch the thread-level skeleton is visible and
-  // `threadData` / `allFinished$` may still reflect the previous thread;
-  // render the whole action cluster as a skeleton so we don't flash stale
-  // picker state or a wrong send/stop button.
-  const skeletonVisible = useGet(thread.skeletonVisible$);
-  const queueWhileSending = canQueueMessage({
-    sending,
-  });
   const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
   const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
   const persistModelFirstSelection = usePersistModelFirstSelection(
@@ -2058,6 +2056,47 @@ function ChatThreadComposer({
     modelSelection,
     agentModelDefault,
     onAction: openPersonalOauthConfiguration,
+  });
+
+  return { modelPicker, submitBlockerProps, modelSelection };
+}
+
+function ChatThreadComposer({
+  thread,
+  autoFocus: autoFocusProp = true,
+}: {
+  thread: ChatThreadSignals;
+  autoFocus?: boolean;
+}) {
+  const groups = useLastResolved(thread.groupedChatMessages$) ?? [];
+  const hasMessages = groups.length > 0;
+  const hasUserMessages = groups.some((g) => {
+    return g.role === "user";
+  });
+  const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
+  const allFinishedLoadable = useLastLoadable(thread.allFinished$);
+  const allFinishedResolved = allFinishedLoadable.state === "hasData";
+  const allFinished = allFinishedResolved ? allFinishedLoadable.data : false;
+  const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
+  const [, queueMessage] = useLoadableSet(thread.queueMessage$);
+  const sending = !allFinished || sendLoadable.state === "loading";
+  const input = useGet(thread.draft.input$);
+  const setInput = useSet(thread.draft.setInput$);
+  const cancelRun = useSet(thread.cancelRun$);
+  const setInputRef = useSet(thread.setInputRef$);
+  const scheduleDraftSync = useSet(thread.scheduleDraftSync$);
+  const pageSignal = useGet(pageSignal$);
+  const rootSignal = useGet(rootSignal$);
+
+  const { queuedItems, onRemoveQueuedItem } = useChatComposerQueue(
+    thread,
+    groups,
+  );
+  const { modelPicker, submitBlockerProps, modelSelection } =
+    useChatComposerModel(thread, { hasUserMessages, pageSignal });
+  const skeletonVisible = useGet(thread.skeletonVisible$);
+  const queueWhileSending = canQueueMessage({
+    sending,
   });
 
   const handleInputChange = (text: string) => {
@@ -2122,19 +2161,7 @@ function ChatThreadComposer({
             modelPicker={modelPicker}
             submitBlocker={submitBlockerProps}
             queuedItems={queuedItems}
-            onRemoveQueuedItem={(id) => {
-              const message = queuedMessagesById.get(id);
-              if (!message) {
-                return;
-              }
-              detach(
-                (async () => {
-                  await recallMessage(message, pageSignal);
-                  focusInput();
-                })(),
-                Reason.DomCallback,
-              );
-            }}
+            onRemoveQueuedItem={onRemoveQueuedItem}
           />
           <PersonalProviderDialog />
           <PersonalCodexAuthPasteDialog />

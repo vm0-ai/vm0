@@ -1017,7 +1017,7 @@ export function ZeroChatComposer({
   actionsLoading = false,
   modelPicker,
   submitBlocker,
-  queuedItems,
+  queuedItems = [],
   onRemoveQueuedItem,
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
@@ -1412,7 +1412,7 @@ export function ZeroChatComposer({
               />
             )}
             <QueuedMessagesStrip
-              items={queuedItems ?? []}
+              items={queuedItems}
               onRemove={onRemoveQueuedItem}
             />
             <textarea
