@@ -187,3 +187,99 @@ export async function sendMessage(
     chatId: String(success.result.chat.id),
   };
 }
+
+export interface TelegramDocument {
+  readonly file_id: string;
+  readonly file_unique_id: string;
+  readonly file_name?: string;
+  readonly mime_type?: string;
+  readonly file_size?: number;
+}
+
+interface TelegramSentDocumentMessage {
+  readonly message_id: number;
+  readonly chat: { readonly id: number };
+  readonly document?: TelegramDocument;
+}
+
+export type SendTelegramDocumentResult =
+  | {
+      readonly kind: "ok";
+      readonly messageId: number;
+      readonly chatId: string;
+      readonly document: TelegramDocument | undefined;
+    }
+  | {
+      readonly kind: "telegram-error";
+      readonly status: number;
+      readonly description: string | undefined;
+    };
+
+/**
+ * Send a Telegram document using the bot API and surface upstream HTTP status
+ * via a result-union. Callers map status >= 500 to 502 and status < 500 to 400
+ * (Telegram client error). No exceptions are thrown for HTTP failures so
+ * handlers can stay free of try/catch (per project policy).
+ */
+export async function sendDocument(
+  token: string,
+  chatId: string,
+  document: string,
+  options: {
+    readonly caption?: string;
+    readonly messageThreadId?: number;
+  } = {},
+): Promise<SendTelegramDocumentResult> {
+  const url = `https://api.telegram.org/bot${token}/sendDocument`;
+  const payload: Record<string, unknown> = {
+    chat_id: chatId,
+    document,
+  };
+  if (options.caption !== undefined) {
+    payload.caption = options.caption;
+  }
+  if (options.messageThreadId !== undefined) {
+    payload.message_thread_id = options.messageThreadId;
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const data: unknown = await response.json();
+
+  if (!response.ok) {
+    const description =
+      data && typeof data === "object" && "description" in data
+        ? typeof (data as { description: unknown }).description === "string"
+          ? ((data as { description: string }).description as string)
+          : undefined
+        : undefined;
+    return {
+      kind: "telegram-error",
+      status: response.status,
+      description,
+    };
+  }
+
+  if (isTelegramApiError(data)) {
+    return {
+      kind: "telegram-error",
+      status: response.status,
+      description: data.description,
+    };
+  }
+
+  const success = data as {
+    readonly ok: true;
+    readonly result: TelegramSentDocumentMessage;
+  };
+  return {
+    kind: "ok",
+    messageId: success.result.message_id,
+    chatId: String(success.result.chat.id),
+    document: success.result.document,
+  };
+}
