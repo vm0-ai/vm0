@@ -491,6 +491,12 @@ impl R2ImageCache {
         self.upload_key(&key, &[rootfs.to_path_buf()], force).await
     }
 
+    /// Returns `Ok(true)` if the shared template object exists.
+    pub async fn template_exists(&self, hash: &str) -> Result<bool, R2Error> {
+        let key = key_for_template_hash(hash);
+        self.exists_key(&key).await
+    }
+
     async fn upload_key(&self, key: &str, files: &[PathBuf], force: bool) -> Result<(), R2Error> {
         if !force && self.exists_key(key).await? {
             tracing::info!("R2 already has {key}, skipping upload");

@@ -878,13 +878,32 @@ async fn ensure_rootfs_under_lock(
 }
 
 async fn ensure_template_cached_under_lock(input: &TemplateInput<'_>) -> RunnerResult<()> {
-    input.cache.as_cache().ok_or_else(|| {
+    let cache = input.cache.as_cache().ok_or_else(|| {
         RunnerError::Internal("--warm-rootfs-cache requires R2 template cache".into())
     })?;
+
+    match cache.template_exists(input.template_hash).await {
+        Ok(true) => {
+            tracing::info!("[OK] template already in R2: {}", input.template_hash);
+            return Ok(());
+        }
+        Ok(false) => {
+            tracing::info!(
+                "R2 template cache miss for {} — building locally",
+                input.template_hash
+            );
+        }
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "R2 template HEAD failed while warming cache: {e}"
+            )));
+        }
+    }
+
     let mut scripts = RootfsScripts::new();
     let work_dir_path = scripts.path().await?;
     // Keep warm-up staging on the runner image volume, not the system temp
-    // filesystem. Even a cache hit downloads a full template for validation,
+    // filesystem. A cache miss builds a full template image before uploading,
     // and /tmp may be much smaller than the runner data disk.
     let warm_parent = template_warm_parent_dir(input.paths, input.template_hash);
     cleanup_template_warm_parent(&warm_parent).await?;
@@ -2901,6 +2920,60 @@ exit 1
         assert!(
             !work_dir.join("build-template-called").exists(),
             "required download failure must fail before local rebuild"
+        );
+    }
+
+    #[tokio::test]
+    async fn warm_cache_existing_remote_uses_head_without_download_or_build() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::head_object::HeadObjectOutput;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let head = mock!(Client::head_object)
+            .match_requests(|req| {
+                req.bucket() == Some("test-bucket")
+                    && req.key() == Some("runner-templates/test-template-hash.tar.zst")
+            })
+            .then_output(|| HeadObjectOutput::builder().build());
+        let cache = mock_r2_cache(&[&head]);
+        let input = template_input(&home, TemplateCache::Required(&cache));
+
+        ensure_template_cached_under_lock(&input).await.unwrap();
+
+        assert_eq!(head.num_calls(), 1);
+        assert!(
+            !template_warm_parent_dir(&home, "test-template-hash").exists(),
+            "warm cache hit should not create local template staging"
+        );
+    }
+
+    #[tokio::test]
+    async fn warm_cache_head_request_failure_is_fatal() {
+        use aws_sdk_s3::Client;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let head = mock!(Client::head_object)
+            .sequence()
+            .http_status(
+                500,
+                Some("<Error><Code>InternalError</Code></Error>".into()),
+            )
+            .build();
+        let cache = mock_r2_cache(&[&head]);
+        let input = template_input(&home, TemplateCache::Required(&cache));
+
+        let err = ensure_template_cached_under_lock(&input).await.unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("R2 template HEAD failed while warming cache"),
+            "got {err}"
+        );
+        assert!(
+            !template_warm_parent_dir(&home, "test-template-hash").exists(),
+            "warm cache should fail before local template staging when HEAD fails"
         );
     }
 
