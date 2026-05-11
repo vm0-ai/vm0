@@ -54,7 +54,7 @@ const GUEST_STAGE_DIR: &str = "/tmp/vm0-storage-cache";
 
 const HEAD_TIMEOUT: Duration = Duration::from_secs(10);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
-const SLOW_STORAGE_CACHE_LOG_MS: u128 = 1_000;
+const SLOW_STORAGE_CACHE_LOG_MS: u64 = 1_000;
 
 /// Guest-side filename for a cached archive.
 ///
@@ -126,7 +126,7 @@ struct StorageCacheLockTrace {
 
 impl Drop for StorageCacheLockTrace {
     fn drop(&mut self) {
-        let held_ms = self.acquired_at.elapsed().as_millis();
+        let held_ms = self.acquired_at.elapsed().as_millis() as u64;
         if held_ms < SLOW_STORAGE_CACHE_LOG_MS {
             return;
         }
@@ -272,14 +272,14 @@ async fn process_one(
                 index = target.index,
                 guest_path = %guest_path,
                 lock_path = %lock_path.display(),
-                wait_ms = lock_wait_start.elapsed().as_millis(),
+                wait_ms = lock_wait_start.elapsed().as_millis() as u64,
                 error = %e,
                 "storage_cache: lock acquire failed"
             );
             return Err(e);
         }
     };
-    let lock_wait_ms = lock_wait_start.elapsed().as_millis();
+    let lock_wait_ms = lock_wait_start.elapsed().as_millis() as u64;
     if lock_wait_ms >= SLOW_STORAGE_CACHE_LOG_MS {
         info!(
             kind,
@@ -410,7 +410,7 @@ async fn write_guest_archive(
     let started_at = Instant::now();
     match sandbox.write_file(guest_path, bytes).await {
         Ok(()) => {
-            let duration_ms = started_at.elapsed().as_millis();
+            let duration_ms = started_at.elapsed().as_millis() as u64;
             if duration_ms >= SLOW_STORAGE_CACHE_LOG_MS {
                 info!(
                     kind,
@@ -431,7 +431,7 @@ async fn write_guest_archive(
                 cache_state,
                 guest_path,
                 bytes = bytes.len(),
-                duration_ms = started_at.elapsed().as_millis(),
+                duration_ms = started_at.elapsed().as_millis() as u64,
                 error = %e,
                 "storage_cache: guest write_file failed"
             );

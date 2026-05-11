@@ -1068,7 +1068,7 @@ const GUEST_SYSTEM_LOG_PREFIX: &str = "/tmp/vm0-system-";
 const GUEST_SYSTEM_LOG_SUFFIX: &str = ".log";
 const GUEST_METRICS_LOG_PREFIX: &str = "/tmp/vm0-metrics-";
 const GUEST_METRICS_LOG_SUFFIX: &str = ".jsonl";
-const SLOW_GUEST_LOG_COPY_LOG_MS: u128 = 5_000;
+const SLOW_GUEST_LOG_COPY_LOG_MS: u64 = 5_000;
 const GUEST_LOG_COPY_STREAM_LIMIT_BYTES: u32 = 128 * 1024 * 1024;
 const GUEST_LOG_COPY_STREAM_CHUNK_LIMIT_BYTES: u32 = 64 * 1024;
 const GUEST_LOG_COPY_STDERR_PREVIEW_BYTES: u32 = 16 * 1024;
@@ -1158,7 +1158,7 @@ where
 {
     tokio::pin!(future);
     let mut interval = tokio::time::interval_at(
-        tokio::time::Instant::now() + Duration::from_millis(SLOW_GUEST_LOG_COPY_LOG_MS as u64),
+        tokio::time::Instant::now() + Duration::from_millis(SLOW_GUEST_LOG_COPY_LOG_MS),
         Duration::from_secs(30),
     );
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -1221,7 +1221,7 @@ async fn copy_guest_log_file(
         bounded_exec_started_at,
     )
     .await;
-    let bounded_exec_duration_ms = bounded_exec_started_at.elapsed().as_millis();
+    let bounded_exec_duration_ms = bounded_exec_started_at.elapsed().as_millis() as u64;
     if bounded_exec_duration_ms >= SLOW_GUEST_LOG_COPY_LOG_MS {
         info!(
             run_id = %run_id,
@@ -1247,7 +1247,7 @@ async fn copy_guest_log_file(
     .await
     {
         Ok(result) => {
-            let writer_duration_ms = writer_started_at.elapsed().as_millis();
+            let writer_duration_ms = writer_started_at.elapsed().as_millis() as u64;
             if writer_duration_ms >= SLOW_GUEST_LOG_COPY_LOG_MS {
                 info!(
                     run_id = %run_id,

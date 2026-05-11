@@ -55,8 +55,8 @@ const READ_BUF_SIZE: usize = 64 * 1024;
 const FIRECRACKER_CONNECT_ACK_MAX_BYTES: usize = 64;
 const FRAME_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 const BOUNDED_EXEC_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
-const SLOW_WRITE_FILE_LOG_MS: u128 = 1_000;
-const SLOW_BOUNDED_EXEC_LOG_MS: u128 = 5_000;
+const SLOW_WRITE_FILE_LOG_MS: u64 = 1_000;
+const SLOW_BOUNDED_EXEC_LOG_MS: u64 = 5_000;
 
 /// Result of executing a command on the guest.
 #[derive(Debug, Clone)]
@@ -1165,14 +1165,15 @@ async fn request_raw_on_shared_with_write_timeout(
             match result {
                 Ok(msg) => {
                     if is_write_file {
-                        let response_wait_ms = response_wait_started_at.elapsed().as_millis();
-                        let duration_ms = request_started_at.elapsed().as_millis();
+                        let response_wait_ms =
+                            response_wait_started_at.elapsed().as_millis() as u64;
+                        let duration_ms = request_started_at.elapsed().as_millis() as u64;
                         if duration_ms >= SLOW_WRITE_FILE_LOG_MS {
                             info!(
                                 seq,
                                 response_type = msg.msg_type,
-                                response_wait_ms = response_wait_ms as u64,
-                                duration_ms = duration_ms as u64,
+                                response_wait_ms,
+                                duration_ms,
                                 "vsock_host: slow write_file response received"
                             );
                         }
@@ -1540,7 +1541,7 @@ async fn bounded_exec_on_shared_with_request_timeout(
     let termination = proto_termination_to_host(decoded.termination);
     let (stdout_bytes, stdout_truncated) = proto_output_summary(&decoded.stdout);
     let (stderr_bytes, stderr_truncated) = proto_output_summary(&decoded.stderr);
-    let duration_ms = request_started_at.elapsed().as_millis();
+    let duration_ms = request_started_at.elapsed().as_millis() as u64;
     if duration_ms >= SLOW_BOUNDED_EXEC_LOG_MS {
         info!(
             seq,
@@ -1557,7 +1558,7 @@ async fn bounded_exec_on_shared_with_request_timeout(
             stderr_bytes,
             stderr_truncated,
             diagnostic = decoded.diagnostic.is_some(),
-            duration_ms = duration_ms as u64,
+            duration_ms,
             "vsock_host: slow bounded_exec completed"
         );
     }
@@ -2083,13 +2084,13 @@ impl VsockHost {
             return Err(io::Error::other(error));
         }
 
-        let duration_ms = started_at.elapsed().as_millis();
+        let duration_ms = started_at.elapsed().as_millis() as u64;
         if duration_ms >= SLOW_WRITE_FILE_LOG_MS {
             info!(
                 seq,
                 path,
                 bytes = content.len(),
-                duration_ms = duration_ms as u64,
+                duration_ms,
                 "vsock_host: slow write_file chunk complete"
             );
         }

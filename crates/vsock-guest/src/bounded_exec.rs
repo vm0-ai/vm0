@@ -33,6 +33,20 @@ const STDIN_WRITE_POLL_TIMEOUT_MS: libc::c_int = 100;
 
 pub(crate) type BoundedExecCleanup = Box<dyn FnOnce() + Send + 'static>;
 
+pub(crate) fn bounded_exec_command_kind(command: &str) -> &'static str {
+    if command.contains("/tmp/vm0-system-") {
+        "guest-log-system"
+    } else if command.contains("/tmp/vm0-metrics-") {
+        "guest-log-metrics"
+    } else if command.starts_with("mv -f -- ") {
+        "write-file-commit"
+    } else if command.starts_with("rm -f -- ") {
+        "write-file-cleanup"
+    } else {
+        "other"
+    }
+}
+
 pub(crate) struct BoundedExecWorkerRequest {
     pub(crate) seq: u32,
     pub(crate) timeout_ms: u32,
@@ -220,6 +234,8 @@ where
     S: ThreadSpawner,
 {
     let seq = request.seq;
+    let command_kind = bounded_exec_command_kind(&request.command);
+    let command_len = request.command.len();
     let stdout_policy = request.stdout;
     let stderr_policy = request.stderr;
     let worker_writer = writer.clone();
@@ -240,9 +256,23 @@ where
     );
 
     match result {
-        Ok(_) => Ok(()),
+        Ok(_) => {
+            log(
+                "INFO",
+                &format!(
+                    "bounded_exec worker spawned: seq={seq}, command_kind={command_kind}, command_len={command_len}",
+                ),
+            );
+            Ok(())
+        }
         Err(e) => {
             let diagnostic = format!("Failed to spawn bounded exec worker thread: {e}");
+            log(
+                "ERROR",
+                &format!(
+                    "bounded_exec worker spawn failed: seq={seq}, command_kind={command_kind}, command_len={command_len}, error={e}",
+                ),
+            );
             let stdout = GuestBoundedOutput::empty_for_policy(stdout_policy);
             let stderr = GuestBoundedOutput::empty_for_policy(stderr_policy);
             send_bounded_exec_result(
@@ -269,10 +299,15 @@ fn run_bounded_exec<S>(
 ) where
     S: ThreadSpawner,
 {
+    let command_kind = bounded_exec_command_kind(&request.command);
+    let command_len = request.command.len();
     log(
         "INFO",
         &format!(
-            "bounded_exec: {} (timeout={}ms, sudo={}, stdin={}, stdout={}, stderr={}, {})",
+            "bounded_exec started: seq={}, command_kind={}, command_len={}, command={} (timeout={}ms, sudo={}, stdin={}, stdout={}, stderr={}, {})",
+            request.seq,
+            command_kind,
+            command_len,
             truncate_preview(&request.command),
             request.timeout_ms,
             request.sudo,
@@ -347,6 +382,19 @@ fn run_bounded_exec<S>(
         env_script,
     } = spawned;
     let _env_script = env_script;
+    let child_pid = child.id();
+    log(
+        "INFO",
+        &format!(
+            "bounded_exec child spawned: seq={}, command_kind={}, pid={}, stdin_pipe={}, stdout_pipe={}, stderr_pipe={}",
+            request.seq,
+            command_kind,
+            child_pid,
+            request.stdin.is_some(),
+            request.stdout.requires_pipe(),
+            request.stderr.requires_pipe(),
+        ),
+    );
 
     if cancellation_requested(&connection_cancel, &request_cancel) {
         kill_and_send_cancelled(
@@ -555,6 +603,17 @@ fn run_bounded_exec<S>(
             command_cancel.as_ref(),
         ],
     );
+    log(
+        "INFO",
+        &format!(
+            "bounded_exec child wait finished: seq={}, command_kind={}, outcome={}, exit_code={:?}, duration_ms={}",
+            request.seq,
+            command_kind,
+            wait_outcome_label(&outcome),
+            wait_outcome_exit_code(&outcome),
+            duration_ms(started),
+        ),
+    );
     if matches!(outcome, WaitOutcome::Cancelled)
         || connection_cancel.load(Ordering::Acquire)
         || request_cancel.load(Ordering::Acquire)
@@ -591,10 +650,24 @@ fn run_bounded_exec<S>(
     let expected_drains =
         usize::from(stdout_worker.is_some()) + usize::from(stderr_worker.is_some());
     let completed = await_drain_deadline(&drain_done_rx, expected_drains, &drain_cancel);
+    log(
+        "INFO",
+        &format!(
+            "bounded_exec drain finished: seq={}, command_kind={}, completed={}, expected={}, duration_ms={}",
+            request.seq,
+            command_kind,
+            completed,
+            expected_drains,
+            duration_ms(started),
+        ),
+    );
     if completed < expected_drains {
         log(
             "WARN",
-            &format!("bounded_exec: drain deadline reached after {DRAIN_DEADLINE_SECS}s",),
+            &format!(
+                "bounded_exec drain deadline reached: seq={}, command_kind={}, completed={}, expected={}, deadline_secs={}",
+                request.seq, command_kind, completed, expected_drains, DRAIN_DEADLINE_SECS,
+            ),
         );
     }
 
@@ -626,7 +699,9 @@ fn run_bounded_exec<S>(
     log(
         "INFO",
         &format!(
-            "bounded_exec result: termination={termination:?}, stdout_len={}, stderr_len={}, stdout_truncated={}, stderr_truncated={}, diagnostic={}",
+            "bounded_exec result prepared: seq={}, command_kind={}, termination={termination:?}, stdout_len={}, stderr_len={}, stdout_truncated={}, stderr_truncated={}, diagnostic={}",
+            request.seq,
+            command_kind,
             stdout_output.len(),
             stderr_output.len(),
             stdout_output.truncated(),
@@ -644,6 +719,22 @@ fn run_bounded_exec<S>(
         diagnostic.as_deref(),
         &writer,
     );
+}
+
+fn wait_outcome_label(outcome: &WaitOutcome) -> &'static str {
+    match outcome {
+        WaitOutcome::Exited(_) => "exited",
+        WaitOutcome::TimedOut => "timed_out",
+        WaitOutcome::Cancelled => "cancelled",
+        WaitOutcome::WaitFailed(_) => "wait_failed",
+    }
+}
+
+fn wait_outcome_exit_code(outcome: &WaitOutcome) -> Option<i32> {
+    match outcome {
+        WaitOutcome::Exited(status) => Some(crate::process::extract_exit_code(*status)),
+        _ => None,
+    }
 }
 
 fn validate_request(request: &BoundedExecWorkerRequest) -> Result<(), String> {
@@ -1082,14 +1173,14 @@ fn send_bounded_exec_result(
     let BoundedExecResultFrame {
         seq,
         termination,
-        duration_ms,
+        duration_ms: command_duration_ms,
         stdout,
         stderr,
         diagnostic,
     } = frame;
     let payload = match vsock_proto::encode_bounded_exec_result(
         termination,
-        duration_ms,
+        command_duration_ms,
         stdout,
         stderr,
         diagnostic,
@@ -1103,7 +1194,7 @@ fn send_bounded_exec_result(
             let diagnostic = format!("Failed to encode bounded exec result: {e}");
             vsock_proto::encode_bounded_exec_result(
                 BoundedExecTermination::WaitFailed,
-                duration_ms,
+                command_duration_ms,
                 vsock_proto::BoundedExecOutput::Discarded,
                 vsock_proto::BoundedExecOutput::Discarded,
                 Some(&diagnostic),
@@ -1113,7 +1204,33 @@ fn send_bounded_exec_result(
     };
     let encoded =
         vsock_proto::encode(MSG_BOUNDED_EXEC_RESULT, seq, &payload).map_err(to_io_error)?;
-    writer.write_frame(&encoded)
+    let send_started = Instant::now();
+    log(
+        "INFO",
+        &format!(
+            "bounded_exec result send started: seq={seq}, termination={termination:?}, payload_bytes={}, frame_bytes={}",
+            payload.len(),
+            encoded.len(),
+        ),
+    );
+    let result = writer.write_frame(&encoded);
+    match &result {
+        Ok(()) => log(
+            "INFO",
+            &format!(
+                "bounded_exec result send finished: seq={seq}, duration_ms={}",
+                duration_ms(send_started),
+            ),
+        ),
+        Err(e) => log(
+            "ERROR",
+            &format!(
+                "bounded_exec result send failed: seq={seq}, duration_ms={}, error={e}",
+                duration_ms(send_started),
+            ),
+        ),
+    }
+    result
 }
 
 fn send_bounded_exec_output_chunk(

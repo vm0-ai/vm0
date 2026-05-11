@@ -169,10 +169,33 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
             } else if msg.msg_type == MSG_BOUNDED_EXEC {
                 log(
                     "INFO",
-                    &format!("Received: type=0x{:02X} seq={}", msg.msg_type, msg.seq),
+                    &format!(
+                        "bounded_exec frame received: seq={}, payload_bytes={}",
+                        msg.seq,
+                        msg.payload.len(),
+                    ),
                 );
-                let decoded =
-                    vsock_proto::decode_bounded_exec(&msg.payload).map_err(to_io_error)?;
+                let decoded = match vsock_proto::decode_bounded_exec(&msg.payload) {
+                    Ok(decoded) => decoded,
+                    Err(e) => {
+                        log(
+                            "ERROR",
+                            &format!("bounded_exec decode failed: seq={}, error={e}", msg.seq),
+                        );
+                        return Err(to_io_error(e));
+                    }
+                };
+                log(
+                    "INFO",
+                    &format!(
+                        "bounded_exec received: seq={}, command_kind={}, command_len={}, timeout_ms={}, streaming={}",
+                        msg.seq,
+                        crate::bounded_exec::bounded_exec_command_kind(decoded.command),
+                        decoded.command.len(),
+                        decoded.timeout_ms,
+                        decoded.stdout.stream.is_some() || decoded.stderr.stream.is_some(),
+                    ),
+                );
                 let request_cancel = Arc::new(AtomicBool::new(false));
                 {
                     let mut cancels = bounded_exec_cancels
@@ -202,6 +225,10 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                     cleanup,
                 )?;
             } else if msg.msg_type == MSG_BOUNDED_EXEC_CANCEL {
+                log(
+                    "INFO",
+                    &format!("bounded_exec cancel received: seq={}", msg.seq),
+                );
                 if let Some(cancel) = bounded_exec_cancels
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
