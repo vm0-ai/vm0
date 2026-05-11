@@ -304,11 +304,6 @@ pub struct CommandOperationHandle {
 }
 
 impl CommandOperationHandle {
-    /// The request sequence used for this operation.
-    pub fn seq(&self) -> Option<u32> {
-        self.seq
-    }
-
     /// Take the bounded output event receiver for streaming operations.
     pub fn take_stream_receiver(&mut self) -> Option<mpsc::Receiver<CommandOutputEvent>> {
         self.stream_rx.take()
@@ -2171,30 +2166,41 @@ mod tests {
         assert!(is_connected(&host));
 
         drop(writer_guard);
-        let read_result = tokio::time::timeout(
-            Duration::from_millis(50),
-            read_guest_message(&mut guest, &mut decoder),
-        )
-        .await;
-        assert!(read_result.is_err(), "start frame should not be written");
+        let exec_task = {
+            let host = Arc::clone(&host);
+            tokio::spawn(async move { host.exec("echo ok", 5000, &[], false).await })
+        };
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(msg.msg_type, MSG_EXEC, "start frame should not be written");
+        let payload = vsock_proto::encode_exec_result(0, b"ok", b"");
+        let response = vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &payload).unwrap();
+        guest.write_all(&response).await.unwrap();
+        let exec_result = exec_task.await.unwrap().unwrap();
+        assert_eq!(exec_result.stdout, b"ok");
         assert!(is_connected(&host));
     }
 
     #[tokio::test]
     async fn command_handle_drop_after_full_write_sends_no_cancel() {
         let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let host = Arc::new(host);
         let handle = start_capture_operation(&host, "drop-after-write").await;
         let msg = read_guest_message(&mut guest, &mut decoder).await;
         assert_eq!(msg.msg_type, MSG_COMMAND_START);
         drop(handle);
         assert_eq!(operation_count(&host), 0);
 
-        let read_result = tokio::time::timeout(
-            Duration::from_millis(50),
-            read_guest_message(&mut guest, &mut decoder),
-        )
-        .await;
-        assert!(read_result.is_err(), "drop must not send command cancel");
+        let exec_task = {
+            let host = Arc::clone(&host);
+            tokio::spawn(async move { host.exec("echo ok", 5000, &[], false).await })
+        };
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(msg.msg_type, MSG_EXEC, "drop must not send command cancel");
+        let payload = vsock_proto::encode_exec_result(0, b"ok", b"");
+        let response = vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &payload).unwrap();
+        guest.write_all(&response).await.unwrap();
+        let exec_result = exec_task.await.unwrap().unwrap();
+        assert_eq!(exec_result.stdout, b"ok");
         assert!(is_connected(&host));
     }
 
