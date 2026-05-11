@@ -12,6 +12,7 @@
 #   401), billableFirewalls covers the firewall → "$" marker present.
 
 load '../../helpers/setup'
+load '../../helpers/codex-zero'
 
 setup_file() {
     if [ -z "$ANTHROPIC_API_KEY" ]; then
@@ -48,6 +49,12 @@ EOF
         echo "# Failed to extract composeId from: $compose_out" >&2
         return 1
     }
+
+    # Seed the zero_agents row (PK = composeId) without creating a persistent
+    # zero agent. vm0 compose only writes agent_composes; zero run requires the
+    # lazy metadata upsert path to materialize zero_agents.
+    _codex_zero_curl "/api/zero/composes/$COMPOSE_ID/metadata" \
+        -X PATCH -d '{"displayName":"Billable firewall e2e"}' >/dev/null
 }
 
 teardown_file() {
@@ -62,6 +69,7 @@ teardown_file() {
 
     RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
     [ -n "$RUN_ID" ] || {
+        echo "$output"
         echo "# Failed to extract Run ID"
         return 1
     }
@@ -78,6 +86,7 @@ teardown_file() {
 
     RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
     [ -n "$RUN_ID" ] || {
+        echo "$output"
         echo "# Failed to extract Run ID"
         return 1
     }
