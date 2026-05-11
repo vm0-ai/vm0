@@ -131,6 +131,7 @@ function withTablerProps(Icon: IconoirIcon) {
       return (
         <Icon
           ref={ref}
+          shapeRendering="geometricPrecision"
           {...(size !== undefined && { width: size, height: size })}
           strokeWidth={sw}
           {...props}
