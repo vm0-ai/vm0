@@ -1321,6 +1321,7 @@ describe("POST /api/zero/chat/messages", () => {
     describe("model-first thread pin", () => {
       beforeEach(async () => {
         await enableModelFirstModelProviderForUser(user.orgId, user.userId);
+        await setOrgCredits(user.orgId, 10_000);
         await insertOrgModelPolicy({
           orgId: user.orgId,
           model: "claude-opus-4-7",
