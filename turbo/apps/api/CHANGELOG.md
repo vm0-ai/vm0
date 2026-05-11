@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.31.1](https://github.com/vm0-ai/vm0/compare/api-v1.31.0...api-v1.31.1) (2026-05-11)
+
+
+### Refactoring
+
+* **api:** migrate default-agent put to api backend ([#12604](https://github.com/vm0-ai/vm0/issues/12604)) ([d51726c](https://github.com/vm0-ai/vm0/commit/d51726ca7a4fa6034e61022fd8197c4c70dd2694)), closes [#12290](https://github.com/vm0-ai/vm0/issues/12290) [#12598](https://github.com/vm0-ai/vm0/issues/12598)
+* **api:** migrate org/invite post to api backend ([#12607](https://github.com/vm0-ai/vm0/issues/12607)) ([2218e92](https://github.com/vm0-ai/vm0/commit/2218e92a10afada7f8b63a7c822b93ff8d2a3956))
+
 ## [1.31.0](https://github.com/vm0-ai/vm0/compare/api-v1.30.0...api-v1.31.0) (2026-05-10)
 
 

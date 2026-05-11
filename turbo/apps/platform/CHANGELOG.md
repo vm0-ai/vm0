@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.342.4](https://github.com/vm0-ai/vm0/compare/app-v0.342.3...app-v0.342.4) (2026-05-11)
+
+
+### Bug Fixes
+
+* restore codex auth json personal flow ([#12362](https://github.com/vm0-ai/vm0/issues/12362)) ([f4fadbb](https://github.com/vm0-ai/vm0/commit/f4fadbb01d66f803e68189b859aae50e193656ee))
+* sanitize token inputs before upload ([#12603](https://github.com/vm0-ai/vm0/issues/12603)) ([ea554de](https://github.com/vm0-ai/vm0/commit/ea554de572cfd4af425cf8507a910953942db8a4))
+
 ## [0.342.3](https://github.com/vm0-ai/vm0/compare/app-v0.342.2...app-v0.342.3) (2026-05-10)
 
 
