@@ -619,16 +619,15 @@ fn dispatch_command_output(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result
     {
         let decoded =
             vsock_proto::decode_command_output(&msg.payload).map_err(command_protocol_error)?;
-        if let Some(tx) = operation.stream_tx.as_ref() {
-            match tx.try_send(owned_command_output_event(decoded)) {
-                Ok(()) => {}
+        if let Some(tx) = operation.stream_tx.take() {
+            match tx.try_reserve_owned() {
+                Ok(permit) => {
+                    operation.stream_tx = Some(permit.send(owned_command_output_event(decoded)));
+                }
                 Err(mpsc::error::TrySendError::Full(_)) => {
-                    operation.stream_tx.take();
                     operation.stream_overflowed = true;
                 }
-                Err(mpsc::error::TrySendError::Closed(_)) => {
-                    operation.stream_tx.take();
-                }
+                Err(mpsc::error::TrySendError::Closed(_)) => {}
             }
         }
     }
