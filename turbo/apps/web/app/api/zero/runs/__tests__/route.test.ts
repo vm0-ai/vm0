@@ -419,7 +419,12 @@ describe("POST /api/zero/runs", () => {
       expect(auth!.runId).toBe(data.runId);
       expect(auth!.orgId).toBe(user.orgId);
       expect(auth!.capabilities).toEqual(
-        expect.arrayContaining(["agent:read", "agent:write"]),
+        expect.arrayContaining([
+          "agent:read",
+          "agent:write",
+          "remote-agent:read",
+          "remote-agent:write",
+        ]),
       );
     });
 

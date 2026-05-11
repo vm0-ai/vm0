@@ -387,6 +387,8 @@ describe("getAuthContext with zero token and acceptAnySandboxCapability", () => 
         "agent:read",
         "agent:write",
         "agent-run:read",
+        "remote-agent:read",
+        "remote-agent:write",
         "schedule:read",
         "schedule:write",
         "slack:write",

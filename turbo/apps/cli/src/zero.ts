@@ -56,7 +56,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   "computer-use": "computer-use:write",
   "built-in": "file:write",
   web: null,
-  "remote-agent": ["agent-run:read", "agent-run:write"],
+  "remote-agent": ["remote-agent:read", "remote-agent:write"],
 };
 
 const DEFAULT_COMMANDS: Command[] = [

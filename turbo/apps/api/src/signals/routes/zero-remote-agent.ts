@@ -523,12 +523,12 @@ const remoteAgentAuthOptions = {
 
 const remoteAgentReadAuthOptions = {
   ...remoteAgentAuthOptions,
-  requiredCapability: "agent-run:read",
+  requiredCapability: "remote-agent:read",
 } as const;
 
 const remoteAgentWriteAuthOptions = {
   ...remoteAgentAuthOptions,
-  requiredCapability: "agent-run:write",
+  requiredCapability: "remote-agent:write",
 } as const;
 
 export const zeroRemoteAgentRoutes: readonly RouteEntry[] = [

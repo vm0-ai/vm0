@@ -296,14 +296,26 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(visibleCommandNames(prog)).toContain("logs");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should show remote-agent when remote-agent:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["remote-agent:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
     expect(visibleCommandNames(prog)).toContain("remote-agent");
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
-  it("should show remote-agent when agent-run:write capability is present", () => {
+  it("should show remote-agent when remote-agent:write capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
-      capabilities: ["agent-run:write"],
+      capabilities: ["remote-agent:write"],
     });
     vi.stubEnv("ZERO_TOKEN", token);
 
@@ -337,10 +349,10 @@ describe("registerZeroCommands", () => {
     expect(hiddenCommandNames(prog)).toContain("run");
   });
 
-  it("should hide remote-agent when agent-run capabilities are missing", () => {
+  it("should hide remote-agent when remote-agent capabilities are missing", () => {
     const token = buildZeroToken({
       scope: "zero",
-      capabilities: ["agent:read"],
+      capabilities: ["agent-run:read", "agent-run:write"],
     });
     vi.stubEnv("ZERO_TOKEN", token);
 
