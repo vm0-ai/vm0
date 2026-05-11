@@ -1,5 +1,8 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import {
+  userConnectorEnabledTypesSchema,
+  zeroUserConnectorsContract,
+} from "@vm0/api-contracts/contracts/user-connectors";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
@@ -131,8 +134,8 @@ const router = tsr.router(zeroUserConnectorsContract, {
       };
     }
 
-    const enabledTypes: string[] = body.enabledTypes;
-    const uniqueTypes = Array.from(new Set(enabledTypes));
+    const parsedBody = userConnectorEnabledTypesSchema.parse(body);
+    const uniqueTypes = Array.from(new Set(parsedBody.enabledTypes));
 
     // Validate connector types before storing
     const invalidTypes = uniqueTypes.filter((t) => {
