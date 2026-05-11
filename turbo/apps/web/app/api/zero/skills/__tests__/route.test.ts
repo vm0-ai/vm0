@@ -214,6 +214,22 @@ describe("Zero Skills API (org-level)", () => {
   });
 
   describe("GET /api/zero/skills", () => {
+    it("should return 401 when authenticated session has no active organization", async () => {
+      mockClerk({ userId: user.userId, orgId: null });
+
+      const response = await listSkills(
+        createTestRequest(`http://localhost:3000/api/zero/skills`, {
+          method: "GET",
+        }),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(data).toStrictEqual({
+        error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+      });
+    });
+
     it("should return empty array when no skills", async () => {
       const response = await listSkillsReq(testCliToken);
 
@@ -252,6 +268,22 @@ describe("Zero Skills API (org-level)", () => {
   });
 
   describe("GET /api/zero/skills/:name", () => {
+    it("should return 401 when authenticated session has no active organization", async () => {
+      mockClerk({ userId: user.userId, orgId: null });
+
+      const response = await getSkill(
+        createTestRequest(`http://localhost:3000/api/zero/skills/any-skill`, {
+          method: "GET",
+        }),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(data).toStrictEqual({
+        error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+      });
+    });
+
     it("should return skill with content", async () => {
       await postSkillReq(
         {

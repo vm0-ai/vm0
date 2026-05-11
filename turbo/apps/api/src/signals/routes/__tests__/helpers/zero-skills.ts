@@ -84,6 +84,7 @@ interface SkillStorageSeed {
   readonly skillName: string;
   readonly s3Key: string;
   readonly headVersionId: string;
+  readonly type?: string;
 }
 
 export const seedSkillStorage$ = command(
@@ -100,7 +101,7 @@ export const seedSkillStorage$ = command(
       id: storageId,
       userId: VOLUME_ORG_USER_ID,
       name: storageName,
-      type: "volume",
+      type: args.type ?? "volume",
       orgId: args.orgId,
       s3Prefix: `orgs/${args.orgId}/${storageName}`,
     });

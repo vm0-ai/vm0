@@ -28,6 +28,7 @@ import { extractFileFromTar } from "../../../../../src/lib/infra/tar";
 import { env } from "../../../../../src/env";
 import { requireAdminPermission } from "../../../../../src/lib/zero/require-agent-permission";
 import { logger } from "../../../../../src/lib/shared/logger";
+import { isBadRequest } from "@vm0/api-services/errors";
 
 const log = logger("api:zero-skills:detail");
 
@@ -42,15 +43,27 @@ const router = tsr.router(zeroSkillsDetailContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    const { org } = await resolveOrg(authCtx);
+    let orgId: string;
+    try {
+      const { org } = await resolveOrg(authCtx);
+      orgId = org.orgId;
+    } catch (error) {
+      if (isBadRequest(error)) {
+        return {
+          status: 401 as const,
+          body: {
+            error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+          },
+        };
+      }
+      throw error;
+    }
 
     // Look up skill metadata
     const [skill] = await globalThis.services.db
       .select()
       .from(zeroSkills)
-      .where(
-        and(eq(zeroSkills.orgId, org.orgId), eq(zeroSkills.name, params.name)),
-      )
+      .where(and(eq(zeroSkills.orgId, orgId), eq(zeroSkills.name, params.name)))
       .limit(1);
 
     if (!skill) {
@@ -72,7 +85,7 @@ const router = tsr.router(zeroSkillsDetailContract, {
       .from(storages)
       .where(
         and(
-          eq(storages.orgId, org.orgId),
+          eq(storages.orgId, orgId),
           eq(storages.userId, VOLUME_ORG_USER_ID),
           eq(storages.name, storageName),
           eq(storages.type, "volume"),

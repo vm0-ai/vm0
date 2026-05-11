@@ -13,6 +13,7 @@ import { uploadVolumeServerSide } from "../../../../src/lib/infra/storage/volume
 import { SEED_SKILLS } from "../../../../src/lib/zero/seed-skills";
 import { requireAdminPermission } from "../../../../src/lib/zero/require-agent-permission";
 import { logger } from "../../../../src/lib/shared/logger";
+import { isBadRequest } from "@vm0/api-services/errors";
 
 const log = logger("api:zero-skills");
 
@@ -25,7 +26,21 @@ const router = tsr.router(zeroSkillsCollectionContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    const { org } = await resolveOrg(authCtx);
+    let orgId: string;
+    try {
+      const { org } = await resolveOrg(authCtx);
+      orgId = org.orgId;
+    } catch (error) {
+      if (isBadRequest(error)) {
+        return {
+          status: 401 as const,
+          body: {
+            error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+          },
+        };
+      }
+      throw error;
+    }
 
     const rows = await globalThis.services.db
       .select({
@@ -34,7 +49,7 @@ const router = tsr.router(zeroSkillsCollectionContract, {
         description: zeroSkills.description,
       })
       .from(zeroSkills)
-      .where(eq(zeroSkills.orgId, org.orgId));
+      .where(eq(zeroSkills.orgId, orgId));
 
     return {
       status: 200 as const,

@@ -266,6 +266,57 @@ describe("GET /api/zero/skills/:name", () => {
     expect(response.body.content).toBe("# Multi");
   });
 
+  it("ignores non-volume storage rows for skill content", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const skillName = "typed-skill";
+    const s3Key = `orgs/${fixture.orgId}/custom-skill@${skillName}/non-volume`;
+    await store.set(
+      seedSkill$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: skillName,
+        displayName: "Typed Skill",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedSkillStorage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        skillName,
+        s3Key,
+        headVersionId: `head-${randomUUID()}`,
+        type: "artifact",
+      },
+      context.signal,
+    );
+    mockSkillContent(context, {
+      s3Key,
+      content: "# Non-volume content",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      detailClient().get({
+        headers: authHeaders(),
+        params: { name: skillName },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      name: skillName,
+      displayName: "Typed Skill",
+      description: null,
+      content: null,
+      files: null,
+    });
+  });
+
   it("returns 404 for a non-existent skill", async () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),
