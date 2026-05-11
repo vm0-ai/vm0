@@ -1,12 +1,20 @@
-import { computed } from "ccstate";
-import { zeroComputerUseHostContract } from "@vm0/api-contracts/contracts/zero-computer-use";
+import { command, computed } from "ccstate";
+import {
+  zeroComputerUseHostContract,
+  zeroComputerUseRegisterContract,
+  zeroComputerUseUnregisterContract,
+} from "@vm0/api-contracts/contracts/zero-computer-use";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
-import { zeroComputerUseHost } from "../services/zero-computer-use.service";
+import {
+  registerHost$,
+  unregisterHost$,
+  zeroComputerUseHost,
+} from "../services/zero-computer-use.service";
 import type { RouteEntry } from "../route";
 
 const computerUseDisabled = Object.freeze({
@@ -24,6 +32,16 @@ const hostNotFound = Object.freeze({
   body: Object.freeze({
     error: Object.freeze({
       message: "No active computer-use host",
+      code: "NOT_FOUND",
+    }),
+  }),
+});
+
+const unregisterHostNotFound = Object.freeze({
+  status: 404 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Computer-use host not found",
       code: "NOT_FOUND",
     }),
   }),
@@ -53,6 +71,63 @@ const getComputerUseHostInner$ = computed(async (get) => {
   return { status: 200 as const, body: host };
 });
 
+const registerComputerUseHostInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const overrides = await get(
+      userFeatureSwitchOverrides(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    const enabled = isFeatureEnabled(FeatureSwitchKey.ComputerUse, {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      overrides,
+    });
+    if (!enabled) {
+      return computerUseDisabled;
+    }
+
+    const result = await set(
+      registerHost$,
+      { orgId: auth.orgId, userId: auth.userId },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    return { status: 200 as const, body: result };
+  },
+);
+
+const unregisterComputerUseHostInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const overrides = await get(
+      userFeatureSwitchOverrides(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    const enabled = isFeatureEnabled(FeatureSwitchKey.ComputerUse, {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      overrides,
+    });
+    if (!enabled) {
+      return computerUseDisabled;
+    }
+
+    const result = await set(
+      unregisterHost$,
+      { orgId: auth.orgId, userId: auth.userId },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.kind === "not_found") {
+      return unregisterHostNotFound;
+    }
+    return { status: 204 as const, body: undefined };
+  },
+);
+
 export const zeroComputerUseRoutes: readonly RouteEntry[] = [
   {
     route: zeroComputerUseHostContract.getHost,
@@ -63,6 +138,28 @@ export const zeroComputerUseRoutes: readonly RouteEntry[] = [
         requiredCapability: "computer-use:write",
       },
       getComputerUseHostInner$,
+    ),
+  },
+  {
+    route: zeroComputerUseRegisterContract.register,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "computer-use:write",
+      },
+      registerComputerUseHostInner$,
+    ),
+  },
+  {
+    route: zeroComputerUseUnregisterContract.unregister,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "computer-use:write",
+      },
+      unregisterComputerUseHostInner$,
     ),
   },
 ];
