@@ -14,8 +14,33 @@ assert_contains() {
   grep -qxF "$expected" <<<"$output" || fail "expected line '${expected}' in output: ${output}"
 }
 
+assert_not_prefix() {
+  local output=$1 prefix=$2
+  if grep -q "^${prefix}" <<<"$output"; then
+    fail "unexpected output prefix '${prefix}' in output: ${output}"
+  fi
+}
+
 run_clean() {
   env -i PATH="$PATH" HOME="${HOME:-/tmp}" "$@"
+}
+
+assert_no_legacy_needed_outputs() {
+  local out=$1
+  assert_not_prefix "$out" "turbo-runner-needed="
+  assert_not_prefix "$out" "crates-runner-needed="
+  assert_not_prefix "$out" "runner-image-needed="
+}
+
+assert_needed_case() {
+  local name=$1
+  shift
+  local out
+  if ! out=$(run_clean "$@" "$CONTEXT" needed); then
+    fail "needed case failed: ${name}"
+  fi
+  assert_no_legacy_needed_outputs "$out"
+  printf '%s\n' "$out"
 }
 
 out=$(run_clean EVENT_NAME=pull_request PR_NUMBER=123 HEAD_REF=feature HEAD_SHA=abc "$CONTEXT" resolve)
@@ -48,30 +73,160 @@ assert_contains "$out" "job-ref="
 
 out=$(run_clean \
   EVENT_NAME=pull_request \
+  WEB_CHANGED=true \
+  "$CONTEXT" turbo-consumer)
+assert_contains "$out" "turbo-runner-consumer-needed=true"
+
+out=$(run_clean \
+  EVENT_NAME=push \
+  WEB_CHANGED=true \
+  "$CONTEXT" turbo-consumer)
+assert_contains "$out" "turbo-runner-consumer-needed=false"
+
+out=$(run_clean \
+  EVENT_NAME=pull_request \
+  E2E_CHANGED=true \
+  "$CONTEXT" turbo-consumer)
+assert_contains "$out" "turbo-runner-consumer-needed=true"
+
+out=$(run_clean \
+  RUNNER_CHANGED=true \
+  "$CONTEXT" crates-consumer)
+assert_contains "$out" "crates-runner-consumer-needed=true"
+
+out=$(run_clean \
+  GUEST_AGENT_CHANGED=true \
+  "$CONTEXT" crates-consumer)
+assert_contains "$out" "crates-runner-consumer-needed=true"
+
+out=$(run_clean "$CONTEXT" crates-consumer)
+assert_contains "$out" "crates-runner-consumer-needed=false"
+
+out=$(run_clean \
+  RUNNER_CHANGED=true \
+  "$CONTEXT" image-inputs)
+assert_contains "$out" "crate-image-inputs-changed=true"
+assert_contains "$out" "ci-image-inputs-changed=false"
+assert_contains "$out" "runner-image-inputs-changed=true"
+
+out=$(run_clean \
+  RUNNER_IMAGE_CI_CHANGED=true \
+  "$CONTEXT" image-inputs)
+assert_contains "$out" "crate-image-inputs-changed=false"
+assert_contains "$out" "ci-image-inputs-changed=true"
+assert_contains "$out" "runner-image-inputs-changed=true"
+
+out=$(assert_needed_case "release skip" \
+  EVENT_NAME=pull_request \
+  RELEASE_SKIP=true \
+  METAL_HOSTS=dev-1 \
+  TURBO_RUNNER_CONSUMER_NEEDED=true \
+  RUNNER_IMAGE_INPUTS_CHANGED=true)
+assert_contains "$out" "has-metal-hosts=true"
+assert_contains "$out" "turbo-runner-consumer-needed=false"
+assert_contains "$out" "crates-runner-consumer-needed=false"
+assert_contains "$out" "runner-image-consumer-needed=false"
+assert_contains "$out" "runner-image-inputs-changed=false"
+assert_contains "$out" "current-runner-image-needed=false"
+assert_contains "$out" "stable-runner-image-allowed=false"
+assert_contains "$out" "image-selection-reason=release-skip"
+
+out=$(assert_needed_case "no metal hosts" \
+  EVENT_NAME=pull_request \
+  RELEASE_SKIP=false \
+  METAL_HOSTS= \
+  TURBO_RUNNER_CONSUMER_NEEDED=true \
+  RUNNER_IMAGE_INPUTS_CHANGED=true)
+assert_contains "$out" "has-metal-hosts=false"
+assert_contains "$out" "runner-image-consumer-needed=false"
+assert_contains "$out" "runner-image-inputs-changed=false"
+assert_contains "$out" "current-runner-image-needed=false"
+assert_contains "$out" "image-selection-reason=no-metal-hosts"
+
+out=$(assert_needed_case "no consumer" \
+  EVENT_NAME=pull_request \
+  RELEASE_SKIP=false \
+  METAL_HOSTS=dev-1 \
+  RUNNER_IMAGE_INPUTS_CHANGED=true)
+assert_contains "$out" "has-metal-hosts=true"
+assert_contains "$out" "turbo-runner-consumer-needed=false"
+assert_contains "$out" "crates-runner-consumer-needed=false"
+assert_contains "$out" "runner-image-consumer-needed=false"
+assert_contains "$out" "runner-image-inputs-changed=true"
+assert_contains "$out" "current-runner-image-needed=false"
+assert_contains "$out" "stable-runner-image-allowed=false"
+assert_contains "$out" "image-selection-reason=no-runner-image-consumer"
+
+out=$(assert_needed_case "turbo web-only consumer before stable reuse" \
+  EVENT_NAME=pull_request \
   RELEASE_SKIP=false \
   METAL_HOSTS=dev-1,dev-2 \
-  TURBO_WEB_CHANGED=true \
-  "$CONTEXT" needed)
-assert_contains "$out" "turbo-runner-needed=true"
-assert_contains "$out" "runner-image-needed=true"
+  TURBO_RUNNER_CONSUMER_NEEDED=true \
+  RUNNER_IMAGE_INPUTS_CHANGED=false)
+assert_contains "$out" "turbo-runner-consumer-needed=true"
+assert_contains "$out" "crates-runner-consumer-needed=false"
+assert_contains "$out" "runner-image-consumer-needed=true"
+assert_contains "$out" "runner-image-inputs-changed=false"
+assert_contains "$out" "stable-runner-image-allowed=true"
+assert_contains "$out" "current-runner-image-needed=true"
+assert_contains "$out" "image-selection-reason=runner-image-consumer-without-stable-reuse"
 
-out=$(run_clean \
+out=$(assert_needed_case "turbo cli-only consumer with stable reuse enabled" \
+  EVENT_NAME=pull_request \
+  RELEASE_SKIP=false \
+  METAL_HOSTS=dev-1 \
+  TURBO_RUNNER_CONSUMER_NEEDED=true \
+  RUNNER_IMAGE_INPUTS_CHANGED=false \
+  STABLE_RUNNER_IMAGE_REUSE_ENABLED=true)
+assert_contains "$out" "runner-image-consumer-needed=true"
+assert_contains "$out" "runner-image-inputs-changed=false"
+assert_contains "$out" "stable-runner-image-allowed=true"
+assert_contains "$out" "current-runner-image-needed=false"
+assert_contains "$out" "image-selection-reason=stable-runner-image-allowed"
+
+out=$(assert_needed_case "turbo e2e-only consumer before stable reuse" \
+  EVENT_NAME=pull_request \
+  RELEASE_SKIP=false \
+  METAL_HOSTS=dev-1 \
+  TURBO_RUNNER_CONSUMER_NEEDED=true)
+assert_contains "$out" "turbo-runner-consumer-needed=true"
+assert_contains "$out" "runner-image-inputs-changed=false"
+assert_contains "$out" "stable-runner-image-allowed=true"
+assert_contains "$out" "current-runner-image-needed=true"
+
+out=$(assert_needed_case "crates runner input" \
   EVENT_NAME=push \
   RELEASE_SKIP=false \
   METAL_HOSTS=dev-1 \
-  TURBO_WEB_CHANGED=true \
-  "$CONTEXT" needed)
-assert_contains "$out" "turbo-runner-needed=false"
-assert_contains "$out" "runner-image-needed=false"
+  CRATES_RUNNER_CONSUMER_NEEDED=true \
+  RUNNER_IMAGE_INPUTS_CHANGED=true)
+assert_contains "$out" "turbo-runner-consumer-needed=false"
+assert_contains "$out" "crates-runner-consumer-needed=true"
+assert_contains "$out" "runner-image-consumer-needed=true"
+assert_contains "$out" "runner-image-inputs-changed=true"
+assert_contains "$out" "stable-runner-image-allowed=false"
+assert_contains "$out" "current-runner-image-needed=true"
+assert_contains "$out" "image-selection-reason=runner-image-inputs-changed"
 
-out=$(run_clean \
+out=$(assert_needed_case "guest input" \
+  EVENT_NAME=pull_request \
+  RELEASE_SKIP=false \
+  METAL_HOSTS=dev-1 \
+  CRATES_RUNNER_CONSUMER_NEEDED=true \
+  RUNNER_IMAGE_INPUTS_CHANGED=true)
+assert_contains "$out" "crates-runner-consumer-needed=true"
+assert_contains "$out" "runner-image-inputs-changed=true"
+assert_contains "$out" "current-runner-image-needed=true"
+
+out=$(assert_needed_case "turbo ignored on push" \
   EVENT_NAME=push \
   RELEASE_SKIP=false \
   METAL_HOSTS=dev-1 \
-  CRATES_GUEST_AGENT_CHANGED=true \
-  "$CONTEXT" needed)
-assert_contains "$out" "crates-runner-needed=true"
-assert_contains "$out" "runner-image-needed=true"
+  TURBO_RUNNER_CONSUMER_NEEDED=true \
+  RUNNER_IMAGE_INPUTS_CHANGED=false)
+assert_contains "$out" "turbo-runner-consumer-needed=false"
+assert_contains "$out" "runner-image-consumer-needed=false"
+assert_contains "$out" "current-runner-image-needed=false"
 
 out=$(run_clean HEAD_SHA=abc JOB_REF=pr-123 "$CONTEXT" artifact-name)
 assert_contains "$out" "artifact-name=runner-image-manifest-abc-pr-123"

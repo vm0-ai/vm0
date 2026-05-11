@@ -22,7 +22,13 @@ jobs:
       skip-reason: ${{ steps.identity.outputs.skip-reason }}
       job-ref: ${{ steps.identity.outputs.job-ref }}
       head-sha: ${{ steps.identity.outputs.head-sha }}
-      runner-image-needed: ${{ steps.needed.outputs.runner-image-needed }}
+      turbo-runner-consumer-needed: ${{ steps.needed.outputs.turbo-runner-consumer-needed }}
+      crates-runner-consumer-needed: ${{ steps.needed.outputs.crates-runner-consumer-needed }}
+      runner-image-consumer-needed: ${{ steps.needed.outputs.runner-image-consumer-needed }}
+      runner-image-inputs-changed: ${{ steps.needed.outputs.runner-image-inputs-changed }}
+      current-runner-image-needed: ${{ steps.needed.outputs.current-runner-image-needed }}
+      stable-runner-image-allowed: ${{ steps.needed.outputs.stable-runner-image-allowed }}
+      image-selection-reason: ${{ steps.needed.outputs.image-selection-reason }}
       artifact-name: ${{ steps.artifact.outputs.artifact-name }}
     steps:
       - uses: actions/checkout@v6
@@ -86,13 +92,13 @@ jobs:
             e2e_changed=false
           fi
 
-          {
-            echo "web-changed=${web_changed}"
-            echo "cli-changed=${cli_changed}"
-            echo "crates-changed=${crates_changed}"
-            echo "ci-changed=${ci_changed}"
-            echo "e2e-changed=${e2e_changed}"
-          } >> "$GITHUB_OUTPUT"
+          EVENT_NAME="${{ github.event_name }}" \
+          WEB_CHANGED="$web_changed" \
+          CLI_CHANGED="$cli_changed" \
+          CRATES_CHANGED="$crates_changed" \
+          CI_CHANGED="$ci_changed" \
+          E2E_CHANGED="$e2e_changed" \
+          .github/scripts/runner-image-context.sh turbo-consumer
 
       - name: Detect Crates runner image consumers
         id: crates
@@ -103,33 +109,72 @@ jobs:
           set -euo pipefail
 
           if git diff --name-only "$BASE_REF" HEAD | grep -qE "^\.github/workflows/(crates|runner-image)\.yml$|^\.github/actions/(setup-ssh-tunnel|provision)/|^\.github/scripts/|^ansible/"; then
-            echo "ci-changed=true" >> "$GITHUB_OUTPUT"
+            ci_changed=true
           else
-            echo "ci-changed=false" >> "$GITHUB_OUTPUT"
+            ci_changed=false
           fi
+          echo "ci-changed=${ci_changed}" >> "$GITHUB_OUTPUT"
 
           check_crate() {
             local crate=$1
             local output=$2
+            local var_name=$3
             local rc=0
             ./scripts/crate-changed.sh "$crate" "$BASE_REF" && rc=0 || rc=$?
             if [ "$rc" -eq 0 ]; then
+              printf -v "$var_name" '%s' "true"
               echo "${output}=true" >> "$GITHUB_OUTPUT"
             elif [ "$rc" -eq 1 ]; then
+              printf -v "$var_name" '%s' "false"
               echo "${output}=false" >> "$GITHUB_OUTPUT"
             else
               exit "$rc"
             fi
           }
 
-          check_crate runner runner-changed
-          check_crate guest-init guest-init-changed
-          check_crate guest-download guest-download-changed
-          check_crate guest-agent guest-agent-changed
-          check_crate guest-mock-claude guest-mock-claude-changed
-          check_crate guest-mock-codex guest-mock-codex-changed
-          check_crate guest-reseed guest-reseed-changed
-          check_crate guest-write-file guest-write-file-changed
+          check_crate runner runner-changed runner_changed
+          check_crate guest-init guest-init-changed guest_init_changed
+          check_crate guest-download guest-download-changed guest_download_changed
+          check_crate guest-agent guest-agent-changed guest_agent_changed
+          check_crate guest-mock-claude guest-mock-claude-changed guest_mock_claude_changed
+          check_crate guest-mock-codex guest-mock-codex-changed guest_mock_codex_changed
+          check_crate guest-reseed guest-reseed-changed guest_reseed_changed
+          check_crate guest-write-file guest-write-file-changed guest_write_file_changed
+
+          CI_CHANGED="$ci_changed" \
+          RUNNER_CHANGED="$runner_changed" \
+          GUEST_INIT_CHANGED="$guest_init_changed" \
+          GUEST_DOWNLOAD_CHANGED="$guest_download_changed" \
+          GUEST_AGENT_CHANGED="$guest_agent_changed" \
+          GUEST_MOCK_CLAUDE_CHANGED="$guest_mock_claude_changed" \
+          GUEST_MOCK_CODEX_CHANGED="$guest_mock_codex_changed" \
+          GUEST_RESEED_CHANGED="$guest_reseed_changed" \
+          GUEST_WRITE_FILE_CHANGED="$guest_write_file_changed" \
+          .github/scripts/runner-image-context.sh crates-consumer
+
+      - name: Detect runner image input changes
+        id: image-inputs
+        if: steps.identity.outputs.release-skip != 'true'
+        env:
+          BASE_REF: ${{ steps.base.outputs.base-ref }}
+        run: |
+          set -euo pipefail
+
+          runner_image_ci_changed=false
+          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^\.github/workflows/(turbo|crates|runner-image)\.yml$|^\.github/actions/(setup-ssh-tunnel|provision)/|^\.github/scripts/(prepare-runner-image|runner-image-context|runner-image-manifest|wait-runner-image)\.sh$|^ansible/(ansible\.cfg|playbooks/(build-runner|provision-runner|promote-runner|rollback-runner)\.yml)$"; then
+            runner_image_ci_changed=true
+          fi
+
+          RUNNER_CHANGED="${{ steps.crates.outputs.runner-changed }}" \
+          GUEST_INIT_CHANGED="${{ steps.crates.outputs.guest-init-changed }}" \
+          GUEST_DOWNLOAD_CHANGED="${{ steps.crates.outputs.guest-download-changed }}" \
+          GUEST_AGENT_CHANGED="${{ steps.crates.outputs.guest-agent-changed }}" \
+          GUEST_MOCK_CLAUDE_CHANGED="${{ steps.crates.outputs.guest-mock-claude-changed }}" \
+          GUEST_MOCK_CODEX_CHANGED="${{ steps.crates.outputs.guest-mock-codex-changed }}" \
+          GUEST_RESEED_CHANGED="${{ steps.crates.outputs.guest-reseed-changed }}" \
+          GUEST_WRITE_FILE_CHANGED="${{ steps.crates.outputs.guest-write-file-changed }}" \
+          RUNNER_IMAGE_CI_CHANGED="$runner_image_ci_changed" \
+          .github/scripts/runner-image-context.sh image-inputs
 
       - name: Determine whether runner image is needed
         id: needed
@@ -137,25 +182,14 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_SKIP: ${{ steps.identity.outputs.release-skip }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          TURBO_WEB_CHANGED: ${{ steps.turbo.outputs.web-changed }}
-          TURBO_CLI_CHANGED: ${{ steps.turbo.outputs.cli-changed }}
-          TURBO_CRATES_CHANGED: ${{ steps.turbo.outputs.crates-changed }}
-          TURBO_CI_CHANGED: ${{ steps.turbo.outputs.ci-changed }}
-          TURBO_E2E_CHANGED: ${{ steps.turbo.outputs.e2e-changed }}
-          CRATES_CI_CHANGED: ${{ steps.crates.outputs.ci-changed }}
-          CRATES_RUNNER_CHANGED: ${{ steps.crates.outputs.runner-changed }}
-          CRATES_GUEST_INIT_CHANGED: ${{ steps.crates.outputs.guest-init-changed }}
-          CRATES_GUEST_DOWNLOAD_CHANGED: ${{ steps.crates.outputs.guest-download-changed }}
-          CRATES_GUEST_AGENT_CHANGED: ${{ steps.crates.outputs.guest-agent-changed }}
-          CRATES_GUEST_MOCK_CLAUDE_CHANGED: ${{ steps.crates.outputs.guest-mock-claude-changed }}
-          CRATES_GUEST_MOCK_CODEX_CHANGED: ${{ steps.crates.outputs.guest-mock-codex-changed }}
-          CRATES_GUEST_RESEED_CHANGED: ${{ steps.crates.outputs.guest-reseed-changed }}
-          CRATES_GUEST_WRITE_FILE_CHANGED: ${{ steps.crates.outputs.guest-write-file-changed }}
+          TURBO_RUNNER_CONSUMER_NEEDED: ${{ steps.turbo.outputs.turbo-runner-consumer-needed }}
+          CRATES_RUNNER_CONSUMER_NEEDED: ${{ steps.crates.outputs.crates-runner-consumer-needed }}
+          RUNNER_IMAGE_INPUTS_CHANGED: ${{ steps.image-inputs.outputs.runner-image-inputs-changed }}
         run: .github/scripts/runner-image-context.sh needed
 
       - name: Resolve manifest artifact name
         id: artifact
-        if: steps.needed.outputs.runner-image-needed == 'true'
+        if: steps.needed.outputs.current-runner-image-needed == 'true'
         env:
           HEAD_SHA: ${{ steps.identity.outputs.head-sha }}
           JOB_REF: ${{ steps.identity.outputs.job-ref }}
@@ -168,7 +202,7 @@ jobs:
     permissions:
       contents: read
     needs: [context]
-    if: needs.context.outputs.runner-image-needed == 'true'
+    if: needs.context.outputs.current-runner-image-needed == 'true'
     timeout-minutes: 25
     env:
       TARGET_TRIPLE: aarch64-unknown-linux-musl

@@ -75,6 +75,7 @@ jobs:
       guest-reseed-changed: ${{ steps.detect.outputs.guest-reseed-changed }}
       guest-write-file-changed: ${{ steps.detect.outputs.guest-write-file-changed }}
       nbd-cow-changed: ${{ steps.detect.outputs.nbd-cow-changed }}
+      crates-runner-consumer-needed: ${{ steps.runner-tests.outputs.crates-runner-consumer-needed }}
       metal-host: ${{ steps.host.outputs.host }}
       metal-job-ref: ${{ steps.host.outputs.job-ref }}
       runner-image-job-ref: ${{ steps.host.outputs.image-job-ref }}
@@ -155,6 +156,20 @@ jobs:
           else
             echo "mitm-addon-turbo-changed=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Select runner test consumer
+        id: runner-tests
+        env:
+          CI_CHANGED: ${{ steps.detect.outputs.ci-changed }}
+          RUNNER_CHANGED: ${{ steps.detect.outputs.runner-changed }}
+          GUEST_INIT_CHANGED: ${{ steps.detect.outputs.guest-init-changed }}
+          GUEST_DOWNLOAD_CHANGED: ${{ steps.detect.outputs.guest-download-changed }}
+          GUEST_AGENT_CHANGED: ${{ steps.detect.outputs.guest-agent-changed }}
+          GUEST_MOCK_CLAUDE_CHANGED: ${{ steps.detect.outputs.guest-mock-claude-changed }}
+          GUEST_MOCK_CODEX_CHANGED: ${{ steps.detect.outputs.guest-mock-codex-changed }}
+          GUEST_RESEED_CHANGED: ${{ steps.detect.outputs.guest-reseed-changed }}
+          GUEST_WRITE_FILE_CHANGED: ${{ steps.detect.outputs.guest-write-file-changed }}
+        run: .github/scripts/runner-image-context.sh crates-consumer
 
       - name: Select metal host
         id: host
@@ -393,17 +408,8 @@ jobs:
       contents: read
     needs: [detect]
     if: |
-      needs.detect.outputs.metal-job-ref != '' && (
-        needs.detect.outputs.ci-changed == 'true' ||
-        needs.detect.outputs.runner-changed == 'true' ||
-        needs.detect.outputs.guest-init-changed == 'true' ||
-        needs.detect.outputs.guest-download-changed == 'true' ||
-        needs.detect.outputs.guest-agent-changed == 'true' ||
-        needs.detect.outputs.guest-mock-claude-changed == 'true' ||
-        needs.detect.outputs.guest-mock-codex-changed == 'true' ||
-        needs.detect.outputs.guest-reseed-changed == 'true' ||
-        needs.detect.outputs.guest-write-file-changed == 'true'
-      )
+      needs.detect.outputs.metal-job-ref != '' &&
+      needs.detect.outputs.crates-runner-consumer-needed == 'true'
     timeout-minutes: 20
     outputs:
       host: ${{ needs.detect.outputs.metal-host }}

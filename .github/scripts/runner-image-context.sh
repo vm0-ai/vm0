@@ -3,14 +3,25 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: runner-image-context.sh <resolve|needed|artifact-name>
+Usage: runner-image-context.sh <resolve|turbo-consumer|crates-consumer|image-inputs|needed|artifact-name>
 
 resolve:
   Computes release skip, canonical job ref, and head SHA from GitHub event env.
 
 needed:
-  Computes whether any runner image consumer needs a prepared image from
-  workflow change-detection booleans.
+  Computes runner image consumer demand and current-image selection from
+  explicit workflow selection booleans.
+
+turbo-consumer:
+  Computes whether Turbo runner E2E is a runner image consumer from the same
+  change booleans used by turbo.yml.
+
+crates-consumer:
+  Computes whether Crates runner tests are a runner image consumer from the
+  same change booleans used by crates.yml runner-build.
+
+image-inputs:
+  Computes whether current commit inputs can change the produced runner image.
 
 artifact-name:
   Computes the GitHub artifact name for a runner image manifest.
@@ -156,41 +167,123 @@ needed() {
     has_metal_hosts="true"
   fi
 
-  local turbo_needed="false"
-  if [ "${EVENT_NAME:-}" != "push" ] && {
-    is_true "${TURBO_WEB_CHANGED:-false}" ||
-    is_true "${TURBO_CLI_CHANGED:-false}" ||
-    is_true "${TURBO_CRATES_CHANGED:-false}" ||
-    is_true "${TURBO_CI_CHANGED:-false}" ||
-    is_true "${TURBO_E2E_CHANGED:-false}"
-  }; then
-    turbo_needed="true"
+  local turbo_consumer
+  turbo_consumer=$(bool "${TURBO_RUNNER_CONSUMER_NEEDED:-false}")
+  if [ "${EVENT_NAME:-}" = "push" ]; then
+    turbo_consumer="false"
   fi
 
-  local crates_needed="false"
-  if is_true "${CRATES_CI_CHANGED:-false}" ||
-    is_true "${CRATES_RUNNER_CHANGED:-false}" ||
-    is_true "${CRATES_GUEST_INIT_CHANGED:-false}" ||
-    is_true "${CRATES_GUEST_DOWNLOAD_CHANGED:-false}" ||
-    is_true "${CRATES_GUEST_AGENT_CHANGED:-false}" ||
-    is_true "${CRATES_GUEST_MOCK_CLAUDE_CHANGED:-false}" ||
-    is_true "${CRATES_GUEST_MOCK_CODEX_CHANGED:-false}" ||
-    is_true "${CRATES_GUEST_RESEED_CHANGED:-false}" ||
-    is_true "${CRATES_GUEST_WRITE_FILE_CHANGED:-false}"; then
-    crates_needed="true"
-  fi
+  local crates_consumer
+  crates_consumer=$(bool "${CRATES_RUNNER_CONSUMER_NEEDED:-false}")
 
-  local image_needed="false"
-  if [ "$release_skip" != "true" ] &&
-    [ "$has_metal_hosts" = "true" ] &&
-    { [ "$turbo_needed" = "true" ] || [ "$crates_needed" = "true" ]; }; then
-    image_needed="true"
+  local image_inputs_changed
+  image_inputs_changed=$(bool "${RUNNER_IMAGE_INPUTS_CHANGED:-false}")
+
+  local stable_reuse_enabled
+  stable_reuse_enabled=$(bool "${STABLE_RUNNER_IMAGE_REUSE_ENABLED:-false}")
+
+  local runner_consumer="false"
+  local current_image_needed="false"
+  local stable_image_allowed="false"
+  local reason="no-runner-image-consumer"
+
+  if [ "$release_skip" = "true" ]; then
+    turbo_consumer="false"
+    crates_consumer="false"
+    image_inputs_changed="false"
+    reason="release-skip"
+  elif [ "$has_metal_hosts" != "true" ]; then
+    turbo_consumer="false"
+    crates_consumer="false"
+    image_inputs_changed="false"
+    reason="no-metal-hosts"
+  else
+    if [ "$turbo_consumer" = "true" ] || [ "$crates_consumer" = "true" ]; then
+      runner_consumer="true"
+    fi
+
+    if [ "$runner_consumer" = "true" ]; then
+      if [ "$image_inputs_changed" = "true" ]; then
+        current_image_needed="true"
+        reason="runner-image-inputs-changed"
+      else
+        stable_image_allowed="true"
+        if [ "$stable_reuse_enabled" = "true" ]; then
+          reason="stable-runner-image-allowed"
+        else
+          current_image_needed="true"
+          reason="runner-image-consumer-without-stable-reuse"
+        fi
+      fi
+    fi
   fi
 
   emit "has-metal-hosts" "$has_metal_hosts"
-  emit "turbo-runner-needed" "$turbo_needed"
-  emit "crates-runner-needed" "$crates_needed"
-  emit "runner-image-needed" "$image_needed"
+  emit "turbo-runner-consumer-needed" "$turbo_consumer"
+  emit "crates-runner-consumer-needed" "$crates_consumer"
+  emit "runner-image-consumer-needed" "$runner_consumer"
+  emit "runner-image-inputs-changed" "$image_inputs_changed"
+  emit "current-runner-image-needed" "$current_image_needed"
+  emit "stable-runner-image-allowed" "$stable_image_allowed"
+  emit "image-selection-reason" "$reason"
+}
+
+turbo_consumer() {
+  local consumer="false"
+  if [ "${EVENT_NAME:-}" != "push" ] && {
+    is_true "${WEB_CHANGED:-false}" ||
+    is_true "${CLI_CHANGED:-false}" ||
+    is_true "${CRATES_CHANGED:-false}" ||
+    is_true "${CI_CHANGED:-false}" ||
+    is_true "${E2E_CHANGED:-false}"
+  }; then
+    consumer="true"
+  fi
+
+  emit "turbo-runner-consumer-needed" "$consumer"
+}
+
+crates_consumer() {
+  local consumer="false"
+  if is_true "${CI_CHANGED:-false}" ||
+    is_true "${RUNNER_CHANGED:-false}" ||
+    is_true "${GUEST_INIT_CHANGED:-false}" ||
+    is_true "${GUEST_DOWNLOAD_CHANGED:-false}" ||
+    is_true "${GUEST_AGENT_CHANGED:-false}" ||
+    is_true "${GUEST_MOCK_CLAUDE_CHANGED:-false}" ||
+    is_true "${GUEST_MOCK_CODEX_CHANGED:-false}" ||
+    is_true "${GUEST_RESEED_CHANGED:-false}" ||
+    is_true "${GUEST_WRITE_FILE_CHANGED:-false}"; then
+    consumer="true"
+  fi
+
+  emit "crates-runner-consumer-needed" "$consumer"
+}
+
+image_inputs() {
+  local crate_image_inputs_changed="false"
+  if is_true "${RUNNER_CHANGED:-false}" ||
+    is_true "${GUEST_INIT_CHANGED:-false}" ||
+    is_true "${GUEST_DOWNLOAD_CHANGED:-false}" ||
+    is_true "${GUEST_AGENT_CHANGED:-false}" ||
+    is_true "${GUEST_MOCK_CLAUDE_CHANGED:-false}" ||
+    is_true "${GUEST_MOCK_CODEX_CHANGED:-false}" ||
+    is_true "${GUEST_RESEED_CHANGED:-false}" ||
+    is_true "${GUEST_WRITE_FILE_CHANGED:-false}"; then
+    crate_image_inputs_changed="true"
+  fi
+
+  local ci_image_inputs_changed
+  ci_image_inputs_changed=$(bool "${RUNNER_IMAGE_CI_CHANGED:-false}")
+
+  local runner_image_inputs_changed="false"
+  if [ "$crate_image_inputs_changed" = "true" ] || [ "$ci_image_inputs_changed" = "true" ]; then
+    runner_image_inputs_changed="true"
+  fi
+
+  emit "crate-image-inputs-changed" "$crate_image_inputs_changed"
+  emit "ci-image-inputs-changed" "$ci_image_inputs_changed"
+  emit "runner-image-inputs-changed" "$runner_image_inputs_changed"
 }
 
 artifact_name() {
@@ -205,6 +298,9 @@ artifact_name() {
 cmd="${1:-}"
 case "$cmd" in
   resolve) resolve ;;
+  turbo-consumer) turbo_consumer ;;
+  crates-consumer) crates_consumer ;;
+  image-inputs) image_inputs ;;
   needed) needed ;;
   artifact-name) artifact_name ;;
   -h|--help|help) usage ;;

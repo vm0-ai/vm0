@@ -82,6 +82,7 @@ jobs:
       crates-changed: ${{ steps.detect-crates.outputs.crates-changed }}
       ci-changed: ${{ steps.detect-ci.outputs.ci-changed }}
       e2e-changed: ${{ steps.detect-e2e.outputs.e2e-changed }}
+      turbo-runner-consumer-needed: ${{ steps.runner-e2e.outputs.turbo-runner-consumer-needed }}
       base-ref: ${{ steps.detect.outputs.base-ref }}
     steps:
       - uses: actions/checkout@v6
@@ -193,6 +194,17 @@ jobs:
             echo "No E2E test changes"
             echo "e2e-changed=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Select runner E2E consumer
+        id: runner-e2e
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          WEB_CHANGED: ${{ steps.detect.outputs.web-changed }}
+          CLI_CHANGED: ${{ steps.detect.outputs.cli-changed }}
+          CRATES_CHANGED: ${{ steps.detect-crates.outputs.crates-changed }}
+          CI_CHANGED: ${{ steps.detect-ci.outputs.ci-changed }}
+          E2E_CHANGED: ${{ steps.detect-e2e.outputs.e2e-changed }}
+        run: .github/scripts/runner-image-context.sh turbo-consumer
 
       - name: Set job-ref
         id: set-job-ref
@@ -1387,14 +1399,8 @@ jobs:
     needs: [prepare]
     timeout-minutes: 20
     if: |
-      github.event_name != 'push' &&
-      needs.prepare.outputs.job-ref != '' && (
-        needs.prepare.outputs.web-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.crates-changed == 'true' ||
-        needs.prepare.outputs.ci-changed == 'true' ||
-        needs.prepare.outputs.e2e-changed == 'true'
-      )
+      needs.prepare.outputs.job-ref != '' &&
+      needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
     outputs:
       bin-dir: ${{ steps.manifest.outputs.bin-dir }}
       runner-dir: ${{ steps.manifest.outputs.runner-dir }}
@@ -1477,14 +1483,8 @@ jobs:
       total-capacity: ${{ steps.start.outputs.total-capacity }}
     timeout-minutes: 2
     if: |
-      github.event_name != 'push' &&
-      needs.prepare.outputs.job-ref != '' && (
-        needs.prepare.outputs.web-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.crates-changed == 'true' ||
-        needs.prepare.outputs.ci-changed == 'true' ||
-        needs.prepare.outputs.e2e-changed == 'true'
-      )
+      needs.prepare.outputs.job-ref != '' &&
+      needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
     steps:
       - uses: actions/checkout@v6
 
@@ -1617,14 +1617,8 @@ jobs:
       cancel-in-progress: true
     needs: [prepare, build-cli, deploy-web]
     if: |
-      github.event_name != 'push' &&
-      needs.prepare.outputs.job-ref != '' && (
-        needs.prepare.outputs.web-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.crates-changed == 'true' ||
-        needs.prepare.outputs.ci-changed == 'true' ||
-        needs.prepare.outputs.e2e-changed == 'true'
-      )
+      needs.prepare.outputs.job-ref != '' &&
+      needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
     timeout-minutes: 2
     steps:
       - uses: actions/setup-node@v6
@@ -1680,14 +1674,8 @@ jobs:
         e2e-runner-bootstrap,
       ]
     if: |
-      github.event_name != 'push' &&
-      needs.prepare.outputs.job-ref != '' && (
-        needs.prepare.outputs.web-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.crates-changed == 'true' ||
-        needs.prepare.outputs.ci-changed == 'true' ||
-        needs.prepare.outputs.e2e-changed == 'true'
-      )
+      needs.prepare.outputs.job-ref != '' &&
+      needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
     strategy:
       fail-fast: false
       matrix:
