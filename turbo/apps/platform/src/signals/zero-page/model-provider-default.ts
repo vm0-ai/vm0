@@ -19,7 +19,7 @@ interface UserModelDefaultSource {
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 
-function createModelFirstSelection(
+export function createModelFirstSelection(
   selectedModel: string | null | undefined,
 ): ModelProviderSelection | null {
   if (!selectedModel) {
@@ -111,5 +111,19 @@ export function resolveModelFirstUserDefaultSelection(params: {
   return (
     createModelFirstSelection(params.userPreference?.selectedModel) ??
     resolveModelFirstWorkspaceDefaultSelection(params.policies)
+  );
+}
+
+export function resolveModelFirstAgentDefaultSelection(params: {
+  agent: AgentModelDefaultSource | null | undefined;
+  userPreference: UserModelDefaultSource | null | undefined;
+  policies: OrgModelPoliciesResponse | null | undefined;
+}): ModelProviderSelection | null {
+  return (
+    createModelFirstSelection(params.agent?.selectedModel) ??
+    resolveModelFirstUserDefaultSelection({
+      userPreference: params.userPreference,
+      policies: params.policies,
+    })
   );
 }

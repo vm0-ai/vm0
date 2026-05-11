@@ -158,6 +158,34 @@ function buildMemberOauthPolicy(
   };
 }
 
+function buildVm0Policy(
+  index: number,
+  model: OrgModelPolicy["model"],
+  overrides: Partial<OrgModelPolicy> = {},
+): OrgModelPolicy {
+  return {
+    id: `00000000-0000-4000-a000-${String(200 + index).padStart(12, "0")}`,
+    model,
+    modelLabel:
+      model === "kimi-k2.5"
+        ? "Kimi K2.5"
+        : model === "glm-5.1"
+          ? "GLM-5.1"
+          : model === "claude-sonnet-4-6"
+            ? "Claude Sonnet 4.6"
+            : model,
+    isDefault: false,
+    defaultProviderType: "vm0",
+    credentialScope: "org",
+    modelProviderId: null,
+    routeStatus: "valid",
+    routeStatusReason: null,
+    createdAt: "2026-05-08T00:00:00.000Z",
+    updatedAt: "2026-05-08T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
 /**
  * Seed three providers and mark one as the org default with the specified
  * selectedModel. This lets scenarios name agent/thread models from the
@@ -169,8 +197,20 @@ function mockOrgProviders(options: {
     | typeof ANTHROPIC_PROVIDER_ID
     | typeof MOONSHOT_PROVIDER_ID
     | typeof ZAI_PROVIDER_ID;
-  defaultSelectedModel: string;
+  defaultSelectedModel: OrgModelPolicy["model"];
 }) {
+  const models = [
+    "kimi-k2.5",
+    "claude-sonnet-4-6",
+    "glm-5.1",
+  ] satisfies OrgModelPolicy["model"][];
+  setMockOrgModelPolicies(
+    models.map((model, index) => {
+      return buildVm0Policy(index, model, {
+        isDefault: model === options.defaultSelectedModel,
+      });
+    }),
+  );
   setMockOrgModelProviders([
     buildProvider({
       id: MOONSHOT_PROVIDER_ID,
@@ -774,7 +814,7 @@ describe("chat composer — default model resolution", () => {
     await user.click(
       screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
     );
-    await user.click(await screen.findByLabelText("Use agent default model"));
+    await user.click(await screen.findByRole("option", { name: /GLM-5\.1/ }));
     await expectComposerShowsModel("GLM-5.1");
 
     const textarea = screen.getByPlaceholderText(

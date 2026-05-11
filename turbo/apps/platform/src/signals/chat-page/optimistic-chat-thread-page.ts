@@ -51,7 +51,7 @@ import { agentById } from "../agent.ts";
 import { composerModelProviders$ } from "../zero-page/composer-model-providers.ts";
 import {
   resolveEffectiveAgentDefaultSelection,
-  resolveModelFirstUserDefaultSelection,
+  resolveModelFirstAgentDefaultSelection,
 } from "../zero-page/model-provider-default.ts";
 import {
   goalEnabled$,
@@ -203,6 +203,40 @@ async function replayQueuedOptimisticMessages({
     );
   }
 }
+
+const resolveNewThreadEffectiveSelectedModel$ = command(
+  async (
+    { get },
+    agentId: string,
+    signal: AbortSignal,
+  ): Promise<string | undefined> => {
+    const agent = await get(agentById(agentId));
+    signal.throwIfAborted();
+
+    if (get(modelFirstModelProviderEnabled$)) {
+      const policies = await get(orgModelPolicies$);
+      signal.throwIfAborted();
+      const userPreference = await get(userModelPreference$);
+      signal.throwIfAborted();
+      return (
+        resolveModelFirstAgentDefaultSelection({
+          agent,
+          userPreference,
+          policies,
+        })?.selectedModel ?? undefined
+      );
+    }
+
+    const composerProviders = await get(composerModelProviders$);
+    signal.throwIfAborted();
+    return (
+      resolveEffectiveAgentDefaultSelection({
+        agent,
+        providers: composerProviders.providers,
+      })?.selectedModel ?? undefined
+    );
+  },
+);
 
 const routeMainOptimisticChatThread$ = command(
   ({ get, set }, pending: PendingChatThread) => {
@@ -477,30 +511,9 @@ const sendNewThreadMessage$ = command(
     signal: AbortSignal,
   ): Promise<SendNewThreadMessagePending | null> => {
     const draft = get(talkDraft$);
-    let effectiveSelectedModel = modelSelection?.selectedModel;
-    if (!effectiveSelectedModel) {
-      if (get(modelFirstModelProviderEnabled$)) {
-        const policies = await get(orgModelPolicies$);
-        signal.throwIfAborted();
-        const userPreference = await get(userModelPreference$);
-        signal.throwIfAborted();
-        effectiveSelectedModel =
-          resolveModelFirstUserDefaultSelection({
-            userPreference,
-            policies,
-          })?.selectedModel ?? undefined;
-      } else {
-        const agent = await get(agentById(agentId));
-        signal.throwIfAborted();
-        const composerProviders = await get(composerModelProviders$);
-        signal.throwIfAborted();
-        effectiveSelectedModel =
-          resolveEffectiveAgentDefaultSelection({
-            agent,
-            providers: composerProviders.providers,
-          })?.selectedModel ?? undefined;
-      }
-    }
+    const effectiveSelectedModel =
+      modelSelection?.selectedModel ??
+      (await set(resolveNewThreadEffectiveSelectedModel$, agentId, signal));
     const prepared = await set(
       prepareUserMessageFromDraft$,
       draft,

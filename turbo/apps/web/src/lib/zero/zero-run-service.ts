@@ -319,7 +319,7 @@ function resolveEffectiveModel(
         }
       : {
           modelProviderCredentialScope: undefined,
-          selectedModelOverride: undefined,
+          selectedModelOverride: row?.selectedModel ?? undefined,
         };
   }
 

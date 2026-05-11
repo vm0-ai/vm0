@@ -2,6 +2,7 @@ import { command, computed, state, type Computed } from "ccstate";
 import { agentById } from "../agent.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { modelFirstModelProviderEnabled$ } from "../external/feature-switch.ts";
+import { createModelFirstSelection } from "../zero-page/model-provider-default.ts";
 
 // ---------------------------------------------------------------------------
 // Schedule form data — single state object for all form fields
@@ -215,7 +216,7 @@ function createAgentModelDefault$(
     }
     const agent = await get(agentById(agentId));
     if (get(modelFirstModelProviderEnabled$)) {
-      return null;
+      return createModelFirstSelection(agent?.selectedModel);
     }
     if (!agent?.modelProviderId || !agent.selectedModel) {
       return null;

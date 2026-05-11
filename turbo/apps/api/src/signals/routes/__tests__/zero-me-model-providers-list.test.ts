@@ -110,6 +110,9 @@ describe("GET /api/zero/me/model-providers", () => {
     const fixture = await trackUsers(
       Promise.resolve(uniqueOrgUser("zmmp-list-feature-off")),
     );
+    await setPersonalSwitches(fixture.orgId, fixture.userId, {
+      [FeatureSwitchKey.ModelFirstModelProvider]: false,
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(

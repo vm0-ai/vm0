@@ -573,9 +573,8 @@ function ScheduleDialogModelControls({
   modelFirstEnabled: boolean;
 }) {
   const showModelPicker =
-    orgProviders &&
-    !modelFirstEnabled &&
-    orgProviders.modelProviders.length > 0;
+    modelFirstEnabled ||
+    (orgProviders !== undefined && orgProviders.modelProviders.length > 0);
   return (
     <>
       {showModelPicker && (
@@ -587,7 +586,7 @@ function ScheduleDialogModelControls({
             </span>
           </label>
           <ModelProviderPicker
-            providers={orgProviders.modelProviders}
+            providers={orgProviders?.modelProviders ?? []}
             value={getScheduleModelPickerValue(form, modelFirstEnabled)}
             onChange={(sel: ModelProviderSelection | null) => {
               updateForm({
@@ -650,7 +649,7 @@ function ScheduleFormDialogInner({
     dayOfWeek: form.dayOfWeek,
     dayOfMonth: form.dayOfMonth,
     modelProviderId: modelFirstEnabled ? null : form.modelProviderId,
-    selectedModel: modelFirstEnabled ? null : form.selectedModel,
+    selectedModel: form.selectedModel,
     preferPersonalProvider: form.preferPersonalProvider,
   };
 

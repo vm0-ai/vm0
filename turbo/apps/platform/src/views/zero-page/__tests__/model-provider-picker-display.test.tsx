@@ -92,9 +92,7 @@ describe("model-provider-picker - display with null value", () => {
     resetMockOrgModelPolicies();
   });
 
-  // MPKR-D-001: When value is null and default provider has a selectedModel,
-  // the trigger must show that model's display name, not blank or placeholder.
-  it("shows default provider selectedModel display name when value is null (MPKR-D-001)", async () => {
+  it("does not render the legacy agent model picker when value is null (MPKR-D-001)", async () => {
     setupMockAgent();
     setMockFeatureSwitches({});
     setMockOrgModelProviders([
@@ -116,17 +114,12 @@ describe("model-provider-picker - display with null value", () => {
 
     await openProfileTab();
 
-    await waitFor(() => {
-      // The trigger aria-label should reflect the default model, not the placeholder
-      expect(
-        screen.getByRole("combobox", { name: "Claude Opus 4.6" }),
-      ).toBeInTheDocument();
-    });
+    expect(
+      screen.queryByRole("combobox", { name: "Claude Opus 4.6" }),
+    ).not.toBeInTheDocument();
   });
 
-  // MPKR-D-002: When value is null and default provider has selectedModel=null,
-  // fall back to getDefaultModel for the provider type (claude-sonnet-4-6 for anthropic-api-key).
-  it("falls back to provider type default model when selectedModel is null (MPKR-D-002)", async () => {
+  it("does not render the legacy agent model picker when selectedModel is null (MPKR-D-002)", async () => {
     setupMockAgent();
     setMockFeatureSwitches({});
     setMockOrgModelProviders([
@@ -148,17 +141,12 @@ describe("model-provider-picker - display with null value", () => {
 
     await openProfileTab();
 
-    await waitFor(() => {
-      // anthropic-api-key defaultModel is "claude-sonnet-4-6" → "Claude Sonnet 4.6"
-      expect(
-        screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
-      ).toBeInTheDocument();
-    });
+    expect(
+      screen.queryByRole("combobox", { name: "Claude Sonnet 4.6" }),
+    ).not.toBeInTheDocument();
   });
 
-  // MPKR-D-003: When value is null and no provider is marked as default,
-  // the trigger must show the placeholder text.
-  it("shows placeholder when no default provider exists (MPKR-D-003)", async () => {
+  it("does not render the legacy agent model picker when no provider default exists (MPKR-D-003)", async () => {
     setupMockAgent();
     setMockFeatureSwitches({});
     setMockOrgModelProviders([
@@ -180,11 +168,9 @@ describe("model-provider-picker - display with null value", () => {
 
     await openProfileTab();
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("combobox", { name: "Inherit from org default" }),
-      ).toBeInTheDocument();
-    });
+    expect(
+      screen.queryByRole("combobox", { name: "Inherit from org default" }),
+    ).not.toBeInTheDocument();
   });
 
   it("does not render the agent model picker when model-first is enabled", async () => {
