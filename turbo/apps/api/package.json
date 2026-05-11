@@ -24,6 +24,7 @@
     "@opentelemetry/exporter-trace-otlp-http": "^0.215.0",
     "@opentelemetry/semantic-conventions": "^1.40.0",
     "@sentry/node": "^10.50.0",
+    "@slack/web-api": "^7.13.0",
     "@t3-oss/env-core": "^0.13.11",
     "@vercel/functions": "^3.4.4",
     "@vercel/otel": "^2.1.2",

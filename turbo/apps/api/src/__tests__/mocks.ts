@@ -41,8 +41,12 @@ export interface ApiTestMocks {
     readonly getSignedUrl: AsyncMock;
   };
   readonly slack: {
+    readonly chat: {
+      readonly postMessage: AsyncMock;
+    };
     readonly conversations: {
       readonly list: AsyncMock;
+      readonly open: AsyncMock;
     };
     readonly files: {
       readonly info: AsyncMock;
@@ -121,8 +125,12 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   };
 
   const slack = {
+    chat: {
+      postMessage: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
     conversations: {
       list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      open: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     files: {
       info: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -327,10 +335,14 @@ vi.mock("stripe", () => {
 
 vi.mock("@slack/web-api", () => {
   return {
-    WebClient: vi.fn(() => {
+    WebClient: vi.fn(function (): unknown {
       return {
+        chat: {
+          postMessage: apiTestMocks.slack.chat.postMessage,
+        },
         conversations: {
           list: apiTestMocks.slack.conversations.list,
+          open: apiTestMocks.slack.conversations.open,
         },
         files: {
           info: apiTestMocks.slack.files.info,
@@ -431,7 +443,9 @@ export function resetApiTestMocks(): void {
   apiTestMocks.s3.getSignedUrl.mockResolvedValue(
     "https://r2.example.com/upload?sig=test",
   );
+  apiTestMocks.slack.chat.postMessage.mockReset();
   apiTestMocks.slack.conversations.list.mockReset();
+  apiTestMocks.slack.conversations.open.mockReset();
   apiTestMocks.slack.files.info.mockReset();
   apiTestMocks.slack.fetchFile.mockReset();
   apiTestMocks.stripe.invoices.list.mockReset();

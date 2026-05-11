@@ -133,6 +133,9 @@ importers:
       '@sentry/node':
         specifier: ^10.50.0
         version: 10.50.0(@opentelemetry/exporter-trace-otlp-http@0.215.0(@opentelemetry/api@1.9.1))
+      '@slack/web-api':
+        specifier: ^7.13.0
+        version: 7.15.0
       '@t3-oss/env-core':
         specifier: ^0.13.11
         version: 0.13.11(typescript@5.9.3)(zod@4.3.6)
