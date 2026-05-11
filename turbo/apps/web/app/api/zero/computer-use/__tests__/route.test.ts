@@ -313,6 +313,17 @@ describe("GET /api/zero/computer-use/host", () => {
     expect(response.status).toBe(401);
   });
 
+  it("should return 401 when the user has no active org", async () => {
+    mockClerk({ userId: uniqueId("zcu-host-no-org"), orgId: null });
+
+    const response = await GET(createTestRequest(hostUrl()));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("should return 403 when feature flag is disabled", async () => {
     const userId = uniqueId("zcu-host-ff");
     await setupOrg(userId);

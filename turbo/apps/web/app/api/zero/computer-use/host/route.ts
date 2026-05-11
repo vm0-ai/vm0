@@ -21,6 +21,9 @@ const router = tsr.router(zeroComputerUseHostContract, {
       requiredCapability: "computer-use:write",
     });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) {
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+    }
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);
