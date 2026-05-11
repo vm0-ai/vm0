@@ -5,6 +5,18 @@ use std::sync::atomic::{AtomicBool, Ordering};
 const STDOUT_CHUNK_SIZE: usize = 8 * 1024;
 const DRAIN_POLL_TIMEOUT_MS: libc::c_int = 100;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct BoundedStreamConfig {
+    pub(crate) chunk_limit_bytes: usize,
+    pub(crate) stream_limit_bytes: usize,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct BoundedDrainResult {
+    pub(crate) captured: Option<Vec<u8>>,
+    pub(crate) capture_truncated: bool,
+}
+
 /// Drain `pipe` until EOF or `cancel` is set, calling `on_chunk` for each
 /// non-empty read.
 ///
@@ -87,6 +99,79 @@ where
     buf
 }
 
+/// Bounded variant of [`drain_until_eof_or_cancelled`].
+///
+/// The helper keeps draining after capture/stream limits are reached so the
+/// child cannot block on a full pipe. `capture_limit_bytes = None` discards the
+/// final captured output. Returning `false` from `on_stream_chunk` disables
+/// further stream forwarding; draining still continues unless `cancel` is set.
+pub(crate) fn drain_bounded_cancellable<R>(
+    pipe: R,
+    cancel: &AtomicBool,
+    capture_limit_bytes: Option<usize>,
+    stream: Option<BoundedStreamConfig>,
+    mut on_stream_chunk: impl FnMut(&[u8], bool) -> bool,
+) -> BoundedDrainResult
+where
+    R: std::os::unix::io::AsRawFd,
+{
+    let mut captured =
+        capture_limit_bytes.map(|limit| Vec::with_capacity(limit.min(STDOUT_CHUNK_SIZE)));
+    let mut capture_truncated = false;
+    let mut stream_emitted = 0usize;
+    let mut stream_truncated = false;
+    let mut stream_enabled = stream.is_some();
+
+    drain_until_eof_or_cancelled(pipe, cancel, |chunk| {
+        if let (Some(limit), Some(output)) = (capture_limit_bytes, captured.as_mut()) {
+            if output.len() < limit {
+                let remaining = limit - output.len();
+                let keep = remaining.min(chunk.len());
+                output.extend_from_slice(chunk.get(..keep).unwrap_or_default());
+                if keep < chunk.len() {
+                    capture_truncated = true;
+                }
+            } else if !chunk.is_empty() {
+                capture_truncated = true;
+            }
+        }
+
+        let Some(config) = stream else {
+            return;
+        };
+        if !stream_enabled || stream_truncated || chunk.is_empty() {
+            return;
+        }
+
+        if stream_emitted >= config.stream_limit_bytes || config.chunk_limit_bytes == 0 {
+            stream_truncated = true;
+            stream_enabled = on_stream_chunk(&[], true);
+            return;
+        }
+
+        let remaining_stream = config.stream_limit_bytes - stream_emitted;
+        let emit_total = remaining_stream.min(chunk.len());
+        let emit = chunk.get(..emit_total).unwrap_or_default();
+        for part in emit.chunks(config.chunk_limit_bytes) {
+            if !on_stream_chunk(part, false) {
+                stream_enabled = false;
+                return;
+            }
+            stream_emitted += part.len();
+        }
+
+        if emit_total < chunk.len() {
+            stream_truncated = true;
+            stream_enabled = on_stream_chunk(&[], true);
+        }
+    });
+
+    BoundedDrainResult {
+        captured,
+        capture_truncated,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,5 +243,174 @@ mod tests {
         });
 
         assert!(output.is_empty());
+    }
+
+    #[test]
+    fn bounded_drain_retains_limit_and_reports_truncation() {
+        let (reader, mut writer) = pipe_pair();
+        writer.write_all(b"abcdef").unwrap();
+        drop(writer);
+
+        let cancel = AtomicBool::new(false);
+        let result = drain_bounded_cancellable(reader, &cancel, Some(3), None, |_, _| true);
+
+        assert_eq!(result.captured, Some(b"abc".to_vec()));
+        assert!(result.capture_truncated);
+    }
+
+    #[test]
+    fn bounded_drain_exact_capture_limit_is_not_truncated() {
+        let (reader, mut writer) = pipe_pair();
+        writer.write_all(b"abc").unwrap();
+        drop(writer);
+
+        let cancel = AtomicBool::new(false);
+        let result = drain_bounded_cancellable(reader, &cancel, Some(3), None, |_, _| true);
+
+        assert_eq!(result.captured, Some(b"abc".to_vec()));
+        assert!(!result.capture_truncated);
+    }
+
+    #[test]
+    fn bounded_drain_zero_capture_limit_stores_empty_and_truncates_on_data() {
+        let (reader, mut writer) = pipe_pair();
+        writer.write_all(b"abc").unwrap();
+        drop(writer);
+
+        let cancel = AtomicBool::new(false);
+        let result = drain_bounded_cancellable(reader, &cancel, Some(0), None, |_, _| true);
+
+        assert_eq!(result.captured, Some(Vec::new()));
+        assert!(result.capture_truncated);
+    }
+
+    #[test]
+    fn bounded_drain_discard_capture_stores_no_output() {
+        let (reader, mut writer) = pipe_pair();
+        writer.write_all(b"abc").unwrap();
+        drop(writer);
+
+        let cancel = AtomicBool::new(false);
+        let result = drain_bounded_cancellable(reader, &cancel, None, None, |_, _| true);
+
+        assert_eq!(result.captured, None);
+        assert!(!result.capture_truncated);
+    }
+
+    #[test]
+    fn bounded_drain_splits_stream_chunks_and_marks_stream_truncation() {
+        let (reader, mut writer) = pipe_pair();
+        writer.write_all(b"abcdef").unwrap();
+        drop(writer);
+
+        let cancel = AtomicBool::new(false);
+        let mut chunks = Vec::new();
+        let result = drain_bounded_cancellable(
+            reader,
+            &cancel,
+            Some(10),
+            Some(BoundedStreamConfig {
+                chunk_limit_bytes: 2,
+                stream_limit_bytes: 5,
+            }),
+            |chunk, truncated| {
+                chunks.push((chunk.to_vec(), truncated));
+                true
+            },
+        );
+
+        assert_eq!(result.captured, Some(b"abcdef".to_vec()));
+        assert!(!result.capture_truncated);
+        assert_eq!(
+            chunks,
+            vec![
+                (b"ab".to_vec(), false),
+                (b"cd".to_vec(), false),
+                (b"e".to_vec(), false),
+                (Vec::new(), true),
+            ]
+        );
+    }
+
+    #[test]
+    fn bounded_drain_exact_stream_limit_has_no_truncation_marker() {
+        let (reader, mut writer) = pipe_pair();
+        writer.write_all(b"abcd").unwrap();
+        drop(writer);
+
+        let cancel = AtomicBool::new(false);
+        let mut chunks = Vec::new();
+        let result = drain_bounded_cancellable(
+            reader,
+            &cancel,
+            None,
+            Some(BoundedStreamConfig {
+                chunk_limit_bytes: 2,
+                stream_limit_bytes: 4,
+            }),
+            |chunk, truncated| {
+                chunks.push((chunk.to_vec(), truncated));
+                true
+            },
+        );
+
+        assert_eq!(result.captured, None);
+        assert_eq!(
+            chunks,
+            vec![(b"ab".to_vec(), false), (b"cd".to_vec(), false)]
+        );
+    }
+
+    #[test]
+    fn bounded_drain_zero_stream_limit_emits_truncation_marker_on_data() {
+        let (reader, mut writer) = pipe_pair();
+        writer.write_all(b"abc").unwrap();
+        drop(writer);
+
+        let cancel = AtomicBool::new(false);
+        let mut chunks = Vec::new();
+        let result = drain_bounded_cancellable(
+            reader,
+            &cancel,
+            None,
+            Some(BoundedStreamConfig {
+                chunk_limit_bytes: 2,
+                stream_limit_bytes: 0,
+            }),
+            |chunk, truncated| {
+                chunks.push((chunk.to_vec(), truncated));
+                true
+            },
+        );
+
+        assert_eq!(result.captured, None);
+        assert_eq!(chunks, vec![(Vec::new(), true)]);
+    }
+
+    #[test]
+    fn bounded_drain_stream_callback_failure_stops_stream_but_keeps_draining() {
+        let (reader, mut writer) = pipe_pair();
+        writer.write_all(b"abcdef").unwrap();
+        drop(writer);
+
+        let cancel = AtomicBool::new(false);
+        let mut chunks = Vec::new();
+        let result = drain_bounded_cancellable(
+            reader,
+            &cancel,
+            Some(10),
+            Some(BoundedStreamConfig {
+                chunk_limit_bytes: 2,
+                stream_limit_bytes: 10,
+            }),
+            |chunk, truncated| {
+                chunks.push((chunk.to_vec(), truncated));
+                false
+            },
+        );
+
+        assert_eq!(chunks, vec![(b"ab".to_vec(), false)]);
+        assert_eq!(result.captured, Some(b"abcdef".to_vec()));
+        assert!(!result.capture_truncated);
     }
 }

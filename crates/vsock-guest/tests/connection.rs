@@ -11,8 +11,10 @@ use std::time::Duration;
 
 use vsock_guest::{handle_connection, run};
 use vsock_proto::{
-    self, MSG_ERROR, MSG_EXEC, MSG_EXEC_RESULT, MSG_PROCESS_EXIT, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
-    MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK,
+    self, CommandCapturedOutput, CommandOutputPolicy, CommandOutputStream, CommandTermination,
+    MSG_COMMAND_CANCEL, MSG_COMMAND_OUTPUT, MSG_COMMAND_RESULT, MSG_COMMAND_START, MSG_ERROR,
+    MSG_EXEC, MSG_EXEC_RESULT, MSG_PROCESS_EXIT, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH,
+    MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK,
 };
 
 const EXIT_CODE_TIMEOUT: i32 = 124;
@@ -526,6 +528,554 @@ fn read_message(stream: &mut impl std::io::Read) -> vsock_proto::RawMessage {
 /// Read one framed message from the stream and discard it.
 fn read_and_discard_message(stream: &mut impl std::io::Read) {
     let _ = read_message(stream);
+}
+
+#[derive(Debug)]
+struct CommandChunk {
+    stream: CommandOutputStream,
+    output_seq: u32,
+    chunk: Vec<u8>,
+    truncated: bool,
+}
+
+#[derive(Debug)]
+struct CommandResult {
+    termination: CommandTermination,
+    stdout: Option<Vec<u8>>,
+    stderr: Option<Vec<u8>>,
+    stdout_truncated: bool,
+    stderr_truncated: bool,
+    diagnostic: String,
+}
+
+fn start_guest_connection() -> (thread::JoinHandle<()>, std::os::unix::net::UnixStream) {
+    let (guest_stream, mut host_stream) = std::os::unix::net::UnixStream::pair().unwrap();
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+    read_and_discard_message(&mut host_stream);
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    (handle, host_stream)
+}
+
+fn finish_guest_connection(
+    handle: thread::JoinHandle<()>,
+    host_stream: std::os::unix::net::UnixStream,
+) {
+    drop(host_stream);
+    let _ = handle.join();
+}
+
+fn send_command_start(
+    stream: &mut impl std::io::Write,
+    seq: u32,
+    command: &str,
+    timeout_ms: u32,
+    stdout: CommandOutputPolicy,
+    stderr: CommandOutputPolicy,
+) {
+    send_command_start_with_env(stream, seq, command, timeout_ms, &[], stdout, stderr);
+}
+
+fn send_command_start_with_env(
+    stream: &mut impl std::io::Write,
+    seq: u32,
+    command: &str,
+    timeout_ms: u32,
+    env: &[(&str, &str)],
+    stdout: CommandOutputPolicy,
+    stderr: CommandOutputPolicy,
+) {
+    let payload =
+        vsock_proto::encode_command_start(timeout_ms, command, env, false, stdout, stderr, "test")
+            .unwrap();
+    let msg = vsock_proto::encode(MSG_COMMAND_START, seq, &payload).unwrap();
+    stream.write_all(&msg).unwrap();
+}
+
+fn send_command_cancel(stream: &mut impl std::io::Write, seq: u32) {
+    let payload = vsock_proto::encode_command_cancel();
+    let msg = vsock_proto::encode(MSG_COMMAND_CANCEL, seq, &payload).unwrap();
+    stream.write_all(&msg).unwrap();
+}
+
+fn read_command_result(
+    stream: &mut impl std::io::Read,
+    seq: u32,
+) -> (Vec<CommandChunk>, CommandResult) {
+    let mut decoder = vsock_proto::Decoder::new();
+    let mut buf = [0u8; 4096];
+    let mut chunks = Vec::new();
+    loop {
+        let n = read_retry_eintr(stream, &mut buf).unwrap();
+        assert!(n > 0, "unexpected EOF waiting for command result");
+        for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
+            if msg.seq != seq {
+                continue;
+            }
+            match msg.msg_type {
+                MSG_COMMAND_OUTPUT => {
+                    let decoded = vsock_proto::decode_command_output(&msg.payload).unwrap();
+                    chunks.push(CommandChunk {
+                        stream: decoded.stream,
+                        output_seq: decoded.output_seq,
+                        chunk: decoded.chunk.to_vec(),
+                        truncated: decoded.truncated,
+                    });
+                }
+                MSG_COMMAND_RESULT => {
+                    let decoded = vsock_proto::decode_command_result(&msg.payload).unwrap();
+                    return (
+                        chunks,
+                        CommandResult {
+                            termination: decoded.termination,
+                            stdout: captured_to_vec(decoded.stdout),
+                            stderr: captured_to_vec(decoded.stderr),
+                            stdout_truncated: captured_truncated(decoded.stdout),
+                            stderr_truncated: captured_truncated(decoded.stderr),
+                            diagnostic: decoded.diagnostic.to_string(),
+                        },
+                    );
+                }
+                MSG_ERROR => {
+                    let error = vsock_proto::decode_error(&msg.payload).unwrap();
+                    panic!("unexpected command error for seq={seq}: {error}");
+                }
+                other => panic!("unexpected command response type: 0x{other:02X}"),
+            }
+        }
+    }
+}
+
+fn captured_to_vec(captured: CommandCapturedOutput<'_>) -> Option<Vec<u8>> {
+    match captured {
+        CommandCapturedOutput::Discarded => None,
+        CommandCapturedOutput::Captured { bytes, .. } => Some(bytes.to_vec()),
+    }
+}
+
+fn captured_truncated(captured: CommandCapturedOutput<'_>) -> bool {
+    match captured {
+        CommandCapturedOutput::Discarded => false,
+        CommandCapturedOutput::Captured { truncated, .. } => truncated,
+    }
+}
+
+fn stdout_data(chunks: &[CommandChunk]) -> Vec<u8> {
+    chunks
+        .iter()
+        .filter(|chunk| chunk.stream == CommandOutputStream::Stdout && !chunk.truncated)
+        .flat_map(|chunk| chunk.chunk.clone())
+        .collect()
+}
+
+fn stderr_data(chunks: &[CommandChunk]) -> Vec<u8> {
+    chunks
+        .iter()
+        .filter(|chunk| chunk.stream == CommandOutputStream::Stderr && !chunk.truncated)
+        .flat_map(|chunk| chunk.chunk.clone())
+        .collect()
+}
+
+#[test]
+fn command_capture_only_stdout_stderr_success() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_command_start(
+        &mut host_stream,
+        101,
+        "printf stdout; printf stderr >&2",
+        5000,
+        CommandOutputPolicy::Capture { limit_bytes: 1024 },
+        CommandOutputPolicy::Capture { limit_bytes: 1024 },
+    );
+    let (chunks, result) = read_command_result(&mut host_stream, 101);
+
+    assert!(chunks.is_empty());
+    assert_eq!(
+        result.termination,
+        CommandTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(result.stdout, Some(b"stdout".to_vec()));
+    assert_eq!(result.stderr, Some(b"stderr".to_vec()));
+    assert!(!result.stdout_truncated);
+    assert!(!result.stderr_truncated);
+    assert!(result.diagnostic.is_empty());
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn command_stream_only_stdout_stderr_success() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_command_start(
+        &mut host_stream,
+        102,
+        "printf out; printf err >&2",
+        5000,
+        CommandOutputPolicy::Stream {
+            limit_bytes: 64,
+            chunk_limit_bytes: 8,
+        },
+        CommandOutputPolicy::Stream {
+            limit_bytes: 64,
+            chunk_limit_bytes: 8,
+        },
+    );
+    let (chunks, result) = read_command_result(&mut host_stream, 102);
+
+    assert_eq!(
+        result.termination,
+        CommandTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(result.stdout, None);
+    assert_eq!(result.stderr, None);
+    assert_eq!(stdout_data(&chunks), b"out".to_vec());
+    assert_eq!(stderr_data(&chunks), b"err".to_vec());
+    for (expected, chunk) in chunks.iter().enumerate() {
+        assert_eq!(chunk.output_seq, expected as u32);
+    }
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn command_capture_and_stream_success() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_command_start(
+        &mut host_stream,
+        103,
+        "printf visible",
+        5000,
+        CommandOutputPolicy::CaptureAndStream {
+            capture_limit_bytes: 64,
+            stream_limit_bytes: 64,
+            chunk_limit_bytes: 4,
+        },
+        CommandOutputPolicy::Discard,
+    );
+    let (chunks, result) = read_command_result(&mut host_stream, 103);
+
+    assert_eq!(
+        result.termination,
+        CommandTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(result.stdout, Some(b"visible".to_vec()));
+    assert_eq!(result.stderr, None);
+    assert_eq!(stdout_data(&chunks), b"visible".to_vec());
+    assert!(chunks.iter().all(|chunk| !chunk.truncated));
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn command_capture_limits_track_exact_and_one_byte_over() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_command_start(
+        &mut host_stream,
+        104,
+        "printf abcd",
+        5000,
+        CommandOutputPolicy::Capture { limit_bytes: 4 },
+        CommandOutputPolicy::Discard,
+    );
+    let (_chunks, exact) = read_command_result(&mut host_stream, 104);
+    assert_eq!(exact.stdout, Some(b"abcd".to_vec()));
+    assert!(!exact.stdout_truncated);
+
+    send_command_start(
+        &mut host_stream,
+        105,
+        "printf abcde",
+        5000,
+        CommandOutputPolicy::Capture { limit_bytes: 4 },
+        CommandOutputPolicy::Discard,
+    );
+    let (_chunks, over) = read_command_result(&mut host_stream, 105);
+    assert_eq!(over.stdout, Some(b"abcd".to_vec()));
+    assert!(over.stdout_truncated);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn command_stream_limits_track_exact_over_and_zero_budget() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_command_start(
+        &mut host_stream,
+        106,
+        "printf abcd",
+        5000,
+        CommandOutputPolicy::Stream {
+            limit_bytes: 4,
+            chunk_limit_bytes: 2,
+        },
+        CommandOutputPolicy::Discard,
+    );
+    let (exact_chunks, exact) = read_command_result(&mut host_stream, 106);
+    assert_eq!(
+        exact.termination,
+        CommandTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(stdout_data(&exact_chunks), b"abcd".to_vec());
+    assert!(exact_chunks.iter().all(|chunk| !chunk.truncated));
+
+    send_command_start(
+        &mut host_stream,
+        107,
+        "printf abcde",
+        5000,
+        CommandOutputPolicy::Stream {
+            limit_bytes: 4,
+            chunk_limit_bytes: 2,
+        },
+        CommandOutputPolicy::Discard,
+    );
+    let (over_chunks, over) = read_command_result(&mut host_stream, 107);
+    assert_eq!(
+        over.termination,
+        CommandTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(stdout_data(&over_chunks), b"abcd".to_vec());
+    assert!(
+        over_chunks
+            .iter()
+            .any(|chunk| chunk.stream == CommandOutputStream::Stdout
+                && chunk.truncated
+                && chunk.chunk.is_empty())
+    );
+
+    send_command_start(
+        &mut host_stream,
+        108,
+        "printf abc",
+        5000,
+        CommandOutputPolicy::Stream {
+            limit_bytes: 0,
+            chunk_limit_bytes: 2,
+        },
+        CommandOutputPolicy::Discard,
+    );
+    let (zero_chunks, zero) = read_command_result(&mut host_stream, 108);
+    assert_eq!(
+        zero.termination,
+        CommandTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(stdout_data(&zero_chunks), Vec::<u8>::new());
+    assert_eq!(zero_chunks.len(), 1);
+    assert_eq!(zero_chunks[0].stream, CommandOutputStream::Stdout);
+    assert!(zero_chunks[0].truncated);
+    assert!(zero_chunks[0].chunk.is_empty());
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn command_timeout_returns_timed_out_with_partial_capture() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_command_start(
+        &mut host_stream,
+        109,
+        "printf before; sleep 60",
+        200,
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+    );
+    let (_chunks, result) = read_command_result(&mut host_stream, 109);
+
+    assert_eq!(result.termination, CommandTermination::TimedOut);
+    assert_eq!(result.stdout, Some(b"before".to_vec()));
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn command_invalid_env_returns_start_failed_without_leaking_value() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let secret = "do-not-print-this-secret";
+    send_command_start_with_env(
+        &mut host_stream,
+        110,
+        "echo should-not-run",
+        5000,
+        &[("BAD;KEY", secret)],
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+    );
+    let (chunks, result) = read_command_result(&mut host_stream, 110);
+
+    assert!(chunks.is_empty());
+    assert_eq!(result.termination, CommandTermination::StartFailed);
+    assert!(
+        result
+            .diagnostic
+            .contains("invalid environment variable name")
+    );
+    assert!(!result.diagnostic.contains(secret));
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn command_explicit_cancel_kills_child_and_returns_cancelled() {
+    let pid_path = unique_pid_path("command-cancel");
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let command = format!("echo $$ > '{}'; sleep 60", pid_path.as_str());
+    send_command_start(
+        &mut host_stream,
+        111,
+        &command,
+        0,
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+    );
+    let pid = read_pid_file(pid_path.as_str());
+    assert!(
+        pid_alive(pid),
+        "command child should be running before cancel"
+    );
+
+    send_command_cancel(&mut host_stream, 111);
+    let (_chunks, result) = read_command_result(&mut host_stream, 111);
+
+    assert_eq!(result.termination, CommandTermination::Cancelled);
+    wait_for_pid_exit(pid, "command explicit cancel");
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn command_connection_close_cancels_child() {
+    let pid_path = unique_pid_path("command-connection-close");
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let command = format!("echo $$ > '{}'; sleep 60", pid_path.as_str());
+    send_command_start(
+        &mut host_stream,
+        112,
+        &command,
+        0,
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+    );
+    let pid = read_pid_file(pid_path.as_str());
+    assert!(
+        pid_alive(pid),
+        "command child should be running before disconnect"
+    );
+
+    drop(host_stream);
+    let _ = handle.join();
+    wait_for_pid_exit(pid, "command host disconnect");
+}
+
+#[test]
+fn command_duplicate_start_returns_error_without_cancelling_active_command() {
+    let pid_path = unique_pid_path("command-duplicate");
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let command = format!("echo $$ > '{}'; sleep 60", pid_path.as_str());
+    send_command_start(
+        &mut host_stream,
+        113,
+        &command,
+        0,
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+    );
+    let pid = read_pid_file(pid_path.as_str());
+
+    send_command_start(
+        &mut host_stream,
+        113,
+        "printf duplicate",
+        5000,
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+        CommandOutputPolicy::Discard,
+    );
+    let msg = read_message(&mut host_stream);
+    assert_eq!(msg.msg_type, MSG_ERROR);
+    assert_eq!(msg.seq, 113);
+    let error = vsock_proto::decode_error(&msg.payload).unwrap();
+    assert!(error.contains("already active"));
+    assert!(
+        pid_alive(pid),
+        "duplicate start should not cancel active child"
+    );
+
+    send_command_cancel(&mut host_stream, 113);
+    let (_chunks, result) = read_command_result(&mut host_stream, 113);
+    assert_eq!(result.termination, CommandTermination::Cancelled);
+    wait_for_pid_exit(pid, "command duplicate cleanup");
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn command_unknown_cancel_is_ignored() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_command_cancel(&mut host_stream, 999);
+    send_command_start(
+        &mut host_stream,
+        114,
+        "printf ok",
+        5000,
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+        CommandOutputPolicy::Discard,
+    );
+    let (_chunks, result) = read_command_result(&mut host_stream, 114);
+
+    assert_eq!(
+        result.termination,
+        CommandTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(result.stdout, Some(b"ok".to_vec()));
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn command_seq_zero_start_and_cancel_return_error() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_command_start(
+        &mut host_stream,
+        0,
+        "printf should-not-run",
+        5000,
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+        CommandOutputPolicy::Discard,
+    );
+    let start_error = read_message(&mut host_stream);
+    assert_eq!(start_error.msg_type, MSG_ERROR);
+    assert_eq!(start_error.seq, 0);
+    assert!(
+        vsock_proto::decode_error(&start_error.payload)
+            .unwrap()
+            .contains("non-zero sequence")
+    );
+
+    send_command_cancel(&mut host_stream, 0);
+    let cancel_error = read_message(&mut host_stream);
+    assert_eq!(cancel_error.msg_type, MSG_ERROR);
+    assert_eq!(cancel_error.seq, 0);
+    assert!(
+        vsock_proto::decode_error(&cancel_error.payload)
+            .unwrap()
+            .contains("non-zero sequence")
+    );
+
+    finish_guest_connection(handle, host_stream);
 }
 
 /// Like `Read::read`, but retries on EINTR. `read_exact` retries

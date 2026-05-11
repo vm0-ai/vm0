@@ -5,8 +5,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
-use vsock_proto::{self, MSG_EXEC, MSG_EXEC_RESULT, MSG_READY, MSG_SPAWN_WATCH};
+use vsock_proto::{
+    self, MSG_COMMAND_CANCEL, MSG_COMMAND_START, MSG_EXEC, MSG_EXEC_RESULT, MSG_READY,
+    MSG_SPAWN_WATCH,
+};
 
+use crate::command::{
+    CommandRegistry, CommandWorkerRequest, cancel_command_operation, send_command_error,
+    start_command_operation,
+};
 use crate::error::to_io_error;
 use crate::handlers::{MessageOutcome, handle_exec, handle_message};
 use crate::log::log;
@@ -113,6 +120,7 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
     let writer = GuestWriter::new(stream);
     let connection_cancel = Arc::new(AtomicBool::new(false));
     let _cancel_on_drop = ConnectionCancelGuard(connection_cancel.clone());
+    let command_registry = CommandRegistry::default();
 
     let mut decoder = vsock_proto::Decoder::new();
 
@@ -137,10 +145,38 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
             .decode(buf.get(..n).unwrap_or_default())
             .map_err(to_io_error)?
         {
-            // MSG_EXEC and MSG_SPAWN_WATCH run in background threads to avoid
+            // Command execution messages run in background threads to avoid
             // blocking the event loop. A blocking child process (e.g. reading a
             // pipe fd) would otherwise stall all subsequent messages.
-            if msg.msg_type == MSG_SPAWN_WATCH {
+            if msg.msg_type == MSG_COMMAND_START {
+                log(
+                    "INFO",
+                    &format!("Received: type=0x{:02X} seq={}", msg.msg_type, msg.seq),
+                );
+                if msg.seq == 0 {
+                    send_command_error(0, "command start requires non-zero sequence", &writer)?;
+                    continue;
+                }
+                let decoded =
+                    vsock_proto::decode_command_start(&msg.payload).map_err(to_io_error)?;
+                start_command_operation(
+                    CommandWorkerRequest::from_decoded(msg.seq, decoded),
+                    writer.clone(),
+                    connection_cancel.clone(),
+                    command_registry.clone(),
+                )?;
+            } else if msg.msg_type == MSG_COMMAND_CANCEL {
+                log(
+                    "INFO",
+                    &format!("Received: type=0x{:02X} seq={}", msg.msg_type, msg.seq),
+                );
+                if msg.seq == 0 {
+                    send_command_error(0, "command cancel requires non-zero sequence", &writer)?;
+                    continue;
+                }
+                vsock_proto::decode_command_cancel(&msg.payload).map_err(to_io_error)?;
+                cancel_command_operation(&command_registry, msg.seq);
+            } else if msg.msg_type == MSG_SPAWN_WATCH {
                 let d = vsock_proto::decode_spawn_watch(&msg.payload).map_err(to_io_error)?;
                 // handle_spawn_watch writes the response itself (before
                 // spawning the streaming thread) to prevent a race where
