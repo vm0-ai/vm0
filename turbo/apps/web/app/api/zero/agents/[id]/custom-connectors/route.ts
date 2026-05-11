@@ -11,6 +11,15 @@ import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { eq, and, inArray } from "drizzle-orm";
 
+function unauthenticatedResponse() {
+  return {
+    status: 401 as const,
+    body: {
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    },
+  };
+}
+
 const router = tsr.router(zeroAgentCustomConnectorsContract, {
   get: async ({ params, headers }) => {
     initServices();
@@ -19,6 +28,7 @@ const router = tsr.router(zeroAgentCustomConnectorsContract, {
       requiredCapability: "agent:read",
     });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthenticatedResponse();
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);
@@ -69,6 +79,7 @@ const router = tsr.router(zeroAgentCustomConnectorsContract, {
       requiredCapability: "agent:read",
     });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthenticatedResponse();
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);
