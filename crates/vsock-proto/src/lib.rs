@@ -2203,6 +2203,83 @@ mod tests {
     }
 
     #[test]
+    fn command_start_rejects_truncated_fields() {
+        assert!(matches!(
+            decode_command_start(&[]),
+            Err(ProtocolError::InvalidPayload(
+                "command start timeout truncated"
+            ))
+        ));
+        assert!(matches!(
+            decode_command_start(&[0; 4]),
+            Err(ProtocolError::InvalidPayload(
+                "command start flags truncated"
+            ))
+        ));
+        assert!(matches!(
+            decode_command_start(&[0; 8]),
+            Err(ProtocolError::InvalidPayload(
+                "command start command_len truncated"
+            ))
+        ));
+
+        let mut payload = encode_command_start(
+            1,
+            "cmd",
+            &[("K", "V")],
+            false,
+            CommandOutputPolicy::Discard,
+            CommandOutputPolicy::Discard,
+            "ok",
+        )
+        .unwrap();
+        payload.truncate(10);
+        assert!(matches!(
+            decode_command_start(&payload),
+            Err(ProtocolError::InvalidPayload(
+                "command start command truncated"
+            ))
+        ));
+
+        let mut payload = encode_command_start(
+            1,
+            "cmd",
+            &[("K", "V")],
+            false,
+            CommandOutputPolicy::Discard,
+            CommandOutputPolicy::Discard,
+            "ok",
+        )
+        .unwrap();
+        let env_count_offset = 4 + 1 + 4 + "cmd".len();
+        payload.truncate(env_count_offset + 3);
+        assert!(matches!(
+            decode_command_start(&payload),
+            Err(ProtocolError::InvalidPayload(
+                "command start env_count truncated"
+            ))
+        ));
+
+        let mut payload = encode_command_start(
+            1,
+            "cmd",
+            &[],
+            false,
+            CommandOutputPolicy::Discard,
+            CommandOutputPolicy::Discard,
+            "ok",
+        )
+        .unwrap();
+        payload.truncate(payload.len() - 1);
+        assert!(matches!(
+            decode_command_start(&payload),
+            Err(ProtocolError::InvalidPayload(
+                "command start label truncated"
+            ))
+        ));
+    }
+
+    #[test]
     fn command_start_rejects_invalid_policy_tag() {
         let mut payload = encode_command_start(
             1,
@@ -2268,6 +2345,54 @@ mod tests {
     }
 
     #[test]
+    fn command_start_rejects_truncated_policy_fields() {
+        let mut stream_payload = encode_command_start(
+            1,
+            "cmd",
+            &[],
+            false,
+            CommandOutputPolicy::Stream {
+                limit_bytes: 1,
+                chunk_limit_bytes: 1,
+            },
+            CommandOutputPolicy::Discard,
+            "",
+        )
+        .unwrap();
+        let stream_chunk_limit_offset = 4 + 1 + 4 + "cmd".len() + 4 + 1 + 4;
+        stream_payload.truncate(stream_chunk_limit_offset + 3);
+        assert!(matches!(
+            decode_command_start(&stream_payload),
+            Err(ProtocolError::InvalidPayload(
+                "command stream policy chunk limit truncated"
+            ))
+        ));
+
+        let mut capture_and_stream_payload = encode_command_start(
+            1,
+            "cmd",
+            &[],
+            false,
+            CommandOutputPolicy::CaptureAndStream {
+                capture_limit_bytes: 1,
+                stream_limit_bytes: 1,
+                chunk_limit_bytes: 1,
+            },
+            CommandOutputPolicy::Discard,
+            "",
+        )
+        .unwrap();
+        let capture_and_stream_chunk_limit_offset = 4 + 1 + 4 + "cmd".len() + 4 + 1 + 4 + 4;
+        capture_and_stream_payload.truncate(capture_and_stream_chunk_limit_offset + 3);
+        assert!(matches!(
+            decode_command_start(&capture_and_stream_payload),
+            Err(ProtocolError::InvalidPayload(
+                "command capture-and-stream chunk limit truncated"
+            ))
+        ));
+    }
+
+    #[test]
     fn command_output_rejects_invalid_stream_flags_and_trailing_bytes() {
         let payload =
             encode_command_output(CommandOutputStream::Stdout, 1, b"chunk", false).unwrap();
@@ -2296,6 +2421,42 @@ mod tests {
             decode_command_output(&trailing),
             Err(ProtocolError::InvalidPayload(
                 "command output trailing bytes"
+            ))
+        ));
+    }
+
+    #[test]
+    fn command_output_rejects_truncated_fields() {
+        assert!(matches!(
+            decode_command_output(&[]),
+            Err(ProtocolError::InvalidPayload(
+                "command output stream truncated"
+            ))
+        ));
+        assert!(matches!(
+            decode_command_output(&[0]),
+            Err(ProtocolError::InvalidPayload(
+                "command output seq truncated"
+            ))
+        ));
+
+        let mut payload =
+            encode_command_output(CommandOutputStream::Stdout, 1, b"chunk", false).unwrap();
+        payload.truncate(6);
+        assert!(matches!(
+            decode_command_output(&payload),
+            Err(ProtocolError::InvalidPayload(
+                "command output chunk_len truncated"
+            ))
+        ));
+
+        let mut payload =
+            encode_command_output(CommandOutputStream::Stdout, 1, b"chunk", false).unwrap();
+        payload.truncate(payload.len() - 1);
+        assert!(matches!(
+            decode_command_output(&payload),
+            Err(ProtocolError::InvalidPayload(
+                "command output chunk truncated"
             ))
         ));
     }
@@ -2347,6 +2508,73 @@ mod tests {
             decode_command_result(&trailing),
             Err(ProtocolError::InvalidPayload(
                 "command result trailing bytes"
+            ))
+        ));
+    }
+
+    #[test]
+    fn command_result_rejects_truncated_fields() {
+        assert!(matches!(
+            decode_command_result(&[]),
+            Err(ProtocolError::InvalidPayload(
+                "command result termination truncated"
+            ))
+        ));
+        assert!(matches!(
+            decode_command_result(&[COMMAND_TERMINATION_CANCELLED]),
+            Err(ProtocolError::InvalidPayload(
+                "command result duration truncated"
+            ))
+        ));
+
+        let mut payload = encode_command_result(
+            CommandTermination::Exited { exit_code: 1 },
+            1,
+            CommandCapturedOutput::Discarded,
+            CommandCapturedOutput::Discarded,
+            "",
+        )
+        .unwrap();
+        payload.truncate(4);
+        assert!(matches!(
+            decode_command_result(&payload),
+            Err(ProtocolError::InvalidPayload(
+                "command result exit_code truncated"
+            ))
+        ));
+
+        let mut payload = encode_command_result(
+            CommandTermination::Cancelled,
+            1,
+            CommandCapturedOutput::Captured {
+                bytes: b"out",
+                truncated: false,
+            },
+            CommandCapturedOutput::Discarded,
+            "",
+        )
+        .unwrap();
+        payload.truncate(1 + 4 + 1 + 1 + 4 + 2);
+        assert!(matches!(
+            decode_command_result(&payload),
+            Err(ProtocolError::InvalidPayload(
+                "command captured output bytes truncated"
+            ))
+        ));
+
+        let mut payload = encode_command_result(
+            CommandTermination::Cancelled,
+            1,
+            CommandCapturedOutput::Discarded,
+            CommandCapturedOutput::Discarded,
+            "diag",
+        )
+        .unwrap();
+        payload.truncate(payload.len() - 1);
+        assert!(matches!(
+            decode_command_result(&payload),
+            Err(ProtocolError::InvalidPayload(
+                "command result diagnostic truncated"
             ))
         ));
     }
