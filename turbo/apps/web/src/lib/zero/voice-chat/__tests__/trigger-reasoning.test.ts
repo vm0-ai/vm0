@@ -21,8 +21,6 @@ import { http } from "../../../../__tests__/msw";
 import { mockAblyPublish } from "../../../../__tests__/ably-mock";
 import { reloadEnv } from "../../../../env";
 import { triggerReasoning } from "../trigger-reasoning";
-import { seedUserFeatureSwitches } from "../../../../__tests__/db-test-seeders/feature-switches";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const context = testContext();
@@ -65,9 +63,6 @@ async function seedActiveSession(): Promise<{
   sessionId: string;
 }> {
   const { userId, orgId } = await context.setupUser();
-  await seedUserFeatureSwitches(orgId, userId, {
-    [FeatureSwitchKey.ModelFirstModelProvider]: false,
-  });
   const { composeId } = await seedTestCompose({
     userId,
     orgId,
@@ -291,9 +286,6 @@ describe("triggerReasoning", () => {
     // createZeroRun requires a compose with a published version that has a
     // model provider key. createTestCompose creates a version with ANTHROPIC_API_KEY.
     const { userId, orgId } = await context.setupUser();
-    await seedUserFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.ModelFirstModelProvider]: false,
-    });
     const { composeId } = await createTestCompose(
       uniqueId("vcc-reasoner-tasks"),
     );

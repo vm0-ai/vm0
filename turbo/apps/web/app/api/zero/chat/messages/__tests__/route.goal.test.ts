@@ -14,7 +14,6 @@ import {
   uniqueId,
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
-import { seedUserFeatureSwitches } from "../../../../../../src/__tests__/db-test-seeders/feature-switches";
 import { reloadEnv } from "../../../../../../src/env";
 
 /**
@@ -53,9 +52,6 @@ describe("POST /api/zero/chat/messages — goal mode", () => {
     context.setupMocks();
     goalSwitchEnabled = true;
     user = await context.setupUser();
-    await seedUserFeatureSwitches(user.orgId, user.userId, {
-      [FeatureSwitchKey.ModelFirstModelProvider]: false,
-    });
     const compose = await createTestCompose(uniqueId("chat-msg-goal"));
     agentId = await getTestZeroAgentId(user.orgId, compose.name);
     vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
