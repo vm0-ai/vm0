@@ -1758,13 +1758,19 @@ mod tests {
             }
         });
 
-        let panic_count = [first.await, second.await]
-            .into_iter()
+        let results = [first.await, second.await];
+        let panic_count = results
+            .iter()
             .filter(|result| matches!(result, Err(err) if err.is_panic()))
             .count();
+        let success_count = results.iter().filter(|result| result.is_ok()).count();
         assert_eq!(
             panic_count, 1,
             "shared destroy panic should be consumed by exactly one concurrent factory"
+        );
+        assert_eq!(
+            success_count, 1,
+            "the factory that did not consume the shared destroy panic should complete"
         );
         assert_eq!(overrides.destroy_call_count(), 2);
     }
