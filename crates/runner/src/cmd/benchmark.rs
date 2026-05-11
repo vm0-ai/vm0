@@ -3,7 +3,11 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use clap::Args;
-use sandbox::{ExecRequest, ExecResult, RuntimeProvider, SandboxConfig, SandboxFactory, SandboxId};
+use sandbox::{
+    BoundedExecCapturePolicy, BoundedExecOutput, BoundedExecOutputRequest, BoundedExecRequest,
+    BoundedExecResult, BoundedExecTermination, ExecResult, RuntimeProvider, SandboxConfig,
+    SandboxFactory, SandboxId,
+};
 use tracing::{info, warn};
 
 use crate::config;
@@ -14,6 +18,9 @@ use crate::lock;
 use crate::paths::{HomePaths, RootfsPaths, RunnerPaths};
 use crate::prefetch;
 use crate::proxy;
+
+const BENCHMARK_EXEC_OUTPUT_LIMIT_BYTES: u32 = 8 * 1024 * 1024 - 1024;
+const BENCHMARK_EXIT_TIMEOUT: i32 = 124;
 
 #[derive(Default)]
 struct Timing {
@@ -36,6 +43,75 @@ fn parse_env_args(env: &[String]) -> RunnerResult<Vec<(String, String)>> {
                 })
         })
         .collect()
+}
+
+fn benchmark_bounded_output() -> BoundedExecOutputRequest {
+    BoundedExecOutputRequest {
+        capture: BoundedExecCapturePolicy::Capture {
+            limit_bytes: BENCHMARK_EXEC_OUTPUT_LIMIT_BYTES,
+        },
+        stream: None,
+    }
+}
+
+fn take_bounded_output(output: BoundedExecOutput) -> (Vec<u8>, bool) {
+    match output {
+        BoundedExecOutput::Captured { bytes, truncated } => (bytes, truncated),
+        BoundedExecOutput::Discarded => (Vec::new(), false),
+    }
+}
+
+fn bounded_exec_diagnostic_or_stderr(
+    diagnostic: Option<String>,
+    fallback_stderr: Vec<u8>,
+) -> Vec<u8> {
+    if let Some(diagnostic) = diagnostic
+        && !diagnostic.is_empty()
+    {
+        return diagnostic.into_bytes();
+    }
+    fallback_stderr
+}
+
+fn bounded_exec_to_exec_result(result: BoundedExecResult) -> ExecResult {
+    let BoundedExecResult {
+        termination,
+        stdout,
+        stderr,
+        diagnostic,
+        ..
+    } = result;
+    let (stdout, stdout_truncated) = take_bounded_output(stdout);
+    let (stderr, stderr_truncated) = take_bounded_output(stderr);
+    if stdout_truncated || stderr_truncated {
+        warn!(
+            stdout_truncated,
+            stderr_truncated, "benchmark command output truncated"
+        );
+    }
+
+    match termination {
+        BoundedExecTermination::Exited { exit_code } => ExecResult {
+            exit_code,
+            stdout,
+            stderr,
+        },
+        BoundedExecTermination::TimedOut => ExecResult {
+            exit_code: BENCHMARK_EXIT_TIMEOUT,
+            stdout,
+            stderr: b"Timeout".to_vec(),
+        },
+        BoundedExecTermination::Cancelled => ExecResult {
+            exit_code: 1,
+            stdout,
+            stderr: b"Connection cancelled".to_vec(),
+        },
+        BoundedExecTermination::StartFailed | BoundedExecTermination::WaitFailed => ExecResult {
+            exit_code: 1,
+            stdout,
+            stderr: bounded_exec_diagnostic_or_stderr(diagnostic, stderr),
+        },
+    }
 }
 
 #[derive(Args)]
@@ -281,13 +357,17 @@ async fn run_in_sandbox(
 
     let t_exec = Instant::now();
     let result = sandbox
-        .exec(&ExecRequest {
+        .bounded_exec(&BoundedExecRequest {
             cmd: &args.command,
             timeout: Duration::from_secs(args.timeout_secs),
             env: &env_refs,
             sudo: args.sudo,
+            stdin: None,
+            stdout: benchmark_bounded_output(),
+            stderr: benchmark_bounded_output(),
         })
         .await
+        .map(bounded_exec_to_exec_result)
         .map_err(Into::into);
     timing.exec_ms = Some(t_exec.elapsed().as_millis());
 
@@ -297,6 +377,27 @@ async fn run_in_sandbox(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn bounded_result(
+        termination: BoundedExecTermination,
+        stdout: &[u8],
+        stderr: &[u8],
+        diagnostic: Option<&str>,
+    ) -> BoundedExecResult {
+        BoundedExecResult {
+            termination,
+            duration: Duration::from_millis(1),
+            stdout: BoundedExecOutput::Captured {
+                bytes: stdout.to_vec(),
+                truncated: false,
+            },
+            stderr: BoundedExecOutput::Captured {
+                bytes: stderr.to_vec(),
+                truncated: false,
+            },
+            diagnostic: diagnostic.map(ToOwned::to_owned),
+        }
+    }
 
     #[test]
     fn parse_env_args_accepts_key_value_pairs() {
@@ -333,5 +434,75 @@ mod tests {
         let input = vec!["GOOD=ok".to_string(), "BAD".to_string()];
         let err = parse_env_args(&input).unwrap_err();
         assert!(err.to_string().contains("'BAD'"), "got: {err}");
+    }
+
+    #[test]
+    fn bounded_exec_to_exec_result_preserves_process_exit() {
+        let exec_result = bounded_exec_to_exec_result(bounded_result(
+            BoundedExecTermination::Exited { exit_code: 42 },
+            b"out",
+            b"err",
+            None,
+        ));
+
+        assert_eq!(exec_result.exit_code, 42);
+        assert_eq!(exec_result.stdout, b"out");
+        assert_eq!(exec_result.stderr, b"err");
+    }
+
+    #[test]
+    fn bounded_exec_to_exec_result_maps_timeout_like_legacy_exec() {
+        let exec_result = bounded_exec_to_exec_result(bounded_result(
+            BoundedExecTermination::TimedOut,
+            b"partial-out",
+            b"partial-err",
+            None,
+        ));
+
+        assert_eq!(exec_result.exit_code, BENCHMARK_EXIT_TIMEOUT);
+        assert_eq!(exec_result.stdout, b"partial-out");
+        assert_eq!(exec_result.stderr, b"Timeout");
+    }
+
+    #[test]
+    fn bounded_exec_to_exec_result_maps_cancelled_like_legacy_exec() {
+        let exec_result = bounded_exec_to_exec_result(bounded_result(
+            BoundedExecTermination::Cancelled,
+            b"partial-out",
+            b"partial-err",
+            None,
+        ));
+
+        assert_eq!(exec_result.exit_code, 1);
+        assert_eq!(exec_result.stdout, b"partial-out");
+        assert_eq!(exec_result.stderr, b"Connection cancelled");
+    }
+
+    #[test]
+    fn bounded_exec_to_exec_result_uses_diagnostic_for_setup_failure() {
+        let exec_result = bounded_exec_to_exec_result(bounded_result(
+            BoundedExecTermination::StartFailed,
+            b"",
+            b"stderr fallback",
+            Some("diagnostic message"),
+        ));
+
+        assert_eq!(exec_result.exit_code, 1);
+        assert!(exec_result.stdout.is_empty());
+        assert_eq!(exec_result.stderr, b"diagnostic message");
+    }
+
+    #[test]
+    fn bounded_exec_to_exec_result_uses_stderr_when_diagnostic_is_empty() {
+        let exec_result = bounded_exec_to_exec_result(bounded_result(
+            BoundedExecTermination::WaitFailed,
+            b"",
+            b"stderr fallback",
+            None,
+        ));
+
+        assert_eq!(exec_result.exit_code, 1);
+        assert!(exec_result.stdout.is_empty());
+        assert_eq!(exec_result.stderr, b"stderr fallback");
     }
 }
