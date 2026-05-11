@@ -8,6 +8,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { accept } from "../../../lib/accept.ts";
 import { zeroClient$ } from "../../api-client.ts";
+import { sanitizeTokenInput } from "./token-input.ts";
 
 const internalReload$ = state(0);
 
@@ -120,7 +121,7 @@ export const setCustomConnectorSecret$ = command(
     await accept(
       client.set({
         params: { id: args.id },
-        body: { value: args.value },
+        body: { value: sanitizeTokenInput(args.value) },
         fetchOptions: { signal: _signal },
       }),
       [204],

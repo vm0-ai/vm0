@@ -6,7 +6,10 @@ import {
   orgSubmitDialog$,
   orgDialogFormValues$,
   orgFormErrors$,
+  orgUpdateFormAuthMethod$,
   orgUpdateFormModel$,
+  orgUpdateFormSecret$,
+  orgUpdateFormSecretField$,
 } from "../org-model-providers.ts";
 import { getProviderShape } from "../../../../views/zero-page/components/settings/provider-ui-config.ts";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
@@ -192,5 +195,86 @@ describe("org-model-providers vm0 provider", () => {
 
     expect(capturedBody).not.toBeNull();
     expect(capturedBody).not.toHaveProperty("selectedModel");
+  });
+
+  it("should strip whitespace from single-secret provider tokens before upload", async () => {
+    const { store, signal } = context;
+    let capturedBody: Record<string, unknown> | null = null;
+
+    server.use(
+      mockApi(zeroModelProvidersMainContract.upsert, ({ body, respond }) => {
+        capturedBody = body as Record<string, unknown>;
+        return respond(201, {
+          provider: {
+            id: "a1b2c3d4-e5f6-4890-abcd-ef1234567890",
+            type: "anthropic-api-key",
+            framework: "claude-code",
+            secretName: "ANTHROPIC_API_KEY",
+            authMethod: null,
+            secretNames: null,
+            isDefault: true,
+            selectedModel: null,
+            needsReconnect: false,
+            lastRefreshErrorCode: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          created: true,
+        });
+      }),
+    );
+
+    store.set(orgOpenAddDialog$, "anthropic-api-key");
+    store.set(orgUpdateFormSecret$, " sk-ant\n test key ");
+
+    await store.set(orgSubmitDialog$, signal);
+
+    expect(capturedBody).not.toBeNull();
+    expect(capturedBody!.secret).toBe("sk-anttestkey");
+  });
+
+  it("should strip whitespace from multi-auth provider secrets before upload", async () => {
+    const { store, signal } = context;
+    let capturedBody: Record<string, unknown> | null = null;
+
+    server.use(
+      mockApi(zeroModelProvidersMainContract.upsert, ({ body, respond }) => {
+        capturedBody = body as Record<string, unknown>;
+        return respond(201, {
+          provider: {
+            id: "a1b2c3d4-e5f6-4890-abcd-ef1234567890",
+            type: "aws-bedrock",
+            framework: "claude-code",
+            secretName: null,
+            authMethod: "api-key",
+            secretNames: ["AWS_BEARER_TOKEN_BEDROCK", "AWS_REGION"],
+            isDefault: true,
+            selectedModel: null,
+            needsReconnect: false,
+            lastRefreshErrorCode: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          created: true,
+        });
+      }),
+    );
+
+    store.set(orgOpenAddDialog$, "aws-bedrock");
+    store.set(orgUpdateFormAuthMethod$, "api-key");
+    store.set(
+      orgUpdateFormSecretField$,
+      "AWS_BEARER_TOKEN_BEDROCK",
+      " bedrock\n token ",
+    );
+    store.set(orgUpdateFormSecretField$, "AWS_REGION", " us-east-1\n");
+
+    await store.set(orgSubmitDialog$, signal);
+
+    expect(capturedBody).not.toBeNull();
+    expect(capturedBody!.secrets).toStrictEqual({
+      AWS_BEARER_TOKEN_BEDROCK: "bedrocktoken",
+      AWS_REGION: "us-east-1",
+    });
   });
 });

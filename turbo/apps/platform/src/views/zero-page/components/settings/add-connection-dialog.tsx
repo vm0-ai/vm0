@@ -25,6 +25,7 @@ import {
   isStandaloneMode,
   type ConnectorTypeWithStatus,
 } from "../../../../signals/zero-page/settings/connectors.ts";
+import { hasTokenInputValue } from "../../../../signals/zero-page/settings/token-input.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, onDomEventFn, Reason } from "../../../../signals/utils.ts";
@@ -115,7 +116,7 @@ function ApiTokenForm({
 
   const secretEntries = Object.entries(apiTokenConfig.secrets);
   const allFilled = secretEntries.every(([name, cfg]) => {
-    return !cfg.required || secretValues[name];
+    return !cfg.required || hasTokenInputValue(secretValues[name]);
   });
 
   const handleSubmit = onDomEventFn(async () => {

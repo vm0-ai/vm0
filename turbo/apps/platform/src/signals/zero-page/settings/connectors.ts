@@ -31,6 +31,7 @@ import { jsonParseOr, resetSignal, withCleanup } from "../../utils.ts";
 import { setAblyLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { resetPermissionDialog$ } from "./permission-dialog.ts";
+import { sanitizeTokenInputRecord } from "./token-input.ts";
 
 const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
 const { get$: hiddenConnectorTypesRaw$, set$: setHiddenConnectorTypes$ } =
@@ -290,7 +291,8 @@ export const submitApiToken$ = command(
     const secretsClient = createClient(zeroSecretsContract);
     const variablesClient = createClient(zeroVariablesContract);
     const apiTokenConfig = CONNECTOR_TYPES[type].authMethods["api-token"];
-    for (const [name, value] of Object.entries(inputSecrets)) {
+    const secrets = sanitizeTokenInputRecord(inputSecrets);
+    for (const [name, value] of Object.entries(secrets)) {
       if (!value) {
         continue;
       }

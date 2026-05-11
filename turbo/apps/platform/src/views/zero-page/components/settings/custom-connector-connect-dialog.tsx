@@ -18,6 +18,7 @@ import {
   setCustomConnectorConnectInput$,
   setCustomConnectorSecret$,
 } from "../../../../signals/zero-page/settings/custom-connectors.ts";
+import { hasTokenInputValue } from "../../../../signals/zero-page/settings/token-input.ts";
 import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
 
 export function CustomConnectorConnectDialog({
@@ -35,7 +36,7 @@ export function CustomConnectorConnectDialog({
   const signal = useGet(pageSignal$);
 
   const submitting = loadable.state === "loading";
-  const canSubmit = !submitting && value.length > 0;
+  const canSubmit = !submitting && hasTokenInputValue(value);
 
   const close = () => {
     resetValue();

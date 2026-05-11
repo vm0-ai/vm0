@@ -30,6 +30,13 @@ import { modelFirstModelProviderEnabled$ } from "../../external/feature-switch.t
 import { zeroClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
 import { closeModelPolicyDialog$ } from "./org-model-policy-dialog.ts";
+import {
+  hasTokenInputValue,
+  sanitizeTokenInput,
+  sanitizeTokenInputRecord,
+} from "./token-input.ts";
+
+const WHITESPACE_PRESERVING_SECRET_KEYS = new Set(["CODEX_AUTH_JSON"]);
 
 // ---------------------------------------------------------------------------
 // Add provider dialog (list of provider type cards)
@@ -467,7 +474,7 @@ export const orgSubmitDialog$ = command(
           if (config.derived) {
             continue;
           }
-          if (config.required && !formValues.secrets[key]?.trim()) {
+          if (config.required && !hasTokenInputValue(formValues.secrets[key])) {
             errors[key] = `${config.label} is required`;
           }
         }
@@ -476,7 +483,7 @@ export const orgSubmitDialog$ = command(
       dialogState.mode === "add" &&
       getSecretNameForType(providerType)
     ) {
-      if (!formValues.secret.trim()) {
+      if (!hasTokenInputValue(formValues.secret)) {
         errors["secret"] =
           providerType === "claude-code-oauth-token"
             ? "OAuth token is required"
@@ -495,9 +502,11 @@ export const orgSubmitDialog$ = command(
 
     if (isMultiAuth) {
       request.authMethod = formValues.authMethod;
-      request.secrets = formValues.secrets;
-    } else if (formValues.secret.trim()) {
-      request.secret = formValues.secret;
+      request.secrets = sanitizeTokenInputRecord(formValues.secrets, {
+        preserveWhitespaceKeys: WHITESPACE_PRESERVING_SECRET_KEYS,
+      });
+    } else if (hasTokenInputValue(formValues.secret)) {
+      request.secret = sanitizeTokenInput(formValues.secret);
     }
 
     if (

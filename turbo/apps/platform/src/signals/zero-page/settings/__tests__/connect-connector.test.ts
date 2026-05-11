@@ -11,6 +11,10 @@ import {
 import { triggerAblyEvent, hasSubscription } from "../../../../mocks/ably.ts";
 import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroSecretsContract,
+  zeroVariablesContract,
+} from "@vm0/api-contracts/contracts/zero-secrets";
 import { createMockApi } from "../../../../mocks/msw-contract.ts";
 
 const context = testContext();
@@ -325,6 +329,55 @@ describe("connectConnector$", () => {
 });
 
 describe("submitApiToken$", () => {
+  it("strips whitespace from connector API token values before upload", async () => {
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    const submitted: Record<string, string> = {};
+
+    server.use(
+      mockApi(zeroSecretsContract.set, ({ body, respond }) => {
+        submitted[body.name] = body.value;
+        const now = new Date().toISOString();
+        return respond(201, {
+          id: crypto.randomUUID(),
+          name: body.name,
+          type: "user",
+          description: body.description ?? null,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }),
+      mockApi(zeroVariablesContract.set, ({ body, respond }) => {
+        submitted[body.name] = body.value;
+        const now = new Date().toISOString();
+        return respond(201, {
+          id: crypto.randomUUID(),
+          name: body.name,
+          value: body.value,
+          description: body.description ?? null,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }),
+    );
+
+    await context.store.set(
+      submitApiToken$,
+      "strapi",
+      {
+        STRAPI_TOKEN: " strapi\n token ",
+        STRAPI_BASE_URL: " https://strapi.example.com\n",
+      },
+      {},
+      context.signal,
+    );
+
+    expect(submitted).toMatchObject({
+      STRAPI_TOKEN: "strapitoken",
+      STRAPI_BASE_URL: "https://strapi.example.com",
+    });
+  });
+
   it("sets permissionDialogType$ after successful API token submission", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
