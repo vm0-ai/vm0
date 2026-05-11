@@ -11,8 +11,6 @@ import { initServices } from "../../../../src/lib/init-services";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
-import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
-import { isNotFound, isForbidden } from "@vm0/api-services/errors";
 import { visibleJoinedZeroAgentCondition } from "../../../../src/lib/zero/agent-visibility";
 
 export async function GET() {
@@ -39,21 +37,6 @@ export async function GET() {
     );
   }
 
-  // Resolve org via standard path (verifies membership + applies JWT tier)
-  let resolvedOrgId: string;
-  try {
-    const { org } = await resolveOrg(authCtx);
-    resolvedOrgId = org.orgId;
-  } catch (error) {
-    if (isNotFound(error) || isForbidden(error)) {
-      return NextResponse.json(
-        { error: { message: "Organization not found", code: "NOT_FOUND" } },
-        { status: 404 },
-      );
-    }
-    throw error;
-  }
-
   const composes = await globalThis.services.db
     .select({
       id: agentComposes.id,
@@ -71,7 +54,7 @@ export async function GET() {
     .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
     .where(
       and(
-        eq(agentComposes.orgId, resolvedOrgId),
+        eq(agentComposes.orgId, authCtx.orgId),
         visibleJoinedZeroAgentCondition(authCtx.userId),
       ),
     )

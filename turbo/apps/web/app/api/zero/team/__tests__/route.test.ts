@@ -48,6 +48,19 @@ describe("GET /api/zero/team", () => {
     expect(data).toEqual([]);
   });
 
+  it("should return empty list when active org has no org metadata row", async () => {
+    mockClerk({
+      userId: `team-user-${randomUUID().slice(0, 8)}`,
+      orgId: `org_team_no_meta_${randomUUID().slice(0, 8)}`,
+    });
+
+    const response = await GET();
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data).toEqual([]);
+  });
+
   it("should return composes for the active org", async () => {
     const composeName = `team-test-${randomUUID().slice(0, 8)}`;
     await createTestCompose(composeName);
