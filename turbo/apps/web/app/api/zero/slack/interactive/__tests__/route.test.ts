@@ -458,7 +458,6 @@ describe("POST /api/zero/slack/interactive", () => {
       const saved = await getOrgMembersEntry(user.orgId, user.userId);
       expect(saved?.selectedModel).toBeFalsy();
     });
-
   });
 
   describe("home_switch_agent block_action", () => {
