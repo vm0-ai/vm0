@@ -620,15 +620,18 @@ export function zeroChatThreadList(args: {
     const lastMessage = db
       .select({
         id: chatMessages.id,
-        chatThreadId: chatMessages.chatThreadId,
         createdAt: chatMessages.createdAt,
         archivedAt: chatMessages.archivedAt,
-        rn: sql<number>`ROW_NUMBER() OVER (PARTITION BY ${chatMessages.chatThreadId} ORDER BY ${chatMessages.createdAt} DESC, ${chatMessages.id} DESC)`.as(
-          "rn",
-        ),
       })
       .from(chatMessages)
-      .where(visibleChatMessageCondition())
+      .where(
+        and(
+          eq(chatMessages.chatThreadId, chatThreads.id),
+          visibleChatMessageCondition(),
+        ),
+      )
+      .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
+      .limit(1)
       .as("last_message");
 
     const filters = [
@@ -672,13 +675,7 @@ export function zeroChatThreadList(args: {
       })
       .from(chatThreads)
       .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-      .leftJoin(
-        lastMessage,
-        and(
-          eq(lastMessage.chatThreadId, chatThreads.id),
-          eq(lastMessage.rn, 1),
-        ),
-      )
+      .leftJoinLateral(lastMessage, sql`true`)
       .where(and(...filters))
       .orderBy(
         sql`(${chatThreads.pinnedAt} IS NULL)`,
