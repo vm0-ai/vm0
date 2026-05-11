@@ -658,6 +658,12 @@ pub struct VsockHost {
 
 impl Drop for VsockHost {
     fn drop(&mut self) {
+        // Drop registration state synchronously. The shutdown below normally
+        // lets `reader_loop` observe EOF and call `close()`, but aborting the
+        // reader task can win that race. Closing here makes active command
+        // handles and stream receivers release immediately when the host is
+        // dropped.
+        self.shared.close();
         // Signal EOF on the socket so the reader_loop's `read()` and the
         // remote peer's blocking `read()` return immediately. Without this,
         // the split stream halves keep the fd alive until the reader task is
@@ -2069,6 +2075,40 @@ mod tests {
 
         drop(guest);
         let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+        assert!(rx.recv().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn host_drop_closes_active_command_result_and_stream() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let mut handle = host
+            .command_stream(CommandStreamRequest {
+                timeout_ms: 5000,
+                command: "stream",
+                env: &[],
+                sudo: false,
+                label: "host-drop",
+                stdout: CommandOutputPolicy::Stream {
+                    limit_bytes: 1024,
+                    chunk_limit_bytes: 16,
+                },
+                stderr: CommandOutputPolicy::Discard,
+                stream_capacity: 1,
+            })
+            .await
+            .unwrap();
+        let mut rx = handle.take_stream_receiver().unwrap();
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(msg.msg_type, MSG_COMMAND_START);
+
+        drop(host);
+
+        let err =
+            tokio::time::timeout(Duration::from_secs(5), handle.wait(Duration::from_secs(60)))
+                .await
+                .unwrap()
+                .unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
         assert!(rx.recv().await.is_none());
     }
