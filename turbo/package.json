@@ -47,12 +47,6 @@
         "fastestsmallesttextencoderdecoder"
       ]
     },
-    "auditConfig": {
-      "ignoreGhsas": [
-        "GHSA-gh4j-gqv2-49f6",
-        "GHSA-w5hq-g745-h8pq"
-      ]
-    },
     "overrides": {
       "fast-xml-parser": ">=5.5.7",
       "fast-xml-builder": ">=1.1.7",
