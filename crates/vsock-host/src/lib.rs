@@ -2636,6 +2636,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn malformed_command_frames_after_handle_drop_are_ignored() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let host = Arc::new(host);
+        let handle = start_capture_operation(&host, "abandoned").await;
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(msg.msg_type, MSG_COMMAND_START);
+        assert_eq!(operation_count(&host), 1);
+
+        drop(handle);
+        wait_for_operation_count(&host, 0).await;
+
+        let output_frame = vsock_proto::encode(MSG_COMMAND_OUTPUT, msg.seq, &[0]).unwrap();
+        guest.write_all(&output_frame).await.unwrap();
+        let result_frame = vsock_proto::encode(MSG_COMMAND_RESULT, msg.seq, &[0]).unwrap();
+        guest.write_all(&result_frame).await.unwrap();
+
+        assert_connection_accepts_legacy_exec(&host, &mut guest, &mut decoder).await;
+    }
+
+    #[tokio::test]
     async fn duplicate_command_result_after_completion_is_ignored() {
         let (host, mut guest, mut decoder) = setup_host_and_guest().await;
         let host = Arc::new(host);
