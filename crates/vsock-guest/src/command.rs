@@ -446,10 +446,11 @@ fn run_command_worker<S>(
         &connection_cancel,
         &command_cancel,
     );
-    if matches!(outcome, WaitOutcome::Cancelled)
+    if matches!(outcome, WaitOutcome::Cancelled | WaitOutcome::TimedOut)
         || connection_cancel.load(Ordering::Acquire)
         || command_cancel.load(Ordering::Acquire)
     {
+        command_cancel.store(true, Ordering::Release);
         drain_cancel.store(true, Ordering::Release);
     }
 
@@ -614,6 +615,9 @@ where
         Box::new(move || {
             let mut output_seq = 0u32;
             for event in rx {
+                if command_cancel.load(Ordering::Acquire) {
+                    break;
+                }
                 let payload = match vsock_proto::encode_command_output(
                     event.stream,
                     output_seq,
@@ -689,6 +693,11 @@ where
                     let Some(tx) = &output_tx else {
                         return true;
                     };
+                    if command_cancel.load(Ordering::Acquire)
+                        || drain_cancel.load(Ordering::Acquire)
+                    {
+                        return false;
+                    }
                     match tx.send(StreamEvent {
                         stream,
                         chunk: chunk.to_vec(),
