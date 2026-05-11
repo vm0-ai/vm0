@@ -710,10 +710,9 @@ async fn cancellation_while_waiting_for_idle_pool_lock_destroys_instead_of_parki
     );
     let pool_guard = idle_pool.lock().await;
     park_gate.release_one();
-    // Let the job observe the first post-park cancel check, then block on
-    // the held pool lock. This opens the specific lock-wait window without
-    // relying on wall-clock sleeps.
-    tokio::task::yield_now().await;
+    env.start_observer
+        .wait_before_idle_pool_ownership_transfer(run_id, Duration::from_secs(5))
+        .await;
     token.cancel();
     drop(pool_guard);
 

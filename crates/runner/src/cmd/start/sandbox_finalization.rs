@@ -20,7 +20,7 @@ use super::job_lifecycle::{
 };
 use super::ownership::OwnershipTransitions;
 #[cfg(test)]
-use super::{OuterJobPanicPoint, maybe_panic_outer_job};
+use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
 use crate::idle_pool::{
     DestroyOutcome, ParkCandidate, ParkCandidateParts, ParkResult, ParkingGate, StorageFingerprints,
 };
@@ -49,6 +49,8 @@ pub(super) struct FinalizeContext {
     pub(super) cleanup_state: RunCleanupState,
     #[cfg(test)]
     pub(super) outer_job_panic: Option<OuterJobPanicPoint>,
+    #[cfg(test)]
+    pub(super) test_observer: StartLoopTestObserver,
 }
 
 pub(super) async fn finalize_sandbox_for_completion(
@@ -81,6 +83,8 @@ pub(super) async fn finalize_sandbox_for_completion(
         cleanup_state,
         #[cfg(test)]
         outer_job_panic,
+        #[cfg(test)]
+        test_observer,
     } = ctx;
 
     let cancelled = cancel.is_cancelled();
@@ -163,6 +167,8 @@ pub(super) async fn finalize_sandbox_for_completion(
             BudgetOwnership::active(active_lease)
         } else {
             close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
+            #[cfg(test)]
+            test_observer.notify_before_idle_pool_ownership_transfer(run_id);
             let mut pool = idle_pool.lock().await;
             if cancel.is_cancelled() {
                 info!(
@@ -502,6 +508,7 @@ mod tests {
                 cancel: CancellationToken::new(),
                 cleanup_state: RunCleanupState::new(),
                 outer_job_panic: None,
+                test_observer: StartLoopTestObserver::default(),
             },
         )
         .await;
@@ -571,6 +578,7 @@ mod tests {
                 cancel,
                 cleanup_state: RunCleanupState::new(),
                 outer_job_panic: None,
+                test_observer: StartLoopTestObserver::default(),
             },
         )
         .await;

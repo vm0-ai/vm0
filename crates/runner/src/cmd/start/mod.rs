@@ -524,6 +524,7 @@ enum SignalSource {
 enum StartLoopEvent {
     BudgetExhaustedReactorEntered,
     IdleCleanupProcessed { expired_count: usize },
+    BeforeIdlePoolOwnershipTransfer { run_id: RunId },
 }
 
 #[cfg(test)]
@@ -624,6 +625,10 @@ impl StartLoopTestObserver {
         self.record(StartLoopEvent::BudgetExhaustedReactorEntered);
     }
 
+    fn notify_before_idle_pool_ownership_transfer(&self, run_id: RunId) {
+        self.record(StartLoopEvent::BeforeIdlePoolOwnershipTransfer { run_id });
+    }
+
     async fn wait_budget_exhausted_reactor(&self, timeout: Duration) {
         self.wait_for(timeout, "budget-exhausted reactor entry", |event| {
             matches!(event, StartLoopEvent::BudgetExhaustedReactorEntered).then_some(())
@@ -639,6 +644,20 @@ impl StartLoopTestObserver {
                 StartLoopEvent::IdleCleanupProcessed { expired_count } if *expired_count > 0 => {
                     Some(*expired_count)
                 }
+                _ => None,
+            },
+        )
+        .await
+    }
+
+    async fn wait_before_idle_pool_ownership_transfer(&self, run_id: RunId, timeout: Duration) {
+        self.wait_for(
+            timeout,
+            "idle-pool ownership transfer attempt",
+            |event| match event {
+                StartLoopEvent::BeforeIdlePoolOwnershipTransfer {
+                    run_id: observed_run_id,
+                } if *observed_run_id == run_id => Some(()),
                 _ => None,
             },
         )
@@ -869,6 +888,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         park_notify: Arc::clone(&park_notify),
         #[cfg(test)]
         outer_job_panic,
+        #[cfg(test)]
+        test_observer: test_observer.clone(),
     };
     let mut draining_idle_pool_drained = false;
     loop {

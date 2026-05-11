@@ -23,7 +23,7 @@ use super::orphan_reap::OrphanedActiveRuns;
 use super::ownership::{OwnershipTransitions, RunSandbox};
 use super::sandbox_finalization::{FinalizeContext, finalize_sandbox_for_completion};
 #[cfg(test)]
-use super::{OuterJobPanicPoint, maybe_panic_outer_job};
+use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
 use crate::executor::{self, ExecutorConfig};
 use crate::idle_pool::{ParkingGate, ReusableIdleSandbox};
 use crate::ids::RunId;
@@ -63,6 +63,8 @@ pub(super) struct SpawnContext {
     pub(super) park_notify: Arc<tokio::sync::Notify>,
     #[cfg(test)]
     pub(super) outer_job_panic: Option<OuterJobPanicPoint>,
+    #[cfg(test)]
+    pub(super) test_observer: StartLoopTestObserver,
 }
 
 /// Spawn a job executor task.
@@ -121,6 +123,8 @@ pub(super) fn spawn_job(
     let orphaned_active_runs_for_panic = ctx.orphaned_active_runs.clone();
     #[cfg(test)]
     let outer_job_panic = ctx.outer_job_panic;
+    #[cfg(test)]
+    let test_observer = ctx.test_observer.clone();
 
     // Captured for the post-complete deferred work below: the panic-arm
     // empty `JobTelemetry` construction, the final `telemetry.flush()`, and
@@ -248,6 +252,8 @@ pub(super) fn spawn_job(
                     cleanup_state: cleanup_state_for_body.clone(),
                     #[cfg(test)]
                     outer_job_panic,
+                    #[cfg(test)]
+                    test_observer,
                 },
             )
             .await;
