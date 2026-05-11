@@ -180,7 +180,7 @@ impl MockLifecycleGate {
         self.release_many(1);
     }
 
-    /// Release up to `count` blocked or future lifecycle operations.
+    /// Add `count` release permits for blocked or future lifecycle operations.
     pub fn release_many(&self, count: usize) {
         self.inner.release.add_permits(count);
     }
@@ -244,13 +244,13 @@ pub struct MockSandboxOverrides {
     /// FIFO queue of park results consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     park_behaviors: Mutex<VecDeque<LifecycleBehavior>>,
-    /// When set, `park` notifies `entered` and then blocks until `release`.
+    /// Optional gate that records and blocks every `park()` entry until released.
     park_gate: Mutex<Option<BlockingGate>>,
     /// FIFO queue of unpark results consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     unpark_behaviors: Mutex<VecDeque<LifecycleBehavior>>,
-    /// When set, factory `destroy` notifies `entered` and then blocks until
-    /// `release`.
+    /// Optional gate that records and blocks every factory `destroy()` entry
+    /// until released.
     destroy_gate: Mutex<Option<BlockingGate>>,
     /// FIFO queue of destroy behaviours consumed by every factory built with
     /// these overrides. Empty queue → default successful destroy.
