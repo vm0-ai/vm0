@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { waitFor } from "@testing-library/react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   detachedSetupPage,
   setupPage,
@@ -12,9 +13,13 @@ import { setMockOrgModelProviders } from "../../../mocks/handlers/api-org-model-
 import { pathname, search } from "../../location.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import {
+  chatPageAgentModelDefault$,
   chatPageModelSelection$,
   setChatPageModelSelection$,
 } from "../zero-chat-page.ts";
+import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
+import { setMockUserModelPreference } from "../../../mocks/handlers/api-user-model-preference.ts";
+import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../model-provider-default.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -126,6 +131,80 @@ describe("agent chat page setup", () => {
       ).resolves.toStrictEqual({
         modelProviderId: defaultProviderId,
         selectedModel: "claude-sonnet-4-6",
+      });
+    });
+  });
+
+  it("refreshes model-first user preference on entry", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000001";
+
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+    setMockTeam([
+      {
+        id: agentId,
+        displayName: "Zero",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
+    server.use(
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          agentId,
+          ownerId: "test-user-123",
+          description: null,
+          displayName: "Zero",
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: null,
+          customSkills: [],
+          modelProviderId: null,
+          selectedModel: null,
+        });
+      }),
+    );
+
+    setMockUserModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+
+    await setupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+      withoutRender: true,
+    });
+    await waitFor(async () => {
+      await expect(
+        context.store.get(chatPageAgentModelDefault$),
+      ).resolves.toStrictEqual({
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "claude-sonnet-4-6",
+      });
+    });
+
+    setMockUserModelPreference({
+      selectedModel: "glm-5.1",
+      updatedAt: "2026-03-10T00:01:00Z",
+    });
+
+    await setupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+      withoutRender: true,
+    });
+
+    await waitFor(async () => {
+      await expect(
+        context.store.get(chatPageAgentModelDefault$),
+      ).resolves.toStrictEqual({
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "glm-5.1",
       });
     });
   });

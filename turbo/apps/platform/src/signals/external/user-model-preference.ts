@@ -23,8 +23,10 @@ interface UserModelPreferenceSnapshot {
 
 const internalUserModelPreferenceSnapshot$ =
   state<UserModelPreferenceSnapshot | null>(null);
+const internalReloadUserModelPreference$ = state(0);
 
 export const userModelPreference$ = computed(async (get) => {
+  get(internalReloadUserModelPreference$);
   const modelFirstEnabled = get(modelFirstModelProviderEnabled$);
   if (!modelFirstEnabled) {
     return emptyUserModelPreference();
@@ -72,3 +74,11 @@ export const updateUserModelPreference$ = command(
     return result.body;
   },
 );
+
+export const reloadUserModelPreference$ = command(({ get, set }) => {
+  set(internalUserModelPreferenceSnapshot$, null);
+  set(
+    internalReloadUserModelPreference$,
+    get(internalReloadUserModelPreference$) + 1,
+  );
+});

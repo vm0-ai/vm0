@@ -34,6 +34,7 @@ import {
   setMockOnboardingStatus,
   resetMockOnboardingStatus,
 } from "../../../mocks/handlers/api-onboarding.ts";
+import { setMockUserModelPreference } from "../../../mocks/handlers/api-user-model-preference.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -42,7 +43,12 @@ const PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "thread-readonly-1";
 
-function makeThreadDetail() {
+function makeThreadDetail(
+  overrides: Partial<{
+    modelProviderId: string | null;
+    selectedModel: string | null;
+  }> = {},
+) {
   return {
     id: THREAD_ID,
     title: "My thread",
@@ -57,6 +63,7 @@ function makeThreadDetail() {
     draftAttachments: null,
     modelProviderId: null,
     selectedModel: null,
+    ...overrides,
   };
 }
 
@@ -78,10 +85,13 @@ function makeAssistantMessage(): PagedChatMessage {
   };
 }
 
-function setupMocks(messages: PagedChatMessage[]) {
+function setupMocks(
+  messages: PagedChatMessage[],
+  threadOverrides?: Parameters<typeof makeThreadDetail>[0],
+) {
   server.use(
     mockApi(chatThreadByIdContract.get, ({ respond }) => {
-      return respond(200, makeThreadDetail());
+      return respond(200, makeThreadDetail(threadOverrides));
     }),
     mockApi(chatThreadMessagesContract.list, ({ respond }) => {
       return respond(200, { messages });
@@ -103,6 +113,7 @@ describe("chat thread page — model picker read-only", () => {
     resetMockOnboardingStatus();
     setMockFeatureSwitches({});
     setMockOnboardingStatus({ defaultAgentId: AGENT_ID });
+    setMockUserModelPreference({ selectedModel: null, updatedAt: null });
     setMockOrgModelProviders([
       {
         id: PROVIDER_ID,
@@ -154,17 +165,21 @@ describe("chat thread page — model picker read-only", () => {
     setMockFeatureSwitches({
       [FeatureSwitchKey.ModelFirstModelProvider]: true,
     });
-    setupMocks([makeUserMessage()]);
+    setMockUserModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    setupMocks([makeUserMessage()], {
+      selectedModel: "glm-5.1",
+    });
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     const label = await waitFor(() => {
-      return screen.getByLabelText("Claude Sonnet 4.6");
+      return screen.getByLabelText("GLM-5.1");
     });
     expect(label.tagName).toBe("SPAN");
-    expect(
-      screen.queryByRole("combobox", { name: "Claude Sonnet 4.6" }),
-    ).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "GLM-5.1" })).toBeNull();
   });
 
   // CHAT-LOCK-004: empty thread keeps the picker interactive.

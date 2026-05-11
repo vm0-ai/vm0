@@ -234,3 +234,21 @@ export async function getTestChatThreadModelOverride(
     selectedModel: row?.selectedModel ?? null,
   };
 }
+
+export async function getTestUserSelectedModel(
+  orgId: string,
+  userId: string,
+): Promise<string | null> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ selectedModel: orgMembersMetadata.selectedModel })
+    .from(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.orgId, orgId),
+        eq(orgMembersMetadata.userId, userId),
+      ),
+    )
+    .limit(1);
+  return row?.selectedModel ?? null;
+}

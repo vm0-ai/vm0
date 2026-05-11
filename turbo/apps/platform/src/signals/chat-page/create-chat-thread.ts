@@ -50,6 +50,7 @@ import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import { composerModelProviders$ } from "../zero-page/composer-model-providers.ts";
 import {
+  MODEL_FIRST_SELECTION_PROVIDER_ID,
   resolveEffectiveAgentDefaultSelection,
   resolveModelFirstUserDefaultSelection,
 } from "../zero-page/model-provider-default.ts";
@@ -336,6 +337,15 @@ function createModelSelection(
       }
       const modelFirstEnabled = get(modelFirstModelProviderEnabled$);
       if (modelFirstEnabled) {
+        const thread = await get(threadData$);
+        if (thread?.selectedModel) {
+          return {
+            modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+            selectedModel: thread.selectedModel,
+          };
+        }
+        // Unstarted model-first threads inherit the current user preference;
+        // started threads carry selectedModel on the thread row.
         return null;
       }
       const thread = await get(threadData$);

@@ -6,14 +6,18 @@ import { POST } from "../route";
 import {
   createTestRequest,
   createTestCompose,
+  enableModelFirstModelProviderForUser,
+  insertOrgModelPolicy,
   insertOrgDefaultModelProvider,
   insertOrgNonDefaultModelProvider,
   insertUserDefaultModelProvider,
+  insertUserModelPreference,
   deleteTestModelProvider,
   setTestZeroAgentModelProvider,
   setOrgCredits,
   findTestCallbacksByRunId,
   findTestRunnerJobEntry,
+  findTestZeroRun,
   getTestRun,
   getTestChatMessagesByThread,
   countUserRows,
@@ -28,6 +32,7 @@ import {
 import {
   getTestChatThreadModelOverride,
   getTestModelProviderIdByType,
+  getTestUserSelectedModel,
 } from "../../../../../../src/__tests__/db-test-assertions/org";
 import { getTestZeroAgentId } from "../../../../../../src/__tests__/db-test-assertions/agents";
 import {
@@ -1310,6 +1315,130 @@ describe("POST /api/zero/chat/messages", () => {
         expect(response.status).toBe(402);
         const data = await response.json();
         expect(data.error.code).toBe("INSUFFICIENT_CREDITS");
+      });
+    });
+
+    describe("model-first thread pin", () => {
+      beforeEach(async () => {
+        await enableModelFirstModelProviderForUser(user.orgId, user.userId);
+        await insertOrgModelPolicy({
+          orgId: user.orgId,
+          model: "claude-opus-4-7",
+          isDefault: true,
+        });
+        await insertOrgModelPolicy({
+          orgId: user.orgId,
+          model: "claude-sonnet-4-6",
+        });
+      });
+
+      it("keeps follow-up chat runs on the first user-message model after user preference changes", async () => {
+        await insertUserModelPreference({
+          orgId: user.orgId,
+          userId: user.userId,
+          model: "claude-opus-4-7",
+        });
+
+        const first = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "first on opus",
+            }),
+          }),
+        );
+        expect(first.status).toBe(201);
+        const { threadId, runId } = await first.json();
+        await context.mocks.flushAfter();
+        await setTestRunStatus(runId, "completed");
+
+        const firstOverride = await getTestChatThreadModelOverride(threadId);
+        expect(firstOverride).toEqual({
+          modelProviderId: null,
+          selectedModel: "claude-opus-4-7",
+        });
+
+        await insertUserModelPreference({
+          orgId: user.orgId,
+          userId: user.userId,
+          model: "claude-sonnet-4-6",
+        });
+
+        const second = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "follow up after preference changes",
+              threadId,
+            }),
+          }),
+        );
+        expect(second.status).toBe(201);
+        const { runId: secondRunId } = await second.json();
+        await context.mocks.flushAfter();
+
+        const secondRun = await findTestZeroRun(secondRunId);
+        expect(secondRun?.selectedModel).toBe("claude-opus-4-7");
+
+        const secondOverride = await getTestChatThreadModelOverride(threadId);
+        expect(secondOverride).toEqual({
+          modelProviderId: null,
+          selectedModel: "claude-opus-4-7",
+        });
+      });
+
+      it("does not rewrite user preference when a pinned thread sends the same modelSelection", async () => {
+        await insertUserModelPreference({
+          orgId: user.orgId,
+          userId: user.userId,
+          model: "claude-opus-4-7",
+        });
+
+        const first = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "first on opus",
+            }),
+          }),
+        );
+        expect(first.status).toBe(201);
+        const { threadId, runId } = await first.json();
+        await context.mocks.flushAfter();
+        await setTestRunStatus(runId, "completed");
+
+        await insertUserModelPreference({
+          orgId: user.orgId,
+          userId: user.userId,
+          model: "claude-sonnet-4-6",
+        });
+
+        const second = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "follow up with locked picker body",
+              threadId,
+              modelSelection: {
+                modelProviderId: "00000000-0000-4000-8000-000000000000",
+                selectedModel: "claude-opus-4-7",
+              },
+            }),
+          }),
+        );
+        expect(second.status).toBe(201);
+
+        await expect(
+          getTestUserSelectedModel(user.orgId, user.userId),
+        ).resolves.toBe("claude-sonnet-4-6");
       });
     });
 

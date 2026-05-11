@@ -16,6 +16,12 @@ export function resetMockUserModelPreference(): void {
   };
 }
 
+export function setMockUserModelPreference(
+  preference: UserModelPreferenceResponse,
+): void {
+  mockUserModelPreference = preference;
+}
+
 export const apiUserModelPreferenceHandlers = [
   mockApi(zeroUserModelPreferenceContract.get, ({ respond }) => {
     return respond(200, mockUserModelPreference);

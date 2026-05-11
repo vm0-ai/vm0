@@ -16,7 +16,7 @@ interface UserModelDefaultSource {
   selectedModel: string | null;
 }
 
-const MODEL_FIRST_SELECTION_PROVIDER_ID =
+export const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 
 function createModelFirstSelection(

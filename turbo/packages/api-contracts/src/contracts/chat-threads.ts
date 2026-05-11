@@ -211,9 +211,10 @@ const chatThreadDetailSchema = z.object({
   draftContent: z.string().nullable().optional(),
   draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
   /**
-   * Per-thread model override. Both fields set together or both null.
-   * When set, the send route uses this combination (overriding the agent
-   * and org defaults) for the next run. Optional for back-compat.
+   * Per-thread model pin. Provider-first threads store modelProviderId +
+   * selectedModel together; model-first threads can store selectedModel with
+   * route metadata and a null modelProviderId. When set, the send route uses
+   * this pin instead of drifting with current defaults.
    */
   modelProviderId: z.string().nullable().optional(),
   modelProviderType: modelProviderTypeSchema.nullable().optional(),

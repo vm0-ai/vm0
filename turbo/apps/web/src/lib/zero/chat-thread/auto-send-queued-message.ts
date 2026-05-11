@@ -329,6 +329,7 @@ export async function autoSendQueuedMessageOnRunComplete(input: {
     modelProviderCredentialScope:
       queuedMessage.modelProviderCredentialScope ?? undefined,
     selectedModelOverride: queuedMessage.selectedModel ?? undefined,
+    explicitModelFirstModelSelection: queuedMessage.selectedModel !== null,
     preloadedAgent: agent,
   });
 
