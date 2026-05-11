@@ -809,6 +809,7 @@ fn command_stream_handles_more_chunks_than_output_queue_capacity() {
 #[test]
 fn command_stream_disconnect_cancels_child() {
     let pid_path = unique_pid_path("command-stream-disconnect");
+    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
     let (handle, mut host_stream) = start_guest_connection();
 
     let command = format!(
@@ -826,7 +827,7 @@ fn command_stream_disconnect_cancels_child() {
         },
         CommandOutputPolicy::Discard,
     );
-    let pid = read_pid_file(pid_path.as_str());
+    let pid = child_guard.read_pid();
     let chunk = read_command_output_chunk(&mut host_stream, 117);
     assert_eq!(chunk.stream, CommandOutputStream::Stdout);
     assert!(!chunk.chunk.is_empty());
@@ -838,6 +839,7 @@ fn command_stream_disconnect_cancels_child() {
     drop(host_stream);
     let _ = handle.join();
     wait_for_pid_exit(pid, "command stream host disconnect");
+    child_guard.disarm();
 }
 
 #[test]
@@ -1073,6 +1075,7 @@ fn command_invalid_env_returns_start_failed_without_leaking_value() {
 #[test]
 fn command_explicit_cancel_kills_child_and_returns_cancelled() {
     let pid_path = unique_pid_path("command-cancel");
+    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
     let (handle, mut host_stream) = start_guest_connection();
 
     let command = format!("echo $$ > '{}'; sleep 60", pid_path.as_str());
@@ -1084,7 +1087,7 @@ fn command_explicit_cancel_kills_child_and_returns_cancelled() {
         CommandOutputPolicy::Capture { limit_bytes: 64 },
         CommandOutputPolicy::Capture { limit_bytes: 64 },
     );
-    let pid = read_pid_file(pid_path.as_str());
+    let pid = child_guard.read_pid();
     assert!(
         pid_alive(pid),
         "command child should be running before cancel"
@@ -1095,6 +1098,7 @@ fn command_explicit_cancel_kills_child_and_returns_cancelled() {
 
     assert_eq!(result.termination, CommandTermination::Cancelled);
     wait_for_pid_exit(pid, "command explicit cancel");
+    child_guard.disarm();
 
     finish_guest_connection(handle, host_stream);
 }
@@ -1102,6 +1106,7 @@ fn command_explicit_cancel_kills_child_and_returns_cancelled() {
 #[test]
 fn command_connection_close_cancels_child() {
     let pid_path = unique_pid_path("command-connection-close");
+    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
     let (handle, mut host_stream) = start_guest_connection();
 
     let command = format!("echo $$ > '{}'; sleep 60", pid_path.as_str());
@@ -1113,7 +1118,7 @@ fn command_connection_close_cancels_child() {
         CommandOutputPolicy::Capture { limit_bytes: 64 },
         CommandOutputPolicy::Capture { limit_bytes: 64 },
     );
-    let pid = read_pid_file(pid_path.as_str());
+    let pid = child_guard.read_pid();
     assert!(
         pid_alive(pid),
         "command child should be running before disconnect"
@@ -1122,11 +1127,13 @@ fn command_connection_close_cancels_child() {
     drop(host_stream);
     let _ = handle.join();
     wait_for_pid_exit(pid, "command host disconnect");
+    child_guard.disarm();
 }
 
 #[test]
 fn command_duplicate_start_returns_error_without_cancelling_active_command() {
     let pid_path = unique_pid_path("command-duplicate");
+    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
     let (handle, mut host_stream) = start_guest_connection();
 
     let command = format!("echo $$ > '{}'; sleep 60", pid_path.as_str());
@@ -1138,7 +1145,7 @@ fn command_duplicate_start_returns_error_without_cancelling_active_command() {
         CommandOutputPolicy::Capture { limit_bytes: 64 },
         CommandOutputPolicy::Capture { limit_bytes: 64 },
     );
-    let pid = read_pid_file(pid_path.as_str());
+    let pid = child_guard.read_pid();
 
     send_command_start(
         &mut host_stream,
@@ -1162,6 +1169,7 @@ fn command_duplicate_start_returns_error_without_cancelling_active_command() {
     let (_chunks, result) = read_command_result(&mut host_stream, 113);
     assert_eq!(result.termination, CommandTermination::Cancelled);
     wait_for_pid_exit(pid, "command duplicate cleanup");
+    child_guard.disarm();
 
     finish_guest_connection(handle, host_stream);
 }
@@ -1742,6 +1750,51 @@ fn kill_pid_group(pid: u32) {
     // SAFETY: best-effort cleanup for a pid produced by a test child process.
     unsafe {
         libc::kill(-(pid as i32), libc::SIGKILL);
+    }
+}
+
+struct ProcessGroupFileGuard<'a> {
+    pid_path: &'a str,
+    pid: Option<u32>,
+    armed: bool,
+}
+
+impl<'a> ProcessGroupFileGuard<'a> {
+    fn new(pid_path: &'a str) -> Self {
+        Self {
+            pid_path,
+            pid: None,
+            armed: true,
+        }
+    }
+
+    fn read_pid(&mut self) -> u32 {
+        let pid = read_pid_file(self.pid_path);
+        self.pid = Some(pid);
+        pid
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for ProcessGroupFileGuard<'_> {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let pid = self.pid.or_else(|| {
+            std::fs::read_to_string(self.pid_path)
+                .ok()
+                .and_then(|contents| contents.trim().parse().ok())
+        });
+        let Some(pid) = pid else {
+            return;
+        };
+        if pid > 0 && pid_alive(pid) {
+            kill_pid_group(pid);
+        }
     }
 }
 
