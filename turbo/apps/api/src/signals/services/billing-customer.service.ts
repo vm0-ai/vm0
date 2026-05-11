@@ -1,0 +1,53 @@
+import { command } from "ccstate";
+import { sql, eq } from "drizzle-orm";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+
+import { writeDb$ } from "../external/db";
+import { nowDate } from "../external/time";
+import { getStripeClient } from "../external/stripe-client";
+
+/**
+ * Get or create a Stripe customer for an org. Serializes per-org via
+ * pg_advisory_xact_lock so concurrent checkout / redeem requests in the
+ * same org cannot mint multiple Stripe customers and orphan webhook events.
+ *
+ * Lock key `stripe_customer_${orgId}` matches apps/web exactly so cross-
+ * process races during the web→api cutover coordinate on the same lock.
+ */
+export const getOrCreateStripeCustomer$ = command(
+  ({ set }, orgId: string, signal: AbortSignal): Promise<string> => {
+    const writeDb = set(writeDb$);
+    return writeDb.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext('stripe_customer_' || ${orgId}))`,
+      );
+      signal.throwIfAborted();
+
+      const [row] = await tx
+        .select({ stripeCustomerId: orgMetadata.stripeCustomerId })
+        .from(orgMetadata)
+        .where(eq(orgMetadata.orgId, orgId))
+        .limit(1);
+      signal.throwIfAborted();
+
+      if (row?.stripeCustomerId) {
+        return row.stripeCustomerId;
+      }
+
+      const stripe = getStripeClient();
+      const customer = await stripe.customers.create({ metadata: { orgId } });
+      signal.throwIfAborted();
+
+      await tx
+        .insert(orgMetadata)
+        .values({ orgId, stripeCustomerId: customer.id, credits: 0 })
+        .onConflictDoUpdate({
+          target: orgMetadata.orgId,
+          set: { stripeCustomerId: customer.id, updatedAt: nowDate() },
+        });
+      signal.throwIfAborted();
+
+      return customer.id;
+    });
+  },
+);

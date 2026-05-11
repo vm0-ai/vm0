@@ -35,6 +35,20 @@ const SCHEMA = {
       }
       return z.record(z.string(), z.array(z.string())).parse(JSON.parse(val));
     }),
+  ZERO_ONE_TIME_CAMPAIGN: z
+    .string()
+    .optional()
+    .transform((val) => {
+      if (!val) {
+        return undefined;
+      }
+      return z
+        .record(
+          z.string(),
+          z.object({ priceId: z.string(), couponId: z.string() }),
+        )
+        .parse(JSON.parse(val));
+    }),
   ABLY_API_KEY: z.string().min(1),
   GOOGLE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),

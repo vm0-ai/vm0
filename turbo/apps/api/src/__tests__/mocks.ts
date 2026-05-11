@@ -70,12 +70,20 @@ export interface ApiTestMocks {
     readonly checkout: {
       readonly sessions: {
         readonly create: AsyncMock;
+        readonly retrieve: AsyncMock;
+        readonly expire: AsyncMock;
       };
     };
     readonly billingPortal: {
       readonly sessions: {
         readonly create: AsyncMock;
       };
+    };
+    readonly coupons: {
+      readonly retrieve: AsyncMock;
+    };
+    readonly prices: {
+      readonly retrieve: AsyncMock;
     };
   };
   readonly telegram: {
@@ -151,12 +159,20 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     checkout: {
       sessions: {
         create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+        retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+        expire: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       },
     },
     billingPortal: {
       sessions: {
         create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       },
+    },
+    coupons: {
+      retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
+    prices: {
+      retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
   };
 
@@ -289,9 +305,13 @@ vi.mock("@vercel/otel", () => {
   return apiTestMocks.otel;
 });
 
-vi.mock("stripe", () => {
-  return {
-    default: vi.fn(() => {
+vi.mock("stripe", async (importOriginal) => {
+  // Preserve the real `Stripe.errors.*` classes so route-level `instanceof`
+  // checks (and tests constructing `new Stripe.errors.StripeInvalidRequestError`)
+  // continue to work; only the constructor surface is stubbed.
+  const actual = await importOriginal<typeof import("stripe")>();
+  const MockStripe = Object.assign(
+    vi.fn(() => {
       return {
         invoices: {
           list: apiTestMocks.stripe.invoices.list,
@@ -313,6 +333,8 @@ vi.mock("stripe", () => {
         checkout: {
           sessions: {
             create: apiTestMocks.stripe.checkout.sessions.create,
+            retrieve: apiTestMocks.stripe.checkout.sessions.retrieve,
+            expire: apiTestMocks.stripe.checkout.sessions.expire,
           },
         },
         billingPortal: {
@@ -320,9 +342,17 @@ vi.mock("stripe", () => {
             create: apiTestMocks.stripe.billingPortal.sessions.create,
           },
         },
+        coupons: {
+          retrieve: apiTestMocks.stripe.coupons.retrieve,
+        },
+        prices: {
+          retrieve: apiTestMocks.stripe.prices.retrieve,
+        },
       };
     }),
-  };
+    { errors: actual.default.errors },
+  );
+  return { default: MockStripe };
 });
 
 vi.mock("@slack/web-api", () => {
@@ -444,7 +474,11 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.subscriptions.retrieve.mockReset();
   apiTestMocks.stripe.subscriptions.update.mockReset();
   apiTestMocks.stripe.checkout.sessions.create.mockReset();
+  apiTestMocks.stripe.checkout.sessions.retrieve.mockReset();
+  apiTestMocks.stripe.checkout.sessions.expire.mockReset();
   apiTestMocks.stripe.billingPortal.sessions.create.mockReset();
+  apiTestMocks.stripe.coupons.retrieve.mockReset();
+  apiTestMocks.stripe.prices.retrieve.mockReset();
   // Re-install the Stripe client override so getStripeClient() returns
   // the centralized mock surface (the vi.mock("stripe") factory above
   // doesn't compose with `new StripeSDK()` because vi.fn isn't a real
