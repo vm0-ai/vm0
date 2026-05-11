@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { now } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
 import {
   deleteInvoicesOrg$,
@@ -217,7 +218,7 @@ describe("POST /api/zero/billing/downgrade", () => {
 
   it("downgrades pro to free via cancel at period end", async () => {
     const subId = `sub-pro-free-${randomUUID().slice(0, 8)}`;
-    const periodEnd = new Date(Date.now() + 30 * 86400 * 1000);
+    const periodEnd = new Date(now() + 30 * 86_400 * 1000);
     const fixture = await track(
       store.set(
         seedInvoicesOrg$,
@@ -263,7 +264,7 @@ describe("POST /api/zero/billing/downgrade", () => {
 
   it("downgrades team to free via cancel at period end", async () => {
     const subId = `sub-team-free-${randomUUID().slice(0, 8)}`;
-    const periodEnd = new Date(Date.now() + 30 * 86400 * 1000);
+    const periodEnd = new Date(now() + 30 * 86_400 * 1000);
     const fixture = await track(
       store.set(
         seedInvoicesOrg$,

@@ -11,7 +11,11 @@ import { activePriceId } from "./zero-billing-checkout.service";
 
 const L = logger("BillingDowngrade");
 
-const TIER_RANK: Record<OrgTier, number> = { free: 0, pro: 1, team: 2 };
+const TIER_RANK = Object.freeze<Record<OrgTier, number>>({
+  free: 0,
+  pro: 1,
+  team: 2,
+});
 
 type DowngradeResult =
   | { readonly ok: true; readonly effectiveDate: string | null }
@@ -84,7 +88,7 @@ export const downgradeSubscription$ = command(
       signal.throwIfAborted();
 
       const effectiveDate = org.currentPeriodEnd?.toISOString() ?? null;
-      L.info("subscription cancellation initiated", {
+      L.debug("subscription cancellation initiated", {
         orgId: args.orgId,
         targetTier: args.targetTier,
         effectiveDate,
@@ -113,7 +117,7 @@ export const downgradeSubscription$ = command(
     });
     signal.throwIfAborted();
 
-    L.info("subscription downgraded", {
+    L.debug("subscription downgraded", {
       orgId: args.orgId,
       from: currentTier,
       to: args.targetTier,
