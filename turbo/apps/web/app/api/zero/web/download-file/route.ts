@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import {
   listS3Objects,
   downloadS3Buffer,
@@ -8,6 +7,10 @@ import {
 import { env } from "../../../../../src/env";
 import { logger } from "../../../../../src/lib/shared/logger";
 import { inferMimetype } from "../../../../../src/lib/shared/mimetype";
+import {
+  isAuthError,
+  requireAuth,
+} from "../../../../../src/lib/auth/require-auth";
 
 const log = logger("api:zero:web:download-file");
 
@@ -31,11 +34,11 @@ export async function GET(request: NextRequest): Promise<Response> {
   initServices();
 
   const authHeader = request.headers.get("authorization") ?? undefined;
-  const authCtx = await getAuthContext(authHeader, {
+  const authCtx = await requireAuth(authHeader, {
     requiredCapability: "file:read",
   });
-  if (!authCtx) {
-    return errorResponse(401, "Not authenticated", "UNAUTHORIZED");
+  if (isAuthError(authCtx)) {
+    return NextResponse.json(authCtx.body, { status: authCtx.status });
   }
 
   const fileId = request.nextUrl.searchParams.get("file_id");

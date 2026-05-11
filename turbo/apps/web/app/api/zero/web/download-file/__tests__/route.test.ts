@@ -41,7 +41,7 @@ describe("GET /api/zero/web/download-file", () => {
     expect(response.status).toBe(401);
   });
 
-  it("returns 401 for sandbox token without file:read capability", async () => {
+  it("returns 403 for sandbox token without file:read capability", async () => {
     mockClerk({ userId: null });
     const token = await generateSandboxToken(user.userId, "run-1", "org-test");
 
@@ -51,7 +51,7 @@ describe("GET /api/zero/web/download-file", () => {
     });
     const response = await GET(request as never);
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(403);
   });
 
   it("returns 400 when file_id query param is missing", async () => {
