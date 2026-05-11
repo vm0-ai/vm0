@@ -15,6 +15,7 @@ import { zeroApiKeysRoutes } from "./routes/zero-api-keys";
 import { zeroBillingAutoRechargeRoutes } from "./routes/zero-billing-auto-recharge";
 import { zeroBillingCheckoutRoutes } from "./routes/zero-billing-checkout";
 import { zeroBillingInvoicesRoutes } from "./routes/zero-billing-invoices";
+import { zeroBillingPortalRoutes } from "./routes/zero-billing-portal";
 import { zeroBillingStatusRoutes } from "./routes/zero-billing-status";
 import { zeroChatThreadRoutes } from "./routes/zero-chat-threads";
 import { zeroComposesRoutes } from "./routes/zero-composes";
@@ -75,6 +76,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroBillingAutoRechargeRoutes,
   ...zeroBillingCheckoutRoutes,
   ...zeroBillingInvoicesRoutes,
+  ...zeroBillingPortalRoutes,
   ...zeroBillingStatusRoutes,
   ...zeroChatThreadRoutes,
   ...zeroComposesRoutes,
