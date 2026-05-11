@@ -2,7 +2,7 @@
 
 pub const FIRECRACKER_VERSION: &str = "v1.15.1";
 pub const KERNEL_VERSION: &str = "6.1.155";
-pub const MITMPROXY_VERSION: &str = "12.2.1";
+pub const MITMPROXY_VERSION: &str = "12.2.2";
 
 // SHA256 checksums for installed artifacts, keyed by arch.
 pub const FIRECRACKER_SHA256_X86_64: &str =
@@ -14,9 +14,9 @@ pub const KERNEL_SHA256_X86_64: &str =
 pub const KERNEL_SHA256_AARCH64: &str =
     "e3544b10603acbf3db492cb52e000d22ba202cb4b63b9add027565683e11c591";
 pub const MITMDUMP_SHA256_X86_64: &str =
-    "0adfd86a006b593dce745b989f305f14acd94edadf7f998b6985555b44838167";
+    "06732d2f9ebb9d86456220267613c6771ed68010a7a8bbe7bc4d55f3a09e2880";
 pub const MITMDUMP_SHA256_AARCH64: &str =
-    "48fb2cd30945f03faa5cc2797dd6e5762f09ebe8754da87ac8c372dc82e694df";
+    "0afdc07ff487c26caf737c004d870e0957da4645f6d525a6d7d14ccf20a560fc";
 
 /// System CA certificate bundle path. The standalone mitmproxy binary bundles its
 /// own (incomplete) certifi CA store; we override it with the host's system store.
