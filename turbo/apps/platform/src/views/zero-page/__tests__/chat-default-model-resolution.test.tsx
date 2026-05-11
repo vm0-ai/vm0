@@ -73,6 +73,11 @@ const MOONSHOT_PROVIDER_ID = "00000000-0000-4000-a000-000000000002";
 const ZAI_PROVIDER_ID = "00000000-0000-4000-a000-000000000003";
 
 const THREAD_ID = "thread-default-model-1";
+function legacyModelProviderSwitches() {
+  return {
+    [FeatureSwitchKey.ModelFirstModelProvider]: false,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Mock helpers
@@ -274,6 +279,22 @@ async function expectAgentChatLoaded(): Promise<void> {
   });
 }
 
+function openAgentChatPage(): void {
+  detachedSetupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: legacyModelProviderSwitches(),
+  });
+}
+
+function openThreadPage(): void {
+  detachedSetupPage({
+    context,
+    path: `/chats/${THREAD_ID}`,
+    featureSwitches: legacyModelProviderSwitches(),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -284,7 +305,6 @@ describe("chat composer — default model resolution", () => {
     resetMockPersonalModelProviders();
     resetMockOrgModelPolicies();
     resetMockOnboardingStatus();
-    setMockFeatureSwitches({});
     // Align onboarding default with the test agent so currentChatAgentId$
     // resolves deterministically to AGENT_ID on the /agents/:id/chat route.
     setMockOnboardingStatus({ defaultAgentId: AGENT_ID });
@@ -303,7 +323,7 @@ describe("chat composer — default model resolution", () => {
     });
     mockAgent({ modelProviderId: null, selectedModel: null });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    openAgentChatPage();
     await expectAgentChatLoaded();
 
     await expectComposerShowsModel("Kimi K2.5");
@@ -325,7 +345,7 @@ describe("chat composer — default model resolution", () => {
       selectedModel: "claude-opus-4-7",
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    openAgentChatPage();
     await expectAgentChatLoaded();
 
     await expectComposerShowsModel("Claude Opus 4.7");
@@ -352,7 +372,13 @@ describe("chat composer — default model resolution", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ModelFirstModelProvider]: true,
+      },
+    });
     await expectAgentChatLoaded();
     await expectComposerShowsModel("Claude Opus 4.7");
 
@@ -423,7 +449,15 @@ describe("chat composer — default model resolution", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ModelFirstModelProvider]: true,
+        [FeatureSwitchKey.CodexBeta]: true,
+        [FeatureSwitchKey.CodexOauthProvider]: true,
+      },
+    });
     await expectAgentChatLoaded();
     await expectComposerShowsModel("GPT-5.5");
 
@@ -463,7 +497,7 @@ describe("chat composer — default model resolution", () => {
       selectedModel: "claude-opus-4-6",
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    openAgentChatPage();
     await expectAgentChatLoaded();
 
     await expectComposerShowsModel("Claude Opus 4.6");
@@ -502,7 +536,15 @@ describe("chat composer — default model resolution", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ModelFirstModelProvider]: true,
+        [FeatureSwitchKey.CodexBeta]: true,
+        [FeatureSwitchKey.CodexOauthProvider]: true,
+      },
+    });
     await expectComposerShowsModel("GPT-5.5");
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -536,7 +578,7 @@ describe("chat composer — default model resolution", () => {
     });
     mockAgent({ modelProviderId: null, selectedModel: null });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    openAgentChatPage();
     await expectAgentChatLoaded();
 
     await expectComposerShowsModel("Kimi K2.5");
@@ -552,7 +594,7 @@ describe("chat composer — default model resolution", () => {
     });
     mockAgent({ modelProviderId: null, selectedModel: null });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    openAgentChatPage();
     await expectAgentChatLoaded();
 
     await expectComposerShowsModel("Claude Sonnet 4.6");
@@ -566,7 +608,7 @@ describe("chat composer — default model resolution", () => {
     });
     mockAgent({ modelProviderId: null, selectedModel: null });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    openAgentChatPage();
     await expectAgentChatLoaded();
     server.use(
       ...mockUploadSuccess({
@@ -618,7 +660,7 @@ describe("chat composer — default model resolution", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    openAgentChatPage();
     await expectAgentChatLoaded();
     await expectComposerShowsModel("Claude Sonnet 4.6");
 
@@ -693,7 +735,7 @@ describe("chat composer — default model resolution", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    openThreadPage();
     await expectComposerShowsModel("Claude Sonnet 4.6");
 
     const fileInput =
@@ -751,7 +793,7 @@ describe("chat composer — default model resolution", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    openAgentChatPage();
     await expectAgentChatLoaded();
     await expectComposerShowsModel("GLM-5.1");
 
@@ -816,7 +858,7 @@ describe("chat composer — default model resolution", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    openThreadPage();
 
     await expectThreadComposerShowsModel("GLM-5.1");
   });
@@ -836,7 +878,7 @@ describe("chat composer — default model resolution", () => {
     });
     mockThread({ modelProviderId: null, selectedModel: null });
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    openThreadPage();
 
     // Thread has no stored values yet — picker remains interactive.
     await expectComposerShowsModel("Claude Opus 4.7");
