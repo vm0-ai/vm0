@@ -15,6 +15,15 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 export async function GET(request: Request) {
   initServices();
 
+  const url = new URL(request.url);
+  const runId = url.searchParams.get("runId");
+  if (!runId) {
+    return NextResponse.json(
+      { error: { message: "runId is required", code: "BAD_REQUEST" } },
+      { status: 400 },
+    );
+  }
+
   const authCtx = await getAuthContext(
     request.headers.get("authorization") ?? undefined,
   );
@@ -25,15 +34,6 @@ export async function GET(request: Request) {
     );
   }
   const { userId } = authCtx;
-
-  const url = new URL(request.url);
-  const runId = url.searchParams.get("runId");
-  if (!runId) {
-    return NextResponse.json(
-      { error: { message: "runId is required", code: "BAD_REQUEST" } },
-      { status: 400 },
-    );
-  }
 
   const org = await resolveOrgOrNull(authCtx);
 

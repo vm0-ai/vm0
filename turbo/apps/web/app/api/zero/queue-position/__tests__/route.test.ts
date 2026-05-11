@@ -52,6 +52,19 @@ describe("GET /api/zero/queue-position", () => {
     expect(data.error.code).toBe("BAD_REQUEST");
   });
 
+  it("should return 400 when runId is missing before auth", async () => {
+    mockClerk({ userId: null });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/queue-position",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error.code).toBe("BAD_REQUEST");
+  });
+
   it("should return 404 when run does not belong to user", async () => {
     const request = createTestRequest(
       `http://localhost:3000/api/zero/queue-position?runId=${randomUUID()}`,
@@ -120,5 +133,31 @@ describe("GET /api/zero/queue-position", () => {
     expect(response.status).toBe(200);
     expect(data.position).toBe(1);
     expect(data.total).toBe(1);
+  });
+
+  it("should return the queued run position within the org queue", async () => {
+    const first = await seedTestRun(user.userId, testComposeId, {
+      status: "queued",
+    });
+    const second = await seedTestRun(user.userId, testComposeId, {
+      status: "queued",
+    });
+
+    await insertTestQueueEntry(first.runId, {
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+    await insertTestQueueEntry(second.runId, {
+      createdAt: new Date("2026-01-01T00:00:01.000Z"),
+    });
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/zero/queue-position?runId=${second.runId}`,
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.position).toBe(2);
+    expect(data.total).toBe(2);
   });
 });
