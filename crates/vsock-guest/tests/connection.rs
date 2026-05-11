@@ -1178,6 +1178,61 @@ fn command_duplicate_start_returns_error_without_cancelling_active_command() {
 }
 
 #[test]
+fn command_different_sequences_run_concurrently_and_cancel_independently() {
+    let pid_path = unique_pid_path("command-concurrent");
+    let fifo_path = unique_tmp_path("command-concurrent", ".fifo");
+    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let blocked_command = format!(
+        "mkfifo '{}'; echo $$ > '{}'; read _ < '{}'",
+        fifo_path.as_str(),
+        pid_path.as_str(),
+        fifo_path.as_str()
+    );
+    send_command_start(
+        &mut host_stream,
+        120,
+        &blocked_command,
+        0,
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+    );
+    let pid = child_guard.read_pid();
+    assert!(
+        pid_alive(pid),
+        "first command should remain active while second command starts"
+    );
+
+    send_command_start(
+        &mut host_stream,
+        121,
+        "printf second",
+        5000,
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+        CommandOutputPolicy::Discard,
+    );
+    let (_chunks, second) = read_command_result(&mut host_stream, 121);
+    assert_eq!(
+        second.termination,
+        CommandTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(second.stdout, Some(b"second".to_vec()));
+    assert!(
+        pid_alive(pid),
+        "second command completion should not cancel first command"
+    );
+
+    send_command_cancel(&mut host_stream, 120);
+    let (_chunks, first) = read_command_result(&mut host_stream, 120);
+    assert_eq!(first.termination, CommandTermination::Cancelled);
+    wait_for_pid_exit(pid, "command concurrent cleanup");
+    child_guard.disarm();
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn command_unknown_cancel_is_ignored() {
     let (handle, mut host_stream) = start_guest_connection();
 
