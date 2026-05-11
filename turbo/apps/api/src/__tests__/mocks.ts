@@ -51,6 +51,8 @@ export interface ApiTestMocks {
     };
     readonly files: {
       readonly info: AsyncMock;
+      readonly getUploadURLExternal: AsyncMock;
+      readonly completeUploadExternal: AsyncMock;
     };
     readonly fetchFile: AsyncMock;
   };
@@ -143,6 +145,8 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
     files: {
       info: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      getUploadURLExternal: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      completeUploadExternal: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     fetchFile: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   };
@@ -382,6 +386,9 @@ vi.mock("@slack/web-api", () => {
         },
         files: {
           info: apiTestMocks.slack.files.info,
+          getUploadURLExternal: apiTestMocks.slack.files.getUploadURLExternal,
+          completeUploadExternal:
+            apiTestMocks.slack.files.completeUploadExternal,
         },
       };
     }),
@@ -488,6 +495,8 @@ export function resetApiTestMocks(): void {
   apiTestMocks.slack.conversations.list.mockReset();
   apiTestMocks.slack.conversations.open.mockReset();
   apiTestMocks.slack.files.info.mockReset();
+  apiTestMocks.slack.files.getUploadURLExternal.mockReset();
+  apiTestMocks.slack.files.completeUploadExternal.mockReset();
   apiTestMocks.slack.fetchFile.mockReset();
   apiTestMocks.stripe.invoices.list.mockReset();
   apiTestMocks.stripe.invoices.create.mockReset();
