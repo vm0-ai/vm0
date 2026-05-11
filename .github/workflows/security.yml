@@ -184,6 +184,13 @@ jobs:
       - name: Install actionlint
         run: bash <(curl -fsSL --retry 5 --retry-delay 2 --retry-max-time 60 --retry-all-errors https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
 
+      - name: Run workflow script tests
+        run: |
+          bash -n .github/scripts/*.sh .github/scripts/tests/*.sh
+          for test_script in .github/scripts/tests/*.sh; do
+            bash "$test_script"
+          done
+
       - name: Run actionlint
         run: ./actionlint
 
