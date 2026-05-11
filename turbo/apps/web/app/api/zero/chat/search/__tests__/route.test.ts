@@ -26,6 +26,13 @@ vi.mock("@axiomhq/js");
 const context = testContext();
 
 const URL_BASE = "http://localhost:3000/api/zero/chat/search";
+const unauthorizedBody = {
+  error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+};
+
+async function expectJsonBody(res: Response, expected: unknown): Promise<void> {
+  expect(await res.json()).toStrictEqual(expected);
+}
 
 describe("GET /api/zero/chat/search", () => {
   beforeEach(() => {
@@ -38,6 +45,16 @@ describe("GET /api/zero/chat/search", () => {
     const response = await GET(createTestRequest(`${URL_BASE}?keyword=hello`));
 
     expect(response.status).toBe(401);
+    await expectJsonBody(response, unauthorizedBody);
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mockClerk({ userId: uniqueId("user"), orgId: null });
+
+    const response = await GET(createTestRequest(`${URL_BASE}?keyword=hello`));
+
+    expect(response.status).toBe(401);
+    await expectJsonBody(response, unauthorizedBody);
   });
 
   it("returns 403 when token lacks chat-message:read capability", async () => {

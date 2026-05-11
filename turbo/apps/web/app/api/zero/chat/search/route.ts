@@ -113,6 +113,15 @@ const messageColumns = {
   runId: effectiveChatMessageRunId(),
 };
 
+function unauthenticatedResponse() {
+  return {
+    status: 401 as const,
+    body: {
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    },
+  };
+}
+
 const router = tsr.router(chatSearchContract, {
   search: async ({ query, headers }) => {
     initServices();
@@ -121,6 +130,7 @@ const router = tsr.router(chatSearchContract, {
       requiredCapability: "chat-message:read",
     });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthenticatedResponse();
 
     const { org } = await resolveOrg(authCtx);
     const { userId } = authCtx;
