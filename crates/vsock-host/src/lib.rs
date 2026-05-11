@@ -1701,6 +1701,34 @@ mod tests {
         stream.write_all(&frame).await.unwrap();
     }
 
+    async fn wait_for_operation_count(host: &VsockHost, expected: usize) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while operation_count(host) != expected {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+
+    async fn assert_connection_accepts_legacy_exec(
+        host: &Arc<VsockHost>,
+        guest: &mut UnixStream,
+        decoder: &mut Decoder,
+    ) {
+        let exec_task = {
+            let host = Arc::clone(host);
+            tokio::spawn(async move { host.exec("echo ok", 5000, &[], false).await })
+        };
+        let msg = read_guest_message(guest, decoder).await;
+        assert_eq!(msg.msg_type, MSG_EXEC);
+        let payload = vsock_proto::encode_exec_result(0, b"ok", b"");
+        let response = vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &payload).unwrap();
+        guest.write_all(&response).await.unwrap();
+        let exec_result = exec_task.await.unwrap().unwrap();
+        assert_eq!(exec_result.stdout, b"ok");
+    }
+
     #[tokio::test]
     async fn wait_for_connection_removes_listener_socket_on_abort() {
         let unique = std::time::SystemTime::now()
@@ -1801,6 +1829,66 @@ mod tests {
             }
         );
         assert_eq!(operation_count(&host), 0);
+    }
+
+    #[tokio::test]
+    async fn command_stream_rejects_zero_capacity_without_sending_frame() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let host = Arc::new(host);
+
+        let err = match host
+            .command_stream(CommandStreamRequest {
+                timeout_ms: 5000,
+                command: "stream",
+                env: &[],
+                sudo: false,
+                label: "zero-capacity",
+                stdout: CommandOutputPolicy::Stream {
+                    limit_bytes: 1024,
+                    chunk_limit_bytes: 16,
+                },
+                stderr: CommandOutputPolicy::Discard,
+                stream_capacity: 0,
+            })
+            .await
+        {
+            Ok(_) => panic!("zero stream capacity should be rejected"),
+            Err(err) => err,
+        };
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(operation_count(&host), 0);
+
+        assert_connection_accepts_legacy_exec(&host, &mut guest, &mut decoder).await;
+    }
+
+    #[tokio::test]
+    async fn command_start_encode_error_does_not_register_or_send_frame() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let host = Arc::new(host);
+
+        let err = match host
+            .start_command_operation(CommandOperationRequest {
+                timeout_ms: 5000,
+                command: "stream",
+                env: &[],
+                sudo: false,
+                stdout: CommandOutputPolicy::Stream {
+                    limit_bytes: 1024,
+                    chunk_limit_bytes: 0,
+                },
+                stderr: CommandOutputPolicy::Discard,
+                label: "bad-policy",
+                stream_capacity: Some(1),
+            })
+            .await
+        {
+            Ok(_) => panic!("invalid command output policy should be rejected"),
+            Err(err) => err,
+        };
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(operation_count(&host), 0);
+
+        assert_connection_accepts_legacy_exec(&host, &mut guest, &mut decoder).await;
     }
 
     #[tokio::test]
@@ -2080,6 +2168,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn command_start_after_connection_close_returns_connection_reset() {
+        let (host, guest, _decoder) = setup_host_and_guest().await;
+        drop(guest);
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
+
+        let err = match host
+            .start_command_operation(CommandOperationRequest {
+                timeout_ms: 5000,
+                command: "echo ok",
+                env: &[],
+                sudo: false,
+                stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
+                stderr: CommandOutputPolicy::Capture { limit_bytes: 1024 },
+                label: "closed",
+                stream_capacity: None,
+            })
+            .await
+        {
+            Ok(_) => panic!("command start after connection close should fail"),
+            Err(err) => err,
+        };
+        assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+        assert_eq!(operation_count(&host), 0);
+    }
+
+    #[tokio::test]
     async fn host_drop_closes_active_command_result_and_stream() {
         let (host, mut guest, mut decoder) = setup_host_and_guest().await;
         let mut handle = host
@@ -2268,6 +2384,65 @@ mod tests {
         .await;
         let result = cancel_task.await.unwrap().unwrap();
         assert_eq!(result.termination, CommandTermination::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn command_cancel_after_terminal_result_returns_result_without_cancel_frame() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let host = Arc::new(host);
+        let handle = start_capture_operation(&host, "already-done").await;
+        let start = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(start.msg_type, MSG_COMMAND_START);
+        send_command_result(
+            &mut guest,
+            start.seq,
+            CommandTermination::Exited { exit_code: 0 },
+            b"done",
+            b"",
+        )
+        .await;
+        wait_for_operation_count(&host, 0).await;
+
+        let result = handle
+            .cancel_and_wait(Duration::from_secs(5))
+            .await
+            .unwrap();
+        assert_eq!(
+            result.termination,
+            CommandTermination::Exited { exit_code: 0 }
+        );
+
+        assert_connection_accepts_legacy_exec(&host, &mut guest, &mut decoder).await;
+    }
+
+    #[tokio::test]
+    async fn command_cancel_non_cancelled_terminal_result_cleans_operation_without_poisoning() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let host = Arc::new(host);
+        let handle = start_capture_operation(&host, "cancel-race").await;
+        let start = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(start.msg_type, MSG_COMMAND_START);
+
+        let cancel_task =
+            tokio::spawn(async move { handle.cancel_and_wait(Duration::from_secs(5)).await });
+        let cancel = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(cancel.msg_type, MSG_COMMAND_CANCEL);
+        assert_eq!(cancel.seq, start.seq);
+
+        send_command_result(
+            &mut guest,
+            start.seq,
+            CommandTermination::Exited { exit_code: 0 },
+            b"",
+            b"",
+        )
+        .await;
+        let err = cancel_task.await.unwrap().unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::Other);
+        assert_eq!(operation_count(&host), 0);
+        assert!(is_connected(&host));
+
+        assert_connection_accepts_legacy_exec(&host, &mut guest, &mut decoder).await;
     }
 
     #[tokio::test]
