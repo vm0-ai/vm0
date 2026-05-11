@@ -15,7 +15,10 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
-import { generateZeroToken } from "../../../../../../src/lib/auth/sandbox-token";
+import {
+  generateSandboxToken,
+  generateZeroToken,
+} from "../../../../../../src/lib/auth/sandbox-token";
 import {
   findTestRunUploadedFiles,
   findTestRunUploadedFilesByRun,
@@ -220,5 +223,28 @@ describe("POST /api/zero/uploads/complete", () => {
 
     expect(response.status).toBe(404);
     expect(await findTestRunUploadedFiles("web", fileId)).toHaveLength(0);
+  });
+
+  it("returns 401 when not authenticated", async () => {
+    mockClerk({ userId: null });
+
+    const response = await POST(completeRequest({ id: randomUUID() }));
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 403 for sandbox token without file:write capability", async () => {
+    mockClerk({ userId: null });
+    const token = await generateSandboxToken(user.userId, "run-1", user.orgId);
+
+    const response = await POST(completeRequest({ id: randomUUID() }, token));
+
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body.error.code).toBe("FORBIDDEN");
+    expect(body.error.message).toContain("file:write");
   });
 });

@@ -6,7 +6,10 @@ import {
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-import { generateZeroToken } from "../../../../../../src/lib/auth/sandbox-token";
+import {
+  generateSandboxToken,
+  generateZeroToken,
+} from "../../../../../../src/lib/auth/sandbox-token";
 
 const context = testContext();
 
@@ -65,6 +68,26 @@ describe("POST /api/zero/uploads/prepare", () => {
       expect(body.uploadUrl).toBeTypeOf("string");
       expect(body.url).toBeTypeOf("string");
       expect(body.id).toBeTypeOf("string");
+    });
+
+    it("rejects sandbox token without file:write capability", async () => {
+      mockClerk({ userId: null });
+      const token = await generateSandboxToken(
+        user.userId,
+        "run-1",
+        user.orgId,
+      );
+      const response = await POST(
+        createPrepareRequest(
+          { filename: "hello.txt", contentType: "text/plain", size: 5 },
+          { authToken: token },
+        ),
+      );
+      expect(response.status).toBe(403);
+
+      const body = await response.json();
+      expect(body.error.code).toBe("FORBIDDEN");
+      expect(body.error.message).toContain("file:write");
     });
   });
 

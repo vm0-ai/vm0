@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { initServices } from "../../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
+import {
+  isAuthError,
+  requireAuth,
+} from "../../../../../src/lib/auth/require-auth";
 import { generatePresignedPutUrl } from "../../../../../src/lib/infra/s3/s3-client";
 import { env } from "../../../../../src/env";
 import { logger } from "../../../../../src/lib/shared/logger";
@@ -39,15 +42,12 @@ const prepareSchema = z.object({
 export async function POST(request: NextRequest) {
   initServices();
 
-  const authCtx = await getAuthContext(
+  const authCtx = await requireAuth(
     request.headers.get("authorization") ?? undefined,
     { requiredCapability: "file:write" },
   );
-  if (!authCtx) {
-    return NextResponse.json(
-      { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
-      { status: 401 },
-    );
+  if (isAuthError(authCtx)) {
+    return NextResponse.json(authCtx.body, { status: authCtx.status });
   }
   const userId = authCtx.userId;
 

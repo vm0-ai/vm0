@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { initServices } from "../../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
+import {
+  isAuthError,
+  requireAuth,
+} from "../../../../../src/lib/auth/require-auth";
 import { listS3Objects } from "../../../../../src/lib/infra/s3/s3-client";
 import { env } from "../../../../../src/env";
 import { inferMimetype } from "../../../../../src/lib/shared/mimetype";
@@ -28,12 +31,12 @@ function errorResponse(
 export async function POST(request: NextRequest) {
   initServices();
 
-  const authCtx = await getAuthContext(
+  const authCtx = await requireAuth(
     request.headers.get("authorization") ?? undefined,
     { requiredCapability: "file:write" },
   );
-  if (!authCtx) {
-    return errorResponse(401, "Not authenticated", "UNAUTHORIZED");
+  if (isAuthError(authCtx)) {
+    return NextResponse.json(authCtx.body, { status: authCtx.status });
   }
 
   const parsed = completeSchema.safeParse(

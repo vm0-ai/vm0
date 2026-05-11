@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
@@ -155,6 +156,28 @@ describe("POST /api/zero/uploads/prepare", () => {
     expect(response.body.id).toMatch(/^[0-9a-f-]{36}$/);
   });
 
+  it("uses the public S3 endpoint for externally consumed upload URLs", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+    mockEnv("S3_ENDPOINT", "http://internal-s3.example.com");
+    mockEnv("S3_PUBLIC_ENDPOINT", "http://public-s3.example.com");
+
+    const client = setupApp({ context })(zeroUploadsContract);
+    const response = await client.prepare({
+      body: validBody(),
+      headers: { authorization: "Bearer clerk-session" },
+    });
+    expect(response.status).toBe(200);
+
+    const config = context.mocks.s3.clientConfig.mock.calls[0]?.[0];
+    expect(config).toMatchObject({
+      endpoint: "http://public-s3.example.com",
+      region: "auto",
+      forcePathStyle: false,
+    });
+  });
+
   it("sanitizes filenames in the S3 key", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
@@ -188,11 +211,61 @@ describe("POST /api/zero/uploads/prepare", () => {
       { filename: "clip.mp3", contentType: "audio/mpeg" },
       { filename: "archive.zip", contentType: "application/zip" },
       {
+        filename: "backup.7z",
+        contentType: "application/x-7z-compressed",
+      },
+      { filename: "bundle.tar", contentType: "application/x-tar" },
+      { filename: "bundle.tgz", contentType: "application/gzip" },
+      { filename: "design.psd", contentType: "image/vnd.adobe.photoshop" },
+      { filename: "vector.ai", contentType: "application/postscript" },
+      { filename: "photo.heic", contentType: "image/heic" },
+      { filename: "scan.tiff", contentType: "image/tiff" },
+      {
         filename: "brief.docx",
         contentType:
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       },
+      {
+        filename: "budget.xlsx",
+        contentType:
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      },
+      {
+        filename: "deck.pptx",
+        contentType:
+          "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      },
+      {
+        filename: "document.pages",
+        contentType: "application/vnd.apple.pages",
+      },
+      {
+        filename: "sheet.numbers",
+        contentType: "application/vnd.apple.numbers",
+      },
+      {
+        filename: "slides.key",
+        contentType: "application/vnd.apple.keynote",
+      },
+      {
+        filename: "macro.xlsm",
+        contentType: "application/vnd.ms-excel.sheet.macroenabled.12",
+      },
+      {
+        filename: "template.potx",
+        contentType:
+          "application/vnd.openxmlformats-officedocument.presentationml.template",
+      },
       { filename: "doc.pdf", contentType: "application/pdf" },
+      { filename: "data.xml", contentType: "application/xml" },
+      { filename: "config.yaml", contentType: "application/yaml" },
+      { filename: "table.tsv", contentType: "text/tab-separated-values" },
+      {
+        filename: "events.parquet",
+        contentType: "application/vnd.apache.parquet",
+      },
+      { filename: "local.sqlite", contentType: "application/vnd.sqlite3" },
+      { filename: "book.epub", contentType: "application/epub+zip" },
     ] as const;
 
     const client = setupApp({ context })(zeroUploadsContract);

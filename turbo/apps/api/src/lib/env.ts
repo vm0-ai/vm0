@@ -22,6 +22,10 @@ const SCHEMA = {
   R2_ACCOUNT_ID: z.string().min(1),
   R2_SECRET_ACCESS_KEY: z.string().min(1),
   R2_USER_STORAGES_BUCKET_NAME: z.string().min(1),
+  S3_ENDPOINT: z.url().optional(),
+  S3_REGION: z.string().min(1).optional(),
+  S3_FORCE_PATH_STYLE: z.enum(["true", "false"]).optional(),
+  S3_PUBLIC_ENDPOINT: z.url().optional(),
   AXIOM_TOKEN_SESSIONS: z.string().min(1),
   AXIOM_TOKEN_TELEMETRY: z.string().min(1),
   AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]),
@@ -64,7 +68,11 @@ const SCHEMA = {
 
 const baseEnv = createEnv<undefined, typeof SCHEMA>({
   server: SCHEMA,
-  runtimeEnv: process.env,
+  runtimeEnv: {
+    ...process.env,
+    S3_PUBLIC_ENDPOINT:
+      process.env.S3_PUBLIC_ENDPOINT || process.env.S3_ENDPOINT,
+  },
   emptyStringAsUndefined: true,
 });
 

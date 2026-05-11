@@ -43,7 +43,13 @@ const prepareUploadInner$ = command(async ({ get }, signal: AbortSignal) => {
   const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
 
   const uploadUrl = await get(
-    generatePresignedPutUrl(bucket, s3Key, contentType, PUT_URL_TTL_SECONDS),
+    generatePresignedPutUrl(
+      bucket,
+      s3Key,
+      contentType,
+      PUT_URL_TTL_SECONDS,
+      true,
+    ),
   );
   signal.throwIfAborted();
   const url = buildFileUrl(auth.userId, id, sanitizedName);

@@ -30,15 +30,32 @@ interface S3StorageManifest {
   readonly files: readonly S3FileEntry[];
 }
 
-const s3Client$ = computed((): S3Client => {
+function createS3Client(endpoint: string): S3Client {
   return new S3Client({
-    region: "auto",
-    endpoint: `https://${env("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com`,
+    region: env("S3_REGION") ?? "auto",
+    endpoint,
     credentials: {
       accessKeyId: env("R2_ACCESS_KEY_ID"),
       secretAccessKey: env("R2_SECRET_ACCESS_KEY"),
     },
+    forcePathStyle: env("S3_FORCE_PATH_STYLE") === "true",
   });
+}
+
+function defaultS3Endpoint(): string {
+  return `https://${env("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com`;
+}
+
+const s3Client$ = computed((): S3Client => {
+  return createS3Client(env("S3_ENDPOINT") ?? defaultS3Endpoint());
+});
+
+const publicS3Client$ = computed((get): S3Client => {
+  const publicEndpoint = env("S3_PUBLIC_ENDPOINT");
+  if (!publicEndpoint) {
+    return get(s3Client$);
+  }
+  return createS3Client(publicEndpoint);
 });
 
 export function listS3Objects(
@@ -138,9 +155,10 @@ export function generatePresignedPutUrl(
   key: string,
   contentType: string,
   expiresIn: number,
+  usePublicEndpoint = false,
 ): Computed<Promise<string>> {
   return computed((get): Promise<string> => {
-    const client = get(s3Client$);
+    const client = get(usePublicEndpoint ? publicS3Client$ : s3Client$);
     const command = new PutObjectCommand({
       Bucket: bucket,
       Key: key,

@@ -39,6 +39,7 @@ export interface ApiTestMocks {
   readonly s3: {
     readonly send: AsyncMock;
     readonly getSignedUrl: AsyncMock;
+    readonly clientConfig: SyncMock;
   };
   readonly slack: {
     readonly chat: {
@@ -207,6 +208,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     s3: {
       send: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       getSignedUrl: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      clientConfig: vi.fn<(...args: unknown[]) => void>(),
     },
     slack,
     stripe,
@@ -263,6 +265,10 @@ vi.mock("@aws-sdk/client-s3", () => {
   }
 
   class S3Client {
+    constructor(config: unknown) {
+      apiTestMocks.s3.clientConfig(config);
+    }
+
     send(command: unknown): Promise<unknown> {
       return apiTestMocks.s3.send(command);
     }
@@ -477,6 +483,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.s3.getSignedUrl.mockResolvedValue(
     "https://r2.example.com/upload?sig=test",
   );
+  apiTestMocks.s3.clientConfig.mockReset();
   apiTestMocks.slack.chat.postMessage.mockReset();
   apiTestMocks.slack.conversations.list.mockReset();
   apiTestMocks.slack.conversations.open.mockReset();
