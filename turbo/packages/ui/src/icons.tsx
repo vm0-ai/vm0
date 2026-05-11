@@ -127,12 +127,12 @@ type TablerProps = Omit<SVGProps<SVGSVGElement>, "stroke"> & {
 function withTablerProps(Icon: IconoirIcon) {
   const Component = forwardRef<SVGSVGElement, TablerProps>(
     ({ size, stroke, strokeWidth, ...props }, ref) => {
-      const sw = stroke ?? strokeWidth;
+      const sw = stroke ?? strokeWidth ?? 2;
       return (
         <Icon
           ref={ref}
           {...(size !== undefined && { width: size, height: size })}
-          {...(sw !== undefined && { strokeWidth: sw })}
+          strokeWidth={sw}
           {...props}
         />
       );
