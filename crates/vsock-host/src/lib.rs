@@ -613,6 +613,17 @@ fn owned_command_result(
 }
 
 fn dispatch_command_output(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
+    let has_operation = {
+        let guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        match &*guard {
+            ConnectionState::Connected { operations, .. } => operations.contains_key(&msg.seq),
+            ConnectionState::Closed { .. } => false,
+        }
+    };
+    if !has_operation {
+        return Ok(());
+    }
+
     let decoded =
         vsock_proto::decode_command_output(&msg.payload).map_err(command_protocol_error)?;
 
@@ -637,8 +648,6 @@ fn dispatch_command_output(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result
 }
 
 fn dispatch_command_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
-    let decoded =
-        vsock_proto::decode_command_result(&msg.payload).map_err(command_protocol_error)?;
     let operation = {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
@@ -648,6 +657,8 @@ fn dispatch_command_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result
     };
 
     if let Some(Operation::Command(operation)) = operation {
+        let decoded =
+            vsock_proto::decode_command_result(&msg.payload).map_err(command_protocol_error)?;
         let CommandOperation {
             result_tx,
             stream_overflowed,
@@ -2605,6 +2616,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn malformed_command_output_after_result_is_ignored() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let host = Arc::new(host);
+        let handle = start_capture_operation(&host, "done").await;
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        send_command_result(
+            &mut guest,
+            msg.seq,
+            CommandTermination::Exited { exit_code: 0 },
+            b"done",
+            b"",
+        )
+        .await;
+        let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+        assert_eq!(
+            result.termination,
+            CommandTermination::Exited { exit_code: 0 }
+        );
+        assert_eq!(operation_count(&host), 0);
+
+        let frame = vsock_proto::encode(MSG_COMMAND_OUTPUT, msg.seq, &[0]).unwrap();
+        guest.write_all(&frame).await.unwrap();
+
+        assert_connection_accepts_legacy_exec(&host, &mut guest, &mut decoder).await;
+    }
+
+    #[tokio::test]
     async fn duplicate_command_result_after_completion_is_ignored() {
         let (host, mut guest, mut decoder) = setup_host_and_guest().await;
         let host = Arc::new(host);
@@ -2638,6 +2676,38 @@ mod tests {
             b"",
         )
         .await;
+
+        assert_connection_accepts_legacy_exec(&host, &mut guest, &mut decoder).await;
+    }
+
+    #[tokio::test]
+    async fn malformed_duplicate_command_result_after_completion_is_ignored() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let host = Arc::new(host);
+        let handle = start_capture_operation(&host, "malformed-duplicate-result").await;
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(msg.msg_type, MSG_COMMAND_START);
+
+        send_command_result(
+            &mut guest,
+            msg.seq,
+            CommandTermination::Exited { exit_code: 0 },
+            b"first",
+            b"",
+        )
+        .await;
+        let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+        assert_eq!(
+            result.stdout,
+            CommandOwnedCapturedOutput::Captured {
+                bytes: b"first".to_vec(),
+                truncated: false,
+            }
+        );
+        assert_eq!(operation_count(&host), 0);
+
+        let frame = vsock_proto::encode(MSG_COMMAND_RESULT, msg.seq, &[0]).unwrap();
+        guest.write_all(&frame).await.unwrap();
 
         assert_connection_accepts_legacy_exec(&host, &mut guest, &mut decoder).await;
     }
