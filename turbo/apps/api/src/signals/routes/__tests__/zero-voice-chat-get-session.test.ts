@@ -206,6 +206,8 @@ describe("GET /api/zero/voice-chat/:id (getSession)", () => {
     expect(response.body.talkerInstructions).toContain(
       "You are the Talker brain of Zero",
     );
+    expect(response.body.talkerInstructions).toContain("## Preambles");
+    expect(response.body.talkerInstructions).toContain("## Unclear Audio");
     expect(response.body.talkerInstructions).toContain(
       "(none — nothing is being worked on)",
     );

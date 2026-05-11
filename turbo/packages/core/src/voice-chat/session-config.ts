@@ -91,4 +91,7 @@ export const SESSION_OUTPUT_MODALITIES = ["audio"] as const;
 // session config. Keep these constants centralized so a model or voice change
 // touches one place.
 export const TALKER_MODEL = "gpt-realtime-2";
+export const TALKER_REASONING_CONFIG = {
+  effort: "low",
+} as const;
 export const TALKER_VOICE = "verse";

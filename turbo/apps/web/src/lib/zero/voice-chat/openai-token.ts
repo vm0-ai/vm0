@@ -4,6 +4,7 @@ import {
   SESSION_OUTPUT_MODALITIES,
   SESSION_TOOLS,
   TALKER_MODEL,
+  TALKER_REASONING_CONFIG,
   TALKER_VOICE,
   TURN_DETECTION_CONFIG,
   type NoiseReduction,
@@ -82,6 +83,7 @@ export async function createEphemeralToken(options: {
       session: {
         type: "realtime",
         model: TALKER_MODEL,
+        reasoning: TALKER_REASONING_CONFIG,
         output_modalities: SESSION_OUTPUT_MODALITIES,
         instructions: options.instructions,
         audio: {

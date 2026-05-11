@@ -141,6 +141,7 @@ describe("POST /api/zero/voice-chat/token", () => {
         session?: {
           type?: string;
           model?: string;
+          reasoning?: unknown;
           output_modalities?: unknown;
           instructions?: string;
           audio?: {
@@ -184,9 +185,12 @@ describe("POST /api/zero/voice-chat/token", () => {
       const { session } = received;
       expect(session.type).toBe("realtime");
       expect(session.model).toBe("gpt-realtime-2");
+      expect(session.reasoning).toEqual({ effort: "low" });
       expect(session.output_modalities).toEqual(["audio"]);
       expect(typeof session.instructions).toBe("string");
       expect(session.instructions?.length ?? 0).toBeGreaterThan(0);
+      expect(session.instructions).toContain("## Preambles");
+      expect(session.instructions).toContain("## Unclear Audio");
       expect(session.audio?.input?.transcription).toEqual({
         model: "gpt-4o-mini-transcribe",
       });
