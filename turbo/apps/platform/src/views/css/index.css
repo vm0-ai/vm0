@@ -394,14 +394,6 @@
   border-color: hsl(var(--gray-400));
 }
 
-/* Lighter icons and "Recent dialogue" label; other styles unchanged */
-.zero-nav svg {
-  opacity: 0.7;
-}
-.zero-nav .zero-nav-recent-label {
-  opacity: 1;
-}
-
 @layer base {
   *,
   *::before,
