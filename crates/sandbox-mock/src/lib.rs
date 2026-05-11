@@ -195,6 +195,10 @@ impl MockLifecycleGate {
     /// Release `count` lifecycle entries by advancing the durable release count.
     pub fn release_many(&self, count: usize) {
         let release_count = u64::try_from(count).unwrap_or(u64::MAX);
+        if release_count == 0 {
+            return;
+        }
+
         let mut state = self.inner.state.lock_ignoring_poison();
         state.released_count = state.released_count.saturating_add(release_count);
         self.inner.release_tx.send_replace(state.released_count);
@@ -1357,6 +1361,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn lifecycle_gate_release_zero_does_not_release_entry() {
+        let gate = MockLifecycleGate::new();
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.set_park_lifecycle_gate(gate.clone());
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let mut sandbox = factory.create(test_sandbox_config()).await.unwrap();
+
+        let park_task = tokio::spawn(async move { sandbox.park().await });
+        assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
+
+        gate.release_many(0);
+        tokio::task::yield_now().await;
+        assert!(
+            !park_task.is_finished(),
+            "zero release count must not let the entry through"
+        );
+
+        gate.release_one();
+        park_task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn lifecycle_gate_early_release_many_releases_only_that_many_entries() {
+        let gate = MockLifecycleGate::new();
+        gate.release_many(2);
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.set_park_lifecycle_gate(gate.clone());
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let (done_tx, mut done_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut park_tasks = Vec::new();
+
+        for idx in 0..3 {
+            let mut sandbox = factory.create(test_sandbox_config()).await.unwrap();
+            let done_tx = done_tx.clone();
+            park_tasks.push(tokio::spawn(async move {
+                sandbox.park().await.unwrap();
+                done_tx.send(idx).unwrap();
+            }));
+        }
+        drop(done_tx);
+
+        assert_eq!(gate.wait_entered(3, test_timeout()).await.unwrap(), 3);
+        for _ in 0..2 {
+            tokio::time::timeout(test_timeout(), done_rx.recv())
+                .await
+                .expect("early releases should complete two entries")
+                .expect("completion channel should remain open");
+        }
+        assert!(
+            matches!(
+                done_rx.try_recv(),
+                Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+            ),
+            "third entry must remain blocked until another release"
+        );
+
+        gate.release_one();
+        tokio::time::timeout(test_timeout(), done_rx.recv())
+            .await
+            .expect("final release should complete third entry")
+            .expect("completion channel should remain open");
+        for task in park_tasks {
+            task.await.unwrap();
+        }
+    }
+
+    #[tokio::test]
     async fn lifecycle_gate_release_after_cancelled_entry_does_not_release_future_entry() {
         let gate = MockLifecycleGate::new();
         let overrides = Arc::new(MockSandboxOverrides::new());
@@ -1455,6 +1526,42 @@ mod tests {
 
         let second_factory = runtime.create_factory(test_factory_config()).await.unwrap();
         second_factory.create(test_sandbox_config()).await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shared_create_result_is_consumed_once_across_concurrent_factories() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.push_create_result(Err(SandboxError::Initialization {
+            phase: SandboxInitializationPhase::SandboxAllocation,
+            message: "out of resources".into(),
+        }));
+        let first_factory = Arc::new(MockSandboxFactory::with_overrides(Arc::clone(&overrides)));
+        let second_factory = Arc::new(MockSandboxFactory::with_overrides(Arc::clone(&overrides)));
+        let barrier = Arc::new(tokio::sync::Barrier::new(2));
+
+        let first = tokio::spawn({
+            let barrier = Arc::clone(&barrier);
+            async move {
+                barrier.wait().await;
+                first_factory.create(test_sandbox_config()).await.is_err()
+            }
+        });
+        let second = tokio::spawn({
+            let barrier = Arc::clone(&barrier);
+            async move {
+                barrier.wait().await;
+                second_factory.create(test_sandbox_config()).await.is_err()
+            }
+        });
+
+        let failure_count = [first.await.unwrap(), second.await.unwrap()]
+            .into_iter()
+            .filter(|failed| *failed)
+            .count();
+        assert_eq!(
+            failure_count, 1,
+            "shared create result should be consumed by exactly one concurrent factory"
+        );
     }
 
     #[tokio::test]
