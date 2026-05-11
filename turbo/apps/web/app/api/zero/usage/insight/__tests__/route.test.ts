@@ -62,11 +62,36 @@ describe("GET /api/zero/usage/insight", () => {
     expect(response.status).toBe(401);
   });
 
+  it("returns 401 when the authenticated session has no active organization", async () => {
+    const { userId } = await context.user;
+    mockClerk({ userId, orgId: null });
+
+    const response = await GET(
+      makeRequest({ range: "7d", groupBy: "source", tz: "UTC" }),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("returns 400 for invalid timezone", async () => {
     const response = await GET(
       makeRequest({ range: "7d", groupBy: "source", tz: "Not/A/Timezone" }),
     );
     expect(response.status).toBe(400);
+  });
+
+  it("accepts timezone aliases supported by Intl.DateTimeFormat", async () => {
+    const response = await GET(
+      makeRequest({ range: "7d", groupBy: "source", tz: "US/Pacific" }),
+    );
+    const data = (await response.json()) as UsageInsightResponse;
+
+    expect(response.status).toBe(200);
+    expect(Array.isArray(data.buckets)).toBe(true);
   });
 
   it("returns 400 when range=day is missing a date", async () => {

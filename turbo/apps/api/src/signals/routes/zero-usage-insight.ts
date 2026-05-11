@@ -7,18 +7,14 @@ import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
 import { zeroUsageInsight$ } from "../services/zero-usage-insight.service";
 import type { RouteEntry } from "../route";
-
-const supportedTimeZones = Object.freeze([
-  "UTC",
-  ...Intl.supportedValuesOf("timeZone"),
-]);
+import { isValidTimeZone } from "../utils";
 
 const getUsageInsightInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const query = get(queryOf(zeroUsageInsightContract.get));
 
-    if (!supportedTimeZones.includes(query.tz)) {
+    if (!isValidTimeZone(query.tz)) {
       return badRequestMessage(`Invalid timezone: ${query.tz}`);
     }
 

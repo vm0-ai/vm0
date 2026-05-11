@@ -79,6 +79,22 @@ describe("GET /api/zero/usage/insight", () => {
     });
   });
 
+  it("returns 401 when the authenticated session has no active organization", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+
+    const response = await accept(
+      apiClient().get({
+        query: { range: "7d", groupBy: "source", tz: "UTC" },
+        headers: authHeaders(),
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("returns 400 for invalid timezone", async () => {
     const fixture = await track(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
@@ -94,6 +110,23 @@ describe("GET /api/zero/usage/insight", () => {
     );
 
     expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("accepts timezone aliases supported by Intl.DateTimeFormat", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        query: { range: "7d", groupBy: "source", tz: "US/Pacific" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(Array.isArray(response.body.buckets)).toBeTruthy();
   });
 
   it("returns 400 when range=day is missing a date", async () => {

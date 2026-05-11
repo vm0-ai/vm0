@@ -8,6 +8,7 @@ import {
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { getUsageInsight } from "../../../../../src/lib/zero/billing/usage-insight-service";
+import { isBadRequest } from "@vm0/api-services/errors";
 
 const router = tsr.router(zeroUsageInsightContract, {
   get: async ({ query, headers }) => {
@@ -16,7 +17,16 @@ const router = tsr.router(zeroUsageInsightContract, {
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
-    const { org } = await resolveOrg(authCtx);
+    let orgId: string;
+    try {
+      const { org } = await resolveOrg(authCtx);
+      orgId = org.orgId;
+    } catch (error) {
+      if (isBadRequest(error)) {
+        return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+      }
+      throw error;
+    }
 
     // Validate timezone — Intl.DateTimeFormat constructor is the only standard
     // API that synchronously throws on an unrecognised IANA timezone string.
@@ -38,7 +48,7 @@ const router = tsr.router(zeroUsageInsightContract, {
       }
     }
 
-    const result = await getUsageInsight(authCtx.userId, org.orgId, {
+    const result = await getUsageInsight(authCtx.userId, orgId, {
       range: query.range,
       date: query.date,
       groupBy: query.groupBy,
