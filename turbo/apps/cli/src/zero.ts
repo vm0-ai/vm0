@@ -21,6 +21,7 @@ import { zeroLogsCommand } from "./commands/zero/logs";
 import { zeroSearchCommand } from "./commands/zero/search";
 import { zeroDeveloperSupportCommand } from "./commands/zero/developer-support";
 import { zeroComputerUseCommand } from "./commands/zero/computer-use";
+import { zeroRemoteAgentCommand } from "./commands/zero/remote-agent";
 import { zeroBuiltInCommand } from "./commands/zero/built-in";
 import { zeroWebCommand } from "./commands/zero/web";
 import {
@@ -76,6 +77,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroSkillCommand,
   zeroDeveloperSupportCommand,
   zeroComputerUseCommand,
+  zeroRemoteAgentCommand,
   zeroBuiltInCommand,
   zeroWebCommand,
 ];

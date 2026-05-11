@@ -176,6 +176,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable remote desktop host registration",
     enabled: false,
   },
+  [FeatureSwitchKey.RemoteAgent]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable remote-agent device pairing and local Codex/Claude host heartbeat endpoints.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.Lab]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the Lab page for toggling experimental features",

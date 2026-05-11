@@ -32,6 +32,7 @@ export enum FeatureSwitchKey {
   SpotifyConnector = "spotifyConnector",
   ZeroDebug = "zeroDebug",
   ComputerUse = "computerUse",
+  RemoteAgent = "remoteAgent",
   Lab = "lab",
   AuditLink = "auditLink",
   AudioOutput = "audioOutput",

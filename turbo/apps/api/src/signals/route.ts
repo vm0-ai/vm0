@@ -38,6 +38,7 @@ import { zeroOrgReadRoutes } from "./routes/zero-org-read";
 import { zeroPermissionPoliciesRoutes } from "./routes/zero-permission-policies";
 import { zeroPushSubscriptionsRoutes } from "./routes/zero-push-subscriptions";
 import { zeroQueuePositionRoutes } from "./routes/zero-queue-position";
+import { zeroRemoteAgentRoutes } from "./routes/zero-remote-agent";
 import { zeroRunDetailRoutes } from "./routes/zero-run-detail";
 import { zeroRunsRoutes } from "./routes/zero-runs";
 import { zeroRunsCancelRoutes } from "./routes/zero-runs-cancel";
@@ -103,6 +104,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroVoiceIoQuotaRoutes,
   ...zeroWebDownloadRoutes,
   ...zeroQueuePositionRoutes,
+  ...zeroRemoteAgentRoutes,
   ...zeroRunDetailRoutes,
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,

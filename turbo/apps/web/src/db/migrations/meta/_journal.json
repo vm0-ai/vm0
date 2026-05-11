@@ -2535,6 +2535,20 @@
       "when": 1778472488613,
       "tag": "0361_black_leech",
       "breakpoints": true
+    },
+    {
+      "idx": 362,
+      "version": "7",
+      "when": 1778483690749,
+      "tag": "0362_lowly_valeria_richards",
+      "breakpoints": true
+    },
+    {
+      "idx": 363,
+      "version": "7",
+      "when": 1778484855147,
+      "tag": "0363_perfect_red_skull",
+      "breakpoints": true
     }
   ]
 }
