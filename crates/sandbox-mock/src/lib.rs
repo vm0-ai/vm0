@@ -1628,6 +1628,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn destroy_lifecycle_gate_release_after_cancelled_entry_does_not_release_future_entry() {
+        let gate = MockLifecycleGate::new();
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.set_destroy_lifecycle_gate(gate.clone());
+        let factory = Arc::new(MockSandboxFactory::with_overrides(Arc::clone(&overrides)));
+        let first_sandbox = factory.create(test_sandbox_config()).await.unwrap();
+
+        let first_destroy_task = tokio::spawn({
+            let factory = Arc::clone(&factory);
+            async move {
+                factory.destroy(first_sandbox).await;
+            }
+        });
+        assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
+        first_destroy_task.abort();
+        assert!(first_destroy_task.await.unwrap_err().is_cancelled());
+
+        gate.release_one();
+        let second_sandbox = factory.create(test_sandbox_config()).await.unwrap();
+        let second_destroy_task = tokio::spawn({
+            let factory = Arc::clone(&factory);
+            async move {
+                factory.destroy(second_sandbox).await;
+            }
+        });
+        assert_eq!(gate.wait_entered(2, test_timeout()).await.unwrap(), 2);
+        assert!(
+            !second_destroy_task.is_finished(),
+            "release for a cancelled destroy entry must not pass a future entry"
+        );
+
+        gate.release_one();
+        second_destroy_task.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn destroy_lifecycle_gate_waits_for_nth_destroy_entry() {
         let gate = MockLifecycleGate::new();
         let overrides = Arc::new(MockSandboxOverrides::new());
@@ -1694,6 +1730,42 @@ mod tests {
         let second_sandbox = second_factory.create(test_sandbox_config()).await.unwrap();
         second_factory.destroy(second_sandbox).await;
 
+        assert_eq!(overrides.destroy_call_count(), 2);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shared_destroy_panic_is_consumed_once_across_concurrent_factories() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.push_destroy_panic("simulated destroy panic");
+        let first_factory = Arc::new(MockSandboxFactory::with_overrides(Arc::clone(&overrides)));
+        let second_factory = Arc::new(MockSandboxFactory::with_overrides(Arc::clone(&overrides)));
+        let first_sandbox = first_factory.create(test_sandbox_config()).await.unwrap();
+        let second_sandbox = second_factory.create(test_sandbox_config()).await.unwrap();
+        let barrier = Arc::new(tokio::sync::Barrier::new(2));
+
+        let first = tokio::spawn({
+            let barrier = Arc::clone(&barrier);
+            async move {
+                barrier.wait().await;
+                first_factory.destroy(first_sandbox).await;
+            }
+        });
+        let second = tokio::spawn({
+            let barrier = Arc::clone(&barrier);
+            async move {
+                barrier.wait().await;
+                second_factory.destroy(second_sandbox).await;
+            }
+        });
+
+        let panic_count = [first.await, second.await]
+            .into_iter()
+            .filter(|result| matches!(result, Err(err) if err.is_panic()))
+            .count();
+        assert_eq!(
+            panic_count, 1,
+            "shared destroy panic should be consumed by exactly one concurrent factory"
+        );
         assert_eq!(overrides.destroy_call_count(), 2);
     }
 
