@@ -90,6 +90,22 @@ describe("GET /api/zero/logs/search", () => {
     expect(data.error.code).toBe("UNAUTHORIZED");
   });
 
+  it("should return 401 when the authenticated session has no organization", async () => {
+    mockClerk({ userId: user.userId, orgId: null });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/logs/search?keyword=test",
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(401);
+    const data = await response.json();
+    expect(data).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("should return 403 for sandbox token without agent-run:read", async () => {
     const token = await generateSandboxToken(
       user.userId,

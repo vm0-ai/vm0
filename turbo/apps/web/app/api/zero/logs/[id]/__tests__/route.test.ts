@@ -72,6 +72,21 @@ describe("GET /api/zero/logs/[id]", () => {
     expect(data.error.message).toBe("Not authenticated");
   });
 
+  it("should return 401 when the authenticated session has no organization", async () => {
+    mockClerk({ userId: user.userId, orgId: null });
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/zero/logs/${randomUUID()}`,
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("should return 400 for invalid UUID format", async () => {
     const request = createTestRequest(
       "http://localhost:3000/api/zero/logs/invalid-uuid",

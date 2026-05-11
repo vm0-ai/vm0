@@ -72,6 +72,15 @@ function notFoundResponse() {
   };
 }
 
+function unauthenticatedResponse() {
+  return {
+    status: 401 as const,
+    body: {
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    },
+  };
+}
+
 /**
  * Build the response body from a query result row.
  */
@@ -136,6 +145,7 @@ const router = tsr.router(logsByIdContract, {
       requiredCapability: "agent-run:read",
     });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthenticatedResponse();
     const { userId } = authCtx;
 
     // Resolve active org from JWT / CLI token / default

@@ -17,6 +17,15 @@ import {
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { handleSearchLogs } from "../../../../../src/lib/infra/run/log-search-service";
 
+function unauthenticatedResponse() {
+  return {
+    status: 401 as const,
+    body: {
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    },
+  };
+}
+
 const router = tsr.router(zeroLogsSearchContract, {
   searchLogs: async ({ query, headers }) => {
     initServices();
@@ -25,6 +34,7 @@ const router = tsr.router(zeroLogsSearchContract, {
       requiredCapability: "agent-run:read",
     });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthenticatedResponse();
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);

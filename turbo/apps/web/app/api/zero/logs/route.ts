@@ -65,6 +65,15 @@ interface LogsQuery {
   limit?: number;
 }
 
+function unauthenticatedResponse() {
+  return {
+    status: 401 as const,
+    body: {
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    },
+  };
+}
+
 /**
  * Build agent filter conditions from query params.
  * agentId is the canonical Zero agent ID.
@@ -240,6 +249,7 @@ const router = tsr.router(logsListContract, {
       requiredCapability: "agent-run:read",
     });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthenticatedResponse();
     const { userId } = authCtx;
 
     const limit = query.limit ?? 20;
