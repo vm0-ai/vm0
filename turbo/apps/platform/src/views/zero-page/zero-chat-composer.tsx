@@ -426,7 +426,7 @@ function QueuedMessagesStrip({
     <div className="border-b border-border/60 px-4 py-2">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground/75">
         <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-        <span>Queued {items.length}</span>
+        <span>Queued</span>
       </div>
       <div
         className="mt-1 max-h-24 divide-y divide-border/40 overflow-y-auto"
