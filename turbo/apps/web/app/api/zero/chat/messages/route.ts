@@ -87,8 +87,41 @@ import {
   CHAT_REQUEST_OPS,
   timed,
 } from "../../../../../src/lib/zero/chat-thread/request-span-ops";
+import { isPrivateAgent } from "../../../../../src/lib/zero/agent-visibility";
 
 const log = logger("zero:chat-messages");
+
+function createAgentAccessErrorResponse(
+  agent: Awaited<ReturnType<typeof fetchZeroAgentForRun>>,
+  userId: string,
+) {
+  if (!agent) {
+    return {
+      status: 404 as const,
+      body: {
+        error: { message: "Agent not found", code: "NOT_FOUND" as const },
+      },
+    };
+  }
+  if (!isPrivateAgent(agent) || agent.owner === userId) return null;
+  return {
+    status: 403 as const,
+    body: {
+      error: {
+        message: "Only the private agent owner can run this agent",
+        code: "FORBIDDEN" as const,
+      },
+    },
+  };
+}
+
+function assertAgentForRun(
+  agent: Awaited<ReturnType<typeof fetchZeroAgentForRun>>,
+): asserts agent is NonNullable<
+  Awaited<ReturnType<typeof fetchZeroAgentForRun>>
+> {
+  if (!agent) throw new Error("Agent access check did not return a response");
+}
 
 const GOAL_DEFAULT_BUDGET = 10;
 
@@ -1085,14 +1118,12 @@ const router = tsr.router(chatMessagesContract, {
     emit(CHAT_REQUEST_OPS.agent_lookup, agentT.ms);
     const agent = agentT.result;
 
-    if (!agent) {
-      return {
-        status: 404 as const,
-        body: {
-          error: { message: "Agent not found", code: "NOT_FOUND" as const },
-        },
-      };
-    }
+    const agentAccessError = createAgentAccessErrorResponse(
+      agent,
+      authCtx.userId,
+    );
+    if (agentAccessError) return agentAccessError;
+    assertAgentForRun(agent);
 
     // resolveOrgWithMetadata already fetches org_metadata — capture the tier
     // and DB-backed credits here so createZeroRun can skip duplicate reads.

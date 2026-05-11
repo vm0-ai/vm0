@@ -5,6 +5,9 @@ import { firewallPoliciesSchema } from "@vm0/connectors/firewall-types";
 
 const c = initContract();
 
+export const zeroAgentVisibilitySchema = z.enum(["public", "private"]);
+export type ZeroAgentVisibility = z.infer<typeof zeroAgentVisibilitySchema>;
+
 /**
  * Custom skill name validation regex.
  * Must be lowercase alphanumeric with hyphens, no leading/trailing hyphens.
@@ -31,6 +34,7 @@ export const zeroAgentResponseSchema = z.object({
   modelProviderId: z.string().uuid().nullable().default(null),
   selectedModel: z.string().nullable().default(null),
   preferPersonalProvider: z.boolean().default(false),
+  visibility: zeroAgentVisibilitySchema.optional(),
 });
 
 /**
@@ -45,6 +49,7 @@ export const zeroAgentRequestSchema = z.object({
   modelProviderId: z.string().uuid().nullable().optional(),
   selectedModel: z.string().nullable().optional(),
   preferPersonalProvider: z.boolean().optional(),
+  visibility: zeroAgentVisibilitySchema.optional(),
 });
 
 /**
@@ -58,6 +63,7 @@ export const zeroAgentMetadataRequestSchema = z.object({
   modelProviderId: z.string().uuid().nullable().optional(),
   selectedModel: z.string().nullable().optional(),
   preferPersonalProvider: z.boolean().optional(),
+  visibility: zeroAgentVisibilitySchema.optional(),
 });
 
 /**
@@ -136,6 +142,7 @@ export const zeroAgentsByIdContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
       422: apiErrorSchema,
     },
     summary: "Update zero agent",
@@ -152,6 +159,7 @@ export const zeroAgentsByIdContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary: "Update zero agent metadata",
   },

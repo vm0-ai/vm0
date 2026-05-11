@@ -12,6 +12,7 @@ interface CreateZeroAgentParams {
   displayName: string;
   sound?: string;
   avatarUrl?: string;
+  visibility?: "public" | "private";
 }
 
 /**
@@ -36,6 +37,7 @@ export async function createZeroAgent(
         displayName: params.displayName,
         sound: params.sound,
         avatarUrl,
+        visibility: params.visibility,
       },
       fetchOptions: { signal },
     }),
@@ -43,7 +45,7 @@ export async function createZeroAgent(
   );
   signal.throwIfAborted();
 
-  const agent = createResult.body;
+  const agent = (createResult as { body: ZeroAgentResponse }).body;
 
   // Step 2: Upload seed instructions
   const instrClient = createClient(zeroAgentInstructionsContract);

@@ -10,10 +10,16 @@ import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { serverSideCompose } from "../../../../src/lib/infra/compose/server-side-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { eq, desc, count } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { buildComposeContent } from "../../../../src/lib/zero/build-compose-content";
 import { validateCustomSkills } from "../../../../src/lib/zero/validate-custom-skills";
+import {
+  PUBLIC_AGENT_LIMIT,
+  assertPrivateAgentsFeatureEnabled,
+  countPublicAgents,
+  visibleZeroAgentCondition,
+} from "../../../../src/lib/zero/agent-visibility";
 import { logger } from "../../../../src/lib/shared/logger";
 
 const log = logger("api:zero-agents");
@@ -34,6 +40,14 @@ const router = tsr.router(zeroAgentsMainContract, {
     const agentName = crypto.randomUUID();
 
     const customSkills = body.customSkills ?? [];
+    const visibility = body.visibility ?? "public";
+    if (visibility === "private") {
+      const unavailable = await assertPrivateAgentsFeatureEnabled(
+        authCtx,
+        org.orgId,
+      );
+      if (unavailable) return unavailable;
+    }
 
     // Validate custom skill names exist in the org
     const validation = await validateCustomSkills(customSkills, org.orgId);
@@ -74,9 +88,10 @@ const router = tsr.router(zeroAgentsMainContract, {
       modelProviderId: body.modelProviderId ?? null,
       selectedModel: body.selectedModel ?? null,
       preferPersonalProvider: body.preferPersonalProvider ?? false,
+      visibility,
     };
 
-    // Enforce maximum 7 agents per organization.
+    // Enforce maximum 7 public agents per organization.
     // Lock existing agent rows with FOR UPDATE so concurrent creates for
     // the same org serialize. Then count — PostgreSQL forbids FOR UPDATE
     // on aggregate queries, so we lock and count in two steps.
@@ -87,13 +102,10 @@ const router = tsr.router(zeroAgentsMainContract, {
         .where(eq(zeroAgents.orgId, org.orgId))
         .for("update");
 
-      const [row] = await tx
-        .select({ value: count() })
-        .from(zeroAgents)
-        .where(eq(zeroAgents.orgId, org.orgId));
-      const agentCount = row?.value ?? 0;
+      const agentCount =
+        visibility === "public" ? await countPublicAgents(org.orgId, tx) : 0;
 
-      if (agentCount >= 7) {
+      if (agentCount >= PUBLIC_AGENT_LIMIT) {
         return { blocked: true as const };
       }
 
@@ -145,6 +157,7 @@ const router = tsr.router(zeroAgentsMainContract, {
       requiredCapability: "agent:read",
     });
     if (isAuthError(authCtx)) return authCtx;
+    const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);
 
@@ -162,10 +175,13 @@ const router = tsr.router(zeroAgentsMainContract, {
         modelProviderId: zeroAgents.modelProviderId,
         selectedModel: zeroAgents.selectedModel,
         preferPersonalProvider: zeroAgents.preferPersonalProvider,
+        visibility: zeroAgents.visibility,
       })
       .from(zeroAgents)
       .innerJoin(agentComposes, eq(zeroAgents.id, agentComposes.id))
-      .where(eq(zeroAgents.orgId, org.orgId))
+      .where(
+        and(eq(zeroAgents.orgId, org.orgId), visibleZeroAgentCondition(userId)),
+      )
       .orderBy(desc(zeroAgents.updatedAt));
 
     return {
@@ -185,6 +201,7 @@ const router = tsr.router(zeroAgentsMainContract, {
           modelProviderId: row.modelProviderId ?? null,
           selectedModel: row.selectedModel ?? null,
           preferPersonalProvider: row.preferPersonalProvider ?? false,
+          visibility: row.visibility,
           customSkills: row.customSkills,
         };
       }),

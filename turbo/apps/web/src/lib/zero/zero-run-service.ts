@@ -54,7 +54,7 @@ import {
 } from "./zero-run-metadata";
 import { buildAutoMemoryArtifact } from "./memory";
 import { getOrgMetadata, type OrgMetadata } from "./org/org-metadata-service";
-import { isConcurrentRunLimit } from "@vm0/api-services/errors";
+import { forbidden, isConcurrentRunLimit } from "@vm0/api-services/errors";
 import { DISALLOWED_TOOLS, buildAgentPrompt } from "./agent-prompt";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -68,6 +68,7 @@ import { SEED_SKILLS } from "./seed-skills";
 import { logger } from "../shared/logger";
 import { recordChatSpan, type ChatSpanDimensions } from "../infra/metrics";
 import { CHAT_REQUEST_OPS, timed } from "./chat-thread/request-span-ops";
+import { isPrivateAgent } from "./agent-visibility";
 
 const log = logger("service:zero-run");
 
@@ -102,6 +103,8 @@ export interface ZeroAgentForRun {
   permissionPolicies: RawPermissionPolicies | null;
   unknownPermissionPolicies: Record<string, FirewallPolicyValue> | null;
   orgId: string;
+  owner: string;
+  visibility: "public" | "private";
   customSkills: string[];
   modelProviderId: string | null;
   selectedModel: string | null;
@@ -129,6 +132,8 @@ export async function fetchZeroAgentForRun(
       permissionPolicies: zeroAgents.permissionPolicies,
       unknownPermissionPolicies: zeroAgents.unknownPermissionPolicies,
       orgId: zeroAgents.orgId,
+      owner: zeroAgents.owner,
+      visibility: zeroAgents.visibility,
       customSkills: zeroAgents.customSkills,
       modelProviderId: zeroAgents.modelProviderId,
       selectedModel: zeroAgents.selectedModel,
@@ -528,6 +533,10 @@ async function createZeroRunRecord(
   const row = agentTimed.result;
   const resolved = composeTimed.result;
   const cachedUser = cachedUserTimed.result;
+
+  if (row && isPrivateAgent(row) && row.owner !== params.userId) {
+    throw forbidden("Only the private agent owner can run this agent");
+  }
 
   // user_info_source is determined purely by the caller's input — stamp it
   // before emitting Round 1 spans so the `cached_user` span itself carries

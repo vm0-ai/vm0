@@ -28,6 +28,18 @@ export const setJobsNewName$ = command(({ set }, name: string) => {
   set(internalNewName$, name);
 });
 
+// -- Visibility -------------------------------------------------------------
+
+const internalVisibility$ = state<"public" | "private">("public");
+export const jobsVisibility$ = computed((get) => {
+  return get(internalVisibility$);
+});
+export const setJobsVisibility$ = command(
+  ({ set }, visibility: "public" | "private") => {
+    set(internalVisibility$, visibility);
+  },
+);
+
 // -- Avatar -----------------------------------------------------------------
 
 const internalAvatarUrl$ = state(randomSvgAvatarUrl());
@@ -52,5 +64,6 @@ export const setJobsViewMode$ = command(({ set }, mode: "grid" | "list") => {
 
 export const resetJobsDialog$ = command(({ set }) => {
   set(internalNewName$, "");
+  set(internalVisibility$, "public");
   set(internalAvatarUrl$, randomSvgAvatarUrl());
 });

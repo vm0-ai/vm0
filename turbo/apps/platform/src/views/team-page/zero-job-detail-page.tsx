@@ -828,6 +828,8 @@ function AgentTabContent({
   modelProviderId,
   selectedModel,
   preferPersonalProvider,
+  visibility,
+  canEditVisibility,
 }: {
   activeTab: string;
   agentId: string;
@@ -840,6 +842,8 @@ function AgentTabContent({
   modelProviderId: string | null;
   selectedModel: string | null;
   preferPersonalProvider: boolean;
+  visibility: "public" | "private";
+  canEditVisibility: boolean;
 }) {
   const deleteAgent = useSet(deleteAgent$);
   const nav = useSet(detachedNavigateTo$);
@@ -866,7 +870,7 @@ function AgentTabContent({
     case "profile": {
       return (
         <ZeroSettingsTab
-          key={`${displayName}\0${description}\0${resolvedSound}\0${avatarUrl}\0${modelProviderId ?? ""}\0${selectedModel ?? ""}\0${preferPersonalProvider ? "1" : "0"}`}
+          key={`${displayName}\0${description}\0${resolvedSound}\0${avatarUrl}\0${modelProviderId ?? ""}\0${selectedModel ?? ""}\0${preferPersonalProvider ? "1" : "0"}\0${visibility}`}
           displayName={displayName}
           description={description}
           sound={resolvedSound}
@@ -874,6 +878,8 @@ function AgentTabContent({
           modelProviderId={modelProviderId}
           selectedModel={selectedModel}
           preferPersonalProvider={preferPersonalProvider}
+          visibility={visibility}
+          canEditVisibility={canEditVisibility}
           updateSettings$={updateAgentSettings$}
           inputId="job-agent-name"
           isDefaultAgent={isDefaultAgent}
@@ -907,6 +913,7 @@ function useAgentFields() {
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,
+      visibility: "public" as const,
     };
   }
   return {
@@ -920,6 +927,7 @@ function useAgentFields() {
     modelProviderId: source.modelProviderId,
     selectedModel: source.selectedModel,
     preferPersonalProvider: source.preferPersonalProvider,
+    visibility: source.visibility ?? "public",
   };
 }
 
@@ -945,6 +953,7 @@ function useTabVisibility(agentId: string, ownerId: string) {
   return {
     isDefaultAgent,
     hideProfileAndInstructions,
+    isOwner,
     activeTab,
     setActiveTab,
   };
@@ -957,6 +966,7 @@ export function ZeroJobDetailPage() {
   const {
     isDefaultAgent,
     hideProfileAndInstructions,
+    isOwner,
     activeTab,
     setActiveTab,
   } = useTabVisibility(fields.agentId, fields.ownerId);
@@ -993,6 +1003,8 @@ export function ZeroJobDetailPage() {
           modelProviderId={fields.modelProviderId}
           selectedModel={fields.selectedModel}
           preferPersonalProvider={fields.preferPersonalProvider}
+          visibility={fields.visibility}
+          canEditVisibility={isOwner}
         />
       </main>
     </div>

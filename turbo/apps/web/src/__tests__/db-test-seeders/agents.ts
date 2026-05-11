@@ -160,6 +160,7 @@ export async function createTestZeroAgent(
     modelProviderId?: string | null;
     selectedModel?: string | null;
     preferPersonalProvider?: boolean;
+    visibility?: "public" | "private";
   },
 ): Promise<void> {
   initServices();
@@ -189,6 +190,7 @@ export async function createTestZeroAgent(
       modelProviderId: metadata.modelProviderId ?? null,
       selectedModel: metadata.selectedModel ?? null,
       preferPersonalProvider: metadata.preferPersonalProvider ?? false,
+      visibility: metadata.visibility ?? "public",
     })
     .onConflictDoUpdate({
       target: [zeroAgents.orgId, zeroAgents.name],
@@ -200,6 +202,7 @@ export async function createTestZeroAgent(
         modelProviderId: metadata.modelProviderId ?? null,
         selectedModel: metadata.selectedModel ?? null,
         preferPersonalProvider: metadata.preferPersonalProvider ?? false,
+        visibility: metadata.visibility ?? "public",
       },
     });
 }

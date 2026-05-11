@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { zeroAgentVisibilitySchema } from "./zero-agents";
 
 const c = initContract();
 
@@ -11,6 +12,7 @@ const teamComposeItemSchema = z.object({
   description: z.string().nullable(),
   sound: z.string().nullable(),
   avatarUrl: z.string().nullable(),
+  visibility: zeroAgentVisibilitySchema.optional(),
   headVersionId: z.string().nullable(),
   updatedAt: z.string(),
 });
