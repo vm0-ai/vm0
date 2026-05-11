@@ -24,10 +24,12 @@ import {
   seedTelegramInstallation$,
   type TelegramFixture,
 } from "./helpers/zero-telegram";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { seedRun$ } from "./helpers/zero-usage-insight";
 
 const context = testContext();
 const store = createStore();
+const mocks = createZeroRouteMocks(context);
 
 function uniqueBotId(): string {
   // 9-digit numeric matches parseTelegramBotId's /^\d+$/ check.
@@ -181,6 +183,30 @@ describe("POST /api/zero/integrations/telegram/message", () => {
       [401],
     );
     expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+    const client = setupApp({ context })(integrationsTelegramMessageContract);
+
+    const response = await accept(
+      client.sendMessage({
+        body: {
+          botId: "tg-bot",
+          chatId: "-100",
+          text: "hi",
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
   });
 
   it("sends a Telegram message and appends the audit footer", async () => {

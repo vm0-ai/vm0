@@ -10,9 +10,14 @@ import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
 import { buildFileDownloadUrl, getFile } from "../external/telegram-client";
 import {
+  getOfficialTelegramBotConfig,
+  isOfficialTelegramBotId,
+} from "../external/telegram-official";
+import {
   zeroTelegramBots,
   zeroTelegramInstallation,
 } from "../services/zero-telegram-data.service";
+import { inferMimetype } from "../../lib/mimetype";
 import type { RouteEntry } from "../route";
 
 const c = initContract();
@@ -35,6 +40,7 @@ const telegramDownloadFileContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      413: apiErrorSchema,
       502: apiErrorSchema,
     },
     summary: "Download a Telegram file via org bot token",
@@ -50,6 +56,27 @@ function errorResponse(
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
+
+function parseContentLength(value: string | null): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const size = Number(value);
+  if (!Number.isSafeInteger(size) || size < 0) {
+    return undefined;
+  }
+  return size;
+}
+
+function payloadTooLargeResponse(): Response {
+  return errorResponse(
+    413,
+    `File exceeds maximum size of ${MAX_FILE_SIZE_BYTES} bytes`,
+    "PAYLOAD_TOO_LARGE",
+  );
 }
 
 const getTelegramBotsInner$ = computed(async (get) => {
@@ -68,15 +95,22 @@ const getTelegramDownloadFileInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const query = get(queryOf(telegramDownloadFileContract.download));
 
-  const installation = await get(
-    zeroTelegramInstallation({ orgId: auth.orgId, botId: query.bot_id }),
-  );
-  if (!installation) {
+  let botToken: string | null | undefined;
+  if (isOfficialTelegramBotId(query.bot_id)) {
+    botToken = getOfficialTelegramBotConfig().botToken;
+  } else {
+    const installation = await get(
+      zeroTelegramInstallation({ orgId: auth.orgId, botId: query.bot_id }),
+    );
+    botToken = installation?.botToken;
+  }
+
+  if (!botToken) {
     return errorResponse(404, "Telegram bot not found", "NOT_FOUND");
   }
 
-  return getFile(installation.botToken, query.file_id)
-    .then((file) => {
+  return getFile(botToken, query.file_id)
+    .then(async (file) => {
       if (!file.file_path) {
         return errorResponse(
           404,
@@ -84,41 +118,55 @@ const getTelegramDownloadFileInner$ = computed(async (get) => {
           "NOT_FOUND",
         );
       }
+      if (file.file_size && file.file_size > MAX_FILE_SIZE_BYTES) {
+        return payloadTooLargeResponse();
+      }
 
-      const downloadUrl = buildFileDownloadUrl(
-        installation.botToken,
-        file.file_path,
-      );
-      return fetch(downloadUrl).then((fileResponse) => {
-        if (!fileResponse.ok) {
-          return errorResponse(
-            502,
-            `Failed to download file from Telegram: ${fileResponse.status}`,
-            "BAD_GATEWAY",
-          );
-        }
+      const fileName = file.file_path.split("/").pop() ?? query.file_id;
+      const downloadUrl = buildFileDownloadUrl(botToken, file.file_path);
+      const fileResponse = await fetch(downloadUrl);
+      if (!fileResponse.ok) {
+        return errorResponse(
+          502,
+          `Failed to download file from Telegram: ${fileResponse.status}`,
+          "BAD_GATEWAY",
+        );
+      }
 
-        const responseContentType =
-          fileResponse.headers.get("content-type") ??
-          "application/octet-stream";
-        const contentLength = fileResponse.headers.get("content-length");
-        const fileName = file.file_path!.split("/").pop() ?? query.file_id;
+      const responseContentType =
+        fileResponse.headers.get("content-type") ?? "";
+      if (responseContentType.includes("text/html")) {
+        return errorResponse(
+          502,
+          "Telegram returned an unexpected response",
+          "BAD_GATEWAY",
+        );
+      }
 
-        const headers = new Headers();
-        headers.set("Content-Type", responseContentType);
-        headers.set("X-File-Name", encodeURIComponent(fileName));
-        headers.set("X-File-Mimetype", responseContentType);
-        if (contentLength) {
-          headers.set("Content-Length", contentLength);
-        }
+      const contentLength = fileResponse.headers.get("content-length");
+      const contentLengthBytes = parseContentLength(contentLength);
+      if (
+        contentLengthBytes !== undefined &&
+        contentLengthBytes > MAX_FILE_SIZE_BYTES
+      ) {
+        return payloadTooLargeResponse();
+      }
 
-        return new Response(fileResponse.body, { status: 200, headers });
-      });
+      const mimetype = responseContentType || inferMimetype(fileName);
+      const headers = new Headers();
+      headers.set("Content-Type", mimetype);
+      headers.set("X-File-Name", encodeURIComponent(fileName));
+      headers.set("X-File-Mimetype", mimetype);
+      if (contentLength) {
+        headers.set("Content-Length", contentLength);
+      }
+
+      return new Response(fileResponse.body, { status: 200, headers });
     })
-    .catch((error) => {
+    .catch(() => {
       return errorResponse(
         502,
-        error instanceof Error ? error.message : "Failed to download file",
+        "Failed to download file from Telegram",
         "BAD_GATEWAY",
       );
     });

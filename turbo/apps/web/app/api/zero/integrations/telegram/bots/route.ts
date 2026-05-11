@@ -27,8 +27,8 @@ const router = tsr.router(integrationsTelegramBotListContract, {
 
     if (!authCtx.orgId) {
       return {
-        status: 403 as const,
-        body: errorBody("Organization context is required", "FORBIDDEN"),
+        status: 401 as const,
+        body: errorBody("Not authenticated", "UNAUTHORIZED"),
       };
     }
 

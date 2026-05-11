@@ -54,6 +54,20 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
     expect(response.status).toBe(401);
   });
 
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mockClerk({ userId: user.userId, orgId: null });
+
+    const response = await GET(createTestRequest(URL, { method: "GET" }));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
   const officialBotExpectation = expect.objectContaining({
     id: OFFICIAL_TELEGRAM_BOT_ID,
     kind: "official",

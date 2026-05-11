@@ -81,6 +81,26 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     expect(response.status).toBe(401);
   });
 
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mockClerk({ userId: user.userId, orgId: null });
+
+    const response = await POST(
+      messageRequest({
+        botId: "tg-bot-message",
+        chatId: "-1001234567890",
+        text: "hello",
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
   it("sends a Telegram message and appends the Slack-aligned footer", async () => {
     const { token, runId } = await zeroTokenWithRun();
     await setTestRunSelectedModel(runId, "claude-opus-4-7");
@@ -253,6 +273,46 @@ describe("POST /api/zero/integrations/telegram/message", () => {
 
     expect(response.status).toBe(400);
     expect(body.error.message).toContain("chat not found");
+    expect(body.error.code).toBe("TELEGRAM_ERROR");
+  });
+
+  it("returns 502 when Telegram returns a 5xx", async () => {
+    const { token } = await zeroTokenWithRun();
+    const botId = await createTestTelegramInstallation({
+      telegramBotId: uniqueId("tg-bot-5xx-message"),
+      orgId: user.orgId,
+      ownerUserId: user.userId,
+    });
+
+    server.use(
+      http.post(
+        "https://api.telegram.org/bottest-bot-token/sendMessage",
+        () => {
+          return HttpResponse.json(
+            {
+              ok: false,
+              description: "Service Unavailable",
+            },
+            { status: 503 },
+          );
+        },
+      ),
+    );
+
+    const response = await POST(
+      messageRequest(
+        {
+          botId,
+          chatId: "-1001234567890",
+          text: "hello",
+        },
+        token,
+      ),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body.error.message).toContain("Service Unavailable");
     expect(body.error.code).toBe("TELEGRAM_ERROR");
   });
 });

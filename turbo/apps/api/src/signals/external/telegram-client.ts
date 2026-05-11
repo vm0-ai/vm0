@@ -55,7 +55,8 @@ export async function getMe(token: string): Promise<TelegramBotInfo> {
 
 interface TelegramFile {
   readonly file_id: string;
-  readonly file_path: string;
+  readonly file_path?: string;
+  readonly file_size?: number;
 }
 
 export async function getFile(

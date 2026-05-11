@@ -135,7 +135,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
 
   if (!authCtx.orgId) {
-    return errorResponse(403, "Organization context is required", "FORBIDDEN");
+    return errorResponse(401, "Not authenticated", "UNAUTHORIZED");
   }
 
   const fileId = request.nextUrl.searchParams.get("file_id");
