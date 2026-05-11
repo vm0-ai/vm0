@@ -41,6 +41,7 @@ use vsock_proto::{
 
 const READ_BUF_SIZE: usize = 64 * 1024;
 const DEFAULT_COMMAND_CAPTURE_LIMIT_BYTES: u32 = 1024 * 1024;
+const MAX_COMMAND_STREAM_CAPACITY: usize = 1024;
 const COMMAND_FRAME_WRITE_NOT_STARTED: u8 = 0;
 const COMMAND_FRAME_WRITE_STARTED: u8 = 1;
 const COMMAND_FRAME_WRITE_COMPLETED: u8 = 2;
@@ -100,6 +101,8 @@ pub struct CommandOperationRequest<'a> {
     pub stdout: CommandOutputPolicy,
     pub stderr: CommandOutputPolicy,
     pub label: &'a str,
+    /// Bounded host-side output event queue. Must be present iff either output
+    /// policy streams.
     pub stream_capacity: Option<usize>,
 }
 
@@ -559,6 +562,13 @@ impl Shared {
 
 fn command_protocol_error(error: impl ToString) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, error.to_string())
+}
+
+fn command_output_policy_streams(policy: CommandOutputPolicy) -> bool {
+    matches!(
+        policy,
+        CommandOutputPolicy::Stream { .. } | CommandOutputPolicy::CaptureAndStream { .. }
+    )
 }
 
 fn owned_captured_output(output: CommandCapturedOutput<'_>) -> CommandOwnedCapturedOutput {
@@ -1158,6 +1168,28 @@ impl VsockHost {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "command stream capacity must be positive",
+            ));
+        }
+        if let Some(capacity) = request.stream_capacity
+            && capacity > MAX_COMMAND_STREAM_CAPACITY
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("command stream capacity must be at most {MAX_COMMAND_STREAM_CAPACITY}"),
+            ));
+        }
+        let streams_output = command_output_policy_streams(request.stdout)
+            || command_output_policy_streams(request.stderr);
+        if streams_output && request.stream_capacity.is_none() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "streaming output policy requires command stream capacity",
+            ));
+        }
+        if !streams_output && request.stream_capacity.is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "command stream capacity requires a streaming output policy",
             ));
         }
 
@@ -1928,6 +1960,94 @@ mod tests {
             .await
         {
             Ok(_) => panic!("zero stream capacity should be rejected"),
+            Err(err) => err,
+        };
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(operation_count(&host), 0);
+
+        assert_connection_accepts_legacy_exec(&host, &mut guest, &mut decoder).await;
+    }
+
+    #[tokio::test]
+    async fn command_stream_rejects_oversized_capacity_without_sending_frame() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let host = Arc::new(host);
+
+        let err = match host
+            .command_stream(CommandStreamRequest {
+                timeout_ms: 5000,
+                command: "stream",
+                env: &[],
+                sudo: false,
+                label: "oversized-capacity",
+                stdout: CommandOutputPolicy::Stream {
+                    limit_bytes: 1024,
+                    chunk_limit_bytes: 16,
+                },
+                stderr: CommandOutputPolicy::Discard,
+                stream_capacity: MAX_COMMAND_STREAM_CAPACITY + 1,
+            })
+            .await
+        {
+            Ok(_) => panic!("oversized stream capacity should be rejected"),
+            Err(err) => err,
+        };
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(operation_count(&host), 0);
+
+        assert_connection_accepts_legacy_exec(&host, &mut guest, &mut decoder).await;
+    }
+
+    #[tokio::test]
+    async fn command_start_rejects_stream_policy_without_receiver() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let host = Arc::new(host);
+
+        let err = match host
+            .start_command_operation(CommandOperationRequest {
+                timeout_ms: 5000,
+                command: "stream",
+                env: &[],
+                sudo: false,
+                stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
+                stderr: CommandOutputPolicy::CaptureAndStream {
+                    capture_limit_bytes: 1024,
+                    stream_limit_bytes: 1024,
+                    chunk_limit_bytes: 16,
+                },
+                label: "missing-receiver",
+                stream_capacity: None,
+            })
+            .await
+        {
+            Ok(_) => panic!("streaming output policy without receiver should be rejected"),
+            Err(err) => err,
+        };
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(operation_count(&host), 0);
+
+        assert_connection_accepts_legacy_exec(&host, &mut guest, &mut decoder).await;
+    }
+
+    #[tokio::test]
+    async fn command_start_rejects_receiver_without_stream_policy() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let host = Arc::new(host);
+
+        let err = match host
+            .start_command_operation(CommandOperationRequest {
+                timeout_ms: 5000,
+                command: "capture",
+                env: &[],
+                sudo: false,
+                stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
+                stderr: CommandOutputPolicy::Discard,
+                label: "unexpected-receiver",
+                stream_capacity: Some(1),
+            })
+            .await
+        {
+            Ok(_) => panic!("receiver without streaming output policy should be rejected"),
             Err(err) => err,
         };
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
