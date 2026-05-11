@@ -77,6 +77,7 @@ jobs:
       nbd-cow-changed: ${{ steps.detect.outputs.nbd-cow-changed }}
       metal-host: ${{ steps.host.outputs.host }}
       metal-job-ref: ${{ steps.host.outputs.job-ref }}
+      runner-image-job-ref: ${{ steps.host.outputs.image-job-ref }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -95,7 +96,7 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null || true
 
           # Check if the workflow file or ansible playbooks changed
-          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^\.github/workflows/crates\.yml$|^ansible/"; then
+          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^\.github/workflows/(crates|runner-image)\.yml$|^\.github/actions/(setup-ssh-tunnel|provision)/|^\.github/scripts/|^ansible/"; then
             echo "ci-changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "ci-changed=false" >> "$GITHUB_OUTPUT"
@@ -187,16 +188,19 @@ jobs:
               echo "::warning::PR #${PR_NUMBER} is ${STATE}, skipping host/job-ref to prevent stale runner deployment"
               exit 0
             fi
+            IMAGE_JOB_REF="pr-${PR_NUMBER}"
             JOB_REF="pr-${PR_NUMBER}-test"
           elif [ "$EVENT_NAME" = "merge_group" ]; then
             MQ_PR_NUM=$(echo "$MQ_HEAD_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
             if [ -n "$MQ_PR_NUM" ]; then
+              IMAGE_JOB_REF="pr-${MQ_PR_NUM}"
               JOB_REF="pr-${MQ_PR_NUM}-test"
             else
               echo "::error::Failed to extract PR number from merge_group head_ref: $MQ_HEAD_REF"
               exit 1
             fi
           else
+            IMAGE_JOB_REF="staging"
             JOB_REF="staging-test"
           fi
 
@@ -209,9 +213,12 @@ jobs:
           HASH=$(echo -n "$JOB_REF" | md5sum | cut -c1-8)
           HOST_INDEX=$(( 0x$HASH % NUM_HOSTS ))
           HOST=$(echo "$HOSTS" | sed -n "$((HOST_INDEX + 1))p")
-          echo "host=${HOST}" >> "$GITHUB_OUTPUT"
-          echo "job-ref=${JOB_REF}" >> "$GITHUB_OUTPUT"
-          echo "Selected metal host: ${HOST} (index ${HOST_INDEX}/${NUM_HOSTS}, job-ref: ${JOB_REF})"
+          {
+            echo "host=${HOST}"
+            echo "job-ref=${JOB_REF}"
+            echo "image-job-ref=${IMAGE_JOB_REF}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Selected metal host: ${HOST} (index ${HOST_INDEX}/${NUM_HOSTS}, job-ref: ${JOB_REF}, image-job-ref: ${IMAGE_JOB_REF})"
 
   check:
     runs-on: ubuntu-latest
@@ -380,8 +387,9 @@ jobs:
 
   runner-build:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
+    permissions:
+      actions: read
+      contents: read
     needs: [detect]
     if: |
       needs.detect.outputs.metal-job-ref != '' && (
@@ -396,137 +404,28 @@ jobs:
         needs.detect.outputs.guest-write-file-changed == 'true'
       )
     timeout-minutes: 20
-    env:
-      TARGET_TRIPLE: aarch64-unknown-linux-musl
     outputs:
       host: ${{ needs.detect.outputs.metal-host }}
       job-ref: ${{ needs.detect.outputs.metal-job-ref }}
-      default-rootfs-hash: ${{ steps.build.outputs.default-rootfs-hash }}
-      default-snapshot-hash: ${{ steps.build.outputs.default-snapshot-hash }}
+      image-job-ref: ${{ needs.detect.outputs.runner-image-job-ref }}
+      bin-dir: ${{ steps.manifest.outputs.bin-dir }}
+      default-rootfs-hash: ${{ steps.manifest.outputs.selected-rootfs-hash }}
+      default-snapshot-hash: ${{ steps.manifest.outputs.selected-snapshot-hash }}
     steps:
       - uses: actions/checkout@v6
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: crates -> target
-          shared-key: aarch64-musl-release
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      # IMPORTANT: these compile settings (--release, default linker, no
-      # custom RUSTFLAGS) must match release-please.yml so guest binary bytes
-      # and rootfs_hash are identical across pipelines. The shared R2
-      # template cache intentionally ignores guest binaries. See #9192.
-      - name: Cross-compile guest binaries for ARM64
-        run: |
-          cd crates
-          cargo build --release --target "$TARGET_TRIPLE" \
-            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-write-file
-
-      - name: Cross-compile runner with embedded guests for ARM64
-        run: |
-          cd crates
-          GUEST_AGENT_PATH="target/$TARGET_TRIPLE/release/guest-agent" \
-          GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/release/guest-download" \
-          GUEST_INIT_PATH="target/$TARGET_TRIPLE/release/guest-init" \
-          GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/release/guest-mock-claude" \
-          GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/release/guest-mock-codex" \
-          GUEST_RESEED_PATH="target/$TARGET_TRIPLE/release/guest-reseed" \
-          GUEST_WRITE_FILE_PATH="target/$TARGET_TRIPLE/release/guest-write-file" \
-          cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
-
-      - id: short-sha
-        run: echo "sha=$(echo "${GITHUB_SHA:-unknown}" | cut -c1-7)" >> "$GITHUB_OUTPUT"
-
-      - name: Upload runner binary
-        uses: actions/upload-artifact@v7
-        with:
-          name: runner-${{ steps.short-sha.outputs.sha }}-aarch64-linux
-          path: crates/target/${{ env.TARGET_TRIPLE }}/ci/runner
-          retention-days: 7
-
-      - name: Setup SSH via Cloudflare Tunnel
-        uses: ./.github/actions/setup-ssh-tunnel
-        with:
-          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-
-      - name: Provision metal hosts
-        uses: ./.github/actions/provision
-        with:
-          hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          metal-user: ${{ vars.AWS_METAL_RUNNER_USER }}
-          grafana-cloud-prometheus-url: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
-          grafana-cloud-prometheus-user: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
-          grafana-cloud-api-key: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
-          env-label: dev
-
-      - name: Deploy and build on metal host
-        id: build
-        shell: bash
+      - name: Wait for runner image manifest
+        id: manifest
         env:
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          HOST: ${{ needs.detect.outputs.metal-host }}
-          JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
-          # R2 credentials for the runner build image cache. Inlined into the
-          # remote sudo invocation below — sudo strips env by default.
-          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
-        run: |
-          set -euo pipefail
-          REMOTE="${METAL_USER}@${HOST}"
-          # shellcheck disable=SC2088
-          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
-          TARGET_DIR="crates/target/${TARGET_TRIPLE}/ci"
-
-          # Clean previous run artifacts and upload runner (guests are embedded)
-          echo "=== Deploying runner to ${HOST}:${BIN_DIR} ==="
-          # shellcheck disable=SC2029
-          ssh "$REMOTE" "sudo rm -rf ${BIN_DIR} /var/lib/vm0-runner/runners/${JOB_REF}-bench /var/lib/vm0-runner/runners/${JOB_REF}-local && sudo mkdir -p ${BIN_DIR}"
-          # shellcheck disable=SC2029
-          < "${TARGET_DIR}/runner" ssh "$REMOTE" "sudo install -m 755 /dev/stdin ${BIN_DIR}/runner"
-
-          # Clean up old rootfs/snapshots, keep the 3 most recent deploys.
-          # R2_* env vars are inlined so `runner gc` can also sweep stale R2 image
-          # objects — without them, R2-side cleanup is silently skipped.
-          # shellcheck disable=SC2029
-          ssh "$REMOTE" "sudo \
-            R2_ACCOUNT_ID='${R2_ACCOUNT_ID}' \
-            R2_ACCESS_KEY_ID='${R2_ACCESS_KEY_ID}' \
-            R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
-            R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
-            ${BIN_DIR}/runner gc --keep-latest 3"
-
-          # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
-          echo "=== Running setup ==="
-          # shellcheck disable=SC2029
-          ssh "$REMOTE" "sudo ${BIN_DIR}/runner setup"
-
-          # Run build (template + rootfs customization + snapshot).
-          # R2_* env vars are inlined after `sudo` so they reach the runner
-          # process — sudo's default `env_reset` would otherwise strip them.
-          # Use tee to stream output in real-time while capturing for hash extraction
-          echo "=== Building vm0/default ==="
-          BUILD_LOG_DEFAULT=$(mktemp)
-          # shellcheck disable=SC2029
-          ssh "$REMOTE" "sudo \
-            R2_ACCOUNT_ID='${R2_ACCOUNT_ID}' \
-            R2_ACCESS_KEY_ID='${R2_ACCESS_KEY_ID}' \
-            R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
-            R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
-            ${BIN_DIR}/runner build --profile vm0/default" | tee "$BUILD_LOG_DEFAULT"
-          DEFAULT_ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG_DEFAULT" | tail -n1 | cut -d= -f2 || true)
-          DEFAULT_SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG_DEFAULT" | tail -n1 | cut -d= -f2 || true)
-          rm -f "$BUILD_LOG_DEFAULT"
-
-          if [ -z "$DEFAULT_ROOTFS_HASH" ] || [ -z "$DEFAULT_SNAPSHOT_HASH" ]; then
-            echo "ERROR: Failed to extract rootfs_hash or snapshot_hash"
-            exit 1
-          fi
-          echo "default-rootfs-hash=${DEFAULT_ROOTFS_HASH}" >> "$GITHUB_OUTPUT"
-          echo "default-snapshot-hash=${DEFAULT_SNAPSHOT_HASH}" >> "$GITHUB_OUTPUT"
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.sha }}
+          LOOKUP_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          JOB_REF: ${{ needs.detect.outputs.runner-image-job-ref }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          SELECTED_HOST: ${{ needs.detect.outputs.metal-host }}
+          TARGET: aarch64-unknown-linux-musl
+          PROFILE: vm0/default
+        run: .github/scripts/wait-runner-image.sh
 
   runner-benchmark:
     runs-on: ubuntu-latest
@@ -548,12 +447,11 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
           DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
           DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
-          # shellcheck disable=SC2088
-          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
           # shellcheck disable=SC2088
           RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-bench"
 
@@ -564,7 +462,7 @@ jobs:
             --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
             --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
             --name ${JOB_REF}-bench \
-            --group vm0/development-${JOB_REF} \
+            --group vm0/benchmark-${JOB_REF} \
             --runner-dirname ${JOB_REF}-bench \
             --api-url https://not-a-real-server.test \
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
@@ -605,12 +503,11 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
           DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
           DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
-          # shellcheck disable=SC2088
-          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
 
           echo "=== Generating config ==="
           # shellcheck disable=SC2029
@@ -868,12 +765,11 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
           DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
           DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
-          # shellcheck disable=SC2088
-          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
 
           echo "=== Generating config ==="
           # shellcheck disable=SC2029
@@ -981,12 +877,11 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
           DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
           DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
-          # shellcheck disable=SC2088
-          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
 
           echo "=== Generating config ==="
           # shellcheck disable=SC2029
@@ -1173,12 +1068,11 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
           DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
           DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
-          # shellcheck disable=SC2088
-          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
 
           echo "=== Generating config ==="
           # shellcheck disable=SC2029
@@ -1408,12 +1302,11 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
           DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
           DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
-          # shellcheck disable=SC2088
-          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
           GROUP="vm0/upgrade-${JOB_REF}"
 
           echo "=== Generating configs for runner A and B ==="
@@ -1545,12 +1438,11 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
           DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
           DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
-          # shellcheck disable=SC2088
-          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
 
           echo "=== Generating config ==="
           # shellcheck disable=SC2029

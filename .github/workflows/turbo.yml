@@ -174,7 +174,7 @@ jobs:
         id: detect-ci
         run: |
           BASE_REF="${{ steps.detect.outputs.base-ref }}"
-          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^\.github/workflows/turbo\.yml$|^ansible/"; then
+          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^\.github/workflows/(turbo|crates|runner-image)\.yml$|^\.github/actions/(setup-ssh-tunnel|provision)/|^\.github/scripts/|^ansible/"; then
             echo "CI workflow changes detected"
             echo "ci-changed=true" >> "$GITHUB_OUTPUT"
           else
@@ -1373,20 +1373,19 @@ jobs:
             echo "Cron simulator stopped"
           fi
 
-  # Deploy runner prepare: cross-compile, deploy to all metal hosts, build rootfs/snapshot with mock URL
-  # Runs in parallel with deploy-web since rootfs/snapshot don't need the preview URL
+  # Deploy runner prepare: wait for the shared runner-image workflow manifest.
+  # The runner-image workflow owns cross-compilation and all-host image build.
   # Skip on push to main - runner deployment is only needed for PRs
   deploy-runner-prepare:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     concurrency:
       group: deploy-runner-prepare-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
     needs: [prepare]
     timeout-minutes: 20
-    env:
-      TARGET_TRIPLE: aarch64-unknown-linux-musl
     if: |
       github.event_name != 'push' &&
       needs.prepare.outputs.job-ref != '' && (
@@ -1397,75 +1396,14 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       )
     outputs:
-      bin-dir: ${{ steps.host.outputs.bin-dir }}
-      runner-dir: ${{ steps.host.outputs.runner-dir }}
+      bin-dir: ${{ steps.manifest.outputs.bin-dir }}
+      runner-dir: ${{ steps.manifest.outputs.runner-dir }}
       runner-matrix: ${{ steps.runner-matrix.outputs.matrix }}
       chunk-count: ${{ steps.runner-matrix.outputs.chunk-count }}
-      rootfs-hash-map: ${{ steps.deploy.outputs.rootfs-hash-map }}
-      snapshot-hash-map: ${{ steps.deploy.outputs.snapshot-hash-map }}
+      rootfs-hash-map: ${{ steps.manifest.outputs.rootfs-hash-map }}
+      snapshot-hash-map: ${{ steps.manifest.outputs.snapshot-hash-map }}
     steps:
       - uses: actions/checkout@v6
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: crates -> target
-          shared-key: aarch64-musl-release
-          # Read-only: crates.yml runner-build is the sole writer for this key
-          save-if: false
-
-      # IMPORTANT: these compile settings (--release, default linker, no
-      # custom RUSTFLAGS) must match release-please.yml so guest binary bytes
-      # and rootfs_hash are identical across pipelines. The shared R2
-      # template cache intentionally ignores guest binaries. See #9192.
-      - name: Cross-compile guest binaries for ARM64
-        run: |
-          cd crates
-          cargo build --release --target "$TARGET_TRIPLE" \
-            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-write-file
-
-      - name: Cross-compile runner with embedded guests for ARM64
-        run: |
-          cd crates
-          GUEST_AGENT_PATH="target/$TARGET_TRIPLE/release/guest-agent" \
-          GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/release/guest-download" \
-          GUEST_INIT_PATH="target/$TARGET_TRIPLE/release/guest-init" \
-          GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/release/guest-mock-claude" \
-          GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/release/guest-mock-codex" \
-          GUEST_RESEED_PATH="target/$TARGET_TRIPLE/release/guest-reseed" \
-          GUEST_WRITE_FILE_PATH="target/$TARGET_TRIPLE/release/guest-write-file" \
-          cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
-
-      - name: Setup SSH via Cloudflare Tunnel
-        uses: ./.github/actions/setup-ssh-tunnel
-        with:
-          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-
-      - name: Provision metal hosts
-        uses: ./.github/actions/provision
-        with:
-          hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          metal-user: ${{ vars.AWS_METAL_RUNNER_USER }}
-          grafana-cloud-prometheus-url: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
-          grafana-cloud-prometheus-user: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
-          grafana-cloud-api-key: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
-          env-label: dev
-
-      - name: Resolve metal hosts
-        id: host
-        env:
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-        run: |
-          echo "bin-dir=/var/lib/vm0-runner/bin/${JOB_REF}" >> "$GITHUB_OUTPUT"
-          echo "runner-dir=/var/lib/vm0-runner/runners/${JOB_REF}" >> "$GITHUB_OUTPUT"
-          NUM_HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | grep -c .)
-          if [ "$NUM_HOSTS" -lt 1 ]; then
-            echo "::error::AWS_METAL_RUNNER_HOSTS is empty"
-            exit 1
-          fi
-          echo "Deploying to ${NUM_HOSTS} metal hosts"
 
       - name: Generate runner E2E test matrix
         id: runner-matrix
@@ -1515,202 +1453,17 @@ jobs:
           echo "matrix=${CHUNKS}]" >> "$GITHUB_OUTPUT"
           echo "chunk-count=${NUM_CHUNKS}" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy binaries and build rootfs/snapshot on all metal hosts
-        id: deploy
-        shell: bash
+      - name: Wait for runner image manifest
+        id: manifest
         env:
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.sha }}
+          LOOKUP_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-          BIN_DIR: ${{ steps.host.outputs.bin-dir }}
-          RUNNER_DIR: ${{ steps.host.outputs.runner-dir }}
-          # R2 credentials for the runner build image cache. Inlined into the
-          # remote sudo invocation below — sudo strips env by default.
-          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
-        run: |
-          set -euo pipefail
-
-          TARGET_DIR="crates/target/${TARGET_TRIPLE}/ci"
-
-          prepare_host() {
-            local HOST=$1
-            local HOST_INDEX=$2
-            local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
-            local REMOTE="${METAL_USER}@${HOST}"
-            echo "=== Preparing ${HOST} (runner: ${RUNNER_NAME}) ==="
-
-            # Stop the old service before deleting its runner directory. A live
-            # runner can keep claiming jobs after its base_dir disappears.
-            if ! ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${RUNNER_NAME}" <<'REMOTE_SCRIPT'
-          set -euo pipefail
-          BIN_DIR=$1
-          RUNNER_NAME=$2
-          UNIT="vm0-runner-${RUNNER_NAME}.service"
-
-          if [ -x "${BIN_DIR}/runner" ]; then
-            sudo "${BIN_DIR}/runner" service stop --name "${RUNNER_NAME}" --force
-          else
-            sudo systemctl stop "${UNIT}" 2>/dev/null || true
-          fi
-
-          if sudo systemctl is-active --quiet "${UNIT}" 2>/dev/null; then
-            echo "runner service ${UNIT} is still active after stop" >&2
-            exit 1
-          fi
-
-          sudo systemctl reset-failed "${UNIT}" 2>/dev/null || true
-          REMOTE_SCRIPT
-            then
-              return 1
-            fi
-
-            # Clean previous run artifacts and upload runner (guests are embedded)
-            # shellcheck disable=SC2029
-            if ! ssh "$REMOTE" "sudo rm -rf ${BIN_DIR} ${RUNNER_DIR} && sudo mkdir -p ${BIN_DIR}"; then
-              return 1
-            fi
-            # shellcheck disable=SC2029
-            if ! ssh "$REMOTE" "sudo install -m 755 /dev/stdin ${BIN_DIR}/runner" < "${TARGET_DIR}/runner"; then
-              return 1
-            fi
-
-            # Clean up old rootfs/snapshots, keep the 6 most recent (3 deploys × 2 profiles).
-            # R2_* env vars are inlined so `runner gc` can also sweep stale R2 image
-            # objects — without them, R2-side cleanup is silently skipped.
-            # shellcheck disable=SC2029
-            if ! ssh "$REMOTE" "sudo \
-              R2_ACCOUNT_ID='${R2_ACCOUNT_ID}' \
-              R2_ACCESS_KEY_ID='${R2_ACCESS_KEY_ID}' \
-              R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
-              R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
-              ${BIN_DIR}/runner gc --keep-latest 6"; then
-              return 1
-            fi
-
-            # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
-            # shellcheck disable=SC2029
-            if ! ssh "$REMOTE" "sudo ${BIN_DIR}/runner setup"; then
-              return 1
-            fi
-            echo "=== Done preparing ${HOST} ==="
-          }
-
-          warm_rootfs_cache() {
-            local HOST=$1
-            local REMOTE="${METAL_USER}@${HOST}"
-            echo "=== Warming shared template cache on ${HOST} ==="
-
-            # Warm exactly once before the per-host snapshot build fan-out. This
-            # prevents every metal host from racing into the slow local rootfs
-            # template build path when a PR introduces a new template_hash.
-            # shellcheck disable=SC2029
-            if ! ssh "$REMOTE" "sudo \
-              R2_ACCOUNT_ID='${R2_ACCOUNT_ID}' \
-              R2_ACCESS_KEY_ID='${R2_ACCESS_KEY_ID}' \
-              R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
-              R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
-              ${BIN_DIR}/runner build --profile vm0/default --warm-rootfs-cache"; then
-              return 1
-            fi
-            echo "=== Done warming shared template cache on ${HOST} ==="
-          }
-
-          build_snapshot_on_host() {
-            local HOST=$1
-            local REMOTE="${METAL_USER}@${HOST}"
-            echo "=== Building rootfs/snapshot on ${HOST} ==="
-
-            # Run build to create rootfs + snapshot (outputs hashes to stdout).
-            # R2_* env vars are inlined after `sudo` so they reach the runner
-            # process — sudo's default `env_reset` would otherwise strip them.
-            # shellcheck disable=SC2029
-            if ! ssh "$REMOTE" "sudo \
-              R2_ACCOUNT_ID='${R2_ACCOUNT_ID}' \
-              R2_ACCESS_KEY_ID='${R2_ACCESS_KEY_ID}' \
-              R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
-              R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
-              ${BIN_DIR}/runner build --profile vm0/default"; then
-              return 1
-            fi
-            echo "=== Done building rootfs/snapshot on ${HOST} ==="
-          }
-
-          LOG_DIR=$(mktemp -d)
-          HOSTS=()
-          PIDS=()
-          HOST_INDEX=0
-          for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-            HOST_INDEX=$((HOST_INDEX + 1))
-            prepare_host "$HOST" "$HOST_INDEX" > "${LOG_DIR}/${HOST}.prepare.log" 2>&1 &
-            PIDS+=($!)
-            HOSTS+=("$HOST")
-          done
-
-          FAILED=0
-          for i in "${!PIDS[@]}"; do
-            if ! wait "${PIDS[$i]}"; then
-              FAILED=1
-              echo "::error::Runner preparation failed on ${HOSTS[$i]}"
-            fi
-            echo "=== ${HOSTS[$i]} prepare ==="
-            cat "${LOG_DIR}/${HOSTS[$i]}.prepare.log"
-          done
-          if [ "$FAILED" -ne 0 ]; then
-            rm -rf "$LOG_DIR"
-            exit 1
-          fi
-
-          WARM_HOST="${HOSTS[0]}"
-          WARM_LOG="${LOG_DIR}/warm-rootfs-cache.log"
-          if ! warm_rootfs_cache "$WARM_HOST" 2>&1 | tee "$WARM_LOG"; then
-            echo "::error::Shared template cache warm failed on ${WARM_HOST}"
-            rm -rf "$LOG_DIR"
-            exit 1
-          fi
-
-          PIDS=()
-          for HOST in "${HOSTS[@]}"; do
-            build_snapshot_on_host "$HOST" > "${LOG_DIR}/${HOST}.build.log" 2>&1 &
-            PIDS+=($!)
-          done
-
-          FAILED=0
-          for i in "${!PIDS[@]}"; do
-            if ! wait "${PIDS[$i]}"; then
-              FAILED=1
-              echo "::error::Runner image build failed on ${HOSTS[$i]}"
-            fi
-            echo "=== ${HOSTS[$i]} build ==="
-            cat "${LOG_DIR}/${HOSTS[$i]}.build.log"
-          done
-          if [ "$FAILED" -ne 0 ]; then
-            rm -rf "$LOG_DIR"
-            exit 1
-          fi
-
-          # Extract per-host build hashes. The shared R2 cache is keyed by
-          # template_hash; rootfs and snapshot hashes may differ across
-          # hosts because they include host-local customization.
-          ROOTFS_MAP=$(jq -n '{}')
-          SNAPSHOT_MAP=$(jq -n '{}')
-          for HOST in "${HOSTS[@]}"; do
-            ROOTFS_HASH=$(grep '^rootfs_hash=' "${LOG_DIR}/${HOST}.build.log" | tail -n1 | cut -d= -f2 || true)
-            SNAPSHOT_HASH=$(grep '^snapshot_hash=' "${LOG_DIR}/${HOST}.build.log" | tail -n1 | cut -d= -f2 || true)
-            if [ -z "$ROOTFS_HASH" ] || [ -z "$SNAPSHOT_HASH" ]; then
-              echo "::error::Failed to extract rootfs/snapshot hash from ${HOST} log"
-              rm -rf "$LOG_DIR"
-              exit 1
-            fi
-            ROOTFS_MAP=$(echo "$ROOTFS_MAP" | jq -c --arg h "$HOST" --arg v "$ROOTFS_HASH" '. + {($h): $v}')
-            SNAPSHOT_MAP=$(echo "$SNAPSHOT_MAP" | jq -c --arg h "$HOST" --arg v "$SNAPSHOT_HASH" '. + {($h): $v}')
-          done
-          rm -rf "$LOG_DIR"
-          echo "rootfs-hash-map=${ROOTFS_MAP}" >> "$GITHUB_OUTPUT"
-          echo "snapshot-hash-map=${SNAPSHOT_MAP}" >> "$GITHUB_OUTPUT"
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          TARGET: aarch64-unknown-linux-musl
+          PROFILE: vm0/default
+        run: .github/scripts/wait-runner-image.sh
 
   # Deploy runner start: generate config with real preview URL and start service
   # Waits for both deploy-runner-prepare (binaries + image) and deploy-web (preview URL)

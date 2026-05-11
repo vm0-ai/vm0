@@ -94,5 +94,6 @@
         - "{{ base_dir }}/groups/vm0/drain-{{ job_ref }}"
         - "{{ base_dir }}/groups/vm0/exec-{{ job_ref }}"
         - "{{ base_dir }}/groups/vm0/balloon-{{ job_ref }}"
+        - "{{ base_dir }}/groups/vm0/benchmark-{{ job_ref }}"
         - "{{ base_dir }}/groups/vm0/upgrade-{{ job_ref }}"
         - "{{ base_dir }}/groups/vm0/keepalive-{{ job_ref }}"
