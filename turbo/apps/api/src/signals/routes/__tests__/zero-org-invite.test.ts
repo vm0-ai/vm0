@@ -148,3 +148,114 @@ describe("POST /api/zero/org/invite", () => {
     ).not.toHaveBeenCalled();
   });
 });
+
+describe("DELETE /api/zero/org/invite", () => {
+  it("revokes an invitation for an admin", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const invitationId = `inv_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId, "org:admin");
+    context.mocks.clerk.organizations.revokeOrganizationInvitation.mockResolvedValueOnce(
+      undefined,
+    );
+
+    const response = await accept(
+      apiClient().revoke({
+        headers: authHeaders(),
+        body: { invitationId },
+      }),
+      [200],
+    );
+
+    expect(response.body.message).toBe("Invitation revoked");
+    expect(
+      context.mocks.clerk.organizations.revokeOrganizationInvitation,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: orgId,
+        invitationId,
+      }),
+    );
+  });
+
+  it("returns 403 when the caller is not an admin", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId, "org:member");
+
+    const response = await accept(
+      apiClient().revoke({
+        headers: authHeaders(),
+        body: { invitationId: "inv_test123" },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Access denied", code: "FORBIDDEN" },
+    });
+    expect(
+      context.mocks.clerk.organizations.revokeOrganizationInvitation,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 when the request is unauthenticated", async () => {
+    const response = await accept(
+      apiClient().revoke({
+        headers: {},
+        body: { invitationId: "inv_test123" },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+    expect(
+      context.mocks.clerk.organizations.revokeOrganizationInvitation,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 when the authenticated session has no active organization", async () => {
+    // Deliberate hardening: web returns 400 (resolveOrg throw → isBadRequest);
+    // api returns 401 (authRoute's missingOrganizationStatus). See PR body.
+    const userId = `user_${randomUUID()}`;
+    mocks.clerk.session(userId, null);
+
+    const response = await accept(
+      apiClient().revoke({
+        headers: authHeaders(),
+        body: { invitationId: "inv_test123" },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+    expect(
+      context.mocks.clerk.organizations.revokeOrganizationInvitation,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for an invalid body (missing invitationId)", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId, "org:admin");
+
+    const response = await accept(
+      apiClient().revoke({
+        headers: authHeaders(),
+        body: {} as { invitationId: string },
+      }),
+      [400],
+    );
+
+    expect(response.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+    expect(
+      context.mocks.clerk.organizations.revokeOrganizationInvitation,
+    ).not.toHaveBeenCalled();
+  });
+});

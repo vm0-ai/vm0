@@ -48,12 +48,48 @@ const inviteInner$ = command(async ({ get }, signal: AbortSignal) => {
   };
 });
 
+const revokeBody$ = bodyResultOf(zeroOrgInviteContract.revoke);
+
+const revokeInner$ = command(async ({ get }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  if (auth.orgRole !== "admin") {
+    return adminRequired;
+  }
+
+  const body = await get(revokeBody$);
+  signal.throwIfAborted();
+  if (!body.ok) {
+    return body.response;
+  }
+
+  // Clerk side effect — revokes the pending invitation server-side.
+  // Mirrors apps/web/src/lib/zero/org/org-member-service.ts:revokeInvitation.
+  const client = get(clerk$);
+  await client.organizations.revokeOrganizationInvitation({
+    organizationId: auth.orgId,
+    invitationId: body.data.invitationId,
+  });
+  signal.throwIfAborted();
+
+  return {
+    status: 200 as const,
+    body: { message: "Invitation revoked" },
+  };
+});
+
 export const zeroOrgInviteRoutes: readonly RouteEntry[] = [
   {
     route: zeroOrgInviteContract.invite,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       inviteInner$,
+    ),
+  },
+  {
+    route: zeroOrgInviteContract.revoke,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      revokeInner$,
     ),
   },
 ];
