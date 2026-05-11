@@ -13,6 +13,7 @@ import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
 import { zeroAgentsRoutes } from "./routes/zero-agents";
 import { zeroApiKeysRoutes } from "./routes/zero-api-keys";
 import { zeroBillingAutoRechargeRoutes } from "./routes/zero-billing-auto-recharge";
+import { zeroBillingCheckoutRoutes } from "./routes/zero-billing-checkout";
 import { zeroBillingInvoicesRoutes } from "./routes/zero-billing-invoices";
 import { zeroBillingStatusRoutes } from "./routes/zero-billing-status";
 import { zeroChatThreadRoutes } from "./routes/zero-chat-threads";
@@ -36,8 +37,6 @@ import { zeroRunsRoutes } from "./routes/zero-runs";
 import { zeroRunsCancelRoutes } from "./routes/zero-runs-cancel";
 import { zeroSchedulesRoutes } from "./routes/zero-schedules";
 import { zeroMeModelProvidersDeleteRoutes } from "./routes/zero-me-model-providers-delete";
-import { zeroMeModelProvidersSetDefaultRoutes } from "./routes/zero-me-model-providers-set-default";
-import { zeroMeModelProvidersUpdateModelRoutes } from "./routes/zero-me-model-providers-update-model";
 import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
 import { zeroSecretsRoutes } from "./routes/zero-secrets";
 import { zeroSkillsRoutes } from "./routes/zero-skills";
@@ -75,6 +74,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroAgentsRoutes,
   ...zeroApiKeysRoutes,
   ...zeroBillingAutoRechargeRoutes,
+  ...zeroBillingCheckoutRoutes,
   ...zeroBillingInvoicesRoutes,
   ...zeroBillingStatusRoutes,
   ...zeroChatThreadRoutes,
@@ -90,8 +90,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroMeModelProvidersDeleteRoutes,
-  ...zeroMeModelProvidersSetDefaultRoutes,
-  ...zeroMeModelProvidersUpdateModelRoutes,
   ...zeroMeModelProvidersUpsertRoutes,
   ...zeroVoiceChatRoutes,
   ...zeroVoiceIoQuotaRoutes,

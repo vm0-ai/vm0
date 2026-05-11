@@ -1,6 +1,5 @@
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import {
-  zeroPersonalModelProvidersDefaultContract,
   zeroPersonalModelProvidersMainContract,
   zeroPersonalModelProvidersByTypeContract,
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
@@ -68,31 +67,6 @@ export const apiPersonalModelProvidersHandlers = [
       }
 
       return respond(created ? 201 : 200, { provider, created });
-    },
-  ),
-
-  // POST /api/zero/me/model-providers/:type/default - Set personal default
-  mockApi(
-    zeroPersonalModelProvidersDefaultContract.setDefault,
-    ({ params, respond }) => {
-      const existing = mockPersonalModelProviders.find((p) => {
-        return p.type === params.type;
-      });
-
-      if (!existing) {
-        return respond(404, {
-          error: { message: "Model provider not found", code: "NOT_FOUND" },
-        });
-      }
-
-      mockPersonalModelProviders = mockPersonalModelProviders.map((p) => {
-        return {
-          ...p,
-          isDefault: p.type === params.type,
-        };
-      });
-
-      return respond(200, { ...existing, isDefault: true });
     },
   ),
 

@@ -588,7 +588,6 @@ export async function dispatchQueuedZeroRun(
     params.userId,
     params.modelProvider,
     composeContent,
-    params.preferPersonalProvider,
     params.selectedModelOverride,
     params.modelProviderId,
     params.modelProviderCredentialScope,
@@ -606,7 +605,6 @@ export async function dispatchQueuedZeroRun(
     modelProviderCredentialScope: params.modelProviderCredentialScope,
     selectedModelOverride: params.selectedModelOverride,
     composeFramework,
-    preferPersonalProvider: params.preferPersonalProvider,
   });
 
   await checkOrgCreditsForRunAdmission(admissionContext);

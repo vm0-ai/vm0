@@ -481,8 +481,8 @@ export async function insertUserMultiAuthModelProvider(
  * a coexisting personal-tier row that the workspace's single-default
  * invariant precludes from being marked default.
  *
- * @why-db-direct Tests need a non-default user-level provider; the public
- * setUserModelProviderDefault API marks the inserted row as default.
+ * @why-db-direct Tests need a non-default user-level provider without changing
+ * the existing user default.
  */
 export async function insertUserNonDefaultModelProvider(
   orgId: string,
@@ -503,36 +503,6 @@ export async function insertUserNonDefaultModelProvider(
     .returning({ id: modelProviders.id });
   if (!row) throw new Error("insertUserNonDefaultModelProvider: insert failed");
   return row.id;
-}
-
-/**
- * Enable the `personalModelProvider` feature switch for a specific user via
- * the per-user override store. The static registry entry has the switch off
- * + staff-only (`STAFF_ORG_ID_HASHES`); test orgs do not match those
- * hashes, so test seeding must use the override path.
- *
- * @why-db-direct Tests need to flip the switch deterministically without
- * mutating the static registry or computing a real org-id hash.
- */
-export async function enablePersonalModelProviderForUser(
-  orgId: string,
-  userId: string,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .insert(userFeatureSwitches)
-    .values({
-      orgId,
-      userId,
-      switches: { personalModelProvider: true },
-    })
-    .onConflictDoUpdate({
-      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
-      set: {
-        switches: { personalModelProvider: true },
-        updatedAt: new Date(),
-      },
-    });
 }
 
 /**

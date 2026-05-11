@@ -2,8 +2,6 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { GET, POST } from "../route";
 import { DELETE } from "../[type]/route";
-import { POST as setDefaultPOST } from "../[type]/default/route";
-import { PATCH as updateModelPATCH } from "../[type]/model/route";
 import {
   createTestRequest,
   createTestOrgModelProvider,
@@ -45,14 +43,6 @@ function deleteUrl(type: string): string {
   return `${BASE_URL}/${type}`;
 }
 
-function setDefaultUrl(type: string): string {
-  return `${BASE_URL}/${type}/default`;
-}
-
-function updateModelUrl(type: string): string {
-  return `${BASE_URL}/${type}/model`;
-}
-
 interface ProviderRow {
   id: string;
   type: string;
@@ -84,21 +74,7 @@ async function createProvider(
   return POST(request);
 }
 
-async function createMultiAuthProvider(
-  type: string,
-  authMethod: string,
-  secrets: Record<string, string>,
-  selectedModel?: string,
-) {
-  const request = createTestRequest(upsertUrl(), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type, authMethod, secrets, selectedModel }),
-  });
-  return POST(request);
-}
-
-describe("Personal-tier (BYOK) model provider routes", () => {
+describe("Model-first personal OAuth model provider routes", () => {
   let user: UserContext;
 
   beforeEach(async () => {
@@ -111,52 +87,23 @@ describe("Personal-tier (BYOK) model provider routes", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Feature switch gate — all endpoints return 404 when off
+  // Feature switch gate — list/upsert return 404 when off
   // ---------------------------------------------------------------------------
 
-  describe("feature switch off → all endpoints 404", () => {
+  describe("feature switch off → gated endpoints 404", () => {
     beforeEach(() => {
       mockIsFeatureEnabled.mockImplementation((key) => {
-        return (
-          key !== FeatureSwitchKey.PersonalModelProvider &&
-          key !== FeatureSwitchKey.ModelFirstModelProvider
-        );
+        return key !== FeatureSwitchKey.ModelFirstModelProvider;
       });
     });
 
-    it("GET returns 404 when personal and model-first providers are off", async () => {
+    it("GET returns 404 when model-first providers are off", async () => {
       const response = await GET(createTestRequest(listUrl()));
       expect(response.status).toBe(404);
     });
 
-    it("POST upsert returns 404 when personal and model-first providers are off", async () => {
-      const response = await createProvider("anthropic-api-key", "k");
-      expect(response.status).toBe(404);
-    });
-
-    it("DELETE returns 404 when personal and model-first providers are off", async () => {
-      const request = createTestRequest(deleteUrl("anthropic-api-key"), {
-        method: "DELETE",
-      });
-      const response = await DELETE(request);
-      expect(response.status).toBe(404);
-    });
-
-    it("POST setDefault returns 404 when personal and model-first providers are off", async () => {
-      const request = createTestRequest(setDefaultUrl("anthropic-api-key"), {
-        method: "POST",
-      });
-      const response = await setDefaultPOST(request);
-      expect(response.status).toBe(404);
-    });
-
-    it("PATCH updateModel returns 404 when personal and model-first providers are off", async () => {
-      const request = createTestRequest(updateModelUrl("openai-api-key"), {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selectedModel: "gpt-5" }),
-      });
-      const response = await updateModelPATCH(request);
+    it("POST upsert returns 404 when model-first providers are off", async () => {
+      const response = await createProvider("claude-code-oauth-token", "k");
       expect(response.status).toBe(404);
     });
   });
@@ -195,11 +142,11 @@ describe("Personal-tier (BYOK) model provider routes", () => {
       // Seed an org-tier provider in the same org
       await createTestOrgModelProvider("anthropic-api-key", "org-key");
       // Create a personal provider for the authenticated user
-      await createProvider("openai-api-key", "user-key", "gpt-5.5");
+      await createProvider("claude-code-oauth-token", "user-key");
 
       const providers = await listProviders();
       expect(providers).toHaveLength(1);
-      expect(providers[0]?.type).toBe("openai-api-key");
+      expect(providers[0]?.type).toBe("claude-code-oauth-token");
     });
   });
 
@@ -209,45 +156,39 @@ describe("Personal-tier (BYOK) model provider routes", () => {
 
   describe("POST /api/zero/me/model-providers", () => {
     it("creates a single-secret personal provider", async () => {
-      const response = await createProvider("anthropic-api-key", "sk-ant-test");
+      const response = await createProvider(
+        "claude-code-oauth-token",
+        "sk-ant-test",
+      );
       expect(response.status).toBe(201);
       const data = await response.json();
-      expect(data.provider.type).toBe("anthropic-api-key");
+      expect(data.provider.type).toBe("claude-code-oauth-token");
       expect(data.provider.framework).toBe("claude-code");
       expect(data.provider.isDefault).toBe(true);
       expect(data.created).toBe(true);
     });
 
     it("updates an existing personal provider with 200", async () => {
-      await createProvider("anthropic-api-key", "first");
-      const response = await createProvider("anthropic-api-key", "second");
+      await createProvider("claude-code-oauth-token", "first");
+      const response = await createProvider(
+        "claude-code-oauth-token",
+        "second",
+      );
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.created).toBe(false);
     });
 
-    it("creates a multi-auth personal provider (aws-bedrock access-keys)", async () => {
-      const response = await createMultiAuthProvider(
-        "aws-bedrock",
-        "access-keys",
-        {
-          AWS_ACCESS_KEY_ID: "akid",
-          AWS_SECRET_ACCESS_KEY: "secret",
-          AWS_REGION: "us-east-1",
-        },
-      );
-      expect(response.status).toBe(201);
-      const data = await response.json();
-      expect(data.provider.type).toBe("aws-bedrock");
-      expect(data.provider.authMethod).toBe("access-keys");
-      expect(data.provider.secretNames).toContain("AWS_ACCESS_KEY_ID");
+    it("returns 404 for non model-first personal provider types", async () => {
+      const response = await createProvider("anthropic-api-key", "sk-ant-test");
+      expect(response.status).toBe(404);
     });
 
     it("returns 400 when single-secret provider is missing the secret", async () => {
       const request = createTestRequest(upsertUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "anthropic-api-key" }),
+        body: JSON.stringify({ type: "claude-code-oauth-token" }),
       });
       const response = await POST(request);
       expect(response.status).toBe(400);
@@ -255,64 +196,38 @@ describe("Personal-tier (BYOK) model provider routes", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // vm0 rejection — vm0 is org-only per Epic #11868 (migrated from service test)
+  // vm0 rejection — vm0 is org-only
   // ---------------------------------------------------------------------------
 
   describe("vm0 rejection on personal-tier upsert", () => {
-    it("returns 400 when posting vm0 with a secret (service-layer rejects)", async () => {
+    it("returns 404 when posting vm0 with a secret", async () => {
       const response = await createProvider("vm0", "any-value");
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(404);
     });
 
-    it("returns 400 when posting vm0 with no secret (route-level missing-secret check)", async () => {
+    it("returns 404 when posting vm0 with no secret", async () => {
       const request = createTestRequest(upsertUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "vm0" }),
       });
       const response = await POST(request);
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(404);
     });
   });
 
   // ---------------------------------------------------------------------------
-  // CodexBeta carryover for openai-api-key
+  // OpenAI API key is no longer a personal-provider route
   // ---------------------------------------------------------------------------
 
-  describe("openai-api-key codex-beta gate", () => {
-    it("creates openai-api-key when codex-beta is enabled", async () => {
-      mockIsFeatureEnabled.mockImplementation(() => {
-        return true;
-      });
-      const response = await createProvider(
-        "openai-api-key",
-        "sk-proj-test",
-        "gpt-5.5",
-      );
-      expect(response.status).toBe(201);
-      const data = await response.json();
-      expect(data.provider.type).toBe("openai-api-key");
-      expect(data.provider.framework).toBe("codex");
-    });
-
-    it("returns 404 when codex-beta is disabled (personalModelProvider on)", async () => {
-      mockIsFeatureEnabled.mockImplementation((key) => {
-        return key !== FeatureSwitchKey.CodexBeta;
-      });
+  describe("openai-api-key rejection", () => {
+    it("returns 404 for openai-api-key", async () => {
       const response = await createProvider(
         "openai-api-key",
         "sk-proj-test",
         "gpt-5.5",
       );
       expect(response.status).toBe(404);
-    });
-
-    it("does not gate non-codex types when codex-beta is disabled", async () => {
-      mockIsFeatureEnabled.mockImplementation((key) => {
-        return key !== FeatureSwitchKey.CodexBeta;
-      });
-      const response = await createProvider("anthropic-api-key", "sk-ant-test");
-      expect(response.status).toBe(201);
     });
   });
 
@@ -322,8 +237,8 @@ describe("Personal-tier (BYOK) model provider routes", () => {
 
   describe("DELETE /api/zero/me/model-providers/:type", () => {
     it("deletes the user's personal provider", async () => {
-      await createProvider("anthropic-api-key", "k");
-      const request = createTestRequest(deleteUrl("anthropic-api-key"), {
+      await createProvider("claude-code-oauth-token", "k");
+      const request = createTestRequest(deleteUrl("claude-code-oauth-token"), {
         method: "DELETE",
       });
       const response = await DELETE(request);
@@ -334,77 +249,24 @@ describe("Personal-tier (BYOK) model provider routes", () => {
     });
 
     it("returns 404 when deleting a non-existent personal provider", async () => {
-      const request = createTestRequest(deleteUrl("anthropic-api-key"), {
+      const request = createTestRequest(deleteUrl("claude-code-oauth-token"), {
         method: "DELETE",
       });
       const response = await DELETE(request);
       expect(response.status).toBe(404);
     });
-  });
 
-  // ---------------------------------------------------------------------------
-  // POST /api/zero/me/model-providers/:type/default
-  // ---------------------------------------------------------------------------
-
-  describe("POST /api/zero/me/model-providers/:type/default", () => {
-    it("flips the user's personal default", async () => {
-      await createProvider("anthropic-api-key", "ant");
-      await createProvider("openai-api-key", "sk-proj-test", "gpt-5.5");
-
-      const request = createTestRequest(setDefaultUrl("openai-api-key"), {
-        method: "POST",
+    it("does not require personal provider feature switches", async () => {
+      await createProvider("claude-code-oauth-token", "sk-ant-test");
+      mockIsFeatureEnabled.mockImplementation((key) => {
+        return key !== FeatureSwitchKey.ModelFirstModelProvider;
       });
-      const response = await setDefaultPOST(request);
-      expect(response.status).toBe(200);
 
-      const providers = await listProviders();
-      const anthropic = providers.find((p) => {
-        return p.type === "anthropic-api-key";
+      const request = createTestRequest(deleteUrl("claude-code-oauth-token"), {
+        method: "DELETE",
       });
-      const openai = providers.find((p) => {
-        return p.type === "openai-api-key";
-      });
-      expect(anthropic?.isDefault).toBe(false);
-      expect(openai?.isDefault).toBe(true);
-    });
-
-    it("returns 404 when type does not exist for the user", async () => {
-      const request = createTestRequest(setDefaultUrl("anthropic-api-key"), {
-        method: "POST",
-      });
-      const response = await setDefaultPOST(request);
-      expect(response.status).toBe(404);
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // PATCH /api/zero/me/model-providers/:type/model
-  // ---------------------------------------------------------------------------
-
-  describe("PATCH /api/zero/me/model-providers/:type/model", () => {
-    it("updates only selectedModel", async () => {
-      await createProvider("openai-api-key", "sk-proj-test", "gpt-5");
-
-      const request = createTestRequest(updateModelUrl("openai-api-key"), {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selectedModel: "gpt-5.5" }),
-      });
-      const response = await updateModelPATCH(request);
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.selectedModel).toBe("gpt-5.5");
-      expect(data.type).toBe("openai-api-key");
-    });
-
-    it("returns 404 when the personal provider does not exist", async () => {
-      const request = createTestRequest(updateModelUrl("openai-api-key"), {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selectedModel: "gpt-5.5" }),
-      });
-      const response = await updateModelPATCH(request);
-      expect(response.status).toBe(404);
+      const response = await DELETE(request);
+      expect(response.status).toBe(204);
     });
   });
 
@@ -536,7 +398,6 @@ describe("Personal-tier (BYOK) model provider routes", () => {
 
     it("returns 404 when CodexOauthProvider feature switch is off", async () => {
       mockIsFeatureEnabled.mockImplementation((key: FeatureSwitchKey) => {
-        // PersonalModelProvider stays on; only CodexOauthProvider gates this branch
         return key !== FeatureSwitchKey.CodexOauthProvider;
       });
       const response = await pasteAuthJson(makeAuthJson());
@@ -552,7 +413,7 @@ describe("Personal-tier (BYOK) model provider routes", () => {
 // to another user in the same org. Verified end-to-end through the route.
 // ===========================================================================
 
-describe("Personal-tier routes — cross-user privacy invariant", () => {
+describe("Model-first personal OAuth routes — cross-user privacy invariant", () => {
   beforeEach(() => {
     context.setupMocks();
     mockIsFeatureEnabled.mockImplementation(() => {
@@ -582,30 +443,30 @@ describe("Personal-tier routes — cross-user privacy invariant", () => {
     const { orgId, alice, bob } = await setupTwoUserOrg();
 
     authAs(alice, orgId);
-    await createProvider("openai-api-key", "alice-key", "gpt-5");
+    await createProvider("claude-code-oauth-token", "alice-key");
 
     authAs(bob, orgId);
-    await createProvider("anthropic-api-key", "bob-key");
+    await createProvider("claude-code-oauth-token", "bob-key");
 
     authAs(alice, orgId);
     const aliceList = await listProviders();
     expect(aliceList).toHaveLength(1);
-    expect(aliceList[0]?.type).toBe("openai-api-key");
+    expect(aliceList[0]?.type).toBe("claude-code-oauth-token");
 
     authAs(bob, orgId);
     const bobList = await listProviders();
     expect(bobList).toHaveLength(1);
-    expect(bobList[0]?.type).toBe("anthropic-api-key");
+    expect(bobList[0]?.type).toBe("claude-code-oauth-token");
   });
 
   it("bob cannot delete a type alice owns (404, no row of that type for bob)", async () => {
     const { orgId, alice, bob } = await setupTwoUserOrg();
 
     authAs(alice, orgId);
-    await createProvider("openai-api-key", "alice-key", "gpt-5");
+    await createProvider("claude-code-oauth-token", "alice-key");
 
     authAs(bob, orgId);
-    const request = createTestRequest(deleteUrl("openai-api-key"), {
+    const request = createTestRequest(deleteUrl("claude-code-oauth-token"), {
       method: "DELETE",
     });
     const response = await DELETE(request);
@@ -615,36 +476,6 @@ describe("Personal-tier routes — cross-user privacy invariant", () => {
     authAs(alice, orgId);
     const aliceList = await listProviders();
     expect(aliceList).toHaveLength(1);
-    expect(aliceList[0]?.type).toBe("openai-api-key");
-  });
-
-  it("bob cannot setDefault on a type alice owns (404)", async () => {
-    const { orgId, alice, bob } = await setupTwoUserOrg();
-
-    authAs(alice, orgId);
-    await createProvider("openai-api-key", "alice-key", "gpt-5");
-
-    authAs(bob, orgId);
-    const request = createTestRequest(setDefaultUrl("openai-api-key"), {
-      method: "POST",
-    });
-    const response = await setDefaultPOST(request);
-    expect(response.status).toBe(404);
-  });
-
-  it("bob cannot updateModel on a type alice owns (404)", async () => {
-    const { orgId, alice, bob } = await setupTwoUserOrg();
-
-    authAs(alice, orgId);
-    await createProvider("openai-api-key", "alice-key", "gpt-5");
-
-    authAs(bob, orgId);
-    const request = createTestRequest(updateModelUrl("openai-api-key"), {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ selectedModel: "gpt-5.5" }),
-    });
-    const response = await updateModelPATCH(request);
-    expect(response.status).toBe(404);
+    expect(aliceList[0]?.type).toBe("claude-code-oauth-token");
   });
 });

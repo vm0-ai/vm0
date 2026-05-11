@@ -184,7 +184,6 @@ export async function handleOrgMention(
     userId: connection.vm0UserId,
     modelProviderId: agent.modelProviderId,
     selectedModel: agent.selectedModel,
-    preferPersonalProvider: agent.preferPersonalProvider,
     botUserId,
     channelId: context.channelId,
     channelType:

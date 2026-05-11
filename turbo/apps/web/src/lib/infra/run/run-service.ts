@@ -116,7 +116,6 @@ export interface CreateRunParams {
   modelProviderId?: string;
   modelProviderCredentialScope?: string;
   selectedModelOverride?: string;
-  preferPersonalProvider?: boolean;
   debugNoMockClaude?: boolean;
   debugNoMockCodex?: boolean;
   captureNetworkBodies?: boolean;

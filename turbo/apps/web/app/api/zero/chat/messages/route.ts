@@ -48,7 +48,6 @@ import {
 } from "../../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgUsageEvents } from "../../../../../src/lib/zero/credit/usage-event-service";
 import { getModelProviderById } from "../../../../../src/lib/zero/model-provider/model-provider-service";
-import { resolvePreferredModelProviderPin } from "../../../../../src/lib/zero/model-provider/resolve-preferred-model-provider-pin";
 import {
   isModelFirstModelProviderEnabled,
   resolveModelFirstRouteDescriptor,
@@ -659,7 +658,6 @@ async function computeEagerPin(
   agent: {
     modelProviderId: string | null;
     selectedModel: string | null;
-    preferPersonalProvider: boolean;
   },
   modelFirstEnabled: boolean,
 ): Promise<ThreadModelPin> {
@@ -672,20 +670,11 @@ async function computeEagerPin(
     };
   }
 
-  const pin = await resolvePreferredModelProviderPin({
-    orgId,
-    userId,
-    preferPersonalProvider: agent.preferPersonalProvider,
-    fallback: {
-      modelProviderId: agent.modelProviderId,
-      selectedModel: agent.selectedModel,
-    },
-  });
   return {
-    modelProviderId: pin.modelProviderId,
+    modelProviderId: agent.modelProviderId,
     modelProviderType: null,
     modelProviderCredentialScope: null,
-    selectedModel: pin.selectedModel,
+    selectedModel: agent.selectedModel,
   };
 }
 
@@ -1139,12 +1128,8 @@ const router = tsr.router(chatMessagesContract, {
 
     try {
       // Existing-thread sends pass the agent's pin literally — `resolveThread`
-      // doesn't use it on that branch (it reads the persisted pin instead),
-      // so the personal-tier eligibility check is skipped. NEW threads
-      // compute the eager-pin via `resolvePreferredModelProviderPin` so
-      // per-Epic #11868 the user's personal default lands in the persisted pin
-      // when the agent's `prefer_personal_provider` is on and the switch is
-      // enabled for the caller.
+      // does not use it on that branch because it reads the persisted pin.
+      // New threads persist the current agent/model-first pin at creation time.
       const eagerPin = body.threadId
         ? {
             modelProviderId: agent.modelProviderId,
@@ -1158,7 +1143,6 @@ const router = tsr.router(chatMessagesContract, {
             {
               modelProviderId: agent.modelProviderId,
               selectedModel: agent.selectedModel,
-              preferPersonalProvider: agent.preferPersonalProvider,
             },
             modelFirstEnabled,
           );

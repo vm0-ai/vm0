@@ -8,7 +8,7 @@ import {
   setTestModelProviderNeedsReconnect,
 } from "../../../../__tests__/api-test-helpers";
 import { ORG_SENTINEL_USER_ID } from "../../org/org-sentinel";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Internal-only resolver helpers (getUserDefaultModelProvider, getUserAnyDefaultModelProvider, getUserModelProviderByType) have no HTTP entry point — they are consumed by the Wave 3 resolver. Cross-tier defense (org-tier vm0 unaffected by user-tier additions) likewise has no user-facing route. Privacy + vm0 user-tier assertions migrated to route-level tests in Wave 2 (#11898).
+// eslint-disable-next-line web/no-direct-db-in-tests -- Internal-only resolver helper (getUserModelProviderByType) has no HTTP entry point. Cross-tier defense (org-tier vm0 unaffected by user-tier additions) likewise has no user-facing route. Privacy + vm0 user-tier assertions migrated to route-level tests in Wave 2 (#11898).
 import {
   // Org-tier (existing) — used for cross-tier defense tests
   upsertOrgNoSecretModelProvider,
@@ -17,10 +17,6 @@ import {
   listUserModelProviders,
   upsertUserModelProvider,
   deleteUserModelProvider,
-  setUserModelProviderDefault,
-  updateUserModelProviderModel,
-  getUserDefaultModelProvider,
-  getUserAnyDefaultModelProvider,
   getUserModelProviderByType,
   // Generic core — used for cross-tier defense (org default unaffected)
   getModelProviderById,
@@ -105,110 +101,6 @@ describe("model-provider-service — user-tier", () => {
       const userList = await listUserModelProviders(orgId, userId);
       expect(userList).toHaveLength(1);
       expect(userList[0]!.type).toBe("openai-api-key");
-    });
-  });
-
-  describe("user-tier and org-tier defaults coexist", () => {
-    it("user has is_default=true alongside org is_default=true", async () => {
-      const { orgId, userId } = await context.setupUser();
-
-      // Org's first provider becomes org default automatically
-      await createTestOrgModelProvider("anthropic-api-key", "org-key");
-      // User's first provider becomes user default automatically
-      const userProvider = await createTestUserModelProvider(
-        orgId,
-        userId,
-        "openai-api-key",
-        "user-key",
-      );
-
-      expect(userProvider.isDefault).toBe(true);
-      const userDefault = await getUserDefaultModelProvider(
-        orgId,
-        userId,
-        "codex",
-      );
-      expect(userDefault?.type).toBe("openai-api-key");
-    });
-  });
-
-  describe("setUserModelProviderDefault", () => {
-    it("flips the user's default without touching the org default", async () => {
-      const { orgId, userId } = await context.setupUser();
-
-      // Org default — anthropic
-      await createTestOrgModelProvider("anthropic-api-key", "org-key");
-      // User has two personal providers — anthropic becomes default
-      await createTestUserModelProvider(
-        orgId,
-        userId,
-        "anthropic-api-key",
-        "user-anthro",
-      );
-      await createTestUserModelProvider(
-        orgId,
-        userId,
-        "openai-api-key",
-        "user-openai",
-      );
-
-      const updated = await setUserModelProviderDefault(
-        orgId,
-        userId,
-        "openai-api-key",
-      );
-      expect(updated.isDefault).toBe(true);
-      expect(updated.type).toBe("openai-api-key");
-
-      const userList = await listUserModelProviders(orgId, userId);
-      const userAnthro = userList.find((p) => {
-        return p.type === "anthropic-api-key";
-      });
-      expect(userAnthro?.isDefault).toBe(false);
-    });
-  });
-
-  describe("getUserDefaultModelProvider — framework-scoped", () => {
-    it("returns the user's default for the matching framework", async () => {
-      const { orgId, userId } = await context.setupUser();
-
-      await createTestUserModelProvider(
-        orgId,
-        userId,
-        "openai-api-key",
-        "user-openai",
-      );
-
-      const codexDefault = await getUserDefaultModelProvider(
-        orgId,
-        userId,
-        "codex",
-      );
-      expect(codexDefault?.type).toBe("openai-api-key");
-
-      // Different framework — no match
-      const ccDefault = await getUserDefaultModelProvider(
-        orgId,
-        userId,
-        "claude-code",
-      );
-      expect(ccDefault).toBeNull();
-    });
-  });
-
-  describe("getUserAnyDefaultModelProvider — cross-framework fallback", () => {
-    it("returns the user's default regardless of framework", async () => {
-      const { orgId, userId } = await context.setupUser();
-
-      await createTestUserModelProvider(
-        orgId,
-        userId,
-        "openai-api-key",
-        "user-openai",
-      );
-
-      const anyDefault = await getUserAnyDefaultModelProvider(orgId, userId);
-      expect(anyDefault?.type).toBe("openai-api-key");
     });
   });
 
@@ -299,34 +191,6 @@ describe("model-provider-service — user-tier", () => {
         orgProvider.id,
       );
       expect(orgRow?.isDefault).toBe(true);
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // updateUserModelProviderModel
-  // ---------------------------------------------------------------------------
-
-  describe("updateUserModelProviderModel", () => {
-    it("updates only the selectedModel field", async () => {
-      const { orgId, userId } = await context.setupUser();
-
-      await createTestUserModelProvider(
-        orgId,
-        userId,
-        "openai-api-key",
-        "user-key",
-        "gpt-5",
-      );
-
-      const updated = await updateUserModelProviderModel(
-        orgId,
-        userId,
-        "openai-api-key",
-        "gpt-5.5",
-      );
-
-      expect(updated.selectedModel).toBe("gpt-5.5");
-      expect(updated.type).toBe("openai-api-key");
     });
   });
 });

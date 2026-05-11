@@ -44,13 +44,10 @@ function isModelFirstPersonalProviderType(type: ModelProviderType): boolean {
   return type === "claude-code-oauth-token" || type === "codex-oauth-token";
 }
 
-function isPersonalProviderApiEnabled(
+function isModelFirstPersonalProviderApiEnabled(
   params: Parameters<typeof isFeatureEnabled>[1],
 ): boolean {
-  return (
-    isFeatureEnabled(FeatureSwitchKey.PersonalModelProvider, params) ||
-    isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, params)
-  );
+  return isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, params);
 }
 
 function toModelProviderResponse(
@@ -99,13 +96,13 @@ const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
   signal.throwIfAborted();
 
-  // Gate 1: PersonalModelProvider OR ModelFirstModelProvider
+  // Gate 1: ModelFirstModelProvider
   const featureCtx = {
     orgId: auth.orgId,
     userId: auth.userId,
     overrides,
   };
-  if (!isPersonalProviderApiEnabled(featureCtx)) {
+  if (!isModelFirstPersonalProviderApiEnabled(featureCtx)) {
     return featureDisabled;
   }
 
@@ -119,21 +116,9 @@ const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   const { type, secret, authMethod, secrets, selectedModel } = bodyResult.data;
 
-  const fullPersonalProviderEnabled = isFeatureEnabled(
-    FeatureSwitchKey.PersonalModelProvider,
-    featureCtx,
-  );
-
-  // Gate 2: non-model-first type when only ModelFirstModelProvider on
-  if (!fullPersonalProviderEnabled && !isModelFirstPersonalProviderType(type)) {
+  // Gate 2: personal provider routes only support model-first provider types.
+  if (!isModelFirstPersonalProviderType(type)) {
     return providerNotFound(type);
-  }
-
-  // Gate 3: openai-api-key requires CodexBeta
-  if (type === "openai-api-key") {
-    if (!isFeatureEnabled(FeatureSwitchKey.CodexBeta, featureCtx)) {
-      return providerNotFound(type);
-    }
   }
 
   // Branch 1: codex-oauth-token + auth_json paste flow
