@@ -23,10 +23,7 @@ import { updateSearchParams$ } from "../signals/route";
 import { vi } from "vitest";
 import type { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
-import {
-  getMockFeatureSwitches,
-  setMockFeatureSwitches,
-} from "../mocks/handlers/api-feature-switches.helpers";
+import { setMockFeatureSwitches } from "../mocks/handlers/api-feature-switches.helpers";
 import { FEATURE_SWITCH_CACHE_KEY } from "../signals/external/feature-switch";
 import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
 import { detach, Reason } from "../signals/utils";
@@ -74,12 +71,13 @@ export async function setupPage(options: {
   localStorage.removeItem(FEATURE_SWITCH_CACHE_KEY);
   if (options.featureSwitches) {
     setMockFeatureSwitches(options.featureSwitches);
+    localStorage.setItem(
+      FEATURE_SWITCH_CACHE_KEY,
+      JSON.stringify(
+        getAllFeatureStates({ overrides: options.featureSwitches }),
+      ),
+    );
   }
-  const featureSwitches = getMockFeatureSwitches();
-  localStorage.setItem(
-    FEATURE_SWITCH_CACHE_KEY,
-    JSON.stringify(getAllFeatureStates({ overrides: featureSwitches })),
-  );
 
   mockUser(
     options.user !== undefined

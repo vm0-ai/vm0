@@ -11,15 +11,12 @@
  */
 
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { mockApi } from "../msw-contract.ts";
 
 export const apiFeatureSwitchesHandlers = [
   mockApi(zeroFeatureSwitchesContract.get, ({ respond }) => {
-    return respond(200, {
-      switches: { [FeatureSwitchKey.ModelFirstModelProvider]: false },
-    });
+    return respond(200, { switches: {} });
   }),
 
   mockApi(zeroFeatureSwitchesContract.update, ({ body, respond }) => {
