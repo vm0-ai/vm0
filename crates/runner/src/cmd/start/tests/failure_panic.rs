@@ -7,7 +7,7 @@ use crate::provider::mock::MockJobProvider;
 use crate::types::SandboxReuseResult;
 use async_trait::async_trait;
 use sandbox::{Sandbox, SandboxFactory, SandboxRuntime};
-use sandbox_mock::MockSandbox;
+use sandbox_mock::{MockLifecycleGate, MockSandbox};
 
 struct PanickingDestroyFactory;
 
@@ -483,12 +483,8 @@ async fn outer_job_panic_active_unknown_reconciles_on_shutdown_final_scan() {
 #[tokio::test(start_paused = true)]
 async fn outer_job_panic_after_destroy_completed_cleans_token_and_active_status() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    let destroy_entered = Arc::new(tokio::sync::Notify::new());
-    let destroy_release = Arc::new(tokio::sync::Notify::new());
-    overrides.set_destroy_gate(Arc::clone(&destroy_entered), Arc::clone(&destroy_release));
-    let destroy_entered_wait = destroy_entered.notified();
-    tokio::pin!(destroy_entered_wait);
-    destroy_entered_wait.as_mut().enable();
+    let destroy_gate = MockLifecycleGate::new();
+    overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
 
     let (mut config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
     config.outer_job_panic = Some(OuterJobPanicPoint::DestroyCompleted);
@@ -499,11 +495,15 @@ async fn outer_job_panic_after_destroy_completed_cleans_token_and_active_status(
     let run_id = RunId::new_v4();
     push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
-    tokio::time::timeout(Duration::from_secs(5), destroy_entered_wait)
-        .await
-        .expect("active destroy should start");
+    assert_eq!(
+        destroy_gate
+            .wait_entered(1, Duration::from_secs(5))
+            .await
+            .expect("active destroy should enter gate"),
+        1
+    );
     let _token = wait_cancel_token(&cancel_tokens, run_id, Duration::from_secs(5)).await;
-    destroy_release.notify_one();
+    destroy_gate.release_one();
 
     wait_cancel_token_removed(&cancel_tokens, run_id, Duration::from_secs(5)).await;
     wait_status_idle_sessions_and_active_runs(&status_path, &[], &[], Duration::from_secs(5)).await;
@@ -600,19 +600,10 @@ async fn pool_full_rejected_vm_keeps_budget_until_destroy_and_completion() {
 #[tokio::test(start_paused = true)]
 async fn parking_gate_closing_after_sandbox_park_rejects_and_waits_for_destroy() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    let park_entered = Arc::new(tokio::sync::Notify::new());
-    let park_release = Arc::new(tokio::sync::Notify::new());
-    let destroy_entered = Arc::new(tokio::sync::Notify::new());
-    let destroy_release = Arc::new(tokio::sync::Notify::new());
-    overrides.set_park_gate(Arc::clone(&park_entered), Arc::clone(&park_release));
-    overrides.set_destroy_gate(Arc::clone(&destroy_entered), Arc::clone(&destroy_release));
-
-    let park_entered_wait = park_entered.notified();
-    tokio::pin!(park_entered_wait);
-    park_entered_wait.as_mut().enable();
-    let destroy_entered_wait = destroy_entered.notified();
-    tokio::pin!(destroy_entered_wait);
-    destroy_entered_wait.as_mut().enable();
+    let park_gate = MockLifecycleGate::new();
+    let destroy_gate = MockLifecycleGate::new();
+    overrides.set_park_lifecycle_gate(park_gate.clone());
+    overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
 
     let counter = Arc::clone(&overrides);
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
@@ -628,19 +619,27 @@ async fn parking_gate_closing_after_sandbox_park_rejects_and_waits_for_destroy()
         Some(context_with_session(run_id, "sess-race-rejected")),
     );
 
-    tokio::time::timeout(Duration::from_secs(5), park_entered_wait)
-        .await
-        .expect("sandbox park should start");
+    assert_eq!(
+        park_gate
+            .wait_entered(1, Duration::from_secs(5))
+            .await
+            .expect("sandbox park should enter gate"),
+        1
+    );
     assert_eq!(counter.park_call_count(), 1);
     assert_eq!(env.parking_gate.state(), ParkingState::Open);
 
     env.drain();
     assert_eq!(env.parking_gate.state(), ParkingState::SoftDraining);
 
-    park_release.notify_one();
-    tokio::time::timeout(Duration::from_secs(5), destroy_entered_wait)
-        .await
-        .expect("rejected parked sandbox should be destroyed");
+    park_gate.release_one();
+    assert_eq!(
+        destroy_gate
+            .wait_entered(1, Duration::from_secs(5))
+            .await
+            .expect("rejected parked sandbox should enter destroy gate"),
+        1
+    );
     assert_eq!(
         counter.destroy_call_count(),
         1,
@@ -664,7 +663,7 @@ async fn parking_gate_closing_after_sandbox_park_rejects_and_waits_for_destroy()
         );
     }
 
-    destroy_release.notify_one();
+    destroy_gate.release_one();
     let c = env
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
@@ -681,19 +680,10 @@ async fn parking_gate_closing_after_sandbox_park_rejects_and_waits_for_destroy()
 #[tokio::test(start_paused = true)]
 async fn cancellation_while_waiting_for_idle_pool_lock_destroys_instead_of_parking() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    let park_entered = Arc::new(tokio::sync::Notify::new());
-    let park_release = Arc::new(tokio::sync::Notify::new());
-    let destroy_entered = Arc::new(tokio::sync::Notify::new());
-    let destroy_release = Arc::new(tokio::sync::Notify::new());
-    overrides.set_park_gate(Arc::clone(&park_entered), Arc::clone(&park_release));
-    overrides.set_destroy_gate(Arc::clone(&destroy_entered), Arc::clone(&destroy_release));
-
-    let park_entered_wait = park_entered.notified();
-    tokio::pin!(park_entered_wait);
-    park_entered_wait.as_mut().enable();
-    let destroy_entered_wait = destroy_entered.notified();
-    tokio::pin!(destroy_entered_wait);
-    destroy_entered_wait.as_mut().enable();
+    let park_gate = MockLifecycleGate::new();
+    let destroy_gate = MockLifecycleGate::new();
+    overrides.set_park_lifecycle_gate(park_gate.clone());
+    overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
 
     let counter = Arc::clone(&overrides);
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
@@ -711,11 +701,15 @@ async fn cancellation_while_waiting_for_idle_pool_lock_destroys_instead_of_parki
     );
     let token = wait_cancel_token(&cancel_tokens, run_id, Duration::from_secs(5)).await;
 
-    tokio::time::timeout(Duration::from_secs(5), park_entered_wait)
-        .await
-        .expect("sandbox park should start");
+    assert_eq!(
+        park_gate
+            .wait_entered(1, Duration::from_secs(5))
+            .await
+            .expect("sandbox park should enter gate"),
+        1
+    );
     let pool_guard = idle_pool.lock().await;
-    park_release.notify_one();
+    park_gate.release_one();
     // Let the job observe the first post-park cancel check, then block on
     // the held pool lock. This opens the specific lock-wait window without
     // relying on wall-clock sleeps.
@@ -723,9 +717,13 @@ async fn cancellation_while_waiting_for_idle_pool_lock_destroys_instead_of_parki
     token.cancel();
     drop(pool_guard);
 
-    tokio::time::timeout(Duration::from_secs(5), destroy_entered_wait)
-        .await
-        .expect("cancelled lock-waiting sandbox should be destroyed");
+    assert_eq!(
+        destroy_gate
+            .wait_entered(1, Duration::from_secs(5))
+            .await
+            .expect("cancelled lock-waiting sandbox should enter destroy gate"),
+        1
+    );
     assert_eq!(
         counter.destroy_call_count(),
         1,
@@ -742,7 +740,7 @@ async fn cancellation_while_waiting_for_idle_pool_lock_destroys_instead_of_parki
         "cancelled VM must not enter the idle pool after waiting for the lock"
     );
 
-    destroy_release.notify_one();
+    destroy_gate.release_one();
     let c = env
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
@@ -761,19 +759,10 @@ async fn cancellation_while_waiting_for_idle_pool_lock_destroys_instead_of_parki
 #[tokio::test(start_paused = true)]
 async fn cancellation_during_sandbox_park_destroys_instead_of_parking() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    let park_entered = Arc::new(tokio::sync::Notify::new());
-    let park_release = Arc::new(tokio::sync::Notify::new());
-    let destroy_entered = Arc::new(tokio::sync::Notify::new());
-    let destroy_release = Arc::new(tokio::sync::Notify::new());
-    overrides.set_park_gate(Arc::clone(&park_entered), Arc::clone(&park_release));
-    overrides.set_destroy_gate(Arc::clone(&destroy_entered), Arc::clone(&destroy_release));
-
-    let park_entered_wait = park_entered.notified();
-    tokio::pin!(park_entered_wait);
-    park_entered_wait.as_mut().enable();
-    let destroy_entered_wait = destroy_entered.notified();
-    tokio::pin!(destroy_entered_wait);
-    destroy_entered_wait.as_mut().enable();
+    let park_gate = MockLifecycleGate::new();
+    let destroy_gate = MockLifecycleGate::new();
+    overrides.set_park_lifecycle_gate(park_gate.clone());
+    overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
 
     let counter = Arc::clone(&overrides);
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
@@ -791,17 +780,25 @@ async fn cancellation_during_sandbox_park_destroys_instead_of_parking() {
     );
     let token = wait_cancel_token(&cancel_tokens, run_id, Duration::from_secs(5)).await;
 
-    tokio::time::timeout(Duration::from_secs(5), park_entered_wait)
-        .await
-        .expect("sandbox park should start");
+    assert_eq!(
+        park_gate
+            .wait_entered(1, Duration::from_secs(5))
+            .await
+            .expect("sandbox park should enter gate"),
+        1
+    );
     assert_eq!(counter.park_call_count(), 1);
 
     token.cancel();
-    park_release.notify_one();
+    park_gate.release_one();
 
-    tokio::time::timeout(Duration::from_secs(5), destroy_entered_wait)
-        .await
-        .expect("cancelled parked sandbox should be destroyed");
+    assert_eq!(
+        destroy_gate
+            .wait_entered(1, Duration::from_secs(5))
+            .await
+            .expect("cancelled parked sandbox should enter destroy gate"),
+        1
+    );
     assert_eq!(
         counter.destroy_call_count(),
         1,
@@ -825,7 +822,7 @@ async fn cancellation_during_sandbox_park_destroys_instead_of_parking() {
         );
     }
 
-    destroy_release.notify_one();
+    destroy_gate.release_one();
     let c = env
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
