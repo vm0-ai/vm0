@@ -54,6 +54,7 @@ const GUEST_STAGE_DIR: &str = "/tmp/vm0-storage-cache";
 
 const HEAD_TIMEOUT: Duration = Duration::from_secs(10);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
+const SLOW_STORAGE_CACHE_LOG_MS: u128 = 1_000;
 
 /// Guest-side filename for a cached archive.
 ///
@@ -125,12 +126,16 @@ struct StorageCacheLockTrace {
 
 impl Drop for StorageCacheLockTrace {
     fn drop(&mut self) {
+        let held_ms = self.acquired_at.elapsed().as_millis();
+        if held_ms < SLOW_STORAGE_CACHE_LOG_MS {
+            return;
+        }
         info!(
             kind = self.kind,
             index = self.index,
             guest_path = %self.guest_path,
             lock_path = %self.lock_path.display(),
-            held_ms = self.acquired_at.elapsed().as_millis(),
+            held_ms,
             "storage_cache: lock released"
         );
     }
@@ -258,13 +263,6 @@ async fn process_one(
     let kind = target.kind.as_str();
     let guest_path = guest_archive_path(&target.name, &target.version);
     let lock_path = home.storage_lock(&target.name, &target.version);
-    info!(
-        kind,
-        index = target.index,
-        guest_path = %guest_path,
-        lock_path = %lock_path.display(),
-        "storage_cache: waiting for lock"
-    );
     let lock_wait_start = Instant::now();
     let guard = match lock::acquire(lock_path.clone()).await {
         Ok(guard) => guard,
@@ -281,14 +279,17 @@ async fn process_one(
             return Err(e);
         }
     };
-    info!(
-        kind,
-        index = target.index,
-        guest_path = %guest_path,
-        lock_path = %lock_path.display(),
-        wait_ms = lock_wait_start.elapsed().as_millis(),
-        "storage_cache: lock acquired"
-    );
+    let lock_wait_ms = lock_wait_start.elapsed().as_millis();
+    if lock_wait_ms >= SLOW_STORAGE_CACHE_LOG_MS {
+        info!(
+            kind,
+            index = target.index,
+            guest_path = %guest_path,
+            lock_path = %lock_path.display(),
+            wait_ms = lock_wait_ms,
+            "storage_cache: lock acquired"
+        );
+    }
     let _guard = StorageCacheLockGuard::new(
         guard,
         StorageCacheLockTrace {
@@ -406,26 +407,21 @@ async fn write_guest_archive(
     cache_state: &'static str,
 ) -> RunnerResult<()> {
     let kind = target.kind.as_str();
-    info!(
-        kind,
-        index = target.index,
-        cache_state,
-        guest_path,
-        bytes = bytes.len(),
-        "storage_cache: guest write_file start"
-    );
     let started_at = Instant::now();
     match sandbox.write_file(guest_path, bytes).await {
         Ok(()) => {
-            info!(
-                kind,
-                index = target.index,
-                cache_state,
-                guest_path,
-                bytes = bytes.len(),
-                duration_ms = started_at.elapsed().as_millis(),
-                "storage_cache: guest write_file complete"
-            );
+            let duration_ms = started_at.elapsed().as_millis();
+            if duration_ms >= SLOW_STORAGE_CACHE_LOG_MS {
+                info!(
+                    kind,
+                    index = target.index,
+                    cache_state,
+                    guest_path,
+                    bytes = bytes.len(),
+                    duration_ms,
+                    "storage_cache: guest write_file complete"
+                );
+            }
             Ok(())
         }
         Err(e) => {

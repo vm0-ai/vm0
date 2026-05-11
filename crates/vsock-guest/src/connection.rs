@@ -242,12 +242,6 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                     MessageOutcome::Response(response) => {
                         let is_write_file = msg.msg_type == vsock_proto::MSG_WRITE_FILE;
                         let response_send_started_at = std::time::Instant::now();
-                        if is_write_file {
-                            log(
-                                "INFO",
-                                &format!("write_file response send start: seq={}", msg.seq),
-                            );
-                        }
                         if let Err(e) = writer.write_frame(&response) {
                             if is_write_file {
                                 log(
@@ -263,14 +257,16 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                             return Err(e);
                         }
                         if is_write_file {
-                            log(
-                                "INFO",
-                                &format!(
-                                    "write_file response send complete: seq={} duration_ms={}",
-                                    msg.seq,
-                                    response_send_started_at.elapsed().as_millis()
-                                ),
-                            );
+                            let duration_ms = response_send_started_at.elapsed().as_millis();
+                            if duration_ms >= 1_000 {
+                                log(
+                                    "INFO",
+                                    &format!(
+                                        "write_file response send complete: seq={} duration_ms={}",
+                                        msg.seq, duration_ms
+                                    ),
+                                );
+                            }
                         }
                     }
                     MessageOutcome::Shutdown(response) => {

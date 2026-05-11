@@ -55,6 +55,7 @@ const READ_BUF_SIZE: usize = 64 * 1024;
 const FIRECRACKER_CONNECT_ACK_MAX_BYTES: usize = 64;
 const FRAME_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 const BOUNDED_EXEC_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
+const SLOW_WRITE_FILE_LOG_MS: u128 = 1_000;
 
 /// Result of executing a command on the guest.
 #[derive(Debug, Clone)]
@@ -1085,16 +1086,6 @@ async fn request_raw_on_shared_with_write_timeout(
     let request_started_at = Instant::now();
     let data = vsock_proto::encode(msg_type, seq, payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
-    if is_write_file {
-        info!(
-            seq,
-            payload_bytes = payload.len(),
-            frame_bytes = data.len(),
-            timeout_ms = timeout.as_millis() as u64,
-            write_timeout_ms = write_timeout.as_millis() as u64,
-            "vsock_host: write_file request start"
-        );
-    }
 
     // Register under the state lock: `Closed` short-circuits to an
     // immediate error, and insertion into `pending` is serialised with
@@ -1141,13 +1132,6 @@ async fn request_raw_on_shared_with_write_timeout(
         }
         return Err(e);
     }
-    if is_write_file {
-        info!(
-            seq,
-            write_ms = write_started_at.elapsed().as_millis() as u64,
-            "vsock_host: write_file frame write complete"
-        );
-    }
     let response_wait_started_at = Instant::now();
 
     // `rx` returns `Ok(msg)` when the reader dispatches a response and
@@ -1159,13 +1143,17 @@ async fn request_raw_on_shared_with_write_timeout(
             match result {
                 Ok(msg) => {
                     if is_write_file {
-                        info!(
-                            seq,
-                            response_type = msg.msg_type,
-                            response_wait_ms = response_wait_started_at.elapsed().as_millis() as u64,
-                            duration_ms = request_started_at.elapsed().as_millis() as u64,
-                            "vsock_host: write_file response received"
-                        );
+                        let response_wait_ms = response_wait_started_at.elapsed().as_millis();
+                        let duration_ms = request_started_at.elapsed().as_millis();
+                        if duration_ms >= SLOW_WRITE_FILE_LOG_MS {
+                            info!(
+                                seq,
+                                response_type = msg.msg_type,
+                                response_wait_ms = response_wait_ms as u64,
+                                duration_ms = duration_ms as u64,
+                                "vsock_host: write_file response received"
+                            );
+                        }
                     }
                     Ok(msg)
                 }
@@ -1898,17 +1886,24 @@ impl VsockHost {
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
         let timeout = Duration::from_secs(300);
         let seq = self.shared.next_seq();
-        info!(
-            seq,
-            path,
-            bytes = content.len(),
-            sudo,
-            append,
-            timeout_ms = timeout.as_millis() as u64,
-            "vsock_host: write_file chunk start"
-        );
-        let resp =
-            request_raw_on_shared(&self.shared, MSG_WRITE_FILE, seq, &payload, timeout).await?;
+        let started_at = Instant::now();
+        let resp = match request_raw_on_shared(&self.shared, MSG_WRITE_FILE, seq, &payload, timeout)
+            .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                warn!(
+                    seq,
+                    path,
+                    bytes = content.len(),
+                    duration_ms = started_at.elapsed().as_millis() as u64,
+                    error = %e,
+                    error_kind = ?e.kind(),
+                    "vsock_host: write_file chunk request failed"
+                );
+                return Err(e);
+            }
+        };
 
         if resp.msg_type == MSG_ERROR {
             let msg = vsock_proto::decode_error(&resp.payload)
@@ -1948,7 +1943,16 @@ impl VsockHost {
             return Err(io::Error::other(error));
         }
 
-        info!(seq, path, "vsock_host: write_file chunk complete");
+        let duration_ms = started_at.elapsed().as_millis();
+        if duration_ms >= SLOW_WRITE_FILE_LOG_MS {
+            info!(
+                seq,
+                path,
+                bytes = content.len(),
+                duration_ms = duration_ms as u64,
+                "vsock_host: write_file chunk complete"
+            );
+        }
         Ok(())
     }
 
