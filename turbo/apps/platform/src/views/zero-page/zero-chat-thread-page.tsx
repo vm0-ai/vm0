@@ -53,9 +53,10 @@ import {
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
-import type {
-  ModelProviderResponse,
-  ModelProviderType,
+import {
+  isSupportedRunModel,
+  type ModelProviderResponse,
+  type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
@@ -130,6 +131,7 @@ import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
 import { composerModelProviders$ } from "../../signals/zero-page/composer-model-providers.ts";
 import { modelFirstPersonalOauthState$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
+import { updateUserModelPreference$ } from "../../signals/external/user-model-preference.ts";
 import {
   resolveChatComposerSubmitBlocker,
   usePersonalOauthConfigurationAction,
@@ -1950,6 +1952,25 @@ function resolveChatComposerModelPicker(params: {
   };
 }
 
+function usePersistModelFirstSelection(
+  modelFirstEnabled: boolean,
+  signal: AbortSignal,
+) {
+  const updateUserModelPreference = useSet(updateUserModelPreference$);
+  return (selection: ModelProviderSelection | null): void => {
+    if (!modelFirstEnabled || !isSupportedRunModel(selection?.selectedModel)) {
+      return;
+    }
+    detach(
+      updateUserModelPreference(
+        { selectedModel: selection.selectedModel },
+        signal,
+      ),
+      Reason.DomCallback,
+    );
+  };
+}
+
 function ChatThreadComposer({
   thread,
   autoFocus: autoFocusProp = true,
@@ -1998,16 +2019,27 @@ function ChatThreadComposer({
   });
   const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
   const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
+  const persistModelFirstSelection = usePersistModelFirstSelection(
+    modelFirstEnabled,
+    pageSignal,
+  );
+
+  const handleModelSelectionChange = (
+    selection: ModelProviderSelection | null,
+  ): void => {
+    setModelSelection(selection);
+    persistModelFirstSelection(selection);
+  };
 
   const modelPicker = resolveChatComposerModelPicker({
     composerProviders,
     modelFirstEnabled,
     modelSelection,
-    setModelSelection,
+    setModelSelection: handleModelSelectionChange,
     sessionProviderType: threadData?.latestSessionProviderType ?? null,
-    // Lock as soon as the thread has a user message — provider must stay
-    // consistent within a session to maintain continuity.
-    disabled: hasUserMessages,
+    // Legacy provider-first sessions stay locked after the first user message.
+    // Model-first selection is a user-level preference, so it remains editable.
+    disabled: !modelFirstEnabled && hasUserMessages,
     agentDefault: agentModelDefault,
   });
   const submitBlockerProps = resolveChatComposerSubmitBlocker({

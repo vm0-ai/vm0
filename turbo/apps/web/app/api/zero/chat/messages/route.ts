@@ -54,6 +54,7 @@ import {
   resolveModelFirstRouteDescriptor,
   type ModelFirstRouteDescriptor,
 } from "../../../../../src/lib/zero/model-policy/model-first-route-service";
+import { updateUserModelPreference } from "../../../../../src/lib/zero/model-policy/user-model-preference-service";
 import {
   createChatThread,
   getChatThread,
@@ -522,7 +523,9 @@ function pinFromModelFirstRoute(
 
 /**
  * Persist the composer's per-run override onto the thread row and return the
- * effective override to use for this run (precedence: per-run > thread > agent).
+ * effective override to use for this run (legacy precedence: per-run > thread
+ * > agent). Model-first does not use thread/agent pins; no explicit selection
+ * means createZeroRun will resolve the user's model preference, then org default.
  * `null` or `undefined` for `modelSelection` means "inherit" — older clients
  * that never saw the field and newer clients explicitly choosing "Use default"
  * both get the thread/agent fall-through.
@@ -550,16 +553,6 @@ async function resolveRunModelOverride(
         userId,
         selectedModel: modelSelection.selectedModel,
       });
-      await globalThis.services.db
-        .update(chatThreads)
-        .set({
-          modelProviderId: route.modelProviderId,
-          modelProviderType: route.providerType,
-          modelProviderCredentialScope: route.credentialScope,
-          selectedModel: route.selectedModel,
-          updatedAt: new Date(),
-        })
-        .where(eq(chatThreads.id, threadId));
       return pinFromModelFirstRoute(route);
     }
 
@@ -580,6 +573,15 @@ async function resolveRunModelOverride(
       selectedModel: modelSelection.selectedModel,
     };
   } else {
+    if (modelFirstEnabled) {
+      return {
+        modelProviderId: null,
+        modelProviderType: null,
+        modelProviderCredentialScope: null,
+        selectedModel: null,
+      };
+    }
+
     const [thread] = await globalThis.services.db
       .select({
         modelProviderId: chatThreads.modelProviderId,
@@ -590,18 +592,6 @@ async function resolveRunModelOverride(
       .from(chatThreads)
       .where(eq(chatThreads.id, threadId))
       .limit(1);
-    if (thread?.selectedModel && modelFirstEnabled) {
-      const route = await resolveModelFirstRouteDescriptor({
-        orgId,
-        userId,
-        selectedModel: thread.selectedModel,
-        providerType: thread.modelProviderType,
-        credentialScope: thread.modelProviderCredentialScope,
-        modelProviderId: thread.modelProviderId,
-      });
-      return pinFromModelFirstRoute(route);
-    }
-
     if (thread?.modelProviderId && thread.selectedModel) {
       const provider = await getModelProviderById(
         orgId,
@@ -618,15 +608,6 @@ async function resolveRunModelOverride(
         selectedModel: thread.selectedModel,
       };
     }
-  }
-
-  if (modelFirstEnabled) {
-    const route = await resolveModelFirstRouteDescriptor({
-      orgId,
-      userId,
-      selectedModel: agent.selectedModel,
-    });
-    return pinFromModelFirstRoute(route);
   }
 
   return {
@@ -647,6 +628,10 @@ async function rejectIfThreadModelLocked(
   incoming: { modelProviderId: string; selectedModel: string } | null,
   modelFirstEnabled: boolean,
 ): Promise<boolean> {
+  if (modelFirstEnabled) {
+    return false;
+  }
+
   const [existing] = await globalThis.services.db
     .select({
       modelProviderId: chatThreads.modelProviderId,
@@ -661,9 +646,6 @@ async function rejectIfThreadModelLocked(
   }
   if (incoming === null) {
     return true;
-  }
-  if (modelFirstEnabled) {
-    return existing.selectedModel !== incoming.selectedModel;
   }
   return (
     existing.modelProviderId !== incoming.modelProviderId ||
@@ -682,12 +664,12 @@ async function computeEagerPin(
   modelFirstEnabled: boolean,
 ): Promise<ThreadModelPin> {
   if (modelFirstEnabled) {
-    const route = await resolveModelFirstRouteDescriptor({
-      orgId,
-      userId,
-      selectedModel: agent.selectedModel,
-    });
-    return pinFromModelFirstRoute(route);
+    return {
+      modelProviderId: null,
+      modelProviderType: null,
+      modelProviderCredentialScope: null,
+      selectedModel: null,
+    };
   }
 
   const pin = await resolvePreferredModelProviderPin({
@@ -795,6 +777,37 @@ async function validateSendModelSelection(params: {
     modelFirstEnabled: params.modelFirstEnabled,
     emit: params.emit,
   });
+}
+
+function hasExplicitModelFirstSelection(
+  modelFirstEnabled: boolean,
+  modelSelection: IncomingModelSelection,
+): modelSelection is { modelProviderId: string; selectedModel: string } {
+  return (
+    modelFirstEnabled && modelSelection !== undefined && modelSelection !== null
+  );
+}
+
+async function persistExplicitModelFirstSelection(params: {
+  orgId: string;
+  userId: string;
+  modelFirstEnabled: boolean;
+  modelSelection: IncomingModelSelection;
+}): Promise<boolean> {
+  if (
+    !hasExplicitModelFirstSelection(
+      params.modelFirstEnabled,
+      params.modelSelection,
+    )
+  ) {
+    return false;
+  }
+  await updateUserModelPreference(
+    params.orgId,
+    params.userId,
+    params.modelSelection.selectedModel,
+  );
+  return true;
 }
 
 /**
@@ -1159,6 +1172,14 @@ const router = tsr.router(chatMessagesContract, {
           dims,
         );
 
+      const explicitModelFirstModelSelection =
+        await persistExplicitModelFirstSelection({
+          orgId: callerOrg.orgId,
+          userId: authCtx.userId,
+          modelFirstEnabled,
+          modelSelection: body.modelSelection,
+        });
+
       if (await activeRunExistsForThread(threadId)) {
         const message = await appendUnassociatedUserMessage({
           threadId,
@@ -1278,6 +1299,7 @@ const router = tsr.router(chatMessagesContract, {
         modelProviderCredentialScope:
           override.modelProviderCredentialScope ?? undefined,
         selectedModelOverride: override.selectedModel ?? undefined,
+        explicitModelFirstModelSelection,
         debugNoMockClaude: body.debugNoMockClaude,
         debugNoMockCodex: body.debugNoMockCodex,
         appendSystemPrompt: buildAppendSystemPrompt(

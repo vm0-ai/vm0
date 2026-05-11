@@ -56,7 +56,6 @@ import {
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
 import { modelFirstModelProviderEnabled$ } from "../../signals/external/feature-switch.ts";
 import {
-  MODEL_FIRST_SELECTION_PROVIDER_ID,
   ModelProviderPicker,
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
@@ -106,11 +105,9 @@ export function ZeroSettingsTab({
 }: ZeroSettingsTabProps) {
   const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
   const initialModelSelection: ModelProviderSelection | null =
-    initialSelectedModel && (modelFirstEnabled || initialModelProviderId)
+    !modelFirstEnabled && initialSelectedModel && initialModelProviderId
       ? {
-          modelProviderId: modelFirstEnabled
-            ? MODEL_FIRST_SELECTION_PROVIDER_ID
-            : (initialModelProviderId ?? MODEL_FIRST_SELECTION_PROVIDER_ID),
+          modelProviderId: initialModelProviderId,
           selectedModel: initialSelectedModel,
         }
       : null;
@@ -166,7 +163,9 @@ export function ZeroSettingsTab({
             modelProviderId: modelFirstEnabled
               ? null
               : (modelSelection?.modelProviderId ?? null),
-            selectedModel: modelSelection?.selectedModel ?? null,
+            selectedModel: modelFirstEnabled
+              ? null
+              : (modelSelection?.selectedModel ?? null),
             preferPersonalProvider,
           },
           pageSignal,
@@ -335,8 +334,9 @@ export function ZeroSettingsTab({
                 </div>
               </div>
             </InlineSettingsRow>
-            {orgProviders &&
-              (modelFirstEnabled || orgProviders.modelProviders.length > 0) && (
+            {!modelFirstEnabled &&
+              orgProviders &&
+              orgProviders.modelProviders.length > 0 && (
                 <InlineSettingsRow
                   label="Model"
                   description="The model used by this agent. Defaults to the workspace setting."

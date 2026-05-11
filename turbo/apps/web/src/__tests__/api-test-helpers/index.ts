@@ -32,6 +32,7 @@ export {
   enablePersonalModelProviderForUser,
   enableModelFirstModelProviderForUser,
   insertOrgModelPolicy,
+  insertUserModelPreference,
   deleteTestModelProvider,
   setOrgCredits,
   lockOrgAndSetCredits,

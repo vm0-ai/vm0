@@ -13,7 +13,6 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
@@ -188,7 +187,7 @@ describe("model-provider-picker - display with null value", () => {
     });
   });
 
-  it("shows the model-policy workspace default when model-first is enabled with no providers", async () => {
+  it("does not render the agent model picker when model-first is enabled", async () => {
     setupMockAgent();
     setMockFeatureSwitches({
       [FeatureSwitchKey.ModelFirstModelProvider]: true,
@@ -199,37 +198,8 @@ describe("model-provider-picker - display with null value", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
-      ).toBeInTheDocument();
+        screen.queryByRole("combobox", { name: /Claude Sonnet 4\.6/ }),
+      ).not.toBeInTheDocument();
     });
-  });
-
-  it("hides model-policy rows while inheriting and shows all rows after opting out", async () => {
-    const user = userEvent.setup();
-    setupMockAgent();
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
-    setMockOrgModelProviders([]);
-
-    await openProfileTab();
-
-    const trigger = await waitFor(() => {
-      return screen.getByRole("combobox", { name: "Claude Sonnet 4.6" });
-    });
-    await user.click(trigger);
-
-    expect(screen.getByLabelText("Use workspace default model")).toBeChecked();
-    expect(screen.queryByText("Models")).not.toBeInTheDocument();
-    expect(screen.queryByText("DeepSeek V4 Pro")).not.toBeInTheDocument();
-
-    await user.click(screen.getByLabelText("Use workspace default model"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Models")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Claude Opus 4.7")).toBeInTheDocument();
-    expect(screen.getAllByText("Claude Sonnet 4.6").length).toBeGreaterThan(1);
-    expect(screen.getByText("DeepSeek V4 Pro")).toBeInTheDocument();
   });
 });

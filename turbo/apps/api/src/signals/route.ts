@@ -51,6 +51,7 @@ import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
 import { zeroUploadsPrepareRoutes } from "./routes/zero-uploads-prepare";
 import { zeroUsageInsightRoutes } from "./routes/zero-usage-insight";
 import { zeroUserPreferencesRoutes } from "./routes/zero-user-preferences";
+import { zeroUserModelPreferenceRoutes } from "./routes/zero-user-model-preference";
 import { zeroVoiceChatRoutes } from "./routes/zero-voice-chat";
 import { zeroVoiceIoQuotaRoutes } from "./routes/zero-voice-io-quota";
 import { zeroWebDownloadRoutes } from "./routes/zero-web-download";
@@ -104,6 +105,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroOrgInviteRoutes,
   ...zeroOrgReadRoutes,
   ...zeroUserPreferencesRoutes,
+  ...zeroUserModelPreferenceRoutes,
   ...zeroSecretsRoutes,
   ...zeroSkillsRoutes,
   ...zeroSlackConnectRoutes,
