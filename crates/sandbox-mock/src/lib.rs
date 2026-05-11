@@ -1327,6 +1327,36 @@ mod tests {
         }
     }
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn lifecycle_gate_counts_concurrent_park_entries_on_multithread_runtime() {
+        const ENTRY_COUNT: usize = 32;
+
+        let gate = MockLifecycleGate::new();
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.set_park_lifecycle_gate(gate.clone());
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let mut park_tasks = Vec::with_capacity(ENTRY_COUNT);
+        for _ in 0..ENTRY_COUNT {
+            let mut sandbox = factory.create(test_sandbox_config()).await.unwrap();
+            park_tasks.push(tokio::spawn(async move { sandbox.park().await }));
+        }
+
+        assert_eq!(
+            gate.wait_entered(ENTRY_COUNT as u64, test_timeout())
+                .await
+                .unwrap(),
+            ENTRY_COUNT as u64
+        );
+        assert_eq!(gate.entered_count(), ENTRY_COUNT as u64);
+        assert_eq!(overrides.park_call_count(), ENTRY_COUNT as u32);
+
+        gate.release_many(ENTRY_COUNT);
+        for task in park_tasks {
+            task.await.unwrap().unwrap();
+        }
+    }
+
     #[tokio::test]
     async fn overrides_share_create_results_across_runtime_factories() {
         let overrides = Arc::new(MockSandboxOverrides::new());
