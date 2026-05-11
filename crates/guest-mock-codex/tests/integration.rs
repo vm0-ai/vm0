@@ -172,6 +172,10 @@ fn accepts_all_no_op_flags_without_failing() {
             "/tmp",
             "-m",
             "gpt-5",
+            "-c",
+            "features.memories=true",
+            "--config",
+            "developer_instructions=\"your name is Aria\"",
             "--append-system-prompt",
             "your name is Aria",
             "--",
@@ -193,6 +197,51 @@ fn prompt_without_double_dash_separator_works() {
     assert_eq!(out.status, 0);
     assert_eq!(out.events.len(), 3);
     assert_eq!(out.events[1]["item"]["text"], "hello world");
+}
+
+#[test]
+fn config_flags_before_prompt_are_not_echoed() {
+    let dir = TempDir::new().unwrap();
+    let out = run(
+        dir.path(),
+        &[
+            "exec",
+            "--json",
+            "-c",
+            "features.memories=true",
+            "hello from codex",
+        ],
+    )
+    .unwrap();
+
+    assert_eq!(out.status, 0);
+    assert_eq!(out.events.len(), 3);
+    assert_eq!(out.events[1]["item"]["text"], "hello from codex");
+}
+
+#[test]
+fn config_flags_before_resume_are_not_echoed() {
+    let dir = TempDir::new().unwrap();
+    let first = run(dir.path(), &["exec", "--json", "--", "turn-1"]).unwrap();
+    let thread_id = first.events[0]["thread_id"].as_str().unwrap().to_string();
+
+    let second = run(
+        dir.path(),
+        &[
+            "exec",
+            "--json",
+            "-c",
+            "features.memories=true",
+            "resume",
+            &thread_id,
+            "turn-2",
+        ],
+    )
+    .unwrap();
+
+    assert_eq!(second.status, 0);
+    assert_eq!(second.events[0]["thread_id"], thread_id);
+    assert_eq!(second.events[1]["item"]["text"], "turn-2");
 }
 
 #[test]
