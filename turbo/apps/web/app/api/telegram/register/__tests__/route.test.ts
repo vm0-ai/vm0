@@ -198,6 +198,10 @@ describe("POST /api/telegram/register", () => {
           command: "disconnect",
           description: `Disconnect from ${TEST_AGENT_DISPLAY_NAME}`,
         },
+        {
+          command: "model",
+          description: "Choose your personal default model",
+        },
       ]),
     );
   });

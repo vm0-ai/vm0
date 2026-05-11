@@ -18,6 +18,7 @@ import {
   formatTelegramUserDisplayName,
   getWorkspaceAgentDisplayLabel,
 } from "./shared";
+import { handleTelegramModelCommand } from "./model";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -241,4 +242,92 @@ export async function handleHelpCommand(
     formatTelegramHelpMessage(installation.botUsername, agentName),
     replyOptions,
   );
+}
+
+/**
+ * Handle /model command
+ *
+ * Lists available models when called without an argument and persists the
+ * caller's personal model preference when a model argument matches.
+ */
+export async function handleModelCommand(
+  update: TelegramHandlerUpdate,
+  installationId: string,
+): Promise<void> {
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const message = update.message;
+  const chatId = String(message.chat.id);
+  const fromUserId = String(message.from?.id ?? 0);
+
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(telegramInstallations)
+    .where(eq(telegramInstallations.telegramBotId, installationId))
+    .limit(1);
+
+  if (!installation) {
+    return;
+  }
+
+  const botToken = decryptSecretValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createTelegramClient(botToken);
+  const telegramDisplayName = formatTelegramUserDisplayName(message.from);
+
+  const userLink = await resolveUserLink(
+    installationId,
+    fromUserId,
+    message.from?.username ?? null,
+    telegramDisplayName,
+  );
+
+  const replyOptions =
+    message.chat.type !== "private"
+      ? { replyToMessageId: message.message_id }
+      : undefined;
+
+  if (!userLink) {
+    if (message.chat.type !== "private") {
+      const agentName = await getWorkspaceAgentDisplayLabel(
+        installation.defaultComposeId,
+      );
+      await sendMessage(
+        client,
+        chatId,
+        formatTelegramPrivateConnectPrompt(installation.botUsername, agentName),
+        {
+          ...replyOptions,
+          replyMarkup: buildTelegramPrivateConnectReplyMarkup(
+            installation.botUsername,
+          ),
+        },
+      );
+      return;
+    }
+
+    const connectUrl = buildConnectUrl(
+      installation.telegramBotId,
+      fromUserId,
+      botToken,
+      message.from?.username ?? null,
+      telegramDisplayName,
+    );
+    const agentName = await getWorkspaceAgentDisplayLabel(
+      installation.defaultComposeId,
+    );
+    await sendMessage(client, chatId, formatTelegramConnectPrompt(agentName), {
+      replyMarkup: buildTelegramConnectReplyMarkup(connectUrl),
+    });
+    return;
+  }
+
+  await handleTelegramModelCommand({
+    message,
+    client,
+    orgId: installation.orgId,
+    userId: userLink.vm0UserId,
+    replyToMessageId: replyOptions?.replyToMessageId,
+  });
 }

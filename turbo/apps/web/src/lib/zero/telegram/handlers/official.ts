@@ -41,6 +41,7 @@ import {
   storeTelegramMessage,
 } from "./shared";
 import { runAgentForTelegram } from "./run-agent";
+import { handleTelegramModelCommand } from "./model";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -619,6 +620,33 @@ export async function handleOfficialHelpCommand(
     formatTelegramHelpMessage(runtime.botUsername, "Zero"),
     replyOptions,
   );
+}
+
+export async function handleOfficialModelCommand(
+  update: TelegramHandlerUpdate,
+): Promise<void> {
+  const runtime = await resolveOfficialRuntime();
+  if (!runtime) return;
+
+  const message = update.message;
+  const chatId = String(message.chat.id);
+  const userLink = await resolveOfficialLinkedUser({
+    runtime,
+    message,
+    chatId,
+    replyToMessageId:
+      message.chat.type !== "private" ? message.message_id : undefined,
+  });
+  if (!userLink) return;
+
+  await handleTelegramModelCommand({
+    message,
+    client: runtime.client,
+    orgId: userLink.orgId,
+    userId: userLink.vm0UserId,
+    replyToMessageId:
+      message.chat.type !== "private" ? message.message_id : undefined,
+  });
 }
 
 function stripBotMention(

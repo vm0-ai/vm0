@@ -16,11 +16,13 @@ import {
   handleConnectCommand,
   handleDisconnectCommand,
   handleHelpCommand,
+  handleModelCommand,
 } from "../../../../../src/lib/zero/telegram/handlers/commands";
 import {
   handleOfficialConnectCommand,
   handleOfficialDisconnectCommand,
   handleOfficialHelpCommand,
+  handleOfficialModelCommand,
   handleOfficialNewSessionCommand,
   handleOfficialStartCommand,
   handleOfficialTelegramDirectMessage,
@@ -53,6 +55,7 @@ interface TelegramWebhookUpdate {
  * - /connect command → handleConnectCommand
  * - /disconnect command → handleDisconnectCommand
  * - /help command → handleHelpCommand
+ * - /model command → handleModelCommand
  * - Private chat (DM) → handleTelegramDirectMessage
  * - Bot @mention in group → handleTelegramMention
  * - Reply to bot message → handleTelegramMention (continuation)
@@ -136,6 +139,11 @@ export async function POST(
 
       if (command === "help") {
         await handleHelpCommand({ message }, telegramBotId);
+        return;
+      }
+
+      if (command === "model") {
+        await handleModelCommand({ message }, telegramBotId);
         return;
       }
 
@@ -285,6 +293,9 @@ async function dispatchOfficialTelegramCommand(
       return true;
     case "help":
       await handleOfficialHelpCommand({ message });
+      return true;
+    case "model":
+      await handleOfficialModelCommand({ message });
       return true;
     default:
       return false;

@@ -8,6 +8,10 @@ import {
   createTestCompose,
   createTestAgentSession,
   createTelegramCallbackInstallation,
+  enableModelFirstModelProviderForUser,
+  getOrgMembersEntry,
+  insertOrgModelPolicy,
+  insertUserModelPreference,
   telegramUserLinkExists,
   createTelegramThreadSession,
   telegramThreadSessionExists,
@@ -94,11 +98,13 @@ describe("Telegram bot commands", () => {
   let composeName: string;
   let userLinkId: string;
   let userId: string;
+  let orgId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     const user = await context.setupUser();
     userId = user.userId;
+    orgId = user.orgId;
     const compose = await createTestCompose(uniqueId("agent"));
     composeId = compose.composeId;
     composeName = compose.name;
@@ -433,6 +439,7 @@ describe("Telegram bot commands", () => {
       expect(text).toContain("/new_session");
       expect(text).toContain("/connect");
       expect(text).toContain("/disconnect");
+      expect(text).toContain("/model");
       expect(text).toContain(`Connect to ${TEST_AGENT_DISPLAY_NAME}`);
       expect(text).toContain(`Disconnect from ${TEST_AGENT_DISPLAY_NAME}`);
     });
@@ -459,6 +466,167 @@ describe("Telegram bot commands", () => {
 
       expect(sendMsg.mocked).toHaveBeenCalled();
       expect(sendMsg.calls[0]?.text).not.toContain("admin");
+    });
+  });
+
+  describe("/model command", () => {
+    async function enableModelCommand(): Promise<void> {
+      await enableModelFirstModelProviderForUser(orgId, userId);
+      await insertOrgModelPolicy({
+        orgId,
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+      });
+      await insertOrgModelPolicy({
+        orgId,
+        model: "deepseek-v4-pro",
+      });
+      await insertOrgModelPolicy({
+        orgId,
+        model: "gpt-5.5",
+      });
+    }
+
+    it("should list selectable models when no model argument is provided", async () => {
+      await enableModelCommand();
+      await insertUserModelPreference({
+        orgId,
+        userId,
+        model: "deepseek-v4-pro",
+      });
+      const sendMsg = telegramSendMessage();
+      server.use(sendMsg.handler);
+
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: TELEGRAM_USER_ID, type: "private" },
+          from: { id: TELEGRAM_USER_ID, username: "testuser" },
+          text: "/model",
+        },
+      });
+
+      const response = await POST(request, {
+        params: Promise.resolve({ telegramBotId: installationId }),
+      });
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const text = sendMsg.calls[0]?.text ?? "";
+      expect(text).toContain("Available models");
+      expect(text).toContain("/model default");
+      expect(text).toContain("/model claude-sonnet-4-6");
+      expect(text).toContain("/model deepseek-v4-pro");
+      expect(text).toContain("DeepSeek V4 Pro");
+      expect(text).not.toContain("/model gpt-5.5");
+    });
+
+    it("should persist a matched model argument", async () => {
+      await enableModelCommand();
+      const sendMsg = telegramSendMessage();
+      server.use(sendMsg.handler);
+
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: TELEGRAM_USER_ID, type: "private" },
+          from: { id: TELEGRAM_USER_ID, username: "testuser" },
+          text: "/model deepseek-v4-pro",
+        },
+      });
+
+      const response = await POST(request, {
+        params: Promise.resolve({ telegramBotId: installationId }),
+      });
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const saved = await getOrgMembersEntry(orgId, userId);
+      expect(saved?.selectedModel).toBe("deepseek-v4-pro");
+      expect(sendMsg.calls[0]?.text).toContain("Switched to DeepSeek V4 Pro");
+    });
+
+    it("should match model display names", async () => {
+      await enableModelCommand();
+      const sendMsg = telegramSendMessage();
+      server.use(sendMsg.handler);
+
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: TELEGRAM_USER_ID, type: "private" },
+          from: { id: TELEGRAM_USER_ID, username: "testuser" },
+          text: "/model Claude Sonnet 4.6",
+        },
+      });
+
+      const response = await POST(request, {
+        params: Promise.resolve({ telegramBotId: installationId }),
+      });
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const saved = await getOrgMembersEntry(orgId, userId);
+      expect(saved?.selectedModel).toBe("claude-sonnet-4-6");
+    });
+
+    it("should clear personal model preference with default", async () => {
+      await enableModelCommand();
+      await insertUserModelPreference({
+        orgId,
+        userId,
+        model: "deepseek-v4-pro",
+      });
+      const sendMsg = telegramSendMessage();
+      server.use(sendMsg.handler);
+
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: TELEGRAM_USER_ID, type: "private" },
+          from: { id: TELEGRAM_USER_ID, username: "testuser" },
+          text: "/model default",
+        },
+      });
+
+      const response = await POST(request, {
+        params: Promise.resolve({ telegramBotId: installationId }),
+      });
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const saved = await getOrgMembersEntry(orgId, userId);
+      expect(saved?.selectedModel).toBeNull();
+      expect(sendMsg.calls[0]?.text).toContain("Switched to workspace default");
+    });
+
+    it("should reject model switching when model-first is disabled", async () => {
+      const sendMsg = telegramSendMessage();
+      server.use(sendMsg.handler);
+
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: TELEGRAM_USER_ID, type: "private" },
+          from: { id: TELEGRAM_USER_ID, username: "testuser" },
+          text: "/model deepseek-v4-pro",
+        },
+      });
+
+      const response = await POST(request, {
+        params: Promise.resolve({ telegramBotId: installationId }),
+      });
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      expect(sendMsg.calls[0]?.text).toContain("not available");
+      const saved = await getOrgMembersEntry(orgId, userId);
+      expect(saved?.selectedModel).toBeFalsy();
     });
   });
 

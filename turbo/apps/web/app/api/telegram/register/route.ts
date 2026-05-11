@@ -129,6 +129,7 @@ async function configureTelegramBot(params: {
   await setMyCommands(params.botToken, [
     { command: "new_session", description: "Start a new conversation" },
     { command: "connect", description: `Connect to ${params.agentName}` },
+    { command: "model", description: "Choose your personal default model" },
     {
       command: "disconnect",
       description: `Disconnect from ${params.agentName}`,

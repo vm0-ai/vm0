@@ -757,6 +757,7 @@ export function formatTelegramHelpMessage(
     "<b>Commands</b>",
     `• <code>/connect</code> - Connect to ${label}`,
     "• <code>/new_session</code> - Start a new conversation",
+    "• <code>/model</code> - Choose your personal default model",
     `• <code>/disconnect</code> - Disconnect from ${label}`,
     "",
     "<b>Usage</b>",
