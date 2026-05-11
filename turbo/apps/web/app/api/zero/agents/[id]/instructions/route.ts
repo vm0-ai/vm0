@@ -86,7 +86,7 @@ async function updateInstructions(
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
-        visibility: "public",
+        visibility: "public" as const,
         customSkills: [],
       },
     };

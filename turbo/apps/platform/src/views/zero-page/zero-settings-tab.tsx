@@ -399,15 +399,15 @@ export function ZeroSettingsTab({
               canEditVisibility,
             ) && (
               <InlineSettingsRow
-                label="Private"
-                description="Owner-only access."
+                label="Make public"
+                description="Visible to everyone in this workspace."
               >
                 <Switch
-                  checked={visibility === "private"}
+                  checked={visibility === "public"}
                   onCheckedChange={(checked) => {
-                    return setVisibility(checked ? "private" : "public");
+                    return setVisibility(checked ? "public" : "private");
                   }}
-                  aria-label="Private agent"
+                  aria-label="Make public"
                 />
               </InlineSettingsRow>
             )}

@@ -19,6 +19,7 @@ import {
   DialogTitle,
   Button,
   Input,
+  Switch,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -121,9 +122,7 @@ export function AgentsPage() {
                       disabled={createDisabled}
                       onClick={() => {
                         setVisibility(
-                          atPublicLimit && privateAgentsEnabled
-                            ? "private"
-                            : "public",
+                          privateAgentsEnabled ? "private" : "public",
                         );
                         return setDialogOpen(true);
                       }}
@@ -412,7 +411,7 @@ function CreateTeammateDialogContent({
           disabled={creating}
         />
         {showVisibility && (
-          <CreateAgentVisibilityTabs
+          <CreateAgentPublicToggle
             visibility={visibility}
             onVisibilityChange={onVisibilityChange}
             publicDisabled={publicDisabled}
@@ -445,7 +444,7 @@ function CreateTeammateDialogContent({
   );
 }
 
-function CreateAgentVisibilityTabs({
+function CreateAgentPublicToggle({
   visibility,
   onVisibilityChange,
   publicDisabled,
@@ -455,30 +454,24 @@ function CreateAgentVisibilityTabs({
   publicDisabled: boolean;
 }) {
   return (
-    <Tabs
-      value={visibility}
-      onValueChange={(value) => {
-        return onVisibilityChange(value as "public" | "private");
-      }}
-      className="w-full"
-    >
-      <TabsList className="zero-tabs h-9 w-full gap-1 px-1 py-1">
-        <TabsTrigger
-          value="public"
-          disabled={publicDisabled}
-          className="flex-1 gap-1.5 text-sm data-[state=active]:bg-background"
-        >
-          Public
-        </TabsTrigger>
-        <TabsTrigger
-          value="private"
-          className="flex-1 gap-1.5 text-sm data-[state=active]:bg-background"
-        >
-          <IconLock size={14} stroke={1.5} />
-          Private
-        </TabsTrigger>
-      </TabsList>
-    </Tabs>
+    <div className="flex w-full items-center justify-between gap-4 rounded-lg bg-muted/40 px-3 py-2.5">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-foreground">Make public</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {publicDisabled
+            ? "Public agent limit reached."
+            : "Visible to everyone in this workspace."}
+        </p>
+      </div>
+      <Switch
+        checked={visibility === "public"}
+        disabled={publicDisabled}
+        onCheckedChange={(checked) => {
+          return onVisibilityChange(checked ? "public" : "private");
+        }}
+        aria-label="Make public"
+      />
+    </div>
   );
 }
 
