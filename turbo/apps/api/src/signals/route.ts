@@ -13,6 +13,7 @@ import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
 import { zeroAgentsRoutes } from "./routes/zero-agents";
 import { zeroApiKeysRoutes } from "./routes/zero-api-keys";
 import { zeroBillingAutoRechargeRoutes } from "./routes/zero-billing-auto-recharge";
+import { zeroBillingCheckoutRoutes } from "./routes/zero-billing-checkout";
 import { zeroBillingInvoicesRoutes } from "./routes/zero-billing-invoices";
 import { zeroBillingStatusRoutes } from "./routes/zero-billing-status";
 import { zeroChatThreadRoutes } from "./routes/zero-chat-threads";
@@ -74,6 +75,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroAgentsRoutes,
   ...zeroApiKeysRoutes,
   ...zeroBillingAutoRechargeRoutes,
+  ...zeroBillingCheckoutRoutes,
   ...zeroBillingInvoicesRoutes,
   ...zeroBillingStatusRoutes,
   ...zeroChatThreadRoutes,
