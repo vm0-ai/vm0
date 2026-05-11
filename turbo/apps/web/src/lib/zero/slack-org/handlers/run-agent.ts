@@ -4,7 +4,6 @@ import type { SlackOrgCallbackPayload } from "../../../infra/callback/callback-p
 import { isApiError } from "@vm0/api-services/errors";
 import { logger } from "../../../shared/logger";
 import type { UserInfoOptions } from "../../integration-prompt";
-import { resolvePreferredModelProviderPin } from "../../model-provider/resolve-preferred-model-provider-pin";
 import { createZeroRun } from "../../zero-run-service";
 import { adaptSlackTrigger } from "./adapt-slack-trigger";
 
@@ -22,7 +21,6 @@ interface RunAgentParams {
   userId: string;
   modelProviderId: string | null;
   selectedModel: string | null;
-  preferPersonalProvider: boolean;
   botUserId: string;
   channelId?: string;
   channelType?: "channel" | "dm" | "group_dm";
@@ -58,15 +56,6 @@ export async function runAgentForSlackOrg(
   const logContext: LogContext = { composeId, agentName, userId };
 
   try {
-    const modelPin = await resolvePreferredModelProviderPin({
-      orgId: params.orgId,
-      userId: params.userId,
-      preferPersonalProvider: params.preferPersonalProvider,
-      fallback: {
-        modelProviderId: params.modelProviderId,
-        selectedModel: params.selectedModel,
-      },
-    });
     const result = await createZeroRun({
       ...adaptSlackTrigger({
         userId: params.userId,
@@ -82,8 +71,8 @@ export async function runAgentForSlackOrg(
         callbackContext: params.callbackContext,
         apiStartTime: params.apiStartTime,
       }),
-      modelProviderId: modelPin.modelProviderId ?? undefined,
-      selectedModelOverride: modelPin.selectedModel ?? undefined,
+      modelProviderId: params.modelProviderId ?? undefined,
+      selectedModelOverride: params.selectedModel ?? undefined,
     });
 
     const status = result.status === "queued" ? "queued" : "accepted";

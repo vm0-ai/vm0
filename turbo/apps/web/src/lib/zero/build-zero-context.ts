@@ -205,11 +205,6 @@ interface BuildZeroContextParams {
   modelProviderId?: string;
   modelProviderCredentialScope?: string;
   selectedModelOverride?: string;
-  /**
-   * Legacy personal-tier preference. Retained for stored agent/schedule shape;
-   * the retired personal-provider resolver path treats it as false.
-   */
-  preferPersonalProvider?: boolean;
   // API start time for E2E timing metrics
   apiStartTime: number;
   // Per-permission policies from zero agent configuration (includes unknownPolicy).
@@ -250,7 +245,6 @@ async function resolveSecretsAndEnvironment(
   modelProviderId?: string,
   modelProviderCredentialScope?: string,
   selectedModelOverride?: string,
-  preferPersonalProvider?: boolean,
 ): Promise<{
   secrets: Record<string, string> | undefined;
   environment: Record<string, string> | undefined;
@@ -299,7 +293,6 @@ async function resolveSecretsAndEnvironment(
         modelProvider,
         modelProviderId,
         selectedModelOverride,
-        preferPersonalProvider,
         modelProviderCredentialScope,
       );
     }),
@@ -588,10 +581,6 @@ function buildDiagnosticSpans(
     },
     { op: "api_build_merge_permissions", ms: timings.mergePermissions },
     ...optionalDiagnosticSpan(
-      "api_build_model_provider_personal_eligibility",
-      modelProvider?.personalEligibility,
-    ),
-    ...optionalDiagnosticSpan(
       "api_build_model_provider_default_lookup",
       modelProvider?.defaultProviderLookup,
     ),
@@ -644,11 +633,6 @@ interface ResolveCliRunContextParams {
   modelProviderId?: string;
   modelProviderCredentialScope?: string;
   selectedModelOverride?: string;
-  /**
-   * Personal-tier preference (Epic #11868). Mirrors `BuildZeroContextParams`
-   * — see that interface for full semantics.
-   */
-  preferPersonalProvider?: boolean;
 }
 
 /**
@@ -811,7 +795,6 @@ export async function resolveCliRunContext(
       params.modelProviderId,
       params.modelProviderCredentialScope,
       params.selectedModelOverride,
-      params.preferPersonalProvider,
     ),
     getUserPreferences(params.orgId, params.userId),
     loadFeatureSwitchOverrides(params.orgId, params.userId),
@@ -992,7 +975,6 @@ export async function buildZeroExecutionContext(
           params.modelProviderId,
           params.modelProviderCredentialScope,
           params.selectedModelOverride,
-          params.preferPersonalProvider,
         );
       }),
       captureDuration(() => {

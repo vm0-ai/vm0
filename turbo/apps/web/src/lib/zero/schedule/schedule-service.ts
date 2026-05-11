@@ -950,7 +950,6 @@ export async function executeSchedule(
       timezone: schedule.timezone,
       modelProviderId: schedule.modelProviderId,
       selectedModel: schedule.selectedModel,
-      preferPersonalProvider: schedule.preferPersonalProvider,
       apiStartTime,
     }),
   );

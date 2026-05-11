@@ -163,7 +163,6 @@ async function resolveProviderForAdmission(params: {
   modelProviderCredentialScope?: string | null;
   selectedModelOverride?: string | null;
   composeFramework: string;
-  preferPersonalProvider?: boolean;
 }): Promise<ResolvedAdmissionProvider> {
   if (params.modelProvider && !(params.modelProvider in MODEL_PROVIDER_TYPES)) {
     return { providerType: null, providerFramework: null };
@@ -178,7 +177,6 @@ async function resolveProviderForAdmission(params: {
       modelProviderCredentialScope:
         params.modelProviderCredentialScope ?? undefined,
       selectedModelOverride: params.selectedModelOverride ?? undefined,
-      preferPersonalProvider: params.preferPersonalProvider,
     });
     return {
       providerType: route.provider.type,
@@ -207,7 +205,6 @@ export async function resolveRunAdmissionContext(params: {
   modelProviderCredentialScope?: string | null;
   selectedModelOverride?: string | null;
   composeFramework: string;
-  preferPersonalProvider?: boolean;
 }): Promise<RunAdmissionContext> {
   const provider = await resolveProviderForAdmission(params);
   return {
@@ -249,7 +246,6 @@ export async function checkModelProviderConfigured(
   userId: string,
   modelProvider: string | null | undefined,
   composeContent: AgentComposeYaml,
-  preferPersonalProvider?: boolean,
   selectedModelOverride?: string | null,
   modelProviderId?: string | null,
   modelProviderCredentialScope?: string | null,
@@ -273,6 +269,5 @@ export async function checkModelProviderConfigured(
     modelProviderId: modelProviderId ?? undefined,
     modelProviderCredentialScope: modelProviderCredentialScope ?? undefined,
     selectedModelOverride: selectedModelOverride ?? undefined,
-    preferPersonalProvider,
   });
 }

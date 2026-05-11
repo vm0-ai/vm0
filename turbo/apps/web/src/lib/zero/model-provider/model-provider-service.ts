@@ -52,7 +52,7 @@ export interface ModelProviderInfo {
 /**
  * Shared SELECT projection for reading model_providers rows joined with secrets.
  *
- * Centralized to prevent column drift across the 6 read paths
+ * Centralized to prevent column drift across read paths
  * (`listModelProviders`, `getDefaultModelProvider`, `getAnyDefaultModelProvider`,
  * `getOrgModelProviderByType`, `getModelProviderById`, `getUserModelProviderByType`).
  */
@@ -1441,34 +1441,6 @@ export function deleteUserModelProvider(
   type: ModelProviderType,
 ): Promise<void> {
   return deleteModelProvider(orgId, userId, type);
-}
-
-/**
- * Get the user-level default model provider for a framework.
- *
- * Mirrors `getOrgDefaultModelProvider` but scoped to (orgId, userId).
- * Used by Wave 2's resolver to honor `prefer_personal_provider` (#11868).
- */
-export function getUserDefaultModelProvider(
-  orgId: string,
-  userId: string,
-  framework: string,
-): Promise<ModelProviderInfo | null> {
-  return getDefaultModelProvider(orgId, userId, framework);
-}
-
-/**
- * Get the user-level default model provider regardless of framework.
- *
- * Cross-framework fallback for the personal tier — mirrors
- * `getOrgAnyDefaultModelProvider` for Epic #11520's "provider's framework
- * wins" rule applied per-user.
- */
-export function getUserAnyDefaultModelProvider(
-  orgId: string,
-  userId: string,
-): Promise<ModelProviderInfo | null> {
-  return getAnyDefaultModelProvider(orgId, userId);
 }
 
 /**

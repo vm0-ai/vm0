@@ -16,7 +16,6 @@ import {
   insertOrgDefaultModelProvider,
   insertOrgNonDefaultModelProvider,
   insertOrgMultiAuthModelProvider,
-  insertUserDefaultModelProvider,
   insertUserMultiAuthModelProvider,
   insertUserNonDefaultModelProvider,
   enableModelFirstModelProviderForUser,
@@ -283,39 +282,9 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
   });
 });
 
-describe("resolveModelProviderSecrets — retired personal tier", () => {
+describe("resolveModelProviderSecrets — user-tier pin", () => {
   beforeEach(() => {
     context.setupMocks();
-  });
-
-  it("ignores legacy preferPersonalProvider and falls through to the org chain", async () => {
-    const userId = uniqueId("personal-switch-off");
-    const orgId = await setupOrg(userId);
-    await insertUserDefaultModelProvider(
-      orgId,
-      userId,
-      "openai-api-key",
-      "gpt-5.4",
-    );
-    await insertOrgDefaultModelProvider(
-      orgId,
-      "anthropic-api-key",
-      "claude-sonnet-4-6",
-    );
-
-    const result = await resolveModelProviderSecrets(
-      orgId,
-      userId,
-      "claude-code",
-      false,
-      undefined,
-      undefined,
-      undefined,
-      true,
-    );
-
-    expect(result.resolvedModelProvider).toBe("anthropic-api-key");
-    expect(result.framework).toBe("claude-code");
   });
 
   it("modelProviderId pin to user-tier row routes secret lookup to that user", async () => {
@@ -351,7 +320,6 @@ describe("resolveModelProviderSecrets — retired personal tier", () => {
       undefined,
       providerId,
       undefined,
-      true,
     );
 
     expect(result.resolvedModelProvider).toBe("openai-api-key");
@@ -817,7 +785,6 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
         "openai-api-key",
         "00000000-0000-0000-0000-000000000001",
         "gpt-5.5",
-        undefined,
         "org",
       ),
     ).rejects.toSatisfy((err: unknown) => {
