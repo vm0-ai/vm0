@@ -1,5 +1,5 @@
-import { spawn } from "child_process";
 import type { RemoteAgentBackend } from "@vm0/api-contracts/contracts/zero-remote-agent";
+import { safeSpawn } from "../utils/spawn";
 
 interface RemoteAgentBackendProbe {
   backend: RemoteAgentBackend;
@@ -52,7 +52,7 @@ async function probeBackend(
   command: string,
 ): Promise<RemoteAgentBackendProbe> {
   return new Promise((resolve) => {
-    const child = spawn(command, ["--version"], {
+    const child = safeSpawn(command, ["--version"], {
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -171,7 +171,7 @@ export async function executeRemoteAgentBackend(params: {
   );
 
   return new Promise((resolve) => {
-    const child = spawn(command, args, {
+    const child = safeSpawn(command, args, {
       cwd: params.workdir,
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
