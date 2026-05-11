@@ -99,9 +99,9 @@ pub struct CommandOperationRequest<'a> {
     pub command: &'a str,
     pub env: &'a [(&'a str, &'a str)],
     pub sudo: bool,
+    pub label: &'a str,
     pub stdout: CommandOutputPolicy,
     pub stderr: CommandOutputPolicy,
-    pub label: &'a str,
     /// Optional bounded host-side output event queue override.
     ///
     /// `None` uses the default queue capacity when either output policy
@@ -1294,13 +1294,13 @@ impl VsockHost {
                 command: request.command,
                 env: request.env,
                 sudo: request.sudo,
+                label: request.label,
                 stdout: CommandOutputPolicy::Capture {
                     limit_bytes: request.stdout_limit_bytes,
                 },
                 stderr: CommandOutputPolicy::Capture {
                     limit_bytes: request.stderr_limit_bytes,
                 },
-                label: request.label,
                 stream_queue_capacity: None,
             })
             .await?;
@@ -1326,9 +1326,9 @@ impl VsockHost {
             command: request.command,
             env: request.env,
             sudo: request.sudo,
+            label: request.label,
             stdout: request.stdout,
             stderr: request.stderr,
-            label: request.label,
             stream_queue_capacity: request.stream_queue_capacity,
         })
         .await
@@ -1735,9 +1735,9 @@ mod tests {
             command,
             env: &[],
             sudo: false,
+            label: "test-command",
             stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: CommandOutputPolicy::Capture { limit_bytes: 1024 },
-            label: "test-command",
             stream_queue_capacity: None,
         })
         .await
@@ -2028,13 +2028,13 @@ mod tests {
                 command: "stream",
                 env: &[],
                 sudo: false,
+                label: "default-receiver",
                 stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
                 stderr: CommandOutputPolicy::CaptureAndStream {
                     capture_limit_bytes: 1024,
                     stream_limit_bytes: 1024,
                     chunk_limit_bytes: 16,
                 },
-                label: "default-receiver",
                 stream_queue_capacity: None,
             })
             .await
@@ -2078,9 +2078,9 @@ mod tests {
                 command: "capture",
                 env: &[],
                 sudo: false,
+                label: "unexpected-receiver",
                 stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
                 stderr: CommandOutputPolicy::Discard,
-                label: "unexpected-receiver",
                 stream_queue_capacity: Some(1),
             })
             .await
@@ -2132,12 +2132,12 @@ mod tests {
                 command: "stream",
                 env: &[],
                 sudo: false,
+                label: "bad-policy",
                 stdout: CommandOutputPolicy::Stream {
                     limit_bytes: 1024,
                     chunk_limit_bytes: 0,
                 },
                 stderr: CommandOutputPolicy::Discard,
-                label: "bad-policy",
                 stream_queue_capacity: Some(1),
             })
             .await
@@ -2162,9 +2162,9 @@ mod tests {
                 command: "sleep 60",
                 env: &[],
                 sudo: false,
+                label: "zero-timeout",
                 stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
                 stderr: CommandOutputPolicy::Capture { limit_bytes: 1024 },
-                label: "zero-timeout",
                 stream_queue_capacity: None,
             })
             .await
@@ -2488,9 +2488,9 @@ mod tests {
                 command: "echo ok",
                 env: &[],
                 sudo: false,
+                label: "closed",
                 stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
                 stderr: CommandOutputPolicy::Capture { limit_bytes: 1024 },
-                label: "closed",
                 stream_queue_capacity: None,
             })
             .await
