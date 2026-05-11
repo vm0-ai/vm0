@@ -2,9 +2,8 @@
 
 # Verify firewall_billable propagation through the full stack.
 #
-# Uses `zero run --model-provider` for per-run provider selection. The test
-# keeps the real zero-agent creation path because it exercises the same compose
-# metadata and environment defaults as user-created agents.
+# Uses `zero run --model-provider` for per-run provider selection — the test
+# never changes the shared e2e org's default, so no race with other chunks.
 #
 # t54-0: no override; resolver uses bootstrap claude-code-oauth-token default.
 #   Mock token 401s upstream but the firewall tag is stamped; "$" marker absent.
@@ -13,23 +12,12 @@
 
 load '../../helpers/setup'
 
-cleanup_stale_billable_agents() {
-    local agents_out
-    agents_out=$($ZERO_CLI agent list 2>/dev/null || true)
-
-    echo "$agents_out" | awk '$0 ~ /e2e-billable-/ { print $1 }' | while read -r agent_id; do
-        [ -n "$agent_id" ] || continue
-        $ZERO_CLI agent delete "$agent_id" --yes >/dev/null 2>&1 || true
-    done
-}
-
 setup_file() {
     if [ -z "$ANTHROPIC_API_KEY" ]; then
         skip "ANTHROPIC_API_KEY not set — required for real Claude calls"
     fi
 
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
-    cleanup_stale_billable_agents
 
     # Ensure vm0 provider coexists with bootstrap claude-code-oauth-token.
     # CLI non-interactive mode requires --secret; the API route detects
@@ -39,10 +27,10 @@ setup_file() {
         --secret unused-vm0-is-no-secret \
         --model claude-sonnet-4-6 >/dev/null
 
+    # Create a fresh zero agent for this file
     local create_out
     create_out=$($ZERO_CLI agent create --display-name "e2e-billable-${UNIQUE_ID}")
-    export AGENT_ID
-    AGENT_ID=$(echo "$create_out" | grep -oP 'Agent ID:\s+\K[a-f0-9-]{36}')
+    export AGENT_ID=$(echo "$create_out" | grep -oP 'Agent ID:\s+\K[a-f0-9-]{36}')
     [ -n "$AGENT_ID" ] || {
         echo "# Failed to extract Agent ID from: $create_out" >&2
         return 1
@@ -50,7 +38,7 @@ setup_file() {
 }
 
 teardown_file() {
-    [ -n "$AGENT_ID" ] && $ZERO_CLI agent delete "$AGENT_ID" --yes 2>/dev/null || true
+    [ -n "$AGENT_ID" ] && $ZERO_CLI agent delete "$AGENT_ID" 2>/dev/null || true
     $ZERO_CLI org model-provider remove vm0 2>/dev/null || true
 }
 
