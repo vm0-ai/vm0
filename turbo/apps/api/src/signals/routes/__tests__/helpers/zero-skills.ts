@@ -3,10 +3,14 @@ import { gzipSync } from "node:zlib";
 
 import {
   getCustomSkillStorageName,
+  getInstructionsStorageName,
   VOLUME_ORG_USER_ID,
 } from "@vm0/core/storage-names";
 import { command } from "ccstate";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "@vm0/db/schema/agent-compose";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -129,6 +133,21 @@ interface SkillContentMockArgs {
   readonly extraFiles?: readonly SkillContentMockExtra[];
 }
 
+type AgentFramework = "claude-code" | "codex";
+
+interface AgentComposeContent {
+  readonly version: string;
+  readonly agents: Readonly<
+    Record<
+      string,
+      {
+        readonly framework: AgentFramework;
+        readonly instructions?: string;
+      }
+    >
+  >;
+}
+
 const TAR_BLOCK_SIZE = 512;
 
 function octal(value: number, length: number): string {
@@ -231,6 +250,102 @@ export function mockSkillContent(
   });
 }
 
+interface InstructionsStorageSeed {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly agentName: string;
+  readonly s3Key: string;
+  readonly headVersionId?: string;
+}
+
+export const seedInstructionsStorage$ = command(
+  async (
+    { set },
+    args: InstructionsStorageSeed,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const db = set(writeDb$);
+    const storageId = randomUUID();
+    const storageName = getInstructionsStorageName(args.agentName);
+    const headVersionId = args.headVersionId ?? `head-${randomUUID()}`;
+
+    await db.insert(storages).values({
+      id: storageId,
+      userId: VOLUME_ORG_USER_ID,
+      name: storageName,
+      type: "volume",
+      orgId: args.orgId,
+      s3Prefix: `orgs/${args.orgId}/${storageName}`,
+    });
+    signal.throwIfAborted();
+
+    await db.insert(storageVersions).values({
+      id: headVersionId,
+      storageId,
+      s3Key: args.s3Key,
+      createdBy: args.userId,
+    });
+    signal.throwIfAborted();
+
+    await db
+      .update(storages)
+      .set({ headVersionId })
+      .where(eq(storages.id, storageId));
+    signal.throwIfAborted();
+  },
+);
+
+interface InstructionsContentMockArgs {
+  readonly s3Key: string;
+  readonly filename: string;
+  readonly content: string;
+  readonly manifestPath?: string;
+}
+
+export function mockInstructionsContent(
+  context: TestContext,
+  args: InstructionsContentMockArgs,
+): void {
+  const contentBuffer = Buffer.from(args.content, "utf8");
+  const path = args.manifestPath ?? args.filename;
+  const archive = createSingleFileTarGz(path, contentBuffer);
+
+  const manifest = {
+    version: "test-version",
+    createdAt: new Date(0).toISOString(),
+    files: [
+      { path, hash: "test-hash-instructions", size: contentBuffer.length },
+    ],
+    totalSize: contentBuffer.length,
+    fileCount: 1,
+  };
+  const manifestBuffer = Buffer.from(JSON.stringify(manifest), "utf8");
+
+  context.mocks.s3.send.mockImplementation((cmd: unknown): Promise<unknown> => {
+    const key = commandKey(cmd);
+    if (key === `${args.s3Key}/manifest.json`) {
+      return Promise.resolve({ Body: asyncIterableOf(manifestBuffer) });
+    }
+    if (key === `${args.s3Key}/archive.tar.gz`) {
+      return Promise.resolve({ Body: asyncIterableOf(archive) });
+    }
+    return Promise.resolve({});
+  });
+}
+
+function createAgentComposeContent(
+  name: string,
+  framework: AgentFramework,
+  instructions: string | undefined,
+): AgentComposeContent {
+  return {
+    version: "1",
+    agents: {
+      [name]: instructions ? { framework, instructions } : { framework },
+    },
+  };
+}
+
 export const seedAgentForInstructions$ = command(
   async (
     { set },
@@ -241,9 +356,14 @@ export const seedAgentForInstructions$ = command(
       displayName?: string | null;
       description?: string | null;
       sound?: string | null;
+      framework?: AgentFramework;
+      instructions?: string;
+      composeContent?: unknown;
+      withComposeVersion?: boolean;
+      withZeroAgent?: boolean;
     },
     signal: AbortSignal,
-  ): Promise<{ agentId: string }> => {
+  ): Promise<{ agentId: string; name: string }> => {
     const db = set(writeDb$);
     const agentId = randomUUID();
     const name = args.name ?? `agent-${randomUUID().slice(0, 8)}`;
@@ -254,20 +374,47 @@ export const seedAgentForInstructions$ = command(
       name,
     });
     signal.throwIfAborted();
-    await db
-      .insert(zeroAgents)
-      .values({
-        id: agentId,
-        orgId: args.orgId,
-        owner: args.userId,
-        name,
-        displayName: args.displayName ?? null,
-        description: args.description ?? null,
-        sound: args.sound ?? null,
-      })
-      .onConflictDoNothing();
-    signal.throwIfAborted();
-    return { agentId };
+
+    if (args.composeContent !== undefined || args.withComposeVersion === true) {
+      const versionId = randomUUID().replaceAll("-", "");
+      const content =
+        args.composeContent ??
+        createAgentComposeContent(
+          name,
+          args.framework ?? "claude-code",
+          args.instructions,
+        );
+      await db.insert(agentComposeVersions).values({
+        id: versionId,
+        composeId: agentId,
+        content,
+        createdBy: args.userId,
+      });
+      signal.throwIfAborted();
+      await db
+        .update(agentComposes)
+        .set({ headVersionId: versionId })
+        .where(eq(agentComposes.id, agentId));
+      signal.throwIfAborted();
+    }
+
+    if (args.withZeroAgent !== false) {
+      await db
+        .insert(zeroAgents)
+        .values({
+          id: agentId,
+          orgId: args.orgId,
+          owner: args.userId,
+          name,
+          displayName: args.displayName ?? null,
+          description: args.description ?? null,
+          sound: args.sound ?? null,
+        })
+        .onConflictDoNothing();
+      signal.throwIfAborted();
+    }
+
+    return { agentId, name };
   },
 );
 
