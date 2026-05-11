@@ -241,6 +241,7 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                 match handle_message(&msg)? {
                     MessageOutcome::Response(response) => {
                         let is_write_file = msg.msg_type == vsock_proto::MSG_WRITE_FILE;
+                        let response_send_started_at = std::time::Instant::now();
                         if is_write_file {
                             log(
                                 "INFO",
@@ -252,8 +253,10 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                                 log(
                                     "ERROR",
                                     &format!(
-                                        "write_file response send failed: seq={} error={}",
-                                        msg.seq, e
+                                        "write_file response send failed: seq={} duration_ms={} error={}",
+                                        msg.seq,
+                                        response_send_started_at.elapsed().as_millis(),
+                                        e
                                     ),
                                 );
                             }
@@ -262,7 +265,11 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                         if is_write_file {
                             log(
                                 "INFO",
-                                &format!("write_file response send complete: seq={}", msg.seq),
+                                &format!(
+                                    "write_file response send complete: seq={} duration_ms={}",
+                                    msg.seq,
+                                    response_send_started_at.elapsed().as_millis()
+                                ),
                             );
                         }
                     }
