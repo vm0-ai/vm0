@@ -1758,12 +1758,15 @@ mod tests {
             }
         });
 
-        let results = [first.await, second.await];
-        let panic_count = results
-            .iter()
-            .filter(|result| matches!(result, Err(err) if err.is_panic()))
-            .count();
-        let success_count = results.iter().filter(|result| result.is_ok()).count();
+        let classify = |result: std::result::Result<(), tokio::task::JoinError>| match result {
+            Ok(()) => (1, 0),
+            Err(err) if err.is_panic() => (0, 1),
+            Err(err) => panic!("destroy task should not be cancelled: {err}"),
+        };
+        let (first_success_count, first_panic_count) = classify(first.await);
+        let (second_success_count, second_panic_count) = classify(second.await);
+        let panic_count = first_panic_count + second_panic_count;
+        let success_count = first_success_count + second_success_count;
         assert_eq!(
             panic_count, 1,
             "shared destroy panic should be consumed by exactly one concurrent factory"
