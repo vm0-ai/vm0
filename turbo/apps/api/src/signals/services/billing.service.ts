@@ -3,7 +3,8 @@ import type { AutoRechargeConfig } from "@vm0/api-contracts/contracts/zero-billi
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
-import { db$ } from "../external/db";
+import { db$, writeDb$ } from "../external/db";
+import { nowDate } from "../external/time";
 import { getStripeClient } from "../external/stripe-client";
 
 export function autoRechargeConfig(
@@ -62,5 +63,78 @@ export const createBillingPortalSession$ = command(
     signal.throwIfAborted();
 
     return session.url;
+  },
+);
+
+type UpdateAutoRechargeResult =
+  | { readonly ok: true; readonly data: AutoRechargeConfig }
+  | { readonly ok: false; readonly error: string };
+
+interface UpdateAutoRechargeArgs {
+  readonly orgId: string;
+  readonly enabled: boolean;
+  readonly threshold?: number;
+  readonly amount?: number;
+}
+
+export const updateAutoRechargeConfig$ = command(
+  async (
+    { set },
+    args: UpdateAutoRechargeArgs,
+    signal: AbortSignal,
+  ): Promise<UpdateAutoRechargeResult> => {
+    const { orgId, enabled, threshold, amount } = args;
+    const writeDb = set(writeDb$);
+
+    if (enabled) {
+      const [row] = await writeDb
+        .select({ tier: orgMetadata.tier })
+        .from(orgMetadata)
+        .where(eq(orgMetadata.orgId, orgId))
+        .limit(1);
+      signal.throwIfAborted();
+
+      const orgTier = row?.tier ?? "free";
+      if (orgTier === "free") {
+        return {
+          ok: false,
+          error: "Auto-recharge is only available for paid plans (Pro/Max)",
+        };
+      }
+      if (threshold === undefined || amount === undefined) {
+        return {
+          ok: false,
+          error:
+            "threshold and amount are required when enabling auto-recharge",
+        };
+      }
+      if (threshold >= amount) {
+        return {
+          ok: false,
+          error: "threshold must be less than amount to avoid recharge loops",
+        };
+      }
+    }
+
+    await writeDb
+      .update(orgMetadata)
+      .set({
+        autoRechargeEnabled: enabled,
+        autoRechargeThreshold: enabled ? threshold : null,
+        autoRechargeAmount: enabled ? amount : null,
+        ...(!enabled ? { autoRechargePendingAt: null } : {}),
+        updatedAt: nowDate(),
+      })
+      .where(eq(orgMetadata.orgId, orgId));
+    signal.throwIfAborted();
+
+    return {
+      ok: true,
+      data: {
+        enabled,
+        threshold: enabled ? (threshold ?? null) : null,
+        amount: enabled ? (amount ?? null) : null,
+      },
+    };
   },
 );

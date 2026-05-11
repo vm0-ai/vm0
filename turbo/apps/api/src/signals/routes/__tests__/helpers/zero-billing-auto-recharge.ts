@@ -15,6 +15,8 @@ interface AutoRechargeSeedValues {
   readonly enabled?: boolean;
   readonly threshold?: number | null;
   readonly amount?: number | null;
+  readonly tier?: string;
+  readonly pendingAt?: Date | null;
 }
 
 export const seedAutoRechargeOrg$ = command(
@@ -32,6 +34,10 @@ export const seedAutoRechargeOrg$ = command(
       autoRechargeEnabled: values.enabled ?? false,
       autoRechargeThreshold: values.threshold ?? null,
       autoRechargeAmount: values.amount ?? null,
+      ...(values.tier !== undefined ? { tier: values.tier } : {}),
+      ...(values.pendingAt !== undefined
+        ? { autoRechargePendingAt: values.pendingAt }
+        : {}),
     });
     signal.throwIfAborted();
 
