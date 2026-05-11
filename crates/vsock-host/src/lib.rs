@@ -56,6 +56,7 @@ const FIRECRACKER_CONNECT_ACK_MAX_BYTES: usize = 64;
 const FRAME_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 const BOUNDED_EXEC_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 const SLOW_WRITE_FILE_LOG_MS: u128 = 1_000;
+const SLOW_BOUNDED_EXEC_LOG_MS: u128 = 5_000;
 
 /// Result of executing a command on the guest.
 #[derive(Debug, Clone)]
@@ -814,6 +815,27 @@ fn has_bounded_stream(request: &BoundedExecRequest<'_>) -> bool {
     request.stdout.stream.is_some() || request.stderr.stream.is_some()
 }
 
+fn bounded_exec_command_kind(command: &str) -> &'static str {
+    if command.contains("/tmp/vm0-system-") {
+        "guest-log-system"
+    } else if command.contains("/tmp/vm0-metrics-") {
+        "guest-log-metrics"
+    } else if command.starts_with("mv -f -- ") {
+        "write-file-commit"
+    } else if command.starts_with("rm -f -- ") {
+        "write-file-cleanup"
+    } else {
+        "other"
+    }
+}
+
+fn proto_output_summary(output: &vsock_proto::BoundedExecOutput<'_>) -> (usize, bool) {
+    match output {
+        vsock_proto::BoundedExecOutput::Discarded => (0, false),
+        vsock_proto::BoundedExecOutput::Captured { bytes, truncated } => (bytes.len(), *truncated),
+    }
+}
+
 fn validate_bounded_exec_request(request: &BoundedExecRequest<'_>) -> io::Result<()> {
     if request.timeout_ms == 0 {
         return Err(io::Error::new(
@@ -1345,6 +1367,10 @@ async fn bounded_exec_on_shared_with_request_timeout(
     request_timeout: Duration,
 ) -> io::Result<BoundedExecResult> {
     validate_bounded_exec_request(request)?;
+    let request_started_at = Instant::now();
+    let command_kind = bounded_exec_command_kind(request.command);
+    let command_len = request.command.len();
+    let has_stream = has_bounded_stream(request);
 
     let proto_request = vsock_proto::BoundedExecRequest {
         timeout_ms: request.timeout_ms,
@@ -1366,6 +1392,16 @@ async fn bounded_exec_on_shared_with_request_timeout(
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
             ConnectionState::Closed { .. } => {
+                warn!(
+                    seq,
+                    command_kind,
+                    command_len,
+                    timeout_ms = request.timeout_ms,
+                    request_timeout_ms = request_timeout.as_millis() as u64,
+                    streaming = has_stream,
+                    duration_ms = request_started_at.elapsed().as_millis() as u64,
+                    "vsock_host: bounded_exec connection closed before request registration"
+                );
                 return Err(io::Error::new(
                     io::ErrorKind::ConnectionReset,
                     "connection closed",
@@ -1377,7 +1413,7 @@ async fn bounded_exec_on_shared_with_request_timeout(
                 ..
             } => {
                 pending.insert(seq, tx);
-                if has_bounded_stream(request) {
+                if has_stream {
                     bounded_output_senders.insert(
                         seq,
                         BoundedOutputRegistration::new(&request.stdout, &request.stderr),
@@ -1387,31 +1423,98 @@ async fn bounded_exec_on_shared_with_request_timeout(
         }
     }
     let mut pending_guard = PendingBoundedExecGuard::new(Arc::clone(shared), seq);
-    let _bounded_output_guard = has_bounded_stream(request)
-        .then(|| PendingBoundedOutputGuard::new(Arc::clone(shared), seq));
+    let _bounded_output_guard =
+        has_stream.then(|| PendingBoundedOutputGuard::new(Arc::clone(shared), seq));
 
-    write_frame_on_shared(shared, &data).await?;
+    let write_started_at = Instant::now();
+    if let Err(e) = write_frame_on_shared(shared, &data).await {
+        warn!(
+            seq,
+            command_kind,
+            command_len,
+            timeout_ms = request.timeout_ms,
+            request_timeout_ms = request_timeout.as_millis() as u64,
+            streaming = has_stream,
+            duration_ms = request_started_at.elapsed().as_millis() as u64,
+            write_ms = write_started_at.elapsed().as_millis() as u64,
+            error = %e,
+            error_kind = ?e.kind(),
+            "vsock_host: bounded_exec frame write failed"
+        );
+        return Err(e);
+    }
 
+    let response_wait_started_at = Instant::now();
     let resp = tokio::select! {
         biased;
         result = rx => {
-            result.map_err(|_| io::Error::new(
-                io::ErrorKind::ConnectionReset,
-                "connection closed",
-            ))?
+            match result {
+                Ok(resp) => resp,
+                Err(_) => {
+                    warn!(
+                        seq,
+                        command_kind,
+                        command_len,
+                        timeout_ms = request.timeout_ms,
+                        request_timeout_ms = request_timeout.as_millis() as u64,
+                        streaming = has_stream,
+                        response_wait_ms = response_wait_started_at.elapsed().as_millis() as u64,
+                        duration_ms = request_started_at.elapsed().as_millis() as u64,
+                        "vsock_host: bounded_exec connection closed before response"
+                    );
+                    return Err(io::Error::new(
+                        io::ErrorKind::ConnectionReset,
+                        "connection closed",
+                    ));
+                }
+            }
         }
         _ = tokio::time::sleep(request_timeout) => {
+            warn!(
+                seq,
+                command_kind,
+                command_len,
+                timeout_ms = request.timeout_ms,
+                request_timeout_ms = request_timeout.as_millis() as u64,
+                streaming = has_stream,
+                response_wait_ms = response_wait_started_at.elapsed().as_millis() as u64,
+                duration_ms = request_started_at.elapsed().as_millis() as u64,
+                "vsock_host: bounded_exec response timeout"
+            );
             return Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"));
         }
     };
+    let response_wait_ms = response_wait_started_at.elapsed().as_millis() as u64;
     if resp.msg_type == MSG_ERROR {
         pending_guard.disarm_cancel();
         let msg = vsock_proto::decode_error(&resp.payload)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        warn!(
+            seq,
+            command_kind,
+            command_len,
+            timeout_ms = request.timeout_ms,
+            request_timeout_ms = request_timeout.as_millis() as u64,
+            streaming = has_stream,
+            duration_ms = request_started_at.elapsed().as_millis() as u64,
+            error = %msg,
+            "vsock_host: bounded_exec guest returned error"
+        );
         return Err(io::Error::other(msg));
     }
 
     if resp.msg_type != MSG_BOUNDED_EXEC_RESULT {
+        warn!(
+            seq,
+            command_kind,
+            command_len,
+            timeout_ms = request.timeout_ms,
+            request_timeout_ms = request_timeout.as_millis() as u64,
+            streaming = has_stream,
+            response_type = resp.msg_type,
+            duration_ms = request_started_at.elapsed().as_millis() as u64,
+            "vsock_host: bounded_exec unexpected response type"
+        );
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("unexpected response type: 0x{:02X}", resp.msg_type),
@@ -1419,11 +1522,48 @@ async fn bounded_exec_on_shared_with_request_timeout(
     }
 
     pending_guard.disarm_cancel();
-    let decoded = vsock_proto::decode_bounded_exec_result(&resp.payload)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+    let decoded = vsock_proto::decode_bounded_exec_result(&resp.payload).map_err(|e| {
+        warn!(
+            seq,
+            command_kind,
+            command_len,
+            timeout_ms = request.timeout_ms,
+            request_timeout_ms = request_timeout.as_millis() as u64,
+            streaming = has_stream,
+            response_wait_ms,
+            duration_ms = request_started_at.elapsed().as_millis() as u64,
+            error = %e,
+            "vsock_host: bounded_exec result decode failed"
+        );
+        io::Error::new(io::ErrorKind::InvalidData, e.to_string())
+    })?;
+    let termination = proto_termination_to_host(decoded.termination);
+    let (stdout_bytes, stdout_truncated) = proto_output_summary(&decoded.stdout);
+    let (stderr_bytes, stderr_truncated) = proto_output_summary(&decoded.stderr);
+    let duration_ms = request_started_at.elapsed().as_millis();
+    if duration_ms >= SLOW_BOUNDED_EXEC_LOG_MS {
+        info!(
+            seq,
+            command_kind,
+            command_len,
+            timeout_ms = request.timeout_ms,
+            request_timeout_ms = request_timeout.as_millis() as u64,
+            streaming = has_stream,
+            termination = ?termination,
+            guest_duration_ms = decoded.duration_ms,
+            response_wait_ms,
+            stdout_bytes,
+            stdout_truncated,
+            stderr_bytes,
+            stderr_truncated,
+            diagnostic = decoded.diagnostic.is_some(),
+            duration_ms = duration_ms as u64,
+            "vsock_host: slow bounded_exec completed"
+        );
+    }
 
     Ok(BoundedExecResult {
-        termination: proto_termination_to_host(decoded.termination),
+        termination,
         duration_ms: decoded.duration_ms,
         stdout: proto_output_to_host(decoded.stdout),
         stderr: proto_output_to_host(decoded.stderr),

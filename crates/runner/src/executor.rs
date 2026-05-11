@@ -15,6 +15,7 @@
 //! user-visible completion signal is not blocked on best-effort uploads.
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -1067,6 +1068,7 @@ const GUEST_SYSTEM_LOG_PREFIX: &str = "/tmp/vm0-system-";
 const GUEST_SYSTEM_LOG_SUFFIX: &str = ".log";
 const GUEST_METRICS_LOG_PREFIX: &str = "/tmp/vm0-metrics-";
 const GUEST_METRICS_LOG_SUFFIX: &str = ".jsonl";
+const SLOW_GUEST_LOG_COPY_LOG_MS: u128 = 5_000;
 const GUEST_LOG_COPY_STREAM_LIMIT_BYTES: u32 = 128 * 1024 * 1024;
 const GUEST_LOG_COPY_STREAM_CHUNK_LIMIT_BYTES: u32 = 64 * 1024;
 const GUEST_LOG_COPY_STDERR_PREVIEW_BYTES: u32 = 16 * 1024;
@@ -1142,6 +1144,44 @@ async fn remove_guest_log_staging_file(run_id: RunId, log_kind: &str, staging_pa
     }
 }
 
+async fn await_guest_log_copy_stage<F>(
+    future: F,
+    run_id: RunId,
+    log_kind: &'static str,
+    stage: &'static str,
+    guest_path: &str,
+    host_path: &Path,
+    started_at: Instant,
+) -> F::Output
+where
+    F: Future,
+{
+    tokio::pin!(future);
+    let mut interval = tokio::time::interval_at(
+        tokio::time::Instant::now() + Duration::from_millis(SLOW_GUEST_LOG_COPY_LOG_MS as u64),
+        Duration::from_secs(30),
+    );
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    loop {
+        tokio::select! {
+            biased;
+            result = &mut future => return result,
+            _ = interval.tick() => {
+                info!(
+                    run_id = %run_id,
+                    log_kind,
+                    stage,
+                    guest_path,
+                    host_path = %host_path.display(),
+                    elapsed_ms = started_at.elapsed().as_millis() as u64,
+                    "guest log copy: slow stage still running"
+                );
+            }
+        }
+    }
+}
+
 async fn copy_guest_log_file(
     sandbox: &dyn Sandbox,
     run_id: RunId,
@@ -1156,25 +1196,71 @@ async fn copy_guest_log_file(
         staging_path.clone(),
     ));
     let cat_cmd = format!("cat -- '{guest_path}'");
+    let bounded_exec_started_at = Instant::now();
+    let result = await_guest_log_copy_stage(
+        async {
+            let stdout = guest_log_copy_stdout(event_tx);
+            let stderr = capture_bounded_output(GUEST_LOG_COPY_STDERR_PREVIEW_BYTES);
+            sandbox
+                .bounded_exec(&BoundedExecRequest {
+                    cmd: &cat_cmd,
+                    timeout: DEFAULT_EXEC_TIMEOUT,
+                    env: &[],
+                    sudo: false,
+                    stdin: None,
+                    stdout,
+                    stderr,
+                })
+                .await
+        },
+        run_id,
+        log_kind,
+        "bounded_exec",
+        guest_path,
+        host_path,
+        bounded_exec_started_at,
+    )
+    .await;
+    let bounded_exec_duration_ms = bounded_exec_started_at.elapsed().as_millis();
+    if bounded_exec_duration_ms >= SLOW_GUEST_LOG_COPY_LOG_MS {
+        info!(
+            run_id = %run_id,
+            log_kind,
+            guest_path,
+            host_path = %host_path.display(),
+            duration_ms = bounded_exec_duration_ms,
+            ok = result.is_ok(),
+            "guest log copy: slow bounded_exec returned"
+        );
+    }
 
-    let result = {
-        let stdout = guest_log_copy_stdout(event_tx);
-        let stderr = capture_bounded_output(GUEST_LOG_COPY_STDERR_PREVIEW_BYTES);
-        sandbox
-            .bounded_exec(&BoundedExecRequest {
-                cmd: &cat_cmd,
-                timeout: DEFAULT_EXEC_TIMEOUT,
-                env: &[],
-                sudo: false,
-                stdin: None,
-                stdout,
-                stderr,
-            })
-            .await
-    };
-
-    let writer_result = match writer.await {
-        Ok(result) => result,
+    let writer_started_at = Instant::now();
+    let writer_result = match await_guest_log_copy_stage(
+        writer,
+        run_id,
+        log_kind,
+        "stream_writer",
+        guest_path,
+        host_path,
+        writer_started_at,
+    )
+    .await
+    {
+        Ok(result) => {
+            let writer_duration_ms = writer_started_at.elapsed().as_millis();
+            if writer_duration_ms >= SLOW_GUEST_LOG_COPY_LOG_MS {
+                info!(
+                    run_id = %run_id,
+                    log_kind,
+                    guest_path,
+                    host_path = %host_path.display(),
+                    duration_ms = writer_duration_ms,
+                    ok = result.is_ok(),
+                    "guest log copy: slow stream writer returned"
+                );
+            }
+            result
+        }
         Err(e) => {
             warn!(
                 run_id = %run_id,
