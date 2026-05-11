@@ -19,10 +19,7 @@ import {
   setSidebarExpanded$,
 } from "../../signals/zero-page/zero-nav.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
-import {
-  currentChatAgentId$,
-  currentChatAgentDisplayName$,
-} from "../../signals/agent-chat.ts";
+import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import { pathParams$ } from "../../signals/route.ts";
 import {
   chatListOpen$,
@@ -34,6 +31,7 @@ import {
   reloadAgents$,
   subagents$,
   defaultAgentId$,
+  defaultAgentName$,
 } from "../../signals/agent.ts";
 import {
   pinnedAgentIds$,
@@ -94,7 +92,7 @@ function UnpinButton({
 function AgentListDialogContainer() {
   const open = useGet(chatListOpen$);
   const onOpenChange = useSet(setChatListOpen$);
-  const displayNameLoadable = useLastLoadable(currentChatAgentDisplayName$);
+  const displayNameLoadable = useLastLoadable(defaultAgentName$);
   const displayName =
     displayNameLoadable.state === "hasData"
       ? (displayNameLoadable.data ?? "Zero")

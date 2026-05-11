@@ -18,6 +18,8 @@ import {
   setManagePinnedDialogOpen$,
   setDraftPinnedIds$,
 } from "../../../signals/zero-page/zero-sidebar-state.ts";
+import { setChatAgentId$ } from "../../../signals/agent-chat.ts";
+import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -37,7 +39,7 @@ function mockAPIsWithSubagents({
   setMockTeam([
     {
       id: "c0000000-0000-4000-a000-000000000001",
-      displayName: null,
+      displayName: "Default Agent",
       description: null,
       sound: null,
       avatarUrl: null,
@@ -88,6 +90,45 @@ function mockAPIsWithSubagents({
         id: createdThreadId,
         title: null,
         createdAt: "2026-03-10T00:00:00Z",
+      });
+    }),
+    mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
+      const agents: Record<
+        string,
+        { agentId: string; displayName: string; avatarUrl: string | null }
+      > = {
+        "c0000000-0000-4000-a000-000000000001": {
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          displayName: "Default Agent",
+          avatarUrl: null,
+        },
+        "pinned-agent-id": {
+          agentId: "pinned-agent-id",
+          displayName: "Pinned Agent",
+          avatarUrl: "preset:2",
+        },
+        "unpinned-agent-id": {
+          agentId: "unpinned-agent-id",
+          displayName: "Unpinned Agent",
+          avatarUrl: "preset:3",
+        },
+      };
+      const agent = agents[String(params.id)];
+      if (!agent) {
+        return respond(404, {
+          error: { message: "Not found", code: "NOT_FOUND" },
+        });
+      }
+      return respond(200, {
+        ...agent,
+        ownerId: "test-user-123",
+        description: null,
+        sound: null,
+        permissionPolicies: null,
+        customSkills: [],
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
       });
     }),
   );
@@ -202,6 +243,23 @@ describe("chatListDialog", () => {
       expectCreatedThreadRoute(getCreatedThreadId);
     });
   });
+
+  it("keeps the Lead row on the default agent when a sub-agent is selected", async () => {
+    mockAPIsWithSubagents();
+    detachedSetupPage({ context, path: "/agents" });
+    context.store.set(setChatAgentId$, "pinned-agent-id");
+
+    await openChatListDialog();
+
+    const dialog = screen.getByRole("dialog");
+    const leadButton = await waitFor(() => {
+      return within(dialog)
+        .getByText("Your lead assistant, always here for you")
+        .closest("button")!;
+    });
+    expect(leadButton).toHaveTextContent("Default Agent");
+    expect(leadButton).not.toHaveTextContent("Pinned Agent");
+  });
 });
 
 describe("managePinnedAgentsDialog - pinned agents list renders (SIDEBAR-D-026)", () => {
@@ -249,6 +307,23 @@ describe("managePinnedAgentsDialog - lead agent displays distinctly (SIDEBAR-D-0
     await waitFor(() => {
       expect(within(dialog).getByText("Lead")).toBeInTheDocument();
     });
+  });
+
+  it("keeps the Lead row on the default agent when a sub-agent is selected", async () => {
+    mockAPIsWithSubagents();
+    detachedSetupPage({ context, path: "/agents" });
+    context.store.set(setChatAgentId$, "pinned-agent-id");
+    openManagePinnedDialog();
+
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog");
+    });
+    const leadBadge = await waitFor(() => {
+      return within(dialog).getByText("Lead");
+    });
+    const leadRow = leadBadge.closest("div");
+    expect(leadRow).toHaveTextContent("Default Agent");
+    expect(leadRow).not.toHaveTextContent("Pinned Agent");
   });
 });
 

@@ -47,10 +47,7 @@ import {
 import { activeRoute$ } from "../../signals/active-route.ts";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { subagents$, defaultAgentName$ } from "../../signals/agent.ts";
-import {
-  currentChatAgentDisplayName$,
-  currentChatAgentId$,
-} from "../../signals/agent-chat.ts";
+import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import { updatePinnedAgentIds$ } from "../../signals/zero-page/zero-pinned-agents.ts";
 import {
   managePinnedDialogOpen$,
@@ -160,7 +157,7 @@ function ManagePinnedAgentsDialogContainer() {
   const open = useGet(managePinnedDialogOpen$);
   const setOpen = useSet(setManagePinnedDialogOpen$);
   const pageSignal = useGet(pageSignal$);
-  const displayNameLoadable = useLastLoadable(currentChatAgentDisplayName$);
+  const displayNameLoadable = useLastLoadable(defaultAgentName$);
   const displayName =
     displayNameLoadable.state === "hasData"
       ? (displayNameLoadable.data ?? "Zero")
