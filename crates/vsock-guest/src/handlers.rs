@@ -5,6 +5,7 @@ use std::sync::Arc;
 #[cfg(any(debug_assertions, feature = "test-support"))]
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
+use std::time::Instant;
 
 use vsock_proto::{
     self, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
@@ -291,7 +292,19 @@ pub(crate) fn handle_message(msg: &RawMessage) -> io::Result<MessageOutcome> {
         MSG_WRITE_FILE => {
             let (path, content, use_sudo, append) =
                 vsock_proto::decode_write_file(&msg.payload).map_err(to_io_error)?;
+            let started_at = Instant::now();
             let (success, error) = handle_write_file(path, content, use_sudo, append);
+            log(
+                "INFO",
+                &format!(
+                    "write_file result: seq={} path={} success={} duration_ms={} error_len={}",
+                    msg.seq,
+                    path,
+                    success,
+                    started_at.elapsed().as_millis(),
+                    error.len()
+                ),
+            );
             let payload = vsock_proto::encode_write_file_result(success, &error);
             Ok(MessageOutcome::Response(
                 vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload)

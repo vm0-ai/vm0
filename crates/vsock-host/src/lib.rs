@@ -40,6 +40,7 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{Notify, mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::{self, Instant};
+use tracing::{info, warn};
 
 use vsock_proto::{
     BoundedExecStream as ProtoBoundedExecStream,
@@ -1080,8 +1081,20 @@ async fn request_raw_on_shared_with_write_timeout(
     timeout: Duration,
     write_timeout: Duration,
 ) -> io::Result<RawMessage> {
+    let is_write_file = msg_type == MSG_WRITE_FILE;
+    let request_started_at = Instant::now();
     let data = vsock_proto::encode(msg_type, seq, payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+    if is_write_file {
+        info!(
+            seq,
+            payload_bytes = payload.len(),
+            frame_bytes = data.len(),
+            timeout_ms = timeout.as_millis() as u64,
+            write_timeout_ms = write_timeout.as_millis() as u64,
+            "vsock_host: write_file request start"
+        );
+    }
 
     // Register under the state lock: `Closed` short-circuits to an
     // immediate error, and insertion into `pending` is serialised with
@@ -1093,6 +1106,13 @@ async fn request_raw_on_shared_with_write_timeout(
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
             ConnectionState::Closed { .. } => {
+                if is_write_file {
+                    warn!(
+                        seq,
+                        duration_ms = request_started_at.elapsed().as_millis() as u64,
+                        "vsock_host: write_file connection closed before request registration"
+                    );
+                }
                 return Err(io::Error::new(
                     io::ErrorKind::ConnectionReset,
                     "connection closed",
@@ -1107,7 +1127,28 @@ async fn request_raw_on_shared_with_write_timeout(
 
     // The guard removes the pending entry on write failure, timeout, or
     // cancellation before reader_loop dispatches a response.
-    write_frame_on_shared_with_timeout(shared, &data, write_timeout).await?;
+    let write_started_at = Instant::now();
+    if let Err(e) = write_frame_on_shared_with_timeout(shared, &data, write_timeout).await {
+        if is_write_file {
+            warn!(
+                seq,
+                duration_ms = request_started_at.elapsed().as_millis() as u64,
+                write_ms = write_started_at.elapsed().as_millis() as u64,
+                error = %e,
+                error_kind = ?e.kind(),
+                "vsock_host: write_file frame write failed"
+            );
+        }
+        return Err(e);
+    }
+    if is_write_file {
+        info!(
+            seq,
+            write_ms = write_started_at.elapsed().as_millis() as u64,
+            "vsock_host: write_file frame write complete"
+        );
+    }
+    let response_wait_started_at = Instant::now();
 
     // `rx` returns `Ok(msg)` when the reader dispatches a response and
     // `Err(RecvError)` when `close()` drops the `Connected` variant. The
@@ -1115,12 +1156,43 @@ async fn request_raw_on_shared_with_write_timeout(
     tokio::select! {
         biased;
         result = rx => {
-            result.map_err(|_| io::Error::new(
-                io::ErrorKind::ConnectionReset,
-                "connection closed",
-            ))
+            match result {
+                Ok(msg) => {
+                    if is_write_file {
+                        info!(
+                            seq,
+                            response_type = msg.msg_type,
+                            response_wait_ms = response_wait_started_at.elapsed().as_millis() as u64,
+                            duration_ms = request_started_at.elapsed().as_millis() as u64,
+                            "vsock_host: write_file response received"
+                        );
+                    }
+                    Ok(msg)
+                }
+                Err(_) => {
+                    if is_write_file {
+                        warn!(
+                            seq,
+                            duration_ms = request_started_at.elapsed().as_millis() as u64,
+                            "vsock_host: write_file connection closed before response"
+                        );
+                    }
+                    Err(io::Error::new(
+                        io::ErrorKind::ConnectionReset,
+                        "connection closed",
+                    ))
+                }
+            }
         }
         _ = tokio::time::sleep(timeout) => {
+            if is_write_file {
+                warn!(
+                    seq,
+                    timeout_ms = timeout.as_millis() as u64,
+                    duration_ms = request_started_at.elapsed().as_millis() as u64,
+                    "vsock_host: write_file response timeout"
+                );
+            }
             Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"))
         }
     }
@@ -1825,15 +1897,38 @@ impl VsockHost {
         let payload = vsock_proto::encode_write_file(path, content, sudo, append)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
         let timeout = Duration::from_secs(300);
-        let resp = self.request(MSG_WRITE_FILE, &payload, timeout).await?;
+        let seq = self.shared.next_seq();
+        info!(
+            seq,
+            path,
+            bytes = content.len(),
+            sudo,
+            append,
+            timeout_ms = timeout.as_millis() as u64,
+            "vsock_host: write_file chunk start"
+        );
+        let resp =
+            request_raw_on_shared(&self.shared, MSG_WRITE_FILE, seq, &payload, timeout).await?;
 
         if resp.msg_type == MSG_ERROR {
             let msg = vsock_proto::decode_error(&resp.payload)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+            warn!(
+                seq,
+                path,
+                error = %msg,
+                "vsock_host: write_file chunk error response"
+            );
             return Err(io::Error::other(msg));
         }
 
         if resp.msg_type != MSG_WRITE_FILE_RESULT {
+            warn!(
+                seq,
+                path,
+                response_type = resp.msg_type,
+                "vsock_host: write_file chunk unexpected response type"
+            );
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("unexpected response type: 0x{:02X}", resp.msg_type),
@@ -1844,9 +1939,16 @@ impl VsockHost {
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
         if !success {
+            warn!(
+                seq,
+                path,
+                error = %error,
+                "vsock_host: write_file chunk failed in guest"
+            );
             return Err(io::Error::other(error));
         }
 
+        info!(seq, path, "vsock_host: write_file chunk complete");
         Ok(())
     }
 

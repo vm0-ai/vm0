@@ -23,17 +23,19 @@
 //! `guest-download` understands after #10805. The PR adding this module
 //! must not merge before #10805 is on `main`.
 
+use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use futures_util::stream::{self, StreamExt};
+use nix::fcntl::Flock;
 use reqwest::Client;
 use sandbox::Sandbox;
 use tokio::fs;
 use tokio::io::AsyncReadExt as _;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
@@ -82,6 +84,15 @@ enum TargetKind {
     Artifact,
 }
 
+impl TargetKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Storage => "storage",
+            Self::Artifact => "artifact",
+        }
+    }
+}
+
 enum TargetOutcome {
     Hit,
     Miss {
@@ -102,6 +113,41 @@ enum TargetOutcome {
 enum DownloadBody {
     Complete(Bytes),
     OverSize { observed_size: u64 },
+}
+
+struct StorageCacheLockTrace {
+    kind: &'static str,
+    index: usize,
+    guest_path: String,
+    lock_path: PathBuf,
+    acquired_at: Instant,
+}
+
+impl Drop for StorageCacheLockTrace {
+    fn drop(&mut self) {
+        info!(
+            kind = self.kind,
+            index = self.index,
+            guest_path = %self.guest_path,
+            lock_path = %self.lock_path.display(),
+            held_ms = self.acquired_at.elapsed().as_millis(),
+            "storage_cache: lock released"
+        );
+    }
+}
+
+struct StorageCacheLockGuard {
+    _guard: Flock<File>,
+    _trace: StorageCacheLockTrace,
+}
+
+impl StorageCacheLockGuard {
+    fn new(guard: Flock<File>, trace: StorageCacheLockTrace) -> Self {
+        Self {
+            _guard: guard,
+            _trace: trace,
+        }
+    }
 }
 
 /// Populate the runner-side cache for eligible entries in `manifest`.
@@ -209,8 +255,50 @@ async fn process_one(
 ) -> RunnerResult<TargetOutcome> {
     // Acquire the per-version flock (blocking, cross-process dedup).
     // Disk-check happens under the lock so we never race with a writer.
+    let kind = target.kind.as_str();
+    let guest_path = guest_archive_path(&target.name, &target.version);
     let lock_path = home.storage_lock(&target.name, &target.version);
-    let _guard = lock::acquire(lock_path).await?;
+    info!(
+        kind,
+        index = target.index,
+        guest_path = %guest_path,
+        lock_path = %lock_path.display(),
+        "storage_cache: waiting for lock"
+    );
+    let lock_wait_start = Instant::now();
+    let guard = match lock::acquire(lock_path.clone()).await {
+        Ok(guard) => guard,
+        Err(e) => {
+            warn!(
+                kind,
+                index = target.index,
+                guest_path = %guest_path,
+                lock_path = %lock_path.display(),
+                wait_ms = lock_wait_start.elapsed().as_millis(),
+                error = %e,
+                "storage_cache: lock acquire failed"
+            );
+            return Err(e);
+        }
+    };
+    info!(
+        kind,
+        index = target.index,
+        guest_path = %guest_path,
+        lock_path = %lock_path.display(),
+        wait_ms = lock_wait_start.elapsed().as_millis(),
+        "storage_cache: lock acquired"
+    );
+    let _guard = StorageCacheLockGuard::new(
+        guard,
+        StorageCacheLockTrace {
+            kind,
+            index: target.index,
+            guest_path: guest_path.clone(),
+            lock_path: lock_path.clone(),
+            acquired_at: Instant::now(),
+        },
+    );
 
     let cache_dir = home.storage_cache_dir(&target.name, &target.version);
     let archive_path = cache_dir.join("archive.tar.gz");
@@ -222,8 +310,7 @@ async fn process_one(
             match read_cached_archive(&archive_path, CACHE_MAX_SIZE).await? {
                 DownloadBody::Complete(bytes) => {
                     touch_mtime(&cache_dir);
-                    let guest_path = guest_archive_path(&target.name, &target.version);
-                    sandbox.write_file(&guest_path, &bytes).await?;
+                    write_guest_archive(target, sandbox, &guest_path, &bytes, "hit").await?;
                     return Ok(TargetOutcome::Hit);
                 }
                 DownloadBody::OverSize { observed_size } => {
@@ -304,12 +391,57 @@ async fn process_one(
         }
     };
     write_to_cache(&cache_dir, &bytes).await?;
-    let guest_path = guest_archive_path(&target.name, &target.version);
-    sandbox.write_file(&guest_path, &bytes).await?;
+    write_guest_archive(target, sandbox, &guest_path, &bytes, "miss").await?;
 
     Ok(TargetOutcome::Miss {
         download_duration: t.elapsed(),
     })
+}
+
+async fn write_guest_archive(
+    target: &CacheTarget,
+    sandbox: &dyn Sandbox,
+    guest_path: &str,
+    bytes: &[u8],
+    cache_state: &'static str,
+) -> RunnerResult<()> {
+    let kind = target.kind.as_str();
+    info!(
+        kind,
+        index = target.index,
+        cache_state,
+        guest_path,
+        bytes = bytes.len(),
+        "storage_cache: guest write_file start"
+    );
+    let started_at = Instant::now();
+    match sandbox.write_file(guest_path, bytes).await {
+        Ok(()) => {
+            info!(
+                kind,
+                index = target.index,
+                cache_state,
+                guest_path,
+                bytes = bytes.len(),
+                duration_ms = started_at.elapsed().as_millis(),
+                "storage_cache: guest write_file complete"
+            );
+            Ok(())
+        }
+        Err(e) => {
+            warn!(
+                kind,
+                index = target.index,
+                cache_state,
+                guest_path,
+                bytes = bytes.len(),
+                duration_ms = started_at.elapsed().as_millis(),
+                error = %e,
+                "storage_cache: guest write_file failed"
+            );
+            Err(e.into())
+        }
+    }
 }
 
 async fn probe_size(http: &Client, url: &str) -> RunnerResult<Option<u64>> {

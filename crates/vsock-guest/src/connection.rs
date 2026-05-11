@@ -240,7 +240,31 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
             } else {
                 match handle_message(&msg)? {
                     MessageOutcome::Response(response) => {
-                        writer.write_frame(&response)?;
+                        let is_write_file = msg.msg_type == vsock_proto::MSG_WRITE_FILE;
+                        if is_write_file {
+                            log(
+                                "INFO",
+                                &format!("write_file response send start: seq={}", msg.seq),
+                            );
+                        }
+                        if let Err(e) = writer.write_frame(&response) {
+                            if is_write_file {
+                                log(
+                                    "ERROR",
+                                    &format!(
+                                        "write_file response send failed: seq={} error={}",
+                                        msg.seq, e
+                                    ),
+                                );
+                            }
+                            return Err(e);
+                        }
+                        if is_write_file {
+                            log(
+                                "INFO",
+                                &format!("write_file response send complete: seq={}", msg.seq),
+                            );
+                        }
                     }
                     MessageOutcome::Shutdown(response) => {
                         if let Err(e) = writer.write_frame(&response) {
