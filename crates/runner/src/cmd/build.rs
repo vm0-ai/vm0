@@ -3014,6 +3014,32 @@ exit 1
     }
 
     #[tokio::test]
+    async fn warm_cache_head_miss_uses_template_uploaded_by_another_runner() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let head = template_head_miss_rule();
+        let get = template_get_rule(template_archive_bytes(b"concurrent-template").await);
+        let cache = mock_r2_cache(&[&head, &get]);
+        let input = template_input(&home, TemplateCache::Required(&cache));
+        let (mut scripts, work_dir) = fake_rootfs_scripts().await;
+
+        ensure_template_cached_under_lock_with_scripts(&input, &mut scripts)
+            .await
+            .unwrap();
+
+        assert_eq!(head.num_calls(), 1);
+        assert_eq!(get.num_calls(), 1);
+        assert!(
+            !work_dir.join("build-template-called").exists(),
+            "warm should not build locally when another runner uploaded after HEAD miss"
+        );
+        assert!(
+            !template_warm_parent_dir(&home, "test-template-hash").exists(),
+            "successful concurrent-upload warm should clean local template staging"
+        );
+    }
+
+    #[tokio::test]
     async fn warm_cache_upload_failure_is_fatal() {
         use aws_sdk_s3::Client;
 
