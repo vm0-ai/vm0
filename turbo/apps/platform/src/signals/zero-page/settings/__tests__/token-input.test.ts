@@ -10,7 +10,7 @@ describe("token-input", () => {
     expect(sanitizeTokenInput(" sk-ant\n token\tvalue ")).toBe(
       "sk-anttokenvalue",
     );
-    expect(hasTokenInputValue(" \n ")).toBe(false);
+    expect(hasTokenInputValue(" \n ")).toBeFalsy();
   });
 
   it("can preserve JSON credential whitespace while trimming the wrapper", () => {

@@ -32,8 +32,6 @@ import {
   sanitizeTokenInputRecord,
 } from "./token-input.ts";
 
-const WHITESPACE_PRESERVING_SECRET_KEYS = new Set(["CODEX_AUTH_JSON"]);
-
 // ---------------------------------------------------------------------------
 // Codex auth.json paste dialog (personal scope, mirrors org-side dialog from
 // #11980; unified with org via #12024).
@@ -305,7 +303,7 @@ function buildPersonalProviderRequest(
   if (hasAuthMethods(providerType)) {
     request.authMethod = formValues.authMethod;
     request.secrets = sanitizeTokenInputRecord(formValues.secrets, {
-      preserveWhitespaceKeys: WHITESPACE_PRESERVING_SECRET_KEYS,
+      preserveWhitespaceKeys: new Set(["CODEX_AUTH_JSON"]),
     });
   } else if (hasTokenInputValue(formValues.secret)) {
     request.secret = sanitizeTokenInput(formValues.secret);

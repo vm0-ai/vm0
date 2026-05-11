@@ -36,8 +36,6 @@ import {
   sanitizeTokenInputRecord,
 } from "./token-input.ts";
 
-const WHITESPACE_PRESERVING_SECRET_KEYS = new Set(["CODEX_AUTH_JSON"]);
-
 // ---------------------------------------------------------------------------
 // Add provider dialog (list of provider type cards)
 // ---------------------------------------------------------------------------
@@ -503,7 +501,7 @@ export const orgSubmitDialog$ = command(
     if (isMultiAuth) {
       request.authMethod = formValues.authMethod;
       request.secrets = sanitizeTokenInputRecord(formValues.secrets, {
-        preserveWhitespaceKeys: WHITESPACE_PRESERVING_SECRET_KEYS,
+        preserveWhitespaceKeys: new Set(["CODEX_AUTH_JSON"]),
       });
     } else if (hasTokenInputValue(formValues.secret)) {
       request.secret = sanitizeTokenInput(formValues.secret);
