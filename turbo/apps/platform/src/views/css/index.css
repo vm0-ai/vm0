@@ -288,6 +288,23 @@
   background-color: hsl(var(--gray-0));
 }
 
+/* Mobile stack card: hairline divider between rows, inset to match the
+   row's px-5 (20px) padding. Used by MobileStackSection so the first row
+   in a multi-row card reads as its own slot — same perception as the only
+   row in a single-row card — instead of feeling top-anchored. */
+.zero-app .zero-stack-card > * {
+  position: relative;
+}
+.zero-app .zero-stack-card > * + *::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 1.25rem;
+  right: 1.25rem;
+  border-top: 0.7px solid hsl(var(--gray-400));
+  pointer-events: none;
+}
+
 /* Onboarding modal footer: frosted glass */
 .zero-onboarding-footer,
 .zero-app .zero-onboarding-footer {

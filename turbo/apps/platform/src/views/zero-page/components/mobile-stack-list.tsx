@@ -34,10 +34,12 @@ interface MobileStackSectionProps {
 }
 
 /**
- * One grouped card. Rows inside sit flush against each other — no hairline
- * dividers; vertical separation comes from the row's hover/active surface
- * and the rounded card border alone. Multiple sections in a `MobileStackList`
- * pick up the gap-6 outer spacing instead.
+ * One grouped card. Rows inside are separated by an iOS-Settings-style
+ * hairline divider (rendered via `.zero-stack-card` CSS so we don't need
+ * to intersperse JSX) so each row reads as its own delimited slot. Without
+ * the divider, the first row of a tall multi-row card visually anchors to
+ * the top while the only row of a short single-row card feels centered —
+ * same padding, different perception. The hairline fixes that read.
  */
 export function MobileStackSection({
   children,
@@ -51,7 +53,7 @@ export function MobileStackSection({
           {label}
         </span>
       )}
-      <div className="zero-card overflow-hidden">{children}</div>
+      <div className="zero-card zero-stack-card overflow-hidden">{children}</div>
     </div>
   );
 }
