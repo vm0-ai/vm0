@@ -114,14 +114,24 @@ pub enum CommandOutputStream {
 /// Command stdout/stderr handling policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandOutputPolicy {
+    /// Drop this stream without retaining or emitting bytes.
     Discard,
-    Capture {
-        limit_bytes: u32,
-    },
+    /// Retain at most `limit_bytes` bytes in the final command result.
+    ///
+    /// A zero limit is valid and means captured output is intentionally empty.
+    Capture { limit_bytes: u32 },
+    /// Emit output chunks to the host up to `limit_bytes` total bytes.
+    ///
+    /// A zero stream limit is valid and means no chunks should be emitted.
+    /// `chunk_limit_bytes` must be non-zero.
     Stream {
         limit_bytes: u32,
         chunk_limit_bytes: u32,
     },
+    /// Retain output in the final result and also emit output chunks.
+    ///
+    /// Zero capture or stream limits are valid. `chunk_limit_bytes` must be
+    /// non-zero.
     CaptureAndStream {
         capture_limit_bytes: u32,
         stream_limit_bytes: u32,
@@ -171,6 +181,9 @@ pub struct DecodedCommandOutput<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DecodedCommandResult<'a> {
     pub termination: CommandTermination,
+    /// Command wall-clock duration in milliseconds.
+    ///
+    /// This is encoded as `u32`, matching command timeout width.
     pub duration_ms: u32,
     pub stdout: CommandCapturedOutput<'a>,
     pub stderr: CommandCapturedOutput<'a>,
@@ -208,19 +221,22 @@ fn read_u8_at(data: &[u8], offset: usize) -> Option<u8> {
 
 /// Read a `u16` from `data` at `offset`. Returns `None` if out of bounds.
 fn read_u16_at(data: &[u8], offset: usize) -> Option<u16> {
-    let bytes: [u8; 2] = data.get(offset..offset + 2)?.try_into().ok()?;
+    let end = offset.checked_add(2)?;
+    let bytes: [u8; 2] = data.get(offset..end)?.try_into().ok()?;
     Some(u16::from_be_bytes(bytes))
 }
 
 /// Read a `u32` from `data` at `offset`. Returns `None` if out of bounds.
 fn read_u32_at(data: &[u8], offset: usize) -> Option<u32> {
-    let bytes: [u8; 4] = data.get(offset..offset + 4)?.try_into().ok()?;
+    let end = offset.checked_add(4)?;
+    let bytes: [u8; 4] = data.get(offset..end)?.try_into().ok()?;
     Some(u32::from_be_bytes(bytes))
 }
 
 /// Read an `i32` from `data` at `offset`. Returns `None` if out of bounds.
 fn read_i32_at(data: &[u8], offset: usize) -> Option<i32> {
-    let bytes: [u8; 4] = data.get(offset..offset + 4)?.try_into().ok()?;
+    let end = offset.checked_add(4)?;
+    let bytes: [u8; 4] = data.get(offset..end)?.try_into().ok()?;
     Some(i32::from_be_bytes(bytes))
 }
 
