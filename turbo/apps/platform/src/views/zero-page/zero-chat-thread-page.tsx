@@ -2046,9 +2046,8 @@ function useChatComposerModel(
     modelSelection,
     setModelSelection: handleModelSelectionChange,
     sessionProviderType: threadData?.latestSessionProviderType ?? null,
-    // Legacy provider-first sessions stay locked after the first user message.
-    // Model-first selection is a user-level preference, so it remains editable.
-    disabled: !modelFirstEnabled && hasUserMessages,
+    // Lock after the first user turn; assistant-only preambles remain editable.
+    disabled: hasUserMessages,
     agentDefault: agentModelDefault,
   });
   const submitBlockerProps = resolveChatComposerSubmitBlocker({

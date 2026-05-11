@@ -3,8 +3,8 @@
  *
  * Rule: once a chat thread has at least one user message the composer's model
  * picker becomes read-only. The provider must remain consistent within a
- * session. Threads with only assistant messages (e.g. system-generated
- * preambles) or no messages at all keep the picker interactive.
+ * session. Threads with only assistant messages or no messages keep the picker
+ * interactive.
  *
  * Entry point: /chats/:threadId thread page.
  * Mock (external): Web API via MSW (feature switch + org providers + thread
@@ -14,6 +14,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   chatMessagesContract,
   chatThreadByIdContract,
@@ -136,8 +137,7 @@ describe("chat thread page — model picker read-only", () => {
     ).toBeNull();
   });
 
-  // CHAT-LOCK-002: thread with only assistant messages keeps the picker
-  // interactive — no user turn has started a session yet.
+  // CHAT-LOCK-002: assistant-only history keeps the picker interactive.
   it("keeps picker interactive when thread has only assistant messages (CHAT-LOCK-002)", async () => {
     setupMocks([makeAssistantMessage()]);
 
@@ -148,8 +148,27 @@ describe("chat thread page — model picker read-only", () => {
     });
   });
 
-  // CHAT-LOCK-003: empty thread keeps the picker interactive.
-  it("keeps picker interactive on empty thread (CHAT-LOCK-003)", async () => {
+  // CHAT-LOCK-003: model-first selection is a user preference on new threads,
+  // but an already-started thread still keeps its own model locked.
+  it("renders model-first picker as plain text when thread has a user message (CHAT-LOCK-003)", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+    setupMocks([makeUserMessage()]);
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const label = await waitFor(() => {
+      return screen.getByLabelText("Claude Sonnet 4.6");
+    });
+    expect(label.tagName).toBe("SPAN");
+    expect(
+      screen.queryByRole("combobox", { name: "Claude Sonnet 4.6" }),
+    ).toBeNull();
+  });
+
+  // CHAT-LOCK-004: empty thread keeps the picker interactive.
+  it("keeps picker interactive on empty thread (CHAT-LOCK-004)", async () => {
     setupMocks([]);
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
