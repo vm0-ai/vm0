@@ -2257,7 +2257,7 @@ mod tests {
                     limit_bytes: 1024,
                     chunk_limit_bytes: 16,
                 },
-                stream_queue_capacity: Some(4),
+                stream_queue_capacity: None,
             })
             .await
             .unwrap();
