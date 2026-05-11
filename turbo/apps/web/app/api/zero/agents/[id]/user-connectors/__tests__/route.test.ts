@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { describe, it, expect, beforeEach } from "vitest";
 import { GET, PUT } from "../route";
 import { POST as postAgentRoute } from "../../../route";
@@ -13,11 +15,26 @@ import {
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
+import { signSandboxJwtForTests } from "../../../../../../../src/lib/auth/sandbox-token";
 
 const context = testContext();
 
 let user: UserContext;
 let testCliToken: string;
+
+const unauthorizedBody = {
+  error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+};
+
+function agentNotFoundBody(agentId: string) {
+  return {
+    error: { message: `Agent not found: ${agentId}`, code: "NOT_FOUND" },
+  };
+}
+
+function currentSecond(): number {
+  return Math.floor(Date.now() / 1000);
+}
 
 /** Create an agent via the API, returning its agentId (= UUID). */
 async function createAgent(): Promise<string> {
@@ -109,6 +126,9 @@ describe("User Connectors API", () => {
       const res = await getUserConnectors(fakeId, testCliToken);
 
       expect(res.status).toBe(404);
+      await expect(res.json()).resolves.toStrictEqual(
+        agentNotFoundBody(fakeId),
+      );
     });
 
     it("should return 401 without auth", async () => {
@@ -118,6 +138,29 @@ describe("User Connectors API", () => {
       const res = await getUserConnectors(agentId, "no-token");
 
       expect(res.status).toBe(401);
+      await expect(res.json()).resolves.toStrictEqual(unauthorizedBody);
+    });
+
+    it("should return 401 when the authenticated session has no organization", async () => {
+      mockClerk({ userId: `user_${randomUUID()}`, orgId: null });
+
+      const res = await getUserConnectors(randomUUID(), "clerk-session");
+
+      expect(res.status).toBe(401);
+      await expect(res.json()).resolves.toStrictEqual(unauthorizedBody);
+    });
+
+    it("should return 404 when agent belongs to a different org", async () => {
+      const agentId = await createAgent();
+      const user2 = await context.setupUser({ prefix: "test-user2" });
+      const token2 = await createTestCliToken(user2.userId);
+
+      const res = await getUserConnectors(agentId, token2);
+
+      expect(res.status).toBe(404);
+      await expect(res.json()).resolves.toStrictEqual(
+        agentNotFoundBody(agentId),
+      );
     });
   });
 
@@ -232,6 +275,9 @@ describe("User Connectors API", () => {
       );
 
       expect(res.status).toBe(404);
+      await expect(res.json()).resolves.toStrictEqual(
+        agentNotFoundBody(fakeId),
+      );
     });
 
     it("should return 401 without auth", async () => {
@@ -245,6 +291,64 @@ describe("User Connectors API", () => {
       );
 
       expect(res.status).toBe(401);
+      await expect(res.json()).resolves.toStrictEqual(unauthorizedBody);
+    });
+
+    it("should return 401 when the authenticated session has no organization", async () => {
+      mockClerk({ userId: `user_${randomUUID()}`, orgId: null });
+
+      const res = await putUserConnectors(
+        randomUUID(),
+        { enabledTypes: ["github"] },
+        "clerk-session",
+      );
+
+      expect(res.status).toBe(401);
+      await expect(res.json()).resolves.toStrictEqual(unauthorizedBody);
+    });
+
+    it("should return 403 for a zero token without agent:read capability", async () => {
+      const seconds = currentSecond();
+      const token = signSandboxJwtForTests({
+        scope: "zero",
+        userId: user.userId,
+        orgId: user.orgId,
+        runId: `run_${randomUUID()}`,
+        capabilities: ["file:read"],
+        iat: seconds,
+        exp: seconds + 60,
+      });
+
+      const res = await putUserConnectors(
+        randomUUID(),
+        { enabledTypes: ["github"] },
+        token,
+      );
+
+      expect(res.status).toBe(403);
+      await expect(res.json()).resolves.toStrictEqual({
+        error: {
+          message: "Missing required capability: agent:read",
+          code: "FORBIDDEN",
+        },
+      });
+    });
+
+    it("should return 404 when agent belongs to a different org", async () => {
+      const agentId = await createAgent();
+      const user2 = await context.setupUser({ prefix: "test-user2" });
+      const token2 = await createTestCliToken(user2.userId);
+
+      const res = await putUserConnectors(
+        agentId,
+        { enabledTypes: ["github"] },
+        token2,
+      );
+
+      expect(res.status).toBe(404);
+      await expect(res.json()).resolves.toStrictEqual(
+        agentNotFoundBody(agentId),
+      );
     });
 
     it("should recompose when compose version is stale", async () => {

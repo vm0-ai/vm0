@@ -11,6 +11,7 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -24,6 +25,7 @@ import {
   zeroAgentEnabledCustomConnectorIds,
   zeroAgentExists,
   zeroAgentList,
+  visibleJoinedZeroAgentCondition,
 } from "../services/zero-agent-data.service";
 import type { RouteEntry } from "../route";
 
@@ -33,7 +35,7 @@ function agentNotFound(agentId: string) {
 
 const listAgentsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const agents = await get(zeroAgentList(auth.orgId));
+  const agents = await get(zeroAgentList(auth.orgId, auth.userId));
   return { status: 200 as const, body: [...agents] };
 });
 
@@ -41,7 +43,11 @@ const getAgentInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroAgentsByIdContract.get));
   const agent = await get(
-    zeroAgentDetail({ orgId: auth.orgId, agentId: params.id }),
+    zeroAgentDetail({
+      orgId: auth.orgId,
+      userId: auth.userId,
+      agentId: params.id,
+    }),
   );
   if (!agent) {
     return agentNotFound(params.id);
@@ -53,7 +59,11 @@ const getAgentUserConnectorsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroUserConnectorsContract.get));
   const exists = await get(
-    zeroAgentExists({ orgId: auth.orgId, agentId: params.id }),
+    zeroAgentExists({
+      orgId: auth.orgId,
+      userId: auth.userId,
+      agentId: params.id,
+    }),
   );
   if (!exists) {
     return agentNotFound(params.id);
@@ -73,7 +83,11 @@ const getAgentCustomConnectorsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroAgentCustomConnectorsContract.get));
   const exists = await get(
-    zeroAgentExists({ orgId: auth.orgId, agentId: params.id }),
+    zeroAgentExists({
+      orgId: auth.orgId,
+      userId: auth.userId,
+      agentId: params.id,
+    }),
   );
   if (!exists) {
     return agentNotFound(params.id);
@@ -104,7 +118,11 @@ const updateAgentCustomConnectorsInner$ = command(
     }
 
     const exists = await get(
-      zeroAgentExists({ orgId: auth.orgId, agentId: params.id }),
+      zeroAgentExists({
+        orgId: auth.orgId,
+        userId: auth.userId,
+        agentId: params.id,
+      }),
     );
     signal.throwIfAborted();
     if (!exists) {
@@ -201,10 +219,12 @@ const updateAgentUserConnectorsInner$ = command(
         headVersionId: agentComposes.headVersionId,
       })
       .from(agentComposes)
+      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
       .where(
         and(
           eq(agentComposes.orgId, auth.orgId),
           eq(agentComposes.id, params.id),
+          visibleJoinedZeroAgentCondition(auth.userId),
         ),
       )
       .limit(1);

@@ -52,7 +52,7 @@ export interface ModelProviderInfo {
 /**
  * Shared SELECT projection for reading model_providers rows joined with secrets.
  *
- * Centralized to prevent column drift across the 6 read paths
+ * Centralized to prevent column drift across read paths
  * (`listModelProviders`, `getDefaultModelProvider`, `getAnyDefaultModelProvider`,
  * `getOrgModelProviderByType`, `getModelProviderById`, `getUserModelProviderByType`).
  */
@@ -1441,61 +1441,6 @@ export function deleteUserModelProvider(
   type: ModelProviderType,
 ): Promise<void> {
   return deleteModelProvider(orgId, userId, type);
-}
-
-/**
- * Set a user-level model provider as the user's personal default.
- *
- * Personal default is workspace-scoped per (orgId, userId), so a user's
- * personal default is independent of the org default — both can coexist
- * thanks to `idx_model_providers_one_default_per_user`.
- */
-export function setUserModelProviderDefault(
-  orgId: string,
-  userId: string,
-  type: ModelProviderType,
-): Promise<ModelProviderInfo> {
-  return setModelProviderDefault(orgId, userId, type);
-}
-
-/**
- * Update model selection for a user-level provider
- */
-export function updateUserModelProviderModel(
-  orgId: string,
-  userId: string,
-  type: ModelProviderType,
-  selectedModel?: string,
-): Promise<ModelProviderInfo> {
-  return updateModelProviderModel(orgId, userId, type, selectedModel);
-}
-
-/**
- * Get the user-level default model provider for a framework.
- *
- * Mirrors `getOrgDefaultModelProvider` but scoped to (orgId, userId).
- * Used by Wave 2's resolver to honor `prefer_personal_provider` (#11868).
- */
-export function getUserDefaultModelProvider(
-  orgId: string,
-  userId: string,
-  framework: string,
-): Promise<ModelProviderInfo | null> {
-  return getDefaultModelProvider(orgId, userId, framework);
-}
-
-/**
- * Get the user-level default model provider regardless of framework.
- *
- * Cross-framework fallback for the personal tier — mirrors
- * `getOrgAnyDefaultModelProvider` for Epic #11520's "provider's framework
- * wins" rule applied per-user.
- */
-export function getUserAnyDefaultModelProvider(
-  orgId: string,
-  userId: string,
-): Promise<ModelProviderInfo | null> {
-  return getAnyDefaultModelProvider(orgId, userId);
 }
 
 /**

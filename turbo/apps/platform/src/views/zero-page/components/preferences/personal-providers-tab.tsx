@@ -72,9 +72,8 @@ function OAuthCredentialsSection() {
   return (
     <section className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Manage personal credentials used when workspace model routes require
-        your Claude Code token
-        {codexOauthEnabled ? " or ChatGPT auth.json" : ""}.
+        Personal Claude Code{codexOauthEnabled ? " and ChatGPT" : ""}{" "}
+        credentials, used only in your own runs.
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {isLoading ? (

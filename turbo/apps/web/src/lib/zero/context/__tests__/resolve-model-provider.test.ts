@@ -16,12 +16,11 @@ import {
   insertOrgDefaultModelProvider,
   insertOrgNonDefaultModelProvider,
   insertOrgMultiAuthModelProvider,
-  insertUserDefaultModelProvider,
   insertUserMultiAuthModelProvider,
   insertUserNonDefaultModelProvider,
-  enablePersonalModelProviderForUser,
   enableModelFirstModelProviderForUser,
   insertOrgModelPolicy,
+  insertUserModelPreference,
   insertVm0ApiKeys,
   deleteInsertedVm0ApiKeys,
   setTestModelProviderNeedsReconnect,
@@ -284,221 +283,9 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
   });
 });
 
-describe("resolveModelProviderSecrets — personal tier (#11899)", () => {
+describe("resolveModelProviderSecrets — user-tier pin", () => {
   beforeEach(() => {
     context.setupMocks();
-  });
-
-  it("falls through to org chain when personal feature switch is OFF (default)", async () => {
-    // Switch is staff-only by default and the test org is not staff. Even
-    // with `preferPersonalProvider=true`, the gate evaluates to false and
-    // the resolver behaves identically to today's org-only flow.
-    const userId = uniqueId("personal-switch-off");
-    const orgId = await setupOrg(userId);
-    await insertUserDefaultModelProvider(
-      orgId,
-      userId,
-      "openai-api-key",
-      "gpt-5.4",
-    );
-    await insertOrgDefaultModelProvider(
-      orgId,
-      "anthropic-api-key",
-      "claude-sonnet-4-6",
-    );
-
-    const result = await resolveModelProviderSecrets(
-      orgId,
-      userId,
-      "claude-code",
-      false,
-      undefined,
-      undefined,
-      undefined,
-      true,
-    );
-
-    expect(result.resolvedModelProvider).toBe("anthropic-api-key");
-    expect(result.framework).toBe("claude-code");
-  });
-
-  it("falls through to org chain when switch is ON but flag is OFF", async () => {
-    const userId = uniqueId("personal-flag-off");
-    const orgId = await setupOrg(userId);
-    await enablePersonalModelProviderForUser(orgId, userId);
-    await insertUserDefaultModelProvider(
-      orgId,
-      userId,
-      "openai-api-key",
-      "gpt-5.4",
-    );
-    await insertOrgDefaultModelProvider(
-      orgId,
-      "anthropic-api-key",
-      "claude-sonnet-4-6",
-    );
-
-    const result = await resolveModelProviderSecrets(
-      orgId,
-      userId,
-      "claude-code",
-      false,
-      undefined,
-      undefined,
-      undefined,
-      false,
-    );
-
-    expect(result.resolvedModelProvider).toBe("anthropic-api-key");
-    expect(result.framework).toBe("claude-code");
-  });
-
-  it("returns user's personal default + secret when switch ON, flag ON, framework match", async () => {
-    // Verifies both that the resolver picks the personal row AND that
-    // `secretUserId` was derived from the row's owner — otherwise the
-    // secrets table lookup would miss the personal-tier row and fall back
-    // to whatever the org has under `OPENAI_API_KEY`.
-    const userId = uniqueId("personal-match");
-    const orgId = await setupOrg(userId);
-    await enablePersonalModelProviderForUser(orgId, userId);
-    await insertUserDefaultModelProvider(
-      orgId,
-      userId,
-      "openai-api-key",
-      "gpt-5.4",
-    );
-    await insertTestUserModelProviderSecret({
-      orgId,
-      userId,
-      name: "OPENAI_API_KEY",
-      value: "personal-secret-value",
-    });
-    await insertOrgDefaultModelProvider(orgId, "openai-api-key", "gpt-5.5");
-    await insertTestOrgModelProviderSecret({
-      orgId,
-      name: "OPENAI_API_KEY",
-      value: "org-secret-value",
-    });
-
-    const result = await resolveModelProviderSecrets(
-      orgId,
-      userId,
-      "codex",
-      false,
-      undefined,
-      undefined,
-      undefined,
-      true,
-    );
-
-    expect(result.resolvedModelProvider).toBe("openai-api-key");
-    expect(result.framework).toBe("codex");
-    expect(result.selectedModel).toBe("gpt-5.4");
-    expect(result.secrets?.OPENAI_API_KEY).toBe("personal-secret-value");
-  });
-
-  it("uses cross-framework user fallback when no personal row matches the compose framework", async () => {
-    // User has only a codex-framework personal default; compose asks for
-    // claude-code. Cross-framework fallback (`getUserAnyDefaultModelProvider`)
-    // must surface it and the provider's framework propagates downstream
-    // (Epic #11520 — provider's framework wins).
-    const userId = uniqueId("personal-cross-fw");
-    const orgId = await setupOrg(userId);
-    await enablePersonalModelProviderForUser(orgId, userId);
-    await insertUserDefaultModelProvider(
-      orgId,
-      userId,
-      "openai-api-key",
-      "gpt-5.4",
-    );
-
-    const result = await resolveModelProviderSecrets(
-      orgId,
-      userId,
-      "claude-code",
-      false,
-      undefined,
-      undefined,
-      undefined,
-      true,
-    );
-
-    expect(result.resolvedModelProvider).toBe("openai-api-key");
-    expect(result.framework).toBe("codex");
-  });
-
-  it("falls through to org chain when user has no personal rows", async () => {
-    const userId = uniqueId("personal-empty");
-    const orgId = await setupOrg(userId);
-    await enablePersonalModelProviderForUser(orgId, userId);
-    await insertOrgDefaultModelProvider(
-      orgId,
-      "anthropic-api-key",
-      "claude-sonnet-4-6",
-    );
-
-    const result = await resolveModelProviderSecrets(
-      orgId,
-      userId,
-      "claude-code",
-      false,
-      undefined,
-      undefined,
-      undefined,
-      true,
-    );
-
-    expect(result.resolvedModelProvider).toBe("anthropic-api-key");
-    expect(result.framework).toBe("claude-code");
-  });
-
-  it("explicit type override consults user-tier first when personalEligible", async () => {
-    // Workspace default is org's `claude-code-oauth-token`. Request
-    // explicitly asks for `openai-api-key`. User has a personal
-    // `openai-api-key` row whose stored selectedModel must surface — and
-    // the secret must come from the personal row, not the org's.
-    const userId = uniqueId("personal-explicit-type");
-    const orgId = await setupOrg(userId);
-    await enablePersonalModelProviderForUser(orgId, userId);
-    await insertOrgDefaultModelProvider(
-      orgId,
-      "claude-code-oauth-token",
-      "claude-sonnet-4-6",
-    );
-    await insertUserNonDefaultModelProvider(
-      orgId,
-      userId,
-      "openai-api-key",
-      "gpt-5.4-mini",
-    );
-    await insertTestUserModelProviderSecret({
-      orgId,
-      userId,
-      name: "OPENAI_API_KEY",
-      value: "personal-openai-key",
-    });
-    await insertOrgNonDefaultModelProvider(orgId, "openai-api-key", "gpt-5.5");
-    await insertTestOrgModelProviderSecret({
-      orgId,
-      name: "OPENAI_API_KEY",
-      value: "org-openai-key",
-    });
-
-    const result = await resolveModelProviderSecrets(
-      orgId,
-      userId,
-      "codex",
-      false,
-      "openai-api-key",
-      undefined,
-      undefined,
-      true,
-    );
-
-    expect(result.resolvedModelProvider).toBe("openai-api-key");
-    expect(result.framework).toBe("codex");
-    expect(result.selectedModel).toBe("gpt-5.4-mini");
-    expect(result.secrets?.OPENAI_API_KEY).toBe("personal-openai-key");
   });
 
   it("modelProviderId pin to user-tier row routes secret lookup to that user", async () => {
@@ -508,7 +295,6 @@ describe("resolveModelProviderSecrets — personal tier (#11899)", () => {
     // user's secrets, not the org sentinel's.
     const userId = uniqueId("personal-pin");
     const orgId = await setupOrg(userId);
-    await enablePersonalModelProviderForUser(orgId, userId);
     const providerId = await insertUserNonDefaultModelProvider(
       orgId,
       userId,
@@ -535,45 +321,11 @@ describe("resolveModelProviderSecrets — personal tier (#11899)", () => {
       undefined,
       providerId,
       undefined,
-      true,
     );
 
     expect(result.resolvedModelProvider).toBe("openai-api-key");
     expect(result.framework).toBe("codex");
     expect(result.secrets?.OPENAI_API_KEY).toBe("personal-pin-key");
-  });
-
-  it("resolves a personal default route with member-owned credentials", async () => {
-    const userId = uniqueId("personal-route");
-    const orgId = await setupOrg(userId);
-    await enablePersonalModelProviderForUser(orgId, userId);
-    const modelProviderId = await insertUserDefaultModelProvider(
-      orgId,
-      userId,
-      "openai-api-key",
-      "gpt-5.4",
-    );
-    await insertOrgDefaultModelProvider(
-      orgId,
-      "anthropic-api-key",
-      "claude-sonnet-4-6",
-    );
-
-    const route = await resolveModelRoute({
-      orgId,
-      userId,
-      framework: "claude-code",
-      preferPersonalProvider: true,
-    });
-
-    expect(route.provider.type).toBe("openai-api-key");
-    expect(route.framework).toBe("codex");
-    expect(route.model.canonical).toBe("gpt-5.4");
-    expect(route.credential).toEqual({
-      scope: "member",
-      modelProviderId,
-      ownerUserId: userId,
-    });
   });
 });
 
@@ -613,48 +365,6 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
       CHATGPT_ACCESS_TOKEN: {
         sourceType: "model-provider",
         sourceUserId: ORG_SENTINEL_USER_ID,
-        metadataKey: "codex-oauth-token",
-      },
-    });
-  });
-
-  it("emits user-tier owner metadata for personal codex-oauth-token", async () => {
-    const userId = uniqueId("scm-chatgpt-personal");
-    const orgId = await setupOrg(userId);
-    await enablePersonalModelProviderForUser(orgId, userId);
-    await insertUserMultiAuthModelProvider(
-      orgId,
-      userId,
-      "codex-oauth-token",
-      "auth_json",
-    );
-    for (const [name, value] of [
-      ["CHATGPT_ACCESS_TOKEN", "personal-at"],
-      ["CHATGPT_REFRESH_TOKEN", "personal-rt"],
-      ["CHATGPT_ACCOUNT_ID", "personal-acc"],
-      ["CHATGPT_ID_TOKEN", "personal-id"],
-    ] as const) {
-      await insertTestUserModelProviderSecret({ orgId, userId, name, value });
-    }
-
-    const result = await resolveModelProviderSecrets(
-      orgId,
-      userId,
-      "codex",
-      false,
-      undefined,
-      undefined,
-      undefined,
-      true,
-    );
-
-    expect(result.secretConnectorMap).toEqual({
-      CHATGPT_ACCESS_TOKEN: "codex-oauth",
-    });
-    expect(result.secretConnectorMetadataMap).toEqual({
-      CHATGPT_ACCESS_TOKEN: {
-        sourceType: "model-provider",
-        sourceUserId: userId,
         metadataKey: "codex-oauth-token",
       },
     });
@@ -806,6 +516,50 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     expect(result.selectedModel).toBe("claude-sonnet-4-6");
     expect(result.credentialScope).toBe("org");
     expect(result.secrets?.ANTHROPIC_API_KEY).toEqual(expect.any(String));
+  });
+
+  it("uses the current user's model preference before the workspace default", async () => {
+    const userId = uniqueId("mf-user-model");
+    const orgId = await setupOrg(userId);
+    await enableModelFirstModelProviderForUser(orgId, userId);
+    await insertVm0ApiKeys([
+      {
+        vendor: "anthropic",
+        model: "claude-sonnet-4-6",
+        apiKey: "vm0-anthropic-key",
+      },
+      {
+        vendor: "deepseek",
+        model: "deepseek-v4-pro",
+        apiKey: "vm0-deepseek-key",
+      },
+    ]);
+    await insertOrgModelPolicy({
+      orgId,
+      model: "claude-sonnet-4-6",
+      isDefault: true,
+    });
+    await insertOrgModelPolicy({
+      orgId,
+      model: "deepseek-v4-pro",
+    });
+    await insertUserModelPreference({
+      orgId,
+      userId,
+      model: "deepseek-v4-pro",
+    });
+
+    const result = await resolveModelProviderSecrets(
+      orgId,
+      userId,
+      "claude-code",
+      false,
+    );
+
+    expect(result.resolvedModelProvider).toBe("vm0");
+    expect(result.selectedModel).toBe("deepseek-v4-pro");
+    expect(result.credentialScope).toBe("org");
+    expect(result.secrets?.DEEPSEEK_API_KEY).toBe("vm0-deepseek-key");
   });
 
   it("uses org-scoped API-key routes without member credentials and injects runtime model aliases", async () => {
@@ -990,7 +744,10 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     ).rejects.toSatisfy((err: unknown) => {
       return (
         isModelProviderConnectRequired(err) &&
-        err.providerType === "codex-oauth-token"
+        err.providerType === "codex-oauth-token" &&
+        err.message.includes(
+          "[Open Personal Models](http://localhost:3001/settings?tab=model-configuration&connectModelProvider=codex-oauth-token)",
+        )
       );
     });
   });
@@ -1076,7 +833,6 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
         "openai-api-key",
         "00000000-0000-0000-0000-000000000001",
         "gpt-5.5",
-        undefined,
         "org",
       ),
     ).rejects.toSatisfy((err: unknown) => {

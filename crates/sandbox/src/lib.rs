@@ -29,10 +29,7 @@ mod types;
 pub use config::{
     FactoryConfig, ResourceLimits, RuntimeConfig, SandboxConfig, SandboxId, SnapshotRef,
 };
-pub use control::{
-    RemoteExecOutputSink, RemoteExecStatus, RemoteExecTermination, SandboxControl,
-    SandboxControlError,
-};
+pub use control::{RemoteExecResult, SandboxControl, SandboxControlError};
 pub use error::{
     Result, SandboxError, SandboxIdleTransition, SandboxInitializationPhase,
     SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
@@ -43,8 +40,4 @@ pub use sandbox::Sandbox;
 pub use snapshot::{
     PendingSnapshotPublish, SnapshotCreateConfig, SnapshotError, SnapshotOutput, SnapshotProvider,
 };
-pub use types::{
-    BoundedExecCapturePolicy, BoundedExecOutput, BoundedExecOutputEvent, BoundedExecOutputRequest,
-    BoundedExecRequest, BoundedExecResult, BoundedExecStream, BoundedExecStreamPolicy,
-    BoundedExecTermination, ExecRequest, ExecResult, ProcessExit, SpawnHandle, SpawnOutputMode,
-};
+pub use types::{ExecRequest, ExecResult, ProcessExit, SpawnHandle, SpawnOutputMode};

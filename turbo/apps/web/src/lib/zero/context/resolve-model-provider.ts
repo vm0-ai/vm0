@@ -27,23 +27,44 @@ import {
   getOrgAnyDefaultModelProvider,
   getModelProviderById,
   getOrgModelProviderByType,
-  getUserDefaultModelProvider,
-  getUserAnyDefaultModelProvider,
   getUserModelProviderByType,
 } from "../model-provider/model-provider-service";
 import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { MODEL_PROVIDER_HANDLER_KEY } from "../handler-key-bridge";
 import { PROVIDER_HANDLERS } from "../connector/provider-registry";
-import { isPersonalTierEligible } from "../personal-tier-gate";
 import {
   isModelFirstModelProviderEnabled,
   resolveModelFirstRouteDescriptor,
 } from "../model-policy/model-first-route-service";
+import { getAppUrl } from "../url";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import type { ModelProviderInfo } from "../model-provider/model-provider-service";
 
 const log = logger("zero:build-context");
+
+function getModelProviderConnectRequiredUrl(providerType: string): string {
+  const searchParams = new URLSearchParams({
+    tab: "model-configuration",
+    connectModelProvider: providerType,
+  });
+  return `${getAppUrl()}/settings?${searchParams.toString()}`;
+}
+
+function getModelProviderConnectRequiredMessage(providerType: string): string {
+  const url = getModelProviderConnectRequiredUrl(providerType);
+  return [
+    `Connect "${providerType}" before using this workspace model route.`,
+    `[Open Personal Models](${url})`,
+  ].join(" ");
+}
+
+function throwModelProviderConnectRequired(providerType: string): never {
+  throw modelProviderConnectRequired(
+    providerType,
+    getModelProviderConnectRequiredMessage(providerType),
+  );
+}
 
 /**
  * Model provider environment variables that indicate explicit configuration.
@@ -156,7 +177,6 @@ function resolveEnvironmentMapping(
 }
 
 export interface ResolveModelProviderSecretTimings {
-  personalEligibility: number;
   defaultProviderLookup: number;
   matchingProviderLookup: number;
   vm0ProviderResolution?: number;
@@ -218,7 +238,6 @@ interface ResolveModelRouteParams {
   explicitModelProvider?: string;
   modelProviderId?: string;
   selectedModelOverride?: string;
-  preferPersonalProvider?: boolean;
   modelProviderCredentialScope?: string;
 }
 
@@ -469,7 +488,7 @@ function finalizeMaterializedRoute(
     route.credential.scope === "member" &&
     !decorated.secrets
   ) {
-    throw modelProviderConnectRequired(route.provider.type);
+    throwModelProviderConnectRequired(route.provider.type);
   }
   return decorated;
 }
@@ -699,28 +718,19 @@ async function materializeModelRoute(params: {
 }
 
 /**
- * Resolve the row used as the resolution anchor: explicit ID pin → personal
- * tier (when eligible) → org chain. Returns null only when neither tier has
- * a default; the caller then funnels into the explicit-type-override path
- * or `noModelProvider()`.
+ * Resolve the row used as the resolution anchor: explicit ID pin → org chain.
+ * Returns null only when no org default exists; the caller then funnels into
+ * the explicit-type-override path or `noModelProvider()`.
  */
 async function resolveDefaultProviderRow(params: {
   orgId: string;
   userId: string;
   framework: string;
   modelProviderId: string | undefined;
-  personalEligible: boolean;
 }): Promise<Awaited<ReturnType<typeof getOrgDefaultModelProvider>>> {
-  const { orgId, userId, framework, modelProviderId, personalEligible } =
-    params;
+  const { orgId, userId, framework, modelProviderId } = params;
   if (modelProviderId) {
     return getModelProviderById(orgId, userId, modelProviderId);
-  }
-  if (personalEligible) {
-    const userRow =
-      (await getUserDefaultModelProvider(orgId, userId, framework)) ??
-      (await getUserAnyDefaultModelProvider(orgId, userId));
-    if (userRow) return userRow;
   }
   return (
     (await getOrgDefaultModelProvider(orgId, framework)) ??
@@ -733,39 +743,27 @@ async function resolveDefaultProviderRow(params: {
  * resolution for `providerType`. When `defaultProvider` already matches the
  * type, reuse it. Otherwise — only on the explicit type-override path
  * (where `explicitModelProvider` was set and no `modelProviderId` pin) —
- * look up by type, consulting personal tier first when eligible. Returns
- * null when no row exists; callers then fall back to `getDefaultModel`.
+ * look up the org row by type. Returns null when no row exists; callers then
+ * fall back to `getDefaultModel`.
  */
 async function resolveMatchingProviderForType(params: {
   orgId: string;
-  userId: string;
   providerType: ModelProviderType;
   defaultProvider: Awaited<ReturnType<typeof getOrgDefaultModelProvider>>;
   explicitModelProvider: string | undefined;
   modelProviderId: string | undefined;
-  personalEligible: boolean;
 }): Promise<Awaited<ReturnType<typeof getOrgDefaultModelProvider>>> {
   const {
     orgId,
-    userId,
     providerType,
     defaultProvider,
     explicitModelProvider,
     modelProviderId,
-    personalEligible,
   } = params;
   if (defaultProvider && defaultProvider.type === providerType) {
     return defaultProvider;
   }
   if (!explicitModelProvider || modelProviderId) return null;
-  if (personalEligible) {
-    const userRow = await getUserModelProviderByType(
-      orgId,
-      userId,
-      providerType,
-    );
-    if (userRow) return userRow;
-  }
   return getOrgModelProviderByType(orgId, providerType);
 }
 
@@ -791,7 +789,7 @@ async function resolveModelFirstModelRoute(
       descriptor.providerType,
     );
     if (!providerRow) {
-      throw modelProviderConnectRequired(descriptor.providerType);
+      throwModelProviderConnectRequired(descriptor.providerType);
     }
     ownerUserId = params.userId;
   } else if (descriptor.providerType !== "vm0") {
@@ -829,23 +827,12 @@ async function resolveLegacyModelRoute(
   params: ResolveModelRouteParams,
   timings?: ResolveModelProviderSecretTimings,
 ): Promise<ResolvedModelRoute> {
-  const personalEligibilityStart = Date.now();
-  const personalEligible = await isPersonalTierEligible(
-    params.orgId,
-    params.userId,
-    params.preferPersonalProvider,
-  );
-  if (timings) {
-    timings.personalEligibility = Date.now() - personalEligibilityStart;
-  }
-
   const defaultProviderStart = Date.now();
   const defaultProvider = await resolveDefaultProviderRow({
     orgId: params.orgId,
     userId: params.userId,
     framework: params.framework,
     modelProviderId: params.modelProviderId,
-    personalEligible,
   });
   if (timings) {
     timings.defaultProviderLookup = Date.now() - defaultProviderStart;
@@ -859,12 +846,10 @@ async function resolveLegacyModelRoute(
   const matchingProviderStart = Date.now();
   const matchingProvider = await resolveMatchingProviderForType({
     orgId: params.orgId,
-    userId: params.userId,
     providerType,
     defaultProvider,
     explicitModelProvider: params.explicitModelProvider,
     modelProviderId: params.modelProviderId,
-    personalEligible,
   });
   if (timings) {
     timings.matchingProviderLookup = Date.now() - matchingProviderStart;
@@ -910,11 +895,6 @@ export async function resolveModelRoute(
  *
  * @param modelProviderId - Optional specific provider ID to use instead of org default
  * @param selectedModelOverride - Optional model override (takes precedence over provider's selectedModel)
- * @param preferPersonalProvider - When true AND `personalModelProvider` switch
- *   is on for the caller, the resolver consults the user's personal-tier
- *   providers before the org default. Off-by-default; matches today's
- *   behavior when omitted/false. Sourced from `zero_agents.preferPersonalProvider`
- *   (or schedule's column when running a schedule).
  */
 export async function resolveModelProviderSecrets(
   orgId: string,
@@ -924,12 +904,10 @@ export async function resolveModelProviderSecrets(
   explicitModelProvider?: string,
   modelProviderId?: string,
   selectedModelOverride?: string,
-  preferPersonalProvider?: boolean,
   modelProviderCredentialScope?: string,
 ): Promise<ModelProviderSecretResult> {
   const secrets: Record<string, string> | undefined = undefined;
   const timings: ResolveModelProviderSecretTimings = {
-    personalEligibility: 0,
     defaultProviderLookup: 0,
     matchingProviderLookup: 0,
   };
@@ -955,7 +933,6 @@ export async function resolveModelProviderSecrets(
       explicitModelProvider,
       modelProviderId,
       selectedModelOverride,
-      preferPersonalProvider,
       modelProviderCredentialScope,
     },
     timings,

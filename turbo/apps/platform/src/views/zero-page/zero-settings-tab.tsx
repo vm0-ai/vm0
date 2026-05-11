@@ -16,8 +16,10 @@ import {
   DialogTitle,
   DialogTrigger,
   Input,
+  Switch,
   cn,
 } from "@vm0/ui";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { IconTrash } from "@tabler/icons-react";
 import {
   type Tone,
@@ -52,11 +54,15 @@ import {
   settingsModelSelection$,
   setSettingsModelSelection$,
   settingsPreferPersonalProvider$,
+  settingsVisibility$,
+  setSettingsVisibility$,
 } from "../../signals/zero-page/settings/settings-tab.ts";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
-import { modelFirstModelProviderEnabled$ } from "../../signals/external/feature-switch.ts";
 import {
-  MODEL_FIRST_SELECTION_PROVIDER_ID,
+  featureSwitch$,
+  modelFirstModelProviderEnabled$,
+} from "../../signals/external/feature-switch.ts";
+import {
   ModelProviderPicker,
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
@@ -69,6 +75,8 @@ interface ZeroSettingsTabProps {
   modelProviderId?: string | null;
   selectedModel?: string | null;
   preferPersonalProvider?: boolean;
+  visibility?: "public" | "private";
+  canEditVisibility?: boolean;
   updateSettings$: Command<
     Promise<void>,
     [
@@ -80,6 +88,7 @@ interface ZeroSettingsTabProps {
         modelProviderId?: string | null;
         selectedModel?: string | null;
         preferPersonalProvider?: boolean;
+        visibility?: "public" | "private";
       },
       AbortSignal,
     ]
@@ -91,6 +100,27 @@ interface ZeroSettingsTabProps {
   onDelete?: () => Promise<void>;
 }
 
+function modelProviderIdForSave(
+  modelFirstEnabled: boolean,
+  modelSelection: ModelProviderSelection | null,
+) {
+  return modelFirstEnabled ? null : (modelSelection?.modelProviderId ?? null);
+}
+
+function visibilityForSave(
+  privateAgentsEnabled: boolean,
+  visibility: "public" | "private",
+) {
+  return privateAgentsEnabled ? { visibility } : {};
+}
+
+function canShowVisibilitySwitch(
+  privateAgentsEnabled: boolean,
+  canEditVisibility: boolean,
+) {
+  return privateAgentsEnabled && canEditVisibility;
+}
+
 export function ZeroSettingsTab({
   displayName: resolvedAgentName,
   description: initialDescription,
@@ -99,18 +129,21 @@ export function ZeroSettingsTab({
   modelProviderId: initialModelProviderId,
   selectedModel: initialSelectedModel,
   preferPersonalProvider: initialPreferPersonalProvider = false,
+  visibility: initialVisibility = "public",
+  canEditVisibility = true,
   updateSettings$,
   inputId = "zero-agent-name",
   isDefaultAgent = false,
   onDelete,
 }: ZeroSettingsTabProps) {
   const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
+  const features = useLastResolved(featureSwitch$);
+  const privateAgentsEnabled =
+    features?.[FeatureSwitchKey.PrivateAgents] ?? false;
   const initialModelSelection: ModelProviderSelection | null =
-    initialSelectedModel && (modelFirstEnabled || initialModelProviderId)
+    !modelFirstEnabled && initialSelectedModel && initialModelProviderId
       ? {
-          modelProviderId: modelFirstEnabled
-            ? MODEL_FIRST_SELECTION_PROVIDER_ID
-            : (initialModelProviderId ?? MODEL_FIRST_SELECTION_PROVIDER_ID),
+          modelProviderId: initialModelProviderId,
           selectedModel: initialSelectedModel,
         }
       : null;
@@ -122,6 +155,7 @@ export function ZeroSettingsTab({
     avatarUrl: initialAvatarUrl,
     modelSelection: initialModelSelection,
     preferPersonalProvider: initialPreferPersonalProvider,
+    visibility: initialVisibility,
   });
 
   const agentName = useGet(settingsAgentName$);
@@ -135,6 +169,8 @@ export function ZeroSettingsTab({
   const modelSelection = useGet(settingsModelSelection$);
   const setModelSelection = useSet(setSettingsModelSelection$);
   const preferPersonalProvider = useGet(settingsPreferPersonalProvider$);
+  const visibility = useGet(settingsVisibility$);
+  const setVisibility = useSet(setSettingsVisibility$);
   const isSettingsDirty = useGet(settingsDirty$);
   const resetForm = useSet(resetSettingsForm$);
   const markSaved = useSet(markSettingsSaved$);
@@ -163,11 +199,15 @@ export function ZeroSettingsTab({
             description: desc,
             sound: tone,
             avatarUrl,
-            modelProviderId: modelFirstEnabled
+            modelProviderId: modelProviderIdForSave(
+              modelFirstEnabled,
+              modelSelection,
+            ),
+            selectedModel: modelFirstEnabled
               ? null
-              : (modelSelection?.modelProviderId ?? null),
-            selectedModel: modelSelection?.selectedModel ?? null,
+              : (modelSelection?.selectedModel ?? null),
             preferPersonalProvider,
+            ...visibilityForSave(privateAgentsEnabled, visibility),
           },
           pageSignal,
         );
@@ -221,11 +261,16 @@ export function ZeroSettingsTab({
                           description: desc,
                           sound: tone,
                           avatarUrl: newAvatarUrl,
-                          modelProviderId: modelFirstEnabled
-                            ? null
-                            : (modelSelection?.modelProviderId ?? null),
+                          modelProviderId: modelProviderIdForSave(
+                            modelFirstEnabled,
+                            modelSelection,
+                          ),
                           selectedModel: modelSelection?.selectedModel ?? null,
                           preferPersonalProvider,
+                          ...visibilityForSave(
+                            privateAgentsEnabled,
+                            visibility,
+                          ),
                         },
                         pageSignal,
                       ).then(() => {
@@ -335,8 +380,9 @@ export function ZeroSettingsTab({
                 </div>
               </div>
             </InlineSettingsRow>
-            {orgProviders &&
-              (modelFirstEnabled || orgProviders.modelProviders.length > 0) && (
+            {!modelFirstEnabled &&
+              orgProviders &&
+              orgProviders.modelProviders.length > 0 && (
                 <InlineSettingsRow
                   label="Model"
                   description="The model used by this agent. Defaults to the workspace setting."
@@ -348,6 +394,23 @@ export function ZeroSettingsTab({
                   />
                 </InlineSettingsRow>
               )}
+            {canShowVisibilitySwitch(
+              privateAgentsEnabled,
+              canEditVisibility,
+            ) && (
+              <InlineSettingsRow
+                label="Make public"
+                description="Visible to everyone in this workspace."
+              >
+                <Switch
+                  checked={visibility === "public"}
+                  onCheckedChange={(checked) => {
+                    return setVisibility(checked ? "public" : "private");
+                  }}
+                  aria-label="Make public"
+                />
+              </InlineSettingsRow>
+            )}
           </CardContent>
         </Card>
 

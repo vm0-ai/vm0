@@ -16,6 +16,8 @@ import type {
 import { agentComposes } from "./agent-compose";
 import { modelProviders } from "./model-provider";
 
+export type ZeroAgentVisibility = "public" | "private";
+
 /**
  * Zero Agents table
  * Stores agent metadata (display name, description, sound) as first-class columns.
@@ -35,6 +37,10 @@ export const zeroAgents = pgTable(
     orgId: text("org_id").notNull(),
     owner: text("owner").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
+    visibility: varchar("visibility", { length: 16 })
+      .$type<ZeroAgentVisibility>()
+      .notNull()
+      .default("public"),
     displayName: varchar("display_name", { length: 256 }),
     description: text("description"),
     sound: varchar("sound", { length: 64 }),

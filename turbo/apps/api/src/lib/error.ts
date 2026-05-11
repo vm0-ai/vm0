@@ -26,6 +26,10 @@ export function runNotCancellable(message: string) {
   return httpError(400, "RUN_NOT_CANCELLABLE", message);
 }
 
+export function providerUnavailable(message: string) {
+  return httpError(503, "PROVIDER_UNAVAILABLE", message);
+}
+
 export function badRequestMessage(message: string) {
   return httpError(400, "BAD_REQUEST", message);
 }

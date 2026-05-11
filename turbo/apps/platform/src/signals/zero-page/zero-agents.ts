@@ -12,6 +12,7 @@ export const createSubagent$ = command(
     { get, set },
     displayName: string,
     avatarUrl: string,
+    visibility: "public" | "private",
     signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
@@ -21,6 +22,7 @@ export const createSubagent$ = command(
       {
         displayName,
         avatarUrl,
+        visibility,
       },
       signal,
     );

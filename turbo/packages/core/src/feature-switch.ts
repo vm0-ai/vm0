@@ -330,17 +330,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.PersonalModelProvider]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Enable per-user (BYOK) model providers in addition to org-level. " +
-      "When off: Personal tab in Preferences is hidden; personal-tier API " +
-      "endpoints return 404; the prefer_personal_provider checkbox on " +
-      "agents/schedules is hidden; the resolver ignores the flag (treats " +
-      "as false). Staff-only during rollout; per-user toggle via Lab.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ModelFirstModelProvider]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -365,6 +354,15 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "transcription.completed usage events for billing. Staff-only " +
       "during rollout; operator flips per org via the feature-switch " +
       "overrides API.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.PrivateAgents]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable private agents. Private agents are visible only to their owner, " +
+      "are excluded from the workspace public-agent limit, and can only be " +
+      "managed or run by their owner.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

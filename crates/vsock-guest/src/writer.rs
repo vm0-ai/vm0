@@ -28,11 +28,7 @@ impl GuestWriter {
         self.write_frame_with_deadline(frame, WRITE_DEADLINE)
     }
 
-    pub(crate) fn write_frame_with_deadline(
-        &self,
-        frame: &[u8],
-        deadline: Duration,
-    ) -> io::Result<()> {
+    fn write_frame_with_deadline(&self, frame: &[u8], deadline: Duration) -> io::Result<()> {
         let stream = self.stream.lock().unwrap_or_else(|e| e.into_inner());
         let result = send_frame(stream.as_raw_fd(), frame, deadline);
         if result.is_err() {

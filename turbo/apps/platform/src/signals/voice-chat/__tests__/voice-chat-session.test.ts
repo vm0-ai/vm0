@@ -441,7 +441,7 @@ describe("voice-chat session", () => {
     vi.stubGlobal("Audio", FakeAudio);
 
     server.use(
-      http.post("https://api.openai.com/v1/realtime", () => {
+      http.post("https://api.openai.com/v1/realtime/calls", () => {
         return new HttpResponse("answer-sdp", { status: 200 });
       }),
     );

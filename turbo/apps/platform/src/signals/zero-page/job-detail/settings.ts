@@ -17,6 +17,7 @@ interface AgentSettingsUpdate {
   modelProviderId?: string | null;
   selectedModel?: string | null;
   preferPersonalProvider?: boolean;
+  visibility?: "public" | "private";
 }
 
 export const updateAgentSettings$ = command(

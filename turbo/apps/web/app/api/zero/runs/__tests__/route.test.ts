@@ -83,10 +83,12 @@ describe("POST /api/zero/runs", () => {
   describe("sessionId inference", () => {
     let user: UserContext;
     let agentId: string;
+    let agentName: string;
 
     beforeEach(async () => {
       user = await context.setupUser();
       const compose = await createTestCompose(uniqueId("session-agent"));
+      agentName = compose.name;
       agentId = await getTestZeroAgentId(user.orgId, compose.name);
       vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
       reloadEnv();
@@ -140,6 +142,36 @@ describe("POST /api/zero/runs", () => {
 
       const run = await findTestRunRecord(data.runId);
       expect(run?.sessionId).toBe(data.sessionId);
+    });
+
+    it("should reject runs for private agents when caller is not the owner", async () => {
+      await createTestZeroAgent(user.orgId, agentName, {
+        visibility: "private",
+      });
+
+      const otherUser = await context.setupUser({ prefix: "private-runner" });
+      mockClerk({
+        userId: otherUser.userId,
+        orgId: user.orgId,
+        orgRole: "org:member",
+        clerkOrgs: [
+          {
+            id: user.orgId,
+            slug: `org-${user.orgId.slice(-8)}`,
+            name: `org-${user.orgId.slice(-8)}`,
+            role: "org:member",
+          },
+        ],
+      });
+
+      const response = await postRun({
+        agentId,
+        prompt: "run private agent",
+      });
+
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.message).toContain("private agent owner");
     });
 
     it("should return 403 when ZERO_TOKEN is used (agent-run:write excluded)", async () => {

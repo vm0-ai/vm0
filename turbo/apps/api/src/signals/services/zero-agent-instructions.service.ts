@@ -1,8 +1,12 @@
 import { computed, type Computed } from "ccstate";
+import { agentComposeApiContentSchema } from "@vm0/api-contracts/contracts/composes";
 import { getInstructionsStorageName } from "@vm0/core/storage-names";
 import { getInstructionsFilename } from "@vm0/core/frameworks";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { stripMetadataFrontmatter } from "@vm0/core/instructions-frontmatter";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "@vm0/db/schema/agent-compose";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { and, eq } from "drizzle-orm";
 
@@ -28,30 +32,52 @@ export function zeroAgentInstructions(
   agentId: string,
 ): Computed<Promise<AgentInstructionsResult | null>> {
   return computed(async (get): Promise<AgentInstructionsResult | null> => {
-    const [agentRow] = await get(db$)
+    const [compose] = await get(db$)
       .select({
         name: agentComposes.name,
+        orgId: agentComposes.orgId,
+        content: agentComposeVersions.content,
       })
-      .from(zeroAgents)
-      .innerJoin(agentComposes, eq(zeroAgents.id, agentComposes.id))
-      .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.id, agentId)))
+      .from(agentComposes)
+      .leftJoin(
+        agentComposeVersions,
+        eq(agentComposes.headVersionId, agentComposeVersions.id),
+      )
+      .where(and(eq(agentComposes.orgId, orgId), eq(agentComposes.id, agentId)))
       .limit(1);
 
-    if (!agentRow) {
+    if (!compose) {
       return null;
     }
 
-    const storageName = getInstructionsStorageName(agentRow.name);
+    const parsed = agentComposeApiContentSchema.safeParse(compose.content);
+    if (!parsed.success) {
+      return { content: null, filename: null };
+    }
+
+    const agentKeys = Object.keys(parsed.data.agents);
+    const firstKey = agentKeys[0];
+    const agentDef = firstKey ? parsed.data.agents[firstKey] : undefined;
+    const instructionsFilename =
+      agentDef?.instructions ?? getInstructionsFilename(agentDef?.framework);
+
+    const storageName = getInstructionsStorageName(compose.name);
     const [storage] = await get(db$)
       .select({
         headVersionId: storages.headVersionId,
       })
       .from(storages)
-      .where(and(eq(storages.orgId, orgId), eq(storages.name, storageName)))
+      .where(
+        and(
+          eq(storages.orgId, compose.orgId),
+          eq(storages.name, storageName),
+          eq(storages.type, "volume"),
+        ),
+      )
       .limit(1);
 
     if (!storage?.headVersionId) {
-      return { content: null, filename: null };
+      return { content: null, filename: instructionsFilename };
     }
 
     const [version] = await get(db$)
@@ -61,61 +87,45 @@ export function zeroAgentInstructions(
       .limit(1);
 
     if (!version) {
-      return { content: null, filename: null };
+      return { content: null, filename: instructionsFilename };
     }
 
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-    if (!bucket) {
-      return { content: null, filename: null };
-    }
-
-    // Download the manifest to discover the instructions file
     const manifest = await get(downloadManifest(bucket, version.s3Key));
     const normalize = (p: string): string => {
       return p.replace(/^\.\//, "");
     };
 
-    // Try the canonical filename for each supported framework
-    const canonicalFilenames = [
-      getInstructionsFilename("claude-code"),
-      getInstructionsFilename("codex"),
-    ];
+    const canonicalFilename = getInstructionsFilename(agentDef?.framework);
+    const instructionFile = manifest.files.find((f) => {
+      return normalize(f.path) === normalize(canonicalFilename);
+    });
 
-    let instructionPath: string | undefined;
-    for (const canonical of canonicalFilenames) {
-      const found = manifest.files.find((f) => {
-        return normalize(f.path) === canonical;
-      });
-      if (found) {
-        instructionPath = found.path;
-        break;
-      }
-    }
-
-    // Also check for "./CANONICAL" prefixed paths
-    if (!instructionPath) {
-      for (const canonical of canonicalFilenames) {
-        const found = manifest.files.find((f) => {
-          return f.path === `./${canonical}`;
-        });
-        if (found) {
-          instructionPath = found.path;
-          break;
-        }
-      }
-    }
-
-    if (!instructionPath) {
-      return { content: null, filename: null };
+    if (!instructionFile) {
+      return { content: null, filename: instructionsFilename };
     }
 
     const archiveKey = `${version.s3Key}/archive.tar.gz`;
     const archiveBuffer = await get(downloadS3Buffer(bucket, archiveKey));
-    const content = extractFileFromTarGz(archiveBuffer, instructionPath);
+    const rawContent = extractFileFromTarGz(
+      archiveBuffer,
+      instructionFile.path,
+    );
+
+    if (rawContent === null) {
+      return { content: null, filename: instructionsFilename };
+    }
+
+    const hasLegacyBlocks =
+      rawContent.includes("[AGENT_PROFILE]") ||
+      rawContent.includes("<!-- ZERO_PROFILE");
+    const content = hasLegacyBlocks
+      ? stripMetadataFrontmatter(rawContent)
+      : rawContent;
 
     return {
       content,
-      filename: normalize(instructionPath),
+      filename: instructionsFilename,
     };
   });
 }

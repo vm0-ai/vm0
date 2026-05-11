@@ -31,6 +31,7 @@ import {
   requireAgentPermission,
   requireAdminPermission,
 } from "../../../../../../src/lib/zero/require-agent-permission";
+import { visibleJoinedZeroAgentCondition } from "../../../../../../src/lib/zero/agent-visibility";
 import { logger } from "../../../../../../src/lib/shared/logger";
 
 const log = logger("api:zero-agents:instructions");
@@ -85,6 +86,7 @@ async function updateInstructions(
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public" as const,
         customSkills: [],
       },
     };
@@ -106,6 +108,7 @@ async function updateInstructions(
       modelProviderId: agent.modelProviderId,
       selectedModel: agent.selectedModel,
       preferPersonalProvider: agent.preferPersonalProvider,
+      visibility: agent.visibility,
       customSkills: agent.customSkills,
     },
   };
@@ -135,10 +138,12 @@ const router = tsr.router(zeroAgentInstructionsContract, {
         agentComposeVersions,
         eq(agentComposes.headVersionId, agentComposeVersions.id),
       )
+      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
       .where(
         and(
           eq(agentComposes.orgId, org.orgId),
           eq(agentComposes.id, params.id),
+          visibleJoinedZeroAgentCondition(authCtx.userId),
         ),
       )
       .limit(1);
@@ -272,6 +277,7 @@ const router = tsr.router(zeroAgentInstructionsContract, {
         content: agentComposeVersions.content,
         customSkills: zeroAgents.customSkills,
         owner: zeroAgents.owner,
+        visibility: zeroAgents.visibility,
       })
       .from(agentComposes)
       .leftJoin(
@@ -306,6 +312,7 @@ const router = tsr.router(zeroAgentInstructionsContract, {
           compose.owner,
           member,
           "update agent instructions",
+          { visibility: compose.visibility },
         )
       : requireAdminPermission(member, "update agent instructions");
     if (forbidden) return forbidden;

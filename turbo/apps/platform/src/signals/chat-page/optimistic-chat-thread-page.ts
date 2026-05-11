@@ -51,13 +51,14 @@ import { agentById } from "../agent.ts";
 import { composerModelProviders$ } from "../zero-page/composer-model-providers.ts";
 import {
   resolveEffectiveAgentDefaultSelection,
-  resolveModelFirstAgentDefaultSelection,
+  resolveModelFirstUserDefaultSelection,
 } from "../zero-page/model-provider-default.ts";
 import {
   goalEnabled$,
   modelFirstModelProviderEnabled$,
 } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
+import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { logger } from "../log.ts";
 
 export type { OptimisticChatPane };
@@ -478,17 +479,19 @@ const sendNewThreadMessage$ = command(
     const draft = get(talkDraft$);
     let effectiveSelectedModel = modelSelection?.selectedModel;
     if (!effectiveSelectedModel) {
-      const agent = await get(agentById(agentId));
-      signal.throwIfAborted();
       if (get(modelFirstModelProviderEnabled$)) {
         const policies = await get(orgModelPolicies$);
         signal.throwIfAborted();
+        const userPreference = await get(userModelPreference$);
+        signal.throwIfAborted();
         effectiveSelectedModel =
-          resolveModelFirstAgentDefaultSelection({
-            agent,
+          resolveModelFirstUserDefaultSelection({
+            userPreference,
             policies,
           })?.selectedModel ?? undefined;
       } else {
+        const agent = await get(agentById(agentId));
+        signal.throwIfAborted();
         const composerProviders = await get(composerModelProviders$);
         signal.throwIfAborted();
         effectiveSelectedModel =

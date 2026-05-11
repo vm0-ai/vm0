@@ -6,13 +6,14 @@
  * session orgId and does not fall through to heuristic org resolution.
  */
 import { NextResponse } from "next/server";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { isNotFound, isForbidden } from "@vm0/api-services/errors";
+import { visibleJoinedZeroAgentCondition } from "../../../../src/lib/zero/agent-visibility";
 
 export async function GET() {
   initServices();
@@ -64,10 +65,16 @@ export async function GET() {
       description: zeroAgents.description,
       sound: zeroAgents.sound,
       avatarUrl: zeroAgents.avatarUrl,
+      visibility: zeroAgents.visibility,
     })
     .from(agentComposes)
     .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-    .where(eq(agentComposes.orgId, resolvedOrgId))
+    .where(
+      and(
+        eq(agentComposes.orgId, resolvedOrgId),
+        visibleJoinedZeroAgentCondition(authCtx.userId),
+      ),
+    )
     .orderBy(desc(agentComposes.updatedAt));
 
   return NextResponse.json(
@@ -79,6 +86,7 @@ export async function GET() {
         description: c.description ?? null,
         sound: c.sound ?? null,
         avatarUrl: c.avatarUrl ?? null,
+        visibility: c.visibility ?? "public",
         headVersionId: c.headVersionId,
         updatedAt: c.updatedAt.toISOString(),
       };

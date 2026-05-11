@@ -8,23 +8,15 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use sandbox::{
-    BoundedExecCapturePolicy, BoundedExecOutput, BoundedExecOutputEvent, BoundedExecOutputRequest,
-    BoundedExecRequest, BoundedExecResult, BoundedExecStream, BoundedExecTermination, ExecRequest,
-    ExecResult, ProcessExit, Sandbox, SandboxConfig, SandboxError, SandboxIdleTransition,
-    SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason, SpawnHandle,
+    ExecRequest, ExecResult, ProcessExit, Sandbox, SandboxConfig, SandboxError,
+    SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
+    SpawnHandle,
 };
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, trace, warn};
-use vsock_host::{
-    BoundedExecOutputEvent as HostBoundedExecOutputEvent,
-    BoundedExecOutputRequest as HostBoundedExecOutputRequest,
-    BoundedExecRequest as HostBoundedExecRequest, BoundedExecResult as HostBoundedExecResult,
-    BoundedExecStream as HostBoundedExecStream,
-    BoundedExecStreamPolicy as HostBoundedExecStreamPolicy,
-    BoundedExecTermination as HostBoundedExecTermination, VsockHost,
-};
+use vsock_host::VsockHost;
 
 use crate::api::ApiError;
 use nbd_cow::PooledNbdCowDevice;
@@ -1109,105 +1101,6 @@ fn monitor_process_with_log_readers(
     ProcessMonitorHandle { kill_tx, task }
 }
 
-fn host_bounded_stream_to_sandbox(stream: HostBoundedExecStream) -> BoundedExecStream {
-    match stream {
-        HostBoundedExecStream::Stdout => BoundedExecStream::Stdout,
-        HostBoundedExecStream::Stderr => BoundedExecStream::Stderr,
-    }
-}
-
-fn host_bounded_event_to_sandbox(event: HostBoundedExecOutputEvent) -> BoundedExecOutputEvent {
-    BoundedExecOutputEvent {
-        stream: host_bounded_stream_to_sandbox(event.stream),
-        sequence: event.sequence,
-        chunk: event.chunk,
-        truncated: event.truncated,
-    }
-}
-
-fn host_bounded_termination_to_sandbox(
-    termination: HostBoundedExecTermination,
-) -> BoundedExecTermination {
-    match termination {
-        HostBoundedExecTermination::Exited { exit_code } => {
-            BoundedExecTermination::Exited { exit_code }
-        }
-        HostBoundedExecTermination::TimedOut => BoundedExecTermination::TimedOut,
-        HostBoundedExecTermination::Cancelled => BoundedExecTermination::Cancelled,
-        HostBoundedExecTermination::StartFailed => BoundedExecTermination::StartFailed,
-        HostBoundedExecTermination::WaitFailed => BoundedExecTermination::WaitFailed,
-    }
-}
-
-fn host_bounded_output_to_sandbox(output: vsock_host::BoundedExecOutput) -> BoundedExecOutput {
-    match output {
-        vsock_host::BoundedExecOutput::Discarded => BoundedExecOutput::Discarded,
-        vsock_host::BoundedExecOutput::Captured { bytes, truncated } => {
-            BoundedExecOutput::Captured { bytes, truncated }
-        }
-    }
-}
-
-fn host_bounded_result_to_sandbox(result: HostBoundedExecResult) -> BoundedExecResult {
-    BoundedExecResult {
-        termination: host_bounded_termination_to_sandbox(result.termination),
-        duration: Duration::from_millis(result.duration_ms),
-        stdout: host_bounded_output_to_sandbox(result.stdout),
-        stderr: host_bounded_output_to_sandbox(result.stderr),
-        diagnostic: result.diagnostic,
-    }
-}
-
-fn sandbox_capture_to_host(
-    capture: BoundedExecCapturePolicy,
-) -> vsock_host::BoundedExecCapturePolicy {
-    match capture {
-        BoundedExecCapturePolicy::Discard => vsock_host::BoundedExecCapturePolicy::Discard,
-        BoundedExecCapturePolicy::Capture { limit_bytes } => {
-            vsock_host::BoundedExecCapturePolicy::Capture { limit_bytes }
-        }
-    }
-}
-
-fn sandbox_output_to_host(
-    output: &BoundedExecOutputRequest,
-    stream: Option<HostBoundedExecStreamPolicy>,
-) -> HostBoundedExecOutputRequest {
-    HostBoundedExecOutputRequest {
-        capture: sandbox_capture_to_host(output.capture),
-        stream,
-    }
-}
-
-fn spawn_bounded_stream_bridge(
-    expected_stream: HostBoundedExecStream,
-    stream: Option<&sandbox::BoundedExecStreamPolicy>,
-    bridge_tasks: &mut Vec<tokio::task::JoinHandle<()>>,
-) -> Option<HostBoundedExecStreamPolicy> {
-    let stream = stream?;
-    let (host_tx, mut host_rx) = mpsc::unbounded_channel::<HostBoundedExecOutputEvent>();
-    let sandbox_tx = stream.event_tx.clone();
-    bridge_tasks.push(tokio::spawn(async move {
-        while let Some(event) = host_rx.recv().await {
-            debug_assert_eq!(event.stream, expected_stream);
-            if event.stream != expected_stream {
-                continue;
-            }
-            if sandbox_tx
-                .send(host_bounded_event_to_sandbox(event))
-                .is_err()
-            {
-                break;
-            }
-        }
-    }));
-    Some(HostBoundedExecStreamPolicy {
-        event_tx: host_tx,
-        limit_bytes: stream.limit_bytes,
-        chunk_limit_bytes: stream.chunk_limit_bytes,
-    })
-}
-
 #[async_trait]
 impl Sandbox for FirecrackerSandbox {
     // -- identity --
@@ -1446,9 +1339,6 @@ impl Sandbox for FirecrackerSandbox {
     // already polling.
 
     async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
-        // Legacy buffered exec path. New request/response command execution
-        // should call bounded_exec so output, termination, streaming, and
-        // cancellation semantics are explicit.
         let operation = SandboxOperation::Exec;
         let guest = self.operation_guest(operation).await?;
 
@@ -1465,54 +1355,6 @@ impl Sandbox for FirecrackerSandbox {
                 Err(Self::backend_crashed_error(operation))
             }
         }
-    }
-
-    async fn bounded_exec(
-        &self,
-        request: &BoundedExecRequest<'_>,
-    ) -> sandbox::Result<BoundedExecResult> {
-        let operation = SandboxOperation::BoundedExec;
-        let guest = self.operation_guest(operation).await?;
-
-        let mut bridge_tasks = Vec::new();
-        let stdout_stream = spawn_bounded_stream_bridge(
-            HostBoundedExecStream::Stdout,
-            request.stdout.stream.as_ref(),
-            &mut bridge_tasks,
-        );
-        let stderr_stream = spawn_bounded_stream_bridge(
-            HostBoundedExecStream::Stderr,
-            request.stderr.stream.as_ref(),
-            &mut bridge_tasks,
-        );
-
-        let host_request = HostBoundedExecRequest {
-            command: request.cmd,
-            timeout_ms: request.timeout_ms(),
-            env: request.env,
-            sudo: request.sudo,
-            stdin: request.stdin,
-            stdout: sandbox_output_to_host(&request.stdout, stdout_stream),
-            stderr: sandbox_output_to_host(&request.stderr, stderr_stream),
-        };
-
-        let result = tokio::select! {
-            result = guest.bounded_exec(&host_request) => {
-                result
-                    .map(host_bounded_result_to_sandbox)
-                    .map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))
-            }
-            () = wait_for_backend_crash(self.state_tx.subscribe()) => {
-                Err(Self::backend_crashed_error(operation))
-            }
-        };
-
-        drop(host_request);
-        for task in bridge_tasks {
-            let _ = task.await;
-        }
-
-        result
     }
 
     async fn write_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
@@ -2071,7 +1913,6 @@ mod tests {
     fn operation_error_classifies_observed_backend_crash_for_all_operations() {
         for operation in [
             SandboxOperation::Exec,
-            SandboxOperation::BoundedExec,
             SandboxOperation::WriteFile,
             SandboxOperation::SpawnWatch,
             SandboxOperation::WaitExit,
@@ -2090,7 +1931,6 @@ mod tests {
     fn unavailable_guest_classifies_observed_backend_crash_for_all_operations() {
         for operation in [
             SandboxOperation::Exec,
-            SandboxOperation::BoundedExec,
             SandboxOperation::WriteFile,
             SandboxOperation::SpawnWatch,
             SandboxOperation::WaitExit,
@@ -2100,80 +1940,6 @@ mod tests {
 
             assert_operation_reason(err, SandboxOperationReason::BackendCrashed);
         }
-    }
-
-    #[tokio::test]
-    async fn bounded_stream_bridges_close_independently() {
-        let (stdout_tx, stdout_rx) = mpsc::unbounded_channel();
-        drop(stdout_rx);
-        let (stderr_tx, mut stderr_rx) = mpsc::unbounded_channel();
-        let stdout_policy = sandbox::BoundedExecStreamPolicy {
-            event_tx: stdout_tx,
-            limit_bytes: 128,
-            chunk_limit_bytes: 64,
-        };
-        let stderr_policy = sandbox::BoundedExecStreamPolicy {
-            event_tx: stderr_tx,
-            limit_bytes: 256,
-            chunk_limit_bytes: 64,
-        };
-
-        let mut bridge_tasks = Vec::new();
-        let stdout_host = spawn_bounded_stream_bridge(
-            HostBoundedExecStream::Stdout,
-            Some(&stdout_policy),
-            &mut bridge_tasks,
-        )
-        .expect("stdout stream should create a host bridge");
-        let stderr_host = spawn_bounded_stream_bridge(
-            HostBoundedExecStream::Stderr,
-            Some(&stderr_policy),
-            &mut bridge_tasks,
-        )
-        .expect("stderr stream should create a host bridge");
-        assert_eq!(bridge_tasks.len(), 2);
-
-        let stdout_task = bridge_tasks.remove(0);
-        let stderr_task = bridge_tasks.remove(0);
-        stdout_host
-            .event_tx
-            .send(HostBoundedExecOutputEvent {
-                stream: HostBoundedExecStream::Stdout,
-                sequence: 1,
-                chunk: b"lost".to_vec(),
-                truncated: false,
-            })
-            .expect("stdout host bridge should be open for first event");
-        tokio::time::timeout(Duration::from_secs(1), stdout_task)
-            .await
-            .expect("stdout bridge should exit after receiver is dropped")
-            .expect("stdout bridge task should not panic");
-        assert!(stdout_host.event_tx.is_closed());
-
-        stderr_host
-            .event_tx
-            .send(HostBoundedExecOutputEvent {
-                stream: HostBoundedExecStream::Stderr,
-                sequence: 2,
-                chunk: b"kept".to_vec(),
-                truncated: true,
-            })
-            .expect("stderr host bridge should remain open");
-        assert_eq!(
-            stderr_rx.recv().await.unwrap(),
-            BoundedExecOutputEvent {
-                stream: BoundedExecStream::Stderr,
-                sequence: 2,
-                chunk: b"kept".to_vec(),
-                truncated: true,
-            }
-        );
-
-        drop(stderr_host);
-        tokio::time::timeout(Duration::from_secs(1), stderr_task)
-            .await
-            .expect("stderr bridge should exit after host sender is dropped")
-            .expect("stderr bridge task should not panic");
     }
 
     /// Exercise the `monitor_process` crash detection flow through real child

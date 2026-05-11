@@ -26,6 +26,15 @@ const SCHEMA = {
   AXIOM_TOKEN_TELEMETRY: z.string().min(1),
   AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]),
   STRIPE_SECRET_KEY: z.string().min(1),
+  ZERO_PRICE: z
+    .string()
+    .optional()
+    .transform((val) => {
+      if (!val) {
+        return undefined;
+      }
+      return z.record(z.string(), z.array(z.string())).parse(JSON.parse(val));
+    }),
   ABLY_API_KEY: z.string().min(1),
   GOOGLE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -80,7 +89,10 @@ export function optionalEnv(name: string): string | undefined {
   return process.env[name] || undefined;
 }
 
-export function mockEnv<K extends EnvKey>(name: K, value: EnvShape[K]): void {
+export function mockEnv<K extends EnvKey>(
+  name: K,
+  value: z.input<(typeof SCHEMA)[K]>,
+): void {
   const schema = SCHEMA[name] as ZodType;
   setOverrideEnv({
     ...getOverrideEnv(),

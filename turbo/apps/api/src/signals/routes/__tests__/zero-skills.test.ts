@@ -10,8 +10,10 @@ import { createStore } from "ccstate";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import {
   deleteSkillsForFixture$,
+  mockInstructionsContent,
   mockSkillContent,
   seedAgentForInstructions$,
+  seedInstructionsStorage$,
   seedSkill$,
   seedSkillStorage$,
   seedSkillsFixture$,
@@ -363,7 +365,11 @@ describe("GET /api/zero/agents/:id/instructions", () => {
     );
     const { agentId } = await store.set(
       seedAgentForInstructions$,
-      { orgId: fixture.orgId, userId: fixture.userId },
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        withComposeVersion: true,
+      },
       context.signal,
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
@@ -376,7 +382,10 @@ describe("GET /api/zero/agents/:id/instructions", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ content: null, filename: null });
+    expect(response.body).toStrictEqual({
+      content: null,
+      filename: "CLAUDE.md",
+    });
   });
 
   it("returns 404 for unknown agent", async () => {
@@ -408,7 +417,11 @@ describe("GET /api/zero/agents/:id/instructions", () => {
     );
     const { agentId } = await store.set(
       seedAgentForInstructions$,
-      { orgId: fixture.orgId, userId: fixture.userId },
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        withComposeVersion: true,
+      },
       context.signal,
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
@@ -421,6 +434,321 @@ describe("GET /api/zero/agents/:id/instructions", () => {
       [200],
     );
 
+    expect(response.body).toStrictEqual({
+      content: null,
+      filename: "CLAUDE.md",
+    });
+  });
+
+  it("returns derived filename for compose-only agents", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const { agentId } = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        withComposeVersion: true,
+        withZeroAgent: false,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      instructionsClient().get({
+        headers: authHeaders(),
+        params: { id: agentId },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      content: null,
+      filename: "CLAUDE.md",
+    });
+  });
+
+  it("returns null filename when compose content cannot be parsed", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const { agentId } = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeContent: { version: "1" },
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      instructionsClient().get({
+        headers: authHeaders(),
+        params: { id: agentId },
+      }),
+      [200],
+    );
+
     expect(response.body).toStrictEqual({ content: null, filename: null });
+  });
+
+  it("returns explicit compose instructions filename when no storage exists", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const { agentId } = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        instructions: "docs/CUSTOM.md",
+        withComposeVersion: true,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      instructionsClient().get({
+        headers: authHeaders(),
+        params: { id: agentId },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      content: null,
+      filename: "docs/CUSTOM.md",
+    });
+  });
+
+  it("reads Claude instructions content and filename", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const { agentId, name } = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        withComposeVersion: true,
+      },
+      context.signal,
+    );
+    const s3Key = `orgs/${fixture.orgId}/agent-instructions@${name}/v1`;
+    await store.set(
+      seedInstructionsStorage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentName: name,
+        s3Key,
+      },
+      context.signal,
+    );
+    mockInstructionsContent(context, {
+      s3Key,
+      filename: "CLAUDE.md",
+      content: "# Claude Instructions",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      instructionsClient().get({
+        headers: authHeaders(),
+        params: { id: agentId },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      content: "# Claude Instructions",
+      filename: "CLAUDE.md",
+    });
+  });
+
+  it("reads Codex instructions content and filename", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const { agentId, name } = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        framework: "codex",
+        withComposeVersion: true,
+      },
+      context.signal,
+    );
+    const s3Key = `orgs/${fixture.orgId}/agent-instructions@${name}/v1`;
+    await store.set(
+      seedInstructionsStorage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentName: name,
+        s3Key,
+      },
+      context.signal,
+    );
+    mockInstructionsContent(context, {
+      s3Key,
+      filename: "AGENTS.md",
+      content: "# Codex Instructions",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      instructionsClient().get({
+        headers: authHeaders(),
+        params: { id: agentId },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      content: "# Codex Instructions",
+      filename: "AGENTS.md",
+    });
+  });
+
+  it("returns empty string instructions content when uploaded file is empty", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const { agentId, name } = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        withComposeVersion: true,
+      },
+      context.signal,
+    );
+    const s3Key = `orgs/${fixture.orgId}/agent-instructions@${name}/v1`;
+    await store.set(
+      seedInstructionsStorage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentName: name,
+        s3Key,
+      },
+      context.signal,
+    );
+    mockInstructionsContent(context, {
+      s3Key,
+      filename: "CLAUDE.md",
+      content: "",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      instructionsClient().get({
+        headers: authHeaders(),
+        params: { id: agentId },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      content: "",
+      filename: "CLAUDE.md",
+    });
+  });
+
+  it("returns derived filename when manifest lacks the instruction file", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const { agentId, name } = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        withComposeVersion: true,
+      },
+      context.signal,
+    );
+    const s3Key = `orgs/${fixture.orgId}/agent-instructions@${name}/v1`;
+    await store.set(
+      seedInstructionsStorage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentName: name,
+        s3Key,
+      },
+      context.signal,
+    );
+    mockInstructionsContent(context, {
+      s3Key,
+      filename: "README.md",
+      content: "# Not Instructions",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      instructionsClient().get({
+        headers: authHeaders(),
+        params: { id: agentId },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      content: null,
+      filename: "CLAUDE.md",
+    });
+  });
+
+  it("strips legacy metadata from instructions content", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const { agentId, name } = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        withComposeVersion: true,
+      },
+      context.signal,
+    );
+    const s3Key = `orgs/${fixture.orgId}/agent-instructions@${name}/v1`;
+    await store.set(
+      seedInstructionsStorage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentName: name,
+        s3Key,
+      },
+      context.signal,
+    );
+    mockInstructionsContent(context, {
+      s3Key,
+      filename: "CLAUDE.md",
+      content: "[AGENT_PROFILE]\nname: legacy\n[/AGENT_PROFILE]\n# Visible",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      instructionsClient().get({
+        headers: authHeaders(),
+        params: { id: agentId },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      content: "# Visible",
+      filename: "CLAUDE.md",
+    });
   });
 });

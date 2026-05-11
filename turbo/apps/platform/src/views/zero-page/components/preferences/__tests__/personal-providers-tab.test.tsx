@@ -113,7 +113,7 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          /Manage personal credentials used when workspace model routes/,
+          /Personal Claude Code and ChatGPT credentials, used only in your own runs/,
         ),
       ).toBeInTheDocument();
     });
@@ -134,7 +134,7 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          /Manage personal credentials used when workspace model routes/,
+          /Personal Claude Code and ChatGPT credentials, used only in your own runs/,
         ),
       ).toBeInTheDocument();
     });

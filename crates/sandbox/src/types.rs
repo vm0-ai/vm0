@@ -1,80 +1,5 @@
 use std::time::Duration;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum BoundedExecStream {
-    Stdout,
-    Stderr,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum BoundedExecTermination {
-    Exited { exit_code: i32 },
-    TimedOut,
-    Cancelled,
-    StartFailed,
-    WaitFailed,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BoundedExecOutputEvent {
-    pub stream: BoundedExecStream,
-    pub sequence: u32,
-    pub chunk: Vec<u8>,
-    pub truncated: bool,
-}
-
-pub struct BoundedExecStreamPolicy {
-    pub event_tx: tokio::sync::mpsc::UnboundedSender<BoundedExecOutputEvent>,
-    pub limit_bytes: u32,
-    pub chunk_limit_bytes: u32,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum BoundedExecCapturePolicy {
-    Discard,
-    Capture { limit_bytes: u32 },
-}
-
-pub struct BoundedExecOutputRequest {
-    pub capture: BoundedExecCapturePolicy,
-    pub stream: Option<BoundedExecStreamPolicy>,
-}
-
-pub struct BoundedExecRequest<'a> {
-    pub cmd: &'a str,
-    pub timeout: Duration,
-    pub env: &'a [(&'a str, &'a str)],
-    pub sudo: bool,
-    pub stdin: Option<&'a [u8]>,
-    pub stdout: BoundedExecOutputRequest,
-    pub stderr: BoundedExecOutputRequest,
-}
-
-impl BoundedExecRequest<'_> {
-    /// Return the timeout as whole milliseconds, saturating at `u32::MAX`.
-    pub fn timeout_ms(&self) -> u32 {
-        u32::try_from(self.timeout.as_millis()).unwrap_or(u32::MAX)
-    }
-}
-
-pub struct BoundedExecResult {
-    pub termination: BoundedExecTermination,
-    pub duration: Duration,
-    pub stdout: BoundedExecOutput,
-    pub stderr: BoundedExecOutput,
-    pub diagnostic: Option<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum BoundedExecOutput {
-    Discarded,
-    Captured { bytes: Vec<u8>, truncated: bool },
-}
-
-/// Command request shared by legacy `exec` and current `spawn_watch`.
-///
-/// New request/response command execution should use [`BoundedExecRequest`]
-/// through `bounded_exec`; this request type remains shared with `spawn_watch`.
 pub struct ExecRequest<'a> {
     pub cmd: &'a str,
     pub timeout: Duration,
@@ -172,26 +97,6 @@ mod tests {
             timeout: Duration::from_millis(u32::MAX as u64),
             env: &[],
             sudo: false,
-        };
-        assert_eq!(req.timeout_ms(), u32::MAX);
-    }
-
-    #[test]
-    fn bounded_timeout_ms_saturates_at_u32_max() {
-        let req = BoundedExecRequest {
-            cmd: "sleep infinity",
-            timeout: Duration::from_secs(u64::MAX / 1000),
-            env: &[],
-            sudo: false,
-            stdin: None,
-            stdout: BoundedExecOutputRequest {
-                capture: BoundedExecCapturePolicy::Capture { limit_bytes: 0 },
-                stream: None,
-            },
-            stderr: BoundedExecOutputRequest {
-                capture: BoundedExecCapturePolicy::Capture { limit_bytes: 0 },
-                stream: None,
-            },
         };
         assert_eq!(req.timeout_ms(), u32::MAX);
     }

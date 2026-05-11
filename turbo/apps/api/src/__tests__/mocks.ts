@@ -60,9 +60,20 @@ export interface ApiTestMocks {
     };
     readonly customers: {
       readonly retrieve: AsyncMock;
+      readonly create: AsyncMock;
     };
     readonly subscriptions: {
       readonly retrieve: AsyncMock;
+    };
+    readonly checkout: {
+      readonly sessions: {
+        readonly create: AsyncMock;
+      };
+    };
+    readonly billingPortal: {
+      readonly sessions: {
+        readonly create: AsyncMock;
+      };
     };
   };
   readonly telegram: {
@@ -127,9 +138,20 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
     customers: {
       retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     subscriptions: {
       retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
+    checkout: {
+      sessions: {
+        create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      },
+    },
+    billingPortal: {
+      sessions: {
+        create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      },
     },
   };
 
@@ -277,9 +299,20 @@ vi.mock("stripe", () => {
         },
         customers: {
           retrieve: apiTestMocks.stripe.customers.retrieve,
+          create: apiTestMocks.stripe.customers.create,
         },
         subscriptions: {
           retrieve: apiTestMocks.stripe.subscriptions.retrieve,
+        },
+        checkout: {
+          sessions: {
+            create: apiTestMocks.stripe.checkout.sessions.create,
+          },
+        },
+        billingPortal: {
+          sessions: {
+            create: apiTestMocks.stripe.billingPortal.sessions.create,
+          },
         },
       };
     }),
@@ -400,7 +433,10 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.invoices.pay.mockReset();
   apiTestMocks.stripe.invoiceItems.create.mockReset();
   apiTestMocks.stripe.customers.retrieve.mockReset();
+  apiTestMocks.stripe.customers.create.mockReset();
   apiTestMocks.stripe.subscriptions.retrieve.mockReset();
+  apiTestMocks.stripe.checkout.sessions.create.mockReset();
+  apiTestMocks.stripe.billingPortal.sessions.create.mockReset();
   // Re-install the Stripe client override so getStripeClient() returns
   // the centralized mock surface (the vi.mock("stripe") factory above
   // doesn't compose with `new StripeSDK()` because vi.fn isn't a real

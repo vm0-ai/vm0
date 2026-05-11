@@ -7,6 +7,7 @@ import {
   getSkillStorageName,
 } from "@vm0/core/storage-names";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { orgTierSchema } from "@vm0/api-contracts/contracts/orgs";
 import { resolveFirewallPolicies } from "@vm0/connectors/firewalls";
 import {
@@ -53,7 +54,7 @@ import {
 } from "./zero-run-metadata";
 import { buildAutoMemoryArtifact } from "./memory";
 import { getOrgMetadata, type OrgMetadata } from "./org/org-metadata-service";
-import { isConcurrentRunLimit } from "@vm0/api-services/errors";
+import { forbidden, isConcurrentRunLimit } from "@vm0/api-services/errors";
 import { DISALLOWED_TOOLS, buildAgentPrompt } from "./agent-prompt";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -67,6 +68,7 @@ import { SEED_SKILLS } from "./seed-skills";
 import { logger } from "../shared/logger";
 import { recordChatSpan, type ChatSpanDimensions } from "../infra/metrics";
 import { CHAT_REQUEST_OPS, timed } from "./chat-thread/request-span-ops";
+import { isPrivateAgent } from "./agent-visibility";
 
 const log = logger("service:zero-run");
 
@@ -101,17 +103,11 @@ export interface ZeroAgentForRun {
   permissionPolicies: RawPermissionPolicies | null;
   unknownPermissionPolicies: Record<string, FirewallPolicyValue> | null;
   orgId: string;
+  owner: string;
+  visibility: "public" | "private";
   customSkills: string[];
   modelProviderId: string | null;
   selectedModel: string | null;
-  /**
-   * Per-Epic #11868: when true, runs that resolve through this agent prefer
-   * the caller's personal-tier model providers before falling back to the
-   * org default (gated additionally by the `personalModelProvider` feature
-   * switch). Off by default; honored only when the schedule (if any) does
-   * not override it.
-   */
-  preferPersonalProvider: boolean;
 }
 
 type OrgAdmissionMetadata = Pick<OrgMetadata, "orgId" | "tier"> & {
@@ -136,10 +132,11 @@ export async function fetchZeroAgentForRun(
       permissionPolicies: zeroAgents.permissionPolicies,
       unknownPermissionPolicies: zeroAgents.unknownPermissionPolicies,
       orgId: zeroAgents.orgId,
+      owner: zeroAgents.owner,
+      visibility: zeroAgents.visibility,
       customSkills: zeroAgents.customSkills,
       modelProviderId: zeroAgents.modelProviderId,
       selectedModel: zeroAgents.selectedModel,
-      preferPersonalProvider: zeroAgents.preferPersonalProvider,
     })
     .from(zeroAgents)
     .where(eq(zeroAgents.id, agentId))
@@ -173,15 +170,6 @@ export interface CreateZeroRunParams {
   modelProviderCredentialScope?: string;
   /** Per-agent or per-schedule selected model override. */
   selectedModelOverride?: string;
-  /**
-   * Personal-tier preference (Epic #11868). When defined, overrides the
-   * agent's stored `preferPersonalProvider` — schedule-driven runs pass
-   * the schedule's flag here so schedule overrides agent (mirrors the
-   * existing modelProviderId/selectedModel override semantics). Honored
-   * only when the `personalModelProvider` feature switch is on for the
-   * caller; otherwise treated as false.
-   */
-  preferPersonalProvider?: boolean;
   callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
   scheduleId?: string;
   triggerAgentId?: string;
@@ -224,6 +212,13 @@ export interface CreateZeroRunParams {
    * email, github) have no session claims to project.
    */
   userProfile?: { email: string; name: string | null };
+  /**
+   * Model-first only: honor this request's selectedModelOverride as an
+   * explicit user choice. Other stored agent/schedule overrides are ignored
+   * under model-first so routing falls back to the user's model preference, then the
+   * workspace default policy.
+   */
+  explicitModelFirstModelSelection?: boolean;
 }
 
 /**
@@ -306,23 +301,34 @@ function resolveEffectiveModel(
     | "modelProviderId"
     | "modelProviderCredentialScope"
     | "selectedModelOverride"
-    | "preferPersonalProvider"
+    | "explicitModelFirstModelSelection"
   >,
   row?: ZeroAgentForRun | null,
+  options?: { modelFirstEnabled?: boolean },
 ): {
   modelProviderId?: string;
   modelProviderCredentialScope?: string;
   selectedModelOverride?: string;
-  preferPersonalProvider: boolean;
 } {
+  if (options?.modelFirstEnabled) {
+    return params.explicitModelFirstModelSelection
+      ? {
+          modelProviderId: params.modelProviderId ?? undefined,
+          modelProviderCredentialScope: params.modelProviderCredentialScope,
+          selectedModelOverride: params.selectedModelOverride ?? undefined,
+        }
+      : {
+          modelProviderCredentialScope: undefined,
+          selectedModelOverride: undefined,
+        };
+  }
+
   return {
     modelProviderId:
       params.modelProviderId ?? row?.modelProviderId ?? undefined,
     modelProviderCredentialScope: params.modelProviderCredentialScope,
     selectedModelOverride:
       params.selectedModelOverride ?? row?.selectedModel ?? undefined,
-    preferPersonalProvider:
-      params.preferPersonalProvider ?? row?.preferPersonalProvider ?? false,
   };
 }
 
@@ -346,6 +352,7 @@ function buildZeroRunMetadata(
 interface InsertRunWithAdvisoryLockParams {
   resolved: Awaited<ReturnType<typeof resolveStartRunCompose>>;
   runParams: CreateRunParams;
+  runFramework: SupportedFramework;
   orgTier: ReturnType<typeof orgTierSchema.parse>;
   composeId: string;
   params: CreateZeroRunParams;
@@ -370,6 +377,7 @@ async function insertRunWithAdvisoryLock(
   const {
     resolved,
     runParams,
+    runFramework,
     orgTier,
     composeId,
     params,
@@ -406,7 +414,7 @@ async function insertRunWithAdvisoryLock(
           additionalVolumes: runParams.additionalVolumes,
           resumedFromCheckpointId: runParams.resumedFromCheckpointId,
           sessionId: runParams.sessionId,
-          artifacts: [buildAutoMemoryArtifact()],
+          artifacts: [buildAutoMemoryArtifact(runFramework)],
         });
       });
       emit(CHAT_REQUEST_OPS.create_run_insert_run_record, insertT.ms);
@@ -423,6 +431,7 @@ async function insertRunWithAdvisoryLock(
     if (isConcurrentRunLimit(error)) {
       let persistDurationMs: number | undefined;
       const queueResult = await enqueueRun(runParams, {
+        runtimeFramework: runFramework,
         zeroRunMetadata,
         onZeroRunMetadataPersisted: (durationMs) => {
           persistDurationMs = durationMs;
@@ -524,6 +533,10 @@ async function createZeroRunRecord(
   const row = agentTimed.result;
   const resolved = composeTimed.result;
   const cachedUser = cachedUserTimed.result;
+
+  if (row && isPrivateAgent(row) && row.owner !== params.userId) {
+    throw forbidden("Only the private agent owner can run this agent");
+  }
 
   // user_info_source is determined purely by the caller's input — stamp it
   // before emitting Round 1 spans so the `cached_user` span itself carries
@@ -672,7 +685,17 @@ async function createZeroRunRecord(
     userInfo,
     params.appendSystemPrompt,
   );
-  const effectiveModel = resolveEffectiveModel(params, row);
+  const modelFirstEnabled = isFeatureEnabled(
+    FeatureSwitchKey.ModelFirstModelProvider,
+    {
+      orgId: resolved.orgId,
+      userId: params.userId,
+      overrides: featureOverrides,
+    },
+  );
+  const effectiveModel = resolveEffectiveModel(params, row, {
+    modelFirstEnabled,
+  });
 
   // ── Round 3: Pre-flight checks (need compose content) ───────────────
   authorizeCompose(params.userId, resolved.orgId, {
@@ -693,7 +716,6 @@ async function createZeroRunRecord(
     modelProviderCredentialScope: effectiveModel.modelProviderCredentialScope,
     selectedModelOverride: effectiveModel.selectedModelOverride,
     composeFramework,
-    preferPersonalProvider: effectiveModel.preferPersonalProvider,
   });
   const runFramework = resolveRuntimeFramework({
     providerFramework: admissionContext.providerFramework,
@@ -722,7 +744,6 @@ async function createZeroRunRecord(
       params.userId,
       params.modelProvider,
       resolved.composeContent,
-      effectiveModel.preferPersonalProvider,
       effectiveModel.selectedModelOverride,
       effectiveModel.modelProviderId,
       effectiveModel.modelProviderCredentialScope,
@@ -790,6 +811,7 @@ async function createZeroRunRecord(
   const lockResult = await insertRunWithAdvisoryLock({
     resolved,
     runParams,
+    runFramework,
     orgTier,
     composeId: resolved.composeId,
     params,

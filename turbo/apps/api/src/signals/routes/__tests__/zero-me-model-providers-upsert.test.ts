@@ -49,9 +49,7 @@ async function setPersonalSwitches(
 
 async function enableAllPersonalSwitches(orgId: string, userId: string) {
   await setPersonalSwitches(orgId, userId, {
-    [FeatureSwitchKey.PersonalModelProvider]: true,
     [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    [FeatureSwitchKey.CodexBeta]: true,
     [FeatureSwitchKey.CodexOauthProvider]: true,
   });
 }
@@ -144,7 +142,7 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     expect(response.body).toMatchObject({ error: { code: "UNAUTHORIZED" } });
   });
 
-  it("returns 404 when both PersonalModelProvider and ModelFirstModelProvider are off", async () => {
+  it("returns 404 when ModelFirstModelProvider is off", async () => {
     const fixture = uniqueOrgUser("zmmp-upsert-feature-off");
     await track(Promise.resolve(fixture));
     mocks.clerk.session(fixture.userId, fixture.orgId);
@@ -154,7 +152,7 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     );
     const response = await accept(
       client.upsert({
-        body: { type: "anthropic-api-key", secret: "sk-ant-test" },
+        body: { type: "claude-code-oauth-token", secret: "sk-ant-test" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [404],
@@ -175,14 +173,14 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     );
     const response = await accept(
       client.upsert({
-        body: { type: "anthropic-api-key", secret: "sk-ant-test" },
+        body: { type: "claude-code-oauth-token", secret: "sk-ant-test" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [201],
     );
     expect(response.body).toMatchObject({
       provider: {
-        type: "anthropic-api-key",
+        type: "claude-code-oauth-token",
         framework: "claude-code",
         isDefault: true,
       },
@@ -198,7 +196,7 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
         and(
           eq(secrets.orgId, fixture.orgId),
           eq(secrets.userId, fixture.userId),
-          eq(secrets.name, "ANTHROPIC_API_KEY"),
+          eq(secrets.name, "CLAUDE_CODE_OAUTH_TOKEN"),
         ),
       );
     expect(decryptSecretValue(row!.encryptedValue)).toBe("sk-ant-test");
@@ -215,56 +213,19 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     );
     await accept(
       client.upsert({
-        body: { type: "anthropic-api-key", secret: "first" },
+        body: { type: "claude-code-oauth-token", secret: "first" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [201],
     );
     const response = await accept(
       client.upsert({
-        body: { type: "anthropic-api-key", secret: "second" },
+        body: { type: "claude-code-oauth-token", secret: "second" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
     expect(response.body).toMatchObject({ created: false });
-  });
-
-  it("creates a multi-auth personal provider (aws-bedrock access-keys)", async () => {
-    const fixture = uniqueOrgUser("zmmp-multi-create");
-    await track(Promise.resolve(fixture));
-    await enableAllPersonalSwitches(fixture.orgId, fixture.userId);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
-    const response = await accept(
-      client.upsert({
-        body: {
-          type: "aws-bedrock",
-          authMethod: "access-keys",
-          secrets: {
-            AWS_ACCESS_KEY_ID: "akid",
-            AWS_SECRET_ACCESS_KEY: "secret",
-            AWS_REGION: "us-east-1",
-          },
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [201],
-    );
-    expect(response.body).toMatchObject({
-      provider: {
-        type: "aws-bedrock",
-        authMethod: "access-keys",
-      },
-      created: true,
-    });
-    expect(
-      (response.body as { provider: { secretNames: string[] } }).provider
-        .secretNames,
-    ).toContain("AWS_ACCESS_KEY_ID");
   });
 
   it("returns 400 when single-secret provider is missing the secret", async () => {
@@ -278,7 +239,7 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     );
     const response = await accept(
       client.upsert({
-        body: { type: "anthropic-api-key" },
+        body: { type: "claude-code-oauth-token" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [400],
@@ -286,7 +247,7 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     expect(response.body).toMatchObject({ error: { code: "BAD_REQUEST" } });
   });
 
-  it("returns 400 when posting vm0 with a secret (service-layer rejects)", async () => {
+  it("returns 404 when posting vm0 with a secret", async () => {
     const fixture = uniqueOrgUser("zmmp-vm0-with-secret");
     await track(Promise.resolve(fixture));
     await enableAllPersonalSwitches(fixture.orgId, fixture.userId);
@@ -300,12 +261,12 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
         body: { type: "vm0", secret: "any-value" },
         headers: { authorization: "Bearer clerk-session" },
       }),
-      [400],
+      [404],
     );
-    expect(response.body).toMatchObject({ error: { code: "BAD_REQUEST" } });
+    expect(response.body).toMatchObject({ error: { code: "NOT_FOUND" } });
   });
 
-  it("returns 400 when posting vm0 with no secret (route-level missing-secret check)", async () => {
+  it("returns 404 when posting vm0 with no secret", async () => {
     const fixture = uniqueOrgUser("zmmp-vm0-no-secret");
     await track(Promise.resolve(fixture));
     await enableAllPersonalSwitches(fixture.orgId, fixture.userId);
@@ -319,43 +280,15 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
         body: { type: "vm0" },
         headers: { authorization: "Bearer clerk-session" },
       }),
-      [400],
+      [404],
     );
-    expect(response.body).toMatchObject({ error: { code: "BAD_REQUEST" } });
+    expect(response.body).toMatchObject({ error: { code: "NOT_FOUND" } });
   });
 
-  it("creates openai-api-key when CodexBeta is enabled", async () => {
-    const fixture = uniqueOrgUser("zmmp-openai-codex-on");
+  it("returns 404 for openai-api-key", async () => {
+    const fixture = uniqueOrgUser("zmmp-openai-rejected");
     await track(Promise.resolve(fixture));
     await enableAllPersonalSwitches(fixture.orgId, fixture.userId);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
-    const response = await accept(
-      client.upsert({
-        body: {
-          type: "openai-api-key",
-          secret: "sk-proj-test",
-          selectedModel: "gpt-5.5",
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [201],
-    );
-    expect(response.body).toMatchObject({
-      provider: { type: "openai-api-key", framework: "codex" },
-    });
-  });
-
-  it("returns 404 when CodexBeta is disabled (PersonalModelProvider on)", async () => {
-    const fixture = uniqueOrgUser("zmmp-openai-codex-off");
-    await track(Promise.resolve(fixture));
-    await setPersonalSwitches(fixture.orgId, fixture.userId, {
-      [FeatureSwitchKey.PersonalModelProvider]: true,
-      [FeatureSwitchKey.CodexBeta]: false,
-    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(
@@ -377,30 +310,6 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
         code: "NOT_FOUND",
         message: 'Provider "openai-api-key" not found',
       },
-    });
-  });
-
-  it("does not gate non-codex types when CodexBeta is disabled", async () => {
-    const fixture = uniqueOrgUser("zmmp-non-codex-codex-off");
-    await track(Promise.resolve(fixture));
-    await setPersonalSwitches(fixture.orgId, fixture.userId, {
-      [FeatureSwitchKey.PersonalModelProvider]: true,
-      [FeatureSwitchKey.CodexBeta]: false,
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
-    const response = await accept(
-      client.upsert({
-        body: { type: "anthropic-api-key", secret: "sk-ant-test" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [201],
-    );
-    expect(response.body).toMatchObject({
-      provider: { type: "anthropic-api-key" },
     });
   });
 
@@ -571,8 +480,7 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     const fixture = uniqueOrgUser("zmmp-codex-gate-off");
     await track(Promise.resolve(fixture));
     await setPersonalSwitches(fixture.orgId, fixture.userId, {
-      [FeatureSwitchKey.PersonalModelProvider]: true,
-      [FeatureSwitchKey.CodexBeta]: true,
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: false,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);

@@ -14,7 +14,10 @@ import {
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { reloadEnv } from "../../../../../../src/env";
 import type { MockInstance } from "vitest";
-import type { ingestToAxiom } from "../../../../../../src/lib/shared/axiom/client";
+import type {
+  flushAxiom,
+  ingestToAxiom,
+} from "../../../../../../src/lib/shared/axiom/client";
 
 const context = testContext();
 
@@ -30,6 +33,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
   let user: UserContext;
   let testComposeId: string;
   let axiomIngestMock: MockInstance<typeof ingestToAxiom>;
+  let axiomFlushMock: MockInstance<typeof flushAxiom>;
 
   beforeEach(async () => {
     // Stub the telemetry token so ingestSandboxOpLog runs end-to-end into
@@ -40,6 +44,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
     const mocks = context.setupMocks();
     user = await context.setupUser();
     axiomIngestMock = mocks.axiom.ingestToAxiom;
+    axiomFlushMock = mocks.axiom.flushAxiom;
 
     // setupMocks() installs an arrow-function impl on the global Axiom
     // constructor, which can't be `new`'d. Override it here with a regular
@@ -397,6 +402,10 @@ describe("POST /api/webhooks/agent/telemetry", () => {
           }),
         ]),
       );
+      expect(axiomFlushMock).toHaveBeenCalledWith({
+        client: "telemetry",
+        throwOnError: true,
+      });
     });
 
     it("should send systemLog and metrics to Axiom", async () => {

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { gzipSync } from "node:zlib";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { POST, GET as listAgents } from "../route";
 import { GET, PUT, PATCH, DELETE } from "../[id]/route";
 import {
@@ -26,6 +27,7 @@ import {
   setDefaultAgentByComposeId,
   clearOrgMembersCacheEntry,
   insertOrgMembersCacheEntry,
+  seedUserFeatureSwitches,
   createTestTarFile,
   createTestZeroSkill,
 } from "../../../../../src/__tests__/api-test-helpers";
@@ -118,6 +120,12 @@ function deleteAgent(name: string, token: string) {
       headers: { Authorization: `Bearer ${token}` },
     }),
   );
+}
+
+async function enablePrivateAgentsFor(userContext: UserContext) {
+  await seedUserFeatureSwitches(userContext.orgId, userContext.userId, {
+    [FeatureSwitchKey.PrivateAgents]: true,
+  });
 }
 
 function getAgentInstructions(name: string, token: string) {
@@ -283,6 +291,43 @@ describe("Zero Agents API", () => {
       expect(data.error.message).toContain("maximum number of agents");
     });
 
+    it("should reject private agent creation when the feature is disabled", async () => {
+      const response = await postAgent(
+        { displayName: "Private Agent", visibility: "private" },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.code).toBe("FORBIDDEN");
+    });
+
+    it("should exclude private agents from the public agent limit", async () => {
+      await enablePrivateAgentsFor(user);
+
+      for (let i = 0; i < 7; i++) {
+        const response = await postAgent(
+          { displayName: `Public ${i + 1}` },
+          testCliToken,
+        );
+        expect(response.status).toBe(201);
+      }
+
+      const privateResponse = await postAgent(
+        { displayName: "Private", visibility: "private" },
+        testCliToken,
+      );
+      expect(privateResponse.status).toBe(201);
+      const privateAgent = await privateResponse.json();
+      expect(privateAgent.visibility).toBe("private");
+
+      const publicResponse = await postAgent(
+        { displayName: "Public Over Limit" },
+        testCliToken,
+      );
+      expect(publicResponse.status).toBe(409);
+    });
+
     it("should allow creation after deleting an agent below the limit", async () => {
       // Create 7 agents
       const agents = [];
@@ -348,6 +393,44 @@ describe("Zero Agents API", () => {
       expect(response.status).toBe(404);
       const data = await response.json();
       expect(data.error.code).toBe("NOT_FOUND");
+    });
+
+    it("should only return private agents to their owner", async () => {
+      await enablePrivateAgentsFor(user);
+      const created = await (
+        await postAgent(
+          { displayName: "Owner Only", visibility: "private" },
+          testCliToken,
+        )
+      ).json();
+
+      const ownerGet = await getAgent(created.agentId, testCliToken);
+      expect(ownerGet.status).toBe(200);
+      expect((await ownerGet.json()).visibility).toBe("private");
+
+      const otherUser = await context.setupUser({ prefix: "private-viewer" });
+      await insertOrgMembersCacheEntry({
+        orgId: user.orgId,
+        userId: otherUser.userId,
+        cachedAt: new Date(),
+      });
+      const otherToken = await createTestCliToken(
+        otherUser.userId,
+        undefined,
+        user.orgId,
+      );
+
+      const otherGet = await getAgent(created.agentId, otherToken);
+      expect(otherGet.status).toBe(404);
+
+      const listResponse = await listAgentsReq(otherToken);
+      expect(listResponse.status).toBe(200);
+      const list = await listResponse.json();
+      expect(
+        list.some((agent: { agentId: string }) => {
+          return agent.agentId === created.agentId;
+        }),
+      ).toBe(false);
     });
   });
 
@@ -900,6 +983,31 @@ describe("Zero Agents API", () => {
       expect(response.status).toBe(404);
       const data = await response.json();
       expect(data.error.code).toBe("NOT_FOUND");
+    });
+
+    it("should enforce the public limit when switching private to public", async () => {
+      await enablePrivateAgentsFor(user);
+      const privateAgent = await (
+        await postAgent(
+          { displayName: "Private", visibility: "private" },
+          testCliToken,
+        )
+      ).json();
+
+      for (let i = 0; i < 7; i++) {
+        const response = await postAgent(
+          { displayName: `Public ${i + 1}` },
+          testCliToken,
+        );
+        expect(response.status).toBe(201);
+      }
+
+      const response = await patchAgent(
+        privateAgent.agentId,
+        { visibility: "public" },
+        testCliToken,
+      );
+      expect(response.status).toBe(409);
     });
 
     it("should return 401 without auth", async () => {
@@ -1579,6 +1687,78 @@ describe("Zero Agents API", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.displayName).toBe("Admin B Updated");
+    });
+
+    it("should reject admin visibility changes to public agents owned by another user", async () => {
+      const created = await (
+        await postAgent({ displayName: "Owner Public" }, testCliToken)
+      ).json();
+
+      const adminUser = await context.setupUser({
+        prefix: "visibility-admin",
+      });
+      await insertOrgMembersCacheEntry({
+        orgId: user.orgId,
+        userId: adminUser.userId,
+        role: "admin",
+        cachedAt: new Date(),
+      });
+      mockClerk({
+        userId: adminUser.userId,
+        orgId: user.orgId,
+        orgRole: "org:admin",
+      });
+      const adminToken = await createTestCliToken(
+        adminUser.userId,
+        undefined,
+        user.orgId,
+      );
+
+      const response = await patchAgent(
+        created.agentId,
+        { visibility: "private" },
+        adminToken,
+      );
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.message).toContain("agent owner");
+    });
+
+    it("should reject admin updates to private agents owned by another user", async () => {
+      await enablePrivateAgentsFor(user);
+      const created = await (
+        await postAgent(
+          { displayName: "Owner Private", visibility: "private" },
+          testCliToken,
+        )
+      ).json();
+
+      const adminUser = await context.setupUser({ prefix: "private-admin" });
+      await insertOrgMembersCacheEntry({
+        orgId: user.orgId,
+        userId: adminUser.userId,
+        role: "admin",
+        cachedAt: new Date(),
+      });
+      mockClerk({
+        userId: adminUser.userId,
+        orgId: user.orgId,
+        orgRole: "org:admin",
+      });
+      const adminToken = await createTestCliToken(
+        adminUser.userId,
+        undefined,
+        user.orgId,
+      );
+
+      const response = await patchAgent(
+        created.agentId,
+        { displayName: "Admin Updated Private" },
+        adminToken,
+      );
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.message).toContain("private agent owner");
     });
   });
 

@@ -11,6 +11,7 @@ import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-au
 import { logger } from "../../../../../src/lib/shared/logger";
 import {
   ingestToAxiom,
+  flushAxiom,
   getDatasetName,
   DATASETS,
 } from "../../../../../src/lib/shared/axiom";
@@ -119,6 +120,7 @@ const router = tsr.router(webhookTelemetryContract, {
         },
       );
       ingestToAxiom(axiomDataset, axiomEvents);
+      await flushAxiom({ client: "telemetry", throwOnError: true });
     }
 
     // Record sandbox internal operations as OpenTelemetry metrics (to sandbox-metric-{env} dataset)

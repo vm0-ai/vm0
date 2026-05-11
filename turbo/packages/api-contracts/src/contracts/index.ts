@@ -144,6 +144,14 @@ export {
   type ZeroModelPoliciesMainContract,
 } from "./zero-model-policies";
 export {
+  userModelPreferenceResponseSchema,
+  updateUserModelPreferenceRequestSchema,
+  zeroUserModelPreferenceContract,
+  type UserModelPreferenceResponse,
+  type UpdateUserModelPreferenceRequest,
+  type ZeroUserModelPreferenceContract,
+} from "./zero-user-model-preference";
+export {
   storagesContract,
   storageTypeSchema,
   uploadStorageResponseSchema,
@@ -786,12 +794,8 @@ export {
 export {
   zeroPersonalModelProvidersMainContract,
   zeroPersonalModelProvidersByTypeContract,
-  zeroPersonalModelProvidersDefaultContract,
-  zeroPersonalModelProvidersUpdateModelContract,
   type ZeroPersonalModelProvidersMainContract,
   type ZeroPersonalModelProvidersByTypeContract,
-  type ZeroPersonalModelProvidersDefaultContract,
-  type ZeroPersonalModelProvidersUpdateModelContract,
 } from "./zero-personal-model-providers";
 export {
   zeroUserPreferencesContract,

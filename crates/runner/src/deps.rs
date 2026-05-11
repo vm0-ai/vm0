@@ -1,18 +1,18 @@
 //! Third-party dependency metadata: versions, checksums, and download URLs.
 
-pub const FIRECRACKER_VERSION: &str = "v1.14.4";
+pub const FIRECRACKER_VERSION: &str = "v1.15.1";
 pub const KERNEL_VERSION: &str = "6.1.155";
 pub const MITMPROXY_VERSION: &str = "12.2.1";
 
 // SHA256 checksums for installed artifacts, keyed by arch.
 pub const FIRECRACKER_SHA256_X86_64: &str =
-    "7319bdf6204fede870227497ab1a3342af42c02c6692ca65e7c293ef1f3dad08";
+    "7e8b57e88c459396d4680d83dcdd8c7f72305447cb55b11f4ac98ad70a3f7825";
 pub const FIRECRACKER_SHA256_AARCH64: &str =
-    "ee26e30435be822ec9de225d1255110bf3f5aa296e748d9416df53afa392b665";
+    "e9ce7466c3b0d879d7a9158f4bf710dd5e131bbc5e580e5269fec66d5b5a0f0a";
 pub const KERNEL_SHA256_X86_64: &str =
-    "e41c7048bd2475e7e788153823fcb9166a7e0b78c4c443bd6446d015fa735f53";
+    "e20e46d0c36c55c0d1014eb20576171b3f3d922260d9f792017aeff53af3d4f2";
 pub const KERNEL_SHA256_AARCH64: &str =
-    "61baeae1ac6197be4fc5c71fa78df266acdc33c54570290d2f611c2b42c105be";
+    "e3544b10603acbf3db492cb52e000d22ba202cb4b63b9add027565683e11c591";
 pub const MITMDUMP_SHA256_X86_64: &str =
     "0adfd86a006b593dce745b989f305f14acd94edadf7f998b6985555b44838167";
 pub const MITMDUMP_SHA256_AARCH64: &str =
@@ -22,7 +22,7 @@ pub const MITMDUMP_SHA256_AARCH64: &str =
 /// own (incomplete) certifi CA store; we override it with the host's system store.
 pub const SYSTEM_CA_BUNDLE: &str = "/etc/ssl/certs/ca-certificates.crt";
 
-/// "v1.14.4" → "v1.14"
+/// "v1.15.1" → "v1.15"
 const FIRECRACKER_MINOR: &str = strip_patch(FIRECRACKER_VERSION);
 
 #[allow(clippy::panic, clippy::indexing_slicing)] // compile-time only
@@ -73,7 +73,7 @@ mod tests {
 
     #[test]
     fn strip_patch_version() {
-        assert_eq!(FIRECRACKER_MINOR, "v1.14");
+        assert_eq!(FIRECRACKER_MINOR, "v1.15");
     }
 
     #[test]

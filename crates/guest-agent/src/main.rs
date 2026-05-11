@@ -162,8 +162,8 @@ async fn execute(
         log_error!(LOG_TAG, "Codex setup failed (non-fatal, continuing): {e}");
     }
 
-    // Memory is now mounted directly at the Claude Code auto-memory path via
-    // manifest.artifacts[] — no runtime symlink needed (see #10602).
+    // Memory is mounted directly through manifest.artifacts[] at the
+    // framework-specific memory path — no runtime symlink needed (see #10602).
 
     let init_elapsed = start.elapsed();
     record_sandbox_op("init_total", init_elapsed, true, None);

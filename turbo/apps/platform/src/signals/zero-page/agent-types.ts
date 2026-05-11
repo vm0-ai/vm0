@@ -11,6 +11,7 @@ export interface AgentDetail {
   modelProviderId: string | null;
   selectedModel: string | null;
   preferPersonalProvider: boolean;
+  visibility?: "public" | "private";
 }
 
 export interface AgentInstructions {

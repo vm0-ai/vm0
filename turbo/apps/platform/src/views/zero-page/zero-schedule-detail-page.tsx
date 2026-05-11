@@ -327,7 +327,7 @@ function ScheduleSettingsForm({
 
   const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
   const normalizedInitial = modelFirstEnabled
-    ? { ...initial, modelProviderId: null }
+    ? { ...initial, modelProviderId: null, selectedModel: null }
     : initial;
 
   // Reset form when entry changes (component is keyed by entry.id)
@@ -345,7 +345,7 @@ function ScheduleSettingsForm({
     dayOfWeek: form.dayOfWeek,
     dayOfMonth: form.dayOfMonth,
     modelProviderId: modelFirstEnabled ? null : form.modelProviderId,
-    selectedModel: form.selectedModel,
+    selectedModel: modelFirstEnabled ? null : form.selectedModel,
     preferPersonalProvider: form.preferPersonalProvider,
   };
   const isDirty = savedState ? isSettingsChanged(current, savedState) : false;
@@ -385,7 +385,7 @@ function ScheduleSettingsForm({
       editName: entry.name,
       agentId: form.agentId,
       modelProviderId: modelFirstEnabled ? null : form.modelProviderId,
-      selectedModel: form.selectedModel,
+      selectedModel: modelFirstEnabled ? null : form.selectedModel,
       preferPersonalProvider: form.preferPersonalProvider,
       ...(form.freq === "every_week" ? { dayOfWeek: form.dayOfWeek } : {}),
       ...(form.freq === "every_month" ? { dayOfMonth: form.dayOfMonth } : {}),
@@ -494,7 +494,8 @@ function ScheduleSettingsForm({
           </InlineSettingsRow>
 
           {orgProviders &&
-            (modelFirstEnabled || orgProviders.modelProviders.length > 0) && (
+            !modelFirstEnabled &&
+            orgProviders.modelProviders.length > 0 && (
               <InlineSettingsRow
                 label="Model"
                 description="Override the agent's default model for this schedule."

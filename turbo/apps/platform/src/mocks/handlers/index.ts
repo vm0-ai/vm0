@@ -65,6 +65,10 @@ import {
   resetMockUserPreferences,
 } from "./api-user-preferences.ts";
 import {
+  apiUserModelPreferenceHandlers,
+  resetMockUserModelPreference,
+} from "./api-user-model-preference.ts";
+import {
   apiOnboardingHandlers,
   resetMockOnboardingStatus,
 } from "./api-onboarding.ts";
@@ -103,6 +107,7 @@ export const handlers = [
   ...apiAgentsHandlers,
   ...apiRunsHandlers,
   ...apiUserPreferencesHandlers,
+  ...apiUserModelPreferenceHandlers,
   ...apiOnboardingHandlers,
   ...apiBillingHandlers,
   ...apiIntegrationsSlackConnectHandlers,
@@ -124,6 +129,7 @@ export function resetAllMockHandlers(): void {
   resetMockSlackOrgIntegration();
   resetMockTelegramIntegration();
   resetMockUserPreferences();
+  resetMockUserModelPreference();
   resetMockOrgModelProviders();
   resetMockOrgModelPolicies();
   resetMockPersonalModelProviders();

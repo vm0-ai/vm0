@@ -6,12 +6,13 @@ import {
   modelFirstModelProviderEnabled$,
 } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
+import { userModelPreference$ } from "../external/user-model-preference.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { currentChatAgent$ } from "../agent-chat.ts";
 import { composerModelProviders$ } from "./composer-model-providers.ts";
 import {
   resolveEffectiveAgentDefaultSelection,
-  resolveModelFirstAgentDefaultSelection,
+  resolveModelFirstUserDefaultSelection,
 } from "./model-provider-default.ts";
 
 // ---------------------------------------------------------------------------
@@ -60,6 +61,9 @@ export const chatPageModelSelection$ = computed(
     if (user.kind === "set") {
       return user.value;
     }
+    if (get(modelFirstModelProviderEnabled$)) {
+      return null;
+    }
     // Priority: agent default > workspace default. Seed here (rather than
     // letting the picker fall back to its null-value display) so the model
     // shown next to Send is the exact model the send body will carry. See
@@ -67,10 +71,6 @@ export const chatPageModelSelection$ = computed(
     // `createModelSelection` (create-chat-thread.ts) for the full
     // display/run mismatch reasoning.
     const agent = await get(currentChatAgent$);
-    if (get(modelFirstModelProviderEnabled$)) {
-      const policies = await get(orgModelPolicies$);
-      return resolveModelFirstAgentDefaultSelection({ agent, policies });
-    }
     const composerProviders = await get(composerModelProviders$);
     return resolveEffectiveAgentDefaultSelection({
       agent,
@@ -84,7 +84,11 @@ export const chatPageAgentModelDefault$ = computed(
     const agent = await get(currentChatAgent$);
     if (get(modelFirstModelProviderEnabled$)) {
       const policies = await get(orgModelPolicies$);
-      return resolveModelFirstAgentDefaultSelection({ agent, policies });
+      const userPreference = await get(userModelPreference$);
+      return resolveModelFirstUserDefaultSelection({
+        userPreference,
+        policies,
+      });
     }
     const composerProviders = await get(composerModelProviders$);
     return resolveEffectiveAgentDefaultSelection({
