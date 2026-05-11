@@ -3,18 +3,31 @@ import { zeroConnectorScopeDiffContract } from "@vm0/api-contracts/contracts/zer
 import { getScopeDiff } from "@vm0/connectors/connector-utils";
 import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
 import { getConnector } from "../../../../../../src/lib/zero/connector/connector-service";
+
+function unauthenticatedResponse() {
+  return {
+    status: 401 as const,
+    body: {
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    },
+  };
+}
 
 const router = tsr.router(zeroConnectorScopeDiffContract, {
   getScopeDiff: async ({ params, headers }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization);
-    if (!authCtx) {
-      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
-    }
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "connector:read",
+    });
+    if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthenticatedResponse();
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);

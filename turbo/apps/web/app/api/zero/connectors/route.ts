@@ -10,6 +10,15 @@ import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { listConnectors } from "../../../../src/lib/zero/connector/connector-service";
 import { getConfiguredConnectorTypes } from "../../../../src/lib/zero/connector/provider-registry";
 
+function unauthenticatedResponse() {
+  return {
+    status: 401 as const,
+    body: {
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    },
+  };
+}
+
 const router = tsr.router(zeroConnectorsMainContract, {
   list: async ({ headers }) => {
     initServices();
@@ -18,6 +27,7 @@ const router = tsr.router(zeroConnectorsMainContract, {
       requiredCapability: "connector:read",
     });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthenticatedResponse();
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);

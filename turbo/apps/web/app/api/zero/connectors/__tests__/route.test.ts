@@ -68,6 +68,16 @@ describe("GET /api/zero/connectors", () => {
     expect(response.status).toBe(401);
   });
 
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mockClerk({ userId: uniqueId("zcon-no-org"), orgId: null });
+
+    const response = await GET(createTestRequest(connectorsUrl()));
+
+    expect(response.status).toBe(401);
+    const data = await response.json();
+    expect(data.error.code).toBe("UNAUTHORIZED");
+  });
+
   it("skips oauth rows whose type no longer exists in the contract", async () => {
     const userId = uniqueId("zcon-orphan-oa");
     const { orgId } = await setupOrg(userId);

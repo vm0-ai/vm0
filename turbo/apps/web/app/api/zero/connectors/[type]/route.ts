@@ -13,6 +13,15 @@ import {
 } from "../../../../../src/lib/zero/connector/connector-service";
 import { isNotFound } from "@vm0/api-services/errors";
 
+function unauthenticatedResponse() {
+  return {
+    status: 401 as const,
+    body: {
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    },
+  };
+}
+
 const router = tsr.router(zeroConnectorsByTypeContract, {
   get: async ({ params, headers }) => {
     initServices();
@@ -21,6 +30,7 @@ const router = tsr.router(zeroConnectorsByTypeContract, {
       requiredCapability: "connector:read",
     });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthenticatedResponse();
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);

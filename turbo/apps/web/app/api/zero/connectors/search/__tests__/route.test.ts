@@ -172,4 +172,16 @@ describe("GET /api/zero/connectors/search", () => {
     expect(openai).toBeDefined();
     expect(openai.authMethods).toEqual(["api-token"]);
   });
+
+  it("shows zapier with api-token even when ZapierConnector flag is disabled", async () => {
+    const response = await searchConnectors();
+    expect(response.status).toBe(200);
+    const data = await response.json();
+
+    const zapier = data.connectors.find((c: { id: string }) => {
+      return c.id === "zapier";
+    });
+    expect(zapier).toBeDefined();
+    expect(zapier.authMethods).toContain("api-token");
+  });
 });

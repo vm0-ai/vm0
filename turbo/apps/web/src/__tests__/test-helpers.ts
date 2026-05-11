@@ -182,6 +182,7 @@ interface TestContext {
       userId: string;
       type?: string;
       authMethod?: string;
+      oauthScopes?: readonly string[];
       tokenExpiresAt?: Date | null;
     },
   ): Promise<{ id: string; type: string }>;
@@ -565,6 +566,7 @@ export function testContext(): TestContext {
       userId: string;
       type?: string;
       authMethod?: string;
+      oauthScopes?: readonly string[];
       tokenExpiresAt?: Date | null;
     },
   ): Promise<{ id: string; type: string }> {
@@ -579,6 +581,9 @@ export function testContext(): TestContext {
         orgId,
         type,
         authMethod,
+        oauthScopes: options.oauthScopes
+          ? JSON.stringify([...options.oauthScopes])
+          : undefined,
         tokenExpiresAt: options.tokenExpiresAt ?? undefined,
       })
       .returning();

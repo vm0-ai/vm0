@@ -11,6 +11,7 @@ import {
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
 
 const context = testContext();
 
@@ -227,6 +228,36 @@ describe("GET /api/zero/connectors/computer", () => {
 
     const response = await GET(createTestRequest(computerUrl()));
     expect(response.status).toBe(401);
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mockClerk({ userId: uniqueId("zcomp-no-org"), orgId: null });
+
+    const response = await GET(createTestRequest(computerUrl()));
+
+    expect(response.status).toBe(401);
+    const data = await response.json();
+    expect(data.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns 403 for a sandbox token without connector:read capability", async () => {
+    const token = await generateSandboxToken(
+      uniqueId("zcomp-sandbox-user"),
+      "run-1",
+      "org-test",
+    );
+
+    const response = await GET(
+      createTestRequest(computerUrl(), {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    const data = await response.json();
+    expect(data.error.message).toBe(
+      "Missing required capability: connector:read",
+    );
   });
 
   it("should return 404 if connector not found", async () => {

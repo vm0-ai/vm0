@@ -14,6 +14,15 @@ import {
 } from "../../../../../src/lib/zero/computer-connector/computer-connector-service";
 import { isBadRequest, isConflict, isNotFound } from "@vm0/api-services/errors";
 
+function unauthenticatedResponse() {
+  return {
+    status: 401 as const,
+    body: {
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    },
+  };
+}
+
 const router = tsr.router(zeroComputerConnectorContract, {
   create: async ({ headers }) => {
     initServices();
@@ -40,8 +49,11 @@ const router = tsr.router(zeroComputerConnectorContract, {
   get: async ({ headers }) => {
     initServices();
 
-    const authCtx = await requireAuth(headers.authorization);
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "connector:read",
+    });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthenticatedResponse();
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);

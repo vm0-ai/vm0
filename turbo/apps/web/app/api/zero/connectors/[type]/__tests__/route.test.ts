@@ -60,6 +60,16 @@ describe("GET /api/zero/connectors/:type", () => {
     expect(response.status).toBe(401);
   });
 
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mockClerk({ userId: uniqueId("zcget-no-org"), orgId: null });
+
+    const response = await GET(createTestRequest(connectorUrl("github")));
+
+    expect(response.status).toBe(401);
+    const data = await response.json();
+    expect(data.error.code).toBe("UNAUTHORIZED");
+  });
+
   it("should allow access with ZERO_TOKEN (connector:read capability)", async () => {
     const user = await context.setupUser();
 
