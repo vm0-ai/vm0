@@ -11,7 +11,7 @@ import { and, desc, eq, isNull, or } from "drizzle-orm";
 
 import { db$ } from "../external/db";
 
-function agentResponse(row: {
+export function agentResponse(row: {
   readonly agentId: string;
   readonly owner: string;
   readonly composeUserId?: string;
