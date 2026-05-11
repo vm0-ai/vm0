@@ -71,6 +71,10 @@ pub enum BoundedExecOutput {
     Captured { bytes: Vec<u8>, truncated: bool },
 }
 
+/// Command request shared by legacy `exec` and current `spawn_watch`.
+///
+/// New request/response command execution should use [`BoundedExecRequest`]
+/// through `bounded_exec`; this request type remains shared with `spawn_watch`.
 pub struct ExecRequest<'a> {
     pub cmd: &'a str,
     pub timeout: Duration,

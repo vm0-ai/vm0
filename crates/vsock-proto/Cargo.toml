@@ -1,6 +1,6 @@
 [package]
 name = "vsock-proto"
-version = "0.12.0"
+version = "0.13.0"
 edition.workspace = true
 description = "Vsock binary protocol for host-guest communication"
 

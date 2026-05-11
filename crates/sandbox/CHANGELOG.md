@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.14.1](https://github.com/vm0-ai/vm0/compare/sandbox-v0.14.0...sandbox-v0.14.1) (2026-05-10)
+
+
+### Documentation
+
+* document bounded exec preference ([#12599](https://github.com/vm0-ai/vm0/issues/12599)) ([70aa4eb](https://github.com/vm0-ai/vm0/commit/70aa4eb5444809dc49132cc003278eb2bd504a39))
+
+
+### Refactoring
+
+* **runner:** stream exec over bounded exec ([#12518](https://github.com/vm0-ai/vm0/issues/12518)) ([ee551da](https://github.com/vm0-ai/vm0/commit/ee551dabe2c464564a576580a9d8811453ffd08d))
+
 ## [0.14.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.13.0...sandbox-v0.14.0) (2026-05-09)
 
 

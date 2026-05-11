@@ -25,8 +25,11 @@ import {
   zeroChatThreadMessagesPage,
 } from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route";
+import { zeroChatThreadsArtifactsSyncRoutes } from "./zero-chat-threads-artifacts-sync";
 import { zeroChatThreadCreateRoutes } from "./zero-chat-threads-create";
+import { zeroChatThreadDeleteRoutes } from "./zero-chat-threads-delete";
 import { zeroChatThreadMarkReadRoutes } from "./zero-chat-threads-mark-read";
+import { zeroChatThreadPatchRoutes } from "./zero-chat-threads-patch";
 import { zeroChatThreadPinRoutes } from "./zero-chat-threads-pin";
 import { zeroChatThreadRenameRoutes } from "./zero-chat-threads-rename";
 import { zeroChatThreadUnpinRoutes } from "./zero-chat-threads-unpin";
@@ -191,8 +194,11 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
       searchChatInner$,
     ),
   },
+  ...zeroChatThreadsArtifactsSyncRoutes,
   ...zeroChatThreadCreateRoutes,
+  ...zeroChatThreadDeleteRoutes,
   ...zeroChatThreadMarkReadRoutes,
+  ...zeroChatThreadPatchRoutes,
   ...zeroChatThreadPinRoutes,
   ...zeroChatThreadRenameRoutes,
   ...zeroChatThreadUnpinRoutes,

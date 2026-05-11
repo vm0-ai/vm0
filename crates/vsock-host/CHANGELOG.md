@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.12.0](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.11.1...vsock-host-v0.12.0) (2026-05-10)
+
+
+### Features
+
+* add host-initiated vsock control handshake ([#12543](https://github.com/vm0-ai/vm0/issues/12543)) ([de17089](https://github.com/vm0-ai/vm0/commit/de17089191b001b3ed6f33487b62a3360bf81174))
+
+
+### Documentation
+
+* document bounded exec preference ([#12599](https://github.com/vm0-ai/vm0/issues/12599)) ([70aa4eb](https://github.com/vm0-ai/vm0/commit/70aa4eb5444809dc49132cc003278eb2bd504a39))
+
+
+### Refactoring
+
+* **runner:** stream exec over bounded exec ([#12518](https://github.com/vm0-ai/vm0/issues/12518)) ([ee551da](https://github.com/vm0-ai/vm0/commit/ee551dabe2c464564a576580a9d8811453ffd08d))
+
 ## [0.11.1](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.11.0...vsock-host-v0.11.1) (2026-05-09)
 
 

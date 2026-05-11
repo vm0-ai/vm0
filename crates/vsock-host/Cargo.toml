@@ -1,6 +1,6 @@
 [package]
 name = "vsock-host"
-version = "0.11.1"
+version = "0.12.0"
 edition.workspace = true
 description = "Vsock host client for Firecracker VM communication"
 
@@ -8,6 +8,9 @@ description = "Vsock host client for Firecracker VM communication"
 nix = { workspace = true, features = ["net"] }
 tokio = { workspace = true, features = ["net", "io-util", "time", "rt", "macros", "sync"] }
 vsock-proto.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

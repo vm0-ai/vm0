@@ -99,17 +99,16 @@ pub(crate) fn wait_with_kill_timeout_or_cancelled(
     wait_with_kill_timeout_or_cancelled_by(child, timeout_ms, || cancel.load(Ordering::Acquire))
 }
 
-/// Like [`wait_with_kill_timeout_or_cancelled`], but observes either cancel
-/// flag. Used by bounded exec, which has both connection-level cancellation
-/// and local cancellation from stream write failures.
-pub(crate) fn wait_with_kill_timeout_or_cancelled_either(
+/// Like [`wait_with_kill_timeout_or_cancelled`], but observes any cancel flag.
+/// Used by bounded exec, which has connection-level, request-level, and local
+/// cancellation from stream write failures.
+pub(crate) fn wait_with_kill_timeout_or_cancelled_any(
     child: Child,
     timeout_ms: u32,
-    first_cancel: &AtomicBool,
-    second_cancel: &AtomicBool,
+    cancels: &[&AtomicBool],
 ) -> WaitOutcome {
     wait_with_kill_timeout_or_cancelled_by(child, timeout_ms, || {
-        first_cancel.load(Ordering::Acquire) || second_cancel.load(Ordering::Acquire)
+        cancels.iter().any(|cancel| cancel.load(Ordering::Acquire))
     })
 }
 

@@ -69,6 +69,34 @@ export const zeroComposesByIdContract = c.router({
 });
 
 /**
+ * Zero composes metadata contract (PATCH /api/zero/composes/:id/metadata)
+ * Separate sub-contract so adding the typed PATCH route doesn't force
+ * apps/web's existing tsr.router for zeroComposesByIdContract to also
+ * implement it (web's metadata route is non-ts-rest).
+ */
+export const zeroComposesMetadataContract = c.router({
+  update: {
+    method: "PATCH",
+    path: "/api/zero/composes/:id/metadata",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      id: z.string().uuid("Compose ID is required"),
+    }),
+    body: z.object({
+      displayName: z.string().nullable().optional(),
+      description: z.string().nullable().optional(),
+      sound: z.string().nullable().optional(),
+    }),
+    responses: {
+      200: z.object({ ok: z.literal(true) }),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Update agent compose metadata (zero proxy)",
+  },
+});
+
+/**
  * Zero composes list contract (GET /api/zero/composes/list)
  * Proxies to composesListContract
  */
@@ -94,3 +122,4 @@ export const zeroComposesListContract = c.router({
 export type ZeroComposesMainContract = typeof zeroComposesMainContract;
 export type ZeroComposesByIdContract = typeof zeroComposesByIdContract;
 export type ZeroComposesListContract = typeof zeroComposesListContract;
+export type ZeroComposesMetadataContract = typeof zeroComposesMetadataContract;

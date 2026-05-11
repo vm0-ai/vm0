@@ -53,3 +53,34 @@ export async function publishUserSignal(
 export async function publishThreadListChanged(userId: string): Promise<void> {
   await publishUserSignal([userId], "threadListChanged");
 }
+
+/**
+ * Publish an org-scoped signal. Used for events that any org member's UI
+ * may want to see (e.g. queue:changed when a run cancels and a queued
+ * run becomes eligible to dispatch).
+ */
+export async function publishOrgSignal(
+  orgId: string,
+  topic: string,
+  payload: unknown = null,
+): Promise<void> {
+  const client = ablyClient();
+  const channel = client.channels.get(`org:${orgId}`);
+  await channel.publish(topic, payload);
+  L.debug(`Published "${topic}" to org:${orgId}`);
+}
+
+/**
+ * Notify a runner-group channel that a run should halt. Mirrors web's
+ * publishCancelNotification; the runner subscribes to its group's
+ * channel and aborts the matching run on receipt.
+ */
+export async function publishCancelToRunnerGroup(
+  group: string,
+  runId: string,
+): Promise<void> {
+  const client = ablyClient();
+  const channel = client.channels.get(`runner-group:${group}`);
+  await channel.publish("cancel", { runId });
+  L.debug(`Published cancel ${runId} to runner-group:${group}`);
+}

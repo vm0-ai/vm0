@@ -20,8 +20,7 @@ use crate::log::log;
 use crate::process::kill_and_reap_child;
 use crate::threading::{SystemThreadSpawner, ThreadSpawner};
 use crate::wait::{
-    DRAIN_DEADLINE_SECS, WaitOutcome, await_drain_deadline,
-    wait_with_kill_timeout_or_cancelled_either,
+    DRAIN_DEADLINE_SECS, WaitOutcome, await_drain_deadline, wait_with_kill_timeout_or_cancelled_any,
 };
 use crate::writer::GuestWriter;
 
@@ -31,6 +30,8 @@ const THREAD_BOUNDED_STDERR: &str = "vsock-bounded-stderr";
 const THREAD_BOUNDED_STDIN: &str = "vsock-bounded-stdin";
 const STREAM_CHUNK_WRITE_DEADLINE: Duration = Duration::from_secs(2);
 const STDIN_WRITE_POLL_TIMEOUT_MS: libc::c_int = 100;
+
+pub(crate) type BoundedExecCleanup = Box<dyn FnOnce() + Send + 'static>;
 
 pub(crate) struct BoundedExecWorkerRequest {
     pub(crate) seq: u32,
@@ -123,6 +124,22 @@ struct BoundedStdinWorker {
     pipe_link: Option<String>,
 }
 
+struct BoundedExecCleanupGuard(Option<BoundedExecCleanup>);
+
+impl BoundedExecCleanupGuard {
+    fn new(cleanup: BoundedExecCleanup) -> Self {
+        Self(Some(cleanup))
+    }
+}
+
+impl Drop for BoundedExecCleanupGuard {
+    fn drop(&mut self) {
+        if let Some(cleanup) = self.0.take() {
+            cleanup();
+        }
+    }
+}
+
 impl BoundedStdinWorker {
     fn is_pending(&self) -> bool {
         matches!(self.done_rx.try_recv(), Err(mpsc::TryRecvError::Empty))
@@ -178,14 +195,25 @@ pub(crate) fn spawn_bounded_exec_worker(
     request: BoundedExecWorkerRequest,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
+    request_cancel: Arc<AtomicBool>,
+    cleanup: BoundedExecCleanup,
 ) -> io::Result<()> {
-    spawn_bounded_exec_worker_with_spawner(request, writer, connection_cancel, SystemThreadSpawner)
+    spawn_bounded_exec_worker_with_spawner(
+        request,
+        writer,
+        connection_cancel,
+        request_cancel,
+        cleanup,
+        SystemThreadSpawner,
+    )
 }
 
 fn spawn_bounded_exec_worker_with_spawner<S>(
     request: BoundedExecWorkerRequest,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
+    request_cancel: Arc<AtomicBool>,
+    cleanup: BoundedExecCleanup,
     spawner: S,
 ) -> io::Result<()>
 where
@@ -196,10 +224,18 @@ where
     let stderr_policy = request.stderr;
     let worker_writer = writer.clone();
     let worker_spawner = spawner.clone();
+    let cleanup_guard = BoundedExecCleanupGuard::new(cleanup);
     let result = spawner.spawn_unit(
         THREAD_BOUNDED_EXEC_WORKER,
         Box::new(move || {
-            run_bounded_exec(request, worker_writer, connection_cancel, worker_spawner);
+            let _cleanup_guard = cleanup_guard;
+            run_bounded_exec(
+                request,
+                worker_writer,
+                connection_cancel,
+                request_cancel,
+                worker_spawner,
+            );
         }),
     );
 
@@ -228,6 +264,7 @@ fn run_bounded_exec<S>(
     request: BoundedExecWorkerRequest,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
+    request_cancel: Arc<AtomicBool>,
     spawner: S,
 ) where
     S: ThreadSpawner,
@@ -257,6 +294,17 @@ fn run_bounded_exec<S>(
             &stdout,
             &stderr,
             Some(&error),
+            &writer,
+        );
+        return;
+    }
+
+    if cancellation_requested(&connection_cancel, &request_cancel) {
+        send_cancelled_without_output(
+            request.seq,
+            started,
+            request.stdout,
+            request.stderr,
             &writer,
         );
         return;
@@ -299,6 +347,18 @@ fn run_bounded_exec<S>(
         env_script,
     } = spawned;
     let _env_script = env_script;
+
+    if cancellation_requested(&connection_cancel, &request_cancel) {
+        kill_and_send_cancelled(
+            request.seq,
+            started,
+            child,
+            request.stdout,
+            request.stderr,
+            &writer,
+        );
+        return;
+    }
 
     let stdout = if request.stdout.requires_pipe() {
         match child.stdout.take() {
@@ -486,14 +546,18 @@ fn run_bounded_exec<S>(
     };
     drop(drain_done_tx);
 
-    let outcome = wait_with_kill_timeout_or_cancelled_either(
+    let outcome = wait_with_kill_timeout_or_cancelled_any(
         child,
         request.timeout_ms,
-        &connection_cancel,
-        &command_cancel,
+        &[
+            connection_cancel.as_ref(),
+            request_cancel.as_ref(),
+            command_cancel.as_ref(),
+        ],
     );
     if matches!(outcome, WaitOutcome::Cancelled)
         || connection_cancel.load(Ordering::Acquire)
+        || request_cancel.load(Ordering::Acquire)
         || command_cancel.load(Ordering::Acquire)
     {
         drain_cancel.store(true, Ordering::Release);
@@ -618,6 +682,10 @@ fn validate_request(request: &BoundedExecWorkerRequest) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn cancellation_requested(connection_cancel: &AtomicBool, request_cancel: &AtomicBool) -> bool {
+    connection_cancel.load(Ordering::Acquire) || request_cancel.load(Ordering::Acquire)
 }
 
 fn format_output_policy(policy: BoundedOutputRequest) -> String {
@@ -924,6 +992,40 @@ fn wait_stdin_writable(
     }
 }
 
+fn send_cancelled_without_output(
+    seq: u32,
+    started: Instant,
+    stdout_policy: BoundedOutputRequest,
+    stderr_policy: BoundedOutputRequest,
+    writer: &GuestWriter,
+) {
+    let stdout = GuestBoundedOutput::empty_for_policy(stdout_policy);
+    let stderr = GuestBoundedOutput::empty_for_policy(stderr_policy);
+    let _ = send_bounded_exec_result(
+        BoundedExecResultFrame {
+            seq,
+            termination: BoundedExecTermination::Cancelled,
+            duration_ms: duration_ms(started),
+            stdout: stdout.as_proto(),
+            stderr: stderr.as_proto(),
+            diagnostic: None,
+        },
+        writer,
+    );
+}
+
+fn kill_and_send_cancelled(
+    seq: u32,
+    started: Instant,
+    child: Child,
+    stdout_policy: BoundedOutputRequest,
+    stderr_policy: BoundedOutputRequest,
+    writer: &GuestWriter,
+) {
+    kill_and_reap_child(child);
+    send_cancelled_without_output(seq, started, stdout_policy, stderr_policy, writer);
+}
+
 fn kill_and_send_wait_failed(
     seq: u32,
     started: Instant,
@@ -1100,11 +1202,17 @@ mod tests {
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
+        let cleanup_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let cleanup_count_for_hook = Arc::clone(&cleanup_count);
 
         spawn_bounded_exec_worker_with_spawner(
             bounded_request(41, "echo should-not-run"),
             writer,
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicBool::new(false)),
+            Box::new(move || {
+                cleanup_count_for_hook.fetch_add(1, Ordering::SeqCst);
+            }),
             FailingThreadSpawner::fail_once(THREAD_BOUNDED_EXEC_WORKER),
         )
         .unwrap();
@@ -1115,6 +1223,7 @@ mod tests {
             BoundedExecTermination::StartFailed,
             "bounded exec worker thread",
         );
+        assert_eq!(cleanup_count.load(Ordering::SeqCst), 1);
     }
 
     #[test]
@@ -1125,6 +1234,7 @@ mod tests {
         run_bounded_exec(
             bounded_request(42, "sleep 60"),
             GuestWriter::new(guest),
+            Arc::new(AtomicBool::new(false)),
             Arc::new(AtomicBool::new(false)),
             FailingThreadSpawner::fail_once(THREAD_BOUNDED_STDOUT),
         );
@@ -1145,6 +1255,7 @@ mod tests {
         run_bounded_exec(
             bounded_request(43, "sleep 60"),
             GuestWriter::new(guest),
+            Arc::new(AtomicBool::new(false)),
             Arc::new(AtomicBool::new(false)),
             FailingThreadSpawner::fail_once(THREAD_BOUNDED_STDERR),
         );
@@ -1168,6 +1279,7 @@ mod tests {
             request,
             GuestWriter::new(guest),
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicBool::new(false)),
             FailingThreadSpawner::fail_once(THREAD_BOUNDED_STDIN),
         );
 
@@ -1176,6 +1288,32 @@ mod tests {
             44,
             BoundedExecTermination::WaitFailed,
             "stdin writer thread",
+        );
+    }
+
+    #[test]
+    fn request_cancel_before_spawn_returns_cancelled_without_running_command() {
+        let marker = std::env::temp_dir().join(format!(
+            "vsock-guest-cancel-before-spawn-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&marker);
+        let command = format!("touch {}", marker.display());
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+
+        run_bounded_exec(
+            bounded_request(45, &command),
+            GuestWriter::new(guest),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicBool::new(true)),
+            SystemThreadSpawner,
+        );
+
+        assert_bounded_exec_result(&mut host, 45, BoundedExecTermination::Cancelled, "");
+        assert!(
+            !marker.exists(),
+            "pre-cancelled bounded exec should not run the command",
         );
     }
 }

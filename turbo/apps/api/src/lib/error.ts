@@ -22,6 +22,10 @@ export function conflict(message: string) {
   return httpError(409, "CONFLICT", message);
 }
 
+export function runNotCancellable(message: string) {
+  return httpError(400, "RUN_NOT_CANCELLABLE", message);
+}
+
 export function badRequestMessage(message: string) {
   return httpError(400, "BAD_REQUEST", message);
 }

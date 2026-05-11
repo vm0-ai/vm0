@@ -3,14 +3,16 @@ import {
   zeroComposesByIdContract,
   zeroComposesListContract,
   zeroComposesMainContract,
+  zeroComposesMetadataContract,
 } from "@vm0/api-contracts/contracts/zero-composes";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { pathParamsOf, queryOf } from "../context/request";
+import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { isNotFoundResponse, notFound } from "../../lib/error";
 import {
   deleteCompose$,
+  updateComposeMetadata$,
   zeroComposeById,
   zeroComposeByName,
   zeroComposeList,
@@ -87,6 +89,37 @@ const deleteComposeInner$ = command(
   },
 );
 
+const updateComposeMetadataInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const params = get(pathParamsOf(zeroComposesMetadataContract.update));
+    const bodyResult = await get(
+      bodyResultOf(zeroComposesMetadataContract.update),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const result = await set(
+      updateComposeMetadata$,
+      {
+        composeId: params.id,
+        userId: auth.userId,
+        orgId: auth.orgId,
+        body: bodyResult.data,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (isNotFoundResponse(result)) {
+      return result;
+    }
+    return { status: 200 as const, body: { ok: true as const } };
+  },
+);
+
 const orgAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
@@ -111,5 +144,9 @@ export const zeroComposesRoutes: readonly RouteEntry[] = [
   {
     route: zeroComposesByIdContract.delete,
     handler: authRoute({}, deleteComposeInner$),
+  },
+  {
+    route: zeroComposesMetadataContract.update,
+    handler: authRoute(orgAuth, updateComposeMetadataInner$),
   },
 ];

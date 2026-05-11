@@ -1,7 +1,7 @@
 import type { InitClientArgs, InitClientReturn } from "@ts-rest/core";
 import type { AuthOptions } from "ably";
 import type { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
-import { detach, Reason } from "../signals/utils.ts";
+import { detach, Reason, throwIfAbort } from "../signals/utils.ts";
 import { accept } from "./accept.ts";
 
 type RealtimeTokenClient = InitClientReturn<
@@ -26,15 +26,15 @@ type AuthCallback = NonNullable<AuthOptions["authCallback"]>;
  * `try/catch` to bridge that error surface into the callback's error
  * argument — both patterns are restricted inside `signals/`.
  *
- * Note: the fetch intentionally does NOT bind to `signal` via
- * `fetchOptions: { signal }`. Aborting the fetch while MSW is still
- * resolving the handler races MSW's handler-lookup pipeline and surfaces
- * as an "unhandled exception during the handler lookup" stderr in tests.
- * The signal is honoured at the callback boundary instead (`signal.aborted`
- * checked after the await), which matches the documented teardown
- * contract — Ably's callback is not invoked once `setupRealtime$` has
- * called `ably.close()`. The wasted in-flight POST during teardown is
- * negligible (single-shot, fast endpoint).
+ * The fetch intentionally does NOT bind `signal` via `fetchOptions: { signal }`.
+ * Aborting the fetch while MSW is still resolving the handler races MSW's
+ * handler-lookup pipeline and surfaces as an "unhandled exception during the
+ * handler lookup" stderr in tests. The signal is honoured at the await
+ * boundary instead (`signal.throwIfAborted()`), and the catch re-throws
+ * abort errors via `throwIfAbort` so `detach`'s abort-aware silencer can
+ * track them — preserving the documented contract that Ably's callback is
+ * not invoked once `setupRealtime$` has called `ably.close()`. The wasted
+ * in-flight POST during teardown is negligible (single-shot, fast endpoint).
  */
 export function createAblyAuthCallback(
   client: RealtimeTokenClient,
@@ -48,19 +48,15 @@ export function createAblyAuthCallback(
           const res = await accept(client.create({ body: {} }), [200], {
             toast: false,
           });
-          // Teardown guard: setupRealtime$'s abort listener runs ably.close()
-          // before this callback returns, so calling Ably's callback after
-          // abort would be spurious. Mirrors the catch branch's check below.
-          if (signal.aborted) {
-            return;
-          }
+          // The fetch above does not accept our signal, so check it
+          // explicitly per ccstate skill ("AbortSignal Lifecycle"): aborts
+          // surface as an AbortError that the catch re-throws to detach.
+          signal.throwIfAborted();
           callback(null, res.body);
         } catch (error) {
-          // Endpoint errors after abort are also spurious — same teardown
-          // window as the success path.
-          if (signal.aborted) {
-            return;
-          }
+          // Re-throw aborts so detach silences them at the boundary —
+          // Ably's callback must not be invoked after `ably.close()`.
+          throwIfAbort(error);
           callback(
             error instanceof Error ? error.message : String(error),
             null,

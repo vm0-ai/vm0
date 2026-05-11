@@ -31,6 +31,11 @@
 //! | 0x0D | H→G       | bounded_exec      | `[4B timeout_ms][1B flags][stdout_policy][stderr_policy][4B cmd_len][command][4B env_count]([4B key_len][key][4B val_len][value])*[4B stdin_len][stdin]` |
 //! | 0x0E | G→H       | bounded_exec_result | `[1B termination][4B exit_code][8B duration_ms][stdout_output][stderr_output][4B diagnostic_len][diagnostic]` |
 //! | 0x0F | G→H       | bounded_exec_output_chunk | `[1B stream][1B flags][4B sequence][4B chunk_len][chunk]` |
+//! | 0x10 | H→G       | control_hello     | `[2B version][16B nonce][2B boot_generation_len][boot_generation]` |
+//! | 0x11 | G→H       | control_hello_ack | `[2B version][16B nonce]` |
+//! | 0x12 | H→G       | control_quiesce   | (empty) |
+//! | 0x13 | G→H       | control_quiesce_ack | `[1B status]` |
+//! | 0x14 | H→G       | bounded_exec_cancel | (empty) |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
 //! Bounded exec output chunks are request-scoped: they use the same non-zero
@@ -43,6 +48,10 @@
 //! `0 = discarded`, `1 = captured`. Termination tags are `0 = exited`,
 //! `1 = timed_out`, `2 = cancelled`, `3 = start_failed`, and
 //! `4 = wait_failed`.
+//!
+//! `exec` / `exec_result` are legacy buffered request/response messages kept
+//! for existing callers. All new request/response command execution should use
+//! `bounded_exec` plus `bounded_exec_result` / `bounded_exec_output_chunk`.
 
 /// Header size (4-byte length prefix).
 pub const HEADER_SIZE: usize = 4;
@@ -84,10 +93,21 @@ pub const MSG_STDOUT_CHUNK: u8 = 0x0C;
 pub const MSG_BOUNDED_EXEC: u8 = 0x0D;
 pub const MSG_BOUNDED_EXEC_RESULT: u8 = 0x0E;
 pub const MSG_BOUNDED_EXEC_OUTPUT_CHUNK: u8 = 0x0F;
+pub const MSG_CONTROL_HELLO: u8 = 0x10;
+pub const MSG_CONTROL_HELLO_ACK: u8 = 0x11;
+pub const MSG_CONTROL_QUIESCE: u8 = 0x12;
+pub const MSG_CONTROL_QUIESCE_ACK: u8 = 0x13;
+pub const MSG_BOUNDED_EXEC_CANCEL: u8 = 0x14;
 pub const MSG_ERROR: u8 = 0xFF;
 
 /// Default vsock port for host-guest communication.
 pub const VSOCK_PORT: u32 = 1000;
+
+/// Version for the host-initiated durable control-session handshake.
+pub const CONTROL_PROTOCOL_VERSION: u16 = 1;
+
+/// Freshness nonce byte width for a host-initiated control session.
+pub const CONTROL_SESSION_NONCE_BYTES: usize = 16;
 
 // Exec payload flags.
 pub const EXEC_FLAG_SUDO: u8 = 0x01;
@@ -162,6 +182,19 @@ pub struct BoundedExecOutputPolicy {
 pub enum BoundedExecOutput<'a> {
     Discarded,
     Captured { bytes: &'a [u8], truncated: bool },
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct DecodedControlHello<'a> {
+    pub version: u16,
+    pub nonce: [u8; CONTROL_SESSION_NONCE_BYTES],
+    pub boot_generation: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum ControlQuiesceStatus {
+    Ready,
+    Busy,
 }
 
 /// Protocol error.
@@ -243,7 +276,56 @@ pub fn encode(msg_type: u8, seq: u32, payload: &[u8]) -> Result<Vec<u8>, Protoco
     Ok(buf)
 }
 
-/// Encode exec payload: `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)`.
+pub fn encode_control_hello(
+    version: u16,
+    nonce: &[u8; CONTROL_SESSION_NONCE_BYTES],
+    boot_generation: Option<&str>,
+) -> Result<Vec<u8>, ProtocolError> {
+    let boot_generation = match boot_generation {
+        Some("") => {
+            return Err(ProtocolError::InvalidPayload(
+                "control_hello boot_generation empty",
+            ));
+        }
+        Some(value) if value.len() > u16::MAX as usize => {
+            return Err(ProtocolError::PayloadTooLarge(
+                "boot_generation",
+                value.len(),
+            ));
+        }
+        value => value,
+    };
+    let boot_generation_bytes = boot_generation.unwrap_or_default().as_bytes();
+    let mut p =
+        Vec::with_capacity(2 + CONTROL_SESSION_NONCE_BYTES + 2 + boot_generation_bytes.len());
+    p.extend_from_slice(&version.to_be_bytes());
+    p.extend_from_slice(nonce);
+    p.extend_from_slice(&(boot_generation_bytes.len() as u16).to_be_bytes());
+    p.extend_from_slice(boot_generation_bytes);
+    Ok(p)
+}
+
+pub fn encode_control_hello_ack(
+    version: u16,
+    nonce: &[u8; CONTROL_SESSION_NONCE_BYTES],
+) -> Vec<u8> {
+    let mut p = Vec::with_capacity(2 + CONTROL_SESSION_NONCE_BYTES);
+    p.extend_from_slice(&version.to_be_bytes());
+    p.extend_from_slice(nonce);
+    p
+}
+
+pub fn encode_control_quiesce_ack(status: ControlQuiesceStatus) -> Vec<u8> {
+    vec![match status {
+        ControlQuiesceStatus::Ready => 0,
+        ControlQuiesceStatus::Busy => 1,
+    }]
+}
+
+/// Encode legacy exec payload: `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)`.
+///
+/// Deprecated for new code: use [`encode_bounded_exec`] for request/response
+/// command execution.
 ///
 /// The env section is only appended when `env` is non-empty, keeping the
 /// payload backward-compatible with old decoders that don't expect it.
@@ -678,6 +760,86 @@ pub fn encode_error(message: &str) -> Vec<u8> {
 // Decode
 // ---------------------------------------------------------------------------
 
+pub fn decode_control_hello(payload: &[u8]) -> Result<DecodedControlHello<'_>, ProtocolError> {
+    let version =
+        read_u16_at(payload, 0).ok_or(ProtocolError::InvalidPayload("control_hello version"))?;
+    let nonce_start = 2;
+    let nonce_end = nonce_start + CONTROL_SESSION_NONCE_BYTES;
+    let nonce: [u8; CONTROL_SESSION_NONCE_BYTES] = payload
+        .get(nonce_start..nonce_end)
+        .ok_or(ProtocolError::InvalidPayload("control_hello nonce"))?
+        .try_into()
+        .map_err(|_| ProtocolError::InvalidPayload("control_hello nonce"))?;
+    let boot_generation_len = read_u16_at(payload, nonce_end).ok_or(
+        ProtocolError::InvalidPayload("control_hello boot_generation_len"),
+    )? as usize;
+    let boot_generation_start = nonce_end + 2;
+    let boot_generation_end = boot_generation_start
+        .checked_add(boot_generation_len)
+        .ok_or(ProtocolError::InvalidPayload(
+            "control_hello boot_generation_len",
+        ))?;
+    if boot_generation_end > payload.len() {
+        return Err(ProtocolError::InvalidPayload(
+            "control_hello boot_generation truncated",
+        ));
+    }
+    if boot_generation_end < payload.len() {
+        return Err(ProtocolError::InvalidPayload(
+            "control_hello trailing bytes",
+        ));
+    }
+    let boot_generation = if boot_generation_len == 0 {
+        None
+    } else {
+        let bytes = payload
+            .get(boot_generation_start..boot_generation_end)
+            .ok_or(ProtocolError::InvalidPayload(
+                "control_hello boot_generation truncated",
+            ))?;
+        Some(
+            std::str::from_utf8(bytes)
+                .map_err(|_| ProtocolError::InvalidPayload("control_hello boot_generation utf8"))?,
+        )
+    };
+    Ok(DecodedControlHello {
+        version,
+        nonce,
+        boot_generation,
+    })
+}
+
+pub fn decode_control_hello_ack(
+    payload: &[u8],
+) -> Result<(u16, [u8; CONTROL_SESSION_NONCE_BYTES]), ProtocolError> {
+    if payload.len() != 2 + CONTROL_SESSION_NONCE_BYTES {
+        return Err(ProtocolError::InvalidPayload(
+            "control_hello_ack invalid length",
+        ));
+    }
+    let version = read_u16_at(payload, 0)
+        .ok_or(ProtocolError::InvalidPayload("control_hello_ack version"))?;
+    let nonce: [u8; CONTROL_SESSION_NONCE_BYTES] = payload
+        .get(2..)
+        .ok_or(ProtocolError::InvalidPayload("control_hello_ack nonce"))?
+        .try_into()
+        .map_err(|_| ProtocolError::InvalidPayload("control_hello_ack nonce"))?;
+    Ok((version, nonce))
+}
+
+pub fn decode_control_quiesce_ack(payload: &[u8]) -> Result<ControlQuiesceStatus, ProtocolError> {
+    match payload {
+        [0] => Ok(ControlQuiesceStatus::Ready),
+        [1] => Ok(ControlQuiesceStatus::Busy),
+        [_] => Err(ProtocolError::InvalidPayload(
+            "control_quiesce_ack unknown status",
+        )),
+        _ => Err(ProtocolError::InvalidPayload(
+            "control_quiesce_ack invalid length",
+        )),
+    }
+}
+
 struct DecodedExecInner<'a> {
     exec: DecodedExec<'a>,
     offset: usize,
@@ -765,7 +927,10 @@ fn decode_exec_inner(payload: &[u8], sudo_flag: u8) -> Result<DecodedExecInner<'
     })
 }
 
-/// Decode exec payload into a [`DecodedExec`] struct.
+/// Decode legacy exec payload into a [`DecodedExec`] struct.
+///
+/// Deprecated for new code: use [`decode_bounded_exec`] for request/response
+/// command execution.
 pub fn decode_exec(payload: &[u8]) -> Result<DecodedExec<'_>, ProtocolError> {
     decode_exec_inner(payload, EXEC_FLAG_SUDO).map(|d| d.exec)
 }
@@ -1551,6 +1716,142 @@ mod tests {
         let mut dec = Decoder::new();
         let err = dec.decode(&bad).unwrap_err();
         assert!(matches!(err, ProtocolError::MessageTooSmall(2)));
+    }
+
+    #[test]
+    fn control_hello_roundtrip() {
+        let nonce = *b"0123456789abcdef";
+        let payload =
+            encode_control_hello(CONTROL_PROTOCOL_VERSION, &nonce, Some("boot-123")).unwrap();
+
+        let decoded = decode_control_hello(&payload).unwrap();
+        assert_eq!(decoded.version, CONTROL_PROTOCOL_VERSION);
+        assert_eq!(decoded.nonce, nonce);
+        assert_eq!(decoded.boot_generation, Some("boot-123"));
+    }
+
+    #[test]
+    fn control_hello_allows_absent_boot_generation() {
+        let nonce = *b"0123456789abcdef";
+        let payload = encode_control_hello(CONTROL_PROTOCOL_VERSION, &nonce, None).unwrap();
+
+        let decoded = decode_control_hello(&payload).unwrap();
+        assert_eq!(decoded.version, CONTROL_PROTOCOL_VERSION);
+        assert_eq!(decoded.nonce, nonce);
+        assert_eq!(decoded.boot_generation, None);
+    }
+
+    #[test]
+    fn control_hello_rejects_empty_boot_generation() {
+        let nonce = *b"0123456789abcdef";
+
+        let err = encode_control_hello(CONTROL_PROTOCOL_VERSION, &nonce, Some("")).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("control_hello boot_generation empty")
+        ));
+    }
+
+    #[test]
+    fn control_hello_rejects_oversized_boot_generation() {
+        let nonce = *b"0123456789abcdef";
+        let boot_generation = "x".repeat(u16::MAX as usize + 1);
+
+        let err = encode_control_hello(CONTROL_PROTOCOL_VERSION, &nonce, Some(&boot_generation))
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::PayloadTooLarge("boot_generation", size)
+                if size == boot_generation.len()
+        ));
+    }
+
+    #[test]
+    fn control_hello_rejects_trailing_bytes() {
+        let nonce = *b"0123456789abcdef";
+        let mut payload = encode_control_hello(CONTROL_PROTOCOL_VERSION, &nonce, None).unwrap();
+        payload.push(0);
+
+        let err = decode_control_hello(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("control_hello trailing bytes")
+        ));
+    }
+
+    #[test]
+    fn control_hello_rejects_truncated_boot_generation() {
+        let nonce = *b"0123456789abcdef";
+        let mut payload =
+            encode_control_hello(CONTROL_PROTOCOL_VERSION, &nonce, Some("boot")).unwrap();
+        payload.pop();
+
+        let err = decode_control_hello(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("control_hello boot_generation truncated")
+        ));
+    }
+
+    #[test]
+    fn control_hello_rejects_non_utf8_boot_generation() {
+        let nonce = *b"0123456789abcdef";
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&CONTROL_PROTOCOL_VERSION.to_be_bytes());
+        payload.extend_from_slice(&nonce);
+        payload.extend_from_slice(&2_u16.to_be_bytes());
+        payload.extend_from_slice(&[0xff, 0xff]);
+
+        let err = decode_control_hello(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("control_hello boot_generation utf8")
+        ));
+    }
+
+    #[test]
+    fn control_hello_ack_roundtrip() {
+        let nonce = *b"fedcba9876543210";
+        let payload = encode_control_hello_ack(CONTROL_PROTOCOL_VERSION, &nonce);
+
+        let (version, decoded_nonce) = decode_control_hello_ack(&payload).unwrap();
+        assert_eq!(version, CONTROL_PROTOCOL_VERSION);
+        assert_eq!(decoded_nonce, nonce);
+    }
+
+    #[test]
+    fn control_hello_ack_rejects_bad_length() {
+        let err = decode_control_hello_ack(&[0, 1, 2]).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("control_hello_ack invalid length")
+        ));
+    }
+
+    #[test]
+    fn control_quiesce_ack_roundtrip() {
+        let payload = encode_control_quiesce_ack(ControlQuiesceStatus::Busy);
+
+        let status = decode_control_quiesce_ack(&payload).unwrap();
+        assert_eq!(status, ControlQuiesceStatus::Busy);
+    }
+
+    #[test]
+    fn control_quiesce_ack_rejects_unknown_status() {
+        let err = decode_control_quiesce_ack(&[2]).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("control_quiesce_ack unknown status")
+        ));
+    }
+
+    #[test]
+    fn control_quiesce_ack_rejects_bad_length() {
+        let err = decode_control_quiesce_ack(&[]).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("control_quiesce_ack invalid length")
+        ));
     }
 
     #[test]

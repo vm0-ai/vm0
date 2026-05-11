@@ -56,3 +56,32 @@ export function mockListStripeInvoices(
 export function clearMockListStripeInvoices(): void {
   clearMockedListInvoices();
 }
+
+const { get: getMockedStripeClient, set: setMockedStripeClient } = testOverride<
+  StripeSDK | undefined
+>(() => {
+  return undefined;
+});
+
+/**
+ * Per-call Stripe SDK instantiation. Use this when a caller needs the
+ * full SDK surface (e.g. auto-recharge invoice flow); for narrow
+ * operations like list-invoices, prefer the wrapper helpers.
+ *
+ * In tests, override via `mockStripeClient(fakeSdk)` so the wrapper
+ * doesn't construct a real Stripe client. (The centralized `vi.mock("stripe")`
+ * factory in `__tests__/mocks.ts` doesn't compose with `new StripeSDK()`
+ * as a constructor — vi.fn() isn't a real constructor — so we route
+ * through this override instead.)
+ */
+export function getStripeClient(): StripeSDK {
+  const mocked = getMockedStripeClient();
+  if (mocked) {
+    return mocked;
+  }
+  return new StripeSDK(env("STRIPE_SECRET_KEY"));
+}
+
+export function mockStripeClient(fakeSdk: StripeSDK): void {
+  setMockedStripeClient(fakeSdk);
+}

@@ -13,9 +13,9 @@ use vsock_guest::{handle_connection, run};
 use vsock_proto::{
     self, BoundedExecCapturePolicy, BoundedExecOutput, BoundedExecOutputPolicy, BoundedExecRequest,
     BoundedExecStream, BoundedExecStreamPolicy, BoundedExecTermination, MSG_BOUNDED_EXEC,
-    MSG_BOUNDED_EXEC_OUTPUT_CHUNK, MSG_BOUNDED_EXEC_RESULT, MSG_ERROR, MSG_EXEC, MSG_EXEC_RESULT,
-    MSG_PROCESS_EXIT, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT,
-    MSG_STDOUT_CHUNK,
+    MSG_BOUNDED_EXEC_CANCEL, MSG_BOUNDED_EXEC_OUTPUT_CHUNK, MSG_BOUNDED_EXEC_RESULT, MSG_ERROR,
+    MSG_EXEC, MSG_EXEC_RESULT, MSG_PROCESS_EXIT, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH,
+    MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK,
 };
 
 const EXIT_CODE_TIMEOUT: i32 = 124;
@@ -268,6 +268,11 @@ fn send_bounded_exec(stream: &mut impl std::io::Write, seq: u32, request: &Bound
     stream.write_all(&msg).unwrap();
 }
 
+fn send_bounded_exec_cancel(stream: &mut impl std::io::Write, seq: u32) {
+    let msg = vsock_proto::encode(MSG_BOUNDED_EXEC_CANCEL, seq, &[]).unwrap();
+    stream.write_all(&msg).unwrap();
+}
+
 fn read_bounded_exec_result(
     stream: &mut impl std::io::Read,
     seq: u32,
@@ -366,6 +371,29 @@ fn bounded_exec_nonzero_exit_is_exited() {
     );
     assert_captured_output(&result.stdout, b"", false);
     assert_captured_output(&result.stderr, b"failed", false);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn bounded_exec_cancel_request_stops_in_flight_command() {
+    let (handle, mut host_stream) = start_guest_connection();
+    let pid_guard = OrphanProcessGuard::new("bounded-exec-cancel");
+    let command = format!(
+        "python3 -c \"import os, pathlib, signal; pathlib.Path('{}').write_text(str(os.getpid())); signal.pause()\"",
+        pid_guard.pid_path()
+    );
+    let request = bounded_request(&command, &[], None);
+
+    send_bounded_exec(&mut host_stream, 81, &request);
+    let pid = read_pid_file(pid_guard.pid_path());
+    assert!(pid_alive(pid), "child should be running before cancel");
+
+    send_bounded_exec_cancel(&mut host_stream, 81);
+    let (_chunks, result) = read_bounded_exec_result(&mut host_stream, 81);
+
+    assert_eq!(result.termination, BoundedExecTermination::Cancelled);
+    wait_for_pid_exit(pid, "bounded exec cancel request");
 
     finish_guest_connection(handle, host_stream);
 }

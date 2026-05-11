@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.342.3](https://github.com/vm0-ai/vm0/compare/app-v0.342.2...app-v0.342.3) (2026-05-10)
+
+
+### Bug Fixes
+
+* **platform:** silence MSW handler-lookup AbortError in vitest ([#12568](https://github.com/vm0-ai/vm0/issues/12568)) ([4106448](https://github.com/vm0-ai/vm0/commit/410644863d8311c512b073a3b888c5f6bd9d9b48))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.8.0
+    * @vm0/core bumped to 8.267.3
+
 ## [0.342.2](https://github.com/vm0-ai/vm0/compare/app-v0.342.1...app-v0.342.2) (2026-05-10)
 
 

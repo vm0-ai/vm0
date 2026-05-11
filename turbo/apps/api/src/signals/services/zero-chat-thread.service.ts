@@ -40,7 +40,9 @@ import {
 import { z } from "zod";
 
 import { env } from "../../lib/env";
+import { buildFileUrl } from "../../lib/file-url";
 import { db$, writeDb$ } from "../external/db";
+import { publishThreadListChanged } from "../external/realtime";
 import { listS3Objects } from "../external/s3";
 
 const REPORT_ERROR_STREAK_THRESHOLD = 2;
@@ -189,19 +191,6 @@ function inferMimetype(filename: string): string {
   return ext
     ? (EXT_MIMETYPE_MAP[ext] ?? "application/octet-stream")
     : "application/octet-stream";
-}
-
-const CLERK_USER_ID_PREFIX = "user_";
-
-function publicFileUserIdSegment(userId: string): string {
-  return userId.startsWith(CLERK_USER_ID_PREFIX)
-    ? userId.slice(CLERK_USER_ID_PREFIX.length)
-    : userId;
-}
-
-function buildFileUrl(userId: string, id: string, filename: string): string {
-  const publicUserId = publicFileUserIdSegment(userId);
-  return `${env("VM0_API_URL")}/f/${encodeURIComponent(publicUserId)}/${id}/${encodeURIComponent(filename)}`;
 }
 
 function hasAgentSessionId(
@@ -1042,5 +1031,113 @@ export const createChatThread$ = command(
     }
 
     return thread;
+  },
+);
+
+export const deleteChatThread$ = command(
+  async (
+    { set },
+    args: { readonly threadId: string; readonly userId: string },
+    signal: AbortSignal,
+  ): Promise<{ deleted: boolean }> => {
+    const writeDb = set(writeDb$);
+    const deleted = await writeDb
+      .delete(chatThreads)
+      .where(
+        and(
+          eq(chatThreads.id, args.threadId),
+          eq(chatThreads.userId, args.userId),
+        ),
+      )
+      .returning({ id: chatThreads.id });
+    signal.throwIfAborted();
+    return { deleted: deleted.length > 0 };
+  },
+);
+
+/**
+ * A thread "has a draft" when its draft text is non-empty OR it has at least
+ * one attachment. Mirrors web's `hasDraftValue` helper exactly so the
+ * conditional `threadListChanged` publish observable from web is preserved
+ * bit-for-bit.
+ */
+function hasDraftValue(
+  content: string | null,
+  attachments: readonly PersistedAttachment[] | null,
+): boolean {
+  return (
+    (content !== null && content !== "") ||
+    (attachments !== null && attachments.length > 0)
+  );
+}
+
+/**
+ * Update a chat thread's draft content + attachments.
+ *
+ * Ownership check via the WHERE clause; missing or cross-user thread → returns
+ * `{ updated: false }` so the route handler emits the correct 404. Publishes
+ * `threadListChanged` only when the boolean `hasDraft` flag flips, so that
+ * continued typing inside an already-drafting thread does not spam the
+ * sidebar — same behaviour as web's `updateChatThreadDraft`.
+ */
+export const updateChatThreadDraft$ = command(
+  async (
+    { set },
+    args: {
+      readonly threadId: string;
+      readonly userId: string;
+      readonly draftContent: string | null;
+      readonly draftAttachments: readonly PersistedAttachment[] | null;
+    },
+    signal: AbortSignal,
+  ): Promise<{ readonly updated: boolean }> => {
+    const writeDb = set(writeDb$);
+
+    const [before] = await writeDb
+      .select({
+        draftContent: chatThreads.draftContent,
+        draftAttachments: chatThreads.draftAttachments,
+      })
+      .from(chatThreads)
+      .where(
+        and(
+          eq(chatThreads.id, args.threadId),
+          eq(chatThreads.userId, args.userId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!before) {
+      return { updated: false };
+    }
+
+    await writeDb
+      .update(chatThreads)
+      .set({
+        draftContent: args.draftContent,
+        draftAttachments: args.draftAttachments
+          ? [...args.draftAttachments]
+          : null,
+      })
+      .where(
+        and(
+          eq(chatThreads.id, args.threadId),
+          eq(chatThreads.userId, args.userId),
+        ),
+      );
+    signal.throwIfAborted();
+
+    const hadDraft = hasDraftValue(
+      before.draftContent,
+      before.draftAttachments as PersistedAttachment[] | null,
+    );
+    const hasDraft = hasDraftValue(args.draftContent, args.draftAttachments);
+    if (hadDraft !== hasDraft) {
+      await publishThreadListChanged(args.userId);
+      signal.throwIfAborted();
+    }
+
+    return { updated: true };
   },
 );

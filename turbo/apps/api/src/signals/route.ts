@@ -31,15 +31,22 @@ import { zeroOrgReadRoutes } from "./routes/zero-org-read";
 import { zeroQueuePositionRoutes } from "./routes/zero-queue-position";
 import { zeroRunDetailRoutes } from "./routes/zero-run-detail";
 import { zeroRunsRoutes } from "./routes/zero-runs";
+import { zeroRunsCancelRoutes } from "./routes/zero-runs-cancel";
 import { zeroSchedulesRoutes } from "./routes/zero-schedules";
 import { zeroMeModelProvidersDeleteRoutes } from "./routes/zero-me-model-providers-delete";
+import { zeroMeModelProvidersSetDefaultRoutes } from "./routes/zero-me-model-providers-set-default";
+import { zeroMeModelProvidersUpdateModelRoutes } from "./routes/zero-me-model-providers-update-model";
+import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
 import { zeroSecretsRoutes } from "./routes/zero-secrets";
 import { zeroSkillsRoutes } from "./routes/zero-skills";
 import { zeroIntegrationsSlackRoutes } from "./routes/zero-integrations-slack";
 import { zeroIntegrationsTelegramRoutes } from "./routes/zero-integrations-telegram";
+import { zeroIntegrationsTelegramMessageRoutes } from "./routes/zero-integrations-telegram-message";
 import { zeroSlackChannelsRoutes } from "./routes/zero-slack-channels";
 import { zeroSlackConnectRoutes } from "./routes/zero-slack-connect";
 import { zeroTeamRoutes } from "./routes/zero-team";
+import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
+import { zeroUploadsPrepareRoutes } from "./routes/zero-uploads-prepare";
 import { zeroUsageInsightRoutes } from "./routes/zero-usage-insight";
 import { zeroUserPreferencesRoutes } from "./routes/zero-user-preferences";
 import { zeroVoiceChatRoutes } from "./routes/zero-voice-chat";
@@ -79,12 +86,16 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroMeModelProvidersDeleteRoutes,
+  ...zeroMeModelProvidersSetDefaultRoutes,
+  ...zeroMeModelProvidersUpdateModelRoutes,
+  ...zeroMeModelProvidersUpsertRoutes,
   ...zeroVoiceChatRoutes,
   ...zeroVoiceIoQuotaRoutes,
   ...zeroWebDownloadRoutes,
   ...zeroQueuePositionRoutes,
   ...zeroRunDetailRoutes,
   ...zeroRunsRoutes,
+  ...zeroRunsCancelRoutes,
   ...zeroSchedulesRoutes,
   ...zeroOnboardingStatusRoutes,
   ...zeroOrgReadRoutes,
@@ -95,7 +106,10 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsSlackRoutes,
   ...zeroSlackChannelsRoutes,
   ...zeroIntegrationsTelegramRoutes,
+  ...zeroIntegrationsTelegramMessageRoutes,
   ...zeroTeamRoutes,
+  ...zeroUploadsCompleteRoutes,
+  ...zeroUploadsPrepareRoutes,
   ...zeroUsageInsightRoutes,
   ...chatThreadsV1Routes,
   ...audioTranscriptionsV1Routes,

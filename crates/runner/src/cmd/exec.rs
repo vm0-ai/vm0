@@ -5,7 +5,10 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use clap::Args;
-use sandbox::{SandboxControl, SandboxControlError};
+use sandbox::{
+    RemoteExecOutputSink, RemoteExecStatus, RemoteExecTermination, SandboxControl,
+    SandboxControlError,
+};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::process;
@@ -86,14 +89,31 @@ fn shell_quote(arg: &str) -> String {
 /// targets are resolved through the current runner process state before
 /// dispatching to [`SandboxControl::exec_remote`].
 ///
-/// Guest stdout and stderr are forwarded to local stdout and stderr. The guest
-/// process exit code is converted to [`ExitCode`] by truncating to `u8`,
-/// matching shell behavior for values outside the 0-255 range.
+/// Guest stdout and stderr are streamed to local stdout and stderr as chunks
+/// arrive. The guest process exit code is converted to [`ExitCode`] by
+/// truncating to `u8`, matching shell behavior for values outside the 0-255
+/// range. If bounded streaming truncates output, the CLI prints a local warning
+/// and treats a would-be successful remote exit as local failure.
 ///
 /// [`SandboxControlError::Remote`] values are printed to stderr and returned
 /// as [`ExitCode::FAILURE`]. Other sandbox-control errors are propagated as
 /// [`RunnerError::Config`].
 pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerResult<ExitCode> {
+    let mut stdout = std::io::stdout();
+    let mut stderr = std::io::stderr();
+    run_exec_with_writers(args, control, &mut stdout, &mut stderr).await
+}
+
+async fn run_exec_with_writers<WOut, WErr>(
+    args: ExecArgs,
+    control: &dyn SandboxControl,
+    stdout: &mut WOut,
+    stderr: &mut WErr,
+) -> RunnerResult<ExitCode>
+where
+    WOut: Write + Send,
+    WErr: Write + Send,
+{
     // Resolve the target to a sandbox_id string.
     let sandbox_id = if let Some(ref sid) = args.sandbox {
         sid.clone()
@@ -116,32 +136,104 @@ pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerRes
         .join(" ");
     let timeout = Duration::from_secs(u64::from(args.timeout));
 
+    let mut output = WriterOutputSink { stdout, stderr };
     match control
-        .exec_remote(&sandbox_id, &command, timeout, args.sudo)
+        .exec_remote(&sandbox_id, &command, timeout, args.sudo, &mut output)
         .await
     {
-        Ok(result) => {
-            let out = std::io::stdout();
-            let err = std::io::stderr();
-            let _ = out.lock().write_all(&result.stdout);
-            let _ = err.lock().write_all(&result.stderr);
-
-            // Propagate the actual exit code for debugging utility.
-            // Truncate to u8 like shells do (e.g. 256 → 0, -1 → 255).
-            Ok(ExitCode::from(result.exit_code as u8))
-        }
+        Ok(status) => status_to_exit_code(status, output.stderr),
         Err(SandboxControlError::Remote(msg)) => {
-            eprintln!("error: {msg}");
+            writeln!(output.stderr, "error: {msg}")?;
             Ok(ExitCode::FAILURE)
         }
+        Err(e) if is_broken_pipe_control_error(&e) => Ok(ExitCode::SUCCESS),
         Err(e) => Err(RunnerError::Config(e.to_string())),
+    }
+}
+
+fn is_broken_pipe_control_error(error: &SandboxControlError) -> bool {
+    matches!(error, SandboxControlError::Io(e) if e.kind() == std::io::ErrorKind::BrokenPipe)
+}
+
+struct WriterOutputSink<'a, WOut, WErr> {
+    stdout: &'a mut WOut,
+    stderr: &'a mut WErr,
+}
+
+impl<WOut, WErr> RemoteExecOutputSink for WriterOutputSink<'_, WOut, WErr>
+where
+    WOut: Write + Send,
+    WErr: Write + Send,
+{
+    fn stdout(&mut self, chunk: &[u8]) -> std::io::Result<()> {
+        self.stdout.write_all(chunk)
+    }
+
+    fn stderr(&mut self, chunk: &[u8]) -> std::io::Result<()> {
+        self.stderr.write_all(chunk)
+    }
+}
+
+fn status_to_exit_code(
+    status: RemoteExecStatus,
+    stderr: &mut impl Write,
+) -> RunnerResult<ExitCode> {
+    if status.stdout_truncated {
+        writeln!(stderr, "runner exec: stdout truncated")?;
+    }
+    if status.stderr_truncated {
+        writeln!(stderr, "runner exec: stderr truncated")?;
+    }
+
+    match status.termination {
+        RemoteExecTermination::Exited { exit_code } => {
+            if exit_code == 0 && (status.stdout_truncated || status.stderr_truncated) {
+                Ok(ExitCode::FAILURE)
+            } else {
+                Ok(ExitCode::from(exit_code as u8))
+            }
+        }
+        RemoteExecTermination::TimedOut => {
+            writeln!(stderr, "error: command timed out")?;
+            Ok(ExitCode::from(124))
+        }
+        RemoteExecTermination::Cancelled => {
+            write_non_exit_error(stderr, "command cancelled", status.diagnostic.as_deref())?;
+            Ok(ExitCode::FAILURE)
+        }
+        RemoteExecTermination::StartFailed => {
+            write_non_exit_error(
+                stderr,
+                "command failed to start",
+                status.diagnostic.as_deref(),
+            )?;
+            Ok(ExitCode::FAILURE)
+        }
+        RemoteExecTermination::WaitFailed => {
+            write_non_exit_error(stderr, "command wait failed", status.diagnostic.as_deref())?;
+            Ok(ExitCode::FAILURE)
+        }
+    }
+}
+
+fn write_non_exit_error(
+    stderr: &mut impl Write,
+    message: &str,
+    diagnostic: Option<&str>,
+) -> std::io::Result<()> {
+    if let Some(diagnostic) = diagnostic {
+        writeln!(stderr, "error: {message}: {diagnostic}")
+    } else {
+        writeln!(stderr, "error: {message}")
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use sandbox::{RemoteExecResult, SandboxControlError};
-    use sandbox_mock::MockSandboxControl;
+    use std::io;
+
+    use sandbox::SandboxControlError;
+    use sandbox_mock::{MockRemoteExecOutput, MockRemoteExecResponse, MockSandboxControl};
 
     use super::*;
 
@@ -165,57 +257,72 @@ mod tests {
         }
     }
 
+    async fn run_exec_capture(
+        args: ExecArgs,
+        control: &dyn SandboxControl,
+    ) -> RunnerResult<(ExitCode, Vec<u8>, Vec<u8>)> {
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let code = run_exec_with_writers(args, control, &mut stdout, &mut stderr).await?;
+        Ok((code, stdout, stderr))
+    }
+
     #[tokio::test]
     async fn success_propagates_exit_code() {
         let control = MockSandboxControl::new("/tmp");
-        control.push_exec_remote_result(Ok(RemoteExecResult {
-            exit_code: 42,
-            stdout: b"hello\n".to_vec(),
-            stderr: Vec::new(),
-        }));
+        control.push_exec_remote_response(MockRemoteExecResponse {
+            output: vec![MockRemoteExecOutput::Stdout(b"hello\n".to_vec())],
+            result: Ok(RemoteExecStatus::exited(42)),
+        });
 
-        let result = run_exec(make_args("test-id", "echo hello"), &control)
-            .await
-            .unwrap();
+        let (result, stdout, stderr) =
+            run_exec_capture(make_args("test-id", "echo hello"), &control)
+                .await
+                .unwrap();
         assert_eq!(result, ExitCode::from(42));
+        assert_eq!(stdout, b"hello\n");
+        assert!(stderr.is_empty());
     }
 
     #[tokio::test]
     async fn zero_exit_code_returns_success() {
         let control = MockSandboxControl::new("/tmp");
-        let result = run_exec(make_args("test-id", "true"), &control)
+        let (result, stdout, stderr) = run_exec_capture(make_args("test-id", "true"), &control)
             .await
             .unwrap();
         assert_eq!(result, ExitCode::SUCCESS);
+        assert!(stdout.is_empty());
+        assert!(stderr.is_empty());
     }
 
     #[tokio::test]
     async fn remote_error_prints_message_and_returns_failure() {
         let control = MockSandboxControl::new("/tmp");
-        control.push_exec_remote_result(Err(SandboxControlError::Remote("command failed".into())));
+        control.push_exec_remote_error(SandboxControlError::Remote("command failed".into()));
 
-        let result = run_exec(make_args("test-id", "fail"), &control)
+        let (result, stdout, stderr) = run_exec_capture(make_args("test-id", "fail"), &control)
             .await
             .unwrap();
         assert_eq!(result, ExitCode::FAILURE);
+        assert!(stdout.is_empty());
+        assert_eq!(stderr, b"error: command failed\n");
     }
 
     #[tokio::test]
     async fn not_found_error_propagates_as_runner_error() {
         let control = MockSandboxControl::new("/tmp");
-        control
-            .push_exec_remote_result(Err(SandboxControlError::NotFound("no such sandbox".into())));
+        control.push_exec_remote_error(SandboxControlError::NotFound("no such sandbox".into()));
 
-        let result = run_exec(make_args("missing", "test"), &control).await;
+        let result = run_exec_capture(make_args("missing", "test"), &control).await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn connection_error_propagates_as_runner_error() {
         let control = MockSandboxControl::new("/tmp");
-        control.push_exec_remote_result(Err(SandboxControlError::Connection("refused".into())));
+        control.push_exec_remote_error(SandboxControlError::Connection("refused".into()));
 
-        let result = run_exec(make_args("test-id", "test"), &control).await;
+        let result = run_exec_capture(make_args("test-id", "test"), &control).await;
         assert!(result.is_err());
     }
 
@@ -223,23 +330,194 @@ mod tests {
     async fn exit_code_truncated_to_u8() {
         let control = MockSandboxControl::new("/tmp");
         // 256 truncates to 0 via `as u8`
-        control.push_exec_remote_result(Ok(RemoteExecResult {
-            exit_code: 256,
-            stdout: Vec::new(),
-            stderr: Vec::new(),
-        }));
+        control.push_exec_remote_status(RemoteExecStatus::exited(256));
         // -1 (0xFFFFFFFF) truncates to 255 via `as u8`
-        control.push_exec_remote_result(Ok(RemoteExecResult {
-            exit_code: -1,
-            stdout: Vec::new(),
-            stderr: Vec::new(),
-        }));
+        control.push_exec_remote_status(RemoteExecStatus::exited(-1));
 
-        let r1 = run_exec(make_args("id", "test"), &control).await.unwrap();
+        let (r1, _, _) = run_exec_capture(make_args("id", "test"), &control)
+            .await
+            .unwrap();
         assert_eq!(r1, ExitCode::from(0));
 
-        let r2 = run_exec(make_args("id", "test"), &control).await.unwrap();
+        let (r2, _, _) = run_exec_capture(make_args("id", "test"), &control)
+            .await
+            .unwrap();
         assert_eq!(r2, ExitCode::from(255));
+    }
+
+    #[tokio::test]
+    async fn truncation_with_zero_exit_returns_failure() {
+        let control = MockSandboxControl::new("/tmp");
+        control.push_exec_remote_status(RemoteExecStatus {
+            termination: RemoteExecTermination::Exited { exit_code: 0 },
+            stdout_truncated: true,
+            stderr_truncated: false,
+            diagnostic: None,
+        });
+
+        let (result, stdout, stderr) = run_exec_capture(make_args("id", "test"), &control)
+            .await
+            .unwrap();
+
+        assert_eq!(result, ExitCode::FAILURE);
+        assert!(stdout.is_empty());
+        assert_eq!(stderr, b"runner exec: stdout truncated\n");
+    }
+
+    #[tokio::test]
+    async fn truncation_with_nonzero_exit_preserves_remote_exit_code() {
+        let control = MockSandboxControl::new("/tmp");
+        control.push_exec_remote_status(RemoteExecStatus {
+            termination: RemoteExecTermination::Exited { exit_code: 9 },
+            stdout_truncated: false,
+            stderr_truncated: true,
+            diagnostic: None,
+        });
+
+        let (result, stdout, stderr) = run_exec_capture(make_args("id", "test"), &control)
+            .await
+            .unwrap();
+
+        assert_eq!(result, ExitCode::from(9));
+        assert!(stdout.is_empty());
+        assert_eq!(stderr, b"runner exec: stderr truncated\n");
+    }
+
+    #[tokio::test]
+    async fn timed_out_status_returns_timeout_exit_code() {
+        let control = MockSandboxControl::new("/tmp");
+        control.push_exec_remote_status(RemoteExecStatus {
+            termination: RemoteExecTermination::TimedOut,
+            stdout_truncated: false,
+            stderr_truncated: false,
+            diagnostic: None,
+        });
+
+        let (result, stdout, stderr) = run_exec_capture(make_args("id", "test"), &control)
+            .await
+            .unwrap();
+
+        assert_eq!(result, ExitCode::from(124));
+        assert!(stdout.is_empty());
+        assert_eq!(stderr, b"error: command timed out\n");
+    }
+
+    #[tokio::test]
+    async fn wait_failed_status_prints_diagnostic() {
+        let control = MockSandboxControl::new("/tmp");
+        control.push_exec_remote_status(RemoteExecStatus {
+            termination: RemoteExecTermination::WaitFailed,
+            stdout_truncated: false,
+            stderr_truncated: false,
+            diagnostic: Some("wait failed".into()),
+        });
+
+        let (result, stdout, stderr) = run_exec_capture(make_args("id", "test"), &control)
+            .await
+            .unwrap();
+
+        assert_eq!(result, ExitCode::FAILURE);
+        assert!(stdout.is_empty());
+        assert_eq!(stderr, b"error: command wait failed: wait failed\n");
+    }
+
+    #[tokio::test]
+    async fn start_failed_status_prints_diagnostic() {
+        let control = MockSandboxControl::new("/tmp");
+        control.push_exec_remote_status(RemoteExecStatus {
+            termination: RemoteExecTermination::StartFailed,
+            stdout_truncated: false,
+            stderr_truncated: false,
+            diagnostic: Some("permission denied".into()),
+        });
+
+        let (result, stdout, stderr) = run_exec_capture(make_args("id", "test"), &control)
+            .await
+            .unwrap();
+
+        assert_eq!(result, ExitCode::FAILURE);
+        assert!(stdout.is_empty());
+        assert_eq!(
+            stderr,
+            b"error: command failed to start: permission denied\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancelled_status_prints_message() {
+        let control = MockSandboxControl::new("/tmp");
+        control.push_exec_remote_status(RemoteExecStatus {
+            termination: RemoteExecTermination::Cancelled,
+            stdout_truncated: false,
+            stderr_truncated: false,
+            diagnostic: None,
+        });
+
+        let (result, stdout, stderr) = run_exec_capture(make_args("id", "test"), &control)
+            .await
+            .unwrap();
+
+        assert_eq!(result, ExitCode::FAILURE);
+        assert!(stdout.is_empty());
+        assert_eq!(stderr, b"error: command cancelled\n");
+    }
+
+    struct BrokenPipeWriter;
+
+    impl Write for BrokenPipeWriter {
+        fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+            Err(io::Error::new(io::ErrorKind::BrokenPipe, "closed pipe"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn stdout_broken_pipe_exits_success_without_config_error() {
+        let control = MockSandboxControl::new("/tmp");
+        control.push_exec_remote_response(MockRemoteExecResponse {
+            output: vec![MockRemoteExecOutput::Stdout(b"hello\n".to_vec())],
+            result: Ok(RemoteExecStatus::exited(0)),
+        });
+
+        let mut stdout = BrokenPipeWriter;
+        let mut stderr = Vec::new();
+        let result = run_exec_with_writers(
+            make_args("test-id", "echo hello"),
+            &control,
+            &mut stdout,
+            &mut stderr,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result, ExitCode::SUCCESS);
+        assert!(stderr.is_empty());
+    }
+
+    #[tokio::test]
+    async fn stderr_broken_pipe_exits_success_without_config_error() {
+        let control = MockSandboxControl::new("/tmp");
+        control.push_exec_remote_response(MockRemoteExecResponse {
+            output: vec![MockRemoteExecOutput::Stderr(b"warning\n".to_vec())],
+            result: Ok(RemoteExecStatus::exited(0)),
+        });
+
+        let mut stdout = Vec::new();
+        let mut stderr = BrokenPipeWriter;
+        let result = run_exec_with_writers(
+            make_args("test-id", "echo warning"),
+            &control,
+            &mut stdout,
+            &mut stderr,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result, ExitCode::SUCCESS);
+        assert!(stdout.is_empty());
     }
 
     // ---- argument quoting -------------------------------------------------
@@ -247,7 +525,7 @@ mod tests {
     #[tokio::test]
     async fn safe_ascii_args_pass_through_unquoted() {
         let control = MockSandboxControl::new("/tmp");
-        run_exec(make_args_vec(vec!["ls", "-la", "/var/log"]), &control)
+        run_exec_capture(make_args_vec(vec!["ls", "-la", "/var/log"]), &control)
             .await
             .unwrap();
 
@@ -260,7 +538,7 @@ mod tests {
     #[tokio::test]
     async fn arg_with_space_is_quoted_as_single_token() {
         let control = MockSandboxControl::new("/tmp");
-        run_exec(
+        run_exec_capture(
             make_args_vec(vec!["cat", "/var/log/some file.log"]),
             &control,
         )
@@ -276,7 +554,7 @@ mod tests {
     #[tokio::test]
     async fn arg_with_single_quote_is_escaped() {
         let control = MockSandboxControl::new("/tmp");
-        run_exec(make_args_vec(vec!["echo", "it's"]), &control)
+        run_exec_capture(make_args_vec(vec!["echo", "it's"]), &control)
             .await
             .unwrap();
 
@@ -289,7 +567,7 @@ mod tests {
     #[tokio::test]
     async fn pipeline_inside_quoted_arg_is_preserved() {
         let control = MockSandboxControl::new("/tmp");
-        run_exec(
+        run_exec_capture(
             make_args_vec(vec!["bash", "-c", "echo a | tr a b"]),
             &control,
         )
@@ -305,7 +583,7 @@ mod tests {
     #[tokio::test]
     async fn shell_metachar_in_arg_is_quoted() {
         let control = MockSandboxControl::new("/tmp");
-        run_exec(make_args_vec(vec!["echo", "$HOME"]), &control)
+        run_exec_capture(make_args_vec(vec!["echo", "$HOME"]), &control)
             .await
             .unwrap();
 
@@ -319,7 +597,7 @@ mod tests {
     #[tokio::test]
     async fn empty_arg_is_quoted() {
         let control = MockSandboxControl::new("/tmp");
-        run_exec(make_args_vec(vec!["echo", ""]), &control)
+        run_exec_capture(make_args_vec(vec!["echo", ""]), &control)
             .await
             .unwrap();
 
@@ -329,7 +607,7 @@ mod tests {
     #[tokio::test]
     async fn assignment_syntax_arg_is_quoted() {
         let control = MockSandboxControl::new("/tmp");
-        run_exec(make_args_vec(vec!["FOO=bar", "env"]), &control)
+        run_exec_capture(make_args_vec(vec!["FOO=bar", "env"]), &control)
             .await
             .unwrap();
 

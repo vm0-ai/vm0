@@ -1446,6 +1446,9 @@ impl Sandbox for FirecrackerSandbox {
     // already polling.
 
     async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
+        // Legacy buffered exec path. New request/response command execution
+        // should call bounded_exec so output, termination, streaming, and
+        // cancellation semantics are explicit.
         let operation = SandboxOperation::Exec;
         let guest = self.operation_guest(operation).await?;
 

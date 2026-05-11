@@ -180,8 +180,15 @@ pub trait Sandbox: Send + Sync + Any {
     // backend process surfaces as a specific error rather than an
     // opaque IPC timeout.
 
-    /// Run `request.cmd` in the guest, block until it exits or the
-    /// request timeout expires, and return the captured output.
+    /// Legacy buffered command execution.
+    ///
+    /// Deprecated for new code: use [`bounded_exec`](Self::bounded_exec) for all
+    /// request/response command execution. Bounded exec returns structured
+    /// termination, bounded final output, optional request-scoped streaming,
+    /// and explicit transport cancellation semantics.
+    ///
+    /// Run `request.cmd` in the guest, block until it exits or the request
+    /// timeout expires, and return the captured output.
     ///
     /// Returns an error if the sandbox is not running or if the backing
     /// process crashes during execution.

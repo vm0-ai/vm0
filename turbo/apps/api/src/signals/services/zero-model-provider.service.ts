@@ -1,7 +1,13 @@
 import { command, computed, type Computed } from "ccstate";
 import {
+  getAuthMethodsForType,
   getFrameworkForType,
+  getSecretNameForType,
   getSecretNamesForAuthMethod,
+  getSecretsForAuthMethod,
+  hasAuthMethods,
+  MODEL_PROVIDER_TYPES,
+  type ModelProviderFramework,
   type ModelProviderListResponse,
   type ModelProviderResponse,
   type ModelProviderType,
@@ -9,15 +15,19 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne, notExists, sql } from "drizzle-orm";
 
-import { db$, writeDb$ } from "../external/db";
-import { notFound } from "../../lib/error";
+import { db$, writeDb$, type Db } from "../external/db";
+import { badRequestMessage, notFound } from "../../lib/error";
+import { logger } from "../../lib/log";
 import { nowDate } from "../external/time";
+import { encryptSecretValue } from "./crypto.utils";
+
+const L = logger("zero-model-provider.service");
 
 const ORG_SENTINEL_USER_ID = "__org__";
 
-function modelProviderResponse(row: {
+export function modelProviderResponse(row: {
   readonly id: string;
   readonly type: string;
   readonly isDefault: boolean;
@@ -202,5 +212,807 @@ export const deleteUserModelProvider$ = command(
     }
 
     return undefined;
+  },
+);
+
+/**
+ * Update a personal model provider's `selectedModel`. Single atomic
+ * `UPDATE … RETURNING` keyed on (orgId, userId, type) — strictly fewer
+ * round-trips than web's SELECT-then-UPDATE shape.
+ *
+ * The `secretName` field of the response body comes from a follow-up
+ * SELECT against `secrets.id`, only when `secretId` is non-null
+ * (multi-auth providers store secret references via `authMethod` and
+ * `getSecretNamesForAuthMethod` instead).
+ */
+export const updateUserModelProviderModel$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly type: ModelProviderType;
+      readonly selectedModel: string | undefined;
+    },
+    signal: AbortSignal,
+  ): Promise<
+    | NotFoundResponse
+    | { readonly status: 200; readonly body: ModelProviderResponse }
+  > => {
+    const writeDb = set(writeDb$);
+
+    const [updated] = await writeDb
+      .update(modelProviders)
+      .set({
+        selectedModel: args.selectedModel ?? null,
+        updatedAt: nowDate(),
+      })
+      .where(
+        and(
+          eq(modelProviders.orgId, args.orgId),
+          eq(modelProviders.userId, args.userId),
+          eq(modelProviders.type, args.type),
+        ),
+      )
+      .returning({
+        id: modelProviders.id,
+        type: modelProviders.type,
+        isDefault: modelProviders.isDefault,
+        selectedModel: modelProviders.selectedModel,
+        authMethod: modelProviders.authMethod,
+        secretId: modelProviders.secretId,
+        workspaceName: modelProviders.workspaceName,
+        planType: modelProviders.planType,
+        needsReconnect: modelProviders.needsReconnect,
+        lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
+        createdAt: modelProviders.createdAt,
+        updatedAt: modelProviders.updatedAt,
+      });
+    signal.throwIfAborted();
+
+    if (!updated) {
+      return notFound("Resource not found");
+    }
+
+    let secretName: string | null = null;
+    if (updated.secretId) {
+      const [secret] = await writeDb
+        .select({ name: secrets.name })
+        .from(secrets)
+        .where(eq(secrets.id, updated.secretId))
+        .limit(1);
+      signal.throwIfAborted();
+      secretName = secret?.name ?? null;
+    }
+
+    const body = modelProviderResponse({ ...updated, secretName });
+    if (!body) {
+      return notFound("Resource not found");
+    }
+    return { status: 200 as const, body };
+  },
+);
+
+interface ModelProviderRowSnapshot {
+  readonly id: string;
+  readonly type: string;
+  readonly isDefault: boolean;
+  readonly selectedModel: string | null;
+  readonly authMethod: string | null;
+  readonly secretName: string | null;
+  readonly workspaceName: string | null;
+  readonly planType: string | null;
+  readonly needsReconnect: boolean;
+  readonly lastRefreshErrorCode: string | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+/**
+ * Set a user-level model provider as the user's default.
+ *
+ * Atomic: clears the user's previous default and stamps this row as default
+ * inside a single transaction. The order (clear → set) is forced by the
+ * partial unique index `idx_model_providers_one_default_per_user` —
+ * reversing would violate the at-most-one-default invariant.
+ *
+ * Fast-path: if the targeted provider is already default, returns the
+ * existing row without writing (matches web's no-op).
+ *
+ * Returns a row snapshot suitable for `modelProviderResponse(row)`. Returns
+ * `notFound("Resource not found")` when the user has no provider of this
+ * type.
+ */
+export const setUserModelProviderDefault$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly type: ModelProviderType;
+    },
+    signal: AbortSignal,
+  ): Promise<NotFoundResponse | ModelProviderRowSnapshot> => {
+    const writeDb = set(writeDb$);
+
+    const [target] = await writeDb
+      .select({
+        id: modelProviders.id,
+        type: modelProviders.type,
+        isDefault: modelProviders.isDefault,
+        selectedModel: modelProviders.selectedModel,
+        authMethod: modelProviders.authMethod,
+        secretName: secrets.name,
+        workspaceName: modelProviders.workspaceName,
+        planType: modelProviders.planType,
+        needsReconnect: modelProviders.needsReconnect,
+        lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
+        createdAt: modelProviders.createdAt,
+        updatedAt: modelProviders.updatedAt,
+      })
+      .from(modelProviders)
+      .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
+      .where(
+        and(
+          eq(modelProviders.orgId, args.orgId),
+          eq(modelProviders.userId, args.userId),
+          eq(modelProviders.type, args.type),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!target) {
+      return notFound("Resource not found");
+    }
+
+    if (target.isDefault) {
+      // Fast-path: already default, no write.
+      return target;
+    }
+
+    const updatedAt = nowDate();
+    // Atomic flip: clear other defaults first, then set this one. Order is
+    // forced by the partial unique index `idx_model_providers_one_default_per_user`.
+    await writeDb.transaction(async (tx) => {
+      await tx
+        .update(modelProviders)
+        .set({ isDefault: false, updatedAt })
+        .where(
+          and(
+            eq(modelProviders.orgId, args.orgId),
+            eq(modelProviders.userId, args.userId),
+            eq(modelProviders.isDefault, true),
+            ne(modelProviders.id, target.id),
+          ),
+        );
+      await tx
+        .update(modelProviders)
+        .set({ isDefault: true, updatedAt })
+        .where(eq(modelProviders.id, target.id));
+    });
+    signal.throwIfAborted();
+
+    return { ...target, isDefault: true, updatedAt };
+  },
+);
+
+// ===========================================================================
+// Upsert path — POST /api/zero/me/model-providers
+//
+// Verbatim port of apps/web's `upsertModelProvider` /
+// `upsertMultiAuthModelProvider` (and supporting helpers) for the personal-tier
+// upsert handler. Returns either a `BadRequestResponse` (when web throws
+// `badRequest`) or `{ provider, created }`.
+// ===========================================================================
+
+type BadRequestResponse = ReturnType<typeof badRequestMessage>;
+
+/**
+ * Row shape returned to the route handler. Mirrors apps/web's
+ * `ModelProviderInfo` exactly so the codex paste handler's `UpsertedProvider`
+ * remains a structural subset (drops `userId`, `tokenExpiresAt`).
+ */
+export interface ModelProviderInfo {
+  readonly id: string;
+  readonly userId: string;
+  readonly type: ModelProviderType;
+  readonly framework: ModelProviderFramework;
+  readonly secretName: string | null;
+  readonly authMethod: string | null;
+  readonly secretNames: string[] | null;
+  readonly isDefault: boolean;
+  readonly selectedModel: string | null;
+  readonly tokenExpiresAt: Date | null;
+  readonly needsReconnect: boolean;
+  readonly lastRefreshErrorCode: string | null;
+  readonly workspaceName: string | null;
+  readonly planType: string | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+function toModelProviderInfo(params: {
+  id: string;
+  userId: string;
+  type: ModelProviderType;
+  secretName?: string | null;
+  authMethod?: string | null;
+  secretNames?: string[] | null;
+  isDefault: boolean;
+  selectedModel: string | null;
+  tokenExpiresAt?: Date | null;
+  needsReconnect?: boolean;
+  lastRefreshErrorCode?: string | null;
+  workspaceName?: string | null;
+  planType?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): ModelProviderInfo {
+  const authMethod = params.authMethod ?? null;
+  const secretNames =
+    params.secretNames !== undefined
+      ? params.secretNames
+      : authMethod
+        ? (getSecretNamesForAuthMethod(params.type, authMethod) ?? null)
+        : null;
+
+  return {
+    id: params.id,
+    userId: params.userId,
+    type: params.type,
+    framework: getFrameworkForType(params.type),
+    secretName: params.secretName ?? null,
+    authMethod,
+    secretNames,
+    isDefault: params.isDefault,
+    selectedModel: params.selectedModel,
+    tokenExpiresAt: params.tokenExpiresAt ?? null,
+    needsReconnect: params.needsReconnect ?? false,
+    lastRefreshErrorCode: params.lastRefreshErrorCode ?? null,
+    workspaceName: params.workspaceName ?? null,
+    planType: params.planType ?? null,
+    createdAt: params.createdAt,
+    updatedAt: params.updatedAt,
+  };
+}
+
+/**
+ * Reject vm0 on personal-tier callers — vm0 is org-only per Epic #11868.
+ * Returns BadRequestResponse so the route handler emits 400 without throwing.
+ */
+function assertVm0OrgOnly(
+  type: ModelProviderType,
+  userId: string,
+): BadRequestResponse | null {
+  if (type === "vm0" && userId !== ORG_SENTINEL_USER_ID) {
+    return badRequestMessage(
+      "VM0 managed provider is org-only and cannot be configured per-user",
+    );
+  }
+  return null;
+}
+
+/**
+ * Atomically assign isDefault=true to a provider, but only if no other provider
+ * already has isDefault=true for the same (orgId, userId) scope. Workspace-
+ * scoped, paired with the partial unique index `idx_model_providers_one_default_per_user`.
+ *
+ * Returns true if isDefault was set, false if another default already exists.
+ */
+async function assignDefaultIfFirst(
+  writeDb: Db,
+  orgId: string,
+  userId: string,
+  providerId: string,
+): Promise<boolean> {
+  const result = await writeDb
+    .update(modelProviders)
+    .set({ isDefault: true })
+    .where(
+      and(
+        eq(modelProviders.id, providerId),
+        notExists(
+          writeDb
+            .select({ id: sql`1` })
+            .from(modelProviders)
+            .where(
+              and(
+                eq(modelProviders.orgId, orgId),
+                eq(modelProviders.userId, userId),
+                eq(modelProviders.isDefault, true),
+                ne(modelProviders.id, providerId),
+              ),
+            ),
+        ),
+      ),
+    )
+    .returning({ id: modelProviders.id });
+  return result.length > 0;
+}
+
+interface MultiAuthMetadata {
+  readonly tokenExpiresAt?: Date | null;
+  readonly workspaceName?: string | null;
+  readonly planType?: string | null;
+}
+
+type MultiAuthInsertValues = typeof modelProviders.$inferInsert;
+
+function buildMultiAuthInsertValues(args: {
+  type: ModelProviderType;
+  userId: string;
+  authMethod: string;
+  selectedModel: string | undefined;
+  orgId: string;
+  metadata: MultiAuthMetadata | undefined;
+}): MultiAuthInsertValues {
+  return {
+    type: args.type,
+    userId: args.userId,
+    authMethod: args.authMethod,
+    isDefault: false,
+    selectedModel: args.selectedModel ?? null,
+    orgId: args.orgId,
+    tokenExpiresAt: args.metadata?.tokenExpiresAt ?? null,
+    workspaceName: args.metadata?.workspaceName ?? null,
+    planType: args.metadata?.planType ?? null,
+  };
+}
+
+function buildMultiAuthConflictSet(
+  authMethod: string,
+  selectedModel: string | undefined,
+  metadata?: MultiAuthMetadata,
+): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    authMethod,
+    selectedModel: selectedModel ?? null,
+    updatedAt: nowDate(),
+  };
+  if (!metadata) {
+    return base;
+  }
+  if (metadata.tokenExpiresAt !== undefined) {
+    base.tokenExpiresAt = metadata.tokenExpiresAt;
+  }
+  if (metadata.workspaceName !== undefined) {
+    base.workspaceName = metadata.workspaceName;
+  }
+  if (metadata.planType !== undefined) {
+    base.planType = metadata.planType;
+  }
+  base.needsReconnect = false;
+  base.lastRefreshErrorCode = null;
+  return base;
+}
+
+async function cleanupOldAuthMethodSecrets(
+  writeDb: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly type: ModelProviderType;
+    readonly oldAuthMethod: string;
+    readonly newSecretNames: readonly string[];
+  },
+): Promise<void> {
+  const oldSecretNames = getSecretNamesForAuthMethod(
+    args.type,
+    args.oldAuthMethod,
+  );
+  const secretsToDelete = oldSecretNames?.filter((name) => {
+    return !args.newSecretNames.includes(name);
+  });
+  if (secretsToDelete && secretsToDelete.length > 0) {
+    await writeDb
+      .delete(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, args.orgId),
+          eq(secrets.userId, args.userId),
+          inArray(secrets.name, secretsToDelete),
+        ),
+      );
+  }
+}
+
+async function upsertMultiAuthSecret(
+  writeDb: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly name: string;
+    readonly value: string;
+    readonly description: string;
+  },
+): Promise<void> {
+  const encryptedValue = encryptSecretValue(args.value);
+  await writeDb
+    .insert(secrets)
+    .values({
+      userId: args.userId,
+      name: args.name,
+      encryptedValue,
+      type: "model-provider",
+      description: args.description,
+      orgId: args.orgId,
+    })
+    .onConflictDoUpdate({
+      target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
+      set: {
+        encryptedValue,
+        description: args.description,
+        updatedAt: nowDate(),
+      },
+    });
+}
+
+/**
+ * Create or update a single-secret personal model provider.
+ *
+ * Verbatim port of apps/web's `upsertModelProvider`, adapted for api's
+ * write-via-`set(writeDb$)` pattern and result-union error shape.
+ */
+export const upsertUserModelProvider$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly type: ModelProviderType;
+      readonly secret: string;
+      readonly selectedModel?: string;
+    },
+    signal: AbortSignal,
+  ): Promise<
+    | BadRequestResponse
+    | { readonly provider: ModelProviderInfo; readonly created: boolean }
+  > => {
+    const vm0 = assertVm0OrgOnly(args.type, args.userId);
+    if (vm0) {
+      return vm0;
+    }
+
+    if (hasAuthMethods(args.type)) {
+      return badRequestMessage(
+        `Provider "${args.type}" requires multiple secrets. Use the multi-auth API instead.`,
+      );
+    }
+
+    const secretName = getSecretNameForType(args.type);
+    if (!secretName) {
+      return badRequestMessage(
+        `Provider "${args.type}" does not have a secret name`,
+      );
+    }
+
+    const writeDb = set(writeDb$);
+    const encryptedValue = encryptSecretValue(args.secret);
+
+    L.debug("upserting model provider", {
+      orgId: args.orgId,
+      type: args.type,
+      secretName,
+    });
+
+    // Pre-check: does a provider for this type already exist?
+    const [existingProvider] = await writeDb
+      .select({ id: modelProviders.id })
+      .from(modelProviders)
+      .where(
+        and(
+          eq(modelProviders.orgId, args.orgId),
+          eq(modelProviders.userId, args.userId),
+          eq(modelProviders.type, args.type),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    // Atomic secret upsert.
+    const [upsertedSecret] = await writeDb
+      .insert(secrets)
+      .values({
+        userId: args.userId,
+        name: secretName,
+        encryptedValue,
+        type: "model-provider",
+        description: `Model provider secret for ${MODEL_PROVIDER_TYPES[args.type].label}`,
+        orgId: args.orgId,
+      })
+      .onConflictDoUpdate({
+        target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
+        set: { encryptedValue, updatedAt: nowDate() },
+      })
+      .returning();
+    signal.throwIfAborted();
+
+    if (!upsertedSecret) {
+      throw new Error("Expected secret upsert to return a row");
+    }
+
+    // Atomic model provider upsert.
+    const [provider] = await writeDb
+      .insert(modelProviders)
+      .values({
+        type: args.type,
+        userId: args.userId,
+        secretId: upsertedSecret.id,
+        isDefault: false,
+        selectedModel: args.selectedModel ?? null,
+        orgId: args.orgId,
+      })
+      .onConflictDoUpdate({
+        target: [
+          modelProviders.orgId,
+          modelProviders.userId,
+          modelProviders.type,
+        ],
+        set: {
+          secretId: upsertedSecret.id,
+          selectedModel: args.selectedModel ?? null,
+          updatedAt: nowDate(),
+        },
+      })
+      .returning();
+    signal.throwIfAborted();
+
+    if (!provider) {
+      throw new Error("Expected model provider upsert to return a row");
+    }
+
+    const wasCreated = !existingProvider;
+
+    let isDefault = provider.isDefault;
+    if (!isDefault) {
+      const assigned = await assignDefaultIfFirst(
+        writeDb,
+        args.orgId,
+        args.userId,
+        provider.id,
+      );
+      signal.throwIfAborted();
+      if (assigned) {
+        isDefault = true;
+      }
+    }
+
+    return {
+      provider: toModelProviderInfo({
+        id: provider.id,
+        userId: args.userId,
+        type: args.type,
+        secretName,
+        isDefault,
+        selectedModel: provider.selectedModel,
+        tokenExpiresAt: provider.tokenExpiresAt,
+        needsReconnect: provider.needsReconnect,
+        lastRefreshErrorCode: provider.lastRefreshErrorCode,
+        workspaceName: provider.workspaceName,
+        planType: provider.planType,
+        createdAt: provider.createdAt,
+        updatedAt: provider.updatedAt,
+      }),
+      created: wasCreated,
+    };
+  },
+);
+
+/**
+ * Loop over `secretValues` and persist each via `upsertMultiAuthSecret`.
+ * Extracted so the Command body stays under the per-function lint ceiling.
+ */
+async function persistMultiAuthSecrets(
+  writeDb: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly type: ModelProviderType;
+    readonly authMethod: string;
+    readonly secretValues: Record<string, string>;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  const description = `${MODEL_PROVIDER_TYPES[args.type].label} secret (${args.authMethod})`;
+  for (const [name, value] of Object.entries(args.secretValues)) {
+    await upsertMultiAuthSecret(writeDb, {
+      orgId: args.orgId,
+      userId: args.userId,
+      name,
+      value,
+      description,
+    });
+    signal.throwIfAborted();
+  }
+}
+
+/**
+ * Validate the multi-auth upsert input shape (auth method exists, required
+ * secrets present, etc.). Returns a BadRequestResponse if any check fails;
+ * otherwise null. Extracted from `upsertUserMultiAuthModelProvider$` so the
+ * Command body stays under the per-function lint ceiling.
+ */
+function validateMultiAuthUpsertInput(args: {
+  readonly type: ModelProviderType;
+  readonly authMethod: string;
+  readonly secretValues: Record<string, string>;
+}): BadRequestResponse | null {
+  if (!hasAuthMethods(args.type)) {
+    return badRequestMessage(
+      `Provider "${args.type}" is a legacy single-secret provider. Use the standard upsert API.`,
+    );
+  }
+
+  const authMethods = getAuthMethodsForType(args.type);
+  if (!authMethods || !(args.authMethod in authMethods)) {
+    const validMethods = authMethods ? Object.keys(authMethods).join(", ") : "";
+    return badRequestMessage(
+      `Invalid auth method "${args.authMethod}" for provider "${args.type}". Valid methods: ${validMethods}`,
+    );
+  }
+
+  const secretsConfig = getSecretsForAuthMethod(args.type, args.authMethod);
+  if (!secretsConfig) {
+    return badRequestMessage(
+      `No secrets config found for auth method "${args.authMethod}"`,
+    );
+  }
+
+  const missingRequired: string[] = [];
+  for (const [name, config] of Object.entries(secretsConfig)) {
+    if (config.required && !args.secretValues[name]) {
+      missingRequired.push(name);
+    }
+  }
+  if (missingRequired.length > 0) {
+    return badRequestMessage(
+      `Missing required secrets for ${args.authMethod}: ${missingRequired.join(", ")}`,
+    );
+  }
+
+  return null;
+}
+
+/**
+ * Create or update a multi-auth personal model provider (e.g., aws-bedrock,
+ * codex-oauth-token).
+ *
+ * Verbatim port of apps/web's `upsertMultiAuthModelProvider`.
+ */
+export const upsertUserMultiAuthModelProvider$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly type: ModelProviderType;
+      readonly authMethod: string;
+      readonly secretValues: Record<string, string>;
+      readonly selectedModel?: string;
+      readonly metadata?: MultiAuthMetadata;
+    },
+    signal: AbortSignal,
+  ): Promise<
+    | BadRequestResponse
+    | { readonly provider: ModelProviderInfo; readonly created: boolean }
+  > => {
+    const validationError = validateMultiAuthUpsertInput({
+      type: args.type,
+      authMethod: args.authMethod,
+      secretValues: args.secretValues,
+    });
+    if (validationError) {
+      return validationError;
+    }
+
+    const writeDb = set(writeDb$);
+
+    L.debug("upserting multi-auth model provider", {
+      orgId: args.orgId,
+      type: args.type,
+      authMethod: args.authMethod,
+      secretNames: Object.keys(args.secretValues),
+    });
+
+    // Check if model provider already exists (needed for auth method switch cleanup).
+    const [existingProvider] = await writeDb
+      .select()
+      .from(modelProviders)
+      .where(
+        and(
+          eq(modelProviders.orgId, args.orgId),
+          eq(modelProviders.userId, args.userId),
+          eq(modelProviders.type, args.type),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    // If switching auth methods, clean up old secrets that are no longer used.
+    if (existingProvider && existingProvider.authMethod !== args.authMethod) {
+      await cleanupOldAuthMethodSecrets(writeDb, {
+        orgId: args.orgId,
+        userId: args.userId,
+        type: args.type,
+        oldAuthMethod: existingProvider.authMethod ?? "",
+        newSecretNames: Object.keys(args.secretValues),
+      });
+      signal.throwIfAborted();
+    }
+
+    // Store/update all secrets atomically.
+    const secretNames = Object.keys(args.secretValues);
+    await persistMultiAuthSecrets(writeDb, args, signal);
+
+    // Atomic model provider upsert; metadata-aware conflict set clears stale flags.
+    const insertValues = buildMultiAuthInsertValues({
+      type: args.type,
+      userId: args.userId,
+      authMethod: args.authMethod,
+      selectedModel: args.selectedModel,
+      orgId: args.orgId,
+      metadata: args.metadata,
+    });
+    const conflictSet = buildMultiAuthConflictSet(
+      args.authMethod,
+      args.selectedModel,
+      args.metadata,
+    );
+    const [provider] = await writeDb
+      .insert(modelProviders)
+      .values(insertValues)
+      .onConflictDoUpdate({
+        target: [
+          modelProviders.orgId,
+          modelProviders.userId,
+          modelProviders.type,
+        ],
+        set: conflictSet,
+      })
+      .returning();
+    signal.throwIfAborted();
+
+    if (!provider) {
+      throw new Error(
+        "Expected multi-auth model provider upsert to return a row",
+      );
+    }
+
+    const wasCreated = !existingProvider;
+
+    let isDefault = provider.isDefault;
+    if (!isDefault) {
+      const assigned = await assignDefaultIfFirst(
+        writeDb,
+        args.orgId,
+        args.userId,
+        provider.id,
+      );
+      signal.throwIfAborted();
+      if (assigned) {
+        isDefault = true;
+      }
+    }
+
+    return {
+      provider: toModelProviderInfo({
+        id: provider.id,
+        userId: args.userId,
+        type: args.type,
+        authMethod: args.authMethod,
+        secretNames,
+        isDefault,
+        selectedModel: provider.selectedModel,
+        tokenExpiresAt: provider.tokenExpiresAt,
+        needsReconnect: provider.needsReconnect,
+        lastRefreshErrorCode: provider.lastRefreshErrorCode,
+        workspaceName: provider.workspaceName,
+        planType: provider.planType,
+        createdAt: provider.createdAt,
+        updatedAt: provider.updatedAt,
+      }),
+      created: wasCreated,
+    };
   },
 );
