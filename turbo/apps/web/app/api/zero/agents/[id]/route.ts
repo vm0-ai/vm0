@@ -38,6 +38,15 @@ function createPublicAgentLimitResponse() {
   );
 }
 
+function unauthenticatedResponse() {
+  return {
+    status: 401 as const,
+    body: {
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    },
+  };
+}
+
 type AgentUpdateBody = {
   displayName?: string | null;
   description?: string | null;
@@ -232,6 +241,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
       requiredCapability: "agent:read",
     });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthenticatedResponse();
 
     const { org } = await resolveOrg(authCtx);
 

@@ -74,6 +74,14 @@ function getAgent(name: string, token: string) {
   );
 }
 
+function getAgentFromSession(name: string) {
+  return GET(
+    createTestRequest(`http://localhost:3000/api/zero/agents/${name}`, {
+      method: "GET",
+    }),
+  );
+}
+
 function putAgent(name: string, body: Record<string, unknown>, token: string) {
   return PUT(
     createTestRequest(`http://localhost:3000/api/zero/agents/${name}`, {
@@ -109,6 +117,14 @@ function listAgentsReq(token: string) {
     createTestRequest(`http://localhost:3000/api/zero/agents`, {
       method: "GET",
       headers: { Authorization: `Bearer ${token}` },
+    }),
+  );
+}
+
+function listAgentsFromSession() {
+  return listAgents(
+    createTestRequest(`http://localhost:3000/api/zero/agents`, {
+      method: "GET",
     }),
   );
 }
@@ -385,14 +401,66 @@ describe("Zero Agents API", () => {
     });
 
     it("should return 404 for unknown agent", async () => {
-      const response = await getAgent(
-        "00000000-0000-0000-0000-000000000000",
-        testCliToken,
-      );
+      const unknownId = "00000000-0000-0000-0000-000000000000";
+      const response = await getAgent(unknownId, testCliToken);
 
       expect(response.status).toBe(404);
       const data = await response.json();
-      expect(data.error.code).toBe("NOT_FOUND");
+      expect(data).toStrictEqual({
+        error: { message: `Agent not found: ${unknownId}`, code: "NOT_FOUND" },
+      });
+    });
+
+    it("should return 401 when the authenticated session has no active organization", async () => {
+      const createResponse = await postAgent(
+        { displayName: "No Org Detail" },
+        testCliToken,
+      );
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json();
+      mockClerk({ userId: user.userId, orgId: null });
+
+      const response = await getAgentFromSession(created.agentId);
+
+      expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toStrictEqual({
+        error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+      });
+    });
+
+    it("should return 404 for an agent from another org", async () => {
+      const otherUser = await context.setupUser({ prefix: "other-agent-user" });
+      mockClerk({
+        userId: otherUser.userId,
+        orgId: otherUser.orgId,
+        orgRole: "org:admin",
+      });
+      const otherToken = await createTestCliToken(
+        otherUser.userId,
+        undefined,
+        otherUser.orgId,
+      );
+      const createResponse = await postAgent(
+        { displayName: "Other Org Agent" },
+        otherToken,
+      );
+      expect(createResponse.status).toBe(201);
+      const otherAgent = await createResponse.json();
+      mockClerk({
+        userId: user.userId,
+        orgId: user.orgId,
+        orgRole: "org:admin",
+      });
+
+      const response = await getAgent(otherAgent.agentId, testCliToken);
+
+      expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toStrictEqual({
+        error: {
+          message: `Agent not found: ${otherAgent.agentId}`,
+          code: "NOT_FOUND",
+        },
+      });
     });
 
     it("should only return private agents to their owner", async () => {
@@ -919,6 +987,49 @@ describe("Zero Agents API", () => {
       mockClerk({ userId: null });
       const response = await listAgentsReq("no-token");
       expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toStrictEqual({
+        error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+      });
+    });
+
+    it("should return 401 when the authenticated session has no active organization", async () => {
+      mockClerk({ userId: user.userId, orgId: null });
+
+      const response = await listAgentsFromSession();
+
+      expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toStrictEqual({
+        error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+      });
+    });
+
+    it("should only list agents from the active organization", async () => {
+      const otherUser = await context.setupUser({ prefix: "other-agent-user" });
+      mockClerk({
+        userId: otherUser.userId,
+        orgId: otherUser.orgId,
+        orgRole: "org:admin",
+      });
+      const otherToken = await createTestCliToken(
+        otherUser.userId,
+        undefined,
+        otherUser.orgId,
+      );
+      const createResponse = await postAgent(
+        { displayName: "Other Org Agent" },
+        otherToken,
+      );
+      expect(createResponse.status).toBe(201);
+      mockClerk({
+        userId: user.userId,
+        orgId: user.orgId,
+        orgRole: "org:admin",
+      });
+
+      const response = await listAgentsReq(testCliToken);
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toStrictEqual([]);
     });
   });
 
