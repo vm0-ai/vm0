@@ -990,7 +990,10 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     ).rejects.toSatisfy((err: unknown) => {
       return (
         isModelProviderConnectRequired(err) &&
-        err.providerType === "codex-oauth-token"
+        err.providerType === "codex-oauth-token" &&
+        err.message.includes(
+          "[Open Personal Models](http://localhost:3001/settings?tab=model-configuration&connectModelProvider=codex-oauth-token)",
+        )
       );
     });
   });
