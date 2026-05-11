@@ -334,17 +334,23 @@ export function buildWelcomeMessage(
  * Build a help message
  *
  * @param opts.canSwitch - Whether `/zero switch` is available for the caller.
- *   When `false`, the switch line is omitted so users aren't shown a command
- *   they cannot use. Defaults to `false` (the safe choice when the caller has
- *   no user/org context yet, e.g. pre-installation help).
+ * @param opts.canModel - Whether `/zero model` is available for the caller.
+ *   When unavailable, gated command lines are omitted so users aren't shown
+ *   commands they cannot use. Defaults to `false` (the safe choice when the
+ *   caller has no user/org context yet, e.g. pre-installation help).
  * @returns Block Kit blocks
  */
 export function buildHelpMessage(opts?: {
   canSwitch?: boolean;
+  canModel?: boolean;
 }): (Block | KnownBlock)[] {
   const canSwitch = opts?.canSwitch ?? false;
+  const canModel = opts?.canModel ?? false;
   const switchLine = canSwitch
     ? "\n\u2022 `/zero switch` - Choose which agent responds to your messages"
+    : "";
+  const modelLine = canModel
+    ? "\n\u2022 `/zero model` - Choose your personal default model"
     : "";
   return [
     {
@@ -361,7 +367,7 @@ export function buildHelpMessage(opts?: {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Commands*\n\u2022 \`/zero connect\` - Connect to Zero${switchLine}\n\u2022 \`/zero disconnect\` - Disconnect from Zero`,
+        text: `*Commands*\n\u2022 \`/zero connect\` - Connect to Zero${switchLine}${modelLine}\n\u2022 \`/zero disconnect\` - Disconnect from Zero`,
       },
     },
     {
@@ -499,6 +505,11 @@ export const AGENT_PICKER_BLOCK_ID = "agent_select_block";
 export const AGENT_PICKER_ACTION_ID = "agent_select";
 export const AGENT_PICKER_ORG_DEFAULT_VALUE = "__org_default__";
 
+export const MODEL_PICKER_CALLBACK_ID = "model_preference_modal";
+export const MODEL_PICKER_BLOCK_ID = "model_select_block";
+export const MODEL_PICKER_ACTION_ID = "model_select";
+export const MODEL_PICKER_WORKSPACE_DEFAULT_VALUE = "__workspace_default__";
+
 interface AgentPickerOption {
   composeId: string;
   name: string;
@@ -566,6 +577,84 @@ export function buildAgentPickerModal(args: {
           type: "static_select",
           action_id: AGENT_PICKER_ACTION_ID,
           placeholder: { type: "plain_text", text: "Select an agent" },
+          options: selectOptions,
+          ...(initialOption && { initial_option: initialOption }),
+        },
+      },
+    ],
+    ...(args.privateMetadata && { private_metadata: args.privateMetadata }),
+  };
+
+  return view;
+}
+
+interface ModelPickerOption {
+  model: string;
+  label: string;
+}
+
+/**
+ * Build the "Switch Model" modal view.
+ *
+ * The caller passes only models configured for the workspace and available to
+ * the user. The workspace default sentinel clears the personal model
+ * preference, matching the platform's "use default" behavior.
+ */
+export function buildModelPickerModal(args: {
+  options: ModelPickerOption[];
+  currentSelectedModel: string | null;
+  workspaceDefaultName: string | null;
+  privateMetadata?: string;
+}): View {
+  const workspaceDefaultLabel = args.workspaceDefaultName
+    ? `Use workspace default (${args.workspaceDefaultName})`
+    : "Use workspace default";
+
+  const selectOptions = [
+    {
+      text: {
+        type: "plain_text" as const,
+        text: workspaceDefaultLabel.slice(0, 75),
+      },
+      value: MODEL_PICKER_WORKSPACE_DEFAULT_VALUE,
+    },
+    ...args.options.map((option) => {
+      return {
+        text: { type: "plain_text" as const, text: option.label.slice(0, 75) },
+        value: option.model,
+      };
+    }),
+  ];
+
+  const initialOptionRaw = args.currentSelectedModel
+    ? selectOptions.find((option) => {
+        return option.value === args.currentSelectedModel;
+      })
+    : selectOptions[0];
+  const initialOption = initialOptionRaw ?? selectOptions[0];
+
+  const view: View = {
+    type: "modal",
+    callback_id: MODEL_PICKER_CALLBACK_ID,
+    title: { type: "plain_text", text: "Switch Model" },
+    submit: { type: "plain_text", text: "Switch" },
+    close: { type: "plain_text", text: "Cancel" },
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "Choose your personal default model. This only affects your own runs.",
+        },
+      },
+      {
+        type: "input",
+        block_id: MODEL_PICKER_BLOCK_ID,
+        label: { type: "plain_text", text: "Model" },
+        element: {
+          type: "static_select",
+          action_id: MODEL_PICKER_ACTION_ID,
+          placeholder: { type: "plain_text", text: "Select a model" },
           options: selectOptions,
           ...(initialOption && { initial_option: initialOption }),
         },

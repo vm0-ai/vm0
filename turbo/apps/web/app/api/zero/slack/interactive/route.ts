@@ -19,6 +19,10 @@ import {
   AGENT_PICKER_BLOCK_ID,
   AGENT_PICKER_CALLBACK_ID,
   AGENT_PICKER_ORG_DEFAULT_VALUE,
+  MODEL_PICKER_ACTION_ID,
+  MODEL_PICKER_BLOCK_ID,
+  MODEL_PICKER_CALLBACK_ID,
+  MODEL_PICKER_WORKSPACE_DEFAULT_VALUE,
   buildAgentPickerModal,
 } from "../../../../../src/lib/zero/slack/blocks";
 import { refreshOrgAppHome } from "../../../../../src/lib/zero/slack-org/handlers/app-home";
@@ -30,6 +34,8 @@ import {
   setUserAgentPreference,
 } from "../../../../../src/lib/zero/slack-org/handlers/shared";
 import { listComposes } from "../../../../../src/lib/zero/zero-compose-service";
+import { getSlackModelPickerState } from "../../../../../src/lib/zero/slack/model-picker";
+import { updateUserModelPreference } from "../../../../../src/lib/zero/model-policy/user-model-preference-service";
 import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("slack-org:interactive");
@@ -135,6 +141,13 @@ export async function POST(request: Request) {
     return handleAgentPickerSubmit(payload);
   }
 
+  if (
+    payload.type === "view_submission" &&
+    payload.view?.callback_id === MODEL_PICKER_CALLBACK_ID
+  ) {
+    return handleModelPickerSubmit(payload);
+  }
+
   if (payload.type === "block_actions") {
     const action = payload.actions?.[0];
     if (!action) {
@@ -208,7 +221,7 @@ function postEphemeralMessage(opts: {
       return;
     })
     .catch((err) => {
-      log.warn("Failed to post switch ephemeral", { error: err });
+      log.warn("Failed to post ephemeral message", { error: err });
     });
 }
 
@@ -339,6 +352,114 @@ async function handleAgentPickerSubmit(
     channelId,
     composeId: agentRow.id,
     switchedTo: agentRow.displayName ?? agentRow.name,
+  });
+
+  return new Response("", { status: 200 });
+}
+
+async function applyModelSelection(opts: {
+  ctx: ConnectionContext;
+  botToken: string;
+  slackUserId: string;
+  channelId: string | undefined;
+  selectedModel: string | null;
+  switchedTo: string;
+}): Promise<void> {
+  await updateUserModelPreference(
+    opts.ctx.orgId,
+    opts.ctx.connection.vm0UserId,
+    opts.selectedModel,
+  );
+
+  if (opts.channelId) {
+    await postEphemeralMessage({
+      botToken: opts.botToken,
+      channel: opts.channelId,
+      slackUserId: opts.slackUserId,
+      text: `Switched to *${opts.switchedTo}*.`,
+    });
+  }
+}
+
+/**
+ * Persist the user's model selection after they submit the model modal.
+ *
+ * The option list is reloaded on submit so stale modals cannot write a model
+ * that is no longer configured or visible for the caller.
+ */
+async function handleModelPickerSubmit(
+  payload: SlackInteractivePayload,
+): Promise<Response> {
+  const selected =
+    payload.view?.state.values[MODEL_PICKER_BLOCK_ID]?.[MODEL_PICKER_ACTION_ID]
+      ?.selected_option?.value;
+
+  if (!selected) {
+    return NextResponse.json({
+      response_action: "errors",
+      errors: { [MODEL_PICKER_BLOCK_ID]: "Please choose a model." },
+    });
+  }
+
+  const ctx = await resolveConnectionContext(payload.user.id, payload.team.id);
+  if (!ctx) {
+    return new Response("", { status: 200 });
+  }
+
+  const picker = await getSlackModelPickerState({
+    orgId: ctx.orgId,
+    userId: ctx.connection.vm0UserId,
+  });
+  if (!picker.enabled) {
+    return NextResponse.json({
+      response_action: "errors",
+      errors: {
+        [MODEL_PICKER_BLOCK_ID]:
+          "Model switching is not available for this workspace.",
+      },
+    });
+  }
+
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const botToken = decryptSecretValue(
+    ctx.installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const channelId = parseViewChannelId(payload.view?.private_metadata);
+
+  if (selected === MODEL_PICKER_WORKSPACE_DEFAULT_VALUE) {
+    await applyModelSelection({
+      ctx,
+      botToken,
+      slackUserId: payload.user.id,
+      channelId,
+      selectedModel: null,
+      switchedTo: picker.workspaceDefaultName
+        ? `workspace default (${picker.workspaceDefaultName})`
+        : "workspace default",
+    });
+    return new Response("", { status: 200 });
+  }
+
+  const option = picker.options.find((candidate) => {
+    return candidate.model === selected;
+  });
+  if (!option) {
+    return NextResponse.json({
+      response_action: "errors",
+      errors: {
+        [MODEL_PICKER_BLOCK_ID]: "You don't have access to that model.",
+      },
+    });
+  }
+
+  await applyModelSelection({
+    ctx,
+    botToken,
+    slackUserId: payload.user.id,
+    channelId,
+    selectedModel: option.model,
+    switchedTo: option.label,
   });
 
   return new Response("", { status: 200 });

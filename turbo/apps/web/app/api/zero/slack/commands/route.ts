@@ -19,6 +19,7 @@ import {
   buildSuccessMessage,
   buildLoginMessage,
   buildAgentPickerModal,
+  buildModelPickerModal,
 } from "../../../../../src/lib/zero/slack/blocks";
 import { disconnect } from "../../../../../src/lib/zero/slack-org/connect-service";
 import { refreshOrgAppHome } from "../../../../../src/lib/zero/slack-org/handlers/app-home";
@@ -29,6 +30,7 @@ import {
   resolveDefaultComposeId,
 } from "../../../../../src/lib/zero/slack-org/handlers/shared";
 import { listComposes } from "../../../../../src/lib/zero/zero-compose-service";
+import { getSlackModelPickerState } from "../../../../../src/lib/zero/slack/model-picker";
 import { getAppUrl } from "../../../../../src/lib/zero/url";
 import { logger } from "../../../../../src/lib/shared/logger";
 
@@ -147,6 +149,7 @@ async function handleDisconnect(
 }
 
 const AGENT_PICKER_MAX_OPTIONS = 100;
+const MODEL_PICKER_MAX_OPTIONS = 99;
 
 /**
  * Handle /zero switch command — opens the per-user agent picker modal.
@@ -222,6 +225,83 @@ async function handleSwitch(
   }
 
   return new NextResponse("", { status: 200 });
+}
+
+/**
+ * Handle /zero model command — opens the per-user model picker modal.
+ */
+async function handleModel(
+  payload: SlackCommandPayload,
+  installation: typeof slackOrgInstallations.$inferSelect,
+  connection: typeof slackOrgConnections.$inferSelect,
+): Promise<NextResponse> {
+  if (!installation.orgId) {
+    return ephemeral(
+      buildErrorMessage(
+        "This workspace is not bound to an org. Please contact your admin.",
+      ),
+    );
+  }
+
+  if (!payload.trigger_id) {
+    return ephemeral(
+      buildErrorMessage("Couldn't open the model picker — please try again."),
+    );
+  }
+
+  const picker = await getSlackModelPickerState({
+    orgId: installation.orgId,
+    userId: connection.vm0UserId,
+  });
+
+  if (!picker.enabled) {
+    return ephemeral(
+      buildErrorMessage("Model switching is not available for this workspace."),
+    );
+  }
+
+  if (picker.options.length === 0) {
+    return ephemeral(
+      buildErrorMessage("No models are configured for this workspace."),
+    );
+  }
+
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const botToken = decryptSecretValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createSlackClient(botToken);
+
+  const modal = buildModelPickerModal({
+    options: picker.options.slice(0, MODEL_PICKER_MAX_OPTIONS),
+    currentSelectedModel: picker.currentSelectedModel,
+    workspaceDefaultName: picker.workspaceDefaultName,
+    privateMetadata: JSON.stringify({ channelId: payload.channel_id }),
+  });
+
+  try {
+    await openView(client, payload.trigger_id, modal);
+  } catch (err) {
+    log.warn("Failed to open model picker modal", { error: err });
+    return ephemeral(
+      buildErrorMessage("Couldn't open the model picker — please try again."),
+    );
+  }
+
+  return new NextResponse("", { status: 200 });
+}
+
+async function isModelCommandAvailable(
+  installation: typeof slackOrgInstallations.$inferSelect | undefined,
+  connection: typeof slackOrgConnections.$inferSelect | undefined,
+): Promise<boolean> {
+  if (!installation?.orgId || !connection) return false;
+  const picker = await getSlackModelPickerState({
+    orgId: installation.orgId,
+    userId: connection.vm0UserId,
+  });
+  return picker.enabled && picker.options.length > 0;
 }
 
 function buildNotInstalledMessage(detail?: string): unknown[] {
@@ -302,9 +382,30 @@ export async function POST(request: Request) {
 
   const canSwitchAgents = Boolean(installation?.orgId);
 
+  const [connection] = installation
+    ? await globalThis.services.db
+        .select()
+        .from(slackOrgConnections)
+        .where(
+          and(
+            eq(slackOrgConnections.slackUserId, payload.user_id),
+            eq(slackOrgConnections.slackWorkspaceId, payload.team_id),
+          ),
+        )
+        .limit(1)
+    : [];
+  const getCanSwitchModels = () => {
+    return isModelCommandAvailable(installation, connection);
+  };
+
   // Handle help command (doesn't require installation)
   if (subCommand === "help" || subCommand === "") {
-    return ephemeral(buildHelpMessage({ canSwitch: canSwitchAgents }));
+    return ephemeral(
+      buildHelpMessage({
+        canSwitch: canSwitchAgents,
+        canModel: await getCanSwitchModels(),
+      }),
+    );
   }
 
   // Handle connect command
@@ -323,18 +424,6 @@ export async function POST(request: Request) {
   if (!installation) {
     return ephemeral(buildNotInstalledMessage());
   }
-
-  // Check if user is connected
-  const [connection] = await globalThis.services.db
-    .select()
-    .from(slackOrgConnections)
-    .where(
-      and(
-        eq(slackOrgConnections.slackUserId, payload.user_id),
-        eq(slackOrgConnections.slackWorkspaceId, payload.team_id),
-      ),
-    )
-    .limit(1);
 
   // Handle disconnect command
   if (subCommand === "disconnect") {
@@ -359,6 +448,16 @@ export async function POST(request: Request) {
     return handleSwitch(payload, installation, connection);
   }
 
+  // Handle model command
+  if (subCommand === "model") {
+    return handleModel(payload, installation, connection);
+  }
+
   // Unknown command
-  return ephemeral(buildHelpMessage({ canSwitch: canSwitchAgents }));
+  return ephemeral(
+    buildHelpMessage({
+      canSwitch: canSwitchAgents,
+      canModel: await getCanSwitchModels(),
+    }),
+  );
 }
