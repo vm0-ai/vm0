@@ -26,7 +26,8 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@ngrok/ngrok": "^1.6.0"
+    "@ngrok/ngrok": "^1.6.0",
+    "ably": "^2.21.0"
   },
   "devDependencies": {
     "@sentry/node": "^10.50.0",

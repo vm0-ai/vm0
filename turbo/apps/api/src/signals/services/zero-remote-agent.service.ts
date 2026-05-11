@@ -1,7 +1,10 @@
 import { createHash, randomBytes, randomInt } from "crypto";
 import { command } from "ccstate";
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
-import type { RemoteAgentBackend } from "@vm0/api-contracts/contracts/zero-remote-agent";
+import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import type {
+  RemoteAgentBackend,
+  RemoteAgentHostStatus,
+} from "@vm0/api-contracts/contracts/zero-remote-agent";
 import {
   remoteAgentDeviceCodes,
   remoteAgentHosts,
@@ -10,10 +13,20 @@ import {
 
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
+import {
+  createRemoteAgentDeviceRealtimeSubscription,
+  createRemoteAgentHostRealtimeSubscription,
+  publishRemoteAgentDeviceApproved,
+  publishRemoteAgentHostJobAvailable,
+} from "../external/realtime";
+import { safeAsync } from "../utils";
+import { logger } from "../../lib/log";
 
 const REMOTE_AGENT_DEVICE_CODE_TTL_SECONDS = 15 * 60;
 const REMOTE_AGENT_POLL_INTERVAL_SECONDS = 5;
+const REMOTE_AGENT_HOST_CLOSED_AFTER_MS = 90 * 1000;
 const REMOTE_AGENT_VERIFICATION_PATH = "/zero/connectors/remote-agent";
+const L = logger("ZeroRemoteAgent");
 
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
@@ -24,6 +37,9 @@ interface CreateRemoteAgentDeviceCodeResult {
   readonly expiresIn: number;
   readonly interval: number;
   readonly pollToken: string;
+  readonly realtime?: Awaited<
+    ReturnType<typeof createRemoteAgentDeviceRealtimeSubscription>
+  >;
 }
 
 type ClaimRemoteAgentDeviceCodeResult =
@@ -83,7 +99,7 @@ function serializeJob(row: typeof remoteAgentJobs.$inferSelect) {
   return {
     id: row.id,
     hostId: row.hostId,
-    backend: row.backend as RemoteAgentBackend,
+    backend: row.backend as RemoteAgentBackend | null,
     prompt: row.prompt,
     status: row.status as "queued" | "running" | "succeeded" | "failed",
     output: row.output,
@@ -95,12 +111,64 @@ function serializeJob(row: typeof remoteAgentJobs.$inferSelect) {
   };
 }
 
+function remoteAgentHostStatus(
+  host: typeof remoteAgentHosts.$inferSelect,
+  now: Date,
+): RemoteAgentHostStatus {
+  if (
+    host.status !== "online" ||
+    now.getTime() - host.lastSeenAt.getTime() >
+      REMOTE_AGENT_HOST_CLOSED_AFTER_MS
+  ) {
+    return "closed";
+  }
+  return "online";
+}
+
+function serializeHost(row: typeof remoteAgentHosts.$inferSelect, now: Date) {
+  return {
+    id: row.id,
+    displayName: row.displayName,
+    supportedBackends: row.supportedBackends as RemoteAgentBackend[],
+    status: remoteAgentHostStatus(row, now),
+    lastSeenAt: row.lastSeenAt.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+async function publishRemoteAgentJobAvailableSafe(
+  hostId: string,
+  jobId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const publishResult = await safeAsync(() => {
+    return publishRemoteAgentHostJobAvailable(hostId, jobId);
+  });
+  signal.throwIfAborted();
+  if ("error" in publishResult) {
+    L.warn("Failed to publish remote-agent job notification", {
+      hostId,
+      jobId,
+      error: publishResult.error,
+    });
+  }
+}
+
+function chooseJobBackend(
+  requestedBackend: string | null,
+  supportedBackends: readonly RemoteAgentBackend[],
+): RemoteAgentBackend | null {
+  if (requestedBackend) {
+    const backend = requestedBackend as RemoteAgentBackend;
+    return supportedBackends.includes(backend) ? backend : null;
+  }
+  return supportedBackends[0] ?? null;
+}
+
 export const createRemoteAgentDeviceCode$ = command(
   async (
     { set },
     params: {
-      readonly orgId: string;
-      readonly userId: string;
       readonly hostName: string;
       readonly supportedBackends: readonly RemoteAgentBackend[];
     },
@@ -119,8 +187,6 @@ export const createRemoteAgentDeviceCode$ = command(
       .values({
         codeHash: hashSecret(normalizeDeviceCode(userCode)),
         pollTokenHash: hashSecret(pollToken),
-        orgId: params.orgId,
-        userId: params.userId,
         hostName: normalizeHostName(params.hostName),
         supportedBackends: normalizeBackends(params.supportedBackends),
         status: "pending",
@@ -135,6 +201,22 @@ export const createRemoteAgentDeviceCode$ = command(
       throw new Error("Failed to create remote-agent device code");
     }
 
+    let realtime:
+      | Awaited<ReturnType<typeof createRemoteAgentDeviceRealtimeSubscription>>
+      | undefined;
+    const realtimeResult = await safeAsync(() => {
+      return createRemoteAgentDeviceRealtimeSubscription(row.id);
+    });
+    signal.throwIfAborted();
+    if ("ok" in realtimeResult) {
+      realtime = realtimeResult.ok;
+    } else {
+      L.warn(
+        "Failed to create remote-agent device realtime token",
+        realtimeResult.error,
+      );
+    }
+
     return {
       deviceCode: userCode,
       userCode,
@@ -142,6 +224,7 @@ export const createRemoteAgentDeviceCode$ = command(
       expiresIn: REMOTE_AGENT_DEVICE_CODE_TTL_SECONDS,
       interval: REMOTE_AGENT_POLL_INTERVAL_SECONDS,
       pollToken,
+      realtime,
     };
   },
 );
@@ -160,7 +243,7 @@ export const claimRemoteAgentDeviceCode$ = command(
     const now = nowDate();
     const codeHash = hashSecret(normalizeDeviceCode(params.deviceCode));
 
-    return await writeDb.transaction(async (tx) => {
+    const result = await writeDb.transaction(async (tx) => {
       const [row] = await tx
         .select()
         .from(remoteAgentDeviceCodes)
@@ -169,7 +252,14 @@ export const claimRemoteAgentDeviceCode$ = command(
         .limit(1);
       signal.throwIfAborted();
 
-      if (!row || row.orgId !== params.orgId || row.userId !== params.userId) {
+      if (!row) {
+        return { status: "not_found" as const };
+      }
+
+      if (
+        (row.orgId && row.orgId !== params.orgId) ||
+        (row.userId && row.userId !== params.userId)
+      ) {
         return { status: "not_found" as const };
       }
 
@@ -182,18 +272,47 @@ export const claimRemoteAgentDeviceCode$ = command(
         return { status: "expired" as const };
       }
 
+      if (
+        row.status === "approved" &&
+        row.orgId === params.orgId &&
+        row.userId === params.userId
+      ) {
+        return {
+          status: "approved" as const,
+          deviceCodeId: row.id,
+        };
+      }
+
       if (row.status !== "pending") {
         return { status: "already_claimed" as const };
       }
 
       await tx
         .update(remoteAgentDeviceCodes)
-        .set({ status: "approved", claimedAt: now, updatedAt: now })
+        .set({
+          orgId: params.orgId,
+          userId: params.userId,
+          status: "approved",
+          claimedAt: now,
+          updatedAt: now,
+        })
         .where(eq(remoteAgentDeviceCodes.id, row.id));
       signal.throwIfAborted();
 
-      return { status: "approved" as const };
+      return {
+        status: "approved" as const,
+        deviceCodeId: row.id,
+      };
     });
+    signal.throwIfAborted();
+
+    if (result.status === "approved") {
+      await publishRemoteAgentDeviceApproved(result.deviceCodeId);
+      signal.throwIfAborted();
+      return { status: "approved" as const };
+    }
+
+    return result;
   },
 );
 
@@ -201,8 +320,6 @@ export const pollRemoteAgentDeviceCode$ = command(
   async (
     { set },
     params: {
-      readonly orgId: string;
-      readonly userId: string;
       readonly deviceCode: string;
       readonly pollToken: string;
     },
@@ -221,8 +338,6 @@ export const pollRemoteAgentDeviceCode$ = command(
           and(
             eq(remoteAgentDeviceCodes.codeHash, codeHash),
             eq(remoteAgentDeviceCodes.pollTokenHash, pollTokenHash),
-            eq(remoteAgentDeviceCodes.orgId, params.orgId),
-            eq(remoteAgentDeviceCodes.userId, params.userId),
           ),
         )
         .for("update")
@@ -252,6 +367,10 @@ export const pollRemoteAgentDeviceCode$ = command(
 
       if (row.status !== "approved") {
         return { status: "expired" as const };
+      }
+
+      if (!row.orgId || !row.userId) {
+        return { status: "invalid" as const };
       }
 
       const hostToken = generateOpaqueToken("vm0_remote_host");
@@ -325,15 +444,206 @@ export const heartbeatRemoteAgentHost$ = command(
   },
 );
 
+export const createRemoteAgentHostRealtimeToken$ = command(
+  async (
+    { set },
+    params: {
+      readonly hostToken: string;
+    },
+    signal: AbortSignal,
+  ) => {
+    const writeDb = set(writeDb$);
+    const [host] = await writeDb
+      .select({ id: remoteAgentHosts.id })
+      .from(remoteAgentHosts)
+      .where(
+        and(
+          eq(remoteAgentHosts.tokenHash, hashSecret(params.hostToken)),
+          isNull(remoteAgentHosts.revokedAt),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!host) {
+      return null;
+    }
+
+    return await createRemoteAgentHostRealtimeSubscription(host.id);
+  },
+);
+
+export const listRemoteAgentHosts$ = command(
+  async (
+    { set },
+    params: {
+      readonly orgId: string;
+      readonly userId: string;
+    },
+    signal: AbortSignal,
+  ) => {
+    const writeDb = set(writeDb$);
+    const now = nowDate();
+    const rows = await writeDb
+      .select()
+      .from(remoteAgentHosts)
+      .where(
+        and(
+          eq(remoteAgentHosts.orgId, params.orgId),
+          eq(remoteAgentHosts.userId, params.userId),
+          isNull(remoteAgentHosts.revokedAt),
+        ),
+      )
+      .orderBy(desc(remoteAgentHosts.lastSeenAt));
+    signal.throwIfAborted();
+
+    return {
+      hosts: rows.map((row) => {
+        return serializeHost(row, now);
+      }),
+    };
+  },
+);
+
+export const startRemoteAgentHost$ = command(
+  async (
+    { set },
+    params: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly hostName: string;
+      readonly supportedBackends: readonly RemoteAgentBackend[];
+      readonly hostId?: string;
+    },
+    signal: AbortSignal,
+  ) => {
+    const writeDb = set(writeDb$);
+    const now = nowDate();
+    const hostToken = generateOpaqueToken("vm0_remote_host");
+    const values = {
+      displayName: normalizeHostName(params.hostName),
+      tokenHash: hashSecret(hostToken),
+      supportedBackends: normalizeBackends(params.supportedBackends),
+      status: "online",
+      lastSeenAt: now,
+      updatedAt: now,
+    };
+
+    if (params.hostId) {
+      const [host] = await writeDb
+        .update(remoteAgentHosts)
+        .set(values)
+        .where(
+          and(
+            eq(remoteAgentHosts.id, params.hostId),
+            eq(remoteAgentHosts.orgId, params.orgId),
+            eq(remoteAgentHosts.userId, params.userId),
+            isNull(remoteAgentHosts.revokedAt),
+          ),
+        )
+        .returning({ id: remoteAgentHosts.id });
+      signal.throwIfAborted();
+
+      if (!host) {
+        return { status: "not_found" as const };
+      }
+
+      return {
+        status: "started" as const,
+        hostId: host.id,
+        hostToken,
+      };
+    }
+
+    const [host] = await writeDb
+      .insert(remoteAgentHosts)
+      .values({
+        orgId: params.orgId,
+        userId: params.userId,
+        ...values,
+        createdAt: now,
+      })
+      .returning({ id: remoteAgentHosts.id });
+    signal.throwIfAborted();
+
+    if (!host) {
+      throw new Error("Failed to start remote-agent host");
+    }
+
+    return {
+      status: "started" as const,
+      hostId: host.id,
+      hostToken,
+    };
+  },
+);
+
+export const deleteRemoteAgentHost$ = command(
+  async (
+    { set },
+    params: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly hostId: string;
+    },
+    signal: AbortSignal,
+  ) => {
+    const writeDb = set(writeDb$);
+    const now = nowDate();
+
+    return await writeDb.transaction(async (tx) => {
+      const [host] = await tx
+        .update(remoteAgentHosts)
+        .set({
+          status: "offline",
+          revokedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(remoteAgentHosts.id, params.hostId),
+            eq(remoteAgentHosts.orgId, params.orgId),
+            eq(remoteAgentHosts.userId, params.userId),
+            isNull(remoteAgentHosts.revokedAt),
+          ),
+        )
+        .returning({ id: remoteAgentHosts.id });
+      signal.throwIfAborted();
+
+      if (!host) {
+        return { status: "not_found" as const };
+      }
+
+      await tx
+        .update(remoteAgentJobs)
+        .set({
+          status: "failed",
+          error: "Remote-agent host was deleted",
+          exitCode: 1,
+          completedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(remoteAgentJobs.hostId, host.id),
+            inArray(remoteAgentJobs.status, ["queued", "running"]),
+          ),
+        );
+      signal.throwIfAborted();
+
+      return { status: "deleted" as const };
+    });
+  },
+);
+
 export const createRemoteAgentJob$ = command(
   async (
     { set },
     params: {
       readonly orgId: string;
       readonly userId: string;
-      readonly backend: RemoteAgentBackend;
       readonly prompt: string;
-      readonly hostId?: string;
+      readonly hostName?: string;
     },
     signal: AbortSignal,
   ) => {
@@ -351,36 +661,69 @@ export const createRemoteAgentJob$ = command(
       .orderBy(desc(remoteAgentHosts.lastSeenAt));
     signal.throwIfAborted();
 
-    const host = hosts.find((row) => {
-      if (params.hostId && row.id !== params.hostId) {
-        return false;
-      }
-      return row.supportedBackends.includes(params.backend);
-    });
-
-    if (!host && params.hostId) {
-      const requestedHostExists = hosts.some((row) => {
-        return row.id === params.hostId;
-      });
-      return {
-        status: requestedHostExists
-          ? ("backend_unavailable" as const)
-          : ("host_not_found" as const),
-      };
-    }
-
-    if (!host) {
+    if (hosts.length === 0) {
       return { status: "no_host" as const };
     }
 
+    if (params.hostName) {
+      const matchingHosts = hosts.filter((row) => {
+        return row.displayName === params.hostName;
+      });
+      if (matchingHosts.length > 1) {
+        return { status: "host_ambiguous" as const };
+      }
+      const host = matchingHosts[0];
+      if (!host) {
+        return { status: "host_not_found" as const };
+      }
+      if (remoteAgentHostStatus(host, nowDate()) !== "online") {
+        return { status: "host_closed" as const };
+      }
+
+      const now = nowDate();
+      const [job] = await writeDb
+        .insert(remoteAgentJobs)
+        .values({
+          orgId: params.orgId,
+          userId: params.userId,
+          hostId: host.id,
+          prompt: params.prompt,
+          status: "queued",
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning({
+          id: remoteAgentJobs.id,
+          status: remoteAgentJobs.status,
+        });
+      signal.throwIfAborted();
+
+      if (!job) {
+        throw new Error("Failed to create remote-agent job");
+      }
+
+      await publishRemoteAgentJobAvailableSafe(host.id, job.id, signal);
+
+      return {
+        status: "created" as const,
+        jobId: job.id,
+        jobStatus: job.status as "queued",
+      };
+    }
+
     const now = nowDate();
+    const onlineHosts = hosts.filter((host) => {
+      return remoteAgentHostStatus(host, now) === "online";
+    });
+    if (onlineHosts.length === 0) {
+      return { status: "host_closed" as const };
+    }
+
     const [job] = await writeDb
       .insert(remoteAgentJobs)
       .values({
         orgId: params.orgId,
         userId: params.userId,
-        hostId: host.id,
-        backend: params.backend,
         prompt: params.prompt,
         status: "queued",
         createdAt: now,
@@ -394,6 +737,10 @@ export const createRemoteAgentJob$ = command(
 
     if (!job) {
       throw new Error("Failed to create remote-agent job");
+    }
+
+    for (const host of onlineHosts) {
+      await publishRemoteAgentJobAvailableSafe(host.id, job.id, signal);
     }
 
     return {
@@ -443,6 +790,7 @@ export const claimNextRemoteAgentHostJob$ = command(
   ) => {
     const writeDb = set(writeDb$);
     const now = nowDate();
+    const supportedBackends = normalizeBackends(params.supportedBackends);
     return await writeDb.transaction(async (tx) => {
       const [host] = await tx
         .select()
@@ -463,7 +811,7 @@ export const claimNextRemoteAgentHostJob$ = command(
       await tx
         .update(remoteAgentHosts)
         .set({
-          supportedBackends: normalizeBackends(params.supportedBackends),
+          supportedBackends,
           status: "online",
           lastSeenAt: now,
           updatedAt: now,
@@ -476,36 +824,69 @@ export const claimNextRemoteAgentHostJob$ = command(
         .from(remoteAgentJobs)
         .where(
           and(
-            eq(remoteAgentJobs.hostId, host.id),
+            eq(remoteAgentJobs.orgId, host.orgId),
+            eq(remoteAgentJobs.userId, host.userId),
             eq(remoteAgentJobs.status, "queued"),
+            or(
+              isNull(remoteAgentJobs.hostId),
+              eq(remoteAgentJobs.hostId, host.id),
+            ),
+            or(
+              isNull(remoteAgentJobs.backend),
+              inArray(remoteAgentJobs.backend, supportedBackends),
+            ),
           ),
         )
         .orderBy(asc(remoteAgentJobs.createdAt))
         .for("update")
-        .limit(5);
+        .limit(1);
       signal.throwIfAborted();
 
-      const job = rows.find((row) => {
-        return params.supportedBackends.includes(
-          row.backend as RemoteAgentBackend,
-        );
-      });
+      const job = rows[0];
       if (!job) {
         return { status: "idle" as const };
       }
 
-      await tx
+      const backend = chooseJobBackend(job.backend, supportedBackends);
+      if (!backend) {
+        return { status: "idle" as const };
+      }
+
+      const [claimedJob] = await tx
         .update(remoteAgentJobs)
-        .set({ status: "running", startedAt: now, updatedAt: now })
-        .where(eq(remoteAgentJobs.id, job.id));
+        .set({
+          hostId: host.id,
+          backend,
+          status: "running",
+          startedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(remoteAgentJobs.id, job.id),
+            eq(remoteAgentJobs.status, "queued"),
+            or(
+              isNull(remoteAgentJobs.hostId),
+              eq(remoteAgentJobs.hostId, host.id),
+            ),
+          ),
+        )
+        .returning({
+          id: remoteAgentJobs.id,
+          prompt: remoteAgentJobs.prompt,
+        });
       signal.throwIfAborted();
+
+      if (!claimedJob) {
+        return { status: "idle" as const };
+      }
 
       return {
         status: "job" as const,
         job: {
-          id: job.id,
-          backend: job.backend as RemoteAgentBackend,
-          prompt: job.prompt,
+          id: claimedJob.id,
+          backend,
+          prompt: claimedJob.prompt,
         },
       };
     });

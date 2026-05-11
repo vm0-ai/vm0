@@ -190,13 +190,14 @@ export {
 
 // Domain modules - Zero Remote Agent
 export {
-  claimRemoteAgentDevice,
   claimNextRemoteAgentHostJob,
   completeRemoteAgentHostJob,
   createRemoteAgentRun,
+  createRemoteAgentHostRealtimeSubscription,
+  deleteRemoteAgentHost,
   getRemoteAgentRun,
-  startRemoteAgentDevice,
-  pollRemoteAgentDevice,
+  listRemoteAgentHosts,
+  startRemoteAgentHost,
   sendRemoteAgentHeartbeat,
 } from "./domains/zero-remote-agent";
 

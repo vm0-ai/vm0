@@ -8,7 +8,7 @@ const c = initContract();
 /**
  * Ably token request schema (matches Ably SDK's TokenRequest type)
  */
-const ablyTokenRequestSchema = z.object({
+export const ablyTokenRequestSchema = z.object({
   keyName: z.string(),
   ttl: z.number().optional(),
   timestamp: z.number(),

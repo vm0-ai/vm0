@@ -42,8 +42,8 @@ export const remoteAgentDeviceCodes = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     codeHash: text("code_hash").notNull(),
     pollTokenHash: text("poll_token_hash").notNull(),
-    orgId: text("org_id").notNull(),
-    userId: text("user_id").notNull(),
+    orgId: text("org_id"),
+    userId: text("user_id"),
     hostName: text("host_name").notNull(),
     supportedBackends: jsonb("supported_backends")
       .$type<string[]>()
@@ -81,12 +81,10 @@ export const remoteAgentJobs = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
-    hostId: uuid("host_id")
-      .notNull()
-      .references(() => {
-        return remoteAgentHosts.id;
-      }),
-    backend: text("backend").notNull(),
+    hostId: uuid("host_id").references(() => {
+      return remoteAgentHosts.id;
+    }),
+    backend: text("backend"),
     prompt: text("prompt").notNull(),
     status: text("status").default("queued").notNull(),
     output: text("output"),

@@ -1,6 +1,6 @@
 {
-  "id": "91d8e66a-ca56-4663-877a-bb5e46a9d390",
-  "prevId": "017ca109-12b6-44e1-a0c8-c068b822bc8b",
+  "id": "1631249d-e6de-459d-b3b6-42ea62c88185",
+  "prevId": "32c21e01-76ab-45d5-9b54-5e7bb3005c51",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -10242,13 +10242,13 @@
           "name": "org_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "user_id": {
           "name": "user_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "host_name": {
           "name": "host_name",
@@ -10321,9 +10321,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "idx_remote_agent_device_codes_poll": {
           "name": "idx_remote_agent_device_codes_poll",
@@ -10342,9 +10342,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "idx_remote_agent_device_codes_org_user": {
           "name": "idx_remote_agent_device_codes_org_user",
@@ -10363,9 +10363,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "idx_remote_agent_device_codes_expires": {
           "name": "idx_remote_agent_device_codes_expires",
@@ -10378,24 +10378,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "remote_agent_device_codes_host_id_remote_agent_hosts_id_fk": {
           "name": "remote_agent_device_codes_host_id_remote_agent_hosts_id_fk",
           "tableFrom": "remote_agent_device_codes",
-          "tableTo": "remote_agent_hosts",
           "columnsFrom": [
             "host_id"
           ],
+          "tableTo": "remote_agent_hosts",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -10493,9 +10493,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "idx_remote_agent_hosts_org_user": {
           "name": "idx_remote_agent_hosts_org_user",
@@ -10514,9 +10514,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "idx_remote_agent_hosts_last_seen": {
           "name": "idx_remote_agent_hosts_last_seen",
@@ -10529,9 +10529,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -10652,9 +10652,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "idx_remote_agent_jobs_org_user": {
           "name": "idx_remote_agent_jobs_org_user",
@@ -10673,9 +10673,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "idx_remote_agent_jobs_created": {
           "name": "idx_remote_agent_jobs_created",
@@ -10688,24 +10688,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "remote_agent_jobs_host_id_remote_agent_hosts_id_fk": {
           "name": "remote_agent_jobs_host_id_remote_agent_hosts_id_fk",
           "tableFrom": "remote_agent_jobs",
-          "tableTo": "remote_agent_hosts",
           "columnsFrom": [
             "host_id"
           ],
+          "tableTo": "remote_agent_hosts",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},

@@ -28,6 +28,13 @@ ruleTester.run("no-new-api-routes", noNewApiRoutes, {
     },
     {
       code: "export async function GET() {}",
+      filename: path.join(
+        webRoot,
+        "app/api/zero/remote-agent/[...path]/route.ts",
+      ),
+    },
+    {
+      code: "export async function GET() {}",
       filename: path.join(webRoot, "src/not-api-route.ts"),
     },
   ],

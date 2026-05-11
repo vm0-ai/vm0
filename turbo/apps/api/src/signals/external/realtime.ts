@@ -1,4 +1,5 @@
 import Ably from "ably";
+import type { RemoteAgentRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-remote-agent";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -15,6 +16,17 @@ const ablyClient = singleton((): Ably.Rest => {
 function getUserChannelName(userId: string): string {
   return `user:${userId}`;
 }
+
+function getRemoteAgentDeviceChannelName(deviceCodeId: string): string {
+  return `remote-agent-device:${deviceCodeId}`;
+}
+
+function getRemoteAgentHostChannelName(hostId: string): string {
+  return `remote-agent-host:${hostId}`;
+}
+
+const REMOTE_AGENT_DEVICE_APPROVED_EVENT = "approved";
+const REMOTE_AGENT_HOST_JOB_EVENT = "job";
 
 /**
  * Publish a per-user invalidation/notification signal.
@@ -83,4 +95,63 @@ export async function publishCancelToRunnerGroup(
   const channel = client.channels.get(`runner-group:${group}`);
   await channel.publish("cancel", { runId });
   L.debug(`Published cancel ${runId} to runner-group:${group}`);
+}
+
+export async function createRemoteAgentDeviceRealtimeSubscription(
+  deviceCodeId: string,
+): Promise<RemoteAgentRealtimeSubscription> {
+  const channelName = getRemoteAgentDeviceChannelName(deviceCodeId);
+  const tokenRequest = await ablyClient().auth.createTokenRequest({
+    capability: {
+      [channelName]: ["subscribe"],
+    },
+    ttl: 60 * 60 * 1000,
+  });
+
+  return {
+    channelName,
+    eventName: REMOTE_AGENT_DEVICE_APPROVED_EVENT,
+    tokenRequest,
+  };
+}
+
+export async function publishRemoteAgentDeviceApproved(
+  deviceCodeId: string,
+): Promise<void> {
+  const channel = ablyClient().channels.get(
+    getRemoteAgentDeviceChannelName(deviceCodeId),
+  );
+  await channel.publish(REMOTE_AGENT_DEVICE_APPROVED_EVENT, {
+    status: "approved",
+  });
+  L.debug(`Published remote-agent device approval ${deviceCodeId}`);
+}
+
+export async function createRemoteAgentHostRealtimeSubscription(
+  hostId: string,
+): Promise<RemoteAgentRealtimeSubscription> {
+  const channelName = getRemoteAgentHostChannelName(hostId);
+  const tokenRequest = await ablyClient().auth.createTokenRequest({
+    capability: {
+      [channelName]: ["subscribe"],
+    },
+    ttl: 60 * 60 * 1000,
+  });
+
+  return {
+    channelName,
+    eventName: REMOTE_AGENT_HOST_JOB_EVENT,
+    tokenRequest,
+  };
+}
+
+export async function publishRemoteAgentHostJobAvailable(
+  hostId: string,
+  jobId: string,
+): Promise<void> {
+  const channel = ablyClient().channels.get(
+    getRemoteAgentHostChannelName(hostId),
+  );
+  await channel.publish(REMOTE_AGENT_HOST_JOB_EVENT, { jobId });
+  L.debug(`Published remote-agent job ${jobId} to host ${hostId}`);
 }

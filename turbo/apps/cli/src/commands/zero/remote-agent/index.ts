@@ -1,16 +1,13 @@
 import { Command } from "commander";
-import { connectCommand } from "./connect";
-import { hostStartCommand } from "./host";
+import { startCommand } from "./host";
+import { deleteCommand } from "./delete";
+import { listCommand } from "./list";
 import { runCommand } from "./run";
 
-const hostCommand = new Command()
-  .name("host")
-  .description("Manage remote-agent host daemon")
-  .addCommand(hostStartCommand);
-
-export const zeroRemoteAgentCommand = new Command()
+export const remoteAgentCommand = new Command()
   .name("remote-agent")
-  .description("Run local Codex or Claude hosts for zero")
-  .addCommand(hostCommand)
-  .addCommand(connectCommand)
+  .description("Run local Codex or Claude hosts for vm0")
+  .addCommand(startCommand)
+  .addCommand(listCommand)
+  .addCommand(deleteCommand)
   .addCommand(runCommand);

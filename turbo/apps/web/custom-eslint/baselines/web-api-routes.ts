@@ -10,6 +10,11 @@
  * Vercel's lack of WebSocket-upgrade support. The browser self-reports
  * `response.done` and `transcription.completed` usage to these
  * Vercel-served endpoints; apps/api would not be a viable home today.
+ *
+ * Intentional exception: remote-agent is implemented in apps/api, but local CLI
+ * commands use the same VM0_API_URL prefix as `vm0 auth login`
+ * (`http://localhost:3000`). The web catch-all route is a thin proxy to
+ * VM0_API_BACKEND_URL so local and production CLI URL resolution stays aligned.
  */
 export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/voice-chat/[id]/usage/route.ts",
@@ -218,6 +223,7 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/push-subscriptions/route.ts",
   "app/api/zero/queue-position/route.ts",
   "app/api/zero/realtime/token/route.ts",
+  "app/api/zero/remote-agent/[...path]/route.ts",
   "app/api/zero/report-error/route.ts",
   "app/api/zero/runs/[id]/cancel/route.ts",
   "app/api/zero/runs/[id]/context/route.ts",

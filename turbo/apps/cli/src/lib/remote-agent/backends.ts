@@ -14,6 +14,17 @@ interface RemoteAgentExecutionResult {
   exitCode: number;
 }
 
+export type RemoteAgentPermissionMode =
+  | "default"
+  | "acceptEdits"
+  | "auto"
+  | "bypassPermissions"
+  | "dontAsk"
+  | "plan"
+  | "read-only"
+  | "workspace-write"
+  | "danger-full-access";
+
 const BACKEND_COMMANDS: Array<{
   backend: RemoteAgentBackend;
   command: string;
@@ -89,14 +100,54 @@ export async function detectRemoteAgentBackends(): Promise<
   );
 }
 
+function claudePermissionArgs(mode: RemoteAgentPermissionMode): string[] {
+  if (mode === "default") {
+    return [];
+  }
+  if (
+    mode === "acceptEdits" ||
+    mode === "auto" ||
+    mode === "bypassPermissions" ||
+    mode === "dontAsk" ||
+    mode === "plan"
+  ) {
+    return ["--permission-mode", mode];
+  }
+  throw new Error(`Unsupported Claude Code permission mode: ${mode}`);
+}
+
+function codexPermissionArgs(mode: RemoteAgentPermissionMode): string[] {
+  if (mode === "default") {
+    return [];
+  }
+  if (
+    mode === "read-only" ||
+    mode === "workspace-write" ||
+    mode === "danger-full-access"
+  ) {
+    return ["--sandbox", mode];
+  }
+  if (mode === "bypassPermissions") {
+    return ["--dangerously-bypass-approvals-and-sandbox"];
+  }
+  throw new Error(`Unsupported Codex permission mode: ${mode}`);
+}
+
 function executionCommand(
   backend: RemoteAgentBackend,
   prompt: string,
+  permissionMode: RemoteAgentPermissionMode,
 ): { command: string; args: string[] } {
   if (backend === "claude-code") {
-    return { command: "claude", args: ["-p", prompt] };
+    return {
+      command: "claude",
+      args: ["-p", ...claudePermissionArgs(permissionMode), prompt],
+    };
   }
-  return { command: "codex", args: ["exec", prompt] };
+  return {
+    command: "codex",
+    args: ["exec", ...codexPermissionArgs(permissionMode), prompt],
+  };
 }
 
 function appendLimited(current: string, chunk: Buffer): string {
@@ -111,8 +162,13 @@ export async function executeRemoteAgentBackend(params: {
   backend: RemoteAgentBackend;
   prompt: string;
   workdir: string;
+  permissionMode: RemoteAgentPermissionMode;
 }): Promise<RemoteAgentExecutionResult> {
-  const { command, args } = executionCommand(params.backend, params.prompt);
+  const { command, args } = executionCommand(
+    params.backend,
+    params.prompt,
+    params.permissionMode,
+  );
 
   return new Promise((resolve) => {
     const child = spawn(command, args, {

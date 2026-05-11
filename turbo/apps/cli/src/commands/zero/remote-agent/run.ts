@@ -1,12 +1,10 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import type { RemoteAgentBackend } from "@vm0/api-contracts/contracts/zero-remote-agent";
 import { createRemoteAgentRun, getRemoteAgentRun } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 interface RunOptions {
-  backend?: string;
-  hostId?: string;
+  host?: string;
   timeout?: string;
 }
 
@@ -16,18 +14,8 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-function parseBackend(value: string | undefined): RemoteAgentBackend {
-  if (!value || value === "codex") {
-    return "codex";
-  }
-  if (value === "claude-code" || value === "claude") {
-    return "claude-code";
-  }
-  throw new Error("Backend must be one of: codex, claude-code");
-}
-
 function parseTimeoutSeconds(value: string | undefined): number {
-  if (!value) return 600;
+  if (!value) return 7200;
   const seconds = Number.parseInt(value, 10);
   if (!Number.isFinite(seconds) || seconds <= 0) {
     throw new Error("Timeout must be a positive number of seconds");
@@ -37,25 +25,24 @@ function parseTimeoutSeconds(value: string | undefined): number {
 
 export const runCommand = new Command()
   .name("run")
-  .description("Run Codex or Claude on a connected remote-agent host")
+  .description("Run on a connected remote-agent host")
   .argument("<prompt...>", "Prompt to send to the remote agent")
-  .option("--backend <backend>", "codex or claude-code", "codex")
-  .option("--host-id <id>", "Specific remote-agent host id")
-  .option("--timeout <seconds>", "Maximum time to wait", "600")
+  .option("--host <name>", "Run on a named remote-agent host")
+  .option("--timeout <seconds>", "Maximum time to wait", "7200")
   .action(
     withErrorHandler(async (promptParts: string[], options: RunOptions) => {
-      const backend = parseBackend(options.backend);
       const timeoutSeconds = parseTimeoutSeconds(options.timeout);
       const prompt = promptParts.join(" ").trim();
       if (!prompt) {
         throw new Error("Prompt is required");
       }
 
-      const created = await createRemoteAgentRun({
-        backend,
+      const hostName = options.host?.trim();
+      const createParams = {
         prompt,
-        hostId: options.hostId,
-      });
+        ...(hostName ? { hostName } : {}),
+      };
+      const created = await createRemoteAgentRun(createParams);
 
       console.log(chalk.cyan(`Remote-agent job queued: ${created.jobId}`));
 

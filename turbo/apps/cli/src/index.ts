@@ -15,6 +15,7 @@ import { initCommand } from "./commands/init";
 
 import { upgradeCommand } from "./commands/upgrade";
 import { whoamiCommand } from "./commands/whoami";
+import { remoteAgentCommand } from "./commands/zero/remote-agent";
 
 const program = new Command();
 
@@ -37,6 +38,7 @@ program.addCommand(logsCommand);
 program.addCommand(initCommand);
 program.addCommand(upgradeCommand);
 program.addCommand(whoamiCommand);
+program.addCommand(remoteAgentCommand);
 
 export { program };
 

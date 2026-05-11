@@ -2,16 +2,16 @@ import { initClient } from "@ts-rest/core";
 import type {
   RemoteAgentBackend,
   RemoteAgentHostJobNextResponse,
-  RemoteAgentDevicePollResponse,
-  RemoteAgentDeviceStartResponse,
+  RemoteAgentHostListResponse,
+  RemoteAgentHostStartResponse,
+  RemoteAgentRealtimeSubscription,
   RemoteAgentRunCreateResponse,
   RemoteAgentRunResponse,
 } from "@vm0/api-contracts/contracts/zero-remote-agent";
 import {
-  zeroRemoteAgentDeviceClaimContract,
-  zeroRemoteAgentDevicePollContract,
-  zeroRemoteAgentDeviceStartContract,
   zeroRemoteAgentHostJobsContract,
+  zeroRemoteAgentHostRealtimeContract,
+  zeroRemoteAgentHostsContract,
   zeroRemoteAgentHeartbeatContract,
   zeroRemoteAgentRunContract,
 } from "@vm0/api-contracts/contracts/zero-remote-agent";
@@ -39,10 +39,11 @@ function resolveRemoteAgentApiBaseUrl(baseUrl: string): string {
   return url.toString().replace(/\/$/, "");
 }
 
-function buildBearerHeaders(token: string): Record<string, string> {
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-  };
+function buildHeaders(token?: string): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
   const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
   if (bypassSecret) {
     headers["x-vercel-protection-bypass"] = bypassSecret;
@@ -63,51 +64,8 @@ async function getRemoteAgentClientConfig() {
   };
 }
 
-export async function startRemoteAgentDevice(params: {
-  hostName: string;
-  supportedBackends: RemoteAgentBackend[];
-}): Promise<RemoteAgentDeviceStartResponse> {
-  const config = await getRemoteAgentClientConfig();
-  const client = initClient(zeroRemoteAgentDeviceStartContract, config);
-
-  const result = await client.start({ body: params });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, "Failed to start remote-agent pairing");
-}
-
-export async function pollRemoteAgentDevice(params: {
-  deviceCode: string;
-  pollToken: string;
-}): Promise<RemoteAgentDevicePollResponse> {
-  const config = await getRemoteAgentClientConfig();
-  const client = initClient(zeroRemoteAgentDevicePollContract, config);
-
-  const result = await client.poll({ body: params });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, "Failed to poll remote-agent pairing");
-}
-
-export async function claimRemoteAgentDevice(params: {
-  deviceCode: string;
-}): Promise<void> {
-  const config = await getRemoteAgentClientConfig();
-  const client = initClient(zeroRemoteAgentDeviceClaimContract, config);
-
-  const result = await client.claim({ body: params });
-
-  if (result.status === 200) {
-    return;
-  }
-
-  handleError(result, "Failed to connect remote-agent host");
+function buildBearerHeaders(token: string): Record<string, string> {
+  return buildHeaders(token);
 }
 
 export async function sendRemoteAgentHeartbeat(params: {
@@ -136,10 +94,28 @@ export async function sendRemoteAgentHeartbeat(params: {
   handleError(result, "Failed to send remote-agent heartbeat");
 }
 
+export async function createRemoteAgentHostRealtimeSubscription(params: {
+  hostToken: string;
+}): Promise<RemoteAgentRealtimeSubscription> {
+  const baseUrl = resolveRemoteAgentApiBaseUrl(await getBaseUrl());
+  const client = initClient(zeroRemoteAgentHostRealtimeContract, {
+    baseUrl,
+    baseHeaders: buildBearerHeaders(params.hostToken),
+    jsonQuery: false as const,
+  });
+
+  const result = await client.create({ body: {} });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to create remote-agent realtime subscription");
+}
+
 export async function createRemoteAgentRun(params: {
-  backend: RemoteAgentBackend;
   prompt: string;
-  hostId?: string;
+  hostName?: string;
 }): Promise<RemoteAgentRunCreateResponse> {
   const config = await getRemoteAgentClientConfig();
   const client = initClient(zeroRemoteAgentRunContract, config);
@@ -151,6 +127,51 @@ export async function createRemoteAgentRun(params: {
   }
 
   handleError(result, "Failed to create remote-agent run");
+}
+
+export async function startRemoteAgentHost(params: {
+  hostName: string;
+  supportedBackends: RemoteAgentBackend[];
+  hostId?: string;
+}): Promise<RemoteAgentHostStartResponse> {
+  const config = await getRemoteAgentClientConfig();
+  const client = initClient(zeroRemoteAgentHostsContract, config);
+
+  const result = await client.start({ body: params });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to start remote-agent host");
+}
+
+export async function listRemoteAgentHosts(): Promise<RemoteAgentHostListResponse> {
+  const config = await getRemoteAgentClientConfig();
+  const client = initClient(zeroRemoteAgentHostsContract, config);
+
+  const result = await client.list();
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to list remote-agent hosts");
+}
+
+export async function deleteRemoteAgentHost(hostId: string): Promise<void> {
+  const config = await getRemoteAgentClientConfig();
+  const client = initClient(zeroRemoteAgentHostsContract, config);
+
+  const result = await client.delete({
+    params: { hostId },
+  });
+
+  if (result.status === 200) {
+    return;
+  }
+
+  handleError(result, "Failed to delete remote-agent host");
 }
 
 export async function getRemoteAgentRun(

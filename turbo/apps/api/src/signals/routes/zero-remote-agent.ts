@@ -4,7 +4,9 @@ import {
   zeroRemoteAgentDevicePollContract,
   zeroRemoteAgentDeviceStartContract,
   zeroRemoteAgentHostJobsContract,
+  zeroRemoteAgentHostRealtimeContract,
   zeroRemoteAgentHeartbeatContract,
+  zeroRemoteAgentHostsContract,
   zeroRemoteAgentRunContract,
 } from "@vm0/api-contracts/contracts/zero-remote-agent";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -20,10 +22,14 @@ import {
   claimNextRemoteAgentHostJob$,
   completeRemoteAgentHostJob$,
   createRemoteAgentDeviceCode$,
+  createRemoteAgentHostRealtimeToken$,
   createRemoteAgentJob$,
+  deleteRemoteAgentHost$,
   getRemoteAgentJob$,
   heartbeatRemoteAgentHost$,
+  listRemoteAgentHosts$,
   pollRemoteAgentDeviceCode$,
+  startRemoteAgentHost$,
 } from "../services/zero-remote-agent.service";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import type { RouteEntry } from "../route";
@@ -80,21 +86,6 @@ function parseBearerToken(authorization: string | undefined): string | null {
 
 const startBody$ = bodyResultOf(zeroRemoteAgentDeviceStartContract.start);
 const startInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-  if (
-    !isRemoteAgentEnabled({
-      orgId: auth.orgId,
-      userId: auth.userId,
-      overrides,
-    })
-  ) {
-    return remoteAgentDisabled;
-  }
-
   const bodyResult = await get(startBody$);
   signal.throwIfAborted();
   if (!bodyResult.ok) {
@@ -104,8 +95,6 @@ const startInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const body = await set(
     createRemoteAgentDeviceCode$,
     {
-      orgId: auth.orgId,
-      userId: auth.userId,
       hostName: bodyResult.data.hostName,
       supportedBackends: bodyResult.data.supportedBackends,
     },
@@ -118,21 +107,6 @@ const startInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const pollBody$ = bodyResultOf(zeroRemoteAgentDevicePollContract.poll);
 const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-  if (
-    !isRemoteAgentEnabled({
-      orgId: auth.orgId,
-      userId: auth.userId,
-      overrides,
-    })
-  ) {
-    return remoteAgentDisabled;
-  }
-
   const bodyResult = await get(pollBody$);
   signal.throwIfAborted();
   if (!bodyResult.ok) {
@@ -142,8 +116,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const result = await set(
     pollRemoteAgentDeviceCode$,
     {
-      orgId: auth.orgId,
-      userId: auth.userId,
       deviceCode: bodyResult.data.deviceCode,
       pollToken: bodyResult.data.pollToken,
     },
@@ -236,6 +208,136 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: { ok: true as const, ...result } };
 });
 
+const hostRealtimeInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const hostToken = parseBearerToken(get(authorization$));
+    if (!hostToken) {
+      return unauthorizedRemoteAgent;
+    }
+
+    const result = await set(
+      createRemoteAgentHostRealtimeToken$,
+      { hostToken },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (!result) {
+      return invalidRemoteAgentToken;
+    }
+
+    return { status: 200 as const, body: result };
+  },
+);
+
+const hostsListInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const overrides = await get(
+    userFeatureSwitchOverrides(auth.orgId, auth.userId),
+  );
+  signal.throwIfAborted();
+  if (
+    !isRemoteAgentEnabled({
+      orgId: auth.orgId,
+      userId: auth.userId,
+      overrides,
+    })
+  ) {
+    return remoteAgentDisabled;
+  }
+
+  const result = await set(
+    listRemoteAgentHosts$,
+    { orgId: auth.orgId, userId: auth.userId },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  return { status: 200 as const, body: result };
+});
+
+const hostsStartBody$ = bodyResultOf(zeroRemoteAgentHostsContract.start);
+const hostsStartInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const overrides = await get(
+    userFeatureSwitchOverrides(auth.orgId, auth.userId),
+  );
+  signal.throwIfAborted();
+  if (
+    !isRemoteAgentEnabled({
+      orgId: auth.orgId,
+      userId: auth.userId,
+      overrides,
+    })
+  ) {
+    return remoteAgentDisabled;
+  }
+
+  const bodyResult = await get(hostsStartBody$);
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+
+  const startParams = {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    hostName: bodyResult.data.hostName,
+    supportedBackends: bodyResult.data.supportedBackends,
+    ...(bodyResult.data.hostId ? { hostId: bodyResult.data.hostId } : {}),
+  };
+  const result = await set(startRemoteAgentHost$, startParams, signal);
+  signal.throwIfAborted();
+
+  if (result.status === "not_found") {
+    return notFound("Remote-agent host not found");
+  }
+
+  return {
+    status: 200 as const,
+    body: {
+      hostId: result.hostId,
+      hostToken: result.hostToken,
+    },
+  };
+});
+
+const hostsDeleteParams$ = pathParamsOf(zeroRemoteAgentHostsContract.delete);
+const hostsDeleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const overrides = await get(
+    userFeatureSwitchOverrides(auth.orgId, auth.userId),
+  );
+  signal.throwIfAborted();
+  if (
+    !isRemoteAgentEnabled({
+      orgId: auth.orgId,
+      userId: auth.userId,
+      overrides,
+    })
+  ) {
+    return remoteAgentDisabled;
+  }
+
+  const params = get(hostsDeleteParams$);
+  const result = await set(
+    deleteRemoteAgentHost$,
+    {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      hostId: params.hostId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  if (result.status === "not_found") {
+    return notFound("Remote-agent host not found");
+  }
+
+  return { status: 200 as const, body: { ok: true as const } };
+});
+
 const runCreateBody$ = bodyResultOf(zeroRemoteAgentRunContract.create);
 const runCreateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -259,32 +361,38 @@ const runCreateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
 
-  const result = await set(
-    createRemoteAgentJob$,
-    {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      backend: bodyResult.data.backend,
-      prompt: bodyResult.data.prompt,
-      hostId: bodyResult.data.hostId,
-    },
-    signal,
-  );
+  const jobParams = {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    prompt: bodyResult.data.prompt,
+    ...(bodyResult.data.hostName ? { hostName: bodyResult.data.hostName } : {}),
+  };
+  const result = await set(createRemoteAgentJob$, jobParams, signal);
   signal.throwIfAborted();
 
   if (result.status === "no_host") {
-    return notFound("No linked remote-agent host supports this backend");
+    return notFound(
+      "No linked remote-agent host found. Start one with `vm0 remote-agent start --name <name>`.",
+    );
   }
   if (result.status === "host_not_found") {
     return notFound("Remote-agent host not found");
   }
-  if (result.status === "backend_unavailable") {
-    return conflict("Remote-agent host does not support this backend");
+  if (result.status === "host_ambiguous") {
+    return conflict("Multiple remote-agent hosts have this name");
+  }
+  if (result.status === "host_closed") {
+    return conflict(
+      "No online remote-agent host. Start one with `vm0 remote-agent start --name <name>`.",
+    );
   }
 
   return {
     status: 200 as const,
-    body: { jobId: result.jobId, status: result.jobStatus },
+    body: {
+      jobId: result.jobId,
+      status: result.jobStatus,
+    },
   };
 });
 
@@ -416,11 +524,11 @@ const remoteAgentAuthOptions = {
 export const zeroRemoteAgentRoutes: readonly RouteEntry[] = [
   {
     route: zeroRemoteAgentDeviceStartContract.start,
-    handler: authRoute(remoteAgentAuthOptions, startInner$),
+    handler: startInner$,
   },
   {
     route: zeroRemoteAgentDevicePollContract.poll,
-    handler: authRoute(remoteAgentAuthOptions, pollInner$),
+    handler: pollInner$,
   },
   {
     route: zeroRemoteAgentDeviceClaimContract.claim,
@@ -429,6 +537,22 @@ export const zeroRemoteAgentRoutes: readonly RouteEntry[] = [
   {
     route: zeroRemoteAgentHeartbeatContract.heartbeat,
     handler: heartbeatInner$,
+  },
+  {
+    route: zeroRemoteAgentHostRealtimeContract.create,
+    handler: hostRealtimeInner$,
+  },
+  {
+    route: zeroRemoteAgentHostsContract.start,
+    handler: authRoute(remoteAgentAuthOptions, hostsStartInner$),
+  },
+  {
+    route: zeroRemoteAgentHostsContract.list,
+    handler: authRoute(remoteAgentAuthOptions, hostsListInner$),
+  },
+  {
+    route: zeroRemoteAgentHostsContract.delete,
+    handler: authRoute(remoteAgentAuthOptions, hostsDeleteInner$),
   },
   {
     route: zeroRemoteAgentRunContract.create,

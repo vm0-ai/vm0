@@ -5,12 +5,13 @@ import { existsSync } from "fs";
 import { decodeCliTokenPayload } from "./cli-token.js";
 import { decodeZeroTokenPayload } from "./zero-token.js";
 
-interface RemoteAgentHostConfig {
+export interface RemoteAgentHostConfig {
   id: string;
   token: string;
   apiUrl: string;
   hostName: string;
   supportedBackends: string[];
+  permissionMode?: string;
   linkedAt: string;
 }
 
@@ -115,4 +116,26 @@ export async function saveRemoteAgentHost(
   host: RemoteAgentHostConfig,
 ): Promise<void> {
   await saveConfig({ remoteAgentHost: host });
+}
+
+export async function clearRemoteAgentHost(hostId: string): Promise<void> {
+  const existing = await loadConfig();
+  if (existing.remoteAgentHost?.id !== hostId) {
+    return;
+  }
+
+  const nextConfig: CliConfig = { ...existing };
+  delete nextConfig.remoteAgentHost;
+
+  const configDir = getConfigDir();
+  const configFile = getConfigFile();
+  await mkdir(configDir, { recursive: true });
+  await writeFile(configFile, JSON.stringify(nextConfig, null, 2), "utf8");
+}
+
+export async function getRemoteAgentHost(): Promise<
+  RemoteAgentHostConfig | undefined
+> {
+  const config = await loadConfig();
+  return config.remoteAgentHost;
 }
