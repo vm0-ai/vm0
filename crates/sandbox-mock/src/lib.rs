@@ -111,39 +111,48 @@ impl std::fmt::Display for MockLifecycleGateTimeout {
 impl std::error::Error for MockLifecycleGateTimeout {}
 
 struct MockLifecycleGateInner {
-    entered_count: Mutex<u64>,
+    state: Mutex<MockLifecycleGateState>,
     entered_tx: tokio::sync::watch::Sender<u64>,
-    release: Arc<tokio::sync::Semaphore>,
+    release_tx: tokio::sync::watch::Sender<u64>,
+}
+
+struct MockLifecycleGateState {
+    entered_count: u64,
+    released_count: u64,
 }
 
 /// Durable lifecycle gate for tests that need to block mock sandbox lifecycle
 /// operations at deterministic points.
 ///
-/// Unlike raw [`tokio::sync::Notify`] pairs, entries are counted durably and
-/// releases are counted as permits. A test can wait for an entry after it has
-/// already happened, and a release issued before the lifecycle operation blocks
-/// is consumed by that next operation instead of being lost.
+/// Unlike raw [`tokio::sync::Notify`] pairs, entries and releases are counted
+/// durably. A test can wait for an entry after it has already happened, and a
+/// release issued before the lifecycle operation blocks is consumed by that
+/// entry instead of being lost.
 #[derive(Clone)]
 pub struct MockLifecycleGate {
     inner: Arc<MockLifecycleGateInner>,
 }
 
 impl MockLifecycleGate {
-    /// Create a gate with zero recorded entries and no release permits.
+    /// Create a gate with zero recorded entries and no releases.
     pub fn new() -> Self {
         let (entered_tx, _) = tokio::sync::watch::channel(0);
+        let (release_tx, _) = tokio::sync::watch::channel(0);
         Self {
             inner: Arc::new(MockLifecycleGateInner {
-                entered_count: Mutex::new(0),
+                state: Mutex::new(MockLifecycleGateState {
+                    entered_count: 0,
+                    released_count: 0,
+                }),
                 entered_tx,
-                release: Arc::new(tokio::sync::Semaphore::new(0)),
+                release_tx,
             }),
         }
     }
 
     /// Return the number of lifecycle entries recorded by this gate.
     pub fn entered_count(&self) -> u64 {
-        *self.inner.entered_count.lock_ignoring_poison()
+        self.inner.state.lock_ignoring_poison().entered_count
     }
 
     /// Wait until at least `target_count` lifecycle entries have been recorded.
@@ -183,19 +192,32 @@ impl MockLifecycleGate {
         self.release_many(1);
     }
 
-    /// Add `count` release permits for blocked or future lifecycle operations.
+    /// Release `count` lifecycle entries by advancing the durable release count.
     pub fn release_many(&self, count: usize) {
-        self.inner.release.add_permits(count);
+        let release_count = u64::try_from(count).unwrap_or(u64::MAX);
+        let mut state = self.inner.state.lock_ignoring_poison();
+        state.released_count = state.released_count.saturating_add(release_count);
+        self.inner.release_tx.send_replace(state.released_count);
     }
 
     async fn enter_and_wait(&self) {
-        {
-            let mut entered_count = self.inner.entered_count.lock_ignoring_poison();
-            *entered_count += 1;
-            self.inner.entered_tx.send_replace(*entered_count);
-        }
-        if let Ok(permit) = Arc::clone(&self.inner.release).acquire_owned().await {
-            permit.forget();
+        let ticket = {
+            let mut state = self.inner.state.lock_ignoring_poison();
+            state.entered_count = state.entered_count.saturating_add(1);
+            self.inner.entered_tx.send_replace(state.entered_count);
+            state.entered_count
+        };
+        let mut release_rx = self.inner.release_tx.subscribe();
+        loop {
+            let released_count = *release_rx.borrow_and_update();
+            if released_count >= ticket {
+                return;
+            }
+            if release_rx.changed().await.is_err() {
+                // The waiter owns a gate clone, so sender closure should not
+                // happen. Keep waiting rather than letting this entry through.
+                std::future::pending::<()>().await;
+            }
         }
     }
 }
@@ -1322,11 +1344,42 @@ mod tests {
 
         assert_eq!(gate.entered_count(), 1);
         assert_eq!(overrides.park_call_count(), 1);
-        assert_eq!(
-            gate.inner.release.available_permits(),
-            0,
-            "early release permit should be consumed by one lifecycle entry"
+
+        let mut next_sandbox = factory.create(test_sandbox_config()).await.unwrap();
+        let next_park_task = tokio::spawn(async move { next_sandbox.park().await });
+        assert_eq!(gate.wait_entered(2, test_timeout()).await.unwrap(), 2);
+        assert!(
+            !next_park_task.is_finished(),
+            "early release permit should be consumed by only one lifecycle entry"
         );
+        gate.release_one();
+        next_park_task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn lifecycle_gate_release_after_cancelled_entry_does_not_release_future_entry() {
+        let gate = MockLifecycleGate::new();
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.set_park_lifecycle_gate(gate.clone());
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let mut first_sandbox = factory.create(test_sandbox_config()).await.unwrap();
+
+        let first_park_task = tokio::spawn(async move { first_sandbox.park().await });
+        assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
+        first_park_task.abort();
+        assert!(first_park_task.await.unwrap_err().is_cancelled());
+
+        gate.release_one();
+        let mut second_sandbox = factory.create(test_sandbox_config()).await.unwrap();
+        let second_park_task = tokio::spawn(async move { second_sandbox.park().await });
+        assert_eq!(gate.wait_entered(2, test_timeout()).await.unwrap(), 2);
+        assert!(
+            !second_park_task.is_finished(),
+            "release for a cancelled entry must not pass a future entry"
+        );
+
+        gate.release_one();
+        second_park_task.await.unwrap().unwrap();
     }
 
     #[tokio::test]
@@ -1441,11 +1494,18 @@ mod tests {
 
         assert_eq!(gate.entered_count(), 1);
         assert_eq!(overrides.destroy_call_count(), 1);
-        assert_eq!(
-            gate.inner.release.available_permits(),
-            0,
-            "early release permit should be consumed by one lifecycle entry"
+
+        let next_sandbox = factory.create(test_sandbox_config()).await.unwrap();
+        let next_destroy_task = tokio::spawn(async move {
+            factory.destroy(next_sandbox).await;
+        });
+        assert_eq!(gate.wait_entered(2, test_timeout()).await.unwrap(), 2);
+        assert!(
+            !next_destroy_task.is_finished(),
+            "early release permit should be consumed by only one lifecycle entry"
         );
+        gate.release_one();
+        next_destroy_task.await.unwrap();
     }
 
     #[tokio::test]
