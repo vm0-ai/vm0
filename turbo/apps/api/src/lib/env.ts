@@ -89,7 +89,10 @@ export function optionalEnv(name: string): string | undefined {
   return process.env[name] || undefined;
 }
 
-export function mockEnv<K extends EnvKey>(name: K, value: EnvShape[K]): void {
+export function mockEnv<K extends EnvKey>(
+  name: K,
+  value: z.input<(typeof SCHEMA)[K]>,
+): void {
   const schema = SCHEMA[name] as ZodType;
   setOverrideEnv({
     ...getOverrideEnv(),

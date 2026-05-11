@@ -18,21 +18,13 @@ const APP_ORIGIN = "http://localhost:3001";
 const TEST_PRICE_PRO = "price_test_pro";
 const TEST_PRICE_TEAM = "price_test_team";
 
-type ZeroPriceEnv =
-  ReturnType<typeof mockEnv> extends void
-    ? Parameters<typeof mockEnv<"ZERO_PRICE">>[1]
-    : never;
-
 function setZeroPrice(): void {
-  // mockEnv's type signature expects the parsed output shape, but the
-  // ZERO_PRICE schema parses a JSON string via transform. Pass the JSON
-  // input verbatim so schema.parse() applies the transform at runtime.
   mockEnv(
     "ZERO_PRICE",
     JSON.stringify({
       pro: [TEST_PRICE_PRO],
       team: [TEST_PRICE_TEAM],
-    }) as unknown as ZeroPriceEnv,
+    }),
   );
 }
 
@@ -233,7 +225,7 @@ describe("POST /api/zero/billing/checkout", () => {
     // Override the beforeEach setZeroPrice() with an empty mapping so
     // activePriceId(tier) returns undefined and the route falls into the
     // "Price not configured" branch.
-    mockEnv("ZERO_PRICE", JSON.stringify({}) as unknown as ZeroPriceEnv);
+    mockEnv("ZERO_PRICE", JSON.stringify({}));
 
     const client = setupApp({ context })(zeroBillingCheckoutContract);
 
