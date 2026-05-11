@@ -13,12 +13,22 @@ import {
   isBadRequest,
 } from "@vm0/api-services/errors";
 
+function unauthorizedResponse() {
+  return {
+    status: 401 as const,
+    body: {
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    },
+  };
+}
+
 const router = tsr.router(zeroComposesMainContract, {
   getByName: async ({ query, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthorizedResponse();
 
     let orgId: string;
     try {

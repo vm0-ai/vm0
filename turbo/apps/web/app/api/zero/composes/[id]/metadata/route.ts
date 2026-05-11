@@ -12,6 +12,13 @@ import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
 import { updateComposeMetadata } from "../../../../../../src/lib/zero/zero-compose-service";
 import { isNotFound } from "@vm0/api-services/errors";
 
+function unauthorizedResponse() {
+  return NextResponse.json(
+    { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+    { status: 401 },
+  );
+}
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -23,11 +30,9 @@ export async function PATCH(
 
   const authCtx = await requireAuth(authorization);
   if (isAuthError(authCtx)) {
-    return NextResponse.json(
-      { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
-      { status: 401 },
-    );
+    return unauthorizedResponse();
   }
+  if (!authCtx.orgId) return unauthorizedResponse();
   const { userId } = authCtx;
 
   const { org } = await resolveOrg(authCtx);

@@ -12,12 +12,22 @@ import {
 } from "../../../../../src/lib/infra/agent-compose/compose-service";
 import { isNotFound, isConflict } from "@vm0/api-services/errors";
 
+function unauthorizedResponse() {
+  return {
+    status: 401 as const,
+    body: {
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    },
+  };
+}
+
 const router = tsr.router(zeroComposesByIdContract, {
   getById: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthorizedResponse();
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);

@@ -9,12 +9,24 @@ import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { listComposes } from "../../../../../src/lib/zero/zero-compose-service";
 import { isNotFound, isForbidden } from "@vm0/api-services/errors";
 
+function invalidRequestResponse() {
+  return {
+    status: 400 as const,
+    body: {
+      error: { message: "Invalid request", code: "BAD_REQUEST" },
+    },
+  };
+}
+
 const router = tsr.router(zeroComposesListContract, {
   list: async ({ headers }) => {
     initServices();
 
-    const authCtx = await requireAuth(headers.authorization);
+    const authCtx = await requireAuth(headers.authorization, {
+      acceptAnySandboxCapability: true,
+    });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return invalidRequestResponse();
 
     let orgId: string;
     try {
@@ -22,12 +34,7 @@ const router = tsr.router(zeroComposesListContract, {
       orgId = org.orgId;
     } catch (error) {
       if (isNotFound(error)) {
-        return {
-          status: 400 as const,
-          body: {
-            error: { message: "Invalid request", code: "BAD_REQUEST" },
-          },
-        };
+        return invalidRequestResponse();
       }
       if (isForbidden(error)) {
         return {

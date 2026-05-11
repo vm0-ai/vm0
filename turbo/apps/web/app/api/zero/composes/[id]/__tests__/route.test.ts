@@ -5,6 +5,7 @@ import {
   createTestRequest,
   createTestOrg,
   createTestCompose,
+  createTestRun,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -52,6 +53,9 @@ describe("GET /api/zero/composes/:id", () => {
 
     const response = await GET(createTestRequest(composeIdUrl(randomUUID())));
     expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "Agent compose not found", code: "NOT_FOUND" },
+    });
   });
 
   it("should return 400 for malformed compose id", async () => {
@@ -73,6 +77,53 @@ describe("GET /api/zero/composes/:id", () => {
 
     const response = await GET(createTestRequest(composeIdUrl(randomUUID())));
     expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
+  it("should return 401 when the authenticated session has no active organization", async () => {
+    mockClerk({ userId: uniqueId("zcompid-no-org"), orgId: null });
+
+    const response = await GET(createTestRequest(composeIdUrl(randomUUID())));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
+  it("should return 404 for a compose owned by another org", async () => {
+    const ownerUserId = uniqueId("zcompid-owner");
+    await setupOrg(ownerUserId);
+    const compose = await createTestCompose(`agent-${uniqueId("zcompid")}`);
+
+    await setupOrg(uniqueId("zcompid-other"));
+
+    const response = await GET(
+      createTestRequest(composeIdUrl(compose.composeId)),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "Agent compose not found", code: "NOT_FOUND" },
+    });
+
+    mockClerk({
+      userId: ownerUserId,
+      orgId: `org_mock_${ownerUserId}`,
+      orgRole: "org:admin",
+    });
+    const ownerResponse = await GET(
+      createTestRequest(composeIdUrl(compose.composeId)),
+    );
+    expect(ownerResponse.status).toBe(200);
   });
 });
 
@@ -100,6 +151,9 @@ describe("DELETE /api/zero/composes/:id", () => {
       createTestRequest(composeIdUrl(randomUUID()), { method: "DELETE" }),
     );
     expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "Agent not found", code: "NOT_FOUND" },
+    });
   });
 
   it("should return 401 when not authenticated", async () => {
@@ -109,5 +163,57 @@ describe("DELETE /api/zero/composes/:id", () => {
       createTestRequest(composeIdUrl(randomUUID()), { method: "DELETE" }),
     );
     expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
+  it("should return 404 when another user owns the compose", async () => {
+    const ownerUserId = uniqueId("zcompid-owner-del");
+    await setupOrg(ownerUserId);
+    const compose = await createTestCompose(`agent-${uniqueId("zcompid")}`);
+
+    await setupOrg(uniqueId("zcompid-attacker"));
+
+    const response = await DELETE(
+      createTestRequest(composeIdUrl(compose.composeId), { method: "DELETE" }),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "Agent not found", code: "NOT_FOUND" },
+    });
+
+    mockClerk({
+      userId: ownerUserId,
+      orgId: `org_mock_${ownerUserId}`,
+      orgRole: "org:admin",
+    });
+    const ownerResponse = await GET(
+      createTestRequest(composeIdUrl(compose.composeId)),
+    );
+    expect(ownerResponse.status).toBe(200);
+  });
+
+  it("should return 409 when a pending run references the compose", async () => {
+    const userId = uniqueId("zcompid-running");
+    await setupOrg(userId);
+    const compose = await createTestCompose(`agent-${uniqueId("zcompid")}`);
+    await createTestRun(compose.composeId, "blocking run");
+
+    const response = await DELETE(
+      createTestRequest(composeIdUrl(compose.composeId), { method: "DELETE" }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Cannot delete agent: agent is currently running",
+        code: "CONFLICT",
+      },
+    });
   });
 });

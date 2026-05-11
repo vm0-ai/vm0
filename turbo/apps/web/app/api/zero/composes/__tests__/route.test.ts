@@ -53,6 +53,12 @@ describe("GET /api/zero/composes (getByName)", () => {
       createTestRequest(composeUrl(slug, "nonexistent-agent")),
     );
     expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Agent compose not found: nonexistent-agent",
+        code: "NOT_FOUND",
+      },
+    });
   });
 
   it("should return 401 when not authenticated", async () => {
@@ -64,5 +70,47 @@ describe("GET /api/zero/composes (getByName)", () => {
       ),
     );
     expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
+  it("should return 401 when the authenticated session has no active organization", async () => {
+    mockClerk({ userId: uniqueId("zcomp-no-org"), orgId: null });
+
+    const response = await GET(
+      createTestRequest(composeUrl("ignored", "any-agent")),
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
+  it("should return 404 when the same compose name exists in another org", async () => {
+    const sharedName = `agent-${uniqueId("zcomp-shared")}`;
+
+    await setupOrg(uniqueId("zcomp-other"));
+    await createTestCompose(sharedName);
+
+    const userId = uniqueId("zcomp-cross");
+    const { slug } = await setupOrg(userId);
+
+    const response = await GET(createTestRequest(composeUrl(slug, sharedName)));
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: `Agent compose not found: ${sharedName}`,
+        code: "NOT_FOUND",
+      },
+    });
   });
 });
