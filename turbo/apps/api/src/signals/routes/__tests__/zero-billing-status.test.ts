@@ -31,6 +31,25 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
+  it("returns 401 when the user has no active org", async () => {
+    const userId = `user_${randomUUID()}`;
+    mocks.clerk.session(userId, null);
+
+    const client = setupApp({ context })(zeroBillingStatusContract);
+
+    const response = await accept(
+      client.get({ headers: { authorization: "Bearer clerk-session" } }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
   it("returns billing status for authenticated user", async () => {
     const fixture = await track(
       store.set(seedBillingStatusOrg$, { credits: 100_000 }, context.signal),

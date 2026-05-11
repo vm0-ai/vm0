@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -14,6 +15,9 @@ const router = tsr.router(zeroBillingStatusContract, {
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) {
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+    }
 
     const { org } = await resolveOrg(authCtx);
 

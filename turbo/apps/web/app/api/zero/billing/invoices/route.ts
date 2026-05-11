@@ -15,6 +15,9 @@ const router = tsr.router(zeroBillingInvoicesContract, {
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) {
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+    }
 
     const { org, member } = await resolveOrg(authCtx);
     if (member.role !== "admin") {

@@ -50,6 +50,36 @@ describe("/api/zero/billing/auto-recharge", () => {
   });
 
   describe("GET", () => {
+    it("returns 401 when the request is unauthenticated", async () => {
+      mockClerk({ userId: null });
+
+      const request = createTestRequest(BASE_URL);
+      const response = await GET(request);
+
+      expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toStrictEqual({
+        error: {
+          message: "Not authenticated",
+          code: "UNAUTHORIZED",
+        },
+      });
+    });
+
+    it("returns 401 when the user has no active org", async () => {
+      mockClerk({ userId: user.userId, orgId: null });
+
+      const request = createTestRequest(BASE_URL);
+      const response = await GET(request);
+
+      expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toStrictEqual({
+        error: {
+          message: "Not authenticated",
+          code: "UNAUTHORIZED",
+        },
+      });
+    });
+
     it("returns default config for new org", async () => {
       const request = createTestRequest(BASE_URL);
       const response = await GET(request);

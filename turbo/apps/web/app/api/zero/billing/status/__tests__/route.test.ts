@@ -74,6 +74,23 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.status).toBe(401);
   });
 
+  it("returns 401 when the user has no active org", async () => {
+    mockClerk({ userId: uniqueId("no-org-user"), orgId: null });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/billing/status",
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
   it("returns billing status for authenticated user", async () => {
     const request = createTestRequest(
       "http://localhost:3000/api/zero/billing/status",

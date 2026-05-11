@@ -64,6 +64,40 @@ describe("GET /api/zero/billing/invoices", () => {
     stripeMocks.invoicesList.mockReset();
   });
 
+  it("returns 401 when the request is unauthenticated", async () => {
+    mockClerk({ userId: null });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/billing/invoices",
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
+  it("returns 401 when the user has no active org", async () => {
+    mockClerk({ userId: uniqueId("no-org-user"), orgId: null });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/billing/invoices",
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
   it("returns 403 for non-admin member", async () => {
     const { userId, orgId } = await context.setupUser({
       prefix: "member-invoices",

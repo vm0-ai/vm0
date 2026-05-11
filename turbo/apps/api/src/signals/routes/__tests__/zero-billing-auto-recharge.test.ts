@@ -36,6 +36,27 @@ describe("GET /api/zero/billing/auto-recharge", () => {
     });
   });
 
+  it("returns 401 when the user has no active org", async () => {
+    const userId = `user_${randomUUID()}`;
+    mocks.clerk.session(userId, null);
+
+    const client = setupApp({ context })(zeroBillingAutoRechargeContract);
+
+    const response = await accept(
+      client.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
   it("returns the org auto-recharge config from the api implementation", async () => {
     const fixture = await track(
       store.set(

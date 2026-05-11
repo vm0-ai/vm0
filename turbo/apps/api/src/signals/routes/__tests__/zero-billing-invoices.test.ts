@@ -37,6 +37,27 @@ describe("GET /api/zero/billing/invoices", () => {
     });
   });
 
+  it("returns 401 when the user has no active org", async () => {
+    const userId = `user_${randomUUID()}`;
+    mocks.clerk.session(userId, null);
+
+    const client = setupApp({ context })(zeroBillingInvoicesContract);
+
+    const response = await accept(
+      client.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
   it("returns 403 for a non-admin org member", async () => {
     const fixture = await track(
       store.set(seedInvoicesOrg$, {}, context.signal),
