@@ -98,6 +98,7 @@ describe("GET /api/zero/agents/:id", () => {
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,
+      visibility: "public",
     });
   });
 

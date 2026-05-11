@@ -112,6 +112,7 @@ describe("GET /api/zero/team", () => {
         description: "team description",
         sound: "ding",
         avatarUrl: "https://example.com/avatar.png",
+        visibility: "public",
         headVersionId: "version-1",
         updatedAt: expect.any(String),
       },
