@@ -4,6 +4,15 @@ import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { deviceCodes } from "@vm0/db/schema/device-codes";
 import { generateCliToken } from "../../lib/auth/sandbox-token";
 
+interface InsertTestCliTokenOptions {
+  userId: string;
+  token: string;
+  name: string;
+  expiresAt: Date;
+  createdAt?: Date;
+  lastUsedAt?: Date;
+}
+
 /**
  * Create a test CLI token in the database for authentication testing.
  * @why-db-direct Creates CLI token with specific expiry and org binding; no API route for test token creation
@@ -32,6 +41,33 @@ export async function createTestCliToken(
   });
 
   return token;
+}
+
+/**
+ * Insert a test CLI token row with controlled metadata.
+ * @why-db-direct API key list tests need deterministic createdAt ordering and token prefixes
+ */
+export async function insertTestCliToken({
+  userId,
+  token,
+  name,
+  expiresAt,
+  createdAt,
+  lastUsedAt,
+}: InsertTestCliTokenOptions): Promise<{ id: string; token: string }> {
+  const id = randomUUID();
+
+  await globalThis.services.db.insert(cliTokens).values({
+    id,
+    token,
+    userId,
+    name,
+    expiresAt,
+    createdAt,
+    lastUsedAt,
+  });
+
+  return { id, token };
 }
 
 /**

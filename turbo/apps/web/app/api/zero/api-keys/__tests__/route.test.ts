@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import type { ApiKeyItem } from "@vm0/api-contracts/contracts/api-keys";
 import { GET, POST } from "../route";
 import { DELETE } from "../[id]/route";
-import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestRequest,
+  insertTestCliToken,
+} from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   type UserContext,
@@ -23,19 +27,49 @@ function jsonHeaders() {
 async function listApiKeys() {
   const res = await GET(createTestRequest(LIST_URL, { method: "GET" }));
   expect(res.status).toBe(200);
-  return (await res.json()).apiKeys as Array<{ id: string; name: string }>;
+  return (await res.json()).apiKeys as ApiKeyItem[];
+}
+
+async function seedApiKey({
+  userId,
+  name,
+  tokenLabel,
+  createdAt,
+  lastUsedAt,
+}: {
+  userId: string;
+  name: string;
+  tokenLabel: string;
+  createdAt: Date;
+  lastUsedAt?: Date;
+}) {
+  const token = `vm0_pat_${tokenLabel}_${randomUUID()}`;
+
+  return insertTestCliToken({
+    token,
+    userId,
+    name,
+    createdAt,
+    expiresAt: new Date("2026-04-01T00:00:00.000Z"),
+    lastUsedAt,
+  });
 }
 
 describe("GET /api/zero/api-keys", () => {
+  let user: UserContext;
+
   beforeEach(async () => {
     context.setupMocks();
-    await context.setupUser();
+    user = await context.setupUser();
   });
 
   it("returns 401 when not authenticated", async () => {
     mockClerk({ userId: null });
     const res = await GET(createTestRequest(LIST_URL, { method: "GET" }));
     expect(res.status).toBe(401);
+    await expect(res.json()).resolves.toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
   });
 
   it("returns empty list for a user with no keys", async () => {
@@ -43,6 +77,52 @@ describe("GET /api/zero/api-keys", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.apiKeys).toEqual([]);
+  });
+
+  it("returns only the current user's API keys sorted by creation time", async () => {
+    const other = await context.setupUser({ prefix: "other-api-key-user" });
+    await seedApiKey({
+      userId: other.userId,
+      name: "Other user",
+      tokenLabel: "other",
+      createdAt: new Date("2026-03-03T00:00:00.000Z"),
+    });
+
+    mockClerk({ userId: user.userId, orgId: user.orgId, orgRole: "org:admin" });
+    const older = await seedApiKey({
+      userId: user.userId,
+      name: "Older",
+      tokenLabel: "older",
+      createdAt: new Date("2026-03-01T00:00:00.000Z"),
+    });
+    const newer = await seedApiKey({
+      userId: user.userId,
+      name: "Newer",
+      tokenLabel: "newer",
+      createdAt: new Date("2026-03-02T00:00:00.000Z"),
+      lastUsedAt: new Date("2026-03-03T00:00:00.000Z"),
+    });
+
+    const keys = await listApiKeys();
+
+    expect(keys).toStrictEqual([
+      {
+        id: newer.id,
+        name: "Newer",
+        tokenPrefix: "vm0_pat_newe\u2026",
+        createdAt: "2026-03-02T00:00:00.000Z",
+        expiresAt: "2026-04-01T00:00:00.000Z",
+        lastUsedAt: "2026-03-03T00:00:00.000Z",
+      },
+      {
+        id: older.id,
+        name: "Older",
+        tokenPrefix: "vm0_pat_olde\u2026",
+        createdAt: "2026-03-01T00:00:00.000Z",
+        expiresAt: "2026-04-01T00:00:00.000Z",
+        lastUsedAt: null,
+      },
+    ]);
   });
 });
 
@@ -140,6 +220,19 @@ describe("DELETE /api/zero/api-keys/:id", () => {
     user = await context.setupUser();
   });
 
+  it("returns 401 when not authenticated", async () => {
+    mockClerk({ userId: null });
+
+    const delRes = await DELETE(
+      createTestRequest(ITEM_URL(randomUUID()), { method: "DELETE" }),
+    );
+
+    expect(delRes.status).toBe(401);
+    await expect(delRes.json()).resolves.toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("deletes the caller's own key and returns 204", async () => {
     const createRes = await POST(
       createTestRequest(LIST_URL, {
@@ -168,6 +261,9 @@ describe("DELETE /api/zero/api-keys/:id", () => {
       createTestRequest(ITEM_URL(randomUUID()), { method: "DELETE" }),
     );
     expect(delRes.status).toBe(404);
+    await expect(delRes.json()).resolves.toStrictEqual({
+      error: { message: "API key not found", code: "NOT_FOUND" },
+    });
   });
 
   it("returns 404 when another user owns the key", async () => {
@@ -189,6 +285,9 @@ describe("DELETE /api/zero/api-keys/:id", () => {
       createTestRequest(ITEM_URL(created.id), { method: "DELETE" }),
     );
     expect(delRes.status).toBe(404);
+    await expect(delRes.json()).resolves.toStrictEqual({
+      error: { message: "API key not found", code: "NOT_FOUND" },
+    });
 
     // The key still exists for `other`.
     mockClerk({

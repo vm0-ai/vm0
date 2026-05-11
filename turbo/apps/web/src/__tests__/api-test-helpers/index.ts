@@ -10,6 +10,7 @@ export {
 } from "./core";
 export {
   createTestCliToken,
+  insertTestCliToken,
   deleteTestCliToken,
   createTestDeviceCode,
   findTestDeviceCode,
