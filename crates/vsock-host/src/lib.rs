@@ -296,6 +296,10 @@ impl Drop for CommandFrameWriteGuard {
 }
 
 /// Handle for a host-side command operation.
+///
+/// Dropping the handle removes the host-side registration only. It never sends
+/// `MSG_COMMAND_CANCEL`; callers that need remote cancellation must call
+/// [`CommandOperationHandle::cancel_and_wait`].
 pub struct CommandOperationHandle {
     shared: Arc<Shared>,
     seq: Option<u32>,
@@ -310,11 +314,17 @@ impl CommandOperationHandle {
     }
 
     /// Wait for the terminal command result.
+    ///
+    /// On timeout, this removes the host-side operation registration but does
+    /// not cancel the guest-side command.
     pub async fn wait(self, timeout: Duration) -> io::Result<CommandOperationResult> {
         self.wait_with_timeout(timeout, false).await
     }
 
     /// Send an explicit cancel request and wait for a cancelled terminal result.
+    ///
+    /// If the terminal result is already available before cancel is sent, this
+    /// returns that result without sending a duplicate cancel frame.
     pub async fn cancel_and_wait(
         mut self,
         timeout: Duration,
@@ -587,16 +597,15 @@ fn owned_command_result(
 }
 
 fn dispatch_command_output(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
-    let event = vsock_proto::decode_command_output(&msg.payload)
-        .map(owned_command_output_event)
-        .map_err(command_protocol_error)?;
+    let decoded =
+        vsock_proto::decode_command_output(&msg.payload).map_err(command_protocol_error)?;
 
     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
     if let ConnectionState::Connected { operations, .. } = &mut *guard
         && let Some(Operation::Command(operation)) = operations.get_mut(&msg.seq)
         && let Some(tx) = operation.stream_tx.as_ref()
     {
-        match tx.try_send(event) {
+        match tx.try_send(owned_command_output_event(decoded)) {
             Ok(()) => {}
             Err(mpsc::error::TrySendError::Full(_)) => {
                 operation.stream_tx.take();
