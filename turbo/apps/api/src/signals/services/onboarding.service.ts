@@ -1,13 +1,16 @@
-import { computed, type Computed } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import type { OnboardingStatusResponse } from "@vm0/api-contracts/contracts/onboarding";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
 
 import type { AuthContext } from "../../types/auth";
-import { db$ } from "../external/db";
+import { db$, writeDb$ } from "../external/db";
+import { nowDate } from "../external/time";
 
 interface DefaultAgentInfo {
   readonly composeId: string;
@@ -129,3 +132,82 @@ export function onboardingStatus(
     };
   });
 }
+
+/**
+ * Mark a member's onboarding as done and (if they picked connectors) bulk-
+ * insert `user_connectors` rows for the org's default agent. Verbatim port
+ * of apps/web/app/api/zero/onboarding/complete/route.ts.
+ *
+ * The composite-PK UPSERT runs outside any transaction; the conditional
+ * DELETE+INSERT on `user_connectors` is the only transactional block. If
+ * the transaction throws after the UPSERT commits, `onboardingDone` stays
+ * set — same crash window as web.
+ */
+export const completeOnboarding$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly selectedConnectors: readonly ConnectorType[];
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const db = set(writeDb$);
+    const now = nowDate();
+
+    await db
+      .insert(orgMembersMetadata)
+      .values({
+        orgId: args.orgId,
+        userId: args.userId,
+        onboardingDone: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
+        set: { onboardingDone: true, updatedAt: now },
+      });
+    signal.throwIfAborted();
+
+    if (args.selectedConnectors.length === 0) {
+      return;
+    }
+
+    const [orgRow] = await db
+      .select({ defaultAgentId: orgMetadata.defaultAgentId })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, args.orgId))
+      .limit(1);
+    signal.throwIfAborted();
+
+    const agentId = orgRow?.defaultAgentId;
+    if (!agentId) {
+      return;
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(userConnectors)
+        .where(
+          and(
+            eq(userConnectors.orgId, args.orgId),
+            eq(userConnectors.userId, args.userId),
+            eq(userConnectors.agentId, agentId),
+          ),
+        );
+      await tx.insert(userConnectors).values(
+        args.selectedConnectors.map((connectorType) => {
+          return {
+            orgId: args.orgId,
+            userId: args.userId,
+            agentId,
+            connectorType,
+          };
+        }),
+      );
+    });
+    signal.throwIfAborted();
+  },
+);

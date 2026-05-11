@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createStore } from "ccstate";
 
 import { zeroOrgInviteContract } from "@vm0/api-contracts/contracts/zero-org-members";
 
@@ -8,7 +7,6 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 function apiClient() {
