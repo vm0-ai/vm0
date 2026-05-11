@@ -216,6 +216,8 @@ interface ZeroChatComposerProps {
     /** Hide the "Use default" row in compact chat pickers. */
     showUseDefault?: boolean;
   };
+  /** When true, render a skeleton in the model picker slot. */
+  modelPickerLoading?: boolean;
   submitBlocker?: {
     message: string;
     actionLabel: string;
@@ -1016,6 +1018,7 @@ export function ZeroChatComposer({
   onDraftChange,
   actionsLoading = false,
   modelPicker,
+  modelPickerLoading = false,
   submitBlocker,
   queuedItems,
   onRemoveQueuedItem,
@@ -1473,35 +1476,39 @@ export function ZeroChatComposer({
                   <Skeleton
                     className={cn(
                       "h-9 rounded-md",
-                      modelPicker ? "w-[184px]" : "w-20",
+                      modelPicker || modelPickerLoading ? "w-[184px]" : "w-20",
                     )}
                   />
                 ) : (
                   <>
-                    {submitBlocker && (
+                    {!modelPickerLoading && submitBlocker && (
                       <ModelConfigurationWarning blocker={submitBlocker} />
                     )}
-                    {modelPicker && (
-                      <ModelProviderPicker
-                        providers={modelPicker.providers}
-                        value={modelPicker.value}
-                        onChange={handleModelPickerChange}
-                        placeholder="Default"
-                        triggerClassName={cn(
-                          "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
-                          "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
-                          "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
-                        )}
-                        sessionProviderType={modelPicker.sessionProviderType}
-                        compactTrigger
-                        mobileIconTrigger
-                        open={modelPickerOpen}
-                        onOpenChange={setModelPickerOpen}
-                        disabled={modelPicker.disabled}
-                        agentDefault={modelPicker.agentDefault}
-                        inheritLabel="agent"
-                        showUseDefault={modelPicker.showUseDefault}
-                      />
+                    {modelPickerLoading ? (
+                      <Skeleton className="h-9 w-9 rounded-md sm:w-32" />
+                    ) : (
+                      modelPicker && (
+                        <ModelProviderPicker
+                          providers={modelPicker.providers}
+                          value={modelPicker.value}
+                          onChange={handleModelPickerChange}
+                          placeholder="Default"
+                          triggerClassName={cn(
+                            "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
+                            "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
+                            "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
+                          )}
+                          sessionProviderType={modelPicker.sessionProviderType}
+                          compactTrigger
+                          mobileIconTrigger
+                          open={modelPickerOpen}
+                          onOpenChange={setModelPickerOpen}
+                          disabled={modelPicker.disabled}
+                          agentDefault={modelPicker.agentDefault}
+                          inheritLabel="agent"
+                          showUseDefault={modelPicker.showUseDefault}
+                        />
+                      )
                     )}
                     <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
                     <MicButton

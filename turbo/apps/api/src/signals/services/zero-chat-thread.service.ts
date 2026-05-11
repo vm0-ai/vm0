@@ -11,6 +11,8 @@ import {
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
@@ -44,6 +46,7 @@ import { buildFileUrl } from "../../lib/file-url";
 import { db$, writeDb$ } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { listS3Objects } from "../external/s3";
+import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
 const REPORT_ERROR_STREAK_THRESHOLD = 2;
 
@@ -126,10 +129,18 @@ type ChatThreadRow = {
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: string | null;
   readonly selectedModel: string | null;
+  readonly orgId: string | null;
   readonly lastReadMessageId: string | null;
   readonly renamedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+};
+
+type ChatThreadModelPin = {
+  readonly modelProviderId: string | null;
+  readonly modelProviderType: string | null;
+  readonly modelProviderCredentialScope: string | null;
+  readonly selectedModel: string | null;
 };
 
 function effectiveChatMessageRunId() {
@@ -233,8 +244,24 @@ function ownedChatThread(
   return computed(async (get): Promise<ChatThreadRow | null> => {
     const db = get(db$);
     const [thread] = await db
-      .select()
+      .select({
+        id: chatThreads.id,
+        title: chatThreads.title,
+        agentComposeId: chatThreads.agentComposeId,
+        draftContent: chatThreads.draftContent,
+        draftAttachments: chatThreads.draftAttachments,
+        modelProviderId: chatThreads.modelProviderId,
+        modelProviderType: chatThreads.modelProviderType,
+        modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
+        selectedModel: chatThreads.selectedModel,
+        orgId: zeroAgents.orgId,
+        lastReadMessageId: chatThreads.lastReadMessageId,
+        renamedAt: chatThreads.renamedAt,
+        createdAt: chatThreads.createdAt,
+        updatedAt: chatThreads.updatedAt,
+      })
       .from(chatThreads)
+      .leftJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
       .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
       .limit(1);
 
@@ -255,11 +282,79 @@ function ownedChatThread(
       modelProviderType: thread.modelProviderType ?? null,
       modelProviderCredentialScope: thread.modelProviderCredentialScope ?? null,
       selectedModel: thread.selectedModel ?? null,
+      orgId: thread.orgId ?? null,
       lastReadMessageId: thread.lastReadMessageId ?? null,
       renamedAt: thread.renamedAt ?? null,
       createdAt: thread.createdAt,
       updatedAt: thread.updatedAt,
     };
+  });
+}
+
+function firstRunModelPinForThread(
+  threadId: string,
+): Computed<Promise<ChatThreadModelPin | null>> {
+  return computed(async (get): Promise<ChatThreadModelPin | null> => {
+    const [run] = await get(db$)
+      .select({
+        modelProviderId: zeroRuns.modelProviderId,
+        modelProviderType: zeroRuns.modelProvider,
+        modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(chatMessages)
+      .innerJoin(zeroRuns, eq(zeroRuns.id, chatMessages.runId))
+      .where(
+        and(
+          eq(chatMessages.chatThreadId, threadId),
+          eq(chatMessages.role, "user"),
+          isNotNull(chatMessages.runId),
+          isNotNull(zeroRuns.selectedModel),
+        ),
+      )
+      .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id))
+      .limit(1);
+
+    if (!run?.selectedModel) {
+      return null;
+    }
+    return run;
+  });
+}
+
+function effectiveModelFirstThreadPin(params: {
+  readonly thread: ChatThreadRow;
+  readonly userId: string;
+}): Computed<Promise<ChatThreadModelPin | null>> {
+  return computed(async (get): Promise<ChatThreadModelPin | null> => {
+    if (params.thread.selectedModel !== null) {
+      return {
+        modelProviderId: params.thread.modelProviderId,
+        modelProviderType: params.thread.modelProviderType,
+        modelProviderCredentialScope:
+          params.thread.modelProviderCredentialScope,
+        selectedModel: params.thread.selectedModel,
+      };
+    }
+    if (!params.thread.orgId) {
+      return null;
+    }
+
+    const overrides = await get(
+      userFeatureSwitchOverrides(params.thread.orgId, params.userId),
+    );
+    const modelFirstEnabled = isFeatureEnabled(
+      FeatureSwitchKey.ModelFirstModelProvider,
+      {
+        orgId: params.thread.orgId,
+        userId: params.userId,
+        overrides,
+      },
+    );
+    if (!modelFirstEnabled) {
+      return null;
+    }
+    return get(firstRunModelPinForThread(params.thread.id));
   });
 }
 
@@ -566,13 +661,19 @@ export function zeroChatThreadDetail(args: {
       return null;
     }
 
-    const [messages, activeRuns, latestSessionId, latestRunProviderTypeRaw] =
-      await Promise.all([
-        get(chatThreadMessages(args.threadId, args.userId)),
-        get(activeRunsForThread(args.threadId)),
-        get(latestSessionIdForThread(args.threadId)),
-        get(latestRunProviderTypeForThread(args.threadId)),
-      ]);
+    const [
+      messages,
+      activeRuns,
+      latestSessionId,
+      latestRunProviderTypeRaw,
+      modelPin,
+    ] = await Promise.all([
+      get(chatThreadMessages(args.threadId, args.userId)),
+      get(activeRunsForThread(args.threadId)),
+      get(latestSessionIdForThread(args.threadId)),
+      get(latestRunProviderTypeForThread(args.threadId)),
+      get(effectiveModelFirstThreadPin({ thread, userId: args.userId })),
+    ]);
 
     return {
       id: thread.id,
@@ -594,17 +695,19 @@ export function zeroChatThreadDetail(args: {
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]
         : null,
-      modelProviderId: thread.modelProviderId,
+      modelProviderId: modelPin?.modelProviderId ?? thread.modelProviderId,
       modelProviderType: formatLatestSessionProviderType(
-        thread.modelProviderType,
+        modelPin?.modelProviderType ?? thread.modelProviderType,
       ),
       modelProviderCredentialScope:
-        thread.modelProviderCredentialScope === null
+        (modelPin?.modelProviderCredentialScope ??
+          thread.modelProviderCredentialScope) === null
           ? null
           : (modelProviderCredentialScopeSchema.safeParse(
-              thread.modelProviderCredentialScope,
+              modelPin?.modelProviderCredentialScope ??
+                thread.modelProviderCredentialScope,
             ).data ?? null),
-      selectedModel: thread.selectedModel,
+      selectedModel: modelPin?.selectedModel ?? thread.selectedModel,
       renamedAt: thread.renamedAt?.toISOString() ?? null,
     };
   });

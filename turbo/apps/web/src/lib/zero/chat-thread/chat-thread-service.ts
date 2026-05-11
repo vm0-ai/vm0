@@ -1,4 +1,14 @@
-import { eq, and, desc, inArray, isNull, asc, or, sql } from "drizzle-orm";
+import {
+  eq,
+  and,
+  desc,
+  inArray,
+  isNull,
+  asc,
+  or,
+  sql,
+  isNotNull,
+} from "drizzle-orm";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -192,6 +202,42 @@ export async function listChatThreads(
   return threads;
 }
 
+interface ChatThreadModelPin {
+  modelProviderId: string | null;
+  modelProviderType: string | null;
+  modelProviderCredentialScope: string | null;
+  selectedModel: string | null;
+}
+
+export async function getFirstRunModelPinForThread(
+  threadId: string,
+): Promise<ChatThreadModelPin | null> {
+  const [run] = await globalThis.services.db
+    .select({
+      modelProviderId: zeroRuns.modelProviderId,
+      modelProviderType: zeroRuns.modelProvider,
+      modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
+      selectedModel: zeroRuns.selectedModel,
+    })
+    .from(chatMessages)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, chatMessages.runId))
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, threadId),
+        eq(chatMessages.role, "user"),
+        isNotNull(chatMessages.runId),
+        isNotNull(zeroRuns.selectedModel),
+      ),
+    )
+    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id))
+    .limit(1);
+
+  if (!run?.selectedModel) {
+    return null;
+  }
+  return run;
+}
+
 /**
  * Mark a thread read up to its current latest message.
  *
@@ -253,14 +299,31 @@ export async function getChatThread(
   modelProviderType: string | null;
   modelProviderCredentialScope: string | null;
   selectedModel: string | null;
+  orgId: string | null;
   lastReadMessageId: string | null;
   renamedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }> {
   const [thread] = await globalThis.services.db
-    .select()
+    .select({
+      id: chatThreads.id,
+      title: chatThreads.title,
+      agentComposeId: chatThreads.agentComposeId,
+      draftContent: chatThreads.draftContent,
+      draftAttachments: chatThreads.draftAttachments,
+      modelProviderId: chatThreads.modelProviderId,
+      modelProviderType: chatThreads.modelProviderType,
+      modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
+      selectedModel: chatThreads.selectedModel,
+      orgId: zeroAgents.orgId,
+      lastReadMessageId: chatThreads.lastReadMessageId,
+      renamedAt: chatThreads.renamedAt,
+      createdAt: chatThreads.createdAt,
+      updatedAt: chatThreads.updatedAt,
+    })
     .from(chatThreads)
+    .leftJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
     .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
     .limit(1);
 
@@ -281,6 +344,7 @@ export async function getChatThread(
     modelProviderType: thread.modelProviderType ?? null,
     modelProviderCredentialScope: thread.modelProviderCredentialScope ?? null,
     selectedModel: thread.selectedModel ?? null,
+    orgId: thread.orgId ?? null,
     lastReadMessageId: thread.lastReadMessageId ?? null,
     renamedAt: thread.renamedAt ?? null,
     createdAt: thread.createdAt,

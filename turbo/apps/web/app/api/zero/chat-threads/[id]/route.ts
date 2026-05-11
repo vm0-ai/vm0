@@ -9,6 +9,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../src/lib/auth/get-auth-context";
 import {
   getChatThread,
+  getFirstRunModelPinForThread,
   getChatThreadMessages,
   getActiveRunsForThread,
   updateChatThreadDraft,
@@ -18,6 +19,7 @@ import {
   getLatestRunProviderTypeForThread,
   publishThreadListChanged,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
+import { isModelFirstModelProviderEnabled } from "../../../../../src/lib/zero/model-policy/model-first-route-service";
 import { isNotFound } from "@vm0/api-services/errors";
 
 const chatThreadIdParamSchema = z.string().uuid();
@@ -59,10 +61,18 @@ const router = tsr.router(chatThreadByIdContract, {
         { chatMessages, latestSessionId },
         activeRuns,
         latestRunProviderTypeRaw,
+        modelFirstRunPin,
       ] = await Promise.all([
         getChatThreadMessages(params.id, userId),
         getActiveRunsForThread(params.id),
         getLatestRunProviderTypeForThread(params.id),
+        thread.orgId && thread.selectedModel === null
+          ? isModelFirstModelProviderEnabled(thread.orgId, userId).then(
+              async (enabled) => {
+                return enabled ? getFirstRunModelPinForThread(params.id) : null;
+              },
+            )
+          : Promise.resolve(null),
       ]);
       const activeRunIds = activeRuns.map((r) => {
         return r.id;
@@ -74,17 +84,26 @@ const router = tsr.router(chatThreadByIdContract, {
           ? null
           : (modelProviderTypeSchema.safeParse(latestRunProviderTypeRaw).data ??
             null);
-      const threadModelProviderType =
-        thread.modelProviderType === null
-          ? null
-          : (modelProviderTypeSchema.safeParse(thread.modelProviderType).data ??
-            null);
+      const effectiveThreadModelProviderCredentialScope =
+        modelFirstRunPin?.modelProviderCredentialScope ??
+        thread.modelProviderCredentialScope;
       const threadModelProviderCredentialScope =
-        thread.modelProviderCredentialScope === null
+        effectiveThreadModelProviderCredentialScope === null
           ? null
           : (modelProviderCredentialScopeSchema.safeParse(
-              thread.modelProviderCredentialScope,
+              effectiveThreadModelProviderCredentialScope,
             ).data ?? null);
+      const threadModelProviderId =
+        modelFirstRunPin?.modelProviderId ?? thread.modelProviderId;
+      const threadSelectedModel =
+        modelFirstRunPin?.selectedModel ?? thread.selectedModel;
+      const effectiveThreadModelProviderType =
+        modelFirstRunPin?.modelProviderType ?? thread.modelProviderType;
+      const threadModelProviderType =
+        effectiveThreadModelProviderType === null
+          ? null
+          : (modelProviderTypeSchema.safeParse(effectiveThreadModelProviderType)
+              .data ?? null);
 
       return {
         status: 200 as const,
@@ -102,10 +121,10 @@ const router = tsr.router(chatThreadByIdContract, {
           updatedAt: thread.updatedAt.toISOString(),
           draftContent: thread.draftContent,
           draftAttachments: thread.draftAttachments,
-          modelProviderId: thread.modelProviderId,
+          modelProviderId: threadModelProviderId,
           modelProviderType: threadModelProviderType,
           modelProviderCredentialScope: threadModelProviderCredentialScope,
-          selectedModel: thread.selectedModel,
+          selectedModel: threadSelectedModel,
           renamedAt: thread.renamedAt ? thread.renamedAt.toISOString() : null,
         },
       };

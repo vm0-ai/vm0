@@ -2,6 +2,7 @@ export {
   createChatThread,
   listChatThreads,
   getChatThread,
+  getFirstRunModelPinForThread,
   getChatThreadMessages,
   getActiveRunsForThread,
   updateChatThreadTitle,

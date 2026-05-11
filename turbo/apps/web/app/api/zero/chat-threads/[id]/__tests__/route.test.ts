@@ -8,6 +8,11 @@ import {
   updateTestChatThreadTitle,
   insertTestChatMessage,
   setTestChatThreadRenamedAt,
+  setTestRunModelProvider,
+  setTestRunSelectedModel,
+  enableModelFirstModelProviderForUser,
+  insertOrgModelPolicy,
+  insertUserModelPreference,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -24,11 +29,13 @@ const context = testContext();
 describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
   let testComposeId: string;
   let testUserId: string;
+  let testOrgId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     const user = await context.setupUser();
     testUserId = user.userId;
+    testOrgId = user.orgId;
 
     const { composeId } = await createTestCompose(uniqueId("chat-detail"));
     testComposeId = composeId;
@@ -253,6 +260,62 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
 
     expect(response.status).toBe(200);
     expect(data.renamedAt).toBe("2025-06-01T12:00:00.000Z");
+  });
+
+  it("returns the first run model for unpinned model-first threads", async () => {
+    await enableModelFirstModelProviderForUser(testOrgId, testUserId);
+    await insertOrgModelPolicy({
+      orgId: testOrgId,
+      model: "claude-opus-4-7",
+      isDefault: true,
+    });
+    await insertOrgModelPolicy({
+      orgId: testOrgId,
+      model: "claude-sonnet-4-6",
+    });
+    await insertUserModelPreference({
+      orgId: testOrgId,
+      userId: testUserId,
+      model: "claude-sonnet-4-6",
+    });
+
+    const createResponse = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testComposeId,
+          title: "Historical model-first thread",
+        }),
+      }),
+    );
+    const { id: threadId } = await createResponse.json();
+
+    const { runId } = await seedTestRun(testUserId, testComposeId, {
+      status: "completed",
+      prompt: "historical opus prompt",
+      triggerSource: "web",
+    });
+    await setTestRunModelProvider(runId, "vm0");
+    await setTestRunSelectedModel(runId, "claude-opus-4-7");
+    await addTestRunToThread(
+      threadId,
+      runId,
+      testUserId,
+      "historical opus prompt",
+    );
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.selectedModel).toBe("claude-opus-4-7");
+    expect(data.modelProviderId).toBeNull();
+    expect(data.modelProviderType).toBe("vm0");
   });
 
   it("should return chat messages after run completes", async () => {

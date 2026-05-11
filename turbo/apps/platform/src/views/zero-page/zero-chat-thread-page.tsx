@@ -5,6 +5,7 @@ import type {
 } from "react";
 import {
   useGet,
+  useLoadable,
   useSet,
   useLastLoadable,
   useLastResolved,
@@ -2020,11 +2021,27 @@ function useChatComposerModel(
   // initializer would snapshot `undefined` on first render). `modelSelection$`
   // internally flips to a user-override once `setModelSelection$` is called,
   // so unsaved edits survive subsequent threadData$ reloads.
-  const threadData = useLastResolved(thread.threadData$);
-  const composerProviders = useLastResolved(composerModelProviders$);
-  const modelSelection = useLastResolved(thread.modelSelection$) ?? null;
+  const threadDataLoadable = useLoadable(thread.threadData$);
+  const composerProvidersLoadable = useLoadable(composerModelProviders$);
+  const modelSelectionLoadable = useLoadable(thread.modelSelection$);
+  const agentModelDefaultLoadable = useLoadable(thread.agentModelDefault$);
+  const threadData =
+    threadDataLoadable.state === "hasData"
+      ? threadDataLoadable.data
+      : undefined;
+  const composerProviders =
+    composerProvidersLoadable.state === "hasData"
+      ? composerProvidersLoadable.data
+      : undefined;
+  const modelSelection =
+    modelSelectionLoadable.state === "hasData"
+      ? modelSelectionLoadable.data
+      : null;
   const setModelSelection = useSet(thread.setModelSelection$);
-  const agentModelDefault = useLastResolved(thread.agentModelDefault$) ?? null;
+  const agentModelDefault =
+    agentModelDefaultLoadable.state === "hasData"
+      ? agentModelDefaultLoadable.data
+      : null;
   const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
   const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
   const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
@@ -2050,6 +2067,11 @@ function useChatComposerModel(
     disabled: hasUserMessages,
     agentDefault: agentModelDefault,
   });
+  const modelPickerLoading =
+    threadDataLoadable.state === "loading" ||
+    composerProvidersLoadable.state === "loading" ||
+    modelSelectionLoadable.state === "loading" ||
+    agentModelDefaultLoadable.state === "loading";
   const submitBlockerProps = resolveChatComposerSubmitBlocker({
     state: modelFirstOauthState,
     modelSelection,
@@ -2057,7 +2079,12 @@ function useChatComposerModel(
     onAction: openPersonalOauthConfiguration,
   });
 
-  return { modelPicker, submitBlockerProps, modelSelection };
+  return {
+    modelPicker,
+    modelPickerLoading,
+    submitBlockerProps,
+    modelSelection,
+  };
 }
 
 function ChatThreadComposer({
@@ -2091,8 +2118,12 @@ function ChatThreadComposer({
     thread,
     groups,
   );
-  const { modelPicker, submitBlockerProps, modelSelection } =
-    useChatComposerModel(thread, { hasUserMessages, pageSignal });
+  const {
+    modelPicker,
+    modelPickerLoading,
+    submitBlockerProps,
+    modelSelection,
+  } = useChatComposerModel(thread, { hasUserMessages, pageSignal });
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const queueWhileSending = canQueueMessage({
     sending,
@@ -2158,6 +2189,7 @@ function ChatThreadComposer({
             setInputRef={setInputRef}
             actionsLoading={skeletonVisible}
             modelPicker={modelPicker}
+            modelPickerLoading={modelPickerLoading}
             submitBlocker={submitBlockerProps}
             queuedItems={queuedItems}
             onRemoveQueuedItem={onRemoveQueuedItem}

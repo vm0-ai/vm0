@@ -485,13 +485,25 @@ export function AgentChatPage() {
   const rootSignal = useGet(rootSignal$);
   const pageSignal = useGet(pageSignal$);
 
-  const composerProviders = useLastResolved(composerModelProviders$);
-  const modelSelection = useLastResolved(chatPageModelSelection$) ?? null;
+  const composerProvidersLoadable = useLoadable(composerModelProviders$);
+  const modelSelectionLoadable = useLoadable(chatPageModelSelection$);
+  const agentModelDefaultLoadable = useLoadable(chatPageAgentModelDefault$);
+  const composerProviders =
+    composerProvidersLoadable.state === "hasData"
+      ? composerProvidersLoadable.data
+      : undefined;
+  const modelSelection =
+    modelSelectionLoadable.state === "hasData"
+      ? modelSelectionLoadable.data
+      : null;
   const setModelSelection = useSet(setChatPageModelSelection$);
   const updateUserModelPreference = useSet(updateUserModelPreference$);
   const resetModelSelection = useSet(resetChatPageModelSelection$);
   const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
-  const agentModelDefault = useLastResolved(chatPageAgentModelDefault$) ?? null;
+  const agentModelDefault =
+    agentModelDefaultLoadable.state === "hasData"
+      ? agentModelDefaultLoadable.data
+      : null;
   const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
   const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
 
@@ -559,6 +571,10 @@ export function AgentChatPage() {
     agentModelDefault,
     onAction: openPersonalOauthConfiguration,
   });
+  const modelPickerLoading =
+    composerProvidersLoadable.state === "loading" ||
+    modelSelectionLoadable.state === "loading" ||
+    agentModelDefaultLoadable.state === "loading";
 
   return (
     <div className="relative flex flex-1 flex-col min-h-0">
@@ -605,6 +621,7 @@ export function AgentChatPage() {
                   }
                 : undefined
             }
+            modelPickerLoading={modelPickerLoading}
             submitBlocker={submitBlockerProps}
           />
 
