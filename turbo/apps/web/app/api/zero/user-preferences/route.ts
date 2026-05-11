@@ -13,12 +13,17 @@ import {
 } from "../../../../src/lib/zero/user/user-preferences-service";
 import { isBadRequest } from "@vm0/api-services/errors";
 
+function unauthenticatedResponse() {
+  return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+}
+
 const router = tsr.router(zeroUserPreferencesContract, {
   get: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthenticatedResponse();
 
     const { org } = await resolveOrg(authCtx);
 
@@ -40,6 +45,7 @@ const router = tsr.router(zeroUserPreferencesContract, {
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthenticatedResponse();
 
     const { org } = await resolveOrg(authCtx);
 

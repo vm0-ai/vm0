@@ -31,6 +31,25 @@ describe("GET /api/zero/user-preferences", () => {
     expect(data.error.message).toContain("Not authenticated");
   });
 
+  it("should reject authenticated requests without an active org", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: null });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/user-preferences",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data).toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
   it("should return default preferences for new user", async () => {
     const user = await context.setupUser();
     mockClerk({ userId: user.userId, orgId: user.orgId });
@@ -107,6 +126,30 @@ describe("POST /api/zero/user-preferences", () => {
 
     expect(response.status).toBe(401);
     expect(data.error.message).toContain("Not authenticated");
+  });
+
+  it("should reject authenticated requests without an active org", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: null });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/user-preferences",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timezone: "America/New_York" }),
+      },
+    );
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data).toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
   });
 
   it("should resolve default org when no orgId in session", async () => {
