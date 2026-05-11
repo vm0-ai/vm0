@@ -1426,27 +1426,44 @@ impl Sandbox for FirecrackerSandbox {
     }
 
     async fn unpark(&mut self) -> sandbox::Result<()> {
-        let was_parked = self.is_parked;
-        unpark_inner(
+        // Keep the sandbox logically parked until the host-initiated control
+        // session is reconnected. If reconnect fails or this future is
+        // cancelled at that await point, a retry repeats the idempotent
+        // resume/deflate path instead of treating the sandbox as usable.
+        let preparation = prepare_unpark_inner(
             &mut self.is_parked,
             self.config.resources.memory_mb,
             self.runtime.balloon_mut(),
             &self.sock_paths.api_sock(),
-            self.state_tx.subscribe(),
             &self.id,
         )
         .await?;
 
-        if was_parked {
+        if preparation.needs_control_session() {
             let vsock_path = self.sock_paths.vsock().display().to_string();
-            self.control_session
-                .connect(&vsock_path, VSOCK_CONNECT_TIMEOUT, None)
-                .await
-                .map_err(|e| SandboxError::IdleTransition {
-                    transition: SandboxIdleTransition::Unpark,
-                    message: format!("vsock control session: {e}"),
-                })?;
+            let boot_generation = self
+                .factory_config
+                .snapshot
+                .is_none()
+                .then(|| self.boot_generation.clone())
+                .flatten();
+            connect_control_session_after_unpark(
+                &self.control_session,
+                &vsock_path,
+                boot_generation.as_deref(),
+            )
+            .await?;
         }
+
+        complete_unpark_inner(
+            preparation,
+            &mut self.is_parked,
+            self.config.resources.memory_mb,
+            self.runtime.balloon_mut(),
+            self.sock_paths.api_sock(),
+            self.state_tx.subscribe(),
+            &self.id,
+        );
 
         Ok(())
     }
@@ -1777,16 +1794,27 @@ async fn park_inner(
     Ok(())
 }
 
-async fn unpark_inner(
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UnparkPreparation {
+    Noop,
+    Prepared { park_touched_controller: bool },
+}
+
+impl UnparkPreparation {
+    fn needs_control_session(self) -> bool {
+        matches!(self, Self::Prepared { .. })
+    }
+}
+
+async fn prepare_unpark_inner(
     is_parked: &mut bool,
     memory_mb: u32,
     balloon_controller: &mut Option<balloon::ControllerHandle>,
     api_sock: &std::path::Path,
-    state_rx: watch::Receiver<SandboxState>,
     log_id: &str,
-) -> sandbox::Result<()> {
+) -> sandbox::Result<UnparkPreparation> {
     if !*is_parked {
-        return Ok(());
+        return Ok(UnparkPreparation::Noop);
     }
 
     // Resume vCPUs before any balloon work — the guest needs running
@@ -1841,13 +1869,72 @@ async fn unpark_inner(
                 transition: SandboxIdleTransition::Unpark,
                 message: format!("balloon deflate: {e}"),
             })?;
+    }
 
-        *balloon_controller = Some(balloon::spawn(api_sock.to_path_buf(), memory_mb, state_rx));
+    Ok(UnparkPreparation::Prepared {
+        park_touched_controller,
+    })
+}
+
+fn complete_unpark_inner(
+    preparation: UnparkPreparation,
+    is_parked: &mut bool,
+    memory_mb: u32,
+    balloon_controller: &mut Option<balloon::ControllerHandle>,
+    api_sock: std::path::PathBuf,
+    state_rx: watch::Receiver<SandboxState>,
+    log_id: &str,
+) {
+    let UnparkPreparation::Prepared {
+        park_touched_controller,
+    } = preparation
+    else {
+        return;
+    };
+
+    if park_touched_controller {
+        *balloon_controller = Some(balloon::spawn(api_sock, memory_mb, state_rx));
     }
 
     *is_parked = false;
     info!(id = %log_id, "sandbox unparked (vCPUs resumed)");
+}
+
+#[cfg(test)]
+async fn unpark_inner(
+    is_parked: &mut bool,
+    memory_mb: u32,
+    balloon_controller: &mut Option<balloon::ControllerHandle>,
+    api_sock: &std::path::Path,
+    state_rx: watch::Receiver<SandboxState>,
+    log_id: &str,
+) -> sandbox::Result<()> {
+    let preparation =
+        prepare_unpark_inner(is_parked, memory_mb, balloon_controller, api_sock, log_id).await?;
+    complete_unpark_inner(
+        preparation,
+        is_parked,
+        memory_mb,
+        balloon_controller,
+        api_sock.to_path_buf(),
+        state_rx,
+        log_id,
+    );
     Ok(())
+}
+
+async fn connect_control_session_after_unpark(
+    control_session: &ControlSessionManager,
+    vsock_path: &str,
+    boot_generation: Option<&str>,
+) -> sandbox::Result<()> {
+    control_session
+        .connect(vsock_path, VSOCK_CONNECT_TIMEOUT, boot_generation)
+        .await
+        .map_err(|e| SandboxError::IdleTransition {
+            transition: SandboxIdleTransition::Unpark,
+            message: format!("vsock control session: {e}"),
+        })
 }
 
 #[cfg(test)]
@@ -3393,6 +3480,77 @@ mod tests {
         // Second attempt: resume(204), deflate(204).
         assert_eq!(ps[1].path, "/vm");
         assert_eq!(ps[2].path, "/balloon");
+
+        if let Some(h) = controller.take() {
+            h.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn unpark_control_reconnect_failure_leaves_retryable_state() {
+        // First attempt completes Firecracker resume+deflate, then the
+        // host-initiated control reconnect fails. The sandbox must remain
+        // logically parked so a retry can repeat the idempotent unpark path.
+        let (sock, reqs, _dir) = spawn_mock_fc_api(
+            std::collections::VecDeque::from(vec![204, 204, 400, 204]),
+            None,
+        )
+        .await;
+
+        let mut is_parked = true;
+        let mut controller: Option<balloon::ControllerHandle> = None;
+        let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
+
+        let preparation =
+            prepare_unpark_inner(&mut is_parked, 2048, &mut controller, &sock, "reconnect")
+                .await
+                .unwrap();
+        assert_eq!(
+            preparation,
+            UnparkPreparation::Prepared {
+                park_touched_controller: true
+            }
+        );
+        assert!(is_parked, "flag must remain true until control reconnect");
+        assert!(
+            controller.is_none(),
+            "controller must not restart before control reconnect succeeds"
+        );
+
+        let missing_dir = tempfile::tempdir().unwrap();
+        let missing_vsock = missing_dir.path().join("missing-vsock.sock");
+        let missing_vsock = missing_vsock.display().to_string();
+        let result = connect_control_session_after_unpark(
+            &ControlSessionManager::new(),
+            &missing_vsock,
+            Some("boot-generation"),
+        )
+        .await;
+        assert_idle_transition(result, SandboxIdleTransition::Unpark);
+        assert!(is_parked, "failed reconnect must leave the retry flag set");
+        assert!(controller.is_none());
+
+        unpark_inner(
+            &mut is_parked,
+            2048,
+            &mut controller,
+            &sock,
+            state_rx.clone(),
+            "reconnect",
+        )
+        .await
+        .unwrap();
+        assert!(!is_parked);
+        assert!(controller.is_some(), "retry must finish unpark normally");
+
+        let reqs = reqs.lock().await;
+        let ps = patches(&reqs);
+        assert_eq!(ps.len(), 4);
+        assert_eq!(ps[0].path, "/vm");
+        assert_eq!(ps[1].path, "/balloon");
+        assert_eq!(ps[2].path, "/vm");
+        assert!(ps[2].body.contains("Resumed"));
+        assert_eq!(ps[3].path, "/balloon");
 
         if let Some(h) = controller.take() {
             h.abort();
