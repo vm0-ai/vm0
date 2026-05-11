@@ -644,6 +644,26 @@ fn dispatch_command_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result
     Ok(())
 }
 
+fn dispatch_command_error(shared: &Arc<Shared>, msg: &RawMessage) -> bool {
+    let operation = {
+        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        match &mut *guard {
+            ConnectionState::Connected { operations, .. } => operations.remove(&msg.seq),
+            ConnectionState::Closed { .. } => None,
+        }
+    };
+
+    if let Some(Operation::Command(operation)) = operation {
+        let err = vsock_proto::decode_error(&msg.payload)
+            .map(|message| io::Error::other(message.to_string()))
+            .unwrap_or_else(command_protocol_error);
+        let _ = operation.result_tx.send(Err(err));
+        return true;
+    }
+
+    false
+}
+
 /// Host-side vsock endpoint.
 ///
 /// Maintains a persistent connection to the guest agent and provides
@@ -713,6 +733,11 @@ async fn reader_loop(
                     shared.poison_connection();
                     return;
                 }
+            } else if msg.msg_type == MSG_ERROR && dispatch_command_error(&shared, &msg) {
+                // Command-operation errors are delivered through the operation
+                // result channel. Legacy request errors fall through to the
+                // pending-request dispatch below.
+                continue;
             } else if msg.msg_type == MSG_STDOUT_CHUNK && msg.seq == 0 {
                 if let Ok((pid, data)) = vsock_proto::decode_stdout_chunk(&msg.payload) {
                     let sender = {
@@ -1847,6 +1872,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn command_result_preserves_non_default_metadata() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let handle = start_capture_operation(&host, "metadata").await;
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(msg.msg_type, MSG_COMMAND_START);
+
+        let payload = vsock_proto::encode_command_result(
+            CommandTermination::WaitFailed,
+            345,
+            CommandCapturedOutput::Discarded,
+            CommandCapturedOutput::Captured {
+                bytes: b"stderr",
+                truncated: true,
+            },
+            "wait failed",
+        )
+        .unwrap();
+        let frame = vsock_proto::encode(MSG_COMMAND_RESULT, msg.seq, &payload).unwrap();
+        guest.write_all(&frame).await.unwrap();
+
+        let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+        assert_eq!(result.termination, CommandTermination::WaitFailed);
+        assert_eq!(result.duration_ms, 345);
+        assert_eq!(result.stdout, CommandOwnedCapturedOutput::Discarded);
+        assert_eq!(
+            result.stderr,
+            CommandOwnedCapturedOutput::Captured {
+                bytes: b"stderr".to_vec(),
+                truncated: true,
+            }
+        );
+        assert_eq!(result.diagnostic, "wait failed");
+    }
+
+    #[tokio::test]
     async fn command_stream_rejects_zero_capacity_without_sending_frame() {
         let (host, mut guest, mut decoder) = setup_host_and_guest().await;
         let host = Arc::new(host);
@@ -2181,6 +2241,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn command_error_response_completes_operation_without_timeout() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let host = Arc::new(host);
+        let handle = start_capture_operation(&host, "error-response").await;
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(msg.msg_type, MSG_COMMAND_START);
+
+        let payload = vsock_proto::encode_error("command operation already active");
+        let frame = vsock_proto::encode(MSG_ERROR, msg.seq, &payload).unwrap();
+        guest.write_all(&frame).await.unwrap();
+
+        let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::Other);
+        assert_eq!(err.to_string(), "command operation already active");
+        assert_eq!(operation_count(&host), 0);
+
+        assert_connection_accepts_legacy_exec(&host, &mut guest, &mut decoder).await;
+    }
+
+    #[tokio::test]
     async fn command_connection_close_wakes_result_and_stream() {
         let (host, mut guest, mut decoder) = setup_host_and_guest().await;
         let mut handle = host
@@ -2339,6 +2419,44 @@ mod tests {
         guest.write_all(&response).await.unwrap();
         let exec_result = exec_task.await.unwrap().unwrap();
         assert_eq!(exec_result.stdout, b"ok");
+    }
+
+    #[tokio::test]
+    async fn duplicate_command_result_after_completion_is_ignored() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let host = Arc::new(host);
+        let handle = start_capture_operation(&host, "duplicate-result").await;
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(msg.msg_type, MSG_COMMAND_START);
+
+        send_command_result(
+            &mut guest,
+            msg.seq,
+            CommandTermination::Exited { exit_code: 0 },
+            b"first",
+            b"",
+        )
+        .await;
+        let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+        assert_eq!(
+            result.stdout,
+            CommandOwnedCapturedOutput::Captured {
+                bytes: b"first".to_vec(),
+                truncated: false,
+            }
+        );
+        assert_eq!(operation_count(&host), 0);
+
+        send_command_result(
+            &mut guest,
+            msg.seq,
+            CommandTermination::Exited { exit_code: 1 },
+            b"duplicate",
+            b"",
+        )
+        .await;
+
+        assert_connection_accepts_legacy_exec(&host, &mut guest, &mut decoder).await;
     }
 
     #[tokio::test]
