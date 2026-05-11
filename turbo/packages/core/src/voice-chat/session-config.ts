@@ -83,11 +83,12 @@ export const INPUT_AUDIO_TRANSCRIPTION_CONFIG = {
 export type NoiseReduction = "near_field" | "far_field";
 export const DEFAULT_NOISE_REDUCTION: NoiseReduction = "far_field";
 
-export const SESSION_MODALITIES = ["text", "audio"] as const;
+// Realtime GA supports a single output modality per session. Voice chat needs
+// speech output, while transcripts still arrive through data-channel events.
+export const SESSION_OUTPUT_MODALITIES = ["audio"] as const;
 
-// Talker model and assistant voice are part of the bytewise-equal contract
-// between the legacy ephemeral-token REST body and the relay's `session.update`
-// frame. Both consumers read these constants instead of inlining string
-// literals — ensures a single rename / version-bump touches one place.
+// Talker model and assistant voice are part of the server-minted Realtime
+// session config. Keep these constants centralized so a model or voice change
+// touches one place.
 export const TALKER_MODEL = "gpt-realtime-2";
 export const TALKER_VOICE = "verse";
