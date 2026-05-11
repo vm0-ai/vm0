@@ -890,6 +890,10 @@ async fn ensure_template_cached_under_lock_with_scripts(
         RunnerError::Internal("--warm-rootfs-cache requires R2 template cache".into())
     })?;
 
+    let warm_parent = template_warm_parent_dir(input.paths, input.template_hash);
+    cleanup_template_warm_parent(&warm_parent).await?;
+    remove_empty_dir_if_exists(&warm_parent).await?;
+
     match cache.template_exists(input.template_hash).await {
         Ok(true) => {
             tracing::info!("[OK] template already in R2: {}", input.template_hash);
@@ -912,8 +916,6 @@ async fn ensure_template_cached_under_lock_with_scripts(
     // Keep warm-up staging on the runner image volume, not the system temp
     // filesystem. A cache miss builds a full template image before uploading,
     // and /tmp may be much smaller than the runner data disk.
-    let warm_parent = template_warm_parent_dir(input.paths, input.template_hash);
-    cleanup_template_warm_parent(&warm_parent).await?;
     let warm_dir = template_attempt_dir(&warm_parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX);
 
     let result = materialize_template_from_r2_or_build(
@@ -2952,6 +2954,37 @@ exit 1
         assert!(
             !template_warm_parent_dir(&home, "test-template-hash").exists(),
             "warm cache hit should not create local template staging"
+        );
+    }
+
+    #[tokio::test]
+    async fn warm_cache_head_hit_cleans_stale_local_attempts() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::head_object::HeadObjectOutput;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let warm_parent = template_warm_parent_dir(&home, "test-template-hash");
+        let stale_attempt = template_attempt_dir(&warm_parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX);
+        tokio::fs::create_dir_all(&stale_attempt).await.unwrap();
+        tokio::fs::write(stale_attempt.join(TEMPLATE_FILE), b"stale")
+            .await
+            .unwrap();
+        let head = mock!(Client::head_object)
+            .match_requests(|req| {
+                req.bucket() == Some("test-bucket")
+                    && req.key() == Some("runner-templates/test-template-hash.tar.zst")
+            })
+            .then_output(|| HeadObjectOutput::builder().build());
+        let cache = mock_r2_cache(&[&head]);
+        let input = template_input(&home, TemplateCache::Required(&cache));
+
+        ensure_template_cached_under_lock(&input).await.unwrap();
+
+        assert_eq!(head.num_calls(), 1);
+        assert!(
+            !warm_parent.exists(),
+            "warm HEAD hit must still clean stale local warm attempt residue"
         );
     }
 
