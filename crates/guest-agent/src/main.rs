@@ -393,6 +393,14 @@ mod tests {
     use httpmock::prelude::*;
     use serde_json::json;
 
+    static TEST_STATE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn lock_test_state() -> std::sync::MutexGuard<'static, ()> {
+        TEST_STATE_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     struct SystemLogOverrideGuard;
 
     impl SystemLogOverrideGuard {
@@ -410,6 +418,7 @@ mod tests {
 
     #[test]
     fn cli_failure_message_logs_stderr_to_system_log() {
+        let _test_state_guard = lock_test_state();
         let tmp = tempfile::tempdir().unwrap();
         let system_log_path = tmp.path().join("system.log");
         let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
@@ -452,8 +461,17 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn complete_execution_creates_recovery_checkpoint_after_cli_failure() {
+    #[test]
+    fn complete_execution_creates_recovery_checkpoint_after_cli_failure() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(complete_execution_creates_recovery_checkpoint_after_cli_failure_inner());
+    }
+
+    async fn complete_execution_creates_recovery_checkpoint_after_cli_failure_inner() {
         let server = MockServer::start();
         unsafe {
             std::env::set_var("VM0_API_URL", server.base_url());
