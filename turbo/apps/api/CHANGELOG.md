@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.32.0](https://github.com/vm0-ai/vm0/compare/api-v1.31.1...api-v1.32.0) (2026-05-11)
+
+
+### Features
+
+* add private agents ([#12655](https://github.com/vm0-ai/vm0/issues/12655)) ([e37c8e5](https://github.com/vm0-ai/vm0/commit/e37c8e535da8ce48e011066b7c99e8ebffd8f076))
+* **api:** migrate billing checkout endpoint to api backend ([#12596](https://github.com/vm0-ai/vm0/issues/12596)) ([#12606](https://github.com/vm0-ai/vm0/issues/12606)) ([a666f95](https://github.com/vm0-ai/vm0/commit/a666f9528f008b1e825d7081f273788aa17a230f))
+
+
+### Bug Fixes
+
+* align agent instructions route parity ([#12672](https://github.com/vm0-ai/vm0/issues/12672)) ([4d796b7](https://github.com/vm0-ai/vm0/commit/4d796b78025fb52132f0104fa295cb470e85c923))
+* align v1 chat thread read route parity ([#12632](https://github.com/vm0-ai/vm0/issues/12632)) ([f0e9abd](https://github.com/vm0-ai/vm0/commit/f0e9abd379d9e8fc55bbd311e8a5cede3cf06330))
+
+
+### Refactoring
+
+* **api:** migrate billing/portal post to api backend (wave 6 [#1](https://github.com/vm0-ai/vm0/issues/1)) ([#12670](https://github.com/vm0-ai/vm0/issues/12670)) ([7508575](https://github.com/vm0-ai/vm0/commit/750857546875646d151b0b7e0635440a0a34e1d8)), closes [#12595](https://github.com/vm0-ai/vm0/issues/12595)
+* remove personal model provider switch ([#12361](https://github.com/vm0-ai/vm0/issues/12361)) ([6953d00](https://github.com/vm0-ai/vm0/commit/6953d0046a8c160e394ae079b0d3f5037b9f7c08))
+* use member metadata for model-first preference ([#12630](https://github.com/vm0-ai/vm0/issues/12630)) ([452eeb3](https://github.com/vm0-ai/vm0/commit/452eeb3fd693feac5c369ad22d432c7dd49b8c29))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.9.0
+    * @vm0/connectors bumped to 1.4.0
+    * @vm0/core bumped to 8.268.0
+    * @vm0/db bumped to 1.5.0
+
 ## [1.31.1](https://github.com/vm0-ai/vm0/compare/api-v1.31.0...api-v1.31.1) (2026-05-11)
 
 

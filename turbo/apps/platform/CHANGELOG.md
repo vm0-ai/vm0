@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.343.0](https://github.com/vm0-ai/vm0/compare/app-v0.342.4...app-v0.343.0) (2026-05-11)
+
+
+### Features
+
+* add private agents ([#12655](https://github.com/vm0-ai/vm0/issues/12655)) ([e37c8e5](https://github.com/vm0-ai/vm0/commit/e37c8e535da8ce48e011066b7c99e8ebffd8f076))
+
+
+### Bug Fixes
+
+* clarify personal providers tab copy ([#12608](https://github.com/vm0-ai/vm0/issues/12608)) ([18c3b44](https://github.com/vm0-ai/vm0/commit/18c3b44f9a9aef3f83df843edd5486c53b86d8fb))
+* migrate voice chat to Realtime GA API ([#12658](https://github.com/vm0-ai/vm0/issues/12658)) ([ebfa606](https://github.com/vm0-ai/vm0/commit/ebfa606955833ccfebc2191689843bd898fc2c39))
+* restore model-first picker scroll chevrons ([#12609](https://github.com/vm0-ai/vm0/issues/12609)) ([a2a665f](https://github.com/vm0-ai/vm0/commit/a2a665fb3b2149ae7c703f2db6e8078fba89660c))
+
+
+### Refactoring
+
+* remove personal model provider switch ([#12361](https://github.com/vm0-ai/vm0/issues/12361)) ([6953d00](https://github.com/vm0-ai/vm0/commit/6953d0046a8c160e394ae079b0d3f5037b9f7c08))
+* use member metadata for model-first preference ([#12630](https://github.com/vm0-ai/vm0/issues/12630)) ([452eeb3](https://github.com/vm0-ai/vm0/commit/452eeb3fd693feac5c369ad22d432c7dd49b8c29))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.9.0
+    * @vm0/connectors bumped to 1.4.0
+    * @vm0/core bumped to 8.268.0
+
 ## [0.342.4](https://github.com/vm0-ai/vm0/compare/app-v0.342.3...app-v0.342.4) (2026-05-11)
 
 

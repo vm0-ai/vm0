@@ -1,5 +1,36 @@
 # Changelog
 
+## [12.350.0](https://github.com/vm0-ai/vm0/compare/web-v12.349.5...web-v12.350.0) (2026-05-11)
+
+
+### Features
+
+* add private agents ([#12655](https://github.com/vm0-ai/vm0/issues/12655)) ([e37c8e5](https://github.com/vm0-ai/vm0/commit/e37c8e535da8ce48e011066b7c99e8ebffd8f076))
+* enable Codex memory mounting ([#12651](https://github.com/vm0-ai/vm0/issues/12651)) ([3646b72](https://github.com/vm0-ai/vm0/commit/3646b72ccafa675ff53895f797a99a1e754fd82e))
+
+
+### Bug Fixes
+
+* align v1 chat thread read route parity ([#12632](https://github.com/vm0-ai/vm0/issues/12632)) ([f0e9abd](https://github.com/vm0-ai/vm0/commit/f0e9abd379d9e8fc55bbd311e8a5cede3cf06330))
+* link model provider auth errors to settings ([#12667](https://github.com/vm0-ai/vm0/issues/12667)) ([c579711](https://github.com/vm0-ai/vm0/commit/c579711ca4f544ea89e40be53e625cd94d7faaa8))
+* migrate voice chat to Realtime GA API ([#12658](https://github.com/vm0-ai/vm0/issues/12658)) ([ebfa606](https://github.com/vm0-ai/vm0/commit/ebfa606955833ccfebc2191689843bd898fc2c39))
+
+
+### Refactoring
+
+* remove personal model provider switch ([#12361](https://github.com/vm0-ai/vm0/issues/12361)) ([6953d00](https://github.com/vm0-ai/vm0/commit/6953d0046a8c160e394ae079b0d3f5037b9f7c08))
+* use member metadata for model-first preference ([#12630](https://github.com/vm0-ai/vm0/issues/12630)) ([452eeb3](https://github.com/vm0-ai/vm0/commit/452eeb3fd693feac5c369ad22d432c7dd49b8c29))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.9.0
+    * @vm0/connectors bumped to 1.4.0
+    * @vm0/core bumped to 8.268.0
+    * @vm0/db bumped to 1.5.0
+
 ## [12.349.5](https://github.com/vm0-ai/vm0/compare/web-v12.349.4...web-v12.349.5) (2026-05-10)
 
 

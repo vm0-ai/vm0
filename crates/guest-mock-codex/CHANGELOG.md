@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.1.2...guest-mock-codex-v0.2.0) (2026-05-11)
+
+
+### Features
+
+* enable Codex memory mounting ([#12651](https://github.com/vm0-ai/vm0/issues/12651)) ([3646b72](https://github.com/vm0-ai/vm0/commit/3646b72ccafa675ff53895f797a99a1e754fd82e))
+
 ## [0.1.2](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.1.1...guest-mock-codex-v0.1.2) (2026-05-08)
 
 
