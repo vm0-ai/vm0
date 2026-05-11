@@ -30,7 +30,7 @@
 //! | 0x0C | G→H       | stdout_chunk      | `[4B pid][data]` |
 //! | 0x0D | H→G       | command_start     | `[4B timeout_ms][1B flags][4B cmd_len][command][4B env_count]... [stdout_policy][stderr_policy][2B label_len][label]` |
 //! | 0x0E | G→H       | command_output    | `[1B stream][4B output_seq][1B flags][4B chunk_len][chunk]` |
-//! | 0x0F | G→H       | command_result    | `[1B termination]...[8B duration_ms][stdout][stderr][2B diagnostic_len][diagnostic]` |
+//! | 0x0F | G→H       | command_result    | `[1B termination]...[4B duration_ms][stdout][stderr][2B diagnostic_len][diagnostic]` |
 //! | 0x10 | H→G       | command_cancel    | (empty) |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
@@ -171,7 +171,7 @@ pub struct DecodedCommandOutput<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DecodedCommandResult<'a> {
     pub termination: CommandTermination,
-    pub duration_ms: u64,
+    pub duration_ms: u32,
     pub stdout: CommandCapturedOutput<'a>,
     pub stderr: CommandCapturedOutput<'a>,
     pub diagnostic: &'a str,
@@ -222,12 +222,6 @@ fn read_u32_at(data: &[u8], offset: usize) -> Option<u32> {
 fn read_i32_at(data: &[u8], offset: usize) -> Option<i32> {
     let bytes: [u8; 4] = data.get(offset..offset + 4)?.try_into().ok()?;
     Some(i32::from_be_bytes(bytes))
-}
-
-/// Read a `u64` from `data` at `offset`. Returns `None` if out of bounds.
-fn read_u64_at(data: &[u8], offset: usize) -> Option<u64> {
-    let bytes: [u8; 8] = data.get(offset..offset + 8)?.try_into().ok()?;
-    Some(u64::from_be_bytes(bytes))
 }
 
 fn ensure_payload_fits_message(payload_len: usize) -> Result<(), ProtocolError> {
@@ -281,12 +275,6 @@ fn read_u32(payload: &[u8], offset: &mut usize, err: &'static str) -> Result<u32
 fn read_i32(payload: &[u8], offset: &mut usize, err: &'static str) -> Result<i32, ProtocolError> {
     let value = read_i32_at(payload, *offset).ok_or(ProtocolError::InvalidPayload(err))?;
     *offset += 4;
-    Ok(value)
-}
-
-fn read_u64(payload: &[u8], offset: &mut usize, err: &'static str) -> Result<u64, ProtocolError> {
-    let value = read_u64_at(payload, *offset).ok_or(ProtocolError::InvalidPayload(err))?;
-    *offset += 8;
     Ok(value)
 }
 
@@ -727,7 +715,7 @@ fn append_command_captured_output(p: &mut Vec<u8>, output: CommandCapturedOutput
 /// Encode command_result payload.
 pub fn encode_command_result(
     termination: CommandTermination,
-    duration_ms: u64,
+    duration_ms: u32,
     stdout: CommandCapturedOutput<'_>,
     stderr: CommandCapturedOutput<'_>,
     diagnostic: &str,
@@ -738,7 +726,7 @@ pub fn encode_command_result(
     let stderr_len = command_captured_output_encoded_len(stderr, "stderr")?;
 
     let mut payload_len = command_termination_encoded_len(termination);
-    payload_len = checked_payload_len_add(payload_len, 8)?;
+    payload_len = checked_payload_len_add(payload_len, 4)?;
     payload_len = checked_payload_len_add(payload_len, stdout_len)?;
     payload_len = checked_payload_len_add(payload_len, stderr_len)?;
     payload_len = checked_payload_len_add(payload_len, 2)?;
@@ -1296,7 +1284,7 @@ fn decode_command_captured_output<'a>(
 pub fn decode_command_result(payload: &[u8]) -> Result<DecodedCommandResult<'_>, ProtocolError> {
     let mut offset = 0;
     let termination = decode_command_termination(payload, &mut offset)?;
-    let duration_ms = read_u64(payload, &mut offset, "command result duration truncated")?;
+    let duration_ms = read_u32(payload, &mut offset, "command result duration truncated")?;
     let stdout = decode_command_captured_output(payload, &mut offset)?;
     let stderr = decode_command_captured_output(payload, &mut offset)?;
     let diagnostic_len = read_u16(
@@ -2270,7 +2258,7 @@ mod tests {
         ));
 
         let mut invalid_captured_tag = payload.clone();
-        invalid_captured_tag[1 + 8] = 0x99;
+        invalid_captured_tag[1 + 4] = 0x99;
         assert!(matches!(
             decode_command_result(&invalid_captured_tag),
             Err(ProtocolError::InvalidPayload(
@@ -2279,7 +2267,7 @@ mod tests {
         ));
 
         let mut unknown_captured_flags = payload.clone();
-        unknown_captured_flags[1 + 8 + 1] = 0x80;
+        unknown_captured_flags[1 + 4 + 1] = 0x80;
         assert!(matches!(
             decode_command_result(&unknown_captured_flags),
             Err(ProtocolError::InvalidPayload(
@@ -2344,7 +2332,7 @@ mod tests {
         let err = encode_command_output(CommandOutputStream::Stdout, 1, &chunk, false).unwrap_err();
         assert!(matches!(err, ProtocolError::MessageTooLarge(_)));
 
-        let stdout = vec![0u8; MAX_PAYLOAD_SIZE - 17];
+        let stdout = vec![0u8; MAX_PAYLOAD_SIZE - 13];
         let err = encode_command_result(
             CommandTermination::Cancelled,
             1,
