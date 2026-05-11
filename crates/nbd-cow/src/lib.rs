@@ -238,6 +238,16 @@ impl CreateAttemptGuard {
         }
     }
 
+    async fn disconnect_owned_and_retire_uncertain(mut self) {
+        self.abort_servers().await;
+        if let Some(connected) = self.connected.take() {
+            disconnect_connected_if_owned(connected);
+        }
+        if let Some(lease) = self.lease.take() {
+            self.pool.retire_uncertain(lease).await;
+        }
+    }
+
     async fn disconnect_and_release(mut self) -> bool {
         self.abort_servers().await;
         let disconnected = self
@@ -410,15 +420,19 @@ impl NbdCowDevice {
                     return Err(e);
                 }
 
-                match netlink::connect_device(device_index, &client_fds, size, BLOCK_SIZE as u64) {
-                    Ok(()) => {
-                        // Record the TID of the thread that connected — the kernel
-                        // stores this in /sys/block/nbdN/pid via task_pid_nr().
-                        let tid = unsafe { libc::gettid() } as u32;
-                        attempt.mark_connected(tid);
+                match netlink::connect_device_with_state(
+                    device_index,
+                    &client_fds,
+                    size,
+                    BLOCK_SIZE as u64,
+                ) {
+                    Ok(connected) => {
+                        attempt.mark_connected(connected.connect_tid);
                         break attempt;
                     }
-                    Err(error::NbdCowError::NetlinkErrno { errno, .. }) if errno == libc::EBUSY => {
+                    Err(netlink::ConnectDeviceError::DefiniteAfterSend {
+                        source: error::NbdCowError::NetlinkErrno { errno, .. },
+                    }) if errno == libc::EBUSY => {
                         ebusy_count += 1;
                         tracing::info!(
                             device_index,
@@ -435,12 +449,24 @@ impl NbdCowDevice {
                         attempt.discard().await;
                         continue;
                     }
-                    Err(e) => {
+                    Err(netlink::ConnectDeviceError::AmbiguousAfterSend {
+                        connect_tid,
+                        source,
+                    }) => {
+                        // The kernel may have accepted NBD_CMD_CONNECT even
+                        // though userspace failed while observing completion.
+                        // Record a provisional candidate so cleanup can
+                        // disconnect only if sysfs still proves we own it.
+                        attempt.mark_connected(connect_tid);
+                        attempt.disconnect_owned_and_retire_uncertain().await;
+                        return Err(source);
+                    }
+                    Err(connect_error) => {
                         // Connect failed with non-EBUSY error. Device may be in
                         // an unknown kernel state — retire with cooldown so it
                         // gets re-validated before reuse.
                         attempt.retire_uncertain().await;
-                        return Err(e);
+                        return Err(connect_error.into_source());
                     }
                 }
             };
@@ -633,15 +659,26 @@ fn device_ownership(device_index: u32, connect_tid: u32) -> DeviceOwnership {
     }
 }
 
-fn disconnect_connected_if_owned(connected: ConnectedDevice) {
-    match device_ownership(connected.index, connected.connect_tid) {
+fn disconnect_connected_if_owned(connected: ConnectedDevice) -> bool {
+    disconnect_connected_if_owned_with(connected, device_ownership, netlink::disconnect)
+}
+
+fn disconnect_connected_if_owned_with(
+    connected: ConnectedDevice,
+    ownership: impl FnOnce(u32, u32) -> DeviceOwnership,
+    disconnect: impl FnOnce(u32) -> Result<()>,
+) -> bool {
+    match ownership(connected.index, connected.connect_tid) {
         DeviceOwnership::Ours => {
-            if let Err(e) = netlink::disconnect(connected.index) {
+            if let Err(e) = disconnect(connected.index) {
                 tracing::warn!(
                     device_index = connected.index,
                     error = %e,
                     "NBD disconnect failed during cancelled create"
                 );
+                false
+            } else {
+                true
             }
         }
         DeviceOwnership::Foreign(pid) => {
@@ -650,6 +687,7 @@ fn disconnect_connected_if_owned(connected: ConnectedDevice) {
                 foreign_pid = pid,
                 "skipping cancelled-create disconnect: device recycled by another process"
             );
+            false
         }
         DeviceOwnership::Unknown(err) => {
             tracing::warn!(
@@ -657,6 +695,7 @@ fn disconnect_connected_if_owned(connected: ConnectedDevice) {
                 error = %err,
                 "skipping cancelled-create disconnect: cannot read device pid"
             );
+            false
         }
     }
 }
@@ -1050,6 +1089,92 @@ mod tests {
             .unwrap()
             .unwrap();
         pool.cleanup().await;
+    }
+
+    #[test]
+    fn disconnect_connected_if_owned_disconnects_matching_owner() {
+        let calls = std::cell::Cell::new(0);
+        let connected = ConnectedDevice {
+            index: 7,
+            connect_tid: 42,
+        };
+
+        let disconnected = disconnect_connected_if_owned_with(
+            connected,
+            |index, tid| {
+                assert_eq!(index, 7);
+                assert_eq!(tid, 42);
+                DeviceOwnership::Ours
+            },
+            |index| {
+                assert_eq!(index, 7);
+                calls.set(calls.get() + 1);
+                Ok(())
+            },
+        );
+
+        assert!(disconnected);
+        assert_eq!(calls.get(), 1);
+    }
+
+    #[test]
+    fn disconnect_connected_if_owned_skips_foreign_owner() {
+        let connected = ConnectedDevice {
+            index: 7,
+            connect_tid: 42,
+        };
+
+        let disconnected = disconnect_connected_if_owned_with(
+            connected,
+            |index, tid| {
+                assert_eq!(index, 7);
+                assert_eq!(tid, 42);
+                DeviceOwnership::Foreign(100)
+            },
+            |_| panic!("foreign device must not be disconnected"),
+        );
+
+        assert!(!disconnected);
+    }
+
+    #[test]
+    fn disconnect_connected_if_owned_skips_unknown_owner() {
+        let connected = ConnectedDevice {
+            index: 7,
+            connect_tid: 42,
+        };
+
+        let disconnected = disconnect_connected_if_owned_with(
+            connected,
+            |index, tid| {
+                assert_eq!(index, 7);
+                assert_eq!(tid, 42);
+                DeviceOwnership::Unknown(std::io::Error::other("sysfs unavailable"))
+            },
+            |_| panic!("unknown ownership must not be disconnected"),
+        );
+
+        assert!(!disconnected);
+    }
+
+    #[test]
+    fn disconnect_connected_if_owned_reports_disconnect_error() {
+        let connected = ConnectedDevice {
+            index: 7,
+            connect_tid: 42,
+        };
+
+        let disconnected = disconnect_connected_if_owned_with(
+            connected,
+            |_, _| DeviceOwnership::Ours,
+            |_| {
+                Err(error::NbdCowError::Io(std::io::Error::other(
+                    "disconnect failed",
+                )))
+            },
+        );
+
+        assert!(!disconnected);
     }
 
     /// Verify is_our_thread correctly identifies the main thread (TID == TGID).

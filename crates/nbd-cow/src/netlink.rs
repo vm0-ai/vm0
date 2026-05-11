@@ -117,6 +117,58 @@ pub fn device_appears_free(index: u32) -> bool {
     }
 }
 
+/// Successful NBD connect metadata.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ConnectDeviceSuccess {
+    /// TID of the thread that sent `NBD_CMD_CONNECT`.
+    ///
+    /// The kernel records this value in `/sys/block/nbdN/pid` after a
+    /// successful connect. Cleanup uses it to avoid disconnecting a device
+    /// recycled by another process.
+    pub connect_tid: u32,
+}
+
+/// Error state for `NBD_CMD_CONNECT`.
+///
+/// `NBD_CMD_CONNECT` has a kernel commit boundary: after the command is sent,
+/// userspace may fail to observe completion even though the kernel accepted the
+/// connection. Callers that own an NBD device lease need this state to decide
+/// whether ownership-checked cleanup is required.
+#[derive(Debug, thiserror::Error)]
+pub enum ConnectDeviceError {
+    /// The connect command was not sent to the kernel.
+    #[error("NBD connect failed before sending command: {source}")]
+    NotSent {
+        /// Underlying error.
+        source: NbdCowError,
+    },
+    /// The connect command was sent and the kernel returned a definitive error.
+    #[error("NBD connect failed definitively after sending command: {source}")]
+    DefiniteAfterSend {
+        /// Underlying kernel/netlink error.
+        source: NbdCowError,
+    },
+    /// The connect command was sent, but userspace could not observe completion.
+    #[error("NBD connect completion is ambiguous after sending command: {source}")]
+    AmbiguousAfterSend {
+        /// TID of the thread that sent `NBD_CMD_CONNECT`.
+        connect_tid: u32,
+        /// Underlying completion-observation error.
+        source: NbdCowError,
+    },
+}
+
+impl ConnectDeviceError {
+    /// Return the underlying error for legacy callers that do not need state.
+    pub fn into_source(self) -> NbdCowError {
+        match self {
+            Self::NotSent { source }
+            | Self::DefiniteAfterSend { source }
+            | Self::AmbiguousAfterSend { source, .. } => source,
+        }
+    }
+}
+
 /// Connect to a specific NBD device by index.
 ///
 /// The caller provides the device index (typically from a `DevicePool`).
@@ -129,8 +181,21 @@ pub fn connect_device(
     size: u64,
     block_size: u64,
 ) -> Result<()> {
-    let sock = open_genl_socket()?;
-    let family_id = resolve_nbd_family(&sock)?;
+    connect_device_with_state(device_index, client_fds, size, block_size)
+        .map(|_| ())
+        .map_err(ConnectDeviceError::into_source)
+}
+
+/// Connect to a specific NBD device and preserve post-send ambiguity state.
+pub fn connect_device_with_state(
+    device_index: u32,
+    client_fds: &[OwnedFd],
+    size: u64,
+    block_size: u64,
+) -> std::result::Result<ConnectDeviceSuccess, ConnectDeviceError> {
+    let sock = open_genl_socket().map_err(|source| ConnectDeviceError::NotSent { source })?;
+    let family_id =
+        resolve_nbd_family(&sock).map_err(|source| ConnectDeviceError::NotSent { source })?;
 
     let sockets_nla = build_sockets_nla(client_fds);
     let flags =
@@ -151,10 +216,13 @@ pub fn connect_device(
     ));
     attrs.extend_from_slice(&sockets_nla);
 
-    let seq = send_genl_msg(&sock, family_id, NBD_CMD_CONNECT, &attrs)?;
-    recv_genl_completion(&sock, seq)?;
+    // The kernel records the sending task's TID in /sys/block/nbdN/pid on
+    // successful connect. Capture it before crossing the netlink send boundary.
+    let connect_tid = unsafe { libc::gettid() } as u32;
+    let seq = send_genl_msg(&sock, family_id, NBD_CMD_CONNECT, &attrs)
+        .map_err(|source| ConnectDeviceError::NotSent { source })?;
 
-    Ok(())
+    finish_connect_after_send(&sock, seq, connect_tid)
 }
 
 /// Check whether the device has the expected size via sysfs.
@@ -523,6 +591,23 @@ fn recv_genl_completion(sock: &GenlSocket, expected_seq: u32) -> Result<()> {
     parse_genl_completion(&buf, n)
 }
 
+fn finish_connect_after_send(
+    sock: &GenlSocket,
+    expected_seq: u32,
+    connect_tid: u32,
+) -> std::result::Result<ConnectDeviceSuccess, ConnectDeviceError> {
+    match recv_genl_completion(sock, expected_seq) {
+        Ok(()) => Ok(ConnectDeviceSuccess { connect_tid }),
+        Err(source @ NbdCowError::NetlinkErrno { .. }) => {
+            Err(ConnectDeviceError::DefiniteAfterSend { source })
+        }
+        Err(source) => Err(ConnectDeviceError::AmbiguousAfterSend {
+            connect_tid,
+            source,
+        }),
+    }
+}
+
 fn parse_genl_completion(buf: &[u8], n: usize) -> Result<()> {
     match parse_nl_msg(buf, n)? {
         // NBD connect returns a genetlink reply on success; other commands may
@@ -825,6 +910,70 @@ mod tests {
         let result = parse_genl_completion(&msg, msg.len());
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn finish_connect_after_send_success_returns_connect_tid() {
+        let (sock, peer) = test_genl_socket_pair();
+        let reply = build_genl_msg(0x19, NBD_CMD_CONNECT, NBD_GENL_VERSION, &[], 2, false);
+        send_test_nl(&peer, &reply);
+
+        let result = finish_connect_after_send(&sock, 2, 1234);
+
+        assert!(matches!(
+            result,
+            Ok(ConnectDeviceSuccess { connect_tid: 1234 })
+        ));
+    }
+
+    #[test]
+    fn finish_connect_after_send_errno_is_definite_failure() {
+        let (sock, peer) = test_genl_socket_pair();
+        send_test_nl(&peer, &nlmsg_error_msg(2, -libc::EBUSY));
+
+        let result = finish_connect_after_send(&sock, 2, 1234);
+
+        assert!(matches!(
+            result,
+            Err(ConnectDeviceError::DefiniteAfterSend {
+                source: NbdCowError::NetlinkErrno { errno, .. },
+            }) if errno == libc::EBUSY
+        ));
+    }
+
+    #[test]
+    fn finish_connect_after_send_closed_peer_is_ambiguous() {
+        let (sock, peer) = test_genl_socket_pair();
+        drop(peer);
+
+        let result = finish_connect_after_send(&sock, 2, 1234);
+
+        assert!(matches!(
+            result,
+            Err(ConnectDeviceError::AmbiguousAfterSend {
+                connect_tid: 1234,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn finish_connect_after_send_malformed_matching_completion_is_ambiguous() {
+        let (sock, peer) = test_genl_socket_pair();
+        let mut malformed = vec![0u8; 16];
+        malformed[0..4].copy_from_slice(&15u32.to_ne_bytes());
+        malformed[8..12].copy_from_slice(&2u32.to_ne_bytes());
+        send_test_nl(&peer, &malformed);
+
+        let result = finish_connect_after_send(&sock, 2, 1234);
+
+        assert!(matches!(
+            result,
+            Err(ConnectDeviceError::AmbiguousAfterSend {
+                connect_tid: 1234,
+                ..
+            })
+        ));
     }
 
     #[test]
