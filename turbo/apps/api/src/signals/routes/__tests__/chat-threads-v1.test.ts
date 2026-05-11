@@ -70,6 +70,39 @@ async function seedPatFixture(): Promise<PatFixture> {
   return { token, tokenId, userId, orgId };
 }
 
+async function seedExpiredPatFixture(): Promise<PatFixture> {
+  const tokenId = randomUUID();
+  const userId = `user_${randomUUID()}`;
+  const orgId = `org_${randomUUID()}`;
+  const expiredSeconds = currentSecond() - 60;
+
+  const token = signPatJwtForTests({
+    scope: "cli",
+    userId,
+    orgId,
+    tokenId,
+    iat: expiredSeconds - 60,
+    exp: expiredSeconds,
+  });
+  const writeDb = store.set(writeDb$);
+
+  await writeDb.insert(cliTokens).values({
+    id: tokenId,
+    token,
+    userId,
+    name: "expired test token",
+    expiresAt: new Date(now() - 60_000),
+  });
+  await writeDb.insert(orgMembersCache).values({
+    orgId,
+    userId,
+    role: "admin",
+    cachedAt: new Date(now()),
+  });
+
+  return { token, tokenId, userId, orgId };
+}
+
 async function deletePatFixture(fixture: PatFixture): Promise<void> {
   const writeDb = store.set(writeDb$);
   await writeDb
@@ -262,6 +295,45 @@ describe("GET /api/v1/chat-threads/:threadId", () => {
     });
   });
 
+  it("returns 401 for an opaque bearer token", async () => {
+    const client = setupApp({ context })(chatThreadV1GetContract);
+    await accept(
+      client.get({
+        params: { threadId: randomUUID() },
+        headers: { authorization: "Bearer ak_unknown_opaque_secret" },
+      }),
+      [401],
+    );
+  });
+
+  it("returns 401 when the PAT row has been revoked", async () => {
+    const pat = await seedPatFixture();
+    await deletePatFixture(pat);
+
+    const client = setupApp({ context })(chatThreadV1GetContract);
+    await accept(
+      client.get({
+        params: { threadId: randomUUID() },
+        headers: { authorization: `Bearer ${pat.token}` },
+      }),
+      [401],
+    );
+  });
+
+  it("returns 401 when the PAT is expired", async () => {
+    const pat = await seedExpiredPatFixture();
+    pats.push(pat);
+
+    const client = setupApp({ context })(chatThreadV1GetContract);
+    await accept(
+      client.get({
+        params: { threadId: randomUUID() },
+        headers: { authorization: `Bearer ${pat.token}` },
+      }),
+      [401],
+    );
+  });
+
   it("returns 403 when authenticated with a sandbox token", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
@@ -350,6 +422,43 @@ describe("GET /api/v1/chat-threads/:threadId/messages", () => {
     ).toStrictEqual([m1, m2]);
     expect(response.body.messages[0]?.content).toBe("first");
     expect(response.body.messages[1]?.role).toBe("assistant");
+  });
+
+  it("returns 401 when no Authorization header is provided", async () => {
+    const client = setupApp({ context })(chatThreadV1MessagesContract);
+    await accept(
+      client.list({
+        params: { threadId: randomUUID() },
+        query: {},
+        headers: {},
+      }),
+      [401],
+    );
+  });
+
+  it("returns 403 when authenticated with a sandbox token", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const runId = randomUUID();
+    const nowSeconds = currentSecond();
+    const sandboxToken = signSandboxJwtForTests({
+      scope: "sandbox",
+      userId,
+      orgId,
+      runId,
+      iat: nowSeconds,
+      exp: nowSeconds + 60,
+    });
+
+    const client = setupApp({ context })(chatThreadV1MessagesContract);
+    await accept(
+      client.list({
+        params: { threadId: randomUUID() },
+        query: {},
+        headers: { authorization: `Bearer ${sandboxToken}` },
+      }),
+      [403],
+    );
   });
 
   it("paginates forward with sinceId", async () => {

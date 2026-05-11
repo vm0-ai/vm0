@@ -22,6 +22,7 @@ import {
 } from "../../../../../src/__tests__/db-test-seeders/auth";
 import { updateOrgDefaultAgent } from "../../../../../src/__tests__/db-test-seeders/org";
 import { getTestZeroAgentId } from "../../../../../src/__tests__/db-test-assertions/agents";
+import { generateSandboxToken } from "../../../../../src/lib/auth/sandbox-token";
 import { randomUUID } from "crypto";
 
 const context = testContext();
@@ -101,6 +102,31 @@ describe("GET /api/v1/chat-threads/:threadId", () => {
     expect(res.status).toBe(401);
   });
 
+  it("returns 400 for malformed threadId before API key auth", async () => {
+    const res = await getThread(
+      createTestRequest(GET_THREAD_URL("not-a-uuid"), { method: "GET" }),
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.message).toContain("threadId");
+  });
+
+  it("returns 403 for sandbox token auth", async () => {
+    const token = await generateSandboxToken(
+      user.userId,
+      randomUUID(),
+      user.orgId,
+    );
+    const res = await getThread(
+      createTestRequest(GET_THREAD_URL(threadId), {
+        method: "GET",
+        headers: bearerHeaders(token),
+      }),
+    );
+    expect(res.status).toBe(403);
+  });
+
   it("returns 200 with thread detail when PAT owns thread", async () => {
     const token = await mintApiKey(user);
     const res = await getThread(
@@ -135,6 +161,9 @@ describe("GET /api/v1/chat-threads/:threadId", () => {
 describe("GET /api/v1/chat-threads/:threadId/messages", () => {
   let user: UserContext;
   let threadId: string;
+  let baseTimeMs: number;
+  let firstMessageId: string;
+  let secondMessageId: string;
 
   beforeEach(async () => {
     context.setupMocks();
@@ -142,16 +171,21 @@ describe("GET /api/v1/chat-threads/:threadId/messages", () => {
     const compose = await createTestCompose(uniqueId("v1-get-msgs"));
     const agentId = await getTestZeroAgentId(user.orgId, compose.name);
     threadId = await insertTestChatThread(user.userId, agentId, "t");
-    await insertTestChatMessage({
+    baseTimeMs = Date.now() - 10_000;
+    const firstMessage = await insertTestChatMessage({
       chatThreadId: threadId,
       role: "user",
       content: "hello",
+      createdAt: new Date(baseTimeMs),
     });
-    await insertTestChatMessage({
+    firstMessageId = firstMessage.id;
+    const secondMessage = await insertTestChatMessage({
       chatThreadId: threadId,
       role: "assistant",
       content: "world",
+      createdAt: new Date(baseTimeMs + 1000),
     });
+    secondMessageId = secondMessage.id;
   });
 
   it("returns 401 without API key", async () => {
@@ -159,6 +193,21 @@ describe("GET /api/v1/chat-threads/:threadId/messages", () => {
       createTestRequest(GET_MESSAGES_URL(threadId), { method: "GET" }),
     );
     expect(res.status).toBe(401);
+  });
+
+  it("returns 403 for sandbox token auth", async () => {
+    const token = await generateSandboxToken(
+      user.userId,
+      randomUUID(),
+      user.orgId,
+    );
+    const res = await getMessages(
+      createTestRequest(GET_MESSAGES_URL(threadId), {
+        method: "GET",
+        headers: bearerHeaders(token),
+      }),
+    );
+    expect(res.status).toBe(403);
   });
 
   it("returns 200 with messages", async () => {
@@ -178,6 +227,60 @@ describe("GET /api/v1/chat-threads/:threadId/messages", () => {
     expect(body.messages[0].status).toBeUndefined();
     expect(body.messages[1].role).toBe("assistant");
     expect(body.messages[1].content).toBe("world");
+  });
+
+  it("paginates forward with sinceId", async () => {
+    const thirdMessage = await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "user",
+      content: "again",
+      createdAt: new Date(baseTimeMs + 2000),
+    });
+
+    const token = await mintApiKey(user);
+    const res = await getMessages(
+      createTestRequest(
+        `${GET_MESSAGES_URL(threadId)}?sinceId=${firstMessageId}`,
+        {
+          method: "GET",
+          headers: bearerHeaders(token),
+        },
+      ),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(
+      body.messages.map((message: { id: string }) => {
+        return message.id;
+      }),
+    ).toStrictEqual([secondMessageId, thirdMessage.id]);
+  });
+
+  it("paginates backward with beforeId", async () => {
+    const thirdMessage = await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "user",
+      content: "again",
+      createdAt: new Date(baseTimeMs + 2000),
+    });
+
+    const token = await mintApiKey(user);
+    const res = await getMessages(
+      createTestRequest(
+        `${GET_MESSAGES_URL(threadId)}?beforeId=${thirdMessage.id}`,
+        {
+          method: "GET",
+          headers: bearerHeaders(token),
+        },
+      ),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(
+      body.messages.map((message: { id: string }) => {
+        return message.id;
+      }),
+    ).toStrictEqual([firstMessageId, secondMessageId]);
   });
 
   it("returns 404 when thread belongs to another user", async () => {
