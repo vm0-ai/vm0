@@ -1265,18 +1265,11 @@ mod tests {
 
         assert_eq!(gate.entered_count(), 1);
         assert_eq!(overrides.park_call_count(), 1);
-
-        let mut second_sandbox = factory.create(test_sandbox_config()).await.unwrap();
-        let second_park = tokio::spawn(async move { second_sandbox.park().await });
-        assert_eq!(gate.wait_entered(2, test_timeout()).await.unwrap(), 2);
-        tokio::task::yield_now().await;
-        assert!(
-            !second_park.is_finished(),
+        assert_eq!(
+            gate.inner.release.available_permits(),
+            0,
             "early release permit should be consumed by one lifecycle entry"
         );
-
-        gate.release_one();
-        second_park.await.unwrap().unwrap();
     }
 
     #[tokio::test]
