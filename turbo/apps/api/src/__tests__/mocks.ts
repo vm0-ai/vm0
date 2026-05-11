@@ -64,6 +64,7 @@ export interface ApiTestMocks {
     };
     readonly subscriptions: {
       readonly retrieve: AsyncMock;
+      readonly update: AsyncMock;
     };
     readonly checkout: {
       readonly sessions: {
@@ -142,6 +143,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
     subscriptions: {
       retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      update: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     checkout: {
       sessions: {
@@ -303,6 +305,7 @@ vi.mock("stripe", () => {
         },
         subscriptions: {
           retrieve: apiTestMocks.stripe.subscriptions.retrieve,
+          update: apiTestMocks.stripe.subscriptions.update,
         },
         checkout: {
           sessions: {
@@ -435,6 +438,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.customers.retrieve.mockReset();
   apiTestMocks.stripe.customers.create.mockReset();
   apiTestMocks.stripe.subscriptions.retrieve.mockReset();
+  apiTestMocks.stripe.subscriptions.update.mockReset();
   apiTestMocks.stripe.checkout.sessions.create.mockReset();
   apiTestMocks.stripe.billingPortal.sessions.create.mockReset();
   // Re-install the Stripe client override so getStripeClient() returns
