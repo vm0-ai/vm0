@@ -46,12 +46,12 @@ import {
   modelFirstModelProviderEnabled$,
 } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
+import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import { composerModelProviders$ } from "../zero-page/composer-model-providers.ts";
 import {
-  createModelFirstSelection,
   resolveEffectiveAgentDefaultSelection,
-  resolveModelFirstAgentDefaultSelection,
+  resolveModelFirstUserDefaultSelection,
 } from "../zero-page/model-provider-default.ts";
 import {
   writeChatMessageToClipboard,
@@ -334,11 +334,11 @@ function createModelSelection(
       if (user.kind === "set") {
         return user.value;
       }
-      const thread = await get(threadData$);
       const modelFirstEnabled = get(modelFirstModelProviderEnabled$);
-      if (modelFirstEnabled && thread?.selectedModel) {
-        return createModelFirstSelection(thread.selectedModel);
+      if (modelFirstEnabled) {
+        return null;
       }
+      const thread = await get(threadData$);
       if (thread?.modelProviderId && thread.selectedModel) {
         return {
           modelProviderId: thread.modelProviderId,
@@ -355,10 +355,6 @@ function createModelSelection(
       const agent = thread?.agentId
         ? await get(agentById(thread.agentId))
         : null;
-      if (modelFirstEnabled) {
-        const policies = await get(orgModelPolicies$);
-        return resolveModelFirstAgentDefaultSelection({ agent, policies });
-      }
       const composerProviders = await get(composerModelProviders$);
       return resolveEffectiveAgentDefaultSelection({
         agent,
@@ -446,7 +442,11 @@ function createAgentInfoSignals(
       const agent = await get(agentById(agentId));
       if (get(modelFirstModelProviderEnabled$)) {
         const policies = await get(orgModelPolicies$);
-        return resolveModelFirstAgentDefaultSelection({ agent, policies });
+        const userPreference = await get(userModelPreference$);
+        return resolveModelFirstUserDefaultSelection({
+          userPreference,
+          policies,
+        });
       }
       const composerProviders = await get(composerModelProviders$);
       return resolveEffectiveAgentDefaultSelection({
@@ -1473,17 +1473,19 @@ function createSendMessage(deps: SendMessageDeps) {
       const isGoal = options.goal === true && get(goalEnabled$);
       let effectiveSelectedModel = modelSelection?.selectedModel;
       if (!effectiveSelectedModel) {
-        const agent = await get(agentById(agentId));
-        signal.throwIfAborted();
         if (get(modelFirstModelProviderEnabled$)) {
           const policies = await get(orgModelPolicies$);
           signal.throwIfAborted();
+          const userPreference = await get(userModelPreference$);
+          signal.throwIfAborted();
           effectiveSelectedModel =
-            resolveModelFirstAgentDefaultSelection({
-              agent,
+            resolveModelFirstUserDefaultSelection({
+              userPreference,
               policies,
             })?.selectedModel ?? undefined;
         } else {
+          const agent = await get(agentById(agentId));
+          signal.throwIfAborted();
           const composerProviders = await get(composerModelProviders$);
           signal.throwIfAborted();
           effectiveSelectedModel =

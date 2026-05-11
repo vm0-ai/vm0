@@ -18,6 +18,7 @@ import { buildSchedulePrompt } from "../integration-prompt";
 import { generateScheduleDescription } from "../ai/lightweight-model";
 import { adaptScheduleTrigger } from "./adapt-schedule-trigger";
 import { validateModelSelection } from "../model-provider/validate-model-selection";
+import { visibleJoinedZeroAgentCondition } from "../agent-visibility";
 
 const log = logger("service:schedule");
 
@@ -409,7 +410,13 @@ export async function deploySchedule(
     })
     .from(agentComposes)
     .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-    .where(eq(agentComposes.id, request.agentId))
+    .where(
+      and(
+        eq(agentComposes.orgId, orgId),
+        eq(agentComposes.id, request.agentId),
+        visibleJoinedZeroAgentCondition(userId),
+      ),
+    )
     .limit(1);
 
   if (!agent) throw notFound("Agent not found");

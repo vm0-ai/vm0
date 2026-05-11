@@ -32,11 +32,7 @@ type ConnectionStatus =
   | "error";
 type BargeInMode = "speech_started" | "transcript_confirmed";
 
-// Model used for the SDP exchange URL. Session config (tools / VAD / etc.) is
-// preset server-side in createEphemeralToken — keep this file free of it.
-const TALKER_MODEL = "gpt-realtime-2";
-
-const OPENAI_REALTIME_BASE_URL = "https://api.openai.com/v1/realtime";
+const OPENAI_REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
 
 const TALKER_TOOL_NAMES = [
   "inform_slow_brain",
@@ -745,18 +741,15 @@ const setupWebRTC$ = command(
     await pc.setLocalDescription(offer);
     signal.throwIfAborted();
 
-    const sdpRes = await globalThis.fetch(
-      `${OPENAI_REALTIME_BASE_URL}?model=${TALKER_MODEL}`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/sdp",
-        },
-        body: offer.sdp,
-        signal,
+    const sdpRes = await globalThis.fetch(OPENAI_REALTIME_CALLS_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/sdp",
       },
-    );
+      body: offer.sdp,
+      signal,
+    });
     signal.throwIfAborted();
 
     if (!sdpRes.ok) {

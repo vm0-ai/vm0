@@ -555,3 +555,25 @@ export async function insertOrgModelPolicy(params: {
   if (!row) throw new Error("insertOrgModelPolicy: insert failed");
   return row.id;
 }
+
+export async function insertUserModelPreference(params: {
+  orgId: string;
+  userId: string;
+  model: string;
+}): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .insert(orgMembersMetadata)
+    .values({
+      orgId: params.orgId,
+      userId: params.userId,
+      selectedModel: params.model,
+    })
+    .onConflictDoUpdate({
+      target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
+      set: {
+        selectedModel: params.model,
+        updatedAt: new Date(),
+      },
+    });
+}

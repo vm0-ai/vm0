@@ -111,7 +111,7 @@ export function resolveChatComposerSubmitBlocker(params: {
 }): ModelConfigurationSubmitBlocker | undefined {
   const selectedModel =
     params.modelSelection?.selectedModel ??
-    params.agentModelDefault?.selectedModel ??
+    params.state?.userModelPreference.selectedModel ??
     params.state?.policies.workspaceDefaultModel ??
     null;
   const blocker = resolveModelConfigurationSubmitBlocker({

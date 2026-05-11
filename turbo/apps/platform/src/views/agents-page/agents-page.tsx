@@ -5,9 +5,11 @@ import {
   IconLayoutGrid,
   IconList,
   IconLoader2,
+  IconLock,
   IconPlus,
   IconWand,
 } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Card,
   CardContent,
@@ -17,6 +19,7 @@ import {
   DialogTitle,
   Button,
   Input,
+  Switch,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -45,18 +48,23 @@ import {
   setJobsNewName$,
   jobsAvatarUrl$,
   setJobsAvatarUrl$,
+  jobsVisibility$,
+  setJobsVisibility$,
   resetJobsDialog$,
   jobsViewMode$,
   setJobsViewMode$,
 } from "../../signals/zero-page/zero-jobs-page.ts";
 import { serializeAvatarSvgConfig } from "../zero-page/avatar-svg-utils.ts";
 import { AvatarMaker } from "../zero-page/avatar-maker.tsx";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 export function AgentsPage() {
   const dialogOpen = useGet(jobsDialogOpen$);
   const setDialogOpen = useSet(setJobsDialogOpen$);
   const newName = useGet(jobsNewName$);
   const setNewName = useSet(setJobsNewName$);
+  const visibility = useGet(jobsVisibility$);
+  const setVisibility = useSet(setJobsVisibility$);
   const [createLoadable, createSubagentFn] = useLoadableSet(createSubagent$);
   const creating = createLoadable.state === "loading";
   const resetDialog = useSet(resetJobsDialog$);
@@ -66,16 +74,24 @@ export function AgentsPage() {
   const defaultAgentName = useLastResolved(defaultAgentName$);
 
   const agentsLoadable = useLoadable(sortedAgents$);
-  const agentCount =
-    agentsLoadable.state === "hasData" ? agentsLoadable.data.length : 0;
-  const atLimit = agentCount >= 7;
+  const features = useLastResolved(featureSwitch$);
+  const privateAgentsEnabled =
+    features?.[FeatureSwitchKey.PrivateAgents] ?? false;
+  const publicAgentCount =
+    agentsLoadable.state === "hasData"
+      ? agentsLoadable.data.filter((agent) => {
+          return agent.visibility !== "private";
+        }).length
+      : 0;
+  const atPublicLimit = publicAgentCount >= 7;
+  const createDisabled = atPublicLimit && !privateAgentsEnabled;
 
   const handleCreateTeammate = onDomEventFn(async (avatarUrl: string) => {
     const trimmed = newName.trim();
     if (!trimmed || creating) {
       return;
     }
-    await createSubagentFn(trimmed, avatarUrl, pageSignal);
+    await createSubagentFn(trimmed, avatarUrl, visibility, pageSignal);
     setDialogOpen(false);
     resetDialog();
     toast.success(`${trimmed} created successfully`);
@@ -96,15 +112,18 @@ export function AgentsPage() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <TooltipProvider delayDuration={200}>
-              <Tooltip open={atLimit ? undefined : false}>
+              <Tooltip open={createDisabled ? undefined : false}>
                 <TooltipTrigger asChild>
                   <span className="inline-flex">
                     <Button
                       variant="outline"
                       size="sm"
                       className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
-                      disabled={atLimit}
+                      disabled={createDisabled}
                       onClick={() => {
+                        setVisibility(
+                          privateAgentsEnabled ? "private" : "public",
+                        );
                         return setDialogOpen(true);
                       }}
                     >
@@ -163,6 +182,10 @@ export function AgentsPage() {
         onNameChange={setNewName}
         onConfirm={handleCreateTeammate}
         creating={creating}
+        visibility={visibility}
+        onVisibilityChange={setVisibility}
+        showVisibility={privateAgentsEnabled}
+        publicDisabled={atPublicLimit}
       />
     </div>
   );
@@ -259,6 +282,10 @@ function CreateTeammateDialog({
   onNameChange,
   onConfirm,
   creating,
+  visibility,
+  onVisibilityChange,
+  showVisibility,
+  publicDisabled,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -266,6 +293,10 @@ function CreateTeammateDialog({
   onNameChange: (name: string) => void;
   onConfirm: (avatarUrl: string) => void;
   creating: boolean;
+  visibility: "public" | "private";
+  onVisibilityChange: (visibility: "public" | "private") => void;
+  showVisibility: boolean;
+  publicDisabled: boolean;
 }) {
   return (
     <Dialog open={open} onOpenChange={creating ? undefined : onOpenChange}>
@@ -279,6 +310,10 @@ function CreateTeammateDialog({
             return onOpenChange(false);
           }}
           creating={creating}
+          visibility={visibility}
+          onVisibilityChange={onVisibilityChange}
+          showVisibility={showVisibility}
+          publicDisabled={publicDisabled}
         />
       )}
     </Dialog>
@@ -291,12 +326,20 @@ function CreateTeammateDialogContent({
   onConfirm,
   onCancel,
   creating,
+  visibility,
+  onVisibilityChange,
+  showVisibility,
+  publicDisabled,
 }: {
   newName: string;
   onNameChange: (name: string) => void;
   onConfirm: (avatarUrl: string) => void;
   onCancel: () => void;
   creating: boolean;
+  visibility: "public" | "private";
+  onVisibilityChange: (visibility: "public" | "private") => void;
+  showVisibility: boolean;
+  publicDisabled: boolean;
 }) {
   const avatarUrl = useGet(jobsAvatarUrl$);
   const setAvatarUrl = useSet(setJobsAvatarUrl$);
@@ -367,6 +410,13 @@ function CreateTeammateDialogContent({
           autoFocus
           disabled={creating}
         />
+        {showVisibility && (
+          <CreateAgentPublicToggle
+            visibility={visibility}
+            onVisibilityChange={onVisibilityChange}
+            publicDisabled={publicDisabled}
+          />
+        )}
       </div>
 
       {/* Footer */}
@@ -394,11 +444,43 @@ function CreateTeammateDialogContent({
   );
 }
 
+function CreateAgentPublicToggle({
+  visibility,
+  onVisibilityChange,
+  publicDisabled,
+}: {
+  visibility: "public" | "private";
+  onVisibilityChange: (visibility: "public" | "private") => void;
+  publicDisabled: boolean;
+}) {
+  return (
+    <div className="flex w-full items-center justify-between gap-4 rounded-lg bg-muted/40 px-3 py-2.5">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-foreground">Make public</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {publicDisabled
+            ? "Public agent limit reached."
+            : "Visible to everyone in this workspace."}
+        </p>
+      </div>
+      <Switch
+        checked={visibility === "public"}
+        disabled={publicDisabled}
+        onCheckedChange={(checked) => {
+          return onVisibilityChange(checked ? "public" : "private");
+        }}
+        aria-label="Make public"
+      />
+    </div>
+  );
+}
+
 type AgentProps = {
   agent: {
     id: string;
     displayName?: string | null;
     description?: string | null;
+    visibility?: "public" | "private";
   };
 };
 
@@ -418,9 +500,18 @@ function AgentCard({ agent }: AgentProps) {
           className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
         />
         <div className="flex-1 min-w-0">
-          <span className="text-sm font-medium text-foreground truncate block">
-            {displayName}
-          </span>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="text-sm font-medium text-foreground truncate block">
+              {displayName}
+            </span>
+            {agent.visibility === "private" && (
+              <IconLock
+                size={12}
+                stroke={1.7}
+                className="shrink-0 text-muted-foreground"
+              />
+            )}
+          </div>
           <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
             {description}
           </p>
@@ -448,9 +539,18 @@ function AgentListRow({ agent, isLast }: AgentProps & { isLast?: boolean }) {
           className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
         />
         <div className="flex-1 min-w-0">
-          <span className="text-sm font-medium text-foreground truncate block">
-            {displayName}
-          </span>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="text-sm font-medium text-foreground truncate block">
+              {displayName}
+            </span>
+            {agent.visibility === "private" && (
+              <IconLock
+                size={12}
+                stroke={1.7}
+                className="shrink-0 text-muted-foreground"
+              />
+            )}
+          </div>
           <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
             {description}
           </p>

@@ -22,7 +22,7 @@ const listTeamInner$ = computed(async (get) => {
     return noActiveOrg;
   }
 
-  const team = await get(zeroTeam(auth.orgId));
+  const team = await get(zeroTeam(auth.orgId, auth.userId));
   return { status: 200 as const, body: [...team] };
 });
 

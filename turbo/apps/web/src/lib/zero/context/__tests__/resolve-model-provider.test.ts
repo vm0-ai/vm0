@@ -20,6 +20,7 @@ import {
   insertUserNonDefaultModelProvider,
   enableModelFirstModelProviderForUser,
   insertOrgModelPolicy,
+  insertUserModelPreference,
   insertVm0ApiKeys,
   deleteInsertedVm0ApiKeys,
   setTestModelProviderNeedsReconnect,
@@ -517,6 +518,50 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     expect(result.secrets?.ANTHROPIC_API_KEY).toEqual(expect.any(String));
   });
 
+  it("uses the current user's model preference before the workspace default", async () => {
+    const userId = uniqueId("mf-user-model");
+    const orgId = await setupOrg(userId);
+    await enableModelFirstModelProviderForUser(orgId, userId);
+    await insertVm0ApiKeys([
+      {
+        vendor: "anthropic",
+        model: "claude-sonnet-4-6",
+        apiKey: "vm0-anthropic-key",
+      },
+      {
+        vendor: "deepseek",
+        model: "deepseek-v4-pro",
+        apiKey: "vm0-deepseek-key",
+      },
+    ]);
+    await insertOrgModelPolicy({
+      orgId,
+      model: "claude-sonnet-4-6",
+      isDefault: true,
+    });
+    await insertOrgModelPolicy({
+      orgId,
+      model: "deepseek-v4-pro",
+    });
+    await insertUserModelPreference({
+      orgId,
+      userId,
+      model: "deepseek-v4-pro",
+    });
+
+    const result = await resolveModelProviderSecrets(
+      orgId,
+      userId,
+      "claude-code",
+      false,
+    );
+
+    expect(result.resolvedModelProvider).toBe("vm0");
+    expect(result.selectedModel).toBe("deepseek-v4-pro");
+    expect(result.credentialScope).toBe("org");
+    expect(result.secrets?.DEEPSEEK_API_KEY).toBe("vm0-deepseek-key");
+  });
+
   it("uses org-scoped API-key routes without member credentials and injects runtime model aliases", async () => {
     const userId = uniqueId("mf-org-api-key");
     const orgId = await setupOrg(userId);
@@ -699,7 +744,10 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     ).rejects.toSatisfy((err: unknown) => {
       return (
         isModelProviderConnectRequired(err) &&
-        err.providerType === "codex-oauth-token"
+        err.providerType === "codex-oauth-token" &&
+        err.message.includes(
+          "[Open Personal Models](http://localhost:3001/settings?tab=model-configuration&connectModelProvider=codex-oauth-token)",
+        )
       );
     });
   });

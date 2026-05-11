@@ -17,6 +17,7 @@ import { permissionAccessRequests } from "@vm0/db/schema/permission-access-reque
 import { eq, and } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { requireAgentPermission } from "../../../../src/lib/zero/require-agent-permission";
+import { visibleZeroAgentCondition } from "../../../../src/lib/zero/agent-visibility";
 import {
   notifyOwnerOfRequest,
   notifyRequesterOfResolution,
@@ -98,10 +99,15 @@ const createRouter = tsr.router(permissionAccessRequestsCreateContract, {
         id: zeroAgents.id,
         owner: zeroAgents.owner,
         displayName: zeroAgents.displayName,
+        visibility: zeroAgents.visibility,
       })
       .from(zeroAgents)
       .where(
-        and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, body.agentId)),
+        and(
+          eq(zeroAgents.orgId, org.orgId),
+          eq(zeroAgents.id, body.agentId),
+          visibleZeroAgentCondition(member.userId),
+        ),
       )
       .limit(1);
 
@@ -240,12 +246,17 @@ const listRouter = tsr.router(permissionAccessRequestsListContract, {
     // Fetch by requestId — return single-element array
     if (requestId) {
       const [row] = await globalThis.services.db
-        .select()
+        .select({ request: permissionAccessRequests, agent: zeroAgents })
         .from(permissionAccessRequests)
+        .innerJoin(
+          zeroAgents,
+          eq(permissionAccessRequests.agentId, zeroAgents.id),
+        )
         .where(
           and(
             eq(permissionAccessRequests.id, requestId),
             eq(permissionAccessRequests.orgId, org.orgId),
+            visibleZeroAgentCondition(member.userId),
           ),
         )
         .limit(1);
@@ -254,22 +265,29 @@ const listRouter = tsr.router(permissionAccessRequestsListContract, {
         return { status: 200 as const, body: [] };
       }
 
-      const nameMap = await resolveUserNames([row.requesterUserId]);
+      const nameMap = await resolveUserNames([row.request.requesterUserId]);
       return {
         status: 200 as const,
-        body: [formatRequest(row, nameMap)],
+        body: [formatRequest(row.request, nameMap)],
       };
     }
 
     // Look up agent owner
     const [agent] = await globalThis.services.db
-      .select({ owner: zeroAgents.owner })
+      .select({ owner: zeroAgents.owner, visibility: zeroAgents.visibility })
       .from(zeroAgents)
-      .where(and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, agentId!)))
+      .where(
+        and(
+          eq(zeroAgents.orgId, org.orgId),
+          eq(zeroAgents.id, agentId!),
+          visibleZeroAgentCondition(member.userId),
+        ),
+      )
       .limit(1);
 
     const isOwnerOrAdmin =
-      agent?.owner === member.userId || member.role === "admin";
+      agent?.owner === member.userId ||
+      (agent?.visibility !== "private" && member.role === "admin");
 
     // Build conditions
     const conditions = [
@@ -326,6 +344,7 @@ const resolveRouter = tsr.router(permissionAccessRequestsResolveContract, {
         request: permissionAccessRequests,
         agentOwner: zeroAgents.owner,
         agentDisplayName: zeroAgents.displayName,
+        agentVisibility: zeroAgents.visibility,
       })
       .from(permissionAccessRequests)
       .innerJoin(
@@ -359,6 +378,7 @@ const resolveRouter = tsr.router(permissionAccessRequestsResolveContract, {
       row.agentOwner,
       member,
       "resolve permission access requests",
+      { visibility: row.agentVisibility },
     );
     if (forbidden) return forbidden;
 

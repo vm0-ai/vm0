@@ -15,9 +15,19 @@ import { buildComposeContent } from "../../../../../../src/lib/zero/build-compos
 import { serverSideCompose } from "../../../../../../src/lib/infra/compose/server-side-compose";
 import { computeComposeVersionId } from "../../../../../../src/lib/infra/agent-compose/content-hash";
 import type { AgentComposeYaml } from "../../../../../../src/lib/infra/agent-compose/types";
+import { visibleJoinedZeroAgentCondition } from "../../../../../../src/lib/zero/agent-visibility";
 import { logger } from "../../../../../../src/lib/shared/logger";
 
 const log = logger("api:zero-agents:user-connectors");
+
+function missingOrganizationResponse() {
+  return {
+    status: 401 as const,
+    body: {
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    },
+  };
+}
 
 const router = tsr.router(zeroUserConnectorsContract, {
   get: async ({ params, headers }) => {
@@ -27,6 +37,7 @@ const router = tsr.router(zeroUserConnectorsContract, {
       requiredCapability: "agent:read",
     });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return missingOrganizationResponse();
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);
@@ -35,7 +46,13 @@ const router = tsr.router(zeroUserConnectorsContract, {
     const [agent] = await globalThis.services.db
       .select({ id: zeroAgents.id })
       .from(zeroAgents)
-      .where(and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, params.id)))
+      .where(
+        and(
+          eq(zeroAgents.orgId, org.orgId),
+          eq(zeroAgents.id, params.id),
+          visibleJoinedZeroAgentCondition(userId),
+        ),
+      )
       .limit(1);
 
     if (!agent) {
@@ -79,6 +96,7 @@ const router = tsr.router(zeroUserConnectorsContract, {
       requiredCapability: "agent:read",
     });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return missingOrganizationResponse();
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);
@@ -91,10 +109,12 @@ const router = tsr.router(zeroUserConnectorsContract, {
         headVersionId: agentComposes.headVersionId,
       })
       .from(agentComposes)
+      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
       .where(
         and(
           eq(agentComposes.orgId, org.orgId),
           eq(agentComposes.id, params.id),
+          visibleJoinedZeroAgentCondition(userId),
         ),
       )
       .limit(1);
@@ -111,7 +131,8 @@ const router = tsr.router(zeroUserConnectorsContract, {
       };
     }
 
-    const uniqueTypes = Array.from(new Set(body.enabledTypes));
+    const enabledTypes: string[] = body.enabledTypes;
+    const uniqueTypes = Array.from(new Set(enabledTypes));
 
     // Validate connector types before storing
     const invalidTypes = uniqueTypes.filter((t) => {

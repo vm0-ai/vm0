@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { isApiError } from "@vm0/api-services/errors";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
@@ -21,6 +22,18 @@ import {
 } from "../_support";
 
 const log = logger("api:zero:voice-chat:token");
+const MAX_UPSTREAM_ERROR_BODY_LENGTH = 2_000;
+
+function safetyIdentifierForUser(userId: string): string {
+  return createHash("sha256").update(userId).digest("hex");
+}
+
+function truncateUpstreamBody(body: string): string {
+  if (body.length <= MAX_UPSTREAM_ERROR_BODY_LENGTH) {
+    return body;
+  }
+  return body.slice(0, MAX_UPSTREAM_ERROR_BODY_LENGTH);
+}
 
 async function handlePost(request: Request): Promise<Response> {
   initServices();
@@ -79,11 +92,15 @@ async function handlePost(request: Request): Promise<Response> {
     const result = await createEphemeralToken({
       instructions: talkerInstructions,
       noiseReduction: parsed.data.noiseReduction,
+      safetyIdentifier: safetyIdentifierForUser(authCtx.userId),
     });
     return NextResponse.json(result);
   } catch (error) {
     if (isOpenAiTokenError(error)) {
-      log.error("OpenAI token request failed", { status: error.status });
+      log.error("OpenAI token request failed", {
+        status: error.status,
+        upstreamBody: truncateUpstreamBody(error.body),
+      });
       return NextResponse.json(
         {
           error: {

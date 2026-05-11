@@ -574,7 +574,8 @@ function ScheduleDialogModelControls({
 }) {
   const showModelPicker =
     orgProviders &&
-    (modelFirstEnabled || orgProviders.modelProviders.length > 0);
+    !modelFirstEnabled &&
+    orgProviders.modelProviders.length > 0;
   return (
     <>
       {showModelPicker && (
@@ -633,7 +634,7 @@ function ScheduleFormDialogInner({
 
   const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
   const init = modelFirstEnabled
-    ? { ...baseInit, modelProviderId: null }
+    ? { ...baseInit, modelProviderId: null, selectedModel: null }
     : baseInit;
 
   const current: ScheduleFormValues = {
@@ -649,7 +650,7 @@ function ScheduleFormDialogInner({
     dayOfWeek: form.dayOfWeek,
     dayOfMonth: form.dayOfMonth,
     modelProviderId: modelFirstEnabled ? null : form.modelProviderId,
-    selectedModel: form.selectedModel,
+    selectedModel: modelFirstEnabled ? null : form.selectedModel,
     preferPersonalProvider: form.preferPersonalProvider,
   };
 

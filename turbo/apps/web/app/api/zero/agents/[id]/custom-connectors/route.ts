@@ -10,6 +10,16 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { eq, and, inArray } from "drizzle-orm";
+import { visibleZeroAgentCondition } from "../../../../../../src/lib/zero/agent-visibility";
+
+function unauthenticatedResponse() {
+  return {
+    status: 401 as const,
+    body: {
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    },
+  };
+}
 
 const router = tsr.router(zeroAgentCustomConnectorsContract, {
   get: async ({ params, headers }) => {
@@ -19,6 +29,7 @@ const router = tsr.router(zeroAgentCustomConnectorsContract, {
       requiredCapability: "agent:read",
     });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthenticatedResponse();
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);
@@ -26,7 +37,13 @@ const router = tsr.router(zeroAgentCustomConnectorsContract, {
     const [agent] = await globalThis.services.db
       .select({ id: zeroAgents.id })
       .from(zeroAgents)
-      .where(and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, params.id)))
+      .where(
+        and(
+          eq(zeroAgents.orgId, org.orgId),
+          eq(zeroAgents.id, params.id),
+          visibleZeroAgentCondition(userId),
+        ),
+      )
       .limit(1);
 
     if (!agent) {
@@ -69,6 +86,7 @@ const router = tsr.router(zeroAgentCustomConnectorsContract, {
       requiredCapability: "agent:read",
     });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthenticatedResponse();
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);
@@ -76,7 +94,13 @@ const router = tsr.router(zeroAgentCustomConnectorsContract, {
     const [agent] = await globalThis.services.db
       .select({ id: zeroAgents.id })
       .from(zeroAgents)
-      .where(and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, params.id)))
+      .where(
+        and(
+          eq(zeroAgents.orgId, org.orgId),
+          eq(zeroAgents.id, params.id),
+          visibleZeroAgentCondition(userId),
+        ),
+      )
       .limit(1);
 
     if (!agent) {
@@ -91,17 +115,19 @@ const router = tsr.router(zeroAgentCustomConnectorsContract, {
       };
     }
 
+    const enabledIds: string[] = body.enabledIds;
+
     // Validate every id belongs to the caller's org. Anything else is either
     // a stale id (user deleted the connector in another tab) or a probe from
     // another org — either way, 400 is the right answer.
-    if (body.enabledIds.length > 0) {
+    if (enabledIds.length > 0) {
       const foundRows = await globalThis.services.db
         .select({ id: orgCustomConnectors.id })
         .from(orgCustomConnectors)
         .where(
           and(
             eq(orgCustomConnectors.orgId, org.orgId),
-            inArray(orgCustomConnectors.id, body.enabledIds),
+            inArray(orgCustomConnectors.id, enabledIds),
           ),
         );
       const foundSet = new Set(
@@ -109,7 +135,7 @@ const router = tsr.router(zeroAgentCustomConnectorsContract, {
           return r.id;
         }),
       );
-      const missing = body.enabledIds.filter((id) => {
+      const missing = enabledIds.filter((id) => {
         return !foundSet.has(id);
       });
       if (missing.length > 0) {
@@ -141,9 +167,9 @@ const router = tsr.router(zeroAgentCustomConnectorsContract, {
           ),
         );
 
-      if (body.enabledIds.length > 0) {
+      if (enabledIds.length > 0) {
         await tx.insert(userCustomConnectors).values(
-          body.enabledIds.map((customConnectorId) => {
+          enabledIds.map((customConnectorId) => {
             return {
               orgId: org.orgId,
               userId,
@@ -157,7 +183,7 @@ const router = tsr.router(zeroAgentCustomConnectorsContract, {
 
     return {
       status: 200 as const,
-      body: { enabledIds: body.enabledIds },
+      body: { enabledIds },
     };
   },
 });

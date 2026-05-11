@@ -32,6 +32,7 @@ interface TabsTriggerProps {
   value: string;
   children: React.ReactNode;
   className?: string;
+  disabled?: boolean;
 }
 
 function Tabs({ value, onValueChange, children, className }: TabsProps) {
@@ -56,7 +57,12 @@ function TabsList({ children, className }: TabsListProps) {
   );
 }
 
-function TabsTrigger({ value, children, className }: TabsTriggerProps) {
+function TabsTrigger({
+  value,
+  children,
+  className,
+  disabled,
+}: TabsTriggerProps) {
   const { value: currentValue, onValueChange } = useTabsContext();
   const isActive = currentValue === value;
 
@@ -65,6 +71,7 @@ function TabsTrigger({ value, children, className }: TabsTriggerProps) {
       type="button"
       role="tab"
       aria-selected={isActive}
+      disabled={disabled}
       onClick={() => {
         return onValueChange(value);
       }}

@@ -17,6 +17,7 @@ import {
   IconUserPlus,
 } from "@tabler/icons-react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
+import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import {
   Button,
   Tooltip,
@@ -79,6 +80,7 @@ import {
   typewriterRef$,
 } from "../../signals/view-component-state.ts";
 import { modelFirstPersonalOauthState$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
+import { updateUserModelPreference$ } from "../../signals/external/user-model-preference.ts";
 import {
   resolveChatComposerSubmitBlocker,
   usePersonalOauthConfigurationAction,
@@ -486,6 +488,7 @@ export function AgentChatPage() {
   const composerProviders = useLastResolved(composerModelProviders$);
   const modelSelection = useLastResolved(chatPageModelSelection$) ?? null;
   const setModelSelection = useSet(setChatPageModelSelection$);
+  const updateUserModelPreference = useSet(updateUserModelPreference$);
   const resetModelSelection = useSet(resetChatPageModelSelection$);
   const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
   const agentModelDefault = useLastResolved(chatPageAgentModelDefault$) ?? null;
@@ -535,6 +538,21 @@ export function AgentChatPage() {
     resetModelSelection();
   };
 
+  const handleModelSelectionChange = (
+    selection: typeof modelSelection,
+  ): void => {
+    setModelSelection(selection);
+    if (modelFirstEnabled && isSupportedRunModel(selection?.selectedModel)) {
+      detach(
+        updateUserModelPreference(
+          { selectedModel: selection.selectedModel },
+          pageSignal,
+        ),
+        Reason.DomCallback,
+      );
+    }
+  };
+
   const submitBlockerProps = resolveChatComposerSubmitBlocker({
     state: modelFirstOauthState,
     modelSelection,
@@ -579,7 +597,7 @@ export function AgentChatPage() {
                 ? {
                     providers: composerProviders.providers,
                     value: modelSelection,
-                    onChange: setModelSelection,
+                    onChange: handleModelSelectionChange,
                     // No prior session exists on the landing page.
                     sessionProviderType: null,
                     agentDefault: agentModelDefault,

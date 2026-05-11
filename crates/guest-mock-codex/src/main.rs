@@ -11,8 +11,9 @@
 //! Usage (mirrors real Codex CLI):
 //! ```text
 //!   guest-mock-codex exec [--json] [--sandbox <mode>] [--skip-git-repo-check]
-//!                          [-C <dir>] [-m <model>] [--append-system-prompt <s>]
-//!                          [--last] [-- <prompt>]
+//!                          [-C <dir>] [-m <model>] [-c <config>]
+//!                          [--append-system-prompt <s>] [--last]
+//!                          [-- <prompt>]
 //!   guest-mock-codex exec resume <thread_id> [-- <prompt>]
 //! ```
 //!
@@ -70,6 +71,10 @@ struct ExecArgs {
     /// Model override (accepted, ignored).
     #[arg(short = 'm', long)]
     model: Option<String>,
+
+    /// Codex config override (accepted, ignored).
+    #[arg(short = 'c', long = "config")]
+    config: Vec<String>,
 
     /// Append-system-prompt (accepted, ignored).
     #[arg(long = "append-system-prompt")]

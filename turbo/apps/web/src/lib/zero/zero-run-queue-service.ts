@@ -12,6 +12,7 @@ import {
   avg,
   inArray,
 } from "drizzle-orm";
+import type { SupportedFramework } from "@vm0/core/frameworks";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentSessions } from "@vm0/db/schema/agent-session";
@@ -82,6 +83,7 @@ type QueuedRunDispatcher = (
 ) => Promise<void>;
 
 interface EnqueueRunOptions {
+  runtimeFramework?: SupportedFramework;
   zeroRunMetadata?: ZeroRunMetadataValues;
   onZeroRunMetadataPersisted?: (durationMs: number) => void;
 }
@@ -103,6 +105,7 @@ export async function enqueueRun(
 
   // Org context is required from caller
   const orgId = params.orgId;
+  const runtimeFramework = options.runtimeFramework ?? "claude-code";
 
   // composeId must be present on the zero path (resolved before enqueue).
   // Without it we cannot stamp agent_sessions.agent_compose_id.
@@ -135,7 +138,7 @@ export async function enqueueRun(
           userId,
           orgId,
           agentComposeId,
-          artifacts: [buildAutoMemoryArtifact()],
+          artifacts: [buildAutoMemoryArtifact(runtimeFramework)],
           conversationId: null,
         })
         .returning({ id: agentSessions.id });

@@ -12,10 +12,14 @@ interface AgentModelDefaultSource {
   selectedModel: string | null;
 }
 
+interface UserModelDefaultSource {
+  selectedModel: string | null;
+}
+
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 
-export function createModelFirstSelection(
+function createModelFirstSelection(
   selectedModel: string | null | undefined,
 ): ModelProviderSelection | null {
   if (!selectedModel) {
@@ -100,12 +104,12 @@ function resolveModelFirstWorkspaceDefaultSelection(
   );
 }
 
-export function resolveModelFirstAgentDefaultSelection(params: {
-  agent: AgentModelDefaultSource | null | undefined;
+export function resolveModelFirstUserDefaultSelection(params: {
+  userPreference: UserModelDefaultSource | null | undefined;
   policies: OrgModelPoliciesResponse | null | undefined;
 }): ModelProviderSelection | null {
   return (
-    createModelFirstSelection(params.agent?.selectedModel) ??
+    createModelFirstSelection(params.userPreference?.selectedModel) ??
     resolveModelFirstWorkspaceDefaultSelection(params.policies)
   );
 }

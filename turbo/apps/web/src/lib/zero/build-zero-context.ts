@@ -29,7 +29,7 @@ import type {
 } from "../infra/run/types";
 import type { ConversationResolution } from "../infra/run/resolvers";
 import type { AdditionalVolume } from "../infra/storage/types";
-import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "./memory";
+import { AUTO_MEMORY_ARTIFACT_NAME, buildAutoMemoryArtifact } from "./memory";
 import { expandEnvironmentFromCompose } from "../infra/run/environment";
 import { resolveRuntimeFramework } from "../infra/run/utils";
 import { getUserPreferences } from "./user/user-preferences-service";
@@ -79,15 +79,6 @@ async function captureDuration<T>(
 }
 
 /**
- * Append the auto-memory artifact when this is a new run. On resume paths
- * (checkpoint, session, conversation continue) the resolver already emitted
- * memory at AUTO_MEMORY_MOUNT_PATH in resolution.artifacts — re-injecting here
- * would risk shadowing a divergent user-declared artifact named "memory".
- * When the resolution has no memory entry (very old data that predates
- * memory-as-artifact) we log and skip rather than silently mount over a path
- * the user may have declared for a different purpose.
- */
-/**
  * Merge multiple secretConnectorMap fragments. Used to combine the
  * connector-typed map (post-filter) with the model-provider-derived map
  * (which bypasses the filter — model-provider secrets ARE the source).
@@ -112,16 +103,23 @@ function mergeSecretConnectorMetadataMaps(
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
+/**
+ * Append the auto-memory artifact when this is a new run. On resume paths
+ * (checkpoint, session, conversation continue) the resolver already emitted
+ * memory in resolution.artifacts — re-injecting here would risk shadowing a
+ * divergent user-declared artifact named "memory". When the resolution has no
+ * memory entry (very old data that predates memory-as-artifact), we log and
+ * skip rather than silently mount over a path the user may have declared for a
+ * different purpose.
+ */
 function injectAutoMemoryArtifactIfNewRun(
   artifacts: ContextArtifact[],
   resolution: ConversationResolution | null,
+  framework: SupportedFramework,
   logContext: Record<string, string>,
 ): ContextArtifact[] {
   if (resolution === null) {
-    return [
-      ...artifacts,
-      { name: AUTO_MEMORY_ARTIFACT_NAME, mountPath: AUTO_MEMORY_MOUNT_PATH },
-    ];
+    return [...artifacts, buildAutoMemoryArtifact(framework)];
   }
   const hasMemory = artifacts.some((a) => {
     return a.name === AUTO_MEMORY_ARTIFACT_NAME;
@@ -736,12 +734,6 @@ export async function resolveCliRunContext(
     );
   }
 
-  // Memory injection — see injectAutoMemoryArtifactIfNewRun().
-  artifacts = injectAutoMemoryArtifactIfNewRun(artifacts, resolution, {
-    userId: params.userId,
-    orgId: params.orgId,
-  });
-
   // Load compose content if we have a version ID
   if (!agentCompose && agentComposeVersionId) {
     agentCompose =
@@ -750,11 +742,22 @@ export async function resolveCliRunContext(
   }
 
   if (!agentCompose) {
+    const fallbackFramework = resolveRuntimeFramework({ agentCompose });
+    artifacts = injectAutoMemoryArtifactIfNewRun(
+      artifacts,
+      resolution,
+      fallbackFramework,
+      {
+        userId: params.userId,
+        orgId: params.orgId,
+      },
+    );
+
     // No compose available — return only what we can resolve
     return {
       artifacts,
       vars,
-      framework: resolveRuntimeFramework({ agentCompose }),
+      framework: fallbackFramework,
       billableFirewalls: [],
       timings: {
         resolveSource: resolveEnd - resolveStart,
@@ -829,6 +832,17 @@ export async function resolveCliRunContext(
     modelUsageProvider,
   } = secretsResult;
   const userTimezone = userPrefs?.timezone ?? undefined;
+
+  // Memory injection — see injectAutoMemoryArtifactIfNewRun().
+  artifacts = injectAutoMemoryArtifactIfNewRun(
+    artifacts,
+    resolution,
+    resolvedFramework,
+    {
+      userId: params.userId,
+      orgId: params.orgId,
+    },
+  );
 
   // Step 5: Compatibility checks for session continues.
   checkProviderCompatibility(originalModelProvider, resolvedModelProvider);
@@ -928,11 +942,6 @@ export async function buildZeroExecutionContext(
       (await loadAgentComposeForNewRun(agentComposeVersionId));
   }
 
-  // Memory injection — see injectAutoMemoryArtifactIfNewRun().
-  artifacts = injectAutoMemoryArtifactIfNewRun(artifacts, resolution, {
-    runId: params.runId,
-  });
-
   // Validate required fields
   if (!agentComposeVersionId) {
     throw notFound(
@@ -1024,6 +1033,16 @@ export async function buildZeroExecutionContext(
   const runtimeEnvironment = withRuntimeRunEnvironment(
     environment,
     params.triggerSource,
+  );
+
+  // Memory injection — see injectAutoMemoryArtifactIfNewRun().
+  artifacts = injectAutoMemoryArtifactIfNewRun(
+    artifacts,
+    resolution,
+    resolvedFramework,
+    {
+      runId: params.runId,
+    },
   );
 
   // Step 5: Compatibility checks for session continues.

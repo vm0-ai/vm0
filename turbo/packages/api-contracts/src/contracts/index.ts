@@ -144,6 +144,14 @@ export {
   type ZeroModelPoliciesMainContract,
 } from "./zero-model-policies";
 export {
+  userModelPreferenceResponseSchema,
+  updateUserModelPreferenceRequestSchema,
+  zeroUserModelPreferenceContract,
+  type UserModelPreferenceResponse,
+  type UpdateUserModelPreferenceRequest,
+  type ZeroUserModelPreferenceContract,
+} from "./zero-user-model-preference";
+export {
   storagesContract,
   storageTypeSchema,
   uploadStorageResponseSchema,

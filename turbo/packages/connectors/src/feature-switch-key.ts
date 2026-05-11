@@ -58,4 +58,5 @@ export enum FeatureSwitchKey {
   CodexOauthProvider = "codexOauthProvider",
   ModelFirstModelProvider = "modelFirstModelProvider",
   VoiceChatRealtimeBilling = "voiceChatRealtimeBilling",
+  PrivateAgents = "privateAgents",
 }

@@ -37,10 +37,34 @@ import {
   isModelFirstModelProviderEnabled,
   resolveModelFirstRouteDescriptor,
 } from "../model-policy/model-first-route-service";
+import { getAppUrl } from "../url";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import type { ModelProviderInfo } from "../model-provider/model-provider-service";
 
 const log = logger("zero:build-context");
+
+function getModelProviderConnectRequiredUrl(providerType: string): string {
+  const searchParams = new URLSearchParams({
+    tab: "model-configuration",
+    connectModelProvider: providerType,
+  });
+  return `${getAppUrl()}/settings?${searchParams.toString()}`;
+}
+
+function getModelProviderConnectRequiredMessage(providerType: string): string {
+  const url = getModelProviderConnectRequiredUrl(providerType);
+  return [
+    `Connect "${providerType}" before using this workspace model route.`,
+    `[Open Personal Models](${url})`,
+  ].join(" ");
+}
+
+function throwModelProviderConnectRequired(providerType: string): never {
+  throw modelProviderConnectRequired(
+    providerType,
+    getModelProviderConnectRequiredMessage(providerType),
+  );
+}
 
 /**
  * Model provider environment variables that indicate explicit configuration.
@@ -464,7 +488,7 @@ function finalizeMaterializedRoute(
     route.credential.scope === "member" &&
     !decorated.secrets
   ) {
-    throw modelProviderConnectRequired(route.provider.type);
+    throwModelProviderConnectRequired(route.provider.type);
   }
   return decorated;
 }
@@ -765,7 +789,7 @@ async function resolveModelFirstModelRoute(
       descriptor.providerType,
     );
     if (!providerRow) {
-      throw modelProviderConnectRequired(descriptor.providerType);
+      throwModelProviderConnectRequired(descriptor.providerType);
     }
     ownerUserId = params.userId;
   } else if (descriptor.providerType !== "vm0") {

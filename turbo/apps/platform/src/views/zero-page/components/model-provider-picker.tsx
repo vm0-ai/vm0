@@ -41,6 +41,7 @@ import {
   modelFirstModelProviderEnabled$,
 } from "../../../signals/external/feature-switch";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies";
+import { userModelPreference$ } from "../../../signals/external/user-model-preference";
 import {
   getUILabel,
   getVm0ModelMultiplier,
@@ -147,7 +148,7 @@ function MultiplierBadge({ multiplier }: { multiplier: number }) {
   );
 }
 
-type DefaultSource = "agent" | "workspace";
+type DefaultSource = "agent" | "user" | "workspace";
 
 /**
  * Resolve the effective default model: agent override → workspace default.
@@ -465,18 +466,31 @@ function getModelFirstIconType(model: string): ModelProviderType | undefined {
 
 function resolveModelFirstDefault(
   value: ModelProviderSelection | null,
-  agentDefault: ModelProviderSelection | null | undefined,
+  userPreference: { selectedModel: string | null } | null | undefined,
   policies: OrgModelPolicy[],
 ): {
   resolved: ModelProviderSelection | null;
   effectiveDefault: ModelProviderSelection | null;
   defaultSource: DefaultSource;
 } {
+  const validUserDefault =
+    userPreference?.selectedModel &&
+    policies.some((policy) => {
+      return (
+        policy.model === userPreference.selectedModel &&
+        policy.routeStatus === "valid"
+      );
+    })
+      ? {
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel: userPreference.selectedModel,
+        }
+      : null;
   const validWorkspaceDefault = policies.find((policy) => {
     return policy.isDefault && policy.routeStatus === "valid";
   });
   const effectiveDefault =
-    agentDefault ??
+    validUserDefault ??
     (validWorkspaceDefault
       ? {
           modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
@@ -486,7 +500,7 @@ function resolveModelFirstDefault(
   return {
     resolved: value ?? effectiveDefault,
     effectiveDefault,
-    defaultSource: agentDefault ? "agent" : "workspace",
+    defaultSource: validUserDefault ? "user" : "workspace",
   };
 }
 
@@ -527,7 +541,7 @@ function ModelFirstDisabledPickerLabel({
   placeholder,
   mobileIconTrigger,
   triggerClassName,
-  agentDefault,
+  userPreference,
   policies,
 }: Pick<
   ModelProviderPickerProps,
@@ -542,8 +556,13 @@ function ModelFirstDisabledPickerLabel({
   compactTrigger: boolean;
   mobileIconTrigger: boolean;
   policies: OrgModelPolicy[];
+  userPreference: { selectedModel: string | null } | null | undefined;
 }) {
-  const { resolved } = resolveModelFirstDefault(value, agentDefault, policies);
+  const { resolved } = resolveModelFirstDefault(
+    value,
+    userPreference,
+    policies,
+  );
   const selectedModel = resolved?.selectedModel ?? null;
   return (
     <span
@@ -577,7 +596,12 @@ function ModelFirstInheritToggleRow({
   isInheriting: boolean;
   onToggle: (inherit: boolean) => void;
 }) {
-  const sourceLabel = defaultSource === "agent" ? "agent" : "workspace";
+  const sourceLabel =
+    defaultSource === "agent"
+      ? "agent"
+      : defaultSource === "user"
+        ? "personal"
+        : "workspace";
   return (
     <>
       <SelectItem value={INHERIT_SENTINEL} className="hidden absolute">
@@ -700,8 +724,6 @@ function ModelFirstModelPicker({
   open,
   onOpenChange,
   disabled,
-  agentDefault,
-  inheritLabel,
   showUseDefault = true,
 }: ModelProviderPickerProps & {
   placeholder: string;
@@ -710,6 +732,7 @@ function ModelFirstModelPicker({
 }) {
   const policiesLoadable = useLoadable(orgModelPolicies$);
   const lastPolicies = useLastResolved(orgModelPolicies$);
+  const userPreference = useLastResolved(userModelPreference$);
   const features = useLastResolved(featureSwitch$);
   const policyResponse =
     policiesLoadable.state === "hasData" ? policiesLoadable.data : lastPolicies;
@@ -721,8 +744,8 @@ function ModelFirstModelPicker({
     resolved,
     effectiveDefault,
     defaultSource: autoDefaultSource,
-  } = resolveModelFirstDefault(value, agentDefault, policies);
-  const defaultSource = inheritLabel ?? autoDefaultSource;
+  } = resolveModelFirstDefault(value, userPreference, policies);
+  const defaultSource = autoDefaultSource;
   const selectedModel = resolved?.selectedModel ?? null;
   const explicitSelectedModel = value?.selectedModel ?? null;
   const showModelPolicies = !showUseDefault || value !== null;
@@ -738,7 +761,7 @@ function ModelFirstModelPicker({
         compactTrigger={compactTrigger}
         mobileIconTrigger={mobileIconTrigger}
         triggerClassName={triggerClassName}
-        agentDefault={agentDefault}
+        userPreference={userPreference}
         policies={policies}
       />
     );

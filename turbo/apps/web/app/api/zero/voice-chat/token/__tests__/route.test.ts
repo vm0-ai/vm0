@@ -135,29 +135,39 @@ describe("POST /api/zero/voice-chat/token", () => {
     expect(body.error.code).toBe("NOT_FOUND");
   });
 
-  describe("legacy branch (VoiceChatRealtimeBilling = OFF)", () => {
-    it("mints an ephemeral token and presets session config on the upstream", async () => {
+  describe("token minting (VoiceChatRealtimeBilling = OFF)", () => {
+    it("mints a GA ephemeral token and presets session config on the upstream", async () => {
       interface UpstreamBody {
-        model?: string;
-        modalities?: unknown;
-        instructions?: string;
-        input_audio_transcription?: unknown;
-        input_audio_noise_reduction?: unknown;
-        turn_detection?: unknown;
-        tools?: Array<{ name: string }>;
+        session?: {
+          type?: string;
+          model?: string;
+          output_modalities?: unknown;
+          instructions?: string;
+          audio?: {
+            input?: {
+              transcription?: unknown;
+              noise_reduction?: unknown;
+              turn_detection?: unknown;
+            };
+            output?: {
+              voice?: string;
+            };
+          };
+          tools?: Array<{ name: string }>;
+        };
       }
       let received: UpstreamBody | undefined;
+      let safetyIdentifier: string | null = null;
       server.use(
         http.post(
-          "https://api.openai.com/v1/realtime/sessions",
+          "https://api.openai.com/v1/realtime/client_secrets",
           async ({ request }) => {
             received = (await request.json()) as UpstreamBody;
+            safetyIdentifier = request.headers.get("OpenAI-Safety-Identifier");
             return HttpResponse.json({
-              client_secret: {
-                value: "ek_test_value",
-                expires_at: 9999999999,
-              },
-              model: received?.model,
+              value: "ek_test_value",
+              expires_at: 9999999999,
+              session: received?.session,
             });
           },
         ),
@@ -166,41 +176,55 @@ describe("POST /api/zero/voice-chat/token", () => {
       const body = await response.json();
       expect(response.status).toBe(200);
       expect(body.client_secret.value).toBe("ek_test_value");
-      expect(received?.model).toBe("gpt-realtime-2");
-      expect(received?.modalities).toEqual(["text", "audio"]);
-      expect(typeof received?.instructions).toBe("string");
-      expect(received?.instructions?.length ?? 0).toBeGreaterThan(0);
-      expect(received?.input_audio_transcription).toEqual({
+      expect(safetyIdentifier).toHaveLength(64);
+      expect(safetyIdentifier).not.toBe(userId);
+      if (!received?.session) {
+        throw new Error("OpenAI session payload was not captured");
+      }
+      const { session } = received;
+      expect(session.type).toBe("realtime");
+      expect(session.model).toBe("gpt-realtime-2");
+      expect(session.output_modalities).toEqual(["audio"]);
+      expect(typeof session.instructions).toBe("string");
+      expect(session.instructions?.length ?? 0).toBeGreaterThan(0);
+      expect(session.audio?.input?.transcription).toEqual({
         model: "gpt-4o-mini-transcribe",
       });
-      expect(received?.input_audio_noise_reduction).toEqual({
+      expect(session.audio?.input?.noise_reduction).toEqual({
         type: "far_field",
       });
-      expect(received?.turn_detection).toEqual({
+      expect(session.audio?.input?.turn_detection).toEqual({
         type: "semantic_vad",
         eagerness: "medium",
         interrupt_response: false,
       });
-      const toolNames =
-        received?.tools?.map((t) => {
-          return t.name;
-        }) ?? [];
+      expect(session.audio?.output).toEqual({ voice: "verse" });
+      const toolNames = session.tools?.map((t) => {
+        return t.name;
+      });
       expect(toolNames).toContain("inform_slow_brain");
       expect(toolNames).toContain("feel_confused");
     });
 
     it("threads near_field noiseReduction through to the upstream body", async () => {
       interface UpstreamBody {
-        input_audio_noise_reduction?: { type?: string };
+        session?: {
+          audio?: {
+            input?: {
+              noise_reduction?: { type?: string };
+            };
+          };
+        };
       }
       let received: UpstreamBody | undefined;
       server.use(
         http.post(
-          "https://api.openai.com/v1/realtime/sessions",
+          "https://api.openai.com/v1/realtime/client_secrets",
           async ({ request }) => {
             received = (await request.json()) as UpstreamBody;
             return HttpResponse.json({
-              client_secret: { value: "ek_test", expires_at: 9999999999 },
+              value: "ek_test",
+              expires_at: 9999999999,
             });
           },
         ),
@@ -209,14 +233,17 @@ describe("POST /api/zero/voice-chat/token", () => {
         tokenRequest({ sessionId, noiseReduction: "near_field" }),
       );
       expect(response.status).toBe(200);
-      expect(received?.input_audio_noise_reduction).toEqual({
+      expect(received?.session?.audio?.input?.noise_reduction).toEqual({
         type: "near_field",
       });
     });
 
     it("returns 500 when OpenAI returns an error", async () => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
+        return undefined;
+      });
       server.use(
-        http.post("https://api.openai.com/v1/realtime/sessions", () => {
+        http.post("https://api.openai.com/v1/realtime/client_secrets", () => {
           return HttpResponse.json(
             { error: { message: "bad" } },
             { status: 400 },
@@ -227,12 +254,19 @@ describe("POST /api/zero/voice-chat/token", () => {
       const body = await response.json();
       expect(response.status).toBe(500);
       expect(body.error.code).toBe("INTERNAL_SERVER_ERROR");
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.stringContaining("OpenAI token request failed"),
+        expect.objectContaining({
+          status: 400,
+          upstreamBody: expect.stringContaining('"message":"bad"'),
+        }),
+      );
+      consoleError.mockRestore();
     });
   });
 
   // Plan D: realtime-billing ON keeps the credit + pricing admission gate
-  // but still mints a legacy OpenAI ephemeral token (the WS relay scaffolding
-  // is retired in #12190).
+  // while minting the same OpenAI GA ephemeral token.
   describe("admission gates (VoiceChatRealtimeBilling = ON)", () => {
     beforeEach(async () => {
       setFlags({
@@ -250,12 +284,13 @@ describe("POST /api/zero/voice-chat/token", () => {
       expect(body.error.code).toBe("INSUFFICIENT_CREDITS");
     });
 
-    it("mints a legacy ephemeral token after the credit + pricing admission passes", async () => {
+    it("mints a GA ephemeral token after the credit + pricing admission passes", async () => {
       await setOrgCredits(orgId, 1000);
       server.use(
-        http.post("https://api.openai.com/v1/realtime/sessions", () => {
+        http.post("https://api.openai.com/v1/realtime/client_secrets", () => {
           return HttpResponse.json({
-            client_secret: { value: "ek_admitted", expires_at: 9999999999 },
+            value: "ek_admitted",
+            expires_at: 9999999999,
           });
         }),
       );

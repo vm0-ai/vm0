@@ -74,7 +74,11 @@ const router = tsr.router(zeroAgentPermissionPoliciesContract, {
 
     // Verify agent exists — body.agentId is the composeId (= zeroAgents PK)
     const [existing] = await globalThis.services.db
-      .select({ id: zeroAgents.id, owner: zeroAgents.owner })
+      .select({
+        id: zeroAgents.id,
+        owner: zeroAgents.owner,
+        visibility: zeroAgents.visibility,
+      })
       .from(zeroAgents)
       .where(
         and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, body.agentId)),
@@ -97,6 +101,7 @@ const router = tsr.router(zeroAgentPermissionPoliciesContract, {
       existing.owner,
       member,
       "update permission policies",
+      { visibility: existing.visibility },
     );
     if (forbidden) return forbidden;
 
@@ -134,20 +139,39 @@ function buildAgentResponse(
   agent: typeof zeroAgents.$inferSelect | undefined,
   fallbackOwner: string,
 ) {
+  if (!agent) {
+    return {
+      agentId,
+      ownerId: fallbackOwner,
+      description: null,
+      displayName: null,
+      sound: null,
+      avatarUrl: null,
+      permissionPolicies: toFirewallPolicies(undefined, undefined),
+      customSkills: [],
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
+      visibility: "public" as const,
+    };
+  }
+
   return {
     agentId,
-    ownerId: agent?.owner ?? fallbackOwner,
-    description: agent?.description ?? null,
-    displayName: agent?.displayName ?? null,
-    sound: agent?.sound ?? null,
-    avatarUrl: agent?.avatarUrl ?? null,
+    ownerId: agent.owner,
+    description: agent.description,
+    displayName: agent.displayName,
+    sound: agent.sound,
+    avatarUrl: agent.avatarUrl,
     permissionPolicies: toFirewallPolicies(
-      agent?.permissionPolicies,
-      agent?.unknownPermissionPolicies,
+      agent.permissionPolicies,
+      agent.unknownPermissionPolicies,
     ),
-    customSkills: agent?.customSkills ?? [],
-    modelProviderId: agent?.modelProviderId ?? null,
-    selectedModel: agent?.selectedModel ?? null,
+    customSkills: agent.customSkills,
+    modelProviderId: agent.modelProviderId,
+    selectedModel: agent.selectedModel,
+    preferPersonalProvider: agent.preferPersonalProvider,
+    visibility: agent.visibility,
   };
 }
 

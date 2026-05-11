@@ -15,6 +15,7 @@ export {
   insertUserNonDefaultModelProvider,
   enableModelFirstModelProviderForUser,
   insertOrgModelPolicy,
+  insertUserModelPreference,
   deleteTestModelProvider,
   setOrgCredits,
   lockOrgAndSetCredits,

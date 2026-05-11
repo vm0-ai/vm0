@@ -9,6 +9,11 @@ import type {
   UserPreferencesResponse,
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import type {
+  UpdateUserModelPreferenceRequest,
+  UserModelPreferenceResponse,
+} from "@vm0/api-contracts/contracts/zero-user-model-preference";
+import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
+import type {
   SecretListResponse,
   SecretType,
 } from "@vm0/api-contracts/contracts/secrets";
@@ -131,6 +136,36 @@ export function userPreferences({
   });
 }
 
+export function userModelPreference({
+  orgId,
+  userId,
+}: UserScopedQuery): Computed<Promise<UserModelPreferenceResponse>> {
+  return computed(async (get): Promise<UserModelPreferenceResponse> => {
+    const db = get(db$);
+    const [row] = await db
+      .select({
+        selectedModel: orgMembersMetadata.selectedModel,
+        updatedAt: orgMembersMetadata.updatedAt,
+      })
+      .from(orgMembersMetadata)
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, orgId),
+          eq(orgMembersMetadata.userId, userId),
+        ),
+      )
+      .limit(1);
+
+    const selectedModel = isSupportedRunModel(row?.selectedModel)
+      ? row.selectedModel
+      : null;
+    return {
+      selectedModel,
+      updatedAt: selectedModel ? (row?.updatedAt.toISOString() ?? null) : null,
+    };
+  });
+}
+
 interface UpdateUserPreferencesArgs extends UserScopedQuery {
   readonly preferences: UpdateUserPreferencesRequest;
 }
@@ -216,6 +251,52 @@ export const updateUserPreferences$ = command(
     signal.throwIfAborted();
 
     return { ok: true, data: merged };
+  },
+);
+
+export const updateUserModelPreference$ = command(
+  async (
+    { get, set },
+    args: UserScopedQuery & {
+      readonly preference: UpdateUserModelPreferenceRequest;
+    },
+    signal: AbortSignal,
+  ): Promise<UserModelPreferenceResponse> => {
+    const writeDb = set(writeDb$);
+    if (args.preference.selectedModel === null) {
+      await writeDb
+        .update(orgMembersMetadata)
+        .set({ selectedModel: null, updatedAt: nowDate() })
+        .where(
+          and(
+            eq(orgMembersMetadata.orgId, args.orgId),
+            eq(orgMembersMetadata.userId, args.userId),
+          ),
+        );
+      signal.throwIfAborted();
+      return { selectedModel: null, updatedAt: null };
+    }
+
+    const updatedAt = nowDate();
+    await writeDb
+      .insert(orgMembersMetadata)
+      .values({
+        orgId: args.orgId,
+        userId: args.userId,
+        selectedModel: args.preference.selectedModel,
+        createdAt: updatedAt,
+        updatedAt,
+      })
+      .onConflictDoUpdate({
+        target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
+        set: {
+          selectedModel: args.preference.selectedModel,
+          updatedAt,
+        },
+      });
+    signal.throwIfAborted();
+
+    return get(userModelPreference({ orgId: args.orgId, userId: args.userId }));
   },
 );
 

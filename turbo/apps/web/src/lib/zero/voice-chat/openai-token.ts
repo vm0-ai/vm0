@@ -1,7 +1,7 @@
 import {
   DEFAULT_NOISE_REDUCTION,
   INPUT_AUDIO_TRANSCRIPTION_CONFIG,
-  SESSION_MODALITIES,
+  SESSION_OUTPUT_MODALITIES,
   SESSION_TOOLS,
   TALKER_MODEL,
   TALKER_VOICE,
@@ -11,7 +11,8 @@ import {
 
 import { env } from "../../../env";
 
-const OPENAI_REALTIME_URL = "https://api.openai.com/v1/realtime/sessions";
+const OPENAI_REALTIME_CLIENT_SECRETS_URL =
+  "https://api.openai.com/v1/realtime/client_secrets";
 
 interface EphemeralTokenResponse {
   client_secret: {
@@ -20,7 +21,12 @@ interface EphemeralTokenResponse {
   };
 }
 
-// Tagged error raised when the upstream OpenAI realtime session endpoint
+interface OpenAiClientSecretResponse {
+  value: string;
+  expires_at: number;
+}
+
+// Tagged error raised when the upstream OpenAI realtime client-secret endpoint
 // responds with a non-ok status. The route handler uses `isOpenAiTokenError`
 // to narrow the catch and map to HTTP 500 with the documented error body.
 // Plain object + discriminant avoids `class`, which is disallowed by project lint rules.
@@ -57,26 +63,41 @@ export function isOpenAiTokenError(value: unknown): value is OpenAiTokenError {
 export async function createEphemeralToken(options: {
   instructions: string;
   noiseReduction?: NoiseReduction;
+  safetyIdentifier?: string;
 }): Promise<EphemeralTokenResponse> {
   const apiKey = env().OPENAI_API_KEY;
 
-  const response = await fetch(OPENAI_REALTIME_URL, {
+  const headers = new Headers({
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+  });
+  if (options.safetyIdentifier) {
+    headers.set("OpenAI-Safety-Identifier", options.safetyIdentifier);
+  }
+
+  const response = await fetch(OPENAI_REALTIME_CLIENT_SECRETS_URL, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
+    headers,
     body: JSON.stringify({
-      model: TALKER_MODEL,
-      voice: TALKER_VOICE,
-      modalities: SESSION_MODALITIES,
-      instructions: options.instructions,
-      input_audio_transcription: INPUT_AUDIO_TRANSCRIPTION_CONFIG,
-      input_audio_noise_reduction: {
-        type: options.noiseReduction ?? DEFAULT_NOISE_REDUCTION,
+      session: {
+        type: "realtime",
+        model: TALKER_MODEL,
+        output_modalities: SESSION_OUTPUT_MODALITIES,
+        instructions: options.instructions,
+        audio: {
+          input: {
+            transcription: INPUT_AUDIO_TRANSCRIPTION_CONFIG,
+            noise_reduction: {
+              type: options.noiseReduction ?? DEFAULT_NOISE_REDUCTION,
+            },
+            turn_detection: TURN_DETECTION_CONFIG,
+          },
+          output: {
+            voice: TALKER_VOICE,
+          },
+        },
+        tools: SESSION_TOOLS,
       },
-      turn_detection: TURN_DETECTION_CONFIG,
-      tools: SESSION_TOOLS,
     }),
   });
 
@@ -85,5 +106,11 @@ export async function createEphemeralToken(options: {
     throw createOpenAiTokenError(response.status, body);
   }
 
-  return response.json() as Promise<EphemeralTokenResponse>;
+  const data = (await response.json()) as OpenAiClientSecretResponse;
+  return {
+    client_secret: {
+      value: data.value,
+      expires_at: data.expires_at,
+    },
+  };
 }

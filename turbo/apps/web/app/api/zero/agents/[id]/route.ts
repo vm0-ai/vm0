@@ -17,12 +17,26 @@ import {
   requireAgentPermission,
   requireAdminPermission,
 } from "../../../../../src/lib/zero/require-agent-permission";
+import {
+  PUBLIC_AGENT_LIMIT,
+  assertPrivateAgentsFeatureEnabled,
+  countPublicAgents,
+  visibleZeroAgentCondition,
+} from "../../../../../src/lib/zero/agent-visibility";
 import { deleteComposeById } from "../../../../../src/lib/infra/agent-compose/compose-service";
 import { isBadRequest, isConflict } from "@vm0/api-services/errors";
 import { validateModelSelection } from "../../../../../src/lib/zero/model-provider/validate-model-selection";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("api:zero-agents:id");
+
+function createPublicAgentLimitResponse() {
+  return createErrorResponse(
+    "CONFLICT",
+    "This organization has reached the maximum number of agents (7). Delete an existing agent before making this agent public.",
+  );
+}
 
 type AgentUpdateBody = {
   displayName?: string | null;
@@ -33,7 +47,122 @@ type AgentUpdateBody = {
   modelProviderId?: string | null;
   selectedModel?: string | null;
   preferPersonalProvider?: boolean;
+  visibility?: "public" | "private";
 };
+
+async function requirePrivateAgentFeatureForVisibility(
+  authCtx: Parameters<typeof assertPrivateAgentsFeatureEnabled>[0],
+  orgId: string,
+  visibility: AgentUpdateBody["visibility"] | null | undefined,
+) {
+  if (visibility !== "private") return null;
+  return assertPrivateAgentsFeatureEnabled(authCtx, orgId);
+}
+
+async function requirePublicAgentSlotForVisibility(
+  orgId: string,
+  currentVisibility: AgentUpdateBody["visibility"] | null | undefined,
+  nextVisibility: AgentUpdateBody["visibility"] | null | undefined,
+) {
+  if (nextVisibility !== "public" || currentVisibility === "public") {
+    return null;
+  }
+  if ((await countPublicAgents(orgId)) < PUBLIC_AGENT_LIMIT) return null;
+  return createPublicAgentLimitResponse();
+}
+
+async function requireVisibilityChangeAllowed(
+  authCtx: Parameters<typeof assertPrivateAgentsFeatureEnabled>[0],
+  orgId: string,
+  currentVisibility: AgentUpdateBody["visibility"] | null | undefined,
+  nextVisibility: AgentUpdateBody["visibility"] | null | undefined,
+) {
+  const unavailable = await requirePrivateAgentFeatureForVisibility(
+    authCtx,
+    orgId,
+    nextVisibility,
+  );
+  if (unavailable) return unavailable;
+  return requirePublicAgentSlotForVisibility(
+    orgId,
+    currentVisibility,
+    nextVisibility,
+  );
+}
+
+function requireAgentConfigurationPermission(
+  existing: {
+    owner: string | null;
+    visibility: AgentUpdateBody["visibility"] | null;
+  },
+  member: { userId: string; role: string },
+) {
+  if (existing.owner) {
+    return requireAgentPermission(
+      existing.owner,
+      member,
+      "update agent configuration",
+      { visibility: existing.visibility },
+    );
+  }
+  return requireAdminPermission(member, "update agent configuration");
+}
+
+function requireVisibilityOwnerPermission(
+  agentOwner: string | null,
+  member: { userId: string; role: string },
+  nextVisibility: AgentUpdateBody["visibility"] | null | undefined,
+) {
+  if (
+    nextVisibility === undefined ||
+    !agentOwner ||
+    agentOwner === member.userId
+  ) {
+    return null;
+  }
+  return {
+    status: 403 as const,
+    body: {
+      error: {
+        message: "Only the agent owner can update agent visibility",
+        code: "FORBIDDEN",
+      },
+    },
+  };
+}
+
+async function requireVisibilityUpdateAllowed(
+  authCtx: Parameters<typeof assertPrivateAgentsFeatureEnabled>[0],
+  orgId: string,
+  agentOwner: string | null,
+  member: { userId: string; role: string },
+  requestedVisibility: AgentUpdateBody["visibility"] | null | undefined,
+  currentVisibility: AgentUpdateBody["visibility"] | null | undefined,
+  nextVisibility: AgentUpdateBody["visibility"] | null | undefined,
+) {
+  const visibilityForbidden = requireVisibilityOwnerPermission(
+    agentOwner,
+    member,
+    requestedVisibility,
+  );
+  if (visibilityForbidden) return visibilityForbidden;
+  return requireVisibilityChangeAllowed(
+    authCtx,
+    orgId,
+    currentVisibility,
+    nextVisibility,
+  );
+}
+
+async function validateCustomSkillsForUpdate(
+  bodyCustomSkills: string[] | undefined,
+  customSkills: string[],
+  orgId: string,
+) {
+  if (!bodyCustomSkills) return null;
+  const validation = await validateCustomSkills(customSkills, orgId);
+  return validation.valid ? null : validation.error;
+}
 
 function buildAgentUpsertConflictSet(body: AgentUpdateBody, now: Date) {
   return {
@@ -52,6 +181,7 @@ function buildAgentUpsertConflictSet(body: AgentUpdateBody, now: Date) {
     ...(body.preferPersonalProvider !== undefined && {
       preferPersonalProvider: body.preferPersonalProvider,
     }),
+    ...(body.visibility !== undefined && { visibility: body.visibility }),
   };
 }
 
@@ -72,6 +202,7 @@ function agentResponseBody(
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,
+      visibility: "public" as const,
     };
   }
   return {
@@ -89,6 +220,7 @@ function agentResponseBody(
     modelProviderId: agent.modelProviderId,
     selectedModel: agent.selectedModel,
     preferPersonalProvider: agent.preferPersonalProvider,
+    visibility: agent.visibility,
   };
 }
 
@@ -111,7 +243,13 @@ const router = tsr.router(zeroAgentsByIdContract, {
       })
       .from(zeroAgents)
       .innerJoin(agentComposes, eq(zeroAgents.id, agentComposes.id))
-      .where(and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, params.id)))
+      .where(
+        and(
+          eq(zeroAgents.orgId, org.orgId),
+          eq(zeroAgents.id, params.id),
+          visibleZeroAgentCondition(authCtx.userId),
+        ),
+      )
       .limit(1);
 
     if (!row) {
@@ -154,6 +292,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
         name: agentComposes.name,
         customSkills: zeroAgents.customSkills,
         owner: zeroAgents.owner,
+        visibility: zeroAgents.visibility,
       })
       .from(agentComposes)
       .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
@@ -179,14 +318,20 @@ const router = tsr.router(zeroAgentsByIdContract, {
 
     // Only agent owner or org admin can update.
     // When no zeroAgents row exists (owner is null), fall back to admin-only.
-    const forbidden = existing.owner
-      ? requireAgentPermission(
-          existing.owner,
-          member,
-          "update agent configuration",
-        )
-      : requireAdminPermission(member, "update agent configuration");
+    const forbidden = requireAgentConfigurationPermission(existing, member);
     if (forbidden) return forbidden;
+
+    const nextVisibility = body.visibility ?? existing.visibility ?? "public";
+    const visibilityError = await requireVisibilityUpdateAllowed(
+      authCtx,
+      org.orgId,
+      existing.owner,
+      member,
+      body.visibility,
+      existing.visibility,
+      nextVisibility,
+    );
+    if (visibilityError) return visibilityError;
 
     try {
       await validateModelSelection({
@@ -210,10 +355,12 @@ const router = tsr.router(zeroAgentsByIdContract, {
     const customSkills = body.customSkills ?? existing.customSkills ?? [];
 
     // Validate custom skill names when explicitly provided
-    if (body.customSkills) {
-      const validation = await validateCustomSkills(customSkills, org.orgId);
-      if (!validation.valid) return validation.error;
-    }
+    const customSkillsError = await validateCustomSkillsForUpdate(
+      body.customSkills,
+      customSkills,
+      org.orgId,
+    );
+    if (customSkillsError) return customSkillsError;
 
     // Build compose content (all connector skills included)
     const content = buildComposeContent(existing.name);
@@ -255,6 +402,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
         modelProviderId: body.modelProviderId ?? null,
         selectedModel: body.selectedModel ?? null,
         preferPersonalProvider: body.preferPersonalProvider ?? false,
+        visibility: nextVisibility,
       })
       .onConflictDoUpdate({
         target: [zeroAgents.orgId, zeroAgents.name],
@@ -310,8 +458,20 @@ const router = tsr.router(zeroAgentsByIdContract, {
       existing.owner,
       member,
       "update agent profile",
+      { visibility: existing.visibility },
     );
     if (forbidden) return forbidden;
+
+    const visibilityError = await requireVisibilityUpdateAllowed(
+      authCtx,
+      org.orgId,
+      existing.owner,
+      member,
+      body.visibility,
+      existing.visibility,
+      body.visibility,
+    );
+    if (visibilityError) return visibilityError;
 
     try {
       await validateModelSelection({
@@ -356,6 +516,9 @@ const router = tsr.router(zeroAgentsByIdContract, {
         ...(body.preferPersonalProvider !== undefined && {
           preferPersonalProvider: body.preferPersonalProvider,
         }),
+        ...(body.visibility !== undefined && {
+          visibility: body.visibility,
+        }),
       })
       .where(eq(zeroAgents.id, params.id));
 
@@ -397,6 +560,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
         id: zeroAgents.id,
         name: zeroAgents.name,
         owner: zeroAgents.owner,
+        visibility: zeroAgents.visibility,
       })
       .from(zeroAgents)
       .where(and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, params.id)))
@@ -419,6 +583,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
       agent.owner,
       member,
       "delete agent",
+      { visibility: agent.visibility },
     );
     if (forbidden) return forbidden;
 

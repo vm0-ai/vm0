@@ -22,6 +22,7 @@ import { modelProviders } from "@vm0/db/schema/model-provider";
 import { loadFeatureSwitchOverrides } from "../user/feature-switches-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { ensureOrgModelPolicies } from "./org-model-policy-service";
+import { getUserModelPreferenceModel } from "./user-model-preference-service";
 import {
   getModelProviderById,
   type ModelProviderInfo,
@@ -236,6 +237,20 @@ async function resolveDefaultRoute(
   return resolveRouteFromPolicy(orgId, policy);
 }
 
+async function resolveUserPreferenceOrDefaultRoute(
+  orgId: string,
+  userId: string,
+): Promise<ModelFirstRouteDescriptor> {
+  const userModel = await getUserModelPreferenceModel(orgId, userId);
+  if (userModel) {
+    const policy = await loadPolicyByModel(orgId, userModel);
+    if (policy) {
+      return resolveRouteFromPolicy(orgId, policy);
+    }
+  }
+  return resolveDefaultRoute(orgId);
+}
+
 async function deriveRouteFromPinnedProvider(
   orgId: string,
   userId: string,
@@ -272,7 +287,7 @@ export async function resolveModelFirstRouteDescriptor(
   params: ResolveRouteParams,
 ): Promise<ModelFirstRouteDescriptor> {
   if (!params.selectedModel) {
-    return resolveDefaultRoute(params.orgId);
+    return resolveUserPreferenceOrDefaultRoute(params.orgId, params.userId);
   }
 
   const selectedModel = canonicalizeRunModel(params.selectedModel);
