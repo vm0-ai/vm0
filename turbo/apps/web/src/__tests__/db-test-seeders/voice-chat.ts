@@ -91,8 +91,9 @@ export async function simulateConcurrentVoiceChatSessionWrite(
 
 /**
  * Insert a voice-chat session directly.
- * @why-db-direct Cron tests need to construct impossible states (stuck
- * reasoner) that no public API would produce.
+ * @why-db-direct Route parity and cron tests need explicit row states
+ * (cross-org rows, bulk lists, stuck reasoner) that no public API would
+ * produce without exercising unrelated behavior.
  */
 export async function insertTestVoiceChatSession(overrides: {
   orgId: string;

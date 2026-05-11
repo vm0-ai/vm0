@@ -3,7 +3,10 @@ import { randomUUID } from "crypto";
 import { testContext } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { findTestZeroRun } from "../../../../../../../src/__tests__/db-test-assertions/runs";
-import { insertTestVoiceChatTask } from "../../../../../../../src/__tests__/db-test-seeders/voice-chat";
+import {
+  insertTestVoiceChatSession,
+  insertTestVoiceChatTask,
+} from "../../../../../../../src/__tests__/db-test-seeders/voice-chat";
 import {
   postRequest,
   getRequest,
@@ -161,6 +164,19 @@ describe("GET /api/zero/voice-chat/:id/tasks (listTasksForCard)", () => {
     expect(response.status).toBe(401);
   });
 
+  it("returns 401 when authenticated without an active org", async () => {
+    mockClerk({ userId, orgId: null });
+
+    const response = await GET(
+      getRequest(`/${randomUUID()}/tasks`),
+      paramsFor(randomUUID()),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(body.error.code).toBe("UNAUTHORIZED");
+  });
+
   it("returns 404 when the feature flag is disabled", async () => {
     const { agentId } = await seedVoiceChatAgent(userId, orgId);
     const session = await seedVoiceChatSession({ orgId, userId, agentId });
@@ -187,6 +203,35 @@ describe("GET /api/zero/voice-chat/:id/tasks (listTasksForCard)", () => {
       paramsFor(otherSession.id),
     );
     expect(response.status).toBe(404);
+  });
+
+  it("returns 404 when the session does not exist", async () => {
+    const response = await GET(
+      getRequest(`/${randomUUID()}/tasks`),
+      paramsFor(randomUUID()),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 404 when the session belongs to a different org", async () => {
+    const { agentId } = await seedVoiceChatAgent(userId, orgId);
+    const sessionId = await insertTestVoiceChatSession({
+      orgId: `org_other_${randomUUID()}`,
+      userId,
+      agentId,
+    });
+
+    const response = await GET(
+      getRequest(`/${sessionId}/tasks`),
+      paramsFor(sessionId),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body.error.code).toBe("NOT_FOUND");
   });
 
   it("returns an empty list when the session has no tasks", async () => {
