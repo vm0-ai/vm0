@@ -8,7 +8,6 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
-  setTestZeroAgentModelProvider,
   updateOrgDefaultAgent,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
