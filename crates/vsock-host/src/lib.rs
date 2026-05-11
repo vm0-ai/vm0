@@ -1,11 +1,10 @@
 //! Host-side vsock endpoint for Firecracker VM communication.
 //!
-//! Connects to a guest control agent via Unix domain socket. During the
-//! migration away from guest-initiated sockets, this crate supports both the
-//! legacy `{vsock_path}_{port}` listener flow and Firecracker's host-initiated
-//! `CONNECT <port>` flow on the base vsock socket.
+//! Connects to a guest control agent through Firecracker's host-initiated
+//! `CONNECT <port>` flow on the base vsock socket. The legacy
+//! `{vsock_path}_{port}` listener flow remains for tests and local harnesses.
 //!
-//! ## Legacy Guest-Initiated Connection Flow
+//! ## Legacy Test Connection Flow
 //!
 //! 1. Host creates UDS listener at `{vsock_path}_{port}`
 //! 2. Guest boots and vsock-guest connects to CID=2
@@ -45,9 +44,10 @@ use vsock_proto::{
     BoundedExecStream as ProtoBoundedExecStream,
     BoundedExecTermination as ProtoBoundedExecTermination, Decoder, MSG_BOUNDED_EXEC,
     MSG_BOUNDED_EXEC_CANCEL, MSG_BOUNDED_EXEC_OUTPUT_CHUNK, MSG_BOUNDED_EXEC_RESULT,
-    MSG_CONTROL_HELLO, MSG_CONTROL_HELLO_ACK, MSG_ERROR, MSG_EXEC, MSG_EXEC_RESULT, MSG_PING,
-    MSG_PONG, MSG_PROCESS_EXIT, MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH,
-    MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, RawMessage,
+    MSG_CONTROL_HELLO, MSG_CONTROL_HELLO_ACK, MSG_CONTROL_QUIESCE, MSG_CONTROL_QUIESCE_ACK,
+    MSG_ERROR, MSG_EXEC, MSG_EXEC_RESULT, MSG_PING, MSG_PONG, MSG_PROCESS_EXIT, MSG_READY,
+    MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK,
+    MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, RawMessage,
 };
 
 const READ_BUF_SIZE: usize = 64 * 1024;
@@ -2000,6 +2000,25 @@ impl VsockHost {
         let result = self.request(MSG_SHUTDOWN, &[], timeout).await;
         matches!(result, Ok(ref m) if m.msg_type == MSG_SHUTDOWN_ACK)
     }
+
+    pub async fn quiesce(&self, timeout: Duration) -> io::Result<()> {
+        let resp = self.request(MSG_CONTROL_QUIESCE, &[], timeout).await?;
+        if resp.msg_type != MSG_CONTROL_QUIESCE_ACK {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("unexpected quiesce response type: 0x{:02X}", resp.msg_type),
+            ));
+        }
+        let status = vsock_proto::decode_control_quiesce_ack(&resp.payload)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        match status {
+            vsock_proto::ControlQuiesceStatus::Ready => Ok(()),
+            vsock_proto::ControlQuiesceStatus::Busy => Err(io::Error::new(
+                io::ErrorKind::WouldBlock,
+                "control session has pending guest work",
+            )),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -2782,6 +2801,47 @@ mod tests {
 
         server.await.unwrap();
         listener_socket.remove();
+    }
+
+    #[tokio::test]
+    async fn quiesce_sends_control_request_and_accepts_ready_ack() {
+        let (host_stream, mut guest_stream) = make_pair();
+        let mut decoder = Decoder::new();
+        let host_task = tokio::spawn(async move { host_from_stream(host_stream).await });
+        mock_handshake(&mut guest_stream, &mut decoder).await;
+        let host = host_task.await.unwrap().unwrap();
+
+        let quiesce_task = tokio::spawn(async move { host.quiesce(Duration::from_secs(5)).await });
+        let request = read_one_message(&mut guest_stream, &mut decoder).await;
+        assert_eq!(request.msg_type, MSG_CONTROL_QUIESCE);
+
+        let ack_payload =
+            vsock_proto::encode_control_quiesce_ack(vsock_proto::ControlQuiesceStatus::Ready);
+        let ack = vsock_proto::encode(MSG_CONTROL_QUIESCE_ACK, request.seq, &ack_payload).unwrap();
+        guest_stream.write_all(&ack).await.unwrap();
+
+        quiesce_task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn quiesce_reports_busy_ack_as_would_block() {
+        let (host_stream, mut guest_stream) = make_pair();
+        let mut decoder = Decoder::new();
+        let host_task = tokio::spawn(async move { host_from_stream(host_stream).await });
+        mock_handshake(&mut guest_stream, &mut decoder).await;
+        let host = host_task.await.unwrap().unwrap();
+
+        let quiesce_task = tokio::spawn(async move { host.quiesce(Duration::from_secs(5)).await });
+        let request = read_one_message(&mut guest_stream, &mut decoder).await;
+        assert_eq!(request.msg_type, MSG_CONTROL_QUIESCE);
+
+        let ack_payload =
+            vsock_proto::encode_control_quiesce_ack(vsock_proto::ControlQuiesceStatus::Busy);
+        let ack = vsock_proto::encode(MSG_CONTROL_QUIESCE_ACK, request.seq, &ack_payload).unwrap();
+        guest_stream.write_all(&ack).await.unwrap();
+
+        let err = quiesce_task.await.unwrap().unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
     }
 
     #[tokio::test]

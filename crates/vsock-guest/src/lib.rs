@@ -6,6 +6,7 @@
 //!
 //! Protocol encoding/decoding is handled by the `vsock-proto` crate.
 
+mod boot;
 mod bounded_exec;
 mod connection;
 mod drain;
@@ -15,13 +16,14 @@ mod handlers;
 mod log;
 mod monitor;
 mod process;
+mod session;
 mod shutdown;
 mod threading;
 mod user;
 mod wait;
 mod writer;
 
-pub use connection::{connect_unix, connect_vsock, handle_connection, run};
+pub use connection::{connect_unix, handle_connection, handle_control_connection, run};
 pub use log::log;
 
 #[cfg(any(debug_assertions, feature = "test-support"))]

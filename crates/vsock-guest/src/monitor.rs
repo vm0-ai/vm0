@@ -11,6 +11,7 @@ use crate::error::to_io_error;
 use crate::exec::{EnvScriptGuard, format_env_diagnostics, spawn_with_pipes, truncate_preview};
 use crate::log::log;
 use crate::process::{ChildReapGuard, kill_and_reap_child};
+use crate::session::{PendingWorkGuard, PendingWorkSlot};
 use crate::threading::{SystemThreadSpawner, ThreadSpawner};
 use crate::wait::{
     DRAIN_DEADLINE_SECS, await_drain_deadline, finalize_buffered_result, finalize_wait_outcome,
@@ -32,6 +33,7 @@ struct StreamingMonitorRequest {
     env_script: Option<EnvScriptGuard>,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
+    pending_work: Option<PendingWorkGuard>,
 }
 
 struct BufferedMonitorRequest {
@@ -41,6 +43,7 @@ struct BufferedMonitorRequest {
     env_script: Option<EnvScriptGuard>,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
+    pending_work: Option<PendingWorkGuard>,
 }
 
 struct StreamingSetupFailure {
@@ -52,6 +55,7 @@ struct StreamingSetupFailure {
     stdout_handle: Option<JoinHandle<()>>,
     env_script: Option<EnvScriptGuard>,
     writer: GuestWriter,
+    pending_work: Option<PendingWorkGuard>,
     error: String,
 }
 
@@ -83,8 +87,16 @@ pub(crate) fn handle_spawn_watch(
     seq: u32,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
+    pending_work: Option<PendingWorkGuard>,
 ) -> io::Result<()> {
-    handle_spawn_watch_with_spawner(request, seq, writer, connection_cancel, SystemThreadSpawner)
+    handle_spawn_watch_with_spawner(
+        request,
+        seq,
+        writer,
+        connection_cancel,
+        pending_work,
+        SystemThreadSpawner,
+    )
 }
 
 fn handle_spawn_watch_with_spawner<S>(
@@ -92,6 +104,7 @@ fn handle_spawn_watch_with_spawner<S>(
     seq: u32,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
+    pending_work: Option<PendingWorkGuard>,
     spawner: S,
 ) -> io::Result<()>
 where
@@ -165,6 +178,7 @@ where
                 env_script,
                 writer,
                 connection_cancel,
+                pending_work,
             },
             spawner,
         ) {
@@ -184,6 +198,7 @@ where
                 env_script,
                 writer,
                 connection_cancel,
+                pending_work,
             },
             spawner,
         ) {
@@ -226,10 +241,13 @@ where
         env_script,
         writer,
         connection_cancel,
+        pending_work,
     } = request;
     let child_guard = ChildReapGuard::new(child);
     let monitor_spawner = spawner.clone();
     let exit_writer = writer.clone();
+    let pending_slot = PendingWorkSlot::new(pending_work);
+    let monitor_pending_slot = pending_slot.clone();
     let result = spawner.spawn_unit(
         THREAD_STREAM_MONITOR,
         Box::new(move || {
@@ -250,12 +268,14 @@ where
                     env_script,
                     writer,
                     connection_cancel,
+                    pending_work: monitor_pending_slot.take(),
                 },
                 monitor_spawner,
             );
         }),
     );
     if let Err(e) = &result {
+        let _pending_work = pending_slot.take();
         send_process_exit(
             pid,
             1,
@@ -280,7 +300,9 @@ where
         env_script,
         writer,
         connection_cancel,
+        pending_work,
     } = request;
+    let _pending_work = pending_work;
     let _env_script = env_script;
     let cancel = Arc::new(AtomicBool::new(false));
     let (drain_done_tx, drain_done_rx) = std::sync::mpsc::channel::<()>();
@@ -314,6 +336,7 @@ where
                     stdout_handle: None,
                     env_script: _env_script,
                     writer,
+                    pending_work: _pending_work,
                     error: format!("Failed to spawn stderr drain thread: {e}"),
                 });
                 return;
@@ -394,6 +417,7 @@ where
                     stdout_handle: None,
                     env_script: _env_script,
                     writer,
+                    pending_work: _pending_work,
                     error: format!("Failed to spawn stdout drain thread: {e}"),
                 });
                 return;
@@ -461,8 +485,10 @@ fn finish_streaming_setup_failure(failure: StreamingSetupFailure) {
         stdout_handle,
         env_script,
         writer,
+        pending_work,
         error,
     } = failure;
+    let _pending_work = pending_work;
     let _env_script = env_script;
     cancel.store(true, Ordering::Release);
     drop(drain_done_tx);
@@ -489,13 +515,17 @@ where
         env_script,
         writer,
         connection_cancel,
+        pending_work,
     } = request;
     let child_guard = ChildReapGuard::new(child);
     let exit_writer = writer.clone();
     let monitor_spawner = spawner.clone();
+    let pending_slot = PendingWorkSlot::new(pending_work);
+    let monitor_pending_slot = pending_slot.clone();
     let result = spawner.spawn_unit(
         THREAD_BUFFERED_MONITOR,
         Box::new(move || {
+            let _pending_work = monitor_pending_slot.take();
             let Some(child) = child_guard.into_child() else {
                 log(
                     "ERROR",
@@ -528,6 +558,7 @@ where
         }),
     );
     if let Err(e) = &result {
+        let _pending_work = pending_slot.take();
         send_process_exit(
             pid,
             1,
@@ -603,6 +634,7 @@ mod tests {
             7,
             writer,
             cancel,
+            None,
             FailingThreadSpawner::fail_once(THREAD_STREAM_MONITOR),
         )
         .unwrap();
@@ -646,6 +678,7 @@ mod tests {
             8,
             writer,
             cancel,
+            None,
             FailingThreadSpawner::fail_once(THREAD_STREAM_STDOUT),
         )
         .unwrap();
@@ -689,6 +722,7 @@ mod tests {
             10,
             writer,
             cancel,
+            None,
             FailingThreadSpawner::fail_once(THREAD_STREAM_STDERR),
         )
         .unwrap();
@@ -732,6 +766,7 @@ mod tests {
             9,
             writer,
             cancel,
+            None,
             FailingThreadSpawner::fail_once(THREAD_BUFFERED_MONITOR),
         )
         .unwrap();
@@ -775,6 +810,7 @@ mod tests {
             11,
             writer,
             cancel,
+            None,
             FailingThreadSpawner::fail_once(THREAD_DRAIN_STDOUT),
         )
         .unwrap();

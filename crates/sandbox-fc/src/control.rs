@@ -31,8 +31,9 @@ use tracing::{info, warn};
 use vsock_host::{
     BoundedExecCapturePolicy, BoundedExecOutput, BoundedExecOutputEvent, BoundedExecOutputRequest,
     BoundedExecRequest, BoundedExecStream, BoundedExecStreamPolicy, BoundedExecTermination,
-    VsockHost,
 };
+
+use crate::control_session::ControlSessionManager;
 
 use crate::paths::{RuntimePaths, SockPaths};
 
@@ -160,7 +161,7 @@ async fn read_frame_with_timeout(
 pub(crate) struct BoundControlServer {
     sock_path: Option<SocketPathGuard>,
     listener: Option<UnixListener>,
-    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    control_session: ControlSessionManager,
 }
 
 impl BoundControlServer {
@@ -177,7 +178,7 @@ impl BoundControlServer {
         let task = spawn_bound_server(
             listener,
             sock_path.clone(),
-            Arc::clone(&self.guest),
+            self.control_session.clone(),
             shutdown.clone(),
         );
         ControlServerHandle {
@@ -303,14 +304,14 @@ impl SocketPathGuard {
 /// Bind the control socket before spawning the accept loop.
 pub(crate) fn bind_server(
     sock_path: PathBuf,
-    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    control_session: ControlSessionManager,
 ) -> io::Result<BoundControlServer> {
     let listener = bind_unix_listener(&sock_path)?;
     let sock_path = SocketPathGuard::new(sock_path);
     Ok(BoundControlServer {
         sock_path: Some(sock_path),
         listener: Some(listener),
-        guest,
+        control_session,
     })
 }
 
@@ -334,7 +335,7 @@ fn remove_socket_path(sock_path: &Path) {
 fn spawn_bound_server(
     listener: UnixListener,
     sock_path: SocketPathGuard,
-    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    control_session: ControlSessionManager,
     shutdown: CancellationToken,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
@@ -363,10 +364,10 @@ fn spawn_bound_server(
                         }
                     };
 
-                    let guest = Arc::clone(&guest);
+                    let control_session = control_session.clone();
                     let handler_shutdown = shutdown.clone();
                     handlers.spawn(async move {
-                        if let Err(e) = handle_connection(stream, guest, handler_shutdown).await {
+                        if let Err(e) = handle_connection(stream, control_session, handler_shutdown).await {
                             warn!(error = %e, "control connection handler error");
                         }
                     });
@@ -419,7 +420,7 @@ async fn shutdown_handlers(handlers: &mut JoinSet<()>) {
 /// Handle a single control socket connection.
 async fn handle_connection(
     stream: UnixStream,
-    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    control_session: ControlSessionManager,
     shutdown: CancellationToken,
 ) -> io::Result<()> {
     let (mut reader, mut writer) = stream.into_split();
@@ -447,7 +448,7 @@ async fn handle_connection(
         biased;
         () = shutdown.cancelled() => Ok(()),
         () = wait_for_client_disconnect_or_extra_bytes(&mut reader) => Ok(()),
-        result = execute(request, &mut writer, &guest, &shutdown) => result,
+        result = execute(request, &mut writer, &control_session, &shutdown) => result,
     }
 }
 
@@ -489,29 +490,27 @@ async fn wait_for_client_disconnect_or_extra_bytes(reader: &mut (impl AsyncRead 
     let _ = reader.read(&mut buf).await;
 }
 
-/// Execute an [`ExecRequest`] against the sandbox's VsockHost.
+/// Execute an [`ExecRequest`] against the sandbox's active control session.
 async fn execute(
     request: ExecRequest,
     stream: &mut (impl AsyncWrite + Unpin),
-    guest: &Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    control_session: &ControlSessionManager,
     shutdown: &CancellationToken,
 ) -> io::Result<()> {
-    let vsock = {
-        let lock = guest.lock().await;
-        match lock.as_ref() {
-            Some(v) => Arc::clone(v),
-            None => {
-                return write_response_frame(
-                    stream,
-                    &ExecResponseFrame::Error {
-                        error: "sandbox not running".into(),
-                    },
-                    shutdown,
-                )
-                .await;
-            }
+    let operation = match control_session.acquire() {
+        Ok(operation) => operation,
+        Err(e) => {
+            return write_response_frame(
+                stream,
+                &ExecResponseFrame::Error {
+                    error: format!("sandbox not running: {e}"),
+                },
+                shutdown,
+            )
+            .await;
         }
     };
+    let vsock = operation.host();
 
     let timeout_ms = request.timeout_secs.saturating_mul(1000);
     let env: &[(&str, &str)] = &[];
@@ -895,6 +894,7 @@ fn resolve_control_socket_in(
 mod tests {
     use super::*;
     use tokio::sync::oneshot;
+    use vsock_host::VsockHost;
     use vsock_proto::{
         Decoder, MSG_BOUNDED_EXEC, MSG_BOUNDED_EXEC_CANCEL, MSG_BOUNDED_EXEC_OUTPUT_CHUNK,
         MSG_BOUNDED_EXEC_RESULT, MSG_PING, MSG_PONG, MSG_READY, RawMessage,
@@ -1139,9 +1139,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
 
-        // Server with no guest connected.
-        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
-        let mut handle = bind_server(sock_path.clone(), guest)
+        // Server with no active control session.
+        let control_session = ControlSessionManager::new();
+        let mut handle = bind_server(sock_path.clone(), control_session)
             .unwrap()
             .spawn(CancellationToken::new());
 
@@ -1369,9 +1369,9 @@ mod tests {
     async fn bound_control_server_close_removes_socket() {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
-        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let control_session = ControlSessionManager::new();
 
-        let server = bind_server(sock_path.clone(), guest).unwrap();
+        let server = bind_server(sock_path.clone(), control_session).unwrap();
         assert!(sock_path.exists());
 
         server.close();
@@ -1383,10 +1383,10 @@ mod tests {
     async fn bound_control_server_drop_removes_socket() {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
-        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let control_session = ControlSessionManager::new();
 
         {
-            let _server = bind_server(sock_path.clone(), guest).unwrap();
+            let _server = bind_server(sock_path.clone(), control_session).unwrap();
             assert!(sock_path.exists());
         }
 
@@ -1397,8 +1397,8 @@ mod tests {
     async fn control_server_shutdown_removes_socket() {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
-        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
-        let mut handle = bind_server(sock_path.clone(), guest)
+        let control_session = ControlSessionManager::new();
+        let mut handle = bind_server(sock_path.clone(), control_session)
             .unwrap()
             .spawn(CancellationToken::new());
 
@@ -1416,9 +1416,9 @@ mod tests {
     async fn control_server_cancel_removes_socket() {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
-        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let control_session = ControlSessionManager::new();
         let shutdown = CancellationToken::new();
-        let mut handle = bind_server(sock_path.clone(), guest)
+        let mut handle = bind_server(sock_path.clone(), control_session)
             .unwrap()
             .spawn(shutdown.clone());
 
@@ -1433,9 +1433,9 @@ mod tests {
     async fn control_server_cancel_cancels_pending_connection() {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
-        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let control_session = ControlSessionManager::new();
         let shutdown = CancellationToken::new();
-        let mut handle = bind_server(sock_path.clone(), guest)
+        let mut handle = bind_server(sock_path.clone(), control_session)
             .unwrap()
             .spawn(shutdown.clone());
         let mut stream = UnixStream::connect(&sock_path).await.unwrap();
@@ -1454,8 +1454,8 @@ mod tests {
     async fn control_server_shutdown_cancels_pending_connection() {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
-        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
-        let mut handle = bind_server(sock_path.clone(), guest)
+        let control_session = ControlSessionManager::new();
+        let mut handle = bind_server(sock_path.clone(), control_session)
             .unwrap()
             .spawn(CancellationToken::new());
         let mut stream = UnixStream::connect(&sock_path).await.unwrap();
@@ -1491,8 +1491,8 @@ mod tests {
         let vsock = host_task.await.unwrap().unwrap();
 
         let sock_path = dir.path().join("control.sock");
-        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
-        let mut handle = bind_server(sock_path.clone(), guest)
+        let control_session = ControlSessionManager::from_active_host(Arc::new(vsock));
+        let mut handle = bind_server(sock_path.clone(), control_session)
             .unwrap()
             .spawn(CancellationToken::new());
 
@@ -1545,8 +1545,8 @@ mod tests {
         let vsock = host_task.await.unwrap().unwrap();
 
         let sock_path = dir.path().join("control.sock");
-        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
-        let mut handle = bind_server(sock_path.clone(), guest)
+        let control_session = ControlSessionManager::from_active_host(Arc::new(vsock));
+        let mut handle = bind_server(sock_path.clone(), control_session)
             .unwrap()
             .spawn(CancellationToken::new());
 
@@ -1594,8 +1594,8 @@ mod tests {
         let vsock = host_task.await.unwrap().unwrap();
 
         let sock_path = dir.path().join("control.sock");
-        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
-        let mut handle = bind_server(sock_path.clone(), guest)
+        let control_session = ControlSessionManager::from_active_host(Arc::new(vsock));
+        let mut handle = bind_server(sock_path.clone(), control_session)
             .unwrap()
             .spawn(CancellationToken::new());
 
@@ -1648,8 +1648,8 @@ mod tests {
         let vsock = host_task.await.unwrap().unwrap();
 
         let sock_path = dir.path().join("control.sock");
-        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
-        let mut handle = bind_server(sock_path.clone(), guest)
+        let control_session = ControlSessionManager::from_active_host(Arc::new(vsock));
+        let mut handle = bind_server(sock_path.clone(), control_session)
             .unwrap()
             .spawn(CancellationToken::new());
 
@@ -1705,8 +1705,8 @@ mod tests {
         let vsock = host_task.await.unwrap().unwrap();
 
         let sock_path = dir.path().join("control.sock");
-        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
-        let mut handle = bind_server(sock_path.clone(), guest)
+        let control_session = ControlSessionManager::from_active_host(Arc::new(vsock));
+        let mut handle = bind_server(sock_path.clone(), control_session)
             .unwrap()
             .spawn(CancellationToken::new());
         let client = tokio::spawn({
@@ -1763,8 +1763,8 @@ mod tests {
         let vsock = host_task.await.unwrap().unwrap();
 
         let sock_path = dir.path().join("control.sock");
-        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
-        let mut handle = bind_server(sock_path.clone(), guest)
+        let control_session = ControlSessionManager::from_active_host(Arc::new(vsock));
+        let mut handle = bind_server(sock_path.clone(), control_session)
             .unwrap()
             .spawn(CancellationToken::new());
 
@@ -1812,8 +1812,8 @@ mod tests {
         let vsock = host_task.await.unwrap().unwrap();
 
         let sock_path = dir.path().join("control.sock");
-        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
-        let mut handle = bind_server(sock_path.clone(), guest)
+        let control_session = ControlSessionManager::from_active_host(Arc::new(vsock));
+        let mut handle = bind_server(sock_path.clone(), control_session)
             .unwrap()
             .spawn(CancellationToken::new());
 
@@ -1862,8 +1862,8 @@ mod tests {
         let vsock = host_task.await.unwrap().unwrap();
 
         let sock_path = dir.path().join("control.sock");
-        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
-        let mut handle = bind_server(sock_path.clone(), guest)
+        let control_session = ControlSessionManager::from_active_host(Arc::new(vsock));
+        let mut handle = bind_server(sock_path.clone(), control_session)
             .unwrap()
             .spawn(CancellationToken::new());
 
@@ -1911,8 +1911,8 @@ mod tests {
         let vsock = host_task.await.unwrap().unwrap();
 
         let sock_path = dir.path().join("control.sock");
-        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
-        let mut handle = bind_server(sock_path.clone(), guest)
+        let control_session = ControlSessionManager::from_active_host(Arc::new(vsock));
+        let mut handle = bind_server(sock_path.clone(), control_session)
             .unwrap()
             .spawn(CancellationToken::new());
 
@@ -1944,9 +1944,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
         let _existing = UnixListener::bind(&sock_path).unwrap();
-        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let control_session = ControlSessionManager::new();
 
-        let result = bind_server(sock_path.clone(), guest);
+        let result = bind_server(sock_path.clone(), control_session);
 
         let Err(err) = result else {
             panic!("binding an occupied control socket should fail");

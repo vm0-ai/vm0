@@ -11,6 +11,7 @@ use async_trait::async_trait;
 use tokio::io::AsyncBufReadExt;
 use tokio::task::JoinHandle;
 use tracing::info;
+use uuid::Uuid;
 
 use nbd_cow::pool::DevicePoolHandle;
 use nbd_cow::{DestroyRetryPolicy, KeptCow, PooledNbdCowDevice};
@@ -19,7 +20,9 @@ use sandbox::{PendingSnapshotPublish, SnapshotCreateConfig, SnapshotOutput, Snap
 use crate::api::{ApiClient, ApiError};
 use crate::config::SnapshotConfig;
 use crate::factory::{InvariantConfig, config_hash};
-use crate::network::{NetnsLease, NetnsPool, NetnsPoolConfig};
+use crate::network::{
+    NetnsLease, NetnsPool, NetnsPoolConfig, generate_boot_args_with_boot_generation,
+};
 use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::prerequisites;
 use crate::process::kill_process_group;
@@ -27,7 +30,7 @@ use crate::process::kill_process_group;
 /// Timeout for waiting for the Firecracker API socket after process spawn.
 const API_READY_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Timeout for waiting for the guest to connect via vsock after start.
+/// Timeout for establishing the host-initiated guest control session.
 const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub const SNAPSHOT_COMPLETE_MARKER_CONTENT: &[u8] = b"snapshot-complete-v1\n";
@@ -54,37 +57,6 @@ fn cow_destroy_retry_policy() -> DestroyRetryPolicy {
     DestroyRetryPolicy {
         attempts: DESTROY_RETRIES,
         delay: DESTROY_RETRY_DELAY,
-    }
-}
-
-struct AbortOnDropTask<T> {
-    handle: JoinHandle<T>,
-}
-
-impl<T> AbortOnDropTask<T> {
-    fn new(handle: JoinHandle<T>) -> Self {
-        Self { handle }
-    }
-
-    fn abort(&self) {
-        self.handle.abort();
-    }
-}
-
-impl<T> Future for AbortOnDropTask<T> {
-    type Output = Result<T, tokio::task::JoinError>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.get_mut();
-        Pin::new(&mut this.handle).poll(cx)
-    }
-}
-
-impl<T> Drop for AbortOnDropTask<T> {
-    fn drop(&mut self) {
-        if !self.handle.is_finished() {
-            self.handle.abort();
-        }
     }
 }
 
@@ -238,8 +210,7 @@ pub enum SnapshotError {
     /// snapshot state and memory files.
     #[error("api error: {0}")]
     Api(#[from] ApiError),
-    /// The guest did not establish the expected vsock readiness connection, or
-    /// the listener task failed while waiting for it.
+    /// The host could not establish the expected guest control session.
     ///
     /// Firecracker may already be running when this happens, but the snapshot
     /// workflow has not reached the pre-warm, pause, or snapshot stages.
@@ -1709,14 +1680,15 @@ impl Drop for SnapshotAttempt {
 ///  4. Spawn Firecracker with `--api-sock`
 ///  5. Wait for API socket ready
 ///  6. Configure VM via API (6 parallel PUT calls)
-///  7. Bind vsock listener
+///  7. Configure host-initiated vsock
 ///  8. Start instance
-///  9. Wait for guest vsock connection
+///  9. Connect guest control session
 /// 10. Pre-warm guest caches (PAM/nsswitch, CLI modules)
-/// 11. Pause VM
-/// 12. Create snapshot
-/// 13. Cleanup Firecracker/netns/NBD runtime resources and keep the temporary COW
-/// 14. Move COW file + bitmap to output dir and publish the complete marker
+/// 11. Quiesce guest control session
+/// 12. Pause VM
+/// 13. Create snapshot
+/// 14. Cleanup Firecracker/netns/NBD runtime resources and keep the temporary COW
+/// 15. Move COW file + bitmap to output dir and publish the complete marker
 pub async fn create_snapshot(
     config: SnapshotCreateConfig,
 ) -> Result<SnapshotConfig, SnapshotError> {
@@ -1970,12 +1942,14 @@ async fn run_with_firecracker(
     // 6. Configure VM via API (6 parallel PUT calls).
     let inv = InvariantConfig::new();
     let kernel_path = config.kernel_path.display().to_string();
+    let boot_generation = Uuid::new_v4().to_string();
+    let boot_args = generate_boot_args_with_boot_generation(Some(&boot_generation));
     tokio::fs::create_dir_all(&sock_paths.vsock_dir()).await?;
     let vsock_uds_str = sock_paths.vsock().display().to_string();
 
     tokio::try_join!(
         client.configure_machine(config.vcpu_count, config.memory_mb),
-        client.configure_boot_source(&kernel_path, &inv.boot_args),
+        client.configure_boot_source(&kernel_path, &boot_args),
         client.configure_drive("rootfs", &drive_bind_str, true, false),
         client.configure_network_interface(inv.iface_id, inv.guest_mac, inv.tap_name),
         client.configure_vsock(inv.guest_cid, &vsock_uds_str),
@@ -1988,31 +1962,25 @@ async fn run_with_firecracker(
 
     info!("VM configured");
 
-    // 7. Bind vsock listener BEFORE starting the instance (race: guest connects ~300ms after boot).
-    let vsock_path_for_listen = vsock_uds_str.clone();
-    let vsock_task = AbortOnDropTask::new(tokio::spawn(async move {
-        vsock_host::VsockHost::wait_for_connection(&vsock_path_for_listen, VSOCK_CONNECT_TIMEOUT)
-            .await
-    }));
-
     // 8. Start instance.
-    let start_result = client.start_instance().await;
-    if let Err(e) = start_result {
-        vsock_task.abort();
-        let _ = vsock_task.await;
-        return Err(e.into());
-    }
+    client.start_instance().await?;
 
-    info!("instance started, waiting for guest vsock connection");
+    info!("instance started, connecting guest control session");
 
-    // 9. Wait for guest to connect via vsock.
-    let guest = match vsock_task.await {
-        Ok(Ok(g)) => g,
-        Ok(Err(e)) => return Err(SnapshotError::Vsock(e.to_string())),
-        Err(e) => return Err(SnapshotError::Vsock(format!("vsock task: {e}"))),
-    };
+    // 9. Establish host-initiated guest control session.
+    let session_nonce = *Uuid::new_v4().as_bytes();
+    let guest = vsock_host::VsockHost::connect_host_initiated(
+        &vsock_uds_str,
+        VSOCK_CONNECT_TIMEOUT,
+        vsock_host::ControlHandshake {
+            session_nonce: &session_nonce,
+            boot_generation: Some(&boot_generation),
+        },
+    )
+    .await
+    .map_err(|e| SnapshotError::Vsock(e.to_string()))?;
 
-    info!("guest connected");
+    info!("guest control session connected");
 
     // 9.5. Pre-warm caches (PAM/nsswitch, CLI modules) so post-restore calls
     //      are fast. The snapshot captures memory + disk state, so caches
@@ -2063,6 +2031,12 @@ async fn run_with_firecracker(
         }
     }
     info!("pre-warm complete");
+
+    guest
+        .quiesce(VSOCK_CONNECT_TIMEOUT)
+        .await
+        .map_err(|e| SnapshotError::Setup(format!("pre-warm quiesce: {e}")))?;
+    info!("guest control session quiesced");
 
     // 10. Pause VM.
     client.pause().await?;
@@ -3126,70 +3100,6 @@ mod tests {
             .await
             .expect("dropped cleanup finalizer should continue")
             .expect("cleanup finalizer should finish");
-    }
-
-    #[tokio::test]
-    async fn abort_on_drop_task_aborts_vsock_listener() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let base = dir.path().join("snapshot-vsock");
-        let listener =
-            std::path::PathBuf::from(format!("{}_{}", base.display(), vsock_proto::VSOCK_PORT));
-        let base = base.display().to_string();
-
-        let task = AbortOnDropTask::new(tokio::spawn(async move {
-            vsock_host::VsockHost::wait_for_connection(&base, Duration::from_secs(30)).await
-        }));
-
-        tokio::time::timeout(Duration::from_secs(1), async {
-            while !listener.exists() {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("vsock listener should bind");
-
-        drop(task);
-
-        tokio::time::timeout(Duration::from_secs(1), async {
-            while listener.exists() {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("dropped task should abort and remove vsock listener");
-    }
-
-    #[tokio::test]
-    async fn abort_on_drop_task_explicit_abort_removes_vsock_listener() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let base = dir.path().join("snapshot-vsock-explicit-abort");
-        let listener =
-            std::path::PathBuf::from(format!("{}_{}", base.display(), vsock_proto::VSOCK_PORT));
-        let base = base.display().to_string();
-
-        let task = AbortOnDropTask::new(tokio::spawn(async move {
-            vsock_host::VsockHost::wait_for_connection(&base, Duration::from_secs(30)).await
-        }));
-
-        tokio::time::timeout(Duration::from_secs(1), async {
-            while !listener.exists() {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("vsock listener should bind");
-
-        task.abort();
-        let join = task.await;
-        assert!(
-            join.is_err_and(|e| e.is_cancelled()),
-            "explicit abort should cancel the listener task"
-        );
-
-        assert!(
-            !listener.exists(),
-            "explicit abort should remove the vsock listener socket"
-        );
     }
 
     #[tokio::test]

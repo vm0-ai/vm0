@@ -47,11 +47,19 @@ pub(crate) fn generate_guest_network_boot_args() -> String {
 
 /// Generate the full kernel boot args string (base flags + network config).
 pub(crate) fn generate_boot_args() -> String {
+    generate_boot_args_with_boot_generation(None)
+}
+
+pub(crate) fn generate_boot_args_with_boot_generation(boot_generation: Option<&str>) -> String {
+    let boot_generation = boot_generation
+        .map(|value| format!(" vm0.boot_generation={value}"))
+        .unwrap_or_default();
     format!(
         "console=ttyS0 reboot=k panic=1 pci=off nomodules random.trust_cpu=on \
          quiet loglevel=0 nokaslr audit=0 numa=off mitigations=off noresume \
-         root=/dev/vda rootfstype=ext4 rw init=/sbin/guest-init {}",
+         root=/dev/vda rootfstype=ext4 rw init=/sbin/guest-init {}{}",
         generate_guest_network_boot_args(),
+        boot_generation,
     )
 }
 
@@ -78,6 +86,15 @@ mod tests {
         assert!(
             args.contains("init=/sbin/guest-init"),
             "boot args must specify init: {args}"
+        );
+    }
+
+    #[test]
+    fn boot_args_can_include_boot_generation() {
+        let args = generate_boot_args_with_boot_generation(Some("boot-123"));
+        assert!(
+            args.contains("vm0.boot_generation=boot-123"),
+            "boot args must include boot generation: {args}"
         );
     }
 

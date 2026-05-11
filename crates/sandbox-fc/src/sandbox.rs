@@ -17,13 +17,14 @@ use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, trace, warn};
+use uuid::Uuid;
 use vsock_host::{
     BoundedExecOutputEvent as HostBoundedExecOutputEvent,
     BoundedExecOutputRequest as HostBoundedExecOutputRequest,
     BoundedExecRequest as HostBoundedExecRequest, BoundedExecResult as HostBoundedExecResult,
     BoundedExecStream as HostBoundedExecStream,
     BoundedExecStreamPolicy as HostBoundedExecStreamPolicy,
-    BoundedExecTermination as HostBoundedExecTermination, VsockHost,
+    BoundedExecTermination as HostBoundedExecTermination,
 };
 
 use crate::api::ApiError;
@@ -33,12 +34,13 @@ use crate::api::ApiClient;
 use crate::balloon;
 use crate::config::FirecrackerConfig;
 use crate::control;
+use crate::control_session::ControlSessionManager;
 use crate::factory::InvariantConfig;
-use crate::network::{NetnsInfo, NetnsLease};
+use crate::network::{NetnsInfo, NetnsLease, generate_boot_args_with_boot_generation};
 use crate::paths::{SandboxPaths, SockPaths};
 use crate::process::{kill_process_group, kill_process_group_by_pid};
 
-/// Timeout for waiting for the guest to connect via vsock after start.
+/// Timeout for establishing the host-initiated guest control session.
 const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Timeout for graceful shutdown via vsock.
@@ -444,7 +446,7 @@ struct ProcessMonitorContext {
     state: Arc<AtomicU8>,
     state_publish_lock: Arc<Mutex<()>>,
     state_tx: watch::Sender<SandboxState>,
-    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    control_session: ControlSessionManager,
     runtime_cancel: CancellationToken,
 }
 
@@ -477,11 +479,11 @@ pub struct FirecrackerSandbox {
     /// the latest value, which keeps crash/startup-exit classification
     /// deterministic after the process monitor has already observed exit.
     state_tx: watch::Sender<SandboxState>,
-    /// Vsock guest connection, shared with the process monitor so it can
-    /// drop the connection immediately when the process exits unexpectedly.
-    /// Wrapped in `Arc` so operations can clone the handle and release the
-    /// mutex immediately, allowing concurrent vsock operations.
-    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    /// Host-owned vsock control-session manager.
+    control_session: ControlSessionManager,
+    /// Fresh-boot generation passed through kernel args and validated during
+    /// the first host-initiated control handshake.
+    boot_generation: Option<String>,
     /// Sender for leaked resource cleanup. When Drop fires without prior
     /// `factory.destroy()`, pool resources are sent here for async cleanup.
     leak_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::factory::LeakedResources>>,
@@ -542,6 +544,10 @@ impl FirecrackerSandbox {
         leak_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::factory::LeakedResources>>,
     ) -> Self {
         let id = config.id.to_string();
+        let boot_generation = factory_config
+            .snapshot
+            .is_none()
+            .then(|| Uuid::new_v4().to_string());
         Self {
             config,
             factory_config,
@@ -555,7 +561,8 @@ impl FirecrackerSandbox {
             state: Arc::new(AtomicU8::new(SandboxState::Created as u8)),
             state_publish_lock: Arc::new(Mutex::new(())),
             state_tx: watch::channel(SandboxState::Created).0,
-            guest: Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>)),
+            control_session: ControlSessionManager::new(),
+            boot_generation,
             leak_tx,
             delete_workspace_on_leak_cleanup: true,
             destroyed: false,
@@ -581,10 +588,7 @@ impl FirecrackerSandbox {
         SandboxState::from_u8(self.state.load(Ordering::Acquire))
     }
 
-    fn not_running_error(&self, operation: SandboxOperation) -> SandboxError {
-        Self::operation_unavailable_error(operation, self.current_state())
-    }
-
+    #[cfg(test)]
     fn operation_unavailable_error(
         operation: SandboxOperation,
         state: SandboxState,
@@ -636,20 +640,23 @@ impl FirecrackerSandbox {
         publish_process_state(&self.state, &self.state_publish_lock, &self.state_tx, state);
     }
 
-    async fn operation_guest(
+    fn operation_guest(
         &self,
         operation: SandboxOperation,
-    ) -> sandbox::Result<Arc<VsockHost>> {
+    ) -> sandbox::Result<crate::control_session::ControlOperation> {
         if self.has_backend_crashed() {
             return Err(Self::backend_crashed_error(operation));
         }
 
-        let guest = self.guest.lock().await.as_ref().cloned();
+        let guest = self
+            .control_session
+            .acquire()
+            .map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))?;
         if self.has_backend_crashed() {
             return Err(Self::backend_crashed_error(operation));
         }
 
-        guest.ok_or_else(|| self.not_running_error(operation))
+        Ok(guest)
     }
 
     /// Atomically transition between states using CAS. Returns `true` if the
@@ -670,11 +677,12 @@ impl FirecrackerSandbox {
         let kernel_path = self.factory_config.kernel_path.display().to_string();
         let cow_device_path = self.cow_device()?.device_path().display().to_string();
         let vsock_path = self.sock_paths.vsock().display().to_string();
+        let boot_args = generate_boot_args_with_boot_generation(self.boot_generation.as_deref());
 
         Ok(serde_json::json!({
             "boot-source": {
                 "kernel_image_path": kernel_path,
-                "boot_args": inv.boot_args,
+                "boot_args": boot_args,
             },
             "drives": [
                 {
@@ -749,7 +757,7 @@ impl FirecrackerSandbox {
             Arc::clone(&self.state),
             Arc::clone(&self.state_publish_lock),
             self.state_tx.clone(),
-            Arc::clone(&self.guest),
+            self.control_session.clone(),
             runtime_cancel,
         ));
 
@@ -866,7 +874,7 @@ impl FirecrackerSandbox {
             Arc::clone(&self.state),
             Arc::clone(&self.state_publish_lock),
             self.state_tx.clone(),
-            Arc::clone(&self.guest),
+            self.control_session.clone(),
             runtime_cancel,
         ));
 
@@ -908,11 +916,6 @@ impl FirecrackerSandbox {
         info!(id = %self.id, "snapshot loaded and resumed");
         Ok(())
     }
-}
-
-async fn abort_and_join<T>(task: tokio::task::JoinHandle<T>) {
-    task.abort();
-    let _ = task.await;
 }
 
 impl Drop for FirecrackerSandbox {
@@ -1022,7 +1025,7 @@ fn monitor_process(
     state: Arc<AtomicU8>,
     state_publish_lock: Arc<Mutex<()>>,
     state_tx: watch::Sender<SandboxState>,
-    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    control_session: ControlSessionManager,
     runtime_cancel: CancellationToken,
 ) -> ProcessMonitorHandle {
     let readers = ProcessLogReaders::from_child(id, &mut child);
@@ -1030,7 +1033,7 @@ fn monitor_process(
         state,
         state_publish_lock,
         state_tx,
-        guest,
+        control_session,
         runtime_cancel,
     };
     monitor_process_with_log_readers(id, child, context, readers)
@@ -1098,7 +1101,7 @@ fn monitor_process_with_log_readers(
                     Ok(status) => warn!(id = %id, %status, "process exited unexpectedly"),
                     Err(error) => warn!(id = %id, %error, "process wait failed unexpectedly"),
                 }
-                context.guest.lock().await.take();
+                context.control_session.close();
             }
             SandboxState::Created | SandboxState::Stopping | SandboxState::Stopped => {}
             SandboxState::Crashed => {}
@@ -1237,13 +1240,6 @@ impl Sandbox for FirecrackerSandbox {
 
         let runtime_cancel = CancellationToken::new();
 
-        // Start the vsock listener BEFORE launching Firecracker.
-        // The UDS must be bound before the guest tries to connect.
-        let vsock_path = self.sock_paths.vsock().display().to_string();
-        let mut vsock_task = tokio::spawn(async move {
-            VsockHost::wait_for_connection(&vsock_path, VSOCK_CONNECT_TIMEOUT).await
-        });
-
         let start_result = if self.factory_config.snapshot.is_some() {
             self.start_from_snapshot(runtime_cancel.clone()).await
         } else {
@@ -1251,47 +1247,40 @@ impl Sandbox for FirecrackerSandbox {
         };
 
         if let Err(e) = start_result {
-            abort_and_join(vsock_task).await;
             self.runtime.kill_process().await;
             return Err(e);
         }
 
-        // Wait for guest to connect via vsock.
-        let vsock_guest = tokio::select! {
-            result = &mut vsock_task => {
-                match result {
-                    Ok(Ok(g)) => g,
-                    Ok(Err(e)) => {
-                        self.runtime.kill_process().await;
-                        return Err(SandboxError::Start {
-                            message: format!("vsock connection: {e}"),
-                        });
-                    }
-                    Err(e) => {
-                        self.runtime.kill_process().await;
-                        return Err(SandboxError::Start {
-                            message: format!("vsock task: {e}"),
-                        });
-                    }
+        let vsock_path = self.sock_paths.vsock().display().to_string();
+        let boot_generation = self
+            .factory_config
+            .snapshot
+            .is_none()
+            .then(|| self.boot_generation.as_deref())
+            .flatten();
+        tokio::select! {
+            result = self.control_session.connect(&vsock_path, VSOCK_CONNECT_TIMEOUT, boot_generation) => {
+                if let Err(e) = result {
+                    self.runtime.kill_process().await;
+                    return Err(SandboxError::Start {
+                        message: format!("vsock control session: {e}"),
+                    });
                 }
             }
             state = wait_for_process_exit(self.state_tx.subscribe()) => {
-                abort_and_join(vsock_task).await;
                 self.runtime.kill_process().await;
                 return Err(SandboxError::Start {
-                    message: format!("process exited before vsock connected (state={state})"),
+                    message: format!("process exited before control session connected (state={state})"),
                 });
             }
-        };
-
-        *self.guest.lock().await = Some(Arc::new(vsock_guest));
+        }
 
         let control_sock_path = self.sock_paths.control_sock();
         let control_server =
-            match control::bind_server(control_sock_path.clone(), Arc::clone(&self.guest)) {
+            match control::bind_server(control_sock_path.clone(), self.control_session.clone()) {
                 Ok(server) => server,
                 Err(e) => {
-                    self.guest.lock().await.take();
+                    self.control_session.close();
                     self.runtime.kill_process().await;
                     return Err(SandboxError::Start {
                         message: format!(
@@ -1303,10 +1292,10 @@ impl Sandbox for FirecrackerSandbox {
             };
 
         // Use CAS to avoid overwriting Stopped if the process crashed between
-        // spawn and vsock connect (the process monitor may have already
+        // spawn and control-session connect (the process monitor may have already
         // recorded process exit).
         if !self.transition(SandboxState::Created, SandboxState::Running) {
-            self.guest.lock().await.take();
+            self.control_session.close();
             control_server.close();
             self.runtime.kill_process().await;
             return Err(SandboxError::Start {
@@ -1333,7 +1322,7 @@ impl Sandbox for FirecrackerSandbox {
         if !self.transition(SandboxState::Running, SandboxState::Stopping) {
             if self.current_state() == SandboxState::Crashed {
                 self.runtime.shutdown_services().await;
-                self.guest.lock().await.take();
+                self.control_session.close();
                 self.runtime.kill_process().await;
             }
             return Ok(());
@@ -1355,7 +1344,7 @@ impl Sandbox for FirecrackerSandbox {
         // Skipping graceful shutdown is still correct — the sandbox was idle
         // with no user workload.
         if !self.is_parked {
-            let guest = self.guest.lock().await.take();
+            let guest = self.control_session.take_for_shutdown();
             if let Some(guest) = guest
                 && !guest.shutdown(SHUTDOWN_TIMEOUT).await
             {
@@ -1373,13 +1362,13 @@ impl Sandbox for FirecrackerSandbox {
         if !self.transition(SandboxState::Running, SandboxState::Stopping) {
             if self.current_state() == SandboxState::Crashed {
                 self.runtime.shutdown_services().await;
-                self.guest.lock().await.take();
+                self.control_session.close();
                 self.runtime.kill_process().await;
             }
             return Ok(());
         }
         self.runtime.shutdown_services().await;
-        self.guest.lock().await.take();
+        self.control_session.close();
         self.runtime.kill_process().await;
         self.publish_state(SandboxState::Stopped);
         info!(id = %self.id, "sandbox killed");
@@ -1416,6 +1405,16 @@ impl Sandbox for FirecrackerSandbox {
     // skip the abort+respawn dance when park was a no-op.
 
     async fn park(&mut self) -> sandbox::Result<()> {
+        if !self.is_parked {
+            self.control_session
+                .quiesce(SHUTDOWN_TIMEOUT)
+                .await
+                .map_err(|e| SandboxError::IdleTransition {
+                    transition: SandboxIdleTransition::Park,
+                    message: format!("control session quiesce: {e}"),
+                })?;
+        }
+
         park_inner(
             &mut self.is_parked,
             self.config.resources.memory_mb,
@@ -1427,6 +1426,7 @@ impl Sandbox for FirecrackerSandbox {
     }
 
     async fn unpark(&mut self) -> sandbox::Result<()> {
+        let was_parked = self.is_parked;
         unpark_inner(
             &mut self.is_parked,
             self.config.resources.memory_mb,
@@ -1435,7 +1435,20 @@ impl Sandbox for FirecrackerSandbox {
             self.state_tx.subscribe(),
             &self.id,
         )
-        .await
+        .await?;
+
+        if was_parked {
+            let vsock_path = self.sock_paths.vsock().display().to_string();
+            self.control_session
+                .connect(&vsock_path, VSOCK_CONNECT_TIMEOUT, None)
+                .await
+                .map_err(|e| SandboxError::IdleTransition {
+                    transition: SandboxIdleTransition::Unpark,
+                    message: format!("vsock control session: {e}"),
+                })?;
+        }
+
+        Ok(())
     }
 
     // -- operations --
@@ -1450,7 +1463,8 @@ impl Sandbox for FirecrackerSandbox {
         // should call bounded_exec so output, termination, streaming, and
         // cancellation semantics are explicit.
         let operation = SandboxOperation::Exec;
-        let guest = self.operation_guest(operation).await?;
+        let operation_guard = self.operation_guest(operation)?;
+        let guest = operation_guard.host();
 
         tokio::select! {
             result = guest.exec(request.cmd, request.timeout_ms(), request.env, request.sudo) => {
@@ -1472,7 +1486,8 @@ impl Sandbox for FirecrackerSandbox {
         request: &BoundedExecRequest<'_>,
     ) -> sandbox::Result<BoundedExecResult> {
         let operation = SandboxOperation::BoundedExec;
-        let guest = self.operation_guest(operation).await?;
+        let operation_guard = self.operation_guest(operation)?;
+        let guest = operation_guard.host();
 
         let mut bridge_tasks = Vec::new();
         let stdout_stream = spawn_bounded_stream_bridge(
@@ -1517,7 +1532,8 @@ impl Sandbox for FirecrackerSandbox {
 
     async fn write_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
         let operation = SandboxOperation::WriteFile;
-        let guest = self.operation_guest(operation).await?;
+        let operation_guard = self.operation_guest(operation)?;
+        let guest = operation_guard.host();
 
         tokio::select! {
             result = guest.write_file(path, content, false) => {
@@ -1535,7 +1551,8 @@ impl Sandbox for FirecrackerSandbox {
         output: sandbox::SpawnOutputMode<'_>,
     ) -> sandbox::Result<SpawnHandle> {
         let operation = SandboxOperation::SpawnWatch;
-        let guest = self.operation_guest(operation).await?;
+        let operation_guard = self.operation_guest(operation)?;
+        let guest = operation_guard.host();
 
         tokio::select! {
             result = guest.spawn_watch(
@@ -1564,7 +1581,8 @@ impl Sandbox for FirecrackerSandbox {
         timeout: Duration,
     ) -> sandbox::Result<ProcessExit> {
         let operation = SandboxOperation::WaitExit;
-        let guest = self.operation_guest(operation).await?;
+        let operation_guard = self.operation_guest(operation)?;
+        let guest = operation_guard.host();
 
         tokio::select! {
             result = guest.wait_for_exit(handle.pid, timeout) => {
@@ -2184,7 +2202,7 @@ mod tests {
         let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
         let state_publish_lock = Arc::new(Mutex::new(()));
         let (state_tx, state_rx) = watch::channel(SandboxState::Running);
-        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let control_session = ControlSessionManager::new();
         let runtime_cancel = CancellationToken::new();
         let mut child = monitored_cat_process();
         let stdin = child.stdin.take();
@@ -2195,7 +2213,7 @@ mod tests {
             Arc::clone(&state),
             Arc::clone(&state_publish_lock),
             state_tx,
-            guest,
+            control_session,
             runtime_cancel.clone(),
         );
 
@@ -2222,9 +2240,9 @@ mod tests {
         let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
         let state_publish_lock = Arc::new(Mutex::new(()));
         let (state_tx, _state_rx) = watch::channel(SandboxState::Running);
-        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let control_session = ControlSessionManager::new();
         let runtime_cancel = CancellationToken::new();
-        let mut control = crate::control::bind_server(sock_path.clone(), Arc::clone(&guest))
+        let mut control = crate::control::bind_server(sock_path.clone(), control_session.clone())
             .unwrap()
             .spawn(runtime_cancel.clone());
         let mut child = monitored_cat_process();
@@ -2236,7 +2254,7 @@ mod tests {
             Arc::clone(&state),
             Arc::clone(&state_publish_lock),
             state_tx,
-            guest,
+            control_session,
             runtime_cancel,
         );
 
@@ -2252,7 +2270,7 @@ mod tests {
         let state = Arc::new(AtomicU8::new(SandboxState::Created as u8));
         let state_publish_lock = Arc::new(Mutex::new(()));
         let (state_tx, _state_rx) = watch::channel(SandboxState::Created);
-        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let control_session = ControlSessionManager::new();
         let child = stdout_stderr_writing_process();
 
         let handle = monitor_process(
@@ -2261,7 +2279,7 @@ mod tests {
             Arc::clone(&state),
             Arc::clone(&state_publish_lock),
             state_tx,
-            guest,
+            control_session,
             CancellationToken::new(),
         );
 
@@ -2279,7 +2297,7 @@ mod tests {
         let state = Arc::new(AtomicU8::new(SandboxState::Created as u8));
         let state_publish_lock = Arc::new(Mutex::new(()));
         let (state_tx, _state_rx) = watch::channel(SandboxState::Created);
-        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let control_session = ControlSessionManager::new();
         let mut child = monitored_cat_process_without_log_pipes();
         let stdin = child.stdin.take();
         let (stdout_reader, stdout_started_rx, stdout_dropped_rx) = pending_log_reader_for_test();
@@ -2298,7 +2316,7 @@ mod tests {
             state: Arc::clone(&state),
             state_publish_lock: Arc::clone(&state_publish_lock),
             state_tx,
-            guest,
+            control_session,
             runtime_cancel: CancellationToken::new(),
         };
         let handle = monitor_process_with_log_readers("test-sandbox", child, context, readers);
@@ -2323,7 +2341,7 @@ mod tests {
         let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
         let state_publish_lock = Arc::new(Mutex::new(()));
         let (state_tx, _state_rx) = watch::channel(SandboxState::Running);
-        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let control_session = ControlSessionManager::new();
         let mut child = monitored_cat_process_without_log_pipes();
         let stdin = child.stdin.take();
         let (reader, started_rx, dropped_rx) = pending_log_reader_for_test();
@@ -2337,7 +2355,7 @@ mod tests {
             state: Arc::clone(&state),
             state_publish_lock: Arc::clone(&state_publish_lock),
             state_tx,
-            guest,
+            control_session,
             runtime_cancel: CancellationToken::new(),
         };
         let handle = monitor_process_with_log_readers("test-sandbox", child, context, readers);
@@ -2368,7 +2386,7 @@ mod tests {
         let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
         let state_publish_lock = Arc::new(Mutex::new(()));
         let (state_tx, _state_rx) = watch::channel(SandboxState::Running);
-        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let control_session = ControlSessionManager::new();
         let mut child = monitored_cat_process();
         let stdin = child.stdin.take();
 
@@ -2378,7 +2396,7 @@ mod tests {
             Arc::clone(&state),
             Arc::clone(&state_publish_lock),
             state_tx.clone(),
-            guest,
+            control_session,
             CancellationToken::new(),
         );
 
@@ -2403,7 +2421,7 @@ mod tests {
         let state = Arc::new(AtomicU8::new(SandboxState::Stopping as u8));
         let state_publish_lock = Arc::new(Mutex::new(()));
         let (state_tx, _state_rx) = watch::channel(SandboxState::Stopping);
-        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let control_session = ControlSessionManager::new();
         let mut child = monitored_cat_process();
         let stdin = child.stdin.take();
 
@@ -2413,7 +2431,7 @@ mod tests {
             Arc::clone(&state),
             Arc::clone(&state_publish_lock),
             state_tx.clone(),
-            guest,
+            control_session,
             CancellationToken::new(),
         );
 
@@ -2438,7 +2456,7 @@ mod tests {
         let state = Arc::new(AtomicU8::new(SandboxState::Created as u8));
         let state_publish_lock = Arc::new(Mutex::new(()));
         let (state_tx, _state_rx) = watch::channel(SandboxState::Created);
-        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let control_session = ControlSessionManager::new();
         let mut child = monitored_cat_process();
         let stdin = child.stdin.take();
 
@@ -2448,7 +2466,7 @@ mod tests {
             Arc::clone(&state),
             Arc::clone(&state_publish_lock),
             state_tx.clone(),
-            guest,
+            control_session,
             CancellationToken::new(),
         );
 
@@ -2473,7 +2491,7 @@ mod tests {
         let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
         let state_publish_lock = Arc::new(Mutex::new(()));
         let (state_tx, state_rx) = watch::channel(SandboxState::Running);
-        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let control_session = ControlSessionManager::new();
         let mut child = stdout_closing_process();
         let stdout = child.stdout.take().expect("stdout should be piped");
         let stderr = child.stderr.take().map(|stderr| {
@@ -2486,7 +2504,7 @@ mod tests {
             state: Arc::clone(&state),
             state_publish_lock: Arc::clone(&state_publish_lock),
             state_tx: state_tx.clone(),
-            guest,
+            control_session,
             runtime_cancel: CancellationToken::new(),
         };
 
@@ -2523,7 +2541,7 @@ mod tests {
         let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
         let state_publish_lock = Arc::new(Mutex::new(()));
         let (state_tx, _state_rx) = watch::channel(SandboxState::Running);
-        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let control_session = ControlSessionManager::new();
         let child = parent_exits_with_child_process(&pid_file);
 
         let handle = monitor_process(
@@ -2532,7 +2550,7 @@ mod tests {
             Arc::clone(&state),
             Arc::clone(&state_publish_lock),
             state_tx,
-            guest,
+            control_session,
             CancellationToken::new(),
         );
 

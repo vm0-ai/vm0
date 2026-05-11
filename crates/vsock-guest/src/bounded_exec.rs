@@ -18,6 +18,7 @@ use crate::error::to_io_error;
 use crate::exec::{format_env_diagnostics, spawn_bounded_exec_command, truncate_preview};
 use crate::log::log;
 use crate::process::kill_and_reap_child;
+use crate::session::{PendingWorkGuard, PendingWorkSlot};
 use crate::threading::{SystemThreadSpawner, ThreadSpawner};
 use crate::wait::{
     DRAIN_DEADLINE_SECS, WaitOutcome, await_drain_deadline, wait_with_kill_timeout_or_cancelled_any,
@@ -197,6 +198,7 @@ pub(crate) fn spawn_bounded_exec_worker(
     connection_cancel: Arc<AtomicBool>,
     request_cancel: Arc<AtomicBool>,
     cleanup: BoundedExecCleanup,
+    pending_work: Option<PendingWorkGuard>,
 ) -> io::Result<()> {
     spawn_bounded_exec_worker_with_spawner(
         request,
@@ -204,6 +206,7 @@ pub(crate) fn spawn_bounded_exec_worker(
         connection_cancel,
         request_cancel,
         cleanup,
+        pending_work,
         SystemThreadSpawner,
     )
 }
@@ -214,6 +217,7 @@ fn spawn_bounded_exec_worker_with_spawner<S>(
     connection_cancel: Arc<AtomicBool>,
     request_cancel: Arc<AtomicBool>,
     cleanup: BoundedExecCleanup,
+    pending_work: Option<PendingWorkGuard>,
     spawner: S,
 ) -> io::Result<()>
 where
@@ -224,10 +228,13 @@ where
     let stderr_policy = request.stderr;
     let worker_writer = writer.clone();
     let worker_spawner = spawner.clone();
+    let pending_slot = PendingWorkSlot::new(pending_work);
+    let worker_pending_slot = pending_slot.clone();
     let cleanup_guard = BoundedExecCleanupGuard::new(cleanup);
     let result = spawner.spawn_unit(
         THREAD_BOUNDED_EXEC_WORKER,
         Box::new(move || {
+            let _pending_work = worker_pending_slot.take();
             let _cleanup_guard = cleanup_guard;
             run_bounded_exec(
                 request,
@@ -245,6 +252,7 @@ where
             let diagnostic = format!("Failed to spawn bounded exec worker thread: {e}");
             let stdout = GuestBoundedOutput::empty_for_policy(stdout_policy);
             let stderr = GuestBoundedOutput::empty_for_policy(stderr_policy);
+            let _pending_work = pending_slot.take();
             send_bounded_exec_result(
                 BoundedExecResultFrame {
                     seq,
@@ -1213,6 +1221,7 @@ mod tests {
             Box::new(move || {
                 cleanup_count_for_hook.fetch_add(1, Ordering::SeqCst);
             }),
+            None,
             FailingThreadSpawner::fail_once(THREAD_BOUNDED_EXEC_WORKER),
         )
         .unwrap();

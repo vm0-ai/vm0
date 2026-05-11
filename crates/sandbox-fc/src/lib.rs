@@ -30,6 +30,7 @@ mod balloon;
 mod command;
 mod config;
 pub mod control;
+mod control_session;
 mod cow_pool;
 mod factory;
 mod network;
