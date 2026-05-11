@@ -3,8 +3,8 @@
 # Verify firewall_billable propagation through the full stack.
 #
 # Uses `zero run --model-provider` for per-run provider selection. The test
-# creates a compose-backed agent instead of a persistent zero agent, so it does
-# not depend on the shared e2e org's agent quota.
+# keeps the real zero-agent creation path because it exercises the same compose
+# metadata and environment defaults as user-created agents.
 #
 # t54-0: no override; resolver uses bootstrap claude-code-oauth-token default.
 #   Mock token 401s upstream but the firewall tag is stamped; "$" marker absent.
@@ -12,7 +12,16 @@
 #   401), billableFirewalls covers the firewall → "$" marker present.
 
 load '../../helpers/setup'
-load '../../helpers/codex-zero'
+
+cleanup_stale_billable_agents() {
+    local agents_out
+    agents_out=$($ZERO_CLI agent list 2>/dev/null || true)
+
+    echo "$agents_out" | awk '$0 ~ /e2e-billable-/ { print $1 }' | while read -r agent_id; do
+        [ -n "$agent_id" ] || continue
+        $ZERO_CLI agent delete "$agent_id" --yes >/dev/null 2>&1 || true
+    done
+}
 
 setup_file() {
     if [ -z "$ANTHROPIC_API_KEY" ]; then
@@ -20,8 +29,7 @@ setup_file() {
     fi
 
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
-    export AGENT_NAME="e2e-billable-${UNIQUE_ID}"
-    export TEST_DIR="$(mktemp -d)"
+    cleanup_stale_billable_agents
 
     # Ensure vm0 provider coexists with bootstrap claude-code-oauth-token.
     # CLI non-interactive mode requires --secret; the API route detects
@@ -31,45 +39,28 @@ setup_file() {
         --secret unused-vm0-is-no-secret \
         --model claude-sonnet-4-6 >/dev/null
 
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  ${AGENT_NAME}:
-    description: "Billable firewall e2e agent"
-    framework: claude-code
-    working_dir: /home/user/workspace
-EOF
-
-    local compose_out
-    compose_out=$($VM0_CLI compose --yes --json "$TEST_DIR/vm0.yaml")
-    export COMPOSE_ID
-    COMPOSE_ID=$(echo "$compose_out" | python3 -c "import sys,json; print(json.load(sys.stdin)['composeId'])")
-    [ -n "$COMPOSE_ID" ] || {
-        echo "# Failed to extract composeId from: $compose_out" >&2
+    local create_out
+    create_out=$($ZERO_CLI agent create --display-name "e2e-billable-${UNIQUE_ID}")
+    export AGENT_ID
+    AGENT_ID=$(echo "$create_out" | grep -oP 'Agent ID:\s+\K[a-f0-9-]{36}')
+    [ -n "$AGENT_ID" ] || {
+        echo "# Failed to extract Agent ID from: $create_out" >&2
         return 1
     }
-
-    # Seed the zero_agents row (PK = composeId) without creating a persistent
-    # zero agent. vm0 compose only writes agent_composes; zero run requires the
-    # lazy metadata upsert path to materialize zero_agents.
-    _codex_zero_curl "/api/zero/composes/$COMPOSE_ID/metadata" \
-        -X PATCH -d '{"displayName":"Billable firewall e2e"}' >/dev/null
 }
 
 teardown_file() {
-    [ -n "$TEST_DIR" ] && rm -rf "$TEST_DIR"
+    [ -n "$AGENT_ID" ] && $ZERO_CLI agent delete "$AGENT_ID" --yes 2>/dev/null || true
     $ZERO_CLI org model-provider remove vm0 2>/dev/null || true
 }
 
 @test "t54-0: bootstrap provider — firewall not billable" {
-    run $ZERO_CLI run "$COMPOSE_ID" \
+    run $ZERO_CLI run "$AGENT_ID" \
         --debug-no-mock-claude \
         "Reply with exactly: DONE"
 
     RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
     [ -n "$RUN_ID" ] || {
-        echo "$output"
         echo "# Failed to extract Run ID"
         return 1
     }
@@ -79,14 +70,13 @@ teardown_file() {
 }
 
 @test "t54-1: vm0 meta-provider — firewall billable" {
-    run $ZERO_CLI run "$COMPOSE_ID" \
+    run $ZERO_CLI run "$AGENT_ID" \
         --model-provider vm0 \
         --debug-no-mock-claude \
         "Reply with exactly: DONE"
 
     RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
     [ -n "$RUN_ID" ] || {
-        echo "$output"
         echo "# Failed to extract Run ID"
         return 1
     }
