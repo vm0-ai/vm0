@@ -127,7 +127,9 @@ struct MockLifecycleGateState {
 /// Unlike raw [`tokio::sync::Notify`] pairs, entries and releases are counted
 /// durably. A test can wait for an entry after it has already happened, and a
 /// release issued before the lifecycle operation blocks is consumed by that
-/// entry instead of being lost.
+/// entry instead of being lost. Releases advance entry tickets, so a cancelled
+/// entry still consumes its ticket instead of transferring that release to a
+/// later lifecycle operation.
 #[derive(Clone)]
 pub struct MockLifecycleGate {
     inner: Arc<MockLifecycleGateInner>,
@@ -187,12 +189,17 @@ impl MockLifecycleGate {
             })
     }
 
-    /// Release one blocked lifecycle operation.
+    /// Release the next lifecycle entry ticket.
     pub fn release_one(&self) {
         self.release_many(1);
     }
 
-    /// Release `count` lifecycle entries by advancing the durable release count.
+    /// Release `count` lifecycle entry tickets by advancing the durable
+    /// release count.
+    ///
+    /// Cancelled entries still occupy tickets. If a blocked lifecycle future is
+    /// cancelled, a later release advances past that cancelled ticket instead of
+    /// being reused by a future entry.
     pub fn release_many(&self, count: usize) {
         let release_count = u64::try_from(count).unwrap_or(u64::MAX);
         if release_count == 0 {
@@ -1055,6 +1062,10 @@ mod tests {
         Duration::from_secs(5)
     }
 
+    fn lifecycle_gate_released_count(gate: &MockLifecycleGate) -> u64 {
+        gate.inner.state.lock_ignoring_poison().released_count
+    }
+
     #[tokio::test]
     async fn snapshot_provider_can_discard_uncommitted_snapshot() {
         let provider = MockSnapshotProvider;
@@ -1372,7 +1383,7 @@ mod tests {
         assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
 
         gate.release_many(0);
-        tokio::task::yield_now().await;
+        assert_eq!(lifecycle_gate_released_count(&gate), 0);
         assert!(
             !park_task.is_finished(),
             "zero release count must not let the entry through"
@@ -1403,6 +1414,7 @@ mod tests {
         drop(done_tx);
 
         assert_eq!(gate.wait_entered(3, test_timeout()).await.unwrap(), 3);
+        assert_eq!(lifecycle_gate_released_count(&gate), 2);
         for _ in 0..2 {
             tokio::time::timeout(test_timeout(), done_rx.recv())
                 .await
