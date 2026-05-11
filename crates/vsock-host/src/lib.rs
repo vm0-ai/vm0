@@ -139,9 +139,6 @@ struct CommandOperation {
     result_tx: oneshot::Sender<io::Result<CommandOperationResult>>,
     stream_tx: Option<mpsc::Sender<CommandOutputEvent>>,
     stream_overflowed: bool,
-    _stdout_policy: CommandOutputPolicy,
-    _stderr_policy: CommandOutputPolicy,
-    _label: String,
 }
 
 enum Operation {
@@ -1227,9 +1224,6 @@ impl VsockHost {
             result_tx,
             stream_tx,
             stream_overflowed: false,
-            _stdout_policy: request.stdout,
-            _stderr_policy: request.stderr,
-            _label: request.label.to_string(),
         };
 
         {
