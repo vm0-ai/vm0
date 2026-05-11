@@ -5,6 +5,13 @@ import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
 
+function unauthenticatedResponse() {
+  return NextResponse.json(
+    { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+    { status: 401 },
+  );
+}
+
 /**
  * GET /api/zero/insights/range
  *
@@ -17,11 +24,9 @@ export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
   const authCtx = await getAuthContext(authHeader ?? undefined);
   if (!authCtx) {
-    return NextResponse.json(
-      { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
-      { status: 401 },
-    );
+    return unauthenticatedResponse();
   }
+  if (!authCtx.orgId) return unauthenticatedResponse();
 
   const { org } = await resolveOrg(authCtx);
 

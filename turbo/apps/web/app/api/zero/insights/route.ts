@@ -4,6 +4,16 @@ import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
+import type { DayInsight } from "@vm0/api-contracts/contracts/zero-insights";
+
+type DayData = Partial<Omit<DayInsight, "date">>;
+
+function unauthenticatedResponse() {
+  return NextResponse.json(
+    { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+    { status: 401 },
+  );
+}
 
 /**
  * GET /api/zero/insights
@@ -18,11 +28,9 @@ export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
   const authCtx = await getAuthContext(authHeader ?? undefined);
   if (!authCtx) {
-    return NextResponse.json(
-      { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
-      { status: 401 },
-    );
+    return unauthenticatedResponse();
   }
+  if (!authCtx.orgId) return unauthenticatedResponse();
 
   const { org } = await resolveOrg(authCtx);
 
@@ -51,36 +59,31 @@ export async function GET(request: Request) {
     )
     .orderBy(desc(insightsDaily.date));
 
-  interface DayData {
-    agents?: { runs?: number }[];
-    creditsUsed?: number;
-    schedules?: unknown;
-    chats?: unknown;
-    [key: string]: unknown;
-  }
-
-  const daysData = rows.map((row) => {
+  const daysData = rows.map((row): DayInsight => {
     const data = row.data as DayData;
     return {
       date: row.date,
-      ...data,
-      schedules: Array.isArray(data.schedules) ? data.schedules : [],
-      chats: Array.isArray(data.chats) ? data.chats : [],
+      agents: data.agents ?? [],
+      creditsUsed: data.creditsUsed ?? 0,
+      creditBalance: data.creditBalance ?? 0,
+      teamUsage: data.teamUsage ?? [],
+      topTask: data.topTask ?? null,
+      services: data.services ?? [],
+      permissions: data.permissions ?? [],
+      schedules: data.schedules ?? [],
+      chats: data.chats ?? [],
     };
   });
 
-  const totalCredits = rows.reduce((sum, row) => {
-    const data = row.data as DayData;
-    return sum + (data.creditsUsed ?? 0);
+  const totalCredits = daysData.reduce((sum, day) => {
+    return sum + day.creditsUsed;
   }, 0);
 
-  const totalRuns = rows.reduce((sum, row) => {
-    const data = row.data as DayData;
-    const agents = data.agents ?? [];
+  const totalRuns = daysData.reduce((sum, day) => {
     return (
       sum +
-      agents.reduce((s, a) => {
-        return s + (a.runs ?? 0);
+      day.agents.reduce((agentSum, agent) => {
+        return agentSum + agent.runs;
       }, 0)
     );
   }, 0);
