@@ -2044,7 +2044,7 @@ mod tests {
         assert_eq!(msg.msg_type, MSG_COMMAND_START);
         assert_eq!(operation_count(&host), 1);
 
-        let err = handle.wait(Duration::from_millis(20)).await.unwrap_err();
+        let err = handle.wait(Duration::ZERO).await.unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::TimedOut);
         assert_eq!(operation_count(&host), 0);
         assert!(is_connected(&host));
@@ -2277,8 +2277,7 @@ mod tests {
         let start = read_guest_message(&mut guest, &mut decoder).await;
         assert_eq!(start.msg_type, MSG_COMMAND_START);
 
-        let cancel_task =
-            tokio::spawn(async move { handle.cancel_and_wait(Duration::from_millis(20)).await });
+        let cancel_task = tokio::spawn(async move { handle.cancel_and_wait(Duration::ZERO).await });
         let cancel = read_guest_message(&mut guest, &mut decoder).await;
         assert_eq!(cancel.msg_type, MSG_COMMAND_CANCEL);
         assert_eq!(cancel.seq, start.seq);
