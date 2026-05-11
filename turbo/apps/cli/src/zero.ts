@@ -23,6 +23,7 @@ import { zeroDeveloperSupportCommand } from "./commands/zero/developer-support";
 import { zeroComputerUseCommand } from "./commands/zero/computer-use";
 import { zeroBuiltInCommand } from "./commands/zero/built-in";
 import { zeroWebCommand } from "./commands/zero/web";
+import { zeroRemoteAgentCommand } from "./commands/zero/remote-agent";
 import {
   decodeZeroTokenPayload,
   type ZeroTokenPayload,
@@ -55,6 +56,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   "computer-use": "computer-use:write",
   "built-in": "file:write",
   web: null,
+  "remote-agent": ["agent-run:read", "agent-run:write"],
 };
 
 const DEFAULT_COMMANDS: Command[] = [
@@ -78,6 +80,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroComputerUseCommand,
   zeroBuiltInCommand,
   zeroWebCommand,
+  zeroRemoteAgentCommand,
 ];
 
 function shouldHideCommand(

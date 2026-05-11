@@ -22,13 +22,22 @@ describe("remote-agent command registration", () => {
     expect(subNames).not.toContain("kill");
   });
 
-  it("does not register under zero", () => {
+  it("registers list and run under zero", () => {
     const prog = new Command();
     registerZeroCommands(prog);
 
     const remoteAgent = prog.commands.find((command) => {
       return command.name() === "remote-agent";
     });
-    expect(remoteAgent).toBeUndefined();
+    expect(remoteAgent).toBeDefined();
+
+    const subNames = remoteAgent!.commands.map((command) => {
+      return command.name();
+    });
+    expect(subNames).toContain("list");
+    expect(subNames).toContain("run");
+    expect(subNames).not.toContain("start");
+    expect(subNames).not.toContain("delete");
+    expect(subNames).not.toContain("connect");
   });
 });

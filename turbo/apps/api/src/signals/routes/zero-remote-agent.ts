@@ -521,6 +521,16 @@ const remoteAgentAuthOptions = {
   missingOrganizationStatus: 401,
 } as const;
 
+const remoteAgentReadAuthOptions = {
+  ...remoteAgentAuthOptions,
+  requiredCapability: "agent-run:read",
+} as const;
+
+const remoteAgentWriteAuthOptions = {
+  ...remoteAgentAuthOptions,
+  requiredCapability: "agent-run:write",
+} as const;
+
 export const zeroRemoteAgentRoutes: readonly RouteEntry[] = [
   {
     route: zeroRemoteAgentDeviceStartContract.start,
@@ -548,7 +558,7 @@ export const zeroRemoteAgentRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroRemoteAgentHostsContract.list,
-    handler: authRoute(remoteAgentAuthOptions, hostsListInner$),
+    handler: authRoute(remoteAgentReadAuthOptions, hostsListInner$),
   },
   {
     route: zeroRemoteAgentHostsContract.delete,
@@ -556,11 +566,11 @@ export const zeroRemoteAgentRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroRemoteAgentRunContract.create,
-    handler: authRoute(remoteAgentAuthOptions, runCreateInner$),
+    handler: authRoute(remoteAgentWriteAuthOptions, runCreateInner$),
   },
   {
     route: zeroRemoteAgentRunContract.get,
-    handler: authRoute(remoteAgentAuthOptions, runGetInner$),
+    handler: authRoute(remoteAgentReadAuthOptions, runGetInner$),
   },
   {
     route: zeroRemoteAgentHostJobsContract.next,

@@ -11,3 +11,9 @@ export const remoteAgentCommand = new Command()
   .addCommand(listCommand)
   .addCommand(deleteCommand)
   .addCommand(runCommand);
+
+export const zeroRemoteAgentCommand = new Command()
+  .name("remote-agent")
+  .description("Run jobs on remote-agent hosts")
+  .addCommand(listCommand)
+  .addCommand(runCommand);
