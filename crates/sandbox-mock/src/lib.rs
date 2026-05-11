@@ -18,7 +18,6 @@
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -112,7 +111,7 @@ impl std::fmt::Display for MockLifecycleGateTimeout {
 impl std::error::Error for MockLifecycleGateTimeout {}
 
 struct MockLifecycleGateInner {
-    entered_count: AtomicU64,
+    entered_count: Mutex<u64>,
     entered_tx: tokio::sync::watch::Sender<u64>,
     release: Arc<tokio::sync::Semaphore>,
 }
@@ -135,7 +134,7 @@ impl MockLifecycleGate {
         let (entered_tx, _) = tokio::sync::watch::channel(0);
         Self {
             inner: Arc::new(MockLifecycleGateInner {
-                entered_count: AtomicU64::new(0),
+                entered_count: Mutex::new(0),
                 entered_tx,
                 release: Arc::new(tokio::sync::Semaphore::new(0)),
             }),
@@ -144,7 +143,7 @@ impl MockLifecycleGate {
 
     /// Return the number of lifecycle entries recorded by this gate.
     pub fn entered_count(&self) -> u64 {
-        self.inner.entered_count.load(Ordering::SeqCst)
+        *self.inner.entered_count.lock_ignoring_poison()
     }
 
     /// Wait until at least `target_count` lifecycle entries have been recorded.
@@ -187,8 +186,11 @@ impl MockLifecycleGate {
     }
 
     async fn enter_and_wait(&self) {
-        let entered = self.inner.entered_count.fetch_add(1, Ordering::SeqCst) + 1;
-        self.inner.entered_tx.send_replace(entered);
+        {
+            let mut entered_count = self.inner.entered_count.lock_ignoring_poison();
+            *entered_count += 1;
+            self.inner.entered_tx.send_replace(*entered_count);
+        }
         if let Ok(permit) = Arc::clone(&self.inner.release).acquire_owned().await {
             permit.forget();
         }
