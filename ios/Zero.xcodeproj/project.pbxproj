@@ -1,0 +1,593 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* ZeroApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* ZeroApp.swift */; };
+		A10000000000000000000002 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* AppConfig.swift */; };
+		A10000000000000000000003 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* AppEnvironment.swift */; };
+		A10000000000000000000004 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* RootView.swift */; };
+		A10000000000000000000005 /* ClerkAuthProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* ClerkAuthProvider.swift */; };
+		A10000000000000000000006 /* VoiceChatDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* VoiceChatDTOs.swift */; };
+		A10000000000000000000007 /* ZeroAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* ZeroAPIClient.swift */; };
+		A10000000000000000000008 /* AudioSessionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* AudioSessionController.swift */; };
+		A10000000000000000000009 /* RealtimeTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* RealtimeTransport.swift */; };
+		A1000000000000000000000A /* RealtimeEventParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* RealtimeEventParser.swift */; };
+		A1000000000000000000000B /* OpenAIRealtimeWebRTCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000B /* OpenAIRealtimeWebRTCClient.swift */; };
+		A1000000000000000000000C /* VoiceChatController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000C /* VoiceChatController.swift */; };
+		A1000000000000000000000D /* VoiceChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000D /* VoiceChatView.swift */; };
+		A1000000000000000000000E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* Assets.xcassets */; };
+		A1000000000000000000000F /* RealtimeEventParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000F /* RealtimeEventParserTests.swift */; };
+		A10000000000000000000010 /* ZeroAPIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* ZeroAPIClientTests.swift */; };
+		A10000000000000000000011 /* ClerkKit in Frameworks */ = {isa = PBXBuildFile; productRef = A70000000000000000000001 /* ClerkKit */; };
+		A10000000000000000000012 /* ClerkKitUI in Frameworks */ = {isa = PBXBuildFile; productRef = A70000000000000000000002 /* ClerkKitUI */; };
+		A10000000000000000000013 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = A70000000000000000000003 /* WebRTC */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A30000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A90000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A80000000000000000000001;
+			remoteInfo = Zero;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000001 /* ZeroApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZeroApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* ClerkAuthProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClerkAuthProvider.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* VoiceChatDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceChatDTOs.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 /* ZeroAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZeroAPIClient.swift; sourceTree = "<group>"; };
+		A20000000000000000000008 /* AudioSessionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionController.swift; sourceTree = "<group>"; };
+		A20000000000000000000009 /* RealtimeTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeTransport.swift; sourceTree = "<group>"; };
+		A2000000000000000000000A /* RealtimeEventParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeEventParser.swift; sourceTree = "<group>"; };
+		A2000000000000000000000B /* OpenAIRealtimeWebRTCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIRealtimeWebRTCClient.swift; sourceTree = "<group>"; };
+		A2000000000000000000000C /* VoiceChatController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceChatController.swift; sourceTree = "<group>"; };
+		A2000000000000000000000D /* VoiceChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceChatView.swift; sourceTree = "<group>"; };
+		A2000000000000000000000E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Resources/Assets.xcassets; sourceTree = "<group>"; };
+		A2000000000000000000000F /* RealtimeEventParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeEventParserTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000010 /* ZeroAPIClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZeroAPIClientTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A20000000000000000000012 /* Zero.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Zero.entitlements; sourceTree = "<group>"; };
+		A20000000000000000000013 /* Zero.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Zero.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000014 /* ZeroTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ZeroTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A40000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000011 /* ClerkKit in Frameworks */,
+				A10000000000000000000012 /* ClerkKitUI in Frameworks */,
+				A10000000000000000000013 /* WebRTC in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A40000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A50000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A50000000000000000000003 /* App */,
+				A50000000000000000000004 /* Auth */,
+				A50000000000000000000005 /* API */,
+				A50000000000000000000006 /* Audio */,
+				A50000000000000000000007 /* VoiceChat */,
+				A50000000000000000000008 /* Tests */,
+				A50000000000000000000002 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A50000000000000000000002 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000013 /* Zero.app */,
+				A20000000000000000000014 /* ZeroTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000003 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000001 /* ZeroApp.swift */,
+				A20000000000000000000002 /* AppConfig.swift */,
+				A20000000000000000000003 /* AppEnvironment.swift */,
+				A20000000000000000000004 /* RootView.swift */,
+				A20000000000000000000011 /* Info.plist */,
+				A20000000000000000000012 /* Zero.entitlements */,
+				A2000000000000000000000E /* Assets.xcassets */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000004 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000005 /* ClerkAuthProvider.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000005 /* API */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000006 /* VoiceChatDTOs.swift */,
+				A20000000000000000000007 /* ZeroAPIClient.swift */,
+			);
+			path = API;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000006 /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000008 /* AudioSessionController.swift */,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000007 /* VoiceChat */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000009 /* RealtimeTransport.swift */,
+				A2000000000000000000000A /* RealtimeEventParser.swift */,
+				A2000000000000000000000B /* OpenAIRealtimeWebRTCClient.swift */,
+				A2000000000000000000000C /* VoiceChatController.swift */,
+				A2000000000000000000000D /* VoiceChatView.swift */,
+			);
+			path = VoiceChat;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000008 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				A2000000000000000000000F /* RealtimeEventParserTests.swift */,
+				A20000000000000000000010 /* ZeroAPIClientTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A80000000000000000000001 /* Zero */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B10000000000000000000002 /* Build configuration list for PBXNativeTarget "Zero" */;
+			buildPhases = (
+				A60000000000000000000001 /* Sources */,
+				A40000000000000000000001 /* Frameworks */,
+				A60000000000000000000002 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Zero;
+			packageProductDependencies = (
+				A70000000000000000000001 /* ClerkKit */,
+				A70000000000000000000002 /* ClerkKitUI */,
+				A70000000000000000000003 /* WebRTC */,
+			);
+			productName = Zero;
+			productReference = A20000000000000000000013 /* Zero.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A80000000000000000000002 /* ZeroTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B10000000000000000000005 /* Build configuration list for PBXNativeTarget "ZeroTests" */;
+			buildPhases = (
+				A60000000000000000000003 /* Sources */,
+				A40000000000000000000002 /* Frameworks */,
+				A60000000000000000000004 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A30000000000000000000002 /* PBXTargetDependency */,
+			);
+			name = ZeroTests;
+			packageProductDependencies = (
+			);
+			productName = ZeroTests;
+			productReference = A20000000000000000000014 /* ZeroTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A90000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					A80000000000000000000001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					A80000000000000000000002 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = A80000000000000000000001;
+					};
+				};
+			};
+			buildConfigurationList = B10000000000000000000001 /* Build configuration list for PBXProject "Zero" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A50000000000000000000001;
+			packageReferences = (
+				A70000000000000000000004 /* XCRemoteSwiftPackageReference "clerk-ios" */,
+				A70000000000000000000005 /* XCRemoteSwiftPackageReference "WebRTC" */,
+			);
+			productRefGroup = A50000000000000000000002 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A80000000000000000000001 /* Zero */,
+				A80000000000000000000002 /* ZeroTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A60000000000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000000000000000000000E /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A60000000000000000000004 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A60000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* ZeroApp.swift in Sources */,
+				A10000000000000000000002 /* AppConfig.swift in Sources */,
+				A10000000000000000000003 /* AppEnvironment.swift in Sources */,
+				A10000000000000000000004 /* RootView.swift in Sources */,
+				A10000000000000000000005 /* ClerkAuthProvider.swift in Sources */,
+				A10000000000000000000006 /* VoiceChatDTOs.swift in Sources */,
+				A10000000000000000000007 /* ZeroAPIClient.swift in Sources */,
+				A10000000000000000000008 /* AudioSessionController.swift in Sources */,
+				A10000000000000000000009 /* RealtimeTransport.swift in Sources */,
+				A1000000000000000000000A /* RealtimeEventParser.swift in Sources */,
+				A1000000000000000000000B /* OpenAIRealtimeWebRTCClient.swift in Sources */,
+				A1000000000000000000000C /* VoiceChatController.swift in Sources */,
+				A1000000000000000000000D /* VoiceChatView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A60000000000000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000000000000000000000F /* RealtimeEventParserTests.swift in Sources */,
+				A10000000000000000000010 /* ZeroAPIClientTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A30000000000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A80000000000000000000001 /* Zero */;
+			targetProxy = A30000000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		B20000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+			};
+			name = Debug;
+		};
+		B20000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		B20000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLERK_FRONTEND_API_DOMAIN = "";
+				CLERK_PUBLISHABLE_KEY = "";
+				CODE_SIGN_ENTITLEMENTS = App/Zero.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.vm0.zero;
+				PRODUCT_NAME = Zero;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.10;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				ZERO_API_BASE_URL = "https://api.vm0.ai";
+			};
+			name = Debug;
+		};
+		B20000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLERK_FRONTEND_API_DOMAIN = "";
+				CLERK_PUBLISHABLE_KEY = "";
+				CODE_SIGN_ENTITLEMENTS = App/Zero.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.vm0.zero;
+				PRODUCT_NAME = Zero;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.10;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				ZERO_API_BASE_URL = "https://api.vm0.ai";
+			};
+			name = Release;
+		};
+		B20000000000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.vm0.zero.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.10;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Zero.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Zero";
+			};
+			name = Debug;
+		};
+		B20000000000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.vm0.zero.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.10;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Zero.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Zero";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B10000000000000000000001 /* Build configuration list for PBXProject "Zero" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B20000000000000000000001 /* Debug */,
+				B20000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B10000000000000000000002 /* Build configuration list for PBXNativeTarget "Zero" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B20000000000000000000003 /* Debug */,
+				B20000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B10000000000000000000005 /* Build configuration list for PBXNativeTarget "ZeroTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B20000000000000000000005 /* Debug */,
+				B20000000000000000000006 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A70000000000000000000004 /* XCRemoteSwiftPackageReference "clerk-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/clerk/clerk-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
+		A70000000000000000000005 /* XCRemoteSwiftPackageReference "WebRTC" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stasel/WebRTC.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 147.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A70000000000000000000001 /* ClerkKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A70000000000000000000004 /* XCRemoteSwiftPackageReference "clerk-ios" */;
+			productName = ClerkKit;
+		};
+		A70000000000000000000002 /* ClerkKitUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A70000000000000000000004 /* XCRemoteSwiftPackageReference "clerk-ios" */;
+			productName = ClerkKitUI;
+		};
+		A70000000000000000000003 /* WebRTC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A70000000000000000000005 /* XCRemoteSwiftPackageReference "WebRTC" */;
+			productName = WebRTC;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = A90000000000000000000001 /* Project object */;
+}
