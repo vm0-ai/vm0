@@ -5,6 +5,7 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import {
   createTestOrg,
+  deleteOrgRow,
   updateOrgTier,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
@@ -50,6 +51,22 @@ describe("GET /api/zero/voice-io/quota", () => {
     await setupOrg(userId);
     const response = await GET(createQuotaRequest());
     const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      allowed: true,
+      count: 0,
+      limit: AUDIO_INPUT_FREE_QUOTA,
+    });
+  });
+
+  it("should default missing org metadata to the free quota", async () => {
+    const userId = uniqueId("quota-missing-metadata");
+    const { orgId } = await setupOrg(userId);
+    await deleteOrgRow(orgId);
+
+    const response = await GET(createQuotaRequest());
+    const body = await response.json();
+
     expect(response.status).toBe(200);
     expect(body).toEqual({
       allowed: true,
