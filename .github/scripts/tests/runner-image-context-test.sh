@@ -25,6 +25,14 @@ run_clean() {
   env -i PATH="$PATH" HOME="${HOME:-/tmp}" "$@"
 }
 
+assert_fails() {
+  local name=$1
+  shift
+  if run_clean "$@" >/dev/null 2>&1; then
+    fail "expected failure: ${name}"
+  fi
+}
+
 assert_no_legacy_needed_outputs() {
   local out=$1
   assert_not_prefix "$out" "turbo-runner-needed="
@@ -71,6 +79,10 @@ assert_contains "$out" "release-skip=true"
 assert_contains "$out" "skip-reason=release-please-push"
 assert_contains "$out" "job-ref="
 
+assert_fails "turbo-consumer requires EVENT_NAME" \
+  WEB_CHANGED=true \
+  "$CONTEXT" turbo-consumer
+
 out=$(run_clean \
   EVENT_NAME=pull_request \
   WEB_CHANGED=true \
@@ -115,6 +127,12 @@ out=$(run_clean \
 assert_contains "$out" "crate-image-inputs-changed=false"
 assert_contains "$out" "ci-image-inputs-changed=true"
 assert_contains "$out" "runner-image-inputs-changed=true"
+
+assert_fails "needed requires EVENT_NAME" \
+  RELEASE_SKIP=false \
+  METAL_HOSTS=dev-1 \
+  TURBO_RUNNER_CONSUMER_NEEDED=true \
+  "$CONTEXT" needed
 
 out=$(assert_needed_case "release skip" \
   EVENT_NAME=pull_request \

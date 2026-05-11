@@ -158,6 +158,8 @@ resolve() {
 }
 
 needed() {
+  require_env EVENT_NAME
+
   local release_skip
   release_skip=$(bool "${RELEASE_SKIP:-false}")
 
@@ -169,7 +171,7 @@ needed() {
 
   local turbo_consumer
   turbo_consumer=$(bool "${TURBO_RUNNER_CONSUMER_NEEDED:-false}")
-  if [ "${EVENT_NAME:-}" = "push" ]; then
+  if [ "$EVENT_NAME" = "push" ]; then
     turbo_consumer="false"
   fi
 
@@ -229,8 +231,10 @@ needed() {
 }
 
 turbo_consumer() {
+  require_env EVENT_NAME
+
   local consumer="false"
-  if [ "${EVENT_NAME:-}" != "push" ] && {
+  if [ "$EVENT_NAME" != "push" ] && {
     is_true "${WEB_CHANGED:-false}" ||
     is_true "${CLI_CHANGED:-false}" ||
     is_true "${CRATES_CHANGED:-false}" ||
