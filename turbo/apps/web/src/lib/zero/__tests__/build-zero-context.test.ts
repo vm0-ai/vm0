@@ -15,6 +15,7 @@ import {
   insertVm0ApiKeys,
   deleteInsertedVm0ApiKeys,
   insertTestConnectorSecret,
+  createTestOrgModelProvider,
 } from "../../../__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
 import {
@@ -23,6 +24,7 @@ import {
 } from "../../../__tests__/db-test-seeders/agents";
 import { setOrgCredits } from "../../../__tests__/db-test-seeders/org";
 import { setTestCheckpointArtifactSnapshots } from "../../../__tests__/db-test-seeders/runs";
+import { seedUserFeatureSwitches } from "../../../__tests__/db-test-seeders/feature-switches";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { createZeroRun } from "../zero-run-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
@@ -37,7 +39,11 @@ import { setVariable } from "../variable/variable-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { isNoModelProvider } from "@vm0/api-services/errors";
 import { reloadEnv } from "../../../env";
-import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "../memory";
+import {
+  AUTO_MEMORY_ARTIFACT_NAME,
+  AUTO_MEMORY_MOUNT_PATH,
+  CODEX_AUTO_MEMORY_MOUNT_PATH,
+} from "../memory";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 
 const context = testContext();
@@ -536,6 +542,30 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
         });
       expect(memoryEntries).toHaveLength(1);
       expect(memoryEntries[0]!.mountPath).toBe(AUTO_MEMORY_MOUNT_PATH);
+    });
+
+    it("new codex run injects memory at CODEX_AUTO_MEMORY_MOUNT_PATH", async () => {
+      const agentName = uniqueId("codex-memory");
+      await createTestCompose(agentName, {
+        skipDefaultApiKey: true,
+      });
+      const codexAgentId = await getTestZeroAgentId(user.orgId, agentName);
+      await seedUserFeatureSwitches(user.orgId, user.userId, {
+        codexBeta: true,
+      });
+      await createTestOrgModelProvider("openai-api-key", "org-openai-key");
+
+      const result = await createZeroRun(baseParams({ agentId: codexAgentId }));
+      await context.mocks.flushAfter();
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      const memoryEntries =
+        job!.executionContext.storageManifest!.artifacts.filter((a) => {
+          return a.vasStorageName === AUTO_MEMORY_ARTIFACT_NAME;
+        });
+      expect(memoryEntries).toHaveLength(1);
+      expect(memoryEntries[0]!.mountPath).toBe(CODEX_AUTO_MEMORY_MOUNT_PATH);
     });
 
     it("checkpoint resume trusts resolution memory entry", async () => {

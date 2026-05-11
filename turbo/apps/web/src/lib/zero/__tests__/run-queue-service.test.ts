@@ -31,7 +31,11 @@ import {
 } from "../../../__tests__/db-test-seeders/runs";
 import { insertTestChatThread } from "../../../__tests__/db-test-seeders/agents";
 import { getTestAgentSessionArtifacts } from "../../../__tests__/db-test-assertions/agents";
-import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "../memory";
+import {
+  AUTO_MEMORY_ARTIFACT_NAME,
+  AUTO_MEMORY_MOUNT_PATH,
+  CODEX_AUTO_MEMORY_MOUNT_PATH,
+} from "../memory";
 import { mockAblyPublish } from "../../../__tests__/ably-mock";
 
 const context = testContext();
@@ -108,6 +112,24 @@ describe("run-queue-service", () => {
         {
           name: AUTO_MEMORY_ARTIFACT_NAME,
           mountPath: AUTO_MEMORY_MOUNT_PATH,
+        },
+      ]);
+    });
+
+    it("should seed codex queued sessions with codex memory path", async () => {
+      const result = await enqueueRun(
+        baseParams({ prompt: "Codex memory seed" }),
+        { runtimeFramework: "codex" },
+      );
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+
+      const artifacts = await getTestAgentSessionArtifacts(run!.sessionId);
+      expect(artifacts).toEqual([
+        {
+          name: AUTO_MEMORY_ARTIFACT_NAME,
+          mountPath: CODEX_AUTO_MEMORY_MOUNT_PATH,
         },
       ]);
     });

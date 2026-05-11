@@ -261,6 +261,10 @@ fn build_codex_developer_instructions_config(append_system_prompt: &str) -> Stri
     format!("developer_instructions={value}")
 }
 
+fn build_codex_memories_config() -> String {
+    "features.memories=true".to_string()
+}
+
 fn build_codex_args(
     working_dir: &str,
     model: &str,
@@ -277,6 +281,9 @@ fn build_codex_args(
         "-C".to_string(),
         working_dir.to_string(),
     ];
+
+    args.push("-c".to_string());
+    args.push(build_codex_memories_config());
 
     if !model.is_empty() {
         args.push("-m".to_string());
@@ -1067,6 +1074,11 @@ mod tests {
         build_codex_args(working_dir, model, resume_id, append_system_prompt, prompt)
     }
 
+    fn codex_args_have_config(args: &[String], config: &str) -> bool {
+        args.windows(2)
+            .any(|window| window[0] == "-c" && window[1] == config)
+    }
+
     fn build_codex_command_for_test(use_mock: bool) -> Vec<String> {
         disable_system_log();
         build_codex_command(use_mock)
@@ -1082,6 +1094,7 @@ mod tests {
         assert!(args.contains(&"--skip-git-repo-check".to_string()));
         let c_idx = args.iter().position(|a| a == "-C").unwrap();
         assert_eq!(args[c_idx + 1], "/workspace");
+        assert!(codex_args_have_config(&args, "features.memories=true"));
         assert_eq!(args.last().unwrap(), "hello");
     }
 
@@ -1140,18 +1153,18 @@ mod tests {
             "Your name is Aria.",
             "analyze this",
         );
-        let c_idx = args.iter().position(|a| a == "-c").unwrap();
-        assert_eq!(
-            args[c_idx + 1],
+        assert!(codex_args_have_config(&args, "features.memories=true"));
+        assert!(codex_args_have_config(
+            &args,
             r#"developer_instructions="Your name is Aria.""#
-        );
+        ));
         assert_eq!(args.last().unwrap(), "analyze this");
     }
 
     #[test]
     fn build_codex_args_empty_append_system_prompt_omitted() {
         let args = build_codex_args_with_append_for_test("/wd", "", "", "", "test");
-        assert!(!args.contains(&"-c".to_string()));
+        assert!(codex_args_have_config(&args, "features.memories=true"));
         assert!(
             !args
                 .iter()
@@ -1163,10 +1176,14 @@ mod tests {
     fn build_codex_args_resume_with_append_system_prompt_order() {
         let args =
             build_codex_args_with_append_for_test("/wd", "", "thread-abc", "Be concise.", "next");
-        let c_idx = args.iter().position(|a| a == "-c").unwrap();
+        let c_idx = args
+            .iter()
+            .position(|a| a == r#"developer_instructions="Be concise.""#)
+            .unwrap();
         let r_idx = args.iter().position(|a| a == "resume").unwrap();
         assert!(c_idx < r_idx);
-        assert_eq!(args[c_idx + 1], r#"developer_instructions="Be concise.""#);
+        assert!(codex_args_have_config(&args, "features.memories=true"));
+        assert_eq!(args[c_idx], r#"developer_instructions="Be concise.""#);
         assert_eq!(args[r_idx + 1], "thread-abc");
         assert_eq!(args[r_idx + 2], "next");
         assert_eq!(args.len(), r_idx + 3);
@@ -1181,11 +1198,10 @@ mod tests {
             "Say \"hi\"\nPath C:\\tmp",
             "prompt",
         );
-        let c_idx = args.iter().position(|a| a == "-c").unwrap();
-        assert_eq!(
-            args[c_idx + 1],
+        assert!(codex_args_have_config(
+            &args,
             r#"developer_instructions="Say \"hi\"\nPath C:\\tmp""#
-        );
+        ));
     }
 
     #[test]

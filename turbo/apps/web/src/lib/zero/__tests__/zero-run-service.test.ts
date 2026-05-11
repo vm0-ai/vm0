@@ -32,7 +32,11 @@ import {
 } from "../../../__tests__/db-test-assertions/agents";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { createZeroRun } from "../zero-run-service";
-import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "../memory";
+import {
+  AUTO_MEMORY_ARTIFACT_NAME,
+  AUTO_MEMORY_MOUNT_PATH,
+  CODEX_AUTO_MEMORY_MOUNT_PATH,
+} from "../memory";
 import { reloadEnv } from "../../../env";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -699,6 +703,31 @@ describe("createZeroRun() — service-only parameters", () => {
         {
           name: AUTO_MEMORY_ARTIFACT_NAME,
           mountPath: AUTO_MEMORY_MOUNT_PATH,
+        },
+      ]);
+    });
+
+    it("seeds codex agent_sessions.artifacts with codex memory path", async () => {
+      const agentName = uniqueId("codex-memory-session");
+      await createTestCompose(agentName, {
+        overrides: {
+          framework: "codex",
+          instructions: "AGENTS.md",
+          environment: { OPENAI_API_KEY: "test-api-key" },
+        },
+      });
+      const codexAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      const result = await createZeroRun(baseParams({ agentId: codexAgentId }));
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+
+      const artifacts = await getTestAgentSessionArtifacts(run!.sessionId);
+      expect(artifacts).toEqual([
+        {
+          name: AUTO_MEMORY_ARTIFACT_NAME,
+          mountPath: CODEX_AUTO_MEMORY_MOUNT_PATH,
         },
       ]);
     });
