@@ -46,3 +46,27 @@ export async function fetchClerkMembershipRequests(
   const body = clerkMembershipRequestsResponseSchema.parse(await res.json());
   return body.data;
 }
+
+export async function acceptClerkMembershipRequest(args: {
+  readonly orgId: string;
+  readonly requestId: string;
+}): Promise<{ readonly ok: boolean }> {
+  const secretKey = env("CLERK_SECRET_KEY");
+  const res = await fetch(
+    `${CLERK_API_BASE}/organizations/${args.orgId}/membership_requests/${args.requestId}/accept`,
+    { method: "POST", headers: { Authorization: `Bearer ${secretKey}` } },
+  );
+  return { ok: res.ok };
+}
+
+export async function rejectClerkMembershipRequest(args: {
+  readonly orgId: string;
+  readonly requestId: string;
+}): Promise<{ readonly ok: boolean }> {
+  const secretKey = env("CLERK_SECRET_KEY");
+  const res = await fetch(
+    `${CLERK_API_BASE}/organizations/${args.orgId}/membership_requests/${args.requestId}/reject`,
+    { method: "POST", headers: { Authorization: `Bearer ${secretKey}` } },
+  );
+  return { ok: res.ok };
+}
