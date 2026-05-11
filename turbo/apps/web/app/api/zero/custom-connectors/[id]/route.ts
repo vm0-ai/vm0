@@ -19,6 +19,9 @@ const router = tsr.router(zeroCustomConnectorByIdContract, {
     initServices();
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) {
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+    }
     try {
       const { org, member } = await resolveOrg(authCtx);
       const forbidden = requireAdminPermission(
@@ -40,6 +43,9 @@ const router = tsr.router(zeroCustomConnectorByIdContract, {
     initServices();
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) {
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+    }
     try {
       const { org, member } = await resolveOrg(authCtx);
       const forbidden = requireAdminPermission(

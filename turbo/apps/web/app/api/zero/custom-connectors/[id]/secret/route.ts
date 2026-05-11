@@ -18,6 +18,9 @@ const router = tsr.router(zeroCustomConnectorSecretContract, {
     initServices();
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) {
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+    }
     const { userId } = authCtx;
     try {
       const { org } = await resolveOrg(authCtx);
@@ -41,6 +44,9 @@ const router = tsr.router(zeroCustomConnectorSecretContract, {
     initServices();
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) {
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+    }
     const { userId } = authCtx;
     const { org } = await resolveOrg(authCtx);
     await deleteCustomConnectorSecret(org.orgId, userId, params.id);
