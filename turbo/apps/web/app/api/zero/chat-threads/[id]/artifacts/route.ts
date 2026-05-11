@@ -72,6 +72,10 @@ const router = tsr.router(chatThreadArtifactsContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
+    if (!authCtx.orgId) {
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+    }
+
     try {
       const { org } = await resolveOrg(authCtx);
       const result = await syncArtifactToGoogleDrive({

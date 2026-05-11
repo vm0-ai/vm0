@@ -9,6 +9,7 @@ import {
   setTestChatThreadLastReadMessageId,
   setTestChatThreadDraft,
   setTestChatThreadPinnedAt,
+  setTestChatThreadRenamedAt,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -152,6 +153,31 @@ describe("POST /api/zero/chat-threads - Create Thread", () => {
 
     expect(response.status).toBe(404);
   });
+
+  it("returns 404 without publishing when authenticated session has no organization", async () => {
+    mockClerk({ userId: user.userId, orgId: null });
+    mockAblyPublish.mockClear();
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/chat-threads",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testComposeId,
+          title: "No active org",
+        }),
+      },
+    );
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(data).toStrictEqual({
+      error: { message: "Agent not found", code: "NOT_FOUND" },
+    });
+    expect(mockAblyPublish).not.toHaveBeenCalled();
+  });
 });
 
 describe("GET /api/zero/chat-threads - List Threads", () => {
@@ -177,6 +203,21 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
 
     expect(response.status).toBe(401);
     expect(data.error.message).toContain("Not authenticated");
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mockClerk({ userId: user.userId, orgId: null });
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
   });
 
   it("should return 404 for compose from a different org", async () => {
@@ -574,6 +615,65 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
       return t.id === secondId;
     });
     expect(unpinnedRow.pinnedAt).toBeNull();
+  });
+
+  it("returns pinnedAt and renamedAt as ISO strings when set", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testComposeId,
+          title: "Pinned and renamed",
+        }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+    await setTestChatThreadPinnedAt(
+      threadId,
+      new Date("2025-05-01T10:00:00.000Z"),
+    );
+    await setTestChatThreadRenamedAt(
+      threadId,
+      new Date("2025-06-01T12:00:00.000Z"),
+    );
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.threads).toHaveLength(1);
+    expect(data.threads[0].pinnedAt).toBe("2025-05-01T10:00:00.000Z");
+    expect(data.threads[0].renamedAt).toBe("2025-06-01T12:00:00.000Z");
+  });
+
+  it("returns pinnedAt and renamedAt as null when not set", async () => {
+    await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testComposeId,
+          title: "Not pinned or renamed",
+        }),
+      }),
+    );
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.threads).toHaveLength(1);
+    expect(data.threads[0].pinnedAt).toBeNull();
+    expect(data.threads[0].renamedAt).toBeNull();
   });
 
   it("keeps a thread visible when only an earlier message is archived", async () => {

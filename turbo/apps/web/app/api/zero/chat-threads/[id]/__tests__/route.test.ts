@@ -7,6 +7,7 @@ import {
   addTestRunToThread,
   updateTestChatThreadTitle,
   insertTestChatMessage,
+  setTestChatThreadRenamedAt,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -95,6 +96,163 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     expect(data.latestSessionId).toBeNull();
     expect(data.createdAt).toBeDefined();
     expect(data.updatedAt).toBeDefined();
+  });
+
+  it("returns thread detail with S3-backed attachment metadata", async () => {
+    const createResponse = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testComposeId,
+          title: "Uploads",
+        }),
+      }),
+    );
+    const { id: threadId } = await createResponse.json();
+    await insertTestChatMessage({
+      chatThreadId: threadId,
+      userId: testUserId,
+      role: "user",
+      content: "see attached file",
+      attachFiles: ["file_123"],
+      createdAt: new Date("2025-01-01T00:00:00.000Z"),
+    });
+    context.mocks.s3.listS3Objects.mockImplementation(
+      async (_bucket: string, prefix: string) => {
+        if (prefix.includes("file_123")) {
+          return [
+            {
+              key: `uploads/${testUserId}/file_123/report.pdf`,
+              size: 42,
+            },
+          ];
+        }
+        return [];
+      },
+    );
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data).toMatchObject({
+      id: threadId,
+      title: "Uploads",
+      agentId: testComposeId,
+      latestSessionId: null,
+      activeRunIds: [],
+      activeRuns: [],
+      draftContent: null,
+      draftAttachments: null,
+      modelProviderId: null,
+      modelProviderType: null,
+      modelProviderCredentialScope: null,
+      selectedModel: null,
+      renamedAt: null,
+      chatMessages: [
+        {
+          role: "user",
+          content: "see attached file",
+          attachFiles: [
+            {
+              id: "file_123",
+              filename: "report.pdf",
+              contentType: "application/pdf",
+              size: 42,
+              url: `http://localhost:3000/f/${encodeURIComponent(
+                testUserId.replace(/^user_/, ""),
+              )}/file_123/report.pdf`,
+            },
+          ],
+        },
+      ],
+    });
+    for (const message of data.chatMessages as { id: string }[]) {
+      expect(message.id).toStrictEqual(expect.any(String));
+    }
+  });
+
+  it("strips Clerk user_ prefix from attachment file URLs", async () => {
+    const clerkUser = await context.setupUser({ prefix: "user_clerk" });
+    testUserId = clerkUser.userId;
+    const { composeId } = await createTestCompose(uniqueId("clerk-upload"));
+
+    const createResponse = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: composeId, title: "Attachment" }),
+      }),
+    );
+    const { id: threadId } = await createResponse.json();
+    await insertTestChatMessage({
+      chatThreadId: threadId,
+      userId: testUserId,
+      role: "user",
+      content: "attachment",
+      attachFiles: ["file_abc"],
+      createdAt: new Date("2025-01-01T00:00:00.000Z"),
+    });
+    context.mocks.s3.listS3Objects.mockImplementation(
+      async (_bucket: string, prefix: string) => {
+        if (prefix.includes("file_abc")) {
+          return [
+            {
+              key: `uploads/${testUserId}/file_abc/photo.png`,
+              size: 256,
+            },
+          ];
+        }
+        return [];
+      },
+    );
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.chatMessages[0].attachFiles[0].url).toBe(
+      `http://localhost:3000/f/${encodeURIComponent(
+        testUserId.replace(/^user_/, ""),
+      )}/file_abc/photo.png`,
+    );
+  });
+
+  it("returns renamedAt as ISO string when thread was renamed", async () => {
+    const createResponse = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testComposeId,
+          title: "Custom Name",
+        }),
+      }),
+    );
+    const { id: threadId } = await createResponse.json();
+    await setTestChatThreadRenamedAt(
+      threadId,
+      new Date("2025-06-01T12:00:00.000Z"),
+    );
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.renamedAt).toBe("2025-06-01T12:00:00.000Z");
   });
 
   it("should return chat messages after run completes", async () => {
@@ -456,6 +614,20 @@ describe("DELETE /api/zero/chat-threads/:id - Delete Thread", () => {
     expect(response.status).toBe(404);
   });
 
+  it("returns 404 for a malformed UUID without touching the DB", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/chat-threads/not-a-uuid",
+      { method: "DELETE" },
+    );
+    const response = await DELETE(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(data).toStrictEqual({
+      error: { message: "Chat thread not found", code: "NOT_FOUND" },
+    });
+  });
+
   it("should delete a thread and remove it from the list", async () => {
     // Create a thread
     const createResponse = await POST(
@@ -604,6 +776,24 @@ describe("PATCH /api/zero/chat-threads/:id - Update Thread Draft", () => {
     const response = await PATCH(request);
 
     expect(response.status).toBe(404);
+  });
+
+  it("returns 404 for a malformed UUID without touching the DB", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/chat-threads/not-a-uuid",
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draftContent: "hello" }),
+      },
+    );
+    const response = await PATCH(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(data).toStrictEqual({
+      error: { message: "Chat thread not found", code: "NOT_FOUND" },
+    });
   });
 
   it("should update draft content and return 204", async () => {

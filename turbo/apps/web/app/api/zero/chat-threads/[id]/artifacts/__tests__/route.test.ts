@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { GET, POST as SYNC_POST } from "../route";
 import { POST } from "../../../route";
@@ -16,6 +16,7 @@ import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/
 import { insertTestConnectorSecret } from "../../../../../../../src/__tests__/db-test-seeders/connectors";
 import { recordRunUploadedFile } from "../../../../../../../src/lib/zero/uploads/run-uploaded-files";
 import { server } from "../../../../../../../src/mocks/server";
+import { reloadEnv } from "../../../../../../../src/env";
 
 const context = testContext();
 
@@ -225,6 +226,114 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
     });
   });
 
+  it("returns 404 when the thread is owned by a different user", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+    const { runId } = await seedTestRun(testUserId, testComposeId, {
+      status: "completed",
+      prompt: "Use the attached file",
+      chatThreadId: threadId,
+    });
+    await recordRunUploadedFile({
+      runId,
+      source: "web",
+      externalId: "file-private",
+      userId: testUserId,
+      orgId: testOrgId,
+      filename: "secret.txt",
+      contentType: "text/plain",
+      sizeBytes: 128,
+      url: `http://localhost:3000/f/${testUserId}/file-private/secret.txt`,
+    });
+
+    await context.setupUser({ prefix: "other-user" });
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}/artifacts`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(data).toStrictEqual({
+      error: { message: "Chat thread not found", code: "NOT_FOUND" },
+    });
+  });
+
+  it("returns googleDriveSync status unknown when Drive rejects the access token and refresh fails", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+    const { runId } = await seedTestRun(testUserId, testComposeId, {
+      status: "completed",
+      prompt: "Use the attached file",
+      chatThreadId: threadId,
+    });
+    await context.createConnector(testOrgId, {
+      userId: testUserId,
+      type: "google-drive",
+      authMethod: "oauth",
+    });
+    await insertTestConnectorSecret(
+      testOrgId,
+      testUserId,
+      "GOOGLE_DRIVE_ACCESS_TOKEN",
+      "stale-token",
+    );
+    await insertTestConnectorSecret(
+      testOrgId,
+      testUserId,
+      "GOOGLE_DRIVE_REFRESH_TOKEN",
+      "refresh-token",
+    );
+    await recordRunUploadedFile({
+      runId,
+      source: "web",
+      externalId: "file-1",
+      userId: testUserId,
+      orgId: testOrgId,
+      filename: "data.csv",
+      contentType: "text/csv",
+      sizeBytes: 2048,
+      url: `http://localhost:3000/f/${testUserId}/file-1/data.csv`,
+    });
+
+    vi.stubEnv("GOOGLE_OAUTH_CLIENT_ID", "test-client-id");
+    vi.stubEnv("GOOGLE_OAUTH_CLIENT_SECRET", "test-client-secret");
+    reloadEnv();
+    server.use(
+      http.get("https://www.googleapis.com/drive/v3/files", () => {
+        return new HttpResponse(null, { status: 401 });
+      }),
+      http.post("https://oauth2.googleapis.com/token", () => {
+        return new HttpResponse(null, { status: 401 });
+      }),
+    );
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}/artifacts`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.runs[0].files[0].googleDriveSync).toStrictEqual({
+      status: "unknown",
+    });
+  });
+
   it("syncs a thread artifact file to Google Drive", async () => {
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
@@ -393,5 +502,114 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
     expect(data.error.message).toBe(
       "Connect Google Drive before syncing artifacts",
     );
+  });
+
+  it("returns 401 when unauthenticated during artifact sync", async () => {
+    mockClerk({ userId: null });
+
+    const response = await SYNC_POST(
+      createTestRequest(
+        "http://localhost:3000/api/zero/chat-threads/00000000-0000-4000-8000-000000000001/artifacts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            runId: "00000000-0000-4000-8000-000000000002",
+            fileId: "file-1",
+          }),
+        },
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 401 when authenticated session has no organization during artifact sync", async () => {
+    mockClerk({ userId: testUserId, orgId: null });
+
+    const response = await SYNC_POST(
+      createTestRequest(
+        "http://localhost:3000/api/zero/chat-threads/00000000-0000-4000-8000-000000000001/artifacts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            runId: "00000000-0000-4000-8000-000000000002",
+            fileId: "file-1",
+          }),
+        },
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 400 when the artifact sync body is invalid", async () => {
+    const response = await SYNC_POST(
+      createTestRequest(
+        "http://localhost:3000/api/zero/chat-threads/00000000-0000-4000-8000-000000000001/artifacts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            runId: "00000000-0000-4000-8000-000000000002",
+          }),
+        },
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("returns 404 when the artifact is unknown to the caller's thread", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+    await context.createConnector(testOrgId, {
+      userId: testUserId,
+      type: "google-drive",
+      authMethod: "oauth",
+    });
+    await insertTestConnectorSecret(
+      testOrgId,
+      testUserId,
+      "GOOGLE_DRIVE_ACCESS_TOKEN",
+      "drive-access-token",
+    );
+
+    const response = await SYNC_POST(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}/artifacts`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            runId: "00000000-0000-4000-8000-000000000002",
+            fileId: "missing-file",
+          }),
+        },
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(data).toStrictEqual({
+      error: { message: "Artifact file not found", code: "NOT_FOUND" },
+    });
   });
 });
