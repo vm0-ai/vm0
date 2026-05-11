@@ -106,6 +106,8 @@ pub struct CommandOperationRequest<'a> {
     ///
     /// `None` uses the default queue capacity when either output policy
     /// streams, and creates no queue when neither output policy streams.
+    /// `Some` is valid only when stdout or stderr streams; zero and oversized
+    /// capacities are rejected.
     pub stream_queue_capacity: Option<usize>,
 }
 
@@ -130,8 +132,10 @@ pub struct CommandStreamRequest<'a> {
     pub label: &'a str,
     pub stdout: CommandOutputPolicy,
     pub stderr: CommandOutputPolicy,
-    /// Optional host-side output event queue capacity override. `None` uses the
-    /// default queue capacity.
+    /// Optional host-side output event queue capacity override.
+    ///
+    /// `None` uses the default queue capacity. Zero and oversized capacities
+    /// are rejected.
     pub stream_queue_capacity: Option<usize>,
 }
 
