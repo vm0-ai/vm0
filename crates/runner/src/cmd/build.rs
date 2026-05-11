@@ -878,6 +878,14 @@ async fn ensure_rootfs_under_lock(
 }
 
 async fn ensure_template_cached_under_lock(input: &TemplateInput<'_>) -> RunnerResult<()> {
+    let mut scripts = RootfsScripts::new();
+    ensure_template_cached_under_lock_with_scripts(input, &mut scripts).await
+}
+
+async fn ensure_template_cached_under_lock_with_scripts(
+    input: &TemplateInput<'_>,
+    scripts: &mut RootfsScripts,
+) -> RunnerResult<()> {
     let cache = input.cache.as_cache().ok_or_else(|| {
         RunnerError::Internal("--warm-rootfs-cache requires R2 template cache".into())
     })?;
@@ -900,7 +908,6 @@ async fn ensure_template_cached_under_lock(input: &TemplateInput<'_>) -> RunnerR
         }
     }
 
-    let mut scripts = RootfsScripts::new();
     let work_dir_path = scripts.path().await?;
     // Keep warm-up staging on the runner image volume, not the system temp
     // filesystem. A cache miss builds a full template image before uploading,
@@ -2974,6 +2981,35 @@ exit 1
         assert!(
             !template_warm_parent_dir(&home, "test-template-hash").exists(),
             "warm cache should fail before local template staging when HEAD fails"
+        );
+    }
+
+    #[tokio::test]
+    async fn warm_cache_miss_builds_and_uploads_after_head_miss() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let head = template_head_miss_rule();
+        let get = template_get_miss_rule();
+        let (create, upload_part, complete) = multipart_success_rules();
+        let cache = mock_r2_cache(&[&head, &get, &create, &upload_part, &complete]);
+        let input = template_input(&home, TemplateCache::Required(&cache));
+        let (mut scripts, _work_dir) = fake_rootfs_scripts().await;
+
+        ensure_template_cached_under_lock_with_scripts(&input, &mut scripts)
+            .await
+            .unwrap();
+
+        assert!(
+            head.num_calls() >= 2,
+            "warm miss should HEAD for warm preflight and upload dedup"
+        );
+        assert_eq!(get.num_calls(), 1);
+        assert_eq!(create.num_calls(), 1);
+        assert_eq!(upload_part.num_calls(), 1);
+        assert_eq!(complete.num_calls(), 1);
+        assert!(
+            !template_warm_parent_dir(&home, "test-template-hash").exists(),
+            "successful warm miss should clean local template staging"
         );
     }
 
