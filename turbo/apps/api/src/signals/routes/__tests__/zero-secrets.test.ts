@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
 import { createStore } from "ccstate";
 
@@ -32,6 +34,23 @@ describe("GET /api/zero/secrets", () => {
         message: "Not authenticated",
         code: "UNAUTHORIZED",
       },
+    });
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+
+    const client = setupApp({ context })(zeroSecretsContract);
+
+    const response = await accept(
+      client.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
   });
 

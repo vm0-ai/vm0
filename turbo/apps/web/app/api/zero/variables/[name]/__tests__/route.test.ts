@@ -10,6 +10,8 @@ import {
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { findTestVariablesByOrgAndName } from "../../../../../../src/__tests__/db-test-assertions/secrets";
+import { insertTestUserVariable } from "../../../../../../src/__tests__/db-test-seeders/secrets";
 
 const context = testContext();
 
@@ -102,5 +104,77 @@ describe("DELETE /api/zero/variables/:name", () => {
       }),
     );
     expect(response.status).toBe(401);
+  });
+
+  it("should return 401 when authenticated session has no organization", async () => {
+    mockClerk({ userId: uniqueId("zvar-del-no-org"), orgId: null });
+
+    const response = await DELETE(
+      createTestRequest(variableByNameUrl("ANY_VAR"), {
+        method: "DELETE",
+      }),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("should return 404 for a variable owned by another user", async () => {
+    const userId = uniqueId("zvar-del-cross-user");
+    const { orgId } = await setupOrg(userId);
+
+    await insertTestUserVariable({
+      orgId,
+      userId: uniqueId("zvar-del-victim"),
+      name: "OTHER_USER_VAR",
+      value: "other-user",
+    });
+
+    const response = await DELETE(
+      createTestRequest(variableByNameUrl("OTHER_USER_VAR"), {
+        method: "DELETE",
+      }),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(data.error.code).toBe("NOT_FOUND");
+
+    const victim = await findTestVariablesByOrgAndName({
+      orgId,
+      name: "OTHER_USER_VAR",
+    });
+    expect(victim).toHaveLength(1);
+  });
+
+  it("should return 404 for a variable in another org", async () => {
+    const userId = uniqueId("zvar-del-cross-org");
+    await setupOrg(userId);
+    const victimOrgId = `org_${uniqueId("zvar-del-victim-org")}`;
+
+    await insertTestUserVariable({
+      orgId: victimOrgId,
+      userId,
+      name: "ORG_A_VAR",
+      value: "other-org",
+    });
+
+    const response = await DELETE(
+      createTestRequest(variableByNameUrl("ORG_A_VAR"), {
+        method: "DELETE",
+      }),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(data.error.code).toBe("NOT_FOUND");
+
+    const victim = await findTestVariablesByOrgAndName({
+      orgId: victimOrgId,
+      name: "ORG_A_VAR",
+    });
+    expect(victim).toHaveLength(1);
+    expect(victim[0]?.orgId).toBe(victimOrgId);
   });
 });

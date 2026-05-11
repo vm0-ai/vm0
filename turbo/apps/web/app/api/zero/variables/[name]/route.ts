@@ -19,6 +19,9 @@ const router = tsr.router(zeroVariablesByNameContract, {
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) {
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+    }
     const { userId } = authCtx;
 
     log.debug("deleting variable", { userId, name: params.name });

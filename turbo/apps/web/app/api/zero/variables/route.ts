@@ -22,6 +22,9 @@ const router = tsr.router(zeroVariablesContract, {
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) {
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+    }
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);

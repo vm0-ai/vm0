@@ -92,6 +92,20 @@ describe("GET /api/zero/secrets", () => {
     );
     expect(response.status).toBe(401);
   });
+
+  it("should return 401 when authenticated session has no organization", async () => {
+    mockClerk({ userId: uniqueId("zsec-no-org"), orgId: null });
+
+    const response = await GET(
+      createTestRequest(secretUrl(), {
+        method: "GET",
+      }),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error.code).toBe("UNAUTHORIZED");
+  });
 });
 
 describe("POST /api/zero/secrets", () => {

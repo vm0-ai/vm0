@@ -89,6 +89,20 @@ describe("GET /api/zero/variables", () => {
     );
     expect(response.status).toBe(401);
   });
+
+  it("should return 401 when authenticated session has no organization", async () => {
+    mockClerk({ userId: uniqueId("zvar-no-org"), orgId: null });
+
+    const response = await GET(
+      createTestRequest(variableUrl(), {
+        method: "GET",
+      }),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error.code).toBe("UNAUTHORIZED");
+  });
 });
 
 describe("POST /api/zero/variables", () => {

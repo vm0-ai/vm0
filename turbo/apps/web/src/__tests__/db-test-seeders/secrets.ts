@@ -1,4 +1,5 @@
 import { initServices } from "../../lib/init-services";
+import type { SecretType } from "@vm0/api-contracts/contracts/secrets";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
 import { ORG_SENTINEL_USER_ID } from "../../lib/zero/org/org-sentinel";
@@ -95,6 +96,36 @@ export async function insertTestUserModelProviderSecret(params: {
 }
 
 /**
+ * Insert a user-level secret directly in the database.
+ *
+ * @why-db-direct Route isolation tests need rows owned by another user, another
+ * org, or a non-user secret type. The public secrets API always writes the
+ * authenticated user's active-org secret with type="user".
+ */
+export async function insertTestUserSecret(params: {
+  orgId: string;
+  userId: string;
+  name: string;
+  value?: string;
+  type?: SecretType;
+}): Promise<void> {
+  initServices();
+  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
+  const encrypted = encryptSecretValue(
+    params.value ?? "test-secret-value",
+    SECRETS_ENCRYPTION_KEY,
+  );
+  await globalThis.services.db.insert(secrets).values({
+    name: params.name,
+    encryptedValue: encrypted,
+    type: params.type ?? "user",
+    userId: params.userId,
+    orgId: params.orgId,
+    description: "test seed",
+  });
+}
+
+/**
  * Insert an org-level sentinel variable directly in the database.
  *
  * @why-db-direct The variables API creates user-scoped variables, not
@@ -111,5 +142,28 @@ export async function insertTestOrgSentinelVariable(params: {
     value: "sentinel-test-value",
     userId: ORG_SENTINEL_USER_ID,
     orgId: params.orgId,
+  });
+}
+
+/**
+ * Insert a user-level variable directly in the database.
+ *
+ * @why-db-direct Route isolation tests need rows owned by another user or org.
+ * The public variables API always writes the authenticated user's active-org
+ * variable.
+ */
+export async function insertTestUserVariable(params: {
+  orgId: string;
+  userId: string;
+  name: string;
+  value?: string;
+}): Promise<void> {
+  initServices();
+  await globalThis.services.db.insert(variables).values({
+    name: params.name,
+    value: params.value ?? "test-variable-value",
+    userId: params.userId,
+    orgId: params.orgId,
+    description: "test seed",
   });
 }
