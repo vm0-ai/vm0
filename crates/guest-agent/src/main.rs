@@ -183,17 +183,7 @@ async fn execute(
                 last_event_sequence = cli_result.last_event_sequence;
                 let code = cli_result.exit_code;
                 if code != 0 {
-                    let msg = if cli_result.stderr_lines.is_empty() {
-                        format!("Agent exited with code {code}")
-                    } else {
-                        log_info!(
-                            LOG_TAG,
-                            "Captured {} stderr lines",
-                            cli_result.stderr_lines.len()
-                        );
-                        cli_result.stderr_lines.join(" ")
-                    };
-                    (code, msg)
+                    (code, cli_failure_message(code, &cli_result.stderr_lines))
                 } else {
                     (0, String::new())
                 }
@@ -226,6 +216,18 @@ async fn execute(
         &http,
     )
     .await
+}
+
+fn cli_failure_message(code: i32, stderr_lines: &[String]) -> String {
+    if stderr_lines.is_empty() {
+        return format!("Agent exited with code {code}");
+    }
+
+    log_info!(LOG_TAG, "Captured {} stderr lines", stderr_lines.len());
+    for line in stderr_lines {
+        log_warn!(LOG_TAG, "CLI stderr: {line}");
+    }
+    stderr_lines.join(" ")
 }
 
 async fn complete_execution(
@@ -362,6 +364,41 @@ mod tests {
     use super::*;
     use httpmock::prelude::*;
     use serde_json::json;
+
+    struct SystemLogOverrideGuard;
+
+    impl SystemLogOverrideGuard {
+        fn set(path: &std::path::Path) -> Self {
+            guest_common::log::set_system_log_file(path.to_string_lossy().as_ref());
+            Self
+        }
+    }
+
+    impl Drop for SystemLogOverrideGuard {
+        fn drop(&mut self) {
+            guest_common::log::clear_system_log_file();
+        }
+    }
+
+    #[test]
+    fn cli_failure_message_logs_stderr_to_system_log() {
+        let tmp = tempfile::tempdir().unwrap();
+        let system_log_path = tmp.path().join("system.log");
+        let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
+
+        let msg = cli_failure_message(1, &["codex stderr includes ***".to_string()]);
+        assert_eq!(msg, "codex stderr includes ***");
+
+        let system_log = std::fs::read_to_string(&system_log_path).unwrap();
+        assert!(
+            system_log.contains("Captured 1 stderr lines"),
+            "system log should include stderr count, got: {system_log}"
+        );
+        assert!(
+            system_log.contains("CLI stderr: codex stderr includes ***"),
+            "system log should include CLI stderr, got: {system_log}"
+        );
+    }
 
     #[tokio::test]
     async fn complete_execution_creates_recovery_checkpoint_after_cli_failure() {

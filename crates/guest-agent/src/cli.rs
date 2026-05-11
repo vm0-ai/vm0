@@ -941,13 +941,17 @@ pub async fn execute_cli(
             Vec::new()
         },
     };
+    let masked_stderr_lines = stderr_lines
+        .into_iter()
+        .map(|line| masker.mask_string(&line))
+        .collect::<Vec<_>>();
 
     // If event loop had an error, propagate it
     event_result?;
 
     Ok(CliExecutionResult {
         exit_code,
-        stderr_lines,
+        stderr_lines: masked_stderr_lines,
         last_event_sequence,
     })
 }
