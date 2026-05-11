@@ -33,6 +33,7 @@ import {
   resetMockOrgModelProviders,
 } from "../../../mocks/handlers/api-org-model-providers.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
+import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../../../signals/zero-page/model-provider-default.ts";
 import {
   mockChatLifecycle,
   sendMessageInUI,
@@ -120,10 +121,11 @@ describe("chat composer — model picker display vs. send body", () => {
       expect(capturedBody).toBeDefined();
     });
 
-    // The request carries the very model the picker was advertising, so the
-    // backend persists it on chat_threads and the run executes on Sonnet.
+    // The request carries the very model the picker was advertising. In the
+    // global model-first flow, the backend routes the selected model through
+    // the org policy table instead of the legacy provider id.
     expect(capturedBody?.modelSelection).toStrictEqual({
-      modelProviderId: PROVIDER_ID,
+      modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
       selectedModel: DEFAULT_MODEL,
     });
   });

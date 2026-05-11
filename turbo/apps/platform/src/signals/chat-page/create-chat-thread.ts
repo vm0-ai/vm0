@@ -348,7 +348,13 @@ function createModelSelection(
         const agent = thread?.agentId
           ? await get(agentById(thread.agentId))
           : null;
-        return createModelFirstSelection(agent?.selectedModel);
+        const policies = await get(orgModelPolicies$);
+        const userPreference = await get(userModelPreference$);
+        return resolveModelFirstAgentDefaultSelection({
+          agent,
+          userPreference,
+          policies,
+        });
       }
       const thread = await get(threadData$);
       if (thread?.modelProviderId && thread.selectedModel) {

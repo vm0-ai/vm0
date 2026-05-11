@@ -6,6 +6,7 @@ import {
   isModelSupportedByProvider,
   isSupportedRunModel,
   MODEL_PROVIDER_TYPES,
+  type ModelProviderCredentialScope,
   type ModelProviderType,
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
@@ -15,6 +16,27 @@ import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 
 type OrgModelPolicyRow = typeof orgModelPolicies.$inferSelect;
 type NewOrgModelPolicyRow = typeof orgModelPolicies.$inferInsert;
+
+function isMemberScopedOAuthProvider(type: ModelProviderType): boolean {
+  return type === "claude-code-oauth-token" || type === "codex-oauth-token";
+}
+
+function getPolicyRouteForProvider(params: {
+  providerType: ModelProviderType;
+  modelProviderId: string | null;
+}): {
+  credentialScope: ModelProviderCredentialScope;
+  modelProviderId: string | null;
+} {
+  if (isMemberScopedOAuthProvider(params.providerType)) {
+    return { credentialScope: "member", modelProviderId: null };
+  }
+  return {
+    credentialScope: "org",
+    modelProviderId:
+      params.providerType === "vm0" ? null : params.modelProviderId,
+  };
+}
 
 async function loadRows(orgId: string): Promise<OrgModelPolicyRow[]> {
   return globalThis.services.db
@@ -42,6 +64,7 @@ function sortRowsByCatalog(rows: OrgModelPolicyRow[]): OrgModelPolicyRow[] {
 async function loadOrgDefaultProviderSeed(orgId: string): Promise<{
   providerType: ModelProviderType;
   selectedModel: SupportedRunModel | null;
+  credentialScope: ModelProviderCredentialScope;
   modelProviderId: string | null;
 } | null> {
   const [provider] = await globalThis.services.db
@@ -61,12 +84,18 @@ async function loadOrgDefaultProviderSeed(orgId: string): Promise<{
     .limit(1);
 
   if (!provider || !(provider.type in MODEL_PROVIDER_TYPES)) return null;
+  const providerType = provider.type as ModelProviderType;
+  const route = getPolicyRouteForProvider({
+    providerType,
+    modelProviderId: provider.id,
+  });
   return {
-    providerType: provider.type as ModelProviderType,
+    providerType,
     selectedModel: isSupportedRunModel(provider.selectedModel)
       ? provider.selectedModel
       : null,
-    modelProviderId: provider.type === "vm0" ? null : provider.id,
+    credentialScope: route.credentialScope,
+    modelProviderId: route.modelProviderId,
   };
 }
 
@@ -108,7 +137,7 @@ async function getDefaultPolicySeeds(
       model: policy.model,
       isDefault: policy.model === preferredDefault,
       defaultProviderType: provider.providerType,
-      credentialScope: "org",
+      credentialScope: provider.credentialScope,
       modelProviderId: provider.modelProviderId,
     };
   });
@@ -132,12 +161,16 @@ export async function syncOrgDefaultModelPoliciesForProvider(params: {
     !hasSelectedModelSeed &&
     isModelSupportedByProvider(selectedModel, params.providerType)
   ) {
+    const route = getPolicyRouteForProvider({
+      providerType: params.providerType,
+      modelProviderId: params.modelProviderId,
+    });
     seeds.push({
       model: selectedModel,
       isDefault: true,
       defaultProviderType: params.providerType,
-      credentialScope: "org",
-      modelProviderId: params.modelProviderId,
+      credentialScope: route.credentialScope,
+      modelProviderId: route.modelProviderId,
     });
   }
 
