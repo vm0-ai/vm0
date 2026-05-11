@@ -131,7 +131,7 @@ resolve() {
         release_skip="true"
         skip_reason="release-please-push"
       else
-        job_ref="staging"
+        job_ref="staging-${head_sha:0:12}"
       fi
       ;;
     *)

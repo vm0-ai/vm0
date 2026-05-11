@@ -39,7 +39,7 @@ assert_contains "$out" "job-ref="
 
 out=$(run_clean EVENT_NAME=push COMMIT_MSG='regular commit' HEAD_SHA=ghi "$CONTEXT" resolve)
 assert_contains "$out" "release-skip=false"
-assert_contains "$out" "job-ref=staging"
+assert_contains "$out" "job-ref=staging-ghi"
 
 out=$(run_clean EVENT_NAME=push COMMIT_MSG='chore: release 1.2.3' HEAD_SHA=ghi "$CONTEXT" resolve)
 assert_contains "$out" "release-skip=true"

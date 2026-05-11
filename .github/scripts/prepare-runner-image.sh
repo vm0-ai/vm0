@@ -100,6 +100,14 @@ fi
 sudo systemctl reset-failed "${UNIT}" 2>/dev/null || true
 sudo rm -rf "${BIN_DIR}" "${RUNNER_DIR}"
 sudo mkdir -p "${BIN_DIR}"
+case "$BIN_DIR" in
+  /var/lib/vm0-runner/bin/staging-*)
+    sudo find /var/lib/vm0-runner/bin \
+      -mindepth 1 -maxdepth 1 -type d \
+      -name 'staging-*' ! -path "$BIN_DIR" -mtime +2 \
+      -exec rm -rf {} +
+    ;;
+esac
 REMOTE_SCRIPT
   then
     return 1

@@ -163,6 +163,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           MQ_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          HEAD_SHA: ${{ github.sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ "$EVENT_NAME" = "pull_request" ]; then
@@ -200,7 +201,7 @@ jobs:
               exit 1
             fi
           else
-            IMAGE_JOB_REF="staging"
+            IMAGE_JOB_REF="staging-${HEAD_SHA:0:12}"
             JOB_REF="staging-test"
           fi
 
