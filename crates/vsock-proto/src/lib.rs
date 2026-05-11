@@ -626,10 +626,10 @@ pub fn encode_command_start(
         payload_len = checked_payload_len_add(payload_len, key_bytes.len())?;
         payload_len = checked_payload_len_add(payload_len, val_bytes.len())?;
     }
-    payload_len = checked_payload_len_add(payload_len, stdout_policy_len)?;
-    payload_len = checked_payload_len_add(payload_len, stderr_policy_len)?;
     payload_len = checked_payload_len_add(payload_len, 2)?;
     payload_len = checked_payload_len_add(payload_len, label_bytes.len())?;
+    payload_len = checked_payload_len_add(payload_len, stdout_policy_len)?;
+    payload_len = checked_payload_len_add(payload_len, stderr_policy_len)?;
     ensure_payload_fits_message(payload_len)?;
 
     let mut p = Vec::with_capacity(payload_len);
@@ -1806,6 +1806,38 @@ mod tests {
                 stdout: CommandOutputPolicy::Discard,
                 stderr: CommandOutputPolicy::Discard,
             }
+        );
+    }
+
+    #[test]
+    fn command_start_wire_layout_places_label_before_output_policies() {
+        let payload = encode_command_start(
+            5000,
+            "cmd",
+            &[],
+            false,
+            "abc",
+            CommandOutputPolicy::Discard,
+            CommandOutputPolicy::Capture { limit_bytes: 7 },
+        )
+        .unwrap();
+
+        let label_len_offset = 4 + 1 + 4 + "cmd".len() + 4;
+        assert_eq!(
+            &payload[label_len_offset..],
+            &[
+                0,
+                3,
+                b'a',
+                b'b',
+                b'c',
+                COMMAND_OUTPUT_POLICY_DISCARD,
+                COMMAND_OUTPUT_POLICY_CAPTURE,
+                0,
+                0,
+                0,
+                7,
+            ]
         );
     }
 
