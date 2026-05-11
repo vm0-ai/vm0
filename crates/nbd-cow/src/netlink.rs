@@ -949,6 +949,36 @@ mod tests {
     }
 
     #[test]
+    fn finish_connect_after_send_non_ebusy_errno_is_definite_failure() {
+        let (sock, peer) = test_genl_socket_pair();
+        send_test_nl(&peer, &nlmsg_error_msg(2, -libc::EINVAL));
+
+        let result = finish_connect_after_send(&sock, 2, 1234);
+
+        assert!(matches!(
+            result,
+            Err(ConnectDeviceError::DefiniteAfterSend {
+                source: NbdCowError::NetlinkErrno { errno, .. },
+            }) if errno == libc::EINVAL
+        ));
+    }
+
+    #[test]
+    fn finish_connect_after_send_ignores_stale_error_before_success() {
+        let (sock, peer) = test_genl_socket_pair();
+        let reply = build_genl_msg(0x19, NBD_CMD_CONNECT, NBD_GENL_VERSION, &[], 2, false);
+        send_test_nl(&peer, &nlmsg_error_msg(1, -libc::EBUSY));
+        send_test_nl(&peer, &reply);
+
+        let result = finish_connect_after_send(&sock, 2, 1234);
+
+        assert!(matches!(
+            result,
+            Ok(ConnectDeviceSuccess { connect_tid: 1234 })
+        ));
+    }
+
+    #[test]
     fn classify_connect_completion_io_error_is_ambiguous() {
         let result = classify_connect_completion(
             1234,
