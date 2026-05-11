@@ -7,8 +7,9 @@
 //!
 //! For advanced control, create [`MockSandboxOverrides`] and pass it via
 //! [`MockSandboxRuntime::with_overrides`]. This enables pattern-matched exec
-//! results, custom `wait_exit` exit codes, and blocking gates for lifecycle
-//! and cancellation testing.
+//! results, shared lifecycle behavior queues, custom `wait_exit` exit codes,
+//! and durable [`MockLifecycleGate`] gates for lifecycle and cancellation
+//! testing.
 //!
 //! ```toml
 //! [dev-dependencies]
@@ -17,6 +18,7 @@
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -67,17 +69,154 @@ enum LifecycleBehavior {
     Panic(String),
 }
 
+enum DestroyBehavior {
+    Panic(String),
+}
+
+/// Error returned when a [`MockLifecycleGate`] does not record enough entries
+/// before the caller's timeout expires.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct MockLifecycleGateTimeout {
+    target_count: u64,
+    actual_count: u64,
+    timeout: Duration,
+}
+
+impl MockLifecycleGateTimeout {
+    /// Entry count that the caller was waiting for.
+    pub fn target_count(&self) -> u64 {
+        self.target_count
+    }
+
+    /// Entry count observed when the timeout expired.
+    pub fn actual_count(&self) -> u64 {
+        self.actual_count
+    }
+
+    /// Timeout used by the wait operation.
+    pub fn timeout(&self) -> Duration {
+        self.timeout
+    }
+}
+
+impl std::fmt::Display for MockLifecycleGateTimeout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "mock lifecycle gate did not reach entry count {} within {:?} (actual: {})",
+            self.target_count, self.timeout, self.actual_count
+        )
+    }
+}
+
+impl std::error::Error for MockLifecycleGateTimeout {}
+
+struct MockLifecycleGateInner {
+    entered_count: AtomicU64,
+    entered_tx: tokio::sync::watch::Sender<u64>,
+    release: Arc<tokio::sync::Semaphore>,
+}
+
+/// Durable lifecycle gate for tests that need to block mock sandbox lifecycle
+/// operations at deterministic points.
+///
+/// Unlike raw [`tokio::sync::Notify`] pairs, entries are counted durably and
+/// releases are counted as permits. A test can wait for an entry after it has
+/// already happened, and a release issued before the lifecycle operation blocks
+/// is consumed by that next operation instead of being lost.
 #[derive(Clone)]
-struct BlockingGate {
-    entered: Arc<tokio::sync::Notify>,
-    release: Arc<tokio::sync::Notify>,
+pub struct MockLifecycleGate {
+    inner: Arc<MockLifecycleGateInner>,
+}
+
+impl MockLifecycleGate {
+    /// Create a gate with zero recorded entries and no release permits.
+    pub fn new() -> Self {
+        let (entered_tx, _) = tokio::sync::watch::channel(0);
+        Self {
+            inner: Arc::new(MockLifecycleGateInner {
+                entered_count: AtomicU64::new(0),
+                entered_tx,
+                release: Arc::new(tokio::sync::Semaphore::new(0)),
+            }),
+        }
+    }
+
+    /// Return the number of lifecycle entries recorded by this gate.
+    pub fn entered_count(&self) -> u64 {
+        self.inner.entered_count.load(Ordering::SeqCst)
+    }
+
+    /// Wait until at least `target_count` lifecycle entries have been recorded.
+    pub async fn wait_entered(
+        &self,
+        target_count: u64,
+        timeout: Duration,
+    ) -> std::result::Result<u64, MockLifecycleGateTimeout> {
+        let gate = self.clone();
+        let wait = async move {
+            let mut entered_rx = gate.inner.entered_tx.subscribe();
+            loop {
+                let current = *entered_rx.borrow_and_update();
+                if current >= target_count {
+                    return current;
+                }
+                if entered_rx.changed().await.is_err() {
+                    return gate.entered_count();
+                }
+            }
+        };
+
+        tokio::time::timeout(timeout, wait)
+            .await
+            .map_err(|_| MockLifecycleGateTimeout {
+                target_count,
+                actual_count: self.entered_count(),
+                timeout,
+            })
+    }
+
+    /// Release one blocked lifecycle operation.
+    pub fn release_one(&self) {
+        self.release_many(1);
+    }
+
+    /// Release up to `count` blocked or future lifecycle operations.
+    pub fn release_many(&self, count: usize) {
+        self.inner.release.add_permits(count);
+    }
+
+    async fn enter_and_wait(&self) {
+        let entered = self.inner.entered_count.fetch_add(1, Ordering::SeqCst) + 1;
+        self.inner.entered_tx.send_replace(entered);
+        if let Ok(permit) = Arc::clone(&self.inner.release).acquire_owned().await {
+            permit.forget();
+        }
+    }
+}
+
+impl Default for MockLifecycleGate {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone)]
+enum BlockingGate {
+    LegacyNotify {
+        entered: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+    },
+    Lifecycle(MockLifecycleGate),
 }
 
 /// Shared behavior overrides propagated from runtime → factory → sandbox.
 ///
 /// Tests create this via [`MockSandboxRuntime::with_overrides`] so every
 /// sandbox produced by the factory checks these overrides before falling
-/// back to the default FIFO-queue behaviour.
+/// back to the default FIFO-queue behaviour. Queue fields on this type are
+/// shared globally by every factory and sandbox that receives the same
+/// `Arc<MockSandboxOverrides>`.
 pub struct MockSandboxOverrides {
     /// Pattern-matched exec results. First matching pattern wins and is
     /// consumed (one-shot).
@@ -91,6 +230,9 @@ pub struct MockSandboxOverrides {
     /// simulate timeout or crash. The stdout channel sender is also kept alive
     /// in `MockSandbox` so the drain task would block without the fix.
     wait_exit_error: Option<String>,
+    /// FIFO queue of create results consumed by every factory built with
+    /// these overrides. Empty queue → default Ok(()).
+    create_results: Mutex<VecDeque<Result<()>>>,
     /// FIFO queue of start results consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     start_results: Mutex<VecDeque<Result<()>>>,
@@ -108,6 +250,9 @@ pub struct MockSandboxOverrides {
     /// When set, factory `destroy` notifies `entered` and then blocks until
     /// `release`.
     destroy_gate: Mutex<Option<BlockingGate>>,
+    /// FIFO queue of destroy behaviours consumed by every factory built with
+    /// these overrides. Empty queue → default successful destroy.
+    destroy_behaviors: Mutex<VecDeque<DestroyBehavior>>,
     /// Recorded spawn_watch output modes across all sandboxes built from
     /// this override set.
     spawn_watch_calls: Mutex<Vec<SpawnWatchCall>>,
@@ -127,12 +272,14 @@ impl MockSandboxOverrides {
             wait_exit_code: None,
             wait_exit_gate: None,
             wait_exit_error: None,
+            create_results: Mutex::new(VecDeque::new()),
             start_results: Mutex::new(VecDeque::new()),
             stop_behaviors: Mutex::new(VecDeque::new()),
             park_behaviors: Mutex::new(VecDeque::new()),
             park_gate: Mutex::new(None),
             unpark_behaviors: Mutex::new(VecDeque::new()),
             destroy_gate: Mutex::new(None),
+            destroy_behaviors: Mutex::new(VecDeque::new()),
             spawn_watch_calls: Mutex::new(Vec::new()),
             park_calls: Mutex::new(0),
             unpark_calls: Mutex::new(0),
@@ -169,6 +316,13 @@ impl MockSandboxOverrides {
     /// Register a pattern matcher consumed on first match.
     pub fn add_exec_matcher(&self, matcher: ExecMatcher) {
         self.exec_matchers.lock_ignoring_poison().push(matcher);
+    }
+
+    /// Queue a factory `create()` result applied to the next factory create
+    /// call made through these overrides. Consumed FIFO across all factories;
+    /// empty queue → default Ok(()).
+    pub fn push_create_result(&self, result: Result<()>) {
+        self.create_results.lock_ignoring_poison().push_back(result);
     }
 
     /// Queue a `start()` result applied to the next factory-created sandbox.
@@ -209,14 +363,26 @@ impl MockSandboxOverrides {
             .push_back(LifecycleBehavior::Panic(message.into()));
     }
 
-    /// Block every `park()` call after recording entry until `release` is
-    /// notified. Used by tests to open deterministic race windows.
+    /// Block every `park()` call with a durable lifecycle gate.
+    ///
+    /// Prefer this over [`Self::set_park_gate`]: entries and releases are
+    /// durable, so tests do not need to pre-arm `Notify` futures.
+    pub fn set_park_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.park_gate.lock_ignoring_poison() = Some(BlockingGate::Lifecycle(gate));
+    }
+
+    /// Legacy `Notify`-pair park gate.
+    ///
+    /// New tests should use [`Self::set_park_lifecycle_gate`] because this
+    /// edge-triggered API can lose entry or release notifications if the test
+    /// does not pre-arm the corresponding `notified()` future.
     pub fn set_park_gate(
         &self,
         entered: Arc<tokio::sync::Notify>,
         release: Arc<tokio::sync::Notify>,
     ) {
-        *self.park_gate.lock_ignoring_poison() = Some(BlockingGate { entered, release });
+        *self.park_gate.lock_ignoring_poison() =
+            Some(BlockingGate::LegacyNotify { entered, release });
     }
 
     /// Queue an `unpark()` result applied to the next factory-created sandbox.
@@ -235,14 +401,34 @@ impl MockSandboxOverrides {
             .push_back(LifecycleBehavior::Panic(message.into()));
     }
 
-    /// Block every factory `destroy()` call after recording entry until
-    /// `release` is notified.
+    /// Block every factory `destroy()` call with a durable lifecycle gate.
+    ///
+    /// Prefer this over [`Self::set_destroy_gate`]: entries and releases are
+    /// durable, so tests do not need to pre-arm `Notify` futures.
+    pub fn set_destroy_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.destroy_gate.lock_ignoring_poison() = Some(BlockingGate::Lifecycle(gate));
+    }
+
+    /// Legacy `Notify`-pair destroy gate.
+    ///
+    /// New tests should use [`Self::set_destroy_lifecycle_gate`] because this
+    /// edge-triggered API can lose entry or release notifications if the test
+    /// does not pre-arm the corresponding `notified()` future.
     pub fn set_destroy_gate(
         &self,
         entered: Arc<tokio::sync::Notify>,
         release: Arc<tokio::sync::Notify>,
     ) {
-        *self.destroy_gate.lock_ignoring_poison() = Some(BlockingGate { entered, release });
+        *self.destroy_gate.lock_ignoring_poison() =
+            Some(BlockingGate::LegacyNotify { entered, release });
+    }
+
+    /// Queue a factory `destroy()` panic applied to the next destroy call made
+    /// through these overrides. Consumed FIFO across all factories.
+    pub fn push_destroy_panic(&self, message: impl Into<String>) {
+        self.destroy_behaviors
+            .lock_ignoring_poison()
+            .push_back(DestroyBehavior::Panic(message.into()));
     }
 
     /// Total `park()` calls across all sandboxes built from this override set.
@@ -271,8 +457,13 @@ impl MockSandboxOverrides {
 async fn wait_blocking_gate(gate: &Mutex<Option<BlockingGate>>) {
     let gate = gate.lock_ignoring_poison().clone();
     if let Some(gate) = gate {
-        gate.entered.notify_waiters();
-        gate.release.notified().await;
+        match gate {
+            BlockingGate::LegacyNotify { entered, release } => {
+                entered.notify_waiters();
+                release.notified().await;
+            }
+            BlockingGate::Lifecycle(gate) => gate.enter_and_wait().await,
+        }
     }
 }
 
@@ -538,7 +729,9 @@ impl Sandbox for MockSandbox {
 /// A mock [`SandboxFactory`] that creates [`MockSandbox`] instances.
 ///
 /// Queue custom `create` results with [`push_create_result`](Self::push_create_result).
-/// When the queue is empty, `create` returns a default `MockSandbox`.
+/// When the factory-local queue is empty, `create` checks shared
+/// [`MockSandboxOverrides`] create results. When both queues are empty,
+/// `create` returns a default `MockSandbox`.
 pub struct MockSandboxFactory {
     create_results: Mutex<VecDeque<Result<()>>>,
     overrides: Option<Arc<MockSandboxOverrides>>,
@@ -559,9 +752,9 @@ impl MockSandboxFactory {
         }
     }
 
-    /// Queue a create result. `Ok(())` creates a normal `MockSandbox`;
-    /// `Err(...)` makes `create` return that error.
-    /// Results are consumed in FIFO order.
+    /// Queue a factory-local create result. `Ok(())` creates a normal
+    /// `MockSandbox`; `Err(...)` makes `create` return that error.
+    /// Results are consumed in FIFO order before shared override results.
     pub fn push_create_result(&self, result: Result<()>) {
         self.create_results.lock_ignoring_poison().push_back(result);
     }
@@ -591,6 +784,11 @@ impl SandboxFactory for MockSandboxFactory {
         if let Some(result) = self.create_results.lock_ignoring_poison().pop_front() {
             result?;
         }
+        if let Some(overrides) = &self.overrides
+            && let Some(result) = overrides.create_results.lock_ignoring_poison().pop_front()
+        {
+            result?;
+        }
         let sandbox = match &self.overrides {
             Some(o) => MockSandbox::with_overrides(config.id.to_string(), Arc::clone(o)),
             None => MockSandbox::new(config.id.to_string()),
@@ -602,6 +800,11 @@ impl SandboxFactory for MockSandboxFactory {
         if let Some(o) = &self.overrides {
             *o.destroy_calls.lock_ignoring_poison() += 1;
             wait_blocking_gate(&o.destroy_gate).await;
+            match o.destroy_behaviors.lock_ignoring_poison().pop_front() {
+                #[allow(clippy::panic)]
+                Some(DestroyBehavior::Panic(message)) => panic!("{message}"),
+                None => {}
+            }
         }
     }
 
@@ -804,6 +1007,17 @@ mod tests {
                 cpu_count: 2,
                 memory_mb: 1024,
             },
+        }
+    }
+
+    fn test_factory_config() -> FactoryConfig {
+        FactoryConfig {
+            profile: "test".into(),
+            binary_path: "/bin/test".into(),
+            kernel_path: "/boot/test".into(),
+            rootfs_path: "/rootfs/test".into(),
+            base_dir: "/tmp/test".into(),
+            snapshot: None,
         }
     }
 
@@ -1010,6 +1224,126 @@ mod tests {
         factory.destroy(second).await;
 
         assert_eq!(overrides.destroy_call_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn lifecycle_gate_observes_park_entry_after_it_already_happened() {
+        let gate = MockLifecycleGate::new();
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.set_park_lifecycle_gate(gate.clone());
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let mut sandbox = factory.create(test_sandbox_config()).await.unwrap();
+
+        let park_task = tokio::spawn(async move { sandbox.park().await });
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while gate.entered_count() == 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("park should enter lifecycle gate");
+
+        assert_eq!(
+            gate.wait_entered(1, Duration::from_secs(1)).await.unwrap(),
+            1
+        );
+        assert_eq!(overrides.park_call_count(), 1);
+
+        gate.release_one();
+        park_task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn lifecycle_gate_release_before_park_entry_is_not_lost() {
+        let gate = MockLifecycleGate::new();
+        gate.release_one();
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.set_park_lifecycle_gate(gate.clone());
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let mut sandbox = factory.create(test_sandbox_config()).await.unwrap();
+
+        tokio::time::timeout(Duration::from_secs(1), sandbox.park())
+            .await
+            .expect("early release permit should let park finish")
+            .unwrap();
+
+        assert_eq!(gate.entered_count(), 1);
+        assert_eq!(overrides.park_call_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn lifecycle_gate_waits_for_nth_park_entry() {
+        let gate = MockLifecycleGate::new();
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.set_park_lifecycle_gate(gate.clone());
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let mut park_tasks = Vec::new();
+        for _ in 0..3 {
+            let mut sandbox = factory.create(test_sandbox_config()).await.unwrap();
+            park_tasks.push(tokio::spawn(async move { sandbox.park().await }));
+        }
+
+        assert_eq!(
+            gate.wait_entered(3, Duration::from_secs(1)).await.unwrap(),
+            3
+        );
+        assert_eq!(overrides.park_call_count(), 3);
+
+        gate.release_many(park_tasks.len());
+        for task in park_tasks {
+            task.await.unwrap().unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn overrides_share_create_results_across_runtime_factories() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.push_create_result(Err(SandboxError::Initialization {
+            phase: SandboxInitializationPhase::SandboxAllocation,
+            message: "out of resources".into(),
+        }));
+        let runtime = MockSandboxRuntime::with_overrides(Arc::clone(&overrides));
+
+        let first_factory = runtime.create_factory(test_factory_config()).await.unwrap();
+        let result = first_factory.create(test_sandbox_config()).await;
+        assert!(matches!(
+            result,
+            Err(SandboxError::Initialization {
+                phase: SandboxInitializationPhase::SandboxAllocation,
+                ..
+            })
+        ));
+
+        let second_factory = runtime.create_factory(test_factory_config()).await.unwrap();
+        second_factory.create(test_sandbox_config()).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn destroy_lifecycle_gate_blocks_before_destroy_panic() {
+        let gate = MockLifecycleGate::new();
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.set_destroy_lifecycle_gate(gate.clone());
+        overrides.push_destroy_panic("simulated destroy panic");
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let sandbox = factory.create(test_sandbox_config()).await.unwrap();
+
+        let destroy_task = tokio::spawn(async move {
+            factory.destroy(sandbox).await;
+        });
+        assert_eq!(
+            gate.wait_entered(1, Duration::from_secs(1)).await.unwrap(),
+            1
+        );
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert!(
+            !destroy_task.is_finished(),
+            "destroy behavior should not run until the gate is released"
+        );
+
+        gate.release_one();
+        let err = destroy_task.await.expect_err("destroy should panic");
+        assert!(err.is_panic());
     }
 
     #[tokio::test]

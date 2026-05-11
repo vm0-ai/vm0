@@ -6,7 +6,7 @@ edition.workspace = true
 [dependencies]
 async-trait.workspace = true
 sandbox = { workspace = true }
-tokio = { workspace = true, features = ["sync"] }
+tokio = { workspace = true, features = ["sync", "time"] }
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
