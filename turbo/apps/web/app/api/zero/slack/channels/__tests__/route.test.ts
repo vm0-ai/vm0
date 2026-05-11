@@ -29,6 +29,19 @@ describe("GET /api/zero/slack/channels", () => {
     expect(data.error.code).toBe("UNAUTHORIZED");
   });
 
+  it("returns 401 when no org is active in the session", async () => {
+    mockClerk({ userId: uniqueId("slack-no-org"), orgId: null, clerkOrgs: [] });
+
+    const request = new Request(
+      "http://localhost:3000/api/zero/slack/channels",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error.code).toBe("UNAUTHORIZED");
+  });
+
   it("returns 404 when no Slack installation exists for the org", async () => {
     await context.setupUser();
 

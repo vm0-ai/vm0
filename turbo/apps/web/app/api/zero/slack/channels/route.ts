@@ -8,6 +8,13 @@ import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { createSlackClient } from "../../../../../src/lib/zero/slack";
 import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
 
+function unauthenticatedResponse() {
+  return NextResponse.json(
+    { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+    { status: 401 },
+  );
+}
+
 /**
  * GET /api/zero/slack/channels
  *
@@ -19,10 +26,10 @@ export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
   const authCtx = await getAuthContext(authHeader ?? undefined);
   if (!authCtx) {
-    return NextResponse.json(
-      { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
-      { status: 401 },
-    );
+    return unauthenticatedResponse();
+  }
+  if (!authCtx.orgId) {
+    return unauthenticatedResponse();
   }
 
   const { org } = await resolveOrg(authCtx);
