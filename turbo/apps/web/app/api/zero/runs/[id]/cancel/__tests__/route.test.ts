@@ -12,6 +12,7 @@ import {
   findTestUsageEvent,
   setOrgCredits,
   getOrgCredits,
+  insertTestUsagePricing,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -186,6 +187,13 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     const userId = uniqueId("zcanc-credit-running");
     const { orgId } = await setupOrg(userId);
     await setOrgCredits(orgId, 1000);
+    await insertTestUsagePricing({
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.input",
+      unitPrice: 1,
+      unitSize: 5000,
+    });
     const compose = await createTestCompose(`agent-${uniqueId("zcanc")}`);
     const { runId } = await seedTestRun(userId, compose.composeId, {
       status: "running",
@@ -214,6 +222,13 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     const userId = uniqueId("zcanc-credit-queued");
     const { orgId } = await setupOrg(userId);
     await setOrgCredits(orgId, 1000);
+    await insertTestUsagePricing({
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.input",
+      unitPrice: 1,
+      unitSize: 5000,
+    });
     const compose = await createTestCompose(`agent-${uniqueId("zcanc")}`);
     const queued = await enqueueTestRun({
       userId,
