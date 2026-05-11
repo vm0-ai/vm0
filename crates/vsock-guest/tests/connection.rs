@@ -743,6 +743,39 @@ fn command_stream_only_stdout_stderr_success() {
 }
 
 #[test]
+fn command_stream_handles_more_chunks_than_output_queue_capacity() {
+    let (handle, mut host_stream) = start_guest_connection();
+    let expected = "x".repeat(96);
+    let command = format!("printf {expected}");
+
+    send_command_start(
+        &mut host_stream,
+        116,
+        &command,
+        5000,
+        CommandOutputPolicy::Stream {
+            limit_bytes: expected.len() as u32,
+            chunk_limit_bytes: 1,
+        },
+        CommandOutputPolicy::Discard,
+    );
+    let (chunks, result) = read_command_result(&mut host_stream, 116);
+
+    assert_eq!(
+        result.termination,
+        CommandTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(stdout_data(&chunks), expected.as_bytes());
+    assert_eq!(chunks.len(), expected.len());
+    assert!(chunks.iter().all(|chunk| !chunk.truncated));
+    for (expected_seq, chunk) in chunks.iter().enumerate() {
+        assert_eq!(chunk.output_seq, expected_seq as u32);
+    }
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn command_capture_and_stream_success() {
     let (handle, mut host_stream) = start_guest_connection();
 

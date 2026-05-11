@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io;
 use std::process::Child;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
+use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Instant;
@@ -142,7 +142,6 @@ impl CommandWorkerRequest {
 }
 
 struct DrainWorker {
-    seq: u32,
     stream: CommandOutputStream,
     policy: OutputSettings,
     output_tx: Option<SyncSender<StreamEvent>>,
@@ -379,7 +378,6 @@ fn run_command_worker<S>(
     let stdout_spawn = spawn_command_drain(
         stdout,
         DrainWorker {
-            seq: request.seq,
             stream: CommandOutputStream::Stdout,
             policy: stdout_settings,
             output_tx: output_tx.clone(),
@@ -407,7 +405,6 @@ fn run_command_worker<S>(
     let stderr_spawn = spawn_command_drain(
         stderr,
         DrainWorker {
-            seq: request.seq,
             stream: CommandOutputStream::Stderr,
             policy: stderr_settings,
             output_tx: output_tx.clone(),
@@ -668,7 +665,6 @@ where
     S: ThreadSpawner,
 {
     let DrainWorker {
-        seq,
         stream,
         policy,
         output_tx,
@@ -693,19 +689,13 @@ where
                     let Some(tx) = &output_tx else {
                         return true;
                     };
-                    match tx.try_send(StreamEvent {
+                    match tx.send(StreamEvent {
                         stream,
                         chunk: chunk.to_vec(),
                         truncated,
                     }) {
                         Ok(()) => true,
-                        Err(TrySendError::Full(_)) => {
-                            log("WARN", &format!("command: output queue full for seq={seq}"));
-                            command_cancel.store(true, Ordering::Release);
-                            drain_cancel.store(true, Ordering::Release);
-                            false
-                        }
-                        Err(TrySendError::Disconnected(_)) => {
+                        Err(_) => {
                             command_cancel.store(true, Ordering::Release);
                             drain_cancel.store(true, Ordering::Release);
                             false
@@ -839,6 +829,17 @@ mod tests {
         }
     }
 
+    fn wait_for_registry_release(registry: &CommandRegistry, seq: u32) {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline {
+            if registry.register(seq).is_ok() {
+                return;
+            }
+            std::thread::yield_now();
+        }
+        panic!("command registry entry for seq={seq} was not released");
+    }
+
     #[test]
     fn registry_rejects_duplicate_active_sequence_and_cleans_on_drop() {
         let registry = CommandRegistry::default();
@@ -879,7 +880,7 @@ mod tests {
         let result = vsock_proto::decode_command_result(&msg.payload).unwrap();
         assert_eq!(result.termination, CommandTermination::StartFailed);
         assert!(result.diagnostic.contains("command worker thread"));
-        assert!(registry.register(42).is_ok());
+        wait_for_registry_release(&registry, 42);
     }
 
     #[test]
@@ -927,7 +928,7 @@ mod tests {
         let result = vsock_proto::decode_command_result(&msg.payload).unwrap();
         assert_eq!(result.termination, CommandTermination::WaitFailed);
         assert!(result.diagnostic.contains("stdout drain thread"));
-        assert!(registry.register(43).is_ok());
+        wait_for_registry_release(&registry, 43);
     }
 
     #[test]
@@ -957,6 +958,6 @@ mod tests {
         let result = vsock_proto::decode_command_result(&msg.payload).unwrap();
         assert_eq!(result.termination, CommandTermination::WaitFailed);
         assert!(result.diagnostic.contains("output writer thread"));
-        assert!(registry.register(44).is_ok());
+        wait_for_registry_release(&registry, 44);
     }
 }
