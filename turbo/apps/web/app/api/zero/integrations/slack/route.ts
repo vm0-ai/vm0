@@ -52,6 +52,13 @@ export async function GET(request: Request) {
   }
 
   const { userId } = authCtx;
+  if (!authCtx.orgId) {
+    return NextResponse.json(
+      { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+      { status: 401 },
+    );
+  }
+
   const { org, member } = await resolveOrg(authCtx);
 
   const db = globalThis.services.db;

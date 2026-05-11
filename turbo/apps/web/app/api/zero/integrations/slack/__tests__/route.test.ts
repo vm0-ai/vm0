@@ -73,6 +73,21 @@ describe("/api/zero/integrations/slack", () => {
       expect(data.error.code).toBe("UNAUTHORIZED");
     });
 
+    it("returns 401 when the authenticated session has no active organization", async () => {
+      mockClerk({ userId: uniqueId("slack-no-org"), orgId: null });
+
+      const request = new Request(
+        "http://localhost:3000/api/zero/integrations/slack",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(data).toStrictEqual({
+        error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+      });
+    });
+
     it("returns isConnected=false when user has no connection", async () => {
       await givenOrgSlackSetup({ withConnection: false });
 

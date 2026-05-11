@@ -340,8 +340,12 @@ vi.mock("@slack/web-api", () => {
   };
 });
 
-vi.mock("../signals/external/slack-file-fetcher", () => {
+vi.mock("../signals/external/slack-file-fetcher", async () => {
+  const actual = await vi.importActual<
+    typeof import("../signals/external/slack-file-fetcher")
+  >("../signals/external/slack-file-fetcher");
   return {
+    ...actual,
     fetchSlackFile: apiTestMocks.slack.fetchFile,
   };
 });

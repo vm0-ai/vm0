@@ -3,6 +3,27 @@ interface SlackApiError {
   error: string;
 }
 
+class SlackApiClientError extends Error {
+  constructor(
+    readonly method: string,
+    readonly code: string,
+    readonly statusCode?: number,
+  ) {
+    super(
+      statusCode
+        ? `Slack API error: ${statusCode} ${code}`
+        : `Slack API error: ${code}`,
+    );
+    this.name = "SlackApiClientError";
+  }
+}
+
+export function isSlackApiClientError(
+  error: unknown,
+): error is SlackApiClientError {
+  return error instanceof SlackApiClientError;
+}
+
 function isSlackApiError(value: unknown): value is SlackApiError {
   return (
     typeof value === "object" &&
@@ -36,8 +57,10 @@ async function callSlackApi<T>(
   });
 
   if (!response.ok) {
-    throw new Error(
-      `Slack API error: ${response.status} ${response.statusText}`,
+    throw new SlackApiClientError(
+      method,
+      response.statusText || "http_error",
+      response.status,
     );
   }
 
@@ -45,7 +68,7 @@ async function callSlackApi<T>(
   signal?.throwIfAborted();
 
   if (isSlackApiError(data)) {
-    throw new Error(`Slack API error: ${data.error}`);
+    throw new SlackApiClientError(method, data.error);
   }
 
   return data as T;

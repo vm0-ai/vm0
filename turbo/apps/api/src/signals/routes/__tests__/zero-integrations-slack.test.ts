@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { http, HttpResponse } from "msw";
 import {
   agentComposes,
   agentComposeVersions,
@@ -14,8 +15,28 @@ import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { eq } from "drizzle-orm";
 
+import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { server } from "../../../mocks/server";
+import { now } from "../../external/time";
 import { writeDb$ } from "../../external/db";
+import { signSandboxJwtForTests } from "../../auth/tokens";
+import { ROUTES } from "../../route";
+import { SlackFileFetchError } from "../../external/slack-file-fetcher";
+import {
+  deleteOrgMembership$,
+  seedOrgMembership$,
+  type OrgMembershipFixture,
+} from "./helpers/zero-org-membership";
+import {
+  createFixtureTracker,
+  createZeroRouteMocks,
+} from "./helpers/zero-route-test";
+import {
+  deleteSlackIntegrationFixture$,
+  seedSlackOrgInstallation$,
+  type SlackIntegrationFixture,
+} from "./helpers/zero-integrations-slack";
 
 const context = testContext();
 const store = createStore();
@@ -344,5 +365,335 @@ describe("GET /api/zero/integrations/slack", () => {
       expect(response.body.isConnected).toBeFalsy();
       expect(response.body.environment).toBeUndefined();
     });
+  });
+});
+
+type SlackFileMetadata = {
+  readonly id: string;
+  readonly name: string;
+  readonly mimetype: string;
+  readonly size: number;
+  readonly url_private_download?: string;
+  readonly url_private?: string;
+};
+
+function currentSecond(): number {
+  return Math.floor(now() / 1000);
+}
+
+function zeroToken(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly capabilities: readonly ("slack:write" | "file:read")[];
+}): string {
+  const seconds = currentSecond();
+  return signSandboxJwtForTests({
+    scope: "zero",
+    userId: args.userId,
+    orgId: args.orgId,
+    runId: `run_${randomUUID()}`,
+    capabilities: args.capabilities,
+    iat: seconds,
+    exp: seconds + 60,
+  });
+}
+
+function mockSlackFilesInfo(
+  response:
+    | { readonly ok: true; readonly file: SlackFileMetadata }
+    | { readonly ok: false; readonly error: string },
+): void {
+  server.use(
+    http.get("https://slack.com/api/files.info", () => {
+      return HttpResponse.json(response);
+    }),
+  );
+}
+
+function defaultSlackFile(
+  overrides: Partial<SlackFileMetadata> = {},
+): SlackFileMetadata {
+  return {
+    id: "F-OK",
+    name: "pic.png",
+    mimetype: "image/png",
+    size: 19,
+    url_private_download:
+      "https://files.slack.com/files-pri/T1-F-OK/download/pic.png",
+    ...overrides,
+  };
+}
+
+function requestDownloadFile(
+  query: string,
+  authorization?: string,
+): Promise<Response> {
+  const app = createApp({ signal: context.signal, routes: ROUTES });
+  const headers: Record<string, string> = authorization
+    ? { authorization }
+    : {};
+  return Promise.resolve(
+    app.request(`/api/zero/integrations/slack/download-file${query}`, {
+      method: "GET",
+      headers,
+    }),
+  );
+}
+
+async function expectErrorResponse(
+  response: Response,
+  status: number,
+  code: string,
+): Promise<void> {
+  expect(response.status).toBe(status);
+  const body = (await response.json()) as {
+    readonly error?: { readonly code?: string };
+  };
+  expect(body.error?.code).toBe(code);
+}
+
+describe("GET /api/zero/integrations/slack/download-file", () => {
+  const trackSlackFixture = createFixtureTracker<SlackIntegrationFixture>(
+    (fixture) => {
+      return store.set(deleteSlackIntegrationFixture$, fixture, context.signal);
+    },
+  );
+  const trackMembership = createFixtureTracker<OrgMembershipFixture>(
+    (fixture) => {
+      return store.set(deleteOrgMembership$, fixture, context.signal);
+    },
+  );
+  const mocks = createZeroRouteMocks(context);
+
+  async function seedDownloadContext(
+    args: {
+      readonly withInstallation?: boolean;
+    } = {},
+  ): Promise<{ readonly token: string }> {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    await trackMembership(
+      store.set(seedOrgMembership$, { orgId, userId }, context.signal),
+    );
+
+    if (args.withInstallation !== false) {
+      await trackSlackFixture(
+        store.set(seedSlackOrgInstallation$, { orgId }, context.signal),
+      );
+    }
+
+    return {
+      token: zeroToken({ userId, orgId, capabilities: ["slack:write"] }),
+    };
+  }
+
+  it("returns 401 when the request is unauthenticated", async () => {
+    const response = await requestDownloadFile("?file_id=F1");
+
+    await expectErrorResponse(response, 401, "UNAUTHORIZED");
+  });
+
+  it("rejects a zero token without slack:write capability", async () => {
+    const token = zeroToken({
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      capabilities: ["file:read"],
+    });
+
+    const response = await requestDownloadFile(
+      "?file_id=F1",
+      `Bearer ${token}`,
+    );
+
+    await expectErrorResponse(response, 403, "FORBIDDEN");
+  });
+
+  it("returns 400 when file_id query param is missing", async () => {
+    const { token } = await seedDownloadContext();
+
+    const response = await requestDownloadFile("", `Bearer ${token}`);
+
+    await expectErrorResponse(response, 400, "BAD_REQUEST");
+  });
+
+  it("returns 404 when no Slack installation exists for org", async () => {
+    const { token } = await seedDownloadContext({ withInstallation: false });
+
+    const response = await requestDownloadFile(
+      "?file_id=F1",
+      `Bearer ${token}`,
+    );
+
+    await expectErrorResponse(response, 404, "NOT_FOUND");
+  });
+
+  it("returns 404 when Slack reports file not found", async () => {
+    const { token } = await seedDownloadContext();
+    mockSlackFilesInfo({ ok: false, error: "file_not_found" });
+
+    const response = await requestDownloadFile(
+      "?file_id=F-MISSING",
+      `Bearer ${token}`,
+    );
+
+    await expectErrorResponse(response, 404, "NOT_FOUND");
+  });
+
+  it("returns 404 when the Slack file has no downloadable URL", async () => {
+    const { token } = await seedDownloadContext();
+    const file = defaultSlackFile();
+    mockSlackFilesInfo({
+      ok: true,
+      file: {
+        id: file.id,
+        name: file.name,
+        mimetype: file.mimetype,
+        size: file.size,
+      },
+    });
+
+    const response = await requestDownloadFile(
+      "?file_id=F1",
+      `Bearer ${token}`,
+    );
+
+    await expectErrorResponse(response, 404, "NOT_FOUND");
+  });
+
+  it("returns 400 for disallowed download hostnames", async () => {
+    const { token } = await seedDownloadContext();
+    mockSlackFilesInfo({
+      ok: true,
+      file: defaultSlackFile({
+        url_private_download: "https://evil.example.com/steal.png",
+      }),
+    });
+    context.mocks.slack.fetchFile.mockRejectedValue(
+      new SlackFileFetchError("invalid-url", "Invalid Slack download URL"),
+    );
+
+    const response = await requestDownloadFile(
+      "?file_id=F-BAD",
+      `Bearer ${token}`,
+    );
+
+    await expectErrorResponse(response, 400, "BAD_REQUEST");
+  });
+
+  it("returns 413 when file metadata exceeds the 100MB limit", async () => {
+    const { token } = await seedDownloadContext();
+    mockSlackFilesInfo({
+      ok: true,
+      file: defaultSlackFile({ size: 200 * 1024 * 1024 }),
+    });
+
+    const response = await requestDownloadFile(
+      "?file_id=F-BIG",
+      `Bearer ${token}`,
+    );
+
+    await expectErrorResponse(response, 413, "PAYLOAD_TOO_LARGE");
+  });
+
+  it("returns 502 when Slack file download fails", async () => {
+    const { token } = await seedDownloadContext();
+    mockSlackFilesInfo({ ok: true, file: defaultSlackFile() });
+    context.mocks.slack.fetchFile.mockRejectedValue(
+      new SlackFileFetchError(
+        "download-failed",
+        "Failed to download Slack file",
+        503,
+      ),
+    );
+
+    const response = await requestDownloadFile(
+      "?file_id=F1",
+      `Bearer ${token}`,
+    );
+
+    await expectErrorResponse(response, 502, "BAD_GATEWAY");
+  });
+
+  it("returns 502 when Slack returns an HTML response", async () => {
+    const { token } = await seedDownloadContext();
+    mockSlackFilesInfo({ ok: true, file: defaultSlackFile() });
+    context.mocks.slack.fetchFile.mockResolvedValue(
+      new Response("<html><body>Login</body></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+    );
+
+    const response = await requestDownloadFile(
+      "?file_id=F1",
+      `Bearer ${token}`,
+    );
+
+    await expectErrorResponse(response, 502, "BAD_GATEWAY");
+  });
+
+  it("returns 400 when Slack files.info returns a platform error", async () => {
+    const { token } = await seedDownloadContext();
+    mockSlackFilesInfo({ ok: false, error: "invalid_auth" });
+
+    const response = await requestDownloadFile(
+      "?file_id=F1",
+      `Bearer ${token}`,
+    );
+
+    await expectErrorResponse(response, 400, "SLACK_ERROR");
+  });
+
+  it("streams file bytes from Slack with file metadata headers", async () => {
+    const { token } = await seedDownloadContext();
+    const fileBytes = Buffer.from("real file contents");
+    mockSlackFilesInfo({ ok: true, file: defaultSlackFile() });
+    context.mocks.slack.fetchFile.mockResolvedValue(
+      new Response(fileBytes, {
+        status: 200,
+        headers: {
+          "content-type": "image/png",
+          "content-length": String(fileBytes.length),
+        },
+      }),
+    );
+
+    const response = await requestDownloadFile(
+      "?file_id=F-OK",
+      `Bearer ${token}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(response.headers.get("x-file-mimetype")).toBe("image/png");
+    expect(response.headers.get("x-file-name")).toBe("pic.png");
+    expect(response.headers.get("content-length")).toBe(
+      String(fileBytes.length),
+    );
+    const receivedBytes = Buffer.from(await response.arrayBuffer());
+    expect(receivedBytes.equals(fileBytes)).toBeTruthy();
+  });
+
+  it("accepts a Clerk session with an active organization", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    await trackSlackFixture(
+      store.set(seedSlackOrgInstallation$, { orgId }, context.signal),
+    );
+    mocks.clerk.session(userId, orgId);
+    mockSlackFilesInfo({ ok: true, file: defaultSlackFile() });
+    context.mocks.slack.fetchFile.mockResolvedValue(
+      new Response(Buffer.from("ok"), {
+        status: 200,
+        headers: { "content-type": "image/png" },
+      }),
+    );
+
+    const response = await requestDownloadFile(
+      "?file_id=F-OK",
+      "Bearer clerk-session",
+    );
+
+    expect(response.status).toBe(200);
   });
 });
