@@ -7,7 +7,8 @@
  * - Real (internal): All signals, components, rendering
  */
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
@@ -22,9 +23,16 @@ import {
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
+
+beforeEach(() => {
+  setMockFeatureSwitches({
+    [FeatureSwitchKey.ModelFirstModelProvider]: false,
+  });
+});
 
 async function openProvidersPage() {
   detachedSetupPage({ context, path: "/?settings=providers" });

@@ -56,6 +56,9 @@ describe("agent chat page setup", () => {
     const agentId = "c0000000-0000-4000-a000-000000000001";
     const defaultProviderId = "00000000-0000-4000-a000-000000000001";
 
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: false,
+    });
     setMockTeam([
       {
         id: agentId,

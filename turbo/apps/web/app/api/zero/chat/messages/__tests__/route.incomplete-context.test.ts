@@ -4,6 +4,7 @@ import {
   createTestRequest,
   createTestCompose,
   insertOrgDefaultModelProvider,
+  setOrgCredits,
   getTestRun,
   setTestRunStatus,
   setTestRunResult,
@@ -55,6 +56,7 @@ describe("POST /api/zero/chat/messages — incomplete rounds context", () => {
     vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
     reloadEnv();
     await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
+    await setOrgCredits(user.orgId, 10_000);
   });
 
   it("omits the incomplete context block when the thread has no cancelled/failed runs", async () => {
