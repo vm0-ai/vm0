@@ -19,6 +19,15 @@ import { logger } from "../../../../../../src/lib/shared/logger";
 
 const log = logger("api:zero-agents:user-connectors");
 
+function missingOrganizationResponse() {
+  return {
+    status: 401 as const,
+    body: {
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    },
+  };
+}
+
 const router = tsr.router(zeroUserConnectorsContract, {
   get: async ({ params, headers }) => {
     initServices();
@@ -27,6 +36,7 @@ const router = tsr.router(zeroUserConnectorsContract, {
       requiredCapability: "agent:read",
     });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return missingOrganizationResponse();
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);
@@ -79,6 +89,7 @@ const router = tsr.router(zeroUserConnectorsContract, {
       requiredCapability: "agent:read",
     });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return missingOrganizationResponse();
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);
