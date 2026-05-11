@@ -726,6 +726,31 @@ mod start_loop_observer_tests {
             )
             .await;
     }
+
+    #[tokio::test]
+    async fn start_loop_observer_wait_before_idle_pool_ownership_transfer_observes_existing_event()
+    {
+        let observer = StartLoopTestObserver::default();
+        let run_id = RunId::new_v4();
+
+        observer.notify_before_idle_pool_ownership_transfer(run_id);
+        observer
+            .wait_before_idle_pool_ownership_transfer(run_id, Duration::from_secs(1))
+            .await;
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "runner did not observe idle-pool ownership transfer attempt")]
+    async fn start_loop_observer_wait_before_idle_pool_ownership_transfer_ignores_other_runs() {
+        let observer = StartLoopTestObserver::default();
+        let run_id = RunId::new_v4();
+        let other_run_id = RunId::new_v4();
+
+        observer.notify_before_idle_pool_ownership_transfer(other_run_id);
+        observer
+            .wait_before_idle_pool_ownership_transfer(run_id, Duration::ZERO)
+            .await;
+    }
 }
 
 #[cfg(test)]
