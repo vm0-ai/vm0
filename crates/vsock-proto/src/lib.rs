@@ -2302,6 +2302,25 @@ mod tests {
             CommandOutputPolicy::Discard,
         )
         .unwrap();
+        let label_len_offset = 4 + 1 + 4 + "cmd".len() + 4;
+        payload.truncate(label_len_offset + 1);
+        assert!(matches!(
+            decode_command_start(&payload),
+            Err(ProtocolError::InvalidPayload(
+                "command start label_len truncated"
+            ))
+        ));
+
+        let mut payload = encode_command_start(
+            1,
+            "cmd",
+            &[],
+            false,
+            "ok",
+            CommandOutputPolicy::Discard,
+            CommandOutputPolicy::Discard,
+        )
+        .unwrap();
         let label_start = 4 + 1 + 4 + "cmd".len() + 4 + 2;
         payload.truncate(label_start + 1);
         assert!(matches!(
