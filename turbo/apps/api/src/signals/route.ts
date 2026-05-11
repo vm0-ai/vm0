@@ -36,8 +36,6 @@ import { zeroRunsRoutes } from "./routes/zero-runs";
 import { zeroRunsCancelRoutes } from "./routes/zero-runs-cancel";
 import { zeroSchedulesRoutes } from "./routes/zero-schedules";
 import { zeroMeModelProvidersDeleteRoutes } from "./routes/zero-me-model-providers-delete";
-import { zeroMeModelProvidersSetDefaultRoutes } from "./routes/zero-me-model-providers-set-default";
-import { zeroMeModelProvidersUpdateModelRoutes } from "./routes/zero-me-model-providers-update-model";
 import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
 import { zeroSecretsRoutes } from "./routes/zero-secrets";
 import { zeroSkillsRoutes } from "./routes/zero-skills";
@@ -89,8 +87,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroMeModelProvidersDeleteRoutes,
-  ...zeroMeModelProvidersSetDefaultRoutes,
-  ...zeroMeModelProvidersUpdateModelRoutes,
   ...zeroMeModelProvidersUpsertRoutes,
   ...zeroVoiceChatRoutes,
   ...zeroVoiceIoQuotaRoutes,
