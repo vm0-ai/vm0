@@ -98,7 +98,7 @@ function SessionStateIndicator({ state }: { state: IndicatorState }) {
   return (
     <span
       aria-label="Draft"
-      className="flex items-center justify-center text-sidebar-foreground/50"
+      className="flex items-center justify-center text-sidebar-foreground"
     >
       <IconPencil size={16} stroke={2} />
     </span>
@@ -416,7 +416,7 @@ function ChatThreadSideDecorator({
               <span
                 aria-label="Pinned"
                 data-testid="chat-thread-pinned-indicator"
-                className="flex items-center justify-center text-sidebar-foreground/70 group-hover:hidden peer-data-[state=open]:hidden"
+                className="flex items-center justify-center text-sidebar-foreground group-hover:hidden peer-data-[state=open]:hidden"
               >
                 <IconPin size={16} stroke={2} />
               </span>
@@ -733,7 +733,7 @@ function ChatThreadsTitle() {
       <IconSearch
         size={15}
         stroke={2.5}
-        className="shrink-0 text-sidebar-foreground/50"
+        className="shrink-0 text-sidebar-foreground"
       />
       <input
         type="text"
@@ -752,7 +752,7 @@ function ChatThreadsTitle() {
             e.preventDefault();
             setSearchOpen(false);
           }}
-          className="shrink-0 flex items-center justify-center h-5 w-5 rounded text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+          className="shrink-0 flex items-center justify-center h-5 w-5 rounded text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
           aria-label="Close search"
         >
           <IconX size={12} stroke={2} />
@@ -766,7 +766,7 @@ function ChatThreadsTitle() {
         return setCollapsed(!collapsed);
       }}
     >
-      <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
+      <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground">
         {titleLabel}
         <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           <IconChevronRight
@@ -787,7 +787,7 @@ function ChatThreadsTitle() {
                   e.stopPropagation();
                   setSearchOpen(true);
                 }}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
                 aria-label="Search chats"
               >
                 <IconSearch size={15} stroke={2.5} />
@@ -808,7 +808,7 @@ function ChatThreadsTitle() {
                   onNewChat(e.altKey ? "sidebar" : "main");
                 }}
                 disabled={newChatDisabled}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors disabled:opacity-50"
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors disabled:opacity-50"
                 aria-label={newChatAriaLabel}
               >
                 <IconPlus size={15} stroke={2.5} />
