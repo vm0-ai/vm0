@@ -81,6 +81,43 @@ describe("PUT /api/zero/permission-policies", () => {
     expect(response.body.agentId).toBe(agentId);
   });
 
+  it("persists policies across reads (DB read-after-write)", async () => {
+    const fixture = uniqueOrgUser("zpp-persist-db");
+    await store.set(
+      seedOrgMembership$,
+      { orgId: fixture.orgId, userId: fixture.userId, role: "admin" },
+      context.signal,
+    );
+    const { agentId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const policies = {
+      slack: {
+        policies: { "channels:read": "allow", "chat:write": "ask" },
+      },
+    } as const;
+
+    const client = setupApp({ context })(zeroAgentPermissionPoliciesContract);
+    const response = await client.update({
+      body: { agentId, policies },
+      headers: { authorization: "Bearer clerk-session" },
+    });
+    expect(response.status).toBe(200);
+
+    // Direct DB SELECT verifies the row was persisted, independent of the
+    // PUT response body. Mirrors web case "should persist policies across reads".
+    // The DB stores the flat RawPermissionPolicies form (no `policies` wrapper);
+    // toFirewallPolicies reconstructs the nested wire shape on read.
+    const stored = await readStoredPolicies(agentId);
+    expect(stored?.permissionPolicies).toStrictEqual({
+      slack: { "channels:read": "allow", "chat:write": "ask" },
+    });
+  });
+
   it("overwrites previous policies on a second PUT", async () => {
     const fixture = uniqueOrgUser("zpp-overwrite");
     await store.set(
