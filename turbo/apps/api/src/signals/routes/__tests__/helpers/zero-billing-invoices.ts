@@ -17,6 +17,7 @@ interface InvoicesSeedValues {
   readonly stripeSubscriptionId?: string | null;
   readonly subscriptionStatus?: string | null;
   readonly tier?: string;
+  readonly currentPeriodEnd?: Date | null;
 }
 
 export const seedInvoicesOrg$ = command(
@@ -37,6 +38,9 @@ export const seedInvoicesOrg$ = command(
       stripeSubscriptionId: values.stripeSubscriptionId ?? null,
       subscriptionStatus: values.subscriptionStatus ?? null,
       ...(values.tier !== undefined ? { tier: values.tier } : {}),
+      ...(values.currentPeriodEnd !== undefined
+        ? { currentPeriodEnd: values.currentPeriodEnd }
+        : {}),
     });
     signal.throwIfAborted();
 
