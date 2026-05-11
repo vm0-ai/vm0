@@ -613,33 +613,22 @@ fn owned_command_result(
 }
 
 fn dispatch_command_output(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
-    let has_operation = {
-        let guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-        match &*guard {
-            ConnectionState::Connected { operations, .. } => operations.contains_key(&msg.seq),
-            ConnectionState::Closed { .. } => false,
-        }
-    };
-    if !has_operation {
-        return Ok(());
-    }
-
-    let decoded =
-        vsock_proto::decode_command_output(&msg.payload).map_err(command_protocol_error)?;
-
     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
     if let ConnectionState::Connected { operations, .. } = &mut *guard
         && let Some(Operation::Command(operation)) = operations.get_mut(&msg.seq)
-        && let Some(tx) = operation.stream_tx.as_ref()
     {
-        match tx.try_send(owned_command_output_event(decoded)) {
-            Ok(()) => {}
-            Err(mpsc::error::TrySendError::Full(_)) => {
-                operation.stream_tx.take();
-                operation.stream_overflowed = true;
-            }
-            Err(mpsc::error::TrySendError::Closed(_)) => {
-                operation.stream_tx.take();
+        let decoded =
+            vsock_proto::decode_command_output(&msg.payload).map_err(command_protocol_error)?;
+        if let Some(tx) = operation.stream_tx.as_ref() {
+            match tx.try_send(owned_command_output_event(decoded)) {
+                Ok(()) => {}
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    operation.stream_tx.take();
+                    operation.stream_overflowed = true;
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => {
+                    operation.stream_tx.take();
+                }
             }
         }
     }
@@ -648,17 +637,21 @@ fn dispatch_command_output(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result
 }
 
 fn dispatch_command_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
-    let operation = {
+    let (operation, decoded) = {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
-            ConnectionState::Connected { operations, .. } => operations.remove(&msg.seq),
-            ConnectionState::Closed { .. } => None,
+            ConnectionState::Connected { operations, .. } if operations.contains_key(&msg.seq) => {
+                let decoded = vsock_proto::decode_command_result(&msg.payload)
+                    .map_err(command_protocol_error)?;
+                (operations.remove(&msg.seq), decoded)
+            }
+            ConnectionState::Connected { .. } | ConnectionState::Closed { .. } => {
+                return Ok(());
+            }
         }
     };
 
     if let Some(Operation::Command(operation)) = operation {
-        let decoded =
-            vsock_proto::decode_command_result(&msg.payload).map_err(command_protocol_error)?;
         let CommandOperation {
             result_tx,
             stream_overflowed,
