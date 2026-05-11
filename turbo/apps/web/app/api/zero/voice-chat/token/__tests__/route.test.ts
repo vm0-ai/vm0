@@ -239,6 +239,9 @@ describe("POST /api/zero/voice-chat/token", () => {
     });
 
     it("returns 500 when OpenAI returns an error", async () => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
+        return undefined;
+      });
       server.use(
         http.post("https://api.openai.com/v1/realtime/client_secrets", () => {
           return HttpResponse.json(
@@ -251,6 +254,14 @@ describe("POST /api/zero/voice-chat/token", () => {
       const body = await response.json();
       expect(response.status).toBe(500);
       expect(body.error.code).toBe("INTERNAL_SERVER_ERROR");
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.stringContaining("OpenAI token request failed"),
+        expect.objectContaining({
+          status: 400,
+          upstreamBody: expect.stringContaining('"message":"bad"'),
+        }),
+      );
+      consoleError.mockRestore();
     });
   });
 
