@@ -98,15 +98,3 @@ fn display_includes_category_and_message() {
     assert!(text.contains("backend crashed"), "got: {text}");
     assert!(text.contains("firecracker process crashed"), "got: {text}");
 }
-
-#[test]
-fn bounded_exec_operation_display_name_is_stable() {
-    let err = SandboxError::Operation {
-        operation: SandboxOperation::BoundedExec,
-        reason: SandboxOperationReason::Guest,
-        message: "guest error".into(),
-    };
-
-    let text = err.to_string();
-    assert!(text.contains("bounded exec"), "got: {text}");
-}

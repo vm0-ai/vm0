@@ -92,30 +92,9 @@ pub(crate) fn wait_with_kill_timeout(mut child: Child, timeout_ms: u32) -> WaitO
 /// work tied to a disconnected host connection cannot outlive that connection
 /// indefinitely.
 pub(crate) fn wait_with_kill_timeout_or_cancelled(
-    child: Child,
-    timeout_ms: u32,
-    cancel: &AtomicBool,
-) -> WaitOutcome {
-    wait_with_kill_timeout_or_cancelled_by(child, timeout_ms, || cancel.load(Ordering::Acquire))
-}
-
-/// Like [`wait_with_kill_timeout_or_cancelled`], but observes any cancel flag.
-/// Used by bounded exec, which has connection-level, request-level, and local
-/// cancellation from stream write failures.
-pub(crate) fn wait_with_kill_timeout_or_cancelled_any(
-    child: Child,
-    timeout_ms: u32,
-    cancels: &[&AtomicBool],
-) -> WaitOutcome {
-    wait_with_kill_timeout_or_cancelled_by(child, timeout_ms, || {
-        cancels.iter().any(|cancel| cancel.load(Ordering::Acquire))
-    })
-}
-
-fn wait_with_kill_timeout_or_cancelled_by(
     mut child: Child,
     timeout_ms: u32,
-    is_cancelled: impl Fn() -> bool + Copy + Send + Sync,
+    cancel: &AtomicBool,
 ) -> WaitOutcome {
     let child_id = child.id();
     let deadline = if timeout_ms > 0 {
@@ -131,7 +110,7 @@ fn wait_with_kill_timeout_or_cancelled_by(
     thread::scope(|scope| {
         let (done_tx, done_rx) = mpsc::channel::<()>();
         let watchdog = match spawn_scoped_named(scope, THREAD_WAIT_WATCHDOG, move || {
-            wait_for_done_timeout_or_cancelled(done_rx, deadline, is_cancelled, child_id)
+            wait_for_done_timeout_or_cancelled(done_rx, deadline, cancel, child_id)
         }) {
             Ok(watchdog) => watchdog,
             Err(e) => {
@@ -169,7 +148,7 @@ fn wait_with_kill_timeout_or_cancelled_by(
 fn wait_for_done_timeout_or_cancelled(
     done_rx: mpsc::Receiver<()>,
     deadline: Option<Instant>,
-    is_cancelled: impl Fn() -> bool,
+    cancel: &AtomicBool,
     child_id: u32,
 ) -> Option<WatchdogKill> {
     let poll_interval = Duration::from_millis(WATCHDOG_CANCEL_POLL_INTERVAL_MS);
@@ -191,7 +170,7 @@ fn wait_for_done_timeout_or_cancelled(
             None => poll_interval,
         };
 
-        if is_cancelled() {
+        if cancel.load(Ordering::Acquire) {
             return kill_child_unless_done(&done_rx, child_id, KillReason::Cancelled);
         }
 
@@ -534,7 +513,7 @@ mod tests {
         let outcome = wait_for_done_timeout_or_cancelled(
             done_rx,
             Some(Instant::now()),
-            || cancel.load(Ordering::Acquire),
+            &cancel,
             i32::MAX as u32,
         );
 
@@ -547,12 +526,7 @@ mod tests {
         let (done_tx, done_rx) = mpsc::channel::<()>();
         done_tx.send(()).unwrap();
 
-        let outcome = wait_for_done_timeout_or_cancelled(
-            done_rx,
-            None,
-            || cancel.load(Ordering::Acquire),
-            i32::MAX as u32,
-        );
+        let outcome = wait_for_done_timeout_or_cancelled(done_rx, None, &cancel, i32::MAX as u32);
 
         assert!(outcome.is_none());
     }

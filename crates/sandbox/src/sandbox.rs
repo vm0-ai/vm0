@@ -23,7 +23,6 @@
 //!
 //! # Operations
 //! Once running, callers invoke [`exec`](Sandbox::exec) /
-//! [`bounded_exec`](Sandbox::bounded_exec) /
 //! [`write_file`](Sandbox::write_file) / [`spawn_watch`](Sandbox::spawn_watch) /
 //! [`wait_exit`](Sandbox::wait_exit) via the host-to-guest IPC channel
 //! (vsock, in the Firecracker backend). Operations race against a crash
@@ -36,9 +35,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use crate::error::Result;
-use crate::types::{
-    BoundedExecRequest, BoundedExecResult, ExecRequest, ExecResult, ProcessExit, SpawnHandle,
-};
+use crate::types::{ExecRequest, ExecResult, ProcessExit, SpawnHandle};
 
 /// A process-isolation environment that runs guest workloads for the runner.
 ///
@@ -62,11 +59,11 @@ use crate::types::{
 ///
 /// # Operations
 /// Once running, callers invoke [`exec`](Self::exec) /
-/// [`bounded_exec`](Self::bounded_exec) / [`write_file`](Self::write_file) /
-/// [`spawn_watch`](Self::spawn_watch) / [`wait_exit`](Self::wait_exit) via
-/// the host-to-guest IPC channel (vsock, in the Firecracker backend).
-/// Operations race against a crash notifier so that a dying backend process
-/// surfaces as a specific error rather than an opaque IPC timeout.
+/// [`write_file`](Self::write_file) / [`spawn_watch`](Self::spawn_watch) /
+/// [`wait_exit`](Self::wait_exit) via the host-to-guest IPC channel
+/// (vsock, in the Firecracker backend). Operations race against a crash
+/// notifier so that a dying backend process surfaces as a specific
+/// error rather than an opaque IPC timeout.
 ///
 /// # Thread-safety and trait objects
 /// Implementations are consumed as `Box<dyn Sandbox>` and shared across
@@ -157,7 +154,7 @@ pub trait Sandbox: Send + Sync + Any {
     /// Transition the sandbox back to the active state.
     ///
     /// Must be called before any further work is dispatched via `exec` /
-    /// `bounded_exec` / `spawn_watch` on a previously parked sandbox. Implementations
+    /// `spawn_watch` on a previously parked sandbox. Implementations
     /// should restore whatever state `park()` altered (resume vCPUs,
     /// balloon deflate, respawn background tickers, etc).
     ///
@@ -180,31 +177,12 @@ pub trait Sandbox: Send + Sync + Any {
     // backend process surfaces as a specific error rather than an
     // opaque IPC timeout.
 
-    /// Legacy buffered command execution.
-    ///
-    /// Deprecated for new code: use [`bounded_exec`](Self::bounded_exec) for all
-    /// request/response command execution. Bounded exec returns structured
-    /// termination, bounded final output, optional request-scoped streaming,
-    /// and explicit transport cancellation semantics.
-    ///
-    /// Run `request.cmd` in the guest, block until it exits or the request
-    /// timeout expires, and return the captured output.
+    /// Run `request.cmd` in the guest, block until it exits or the
+    /// request timeout expires, and return the captured output.
     ///
     /// Returns an error if the sandbox is not running or if the backing
     /// process crashes during execution.
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult>;
-    /// Run `request.cmd` in the guest with structured termination status and
-    /// independently configured stdout/stderr output policies.
-    ///
-    /// Each stream can discard final output, capture bounded final bytes, emit
-    /// request-scoped stream events, or stream and capture at the same time.
-    /// `Discard` is distinct from `Capture { limit_bytes: 0 }`: capture-zero
-    /// still drains and reports truncation when output exists, while discarded
-    /// non-streamed output may be connected to `/dev/null`.
-    ///
-    /// Returns an error if the sandbox is not running, if the backing
-    /// process crashes during execution, or if the host/guest transport fails.
-    async fn bounded_exec(&self, request: &BoundedExecRequest<'_>) -> Result<BoundedExecResult>;
     /// Write `content` to `path` inside the guest, creating parent
     /// directories and truncating the file as needed. Returns an error if
     /// the sandbox is not running or if the backing process crashes.

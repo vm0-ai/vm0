@@ -6,7 +6,6 @@
 //!
 //! Protocol encoding/decoding is handled by the `vsock-proto` crate.
 
-mod bounded_exec;
 mod connection;
 mod drain;
 mod error;

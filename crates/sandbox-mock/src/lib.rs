@@ -2,14 +2,13 @@
 //!
 //! All mocks succeed by default with exit code 0 and empty output.
 //! Use [`MockSandbox::push_exec_result`], [`MockSandbox::push_write_file_result`],
-//! [`MockSandbox::push_bounded_exec_response`],
-//! or [`MockSandboxControl::push_exec_remote_response`] to queue custom responses
+//! or [`MockSandboxControl::push_exec_remote_result`] to queue custom responses
 //! consumed in FIFO order.
 //!
 //! For advanced control, create [`MockSandboxOverrides`] and pass it via
 //! [`MockSandboxRuntime::with_overrides`]. This enables pattern-matched exec
-//! and bounded_exec results, custom `wait_exit` exit codes, and blocking gates
-//! for lifecycle and cancellation testing.
+//! results, custom `wait_exit` exit codes, and blocking gates for lifecycle
+//! and cancellation testing.
 //!
 //! ```toml
 //! [dev-dependencies]
@@ -51,40 +50,6 @@ pub struct ExecMatcher {
     pub stderr: Vec<u8>,
 }
 
-/// Behavior override applied to bounded_exec calls whose command contains the pattern.
-pub struct BoundedExecMatcher {
-    /// Substring to match against `BoundedExecRequest.cmd`.
-    pub pattern: String,
-    pub response: BoundedExecResponse,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BoundedExecCall {
-    pub cmd: String,
-    pub env: Vec<(String, String)>,
-    pub sudo: bool,
-    pub stdin: Option<Vec<u8>>,
-    pub stdout: BoundedExecOutputCall,
-    pub stderr: BoundedExecOutputCall,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BoundedExecOutputCall {
-    pub capture: BoundedExecCapturePolicy,
-    pub stream: Option<BoundedExecStreamCall>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BoundedExecStreamCall {
-    pub limit_bytes: u32,
-    pub chunk_limit_bytes: u32,
-}
-
-pub struct BoundedExecResponse {
-    pub events: Vec<BoundedExecOutputEvent>,
-    pub result: Result<BoundedExecResult>,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SpawnWatchCall {
     pub streams_stdout: bool,
@@ -117,12 +82,6 @@ pub struct MockSandboxOverrides {
     /// Pattern-matched exec results. First matching pattern wins and is
     /// consumed (one-shot).
     exec_matchers: Mutex<Vec<ExecMatcher>>,
-    /// Pattern-matched bounded_exec responses. First matching pattern wins and
-    /// is consumed (one-shot).
-    bounded_exec_matchers: Mutex<Vec<BoundedExecMatcher>>,
-    /// FIFO bounded_exec responses consumed across all sandboxes built from
-    /// these overrides. Empty queue → default success.
-    bounded_exec_responses: Mutex<VecDeque<BoundedExecResponse>>,
     /// When `Some`, `wait_exit` returns this exit code instead of 0.
     wait_exit_code: Option<i32>,
     /// When set, `wait_exit` awaits this [`tokio::sync::Notify`] before
@@ -152,9 +111,6 @@ pub struct MockSandboxOverrides {
     /// Recorded spawn_watch output modes across all sandboxes built from
     /// this override set.
     spawn_watch_calls: Mutex<Vec<SpawnWatchCall>>,
-    /// Recorded bounded_exec calls across all sandboxes built from this
-    /// override set.
-    bounded_exec_calls: Mutex<Vec<BoundedExecCall>>,
     /// Total `park()` calls across all sandboxes built from this override set.
     park_calls: Mutex<u32>,
     /// Total `unpark()` calls across all sandboxes built from this override set.
@@ -168,8 +124,6 @@ impl MockSandboxOverrides {
     pub fn new() -> Self {
         Self {
             exec_matchers: Mutex::new(Vec::new()),
-            bounded_exec_matchers: Mutex::new(Vec::new()),
-            bounded_exec_responses: Mutex::new(VecDeque::new()),
             wait_exit_code: None,
             wait_exit_gate: None,
             wait_exit_error: None,
@@ -180,7 +134,6 @@ impl MockSandboxOverrides {
             unpark_behaviors: Mutex::new(VecDeque::new()),
             destroy_gate: Mutex::new(None),
             spawn_watch_calls: Mutex::new(Vec::new()),
-            bounded_exec_calls: Mutex::new(Vec::new()),
             park_calls: Mutex::new(0),
             unpark_calls: Mutex::new(0),
             destroy_calls: Mutex::new(0),
@@ -216,21 +169,6 @@ impl MockSandboxOverrides {
     /// Register a pattern matcher consumed on first match.
     pub fn add_exec_matcher(&self, matcher: ExecMatcher) {
         self.exec_matchers.lock_ignoring_poison().push(matcher);
-    }
-
-    /// Register a bounded_exec pattern matcher consumed on first match.
-    pub fn add_bounded_exec_matcher(&self, matcher: BoundedExecMatcher) {
-        self.bounded_exec_matchers
-            .lock_ignoring_poison()
-            .push(matcher);
-    }
-
-    /// Queue a bounded_exec response consumed FIFO across all sandboxes built
-    /// with these overrides. Empty queue → default success.
-    pub fn push_bounded_exec_response(&self, response: BoundedExecResponse) {
-        self.bounded_exec_responses
-            .lock_ignoring_poison()
-            .push_back(response);
     }
 
     /// Queue a `start()` result applied to the next factory-created sandbox.
@@ -328,12 +266,6 @@ impl MockSandboxOverrides {
     pub fn spawn_watch_calls(&self) -> Vec<SpawnWatchCall> {
         self.spawn_watch_calls.lock_ignoring_poison().clone()
     }
-
-    /// Recorded bounded_exec calls across all sandboxes built from this
-    /// override set, in call order.
-    pub fn bounded_exec_calls(&self) -> Vec<BoundedExecCall> {
-        self.bounded_exec_calls.lock_ignoring_poison().clone()
-    }
 }
 
 async fn wait_blocking_gate(gate: &Mutex<Option<BlockingGate>>) {
@@ -357,15 +289,12 @@ impl Default for MockSandboxOverrides {
 /// A mock [`Sandbox`] that succeeds on all operations by default.
 ///
 /// Queue custom results with [`push_exec_result`](Self::push_exec_result)
-/// [`push_bounded_exec_response`](Self::push_bounded_exec_response), and
-/// [`push_write_file_result`](Self::push_write_file_result).
+/// and [`push_write_file_result`](Self::push_write_file_result).
 /// When a queue is empty, the operation returns its default success value.
 pub struct MockSandbox {
     id: String,
     source_ip: String,
     exec_results: Mutex<VecDeque<Result<ExecResult>>>,
-    bounded_exec_responses: Mutex<VecDeque<BoundedExecResponse>>,
-    bounded_exec_calls: Mutex<Vec<BoundedExecCall>>,
     write_file_results: Mutex<VecDeque<Result<()>>>,
     write_file_calls: Mutex<Vec<WriteFileCall>>,
     overrides: Option<Arc<MockSandboxOverrides>>,
@@ -381,8 +310,6 @@ impl MockSandbox {
             id: id.into(),
             source_ip: "10.0.0.1".into(),
             exec_results: Mutex::new(VecDeque::new()),
-            bounded_exec_responses: Mutex::new(VecDeque::new()),
-            bounded_exec_calls: Mutex::new(Vec::new()),
             write_file_results: Mutex::new(VecDeque::new()),
             write_file_calls: Mutex::new(Vec::new()),
             overrides: None,
@@ -395,8 +322,6 @@ impl MockSandbox {
             id: id.into(),
             source_ip: "10.0.0.1".into(),
             exec_results: Mutex::new(VecDeque::new()),
-            bounded_exec_responses: Mutex::new(VecDeque::new()),
-            bounded_exec_calls: Mutex::new(Vec::new()),
             write_file_results: Mutex::new(VecDeque::new()),
             write_file_calls: Mutex::new(Vec::new()),
             overrides: Some(overrides),
@@ -412,17 +337,6 @@ impl MockSandbox {
     /// Queue an exec result. Results are consumed in FIFO order.
     pub fn push_exec_result(&self, result: Result<ExecResult>) {
         self.exec_results.lock_ignoring_poison().push_back(result);
-    }
-
-    /// Queue a bounded_exec response. Responses are consumed in FIFO order.
-    pub fn push_bounded_exec_response(&self, response: BoundedExecResponse) {
-        self.bounded_exec_responses
-            .lock_ignoring_poison()
-            .push_back(response);
-    }
-
-    pub fn bounded_exec_calls(&self) -> Vec<BoundedExecCall> {
-        self.bounded_exec_calls.lock_ignoring_poison().clone()
     }
 
     /// Queue a write_file result. Results are consumed in FIFO order.
@@ -443,58 +357,6 @@ fn default_exec_result() -> ExecResult {
         exit_code: 0,
         stdout: Vec::new(),
         stderr: Vec::new(),
-    }
-}
-
-fn default_bounded_exec_result() -> BoundedExecResult {
-    BoundedExecResult {
-        termination: BoundedExecTermination::Exited { exit_code: 0 },
-        duration: Duration::ZERO,
-        stdout: BoundedExecOutput::Captured {
-            bytes: Vec::new(),
-            truncated: false,
-        },
-        stderr: BoundedExecOutput::Captured {
-            bytes: Vec::new(),
-            truncated: false,
-        },
-        diagnostic: None,
-    }
-}
-
-fn output_call_from_request(output: &BoundedExecOutputRequest) -> BoundedExecOutputCall {
-    BoundedExecOutputCall {
-        capture: output.capture,
-        stream: output.stream.as_ref().map(|stream| BoundedExecStreamCall {
-            limit_bytes: stream.limit_bytes,
-            chunk_limit_bytes: stream.chunk_limit_bytes,
-        }),
-    }
-}
-
-fn bounded_exec_call_from_request(request: &BoundedExecRequest<'_>) -> BoundedExecCall {
-    BoundedExecCall {
-        cmd: request.cmd.to_string(),
-        env: request
-            .env
-            .iter()
-            .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
-            .collect(),
-        sudo: request.sudo,
-        stdin: request.stdin.map(<[u8]>::to_vec),
-        stdout: output_call_from_request(&request.stdout),
-        stderr: output_call_from_request(&request.stderr),
-    }
-}
-
-fn emit_bounded_exec_events(request: &BoundedExecRequest<'_>, events: Vec<BoundedExecOutputEvent>) {
-    for event in events {
-        let target = match event.stream {
-            BoundedExecStream::Stdout => request.stdout.stream.as_ref(),
-            BoundedExecStream::Stderr => request.stderr.stream.as_ref(),
-        };
-        let Some(stream) = target else { continue };
-        let _ = stream.event_tx.send(event);
     }
 }
 
@@ -591,47 +453,6 @@ impl Sandbox for MockSandbox {
             .lock_ignoring_poison()
             .pop_front()
             .unwrap_or_else(|| Ok(default_exec_result()))
-    }
-
-    async fn bounded_exec(&self, request: &BoundedExecRequest<'_>) -> Result<BoundedExecResult> {
-        let call = bounded_exec_call_from_request(request);
-        self.bounded_exec_calls
-            .lock_ignoring_poison()
-            .push(call.clone());
-        if let Some(overrides) = &self.overrides {
-            overrides
-                .bounded_exec_calls
-                .lock_ignoring_poison()
-                .push(call);
-            let matched_response = {
-                let mut matchers = overrides.bounded_exec_matchers.lock_ignoring_poison();
-                matchers
-                    .iter()
-                    .position(|m| request.cmd.contains(&m.pattern))
-                    .map(|idx| matchers.remove(idx).response)
-            };
-            if let Some(response) = matched_response {
-                emit_bounded_exec_events(request, response.events);
-                return response.result;
-            }
-            if let Some(response) = overrides
-                .bounded_exec_responses
-                .lock_ignoring_poison()
-                .pop_front()
-            {
-                emit_bounded_exec_events(request, response.events);
-                return response.result;
-            }
-        }
-        if let Some(response) = self
-            .bounded_exec_responses
-            .lock_ignoring_poison()
-            .pop_front()
-        {
-            emit_bounded_exec_events(request, response.events);
-            return response.result;
-        }
-        Ok(default_bounded_exec_result())
     }
 
     async fn write_file(&self, path: &str, content: &[u8]) -> Result<()> {
@@ -894,42 +715,13 @@ impl SnapshotProvider for MockSnapshotProvider {
 // MockSandboxControl
 // ---------------------------------------------------------------------------
 
-/// Output event emitted by [`MockSandboxControl`] before its final status.
-pub enum MockRemoteExecOutput {
-    Stdout(Vec<u8>),
-    Stderr(Vec<u8>),
-}
-
-/// A queued response for [`MockSandboxControl::exec_remote`].
-pub struct MockRemoteExecResponse {
-    pub output: Vec<MockRemoteExecOutput>,
-    pub result: std::result::Result<RemoteExecStatus, SandboxControlError>,
-}
-
-impl MockRemoteExecResponse {
-    pub fn status(status: RemoteExecStatus) -> Self {
-        Self {
-            output: Vec::new(),
-            result: Ok(status),
-        }
-    }
-
-    pub fn error(error: SandboxControlError) -> Self {
-        Self {
-            output: Vec::new(),
-            result: Err(error),
-        }
-    }
-}
-
 /// A mock [`SandboxControl`] for testing exec/kill commands.
 ///
-/// Queue custom responses with
-/// [`push_exec_remote_response`](Self::push_exec_remote_response). When the
-/// queue is empty, returns exited 0 with no output.
+/// Queue custom results with [`push_exec_remote_result`](Self::push_exec_remote_result).
+/// When the queue is empty, returns exit code 0 with empty output.
 pub struct MockSandboxControl {
     base_dir: PathBuf,
-    exec_responses: Mutex<VecDeque<MockRemoteExecResponse>>,
+    exec_results: Mutex<VecDeque<std::result::Result<RemoteExecResult, SandboxControlError>>>,
     recorded_commands: Mutex<Vec<String>>,
 }
 
@@ -937,26 +729,17 @@ impl MockSandboxControl {
     pub fn new(base_dir: impl Into<PathBuf>) -> Self {
         Self {
             base_dir: base_dir.into(),
-            exec_responses: Mutex::new(VecDeque::new()),
+            exec_results: Mutex::new(VecDeque::new()),
             recorded_commands: Mutex::new(Vec::new()),
         }
     }
 
-    /// Queue an exec remote response. Responses are consumed in FIFO order.
-    pub fn push_exec_remote_response(&self, response: MockRemoteExecResponse) {
-        self.exec_responses
-            .lock_ignoring_poison()
-            .push_back(response);
-    }
-
-    /// Queue an exec remote final status with no streamed output.
-    pub fn push_exec_remote_status(&self, status: RemoteExecStatus) {
-        self.push_exec_remote_response(MockRemoteExecResponse::status(status));
-    }
-
-    /// Queue an exec remote control error with no streamed output.
-    pub fn push_exec_remote_error(&self, error: SandboxControlError) {
-        self.push_exec_remote_response(MockRemoteExecResponse::error(error));
+    /// Queue an exec remote result. Results are consumed in FIFO order.
+    pub fn push_exec_remote_result(
+        &self,
+        result: std::result::Result<RemoteExecResult, SandboxControlError>,
+    ) {
+        self.exec_results.lock_ignoring_poison().push_back(result);
     }
 
     /// Return every command string passed to `exec_remote`, in call order.
@@ -973,25 +756,20 @@ impl SandboxControl for MockSandboxControl {
         command: &str,
         _timeout: Duration,
         _sudo: bool,
-        output: &mut dyn RemoteExecOutputSink,
-    ) -> std::result::Result<RemoteExecStatus, SandboxControlError> {
+    ) -> std::result::Result<RemoteExecResult, SandboxControlError> {
         self.recorded_commands
             .lock_ignoring_poison()
             .push(command.to_string());
-        let response = self
-            .exec_responses
+        self.exec_results
             .lock_ignoring_poison()
             .pop_front()
-            .unwrap_or_else(|| MockRemoteExecResponse::status(RemoteExecStatus::exited(0)));
-
-        for event in response.output {
-            match event {
-                MockRemoteExecOutput::Stdout(chunk) => output.stdout(&chunk)?,
-                MockRemoteExecOutput::Stderr(chunk) => output.stderr(&chunk)?,
-            }
-        }
-
-        response.result
+            .unwrap_or_else(|| {
+                Ok(RemoteExecResult {
+                    exit_code: 0,
+                    stdout: Vec::new(),
+                    stderr: Vec::new(),
+                })
+            })
     }
 
     fn runtime_dir(&self, sandbox_id: &str) -> PathBuf {
@@ -1006,24 +784,6 @@ mod tests {
         Arc,
         atomic::{AtomicBool, Ordering},
     };
-
-    #[derive(Default)]
-    struct CollectRemoteExecOutput {
-        stdout: Vec<u8>,
-        stderr: Vec<u8>,
-    }
-
-    impl RemoteExecOutputSink for CollectRemoteExecOutput {
-        fn stdout(&mut self, chunk: &[u8]) -> std::io::Result<()> {
-            self.stdout.extend_from_slice(chunk);
-            Ok(())
-        }
-
-        fn stderr(&mut self, chunk: &[u8]) -> std::io::Result<()> {
-            self.stderr.extend_from_slice(chunk);
-            Ok(())
-        }
-    }
 
     fn test_snapshot_config(output_dir: PathBuf) -> SnapshotCreateConfig {
         SnapshotCreateConfig {
@@ -1044,34 +804,6 @@ mod tests {
                 cpu_count: 2,
                 memory_mb: 1024,
             },
-        }
-    }
-
-    fn capture_output(limit_bytes: u32) -> BoundedExecOutputRequest {
-        BoundedExecOutputRequest {
-            capture: BoundedExecCapturePolicy::Capture { limit_bytes },
-            stream: None,
-        }
-    }
-
-    fn captured_output(bytes: &[u8], truncated: bool) -> BoundedExecOutput {
-        BoundedExecOutput::Captured {
-            bytes: bytes.to_vec(),
-            truncated,
-        }
-    }
-
-    fn assert_captured_output(
-        output: &BoundedExecOutput,
-        expected_bytes: &[u8],
-        expected_truncated: bool,
-    ) {
-        match output {
-            BoundedExecOutput::Captured { bytes, truncated } => {
-                assert_eq!(bytes, expected_bytes);
-                assert_eq!(*truncated, expected_truncated);
-            }
-            BoundedExecOutput::Discarded => panic!("expected captured output"),
         }
     }
 
@@ -1105,231 +837,6 @@ mod tests {
         let exec = result.unwrap();
         assert_eq!(exec.exit_code, 0);
         assert!(exec.stdout.is_empty());
-    }
-
-    #[tokio::test]
-    async fn sandbox_default_bounded_exec_succeeds_and_records_call() {
-        let sandbox = MockSandbox::new("test-1");
-        let env = [("K", "V")];
-        let request = BoundedExecRequest {
-            cmd: "echo bounded",
-            timeout: Duration::from_secs(5),
-            env: &env,
-            sudo: true,
-            stdin: Some(b"input"),
-            stdout: capture_output(100),
-            stderr: capture_output(101),
-        };
-
-        let result = sandbox.bounded_exec(&request).await.unwrap();
-
-        assert_eq!(
-            result.termination,
-            BoundedExecTermination::Exited { exit_code: 0 }
-        );
-        assert_captured_output(&result.stdout, b"", false);
-        assert_eq!(
-            sandbox.bounded_exec_calls(),
-            vec![BoundedExecCall {
-                cmd: "echo bounded".to_string(),
-                env: vec![("K".to_string(), "V".to_string())],
-                sudo: true,
-                stdin: Some(b"input".to_vec()),
-                stdout: BoundedExecOutputCall {
-                    capture: BoundedExecCapturePolicy::Capture { limit_bytes: 100 },
-                    stream: None,
-                },
-                stderr: BoundedExecOutputCall {
-                    capture: BoundedExecCapturePolicy::Capture { limit_bytes: 101 },
-                    stream: None,
-                },
-            }]
-        );
-    }
-
-    #[tokio::test]
-    async fn sandbox_queued_bounded_exec_response_emits_stream_events() {
-        let sandbox = MockSandbox::new("test-1");
-        sandbox.push_bounded_exec_response(BoundedExecResponse {
-            events: vec![
-                BoundedExecOutputEvent {
-                    stream: BoundedExecStream::Stdout,
-                    sequence: 7,
-                    chunk: b"chunk".to_vec(),
-                    truncated: true,
-                },
-                BoundedExecOutputEvent {
-                    stream: BoundedExecStream::Stderr,
-                    sequence: 8,
-                    chunk: b"ignored".to_vec(),
-                    truncated: false,
-                },
-            ],
-            result: Ok(BoundedExecResult {
-                termination: BoundedExecTermination::TimedOut,
-                duration: Duration::from_millis(25),
-                stdout: captured_output(b"final-out", false),
-                stderr: captured_output(b"final-err", true),
-                diagnostic: None,
-            }),
-        });
-
-        let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
-        let request = BoundedExecRequest {
-            cmd: "timeout",
-            timeout: Duration::from_secs(5),
-            env: &[],
-            sudo: false,
-            stdin: None,
-            stdout: BoundedExecOutputRequest {
-                capture: BoundedExecCapturePolicy::Capture { limit_bytes: 100 },
-                stream: Some(BoundedExecStreamPolicy {
-                    event_tx,
-                    limit_bytes: 2048,
-                    chunk_limit_bytes: 1024,
-                }),
-            },
-            stderr: BoundedExecOutputRequest {
-                capture: BoundedExecCapturePolicy::Capture { limit_bytes: 100 },
-                stream: None,
-            },
-        };
-
-        let result = sandbox.bounded_exec(&request).await.unwrap();
-
-        assert_eq!(result.termination, BoundedExecTermination::TimedOut);
-        assert_eq!(result.duration, Duration::from_millis(25));
-        assert_captured_output(&result.stdout, b"final-out", false);
-        assert_captured_output(&result.stderr, b"final-err", true);
-        assert_eq!(
-            event_rx.recv().await.unwrap(),
-            BoundedExecOutputEvent {
-                stream: BoundedExecStream::Stdout,
-                sequence: 7,
-                chunk: b"chunk".to_vec(),
-                truncated: true,
-            }
-        );
-        assert!(matches!(
-            event_rx.try_recv(),
-            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
-        ));
-        assert_eq!(
-            sandbox.bounded_exec_calls(),
-            vec![BoundedExecCall {
-                cmd: "timeout".to_string(),
-                env: vec![],
-                sudo: false,
-                stdin: None,
-                stdout: BoundedExecOutputCall {
-                    capture: BoundedExecCapturePolicy::Capture { limit_bytes: 100 },
-                    stream: Some(BoundedExecStreamCall {
-                        limit_bytes: 2048,
-                        chunk_limit_bytes: 1024,
-                    }),
-                },
-                stderr: BoundedExecOutputCall {
-                    capture: BoundedExecCapturePolicy::Capture { limit_bytes: 100 },
-                    stream: None,
-                },
-            }]
-        );
-    }
-
-    #[tokio::test]
-    async fn overrides_queue_bounded_exec_responses_across_factory_sandboxes() {
-        let overrides = Arc::new(MockSandboxOverrides::new());
-        overrides.push_bounded_exec_response(BoundedExecResponse {
-            events: vec![],
-            result: Ok(BoundedExecResult {
-                termination: BoundedExecTermination::Exited { exit_code: 42 },
-                duration: Duration::from_millis(10),
-                stdout: captured_output(b"shared", false),
-                stderr: captured_output(b"", false),
-                diagnostic: None,
-            }),
-        });
-        let mut factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
-        factory.startup().await.unwrap();
-
-        let first = factory.create(test_sandbox_config()).await.unwrap();
-        let second = factory.create(test_sandbox_config()).await.unwrap();
-        let request = BoundedExecRequest {
-            cmd: "shared",
-            timeout: Duration::from_secs(5),
-            env: &[],
-            sudo: false,
-            stdin: None,
-            stdout: capture_output(100),
-            stderr: capture_output(100),
-        };
-
-        let queued = first.bounded_exec(&request).await.unwrap();
-        let fallback = second.bounded_exec(&request).await.unwrap();
-
-        assert_eq!(
-            queued.termination,
-            BoundedExecTermination::Exited { exit_code: 42 }
-        );
-        assert_captured_output(&queued.stdout, b"shared", false);
-        assert_eq!(
-            fallback.termination,
-            BoundedExecTermination::Exited { exit_code: 0 }
-        );
-        assert_eq!(overrides.bounded_exec_calls().len(), 2);
-    }
-
-    #[tokio::test]
-    async fn overrides_match_bounded_exec_response_by_command() {
-        let overrides = Arc::new(MockSandboxOverrides::new());
-        overrides.add_bounded_exec_matcher(BoundedExecMatcher {
-            pattern: "cat /tmp/vm0-session-".into(),
-            response: BoundedExecResponse {
-                events: vec![],
-                result: Ok(BoundedExecResult {
-                    termination: BoundedExecTermination::Exited { exit_code: 0 },
-                    duration: Duration::from_millis(10),
-                    stdout: captured_output(b"sess-1", false),
-                    stderr: captured_output(b"", false),
-                    diagnostic: None,
-                }),
-            },
-        });
-        let mut factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
-        factory.startup().await.unwrap();
-
-        let sandbox = factory.create(test_sandbox_config()).await.unwrap();
-        let setup_request = BoundedExecRequest {
-            cmd: "date -s @0",
-            timeout: Duration::from_secs(5),
-            env: &[],
-            sudo: true,
-            stdin: None,
-            stdout: capture_output(100),
-            stderr: capture_output(100),
-        };
-        let session_request = BoundedExecRequest {
-            cmd: "cat /tmp/vm0-session-run.txt 2>/dev/null",
-            timeout: Duration::from_secs(5),
-            env: &[],
-            sudo: false,
-            stdin: None,
-            stdout: capture_output(100),
-            stderr: capture_output(100),
-        };
-
-        let setup = sandbox.bounded_exec(&setup_request).await.unwrap();
-        let matched = sandbox.bounded_exec(&session_request).await.unwrap();
-        let fallback = sandbox.bounded_exec(&session_request).await.unwrap();
-
-        assert_eq!(
-            setup.termination,
-            BoundedExecTermination::Exited { exit_code: 0 }
-        );
-        assert_captured_output(&setup.stdout, b"", false);
-        assert_captured_output(&matched.stdout, b"sess-1", false);
-        assert_captured_output(&fallback.stdout, b"", false);
-        assert_eq!(overrides.bounded_exec_calls().len(), 3);
     }
 
     #[tokio::test]
@@ -1608,20 +1115,11 @@ mod tests {
     #[tokio::test]
     async fn sandbox_control_default_succeeds() {
         let control = MockSandboxControl::new("/tmp/test");
-        let mut output = CollectRemoteExecOutput::default();
         let result = control
-            .exec_remote(
-                "sandbox-1",
-                "echo hi",
-                Duration::from_secs(5),
-                false,
-                &mut output,
-            )
+            .exec_remote("sandbox-1", "echo hi", Duration::from_secs(5), false)
             .await
             .unwrap();
-        assert_eq!(result, RemoteExecStatus::exited(0));
-        assert!(output.stdout.is_empty());
-        assert!(output.stderr.is_empty());
+        assert_eq!(result.exit_code, 0);
         assert_eq!(
             control.runtime_dir("sandbox-1"),
             PathBuf::from("/tmp/test/sandbox-1")
@@ -1669,25 +1167,12 @@ mod tests {
     #[tokio::test]
     async fn sandbox_control_records_commands() {
         let control = MockSandboxControl::new("/tmp/test");
-        let mut output = CollectRemoteExecOutput::default();
         control
-            .exec_remote(
-                "sandbox-1",
-                "echo one",
-                Duration::from_secs(5),
-                false,
-                &mut output,
-            )
+            .exec_remote("sandbox-1", "echo one", Duration::from_secs(5), false)
             .await
             .unwrap();
         control
-            .exec_remote(
-                "sandbox-1",
-                "echo two",
-                Duration::from_secs(5),
-                true,
-                &mut output,
-            )
+            .exec_remote("sandbox-1", "echo two", Duration::from_secs(5), true)
             .await
             .unwrap();
 
@@ -1700,73 +1185,18 @@ mod tests {
     #[tokio::test]
     async fn sandbox_control_queued_results() {
         let control = MockSandboxControl::new("/tmp/test");
-        control.push_exec_remote_error(SandboxControlError::NotFound("gone".into()));
+        control.push_exec_remote_result(Err(SandboxControlError::NotFound("gone".into())));
 
-        let mut output = CollectRemoteExecOutput::default();
         let result = control
-            .exec_remote(
-                "sandbox-1",
-                "test",
-                Duration::from_secs(5),
-                false,
-                &mut output,
-            )
+            .exec_remote("sandbox-1", "test", Duration::from_secs(5), false)
             .await;
         assert!(result.is_err());
 
         // Falls back to default.
         let result = control
-            .exec_remote(
-                "sandbox-1",
-                "test",
-                Duration::from_secs(5),
-                false,
-                &mut output,
-            )
+            .exec_remote("sandbox-1", "test", Duration::from_secs(5), false)
             .await
             .unwrap();
-        assert_eq!(result, RemoteExecStatus::exited(0));
-    }
-
-    #[tokio::test]
-    async fn sandbox_control_streams_queued_output() {
-        let control = MockSandboxControl::new("/tmp/test");
-        control.push_exec_remote_response(MockRemoteExecResponse {
-            output: vec![
-                MockRemoteExecOutput::Stdout(b"out-1".to_vec()),
-                MockRemoteExecOutput::Stderr(b"err-1".to_vec()),
-                MockRemoteExecOutput::Stdout(b"out-2".to_vec()),
-            ],
-            result: Ok(RemoteExecStatus {
-                termination: RemoteExecTermination::Exited { exit_code: 7 },
-                stdout_truncated: false,
-                stderr_truncated: true,
-                diagnostic: None,
-            }),
-        });
-
-        let mut output = CollectRemoteExecOutput::default();
-        let result = control
-            .exec_remote(
-                "sandbox-1",
-                "test",
-                Duration::from_secs(5),
-                false,
-                &mut output,
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(
-            result,
-            RemoteExecStatus {
-                termination: RemoteExecTermination::Exited { exit_code: 7 },
-                stdout_truncated: false,
-                stderr_truncated: true,
-                diagnostic: None,
-            }
-        );
-        assert_eq!(output.stdout, b"out-1out-2");
-        assert_eq!(output.stderr, b"err-1");
+        assert_eq!(result.exit_code, 0);
     }
 }
