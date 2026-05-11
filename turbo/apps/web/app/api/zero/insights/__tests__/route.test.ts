@@ -71,6 +71,20 @@ describe("GET /api/zero/insights", () => {
     expect(data.error.code).toBe("UNAUTHORIZED");
   });
 
+  it("should return 401 when the authenticated session has no organization", async () => {
+    mockClerk({ userId: user.userId, orgId: null });
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/insights",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("should return empty days when no insights exist", async () => {
     const request = createTestRequest(
       "http://localhost:3000/api/zero/insights",
@@ -112,6 +126,36 @@ describe("GET /api/zero/insights", () => {
     expect(data.totalRuns).toBe(5);
     expect(data.lastUpdated).toBeTruthy();
     expect(new Date(data.lastUpdated).getTime()).not.toBeNaN();
+  });
+
+  it("should normalize sparse insight rows to the full day shape", async () => {
+    const yesterday = daysAgo(1);
+    await seedInsightsDaily(user.orgId, yesterday, {}, user.userId);
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/insights",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.days).toStrictEqual([
+      {
+        date: yesterday,
+        agents: [],
+        creditsUsed: 0,
+        creditBalance: 0,
+        teamUsage: [],
+        topTask: null,
+        services: [],
+        permissions: [],
+        schedules: [],
+        chats: [],
+      },
+    ]);
+    expect(data.totalCredits).toBe(0);
+    expect(data.totalRuns).toBe(0);
+    expect(data.lastUpdated).toBeTruthy();
   });
 
   it("should aggregate totals across multiple days", async () => {

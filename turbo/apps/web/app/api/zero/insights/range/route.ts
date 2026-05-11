@@ -22,6 +22,12 @@ export async function GET(request: Request) {
       { status: 401 },
     );
   }
+  if (!authCtx.orgId) {
+    return NextResponse.json(
+      { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+      { status: 401 },
+    );
+  }
 
   const { org } = await resolveOrg(authCtx);
 
