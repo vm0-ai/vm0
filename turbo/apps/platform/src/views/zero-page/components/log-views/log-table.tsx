@@ -1,4 +1,4 @@
-import { IconChevronRight, IconClock, IconLoader2 } from "@tabler/icons-react";
+import { IconChevronRight, IconClock, IconLoader2 } from "@vm0/ui";
 import { cn } from "@vm0/ui";
 import {
   getTriggerSourceLabel,

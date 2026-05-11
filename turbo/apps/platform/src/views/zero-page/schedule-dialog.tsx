@@ -2,7 +2,7 @@
 // oxlint-disable max-lines-per-function
 import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { createPortal } from "react-dom";
-import { IconX } from "@tabler/icons-react";
+import { IconX } from "@vm0/ui";
 import {
   Button,
   Input,

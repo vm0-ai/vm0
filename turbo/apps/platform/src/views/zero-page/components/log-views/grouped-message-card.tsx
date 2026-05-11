@@ -1,4 +1,4 @@
-import { IconCheck, IconCircleDashed, IconLoader } from "@tabler/icons-react";
+import { IconCheck, IconCircleDashed, IconLoader } from "@vm0/ui";
 import { Markdown } from "../../../components/markdown.tsx";
 import {
   isTaskEventData,

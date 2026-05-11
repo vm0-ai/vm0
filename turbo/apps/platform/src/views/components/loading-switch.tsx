@@ -1,4 +1,4 @@
-import { IconLoader2 } from "@tabler/icons-react";
+import { IconLoader2 } from "@vm0/ui";
 import { Switch, cn } from "@vm0/ui";
 
 /** Track/thumb sizing shared with plain `Switch` when toggles must align (e.g. settings rows). */

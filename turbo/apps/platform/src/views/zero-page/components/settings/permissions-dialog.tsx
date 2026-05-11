@@ -41,7 +41,7 @@ import {
   permissionUnknownPolicy$,
   setPermissionUnknownPolicy$,
 } from "../../../../signals/zero-page/settings/permissions-dialog.ts";
-import { IconCheck, IconBan, IconChevronRight } from "@tabler/icons-react";
+import { IconCheck, IconBan, IconChevronRight } from "@vm0/ui";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 

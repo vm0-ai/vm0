@@ -14,7 +14,7 @@ import {
   IconPlus,
   IconLoader2,
   IconDotsVertical,
-} from "@tabler/icons-react";
+} from "@vm0/ui";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,

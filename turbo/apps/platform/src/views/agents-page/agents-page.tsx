@@ -7,7 +7,7 @@ import {
   IconLoader2,
   IconPlus,
   IconWand,
-} from "@tabler/icons-react";
+} from "@vm0/ui";
 import {
   Card,
   CardContent,

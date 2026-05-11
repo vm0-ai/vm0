@@ -11,7 +11,7 @@ import {
   IconCheck,
   IconX,
   IconUserPlus,
-} from "@tabler/icons-react";
+} from "@vm0/ui";
 import {
   cn,
   Input,

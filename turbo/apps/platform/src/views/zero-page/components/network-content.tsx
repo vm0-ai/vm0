@@ -1,9 +1,4 @@
-import {
-  IconCheck,
-  IconChevronDown,
-  IconFilter,
-  IconLoader2,
-} from "@tabler/icons-react";
+import { IconCheck, IconChevronDown, IconFilter, IconLoader2 } from "@vm0/ui";
 import { useGet, useSet } from "ccstate-react";
 import {
   DropdownMenu,

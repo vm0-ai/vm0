@@ -11,12 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@vm0/ui";
-import {
-  IconChevronDown,
-  IconSettings,
-  IconPlus,
-  IconMail,
-} from "@tabler/icons-react";
+import { IconChevronDown, IconSettings, IconPlus, IconMail } from "@vm0/ui";
 import { clerk$, currentOrgInfo$ } from "../../signals/auth.ts";
 import {
   bestEffort,

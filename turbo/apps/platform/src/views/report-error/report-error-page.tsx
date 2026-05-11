@@ -1,11 +1,12 @@
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
-import { Button, Input } from "@vm0/ui";
 import {
+  Button,
+  Input,
   IconAlertTriangle,
   IconCheck,
   IconLoader2,
   IconX,
-} from "@tabler/icons-react";
+} from "@vm0/ui";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   reportErrorRun$,

@@ -2,11 +2,7 @@
 // oxlint-disable max-lines-per-function
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import {
-  IconUsers,
-  IconCircleDot,
-  IconPlugConnected,
-} from "@tabler/icons-react";
+import { IconUsers, IconCircleDot, IconPlugConnected } from "@vm0/ui";
 import {
   Select,
   SelectContent,

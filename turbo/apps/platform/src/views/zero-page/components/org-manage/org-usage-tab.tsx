@@ -3,7 +3,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
 import type { BillingStatusResponse } from "@vm0/api-contracts/contracts/zero-billing";
 import type { MemberUsage } from "@vm0/api-contracts/contracts/zero-usage";
-import { IconChevronRight, IconUsers } from "@tabler/icons-react";
+import { IconChevronRight, IconUsers } from "@vm0/ui";
 import { Input } from "@vm0/ui";
 import {
   Tooltip,

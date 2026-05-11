@@ -7,12 +7,6 @@ import {
   useLastResolved,
 } from "ccstate-react";
 import {
-  IconSearch,
-  IconLoader2,
-  IconDownload,
-  IconChartLine,
-} from "@tabler/icons-react";
-import {
   Button,
   Input,
   Tabs,
@@ -22,6 +16,10 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  IconChartLine,
+  IconDownload,
+  IconLoader2,
+  IconSearch,
 } from "@vm0/ui";
 import {
   MODEL_PROVIDER_TYPES,

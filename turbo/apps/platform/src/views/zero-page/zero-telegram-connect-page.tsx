@@ -6,7 +6,7 @@ import {
   IconArrowLeft,
   IconCircleCheck,
   IconLoader2,
-} from "@tabler/icons-react";
+} from "@vm0/ui";
 import { Button, CopyButton } from "@vm0/ui";
 import { clerk$, resolveWebOrigin } from "../../signals/auth.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";

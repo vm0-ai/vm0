@@ -16,7 +16,7 @@ import {
   IconRotateClockwise2,
   IconSettings,
   IconTrash,
-} from "@tabler/icons-react";
+} from "@vm0/ui";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import {
   Button,

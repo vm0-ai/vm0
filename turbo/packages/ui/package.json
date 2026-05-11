@@ -46,9 +46,9 @@
     "@radix-ui/react-slot": "^1.1.2",
     "@radix-ui/react-switch": "^1.1.2",
     "@radix-ui/react-tooltip": "^1.2.8",
-    "@tabler/icons-react": "^3.31.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "iconoir-react": "^7.11.0",
     "react": "^19.1.2",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.0.2"

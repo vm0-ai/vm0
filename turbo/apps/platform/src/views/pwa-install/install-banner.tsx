@@ -1,10 +1,5 @@
 import { useGet, useSet } from "ccstate-react";
-import {
-  IconDownload,
-  IconShare2,
-  IconSquarePlus,
-  IconX,
-} from "@tabler/icons-react";
+import { IconDownload, IconShare2, IconSquarePlus, IconX } from "@vm0/ui";
 import {
   Dialog,
   DialogContent,

@@ -1,6 +1,6 @@
 import type { MouseEvent, ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
-import { IconCpu } from "@tabler/icons-react";
+import { IconCpu } from "@vm0/ui";
 import {
   Select,
   SelectContent,

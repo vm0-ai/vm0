@@ -21,7 +21,7 @@ import {
   IconFlask,
   IconSparkles,
   IconMenu2,
-} from "@tabler/icons-react";
+} from "@vm0/ui";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Tooltip,

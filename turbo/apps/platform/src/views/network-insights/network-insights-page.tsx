@@ -1,9 +1,5 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
-import {
-  IconChevronDown,
-  IconChevronLeft,
-  IconChevronRight,
-} from "@tabler/icons-react";
+import { IconChevronDown, IconChevronLeft, IconChevronRight } from "@vm0/ui";
 import emptyInsightsImg from "../zero-page/assets/empty-insights.webp";
 import {
   Skeleton,

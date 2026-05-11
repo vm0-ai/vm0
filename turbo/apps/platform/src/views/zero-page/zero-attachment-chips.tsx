@@ -11,7 +11,7 @@ import {
   IconZoomOut,
   IconZoomReset,
   IconX,
-} from "@tabler/icons-react";
+} from "@vm0/ui";
 import type { ZeroChatAttachment } from "../../signals/chat-page/chat-message.ts";
 import { logger } from "../../signals/log.ts";
 import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";

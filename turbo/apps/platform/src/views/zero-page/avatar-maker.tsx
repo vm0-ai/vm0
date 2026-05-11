@@ -12,12 +12,7 @@ import {
   TooltipTrigger,
   cn,
 } from "@vm0/ui";
-import {
-  IconWand,
-  IconChevronLeft,
-  IconChevronRight,
-  IconDice,
-} from "@tabler/icons-react";
+import { IconWand, IconChevronLeft, IconChevronRight, IconDice } from "@vm0/ui";
 import type { AvatarSvgConfig } from "./avatar-svg-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import {

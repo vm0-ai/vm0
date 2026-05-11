@@ -3,7 +3,7 @@ import {
   IconChevronRight,
   IconChevronsLeft,
   IconChevronsRight,
-} from "@tabler/icons-react";
+} from "@vm0/ui";
 import {
   Button,
   Select,

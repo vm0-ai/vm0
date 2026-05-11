@@ -13,26 +13,6 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
-  IconAlertCircle,
-  IconArrowBackUp,
-  IconHandStop,
-  IconPhoto,
-  IconChartLine,
-  IconPlayerStop,
-  IconCopy,
-  IconCheck,
-  IconDots,
-  IconPin,
-  IconVolume2,
-  IconArrowBarToUp,
-  IconBrandGoogleDrive,
-  IconDownload,
-  IconFile,
-  IconLink,
-  IconLoader2,
-  IconPackage,
-} from "@tabler/icons-react";
-import {
   cn,
   isEditableTarget,
   matchShortcut,
@@ -50,6 +30,24 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  IconAlertCircle,
+  IconArrowBackUp,
+  IconArrowBarToUp,
+  IconBrandGoogleDrive,
+  IconChartLine,
+  IconCheck,
+  IconCopy,
+  IconDots,
+  IconDownload,
+  IconFile,
+  IconHandStop,
+  IconLink,
+  IconLoader2,
+  IconPackage,
+  IconPhoto,
+  IconPin,
+  IconPlayerStop,
+  IconVolume2,
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type {

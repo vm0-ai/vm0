@@ -6,7 +6,7 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
-import { IconPlus, IconSearch, IconX, IconTrash } from "@tabler/icons-react";
+import { IconPlus, IconSearch, IconX, IconTrash } from "@vm0/ui";
 import {
   Button,
   Dialog,

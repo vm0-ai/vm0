@@ -1,7 +1,7 @@
 import MarkdownPreview, {
   type MarkdownPreviewProps,
 } from "@uiw/react-markdown-preview";
-import { IconLoader2, IconPhoto } from "@tabler/icons-react";
+import { IconLoader2, IconPhoto } from "@vm0/ui";
 import { useGet, useSet } from "ccstate-react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { theme$ } from "../../signals/theme.ts";

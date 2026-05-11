@@ -11,7 +11,7 @@ import {
   IconAlertTriangle,
   IconLoader2,
   IconX,
-} from "@tabler/icons-react";
+} from "@vm0/ui";
 import {
   isFirewallConnectorType,
   resolveFirewallPolicies,

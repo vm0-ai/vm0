@@ -7,7 +7,7 @@ import {
   useLastLoadable,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { IconPlus, IconChevronRight, IconX } from "@tabler/icons-react";
+import { IconPlus, IconChevronRight, IconX } from "@vm0/ui";
 import {
   Tooltip,
   TooltipContent,

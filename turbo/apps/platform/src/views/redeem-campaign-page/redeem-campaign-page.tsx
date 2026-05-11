@@ -1,12 +1,6 @@
 import type { ReactNode } from "react";
 import { useGet, useLastLoadable } from "ccstate-react";
-import {
-  IconCheck,
-  IconGift,
-  IconLoader2,
-  IconLock,
-  IconX,
-} from "@tabler/icons-react";
+import { IconCheck, IconGift, IconLoader2, IconLock, IconX } from "@vm0/ui";
 import { Button } from "@vm0/ui";
 import type { RedeemResponse } from "@vm0/api-contracts/contracts/zero-billing";
 import {

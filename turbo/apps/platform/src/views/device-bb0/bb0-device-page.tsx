@@ -1,12 +1,7 @@
 import type { ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import {
-  IconCheck,
-  IconChevronDown,
-  IconLoader,
-  IconRefresh,
-} from "@tabler/icons-react";
+import { IconCheck, IconChevronDown, IconLoader, IconRefresh } from "@vm0/ui";
 import { Button } from "@vm0/ui/components/ui/button";
 import { Input } from "@vm0/ui/components/ui/input";
 import { cn } from "@vm0/ui";

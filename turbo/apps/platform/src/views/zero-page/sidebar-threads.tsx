@@ -14,7 +14,7 @@ import {
   IconDots,
   IconPin,
   IconPinnedOff,
-} from "@tabler/icons-react";
+} from "@vm0/ui";
 import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";

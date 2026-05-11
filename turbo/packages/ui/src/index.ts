@@ -1,3 +1,6 @@
+// icons
+export * from "./icons";
+
 // shadcn components
 export {
   Button,
