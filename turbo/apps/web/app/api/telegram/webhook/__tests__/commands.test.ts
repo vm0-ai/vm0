@@ -23,6 +23,8 @@ import { http } from "../../../../../src/__tests__/msw";
 import { POST } from "../[telegramBotId]/route";
 import { PATCH as updateComposeMetadata } from "../../../agent/composes/[id]/metadata/route";
 import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
+import { seedUserFeatureSwitches } from "../../../../../src/__tests__/db-test-seeders/feature-switches";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 
@@ -105,6 +107,9 @@ describe("Telegram bot commands", () => {
     const user = await context.setupUser();
     userId = user.userId;
     orgId = user.orgId;
+    await seedUserFeatureSwitches(user.orgId, user.userId, {
+      [FeatureSwitchKey.ModelFirstModelProvider]: false,
+    });
     const compose = await createTestCompose(uniqueId("agent"));
     composeId = compose.composeId;
     composeName = compose.name;

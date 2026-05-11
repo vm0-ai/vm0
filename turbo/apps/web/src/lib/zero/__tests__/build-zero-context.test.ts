@@ -45,6 +45,7 @@ import {
   CODEX_AUTO_MEMORY_MOUNT_PATH,
 } from "../memory";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 
@@ -59,6 +60,9 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
+    await seedUserFeatureSwitches(user.orgId, user.userId, {
+      [FeatureSwitchKey.ModelFirstModelProvider]: false,
+    });
     const agentName = uniqueId("agent");
     await createTestCompose(agentName);
     agentId = await getTestZeroAgentId(user.orgId, agentName);
@@ -552,6 +556,7 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       const codexAgentId = await getTestZeroAgentId(user.orgId, agentName);
       await seedUserFeatureSwitches(user.orgId, user.userId, {
         codexBeta: true,
+        [FeatureSwitchKey.ModelFirstModelProvider]: false,
       });
       await createTestOrgModelProvider("openai-api-key", "org-openai-key");
 

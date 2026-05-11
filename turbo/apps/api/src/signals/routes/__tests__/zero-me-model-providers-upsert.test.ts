@@ -145,6 +145,9 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
   it("returns 404 when ModelFirstModelProvider is off", async () => {
     const fixture = uniqueOrgUser("zmmp-upsert-feature-off");
     await track(Promise.resolve(fixture));
+    await setPersonalSwitches(fixture.orgId, fixture.userId, {
+      [FeatureSwitchKey.ModelFirstModelProvider]: false,
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(

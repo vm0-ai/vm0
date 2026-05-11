@@ -146,7 +146,9 @@ const track = createFixtureTracker<ModelPolicyFixture>((fixture) => {
 
 describe("GET/PUT /api/zero/model-policies", () => {
   it("hides model policy controls while the feature switch is off", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture({
+      [FeatureSwitchKey.ModelFirstModelProvider]: false,
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await apiClient().list({
