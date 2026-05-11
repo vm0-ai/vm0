@@ -24,7 +24,6 @@ import {
   IconPin,
   IconVolume2,
   IconArrowBarToUp,
-  IconArrowBackUp,
   IconBrandGoogleDrive,
   IconDownload,
   IconFile,
@@ -126,7 +125,10 @@ import type {
 import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
 import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
-import { ZeroChatComposer } from "./zero-chat-composer.tsx";
+import {
+  ZeroChatComposer,
+  type QueuedComposerItem,
+} from "./zero-chat-composer.tsx";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
 import { composerModelProviders$ } from "../../signals/zero-page/composer-model-providers.ts";
 import { modelFirstPersonalOauthState$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
@@ -1736,8 +1738,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const sessionError = resolveSessionError(threadDataLoadable, groupsLoadable);
   const messagesLoading = groupsLoadable.state === "loading";
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
-  const { activeGroups, queuedGroups } =
-    splitQueuedMessagesForThinkingIndicator(groups);
+  const { activeGroups } = splitQueuedMessagesForThinkingIndicator(groups);
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const loadingHistory = loadHistoryLoadable.state === "loading";
@@ -1810,15 +1811,6 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
                 );
               })}
               <ThinkingIndicator thread={thread} groups={activeGroups} />
-              {queuedGroups.map((group) => {
-                return (
-                  <PagedGroupRow
-                    key={group.beginMessageId}
-                    group={group}
-                    thread={thread}
-                  />
-                );
-              })}
             </div>
           </main>
         </div>
@@ -1974,8 +1966,27 @@ function ChatThreadComposer({
   const cancelRun = useSet(thread.cancelRun$);
   const setInputRef = useSet(thread.setInputRef$);
   const scheduleDraftSync = useSet(thread.scheduleDraftSync$);
+  const recallMessage = useSet(thread.recallMessage$);
+  const focusInput = useSet(thread.focusInput$);
   const pageSignal = useGet(pageSignal$);
   const rootSignal = useGet(rootSignal$);
+
+  const { queuedGroups } = splitQueuedMessagesForThinkingIndicator(groups);
+  const queuedMessagesById = new Map(
+    queuedGroups.flatMap((group) => {
+      return group.messages.map((message) => {
+        return [message.id, message] as const;
+      });
+    }),
+  );
+  const queuedItems: QueuedComposerItem[] = Array.from(
+    queuedMessagesById.values(),
+  ).map((message) => {
+    return {
+      id: message.id,
+      text: (message.content ?? "").trim(),
+    };
+  });
 
   // Per-thread composer state lives in ccstate signals on the factory so the
   // initial value seeds from threadData once it resolves (a React useState
@@ -2078,6 +2089,20 @@ function ChatThreadComposer({
             actionsLoading={skeletonVisible}
             modelPicker={modelPicker}
             submitBlocker={submitBlockerProps}
+            queuedItems={queuedItems}
+            onRemoveQueuedItem={(id) => {
+              const message = queuedMessagesById.get(id);
+              if (!message) {
+                return;
+              }
+              detach(
+                (async () => {
+                  await recallMessage(message, pageSignal);
+                  focusInput();
+                })(),
+                Reason.DomCallback,
+              );
+            }}
           />
           <PersonalProviderDialog />
           <PersonalCodexAuthPasteDialog />
@@ -2807,71 +2832,32 @@ function UserMessageAttachments({
   );
 }
 
-function userMessageAriaLabel({
-  isQueued,
-}: {
-  isQueued: boolean;
-}): string | undefined {
-  if (isQueued) {
-    return "Queued message";
-  }
-  return undefined;
-}
-
-function UserMessageStatusLabel({ isQueued }: { isQueued: boolean }) {
-  if (!isQueued) {
-    return null;
-  }
-  return (
-    <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-      <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-      Queued
-    </div>
-  );
-}
-
 function UserMessageActions({
   canCopy,
-  canRecall,
   copied,
   onCopy,
-  onRecall,
 }: {
   canCopy: boolean;
-  canRecall: boolean;
   copied: boolean;
   onCopy: () => void;
-  onRecall: () => void;
 }) {
-  if (!canCopy && !canRecall) {
+  if (!canCopy) {
     return null;
   }
   return (
     <div className="flex justify-end gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-      {canRecall && (
-        <button
-          type="button"
-          onClick={onRecall}
-          className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-          aria-label="Recall message"
-        >
-          <IconArrowBackUp size={18} stroke={1.5} />
-        </button>
-      )}
-      {canCopy && (
-        <button
-          type="button"
-          onClick={onCopy}
-          className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-          aria-label="Copy message"
-        >
-          {copied ? (
-            <IconCheck size={18} stroke={1.5} />
-          ) : (
-            <IconCopy size={18} stroke={1.5} />
-          )}
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={onCopy}
+        className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+        aria-label="Copy message"
+      >
+        {copied ? (
+          <IconCheck size={18} stroke={1.5} />
+        ) : (
+          <IconCopy size={18} stroke={1.5} />
+        )}
+      </button>
     </div>
   );
 }
@@ -2909,17 +2895,10 @@ function PagedUserMessage({
   const copiedId = useGet(thread.copiedMessageId$);
   const copied = copiedId === message.id;
   const copyMessage = useSet(thread.copyMessage$);
-  const recallMessage = useSet(thread.recallMessage$);
-  const focusInput = useSet(thread.focusInput$);
   const allAttachments = resolveAttachments(message, parsed);
   const clipboardAttachments = clipboardAttachmentsFromMessage(message, parsed);
   const copyText = strippedContent;
   const canCopy = copyText.trim().length > 0 || clipboardAttachments.length > 0;
-  const isQueued = message.isQueued;
-  const canRecall =
-    isQueued &&
-    message.runId === undefined &&
-    message.revokesMessageId === undefined;
 
   const handleCopy = () => {
     if (!canCopy) {
@@ -2935,29 +2914,11 @@ function PagedUserMessage({
     );
   };
 
-  const handleRecall = () => {
-    if (!canRecall) {
-      return;
-    }
-    detach(
-      (async () => {
-        await recallMessage(message, pageSignal);
-        focusInput();
-      })(),
-      Reason.DomCallback,
-    );
-  };
-
   return (
-    <div
-      data-role="user"
-      className="group"
-      aria-label={userMessageAriaLabel({ isQueued })}
-    >
+    <div data-role="user" className="group">
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
-          <UserMessageStatusLabel isQueued={isQueued} />
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
             {bodyBlocks.length > 0 && (
               <div className="px-4 py-3">
@@ -2975,10 +2936,8 @@ function PagedUserMessage({
           </div>
           <UserMessageActions
             canCopy={canCopy}
-            canRecall={canRecall}
             copied={copied}
             onCopy={handleCopy}
-            onRecall={handleRecall}
           />
         </div>
       </div>

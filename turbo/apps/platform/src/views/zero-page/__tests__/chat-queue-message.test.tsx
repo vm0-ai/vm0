@@ -267,7 +267,7 @@ describe("chat queued user messages", () => {
     await sendQueuedMessage(user, "recall this message");
     await expectQueuedMessages(["recall this message"]);
 
-    click(screen.getByLabelText("Recall message"));
+    click(screen.getByLabelText("Remove queued message"));
 
     await waitFor(() => {
       expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();

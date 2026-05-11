@@ -622,6 +622,7 @@ describe("zero chat thread page - opening a thread with a queued message", () =>
         {
           role: "user",
           content: "queued before reload",
+          runId: undefined,
           createdAt: "2026-03-10T00:00:02Z",
         },
       ],

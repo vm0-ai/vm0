@@ -13,13 +13,23 @@ import {
 const context = testContext();
 const mockApi = createMockApi(context);
 
+const MOCK_RUN_ID = "d0000000-0000-4000-a000-000000000001";
+
 function makeThreadMocks(threadId: string, messages: PagedChatMessage[]) {
+  // Default runId for seeded user messages so they aren't treated as queued.
+  // Tests that want a queued seed should pass `runId: undefined` explicitly.
+  const seeded = messages.map((message) => {
+    if (message.role !== "user" || "runId" in message) {
+      return message;
+    }
+    return { ...message, runId: MOCK_RUN_ID };
+  });
   server.use(
     mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
       if (query.sinceId) {
         return respond(200, { messages: [] });
       }
-      return respond(200, { messages });
+      return respond(200, { messages: seeded });
     }),
     mockApi(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {

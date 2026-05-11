@@ -402,11 +402,18 @@ export function mockChatLifecycle(options?: {
         pagedMessages.push(message);
       }
 
-      // Seed with pre-existing chatMessages (e.g. history on resume)
+      // Seed with pre-existing chatMessages (e.g. history on resume). Seeded
+      // entries represent historical messages, so default `runId` to the mock
+      // run when the test didn't include the key — without it, user messages
+      // would look "unassociated" (runId === undefined) and be treated as
+      // queued. Tests that *want* a queued seed should explicitly pass
+      // `runId: undefined`, which we respect via the `in` check.
       for (let i = 0; i < chatMessages.length; i++) {
+        const seed = chatMessages[i]!;
         pagedMessages.push({
-          id: chatMessages[i]!.id ?? `msg-seed-${i}`,
-          ...chatMessages[i]!,
+          ...seed,
+          id: seed.id ?? `msg-seed-${i}`,
+          runId: "runId" in seed ? seed.runId : MOCK_RUN_ID,
         });
       }
 

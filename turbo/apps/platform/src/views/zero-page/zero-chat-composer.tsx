@@ -20,6 +20,7 @@ import {
   IconPlug,
   IconPlus,
   IconTarget,
+  IconX,
 } from "@tabler/icons-react";
 import {
   Dialog,
@@ -220,6 +221,19 @@ interface ZeroChatComposerProps {
     actionLabel: string;
     onAction: () => void;
   };
+  /**
+   * Pending sends that landed while a run was active. Rendered as a compact
+   * strip above the textarea so the user can see what's queued without
+   * having those messages re-appear as bubbles in the conversation.
+   */
+  queuedItems?: QueuedComposerItem[];
+  /** Cancels a queued message (routed to the recall flow by the caller). */
+  onRemoveQueuedItem?: (id: string) => void;
+}
+
+export interface QueuedComposerItem {
+  id: string;
+  text: string;
 }
 
 type ComposerModelPicker = NonNullable<ZeroChatComposerProps["modelPicker"]>;
@@ -388,6 +402,59 @@ function SendOrGoalButton({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Queued messages strip — compact list of pending sends shown above the
+// textarea while a run is active. Visually low-key so it doesn't compete
+// with the input itself.
+// ---------------------------------------------------------------------------
+
+function QueuedMessagesStrip({
+  items,
+  onRemove,
+}: {
+  items: QueuedComposerItem[];
+  onRemove?: (id: string) => void;
+}) {
+  if (items.length === 0) {
+    return null;
+  }
+  return (
+    <div className="border-b border-border/60 px-4 py-2">
+      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground/75">
+        <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
+        <span>Queued {items.length}</span>
+      </div>
+      <div
+        className="mt-1 max-h-24 divide-y divide-border/40 overflow-y-auto"
+        role="list"
+      >
+        {items.map((item) => {
+          return (
+            <div
+              key={item.id}
+              role="listitem"
+              aria-label="Queued message"
+              className="flex min-h-7 items-center gap-2 py-1 text-sm text-muted-foreground"
+            >
+              <span className="min-w-0 flex-1 truncate">{item.text}</span>
+              <button
+                type="button"
+                className="shrink-0 rounded p-1 text-muted-foreground/45 transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => {
+                  onRemove?.(item.id);
+                }}
+                aria-label="Remove queued message"
+              >
+                <IconX size={14} stroke={1.5} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -950,6 +1017,8 @@ export function ZeroChatComposer({
   actionsLoading = false,
   modelPicker,
   submitBlocker,
+  queuedItems,
+  onRemoveQueuedItem,
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
   const setShowAddDialog = useSet(setShowAddDialog$);
@@ -1342,6 +1411,10 @@ export function ZeroChatComposer({
                 }}
               />
             )}
+            <QueuedMessagesStrip
+              items={queuedItems ?? []}
+              onRemove={onRemoveQueuedItem}
+            />
             <textarea
               ref={(el) => {
                 if (el && autoFocus && !isIOSDevice()) {
