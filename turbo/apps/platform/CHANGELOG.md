@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.344.0](https://github.com/vm0-ai/vm0/compare/app-v0.343.0...app-v0.344.0) (2026-05-11)
+
+
+### Features
+
+* **chat:** render queued messages as composer strip ([#12678](https://github.com/vm0-ai/vm0/issues/12678)) ([0337da3](https://github.com/vm0-ai/vm0/commit/0337da3e2f630643a9afb67ffc9b223b08bd6b99))
+
+
+### Bug Fixes
+
+* keep default agent as pin dialog lead ([#12704](https://github.com/vm0-ai/vm0/issues/12704)) ([43c2ba9](https://github.com/vm0-ai/vm0/commit/43c2ba94dc6539040f33f4afa4fc3ec4e423daf0))
+
 ## [0.343.0](https://github.com/vm0-ai/vm0/compare/app-v0.342.4...app-v0.343.0) (2026-05-11)
 
 

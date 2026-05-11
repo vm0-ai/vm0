@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.33.0](https://github.com/vm0-ai/vm0/compare/api-v1.32.0...api-v1.33.0) (2026-05-11)
+
+
+### Features
+
+* **api:** migrate auto-recharge put to api backend (wave 6 [#9](https://github.com/vm0-ai/vm0/issues/9)) ([#12715](https://github.com/vm0-ai/vm0/issues/12715)) ([5fb26e1](https://github.com/vm0-ai/vm0/commit/5fb26e181a42817bd7fa21237e7d85e2fe44eafc)), closes [#12290](https://github.com/vm0-ai/vm0/issues/12290) [#12711](https://github.com/vm0-ai/vm0/issues/12711)
+* **api:** migrate billing downgrade endpoint to api backend ([#12680](https://github.com/vm0-ai/vm0/issues/12680)) ([#12697](https://github.com/vm0-ai/vm0/issues/12697)) ([bb19bf0](https://github.com/vm0-ai/vm0/commit/bb19bf0a0f6a93dd53890a4062ca9335e4eaf3a2))
+* **api:** migrate onboarding/complete post to api backend ([#12695](https://github.com/vm0-ai/vm0/issues/12695)) ([622a993](https://github.com/vm0-ai/vm0/commit/622a99373eb7c33bf796538771281199c779f261))
+* **api:** migrate permission-policies put to api backend (Wave 6 [#6](https://github.com/vm0-ai/vm0/issues/6)) ([#12687](https://github.com/vm0-ai/vm0/issues/12687)) ([843d550](https://github.com/vm0-ai/vm0/commit/843d55024d5b848912e9b01cc8ce0356c26e33c0))
+* **api:** migrate push-subscriptions post to api backend (wave 6 [#8](https://github.com/vm0-ai/vm0/issues/8)) ([#12694](https://github.com/vm0-ai/vm0/issues/12694)) ([864ec4d](https://github.com/vm0-ai/vm0/commit/864ec4d66dc9c0b3cfcfb01fec03d9b77cf925de)), closes [#12683](https://github.com/vm0-ai/vm0/issues/12683)
+
+
+### Performance Improvements
+
+* **chat-threads:** replace ROW_NUMBER with LATERAL last-message lookup ([#12641](https://github.com/vm0-ai/vm0/issues/12641)) ([ba82b88](https://github.com/vm0-ai/vm0/commit/ba82b88bc34f948878ef6f862cae2a1c36aa77df))
+
 ## [1.32.0](https://github.com/vm0-ai/vm0/compare/api-v1.31.1...api-v1.32.0) (2026-05-11)
 
 

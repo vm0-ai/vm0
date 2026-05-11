@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.351.0](https://github.com/vm0-ai/vm0/compare/web-v12.350.0...web-v12.351.0) (2026-05-11)
+
+
+### Features
+
+* add slack model command ([#12700](https://github.com/vm0-ai/vm0/issues/12700)) ([dedb752](https://github.com/vm0-ai/vm0/commit/dedb75249e2c2ddcb5038175571c41127a4def6e))
+
+
+### Bug Fixes
+
+* align zero agent user connector parity ([#12675](https://github.com/vm0-ai/vm0/issues/12675)) ([4289fc9](https://github.com/vm0-ai/vm0/commit/4289fc916f11fa7018f5d213e38a62e7ea38dbf0))
+* align zero chat search no-org parity ([#12703](https://github.com/vm0-ai/vm0/issues/12703)) ([0fe16dd](https://github.com/vm0-ai/vm0/commit/0fe16dd51c514bff76ac21e0e509406c320e1eaa))
+
+
+### Performance Improvements
+
+* **chat-threads:** replace ROW_NUMBER with LATERAL last-message lookup ([#12641](https://github.com/vm0-ai/vm0/issues/12641)) ([ba82b88](https://github.com/vm0-ai/vm0/commit/ba82b88bc34f948878ef6f862cae2a1c36aa77df))
+
 ## [12.350.0](https://github.com/vm0-ai/vm0/compare/web-v12.349.5...web-v12.350.0) (2026-05-11)
 
 
