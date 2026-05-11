@@ -20,6 +20,8 @@ use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
+const MAX_LOGGED_CLI_STDERR_LINES: usize = 20;
+const MAX_LOGGED_CLI_STDERR_LINE_BYTES: usize = 4096;
 
 #[tokio::main]
 async fn main() {
@@ -224,10 +226,36 @@ fn cli_failure_message(code: i32, stderr_lines: &[String]) -> String {
     }
 
     log_info!(LOG_TAG, "Captured {} stderr lines", stderr_lines.len());
-    for line in stderr_lines {
-        log_warn!(LOG_TAG, "CLI stderr: {line}");
+    for line in stderr_lines.iter().take(MAX_LOGGED_CLI_STDERR_LINES) {
+        log_warn!(LOG_TAG, "CLI stderr: {}", truncate_cli_stderr_line(line));
+    }
+    if stderr_lines.len() > MAX_LOGGED_CLI_STDERR_LINES {
+        log_warn!(
+            LOG_TAG,
+            "CLI stderr: omitted {} additional line(s)",
+            stderr_lines.len() - MAX_LOGGED_CLI_STDERR_LINES
+        );
     }
     stderr_lines.join(" ")
+}
+
+fn truncate_cli_stderr_line(line: &str) -> std::borrow::Cow<'_, str> {
+    if line.len() <= MAX_LOGGED_CLI_STDERR_LINE_BYTES {
+        return std::borrow::Cow::Borrowed(line);
+    }
+
+    let mut cut = 0;
+    for (idx, ch) in line.char_indices() {
+        let next = idx + ch.len_utf8();
+        if next > MAX_LOGGED_CLI_STDERR_LINE_BYTES {
+            break;
+        }
+        cut = next;
+    }
+
+    let mut truncated = line[..cut].to_string();
+    truncated.push_str("...[truncated]");
+    std::borrow::Cow::Owned(truncated)
 }
 
 async fn complete_execution(
@@ -386,17 +414,41 @@ mod tests {
         let system_log_path = tmp.path().join("system.log");
         let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
 
-        let msg = cli_failure_message(1, &["codex stderr includes ***".to_string()]);
-        assert_eq!(msg, "codex stderr includes ***");
+        let long_line = format!("{}tail", "x".repeat(MAX_LOGGED_CLI_STDERR_LINE_BYTES + 1));
+        let stderr_lines = std::iter::once("codex stderr includes ***".to_string())
+            .chain(std::iter::once(long_line.clone()))
+            .chain((0..MAX_LOGGED_CLI_STDERR_LINES).map(|i| format!("extra line {i}")))
+            .collect::<Vec<_>>();
+        let msg = cli_failure_message(1, &stderr_lines);
+        assert!(
+            msg.contains("codex stderr includes ***"),
+            "returned error message should preserve stderr"
+        );
+        assert!(
+            msg.contains("tail"),
+            "returned error message should preserve full masked stderr"
+        );
 
         let system_log = std::fs::read_to_string(&system_log_path).unwrap();
         assert!(
-            system_log.contains("Captured 1 stderr lines"),
+            system_log.contains("Captured 22 stderr lines"),
             "system log should include stderr count, got: {system_log}"
         );
         assert!(
             system_log.contains("CLI stderr: codex stderr includes ***"),
             "system log should include CLI stderr, got: {system_log}"
+        );
+        assert!(
+            system_log.contains("...[truncated]"),
+            "system log should truncate long stderr lines, got: {system_log}"
+        );
+        assert!(
+            !system_log.contains("tail"),
+            "system log should not include bytes after the truncation boundary"
+        );
+        assert!(
+            system_log.contains("CLI stderr: omitted 2 additional line(s)"),
+            "system log should report omitted stderr lines, got: {system_log}"
         );
     }
 
