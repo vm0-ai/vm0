@@ -295,14 +295,25 @@ pub(crate) fn handle_message(msg: &RawMessage) -> io::Result<MessageOutcome> {
             let started_at = Instant::now();
             let (success, error) = handle_write_file(path, content, use_sudo, append);
             let duration_ms = started_at.elapsed().as_millis();
-            if !success || duration_ms >= 1_000 {
+            if !success {
                 log(
-                    if success { "INFO" } else { "WARN" },
+                    "WARN",
                     &format!(
                         "write_file result: seq={} path={} success={} duration_ms={} error_len={}",
                         msg.seq,
                         path,
                         success,
+                        duration_ms,
+                        error.len()
+                    ),
+                );
+            } else if duration_ms >= 1_000 {
+                log(
+                    "INFO",
+                    &format!(
+                        "slow write_file result: seq={} path={} success=true duration_ms={} error_len={}",
+                        msg.seq,
+                        path,
                         duration_ms,
                         error.len()
                     ),

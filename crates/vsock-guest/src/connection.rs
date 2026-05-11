@@ -262,7 +262,7 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                                 log(
                                     "INFO",
                                     &format!(
-                                        "write_file response send complete: seq={} duration_ms={}",
+                                        "slow write_file response send complete: seq={} duration_ms={}",
                                         msg.seq, duration_ms
                                     ),
                                 );

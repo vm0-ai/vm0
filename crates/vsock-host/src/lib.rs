@@ -1151,7 +1151,7 @@ async fn request_raw_on_shared_with_write_timeout(
                                 response_type = msg.msg_type,
                                 response_wait_ms = response_wait_ms as u64,
                                 duration_ms = duration_ms as u64,
-                                "vsock_host: write_file response received"
+                                "vsock_host: slow write_file response received"
                             );
                         }
                     }
@@ -1950,7 +1950,7 @@ impl VsockHost {
                 path,
                 bytes = content.len(),
                 duration_ms = duration_ms as u64,
-                "vsock_host: write_file chunk complete"
+                "vsock_host: slow write_file chunk complete"
             );
         }
         Ok(())

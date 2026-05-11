@@ -136,7 +136,7 @@ impl Drop for StorageCacheLockTrace {
             guest_path = %self.guest_path,
             lock_path = %self.lock_path.display(),
             held_ms,
-            "storage_cache: lock released"
+            "storage_cache: slow lock released"
         );
     }
 }
@@ -287,7 +287,7 @@ async fn process_one(
             guest_path = %guest_path,
             lock_path = %lock_path.display(),
             wait_ms = lock_wait_ms,
-            "storage_cache: lock acquired"
+            "storage_cache: slow lock acquired"
         );
     }
     let _guard = StorageCacheLockGuard::new(
@@ -419,7 +419,7 @@ async fn write_guest_archive(
                     guest_path,
                     bytes = bytes.len(),
                     duration_ms,
-                    "storage_cache: guest write_file complete"
+                    "storage_cache: slow guest write_file complete"
                 );
             }
             Ok(())
