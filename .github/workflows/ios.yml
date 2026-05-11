@@ -1,0 +1,77 @@
+name: iOS
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ios.yml"
+      - "ios/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/ios.yml"
+      - "ios/**"
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'merge_group' && format('merge-queue-{0}', github.run_id) || github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Show Xcode version
+        run: |
+          xcode-select -p
+          xcodebuild -version
+
+      - name: Select iOS simulator
+        run: |
+          set -euo pipefail
+
+          simulator_id="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ { print $2; exit }')"
+          if [ -z "$simulator_id" ]; then
+            xcrun simctl list devices available
+            exit 1
+          fi
+
+          echo "IOS_SIMULATOR_ID=$simulator_id" >> "$GITHUB_ENV"
+
+      - name: Resolve Swift packages
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project ios/Zero.xcodeproj \
+            -scheme Zero
+
+      - name: Build for testing
+        run: |
+          xcodebuild build-for-testing \
+            -project ios/Zero.xcodeproj \
+            -scheme Zero \
+            -destination "platform=iOS Simulator,id=${IOS_SIMULATOR_ID}" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CLERK_FRONTEND_API_DOMAIN=ci.vm0.local \
+            CLERK_PUBLISHABLE_KEY=pk_test_Y2kudm0wLmxvY2FsJA== \
+            ZERO_API_BASE_URL=https://api.vm0.ai
+
+      - name: Run XCTest
+        run: |
+          xcodebuild test-without-building \
+            -project ios/Zero.xcodeproj \
+            -scheme Zero \
+            -destination "platform=iOS Simulator,id=${IOS_SIMULATOR_ID}" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CLERK_FRONTEND_API_DOMAIN=ci.vm0.local \
+            CLERK_PUBLISHABLE_KEY=pk_test_Y2kudm0wLmxvY2FsJA== \
+            ZERO_API_BASE_URL=https://api.vm0.ai
