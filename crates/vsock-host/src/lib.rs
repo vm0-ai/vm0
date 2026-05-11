@@ -1123,6 +1123,12 @@ impl VsockHost {
         &self,
         request: CommandOperationRequest<'_>,
     ) -> io::Result<CommandOperationHandle> {
+        if request.timeout_ms == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "command operation requires a positive timeout; use spawn_watch for unbounded commands",
+            ));
+        }
         if matches!(request.stream_capacity, Some(0)) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -1892,6 +1898,33 @@ mod tests {
             .await
         {
             Ok(_) => panic!("invalid command output policy should be rejected"),
+            Err(err) => err,
+        };
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(operation_count(&host), 0);
+
+        assert_connection_accepts_legacy_exec(&host, &mut guest, &mut decoder).await;
+    }
+
+    #[tokio::test]
+    async fn command_start_rejects_zero_timeout_without_sending_frame() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let host = Arc::new(host);
+
+        let err = match host
+            .start_command_operation(CommandOperationRequest {
+                timeout_ms: 0,
+                command: "sleep 60",
+                env: &[],
+                sudo: false,
+                stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
+                stderr: CommandOutputPolicy::Capture { limit_bytes: 1024 },
+                label: "zero-timeout",
+                stream_capacity: None,
+            })
+            .await
+        {
+            Ok(_) => panic!("zero timeout command operation should be rejected"),
             Err(err) => err,
         };
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
