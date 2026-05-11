@@ -27,7 +27,7 @@ export function activePriceId(tier: "pro" | "team"): string | undefined {
  * races during the web→api cutover coordinate on the same lock.
  */
 const getOrCreateStripeCustomer$ = command(
-  async ({ set }, orgId: string, signal: AbortSignal): Promise<string> => {
+  ({ set }, orgId: string, signal: AbortSignal): Promise<string> => {
     const writeDb = set(writeDb$);
     return writeDb.transaction(async (tx) => {
       await tx.execute(

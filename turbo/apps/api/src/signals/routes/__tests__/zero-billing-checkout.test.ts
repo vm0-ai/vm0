@@ -62,7 +62,9 @@ describe("POST /api/zero/billing/checkout", () => {
   afterEach(async () => {
     while (createdOrgIds.length > 0) {
       const orgId = createdOrgIds.pop();
-      if (orgId) await deleteOrgRow(orgId);
+      if (orgId) {
+        await deleteOrgRow(orgId);
+      }
     }
   });
 

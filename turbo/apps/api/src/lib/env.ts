@@ -30,7 +30,9 @@ const SCHEMA = {
     .string()
     .optional()
     .transform((val) => {
-      if (!val) return undefined;
+      if (!val) {
+        return undefined;
+      }
       return z.record(z.string(), z.array(z.string())).parse(JSON.parse(val));
     }),
   ABLY_API_KEY: z.string().min(1),
