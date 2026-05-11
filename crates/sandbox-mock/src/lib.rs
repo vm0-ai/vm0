@@ -1272,6 +1272,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn legacy_notify_gates_still_block_lifecycle_until_released() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        let park_entered = Arc::new(tokio::sync::Notify::new());
+        let park_release = Arc::new(tokio::sync::Notify::new());
+        let destroy_entered = Arc::new(tokio::sync::Notify::new());
+        let destroy_release = Arc::new(tokio::sync::Notify::new());
+        overrides.set_park_gate(Arc::clone(&park_entered), Arc::clone(&park_release));
+        overrides.set_destroy_gate(Arc::clone(&destroy_entered), Arc::clone(&destroy_release));
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let mut sandbox = factory.create(test_sandbox_config()).await.unwrap();
+        let park_entered_wait = park_entered.notified();
+        tokio::pin!(park_entered_wait);
+        park_entered_wait.as_mut().enable();
+        let park_task = tokio::spawn(async move { sandbox.park().await });
+
+        tokio::time::timeout(test_timeout(), park_entered_wait)
+            .await
+            .expect("legacy park gate should report entry");
+        assert_eq!(overrides.park_call_count(), 1);
+        assert!(
+            !park_task.is_finished(),
+            "legacy park gate should block until release is notified"
+        );
+        park_release.notify_one();
+        park_task.await.unwrap().unwrap();
+
+        let sandbox = factory.create(test_sandbox_config()).await.unwrap();
+        let destroy_entered_wait = destroy_entered.notified();
+        tokio::pin!(destroy_entered_wait);
+        destroy_entered_wait.as_mut().enable();
+        let destroy_task = tokio::spawn(async move {
+            factory.destroy(sandbox).await;
+        });
+
+        tokio::time::timeout(test_timeout(), destroy_entered_wait)
+            .await
+            .expect("legacy destroy gate should report entry");
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert!(
+            !destroy_task.is_finished(),
+            "legacy destroy gate should block until release is notified"
+        );
+        destroy_release.notify_one();
+        destroy_task.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn lifecycle_gate_observes_park_entry_after_it_already_happened() {
         let gate = MockLifecycleGate::new();
         let overrides = Arc::new(MockSandboxOverrides::new());
