@@ -85,6 +85,7 @@ export const updateAgentPermissionPolicies$ = command(
         modelProviderId: zeroAgents.modelProviderId,
         selectedModel: zeroAgents.selectedModel,
         preferPersonalProvider: zeroAgents.preferPersonalProvider,
+        visibility: zeroAgents.visibility,
       })
       .from(zeroAgents)
       .where(eq(zeroAgents.id, args.agentId))
