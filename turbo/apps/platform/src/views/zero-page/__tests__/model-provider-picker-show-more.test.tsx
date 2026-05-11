@@ -21,15 +21,60 @@ import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
 } from "../../../mocks/handlers/api-org-model-providers.ts";
+import {
+  resetMockOrgModelPolicies,
+  setMockOrgModelPolicies,
+} from "../../../mocks/handlers/api-org-model-policies.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
+import {
+  getCanonicalModelDisplayName,
+  type OrgModelPolicy,
+} from "@vm0/api-contracts/contracts/model-providers";
 
 const context = testContext();
 const THREAD_ID = "thread-test-show-more";
 const PROVIDER_ID = "00000000-0000-4000-a000-000000000099";
+const VM0_MODELS = [
+  "claude-opus-4-7",
+  "claude-opus-4-6",
+  "claude-sonnet-4-6",
+  "glm-5.1",
+  "claude-haiku-4-5",
+  "kimi-k2.6",
+  "kimi-k2.5",
+  "MiniMax-M2.7",
+  "deepseek-v4-pro",
+  "deepseek-v4-flash",
+] satisfies OrgModelPolicy["model"][];
+
+function buildVm0Policy(
+  model: OrgModelPolicy["model"],
+  index: number,
+  selectedModel: string,
+): OrgModelPolicy {
+  return {
+    id: `00000000-0000-4000-a000-${String(index + 200).padStart(12, "0")}`,
+    model,
+    modelLabel: getCanonicalModelDisplayName(model),
+    isDefault: model === selectedModel,
+    defaultProviderType: "vm0",
+    credentialScope: "org",
+    modelProviderId: null,
+    routeStatus: "valid",
+    routeStatusReason: null,
+    createdAt: "2026-05-08T00:00:00.000Z",
+    updatedAt: "2026-05-08T00:00:00.000Z",
+  };
+}
 
 function setupVm0Provider(selectedModel: string): void {
   setMockFeatureSwitches({});
+  setMockOrgModelPolicies(
+    VM0_MODELS.map((model, index) => {
+      return buildVm0Policy(model, index, selectedModel);
+    }),
+  );
   setMockOrgModelProviders([
     {
       id: PROVIDER_ID,
@@ -71,7 +116,7 @@ function listboxText(): string {
 }
 
 function findToggleButton(matcher: RegExp): HTMLElement | undefined {
-  return screen.getAllByRole("button").find((el) => {
+  return screen.queryAllByText(matcher).find((el) => {
     return matcher.test(el.textContent ?? "");
   });
 }
@@ -79,6 +124,7 @@ function findToggleButton(matcher: RegExp): HTMLElement | undefined {
 describe("model-provider-picker — VM0 show more", () => {
   beforeEach(() => {
     resetMockOrgModelProviders();
+    resetMockOrgModelPolicies();
   });
 
   // MPKR-SM-001: Collapsed state shows only the four primary models plus the

@@ -675,15 +675,30 @@ function ModelFirstPolicyRow({ policy }: { policy: OrgModelPolicy }) {
 function ModelFirstPolicyItems({
   policies,
   explicitSelectedModel,
+  activeSelectedModel,
+  showAll,
+  onToggleShowAll,
   showSeparator = true,
 }: {
   policies: OrgModelPolicy[];
   explicitSelectedModel: string | null;
+  activeSelectedModel: string | null;
+  showAll: boolean;
+  onToggleShowAll: () => void;
   showSeparator?: boolean;
 }) {
+  const collapsedPolicies = policies.filter((policy) => {
+    return (
+      isVm0PrimaryModel(policy.model) ||
+      policy.model === explicitSelectedModel ||
+      policy.model === activeSelectedModel
+    );
+  });
+  const visiblePolicies = showAll ? policies : collapsedPolicies;
+  const hiddenCount = policies.length - collapsedPolicies.length;
   const hasExplicitSelectedPolicy =
     explicitSelectedModel === null ||
-    policies.some((policy) => {
+    visiblePolicies.some((policy) => {
       return policy.model === explicitSelectedModel;
     });
   return (
@@ -705,9 +720,16 @@ function ModelFirstPolicyItems({
           <SelectLabel className="pl-2 pr-8 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
             Models
           </SelectLabel>
-          {policies.map((policy) => {
+          {visiblePolicies.map((policy) => {
             return <ModelFirstPolicyRow key={policy.id} policy={policy} />;
           })}
+          {hiddenCount > 0 && (
+            <ShowMoreToggleRow
+              expanded={showAll}
+              hiddenCount={hiddenCount}
+              onToggle={onToggleShowAll}
+            />
+          )}
         </SelectGroup>
       )}
     </>
@@ -734,6 +756,8 @@ function ModelFirstModelPicker({
   const lastPolicies = useLastResolved(orgModelPolicies$);
   const userPreference = useLastResolved(userModelPreference$);
   const features = useLastResolved(featureSwitch$);
+  const showAll = useGet(showAllVm0Models$);
+  const toggleShowAll = useSet(toggleShowAllVm0Models$);
   const policyResponse =
     policiesLoadable.state === "hasData" ? policiesLoadable.data : lastPolicies;
   const policies =
@@ -814,6 +838,9 @@ function ModelFirstModelPicker({
           <ModelFirstPolicyItems
             policies={policies}
             explicitSelectedModel={explicitSelectedModel}
+            activeSelectedModel={selectedModel}
+            showAll={showAll}
+            onToggleShowAll={toggleShowAll}
             showSeparator={showUseDefault}
           />
         )}

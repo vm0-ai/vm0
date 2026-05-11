@@ -172,6 +172,9 @@ function clickDialogButton(dialog: HTMLElement, label: string): void {
 
 describe("org-providers-tab — stale banner reconnect", () => {
   it("keeps legacy default provider controls when model-first is off", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: false,
+    });
     await openProvidersPage();
 
     await expect(

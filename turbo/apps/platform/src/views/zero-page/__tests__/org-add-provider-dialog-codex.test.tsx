@@ -126,7 +126,9 @@ describe("connect Codex card — click handler", () => {
 
 describe("provider row footer — workspace + plan display", () => {
   beforeEach(() => {
-    setMockFeatureSwitches({});
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: false,
+    });
     resetMockOrgModelProviders();
   });
 

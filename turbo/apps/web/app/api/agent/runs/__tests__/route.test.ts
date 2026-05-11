@@ -445,6 +445,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       // Switch to User B (runner) who is an org member
       const runnerUser = await context.setupUser({ prefix: "runner-mp" });
+      await updateUserFeatureSwitches(ownerUser.orgId, runnerUser.userId, {
+        [FeatureSwitchKey.ModelFirstModelProvider]: false,
+      });
       await insertOrgMembersCacheEntry({
         orgId: ownerUser.orgId,
         userId: runnerUser.userId,
@@ -769,6 +772,12 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
   });
 
   describe("Model Provider Injection", () => {
+    beforeEach(async () => {
+      await updateUserFeatureSwitches(user.orgId, user.userId, {
+        [FeatureSwitchKey.ModelFirstModelProvider]: false,
+      });
+    });
+
     it("should succeed when model provider is configured and no API key in compose", async () => {
       // Create org-level model provider (build-context resolves org-only)
       await createTestOrgModelProvider("anthropic-api-key", "test-api-key");

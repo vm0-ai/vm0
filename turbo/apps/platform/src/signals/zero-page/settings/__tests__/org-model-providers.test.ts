@@ -21,6 +21,17 @@ const context = testContext();
 const mockApi = createMockApi(context);
 
 describe("org-model-providers vm0 provider", () => {
+  function setupLegacyModelProviderSettings(): void {
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: {
+        [FeatureSwitchKey.ModelFirstModelProvider]: false,
+      },
+      withoutRender: true,
+    });
+  }
+
   it("should treat vm0 as a no-secret provider shape, not api-key", () => {
     const shape = getProviderShape("vm0");
     expect(shape).not.toBe("api-key");
@@ -72,6 +83,7 @@ describe("org-model-providers vm0 provider", () => {
   it("should include selectedModel when user accepts the pre-selected default without changing it", async () => {
     const { store, signal } = context;
     let capturedBody: Record<string, unknown> | null = null;
+    await setupLegacyModelProviderSettings();
 
     server.use(
       mockApi(zeroModelProvidersMainContract.upsert, ({ body, respond }) => {
@@ -114,6 +126,7 @@ describe("org-model-providers vm0 provider", () => {
   it("should include selectedModel when user explicitly changes the model", async () => {
     const { store, signal } = context;
     let capturedBody: Record<string, unknown> | null = null;
+    await setupLegacyModelProviderSettings();
 
     server.use(
       mockApi(zeroModelProvidersMainContract.upsert, ({ body, respond }) => {
