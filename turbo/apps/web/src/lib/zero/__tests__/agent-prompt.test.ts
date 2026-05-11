@@ -16,6 +16,7 @@ describe("buildAgentPrompt", () => {
     expect(prompt).toContain("zero web upload-file");
     expect(prompt).not.toContain("zero official generate voice");
     expect(prompt).not.toContain("zero web voice");
+    expect(prompt).not.toContain("zero remote-agent -h");
     expect(prompt).toContain("zero slack upload-file");
     expect(prompt).toContain("zero telegram message");
     expect(prompt).toContain("zero telegram bot list");
@@ -27,5 +28,19 @@ describe("buildAgentPrompt", () => {
     expect(prompt).toContain(
       "Do not present a local path as something the user can open",
     );
+  });
+
+  it("includes remote-agent guidance when enabled", () => {
+    const prompt = buildAgentPrompt(
+      {
+        displayName: null,
+        description: null,
+        sound: null,
+      },
+      { remoteAgentEnabled: true },
+    );
+
+    expect(prompt).toContain("zero remote-agent -h");
+    expect(prompt).toContain("remote agent");
   });
 });

@@ -4,6 +4,10 @@ interface AgentIdentity {
   sound: string | null;
 }
 
+interface AgentPromptOptions {
+  remoteAgentEnabled?: boolean;
+}
+
 const TONE_INSTRUCTIONS: Readonly<Record<string, string>> = {
   professional:
     "Communicate in a clear, polished, and business-appropriate tone. Be thorough yet concise.",
@@ -18,12 +22,15 @@ const TONE_INSTRUCTIONS: Readonly<Record<string, string>> = {
 /**
  * Build the agent system prompt: identity + tools.
  */
-export function buildAgentPrompt(identity: AgentIdentity): string {
+export function buildAgentPrompt(
+  identity: AgentIdentity,
+  options: AgentPromptOptions = {},
+): string {
   const parts: string[] = [];
   if (identity.displayName || identity.description || identity.sound) {
     parts.push(buildAgentIdentityPrompt(identity));
   }
-  parts.push(buildAgentToolsPrompt());
+  parts.push(buildAgentToolsPrompt(options));
   return parts.join("\n\n");
 }
 
@@ -66,8 +73,8 @@ export const DISALLOWED_TOOLS = [
  * Build Agent Tools prompt so sandbox agents know how to use the Zero CLI.
  * Injected by createZeroRun() for all trigger paths.
  */
-function buildAgentToolsPrompt(): string {
-  return [
+function buildAgentToolsPrompt(options: AgentPromptOptions): string {
+  const parts = [
     "# Agent Tools",
     "You have access to the Zero CLI. Run commands with: `npx -p @vm0/cli zero <command>`",
     "- Discover available commands: `zero --help`.",
@@ -90,5 +97,13 @@ function buildAgentToolsPrompt(): string {
     "- Manage custom skills: `zero skill --help`.",
     "- Send a direct message to the user via web chat: `zero chat message send --help`.",
     "- Report issues to the dev team: `zero developer-support --help`. Requires a two-step consent flow: (1) call without --consent-code to get a code, (2) ask the user to type it, (3) call again with --consent-code. Never submit without the user typing the consent code.",
-  ].join("\n");
+  ];
+
+  if (options.remoteAgentEnabled) {
+    parts.push(
+      "- Call a remote agent on the user's connected machine: `zero remote-agent -h`.",
+    );
+  }
+
+  return parts.join("\n");
 }

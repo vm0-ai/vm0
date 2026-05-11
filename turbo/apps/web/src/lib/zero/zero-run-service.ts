@@ -673,7 +673,12 @@ async function createZeroRunRecord(
     allowedConnectorTypes ?? [],
   );
 
-  const agentPrompt = buildAgentPrompt(agent);
+  const remoteAgentEnabled = isFeatureEnabled(FeatureSwitchKey.RemoteAgent, {
+    orgId: resolved.orgId,
+    userId: params.userId,
+    overrides: featureOverrides,
+  });
+  const agentPrompt = buildAgentPrompt(agent, { remoteAgentEnabled });
   const userInfo = buildUserInfo({
     name: cachedUser.name ?? undefined,
     email: cachedUser.email,
