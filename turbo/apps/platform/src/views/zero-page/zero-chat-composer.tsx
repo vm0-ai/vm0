@@ -416,10 +416,10 @@ function QueuedMessagesStrip({
   items,
   onRemove,
 }: {
-  items: QueuedComposerItem[];
+  items: QueuedComposerItem[] | undefined;
   onRemove?: (id: string) => void;
 }) {
-  if (items.length === 0) {
+  if (!items || items.length === 0) {
     return null;
   }
   return (
@@ -1017,7 +1017,7 @@ export function ZeroChatComposer({
   actionsLoading = false,
   modelPicker,
   submitBlocker,
-  queuedItems = [],
+  queuedItems,
   onRemoveQueuedItem,
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
