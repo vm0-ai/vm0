@@ -2,8 +2,9 @@
 
 # Verify firewall_billable propagation through the full stack.
 #
-# Uses `zero run --model-provider` for per-run provider selection — the test
-# never changes the shared e2e org's default, so no race with other chunks.
+# Uses `zero run --model-provider` for per-run provider selection. The test
+# creates a compose-backed agent instead of a persistent zero agent, so it does
+# not depend on the shared e2e org's agent quota.
 #
 # t54-0: no override; resolver uses bootstrap claude-code-oauth-token default.
 #   Mock token 401s upstream but the firewall tag is stamped; "$" marker absent.
@@ -18,6 +19,8 @@ setup_file() {
     fi
 
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
+    export AGENT_NAME="e2e-billable-${UNIQUE_ID}"
+    export TEST_DIR="$(mktemp -d)"
 
     # Ensure vm0 provider coexists with bootstrap claude-code-oauth-token.
     # CLI non-interactive mode requires --secret; the API route detects
@@ -27,23 +30,33 @@ setup_file() {
         --secret unused-vm0-is-no-secret \
         --model claude-sonnet-4-6 >/dev/null
 
-    # Create a fresh zero agent for this file
-    local create_out
-    create_out=$($ZERO_CLI agent create --display-name "e2e-billable-${UNIQUE_ID}")
-    export AGENT_ID=$(echo "$create_out" | grep -oP 'Agent ID:\s+\K[a-f0-9-]{36}')
-    [ -n "$AGENT_ID" ] || {
-        echo "# Failed to extract Agent ID from: $create_out" >&2
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  ${AGENT_NAME}:
+    description: "Billable firewall e2e agent"
+    framework: claude-code
+    working_dir: /home/user/workspace
+EOF
+
+    local compose_out
+    compose_out=$($VM0_CLI compose --yes --json "$TEST_DIR/vm0.yaml")
+    export COMPOSE_ID
+    COMPOSE_ID=$(echo "$compose_out" | python3 -c "import sys,json; print(json.load(sys.stdin)['composeId'])")
+    [ -n "$COMPOSE_ID" ] || {
+        echo "# Failed to extract composeId from: $compose_out" >&2
         return 1
     }
 }
 
 teardown_file() {
-    [ -n "$AGENT_ID" ] && $ZERO_CLI agent delete "$AGENT_ID" 2>/dev/null || true
+    [ -n "$TEST_DIR" ] && rm -rf "$TEST_DIR"
     $ZERO_CLI org model-provider remove vm0 2>/dev/null || true
 }
 
 @test "t54-0: bootstrap provider — firewall not billable" {
-    run $ZERO_CLI run "$AGENT_ID" \
+    run $ZERO_CLI run "$COMPOSE_ID" \
         --debug-no-mock-claude \
         "Reply with exactly: DONE"
 
@@ -58,7 +71,7 @@ teardown_file() {
 }
 
 @test "t54-1: vm0 meta-provider — firewall billable" {
-    run $ZERO_CLI run "$AGENT_ID" \
+    run $ZERO_CLI run "$COMPOSE_ID" \
         --model-provider vm0 \
         --debug-no-mock-claude \
         "Reply with exactly: DONE"
