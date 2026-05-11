@@ -1258,6 +1258,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn lifecycle_gate_wait_entered_timeout_reports_observed_count() {
+        let gate = MockLifecycleGate::new();
+        gate.release_one();
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.set_park_lifecycle_gate(gate.clone());
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let mut sandbox = factory.create(test_sandbox_config()).await.unwrap();
+
+        sandbox.park().await.unwrap();
+        let err = gate
+            .wait_entered(2, Duration::ZERO)
+            .await
+            .expect_err("second entry should time out");
+
+        assert_eq!(err.target_count(), 2);
+        assert_eq!(err.actual_count(), 1);
+        assert_eq!(err.timeout(), Duration::ZERO);
+        assert_eq!(gate.entered_count(), 1);
+    }
+
+    #[tokio::test]
     async fn lifecycle_gate_wakes_multiple_waiters_for_same_entry() {
         let gate = MockLifecycleGate::new();
         let first_waiter = tokio::spawn({
@@ -1422,6 +1443,31 @@ mod tests {
             0,
             "early release permit should be consumed by one lifecycle entry"
         );
+    }
+
+    #[tokio::test]
+    async fn destroy_lifecycle_gate_waits_for_nth_destroy_entry() {
+        let gate = MockLifecycleGate::new();
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.set_destroy_lifecycle_gate(gate.clone());
+        let factory = Arc::new(MockSandboxFactory::with_overrides(Arc::clone(&overrides)));
+
+        let mut destroy_tasks = Vec::new();
+        for _ in 0..3 {
+            let sandbox = factory.create(test_sandbox_config()).await.unwrap();
+            let factory = Arc::clone(&factory);
+            destroy_tasks.push(tokio::spawn(async move {
+                factory.destroy(sandbox).await;
+            }));
+        }
+
+        assert_eq!(gate.wait_entered(3, test_timeout()).await.unwrap(), 3);
+        assert_eq!(overrides.destroy_call_count(), 3);
+
+        gate.release_many(destroy_tasks.len());
+        for task in destroy_tasks {
+            task.await.unwrap();
+        }
     }
 
     #[tokio::test]
