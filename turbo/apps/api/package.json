@@ -33,6 +33,7 @@
     "@vm0/db": "workspace:*",
     "ably": "^2.21.0",
     "ccstate": "^5.3.0",
+    "croner": "^9.1.0",
     "drizzle-orm": "^0.45.2",
     "gpt-tokenizer": "^3.4.0",
     "hono": "^4.12.18",

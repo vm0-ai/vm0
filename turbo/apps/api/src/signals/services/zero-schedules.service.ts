@@ -1,6 +1,6 @@
 import { createDecipheriv } from "node:crypto";
 
-import { computed, type Computed } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import type {
   ScheduleListResponse,
   ScheduleResponse,
@@ -8,11 +8,13 @@ import type {
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
+import { Cron } from "croner";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
-import { db$ } from "../external/db";
+import { db$, writeDb$, type Db } from "../external/db";
+import { nowDate } from "../external/time";
 
 const secretsMapSchema = z.record(z.string(), z.string());
 
@@ -79,6 +81,173 @@ function scheduleResponse(
     preferPersonalProvider: schedule.preferPersonalProvider ?? false,
   };
 }
+
+function calculateNextRun(
+  cronExpression: string,
+  timezone: string,
+): Date | null {
+  return new Cron(cronExpression, { timezone }).nextRun();
+}
+
+type OwnershipResult =
+  | {
+      readonly ok: true;
+      readonly schedule: typeof zeroAgentSchedules.$inferSelect;
+      readonly displayName: string | null;
+    }
+  | { readonly ok: false };
+
+async function verifyScheduleOwnership(
+  db: Db,
+  userId: string,
+  orgId: string,
+  agentId: string,
+  name: string,
+): Promise<OwnershipResult> {
+  const [agent] = await db
+    .select({
+      id: agentComposes.id,
+      displayName: zeroAgents.displayName,
+    })
+    .from(agentComposes)
+    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+    .where(eq(agentComposes.id, agentId))
+    .limit(1);
+  if (!agent) {
+    return { ok: false };
+  }
+
+  const [schedule] = await db
+    .select()
+    .from(zeroAgentSchedules)
+    .where(
+      and(
+        eq(zeroAgentSchedules.agentId, agentId),
+        eq(zeroAgentSchedules.name, name),
+        eq(zeroAgentSchedules.orgId, orgId),
+        eq(zeroAgentSchedules.userId, userId),
+      ),
+    )
+    .limit(1);
+  if (!schedule) {
+    return { ok: false };
+  }
+
+  return { ok: true, schedule, displayName: agent.displayName ?? null };
+}
+
+type DisableScheduleResult =
+  | { readonly kind: "ok"; readonly response: ScheduleResponse }
+  | { readonly kind: "not_found" };
+
+type EnableScheduleResult =
+  | { readonly kind: "ok"; readonly response: ScheduleResponse }
+  | { readonly kind: "not_found" }
+  | { readonly kind: "schedule_past" };
+
+interface ScheduleMutationArgs {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentId: string;
+  readonly name: string;
+}
+
+export const disableSchedule$ = command(
+  async (
+    { set },
+    args: ScheduleMutationArgs,
+    signal: AbortSignal,
+  ): Promise<DisableScheduleResult> => {
+    const db = set(writeDb$);
+    const ownership = await verifyScheduleOwnership(
+      db,
+      args.userId,
+      args.orgId,
+      args.agentId,
+      args.name,
+    );
+    signal.throwIfAborted();
+    if (!ownership.ok) {
+      return { kind: "not_found" };
+    }
+
+    const [updated] = await db
+      .update(zeroAgentSchedules)
+      .set({
+        enabled: false,
+        retryStartedAt: null,
+        updatedAt: nowDate(),
+      })
+      .where(eq(zeroAgentSchedules.id, ownership.schedule.id))
+      .returning();
+    signal.throwIfAborted();
+    if (!updated) {
+      return { kind: "not_found" };
+    }
+
+    return {
+      kind: "ok",
+      response: scheduleResponse(updated, ownership.displayName),
+    };
+  },
+);
+
+export const enableSchedule$ = command(
+  async (
+    { set },
+    args: ScheduleMutationArgs,
+    signal: AbortSignal,
+  ): Promise<EnableScheduleResult> => {
+    const db = set(writeDb$);
+    const ownership = await verifyScheduleOwnership(
+      db,
+      args.userId,
+      args.orgId,
+      args.agentId,
+      args.name,
+    );
+    signal.throwIfAborted();
+    if (!ownership.ok) {
+      return { kind: "not_found" };
+    }
+    const { schedule, displayName } = ownership;
+
+    const now = nowDate();
+    let nextRunAt: Date | null = null;
+    if (schedule.triggerType === "loop") {
+      nextRunAt = now;
+    } else if (schedule.cronExpression) {
+      nextRunAt = calculateNextRun(schedule.cronExpression, schedule.timezone);
+    } else if (schedule.atTime) {
+      if (schedule.atTime > now) {
+        nextRunAt = schedule.atTime;
+      } else {
+        return { kind: "schedule_past" };
+      }
+    }
+
+    const [updated] = await db
+      .update(zeroAgentSchedules)
+      .set({
+        enabled: true,
+        nextRunAt,
+        retryStartedAt: null,
+        consecutiveFailures: 0,
+        updatedAt: now,
+      })
+      .where(eq(zeroAgentSchedules.id, schedule.id))
+      .returning();
+    signal.throwIfAborted();
+    if (!updated) {
+      return { kind: "not_found" };
+    }
+
+    return {
+      kind: "ok",
+      response: scheduleResponse(updated, displayName),
+    };
+  },
+);
 
 export function zeroScheduleList(args: {
   readonly orgId: string;

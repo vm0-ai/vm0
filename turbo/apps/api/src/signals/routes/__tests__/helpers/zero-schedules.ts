@@ -10,13 +10,31 @@ import { writeDb$ } from "../../../external/db";
 
 interface ScheduleSeed {
   readonly name: string;
-  readonly cronExpression: string;
   readonly prompt: string;
+  readonly cronExpression?: string;
+  readonly atTime?: Date;
+  readonly triggerType?: "cron" | "once" | "loop";
+  readonly enabled?: boolean;
+  readonly retryStartedAt?: Date | null;
+  readonly consecutiveFailures?: number;
 }
 
 interface SchedulesScenarioValues {
   readonly schedules: readonly ScheduleSeed[];
   readonly displayName?: string;
+}
+
+function resolveTriggerType(seed: ScheduleSeed): "cron" | "once" | "loop" {
+  if (seed.triggerType) {
+    return seed.triggerType;
+  }
+  if (seed.cronExpression) {
+    return "cron";
+  }
+  if (seed.atTime) {
+    return "once";
+  }
+  return "loop";
 }
 
 export interface SchedulesFixture {
@@ -65,10 +83,18 @@ export const seedSchedulesScenario$ = command(
         userId,
         orgId,
         name: seed.name,
-        triggerType: "cron",
-        cronExpression: seed.cronExpression,
+        triggerType: resolveTriggerType(seed),
+        cronExpression: seed.cronExpression ?? null,
+        atTime: seed.atTime ?? null,
         prompt: seed.prompt,
         timezone: "UTC",
+        ...(seed.enabled !== undefined && { enabled: seed.enabled }),
+        ...(seed.retryStartedAt !== undefined && {
+          retryStartedAt: seed.retryStartedAt,
+        }),
+        ...(seed.consecutiveFailures !== undefined && {
+          consecutiveFailures: seed.consecutiveFailures,
+        }),
       });
       signal.throwIfAborted();
       scheduleIds.push(scheduleId);
