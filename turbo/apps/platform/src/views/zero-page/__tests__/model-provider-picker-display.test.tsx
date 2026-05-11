@@ -27,15 +27,11 @@ import {
   resetMockOrgModelProviders,
 } from "../../../mocks/handlers/api-org-model-providers.ts";
 import { resetMockOrgModelPolicies } from "../../../mocks/handlers/api-org-model-policies.ts";
+import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
-function legacyModelProviderSwitches() {
-  return {
-    [FeatureSwitchKey.ModelFirstModelProvider]: false,
-  };
-}
 
 function setupMockAgent() {
   setMockTeam([
@@ -77,10 +73,8 @@ function setupMockAgent() {
   );
 }
 
-async function openProfileTab(
-  featureSwitches = legacyModelProviderSwitches(),
-) {
-  detachedSetupPage({ context, path: "/agents/my-agent", featureSwitches });
+async function openProfileTab() {
+  detachedSetupPage({ context, path: "/agents/my-agent" });
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "My Agent" }),
@@ -102,6 +96,7 @@ describe("model-provider-picker - display with null value", () => {
   // the trigger must show that model's display name, not blank or placeholder.
   it("shows default provider selectedModel display name when value is null (MPKR-D-001)", async () => {
     setupMockAgent();
+    setMockFeatureSwitches({});
     setMockOrgModelProviders([
       {
         id: "00000000-0000-4000-a000-000000000001",
@@ -133,6 +128,7 @@ describe("model-provider-picker - display with null value", () => {
   // fall back to getDefaultModel for the provider type (claude-sonnet-4-6 for anthropic-api-key).
   it("falls back to provider type default model when selectedModel is null (MPKR-D-002)", async () => {
     setupMockAgent();
+    setMockFeatureSwitches({});
     setMockOrgModelProviders([
       {
         id: "00000000-0000-4000-a000-000000000002",
@@ -164,6 +160,7 @@ describe("model-provider-picker - display with null value", () => {
   // the trigger must show the placeholder text.
   it("shows placeholder when no default provider exists (MPKR-D-003)", async () => {
     setupMockAgent();
+    setMockFeatureSwitches({});
     setMockOrgModelProviders([
       {
         id: "00000000-0000-4000-a000-000000000003",
@@ -192,11 +189,12 @@ describe("model-provider-picker - display with null value", () => {
 
   it("does not render the agent model picker when model-first is enabled", async () => {
     setupMockAgent();
-    setMockOrgModelProviders([]);
-
-    await openProfileTab({
+    setMockFeatureSwitches({
       [FeatureSwitchKey.ModelFirstModelProvider]: true,
     });
+    setMockOrgModelProviders([]);
+
+    await openProfileTab();
 
     await waitFor(() => {
       expect(
