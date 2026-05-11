@@ -18,12 +18,17 @@ import {
   isNotFound,
 } from "@vm0/api-services/errors";
 
+function unauthenticatedResponse() {
+  return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+}
+
 const router = tsr.router(zeroOrgMembersContract, {
   members: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthenticatedResponse();
 
     try {
       const { org } = await resolveOrg(authCtx);

@@ -1,4 +1,4 @@
-import { computed } from "ccstate";
+import { command, computed } from "ccstate";
 import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
 import { zeroOrgDomainsContract } from "@vm0/api-contracts/contracts/zero-org-domains";
@@ -9,7 +9,7 @@ import { authRoute } from "../auth/auth-route";
 import { notFound } from "../../lib/error";
 import type { RouteEntry } from "../route";
 import {
-  zeroOrgDetail,
+  zeroOrgDetail$,
   zeroOrgDomainsList,
   zeroOrgList,
   zeroOrgMembersList,
@@ -25,12 +25,17 @@ const adminRequired = Object.freeze({
   }),
 });
 
-const getOrgInner$ = computed(async (get) => {
+const getOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(authContext$);
   if (!auth.orgId) {
     return notFound("Organization not found");
   }
-  const org = await get(zeroOrgDetail(auth.orgId, auth.userId));
+  const org = await set(
+    zeroOrgDetail$,
+    { orgId: auth.orgId, userId: auth.userId },
+    signal,
+  );
+  signal.throwIfAborted();
   if (!org) {
     return notFound("Organization not found");
   }

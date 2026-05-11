@@ -16,6 +16,22 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
+function mockClerkDomains(): void {
+  context.mocks.clerk.organizations.getOrganizationDomainList.mockResolvedValue(
+    {
+      data: [
+        {
+          id: "domain_test_1",
+          name: "example.com",
+          enrollment_mode: "automatic_invitation",
+          verification: { status: "verified", strategy: "dns" },
+          created_at: 1_700_000_000_000,
+        },
+      ],
+    },
+  );
+}
+
 describe("GET /api/zero/org/domains", () => {
   const seededFixtures: OrgMembershipFixture[] = [];
 
@@ -60,6 +76,7 @@ describe("GET /api/zero/org/domains", () => {
       ),
     );
     mocks.clerk.session(userId, orgId, "org:admin");
+    mockClerkDomains();
 
     const client = setupApp({ context })(zeroOrgDomainsContract);
 
@@ -68,7 +85,18 @@ describe("GET /api/zero/org/domains", () => {
       [200],
     );
 
-    expect(response.body.domains).toBeInstanceOf(Array);
+    expect(response.body.domains).toStrictEqual([
+      {
+        id: "domain_test_1",
+        name: "example.com",
+        enrollmentMode: "automatic_invitation",
+        verification: { status: "verified", strategy: "dns" },
+        createdAt: new Date(1_700_000_000_000).toISOString(),
+      },
+    ]);
+    expect(
+      context.mocks.clerk.organizations.getOrganizationDomainList,
+    ).toHaveBeenCalledWith({ organizationId: orgId });
   });
 
   it("returns 403 when caller is not an admin", async () => {

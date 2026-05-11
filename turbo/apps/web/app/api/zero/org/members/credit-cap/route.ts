@@ -16,6 +16,13 @@ const updateBodySchema = z.object({
   creditCap: z.number().int().positive().nullable(),
 });
 
+function unauthenticatedJsonResponse() {
+  return NextResponse.json(
+    { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+    { status: 401 },
+  );
+}
+
 /**
  * GET /api/zero/org/members/credit-cap?userId={userId}
  *
@@ -30,6 +37,9 @@ export async function GET(request: Request) {
   );
   if (isAuthError(authResult)) {
     return NextResponse.json(authResult.body, { status: authResult.status });
+  }
+  if (!authResult.orgId) {
+    return unauthenticatedJsonResponse();
   }
 
   const url = new URL(request.url);

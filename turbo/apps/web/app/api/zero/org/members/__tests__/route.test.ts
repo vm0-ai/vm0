@@ -93,7 +93,7 @@ describe("GET /api/zero/org/members", () => {
     expect(response.status).toBe(401);
   });
 
-  it("should return 400 when no org in session", async () => {
+  it("should return 401 when no org in session", async () => {
     const userId = uniqueId("mem-nf");
     mockClerk({
       userId,
@@ -103,7 +103,7 @@ describe("GET /api/zero/org/members", () => {
 
     const response = await GET(createTestRequest(membersUrl()));
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(401);
   });
 
   it("should not expose pendingInvitations or membershipRequests to non-admin members", async () => {

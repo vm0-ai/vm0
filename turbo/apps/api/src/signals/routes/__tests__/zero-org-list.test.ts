@@ -1,33 +1,36 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
-import { createStore } from "ccstate";
-import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-  type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
-describe("GET /api/zero/org/list", () => {
-  const seededFixtures: OrgMembershipFixture[] = [];
+interface ClerkOrgMembershipFixture {
+  readonly orgId: string;
+  readonly slug: string;
+  readonly role: "org:admin" | "org:member";
+}
 
-  afterEach(async () => {
-    while (seededFixtures.length > 0) {
-      const fixture = seededFixtures.pop();
-      if (fixture) {
-        await store.set(deleteOrgMembership$, fixture, context.signal);
-      }
-    }
+function mockUserOrganizationMemberships(
+  memberships: readonly ClerkOrgMembershipFixture[],
+): void {
+  context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+    data: memberships.map((membership) => {
+      return {
+        organization: {
+          id: membership.orgId,
+          slug: membership.slug,
+        },
+        role: membership.role,
+      };
+    }),
   });
+}
 
+describe("GET /api/zero/org/list", () => {
   it("returns 401 when not authenticated", async () => {
     const client = setupApp({ context })(zeroOrgListContract);
 
@@ -40,14 +43,7 @@ describe("GET /api/zero/org/list", () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     const slug = `solo-${randomUUID().slice(0, 8)}`;
-    seededFixtures.push(
-      await store.set(
-        seedOrgMembership$,
-        { orgId, userId, slug, role: "admin" },
-        context.signal,
-      ),
-    );
-
+    mockUserOrganizationMemberships([{ orgId, slug, role: "org:admin" }]);
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroOrgListContract);
@@ -57,30 +53,21 @@ describe("GET /api/zero/org/list", () => {
       [200],
     );
 
-    expect(response.body.orgs.length).toBeGreaterThanOrEqual(1);
-    expect(response.body.orgs[0]).toHaveProperty("slug");
-    expect(response.body.orgs[0]).toHaveProperty("role");
+    expect(response.body.orgs).toStrictEqual([{ slug, role: "admin" }]);
+    expect(response.body.active).toBeUndefined();
+    expect(
+      context.mocks.clerk.users.getOrganizationMembershipList,
+    ).toHaveBeenCalledWith({ userId });
   });
 
   it("returns multiple orgs when user belongs to several", async () => {
     const userId = `user_${randomUUID()}`;
     const orgIdA = `org_${randomUUID()}`;
     const orgIdB = `org_${randomUUID()}`;
-    seededFixtures.push(
-      await store.set(
-        seedOrgMembership$,
-        { orgId: orgIdA, userId, slug: "team-alpha", role: "admin" },
-        context.signal,
-      ),
-    );
-    seededFixtures.push(
-      await store.set(
-        seedOrgMembership$,
-        { orgId: orgIdB, userId, slug: "team-beta", role: "member" },
-        context.signal,
-      ),
-    );
-
+    mockUserOrganizationMemberships([
+      { orgId: orgIdA, slug: "team-alpha", role: "org:admin" },
+      { orgId: orgIdB, slug: "team-beta", role: "org:member" },
+    ]);
     mocks.clerk.session(userId, orgIdA);
 
     const client = setupApp({ context })(zeroOrgListContract);
@@ -90,12 +77,10 @@ describe("GET /api/zero/org/list", () => {
       [200],
     );
 
-    expect(response.body.orgs).toHaveLength(2);
-    expect(response.body.orgs).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ slug: "team-alpha", role: "admin" }),
-        expect.objectContaining({ slug: "team-beta", role: "member" }),
-      ]),
-    );
+    expect(response.body.orgs).toStrictEqual([
+      { slug: "team-alpha", role: "admin" },
+      { slug: "team-beta", role: "member" },
+    ]);
+    expect(response.body.active).toBeUndefined();
   });
 });

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroOrgMembersContract } from "@vm0/api-contracts/contracts/zero-org-members";
+import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
 import { http, HttpResponse } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -153,6 +154,21 @@ describe("GET /api/zero/org/members", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+
+    const client = setupApp({ context })(zeroOrgMembersContract);
+
+    const response = await accept(
+      client.members({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
   it("returns members and admin-only data for an admin caller", async () => {
     const orgId = `org_${randomUUID()}`;
     const adminUserId = `user_${randomUUID()}`;
@@ -221,7 +237,7 @@ describe("GET /api/zero/org/members", () => {
     expect(response.body.slug).toBe("acme");
     expect(response.body.members).toHaveLength(2);
 
-    const admin = response.body.members.find((m) => {
+    const admin = response.body.members.find((m: OrgMember) => {
       return m.userId === adminUserId;
     });
     expect(admin?.email).toBe("admin@acme.com");
@@ -231,7 +247,7 @@ describe("GET /api/zero/org/members", () => {
     expect(admin?.role).toBe("admin");
     expect(admin?.joinedAt).toBe(new Date(1_700_000_000_000).toISOString());
 
-    const member = response.body.members.find((m) => {
+    const member = response.body.members.find((m: OrgMember) => {
       return m.userId === memberUserId;
     });
     expect(member?.email).toBe("member@acme.com");

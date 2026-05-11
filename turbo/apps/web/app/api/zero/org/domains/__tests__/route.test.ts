@@ -59,6 +59,15 @@ describe("GET /api/zero/org/domains", () => {
 
     expect(response.status).toBe(401);
   });
+
+  it("should return 401 when no org in session", async () => {
+    const userId = uniqueId("dom-no-org");
+    mockClerk({ userId, orgId: null, clerkOrgs: [] });
+
+    const response = await GET(createTestRequest(domainsUrl()));
+
+    expect(response.status).toBe(401);
+  });
 });
 
 describe("POST /api/zero/org/domains", () => {

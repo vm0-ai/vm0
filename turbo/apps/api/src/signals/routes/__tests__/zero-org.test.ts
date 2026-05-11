@@ -35,6 +35,23 @@ interface SeedOrgArgs {
   readonly tier?: "free" | "pro" | "team";
 }
 
+interface ClerkOrgFixture {
+  readonly orgId: string;
+  readonly slug: string;
+  readonly name: string;
+  readonly createdBy?: string;
+}
+
+function mockClerkOrganization(args: ClerkOrgFixture): void {
+  context.mocks.clerk.organizations.getOrganization.mockResolvedValue({
+    id: args.orgId,
+    slug: args.slug,
+    name: args.name,
+    createdBy: args.createdBy,
+    createdAt: now(),
+  });
+}
+
 async function seedOrg(args: SeedOrgArgs): Promise<OrgMembershipFixture> {
   const fixture = await store.set(
     seedOrgMembership$,
@@ -299,6 +316,54 @@ describe("GET /api/zero/org — org resolution", () => {
 
     expect(response.body.id).toBe(orgId);
     expect(response.body.tier).toBe("free");
+  });
+
+  it("refreshes org identity from Clerk when cache row is missing", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const slug = `clerk-${randomUUID().slice(0, 8)}`;
+    seededFixtures.push({ orgId, userId });
+    mockClerkOrganization({
+      orgId,
+      slug,
+      name: "Clerk Fresh Org",
+      createdBy: userId,
+    });
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroOrgContract);
+    const response = await accept(
+      client.get({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      id: orgId,
+      slug,
+      name: "Clerk Fresh Org",
+      tier: "free",
+      role: "member",
+      createdBy: userId,
+    });
+    expect(
+      context.mocks.clerk.organizations.getOrganization,
+    ).toHaveBeenCalledWith({ organizationId: orgId });
+
+    const writeDb = store.set(writeDb$);
+    const [cached] = await writeDb
+      .select({
+        slug: orgCache.slug,
+        name: orgCache.name,
+        createdBy: orgCache.createdBy,
+      })
+      .from(orgCache)
+      .where(eq(orgCache.orgId, orgId))
+      .limit(1);
+    expect(cached).toStrictEqual({
+      slug,
+      name: "Clerk Fresh Org",
+      createdBy: userId,
+    });
   });
 
   it("returns member with correct role", async () => {

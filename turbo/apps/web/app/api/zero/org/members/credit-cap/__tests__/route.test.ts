@@ -65,6 +65,13 @@ describe("/api/zero/org/members/credit-cap", () => {
       expect(response.status).toBe(401);
     });
 
+    it("returns 401 when the authenticated session has no organization", async () => {
+      mockClerk({ userId: user.userId, orgId: null, clerkOrgs: [] });
+      const request = createTestRequest(`${BASE_URL}?userId=${user.userId}`);
+      const response = await GET(request);
+      expect(response.status).toBe(401);
+    });
+
     it("returns default cap state (null cap, enabled)", async () => {
       const request = createTestRequest(`${BASE_URL}?userId=${user.userId}`);
       const response = await GET(request);

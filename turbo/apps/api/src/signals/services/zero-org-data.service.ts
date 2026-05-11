@@ -1,5 +1,6 @@
-import { computed, type Computed } from "ccstate";
-import { and, eq, inArray } from "drizzle-orm";
+import { command, computed, type Computed } from "ccstate";
+import { and, eq } from "drizzle-orm";
+import { z } from "zod";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
@@ -13,15 +14,60 @@ import type {
 } from "@vm0/api-contracts/contracts/org-members";
 import type { User } from "@clerk/backend";
 
-import { db$ } from "../external/db";
+import { db$, writeDb$ } from "../external/db";
 import { clerk$ } from "../external/clerk";
 import { fetchClerkMembershipRequests } from "../external/clerk-membership-requests";
+import { nowDate } from "../../lib/time";
 
-export function zeroOrgDetail(
-  orgId: string,
-  userId: string,
-): Computed<Promise<OrgResponse | null>> {
-  return computed(async (get): Promise<OrgResponse | null> => {
+const clerkOrgIdentitySchema = z.object({
+  slug: z.string().nullable().optional(),
+  name: z.string().nullable().optional(),
+  createdBy: z.string().nullable().optional(),
+});
+
+const clerkDomainDataSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  enrollment_mode: z.string().optional(),
+  enrollmentMode: z.string().optional(),
+  created_at: z.number().optional(),
+  createdAt: z.number().optional(),
+  verification: z
+    .object({
+      status: z.string(),
+      strategy: z.string(),
+    })
+    .optional(),
+});
+
+interface OrgIdentity {
+  readonly slug: string;
+  readonly name: string;
+  readonly createdBy: string | null;
+}
+
+function isClerkNotFound(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  return (
+    Reflect.get(error, "statusCode") === 404 ||
+    Reflect.get(error, "code") === "NOT_FOUND" ||
+    Reflect.get(error, "name") === "NotFoundError"
+  );
+}
+
+interface ZeroOrgDetailArgs {
+  readonly orgId: string;
+  readonly userId: string;
+}
+
+export const zeroOrgDetail$ = command(
+  async (
+    { get, set },
+    args: ZeroOrgDetailArgs,
+    signal: AbortSignal,
+  ): Promise<OrgResponse | null> => {
     const db = get(db$);
 
     const [cached, meta, membership] = await Promise.all([
@@ -32,93 +78,141 @@ export function zeroOrgDetail(
           createdBy: orgCache.createdBy,
         })
         .from(orgCache)
-        .where(eq(orgCache.orgId, orgId))
+        .where(eq(orgCache.orgId, args.orgId))
         .limit(1),
       db
         .select({ tier: orgMetadata.tier })
         .from(orgMetadata)
-        .where(eq(orgMetadata.orgId, orgId))
+        .where(eq(orgMetadata.orgId, args.orgId))
         .limit(1),
       db
         .select({ role: orgMembersCache.role })
         .from(orgMembersCache)
         .where(
           and(
-            eq(orgMembersCache.orgId, orgId),
-            eq(orgMembersCache.userId, userId),
+            eq(orgMembersCache.orgId, args.orgId),
+            eq(orgMembersCache.userId, args.userId),
           ),
         )
         .limit(1),
     ]);
+    signal.throwIfAborted();
 
-    if (!cached[0]) {
-      return null;
+    let identity: OrgIdentity | undefined = cached[0];
+    if (!identity) {
+      const client = get(clerk$);
+      const clerkOrg = await client.organizations
+        .getOrganization({
+          organizationId: args.orgId,
+        })
+        .catch((error: unknown) => {
+          if (isClerkNotFound(error)) {
+            return null;
+          }
+          throw error;
+        });
+      signal.throwIfAborted();
+
+      if (!clerkOrg) {
+        return null;
+      }
+
+      const parsed = clerkOrgIdentitySchema.parse(clerkOrg);
+      if (!parsed.slug) {
+        throw new Error(`Clerk organization ${args.orgId} has no slug`);
+      }
+
+      identity = {
+        slug: parsed.slug,
+        name: parsed.name ?? "",
+        createdBy: parsed.createdBy ?? null,
+      };
+
+      const now = nowDate();
+      const writeDb = set(writeDb$);
+      await writeDb
+        .insert(orgCache)
+        .values({
+          orgId: args.orgId,
+          slug: identity.slug,
+          name: identity.name,
+          createdBy: identity.createdBy,
+          cachedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: orgCache.orgId,
+          set: {
+            slug: identity.slug,
+            name: identity.name,
+            createdBy: identity.createdBy,
+            cachedAt: now,
+          },
+        });
+      signal.throwIfAborted();
     }
 
     return {
-      id: orgId,
-      slug: cached[0].slug,
-      name: cached[0].name,
+      id: args.orgId,
+      slug: identity.slug,
+      name: identity.name,
       tier: meta[0]?.tier ?? "free",
       role: (membership[0]?.role as OrgRole) ?? "member",
-      createdBy: cached[0].createdBy ?? undefined,
+      createdBy: identity.createdBy ?? undefined,
     };
-  });
-}
+  },
+);
 
 export function zeroOrgList(
   userId: string,
 ): Computed<Promise<OrgListResponse>> {
   return computed(async (get): Promise<OrgListResponse> => {
-    const db = get(db$);
-
-    const memberships = await db
-      .select({
-        orgId: orgMembersCache.orgId,
-        role: orgMembersCache.role,
-      })
-      .from(orgMembersCache)
-      .where(eq(orgMembersCache.userId, userId));
-
-    if (memberships.length === 0) {
-      return { orgs: [] };
-    }
-
-    const orgIds = memberships.map((m) => {
-      return m.orgId;
+    const client = get(clerk$);
+    const memberships = await client.users.getOrganizationMembershipList({
+      userId,
     });
-
-    const caches = await db
-      .select({ orgId: orgCache.orgId, slug: orgCache.slug })
-      .from(orgCache)
-      .where(inArray(orgCache.orgId, orgIds));
-
-    const slugMap = new Map<string, string>();
-    for (const c of caches) {
-      slugMap.set(c.orgId, c.slug);
-    }
-
     return {
-      orgs: memberships.map((m) => {
+      orgs: memberships.data.map((membership) => {
         return {
-          slug: slugMap.get(m.orgId) ?? m.orgId,
-          role: m.role,
+          slug: membership.organization.slug,
+          role: mapClerkOrgRole(membership.role),
         };
       }),
+      active: undefined,
     };
   });
 }
 
 export function zeroOrgDomainsList(
-  _orgId: string,
+  orgId: string,
 ): Computed<Promise<OrgDomainsResponse>> {
-  return computed(async (): Promise<OrgDomainsResponse> => {
-    // Domains are sourced from Clerk. The API app does not have an
-    // org_domains table — return an empty list so the contract is satisfied.
-    // Callers that need real domain data should go through the web-side Clerk
-    // integration or the Clerk REST API.
-    await Promise.resolve();
-    return { domains: [] };
+  return computed(async (get): Promise<OrgDomainsResponse> => {
+    const client = get(clerk$);
+    const domains = await client.organizations.getOrganizationDomainList({
+      organizationId: orgId,
+    });
+
+    return {
+      domains: domains.data.map((domain) => {
+        const parsed = clerkDomainDataSchema.parse(domain);
+        const enrollmentMode =
+          parsed.enrollment_mode ?? parsed.enrollmentMode ?? "";
+        const createdAtMs = parsed.created_at ?? parsed.createdAt;
+        return {
+          id: parsed.id,
+          name: parsed.name,
+          enrollmentMode,
+          verification: parsed.verification
+            ? {
+                status: parsed.verification.status,
+                strategy: parsed.verification.strategy,
+              }
+            : { status: "unverified", strategy: "email_code" },
+          createdAt: createdAtMs
+            ? new Date(createdAtMs).toISOString()
+            : new Date(0).toISOString(),
+        };
+      }),
+    };
   });
 }
 

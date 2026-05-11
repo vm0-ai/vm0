@@ -15,12 +15,17 @@ import {
 } from "../../../../../src/lib/zero/org/org-member-service";
 import { isForbidden } from "@vm0/api-services/errors";
 
+function unauthenticatedResponse() {
+  return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+}
+
 const router = tsr.router(zeroOrgDomainsContract, {
   list: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthenticatedResponse();
 
     try {
       const { org, member } = await resolveOrg(authCtx);
