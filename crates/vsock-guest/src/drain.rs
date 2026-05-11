@@ -388,6 +388,32 @@ mod tests {
     }
 
     #[test]
+    fn bounded_drain_zero_chunk_limit_emits_truncation_marker_on_data() {
+        let (reader, mut writer) = pipe_pair();
+        writer.write_all(b"abc").unwrap();
+        drop(writer);
+
+        let cancel = AtomicBool::new(false);
+        let mut chunks = Vec::new();
+        let result = drain_bounded_cancellable(
+            reader,
+            &cancel,
+            None,
+            Some(BoundedStreamConfig {
+                chunk_limit_bytes: 0,
+                stream_limit_bytes: 3,
+            }),
+            |chunk, truncated| {
+                chunks.push((chunk.to_vec(), truncated));
+                true
+            },
+        );
+
+        assert_eq!(result.captured, None);
+        assert_eq!(chunks, vec![(Vec::new(), true)]);
+    }
+
+    #[test]
     fn bounded_drain_stream_callback_failure_stops_stream_but_keeps_draining() {
         let (reader, mut writer) = pipe_pair();
         writer.write_all(b"abcdef").unwrap();

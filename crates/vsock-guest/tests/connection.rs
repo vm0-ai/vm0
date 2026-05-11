@@ -649,6 +649,37 @@ fn read_command_result(
     }
 }
 
+fn read_command_output_chunk(stream: &mut impl std::io::Read, seq: u32) -> CommandChunk {
+    let mut decoder = vsock_proto::Decoder::new();
+    let mut buf = [0u8; 4096];
+    loop {
+        let n = read_retry_eintr(stream, &mut buf).unwrap();
+        assert!(n > 0, "unexpected EOF waiting for command output");
+        for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
+            if msg.seq != seq {
+                continue;
+            }
+            match msg.msg_type {
+                MSG_COMMAND_OUTPUT => {
+                    let decoded = vsock_proto::decode_command_output(&msg.payload).unwrap();
+                    return CommandChunk {
+                        stream: decoded.stream,
+                        output_seq: decoded.output_seq,
+                        chunk: decoded.chunk.to_vec(),
+                        truncated: decoded.truncated,
+                    };
+                }
+                MSG_COMMAND_RESULT => panic!("unexpected command result before output"),
+                MSG_ERROR => {
+                    let error = vsock_proto::decode_error(&msg.payload).unwrap();
+                    panic!("unexpected command error for seq={seq}: {error}");
+                }
+                other => panic!("unexpected command response type: 0x{other:02X}"),
+            }
+        }
+    }
+}
+
 fn captured_to_vec(captured: CommandCapturedOutput<'_>) -> Option<Vec<u8>> {
     match captured {
         CommandCapturedOutput::Discarded => None,
@@ -771,6 +802,88 @@ fn command_stream_handles_more_chunks_than_output_queue_capacity() {
     for (expected_seq, chunk) in chunks.iter().enumerate() {
         assert_eq!(chunk.output_seq, expected_seq as u32);
     }
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn command_stream_disconnect_cancels_child() {
+    let pid_path = unique_pid_path("command-stream-disconnect");
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let command = format!(
+        "echo $$ > '{}'; while true; do echo tick; done",
+        pid_path.as_str()
+    );
+    send_command_start(
+        &mut host_stream,
+        117,
+        &command,
+        0,
+        CommandOutputPolicy::Stream {
+            limit_bytes: 1024 * 1024,
+            chunk_limit_bytes: 16,
+        },
+        CommandOutputPolicy::Discard,
+    );
+    let pid = read_pid_file(pid_path.as_str());
+    let chunk = read_command_output_chunk(&mut host_stream, 117);
+    assert_eq!(chunk.stream, CommandOutputStream::Stdout);
+    assert!(!chunk.chunk.is_empty());
+    assert!(
+        pid_alive(pid),
+        "command child should be running before disconnect"
+    );
+
+    drop(host_stream);
+    let _ = handle.join();
+    wait_for_pid_exit(pid, "command stream host disconnect");
+}
+
+#[test]
+fn command_rejects_output_policies_that_cannot_fit_protocol_frames_without_running() {
+    let capture_marker = unique_tmp_path("command-huge-capture-policy", ".marker");
+    let stream_marker = unique_tmp_path("command-huge-stream-policy", ".marker");
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_command_start(
+        &mut host_stream,
+        118,
+        &format!("printf ran > '{}'", capture_marker.as_str()),
+        5000,
+        CommandOutputPolicy::Capture {
+            limit_bytes: u32::MAX,
+        },
+        CommandOutputPolicy::Discard,
+    );
+    let (_chunks, capture_result) = read_command_result(&mut host_stream, 118);
+    assert_eq!(capture_result.termination, CommandTermination::StartFailed);
+    assert!(
+        capture_result
+            .diagnostic
+            .contains("capture limits exceed protocol result frame budget")
+    );
+    assert!(std::fs::metadata(capture_marker.as_str()).is_err());
+
+    send_command_start(
+        &mut host_stream,
+        119,
+        &format!("printf ran > '{}'", stream_marker.as_str()),
+        5000,
+        CommandOutputPolicy::Stream {
+            limit_bytes: 1,
+            chunk_limit_bytes: u32::MAX,
+        },
+        CommandOutputPolicy::Discard,
+    );
+    let (_chunks, stream_result) = read_command_result(&mut host_stream, 119);
+    assert_eq!(stream_result.termination, CommandTermination::StartFailed);
+    assert!(
+        stream_result
+            .diagnostic
+            .contains("stream chunk limit exceeds protocol frame budget")
+    );
+    assert!(std::fs::metadata(stream_marker.as_str()).is_err());
 
     finish_guest_connection(handle, host_stream);
 }
