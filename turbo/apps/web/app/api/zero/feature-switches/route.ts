@@ -12,12 +12,22 @@ import {
   updateUserFeatureSwitches,
 } from "../../../../src/lib/zero/user/feature-switches-service";
 
+function unauthorizedResponse() {
+  return {
+    status: 401 as const,
+    body: {
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    },
+  };
+}
+
 const router = tsr.router(zeroFeatureSwitchesContract, {
   get: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthorizedResponse();
 
     const { org } = await resolveOrg(authCtx);
 
@@ -34,6 +44,7 @@ const router = tsr.router(zeroFeatureSwitchesContract, {
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthorizedResponse();
 
     const { org } = await resolveOrg(authCtx);
 
@@ -54,6 +65,7 @@ const router = tsr.router(zeroFeatureSwitchesContract, {
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) return unauthorizedResponse();
 
     const { org } = await resolveOrg(authCtx);
 

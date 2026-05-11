@@ -41,6 +41,20 @@ describe("GET /api/zero/feature-switches", () => {
     expect(data.error.message).toContain("Not authenticated");
   });
 
+  it("should return 401 when authenticated session has no active organization", async () => {
+    mockClerk({ userId: "user_feature_switches_no_org_get", orgId: null });
+
+    const response = await GET(getRequest());
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
   it("should return empty switches for new user", async () => {
     const user = await context.setupUser();
     mockClerk({ userId: user.userId, orgId: user.orgId });
@@ -66,6 +80,20 @@ describe("POST /api/zero/feature-switches", () => {
 
     expect(response.status).toBe(401);
     expect(data.error.message).toContain("Not authenticated");
+  });
+
+  it("should return 401 when authenticated session has no active organization", async () => {
+    mockClerk({ userId: "user_feature_switches_no_org_post", orgId: null });
+
+    const response = await POST(postRequest({ voiceChat: true }));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
   });
 
   it("should create new switches", async () => {
@@ -130,6 +158,20 @@ describe("DELETE /api/zero/feature-switches", () => {
 
     expect(response.status).toBe(401);
     expect(data.error.message).toContain("Not authenticated");
+  });
+
+  it("should return 401 when authenticated session has no active organization", async () => {
+    mockClerk({ userId: "user_feature_switches_no_org_delete", orgId: null });
+
+    const response = await DELETE(deleteRequest());
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
   });
 
   it("should clear all overrides and subsequent GET returns empty switches", async () => {
