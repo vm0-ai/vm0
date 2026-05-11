@@ -39,9 +39,7 @@ function sortRowsByCatalog(rows: OrgModelPolicyRow[]): OrgModelPolicyRow[] {
   });
 }
 
-async function loadOrgDefaultProviderSeed(
-  orgId: string,
-): Promise<{
+async function loadOrgDefaultProviderSeed(orgId: string): Promise<{
   providerType: ModelProviderType;
   selectedModel: SupportedRunModel | null;
   modelProviderId: string | null;
@@ -78,7 +76,12 @@ async function getDefaultPolicySeeds(
   Array<
     Omit<
       NewOrgModelPolicyRow,
-      "id" | "orgId" | "createdAt" | "updatedAt" | "createdByUserId" | "updatedByUserId"
+      | "id"
+      | "orgId"
+      | "createdAt"
+      | "updatedAt"
+      | "createdByUserId"
+      | "updatedByUserId"
     >
   >
 > {
