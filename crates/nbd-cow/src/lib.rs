@@ -238,13 +238,18 @@ impl CreateAttemptGuard {
         }
     }
 
-    async fn disconnect_owned_and_retire_uncertain(mut self) {
+    async fn disconnect_owned_and_release(mut self) {
         self.abort_servers().await;
-        if let Some(connected) = self.connected.take() {
-            disconnect_connected_if_owned(connected);
-        }
+        let disconnected = self
+            .connected
+            .take()
+            .is_some_and(disconnect_connected_if_owned);
         if let Some(lease) = self.lease.take() {
-            self.pool.retire_uncertain(lease).await;
+            if disconnected {
+                self.pool.release_clean(lease).await;
+            } else {
+                self.pool.retire_uncertain(lease).await;
+            }
         }
     }
 
@@ -458,7 +463,7 @@ impl NbdCowDevice {
                         // Record a provisional candidate so cleanup can
                         // disconnect only if sysfs still proves we own it.
                         attempt.mark_connected(connect_tid);
-                        attempt.disconnect_owned_and_retire_uncertain().await;
+                        attempt.disconnect_owned_and_release().await;
                         return Err(source);
                     }
                     Err(connect_error) => {

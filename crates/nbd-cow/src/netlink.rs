@@ -119,13 +119,13 @@ pub fn device_appears_free(index: u32) -> bool {
 
 /// Successful NBD connect metadata.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ConnectDeviceSuccess {
+pub(crate) struct ConnectDeviceSuccess {
     /// TID of the thread that sent `NBD_CMD_CONNECT`.
     ///
     /// The kernel records this value in `/sys/block/nbdN/pid` after a
     /// successful connect. Cleanup uses it to avoid disconnecting a device
     /// recycled by another process.
-    pub connect_tid: u32,
+    pub(crate) connect_tid: u32,
 }
 
 /// Error state for `NBD_CMD_CONNECT`.
@@ -135,7 +135,7 @@ pub struct ConnectDeviceSuccess {
 /// connection. Callers that own an NBD device lease need this state to decide
 /// whether ownership-checked cleanup is required.
 #[derive(Debug, thiserror::Error)]
-pub enum ConnectDeviceError {
+pub(crate) enum ConnectDeviceError {
     /// The connect command was not sent to the kernel.
     #[error("NBD connect failed before sending command: {source}")]
     NotSent {
@@ -160,7 +160,7 @@ pub enum ConnectDeviceError {
 
 impl ConnectDeviceError {
     /// Return the underlying error for legacy callers that do not need state.
-    pub fn into_source(self) -> NbdCowError {
+    pub(crate) fn into_source(self) -> NbdCowError {
         match self {
             Self::NotSent { source }
             | Self::DefiniteAfterSend { source }
@@ -187,7 +187,7 @@ pub fn connect_device(
 }
 
 /// Connect to a specific NBD device and preserve post-send ambiguity state.
-pub fn connect_device_with_state(
+pub(crate) fn connect_device_with_state(
     device_index: u32,
     client_fds: &[OwnedFd],
     size: u64,
@@ -596,7 +596,14 @@ fn finish_connect_after_send(
     expected_seq: u32,
     connect_tid: u32,
 ) -> std::result::Result<ConnectDeviceSuccess, ConnectDeviceError> {
-    match recv_genl_completion(sock, expected_seq) {
+    classify_connect_completion(connect_tid, recv_genl_completion(sock, expected_seq))
+}
+
+fn classify_connect_completion(
+    connect_tid: u32,
+    completion: Result<()>,
+) -> std::result::Result<ConnectDeviceSuccess, ConnectDeviceError> {
+    match completion {
         Ok(()) => Ok(ConnectDeviceSuccess { connect_tid }),
         Err(source @ NbdCowError::NetlinkErrno { .. }) => {
             Err(ConnectDeviceError::DefiniteAfterSend { source })
@@ -942,11 +949,14 @@ mod tests {
     }
 
     #[test]
-    fn finish_connect_after_send_closed_peer_is_ambiguous() {
-        let (sock, peer) = test_genl_socket_pair();
-        drop(peer);
-
-        let result = finish_connect_after_send(&sock, 2, 1234);
+    fn classify_connect_completion_io_error_is_ambiguous() {
+        let result = classify_connect_completion(
+            1234,
+            Err(NbdCowError::Io(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "completion timed out",
+            ))),
+        );
 
         assert!(matches!(
             result,
