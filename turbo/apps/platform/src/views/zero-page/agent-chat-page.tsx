@@ -475,16 +475,7 @@ function SuggestedPromptsGrid({
   );
 }
 
-export function AgentChatPage() {
-  const currentChatAgentId = useLastResolved(currentChatAgentId$);
-  const currentChatAgentDisplayName = useLastResolved(
-    currentChatAgentDisplayName$,
-  );
-
-  const sendNewThread = useSet(sendNewThreadOptimistically$);
-  const rootSignal = useGet(rootSignal$);
-  const pageSignal = useGet(pageSignal$);
-
+function useAgentChatComposerModel(pageSignal: AbortSignal) {
   const composerProvidersLoadable = useLoadable(composerModelProviders$);
   const modelSelectionLoadable = useLoadable(chatPageModelSelection$);
   const agentModelDefaultLoadable = useLoadable(chatPageAgentModelDefault$);
@@ -498,7 +489,6 @@ export function AgentChatPage() {
       : null;
   const setModelSelection = useSet(setChatPageModelSelection$);
   const updateUserModelPreference = useSet(updateUserModelPreference$);
-  const resetModelSelection = useSet(resetChatPageModelSelection$);
   const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
   const agentModelDefault =
     agentModelDefaultLoadable.state === "hasData"
@@ -506,6 +496,70 @@ export function AgentChatPage() {
       : null;
   const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
   const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
+
+  const handleModelSelectionChange = (
+    selection: typeof modelSelection,
+  ): void => {
+    setModelSelection(selection);
+    if (modelFirstEnabled && isSupportedRunModel(selection?.selectedModel)) {
+      detach(
+        updateUserModelPreference(
+          { selectedModel: selection.selectedModel },
+          pageSignal,
+        ),
+        Reason.DomCallback,
+      );
+    }
+  };
+
+  const modelPicker =
+    composerProviders &&
+    (modelFirstEnabled || composerProviders.providers.length > 0)
+      ? {
+          providers: composerProviders.providers,
+          value: modelSelection,
+          onChange: handleModelSelectionChange,
+          // No prior session exists on the landing page.
+          sessionProviderType: null,
+          agentDefault: agentModelDefault,
+          showUseDefault: !modelFirstEnabled,
+        }
+      : undefined;
+  const submitBlockerProps = resolveChatComposerSubmitBlocker({
+    state: modelFirstOauthState,
+    modelSelection,
+    agentModelDefault,
+    onAction: openPersonalOauthConfiguration,
+  });
+  const modelPickerLoading =
+    composerProvidersLoadable.state === "loading" ||
+    modelSelectionLoadable.state === "loading" ||
+    agentModelDefaultLoadable.state === "loading";
+
+  return {
+    modelSelection,
+    modelPicker,
+    modelPickerLoading,
+    submitBlockerProps,
+  };
+}
+
+export function AgentChatPage() {
+  const currentChatAgentId = useLastResolved(currentChatAgentId$);
+  const currentChatAgentDisplayName = useLastResolved(
+    currentChatAgentDisplayName$,
+  );
+
+  const sendNewThread = useSet(sendNewThreadOptimistically$);
+  const rootSignal = useGet(rootSignal$);
+  const pageSignal = useGet(pageSignal$);
+  const {
+    modelSelection,
+    modelPicker,
+    modelPickerLoading,
+    submitBlockerProps,
+  } = useAgentChatComposerModel(pageSignal);
+  const resetModelSelection = useSet(resetChatPageModelSelection$);
 
   const handleSendMessage = (message: string, options?: { goal?: boolean }) => {
     if (!currentChatAgentId) {
@@ -550,32 +604,6 @@ export function AgentChatPage() {
     resetModelSelection();
   };
 
-  const handleModelSelectionChange = (
-    selection: typeof modelSelection,
-  ): void => {
-    setModelSelection(selection);
-    if (modelFirstEnabled && isSupportedRunModel(selection?.selectedModel)) {
-      detach(
-        updateUserModelPreference(
-          { selectedModel: selection.selectedModel },
-          pageSignal,
-        ),
-        Reason.DomCallback,
-      );
-    }
-  };
-
-  const submitBlockerProps = resolveChatComposerSubmitBlocker({
-    state: modelFirstOauthState,
-    modelSelection,
-    agentModelDefault,
-    onAction: openPersonalOauthConfiguration,
-  });
-  const modelPickerLoading =
-    composerProvidersLoadable.state === "loading" ||
-    modelSelectionLoadable.state === "loading" ||
-    agentModelDefaultLoadable.state === "loading";
-
   return (
     <div className="relative flex flex-1 flex-col min-h-0">
       <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-2">
@@ -607,20 +635,7 @@ export function AgentChatPage() {
             onSend={handleSend}
             displayName={currentChatAgentDisplayName ?? ""}
             autoFocus
-            modelPicker={
-              composerProviders &&
-              (modelFirstEnabled || composerProviders.providers.length > 0)
-                ? {
-                    providers: composerProviders.providers,
-                    value: modelSelection,
-                    onChange: handleModelSelectionChange,
-                    // No prior session exists on the landing page.
-                    sessionProviderType: null,
-                    agentDefault: agentModelDefault,
-                    showUseDefault: !modelFirstEnabled,
-                  }
-                : undefined
-            }
+            modelPicker={modelPicker}
             modelPickerLoading={modelPickerLoading}
             submitBlocker={submitBlockerProps}
           />
