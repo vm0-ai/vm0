@@ -27,6 +27,7 @@ import { zeroMemberCreditCapRoutes } from "./routes/zero-member-credit-cap";
 import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
 import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
 import { zeroOnboardingStatusRoutes } from "./routes/zero-onboarding-status";
+import { zeroOrgInviteRoutes } from "./routes/zero-org-invite";
 import { zeroOrgReadRoutes } from "./routes/zero-org-read";
 import { zeroQueuePositionRoutes } from "./routes/zero-queue-position";
 import { zeroRunDetailRoutes } from "./routes/zero-run-detail";
@@ -98,6 +99,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroRunsCancelRoutes,
   ...zeroSchedulesRoutes,
   ...zeroOnboardingStatusRoutes,
+  ...zeroOrgInviteRoutes,
   ...zeroOrgReadRoutes,
   ...zeroUserPreferencesRoutes,
   ...zeroSecretsRoutes,
