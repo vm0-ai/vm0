@@ -51,9 +51,9 @@ describe("isFeatureEnabled", () => {
     );
   });
 
-  it("should enable model-first model provider for staff orgs", () => {
+  it("should enable model-first model provider globally", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, {})).toBe(
-      false,
+      true,
     );
     expect(
       isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, {
@@ -64,7 +64,7 @@ describe("isFeatureEnabled", () => {
       isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, {
         orgId: "org_nonexistent",
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, {
         overrides: { [FeatureSwitchKey.ModelFirstModelProvider]: true },
@@ -113,6 +113,7 @@ describe("getAllFeatureStates", () => {
       orgId: "org_nonexistent",
     });
     expect(states[FeatureSwitchKey.ConnectorCategories]).toBe(false);
+    expect(states[FeatureSwitchKey.ModelFirstModelProvider]).toBe(true);
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
   });
 
