@@ -104,6 +104,8 @@ const COMMAND_TERMINATION_WAIT_FAILED: u8 = 0x04;
 const COMMAND_CAPTURED_OUTPUT_DISCARDED: u8 = 0x00;
 const COMMAND_CAPTURED_OUTPUT_CAPTURED: u8 = 0x01;
 
+const MAX_COMMAND_ENV_VARS: usize = 4096;
+
 /// Command output stream selector.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandOutputStream {
@@ -604,6 +606,9 @@ pub fn encode_command_start(
     let label_bytes = label.as_bytes();
     let cmd_len = ensure_u32_len("command", cmd.len())?;
     let env_count = ensure_u32_len("env_count", env.len())?;
+    if env.len() > MAX_COMMAND_ENV_VARS {
+        return Err(ProtocolError::PayloadTooLarge("env_count", env.len()));
+    }
     let label_len = ensure_u16_len("label", label_bytes.len())?;
 
     let stdout_policy_len = command_output_policy_encoded_len(stdout)?;
@@ -1156,6 +1161,11 @@ pub fn decode_command_start(payload: &[u8]) -> Result<DecodedCommandStart<'_>, P
         "invalid UTF-8 in command",
     )?;
     let env_count = read_u32(payload, &mut offset, "command start env_count truncated")?;
+    if env_count as usize > MAX_COMMAND_ENV_VARS {
+        return Err(ProtocolError::InvalidPayload(
+            "command start env_count too large",
+        ));
+    }
     let min_env_bytes = (env_count as usize)
         .checked_mul(8)
         .ok_or(ProtocolError::InvalidPayload("command start env truncated"))?;
@@ -2149,6 +2159,46 @@ mod tests {
         assert!(matches!(
             decode_command_start(&payload),
             Err(ProtocolError::InvalidPayload(_))
+        ));
+    }
+
+    #[test]
+    fn command_start_rejects_env_count_above_limit() {
+        let env = vec![("K", "V"); MAX_COMMAND_ENV_VARS + 1];
+        let err = encode_command_start(
+            1,
+            "cmd",
+            &env,
+            false,
+            CommandOutputPolicy::Discard,
+            CommandOutputPolicy::Discard,
+            "",
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::PayloadTooLarge("env_count", size) if size == MAX_COMMAND_ENV_VARS + 1
+        ));
+
+        let mut payload = encode_command_start(
+            1,
+            "",
+            &[],
+            false,
+            CommandOutputPolicy::Discard,
+            CommandOutputPolicy::Discard,
+            "",
+        )
+        .unwrap();
+        let env_count_offset = 4 + 1 + 4;
+        payload[env_count_offset..env_count_offset + 4]
+            .copy_from_slice(&((MAX_COMMAND_ENV_VARS as u32) + 1).to_be_bytes());
+
+        assert!(matches!(
+            decode_command_start(&payload),
+            Err(ProtocolError::InvalidPayload(
+                "command start env_count too large"
+            ))
         ));
     }
 
