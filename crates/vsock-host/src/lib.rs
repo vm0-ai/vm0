@@ -41,6 +41,7 @@ use vsock_proto::{
 
 const READ_BUF_SIZE: usize = 64 * 1024;
 const DEFAULT_COMMAND_CAPTURE_LIMIT_BYTES: u32 = 1024 * 1024;
+const DEFAULT_COMMAND_STREAM_CAPACITY: usize = 32;
 const MAX_COMMAND_STREAM_CAPACITY: usize = 1024;
 const COMMAND_FRAME_WRITE_NOT_STARTED: u8 = 0;
 const COMMAND_FRAME_WRITE_STARTED: u8 = 1;
@@ -101,9 +102,11 @@ pub struct CommandOperationRequest<'a> {
     pub stdout: CommandOutputPolicy,
     pub stderr: CommandOutputPolicy,
     pub label: &'a str,
-    /// Bounded host-side output event queue. Must be present iff either output
-    /// policy streams.
-    pub stream_capacity: Option<usize>,
+    /// Optional bounded host-side output event queue override.
+    ///
+    /// `None` uses the default queue capacity when either output policy
+    /// streams, and creates no queue when neither output policy streams.
+    pub stream_queue_capacity: Option<usize>,
 }
 
 /// Request parameters for a capture-only command operation helper.
@@ -127,7 +130,9 @@ pub struct CommandStreamRequest<'a> {
     pub label: &'a str,
     pub stdout: CommandOutputPolicy,
     pub stderr: CommandOutputPolicy,
-    pub stream_capacity: usize,
+    /// Optional host-side output event queue capacity override. `None` uses the
+    /// default queue capacity.
+    pub stream_queue_capacity: Option<usize>,
 }
 
 struct CommandOperation {
@@ -1164,34 +1169,39 @@ impl VsockHost {
                 "command operation requires a positive timeout; use spawn_watch for unbounded commands",
             ));
         }
-        if matches!(request.stream_capacity, Some(0)) {
+        if matches!(request.stream_queue_capacity, Some(0)) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "command stream capacity must be positive",
+                "command stream queue capacity must be positive",
             ));
         }
-        if let Some(capacity) = request.stream_capacity
+        if let Some(capacity) = request.stream_queue_capacity
             && capacity > MAX_COMMAND_STREAM_CAPACITY
         {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!("command stream capacity must be at most {MAX_COMMAND_STREAM_CAPACITY}"),
+                format!(
+                    "command stream queue capacity must be at most {MAX_COMMAND_STREAM_CAPACITY}"
+                ),
             ));
         }
         let streams_output = command_output_policy_streams(request.stdout)
             || command_output_policy_streams(request.stderr);
-        if streams_output && request.stream_capacity.is_none() {
+        if !streams_output && request.stream_queue_capacity.is_some() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "streaming output policy requires command stream capacity",
+                "command stream queue capacity requires a streaming output policy",
             ));
         }
-        if !streams_output && request.stream_capacity.is_some() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "command stream capacity requires a streaming output policy",
-            ));
-        }
+        let stream_queue_capacity = if streams_output {
+            Some(
+                request
+                    .stream_queue_capacity
+                    .unwrap_or(DEFAULT_COMMAND_STREAM_CAPACITY),
+            )
+        } else {
+            None
+        };
 
         let payload = vsock_proto::encode_command_start(
             request.timeout_ms,
@@ -1204,7 +1214,7 @@ impl VsockHost {
         )
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
 
-        let (stream_tx, stream_rx) = match request.stream_capacity {
+        let (stream_tx, stream_rx) = match stream_queue_capacity {
             Some(capacity) => {
                 let (tx, rx) = mpsc::channel(capacity);
                 (Some(tx), Some(rx))
@@ -1291,7 +1301,7 @@ impl VsockHost {
                     limit_bytes: request.stderr_limit_bytes,
                 },
                 label: request.label,
-                stream_capacity: None,
+                stream_queue_capacity: None,
             })
             .await?;
         handle.wait(request.wait_timeout).await
@@ -1302,6 +1312,15 @@ impl VsockHost {
         &self,
         request: CommandStreamRequest<'_>,
     ) -> io::Result<CommandOperationHandle> {
+        if !command_output_policy_streams(request.stdout)
+            && !command_output_policy_streams(request.stderr)
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "command_stream requires a streaming output policy",
+            ));
+        }
+
         self.start_command_operation(CommandOperationRequest {
             timeout_ms: request.timeout_ms,
             command: request.command,
@@ -1310,7 +1329,7 @@ impl VsockHost {
             stdout: request.stdout,
             stderr: request.stderr,
             label: request.label,
-            stream_capacity: Some(request.stream_capacity),
+            stream_queue_capacity: request.stream_queue_capacity,
         })
         .await
     }
@@ -1719,7 +1738,7 @@ mod tests {
             stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: CommandOutputPolicy::Capture { limit_bytes: 1024 },
             label: "test-command",
-            stream_capacity: None,
+            stream_queue_capacity: None,
         })
         .await
         .unwrap()
@@ -1955,7 +1974,7 @@ mod tests {
                     chunk_limit_bytes: 16,
                 },
                 stderr: CommandOutputPolicy::Discard,
-                stream_capacity: 0,
+                stream_queue_capacity: Some(0),
             })
             .await
         {
@@ -1985,7 +2004,7 @@ mod tests {
                     chunk_limit_bytes: 16,
                 },
                 stderr: CommandOutputPolicy::Discard,
-                stream_capacity: MAX_COMMAND_STREAM_CAPACITY + 1,
+                stream_queue_capacity: Some(MAX_COMMAND_STREAM_CAPACITY + 1),
             })
             .await
         {
@@ -1999,11 +2018,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn command_start_rejects_stream_policy_without_receiver() {
+    async fn command_start_stream_policy_uses_default_receiver() {
         let (host, mut guest, mut decoder) = setup_host_and_guest().await;
         let host = Arc::new(host);
 
-        let err = match host
+        let mut handle = host
             .start_command_operation(CommandOperationRequest {
                 timeout_ms: 5000,
                 command: "stream",
@@ -2015,18 +2034,37 @@ mod tests {
                     stream_limit_bytes: 1024,
                     chunk_limit_bytes: 16,
                 },
-                label: "missing-receiver",
-                stream_capacity: None,
+                label: "default-receiver",
+                stream_queue_capacity: None,
             })
             .await
-        {
-            Ok(_) => panic!("streaming output policy without receiver should be rejected"),
-            Err(err) => err,
-        };
-        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
-        assert_eq!(operation_count(&host), 0);
+            .unwrap();
+        let mut rx = handle.take_stream_receiver().unwrap();
 
-        assert_connection_accepts_legacy_exec(&host, &mut guest, &mut decoder).await;
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(msg.msg_type, MSG_COMMAND_START);
+        send_command_output(
+            &mut guest,
+            msg.seq,
+            1,
+            CommandOutputStream::Stderr,
+            b"default-queued",
+            false,
+        )
+        .await;
+        let event = rx.recv().await.unwrap();
+        assert_eq!(event.stream, CommandOutputStream::Stderr);
+        assert_eq!(event.chunk, b"default-queued");
+        send_command_result(
+            &mut guest,
+            msg.seq,
+            CommandTermination::Exited { exit_code: 0 },
+            b"",
+            b"",
+        )
+        .await;
+        let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+        assert!(!result.stream_overflowed);
     }
 
     #[tokio::test]
@@ -2043,11 +2081,38 @@ mod tests {
                 stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
                 stderr: CommandOutputPolicy::Discard,
                 label: "unexpected-receiver",
-                stream_capacity: Some(1),
+                stream_queue_capacity: Some(1),
             })
             .await
         {
             Ok(_) => panic!("receiver without streaming output policy should be rejected"),
+            Err(err) => err,
+        };
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(operation_count(&host), 0);
+
+        assert_connection_accepts_legacy_exec(&host, &mut guest, &mut decoder).await;
+    }
+
+    #[tokio::test]
+    async fn command_stream_rejects_non_streaming_policy() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let host = Arc::new(host);
+
+        let err = match host
+            .command_stream(CommandStreamRequest {
+                timeout_ms: 5000,
+                command: "capture",
+                env: &[],
+                sudo: false,
+                label: "non-streaming-helper",
+                stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
+                stderr: CommandOutputPolicy::Discard,
+                stream_queue_capacity: None,
+            })
+            .await
+        {
+            Ok(_) => panic!("command_stream should reject non-streaming output policies"),
             Err(err) => err,
         };
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
@@ -2073,7 +2138,7 @@ mod tests {
                 },
                 stderr: CommandOutputPolicy::Discard,
                 label: "bad-policy",
-                stream_capacity: Some(1),
+                stream_queue_capacity: Some(1),
             })
             .await
         {
@@ -2100,7 +2165,7 @@ mod tests {
                 stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
                 stderr: CommandOutputPolicy::Capture { limit_bytes: 1024 },
                 label: "zero-timeout",
-                stream_capacity: None,
+                stream_queue_capacity: None,
             })
             .await
         {
@@ -2192,7 +2257,7 @@ mod tests {
                     limit_bytes: 1024,
                     chunk_limit_bytes: 16,
                 },
-                stream_capacity: 4,
+                stream_queue_capacity: Some(4),
             })
             .await
             .unwrap();
@@ -2259,7 +2324,7 @@ mod tests {
                     chunk_limit_bytes: 16,
                 },
                 stderr: CommandOutputPolicy::Discard,
-                stream_capacity: 1,
+                stream_queue_capacity: Some(1),
             })
             .await
             .unwrap();
@@ -2317,7 +2382,7 @@ mod tests {
                     chunk_limit_bytes: 16,
                 },
                 stderr: CommandOutputPolicy::Discard,
-                stream_capacity: 1,
+                stream_queue_capacity: Some(1),
             })
             .await
             .unwrap();
@@ -2395,7 +2460,7 @@ mod tests {
                     chunk_limit_bytes: 16,
                 },
                 stderr: CommandOutputPolicy::Discard,
-                stream_capacity: 1,
+                stream_queue_capacity: Some(1),
             })
             .await
             .unwrap();
@@ -2426,7 +2491,7 @@ mod tests {
                 stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
                 stderr: CommandOutputPolicy::Capture { limit_bytes: 1024 },
                 label: "closed",
-                stream_capacity: None,
+                stream_queue_capacity: None,
             })
             .await
         {
@@ -2452,7 +2517,7 @@ mod tests {
                     chunk_limit_bytes: 16,
                 },
                 stderr: CommandOutputPolicy::Discard,
-                stream_capacity: 1,
+                stream_queue_capacity: Some(1),
             })
             .await
             .unwrap();
