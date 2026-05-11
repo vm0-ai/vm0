@@ -783,8 +783,7 @@ impl SandboxFactory for MockSandboxFactory {
     async fn create(&self, config: SandboxConfig) -> Result<Box<dyn Sandbox>> {
         if let Some(result) = self.create_results.lock_ignoring_poison().pop_front() {
             result?;
-        }
-        if let Some(overrides) = &self.overrides
+        } else if let Some(overrides) = &self.overrides
             && let Some(result) = overrides.create_results.lock_ignoring_poison().pop_front()
         {
             result?;
@@ -1021,6 +1020,10 @@ mod tests {
         }
     }
 
+    fn test_timeout() -> Duration {
+        Duration::from_secs(5)
+    }
+
     #[tokio::test]
     async fn snapshot_provider_can_discard_uncommitted_snapshot() {
         let provider = MockSnapshotProvider;
@@ -1235,18 +1238,9 @@ mod tests {
         let mut sandbox = factory.create(test_sandbox_config()).await.unwrap();
 
         let park_task = tokio::spawn(async move { sandbox.park().await });
-        tokio::time::timeout(Duration::from_secs(1), async {
-            while gate.entered_count() == 0 {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("park should enter lifecycle gate");
+        assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
 
-        assert_eq!(
-            gate.wait_entered(1, Duration::from_secs(1)).await.unwrap(),
-            1
-        );
+        assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
         assert_eq!(overrides.park_call_count(), 1);
 
         gate.release_one();
@@ -1262,13 +1256,25 @@ mod tests {
         let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
         let mut sandbox = factory.create(test_sandbox_config()).await.unwrap();
 
-        tokio::time::timeout(Duration::from_secs(1), sandbox.park())
+        tokio::time::timeout(test_timeout(), sandbox.park())
             .await
             .expect("early release permit should let park finish")
             .unwrap();
 
         assert_eq!(gate.entered_count(), 1);
         assert_eq!(overrides.park_call_count(), 1);
+
+        let mut second_sandbox = factory.create(test_sandbox_config()).await.unwrap();
+        let second_park = tokio::spawn(async move { second_sandbox.park().await });
+        assert_eq!(gate.wait_entered(2, test_timeout()).await.unwrap(), 2);
+        tokio::task::yield_now().await;
+        assert!(
+            !second_park.is_finished(),
+            "early release permit should be consumed by one lifecycle entry"
+        );
+
+        gate.release_one();
+        second_park.await.unwrap().unwrap();
     }
 
     #[tokio::test]
@@ -1284,10 +1290,7 @@ mod tests {
             park_tasks.push(tokio::spawn(async move { sandbox.park().await }));
         }
 
-        assert_eq!(
-            gate.wait_entered(3, Duration::from_secs(1)).await.unwrap(),
-            3
-        );
+        assert_eq!(gate.wait_entered(3, test_timeout()).await.unwrap(), 3);
         assert_eq!(overrides.park_call_count(), 3);
 
         gate.release_many(park_tasks.len());
@@ -1320,6 +1323,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn factory_local_create_result_takes_precedence_over_shared_overrides() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.push_create_result(Err(SandboxError::Initialization {
+            phase: SandboxInitializationPhase::SandboxAllocation,
+            message: "shared failure".into(),
+        }));
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        factory.push_create_result(Ok(()));
+
+        factory.create(test_sandbox_config()).await.unwrap();
+        let result = factory.create(test_sandbox_config()).await;
+
+        assert!(matches!(
+            result,
+            Err(SandboxError::Initialization {
+                phase: SandboxInitializationPhase::SandboxAllocation,
+                ..
+            })
+        ));
+    }
+
+    #[tokio::test]
     async fn destroy_lifecycle_gate_blocks_before_destroy_panic() {
         let gate = MockLifecycleGate::new();
         let overrides = Arc::new(MockSandboxOverrides::new());
@@ -1331,10 +1356,7 @@ mod tests {
         let destroy_task = tokio::spawn(async move {
             factory.destroy(sandbox).await;
         });
-        assert_eq!(
-            gate.wait_entered(1, Duration::from_secs(1)).await.unwrap(),
-            1
-        );
+        assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
         assert_eq!(overrides.destroy_call_count(), 1);
         assert!(
             !destroy_task.is_finished(),
