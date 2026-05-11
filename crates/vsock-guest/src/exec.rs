@@ -661,6 +661,7 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&dir).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
         let guard = TempDirGuard(dir.clone());
         (dir, guard)
     }
