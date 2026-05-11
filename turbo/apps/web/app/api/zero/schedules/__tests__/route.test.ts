@@ -504,11 +504,13 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
 
 describe("GET /api/zero/schedules - List Schedules", () => {
   let orgId: string;
+  let userId: string;
   let testComposeId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     const user = await context.setupUser();
+    userId = user.userId;
     const { orgId: oid } = await setupOrg(user.userId);
     orgId = oid;
 
@@ -537,7 +539,7 @@ describe("GET /api/zero/schedules - List Schedules", () => {
     expect(data.schedules.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("should return empty array for invalid org", async () => {
+  it("should return empty array when org has no schedules", async () => {
     const response = await GET(
       createTestRequest(`http://localhost:3000/api/zero/schedules`),
     );
@@ -555,5 +557,19 @@ describe("GET /api/zero/schedules - List Schedules", () => {
     );
 
     expect(response.status).toBe(401);
+  });
+
+  it("should return 401 when the authenticated session has no organization", async () => {
+    mockClerk({ userId, orgId: null });
+
+    const response = await GET(
+      createTestRequest(`http://localhost:3000/api/zero/schedules`),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
   });
 });

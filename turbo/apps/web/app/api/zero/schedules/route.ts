@@ -99,7 +99,15 @@ const router = tsr.router(zeroSchedulesMainContract, {
       const { org } = await resolveOrg(authCtx);
       orgId = org.orgId;
     } catch (error) {
-      if (isNotFound(error) || isForbidden(error) || isBadRequest(error)) {
+      if (isBadRequest(error)) {
+        return {
+          status: 401 as const,
+          body: {
+            error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+          },
+        };
+      }
+      if (isNotFound(error) || isForbidden(error)) {
         return {
           status: 200 as const,
           body: { schedules: [] },
