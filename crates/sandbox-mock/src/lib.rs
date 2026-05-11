@@ -161,7 +161,10 @@ impl MockLifecycleGate {
                     return current;
                 }
                 if entered_rx.changed().await.is_err() {
-                    return gate.entered_count();
+                    // The waiter owns a gate clone, so sender closure should not
+                    // happen. Let the outer timeout report failure instead of
+                    // returning a below-target count as success.
+                    return std::future::pending().await;
                 }
             }
         };
