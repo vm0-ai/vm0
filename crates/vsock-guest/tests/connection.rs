@@ -809,12 +809,15 @@ fn command_stream_handles_more_chunks_than_output_queue_capacity() {
 #[test]
 fn command_stream_disconnect_cancels_child() {
     let pid_path = unique_pid_path("command-stream-disconnect");
+    let fifo_path = unique_tmp_path("command-stream-disconnect", ".fifo");
     let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
     let (handle, mut host_stream) = start_guest_connection();
 
     let command = format!(
-        "echo $$ > '{}'; while true; do echo tick; done",
-        pid_path.as_str()
+        "mkfifo '{}'; echo $$ > '{}'; printf tick; read _ < '{}'",
+        fifo_path.as_str(),
+        pid_path.as_str(),
+        fifo_path.as_str()
     );
     send_command_start(
         &mut host_stream,
