@@ -417,6 +417,7 @@ fn run_command_worker<S>(
     let (stderr_handle, stderr_result_rx) = match stderr_spawn {
         Ok(parts) => parts,
         Err(e) => {
+            command_cancel.store(true, Ordering::Release);
             drain_cancel.store(true, Ordering::Release);
             drop(output_tx);
             kill_and_reap_child(child);
@@ -938,6 +939,31 @@ mod tests {
         assert_eq!(result.termination, CommandTermination::WaitFailed);
         assert!(result.diagnostic.contains("stdout drain thread"));
         wait_for_registry_release(&registry, 43);
+    }
+
+    #[test]
+    fn stderr_drain_spawn_failure_returns_wait_failed_and_cleans_registry() {
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let writer = GuestWriter::new(guest);
+        let registry = CommandRegistry::default();
+
+        start_command_operation_with_spawner(
+            request(45, "sleep 60"),
+            writer,
+            Arc::new(AtomicBool::new(false)),
+            registry.clone(),
+            FailingThreadSpawner::fail_once(THREAD_COMMAND_STDERR),
+        )
+        .unwrap();
+
+        let msg = read_message(&mut host);
+        assert_eq!(msg.msg_type, MSG_COMMAND_RESULT);
+        assert_eq!(msg.seq, 45);
+        let result = vsock_proto::decode_command_result(&msg.payload).unwrap();
+        assert_eq!(result.termination, CommandTermination::WaitFailed);
+        assert!(result.diagnostic.contains("stderr drain thread"));
+        wait_for_registry_release(&registry, 45);
     }
 
     #[test]
