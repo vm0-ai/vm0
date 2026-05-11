@@ -43,6 +43,7 @@ import { zeroRunsRoutes } from "./routes/zero-runs";
 import { zeroRunsCancelRoutes } from "./routes/zero-runs-cancel";
 import { zeroSchedulesRoutes } from "./routes/zero-schedules";
 import { zeroMeModelProvidersDeleteRoutes } from "./routes/zero-me-model-providers-delete";
+import { zeroMeModelProvidersListRoutes } from "./routes/zero-me-model-providers-list";
 import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
 import { zeroSecretsRoutes } from "./routes/zero-secrets";
 import { zeroSkillsRoutes } from "./routes/zero-skills";
@@ -98,6 +99,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroMeModelProvidersDeleteRoutes,
+  ...zeroMeModelProvidersListRoutes,
   ...zeroMeModelProvidersUpsertRoutes,
   ...zeroVoiceChatRoutes,
   ...zeroVoiceIoQuotaRoutes,

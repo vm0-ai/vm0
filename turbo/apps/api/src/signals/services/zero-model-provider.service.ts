@@ -67,8 +67,9 @@ function modelProviderResponse(row: {
   };
 }
 
-export function zeroModelProviders(
+function zeroModelProvidersForUser(
   orgId: string,
+  userId: string,
 ): Computed<Promise<ModelProviderListResponse>> {
   return computed(async (get): Promise<ModelProviderListResponse> => {
     const rows = await get(db$)
@@ -89,10 +90,7 @@ export function zeroModelProviders(
       .from(modelProviders)
       .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
       .where(
-        and(
-          eq(modelProviders.orgId, orgId),
-          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        ),
+        and(eq(modelProviders.orgId, orgId), eq(modelProviders.userId, userId)),
       )
       .orderBy(modelProviders.type);
 
@@ -103,6 +101,19 @@ export function zeroModelProviders(
       }),
     };
   });
+}
+
+export function zeroModelProviders(
+  orgId: string,
+): Computed<Promise<ModelProviderListResponse>> {
+  return zeroModelProvidersForUser(orgId, ORG_SENTINEL_USER_ID);
+}
+
+export function zeroUserModelProviders(
+  orgId: string,
+  userId: string,
+): Computed<Promise<ModelProviderListResponse>> {
+  return zeroModelProvidersForUser(orgId, userId);
 }
 
 type NotFoundResponse = ReturnType<typeof notFound>;

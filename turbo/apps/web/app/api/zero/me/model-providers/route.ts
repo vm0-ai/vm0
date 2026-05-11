@@ -44,6 +44,9 @@ const router = tsr.router(zeroPersonalModelProvidersMainContract, {
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) {
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+    }
 
     const { org } = await resolveOrg(authCtx);
 
@@ -95,6 +98,9 @@ const router = tsr.router(zeroPersonalModelProvidersMainContract, {
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) {
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+    }
 
     const { org } = await resolveOrg(authCtx);
 

@@ -43,6 +43,15 @@ function deleteUrl(type: string): string {
   return `${BASE_URL}/${type}`;
 }
 
+async function expectUnauthorized(
+  responsePromise: Promise<Response> | Response,
+): Promise<void> {
+  const response = await responsePromise;
+  expect(response.status).toBe(401);
+  const data = await response.json();
+  expect(data.error.code).toBe("UNAUTHORIZED");
+}
+
 interface ProviderRow {
   id: string;
   type: string;
@@ -83,6 +92,27 @@ describe("Model-first personal OAuth model provider routes", () => {
     void user;
     mockIsFeatureEnabled.mockImplementation(() => {
       return true;
+    });
+  });
+
+  describe("no active organization", () => {
+    beforeEach(() => {
+      mockClerk({ userId: user.userId, orgId: null });
+    });
+
+    it("GET returns 401", async () => {
+      await expectUnauthorized(GET(createTestRequest(listUrl())));
+    });
+
+    it("POST returns 401", async () => {
+      await expectUnauthorized(createProvider("claude-code-oauth-token", "k"));
+    });
+
+    it("DELETE returns 401", async () => {
+      const request = createTestRequest(deleteUrl("claude-code-oauth-token"), {
+        method: "DELETE",
+      });
+      await expectUnauthorized(DELETE(request));
     });
   });
 

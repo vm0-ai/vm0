@@ -19,6 +19,9 @@ const router = tsr.router(zeroPersonalModelProvidersByTypeContract, {
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) {
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+    }
 
     const { org } = await resolveOrg(authCtx);
 

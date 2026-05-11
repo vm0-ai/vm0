@@ -3,6 +3,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { GET, POST } from "../route";
 import { DELETE } from "../[type]/route";
 import { POST as setDefaultPOST } from "../[type]/default/route";
+import { PATCH as updateModelPATCH } from "../[type]/model/route";
 import {
   createTestRequest,
   setTestModelProviderNeedsReconnect,
@@ -16,6 +17,7 @@ import {
   testContext,
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
 
 vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
@@ -48,6 +50,19 @@ function deleteUrl(type: string): string {
 
 function setDefaultUrl(type: string): string {
   return `${BASE_URL}/${type}/default`;
+}
+
+function updateModelUrl(type: string): string {
+  return `${BASE_URL}/${type}/model`;
+}
+
+async function expectUnauthorized(
+  responsePromise: Promise<Response> | Response,
+): Promise<void> {
+  const response = await responsePromise;
+  expect(response.status).toBe(401);
+  const data = await response.json();
+  expect(data.error.code).toBe("UNAUTHORIZED");
 }
 
 async function listProviders(): Promise<
@@ -104,6 +119,43 @@ describe("Org-level model provider routes", () => {
     context.setupMocks();
     user = await context.setupUser();
     void user;
+  });
+
+  describe("no active organization", () => {
+    beforeEach(() => {
+      mockClerk({ userId: user.userId, orgId: null });
+    });
+
+    it("GET returns 401", async () => {
+      await expectUnauthorized(GET(createTestRequest(listUrl())));
+    });
+
+    it("POST returns 401", async () => {
+      await expectUnauthorized(createProvider("anthropic-api-key", "test-key"));
+    });
+
+    it("DELETE returns 401", async () => {
+      const request = createTestRequest(deleteUrl("anthropic-api-key"), {
+        method: "DELETE",
+      });
+      await expectUnauthorized(DELETE(request));
+    });
+
+    it("set default returns 401", async () => {
+      const request = createTestRequest(setDefaultUrl("anthropic-api-key"), {
+        method: "POST",
+      });
+      await expectUnauthorized(setDefaultPOST(request));
+    });
+
+    it("update model returns 401", async () => {
+      const request = createTestRequest(updateModelUrl("anthropic-api-key"), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selectedModel: "claude-3-5-sonnet-latest" }),
+      });
+      await expectUnauthorized(updateModelPATCH(request));
+    });
   });
 
   // ---------------------------------------------------------------------------
