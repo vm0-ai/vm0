@@ -1,6 +1,7 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import { zeroRunRunnerContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { sandboxReuseResultSchema } from "@vm0/api-contracts/contracts/webhooks";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -18,6 +19,9 @@ const router = tsr.router(zeroRunRunnerContract, {
       requiredCapability: "agent-run:read",
     });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) {
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+    }
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);

@@ -11,6 +11,7 @@ import {
   uniqueId,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
+import { generateSandboxToken } from "../../../../../../../src/lib/auth/sandbox-token";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
@@ -153,6 +154,40 @@ describe("GET /api/zero/runs/:id/network", () => {
       ),
     );
     expect(response.status).toBe(401);
+  });
+
+  it("should return 401 when the authenticated session has no active organization", async () => {
+    mockClerk({ userId: uniqueId("znet-no-org"), orgId: null });
+
+    const response = await GET(
+      createTestRequest(
+        "http://localhost:3000/api/zero/runs/00000000-0000-0000-0000-000000000000/network",
+      ),
+    );
+    expect(response.status).toBe(401);
+
+    const data = await response.json();
+    expect(data).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("should return 403 for sandbox token without agent-run:read capability", async () => {
+    mockClerk({ userId: null });
+    const token = await generateSandboxToken("user-1", "run-1", "org-test");
+
+    const response = await GET(
+      createTestRequest(
+        "http://localhost:3000/api/zero/runs/00000000-0000-0000-0000-000000000000/network",
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      ),
+    );
+    expect(response.status).toBe(403);
+
+    const data = await response.json();
+    expect(data.error.message).toContain("agent-run:read");
   });
 
   it("should set hasMore when results exceed limit", async () => {

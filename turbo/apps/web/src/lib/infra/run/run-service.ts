@@ -593,7 +593,6 @@ export async function getRunById(
 
 /**
  * Dispatch post-cancellation side effects (Ably notification, callbacks, queue drain).
- * Designed to be called inside `after()` so it runs after the response is sent.
  *
  * Returns `true` when the cancelled run was previously active (running/pending),
  * indicating the caller should also process org credits.
@@ -603,6 +602,10 @@ export async function dispatchCancelSideEffects(
   drain: (orgId: string) => Promise<void>,
 ): Promise<boolean> {
   const log = logger("service:run:cancel");
+
+  if (result.alreadyCancelled) {
+    return false;
+  }
 
   if (result.previousStatus === "running" && result.runnerGroup) {
     const published = await publishCancelNotification(
@@ -616,19 +619,17 @@ export async function dispatchCancelSideEffects(
     }
   }
 
-  const shouldDrain =
+  const shouldProcessCredits =
     result.previousStatus === "running" || result.previousStatus === "pending";
 
   await dispatchTerminalSideEffects(
     result.runId,
     "cancelled",
     "Run cancelled",
-    shouldDrain
-      ? () => {
-          return drain(result.orgId);
-        }
-      : undefined,
+    () => {
+      return drain(result.orgId);
+    },
   );
 
-  return shouldDrain;
+  return shouldProcessCredits;
 }

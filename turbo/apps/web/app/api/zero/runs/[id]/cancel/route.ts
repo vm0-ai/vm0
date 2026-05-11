@@ -14,12 +14,14 @@ import {
   drainOrgQueue,
 } from "../../../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgUsageEvents } from "../../../../../../src/lib/zero/credit/usage-event-service";
+import { logger } from "../../../../../../src/lib/shared/logger";
 import {
   isNotFound,
   isBadRequest,
   isRunNotCancellable,
 } from "@vm0/api-services/errors";
-import { after } from "next/server";
+
+const log = logger("api:zero-runs:cancel");
 
 const router = tsr.router(zeroRunsCancelContract, {
   cancel: async ({ params, headers }) => {
@@ -29,6 +31,9 @@ const router = tsr.router(zeroRunsCancelContract, {
       requiredCapability: "agent-run:write",
     });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) {
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+    }
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);
@@ -37,7 +42,7 @@ const router = tsr.router(zeroRunsCancelContract, {
       const result = await cancelRun(params.id, userId, org.orgId);
 
       if (!result.alreadyCancelled) {
-        after(async () => {
+        try {
           const shouldProcessCredits = await dispatchCancelSideEffects(
             result,
             (orgId) => {
@@ -47,7 +52,12 @@ const router = tsr.router(zeroRunsCancelContract, {
           if (shouldProcessCredits) {
             await processOrgUsageEvents(result.orgId);
           }
-        });
+        } catch (sideEffectError) {
+          log.error("Failed to dispatch run cancel side effects", {
+            runId: result.runId,
+            sideEffectError,
+          });
+        }
       }
 
       return {

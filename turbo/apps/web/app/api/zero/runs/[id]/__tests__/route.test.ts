@@ -83,6 +83,22 @@ describe("GET /api/zero/runs/:id", () => {
     expect(response.status).toBe(401);
   });
 
+  it("should return 401 when the authenticated session has no active organization", async () => {
+    mockClerk({ userId: uniqueId("zrun-no-org"), orgId: null });
+
+    const response = await GET(
+      createTestRequest(
+        "http://localhost:3000/api/zero/runs/00000000-0000-0000-0000-000000000000",
+      ),
+    );
+    expect(response.status).toBe(401);
+
+    const data = await response.json();
+    expect(data).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("should return 403 for sandbox token without agent-run:read capability", async () => {
     mockClerk({ userId: null });
     const token = await generateSandboxToken("user-1", "run-1", "org-test");

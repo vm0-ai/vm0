@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import { zeroRunNetworkLogsContract } from "@vm0/api-contracts/contracts/zero-runs";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import type { AxiomNetworkEvent } from "@vm0/api-contracts/contracts/runs";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
@@ -23,6 +24,9 @@ const router = tsr.router(zeroRunNetworkLogsContract, {
       requiredCapability: "agent-run:read",
     });
     if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) {
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+    }
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);
