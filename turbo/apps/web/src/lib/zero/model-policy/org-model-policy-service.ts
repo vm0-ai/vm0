@@ -1,13 +1,20 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   SUPPORTED_RUN_MODELS,
   getDefaultOrgModelPolicySeed,
+  isModelSupportedByProvider,
+  isSupportedRunModel,
+  MODEL_PROVIDER_TYPES,
+  type ModelProviderType,
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
+import { modelProviders } from "@vm0/db/schema/model-provider";
+import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 
 type OrgModelPolicyRow = typeof orgModelPolicies.$inferSelect;
+type NewOrgModelPolicyRow = typeof orgModelPolicies.$inferInsert;
 
 async function loadRows(orgId: string): Promise<OrgModelPolicyRow[]> {
   return globalThis.services.db
@@ -30,6 +37,138 @@ function sortRowsByCatalog(rows: OrgModelPolicyRow[]): OrgModelPolicyRow[] {
   return [...rows].sort((a, b) => {
     return getSupportedModelRank(a.model) - getSupportedModelRank(b.model);
   });
+}
+
+async function loadOrgDefaultProviderSeed(
+  orgId: string,
+): Promise<{
+  providerType: ModelProviderType;
+  selectedModel: SupportedRunModel | null;
+  modelProviderId: string | null;
+} | null> {
+  const [provider] = await globalThis.services.db
+    .select({
+      id: modelProviders.id,
+      type: modelProviders.type,
+      selectedModel: modelProviders.selectedModel,
+    })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        eq(modelProviders.isDefault, true),
+      ),
+    )
+    .limit(1);
+
+  if (!provider || !(provider.type in MODEL_PROVIDER_TYPES)) return null;
+  return {
+    providerType: provider.type as ModelProviderType,
+    selectedModel: isSupportedRunModel(provider.selectedModel)
+      ? provider.selectedModel
+      : null,
+    modelProviderId: provider.type === "vm0" ? null : provider.id,
+  };
+}
+
+async function getDefaultPolicySeeds(
+  orgId: string,
+): Promise<
+  Array<
+    Omit<
+      NewOrgModelPolicyRow,
+      "id" | "orgId" | "createdAt" | "updatedAt" | "createdByUserId" | "updatedByUserId"
+    >
+  >
+> {
+  const seed = getDefaultOrgModelPolicySeed();
+  const provider = await loadOrgDefaultProviderSeed(orgId);
+  if (!provider) return seed;
+
+  const firstSupportedModel = seed.find((policy) => {
+    return isModelSupportedByProvider(policy.model, provider.providerType);
+  })?.model;
+  if (!firstSupportedModel) return seed;
+
+  const preferredDefault =
+    provider.selectedModel &&
+    isModelSupportedByProvider(provider.selectedModel, provider.providerType)
+      ? provider.selectedModel
+      : firstSupportedModel;
+
+  return seed.map((policy) => {
+    if (!isModelSupportedByProvider(policy.model, provider.providerType)) {
+      return { ...policy, isDefault: false };
+    }
+    return {
+      model: policy.model,
+      isDefault: policy.model === preferredDefault,
+      defaultProviderType: provider.providerType,
+      credentialScope: "org",
+      modelProviderId: provider.modelProviderId,
+    };
+  });
+}
+
+export async function syncOrgDefaultModelPoliciesForProvider(params: {
+  orgId: string;
+  providerType: ModelProviderType;
+  modelProviderId: string | null;
+  selectedModel: string | null;
+}): Promise<void> {
+  const selectedModel = isSupportedRunModel(params.selectedModel)
+    ? params.selectedModel
+    : null;
+  const seeds = await getDefaultPolicySeeds(params.orgId);
+  const hasSelectedModelSeed = seeds.some((seed) => {
+    return seed.model === selectedModel;
+  });
+  if (
+    selectedModel &&
+    !hasSelectedModelSeed &&
+    isModelSupportedByProvider(selectedModel, params.providerType)
+  ) {
+    seeds.push({
+      model: selectedModel,
+      isDefault: true,
+      defaultProviderType: params.providerType,
+      credentialScope: "org",
+      modelProviderId: params.modelProviderId,
+    });
+  }
+
+  if (selectedModel) {
+    for (const seed of seeds) {
+      seed.isDefault = seed.model === selectedModel;
+    }
+  }
+
+  await globalThis.services.db
+    .update(orgModelPolicies)
+    .set({ isDefault: false, updatedAt: new Date() })
+    .where(eq(orgModelPolicies.orgId, params.orgId));
+
+  await globalThis.services.db
+    .insert(orgModelPolicies)
+    .values(
+      seeds.map((seed) => {
+        return {
+          ...seed,
+          orgId: params.orgId,
+        };
+      }),
+    )
+    .onConflictDoUpdate({
+      target: [orgModelPolicies.orgId, orgModelPolicies.model],
+      set: {
+        isDefault: sql.raw("excluded.is_default"),
+        defaultProviderType: sql.raw("excluded.default_provider_type"),
+        credentialScope: sql.raw("excluded.credential_scope"),
+        modelProviderId: sql.raw("excluded.model_provider_id"),
+        updatedAt: new Date(),
+      },
+    });
 }
 
 export async function ensureOrgModelPolicies(
@@ -69,7 +208,8 @@ export async function ensureOrgModelPolicies(
       return policy.model;
     }),
   );
-  const missing = getDefaultOrgModelPolicySeed()
+  const defaultPolicySeeds = await getDefaultPolicySeeds(orgId);
+  const missing = defaultPolicySeeds
     .filter((seed) => {
       return !existingModels.has(seed.model);
     })

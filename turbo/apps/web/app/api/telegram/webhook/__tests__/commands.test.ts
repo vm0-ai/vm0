@@ -17,6 +17,7 @@ import {
   telegramThreadSessionExists,
   createTestRequest,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { setOrgCredits } from "../../../../../src/__tests__/db-test-seeders/org";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
@@ -105,6 +106,7 @@ describe("Telegram bot commands", () => {
     const user = await context.setupUser();
     userId = user.userId;
     orgId = user.orgId;
+    await setOrgCredits(user.orgId, 10_000);
     const compose = await createTestCompose(uniqueId("agent"));
     composeId = compose.composeId;
     composeName = compose.name;

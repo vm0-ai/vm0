@@ -16,6 +16,7 @@ import { encryptSecretValue } from "../../shared/crypto";
 import { badRequest, notFound } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
+import { syncOrgDefaultModelPoliciesForProvider } from "../model-policy/org-model-policy-service";
 
 const log = logger("service:model-provider");
 
@@ -345,6 +346,15 @@ async function upsertModelProvider(
     isDefault: provider!.isDefault,
   });
 
+  if (userId === ORG_SENTINEL_USER_ID && provider!.isDefault) {
+    await syncOrgDefaultModelPoliciesForProvider({
+      orgId,
+      providerType: type,
+      modelProviderId: provider!.id,
+      selectedModel: provider!.selectedModel,
+    });
+  }
+
   return {
     provider: toModelProviderInfo({
       id: provider!.id,
@@ -663,6 +673,15 @@ async function upsertMultiAuthModelProvider(
     },
   );
 
+  if (userId === ORG_SENTINEL_USER_ID && provider!.isDefault) {
+    await syncOrgDefaultModelPoliciesForProvider({
+      orgId,
+      providerType: type,
+      modelProviderId: provider!.id,
+      selectedModel: provider!.selectedModel,
+    });
+  }
+
   return {
     provider: toModelProviderInfo({
       id: provider!.id,
@@ -759,6 +778,15 @@ async function upsertNoSecretModelProvider(
       isDefault: provider!.isDefault,
     },
   );
+
+  if (userId === ORG_SENTINEL_USER_ID && provider!.isDefault) {
+    await syncOrgDefaultModelPoliciesForProvider({
+      orgId,
+      providerType: type,
+      modelProviderId: type === "vm0" ? null : provider!.id,
+      selectedModel: provider!.selectedModel,
+    });
+  }
 
   return {
     provider: toModelProviderInfo({

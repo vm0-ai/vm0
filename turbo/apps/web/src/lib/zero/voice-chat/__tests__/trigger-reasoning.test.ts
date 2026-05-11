@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { HttpResponse } from "msw";
 import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import { seedTestCompose } from "../../../../__tests__/db-test-seeders/agents";
+import { setOrgCredits } from "../../../../__tests__/db-test-seeders/org";
 import { createTestCompose } from "../../../../__tests__/api-test-helpers";
 import {
   appendTestVoiceChatItem,
@@ -63,6 +64,7 @@ async function seedActiveSession(): Promise<{
   sessionId: string;
 }> {
   const { userId, orgId } = await context.setupUser();
+  await setOrgCredits(orgId, 10_000);
   const { composeId } = await seedTestCompose({
     userId,
     orgId,
@@ -286,6 +288,7 @@ describe("triggerReasoning", () => {
     // createZeroRun requires a compose with a published version that has a
     // model provider key. createTestCompose creates a version with ANTHROPIC_API_KEY.
     const { userId, orgId } = await context.setupUser();
+    await setOrgCredits(orgId, 10_000);
     const { composeId } = await createTestCompose(
       uniqueId("vcc-reasoner-tasks"),
     );

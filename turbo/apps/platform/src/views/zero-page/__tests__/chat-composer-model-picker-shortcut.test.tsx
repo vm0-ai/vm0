@@ -138,6 +138,9 @@ describe("chat composer — mod+alt+. opens the model picker", () => {
   it("is a no-op in the textarea when the model picker is not rendered", async () => {
     // Feature switch off → no picker rendered → shortcut should not crash and
     // should not summon a listbox from elsewhere in the DOM.
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: false,
+    });
     resetMockOrgModelProviders();
 
     const user = userEvent.setup();
@@ -201,7 +204,9 @@ describe("chat composer — mobile icon trigger", () => {
   it("falls back to IconCpu on mobile when no provider resolves (CHAT-MP-MOBILE-002)", async () => {
     // A provider exists (so the composer renders the picker) but none is
     // marked as default, so `effectiveDefault` is null.
-    setMockFeatureSwitches({});
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: false,
+    });
     setMockOrgModelProviders([
       {
         id: PROVIDER_ID,
