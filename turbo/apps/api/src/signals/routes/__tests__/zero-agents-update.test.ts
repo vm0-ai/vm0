@@ -652,6 +652,39 @@ describe("PATCH /api/zero/agents/:id", () => {
     });
   });
 
+  it("allows the owner to update private agent metadata without changing visibility", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Private Agent",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      agentsClient().updateMetadata({
+        params: { id: agent.agentId },
+        headers: authHeaders(),
+        body: { displayName: "Private Agent Updated" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      agentId: agent.agentId,
+      ownerId: fixture.userId,
+      displayName: "Private Agent Updated",
+      visibility: "private",
+    });
+  });
+
   it("returns 400 when modelProviderId is outside the organization", async () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),

@@ -674,19 +674,20 @@ const updateAgentMetadataInner$ = command(
       return permissionError;
     }
 
-    const nextVisibility = body.data.visibility ?? existing.visibility;
-    const visibilityError = await validateAgentVisibilityUpdate({
-      get,
-      writeDb,
-      orgId: auth.orgId,
-      member,
-      existing,
-      requestedVisibility: body.data.visibility,
-      nextVisibility,
-      signal,
-    });
-    if (visibilityError) {
-      return visibilityError;
+    if (body.data.visibility !== undefined) {
+      const visibilityError = await validateAgentVisibilityUpdate({
+        get,
+        writeDb,
+        orgId: auth.orgId,
+        member,
+        existing,
+        requestedVisibility: body.data.visibility,
+        nextVisibility: body.data.visibility,
+        signal,
+      });
+      if (visibilityError) {
+        return visibilityError;
+      }
     }
 
     const modelError = await validateModelSelection(
