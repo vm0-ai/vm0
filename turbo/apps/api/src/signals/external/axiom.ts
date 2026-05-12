@@ -1,8 +1,11 @@
 import { computed, type Computed } from "ccstate";
 import { Axiom } from "@axiomhq/js";
-import { env } from "../../lib/env";
+import { env, optionalEnv } from "../../lib/env";
 import { singleton } from "../../lib/singleton";
-import { getAxiomTokenEnvNameForApl } from "./axiom-datasets";
+import {
+  getAxiomTokenEnvNameForApl,
+  getAxiomTokenEnvNameForDataset,
+} from "./axiom-datasets";
 
 const sessionsAxiomClient = singleton(() => {
   return new Axiom({ token: env("AXIOM_TOKEN_SESSIONS") });
@@ -22,6 +25,79 @@ function axiomClientForApl(apl: string): Axiom {
     return sessionsAxiomClient();
   }
   return telemetryAxiomClient();
+}
+
+function axiomClientForDataset(dataset: string): Axiom | null {
+  const tokenEnvName = getAxiomTokenEnvNameForDataset(dataset);
+  if (!optionalEnv(tokenEnvName)) {
+    return null;
+  }
+  if (tokenEnvName === "AXIOM_TOKEN_SESSIONS") {
+    return sessionsAxiomClient();
+  }
+  return telemetryAxiomClient();
+}
+
+export function ingestToAxiom(
+  dataset: string,
+  events: readonly Record<string, unknown>[],
+): boolean {
+  const client = axiomClientForDataset(dataset);
+  if (!client) {
+    return false;
+  }
+  client.ingest(dataset, [...events]);
+  return true;
+}
+
+interface FlushAxiomOptions {
+  readonly throwOnError?: boolean;
+  readonly client?: "all" | "sessions" | "telemetry";
+}
+
+export async function flushAxiom(
+  options: FlushAxiomOptions = {},
+): Promise<void> {
+  const client = options.client ?? "all";
+  const flushes: {
+    readonly name: string;
+    readonly promise?: Promise<void>;
+  }[] = [];
+
+  if (client === "all" || client === "sessions") {
+    flushes.push({
+      name: "sessions",
+      promise: optionalEnv("AXIOM_TOKEN_SESSIONS")
+        ? sessionsAxiomClient().flush()
+        : undefined,
+    });
+  }
+  if (client === "all" || client === "telemetry") {
+    flushes.push({
+      name: "telemetry",
+      promise: optionalEnv("AXIOM_TOKEN_TELEMETRY")
+        ? telemetryAxiomClient().flush()
+        : undefined,
+    });
+  }
+
+  const results = await Promise.allSettled(
+    flushes.map((flush) => {
+      return flush.promise;
+    }),
+  );
+  const errors: unknown[] = [];
+  for (const [index, result] of results.entries()) {
+    if (result.status === "rejected") {
+      errors.push({
+        client: flushes[index]?.name ?? "unknown",
+        error: result.reason,
+      });
+    }
+  }
+  if (options.throwOnError && errors.length > 0) {
+    throw new AggregateError(errors, "Axiom flush failed");
+  }
 }
 
 // Minimal options surface — only the `noCache` knob is wired today (used by

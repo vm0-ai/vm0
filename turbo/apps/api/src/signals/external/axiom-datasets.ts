@@ -9,6 +9,14 @@ function isSessionsDataset(datasetName: string | null): boolean {
   return datasetName?.includes("agent-run-events") ?? false;
 }
 
+export function getAxiomTokenEnvNameForDataset(
+  datasetName: string,
+): AxiomTokenEnvName {
+  return isSessionsDataset(datasetName)
+    ? "AXIOM_TOKEN_SESSIONS"
+    : "AXIOM_TOKEN_TELEMETRY";
+}
+
 export function getAxiomTokenEnvNameForApl(apl: string): AxiomTokenEnvName {
   return isSessionsDataset(extractDatasetFromApl(apl))
     ? "AXIOM_TOKEN_SESSIONS"

@@ -257,6 +257,16 @@ export {
   type TestTelegramStateResponse,
 } from "./test-telegram-state";
 export {
+  internalEventConsumerAxiomContract,
+  internalEventConsumerChatAssistantContract,
+  internalEventConsumerTelegramTypingContract,
+  internalEventConsumerVoiceChatContract,
+  type InternalEventConsumerAxiomContract,
+  type InternalEventConsumerChatAssistantContract,
+  type InternalEventConsumerTelegramTypingContract,
+  type InternalEventConsumerVoiceChatContract,
+} from "./internal-event-consumers";
+export {
   cronCleanupSandboxesContract,
   cleanupResultSchema,
   cleanupResponseSchema,

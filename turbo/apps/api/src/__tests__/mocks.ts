@@ -5,10 +5,13 @@ import { vi, type Mock } from "vitest";
 import { mockStripeClient } from "../signals/external/stripe-client";
 
 type AsyncMock = Mock<(...args: unknown[]) => Promise<unknown>>;
+type BooleanMock = Mock<(...args: unknown[]) => boolean>;
 type SyncMock = Mock<(...args: unknown[]) => void>;
 
 export interface ApiTestMocks {
   readonly axiom: {
+    readonly flush: AsyncMock;
+    readonly ingest: BooleanMock;
     readonly query: AsyncMock;
   };
   readonly axiomLogging: {
@@ -124,6 +127,8 @@ export interface ApiTestMocks {
 
 const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   const axiom = {
+    flush: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    ingest: vi.fn<(...args: unknown[]) => boolean>(),
     query: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   };
 
@@ -476,6 +481,15 @@ vi.mock("../signals/external/axiom", () => {
     getDatasetName: (name: string) => {
       return name;
     },
+    ingestToAxiom: (
+      dataset: string,
+      events: readonly Record<string, unknown>[],
+    ) => {
+      return apiTestMocks.axiom.ingest(dataset, events);
+    },
+    flushAxiom: (options?: unknown) => {
+      return apiTestMocks.axiom.flush(options);
+    },
   };
 });
 
@@ -513,6 +527,9 @@ export function resetApiTestMocks(): void {
   apiTestMocks.ably.publish.mockReset();
   apiTestMocks.ably.publish.mockResolvedValue(undefined);
   apiTestMocks.ably.createTokenRequest.mockReset();
+  apiTestMocks.axiom.flush.mockReset();
+  apiTestMocks.axiom.ingest.mockReset();
+  apiTestMocks.axiom.ingest.mockReturnValue(true);
   apiTestMocks.axiom.query.mockReset();
   apiTestMocks.axiomLogging.debug.mockReset();
   apiTestMocks.axiomLogging.info.mockReset();

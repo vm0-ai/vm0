@@ -1,12 +1,14 @@
-import { computed, type Computed } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import type {
   VoiceChatSession,
   VoiceChatTask,
+  VoiceChatTaskResultEntry,
 } from "@vm0/api-contracts/contracts/zero-voice-chat";
 import { voiceChatSessions, voiceChatTasks } from "@vm0/db/schema/voice-chat";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
-import { db$ } from "../external/db";
+import { nowDate } from "../../lib/time";
+import { db$, writeDb$ } from "../external/db";
 
 const ACTIVE_TASK_STATUSES = ["pending", "queued", "running"] as const;
 const FINISHED_TASK_STATUSES = ["done", "failed"] as const;
@@ -137,3 +139,92 @@ export function voiceChatTaskList(
     return [...active, ...finished];
   });
 }
+
+export const markVoiceChatTaskRunningIfQueued$ = command(
+  async (
+    { set },
+    runId: string,
+    signal: AbortSignal,
+  ): Promise<{
+    readonly sessionId: string;
+    readonly userId: string;
+  } | null> => {
+    const writeDb = set(writeDb$);
+    const [row] = await writeDb
+      .update(voiceChatTasks)
+      .set({ status: "running", startedAt: nowDate() })
+      .where(
+        and(
+          eq(voiceChatTasks.runId, runId),
+          inArray(voiceChatTasks.status, ["pending", "queued"]),
+        ),
+      )
+      .returning({ sessionId: voiceChatTasks.sessionId });
+    signal.throwIfAborted();
+
+    if (!row) {
+      return null;
+    }
+
+    const [session] = await writeDb
+      .select({ userId: voiceChatSessions.userId })
+      .from(voiceChatSessions)
+      .where(eq(voiceChatSessions.id, row.sessionId))
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!session) {
+      return null;
+    }
+    return { sessionId: row.sessionId, userId: session.userId };
+  },
+);
+
+export const appendVoiceChatTaskAssistantResult$ = command(
+  async (
+    { set },
+    args: {
+      readonly runId: string;
+      readonly entries: readonly VoiceChatTaskResultEntry[];
+    },
+    signal: AbortSignal,
+  ): Promise<{
+    readonly sessionId: string;
+    readonly userId: string;
+  } | null> => {
+    if (args.entries.length === 0) {
+      return null;
+    }
+
+    const writeDb = set(writeDb$);
+    const [row] = await writeDb
+      .update(voiceChatTasks)
+      .set({
+        assistantMessages: sql`${voiceChatTasks.assistantMessages} || ${JSON.stringify([...args.entries])}::jsonb`,
+      })
+      .where(
+        and(
+          eq(voiceChatTasks.runId, args.runId),
+          inArray(voiceChatTasks.status, ["pending", "queued", "running"]),
+        ),
+      )
+      .returning({ sessionId: voiceChatTasks.sessionId });
+    signal.throwIfAborted();
+
+    if (!row) {
+      return null;
+    }
+
+    const [session] = await writeDb
+      .select({ userId: voiceChatSessions.userId })
+      .from(voiceChatSessions)
+      .where(eq(voiceChatSessions.id, row.sessionId))
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!session) {
+      return null;
+    }
+    return { sessionId: row.sessionId, userId: session.userId };
+  },
+);
