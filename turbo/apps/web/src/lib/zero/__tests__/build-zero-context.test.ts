@@ -37,7 +37,12 @@ import { upsertSecretByOrg } from "../secret/secret-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { setVariable } from "../variable/variable-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
-import { isNoModelProvider } from "@vm0/api-services/errors";
+import {
+  DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+  getProviderRuntimeModel,
+  getVm0ConcreteProviderType,
+  getVm0Vendor,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { reloadEnv } from "../../../env";
 import {
   AUTO_MEMORY_ARTIFACT_NAME,
@@ -162,16 +167,32 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       );
     });
 
-    it("should error when no org default provider exists", async () => {
+    it("should use model-first built-in default when no org default provider exists", async () => {
       const agentName = uniqueId("no-key-agent");
       await createTestCompose(agentName, {
         skipDefaultApiKey: true,
       });
       const noKeyAgentId = await getTestZeroAgentId(user.orgId, agentName);
+      const defaultModel = DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
+      const concreteProviderType = getVm0ConcreteProviderType(defaultModel);
 
-      await expect(
-        createZeroRun(baseParams({ agentId: noKeyAgentId })),
-      ).rejects.toSatisfy(isNoModelProvider);
+      await insertVm0ApiKeys([
+        {
+          vendor: getVm0Vendor(defaultModel),
+          model: getProviderRuntimeModel("vm0", defaultModel),
+          apiKey: "sk-ant-test-model-first-default",
+        },
+      ]);
+
+      const result = await createZeroRun(baseParams({ agentId: noKeyAgentId }));
+
+      await context.mocks.flushAfter();
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      expect(job!.executionContext.modelUsageProvider).toBe(defaultModel);
+      expect(job!.executionContext.billableFirewalls).toContain(
+        `model-provider:${concreteProviderType}`,
+      );
     });
 
     it("should leave billableFirewalls empty for user-paid providers", async () => {
