@@ -168,6 +168,25 @@ export function generatePresignedPutUrl(
   });
 }
 
+export function putS3Object(
+  bucket: string,
+  key: string,
+  body: string | Buffer,
+  contentType: string,
+): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    const client = get(s3Client$);
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      }),
+    );
+  });
+}
+
 export function downloadManifest(
   bucket: string,
   s3Key: string,

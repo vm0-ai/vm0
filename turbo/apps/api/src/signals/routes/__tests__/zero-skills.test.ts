@@ -5,9 +5,18 @@ import {
   zeroSkillsCollectionContract,
   zeroSkillsDetailContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import {
+  getCustomSkillStorageName,
+  VOLUME_ORG_USER_ID,
+} from "@vm0/core/storage-names";
+import { storages, storageVersions } from "@vm0/db/schema/storage";
+import { zeroSkills } from "@vm0/db/schema/zero-skill";
 import { createStore } from "ccstate";
+import { and, eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { mockNow } from "../../../lib/time";
+import { writeDb$ } from "../../external/db";
 import {
   deleteSkillsForFixture$,
   mockInstructionsContent,
@@ -42,6 +51,131 @@ function detailClient() {
 
 function instructionsClient() {
   return setupApp({ context })(zeroAgentInstructionsContract);
+}
+
+function skillFiles(content: string) {
+  return [{ path: "SKILL.md", content }];
+}
+
+function s3CommandInput(command: unknown): Record<string, unknown> {
+  if (
+    typeof command === "object" &&
+    command !== null &&
+    "input" in command &&
+    typeof command.input === "object" &&
+    command.input !== null
+  ) {
+    return command.input as Record<string, unknown>;
+  }
+  return {};
+}
+
+function s3PutInputs(): readonly Record<string, unknown>[] {
+  return context.mocks.s3.send.mock.calls.map(([command]) => {
+    return s3CommandInput(command);
+  });
+}
+
+interface SkillStorageState {
+  readonly skillUpdatedAt: Date | undefined;
+  readonly storage:
+    | {
+        readonly headVersionId: string | null;
+        readonly s3Prefix: string;
+        readonly size: number;
+        readonly fileCount: number;
+      }
+    | undefined;
+  readonly version:
+    | {
+        readonly s3Key: string;
+        readonly size: number;
+        readonly fileCount: number;
+      }
+    | undefined;
+}
+
+async function readSkillStorageState(
+  fixture: SkillsFixture,
+  skillName: string,
+): Promise<SkillStorageState> {
+  const writeDb = store.set(writeDb$);
+  const [skill] = await writeDb
+    .select({ updatedAt: zeroSkills.updatedAt })
+    .from(zeroSkills)
+    .where(
+      and(eq(zeroSkills.orgId, fixture.orgId), eq(zeroSkills.name, skillName)),
+    );
+
+  const storageName = getCustomSkillStorageName(skillName);
+  const [storage] = await writeDb
+    .select({
+      headVersionId: storages.headVersionId,
+      s3Prefix: storages.s3Prefix,
+      size: storages.size,
+      fileCount: storages.fileCount,
+    })
+    .from(storages)
+    .where(
+      and(
+        eq(storages.orgId, fixture.orgId),
+        eq(storages.userId, VOLUME_ORG_USER_ID),
+        eq(storages.name, storageName),
+        eq(storages.type, "volume"),
+      ),
+    );
+
+  if (!storage?.headVersionId) {
+    return { skillUpdatedAt: skill?.updatedAt, storage, version: undefined };
+  }
+
+  const [version] = await writeDb
+    .select({
+      s3Key: storageVersions.s3Key,
+      size: storageVersions.size,
+      fileCount: storageVersions.fileCount,
+    })
+    .from(storageVersions)
+    .where(eq(storageVersions.id, storage.headVersionId));
+
+  return { skillUpdatedAt: skill?.updatedAt, storage, version };
+}
+
+function expectS3VolumeUploads(s3Key: string, versionId: string): void {
+  const putInputs = s3PutInputs();
+  const manifestPut = putInputs.find((input) => {
+    return String(input.Key).endsWith("/manifest.json");
+  });
+  const archivePut = putInputs.find((input) => {
+    return String(input.Key).endsWith("/archive.tar.gz");
+  });
+
+  expect(manifestPut?.Bucket).toBe("test-user-storages");
+  expect(manifestPut?.ContentType).toBe("application/json");
+  expect(manifestPut?.Key).toBe(`${s3Key}/manifest.json`);
+  expect(archivePut?.Bucket).toBe("test-user-storages");
+  expect(archivePut?.ContentType).toBe("application/gzip");
+  expect(archivePut?.Key).toBe(`${s3Key}/archive.tar.gz`);
+  expect(Buffer.isBuffer(archivePut?.Body)).toBeTruthy();
+
+  const manifestBody = JSON.parse(String(manifestPut?.Body)) as {
+    readonly version: string;
+    readonly totalSize: number;
+    readonly fileCount: number;
+    readonly files: readonly {
+      readonly path: string;
+      readonly size: number;
+    }[];
+  };
+  expect(manifestBody).toMatchObject({
+    version: versionId,
+    totalSize: 29,
+    fileCount: 2,
+  });
+  expect(manifestBody.files).toStrictEqual([
+    expect.objectContaining({ path: "SKILL.md", size: 17 }),
+    expect.objectContaining({ path: "templates/prompt.md", size: 12 }),
+  ]);
 }
 
 describe("GET /api/zero/skills", () => {
@@ -375,6 +509,178 @@ describe("GET /api/zero/skills/:name", () => {
 
     expect(response.body.content).toBe("# Readable");
     expect(response.body.name).toBe("readable-skill");
+  });
+});
+
+describe("PUT /api/zero/skills/:name", () => {
+  const track = createFixtureTracker<SkillsFixture>((fixture) => {
+    return store.set(deleteSkillsForFixture$, fixture, context.signal);
+  });
+
+  it("returns 401 when the request is unauthenticated", async () => {
+    const response = await accept(
+      detailClient().update({
+        headers: {},
+        params: { name: "any" },
+        body: { files: skillFiles("# Any") },
+      }),
+      [401],
+    );
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+
+    const response = await accept(
+      detailClient().update({
+        headers: authHeaders(),
+        params: { name: "any" },
+        body: { files: skillFiles("# Any") },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 403 when an org member updates a skill", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    await store.set(
+      seedSkill$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "admin-skill",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const response = await accept(
+      detailClient().update({
+        headers: authHeaders(),
+        params: { name: "admin-skill" },
+        body: { files: skillFiles("# Updated") },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Only org admins can update custom skills",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("returns 404 for a non-existent skill", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      detailClient().update({
+        headers: authHeaders(),
+        params: { name: "no-such-skill" },
+        body: { files: skillFiles("# Missing") },
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Skill not found: no-such-skill", code: "NOT_FOUND" },
+    });
+  });
+
+  it("returns 400 for invalid file body", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      detailClient().update({
+        headers: authHeaders(),
+        params: { name: "any" },
+        body: { files: [{ path: "README.md", content: "# Missing skill" }] },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("updates skill content and stores a new volume version", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const updatedAt = new Date("2026-05-12T04:00:00.000Z");
+    const skillName = "my-skill";
+    await store.set(
+      seedSkill$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: skillName,
+        displayName: "My Skill",
+        description: "A useful skill",
+      },
+      context.signal,
+    );
+    context.mocks.s3.send.mockResolvedValue({});
+    mockNow(updatedAt);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      detailClient().update({
+        headers: authHeaders(),
+        params: { name: skillName },
+        body: {
+          files: [
+            { path: "SKILL.md", content: "# Updated Content" },
+            { path: "templates/prompt.md", content: "Use the tool" },
+          ],
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      name: skillName,
+      displayName: "My Skill",
+      description: "A useful skill",
+      content: "# Updated Content",
+      files: [
+        { path: "SKILL.md", size: 17 },
+        { path: "templates/prompt.md", size: 12 },
+      ],
+    });
+
+    const storageName = getCustomSkillStorageName(skillName);
+    const state = await readSkillStorageState(fixture, skillName);
+    expect(state.skillUpdatedAt?.toISOString()).toBe(updatedAt.toISOString());
+    expect(state.storage?.s3Prefix).toBe(
+      `${fixture.orgId}/volume/${storageName}`,
+    );
+    expect(state.storage?.size).toBe(29);
+    expect(state.storage?.fileCount).toBe(2);
+    expect(state.storage?.headVersionId).toBeTruthy();
+    expect(state.version?.size).toBe(29);
+    expect(state.version?.fileCount).toBe(2);
+
+    if (!state.storage?.headVersionId || !state.version) {
+      throw new Error("Expected skill storage to have a head version");
+    }
+
+    expectS3VolumeUploads(state.version.s3Key, state.storage.headVersionId);
   });
 });
 
