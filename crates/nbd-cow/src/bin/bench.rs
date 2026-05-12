@@ -450,18 +450,37 @@ fn run_fio_with_iostat(
 fn read_diskstats(device_name: &str) -> Result<DiskStats, String> {
     let content =
         std::fs::read_to_string("/proc/diskstats").map_err(|e| format!("read diskstats: {e}"))?;
+    parse_diskstats(&content, device_name)
+}
 
-    for line in content.lines() {
+fn parse_diskstats(content: &str, device_name: &str) -> Result<DiskStats, String> {
+    for (line_number, line) in content.lines().enumerate() {
         let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() >= 7 && parts.get(2).is_some_and(|name| *name == device_name) {
-            let reads = parts
-                .get(3)
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(0);
-            let writes = parts
-                .get(7)
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(0);
+        if parts.get(2).is_some_and(|name| *name == device_name) {
+            let Some(reads_field) = parts.get(3) else {
+                return Err(format!(
+                    "diskstats line {} for {device_name} has too few fields",
+                    line_number + 1
+                ));
+            };
+            let Some(writes_field) = parts.get(7) else {
+                return Err(format!(
+                    "diskstats line {} for {device_name} has too few fields",
+                    line_number + 1
+                ));
+            };
+            let reads = reads_field.parse::<u64>().map_err(|e| {
+                format!(
+                    "diskstats line {} has invalid read count for {device_name}: {e}",
+                    line_number + 1
+                )
+            })?;
+            let writes = writes_field.parse::<u64>().map_err(|e| {
+                format!(
+                    "diskstats line {} has invalid write count for {device_name}: {e}",
+                    line_number + 1
+                )
+            })?;
             return Ok(DiskStats {
                 reads_completed: reads,
                 writes_completed: writes,
@@ -1145,6 +1164,43 @@ mod tests {
 
         let empty = parse_fio_json(br#"{"jobs":[]}"#).unwrap_err();
         assert!(empty.contains("jobs array is empty"), "{empty}");
+    }
+
+    #[test]
+    fn parse_diskstats_reads_matching_device() {
+        let stats = parse_diskstats(
+            "8 0 sda 1 0 0 0 2 0 0 0\n259 0 nvme0n1 12 0 0 0 34 0 0 0\n",
+            "nvme0n1",
+        )
+        .unwrap();
+
+        assert_eq!(stats.reads_completed, 12);
+        assert_eq!(stats.writes_completed, 34);
+        assert_eq!(stats.total_ios(), 46);
+    }
+
+    #[test]
+    fn parse_diskstats_rejects_short_matching_line() {
+        let err = parse_diskstats("259 0 nvme0n1 12 0 0 0\n", "nvme0n1").unwrap_err();
+
+        assert!(err.contains("too few fields"), "{err}");
+    }
+
+    #[test]
+    fn parse_diskstats_rejects_invalid_matching_counts() {
+        let invalid_reads =
+            parse_diskstats("259 0 nvme0n1 not-a-number 0 0 0 34\n", "nvme0n1").unwrap_err();
+        assert!(
+            invalid_reads.contains("invalid read count"),
+            "{invalid_reads}"
+        );
+
+        let invalid_writes =
+            parse_diskstats("259 0 nvme0n1 12 0 0 0 not-a-number\n", "nvme0n1").unwrap_err();
+        assert!(
+            invalid_writes.contains("invalid write count"),
+            "{invalid_writes}"
+        );
     }
 
     #[test]
