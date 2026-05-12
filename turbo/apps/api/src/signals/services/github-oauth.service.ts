@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { createHmac, createSign, timingSafeEqual } from "node:crypto";
+import { createSign, timingSafeEqual } from "node:crypto";
 
 import { and, eq } from "drizzle-orm";
 import { connectors } from "@vm0/db/schema/connector";
@@ -191,11 +191,34 @@ export async function getGithubInstallationAccessToken(args: {
   return { token: data.token, expiresAt: data.expires_at };
 }
 
-export function buildGithubOauthState(args: {
+async function createGithubOauthStateSignature(args: {
+  readonly vm0UserId: string;
+  readonly composeId: string | null;
+  readonly secretsEncryptionKey: string;
+}): Promise<string> {
+  const textEncoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    textEncoder.encode(args.secretsEncryptionKey),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const payload = `${args.vm0UserId}:${args.composeId ?? ""}`;
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    textEncoder.encode(payload),
+  );
+
+  return Buffer.from(signature).toString("hex");
+}
+
+export async function buildGithubOauthState(args: {
   readonly vm0UserId?: string;
   readonly composeId?: string;
   readonly secretsEncryptionKey: string;
-}): string {
+}): Promise<string> {
   const state: {
     vm0UserId?: string;
     composeId?: string;
@@ -208,10 +231,11 @@ export function buildGithubOauthState(args: {
     state.composeId = args.composeId;
   }
   if (state.vm0UserId) {
-    const payload = `${state.vm0UserId}:${state.composeId ?? ""}`;
-    state.sig = createHmac("sha256", args.secretsEncryptionKey)
-      .update(payload)
-      .digest("hex");
+    state.sig = await createGithubOauthStateSignature({
+      vm0UserId: state.vm0UserId,
+      composeId: state.composeId ?? null,
+      secretsEncryptionKey: args.secretsEncryptionKey,
+    });
   }
 
   return Object.keys(state).length > 0 ? JSON.stringify(state) : "";
@@ -244,18 +268,19 @@ export function parseGithubOauthState(
   };
 }
 
-export function isGithubOauthStateSignatureValid(args: {
+export async function isGithubOauthStateSignatureValid(args: {
   readonly state: GithubOAuthState;
   readonly secretsEncryptionKey: string;
-}): boolean {
+}): Promise<boolean> {
   if (!args.state.vm0UserId) {
     return true;
   }
 
-  const payload = `${args.state.vm0UserId}:${args.state.composeId ?? ""}`;
-  const expectedSig = createHmac("sha256", args.secretsEncryptionKey)
-    .update(payload)
-    .digest("hex");
+  const expectedSig = await createGithubOauthStateSignature({
+    vm0UserId: args.state.vm0UserId,
+    composeId: args.state.composeId,
+    secretsEncryptionKey: args.secretsEncryptionKey,
+  });
 
   return (
     args.state.sig !== null &&

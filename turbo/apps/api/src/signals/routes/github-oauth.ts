@@ -90,11 +90,12 @@ const installGithubOauth$ = command(
       }
     }
 
-    const state = buildGithubOauthState({
+    const state = await buildGithubOauthState({
       vm0UserId: query.vm0UserId,
       composeId: query.composeId,
       secretsEncryptionKey: env("SECRETS_ENCRYPTION_KEY"),
     });
+    signal.throwIfAborted();
 
     const installUrl = new URL(
       `https://github.com/apps/${appSlug}/installations/new`,
@@ -132,10 +133,10 @@ const callbackGithubOauth$ = command(
     }
 
     if (
-      !isGithubOauthStateSignatureValid({
+      !(await isGithubOauthStateSignatureValid({
         state,
         secretsEncryptionKey,
-      })
+      }))
     ) {
       return worksErrorRedirect(
         "Invalid state signature. Please try installing again from the Platform.",
