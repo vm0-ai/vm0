@@ -57,7 +57,7 @@ interface AgentUpdateBody {
   readonly displayName?: string;
   readonly description?: string;
   readonly sound?: string;
-  readonly avatarUrl?: string;
+  readonly avatarUrl?: string | null;
   readonly customSkills?: readonly string[];
   readonly modelProviderId?: string | null;
   readonly selectedModel?: string | null;
@@ -77,6 +77,11 @@ interface AgentMember {
   readonly userId: string;
   readonly role: string;
 }
+
+type ExistingAgentForMetadataUpdate = ExistingAgentForUpdate & {
+  readonly owner: string;
+  readonly visibility: ZeroAgentVisibility;
+};
 
 type SignalGetter = {
   <T>(source: Computed<T>): T;
@@ -236,6 +241,27 @@ function findAgentForUpdate(
     .from(agentComposes)
     .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
     .where(and(eq(agentComposes.orgId, orgId), eq(agentComposes.id, agentId)))
+    .limit(1)
+    .then((rows) => {
+      return rows[0] ?? null;
+    });
+}
+
+function findAgentMetadataForUpdate(
+  writeDb: Db,
+  orgId: string,
+  agentId: string,
+): Promise<ExistingAgentForMetadataUpdate | null> {
+  return writeDb
+    .select({
+      id: zeroAgents.id,
+      name: zeroAgents.name,
+      customSkills: zeroAgents.customSkills,
+      owner: zeroAgents.owner,
+      visibility: zeroAgents.visibility,
+    })
+    .from(zeroAgents)
+    .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.id, agentId)))
     .limit(1)
     .then((rows) => {
       return rows[0] ?? null;
@@ -517,6 +543,9 @@ const updateAgentCustomConnectorsBody$ = bodyResultOf(
 );
 
 const updateAgentBody$ = bodyResultOf(zeroAgentsByIdContract.update);
+const updateAgentMetadataBody$ = bodyResultOf(
+  zeroAgentsByIdContract.updateMetadata,
+);
 
 const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -612,6 +641,84 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       : defaultAgentResponse({ agentId: params.id, ownerId: auth.userId }),
   };
 });
+
+const updateAgentMetadataInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const member = { userId: auth.userId, role: auth.orgRole ?? "member" };
+    const params = get(pathParamsOf(zeroAgentsByIdContract.updateMetadata));
+    const body = await get(updateAgentMetadataBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+
+    const writeDb = set(writeDb$);
+    const existing = await findAgentMetadataForUpdate(
+      writeDb,
+      auth.orgId,
+      params.id,
+    );
+    signal.throwIfAborted();
+    if (!existing) {
+      return agentNotFound(params.id);
+    }
+
+    const permissionError = requireAgentPermission(
+      existing.owner,
+      member,
+      "update agent profile",
+      { visibility: existing.visibility },
+    );
+    if (permissionError) {
+      return permissionError;
+    }
+
+    const nextVisibility = body.data.visibility ?? existing.visibility;
+    const visibilityError = await validateAgentVisibilityUpdate({
+      get,
+      writeDb,
+      orgId: auth.orgId,
+      member,
+      existing,
+      requestedVisibility: body.data.visibility,
+      nextVisibility,
+      signal,
+    });
+    if (visibilityError) {
+      return visibilityError;
+    }
+
+    const modelError = await validateModelSelection(
+      writeDb,
+      auth.orgId,
+      body.data.modelProviderId,
+      body.data.selectedModel,
+    );
+    signal.throwIfAborted();
+    if (modelError) {
+      return modelError;
+    }
+
+    await writeDb
+      .update(zeroAgents)
+      .set(buildAgentUpsertConflictSet(body.data, nowDate()))
+      .where(
+        and(eq(zeroAgents.orgId, auth.orgId), eq(zeroAgents.id, params.id)),
+      );
+    signal.throwIfAborted();
+
+    const agent = await readAgentForResponse(writeDb, auth.orgId, params.id);
+    signal.throwIfAborted();
+
+    return {
+      status: 200 as const,
+      body: agent
+        ? agentResponse(agent)
+        : defaultAgentResponse({ agentId: params.id, ownerId: auth.userId }),
+    };
+  },
+);
 
 const deleteAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -876,6 +983,10 @@ export const zeroAgentsRoutes: readonly RouteEntry[] = [
   {
     route: zeroAgentsByIdContract.update,
     handler: authRoute(agentWriteAuth, updateAgentInner$),
+  },
+  {
+    route: zeroAgentsByIdContract.updateMetadata,
+    handler: authRoute(agentWriteAuth, updateAgentMetadataInner$),
   },
   {
     route: zeroAgentsByIdContract.delete,
