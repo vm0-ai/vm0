@@ -906,17 +906,18 @@ mod tests {
     where
         F: Fn(&CowPoolSnapshot) -> bool,
     {
-        tokio::time::timeout(Duration::from_secs(1), async {
-            loop {
-                let snapshot = handle.snapshot().await;
-                if predicate(&snapshot) {
-                    return snapshot;
-                }
-                tokio::task::yield_now().await;
+        let deadline = StdInstant::now() + Duration::from_secs(1);
+        loop {
+            let snapshot = handle.snapshot().await;
+            if predicate(&snapshot) {
+                return snapshot;
             }
-        })
-        .await
-        .expect("condition not reached")
+            assert!(
+                StdInstant::now() < deadline,
+                "condition not reached; last snapshot: {snapshot:?}"
+            );
+            tokio::task::yield_now().await;
+        }
     }
 
     #[tokio::test]
