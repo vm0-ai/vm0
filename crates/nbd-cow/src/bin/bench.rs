@@ -25,7 +25,10 @@ async fn main() {
     eprintln!("Base image size: {base_size_mb} MB");
 
     // Detect host disk
-    let host_disk = detect_host_disk();
+    let host_disk = detect_host_disk().unwrap_or_else(|e| {
+        eprintln!("ERROR: {e}");
+        std::process::exit(1);
+    });
     eprintln!("Host disk: {host_disk}");
     eprintln!();
 
@@ -549,29 +552,53 @@ fn diskstats_contains_device(content: &str, device_name: &str) -> bool {
 }
 
 /// Auto-detect the host disk by finding the block device backing /tmp.
-fn detect_host_disk() -> String {
+fn detect_host_disk() -> Result<String, String> {
+    let stats =
+        std::fs::read_to_string("/proc/diskstats").map_err(|e| format!("read diskstats: {e}"))?;
+
     // Try to find the device for /tmp via df
     if let Ok(output) = Command::new("df").arg("/tmp").output() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         if let Some(line) = stdout.lines().nth(1)
             && let Some(dev) = line.split_whitespace().next()
+            && let Some(device) = host_disk_from_df_device(dev, &stats)
         {
-            // /dev/root -> find actual device
-            if dev == "/dev/root" {
-                // Check /proc/diskstats for nvme or xvd devices
-                if let Ok(stats) = std::fs::read_to_string("/proc/diskstats") {
-                    for candidate in &["nvme0n1", "xvda", "sda", "vda"] {
-                        if diskstats_contains_device(&stats, candidate) {
-                            return (*candidate).to_string();
-                        }
-                    }
-                }
-            } else {
-                return diskstats_device_name(dev);
-            }
+            return Ok(device);
         }
     }
-    "nvme0n1".to_string()
+
+    known_host_disk_candidate(&stats)
+        .ok_or_else(|| "failed to detect a host disk present in /proc/diskstats".to_string())
+}
+
+fn host_disk_from_df_device(dev: &str, diskstats: &str) -> Option<String> {
+    if dev == "/dev/root" {
+        return known_host_disk_candidate(diskstats);
+    }
+
+    let device = diskstats_device_name(dev);
+    diskstats_contains_device(diskstats, &device).then_some(device)
+}
+
+fn known_host_disk_candidate(diskstats: &str) -> Option<String> {
+    ["nvme0n1", "xvda", "sda", "vda"]
+        .iter()
+        .find(|candidate| diskstats_contains_device(diskstats, candidate))
+        .map(|candidate| (*candidate).to_string())
+        .or_else(|| {
+            diskstats
+                .lines()
+                .filter_map(|line| line.split_whitespace().nth(2))
+                .find(|device| is_likely_host_disk_device(device))
+                .map(str::to_string)
+        })
+}
+
+fn is_likely_host_disk_device(device: &str) -> bool {
+    ["nvme", "mmcblk", "xvd", "sd", "vd"]
+        .iter()
+        .any(|prefix| device.starts_with(prefix))
+        && diskstats_device_name(&format!("/dev/{device}")) == device
 }
 
 fn diskstats_device_name(path: &str) -> String {
@@ -1423,6 +1450,35 @@ mod tests {
 
         assert!(!diskstats_contains_device(stats, "nvme0n1"));
         assert!(diskstats_contains_device(stats, "nvme0n10"));
+    }
+
+    #[test]
+    fn host_disk_from_df_device_validates_diskstats_device() {
+        let stats = "259 0 nvme0n1 1 0 0 0 2 0 0 0\n8 0 sda 3 0 0 0 4 0 0 0\n";
+
+        assert_eq!(
+            host_disk_from_df_device("/dev/nvme0n1p1", stats),
+            Some("nvme0n1".to_string())
+        );
+        assert_eq!(
+            host_disk_from_df_device("/dev/root", stats),
+            Some("nvme0n1".to_string())
+        );
+        assert_eq!(host_disk_from_df_device("overlay", stats), None);
+        assert_eq!(
+            host_disk_from_df_device("/dev/does-not-exist1", stats),
+            None
+        );
+    }
+
+    #[test]
+    fn known_host_disk_candidate_accepts_non_default_whole_disks() {
+        let stats = "259 1 nvme1n1p1 1 0 0 0 2 0 0 0\n259 0 nvme1n1 3 0 0 0 4 0 0 0\n";
+
+        assert_eq!(
+            known_host_disk_candidate(stats),
+            Some("nvme1n1".to_string())
+        );
     }
 
     #[test]
