@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.346.1](https://github.com/vm0-ai/vm0/compare/app-v0.346.0...app-v0.346.1) (2026-05-12)
+
+
+### Refactoring
+
+* **platform:** simplify bb0 device page ([#13042](https://github.com/vm0-ai/vm0/issues/13042)) ([cad0fb9](https://github.com/vm0-ai/vm0/commit/cad0fb96a017fbf29c1aa97df41573cb3bb33916))
+
 ## [0.346.0](https://github.com/vm0-ai/vm0/compare/app-v0.345.1...app-v0.346.0) (2026-05-12)
 
 

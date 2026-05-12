@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.355.1](https://github.com/vm0-ai/vm0/compare/web-v12.355.0...web-v12.355.1) (2026-05-12)
+
+
+### Bug Fixes
+
+* **web:** hard-disable canViewDocs to stop SSR crash on /[locale]/* ([#13045](https://github.com/vm0-ai/vm0/issues/13045)) ([471e2ac](https://github.com/vm0-ai/vm0/commit/471e2ac2c8376ba0eebeee04153bf3f3e29079ed))
+* **web:** inline theme-init to eliminate dark-mode flash on www.vm0.ai ([#13043](https://github.com/vm0-ai/vm0/issues/13043)) ([4c2db0e](https://github.com/vm0-ai/vm0/commit/4c2db0e095bbf00fd3e9ea6f0bd9317e286b9248))
+
 ## [12.355.0](https://github.com/vm0-ai/vm0/compare/web-v12.354.0...web-v12.355.0) (2026-05-12)
 
 
