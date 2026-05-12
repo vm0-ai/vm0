@@ -3,8 +3,7 @@
 //! Runs fio workloads on both a dm-snapshot device and an NBD COW device,
 //! then compares VM-visible IOPS, latency, AND actual host disk IOPS.
 //!
-//! Requires: root, fio, losetup, dmsetup.
-//! NBD comparison also requires the nbd kernel module.
+//! Requires: root, nbd kernel module, fio, losetup, dmsetup.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -46,6 +45,10 @@ async fn main() {
             eprintln!("ERROR: {tool} not found in PATH");
             std::process::exit(1);
         }
+    }
+    if !nbd_module_loaded() {
+        eprintln!("ERROR: nbd kernel module not loaded; load with: modprobe nbd nbds_max=4096");
+        std::process::exit(1);
     }
 
     let work_dir = tempfile::Builder::new()
