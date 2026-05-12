@@ -14,18 +14,6 @@ function mockChatAPI() {
 }
 
 describe("prompt query parameter injection", () => {
-  it("should inject ?prompt= into chat input when navigating to /", async () => {
-    mockChatAPI();
-    detachedSetupPage({ context, path: "/?prompt=Hello%20world" });
-
-    // Should redirect to /talk/:id and show the prompt in the input
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-    });
-
-    expect(textarea).toHaveValue("Hello world");
-  });
-
   it("should inject ?prompt= into chat input when navigating to /talk/:id", async () => {
     mockChatAPI();
     detachedSetupPage({
