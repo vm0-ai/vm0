@@ -272,6 +272,13 @@ export {
   type TestSlackMockUsersInfoResponse,
 } from "./test-slack-mock";
 export {
+  testTelegramMockContract,
+  testTelegramMockErrorResponseSchema,
+  testTelegramMockPathParamsSchema,
+  testTelegramMockSuccessResponseSchema,
+  type TestTelegramMockContract,
+} from "./test-telegram-mock";
+export {
   testTelegramStateContract,
   testTelegramStateErrorSchema,
   testTelegramStateResponseSchema,
