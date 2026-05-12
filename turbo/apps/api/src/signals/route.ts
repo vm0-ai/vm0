@@ -5,6 +5,7 @@ import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
 import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
 import { agentComposesReadRoutes } from "./routes/agent-composes-read";
 import { agentRunsReadRoutes } from "./routes/agent-runs-read";
+import { agentRunTelemetryRoutes } from "./routes/agent-run-telemetry";
 import { agentSessionsRoutes } from "./routes/agent-sessions-id";
 import { authMeRoutes } from "./routes/auth-me";
 import { audioTranscriptionsV1Routes } from "./routes/audio-transcriptions-v1";
@@ -121,6 +122,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...agentComposesReadRoutes,
   ...agentComposesByIdRoutes,
   ...agentRunsReadRoutes,
+  ...agentRunTelemetryRoutes,
   ...agentSessionsRoutes,
   ...deviceTokenRoutes,
   ...zeroAgentInstructionsRoutes,
