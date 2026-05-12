@@ -48,7 +48,7 @@ async fn main() {
 
     let base_path = work_dir_path.join("base.img");
     let base_size = base_size_bytes(base_size_mb).unwrap_or_else(|| {
-        eprintln!("ERROR: base image size is too large: {base_size_mb} MB");
+        eprintln!("ERROR: invalid base image size: {base_size_mb} MB");
         std::process::exit(1);
     });
 
@@ -167,6 +167,9 @@ struct FioWorkload {
 }
 
 fn base_size_bytes(base_size_mb: u64) -> Option<u64> {
+    if base_size_mb == 0 {
+        return None;
+    }
     base_size_mb.checked_mul(1024 * 1024)
 }
 
@@ -439,7 +442,8 @@ fn run_fio_with_iostat(
     // Calculate actual host disk IOPS
     let delta_ios = after.total_ios().saturating_sub(before.total_ios());
     if elapsed_secs > 0.0 {
-        result.host_disk_iops = (delta_ios as f64 / elapsed_secs) as u64;
+        result.host_disk_iops =
+            fio_float_to_u64(delta_ios as f64 / elapsed_secs, "host disk IOPS")?;
     }
 
     eprintln!(
@@ -462,15 +466,29 @@ fn read_diskstats(device_name: &str) -> Result<DiskStats, String> {
 
 fn parse_diskstats(content: &str, device_name: &str) -> Result<DiskStats, String> {
     for (line_number, line) in content.lines().enumerate() {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.get(2).is_some_and(|name| *name == device_name) {
-            let Some(reads_field) = parts.get(3) else {
+        let mut fields = line.split_whitespace();
+        let _major = fields.next();
+        let _minor = fields.next();
+        let Some(name) = fields.next() else {
+            continue;
+        };
+
+        if name == device_name {
+            let Some(reads_field) = fields.next() else {
                 return Err(format!(
                     "diskstats line {} for {device_name} has too few fields",
                     line_number + 1
                 ));
             };
-            let Some(writes_field) = parts.get(7) else {
+            for _ in 0..3 {
+                if fields.next().is_none() {
+                    return Err(format!(
+                        "diskstats line {} for {device_name} has too few fields",
+                        line_number + 1
+                    ));
+                }
+            }
+            let Some(writes_field) = fields.next() else {
                 return Err(format!(
                     "diskstats line {} for {device_name} has too few fields",
                     line_number + 1
@@ -908,6 +926,7 @@ mod tests {
     #[test]
     fn base_size_bytes_rejects_overflow() {
         assert_eq!(base_size_bytes(1024), Some(1024 * 1024 * 1024));
+        assert_eq!(base_size_bytes(0), None);
         assert_eq!(base_size_bytes(u64::MAX), None);
     }
 
