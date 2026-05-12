@@ -279,7 +279,7 @@ fn run_dm_snapshot_bench(
     base_size: u64,
     workloads: &[FioWorkload],
     host_disk: &str,
-    dm_name: &str,
+    dm_name_prefix: &str,
 ) -> Result<Vec<FioResult>, String> {
     let cow_path = work_dir.join("dm-cow.img");
     let sectors = base_size / 512;
@@ -287,17 +287,18 @@ fn run_dm_snapshot_bench(
 
     let mut base_loop = LoopDeviceGuard::attach(base_path, true)?;
 
-    for wl in workloads {
+    for (index, wl) in workloads.iter().enumerate() {
         let _cow_file_cleanup = TempFileCleanup::new(cow_path.clone());
         create_sparse_file(&cow_path, base_size)?;
         let mut cow_loop = LoopDeviceGuard::attach(&cow_path, false)?;
+        let dm_name = format!("{dm_name_prefix}-{index}");
 
         let table = format!(
             "0 {sectors} snapshot {} {} P 8",
             base_loop.device(),
             cow_loop.device()
         );
-        let mut dm_mapping = DmMappingGuard::create(dm_name, &table)?;
+        let mut dm_mapping = DmMappingGuard::create(&dm_name, &table)?;
 
         let device = dm_mapping.device_path();
         eprintln!("  Running fio ({}) on {device}...", wl.name);
