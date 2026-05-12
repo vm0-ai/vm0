@@ -83,6 +83,19 @@ function zipText(zip: AdmZip, name: string): string {
   return entry.getData().toString("utf8");
 }
 
+function activityLogJson(zip: AdmZip): Record<string, unknown> {
+  const activityLogEntry = zip.getEntries().find((entry) => {
+    return entry.entryName.startsWith("activity-log-");
+  });
+  if (!activityLogEntry) {
+    throw new Error("expected activity log entry");
+  }
+  return JSON.parse(activityLogEntry.getData().toString("utf8")) as Record<
+    string,
+    unknown
+  >;
+}
+
 async function seedReportRun(
   options: RunSeedOptions = {},
 ): Promise<ReportRunFixture> {
@@ -383,6 +396,38 @@ describe("POST /api/zero/report-error", () => {
       type: "http",
       method: "POST",
       response_body: '{"ok":true}',
+    });
+  });
+
+  it("includes run context when a same-org non-owner submits the report", async () => {
+    const fixture = await seedReportRun({ prompt: "Inspect deployment" });
+    mocks.clerk.session(randomUUID(), fixture.orgId);
+
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = String(args[0]);
+      if (apl.includes("run-context")) {
+        return Promise.resolve([
+          {
+            runId: fixture.runId,
+            sessionId: "session-123",
+            environment: { NODE_ENV: "production" },
+            firewalls: [],
+            volumes: [],
+          },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    await accept(
+      submitReport({ runId: fixture.runId, title: "Same org report" }),
+      [200],
+    );
+
+    expect(activityLogJson(uploadedZip()).context).toMatchObject({
+      runId: fixture.runId,
+      sessionId: "session-123",
+      environment: { NODE_ENV: "production" },
     });
   });
 

@@ -21,7 +21,6 @@ import { getDatasetName, queryAxiom } from "../external/axiom";
 import { generatePresignedGetUrl, putS3Object } from "../external/s3";
 import { db$, type Db } from "../external/db";
 import { safeAsync } from "../utils";
-import { zeroRunContext } from "./zero-run-detail.service";
 import { zeroConnectorList } from "./zero-connector-data.service";
 import { createPlainSupportThread } from "./plain-support.service";
 
@@ -657,14 +656,10 @@ async function assembleActivityLog(
       waitForAgentEventWatermark,
     ),
     queryNetworkLogs(get, run.id),
-    get(zeroRunContext(run.id, run.userId, run.orgId))
-      .then((result) => {
-        return result.kind === "ok" ? result.context : null;
-      })
-      .catch((error) => {
-        log.warn("Failed to collect run context", { error: String(error) });
-        return null;
-      }),
+    queryRunContext(get, run.id).catch((error) => {
+      log.warn("Failed to collect run context", { error: String(error) });
+      return null;
+    }),
   ]);
 
   const data: Record<string, unknown> = {
@@ -829,6 +824,19 @@ async function queryNetworkLogs(
     return [];
   }
   return queried.ok;
+}
+
+async function queryRunContext(
+  get: ComputedGetter,
+  runId: string,
+): Promise<Record<string, unknown> | null> {
+  const dataset = getDatasetName("run-context");
+  const apl = `['${dataset}']
+| where runId == "${escapeAplString(runId)}"
+| limit 1`;
+
+  const results = (await get(queryAxiom(apl))) as Record<string, unknown>[];
+  return results[0] ?? null;
 }
 
 interface ClerkEmailAddress {
