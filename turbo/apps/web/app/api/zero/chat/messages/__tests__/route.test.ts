@@ -1758,7 +1758,7 @@ describe("POST /api/zero/chat/messages", () => {
         await insertOrgNonDefaultModelProvider(
           user.orgId,
           "openai-api-key",
-          "gpt-5",
+          "gpt-5.5",
         );
         const providerId = await getTestModelProviderIdByType(
           user.orgId,
@@ -1782,12 +1782,12 @@ describe("POST /api/zero/chat/messages", () => {
 
         const override = await getTestChatThreadModelOverride(threadId);
         expect(override.modelProviderId).toBe(providerId);
-        expect(override.selectedModel).toBe("gpt-5");
+        expect(override.selectedModel).toBe("gpt-5.5");
 
         const run = await findTestZeroRun(runId);
         expect(run?.modelProvider).toBe("openai-api-key");
         expect(run?.modelProviderId).toBe(providerId);
-        expect(run?.selectedModel).toBe("gpt-5");
+        expect(run?.selectedModel).toBe("gpt-5.5");
 
         const job = await findTestRunnerJobEntry(runId);
         expect(job).toBeDefined();
