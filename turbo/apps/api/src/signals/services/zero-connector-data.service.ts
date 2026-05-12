@@ -1,4 +1,4 @@
-import { computed, type Computed } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import type {
   ConnectorListResponse,
   ConnectorResponse,
@@ -15,6 +15,7 @@ import {
 import {
   CONNECTOR_TYPES,
   connectorTypeSchema,
+  type ConnectorAuthMethodType,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
@@ -25,7 +26,8 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
-import { db$ } from "../external/db";
+import { db$, writeDb$ } from "../external/db";
+import { publishUserSignal } from "../external/realtime";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
 type StoredConnectorRow = {
@@ -318,6 +320,102 @@ export function zeroConnectorByType(args: {
     return get(apiTokenConnectorByType(args));
   });
 }
+
+export const deleteZeroConnectorLocalState$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly type: ConnectorType;
+    },
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const writeDb = set(writeDb$);
+    let deleted = false;
+
+    const [existing] = await writeDb
+      .select({ id: connectors.id, authMethod: connectors.authMethod })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, args.orgId),
+          eq(connectors.userId, args.userId),
+          eq(connectors.type, args.type),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (existing) {
+      await writeDb.delete(connectors).where(eq(connectors.id, existing.id));
+      signal.throwIfAborted();
+      deleted = true;
+
+      const config = CONNECTOR_TYPES[args.type];
+      const authMethodConfig =
+        config.authMethods[existing.authMethod as ConnectorAuthMethodType];
+      const secretNames = authMethodConfig
+        ? Object.keys(authMethodConfig.secrets)
+        : [];
+
+      for (const name of secretNames) {
+        await writeDb
+          .delete(secrets)
+          .where(
+            and(
+              eq(secrets.orgId, args.orgId),
+              eq(secrets.userId, args.userId),
+              eq(secrets.name, name),
+              eq(secrets.type, "connector"),
+            ),
+          );
+        signal.throwIfAborted();
+      }
+    }
+
+    const fields = getApiTokenFieldsByType(args.type);
+    if (fields) {
+      for (const name of fields.secrets) {
+        const result = await writeDb
+          .delete(secrets)
+          .where(
+            and(
+              eq(secrets.orgId, args.orgId),
+              eq(secrets.userId, args.userId),
+              eq(secrets.name, name),
+              eq(secrets.type, "user"),
+            ),
+          )
+          .returning({ id: secrets.id });
+        signal.throwIfAborted();
+        deleted = deleted || result.length > 0;
+      }
+
+      for (const name of fields.variables) {
+        const result = await writeDb
+          .delete(variables)
+          .where(
+            and(
+              eq(variables.orgId, args.orgId),
+              eq(variables.userId, args.userId),
+              eq(variables.name, name),
+            ),
+          )
+          .returning({ id: variables.id });
+        signal.throwIfAborted();
+        deleted = deleted || result.length > 0;
+      }
+    }
+
+    if (deleted) {
+      await publishUserSignal([args.userId], "connector:changed");
+      signal.throwIfAborted();
+    }
+
+    return deleted;
+  },
+);
 
 export function zeroConnectorScopeDiff(args: {
   readonly orgId: string;

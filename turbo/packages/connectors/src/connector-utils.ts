@@ -29,7 +29,7 @@ export function getConnectorDefaultAuthMethod(
 
 export type ConnectorEnvReader = (name: string) => string | undefined;
 
-interface ConnectorOAuthEnvKeys {
+export interface ConnectorOAuthEnvKeys {
   readonly clientId: string;
   readonly clientSecret: string;
 }
@@ -231,6 +231,12 @@ function hasConfiguredOAuth(
     ? hasEnvValue(readEnv, keys.clientId) &&
         hasEnvValue(readEnv, keys.clientSecret)
     : false;
+}
+
+export function getConnectorOAuthEnvKeys(
+  type: ConnectorType,
+): ConnectorOAuthEnvKeys | undefined {
+  return OAUTH_ENV_KEYS_BY_CONNECTOR[type];
 }
 
 /**

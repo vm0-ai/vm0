@@ -84,6 +84,28 @@ export const zeroConnectorScopeDiffContract = c.router({
   },
 });
 
+/**
+ * Zero contract for GET /api/zero/connectors/:type/authorize
+ * Browser OAuth redirect endpoint. The API handler returns raw Response
+ * redirects so Set-Cookie and Location headers are preserved.
+ */
+export const zeroConnectorAuthorizeContract = c.router({
+  authorize: {
+    method: "GET",
+    path: "/api/zero/connectors/:type/authorize",
+    headers: authHeadersSchema,
+    pathParams: z.object({ type: z.string() }),
+    query: z.object({ session: z.string().optional() }),
+    responses: {
+      307: c.noBody(),
+      400: z.object({ error: z.string() }),
+      401: c.noBody(),
+      500: z.object({ error: z.string() }),
+    },
+    summary: "Start connector OAuth authorization (zero proxy)",
+  },
+});
+
 const connectorSearchAuthMethodSchema = z.enum(["oauth", "api-token"]);
 
 export type ConnectorSearchAuthMethod = z.infer<
@@ -235,6 +257,8 @@ export type ZeroConnectorsMainContract = typeof zeroConnectorsMainContract;
 export type ZeroConnectorsByTypeContract = typeof zeroConnectorsByTypeContract;
 export type ZeroConnectorScopeDiffContract =
   typeof zeroConnectorScopeDiffContract;
+export type ZeroConnectorAuthorizeContract =
+  typeof zeroConnectorAuthorizeContract;
 export type ZeroConnectorsSearchContract = typeof zeroConnectorsSearchContract;
 export type ZeroConnectorSessionsContract =
   typeof zeroConnectorSessionsContract;
