@@ -1,9 +1,12 @@
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use httpmock::prelude::*;
+use httpmock::{HttpMockRequest, HttpMockResponse};
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, mpsc};
+use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
 static RUN_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -171,6 +174,81 @@ fn unique_run_id(test_name: &str) -> String {
         std::process::id(),
         RUN_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
     )
+}
+
+fn gzip_response(body: Vec<u8>) -> HttpMockResponse {
+    HttpMockResponse::builder()
+        .status(200)
+        .header("content-type", "application/gzip")
+        .body(body)
+        .build()
+}
+
+struct ActiveRequestGuard {
+    active: Arc<AtomicUsize>,
+}
+
+impl Drop for ActiveRequestGuard {
+    fn drop(&mut self) {
+        self.active.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+fn track_active_request(
+    active: &Arc<AtomicUsize>,
+    max_active: &Arc<AtomicUsize>,
+) -> ActiveRequestGuard {
+    let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+    let mut observed = max_active.load(Ordering::SeqCst);
+    while current > observed {
+        match max_active.compare_exchange(observed, current, Ordering::SeqCst, Ordering::SeqCst) {
+            Ok(_) => break,
+            Err(actual) => observed = actual,
+        }
+    }
+
+    ActiveRequestGuard {
+        active: Arc::clone(active),
+    }
+}
+
+fn wait_for_event(
+    receiver: &mpsc::Receiver<String>,
+    seen: &mut Vec<String>,
+    expected: &str,
+    timeout: Duration,
+) -> Result<(), String> {
+    if seen.iter().any(|event| event == expected) {
+        return Ok(());
+    }
+
+    let deadline = Instant::now() + timeout;
+    loop {
+        let now = Instant::now();
+        if now >= deadline {
+            return Err(format!("timed out waiting for event {expected}"));
+        }
+        match receiver.recv_timeout(deadline - now) {
+            Ok(event) if event == expected => return Ok(()),
+            Ok(event) => seen.push(event),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                return Err(format!("timed out waiting for event {expected}"));
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return Err(format!("event channel closed before {expected}"));
+            }
+        }
+    }
+}
+
+struct ReleaseOnDrop {
+    sender: mpsc::Sender<()>,
+}
+
+impl Drop for ReleaseOnDrop {
+    fn drop(&mut self) {
+        let _ = self.sender.send(());
+    }
 }
 
 struct RunFileCleanup {
@@ -365,7 +443,7 @@ fn single_storage_download() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 2: 6 storages downloaded in parallel (exercises chunking)
+// Test 2: 6 storages downloaded with bounded parallelism
 // ---------------------------------------------------------------------------
 #[test]
 fn six_storages_parallel() {
@@ -415,12 +493,12 @@ fn six_storages_parallel() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 2b: parent-child mount paths in same concurrent chunk
+// Test 2b: parent-child mount paths download successfully
 // Regression test: storages with overlapping paths (e.g. /home/user/.claude and
-// /home/user/.claude/skills/foo) must not race on directory creation.
+// /home/user/.claude/skills/foo) must remain valid when scheduled safely.
 // ---------------------------------------------------------------------------
 #[test]
-fn parent_child_mount_paths_parallel() {
+fn parent_child_mount_paths_download_successfully() {
     let server = MockServer::start();
     let dir = tempfile::tempdir().unwrap();
 
@@ -454,8 +532,6 @@ fn parent_child_mount_paths_parallel() {
             .body(&child_c_tar);
     });
 
-    // 4 tasks fill one concurrent chunk (MAX_CONCURRENT=4), ensuring parent
-    // and children are truly downloaded in parallel.
     let parent_mount = dir.path().join("claude");
     let child_a_mount = dir.path().join("claude/skills/alpha");
     let child_b_mount = dir.path().join("claude/skills/beta");
@@ -497,6 +573,176 @@ fn parent_child_mount_paths_parallel() {
     assert_eq!(
         std::fs::read_to_string(child_c_mount.join("skill.json")).unwrap(),
         "skill c"
+    );
+}
+
+#[test]
+fn queued_independent_download_starts_when_slot_frees() {
+    let dir = tempfile::tempdir().unwrap();
+    let (event_tx, event_rx) = mpsc::channel();
+    let (slow_release_tx, slow_release_rx) = mpsc::channel();
+    let _slow_release_guard = ReleaseOnDrop {
+        sender: slow_release_tx.clone(),
+    };
+    let slow_release_rx = Arc::new(Mutex::new(slow_release_rx));
+    let active = Arc::new(AtomicUsize::new(0));
+    let max_active = Arc::new(AtomicUsize::new(0));
+
+    let mut servers = Vec::new();
+    let mut storages = Vec::new();
+
+    for i in 0..5 {
+        let server = MockServer::start();
+        let filename = format!("file_{i}.txt");
+        let content = format!("content_{i}");
+        let body = Arc::new(create_tar_gz(&[(&filename, content.as_bytes())]).unwrap());
+        let event_tx = event_tx.clone();
+        let active = Arc::clone(&active);
+        let max_active = Arc::clone(&max_active);
+        let slow_release_rx = Arc::clone(&slow_release_rx);
+
+        server.mock(move |when, then| {
+            when.method(GET).path("/storage.tar.gz");
+            then.respond_with(move |_req: &HttpMockRequest| {
+                let _active_guard = track_active_request(&active, &max_active);
+                let _ = event_tx.send(format!("start-{i}"));
+                if i == 0 {
+                    slow_release_rx
+                        .lock()
+                        .unwrap()
+                        .recv_timeout(Duration::from_secs(10))
+                        .expect("timed out waiting to release slow request");
+                }
+                gzip_response((*body).clone())
+            });
+        });
+
+        let mount = dir.path().join(format!("mount_{i}"));
+        storages.push((
+            mount.to_str().unwrap().to_owned(),
+            server.url("/storage.tar.gz"),
+        ));
+        servers.push(server);
+    }
+
+    let storage_refs: Vec<(&str, Option<&str>)> = storages
+        .iter()
+        .map(|(mount, url)| (mount.as_str(), Some(url.as_str())))
+        .collect();
+    let manifest = write_manifest(&dir, &storage_refs, None).unwrap();
+    let manifest_path = manifest.to_str().unwrap().to_owned();
+    let handle = std::thread::spawn(move || run_guest_download(&manifest_path));
+
+    let mut seen_events = Vec::new();
+    let slow_started = wait_for_event(
+        &event_rx,
+        &mut seen_events,
+        "start-0",
+        Duration::from_secs(5),
+    );
+    let queued_started = wait_for_event(
+        &event_rx,
+        &mut seen_events,
+        "start-4",
+        Duration::from_secs(5),
+    );
+    slow_release_tx.send(()).unwrap();
+    let result = handle.join().unwrap();
+
+    slow_started.unwrap();
+    queued_started.unwrap();
+    assert!(result);
+    assert!(
+        max_active.load(Ordering::SeqCst) <= 4,
+        "observed more than 4 active downloads"
+    );
+
+    for i in 0..5 {
+        let mount = dir.path().join(format!("mount_{i}"));
+        let content = std::fs::read_to_string(mount.join(format!("file_{i}.txt"))).unwrap();
+        assert_eq!(content, format!("content_{i}"));
+    }
+}
+
+#[test]
+fn parent_child_mount_paths_are_serialized_for_overlapping_archives() {
+    let parent_server = MockServer::start();
+    let child_server = MockServer::start();
+    let dir = tempfile::tempdir().unwrap();
+    let parent_mount = dir.path().join("claude");
+    let child_mount = dir.path().join("claude/skills/alpha");
+    let parent_tar = create_tar_gz(&[
+        ("config.json", b"parent config"),
+        ("skills/alpha/skill.json", b"parent skill"),
+    ])
+    .unwrap();
+    let child_tar = create_tar_gz(&[("skill.json", b"child skill")]).unwrap();
+    let (parent_started_tx, parent_started_rx) = mpsc::channel();
+    let (child_started_tx, child_started_rx) = mpsc::channel();
+    let (parent_release_tx, parent_release_rx) = mpsc::channel();
+    let _parent_release_guard = ReleaseOnDrop {
+        sender: parent_release_tx.clone(),
+    };
+    let parent_release_rx = Arc::new(Mutex::new(parent_release_rx));
+
+    let parent_release_rx_for_mock = Arc::clone(&parent_release_rx);
+    let m_parent = parent_server.mock(move |when, then| {
+        when.method(GET).path("/parent.tar.gz");
+        then.respond_with(move |_req: &HttpMockRequest| {
+            parent_started_tx.send(()).unwrap();
+            parent_release_rx_for_mock
+                .lock()
+                .unwrap()
+                .recv_timeout(Duration::from_secs(10))
+                .expect("timed out waiting to release parent request");
+            gzip_response(parent_tar.clone())
+        });
+    });
+    let m_child = child_server.mock(move |when, then| {
+        when.method(GET).path("/child.tar.gz");
+        then.respond_with(move |_req: &HttpMockRequest| {
+            child_started_tx.send(()).unwrap();
+            gzip_response(child_tar.clone())
+        });
+    });
+
+    let url_parent = parent_server.url("/parent.tar.gz");
+    let url_child = child_server.url("/child.tar.gz");
+    let storages: Vec<(&str, Option<&str>)> = vec![
+        (parent_mount.to_str().unwrap(), Some(&url_parent)),
+        (child_mount.to_str().unwrap(), Some(&url_child)),
+    ];
+    let manifest = write_manifest(&dir, &storages, None).unwrap();
+    let manifest_path = manifest.to_str().unwrap().to_owned();
+    let handle = std::thread::spawn(move || run_guest_download(&manifest_path));
+
+    let parent_started = parent_started_rx.recv_timeout(Duration::from_secs(5));
+    let child_before_release = child_started_rx.recv_timeout(Duration::from_millis(300));
+    parent_release_tx.send(()).unwrap();
+    let child_after_release =
+        if matches!(child_before_release, Err(mpsc::RecvTimeoutError::Timeout)) {
+            child_started_rx.recv_timeout(Duration::from_secs(5))
+        } else {
+            Ok(())
+        };
+    let result = handle.join().unwrap();
+
+    parent_started.unwrap();
+    assert!(matches!(
+        child_before_release,
+        Err(mpsc::RecvTimeoutError::Timeout)
+    ));
+    child_after_release.unwrap();
+    assert!(result);
+    m_parent.assert();
+    m_child.assert();
+    assert_eq!(
+        std::fs::read_to_string(parent_mount.join("config.json")).unwrap(),
+        "parent config"
+    );
+    assert_eq!(
+        std::fs::read_to_string(child_mount.join("skill.json")).unwrap(),
+        "child skill"
     );
 }
 

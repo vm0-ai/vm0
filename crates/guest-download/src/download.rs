@@ -3,13 +3,18 @@ use crate::archive;
 use crate::error::DownloadError;
 use crate::source;
 use guest_common::{log_error, log_info, log_warn, telemetry::record_sandbox_op};
+use std::any::Any;
+use std::collections::VecDeque;
 use std::fs;
+use std::path::{Component, Path, PathBuf};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
 const MAX_RETRIES: u32 = 3;
 const RETRY_DELAY: Duration = Duration::from_secs(1);
 const MAX_CONCURRENT: usize = 4;
+type TaskRunner = fn(DownloadTask) -> bool;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct DownloadTask {
@@ -43,10 +48,29 @@ impl DownloadTask {
     }
 }
 
+struct ActiveDownload {
+    id: usize,
+    mount_path: PathBuf,
+}
+
+struct DownloadCompletion {
+    id: usize,
+    outcome: DownloadOutcome,
+}
+
+enum DownloadOutcome {
+    Finished(bool),
+    Panicked(String),
+}
+
 /// Download all tasks in parallel using std::thread.
-/// Limits concurrency to MAX_CONCURRENT to avoid spawning too many threads.
+/// Limits concurrency to MAX_CONCURRENT and serializes overlapping mount paths.
 /// Returns true if all downloads succeeded, false if any failed.
 pub(crate) fn download_all_parallel(tasks: Vec<DownloadTask>) -> bool {
+    download_all_parallel_with_runner(tasks, run_download_task)
+}
+
+fn download_all_parallel_with_runner(tasks: Vec<DownloadTask>, task_runner: TaskRunner) -> bool {
     if tasks.is_empty() {
         return true;
     }
@@ -58,80 +82,173 @@ pub(crate) fn download_all_parallel(tasks: Vec<DownloadTask>) -> bool {
         MAX_CONCURRENT
     );
 
-    let mut all_success = true;
-    let mut tasks = tasks;
+    thread::scope(|scope| {
+        let (completion_tx, completion_rx) = mpsc::channel();
+        let mut pending = VecDeque::from(tasks);
+        let mut active = Vec::new();
+        let mut next_id = 0;
+        let mut all_success = true;
 
-    // Process in chunks to limit concurrency
-    while !tasks.is_empty() {
-        let chunk: Vec<_> = tasks.drain(..tasks.len().min(MAX_CONCURRENT)).collect();
+        start_ready_downloads(
+            scope,
+            &mut pending,
+            &mut active,
+            &completion_tx,
+            &mut next_id,
+            task_runner,
+        );
 
-        let handles: Vec<_> = chunk
-            .into_iter()
-            .map(|task| {
-                thread::spawn(move || {
-                    let start = Instant::now();
-                    log_info!(
-                        LOG_TAG,
-                        "Downloading {} from {} to {}",
-                        task.label,
-                        task.url,
-                        task.mount_path
-                    );
+        while !active.is_empty() {
+            let completion = match completion_rx.recv() {
+                Ok(completion) => completion,
+                Err(e) => {
+                    log_error!(LOG_TAG, "Download scheduler failed: {e}");
+                    return false;
+                }
+            };
 
-                    match download_with_retry(&task.url, &task.mount_path) {
-                        Ok(()) => {
-                            let elapsed = start.elapsed();
-                            record_sandbox_op(task.op_name, elapsed, true, None);
-                            log_info!(
-                                LOG_TAG,
-                                "{} downloaded in {}ms",
-                                task.label,
-                                elapsed.as_millis()
-                            );
-                            true
-                        }
-                        Err(e) if e.status_code == Some(404) && task.allow_404 => {
-                            record_sandbox_op(task.op_name, start.elapsed(), true, None);
-                            log_info!(LOG_TAG, "{} not found, skipping (first run)", task.label);
-                            true
-                        }
-                        Err(e) => {
-                            record_sandbox_op(
-                                task.op_name,
-                                start.elapsed(),
-                                false,
-                                Some(&e.message),
-                            );
-                            log_error!(LOG_TAG, "{} download failed: {}", task.label, e);
-                            false
-                        }
-                    }
-                })
-            })
-            .collect();
+            active.retain(|download| download.id != completion.id);
 
-        // Wait for this chunk to complete before starting next
-        for handle in handles {
-            match handle.join() {
-                Ok(success) => {
+            match completion.outcome {
+                DownloadOutcome::Finished(success) => {
                     if !success {
                         all_success = false;
                     }
                 }
-                Err(e) => {
-                    let msg = e
-                        .downcast_ref::<String>()
-                        .map(String::as_str)
-                        .or_else(|| e.downcast_ref::<&str>().copied())
-                        .unwrap_or("unknown");
+                DownloadOutcome::Panicked(msg) => {
                     log_error!(LOG_TAG, "Thread panicked: {msg}");
                     all_success = false;
                 }
             }
+
+            start_ready_downloads(
+                scope,
+                &mut pending,
+                &mut active,
+                &completion_tx,
+                &mut next_id,
+                task_runner,
+            );
+        }
+
+        all_success && pending.is_empty()
+    })
+}
+
+fn start_ready_downloads<'scope, 'env: 'scope>(
+    scope: &'scope thread::Scope<'scope, 'env>,
+    pending: &mut VecDeque<DownloadTask>,
+    active: &mut Vec<ActiveDownload>,
+    completion_tx: &mpsc::Sender<DownloadCompletion>,
+    next_id: &mut usize,
+    task_runner: TaskRunner,
+) {
+    while active.len() < MAX_CONCURRENT {
+        let Some((index, mount_path)) = find_startable_download(pending, active) else {
+            break;
+        };
+        let Some(task) = pending.remove(index) else {
+            log_error!(LOG_TAG, "Download scheduler selected a missing task");
+            break;
+        };
+        let id = *next_id;
+        *next_id += 1;
+        active.push(ActiveDownload { id, mount_path });
+
+        let completion_tx = completion_tx.clone();
+        scope.spawn(move || {
+            let outcome = std::panic::catch_unwind(|| task_runner(task))
+                .map(DownloadOutcome::Finished)
+                .unwrap_or_else(|e| DownloadOutcome::Panicked(panic_message(e.as_ref())));
+
+            let _ = completion_tx.send(DownloadCompletion { id, outcome });
+        });
+    }
+}
+
+fn find_startable_download(
+    pending: &VecDeque<DownloadTask>,
+    active: &[ActiveDownload],
+) -> Option<(usize, PathBuf)> {
+    pending.iter().enumerate().find_map(|(index, task)| {
+        let mount_path = normalize_mount_path(task.mount_path());
+        let has_conflict = active.iter().any(|download| {
+            mount_paths_conflict(mount_path.as_path(), download.mount_path.as_path())
+        });
+
+        (!has_conflict).then_some((index, mount_path))
+    })
+}
+
+fn normalize_mount_path(path: &str) -> PathBuf {
+    let mut components = Vec::new();
+
+    for component in Path::new(path).components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => match components.last() {
+                Some(Component::Normal(_)) => {
+                    components.pop();
+                }
+                Some(Component::RootDir | Component::Prefix(_)) => {}
+                _ => components.push(component),
+            },
+            _ => components.push(component),
         }
     }
 
-    all_success
+    let mut normalized = PathBuf::new();
+    for component in components {
+        normalized.push(component.as_os_str());
+    }
+    normalized
+}
+
+fn mount_paths_conflict(left: &Path, right: &Path) -> bool {
+    left.starts_with(right) || right.starts_with(left)
+}
+
+fn panic_message(payload: &(dyn Any + Send)) -> String {
+    payload
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| payload.downcast_ref::<&str>().map(|msg| (*msg).to_owned()))
+        .unwrap_or_else(|| "unknown".to_owned())
+}
+
+fn run_download_task(task: DownloadTask) -> bool {
+    let start = Instant::now();
+    log_info!(
+        LOG_TAG,
+        "Downloading {} from {} to {}",
+        task.label,
+        task.url,
+        task.mount_path
+    );
+
+    match download_with_retry(&task.url, &task.mount_path) {
+        Ok(()) => {
+            let elapsed = start.elapsed();
+            record_sandbox_op(task.op_name, elapsed, true, None);
+            log_info!(
+                LOG_TAG,
+                "{} downloaded in {}ms",
+                task.label,
+                elapsed.as_millis()
+            );
+            true
+        }
+        Err(e) if e.status_code == Some(404) && task.allow_404 => {
+            record_sandbox_op(task.op_name, start.elapsed(), true, None);
+            log_info!(LOG_TAG, "{} not found, skipping (first run)", task.label);
+            true
+        }
+        Err(e) => {
+            record_sandbox_op(task.op_name, start.elapsed(), false, Some(&e.message));
+            log_error!(LOG_TAG, "{} download failed: {}", task.label, e);
+            false
+        }
+    }
 }
 
 fn download_with_retry(url: &str, target_path: &str) -> Result<(), DownloadError> {
@@ -164,4 +281,85 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadErro
 
     let reader = source::open_archive(url)?;
     archive::extract_tar_gz(reader, target_path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mount_paths_conflict_for_exact_and_parent_child_paths() {
+        assert!(mount_paths_conflict(
+            &normalize_mount_path("/tmp/mount"),
+            &normalize_mount_path("/tmp/mount")
+        ));
+        assert!(mount_paths_conflict(
+            &normalize_mount_path("/tmp/mount"),
+            &normalize_mount_path("/tmp/mount/child")
+        ));
+        assert!(mount_paths_conflict(
+            &normalize_mount_path("/tmp/mount/child"),
+            &normalize_mount_path("/tmp/mount")
+        ));
+    }
+
+    #[test]
+    fn mount_paths_do_not_conflict_for_siblings_or_prefix_traps() {
+        assert!(!mount_paths_conflict(
+            &normalize_mount_path("/tmp/mount-a"),
+            &normalize_mount_path("/tmp/mount-b")
+        ));
+        assert!(!mount_paths_conflict(
+            &normalize_mount_path("/tmp/foo/bar"),
+            &normalize_mount_path("/tmp/foo/barista")
+        ));
+    }
+
+    #[test]
+    fn mount_path_conflicts_use_lexical_normalization() {
+        assert!(mount_paths_conflict(
+            &normalize_mount_path("/tmp//foo/./bar/baz/.."),
+            &normalize_mount_path("/tmp/foo/bar")
+        ));
+        assert!(!mount_paths_conflict(
+            &normalize_mount_path("/tmp/foo/bar/../barista"),
+            &normalize_mount_path("/tmp/foo/bar")
+        ));
+    }
+
+    #[test]
+    fn task_panic_returns_false_without_unwinding() {
+        guest_common::log::clear_system_log_file();
+
+        fn runner(task: DownloadTask) -> bool {
+            if task.url == "panic" {
+                panic!("expected panic");
+            }
+            true
+        }
+
+        let result = std::panic::catch_unwind(|| {
+            download_all_parallel_with_runner(
+                vec![
+                    DownloadTask::new(
+                        "panic".to_owned(),
+                        "storage_download",
+                        "panic".to_owned(),
+                        "/tmp/panic".to_owned(),
+                        false,
+                    ),
+                    DownloadTask::new(
+                        "success".to_owned(),
+                        "storage_download",
+                        "success".to_owned(),
+                        "/tmp/success".to_owned(),
+                        false,
+                    ),
+                ],
+                runner,
+            )
+        });
+
+        assert!(matches!(result, Ok(false)));
+    }
 }
