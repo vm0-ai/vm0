@@ -1,20 +1,24 @@
 import { command, computed, type Computed } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
 import type { OrgListResponse } from "@vm0/api-contracts/contracts/org-list";
 import type {
   OrgDomainsResponse,
+  OrgMessageResponse,
   OrgMember,
   OrgMembersResponse,
   OrgRole,
 } from "@vm0/api-contracts/contracts/org-members";
 import type { User } from "@clerk/backend";
 
-import { db$, writeDb$ } from "../external/db";
+import { db$, writeDb$, type Db } from "../external/db";
 import { clerk$ } from "../external/clerk";
 import { fetchClerkMembershipRequests } from "../external/clerk-membership-requests";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
@@ -57,6 +61,16 @@ const forbiddenAccess = Object.freeze({
   }),
 });
 
+const adminCannotLeave = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Admins cannot leave the organization",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
 type OrgUpdateErrorResponse =
   | ReturnType<typeof badRequestMessage>
   | ReturnType<typeof conflict>
@@ -69,6 +83,12 @@ interface UpdateZeroOrgArgs {
   readonly slug?: string;
   readonly name?: string;
   readonly force?: boolean;
+}
+
+interface LeaveZeroOrgArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly role: OrgRole;
 }
 
 interface ClerkUpdate {
@@ -85,6 +105,67 @@ function isReservedSlug(slug: string): boolean {
     slug === "app" ||
     slug === "www"
   );
+}
+
+async function cleanupOrgMember(
+  writeDb: Db,
+  args: Pick<LeaveZeroOrgArgs, "orgId" | "userId">,
+  signal: AbortSignal,
+): Promise<void> {
+  const [installation] = await writeDb
+    .select({ slackWorkspaceId: slackOrgInstallations.slackWorkspaceId })
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.orgId, args.orgId))
+    .limit(1);
+  signal.throwIfAborted();
+
+  if (installation) {
+    const connections = await writeDb
+      .select({ id: slackOrgConnections.id })
+      .from(slackOrgConnections)
+      .where(
+        and(
+          eq(slackOrgConnections.vm0UserId, args.userId),
+          eq(
+            slackOrgConnections.slackWorkspaceId,
+            installation.slackWorkspaceId,
+          ),
+        ),
+      );
+    signal.throwIfAborted();
+
+    if (connections.length > 0) {
+      await writeDb.delete(slackOrgConnections).where(
+        inArray(
+          slackOrgConnections.id,
+          connections.map((connection) => {
+            return connection.id;
+          }),
+        ),
+      );
+      signal.throwIfAborted();
+    }
+  }
+
+  await writeDb
+    .delete(orgMembersCache)
+    .where(
+      and(
+        eq(orgMembersCache.userId, args.userId),
+        eq(orgMembersCache.orgId, args.orgId),
+      ),
+    );
+  signal.throwIfAborted();
+
+  await writeDb
+    .delete(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.userId, args.userId),
+        eq(orgMembersMetadata.orgId, args.orgId),
+      ),
+    );
+  signal.throwIfAborted();
 }
 
 function isClerkNotFound(error: unknown): boolean {
@@ -200,6 +281,30 @@ export const zeroOrgDetail$ = command(
       role: (membership[0]?.role as OrgRole) ?? "member",
       createdBy: identity.createdBy ?? undefined,
     };
+  },
+);
+
+export const leaveZeroOrg$ = command(
+  async (
+    { get, set },
+    args: LeaveZeroOrgArgs,
+    signal: AbortSignal,
+  ): Promise<OrgMessageResponse | typeof adminCannotLeave> => {
+    if (args.role === "admin") {
+      return adminCannotLeave;
+    }
+
+    const client = get(clerk$);
+    await client.organizations.deleteOrganizationMembership({
+      organizationId: args.orgId,
+      userId: args.userId,
+    });
+    signal.throwIfAborted();
+
+    await cleanupOrgMember(set(writeDb$), args, signal);
+    signal.throwIfAborted();
+
+    return { message: "Left org" };
   },
 );
 

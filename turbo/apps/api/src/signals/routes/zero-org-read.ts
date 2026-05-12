@@ -1,5 +1,8 @@
 import { command, computed } from "ccstate";
-import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
+import {
+  zeroOrgContract,
+  zeroOrgLeaveContract,
+} from "@vm0/api-contracts/contracts/zero-org";
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
 import { zeroOrgDomainsContract } from "@vm0/api-contracts/contracts/zero-org-domains";
 import { zeroOrgMembersContract } from "@vm0/api-contracts/contracts/zero-org-members";
@@ -10,6 +13,7 @@ import { bodyResultOf } from "../context/request";
 import { badRequestMessage, notFound } from "../../lib/error";
 import type { RouteEntry } from "../route";
 import {
+  leaveZeroOrg$,
   updateZeroOrg$,
   zeroOrgDetail$,
   zeroOrgDomainsList,
@@ -86,6 +90,34 @@ const updateOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
+const leaveOrgBody$ = bodyResultOf(zeroOrgLeaveContract.leave);
+
+const leaveOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const bodyResult = await get(leaveOrgBody$);
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+
+  const result = await set(
+    leaveZeroOrg$,
+    {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      role: auth.orgRole ?? "member",
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  if ("status" in result) {
+    return result;
+  }
+
+  return { status: 200 as const, body: result };
+});
+
 const listOrgsInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const body = await get(zeroOrgList(auth.userId));
@@ -123,6 +155,10 @@ export const zeroOrgReadRoutes: readonly RouteEntry[] = [
   {
     route: zeroOrgContract.update,
     handler: authRoute({}, updateOrgInner$),
+  },
+  {
+    route: zeroOrgLeaveContract.leave,
+    handler: authRoute({ requireOrganization: true }, leaveOrgInner$),
   },
   {
     route: zeroOrgListContract.list,

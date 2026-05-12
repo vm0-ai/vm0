@@ -1,11 +1,18 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
+import {
+  zeroOrgContract,
+  zeroOrgLeaveContract,
+} from "@vm0/api-contracts/contracts/zero-org";
 import { orgCache } from "@vm0/db/schema/org-cache";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
-import { afterEach } from "vitest";
+import { and, eq } from "drizzle-orm";
+import { afterEach, beforeEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
@@ -101,6 +108,14 @@ async function deleteOrgComposite(
   fixture: OrgMembershipFixture,
 ): Promise<void> {
   const writeDb = store.set(writeDb$);
+  await writeDb
+    .delete(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.orgId, fixture.orgId),
+        eq(orgMembersMetadata.userId, fixture.userId),
+      ),
+    );
   await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
   await store.set(deleteOrgMembership$, fixture, context.signal);
 }
@@ -122,6 +137,80 @@ async function readOrgCache(orgId: string): Promise<
     .where(eq(orgCache.orgId, orgId))
     .limit(1);
   return cached;
+}
+
+async function readOrgMemberCache(
+  orgId: string,
+  userId: string,
+): Promise<{ readonly role: string } | undefined> {
+  const writeDb = store.set(writeDb$);
+  const [cached] = await writeDb
+    .select({ role: orgMembersCache.role })
+    .from(orgMembersCache)
+    .where(
+      and(eq(orgMembersCache.orgId, orgId), eq(orgMembersCache.userId, userId)),
+    )
+    .limit(1);
+  return cached;
+}
+
+async function readOrgMemberMetadata(
+  orgId: string,
+  userId: string,
+): Promise<{ readonly userId: string } | undefined> {
+  const writeDb = store.set(writeDb$);
+  const [metadata] = await writeDb
+    .select({ userId: orgMembersMetadata.userId })
+    .from(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.orgId, orgId),
+        eq(orgMembersMetadata.userId, userId),
+      ),
+    )
+    .limit(1);
+  return metadata;
+}
+
+function readSlackConnections(
+  workspaceId: string,
+): Promise<{ readonly vm0UserId: string }[]> {
+  const writeDb = store.set(writeDb$);
+  return writeDb
+    .select({ vm0UserId: slackOrgConnections.vm0UserId })
+    .from(slackOrgConnections)
+    .where(eq(slackOrgConnections.slackWorkspaceId, workspaceId));
+}
+
+async function seedSlackOrgConnection(
+  orgId: string,
+  userId: string,
+): Promise<string> {
+  const writeDb = store.set(writeDb$);
+  const workspaceId = `T_${randomUUID().replace(/-/g, "").slice(0, 10)}`;
+  await writeDb.insert(slackOrgInstallations).values({
+    slackWorkspaceId: workspaceId,
+    slackWorkspaceName: "Test Workspace",
+    orgId,
+    encryptedBotToken: "encrypted-token",
+    botUserId: "U_BOT",
+  });
+  await writeDb.insert(slackOrgConnections).values({
+    slackUserId: `U_${randomUUID().replace(/-/g, "").slice(0, 10)}`,
+    slackWorkspaceId: workspaceId,
+    vm0UserId: userId,
+  });
+  return workspaceId;
+}
+
+async function deleteSlackWorkspace(workspaceId: string): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb
+    .delete(slackOrgConnections)
+    .where(eq(slackOrgConnections.slackWorkspaceId, workspaceId));
+  await writeDb
+    .delete(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId));
 }
 
 describe("GET /api/zero/org", () => {
@@ -499,6 +588,165 @@ describe("PUT /api/zero/org", () => {
     });
     expect(
       context.mocks.clerk.organizations.updateOrganization,
+    ).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/zero/org/leave", () => {
+  const seededFixtures: OrgMembershipFixture[] = [];
+  const slackWorkspaces: string[] = [];
+
+  beforeEach(() => {
+    context.mocks.clerk.organizations.deleteOrganizationMembership.mockReset();
+    context.mocks.clerk.organizations.deleteOrganizationMembership.mockResolvedValue(
+      {},
+    );
+  });
+
+  afterEach(async () => {
+    while (slackWorkspaces.length > 0) {
+      const workspaceId = slackWorkspaces.pop();
+      if (workspaceId) {
+        await deleteSlackWorkspace(workspaceId);
+      }
+    }
+
+    while (seededFixtures.length > 0) {
+      const fixture = seededFixtures.pop();
+      if (fixture) {
+        await deleteOrgComposite(fixture);
+      }
+    }
+  });
+
+  it("lets a member leave the active org and cleans local membership state", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(await seedOrg({ orgId, userId, role: "member" }));
+    const workspaceId = await seedSlackOrgConnection(orgId, userId);
+    slackWorkspaces.push(workspaceId);
+    const writeDb = store.set(writeDb$);
+    await writeDb.insert(orgMembersMetadata).values({ orgId, userId });
+    mocks.clerk.session(userId, orgId, "org:member");
+
+    const client = setupApp({ context })(zeroOrgLeaveContract);
+    const response = await accept(
+      client.leave({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [200],
+    );
+
+    expect(response).toMatchObject({ body: { message: "Left org" } });
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationMembership,
+    ).toHaveBeenCalledWith({ organizationId: orgId, userId });
+    await expect(readOrgMemberCache(orgId, userId)).resolves.toBeUndefined();
+    await expect(readOrgMemberMetadata(orgId, userId)).resolves.toBeUndefined();
+    await expect(readSlackConnections(workspaceId)).resolves.toHaveLength(0);
+  });
+
+  it("rejects admins", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(await seedOrg({ orgId, userId, role: "admin" }));
+    mocks.clerk.session(userId, orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroOrgLeaveContract);
+    const response = await accept(
+      client.leave({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [403],
+    );
+
+    expect(response).toMatchObject({
+      body: {
+        error: {
+          code: "FORBIDDEN",
+          message: "Admins cannot leave the organization",
+        },
+      },
+    });
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationMembership,
+    ).not.toHaveBeenCalled();
+    await expect(readOrgMemberCache(orgId, userId)).resolves.toMatchObject({
+      role: "admin",
+    });
+  });
+
+  it("returns 401 when not authenticated", async () => {
+    const client = setupApp({ context })(zeroOrgLeaveContract);
+    const response = await accept(
+      client.leave({ headers: {}, body: {} }),
+      [401],
+    );
+
+    expect(response).toMatchObject({
+      body: { error: { code: "UNAUTHORIZED" } },
+    });
+  });
+
+  it("returns 400 when authenticated without an org", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+
+    const client = setupApp({ context })(zeroOrgLeaveContract);
+    const response = await accept(
+      client.leave({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [400],
+    );
+
+    expect(response).toMatchObject({
+      body: {
+        error: {
+          code: "BAD_REQUEST",
+          message:
+            "Explicit org context required — ensure active org in session",
+        },
+      },
+    });
+  });
+
+  it("rejects zero tokens", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(await seedOrg({ orgId, userId, role: "member" }));
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId,
+      orgId,
+      runId: `run_${randomUUID()}`,
+      capabilities: [],
+      iat: seconds,
+      exp: seconds + 600,
+    });
+
+    const client = setupApp({ context })(zeroOrgLeaveContract);
+    const response = await accept(
+      client.leave({
+        headers: { authorization: `Bearer ${token}` },
+        body: {},
+      }),
+      [403],
+    );
+
+    expect(response).toMatchObject({
+      body: {
+        error: {
+          code: "FORBIDDEN",
+          message: "This endpoint is not available for sandbox tokens",
+        },
+      },
+    });
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationMembership,
     ).not.toHaveBeenCalled();
   });
 });
