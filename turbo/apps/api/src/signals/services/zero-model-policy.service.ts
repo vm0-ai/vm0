@@ -22,6 +22,7 @@ import { nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
 
 type OrgModelPolicyRow = typeof orgModelPolicies.$inferSelect;
+type NewOrgModelPolicyRow = typeof orgModelPolicies.$inferInsert;
 
 interface ProviderRouteInfo {
   readonly id: string;
@@ -45,6 +46,23 @@ function bad<T>(message: string): ServiceResult<T> {
 
 function isOAuthMemberProviderType(type: ModelProviderType): boolean {
   return type === "claude-code-oauth-token" || type === "codex-oauth-token";
+}
+
+function getPolicyRouteForProvider(params: {
+  readonly providerType: ModelProviderType;
+  readonly modelProviderId: string | null;
+}): {
+  readonly credentialScope: ModelProviderCredentialScope;
+  readonly modelProviderId: string | null;
+} {
+  if (isOAuthMemberProviderType(params.providerType)) {
+    return { credentialScope: "member", modelProviderId: null };
+  }
+  return {
+    credentialScope: "org",
+    modelProviderId:
+      params.providerType === "vm0" ? null : params.modelProviderId,
+  };
 }
 
 function parseProviderType(value: string): ModelProviderType | null {
@@ -86,6 +104,95 @@ function sortRowsByCatalog(rows: OrgModelPolicyRow[]): OrgModelPolicyRow[] {
   });
 }
 
+async function loadOrgDefaultProviderSeed(
+  db: Db,
+  orgId: string,
+): Promise<{
+  readonly providerType: ModelProviderType;
+  readonly selectedModel: SupportedRunModel | null;
+  readonly credentialScope: ModelProviderCredentialScope;
+  readonly modelProviderId: string | null;
+} | null> {
+  const [provider] = await db
+    .select({
+      id: modelProviders.id,
+      type: modelProviders.type,
+      selectedModel: modelProviders.selectedModel,
+    })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        eq(modelProviders.isDefault, true),
+      ),
+    )
+    .limit(1);
+
+  const providerType = provider ? parseProviderType(provider.type) : null;
+  if (!provider || !providerType) {
+    return null;
+  }
+
+  const route = getPolicyRouteForProvider({
+    providerType,
+    modelProviderId: provider.id,
+  });
+  return {
+    providerType,
+    selectedModel: parseSupportedModel(provider.selectedModel ?? ""),
+    credentialScope: route.credentialScope,
+    modelProviderId: route.modelProviderId,
+  };
+}
+
+async function getDefaultPolicySeeds(
+  db: Db,
+  orgId: string,
+): Promise<
+  Omit<
+    NewOrgModelPolicyRow,
+    | "id"
+    | "orgId"
+    | "createdAt"
+    | "updatedAt"
+    | "createdByUserId"
+    | "updatedByUserId"
+  >[]
+> {
+  const seed = getDefaultOrgModelPolicySeed();
+  const provider = await loadOrgDefaultProviderSeed(db, orgId);
+  if (!provider) {
+    return seed;
+  }
+
+  const firstSupportedModel = seed.find((policy) => {
+    return isModelSupportedByProvider(policy.model, provider.providerType);
+  })?.model;
+  if (!firstSupportedModel) {
+    return seed;
+  }
+
+  const preferredDefault =
+    provider.selectedModel &&
+    isModelSupportedByProvider(provider.selectedModel, provider.providerType)
+      ? provider.selectedModel
+      : firstSupportedModel;
+
+  return seed.map((policy) => {
+    if (!isModelSupportedByProvider(policy.model, provider.providerType)) {
+      return { ...policy, isDefault: false };
+    }
+    return {
+      model: policy.model,
+      isDefault: policy.model === preferredDefault,
+      defaultProviderType: provider.providerType,
+      credentialScope: provider.credentialScope,
+      modelProviderId: provider.modelProviderId,
+    };
+  });
+}
+
 async function ensureOrgModelPolicies(
   db: Db,
   orgId: string,
@@ -124,7 +231,8 @@ async function ensureOrgModelPolicies(
       return policy.model;
     }),
   );
-  const missing = getDefaultOrgModelPolicySeed()
+  const defaultPolicySeeds = await getDefaultPolicySeeds(db, orgId);
+  const missing = defaultPolicySeeds
     .filter((seed) => {
       return !existingModels.has(seed.model);
     })

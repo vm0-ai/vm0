@@ -14,6 +14,10 @@ export function deriveAppUrl(webUrl: string): string {
   return webUrl.replace(/-www\./, "-app.").replace(/\/\/www\./, "//app.");
 }
 
+export function deriveApiUrl(webUrl: string): string {
+  return webUrl.replace(/-www\./, "-api.").replace(/\/\/www\./, "//api.");
+}
+
 export const STORAGE_STATE = path.join(__dirname, ".auth/storage-state.json");
 
 export default defineConfig({

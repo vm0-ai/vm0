@@ -42,7 +42,12 @@ export function createAuthedTsRestClient<T extends AppRouter>(
         const headers = token
           ? { ...args.headers, Authorization: `Bearer ${token}` }
           : args.headers;
-        return tsRestFetchApi({ ...args, headers, path });
+        return tsRestFetchApi({
+          ...args,
+          headers,
+          path,
+          fetchOptions: { ...args.fetchOptions, credentials: "include" },
+        });
       };
 
       let response = await requestWithToken(initialToken);

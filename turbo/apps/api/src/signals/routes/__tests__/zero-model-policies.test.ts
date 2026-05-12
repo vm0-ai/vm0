@@ -84,7 +84,12 @@ const deleteModelPolicyFixture$ = command(
 const insertOrgProvider$ = command(
   async (
     { set },
-    params: { readonly orgId: string; readonly type: ModelProviderType },
+    params: {
+      readonly orgId: string;
+      readonly type: ModelProviderType;
+      readonly isDefault?: boolean;
+      readonly selectedModel?: string;
+    },
     signal: AbortSignal,
   ): Promise<string> => {
     const writeDb = set(writeDb$);
@@ -94,6 +99,8 @@ const insertOrgProvider$ = command(
         orgId: params.orgId,
         userId: ORG_SENTINEL_USER_ID,
         type: params.type,
+        isDefault: params.isDefault ?? false,
+        selectedModel: params.selectedModel ?? null,
       })
       .returning({ id: modelProviders.id });
     signal.throwIfAborted();
@@ -216,6 +223,42 @@ describe("GET/PUT /api/zero/model-policies", () => {
     expect(response.body.workspaceDefaultModel).toBe(
       DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
     );
+  });
+
+  it("seeds the default policy route from the org default provider", async () => {
+    const fixture = await seedFixture({
+      [FeatureSwitchKey.ModelFirstModelProvider]: true,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const providerId = await store.set(
+      insertOrgProvider$,
+      {
+        orgId: fixture.orgId,
+        type: "anthropic-api-key",
+        isDefault: true,
+        selectedModel: "claude-sonnet-4-6",
+      },
+      context.signal,
+    );
+
+    const response = await accept(
+      apiClient().list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const defaultPolicy = response.body.policies.find((policy) => {
+      return policy.isDefault;
+    });
+
+    expect(response.body.workspaceDefaultModel).toBe("claude-sonnet-4-6");
+    expect(defaultPolicy).toMatchObject({
+      model: "claude-sonnet-4-6",
+      defaultProviderType: "anthropic-api-key",
+      credentialScope: "org",
+      modelProviderId: providerId,
+      routeStatus: "valid",
+    });
   });
 
   it("requires admins for policy writes", async () => {

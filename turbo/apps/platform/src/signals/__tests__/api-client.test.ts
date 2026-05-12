@@ -226,9 +226,11 @@ describe("zeroClient$ 401 redirect", () => {
     });
 
     const requestHosts: string[] = [];
+    const requestCredentials: RequestCredentials[] = [];
     server.use(
       mockApi(zeroOrgContract.get, ({ request, respond }) => {
         requestHosts.push(new URL(request.url).host);
+        requestCredentials.push(request.credentials);
         return respond(200, {
           id: "org_1",
           name: "Org",
@@ -244,6 +246,7 @@ describe("zeroClient$ 401 redirect", () => {
 
     expect(result.status).toBe(200);
     expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+    expect(requestCredentials).toStrictEqual(["include"]);
   });
 });
 

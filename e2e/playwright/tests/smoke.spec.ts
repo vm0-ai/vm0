@@ -1,12 +1,18 @@
 import { clerk, clerkSetup } from "@clerk/testing/playwright";
 import { expect, test } from "@playwright/test";
-import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
+import {
+  deriveApiUrl,
+  deriveAppUrl,
+  STORAGE_STATE,
+} from "../playwright.config";
 
 test("sign in and complete onboarding to chat page", async ({ page }) => {
   const email = process.env.E2E_CLERK_USER_EMAIL!;
-  const appUrl = deriveAppUrl(process.env.VM0_API_URL!);
+  const webUrl = process.env.VM0_API_URL!;
+  const appUrl = deriveAppUrl(webUrl);
 
   await clerkSetup();
+  await installApiBypassCookie(page, deriveApiUrl(webUrl));
 
   // Navigate to app — redirects to www sign-in
   await page.goto(appUrl, { waitUntil: "domcontentloaded" });
@@ -63,5 +69,28 @@ async function completeOnboarding(page: import("@playwright/test").Page) {
   const whereToWork = page.getByTestId("onboarding-step-where-to-work");
   if (await whereToWork.isVisible({ timeout: 3_000 }).catch(() => false)) {
     await page.getByRole("button", { name: "Continue in web" }).click();
+  }
+}
+
+async function installApiBypassCookie(
+  page: import("@playwright/test").Page,
+  apiUrl: string,
+): Promise<void> {
+  const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (!bypass) {
+    return;
+  }
+
+  const healthUrl = new URL("/health", apiUrl);
+  healthUrl.searchParams.set("x-vercel-set-bypass-cookie", "true");
+  healthUrl.searchParams.set("x-vercel-protection-bypass", bypass);
+  const response = await page.goto(healthUrl.toString(), {
+    waitUntil: "domcontentloaded",
+  });
+
+  if (!response?.ok()) {
+    throw new Error(
+      `Failed to set Vercel bypass cookie for API preview (${response?.status() ?? "no response"})`,
+    );
   }
 }
