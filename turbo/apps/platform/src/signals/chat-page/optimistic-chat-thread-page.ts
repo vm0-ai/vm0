@@ -29,6 +29,7 @@ import type { AppendQueuedMessageArgs } from "./chat-thread-data-source.ts";
 import { createPendingChatThread } from "./pending-chat-thread.ts";
 import {
   ATTACH_ONLY_PLACEHOLDER,
+  isVisualAttachment,
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
@@ -511,9 +512,16 @@ const sendNewThreadMessage$ = command(
     signal: AbortSignal,
   ): Promise<SendNewThreadMessagePending | null> => {
     const draft = get(talkDraft$);
+    const needsVisualAttachmentFiltering = get(draft.attachments$).some(
+      (attachment) => {
+        return isVisualAttachment(attachment);
+      },
+    );
     const effectiveSelectedModel =
       modelSelection?.selectedModel ??
-      (await set(resolveNewThreadEffectiveSelectedModel$, agentId, signal));
+      (needsVisualAttachmentFiltering
+        ? await set(resolveNewThreadEffectiveSelectedModel$, agentId, signal)
+        : undefined);
     const prepared = await set(
       prepareUserMessageFromDraft$,
       draft,

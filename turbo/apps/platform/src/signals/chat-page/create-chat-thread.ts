@@ -20,6 +20,7 @@ import {
 } from "../zero-page/chat-draft.ts";
 import {
   collectSuccessfulAttachmentInfos,
+  isVisualAttachment,
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
@@ -1490,7 +1491,12 @@ function createSendMessage(deps: SendMessageDeps) {
       // the explicit `options.goal` flag is the source of truth here.
       const isGoal = options.goal === true && get(goalEnabled$);
       let effectiveSelectedModel = modelSelection?.selectedModel;
-      if (!effectiveSelectedModel) {
+      const needsVisualAttachmentFiltering = get(draft.attachments$).some(
+        (attachment) => {
+          return isVisualAttachment(attachment);
+        },
+      );
+      if (!effectiveSelectedModel && needsVisualAttachmentFiltering) {
         if (get(modelFirstModelProviderEnabled$)) {
           const agent = await get(agentById(agentId));
           signal.throwIfAborted();
