@@ -4969,6 +4969,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_file_errors_on_truncated_stdout() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let read_task =
+            tokio::spawn(async move { host.read_file("/tmp/large.txt", 5, 5000).await });
+
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(msg.msg_type, MSG_COMMAND_START);
+        let payload = vsock_proto::encode_command_result(
+            CommandTermination::Exited { exit_code: 0 },
+            12,
+            CommandCapturedOutput::Captured {
+                bytes: b"hello",
+                truncated: true,
+            },
+            CommandCapturedOutput::Captured {
+                bytes: b"",
+                truncated: false,
+            },
+            "",
+        )
+        .unwrap();
+        send_raw_command_result(&mut guest, msg.seq, payload).await;
+
+        let err = read_task.await.unwrap().unwrap_err();
+        assert!(err.to_string().contains("exceeded 5 bytes"));
+    }
+
+    #[tokio::test]
     async fn copy_file_streams_to_temp_then_renames() {
         let (host, mut guest, mut decoder) = setup_host_and_guest().await;
         let unique = std::time::SystemTime::now()
@@ -5109,6 +5137,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn copy_file_nonzero_exit_removes_temp_without_publishing_partial_output() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "vsock-host-copy-nonzero-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let host_path = dir.join("system.log");
+        std::fs::write(&host_path, b"old host log").unwrap();
+        let copy_path = host_path.clone();
+
+        let copy_task = tokio::spawn(async move {
+            host.copy_file(
+                "/tmp/vm0-system-run.log",
+                &copy_path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout_ms: 5000,
+                    missing_ok: false,
+                },
+            )
+            .await
+        });
+
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        send_command_output(
+            &mut guest,
+            msg.seq,
+            0,
+            CommandOutputStream::Stdout,
+            b"partial",
+            false,
+        )
+        .await;
+        send_stream_command_result(
+            &mut guest,
+            msg.seq,
+            CommandTermination::Exited { exit_code: 1 },
+            b"read error",
+        )
+        .await;
+
+        let err = copy_task.await.unwrap().unwrap_err();
+        assert!(err.to_string().contains("read error"));
+        assert_eq!(std::fs::read(&host_path).unwrap(), b"old host log");
+        assert!(
+            std::fs::read_dir(&dir).unwrap().all(|entry| !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .contains("vm0tmp")),
+            "failed copy temp file should be removed"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
     async fn copy_file_missing_ok_leaves_no_final_or_temp_file() {
         let (host, mut guest, mut decoder) = setup_host_and_guest().await;
         let unique = std::time::SystemTime::now()
@@ -5149,6 +5238,59 @@ mod tests {
         let result = copy_task.await.unwrap().unwrap();
         assert_eq!(result.bytes_copied, 0);
         assert!(!host_path.exists());
+        assert!(
+            std::fs::read_dir(&dir).unwrap().all(|entry| !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .contains("vm0tmp")),
+            "missing copy temp file should be removed"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn copy_file_missing_without_missing_ok_preserves_existing_file_and_removes_temp() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "vsock-host-copy-missing-error-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let host_path = dir.join("system.log");
+        std::fs::write(&host_path, b"old host log").unwrap();
+        let copy_path = host_path.clone();
+
+        let copy_task = tokio::spawn(async move {
+            host.copy_file(
+                "/tmp/missing.log",
+                &copy_path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout_ms: 5000,
+                    missing_ok: false,
+                },
+            )
+            .await
+        });
+
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(msg.msg_type, MSG_COMMAND_START);
+        send_stream_command_result(
+            &mut guest,
+            msg.seq,
+            CommandTermination::Exited { exit_code: 66 },
+            b"",
+        )
+        .await;
+
+        let err = copy_task.await.unwrap().unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
+        assert_eq!(std::fs::read(&host_path).unwrap(), b"old host log");
         assert!(
             std::fs::read_dir(&dir).unwrap().all(|entry| !entry
                 .unwrap()
