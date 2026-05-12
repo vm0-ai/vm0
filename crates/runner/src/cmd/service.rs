@@ -1263,6 +1263,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_runner_status_malformed_long_started_at_error_is_bounded() {
+        let dir = tempfile::tempdir().unwrap();
+        let started_at = "x".repeat(512);
+        let s = format!(r#"{{"mode":"running","active_runs":[],"started_at":"{started_at}"}}"#);
+        tokio::fs::write(dir.path().join("status.json"), s)
+            .await
+            .unwrap();
+
+        let err = match read_runner_status(dir.path()).await {
+            Ok(_) => panic!("expected malformed started_at to fail"),
+            Err(err) => err,
+        };
+        let message = err.to_string();
+
+        assert!(message.contains(&"x".repeat(128)));
+        assert!(message.contains("...[truncated]"));
+        assert!(!message.contains(&"x".repeat(129)));
+    }
+
+    #[tokio::test]
     async fn read_runner_status_running_no_jobs() {
         let dir = tempfile::tempdir().unwrap();
         let s = r#"{"mode":"running","active_runs":[],"started_at":"2026-04-13T00:00:00.000Z"}"#;
