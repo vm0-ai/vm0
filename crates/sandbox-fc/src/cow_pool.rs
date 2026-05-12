@@ -1092,6 +1092,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn creation_failure_skips_cancelled_waiter() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (controller, spawner) = ControlledSpawner::new();
+        let pool =
+            test_pool_with_spawner(test_config(tmp.path()), 0, 1, 4, Duration::ZERO, spawner);
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let cancelled = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+        let active = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+        wait_for_snapshot(&handle, |snapshot| {
+            snapshot.waiters == 2 && snapshot.pending == 1
+        })
+        .await;
+        cancelled.abort();
+        assert!(cancelled.await.unwrap_err().is_cancelled());
+
+        controller
+            .take_request()
+            .send(Err(CowPoolError::CowFileCreation("boom".into())))
+            .unwrap();
+
+        assert!(matches!(
+            active.await.unwrap(),
+            Err(CowPoolError::CowFileCreation(_))
+        ));
+        handle.cleanup().await;
+    }
+
+    #[tokio::test]
     async fn single_demand_failure_backs_off_warm_retry_until_next_demand() {
         let tmp = tempfile::tempdir().unwrap();
         let (controller, spawner) = ControlledSpawner::new();
@@ -1187,6 +1222,45 @@ mod tests {
             .unwrap();
         wait_for_snapshot(&handle, |snapshot| snapshot.pending == 0).await;
         handle.cleanup().await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn cleanup_cancels_scheduled_warm_retry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (controller, spawner) = ControlledSpawner::new();
+        let pool = test_pool_with_spawner(
+            test_config(tmp.path()),
+            1,
+            1,
+            4,
+            Duration::from_secs(10),
+            spawner,
+        );
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let warmup = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.warmup().await }
+        });
+        wait_for_snapshot(&handle, |snapshot| snapshot.pending == 1).await;
+        controller
+            .take_request()
+            .send(Err(CowPoolError::CowFileCreation("missing golden".into())))
+            .unwrap();
+        warmup.await.unwrap();
+        wait_for_snapshot(&handle, |snapshot| {
+            snapshot.pending == 0 && snapshot.warm_retry_scheduled
+        })
+        .await;
+
+        handle.cleanup().await;
+        tokio::time::advance(Duration::from_secs(10)).await;
+
+        assert_eq!(controller.request_count(), 0);
+        assert!(matches!(
+            handle.acquire().await,
+            Err(CowPoolError::ActorStopped | CowPoolError::NotActive)
+        ));
     }
 
     #[tokio::test]
@@ -1517,6 +1591,24 @@ mod tests {
         );
         let entries: Vec<_> = std::fs::read_dir(&workspaces).unwrap().collect();
         assert_eq!(entries.len(), 0);
+    }
+
+    #[test]
+    fn create_slot_with_golden_cow_without_bitmap_succeeds() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspaces = tmp.path().join("workspaces");
+        let golden = tmp.path().join("golden.img");
+        std::fs::write(&golden, b"golden").unwrap();
+
+        let config = CowPoolConfig {
+            workspaces_dir: workspaces,
+            base_size: 64 * 1024 * 1024,
+            golden_cow: Some(golden),
+        };
+        let slot = create_slot(&config).unwrap();
+        assert!(slot.workspace.join("cow.img").exists());
+        assert!(!PathBuf::from(format!("{}.bitmap", slot.cow_file().display())).exists());
+        destroy_slot(slot);
     }
 
     #[test]
