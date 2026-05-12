@@ -27,6 +27,7 @@ describe("zero CLI program", () => {
       "skill",
       "slack",
       "telegram",
+      "phone",
       "variable",
       "whoami",
       "developer-support",
@@ -56,7 +57,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 21 commands", () => {
-    expect(commandNames).toHaveLength(21);
+  it("should have exactly 22 commands", () => {
+    expect(commandNames).toHaveLength(22);
   });
 });

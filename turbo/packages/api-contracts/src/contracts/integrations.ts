@@ -109,6 +109,56 @@ export type IntegrationsTelegramMessageContract =
   typeof integrationsTelegramMessageContract;
 
 /**
+ * Integration AgentPhone message contract
+ * POST /api/zero/integrations/phone/message
+ *
+ * Sends an AgentPhone text message to the connected phone handle.
+ * Requires `phone:write` capability (via ZERO_TOKEN).
+ */
+const sendPhoneMessageBodySchema = z.object({
+  agentphoneAgentId: z
+    .string()
+    .min(1, "AgentPhone agent ID is required")
+    .optional(),
+  toNumber: z.string().min(1, "Phone number is required"),
+  text: z.string().min(1, "Message text is required"),
+});
+
+export type SendPhoneMessageBody = z.infer<typeof sendPhoneMessageBodySchema>;
+
+const sendPhoneMessageResponseSchema = z.object({
+  ok: z.literal(true),
+  messageId: z.string(),
+  channel: z.string().nullable(),
+  toNumber: z.string(),
+});
+
+export type SendPhoneMessageResponse = z.infer<
+  typeof sendPhoneMessageResponseSchema
+>;
+
+export const integrationsPhoneMessageContract = c.router({
+  sendMessage: {
+    method: "POST",
+    path: "/api/zero/integrations/phone/message",
+    headers: authHeadersSchema,
+    body: sendPhoneMessageBodySchema,
+    responses: {
+      200: sendPhoneMessageResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary: "Send an AgentPhone message",
+  },
+});
+
+export type IntegrationsPhoneMessageContract =
+  typeof integrationsPhoneMessageContract;
+
+/**
  * Integration Telegram bot list contract
  * GET /api/zero/integrations/telegram/bots
  *
@@ -299,6 +349,106 @@ export const integrationsTelegramUploadCompleteContract = c.router({
       502: apiErrorSchema,
     },
     summary: "Finalize Telegram file upload and send it to a chat",
+  },
+});
+
+/**
+ * Integration AgentPhone file upload — init contract
+ * POST /api/zero/integrations/phone/upload-file/init
+ *
+ * Requests a pre-signed upload URL for a VM0-hosted file. The CLI uploads the
+ * file body directly to R2, then complete sends the public file URL through
+ * AgentPhone.
+ * Requires `phone:write` capability (via ZERO_TOKEN).
+ */
+const phoneUploadInitBodySchema = z.object({
+  filename: z.string().min(1, "Filename is required").max(255),
+  contentType: z.string().min(1, "Content type is required").max(200),
+  length: z.number().int().positive("File length must be a positive integer"),
+});
+
+export type PhoneUploadInitBody = z.infer<typeof phoneUploadInitBodySchema>;
+
+const phoneUploadInitResponseSchema = z.object({
+  uploadId: z.string().uuid(),
+  uploadUrl: z.string(),
+  fileUrl: z.string(),
+  filename: z.string(),
+  contentType: z.string(),
+  size: z.number().int().nonnegative(),
+});
+
+export type PhoneUploadInitResponse = z.infer<
+  typeof phoneUploadInitResponseSchema
+>;
+
+export const integrationsPhoneUploadInitContract = c.router({
+  init: {
+    method: "POST",
+    path: "/api/zero/integrations/phone/upload-file/init",
+    headers: authHeadersSchema,
+    body: phoneUploadInitBodySchema,
+    responses: {
+      200: phoneUploadInitResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "Get a pre-signed upload URL for AgentPhone file delivery",
+  },
+});
+
+/**
+ * Integration AgentPhone file upload — complete contract
+ * POST /api/zero/integrations/phone/upload-file/complete
+ *
+ * Sends an uploaded file URL to a connected phone handle through AgentPhone.
+ * Requires `phone:write` capability (via ZERO_TOKEN).
+ */
+const phoneUploadCompleteBodySchema = z.object({
+  uploadId: z.string().uuid("Upload ID must be a UUID"),
+  agentphoneAgentId: z
+    .string()
+    .min(1, "AgentPhone agent ID is required")
+    .optional(),
+  toNumber: z.string().min(1, "Phone number is required"),
+  contentType: z.string().min(1).max(200).optional(),
+  caption: z.string().max(1024).optional(),
+});
+
+export type PhoneUploadCompleteBody = z.infer<
+  typeof phoneUploadCompleteBodySchema
+>;
+
+const phoneUploadCompleteResponseSchema = z.object({
+  messageId: z.string(),
+  channel: z.string().nullable(),
+  toNumber: z.string(),
+  filename: z.string(),
+  mimetype: z.string(),
+  size: z.number().int().nonnegative(),
+  url: z.string(),
+});
+
+export type PhoneUploadCompleteResponse = z.infer<
+  typeof phoneUploadCompleteResponseSchema
+>;
+
+export const integrationsPhoneUploadCompleteContract = c.router({
+  complete: {
+    method: "POST",
+    path: "/api/zero/integrations/phone/upload-file/complete",
+    headers: authHeadersSchema,
+    body: phoneUploadCompleteBodySchema,
+    responses: {
+      200: phoneUploadCompleteResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary: "Finalize AgentPhone file upload and send it to a phone handle",
   },
 });
 

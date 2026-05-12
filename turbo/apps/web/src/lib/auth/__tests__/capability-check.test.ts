@@ -46,6 +46,14 @@ describe("capability-check", () => {
       );
     });
 
+    it("should let phone:write satisfy phone:read", () => {
+      expect(hasRequiredCapability(["phone:write"], "phone:read")).toBe(true);
+    });
+
+    it("should not let phone:read satisfy phone:write", () => {
+      expect(hasRequiredCapability(["phone:read"], "phone:write")).toBe(false);
+    });
+
     it("should reject missing capabilities", () => {
       expect(hasRequiredCapability(["file:read"], "telegram:read")).toBe(false);
     });

@@ -21,7 +21,8 @@ export function hasRequiredCapability(
     return (
       capability === requiredCapability ||
       (requiredCapability === "telegram:read" &&
-        capability === "telegram:write")
+        capability === "telegram:write") ||
+      (requiredCapability === "phone:read" && capability === "phone:write")
     );
   });
 }

@@ -2,7 +2,10 @@ import { and, eq } from "drizzle-orm";
 import { agentphoneThreadSessions } from "@vm0/db/schema/agentphone-thread-session";
 import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
 import { env } from "../../../../env";
-import { sendAgentPhoneMessage } from "../client";
+import {
+  sendAgentPhoneMessage,
+  sendAgentPhoneTypingIndicator,
+} from "../client";
 import { AGENTPHONE_ROOT_MESSAGE_ID } from "../constants";
 import {
   buildAgentPhoneConnectUrl,
@@ -52,6 +55,23 @@ async function sendAgentPhoneText(params: {
     toNumber: params.event.fromNumber,
     body: params.body,
   });
+}
+
+async function refreshTypingIfSupported(
+  event: AgentPhoneMessageEvent,
+): Promise<void> {
+  if (event.channel !== "imessage" || !event.conversationId) return;
+
+  try {
+    await sendAgentPhoneTypingIndicator({
+      conversationId: event.conversationId,
+    });
+  } catch (error) {
+    log.debug("Failed to send AgentPhone typing indicator", {
+      conversationId: event.conversationId,
+      error,
+    });
+  }
 }
 
 function formatConnectPrompt(event: AgentPhoneMessageEvent): string {
@@ -283,8 +303,11 @@ export async function handleAgentPhoneMessage(
   const { prompt, userInfoExtras } = enrichAgentPhonePrompt(
     event.body,
     event.fromNumber,
+    event.messageId,
     event.mediaUrl,
   );
+
+  await refreshTypingIfSupported(event);
 
   const { status, response, runId } = await runAgentForAgentPhone({
     agentId: agent.agentId,
@@ -295,12 +318,15 @@ export async function handleAgentPhoneMessage(
     userInfoExtras,
     phoneHandle: event.fromNumber,
     conversationId: event.conversationId,
+    channel: event.channel,
     messageId: event.messageId,
+    agentphoneAgentId: event.agentphoneAgentId,
     userId: userLink.vm0UserId,
     apiStartTime,
     callbackContext: {
       messageId: event.messageId,
       conversationId: event.conversationId,
+      channel: event.channel,
       phoneHandle: event.fromNumber,
       fromNumber: event.fromNumber,
       toNumber: event.toNumber,

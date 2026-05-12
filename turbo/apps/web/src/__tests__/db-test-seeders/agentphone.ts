@@ -100,6 +100,8 @@ export async function insertTestAgentPhoneMessage(params: {
   toNumber: string;
   direction: "inbound" | "outbound";
   body?: string | null;
+  mediaUrl?: string | null;
+  channel?: string;
   isBot?: boolean;
   createdAt?: Date;
 }): Promise<void> {
@@ -113,8 +115,9 @@ export async function insertTestAgentPhoneMessage(params: {
     fromNumber: normalizePhoneHandle(params.fromNumber),
     toNumber: normalizePhoneHandle(params.toNumber),
     direction: params.direction,
-    channel: "sms",
+    channel: params.channel ?? "sms",
     body: params.body ?? null,
+    mediaUrl: params.mediaUrl ?? null,
     isBot: params.isBot ?? params.direction === "outbound",
     createdAt: params.createdAt ?? new Date(),
   });

@@ -136,6 +136,14 @@ export {
   completeTelegramFileUpload,
 } from "./domains/integrations-telegram";
 
+// Domain modules - Integrations Phone
+export {
+  sendPhoneMessage,
+  downloadPhoneFile,
+  initPhoneFileUpload,
+  completePhoneFileUpload,
+} from "./domains/integrations-phone";
+
 // Domain modules - Integrations Chat
 export { sendChatMessage } from "./domains/integrations-chat";
 

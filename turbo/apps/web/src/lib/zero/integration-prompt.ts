@@ -170,19 +170,37 @@ export function buildAgentPhonePrompt(
     sharedNumber: string;
     phoneHandle: string;
     conversationId?: string | null;
+    channel?: string | null;
     messageId?: string;
+    agentphoneAgentId?: string;
   },
   threadContext: string,
 ): string {
   const headerParts = [buildIntegrationPrompt("AgentPhone")];
   headerParts.push(`Shared AgentPhone number: ${opts.sharedNumber}`);
   headerParts.push(`User phone handle: ${opts.phoneHandle}`);
+  if (opts.agentphoneAgentId) {
+    headerParts.push(`AgentPhone Agent ID: ${opts.agentphoneAgentId}`);
+  }
+  if (opts.channel) {
+    headerParts.push(`Channel: ${opts.channel}`);
+  }
   if (opts.conversationId) {
     headerParts.push(`Conversation ID: ${opts.conversationId}`);
   }
   if (opts.messageId) {
     headerParts.push(`Message ID: ${opts.messageId}`);
   }
+
+  headerParts.push(
+    [
+      "",
+      "# AgentPhone Tools",
+      "When an AgentPhone message includes an [AgentPhone file] block, download it with `zero phone download-file <ID> -o <path>` before inspecting the contents.",
+      "To send an extra text message outside the final run reply, use `zero phone message --to <phone> --text <message>`.",
+      "To send a local file, use `zero phone upload-file --to <phone> -f <path>` and include `--caption` when useful.",
+    ].join("\n"),
+  );
 
   const header = headerParts.join("\n");
   return [header, threadContext].filter(Boolean).join("\n\n");

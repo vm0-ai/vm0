@@ -4,7 +4,10 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../src/lib/infra/callback";
 import { extractRunOutput } from "../../../../../src/lib/infra/run/extract-run-output";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { sendAgentPhoneMessage } from "../../../../../src/lib/zero/agentphone/client";
+import {
+  sendAgentPhoneMessage,
+  sendAgentPhoneTypingIndicator,
+} from "../../../../../src/lib/zero/agentphone/client";
 import { resolveAgentPhoneReplyFooterText } from "../../../../../src/lib/zero/agentphone/footer";
 import {
   resolveAgentPhoneUserLink,
@@ -36,6 +39,7 @@ function parsePayload(payload: unknown): AgentPhoneCallbackPayload | null {
     messageId: p.messageId,
     conversationId:
       typeof p.conversationId === "string" ? p.conversationId : null,
+    channel: typeof p.channel === "string" ? p.channel : "unknown",
     phoneHandle: p.phoneHandle,
     fromNumber: p.fromNumber,
     toNumber: p.toNumber,
@@ -45,6 +49,24 @@ function parsePayload(payload: unknown): AgentPhoneCallbackPayload | null {
     existingSessionId:
       typeof p.existingSessionId === "string" ? p.existingSessionId : null,
   };
+}
+
+async function refreshAgentPhoneTyping(
+  payload: AgentPhoneCallbackPayload,
+  runId: string,
+): Promise<void> {
+  if (payload.channel !== "imessage" || !payload.conversationId) return;
+
+  try {
+    await sendAgentPhoneTypingIndicator({
+      conversationId: payload.conversationId,
+    });
+  } catch (err) {
+    log.debug("Failed to refresh AgentPhone typing indicator", {
+      runId,
+      error: err,
+    });
+  }
 }
 
 function errorResponse(message: string, status: number): NextResponse {
@@ -87,6 +109,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   if (status === "progress") {
+    await refreshAgentPhoneTyping(payload, runId);
     return NextResponse.json({ success: true });
   }
 

@@ -392,6 +392,8 @@ describe("getAuthContext with zero token and acceptAnySandboxCapability", () => 
         "schedule:read",
         "schedule:write",
         "slack:write",
+        "phone:read",
+        "phone:write",
         "telegram:read",
         "telegram:write",
       ]),

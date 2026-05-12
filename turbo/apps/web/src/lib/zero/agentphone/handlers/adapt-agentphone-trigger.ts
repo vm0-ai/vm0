@@ -13,7 +13,9 @@ interface AgentPhoneTriggerContext {
   userInfoExtras?: UserInfoOptions;
   phoneHandle: string;
   conversationId: string | null;
+  channel: string;
   messageId: string;
+  agentphoneAgentId: string;
   userId: string;
   callbackContext: AgentPhoneCallbackPayload;
   apiStartTime: number;
@@ -32,7 +34,9 @@ export function adaptAgentPhoneTrigger(
           sharedNumber: requireOfficialAgentPhoneNumber(),
           phoneHandle: ctx.phoneHandle,
           conversationId: ctx.conversationId,
+          channel: ctx.channel,
           messageId: ctx.messageId,
+          agentphoneAgentId: ctx.agentphoneAgentId,
         },
         ctx.threadContext,
       ) || undefined,

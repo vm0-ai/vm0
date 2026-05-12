@@ -12,6 +12,7 @@ import { POST } from "../route";
 import { POST as axiomConsumerPOST } from "../../../../internal/event-consumers/axiom/route";
 import { POST as chatAssistantConsumerPOST } from "../../../../internal/event-consumers/chat-assistant/route";
 import { POST as telegramTypingConsumerPOST } from "../../../../internal/event-consumers/telegram-typing/route";
+import { POST as agentPhoneTypingConsumerPOST } from "../../../../internal/event-consumers/agentphone-typing/route";
 import {
   createTestRequest,
   createTestCompose,
@@ -110,6 +111,12 @@ describe("POST /api/webhooks/agent/events", () => {
         "http://localhost:3000/api/internal/event-consumers/telegram-typing",
         ({ request }) => {
           return forwardToConsumer(request, telegramTypingConsumerPOST);
+        },
+      ),
+      http.post(
+        "http://localhost:3000/api/internal/event-consumers/agentphone-typing",
+        ({ request }) => {
+          return forwardToConsumer(request, agentPhoneTypingConsumerPOST);
         },
       ),
     );

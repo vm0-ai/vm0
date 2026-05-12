@@ -41,6 +41,7 @@ interface AgentPhoneSendMessageBody {
 interface AgentPhoneTestPayload {
   messageId: string;
   conversationId: string | null;
+  channel?: string;
   phoneHandle: string;
   fromNumber: string;
   toNumber: string;
@@ -63,6 +64,22 @@ function agentPhoneSendMessage() {
         channel: "sms",
         from_number: TEST_AGENTPHONE_NUMBER,
         to_number: body.to_number,
+      });
+    },
+  );
+  return { ...handler, calls };
+}
+
+function agentPhoneTypingIndicator() {
+  const calls: Array<{ conversationId: string }> = [];
+  const handler = http.post(
+    "https://api.agentphone.to/v1/conversations/:conversationId/typing",
+    ({ params }) => {
+      calls.push({ conversationId: String(params.conversationId) });
+      return HttpResponse.json({
+        conversationId: params.conversationId,
+        channel: "imessage",
+        status: "sent",
       });
     },
   );
@@ -151,6 +168,29 @@ describe("POST /api/internal/callbacks/agentphone", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ success: true });
     expect(sendMessage.calls).toHaveLength(0);
+  });
+
+  it("refreshes iMessage typing on progress callbacks", async () => {
+    const { runId, payload, secret } = await setupAgentPhoneCallback();
+    const typing = agentPhoneTypingIndicator();
+    server.use(typing.handler);
+
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/agentphone",
+      {
+        runId,
+        status: "progress",
+        payload: { ...payload, channel: "imessage" },
+      },
+      secret,
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(typing.mocked).toHaveBeenCalledTimes(1);
+    expect(typing.calls[0]).toEqual({
+      conversationId: payload.conversationId,
+    });
   });
 
   it("sends completed run output through AgentPhone and stores the session", async () => {

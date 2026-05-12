@@ -14,6 +14,7 @@ import { zeroSecretCommand } from "./commands/zero/secret";
 import { zeroChatCommand } from "./commands/zero/chat";
 import { zeroSlackCommand } from "./commands/zero/slack";
 import { zeroTelegramCommand } from "./commands/zero/telegram";
+import { zeroPhoneCommand } from "./commands/zero/phone";
 import { zeroVariableCommand } from "./commands/zero/variable";
 import { zeroWhoamiCommand } from "./commands/zero/whoami";
 import { zeroSkillCommand } from "./commands/zero/skill";
@@ -51,6 +52,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   chat: "chat-message:write",
   slack: "slack:write",
   telegram: ["telegram:read", "telegram:write"],
+  phone: ["phone:read", "phone:write"],
   whoami: null,
   "developer-support": null,
   "computer-use": "computer-use:write",
@@ -71,6 +73,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroChatCommand,
   zeroSlackCommand,
   zeroTelegramCommand,
+  zeroPhoneCommand,
   zeroVariableCommand,
   zeroLogsCommand,
   zeroSearchCommand,
@@ -140,6 +143,9 @@ Examples:
   Send Telegram?         zero telegram message send --help
   Upload Telegram?       zero telegram upload-file --help
   Download Telegram?     zero telegram download-file --help
+  Send AgentPhone?       zero phone message --help
+  Upload AgentPhone?     zero phone upload-file --help
+  Download AgentPhone?   zero phone download-file --help
   Set up a schedule?     zero schedule setup --help
   Update yourself?       zero agent --help
   Manage custom skills?  zero skill --help
