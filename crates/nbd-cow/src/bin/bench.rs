@@ -373,9 +373,9 @@ async fn run_nbd_cow_bench(
     let mut results = Vec::new();
 
     if !nbd_module_loaded() {
-        eprintln!("  WARNING: nbd kernel module not loaded.");
-        eprintln!("  Load with: modprobe nbd nbds_max=4096");
-        return Ok(results);
+        return Err(
+            "nbd kernel module not loaded; load with: modprobe nbd nbds_max=4096".to_string(),
+        );
     }
 
     eprintln!("  NBD module loaded, setting up NBD COW device...");
