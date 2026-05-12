@@ -25,7 +25,9 @@ import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
 } from "../../../mocks/handlers/api-org-model-providers.ts";
+import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -54,6 +56,9 @@ function makeProvider(
 beforeEach(() => {
   resetMockOrg();
   resetMockOrgModelProviders();
+  setMockFeatureSwitches({
+    [FeatureSwitchKey.ModelFirstModelProvider]: false,
+  });
 });
 
 function mockAPIs(options?: {

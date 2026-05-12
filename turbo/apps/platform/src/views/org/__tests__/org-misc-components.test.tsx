@@ -31,13 +31,18 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
+import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
 
 beforeEach(() => {
   resetMockOrg();
+  setMockFeatureSwitches({
+    [FeatureSwitchKey.ModelFirstModelProvider]: false,
+  });
   setMockOrg({
     id: "org_1",
     slug: "test-org",

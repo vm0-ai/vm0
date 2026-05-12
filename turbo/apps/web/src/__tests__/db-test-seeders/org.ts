@@ -532,6 +532,33 @@ export async function enableModelFirstModelProviderForUser(
     });
 }
 
+/**
+ * Disable the `modelFirstModelProvider` feature switch for legacy-path tests.
+ *
+ * @why-db-direct Tests need deterministic feature switch state now that the
+ *   global rollout default is enabled.
+ */
+export async function disableModelFirstModelProviderForUser(
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .insert(userFeatureSwitches)
+    .values({
+      orgId,
+      userId,
+      switches: { modelFirstModelProvider: false },
+    })
+    .onConflictDoUpdate({
+      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
+      set: {
+        switches: { modelFirstModelProvider: false },
+        updatedAt: new Date(),
+      },
+    });
+}
+
 export async function insertOrgModelPolicy(params: {
   orgId: string;
   model: string;

@@ -39,7 +39,7 @@ export const orgModelPolicies = pgTable(
       () => {
         return modelProviders.id;
       },
-      { onDelete: "set null" },
+      { onDelete: "cascade" },
     ),
     createdByUserId: text("created_by_user_id"),
     updatedByUserId: text("updated_by_user_id"),

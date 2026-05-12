@@ -7,6 +7,7 @@ import {
   createTestRequest,
   createTestCompose,
   enableModelFirstModelProviderForUser,
+  disableModelFirstModelProviderForUser,
   insertOrgModelPolicy,
   insertOrgDefaultModelProvider,
   insertOrgNonDefaultModelProvider,
@@ -111,6 +112,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId = await getTestZeroAgentId(user.orgId, compose.name);
       vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
       reloadEnv();
+      await disableModelFirstModelProviderForUser(user.orgId, user.userId);
       await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
     });
 

@@ -19,6 +19,7 @@ import {
   insertUserMultiAuthModelProvider,
   insertUserNonDefaultModelProvider,
   enableModelFirstModelProviderForUser,
+  disableModelFirstModelProviderForUser,
   insertOrgModelPolicy,
   insertUserModelPreference,
   insertVm0ApiKeys,
@@ -50,6 +51,7 @@ async function setupOrg(userId: string): Promise<string> {
     clerkOrgs: [{ id: orgId, slug: orgSlug, name: orgSlug, role: "org:admin" }],
   });
   await createTestOrg(orgSlug);
+  await disableModelFirstModelProviderForUser(orgId, userId);
   return orgId;
 }
 
