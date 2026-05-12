@@ -1,4 +1,4 @@
-import { computed } from "ccstate";
+import { command, computed } from "ccstate";
 import { testSlackStateContract } from "@vm0/api-contracts/contracts/test-slack-state";
 import {
   agentComposes,
@@ -11,12 +11,12 @@ import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";
 import { queryOf } from "../context/request";
 import { request$ } from "../context/hono";
-import { db$, type ReadonlyDb } from "../external/db";
+import { db$, type ReadonlyDb, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route";
 import {
   isTestEndpointAllowed,
@@ -276,9 +276,76 @@ const getSlackState$ = computed(async (get) => {
   };
 });
 
+const deleteSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const request = get(request$);
+  if (!isTestEndpointAllowed(request)) {
+    return testEndpointNotFoundResponse();
+  }
+
+  const query = get(queryOf(testSlackStateContract.delete));
+  if (!query.team_id) {
+    return {
+      status: 400 as const,
+      body: { error: "team_id query param is required" },
+    };
+  }
+
+  const db = set(writeDb$);
+  const teamId = query.team_id;
+  const [existing] = await db
+    .select({ orgId: slackOrgInstallations.orgId })
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.slackWorkspaceId, teamId))
+    .limit(1);
+  signal.throwIfAborted();
+
+  await db
+    .delete(slackOrgConnections)
+    .where(eq(slackOrgConnections.slackWorkspaceId, teamId));
+  signal.throwIfAborted();
+
+  await db
+    .delete(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.slackWorkspaceId, teamId));
+  signal.throwIfAborted();
+
+  if (existing?.orgId) {
+    const slackAgentRuns = await db
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
+      .where(
+        and(
+          eq(agentRuns.orgId, existing.orgId),
+          eq(zeroRuns.triggerSource, "slack"),
+        ),
+      );
+    signal.throwIfAborted();
+
+    const runIds = slackAgentRuns.map((run) => {
+      return run.id;
+    });
+    if (runIds.length > 0) {
+      await db.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
+      signal.throwIfAborted();
+      await db.delete(agentRuns).where(inArray(agentRuns.id, runIds));
+      signal.throwIfAborted();
+    }
+  }
+
+  return {
+    status: 200 as const,
+    body: { ok: true as const },
+  };
+});
+
 export const testSlackStateRoutes: readonly RouteEntry[] = [
   {
     route: testSlackStateContract.get,
     handler: getSlackState$,
+  },
+  {
+    route: testSlackStateContract.delete,
+    handler: deleteSlackState$,
   },
 ];

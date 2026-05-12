@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
-import type { TestSlackStateResponse } from "@vm0/api-contracts/contracts/test-slack-state";
+import type {
+  TestSlackStateDeleteResponse,
+  TestSlackStateResponse,
+} from "@vm0/api-contracts/contracts/test-slack-state";
 import {
   agentComposes,
   agentComposeVersions,
@@ -37,7 +40,13 @@ interface SlackStateFixture {
   readonly versionId: string;
   readonly runId: string;
   readonly sessionId: string;
+  readonly nonSlackRunId: string | undefined;
+  readonly nonSlackSessionId: string | undefined;
   readonly mockCallMethods: readonly string[];
+}
+
+interface SlackStateFixtureOptions {
+  readonly seedNonSlackRun?: boolean;
 }
 
 function suffix(): string {
@@ -53,7 +62,9 @@ async function readJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function seedSlackStateFixture(): Promise<SlackStateFixture> {
+async function seedSlackStateFixture(
+  options: SlackStateFixtureOptions = {},
+): Promise<SlackStateFixture> {
   const id = suffix();
   const teamId = `T_${id}`;
   const orgId = `org_${id}`;
@@ -62,6 +73,8 @@ async function seedSlackStateFixture(): Promise<SlackStateFixture> {
   const versionId = suffix();
   const runId = randomUUID();
   const sessionId = randomUUID();
+  const nonSlackRunId = options.seedNonSlackRun ? randomUUID() : undefined;
+  const nonSlackSessionId = options.seedNonSlackRun ? randomUUID() : undefined;
   const newerMockMethod = `chat.postMessage.${id}`;
   const olderMockMethod = `users.info.${id}`;
 
@@ -124,6 +137,27 @@ async function seedSlackStateFixture(): Promise<SlackStateFixture> {
     id: runId,
     triggerSource: "slack",
   });
+  if (nonSlackRunId && nonSlackSessionId) {
+    await writeDb.insert(agentSessions).values({
+      id: nonSlackSessionId,
+      userId,
+      orgId,
+      agentComposeId: composeId,
+    });
+    await writeDb.insert(agentRuns).values({
+      id: nonSlackRunId,
+      userId,
+      orgId,
+      sessionId: nonSlackSessionId,
+      status: "completed",
+      prompt: "hello from manual diagnostics",
+      createdAt: new Date("2029-01-01T00:00:00.000Z"),
+    });
+    await writeDb.insert(zeroRuns).values({
+      id: nonSlackRunId,
+      triggerSource: "manual",
+    });
+  }
   await writeDb.insert(e2eSlackMockCallLog).values([
     {
       method: olderMockMethod,
@@ -151,6 +185,8 @@ async function seedSlackStateFixture(): Promise<SlackStateFixture> {
     versionId,
     runId,
     sessionId,
+    nonSlackRunId,
+    nonSlackSessionId,
     mockCallMethods: [newerMockMethod, olderMockMethod],
   };
 }
@@ -158,14 +194,23 @@ async function seedSlackStateFixture(): Promise<SlackStateFixture> {
 async function cleanupSlackStateFixture(
   fixture: SlackStateFixture,
 ): Promise<void> {
+  const runIds = [fixture.runId];
+  if (fixture.nonSlackRunId) {
+    runIds.push(fixture.nonSlackRunId);
+  }
+  const sessionIds = [fixture.sessionId];
+  if (fixture.nonSlackSessionId) {
+    sessionIds.push(fixture.nonSlackSessionId);
+  }
+
   await writeDb
     .delete(e2eSlackMockCallLog)
     .where(inArray(e2eSlackMockCallLog.method, fixture.mockCallMethods));
-  await writeDb.delete(zeroRuns).where(eq(zeroRuns.id, fixture.runId));
-  await writeDb.delete(agentRuns).where(eq(agentRuns.id, fixture.runId));
+  await writeDb.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
+  await writeDb.delete(agentRuns).where(inArray(agentRuns.id, runIds));
   await writeDb
     .delete(agentSessions)
-    .where(eq(agentSessions.id, fixture.sessionId));
+    .where(inArray(agentSessions.id, sessionIds));
   await writeDb
     .delete(slackOrgConnections)
     .where(eq(slackOrgConnections.slackWorkspaceId, fixture.teamId));
@@ -321,5 +366,97 @@ describe("GET /api/test/slack-state", () => {
         bodyJson: { text: "older" },
       },
     ]);
+  });
+});
+
+describe("DELETE /api/test/slack-state", () => {
+  it("returns 404 outside allowed test environments", async () => {
+    mockEnv("ENV", "production");
+
+    const response = await requestApp(`${ROUTE}?team_id=T_DENIED`, {
+      method: "DELETE",
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.text()).resolves.toBe("Not found");
+  });
+
+  it("requires team_id", async () => {
+    mockEnv("ENV", "development");
+
+    const response = await requestApp(ROUTE, { method: "DELETE" });
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toStrictEqual({
+      error: "team_id query param is required",
+    });
+  });
+
+  it("clears workspace Slack state without deleting mock calls or non-Slack runs", async () => {
+    mockEnv("ENV", "development");
+    const fixture = await trackSlackStateFixture(
+      seedSlackStateFixture({ seedNonSlackRun: true }),
+    );
+    if (!fixture.nonSlackRunId) {
+      throw new Error("Expected non-Slack run fixture row");
+    }
+
+    const response = await requestApp(`${ROUTE}?team_id=${fixture.teamId}`, {
+      method: "DELETE",
+    });
+    const body = await readJson<TestSlackStateDeleteResponse>(response);
+
+    expect(response.status).toBe(200);
+    expect(body).toStrictEqual({ ok: true });
+
+    await expect(
+      writeDb
+        .select({ slackWorkspaceId: slackOrgInstallations.slackWorkspaceId })
+        .from(slackOrgInstallations)
+        .where(eq(slackOrgInstallations.slackWorkspaceId, fixture.teamId)),
+    ).resolves.toStrictEqual([]);
+    await expect(
+      writeDb
+        .select({ id: slackOrgConnections.id })
+        .from(slackOrgConnections)
+        .where(eq(slackOrgConnections.slackWorkspaceId, fixture.teamId)),
+    ).resolves.toStrictEqual([]);
+    await expect(
+      writeDb
+        .select({ id: zeroRuns.id })
+        .from(zeroRuns)
+        .where(eq(zeroRuns.id, fixture.runId)),
+    ).resolves.toStrictEqual([]);
+    await expect(
+      writeDb
+        .select({ id: agentRuns.id })
+        .from(agentRuns)
+        .where(eq(agentRuns.id, fixture.runId)),
+    ).resolves.toStrictEqual([]);
+    await expect(
+      writeDb
+        .select({ id: zeroRuns.id, triggerSource: zeroRuns.triggerSource })
+        .from(zeroRuns)
+        .where(eq(zeroRuns.id, fixture.nonSlackRunId)),
+    ).resolves.toStrictEqual([
+      { id: fixture.nonSlackRunId, triggerSource: "manual" },
+    ]);
+    await expect(
+      writeDb
+        .select({ id: agentRuns.id })
+        .from(agentRuns)
+        .where(eq(agentRuns.id, fixture.nonSlackRunId)),
+    ).resolves.toStrictEqual([{ id: fixture.nonSlackRunId }]);
+
+    const mockCalls = await writeDb
+      .select({ method: e2eSlackMockCallLog.method })
+      .from(e2eSlackMockCallLog)
+      .where(inArray(e2eSlackMockCallLog.method, fixture.mockCallMethods));
+
+    expect(
+      mockCalls.map((call) => {
+        return call.method;
+      }),
+    ).toStrictEqual(expect.arrayContaining([...fixture.mockCallMethods]));
   });
 });

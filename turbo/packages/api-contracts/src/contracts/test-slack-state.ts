@@ -8,6 +8,10 @@ export const testSlackStateErrorSchema = z.object({
   error: z.string(),
 });
 
+export const testSlackStateDeleteResponseSchema = z.object({
+  ok: z.literal(true),
+});
+
 const nullableDateStringSchema = z.string().nullable();
 
 export const testSlackStateResponseSchema = z.object({
@@ -95,9 +99,25 @@ export const testSlackStateContract = c.router({
     },
     summary: "Read Slack e2e diagnostic state for a test workspace",
   },
+  delete: {
+    method: "DELETE",
+    path: "/api/test/slack-state",
+    query: z.object({
+      team_id: z.string().optional(),
+    }),
+    responses: {
+      200: testSlackStateDeleteResponseSchema,
+      400: testSlackStateErrorSchema,
+      404: z.string(),
+    },
+    summary: "Clear Slack e2e diagnostic state for a test workspace",
+  },
 });
 
 export type TestSlackStateContract = typeof testSlackStateContract;
+export type TestSlackStateDeleteResponse = z.infer<
+  typeof testSlackStateDeleteResponseSchema
+>;
 export type TestSlackStateResponse = z.infer<
   typeof testSlackStateResponseSchema
 >;
