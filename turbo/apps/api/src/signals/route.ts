@@ -68,6 +68,9 @@ import { zeroUserModelPreferenceRoutes } from "./routes/zero-user-model-preferen
 import { zeroVoiceChatRoutes } from "./routes/zero-voice-chat";
 import { zeroVoiceIoQuotaRoutes } from "./routes/zero-voice-io-quota";
 import { zeroWebDownloadRoutes } from "./routes/zero-web-download";
+import { testOAuthProviderAuthorizeRoutes } from "./routes/test-oauth-provider-authorize";
+import { testOAuthProviderEchoRoutes } from "./routes/test-oauth-provider-echo";
+import { testOAuthProviderUserinfoRoutes } from "./routes/test-oauth-provider-userinfo";
 
 export type { SignalRouteHandler };
 
@@ -146,4 +149,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...chatThreadsV1Routes,
   ...audioTranscriptionsV1Routes,
   ...modelStatsRoutes,
+  ...testOAuthProviderAuthorizeRoutes,
+  ...testOAuthProviderEchoRoutes,
+  ...testOAuthProviderUserinfoRoutes,
 ];

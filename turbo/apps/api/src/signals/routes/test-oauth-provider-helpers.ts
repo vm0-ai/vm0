@@ -1,0 +1,106 @@
+import { randomBytes } from "node:crypto";
+
+import { env, optionalEnv } from "../../lib/env";
+import { now } from "../../lib/time";
+
+export const TEST_OAUTH_CLIENT_ID = "test-oauth-client";
+
+const TEST_OAUTH_SCENARIOS = [
+  "success",
+  "expired-access",
+  "invalid-refresh",
+  "revoked",
+] as const;
+
+type TestOAuthScenario = (typeof TEST_OAUTH_SCENARIOS)[number];
+
+const TOKEN_PREFIX = "testoauth_";
+const ACCESS_PREFIX = `${TOKEN_PREFIX}at_`;
+const CODE_PREFIX = `${TOKEN_PREFIX}code_`;
+
+interface HeaderReader {
+  readonly header: (name: string) => string | undefined;
+}
+
+function randomId(): string {
+  return randomBytes(16).toString("hex");
+}
+
+export function isTestEndpointAllowed(request: HeaderReader): boolean {
+  const deployEnv = env("ENV");
+
+  if (deployEnv === "development") {
+    return true;
+  }
+
+  if (deployEnv === "preview") {
+    const bypassHeader = request.header("x-vercel-protection-bypass");
+    const expectedSecret = optionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET");
+    return !!expectedSecret && bypassHeader === expectedSecret;
+  }
+
+  return false;
+}
+
+export function testEndpointNotFoundResponse(): Response {
+  return new Response("Not found", { status: 404 });
+}
+
+export function parseTestOAuthScenario(
+  value: string,
+): TestOAuthScenario | null {
+  if ((TEST_OAUTH_SCENARIOS as readonly string[]).includes(value)) {
+    return value as TestOAuthScenario;
+  }
+  return null;
+}
+
+export function mintAuthCode(scenario: TestOAuthScenario): string {
+  return `${CODE_PREFIX}${scenario}_${randomId()}`;
+}
+
+export function mintAccessToken(expiresInSecs: number): string {
+  const expiresAtMs = now() + expiresInSecs * 1000;
+  return `${ACCESS_PREFIX}${expiresAtMs}_${randomId()}`;
+}
+
+export function mintExpiredAccessToken(): string {
+  const pastMs = now() - 1000;
+  return `${ACCESS_PREFIX}${pastMs}_${randomId()}`;
+}
+
+export function isTestOAuthAccessToken(value: string): boolean {
+  return value.startsWith(ACCESS_PREFIX);
+}
+
+function parseAccessTokenExpiryMs(token: string): number | null {
+  if (!token.startsWith(ACCESS_PREFIX)) {
+    return null;
+  }
+
+  const tail = token.slice(ACCESS_PREFIX.length);
+  const underscoreIdx = tail.indexOf("_");
+  if (underscoreIdx === -1) {
+    return null;
+  }
+
+  const ms = Number(tail.slice(0, underscoreIdx));
+  if (!Number.isFinite(ms)) {
+    return null;
+  }
+
+  return ms;
+}
+
+export function isTestOAuthAccessTokenExpired(token: string): boolean {
+  const expiresAt = parseAccessTokenExpiryMs(token);
+  if (expiresAt === null) {
+    return true;
+  }
+  return now() >= expiresAt;
+}
+
+export function bearerTokenFrom(authorization: string): string | undefined {
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  return match?.[1];
+}

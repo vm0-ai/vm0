@@ -208,6 +208,27 @@ export {
 } from "./cli-auth";
 export { authContract, type AuthContract } from "./auth";
 export {
+  testOAuthProviderAuthorizeContract,
+  testOAuthProviderAuthorizeErrorSchema,
+  testOAuthProviderAuthorizeQuerySchema,
+  type TestOAuthProviderAuthorizeContract,
+  type TestOAuthProviderAuthorizeQuery,
+} from "./test-oauth-provider-authorize";
+export {
+  testOAuthProviderEchoContract,
+  testOAuthProviderEchoErrorSchema,
+  testOAuthProviderEchoResponseSchema,
+  type TestOAuthProviderEchoContract,
+  type TestOAuthProviderEchoResponse,
+} from "./test-oauth-provider-echo";
+export {
+  testOAuthProviderUserinfoContract,
+  testOAuthProviderUserinfoErrorSchema,
+  testOAuthProviderUserinfoResponseSchema,
+  type TestOAuthProviderUserinfoContract,
+  type TestOAuthProviderUserinfoResponse,
+} from "./test-oauth-provider-userinfo";
+export {
   cronCleanupSandboxesContract,
   cleanupResultSchema,
   cleanupResponseSchema,
