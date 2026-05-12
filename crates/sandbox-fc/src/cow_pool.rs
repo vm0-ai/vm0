@@ -1312,6 +1312,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn concurrent_cleanup_callers_complete_after_pending_slot_drains() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (controller, spawner) = ControlledSpawner::new();
+        let pool =
+            test_pool_with_spawner(test_config(tmp.path()), 0, 1, 4, Duration::ZERO, spawner);
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let acquire = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+        wait_for_snapshot(&handle, |snapshot| {
+            snapshot.waiters == 1 && snapshot.pending == 1
+        })
+        .await;
+
+        let cleanup_one = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.cleanup().await }
+        });
+        let cleanup_two = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.cleanup().await }
+        });
+
+        let (slot, dropped) = test_slot_with_drop_notify(tmp.path(), "concurrent-cleanup");
+        let workspace = slot.workspace.clone();
+        controller.take_request().send(Ok(slot)).unwrap();
+
+        cleanup_one.await.unwrap();
+        cleanup_two.await.unwrap();
+        assert_eq!(dropped.await.unwrap(), workspace);
+        assert!(!workspace.exists());
+        assert!(matches!(
+            acquire.await.unwrap(),
+            Err(CowPoolError::NotActive | CowPoolError::ActorStopped)
+        ));
+    }
+
+    #[tokio::test]
     async fn slot_limit_enforced_under_concurrent_acquire() {
         let tmp = tempfile::tempdir().unwrap();
         let (controller, spawner) = ControlledSpawner::new();
@@ -1414,6 +1454,28 @@ mod tests {
             "expected CowFileCreation, got {err}"
         );
         let entries: Vec<_> = std::fs::read_dir(tmp.path()).unwrap().collect();
+        assert_eq!(entries.len(), 0);
+    }
+
+    #[test]
+    fn create_slot_with_bad_golden_bitmap_removes_partial_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspaces = tmp.path().join("workspaces");
+        let golden = tmp.path().join("golden.img");
+        std::fs::write(&golden, b"golden").unwrap();
+        std::fs::create_dir(format!("{}.bitmap", golden.display())).unwrap();
+
+        let config = CowPoolConfig {
+            workspaces_dir: workspaces.clone(),
+            base_size: 64 * 1024 * 1024,
+            golden_cow: Some(golden),
+        };
+        let err = create_slot(&config).unwrap_err();
+        assert!(
+            matches!(err, CowPoolError::CowFileCreation(_)),
+            "expected CowFileCreation, got {err}"
+        );
+        let entries: Vec<_> = std::fs::read_dir(&workspaces).unwrap().collect();
         assert_eq!(entries.len(), 0);
     }
 
