@@ -5,6 +5,8 @@ type ForbiddenResponse = {
   };
 };
 
+type AgentVisibility = "public" | "private";
+
 /**
  * Owner-OR-admin gate for per-agent write operations.
  *
@@ -14,15 +16,23 @@ export function requireAgentPermission(
   agentOwner: string,
   member: { readonly userId: string; readonly role: string },
   action: string,
+  options?: { readonly visibility?: AgentVisibility | null },
 ): ForbiddenResponse | null {
-  if (member.role === "admin" || member.userId === agentOwner) {
+  if (
+    member.userId === agentOwner ||
+    (options?.visibility !== "private" && member.role === "admin")
+  ) {
     return null;
   }
+  const ownerLabel =
+    options?.visibility === "private"
+      ? "the private agent owner"
+      : "the agent owner or org admin";
   return {
     status: 403 as const,
     body: {
       error: {
-        message: `Only the agent owner or org admin can ${action}`,
+        message: `Only ${ownerLabel} can ${action}`,
         code: "FORBIDDEN",
       },
     },

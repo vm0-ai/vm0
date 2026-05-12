@@ -3,7 +3,11 @@ import { randomUUID } from "node:crypto";
 import { command, createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { permissionAccessRequestsListContract } from "@vm0/api-contracts/contracts/zero-agents";
+import type { RawPermissionPolicies } from "@vm0/connectors/firewall-types";
+import {
+  permissionAccessRequestsListContract,
+  permissionAccessRequestsResolveContract,
+} from "@vm0/api-contracts/contracts/zero-agents";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
@@ -34,6 +38,7 @@ interface SeedPermissionAccessOrgValues {
   readonly ownerUserId?: string;
   readonly ownerRole?: OrgRole;
   readonly visibility?: AgentVisibility;
+  readonly permissionPolicies?: RawPermissionPolicies;
 }
 
 interface SeedOrgMemberValues {
@@ -48,6 +53,7 @@ interface SeedAccessRequestValues {
   readonly requesterUserId: string;
   readonly connectorRef?: string;
   readonly permission?: string;
+  readonly action?: "allow" | "deny";
   readonly status?: string;
   readonly reason?: string;
   readonly method?: string;
@@ -98,6 +104,7 @@ const seedPermissionAccessOrg$ = command(
       owner: ownerUserId,
       name: agentName,
       visibility: values.visibility ?? "public",
+      permissionPolicies: values.permissionPolicies,
     });
     signal.throwIfAborted();
 
@@ -128,6 +135,7 @@ const seedAccessRequest$ = command(
         requesterUserId: values.requesterUserId,
         connectorRef: values.connectorRef ?? "github",
         permission: values.permission ?? "issues:read",
+        action: values.action,
         status: values.status ?? "pending",
         reason: values.reason,
         method: values.method,
@@ -177,8 +185,24 @@ function apiClient() {
   return setupApp({ context })(permissionAccessRequestsListContract);
 }
 
+function resolveApiClient() {
+  return setupApp({ context })(permissionAccessRequestsResolveContract);
+}
+
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
+}
+
+async function readAgentPolicies(
+  agentId: string,
+): Promise<RawPermissionPolicies | null | undefined> {
+  const db = store.set(writeDb$);
+  const [row] = await db
+    .select({ permissionPolicies: zeroAgents.permissionPolicies })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, agentId))
+    .limit(1);
+  return row?.permissionPolicies;
 }
 
 function mockClerkUsers(
@@ -485,6 +509,327 @@ describe("GET /api/zero/permission-access-requests", () => {
       apiClient().list({
         headers: {},
         query: { agentId: randomUUID() },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+});
+
+describe("PUT /api/zero/permission-access-requests", () => {
+  const track = createFixtureTracker<PermissionAccessOrgFixture>((fixture) => {
+    return store.set(deletePermissionAccessOrg$, fixture, context.signal);
+  });
+
+  it("approves a request and updates permission policies", async () => {
+    const fixture = await track(
+      store.set(seedPermissionAccessOrg$, {}, context.signal),
+    );
+    const request = await store.set(
+      seedAccessRequest$,
+      {
+        orgId: fixture.orgId,
+        agentId: fixture.agentId,
+        requesterUserId: fixture.ownerUserId,
+        connectorRef: "github",
+        permission: "issues:read",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.ownerUserId, fixture.orgId);
+
+    const response = await accept(
+      resolveApiClient().resolve({
+        headers: authHeaders(),
+        body: { requestId: request.id, action: "approve" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("approved");
+    expect(response.body.resolvedBy).toBe(fixture.ownerUserId);
+    expect(response.body.resolvedAt).toStrictEqual(expect.any(String));
+    await expect(readAgentPolicies(fixture.agentId)).resolves.toStrictEqual({
+      github: { "issues:read": "allow" },
+    });
+  });
+
+  it("approves a deny request and stores a deny policy", async () => {
+    const fixture = await track(
+      store.set(seedPermissionAccessOrg$, {}, context.signal),
+    );
+    const request = await store.set(
+      seedAccessRequest$,
+      {
+        orgId: fixture.orgId,
+        agentId: fixture.agentId,
+        requesterUserId: fixture.ownerUserId,
+        connectorRef: "github",
+        permission: "issues:read",
+        action: "deny",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.ownerUserId, fixture.orgId);
+
+    const response = await accept(
+      resolveApiClient().resolve({
+        headers: authHeaders(),
+        body: { requestId: request.id, action: "approve" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("approved");
+    await expect(readAgentPolicies(fixture.agentId)).resolves.toStrictEqual({
+      github: { "issues:read": "deny" },
+    });
+  });
+
+  it("rejects a request without updating permission policies", async () => {
+    const fixture = await track(
+      store.set(seedPermissionAccessOrg$, {}, context.signal),
+    );
+    const request = await store.set(
+      seedAccessRequest$,
+      {
+        orgId: fixture.orgId,
+        agentId: fixture.agentId,
+        requesterUserId: fixture.ownerUserId,
+        connectorRef: "github",
+        permission: "issues:read",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.ownerUserId, fixture.orgId);
+
+    const response = await accept(
+      resolveApiClient().resolve({
+        headers: authHeaders(),
+        body: { requestId: request.id, action: "reject" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("rejected");
+    await expect(readAgentPolicies(fixture.agentId)).resolves.toBeNull();
+  });
+
+  it("allows an org admin to resolve another user's agent requests", async () => {
+    const fixture = await track(
+      store.set(seedPermissionAccessOrg$, {}, context.signal),
+    );
+    const adminUserId = `user_${randomUUID()}`;
+    await store.set(
+      seedOrgMember$,
+      { orgId: fixture.orgId, userId: adminUserId, role: "admin" },
+      context.signal,
+    );
+    const request = await store.set(
+      seedAccessRequest$,
+      {
+        orgId: fixture.orgId,
+        agentId: fixture.agentId,
+        requesterUserId: fixture.ownerUserId,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(adminUserId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      resolveApiClient().resolve({
+        headers: authHeaders(),
+        body: { requestId: request.id, action: "approve" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("approved");
+    expect(response.body.resolvedBy).toBe(adminUserId);
+  });
+
+  it("returns 403 for org admins resolving private agent requests they do not own", async () => {
+    const fixture = await track(
+      store.set(
+        seedPermissionAccessOrg$,
+        { visibility: "private" },
+        context.signal,
+      ),
+    );
+    const adminUserId = `user_${randomUUID()}`;
+    await store.set(
+      seedOrgMember$,
+      { orgId: fixture.orgId, userId: adminUserId, role: "admin" },
+      context.signal,
+    );
+    const request = await store.set(
+      seedAccessRequest$,
+      {
+        orgId: fixture.orgId,
+        agentId: fixture.agentId,
+        requesterUserId: fixture.ownerUserId,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(adminUserId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      resolveApiClient().resolve({
+        headers: authHeaders(),
+        body: { requestId: request.id, action: "approve" },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message:
+          "Only the private agent owner can resolve permission access requests",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("returns 403 for non-owner members resolving requests", async () => {
+    const fixture = await track(
+      store.set(seedPermissionAccessOrg$, {}, context.signal),
+    );
+    const memberUserId = `user_${randomUUID()}`;
+    await store.set(
+      seedOrgMember$,
+      { orgId: fixture.orgId, userId: memberUserId, role: "member" },
+      context.signal,
+    );
+    const request = await store.set(
+      seedAccessRequest$,
+      {
+        orgId: fixture.orgId,
+        agentId: fixture.agentId,
+        requesterUserId: fixture.ownerUserId,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(memberUserId, fixture.orgId, "org:member");
+
+    const response = await accept(
+      resolveApiClient().resolve({
+        headers: authHeaders(),
+        body: { requestId: request.id, action: "approve" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("returns 404 for nonexistent requests", async () => {
+    const fixture = await track(
+      store.set(seedPermissionAccessOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.ownerUserId, fixture.orgId);
+
+    const requestId = randomUUID();
+    const response = await accept(
+      resolveApiClient().resolve({
+        headers: authHeaders(),
+        body: { requestId, action: "approve" },
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: `Access request not found: ${requestId}`,
+        code: "NOT_FOUND",
+      },
+    });
+  });
+
+  it("returns 400 for already resolved requests", async () => {
+    const fixture = await track(
+      store.set(seedPermissionAccessOrg$, {}, context.signal),
+    );
+    const request = await store.set(
+      seedAccessRequest$,
+      {
+        orgId: fixture.orgId,
+        agentId: fixture.agentId,
+        requesterUserId: fixture.ownerUserId,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.ownerUserId, fixture.orgId);
+
+    await accept(
+      resolveApiClient().resolve({
+        headers: authHeaders(),
+        body: { requestId: request.id, action: "approve" },
+      }),
+      [200],
+    );
+    const response = await accept(
+      resolveApiClient().resolve({
+        headers: authHeaders(),
+        body: { requestId: request.id, action: "reject" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Request already resolved with status: approved",
+        code: "ALREADY_RESOLVED",
+      },
+    });
+  });
+
+  it("preserves existing permission policies when approving", async () => {
+    const fixture = await track(
+      store.set(
+        seedPermissionAccessOrg$,
+        {
+          permissionPolicies: {
+            slack: { "channels:read": "allow" },
+          },
+        },
+        context.signal,
+      ),
+    );
+    const request = await store.set(
+      seedAccessRequest$,
+      {
+        orgId: fixture.orgId,
+        agentId: fixture.agentId,
+        requesterUserId: fixture.ownerUserId,
+        connectorRef: "github",
+        permission: "issues:read",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.ownerUserId, fixture.orgId);
+
+    await accept(
+      resolveApiClient().resolve({
+        headers: authHeaders(),
+        body: { requestId: request.id, action: "approve" },
+      }),
+      [200],
+    );
+
+    await expect(readAgentPolicies(fixture.agentId)).resolves.toStrictEqual({
+      slack: { "channels:read": "allow" },
+      github: { "issues:read": "allow" },
+    });
+  });
+
+  it("returns 401 without auth", async () => {
+    const response = await accept(
+      resolveApiClient().resolve({
+        headers: {},
+        body: { requestId: randomUUID(), action: "approve" },
       }),
       [401],
     );
