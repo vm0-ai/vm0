@@ -29,7 +29,10 @@ import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
 } from "../../../mocks/handlers/api-org-model-providers.ts";
-import { resetMockOrgModelPolicies } from "../../../mocks/handlers/api-org-model-policies.ts";
+import {
+  resetMockOrgModelPolicies,
+  setMockOrgModelPolicies,
+} from "../../../mocks/handlers/api-org-model-policies.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import { setChatShortcutHelpOpen$ } from "../../../signals/chat-page/chat-shortcut-help.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
@@ -168,6 +171,7 @@ describe("chat composer — mod+alt+. opens the model picker", () => {
 describe("chat composer — mobile icon trigger", () => {
   beforeEach(() => {
     resetMockOrgModelProviders();
+    resetMockOrgModelPolicies();
   });
 
   // CHAT-MP-MOBILE-001: When the composer renders the picker, the trigger
@@ -202,27 +206,9 @@ describe("chat composer — mobile icon trigger", () => {
   // falls back to the placeholder label on desktop and must still show an
   // icon (IconCpu) on mobile so the control never appears empty.
   it("falls back to IconCpu on mobile when no provider resolves (CHAT-MP-MOBILE-002)", async () => {
-    // A provider exists (so the composer renders the picker) but none is
-    // marked as default, so `effectiveDefault` is null.
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: false,
-    });
-    setMockOrgModelProviders([
-      {
-        id: PROVIDER_ID,
-        type: "anthropic-api-key",
-        framework: "claude-code",
-        secretName: "ANTHROPIC_API_KEY",
-        authMethod: null,
-        secretNames: null,
-        isDefault: false,
-        selectedModel: DEFAULT_MODEL,
-        needsReconnect: false,
-        lastRefreshErrorCode: null,
-        createdAt: "2024-01-01T00:00:00Z",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-    ]);
+    // Model-first still renders the picker, but an empty policy list means
+    // there is no resolved model for the trigger.
+    setMockOrgModelPolicies([]);
 
     mockChatLifecycle({ threadId: THREAD_ID });
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });

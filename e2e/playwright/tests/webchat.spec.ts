@@ -16,6 +16,9 @@ test("send a chat message and receive a response", async ({ page }) => {
     "true",
     { timeout: 60_000 },
   );
+  await expect(
+    page.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+  ).toBeVisible({ timeout: 60_000 });
 
   // Send a message — mock claude executes this as bash
   const marker = `e2e-${Date.now()}`;

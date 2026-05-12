@@ -11,7 +11,6 @@ import type { ModelProviderSelection } from "../../views/zero-page/components/mo
 import { currentChatAgent$ } from "../agent-chat.ts";
 import { composerModelProviders$ } from "./composer-model-providers.ts";
 import {
-  createModelFirstSelection,
   resolveEffectiveAgentDefaultSelection,
   resolveModelFirstAgentDefaultSelection,
 } from "./model-provider-default.ts";
@@ -64,7 +63,13 @@ export const chatPageModelSelection$ = computed(
     }
     if (get(modelFirstModelProviderEnabled$)) {
       const agent = await get(currentChatAgent$);
-      return createModelFirstSelection(agent?.selectedModel);
+      const policies = await get(orgModelPolicies$);
+      const userPreference = await get(userModelPreference$);
+      return resolveModelFirstAgentDefaultSelection({
+        agent,
+        userPreference,
+        policies,
+      });
     }
     // Priority: agent default > workspace default. Seed here (rather than
     // letting the picker fall back to its null-value display) so the model

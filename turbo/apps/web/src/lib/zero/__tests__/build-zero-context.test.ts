@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   testContext,
   uniqueId,
@@ -164,9 +163,6 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
     });
 
     it("should error when no org default provider exists", async () => {
-      await seedUserFeatureSwitches(user.orgId, user.userId, {
-        [FeatureSwitchKey.ModelFirstModelProvider]: false,
-      });
       const agentName = uniqueId("no-key-agent");
       await createTestCompose(agentName, {
         skipDefaultApiKey: true,

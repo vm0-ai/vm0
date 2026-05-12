@@ -9,14 +9,21 @@
  */
 
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { mockApi } from "../msw-contract.ts";
 import { server } from "../server.ts";
 
+const DEFAULT_MOCK_FEATURE_SWITCHES: Record<string, boolean> = {
+  [FeatureSwitchKey.ModelFirstModelProvider]: true,
+};
+
 export function setMockFeatureSwitches(
   switches: Partial<Record<string, boolean>>,
 ): void {
-  const sanitized: Record<string, boolean> = {};
+  const sanitized: Record<string, boolean> = {
+    ...DEFAULT_MOCK_FEATURE_SWITCHES,
+  };
   for (const [key, value] of Object.entries(switches)) {
     if (value !== undefined) {
       sanitized[key] = value;

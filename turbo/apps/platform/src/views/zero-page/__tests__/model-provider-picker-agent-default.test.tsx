@@ -31,11 +31,11 @@ import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
 } from "../../../mocks/handlers/api-org-model-providers.ts";
-import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import {
   setMockOnboardingStatus,
   resetMockOnboardingStatus,
 } from "../../../mocks/handlers/api-onboarding.ts";
+import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
@@ -126,7 +126,7 @@ async function openPickerOnAgentChat(
   });
 }
 
-describe("model-provider-picker - agent/workspace default source", () => {
+describe("model-provider-picker - legacy provider agent/workspace default source", () => {
   beforeEach(() => {
     resetMockOrgModelProviders();
     resetMockOnboardingStatus();

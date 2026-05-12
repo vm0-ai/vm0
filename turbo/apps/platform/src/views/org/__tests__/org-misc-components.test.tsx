@@ -40,9 +40,6 @@ const mockApi = createMockApi(context);
 
 beforeEach(() => {
   resetMockOrg();
-  setMockFeatureSwitches({
-    [FeatureSwitchKey.ModelFirstModelProvider]: false,
-  });
   setMockOrg({
     id: "org_1",
     slug: "test-org",
@@ -342,6 +339,9 @@ describe("zero unsaved bar - interaction (ORG-I-114)", () => {
 // ---------------------------------------------------------------------------
 
 async function openSetupPrompt() {
+  setMockFeatureSwitches({
+    [FeatureSwitchKey.ModelFirstModelProvider]: false,
+  });
   detachedSetupPage({ context, path: "/?settings=providers" });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();

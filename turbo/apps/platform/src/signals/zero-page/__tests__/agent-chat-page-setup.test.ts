@@ -56,9 +56,6 @@ describe("agent chat page setup", () => {
     const agentId = "c0000000-0000-4000-a000-000000000001";
     const defaultProviderId = "00000000-0000-4000-a000-000000000001";
 
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: false,
-    });
     setMockTeam([
       {
         id: agentId,
@@ -132,7 +129,7 @@ describe("agent chat page setup", () => {
       await expect(
         context.store.get(chatPageModelSelection$),
       ).resolves.toStrictEqual({
-        modelProviderId: defaultProviderId,
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
         selectedModel: "claude-sonnet-4-6",
       });
     });

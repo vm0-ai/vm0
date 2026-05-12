@@ -7,8 +7,7 @@
  * - Real (internal): All signals, components, rendering
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
@@ -23,16 +22,9 @@ import {
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
-
-beforeEach(() => {
-  setMockFeatureSwitches({
-    [FeatureSwitchKey.ModelFirstModelProvider]: false,
-  });
-});
 
 async function openProvidersPage() {
   detachedSetupPage({ context, path: "/?settings=providers" });
@@ -158,10 +150,10 @@ describe("org-provider-dialog - content", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders model selector without secret input for vm0 provider", async () => {
+  it("hides provider-level model selector for vm0 provider", async () => {
     await openAddDialog("vm0", /Add workspace/i);
-    // vm0 is a no-secret provider with model selection
-    expect(screen.getByText("Select model")).toBeInTheDocument();
+    // Under model-first, model choices are managed through workspace policies.
+    expect(screen.queryByText("Select model")).not.toBeInTheDocument();
     expect(screen.queryByText("API key")).not.toBeInTheDocument();
   });
 });
@@ -178,17 +170,12 @@ describe("org-provider-dialog - interaction", () => {
     expect(input).toHaveValue("sk-ant-my-secret-key");
   });
 
-  // ORG-I-093: model selector dropdown shows available models
-  it("shows available models in dropdown for openrouter provider", async () => {
+  // ORG-I-093: model-first hides provider-level model selection
+  it("hides available model dropdown for openrouter provider", async () => {
     await openAddDialog("openrouter-api-key", /Add workspace/i);
 
-    const trigger = screen.getByRole("combobox");
-    click(trigger);
-
-    await waitFor(() => {
-      expect(screen.getByText("Claude Sonnet 4.6")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Claude Opus 4.6")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByText("Select model")).not.toBeInTheDocument();
   });
 
   // ORG-I-094: auth method selector for multi-auth providers
@@ -208,45 +195,28 @@ describe("org-provider-dialog - interaction", () => {
     expect(screen.getByText("IAM access keys")).toBeInTheDocument();
   });
 
-  // ORG-I-095: "Use default model" toggle switch
-  it("shows default model toggle for azure-foundry provider", async () => {
+  // ORG-I-095: provider dialogs no longer carry provider-level default-model controls
+  it("hides default model toggle for azure-foundry provider", async () => {
     await openAddDialog("azure-foundry", /Add Azure foundry portal provider/i);
 
-    const switchEl = screen.getByRole("switch");
-    expect(switchEl).toBeInTheDocument();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
   });
 
-  it("shows custom model input when default model toggle is disabled for azure-foundry", async () => {
+  it("hides custom model input for azure-foundry provider", async () => {
     await openAddDialog("azure-foundry", /Add Azure foundry portal provider/i);
 
-    // Custom model input should not be visible when toggle is on (default)
     expect(
       screen.queryByPlaceholderText("claude-sonnet-4-5"),
     ).not.toBeInTheDocument();
-
-    // Click toggle to disable "use default model"
-    const switchEl = screen.getByRole("switch");
-    click(switchEl);
-
-    await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText("claude-sonnet-4-5"),
-      ).toBeInTheDocument();
-    });
   });
 
-  // ORG-I-096: custom model ID input field
-  it("accepts custom model ID in input field for azure-foundry provider", async () => {
-    const user = userEvent.setup();
+  // ORG-I-096: custom model IDs are no longer collected in provider dialogs
+  it("does not accept custom model ID in azure-foundry provider dialog", async () => {
     await openAddDialog("azure-foundry", /Add Azure foundry portal provider/i);
 
-    const switchEl = screen.getByRole("switch");
-    click(switchEl);
-
-    const customInput = await screen.findByPlaceholderText("claude-sonnet-4-5");
-    await user.type(customInput, "my-custom-model");
-
-    expect(customInput).toHaveValue("my-custom-model");
+    expect(
+      screen.queryByPlaceholderText("claude-sonnet-4-5"),
+    ).not.toBeInTheDocument();
   });
 
   // ORG-I-097: cancel button closes dialog
