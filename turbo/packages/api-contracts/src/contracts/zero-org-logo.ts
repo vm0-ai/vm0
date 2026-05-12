@@ -12,7 +12,7 @@ export const zeroOrgLogoResponseSchema = z.object({
 export type ZeroOrgLogoResponse = z.infer<typeof zeroOrgLogoResponseSchema>;
 
 /**
- * Zero contract for GET /api/zero/org/logo
+ * Zero contract for /api/zero/org/logo
  */
 export const zeroOrgLogoContract = c.router({
   get: {
@@ -25,6 +25,22 @@ export const zeroOrgLogoContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Get current organization logo",
+  },
+  post: {
+    method: "POST",
+    path: "/api/zero/org/logo",
+    headers: authHeadersSchema,
+    contentType: "multipart/form-data",
+    body: c.type<FormData>(),
+    responses: {
+      200: zeroOrgLogoResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Upload current organization logo",
   },
 });
 
