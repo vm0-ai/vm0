@@ -160,7 +160,7 @@ struct AcquireWaiter {
 }
 
 /// Single-owner state for the bounded one-shot COW slot producer.
-pub(crate) struct CowPool {
+struct CowPool {
     active: bool,
     ready: VecDeque<PrewarmedSlot>,
     pending: JoinSet<SlotCreationOutcome>,
@@ -317,7 +317,7 @@ async fn sleep_until_deadline(deadline: Option<TokioInstant>) {
 
 impl CowPool {
     /// Create a new producer without allocating resources.
-    pub fn new(config: CowPoolConfig) -> Self {
+    fn new(config: CowPoolConfig) -> Self {
         Self::new_with_options(
             config,
             BUFFER_SIZE,
