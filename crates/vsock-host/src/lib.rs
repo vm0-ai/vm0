@@ -169,6 +169,11 @@ struct CommandOperationSnapshot {
     elapsed_ms: u128,
 }
 
+struct CommandOperationCloseSnapshot {
+    active_count: usize,
+    operations: Vec<CommandOperationSnapshot>,
+}
+
 struct CommandFrameDiagnostic {
     seq: u32,
     label: String,
@@ -376,21 +381,22 @@ impl CommandOperationDiagnostic {
         }
     }
 
-    fn mark_first_output(&mut self) {
+    fn mark_first_output(&mut self) -> Option<CommandOperationSnapshot> {
         if self.first_output_at.is_some() {
-            return;
+            return None;
         }
 
         self.first_output_at = Some(Instant::now());
         let elapsed_ms = self.elapsed_ms();
         if elapsed_ms >= COMMAND_STAGE_SLOW_THRESHOLD.as_millis() {
-            tracing::warn!(
-                seq = self.seq,
-                label = %command_label_log(&self.label),
+            return Some(CommandOperationSnapshot {
+                seq: self.seq,
+                label: self.label.clone(),
                 elapsed_ms,
-                "slow command operation first output"
-            );
+            });
         }
+
+        None
     }
 
     fn log_terminal(
@@ -684,14 +690,14 @@ impl Shared {
                     operations,
                     exits,
                 } => {
-                    let command_snapshots = command_operation_snapshots(&operations);
+                    let command_snapshot = command_operation_close_snapshot(&operations);
                     *guard = ConnectionState::Closed { exits };
                     Some((
                         pending,
                         pending_stdout,
                         stdout_senders,
                         operations,
-                        command_snapshots,
+                        command_snapshot,
                     ))
                 }
                 closed @ ConnectionState::Closed { .. } => {
@@ -702,13 +708,13 @@ impl Shared {
                 }
             }
         };
-        if let Some((pending, pending_stdout, stdout_senders, operations, command_snapshots)) =
+        if let Some((pending, pending_stdout, stdout_senders, operations, command_snapshot)) =
             maps_to_drop
         {
-            log_command_operations_closed(reason, &command_snapshots);
             let maps = (pending, pending_stdout, stdout_senders, operations);
             drop(maps);
             self.exit_notify.notify_waiters();
+            log_command_operations_closed(reason, &command_snapshot);
         }
     }
 
@@ -776,25 +782,31 @@ fn command_result_has_truncation(result: &vsock_proto::DecodedCommandResult<'_>)
         || command_captured_output_truncated(result.stderr)
 }
 
-fn command_operation_snapshots(
+fn command_operation_close_snapshot(
     operations: &HashMap<u32, Operation>,
-) -> Vec<CommandOperationSnapshot> {
-    operations
+) -> CommandOperationCloseSnapshot {
+    let active_count = operations.len();
+    let operations = operations
         .values()
+        .take(COMMAND_CLOSE_ACTIVE_LOG_LIMIT)
         .map(|operation| match operation {
             Operation::Command(operation) => operation.diagnostic.snapshot(),
         })
-        .collect()
+        .collect();
+    CommandOperationCloseSnapshot {
+        active_count,
+        operations,
+    }
 }
 
-fn log_command_operations_closed(reason: &'static str, operations: &[CommandOperationSnapshot]) {
-    if operations.is_empty() {
+fn log_command_operations_closed(reason: &'static str, snapshot: &CommandOperationCloseSnapshot) {
+    if snapshot.active_count == 0 {
         return;
     }
 
-    let active_operations = operations
+    let active_operations = snapshot
+        .operations
         .iter()
-        .take(COMMAND_CLOSE_ACTIVE_LOG_LIMIT)
         .map(|operation| {
             format!(
                 "seq={} label={} elapsed_ms={}",
@@ -805,12 +817,12 @@ fn log_command_operations_closed(reason: &'static str, operations: &[CommandOper
         })
         .collect::<Vec<_>>()
         .join(", ");
-    let active_omitted = operations
-        .len()
-        .saturating_sub(COMMAND_CLOSE_ACTIVE_LOG_LIMIT);
+    let active_omitted = snapshot
+        .active_count
+        .saturating_sub(snapshot.operations.len());
     tracing::warn!(
         reason = reason,
-        active_count = operations.len(),
+        active_count = snapshot.active_count,
         active_omitted,
         active_operations = %active_operations,
         "closing connection with active command operations"
@@ -985,25 +997,38 @@ fn owned_command_result(
 }
 
 fn dispatch_command_output(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
-    let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-    if let ConnectionState::Connected { operations, .. } = &mut *guard
-        && let Some(Operation::Command(operation)) = operations.get_mut(&msg.seq)
+    let mut first_output_slow = None;
     {
-        let decoded =
-            vsock_proto::decode_command_output(&msg.payload).map_err(command_protocol_error)?;
-        validate_command_output(operation, &decoded)?;
-        operation.diagnostic.mark_first_output();
-        if let Some(tx) = operation.stream_tx.take() {
-            match tx.try_reserve_owned() {
-                Ok(permit) => {
-                    operation.stream_tx = Some(permit.send(owned_command_output_event(decoded)));
+        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        if let ConnectionState::Connected { operations, .. } = &mut *guard
+            && let Some(Operation::Command(operation)) = operations.get_mut(&msg.seq)
+        {
+            let decoded =
+                vsock_proto::decode_command_output(&msg.payload).map_err(command_protocol_error)?;
+            validate_command_output(operation, &decoded)?;
+            first_output_slow = operation.diagnostic.mark_first_output();
+            if let Some(tx) = operation.stream_tx.take() {
+                match tx.try_reserve_owned() {
+                    Ok(permit) => {
+                        operation.stream_tx =
+                            Some(permit.send(owned_command_output_event(decoded)));
+                    }
+                    Err(mpsc::error::TrySendError::Full(_)) => {
+                        operation.stream_overflowed = true;
+                    }
+                    Err(mpsc::error::TrySendError::Closed(_)) => {}
                 }
-                Err(mpsc::error::TrySendError::Full(_)) => {
-                    operation.stream_overflowed = true;
-                }
-                Err(mpsc::error::TrySendError::Closed(_)) => {}
             }
         }
+    }
+
+    if let Some(snapshot) = first_output_slow {
+        tracing::warn!(
+            seq = snapshot.seq,
+            label = %command_label_log(&snapshot.label),
+            elapsed_ms = snapshot.elapsed_ms,
+            "slow command operation first output"
+        );
     }
 
     Ok(())
@@ -1311,6 +1336,17 @@ async fn write_command_frame(
     let wait_started_at = Instant::now();
     let mut writer = shared.writer.lock().await;
     let wait_elapsed_ms = wait_started_at.elapsed().as_millis();
+    state.store(COMMAND_FRAME_WRITE_STARTED, Ordering::Release);
+    let write_started_at = Instant::now();
+    let result = writer.write_all(&data).await;
+    let write_elapsed_ms = write_started_at.elapsed().as_millis();
+    if result.is_ok() {
+        state.store(COMMAND_FRAME_WRITE_COMPLETED, Ordering::Release);
+    } else {
+        shared.poison_connection();
+    }
+    drop(writer);
+
     if wait_elapsed_ms >= COMMAND_FRAME_WRITE_SLOW_THRESHOLD.as_millis()
         && let Some(diagnostic) = &diagnostic
     {
@@ -1323,39 +1359,33 @@ async fn write_command_frame(
         );
     }
 
-    state.store(COMMAND_FRAME_WRITE_STARTED, Ordering::Release);
-    let write_started_at = Instant::now();
-    let result = writer.write_all(&data).await;
-    let write_elapsed_ms = write_started_at.elapsed().as_millis();
-    match result {
-        Ok(()) => {
-            if write_elapsed_ms >= COMMAND_FRAME_WRITE_SLOW_THRESHOLD.as_millis()
-                && let Some(diagnostic) = &diagnostic
-            {
-                tracing::warn!(
-                    seq = diagnostic.seq,
-                    label = %command_label_log(&diagnostic.label),
-                    frame = diagnostic.frame,
-                    write_elapsed_ms,
-                    "slow command frame write"
-                );
-            }
-        }
-        Err(e) => {
-            if let Some(diagnostic) = &diagnostic {
-                tracing::warn!(
-                    seq = diagnostic.seq,
-                    label = %command_label_log(&diagnostic.label),
-                    frame = diagnostic.frame,
-                    write_elapsed_ms,
-                    error = %e,
-                    "command frame write failed"
-                );
-            }
-            return Err(e);
-        }
+    if write_elapsed_ms >= COMMAND_FRAME_WRITE_SLOW_THRESHOLD.as_millis()
+        && result.is_ok()
+        && let Some(diagnostic) = &diagnostic
+    {
+        tracing::warn!(
+            seq = diagnostic.seq,
+            label = %command_label_log(&diagnostic.label),
+            frame = diagnostic.frame,
+            write_elapsed_ms,
+            "slow command frame write"
+        );
     }
-    state.store(COMMAND_FRAME_WRITE_COMPLETED, Ordering::Release);
+
+    if let Err(e) = result {
+        if let Some(diagnostic) = &diagnostic {
+            tracing::warn!(
+                seq = diagnostic.seq,
+                label = %command_label_log(&diagnostic.label),
+                frame = diagnostic.frame,
+                write_elapsed_ms,
+                error = %e,
+                "command frame write failed"
+            );
+        }
+        return Err(e);
+    }
+
     drop(guard);
 
     Ok(())
