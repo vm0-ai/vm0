@@ -465,6 +465,15 @@ fn push_stderr_result_line(lines: &mut VecDeque<String>, line: String) {
     lines.push_back(line);
 }
 
+fn push_decoded_stderr_result_line(lines: &mut VecDeque<String>, line: &[u8]) {
+    let line = String::from_utf8_lossy(line);
+    if line.len() > STDERR_RESULT_MAX_LINE_BYTES {
+        push_stderr_result_line(lines, STDERR_OMITTED_LONG_LINE.to_string());
+    } else {
+        push_stderr_result_line(lines, line.into_owned());
+    }
+}
+
 fn finish_stderr_result_line(
     lines: &mut VecDeque<String>,
     line: &mut Vec<u8>,
@@ -480,7 +489,7 @@ fn finish_stderr_result_line(
         if line.len() > STDERR_RESULT_MAX_LINE_BYTES {
             push_stderr_result_line(lines, STDERR_OMITTED_LONG_LINE.to_string());
         } else {
-            push_stderr_result_line(lines, String::from_utf8_lossy(line).into_owned());
+            push_decoded_stderr_result_line(lines, line);
         }
     }
     line.clear();
@@ -545,12 +554,13 @@ pub struct CliExecutionResult {
     /// Best-effort, secret-masked stderr tail captured from the CLI.
     ///
     /// The guest agent keeps at most the last 200 stderr lines for failure
-    /// diagnostics. Stderr lines longer than 16 KiB after CRLF normalization
-    /// are replaced with an omission marker rather than partially returned, so
-    /// secret masking never has to process a truncated secret. Invalid UTF-8 is
-    /// decoded lossily into a valid string. It may be empty if the CLI wrote no
-    /// stderr or stderr draining timed out after process exit, and it may be
-    /// incomplete if stderr reading fails.
+    /// diagnostics. Stderr lines longer than 16 KiB after CRLF normalization,
+    /// or after lossy UTF-8 decoding, are replaced with an omission marker
+    /// rather than partially returned, so secret masking never has to process a
+    /// truncated secret. Invalid UTF-8 is decoded lossily into a valid string
+    /// when the decoded diagnostic still fits the limit. It may be empty if the
+    /// CLI wrote no stderr or stderr draining timed out after process exit, and
+    /// it may be incomplete if stderr reading fails.
     pub stderr_lines: Vec<String>,
 
     /// Highest contiguous agent event sequence whose webhook POST succeeded.

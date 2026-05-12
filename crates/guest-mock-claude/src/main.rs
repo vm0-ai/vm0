@@ -12,6 +12,8 @@
 //!                               newline and exit with code 1
 //!   @fail-invalid-utf8        - Output invalid UTF-8 bytes to stderr and exit
 //!                               with code 1
+//!   @fail-invalid-utf8-long   - Output many invalid UTF-8 bytes to stderr and exit
+//!                               with code 1
 //!   @stuck-tool               - Emit WebFetch tool_use then hang (test stuck-tool watchdog)
 //!   @stuck-tool-deaf          - Same, but ignores SIGTERM so only SIGKILL
 //!                               can terminate it
@@ -328,6 +330,15 @@ fn main() -> ExitCode {
     // Special test prefix: @fail-invalid-utf8
     if parsed.prompt == "@fail-invalid-utf8" {
         let _ = std::io::stderr().write_all(b"invalid-\xff-stderr\n");
+        let _ = std::io::stderr().flush();
+        return ExitCode::from(1);
+    }
+
+    // Special test prefix: @fail-invalid-utf8-long
+    if parsed.prompt == "@fail-invalid-utf8-long" {
+        let invalid = vec![0xff; 16 * 1024];
+        let _ = std::io::stderr().write_all(&invalid);
+        let _ = std::io::stderr().write_all(b"\n");
         let _ = std::io::stderr().flush();
         return ExitCode::from(1);
     }

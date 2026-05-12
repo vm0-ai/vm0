@@ -113,6 +113,7 @@ pub fn build_and_locate_mock() -> Result<PathBuf, String> {
 /// - `@exit-after-result` → happy path (no signal ever fires)
 /// - `@fail-no-newline:<message>` → stderr EOF without trailing newline
 /// - `@fail-invalid-utf8` → stderr bytes that are not valid UTF-8
+/// - `@fail-invalid-utf8-long` → invalid UTF-8 whose lossy form exceeds the limit
 /// - `@stuck-tool-deaf` → forced-termination SIGKILL escalation path
 /// - `@stuck-tool-closed-stdout-deaf` → stdout EOF before forced termination
 ///
