@@ -153,6 +153,9 @@ export async function validateComposeRequirements(
 interface ResolvedAdmissionProvider {
   providerType: ModelProviderType | null;
   providerFramework: ModelProviderFramework | null;
+  modelProviderId?: string | null;
+  modelProviderCredentialScope?: ModelProviderCredentialScope;
+  selectedModel?: string;
 }
 
 async function resolveProviderForAdmission(params: {
@@ -181,6 +184,12 @@ async function resolveProviderForAdmission(params: {
     return {
       providerType: route.provider.type,
       providerFramework: route.framework,
+      modelProviderId: route.credential.modelProviderId,
+      modelProviderCredentialScope: route.credential.scope,
+      selectedModel:
+        route.provider.type === "vm0"
+          ? route.model.canonical
+          : route.model.selected,
     };
   } catch (error) {
     if (isNoModelProvider(error)) {
@@ -195,6 +204,9 @@ interface RunAdmissionContext {
   userId: string;
   providerType: ModelProviderType | null;
   providerFramework?: ModelProviderFramework | null;
+  modelProviderId?: string | null;
+  modelProviderCredentialScope?: ModelProviderCredentialScope;
+  selectedModel?: string;
 }
 
 export async function resolveRunAdmissionContext(params: {
@@ -212,6 +224,9 @@ export async function resolveRunAdmissionContext(params: {
     userId: params.userId,
     providerType: provider.providerType,
     providerFramework: provider.providerFramework,
+    modelProviderId: provider.modelProviderId,
+    modelProviderCredentialScope: provider.modelProviderCredentialScope,
+    selectedModel: provider.selectedModel,
   };
 }
 
