@@ -75,7 +75,15 @@ const updateOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return result;
   }
 
-  return { status: 200 as const, body: result };
+  return {
+    status: 200 as const,
+    body: {
+      id: result.id,
+      slug: result.slug,
+      name: result.name,
+      tier: result.tier,
+    },
+  };
 });
 
 const listOrgsInner$ = computed(async (get) => {

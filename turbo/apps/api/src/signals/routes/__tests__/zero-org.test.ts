@@ -240,7 +240,7 @@ describe("PUT /api/zero/org", () => {
       [200],
     );
 
-    expect(response.body).toMatchObject({
+    expect(response.body).toStrictEqual({
       id: orgId,
       slug,
       name: "Updated Org",
@@ -369,10 +369,11 @@ describe("PUT /api/zero/org", () => {
       [200],
     );
 
-    expect(response.body).toMatchObject({
+    expect(response.body).toStrictEqual({
       id: orgId,
       slug: newSlug,
       name: "Test Org",
+      tier: "free",
     });
     expect(
       context.mocks.clerk.organizations.updateOrganization,
@@ -466,7 +467,7 @@ describe("PUT /api/zero/org", () => {
       [200],
     );
 
-    expect(response.body).toMatchObject({
+    expect(response.body).toStrictEqual({
       id: orgId,
       slug,
       name: "Current Org",
