@@ -572,7 +572,7 @@ fn parse_fio_json(stdout: &[u8]) -> Result<FioResult, String> {
     let (lat_p50_us, lat_p99_us) = fio_latency_us(jobs)?;
 
     Ok(FioResult {
-        vm_iops: vm_iops as u64,
+        vm_iops: fio_float_to_u64(vm_iops, "VM IOPS")?,
         lat_p50_us,
         lat_p99_us,
         host_disk_iops: 0,
@@ -716,10 +716,20 @@ fn single_latency_section(sections: Vec<&Value>, section_name: &str) -> Result<(
 
 fn percentile_us(section: &Value, percentile: &str) -> Option<u64> {
     let value = section.get("clat_ns")?.get("percentile")?.get(percentile)?;
-    let ns = value
-        .as_u64()
-        .or_else(|| nonnegative_f64(value).map(|value| value as u64))?;
+    let ns = value.as_u64().or_else(|| {
+        nonnegative_f64(value)
+            .filter(|value| *value < u64::MAX as f64)
+            .map(|value| value as u64)
+    })?;
     Some(ns / 1000)
+}
+
+fn fio_float_to_u64(value: f64, field: &str) -> Result<u64, String> {
+    if value.is_finite() && value >= 0.0 && value < u64::MAX as f64 {
+        Ok(value as u64)
+    } else {
+        Err(format!("fio JSON {field} is outside u64 range"))
+    }
 }
 
 fn nonnegative_f64(value: &Value) -> Option<f64> {
@@ -912,6 +922,14 @@ mod tests {
     }
 
     #[test]
+    fn fio_float_to_u64_rejects_invalid_values() {
+        assert_eq!(fio_float_to_u64(42.9, "test").unwrap(), 42);
+        assert!(fio_float_to_u64(-1.0, "test").is_err());
+        assert!(fio_float_to_u64(f64::INFINITY, "test").is_err());
+        assert!(fio_float_to_u64(u64::MAX as f64, "test").is_err());
+    }
+
+    #[test]
     fn parse_fio_json_sums_mixed_read_write_iops() {
         let json = br#"{
             "jobs": [{
@@ -1021,6 +1039,40 @@ mod tests {
                     "iops": 1000.0,
                     "total_ios": 1000,
                     "clat_ns": {"percentile": {"50.000000": -1.0, "99.000000": 23000.0}}
+                }
+            }]
+        }"#;
+
+        let err = parse_fio_json(json).unwrap_err();
+
+        assert!(err.contains("mixed p50 latency"), "{err}");
+    }
+
+    #[test]
+    fn parse_fio_json_rejects_huge_iops() {
+        let json = br#"{
+            "jobs": [{
+                "mixed": {
+                    "iops": 1e100,
+                    "total_ios": 1000,
+                    "clat_ns": {"percentile": {"50.000000": 13000, "99.000000": 23000}}
+                }
+            }]
+        }"#;
+
+        let err = parse_fio_json(json).unwrap_err();
+
+        assert!(err.contains("VM IOPS"), "{err}");
+    }
+
+    #[test]
+    fn parse_fio_json_rejects_huge_float_percentile_values() {
+        let json = br#"{
+            "jobs": [{
+                "mixed": {
+                    "iops": 1000.0,
+                    "total_ios": 1000,
+                    "clat_ns": {"percentile": {"50.000000": 1e100, "99.000000": 23000.0}}
                 }
             }]
         }"#;
