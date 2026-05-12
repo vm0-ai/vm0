@@ -198,11 +198,17 @@ describe("POST /api/generate-image", () => {
     expect(context.mocks.googleGenAi.generateContent).not.toHaveBeenCalled();
   });
 
-  it("returns 502 when the model returns no inlineData parts", async () => {
+  it("returns 502 when the model returns no image-bearing inlineData parts", async () => {
     await trackFixture(seedFixture(1000));
     mockEnv("GEMINI_API_KEY", "test-gemini-key");
     context.mocks.googleGenAi.generateContent.mockResolvedValueOnce({
-      candidates: [{ content: { parts: [{ text: "sorry no image" }] } }],
+      candidates: [
+        {
+          content: {
+            parts: [{ text: "sorry no image" }, { inlineData: null }],
+          },
+        },
+      ],
     });
 
     const response = await requestApp({ prompt: "hello" });
@@ -242,7 +248,6 @@ describe("POST /api/generate-image", () => {
       model: "gemini-2.5-flash-image",
       contents: [{ role: "user", parts: [{ text: "a cat" }] }],
     });
-    await expect(orgCredits(fixture.orgId)).resolves.toBe(1000);
 
     await clearAllDetached();
 

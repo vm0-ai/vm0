@@ -66,13 +66,16 @@ function serviceUnavailable(message: string, code: string) {
 }
 
 function hasInlineData(part: unknown): part is InlineDataPart {
+  const inlineData =
+    typeof part === "object" && part !== null && "inlineData" in part
+      ? (part as { readonly inlineData?: unknown }).inlineData
+      : undefined;
+
   return (
-    typeof part === "object" &&
-    part !== null &&
-    "inlineData" in part &&
-    typeof (part as { inlineData?: unknown }).inlineData === "object" &&
-    typeof (part as { inlineData: { data: unknown } }).inlineData.data ===
-      "string"
+    typeof inlineData === "object" &&
+    inlineData !== null &&
+    "data" in inlineData &&
+    typeof (inlineData as { readonly data?: unknown }).data === "string"
   );
 }
 
