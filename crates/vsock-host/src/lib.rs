@@ -3205,15 +3205,16 @@ mod tests {
         let result = handle.wait(Duration::from_secs(5)).await.unwrap();
         assert!(result.stream_overflowed);
         assert_eq!(operation_count(&host), 0);
-        let buffered_chunks = tokio::time::timeout(Duration::from_secs(5), async {
-            let mut count = 0;
-            while rx.recv().await.is_some() {
-                count += 1;
+        let mut buffered_chunks = 0;
+        loop {
+            match rx.try_recv() {
+                Ok(_) => buffered_chunks += 1,
+                Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => break,
+                Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+                    panic!("stream receiver should be closed after terminal result");
+                }
             }
-            count
-        })
-        .await
-        .unwrap();
+        }
         assert!(buffered_chunks <= 2);
     }
 
