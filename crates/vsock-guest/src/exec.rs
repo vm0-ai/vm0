@@ -581,13 +581,11 @@ pub(crate) fn truncate_preview(s: &str) -> String {
     if s.len() <= COMMAND_PREVIEW_MAX_LEN {
         return s.to_string();
     }
-    // Find a safe UTF-8 boundary at or before the max length
-    let end = s
-        .char_indices()
-        .take_while(|(i, _)| *i < COMMAND_PREVIEW_MAX_LEN)
-        .last()
-        .map(|(i, c)| i + c.len_utf8())
-        .unwrap_or(COMMAND_PREVIEW_MAX_LEN);
+    // Find a safe UTF-8 boundary at or before the max length.
+    let mut end = COMMAND_PREVIEW_MAX_LEN;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
     format!("{}...", &s[..end])
 }
 
@@ -1019,6 +1017,18 @@ mod tests {
         assert!(result.ends_with("..."));
         // Must not panic from slicing in the middle of a UTF-8 sequence
         assert!(result.is_char_boundary(result.len() - 3));
+
+        let boundary = format!("{}🔥tail", "a".repeat(COMMAND_PREVIEW_MAX_LEN - 4));
+        assert_eq!(
+            truncate_preview(&boundary),
+            format!("{}🔥...", "a".repeat(COMMAND_PREVIEW_MAX_LEN - 4))
+        );
+
+        let crossing = format!("{}🔥tail", "a".repeat(COMMAND_PREVIEW_MAX_LEN - 1));
+        assert_eq!(
+            truncate_preview(&crossing),
+            format!("{}...", "a".repeat(COMMAND_PREVIEW_MAX_LEN - 1))
+        );
     }
 
     #[test]

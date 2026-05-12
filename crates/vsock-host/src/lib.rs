@@ -43,7 +43,7 @@ const READ_BUF_SIZE: usize = 64 * 1024;
 const DEFAULT_COMMAND_CAPTURE_LIMIT_BYTES: u32 = 1024 * 1024;
 const DEFAULT_COMMAND_STREAM_CAPACITY: usize = 32;
 const MAX_COMMAND_STREAM_CAPACITY: usize = 1024;
-const COMMAND_LABEL_LOG_MAX_BYTES: usize = 100;
+const COMMAND_LABEL_LOG_PREFIX_MAX_BYTES: usize = 100;
 const COMMAND_CLOSE_ACTIVE_LOG_LIMIT: usize = 16;
 const COMMAND_FRAME_WRITE_SLOW_THRESHOLD: Duration = Duration::from_millis(500);
 const COMMAND_STAGE_SLOW_THRESHOLD: Duration = Duration::from_secs(5);
@@ -165,7 +165,7 @@ struct CommandOperationDiagnostic {
 
 struct CommandOperationSnapshot {
     seq: u32,
-    label: String,
+    label_log: String,
     elapsed_ms: u128,
 }
 
@@ -176,7 +176,7 @@ struct CommandOperationCloseSnapshot {
 
 struct CommandFrameDiagnostic {
     seq: u32,
-    label: String,
+    label_log: String,
     frame: &'static str,
 }
 
@@ -364,7 +364,7 @@ impl CommandOperationDiagnostic {
     fn frame(&self, frame: &'static str) -> CommandFrameDiagnostic {
         CommandFrameDiagnostic {
             seq: self.seq,
-            label: self.label.clone(),
+            label_log: command_label_log(&self.label),
             frame,
         }
     }
@@ -376,7 +376,7 @@ impl CommandOperationDiagnostic {
     fn snapshot(&self) -> CommandOperationSnapshot {
         CommandOperationSnapshot {
             seq: self.seq,
-            label: self.label.clone(),
+            label_log: command_label_log(&self.label),
             elapsed_ms: self.elapsed_ms(),
         }
     }
@@ -391,7 +391,7 @@ impl CommandOperationDiagnostic {
         if elapsed_ms >= COMMAND_STAGE_SLOW_THRESHOLD.as_millis() {
             return Some(CommandOperationSnapshot {
                 seq: self.seq,
-                label: self.label.clone(),
+                label_log: command_label_log(&self.label),
                 elapsed_ms,
             });
         }
@@ -497,13 +497,13 @@ impl CommandOperationHandle {
             "command operation cancel sent"
         );
 
-        let cancel_label = self.diagnostic.label.clone();
+        let cancel_label_log = command_label_log(&self.diagnostic.label);
         let registered_at = self.diagnostic.registered_at;
         let result = self.wait_with_timeout(timeout, true).await?;
         if result.termination == CommandTermination::Cancelled {
             tracing::info!(
                 seq = seq,
-                label = %command_label_log(&cancel_label),
+                label = %cancel_label_log,
                 elapsed_ms = registered_at.elapsed().as_millis(),
                 "command operation cancel completed"
             );
@@ -754,11 +754,11 @@ fn command_termination_is_notable(termination: CommandTermination) -> bool {
 }
 
 fn command_label_log(label: &str) -> String {
-    if label.len() <= COMMAND_LABEL_LOG_MAX_BYTES {
+    if label.len() <= COMMAND_LABEL_LOG_PREFIX_MAX_BYTES {
         return label.to_string();
     }
 
-    let mut end = COMMAND_LABEL_LOG_MAX_BYTES;
+    let mut end = COMMAND_LABEL_LOG_PREFIX_MAX_BYTES;
     while !label.is_char_boundary(end) {
         end -= 1;
     }
@@ -808,9 +808,7 @@ fn log_command_operations_closed(reason: &'static str, snapshot: &CommandOperati
         .map(|operation| {
             format!(
                 "seq={} label={} elapsed_ms={}",
-                operation.seq,
-                command_label_log(&operation.label),
-                operation.elapsed_ms
+                operation.seq, operation.label_log, operation.elapsed_ms
             )
         })
         .collect::<Vec<_>>()
@@ -1023,7 +1021,7 @@ fn dispatch_command_output(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result
     if let Some(snapshot) = first_output_slow {
         tracing::warn!(
             seq = snapshot.seq,
-            label = %command_label_log(&snapshot.label),
+            label = %snapshot.label_log,
             elapsed_ms = snapshot.elapsed_ms,
             "slow command operation first output"
         );
@@ -1350,7 +1348,7 @@ async fn write_command_frame(
     {
         tracing::warn!(
             seq = diagnostic.seq,
-            label = %command_label_log(&diagnostic.label),
+            label = %diagnostic.label_log,
             frame = diagnostic.frame,
             wait_elapsed_ms,
             "slow command frame writer lock wait"
@@ -1363,7 +1361,7 @@ async fn write_command_frame(
     {
         tracing::warn!(
             seq = diagnostic.seq,
-            label = %command_label_log(&diagnostic.label),
+            label = %diagnostic.label_log,
             frame = diagnostic.frame,
             write_elapsed_ms,
             "slow command frame write"
@@ -1374,7 +1372,7 @@ async fn write_command_frame(
         if let Some(diagnostic) = &diagnostic {
             tracing::warn!(
                 seq = diagnostic.seq,
-                label = %command_label_log(&diagnostic.label),
+                label = %diagnostic.label_log,
                 frame = diagnostic.frame,
                 write_elapsed_ms,
                 error = %e,
@@ -2215,31 +2213,34 @@ mod tests {
 
     #[test]
     fn command_label_log_truncates_at_utf8_boundary() {
-        let exact = "a".repeat(COMMAND_LABEL_LOG_MAX_BYTES);
+        let exact = "a".repeat(COMMAND_LABEL_LOG_PREFIX_MAX_BYTES);
         assert_eq!(command_label_log(&exact), exact);
 
-        let over_ascii = format!("{}b", "a".repeat(COMMAND_LABEL_LOG_MAX_BYTES));
+        let over_ascii = format!("{}b", "a".repeat(COMMAND_LABEL_LOG_PREFIX_MAX_BYTES));
         assert_eq!(
             command_label_log(&over_ascii),
-            format!("{}...", "a".repeat(COMMAND_LABEL_LOG_MAX_BYTES))
+            format!("{}...", "a".repeat(COMMAND_LABEL_LOG_PREFIX_MAX_BYTES))
         );
 
         let boundary = format!(
             "{}\u{00e9}tail",
-            "a".repeat(COMMAND_LABEL_LOG_MAX_BYTES - 2)
+            "a".repeat(COMMAND_LABEL_LOG_PREFIX_MAX_BYTES - 2)
         );
         assert_eq!(
             command_label_log(&boundary),
-            format!("{}\u{00e9}...", "a".repeat(COMMAND_LABEL_LOG_MAX_BYTES - 2))
+            format!(
+                "{}\u{00e9}...",
+                "a".repeat(COMMAND_LABEL_LOG_PREFIX_MAX_BYTES - 2)
+            )
         );
 
         let crossing = format!(
             "{}\u{00e9}tail",
-            "a".repeat(COMMAND_LABEL_LOG_MAX_BYTES - 1)
+            "a".repeat(COMMAND_LABEL_LOG_PREFIX_MAX_BYTES - 1)
         );
         assert_eq!(
             command_label_log(&crossing),
-            format!("{}...", "a".repeat(COMMAND_LABEL_LOG_MAX_BYTES - 1))
+            format!("{}...", "a".repeat(COMMAND_LABEL_LOG_PREFIX_MAX_BYTES - 1))
         );
     }
 
@@ -2254,7 +2255,7 @@ mod tests {
 
         let snapshot = diagnostic.mark_first_output().unwrap();
         assert_eq!(snapshot.seq, 9);
-        assert_eq!(snapshot.label, "slow-first-output");
+        assert_eq!(snapshot.label_log, "slow-first-output");
         assert!(snapshot.elapsed_ms >= COMMAND_STAGE_SLOW_THRESHOLD.as_millis());
         assert!(diagnostic.mark_first_output().is_none());
     }
@@ -2279,7 +2280,7 @@ mod tests {
         );
         for operation in snapshot.operations {
             assert!(operations.contains_key(&operation.seq));
-            assert!(operation.label.starts_with("operation-"));
+            assert!(operation.label_log.starts_with("operation-"));
         }
     }
 

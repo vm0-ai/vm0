@@ -47,7 +47,7 @@ pub(crate) struct CommandRegistry {
 #[derive(Clone)]
 struct CommandRegistryEntry {
     cancel: Arc<AtomicBool>,
-    label: String,
+    label_preview: String,
 }
 
 impl CommandRegistry {
@@ -62,7 +62,7 @@ impl CommandRegistry {
             seq,
             CommandRegistryEntry {
                 cancel: cancel.clone(),
-                label: label.to_string(),
+                label_preview: truncate_preview(label),
             },
         );
         Ok(CommandRegistration {
@@ -76,7 +76,7 @@ impl CommandRegistry {
         let active = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let cancel = active.get(&seq)?;
         cancel.cancel.store(true, Ordering::Release);
-        Some(cancel.label.clone())
+        Some(cancel.label_preview.clone())
     }
 
     fn remove_if_same(&self, seq: u32, cancel: &Arc<AtomicBool>) {
@@ -257,13 +257,10 @@ where
 }
 
 pub(crate) fn cancel_command_operation(registry: &CommandRegistry, seq: u32) {
-    if let Some(label) = registry.cancel(seq) {
+    if let Some(label_preview) = registry.cancel(seq) {
         log(
             "INFO",
-            &format!(
-                "command: cancel requested seq={seq} label={}",
-                truncate_preview(&label)
-            ),
+            &format!("command: cancel requested seq={seq} label={label_preview}"),
         );
     }
 }
