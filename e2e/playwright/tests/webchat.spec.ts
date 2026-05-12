@@ -16,14 +16,17 @@ test("send a chat message and receive a response", async ({ page }) => {
     "true",
     { timeout: 60_000 },
   );
-  await expect(
-    page.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
-  ).toBeVisible({ timeout: 60_000 });
+  // Model-first may display "Default" while inheriting the configured
+  // workspace model; the send path below validates the route actually works.
+  const modelPicker = page.getByRole("combobox").first();
+  await expect(modelPicker).toBeVisible({ timeout: 60_000 });
 
   // Send a message — mock claude executes this as bash
   const marker = `e2e-${Date.now()}`;
   await textarea.fill(`echo ${marker}`);
-  await page.getByRole("button", { name: "Send", exact: true }).click();
+  const sendButton = page.getByRole("button", { name: "Send", exact: true });
+  await expect(sendButton).toBeEnabled({ timeout: 10_000 });
+  await sendButton.click();
   await page.waitForURL(/\/chats\/[^/]+/, { timeout: 60_000 });
   await expect(page.getByTestId("app-skeleton")).toHaveAttribute(
     "aria-hidden",
