@@ -369,13 +369,28 @@ impl LogPaths {
     /// Whether `name` matches any GC-eligible log file pattern.
     ///
     /// Includes per-job logs (`network-*`, `system-*`, `metrics-*`, `proxy-*`)
-    /// and runner instance logs (`runner-*.log`).
+    /// runner instance logs (`runner-*.log`), and stale `.vm0tmp-*` copies of
+    /// those files left behind by a killed runner.
     pub fn is_gc_eligible_log(name: &str) -> bool {
+        Self::is_final_gc_eligible_log(name) || Self::is_gc_eligible_log_temp(name)
+    }
+
+    fn is_final_gc_eligible_log(name: &str) -> bool {
         (name.starts_with("network-") && name.ends_with(".jsonl"))
             || (name.starts_with("system-") && name.ends_with(".log"))
             || (name.starts_with("metrics-") && name.ends_with(".jsonl"))
             || (name.starts_with("proxy-") && name.ends_with(".jsonl"))
             || (name.starts_with("runner-") && name.ends_with(".log"))
+    }
+
+    fn is_gc_eligible_log_temp(name: &str) -> bool {
+        let Some(name) = name.strip_prefix('.') else {
+            return false;
+        };
+        let Some((base, suffix)) = name.split_once(".vm0tmp-") else {
+            return false;
+        };
+        !suffix.is_empty() && Self::is_final_gc_eligible_log(base)
     }
 }
 
@@ -565,6 +580,12 @@ mod tests {
             "proxy-550e8400-e29b-41d4-a716-446655440000.jsonl"
         ));
         assert!(LogPaths::is_gc_eligible_log("runner-2026-04-01.log"));
+        assert!(LogPaths::is_gc_eligible_log(
+            ".system-550e8400-e29b-41d4-a716-446655440000.log.vm0tmp-101-7-1"
+        ));
+        assert!(LogPaths::is_gc_eligible_log(
+            ".metrics-550e8400-e29b-41d4-a716-446655440000.jsonl.vm0tmp-101-7-2"
+        ));
     }
 
     #[test]
@@ -575,6 +596,12 @@ mod tests {
         assert!(!LogPaths::is_gc_eligible_log("system-.jsonl")); // wrong extension
         assert!(!LogPaths::is_gc_eligible_log("proxy-.log")); // wrong extension
         assert!(!LogPaths::is_gc_eligible_log("other-file.jsonl"));
+        assert!(!LogPaths::is_gc_eligible_log(
+            ".system-550e8400-e29b-41d4-a716-446655440000.log.vm0tmp-"
+        ));
+        assert!(!LogPaths::is_gc_eligible_log(
+            ".other-file.jsonl.vm0tmp-101-7-1"
+        ));
     }
 
     #[test]
