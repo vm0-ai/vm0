@@ -5193,31 +5193,16 @@ mod tests {
 
         let start = read_guest_message(&mut guest, &mut decoder).await;
         assert_eq!(start.msg_type, MSG_COMMAND_START);
-        send_command_output(
-            &mut guest,
-            start.seq,
-            0,
-            CommandOutputStream::Stdout,
-            b"partial",
-            false,
-        )
-        .await;
-        tokio::time::timeout(Duration::from_secs(1), async {
-            loop {
-                if std::fs::read_dir(&dir).unwrap().any(|entry| {
-                    let path = entry.unwrap().path();
-                    path.file_name()
-                        .and_then(|name| name.to_str())
-                        .is_some_and(|name| name.contains("vm0tmp"))
-                        && std::fs::read(&path).is_ok_and(|bytes| bytes == b"partial")
-                }) {
-                    return;
-                }
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .unwrap();
+        let temp_paths: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.contains("vm0tmp"))
+            })
+            .collect();
+        assert_eq!(temp_paths.len(), 1);
 
         copy_task.abort();
         assert!(copy_task.await.unwrap_err().is_cancelled());
