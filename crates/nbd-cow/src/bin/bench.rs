@@ -463,20 +463,36 @@ fn detect_host_disk() -> String {
                     }
                 }
             } else {
-                // Strip /dev/ prefix and partition suffix
-                let name = dev.trim_start_matches("/dev/");
-                // Remove partition number (nvme0n1p1 -> nvme0n1, sda1 -> sda)
-                if let Some(base) = name.strip_suffix(|c: char| c.is_ascii_digit()) {
-                    if base.ends_with('p') && base.contains("nvme") {
-                        return base.trim_end_matches('p').to_string();
-                    }
-                    return base.to_string();
-                }
-                return name.to_string();
+                return diskstats_device_name(dev);
             }
         }
     }
     "nvme0n1".to_string()
+}
+
+fn diskstats_device_name(path: &str) -> String {
+    let name = path.trim_start_matches("/dev/");
+
+    if let Some((base, partition)) = name.rsplit_once('p')
+        && !partition.is_empty()
+        && partition.chars().all(|c| c.is_ascii_digit())
+        && ["nvme", "mmcblk", "nbd", "loop"]
+            .iter()
+            .any(|prefix| base.starts_with(prefix))
+    {
+        return base.to_string();
+    }
+
+    let base = name.trim_end_matches(|c: char| c.is_ascii_digit());
+    if base.len() != name.len()
+        && ["sd", "vd", "xvd"]
+            .iter()
+            .any(|prefix| base.starts_with(prefix))
+    {
+        return base.to_string();
+    }
+
+    name.to_string()
 }
 
 fn create_sparse_file(path: &Path, size: u64) -> Result<(), String> {
@@ -1081,6 +1097,26 @@ mod tests {
 
         let empty = parse_fio_json(br#"{"jobs":[]}"#).unwrap_err();
         assert!(empty.contains("jobs array is empty"), "{empty}");
+    }
+
+    #[test]
+    fn diskstats_device_name_strips_partition_suffixes() {
+        assert_eq!(diskstats_device_name("/dev/nvme0n1p1"), "nvme0n1");
+        assert_eq!(diskstats_device_name("/dev/mmcblk0p2"), "mmcblk0");
+        assert_eq!(diskstats_device_name("/dev/nbd12p3"), "nbd12");
+        assert_eq!(diskstats_device_name("/dev/sda1"), "sda");
+        assert_eq!(diskstats_device_name("/dev/vda2"), "vda");
+        assert_eq!(diskstats_device_name("/dev/xvdf12"), "xvdf");
+    }
+
+    #[test]
+    fn diskstats_device_name_preserves_whole_disk_names() {
+        assert_eq!(diskstats_device_name("/dev/nvme0n1"), "nvme0n1");
+        assert_eq!(diskstats_device_name("/dev/mmcblk0"), "mmcblk0");
+        assert_eq!(diskstats_device_name("/dev/nbd12"), "nbd12");
+        assert_eq!(diskstats_device_name("/dev/loop0"), "loop0");
+        assert_eq!(diskstats_device_name("/dev/sda"), "sda");
+        assert_eq!(diskstats_device_name("vda"), "vda");
     }
 
     #[test]
