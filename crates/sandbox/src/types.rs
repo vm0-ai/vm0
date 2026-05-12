@@ -1,23 +1,95 @@
 use std::time::Duration;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExecOutputLimits {
+    pub stdout_limit_bytes: u32,
+    pub stderr_limit_bytes: u32,
+}
+
+impl ExecOutputLimits {
+    pub const fn same(limit_bytes: u32) -> Self {
+        Self {
+            stdout_limit_bytes: limit_bytes,
+            stderr_limit_bytes: limit_bytes,
+        }
+    }
+
+    pub const fn separate(stdout_limit_bytes: u32, stderr_limit_bytes: u32) -> Self {
+        Self {
+            stdout_limit_bytes,
+            stderr_limit_bytes,
+        }
+    }
+}
+
+pub const EXEC_OUTPUT_LIMIT_64_KIB: ExecOutputLimits = ExecOutputLimits::same(64 * 1024);
+pub const EXEC_OUTPUT_LIMIT_1_MIB: ExecOutputLimits = ExecOutputLimits::same(1024 * 1024);
+pub const EXEC_OUTPUT_LIMIT_7_MIB: ExecOutputLimits = ExecOutputLimits::same(7 * 1024 * 1024);
+
 pub struct ExecRequest<'a> {
     pub cmd: &'a str,
     pub timeout: Duration,
     pub env: &'a [(&'a str, &'a str)],
     pub sudo: bool,
+    pub output_limits: ExecOutputLimits,
 }
 
 impl ExecRequest<'_> {
     /// Return the timeout as whole milliseconds, saturating at `u32::MAX`.
     pub fn timeout_ms(&self) -> u32 {
-        u32::try_from(self.timeout.as_millis()).unwrap_or(u32::MAX)
+        duration_ms(self.timeout)
     }
+}
+
+pub struct SpawnWatchRequest<'a> {
+    pub cmd: &'a str,
+    pub timeout: Duration,
+    pub env: &'a [(&'a str, &'a str)],
+    pub sudo: bool,
+    pub output: SpawnOutputMode<'a>,
+}
+
+impl SpawnWatchRequest<'_> {
+    /// Return the timeout as whole milliseconds, saturating at `u32::MAX`.
+    pub fn timeout_ms(&self) -> u32 {
+        duration_ms(self.timeout)
+    }
+}
+
+fn duration_ms(timeout: Duration) -> u32 {
+    u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX)
 }
 
 pub struct ExecResult {
     pub exit_code: i32,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
+    pub stdout_truncated: bool,
+    pub stderr_truncated: bool,
+}
+
+impl ExecResult {
+    pub fn new(exit_code: i32, stdout: Vec<u8>, stderr: Vec<u8>) -> Self {
+        Self {
+            exit_code,
+            stdout,
+            stderr,
+            stdout_truncated: false,
+            stderr_truncated: false,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CopyFileOptions {
+    pub max_bytes: u64,
+    pub timeout: Duration,
+    pub missing_ok: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CopyFileResult {
+    pub bytes_copied: u64,
 }
 
 pub struct SpawnHandle {
@@ -64,6 +136,7 @@ mod tests {
             timeout: Duration::from_millis(5000),
             env: &[],
             sudo: false,
+            output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         };
         assert_eq!(req.timeout_ms(), 5000);
     }
@@ -75,6 +148,7 @@ mod tests {
             timeout: Duration::ZERO,
             env: &[],
             sudo: false,
+            output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         };
         assert_eq!(req.timeout_ms(), 0);
     }
@@ -86,6 +160,7 @@ mod tests {
             timeout: Duration::from_secs(u64::MAX / 1000),
             env: &[],
             sudo: false,
+            output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         };
         assert_eq!(req.timeout_ms(), u32::MAX);
     }
@@ -97,6 +172,7 @@ mod tests {
             timeout: Duration::from_millis(u32::MAX as u64),
             env: &[],
             sudo: false,
+            output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         };
         assert_eq!(req.timeout_ms(), u32::MAX);
     }

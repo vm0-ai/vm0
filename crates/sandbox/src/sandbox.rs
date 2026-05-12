@@ -30,12 +30,16 @@
 //! "backend crashed" error rather than an opaque IPC timeout.
 
 use std::any::Any;
+use std::path::Path;
 use std::time::Duration;
 
 use async_trait::async_trait;
 
 use crate::error::Result;
-use crate::types::{ExecRequest, ExecResult, ProcessExit, SpawnHandle};
+use crate::types::{
+    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, ProcessExit, SpawnHandle,
+    SpawnWatchRequest,
+};
 
 /// A process-isolation environment that runs guest workloads for the runner.
 ///
@@ -182,7 +186,24 @@ pub trait Sandbox: Send + Sync + Any {
     ///
     /// Returns an error if the sandbox is not running or if the backing
     /// process crashes during execution.
+    ///
+    /// Implementations must honor the selected capture budget or report
+    /// truncation explicitly in [`ExecResult`].
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult>;
+
+    /// Read a small file from the guest.
+    ///
+    /// Missing files return `Ok(None)`. Other read failures return an error.
+    async fn read_file(&self, path: &str, max_bytes: u64) -> Result<Option<Vec<u8>>>;
+
+    /// Stream a guest file to a host path and atomically publish it on success.
+    async fn copy_file(
+        &self,
+        path: &str,
+        host_path: &Path,
+        options: CopyFileOptions,
+    ) -> Result<CopyFileResult>;
+
     /// Write `content` to `path` inside the guest, creating parent
     /// directories and truncating the file as needed. Returns an error if
     /// the sandbox is not running or if the backing process crashes.
@@ -190,15 +211,11 @@ pub trait Sandbox: Send + Sync + Any {
     /// Spawn `request.cmd` in the guest and return a handle for later
     /// supervision via [`wait_exit`](Self::wait_exit).
     ///
-    /// `output` controls whether stdout is buffered into the final
+    /// `request.output` controls whether stdout is buffered into the final
     /// [`ProcessExit`] or streamed in real time through
     /// [`SpawnHandle::stdout_rx`], optionally
     /// teeing streamed chunks into a guest-side file.
-    async fn spawn_watch(
-        &self,
-        request: &ExecRequest<'_>,
-        output: crate::SpawnOutputMode<'_>,
-    ) -> Result<SpawnHandle>;
+    async fn spawn_watch(&self, request: &SpawnWatchRequest<'_>) -> Result<SpawnHandle>;
     /// Wait for the process behind `handle` to exit, up to `timeout`.
     ///
     /// Consumes the handle. Returns an error if the sandbox is not

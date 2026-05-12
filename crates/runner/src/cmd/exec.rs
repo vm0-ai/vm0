@@ -125,6 +125,16 @@ pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerRes
             let err = std::io::stderr();
             let _ = out.lock().write_all(&result.stdout);
             let _ = err.lock().write_all(&result.stderr);
+            if result.stdout_truncated {
+                eprintln!(
+                    "warning: remote stdout was truncated by the sandbox capture limit; use a narrower command or redirect output inside the guest"
+                );
+            }
+            if result.stderr_truncated {
+                eprintln!(
+                    "warning: remote stderr was truncated by the sandbox capture limit; use a narrower command or redirect output inside the guest"
+                );
+            }
 
             // Propagate the actual exit code for debugging utility.
             // Truncate to u8 like shells do (e.g. 256 → 0, -1 → 255).
@@ -172,6 +182,8 @@ mod tests {
             exit_code: 42,
             stdout: b"hello\n".to_vec(),
             stderr: Vec::new(),
+            stdout_truncated: false,
+            stderr_truncated: false,
         }));
 
         let result = run_exec(make_args("test-id", "echo hello"), &control)
@@ -227,12 +239,16 @@ mod tests {
             exit_code: 256,
             stdout: Vec::new(),
             stderr: Vec::new(),
+            stdout_truncated: false,
+            stderr_truncated: false,
         }));
         // -1 (0xFFFFFFFF) truncates to 255 via `as u8`
         control.push_exec_remote_result(Ok(RemoteExecResult {
             exit_code: -1,
             stdout: Vec::new(),
             stderr: Vec::new(),
+            stdout_truncated: false,
+            stderr_truncated: false,
         }));
 
         let r1 = run_exec(make_args("id", "test"), &control).await.unwrap();
