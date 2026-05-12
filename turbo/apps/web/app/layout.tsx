@@ -21,6 +21,8 @@ import "./landing.css";
 import "./blog.css";
 import "./use-cases.css";
 
+const GOOGLE_ADS_ID = "AW-18144854014";
+
 const notoSans = Noto_Sans({
   subsets: ["latin"],
   weight: ["400", "500", "700"],
@@ -154,6 +156,19 @@ export default async function RootLayout({
             src="https://app.termly.io/resource-blocker/058a3478-08ac-4f2f-a9c4-5b357bbe7433"
             strategy="afterInteractive"
           />
+          <Script
+            id="google-ads-tag"
+            src={`https://www.googletagmanager.com/gtag/js?id=${GOOGLE_ADS_ID}`}
+            strategy="afterInteractive"
+          />
+          <Script id="google-ads-init" strategy="afterInteractive">
+            {`
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){window.dataLayer.push(arguments);}
+              gtag('js', new Date());
+              gtag('config', '${GOOGLE_ADS_ID}');
+            `}
+          </Script>
           <link rel="preconnect" href="https://fonts.googleapis.com" />
           <link
             rel="preconnect"
