@@ -5,7 +5,11 @@ import {
   getEligibleConnectorTypes,
 } from "@vm0/connectors/connector-utils";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
-import { getInstructionsFilename } from "@vm0/core/frameworks";
+import {
+  getInstructionsFilename,
+  SUPPORTED_FRAMEWORKS,
+} from "@vm0/core/frameworks";
+import { getInstructionsStorageName } from "@vm0/core/storage-names";
 import {
   agentComposes,
   agentComposeVersions,
@@ -14,14 +18,17 @@ import { eq } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
+import { uploadVolumeServerSide$ } from "./storage-volume-upload.service";
 
 /**
  * Build canonical compose content for a zero agent. Pure function — same
  * inputs always yield the same output. Mirrors
  * apps/web/src/lib/zero/build-compose-content.ts so the version hash
- * computed here matches web's for shadow-compare.
+ * computed here matches the existing web route behavior.
  */
-function buildComposeContent(agentName: string): Record<string, unknown> {
+function buildZeroAgentComposeContent(
+  agentName: string,
+): Record<string, unknown> {
   const eligibleConnectorTypes = getEligibleConnectorTypes();
 
   const environment: Record<string, string> = {
@@ -57,6 +64,24 @@ function buildComposeContent(agentName: string): Record<string, unknown> {
     version: "1",
     agents: { [agentName]: agentDef },
   };
+}
+
+function instructionFilesForFramework(args: {
+  readonly content: string;
+  readonly framework?: string;
+}): readonly { readonly path: string; readonly content: string }[] {
+  const filenames = [
+    getInstructionsFilename(args.framework),
+    ...SUPPORTED_FRAMEWORKS.map((framework) => {
+      return getInstructionsFilename(framework);
+    }),
+  ].filter((entry, index, all) => {
+    return all.indexOf(entry) === index;
+  });
+
+  return filenames.map((path) => {
+    return { path, content: args.content };
+  });
 }
 
 function sortObjectKeys(obj: unknown): unknown {
@@ -121,7 +146,7 @@ export const recomposeAgentIfStale$ = command(
     },
     signal: AbortSignal,
   ): Promise<{ recomposed: boolean; versionId: string }> => {
-    const content = buildComposeContent(args.agentName);
+    const content = buildZeroAgentComposeContent(args.agentName);
     const versionId = computeComposeVersionId(content);
     if (versionId === args.currentHeadVersionId) {
       return { recomposed: false, versionId };
@@ -146,5 +171,67 @@ export const recomposeAgentIfStale$ = command(
     signal.throwIfAborted();
 
     return { recomposed: true, versionId };
+  },
+);
+
+export const serverSideZeroAgentCompose$ = command(
+  async (
+    { set },
+    args: {
+      readonly userId: string;
+      readonly orgId: string;
+      readonly agentComposeId: string;
+      readonly agentName: string;
+      readonly instructions?: string;
+    },
+    signal: AbortSignal,
+  ): Promise<{
+    readonly composeId: string;
+    readonly composeName: string;
+    readonly versionId: string;
+  }> => {
+    const content = buildZeroAgentComposeContent(args.agentName);
+
+    if (args.instructions !== undefined) {
+      await set(
+        uploadVolumeServerSide$,
+        {
+          orgId: args.orgId,
+          storageName: getInstructionsStorageName(args.agentName.toLowerCase()),
+          files: instructionFilesForFramework({
+            content: args.instructions,
+            framework: "claude-code",
+          }),
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+    }
+
+    const versionId = computeComposeVersionId(content);
+    const writeDb = set(writeDb$);
+
+    await writeDb
+      .insert(agentComposeVersions)
+      .values({
+        id: versionId,
+        composeId: args.agentComposeId,
+        content,
+        createdBy: args.userId,
+      })
+      .onConflictDoNothing();
+    signal.throwIfAborted();
+
+    await writeDb
+      .update(agentComposes)
+      .set({ headVersionId: versionId, updatedAt: nowDate() })
+      .where(eq(agentComposes.id, args.agentComposeId));
+    signal.throwIfAborted();
+
+    return {
+      composeId: args.agentComposeId,
+      composeName: args.agentName,
+      versionId,
+    };
   },
 );

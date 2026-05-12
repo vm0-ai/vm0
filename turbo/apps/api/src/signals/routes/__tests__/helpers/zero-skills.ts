@@ -357,6 +357,12 @@ export const seedAgentForInstructions$ = command(
       displayName?: string | null;
       description?: string | null;
       sound?: string | null;
+      avatarUrl?: string | null;
+      customSkills?: readonly string[];
+      modelProviderId?: string | null;
+      selectedModel?: string | null;
+      preferPersonalProvider?: boolean;
+      visibility?: "public" | "private";
       framework?: AgentFramework;
       instructions?: string;
       composeContent?: unknown;
@@ -410,6 +416,12 @@ export const seedAgentForInstructions$ = command(
           displayName: args.displayName ?? null,
           description: args.description ?? null,
           sound: args.sound ?? null,
+          avatarUrl: args.avatarUrl ?? null,
+          customSkills: args.customSkills ? [...args.customSkills] : [],
+          modelProviderId: args.modelProviderId ?? null,
+          selectedModel: args.selectedModel ?? null,
+          preferPersonalProvider: args.preferPersonalProvider ?? false,
+          visibility: args.visibility ?? "public",
         })
         .onConflictDoNothing();
       signal.throwIfAborted();

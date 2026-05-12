@@ -13,7 +13,7 @@ import { db$ } from "../external/db";
 
 export function agentResponse(row: {
   readonly agentId: string;
-  readonly owner: string;
+  readonly owner: string | null;
   readonly composeUserId?: string;
   readonly displayName: string | null;
   readonly description: string | null;
@@ -43,6 +43,26 @@ export function agentResponse(row: {
     selectedModel: row.selectedModel,
     preferPersonalProvider: row.preferPersonalProvider,
     visibility: row.visibility,
+  };
+}
+
+export function defaultAgentResponse(args: {
+  readonly agentId: string;
+  readonly ownerId: string;
+}): ZeroAgentResponse {
+  return {
+    agentId: args.agentId,
+    ownerId: args.ownerId,
+    displayName: null,
+    description: null,
+    sound: null,
+    avatarUrl: null,
+    permissionPolicies: null,
+    customSkills: [],
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
+    visibility: "public",
   };
 }
 
