@@ -47,5 +47,103 @@ export const cronCleanupSandboxesContract = c.router({
 
 export type CronCleanupSandboxesContract = typeof cronCleanupSandboxesContract;
 
+const cronAggregateUsageResponseSchema = z.object({
+  date: z.string(),
+  aggregated: z.number(),
+});
+
+const cronProcessUsageEventsResponseSchema = z.object({
+  success: z.literal(true),
+  processed: z.number(),
+});
+
+const cronReconcileBillingEntitlementsResponseSchema = z.object({
+  success: z.literal(true),
+  downgraded: z.number(),
+});
+
+const cronAggregateInsightsSkippedResponseSchema = z.object({
+  users: z.number(),
+  skipped: z.literal(true),
+});
+
+const cronAggregateInsightsAggregatedResponseSchema = z.object({
+  users: z.number(),
+  windows: z.number(),
+  networkRows: z.number(),
+});
+
+const cronAggregateInsightsResponseSchema = z.union([
+  cronAggregateInsightsSkippedResponseSchema,
+  cronAggregateInsightsAggregatedResponseSchema,
+]);
+
+export const cronAggregateUsageContract = c.router({
+  aggregate: {
+    method: "GET",
+    path: "/api/cron/aggregate-usage",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronAggregateUsageResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Aggregate daily usage cache",
+  },
+});
+
+export const cronProcessUsageEventsContract = c.router({
+  process: {
+    method: "GET",
+    path: "/api/cron/process-usage-events",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronProcessUsageEventsResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Process pending usage events",
+  },
+});
+
+export const cronReconcileBillingEntitlementsContract = c.router({
+  reconcile: {
+    method: "GET",
+    path: "/api/cron/reconcile-billing-entitlements",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronReconcileBillingEntitlementsResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Reconcile billing entitlements",
+  },
+});
+
+export const cronAggregateInsightsContract = c.router({
+  aggregate: {
+    method: "GET",
+    path: "/api/cron/aggregate-insights",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronAggregateInsightsResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Aggregate daily usage insights",
+  },
+});
+
+export type CronAggregateUsageContract = typeof cronAggregateUsageContract;
+export type CronProcessUsageEventsContract =
+  typeof cronProcessUsageEventsContract;
+export type CronReconcileBillingEntitlementsContract =
+  typeof cronReconcileBillingEntitlementsContract;
+export type CronAggregateInsightsContract =
+  typeof cronAggregateInsightsContract;
+
 // Export schemas for reuse
-export { cleanupResultSchema, cleanupResponseSchema };
+export {
+  cleanupResultSchema,
+  cleanupResponseSchema,
+  cronAggregateUsageResponseSchema,
+  cronProcessUsageEventsResponseSchema,
+  cronReconcileBillingEntitlementsResponseSchema,
+  cronAggregateInsightsResponseSchema,
+};

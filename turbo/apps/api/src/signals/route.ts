@@ -14,6 +14,10 @@ import type { SignalRouteHandler } from "./context/route";
 import { chatThreadsV1Routes } from "./routes/chat-threads-v1";
 import { connectorsTypeAuthorizeRoutes } from "./routes/connectors-type-authorize";
 import { connectorsTypeCallbackRoutes } from "./routes/connectors-type-callback";
+import { cronAggregateInsightsRoutes } from "./routes/cron-aggregate-insights";
+import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
+import { cronProcessUsageEventsRoutes } from "./routes/cron-process-usage-events";
+import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-billing-entitlements";
 import { deviceTokenRoutes } from "./routes/device-token";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { apiHealth$ } from "./routes/health";
@@ -149,6 +153,10 @@ export const ROUTES: readonly RouteEntry[] = [
   ...agentSessionsRoutes,
   ...connectorsTypeAuthorizeRoutes,
   ...connectorsTypeCallbackRoutes,
+  ...cronAggregateInsightsRoutes,
+  ...cronAggregateUsageRoutes,
+  ...cronProcessUsageEventsRoutes,
+  ...cronReconcileBillingEntitlementsRoutes,
   ...deviceTokenRoutes,
   ...emailUnsubscribeRoutes,
   ...zeroAgentInstructionsRoutes,
