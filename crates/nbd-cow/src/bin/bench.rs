@@ -303,11 +303,19 @@ fn run_dm_snapshot_bench(
         let device = dm_mapping.device_path();
         eprintln!("  Running fio ({}) on {device}...", wl.name);
 
-        let result = run_fio_with_iostat(&device, wl, host_disk)?;
+        let result = run_fio_with_iostat(&device, wl, host_disk);
+        let mut cleanup_errors = Vec::new();
+        if let Err(e) = dm_mapping.remove() {
+            cleanup_errors.push(format!("failed to remove dm mapping {dm_name}: {e}"));
+        }
+        let cow_loop_device = cow_loop.device().to_string();
+        if let Err(e) = cow_loop.detach() {
+            cleanup_errors.push(format!(
+                "failed to detach loop device {cow_loop_device}: {e}"
+            ));
+        }
+        let result = result_after_cleanup(result, cleanup_errors)?;
         results.push(result);
-
-        dm_mapping.remove()?;
-        cow_loop.detach()?;
     }
 
     base_loop.detach()?;
@@ -347,16 +355,20 @@ async fn run_nbd_cow_bench(
             let dev_path = device.device_path().to_string_lossy().to_string();
             eprintln!("  Running fio ({}) on {dev_path}...", wl.name);
 
-            let result = run_fio_with_iostat(&dev_path, wl, host_disk)?;
-            results.push(result);
-
-            device
+            let fio_result = run_fio_with_iostat(&dev_path, wl, host_disk);
+            let destroy_result = device
                 .destroy_with_retries(DestroyRetryPolicy {
                     attempts: 1,
                     delay: std::time::Duration::ZERO,
                 })
-                .await
-                .map_err(|e| format!("failed to destroy NBD device: {e}"))?;
+                .await;
+
+            let cleanup_errors = destroy_result
+                .err()
+                .map(|e| vec![format!("failed to destroy NBD device: {e}")])
+                .unwrap_or_default();
+            let result = result_after_cleanup(fio_result, cleanup_errors)?;
+            results.push(result);
         }
 
         Ok(results)
@@ -365,6 +377,21 @@ async fn run_nbd_cow_bench(
 
     device_pool.cleanup().await;
     result
+}
+
+fn result_after_cleanup<T>(
+    result: Result<T, String>,
+    cleanup_errors: Vec<String>,
+) -> Result<T, String> {
+    if cleanup_errors.is_empty() {
+        return result;
+    }
+
+    let cleanup_message = cleanup_errors.join("; ");
+    match result {
+        Ok(_) => Err(format!("cleanup failed: {cleanup_message}")),
+        Err(err) => Err(format!("{err}; cleanup also failed: {cleanup_message}")),
+    }
 }
 
 /// Run fio while sampling /proc/diskstats before and after to measure actual host disk IOPS.
@@ -745,8 +772,11 @@ fn bench_dm_owner_pid(name: &str) -> Option<u32> {
         .ok()
 }
 
-/// Try to disconnect NBD devices owned by our process that still have a non-zero
-/// size (stale from a previous bench run that didn't clean up).
+/// Try to disconnect stale NBD devices that still have a non-zero size.
+///
+/// The sysfs `pid` field is the connecting thread TID, not necessarily the
+/// process PID. In multi-runner hosts, only disconnect after acquiring the
+/// host-global NBD claim so an active cooperating runner cannot be interrupted.
 fn cleanup_stale_nbd_devices() {
     let max = nbd_cow::netlink::nbds_max();
     for i in 0..max {
@@ -759,17 +789,35 @@ fn cleanup_stale_nbd_devices() {
         if size == 0 {
             continue;
         }
-        // Only disconnect devices we own or whose owner is dead.
-        let pid: u32 = std::fs::read_to_string(&pid_path)
+        let Some(pid) = std::fs::read_to_string(&pid_path)
             .ok()
             .and_then(|s| s.trim().parse().ok())
-            .unwrap_or(0);
-        if nbd_cow::is_our_thread(pid) || !std::path::Path::new(&format!("/proc/{pid}")).exists() {
-            eprintln!("  Cleaning up stale /dev/nbd{i} (size={size}, pid={pid})...");
-            let _ = nbd_cow::netlink::disconnect(i);
-            std::thread::sleep(std::time::Duration::from_millis(200));
+        else {
+            continue;
+        };
+        if !nbd_cleanup_candidate_owner(pid) {
+            continue;
         }
+
+        let claim = match nbd_cow::device_lock::try_acquire_device_claim(i) {
+            Ok(Some(claim)) => claim,
+            Ok(None) => continue,
+            Err(e) => {
+                eprintln!("  Skipping stale /dev/nbd{i} cleanup; lock failed: {e}");
+                continue;
+            }
+        };
+
+        eprintln!("  Cleaning up stale /dev/nbd{i} (size={size}, pid={pid})...");
+        let _ = nbd_cow::netlink::disconnect(i);
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        drop(claim);
     }
+}
+
+fn nbd_cleanup_candidate_owner(pid: u32) -> bool {
+    pid != 0
+        && (nbd_cow::is_our_thread(pid) || !std::path::Path::new(&format!("/proc/{pid}")).exists())
 }
 
 fn nbd_module_loaded() -> bool {
@@ -1134,5 +1182,37 @@ mod tests {
         assert_eq!(bench_dm_owner_pid("other-1234-nbd-cow-bench-abcd"), None);
         assert_eq!(bench_dm_owner_pid("bench-cow-nbd-cow-bench-abcd"), None);
         assert_eq!(bench_dm_owner_pid("bench-cow-"), None);
+    }
+
+    #[test]
+    fn nbd_cleanup_candidate_owner_requires_known_dead_or_current_owner() {
+        assert!(!nbd_cleanup_candidate_owner(0));
+        assert!(nbd_cleanup_candidate_owner(std::process::id()));
+        assert!(nbd_cleanup_candidate_owner(u32::MAX));
+    }
+
+    #[test]
+    fn result_after_cleanup_returns_original_result_when_cleanup_succeeds() {
+        assert_eq!(result_after_cleanup(Ok(7), Vec::new()).unwrap(), 7);
+        assert_eq!(
+            result_after_cleanup::<u8>(Err("fio failed".to_string()), Vec::new()).unwrap_err(),
+            "fio failed"
+        );
+    }
+
+    #[test]
+    fn result_after_cleanup_reports_cleanup_errors() {
+        assert_eq!(
+            result_after_cleanup(Ok(7), vec!["remove failed".to_string()]).unwrap_err(),
+            "cleanup failed: remove failed"
+        );
+        assert_eq!(
+            result_after_cleanup::<u8>(
+                Err("fio failed".to_string()),
+                vec!["destroy failed".to_string(), "detach failed".to_string()],
+            )
+            .unwrap_err(),
+            "fio failed; cleanup also failed: destroy failed; detach failed"
+        );
     }
 }
