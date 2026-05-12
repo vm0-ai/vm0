@@ -1,30 +1,17 @@
-import { auth } from "@clerk/nextjs/server";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { env } from "../../../src/env";
-import { loadFeatureSwitchOverrides } from "../../../src/lib/zero/user/feature-switches-service";
-
+// Temporarily hard-disabled: the previous implementation reached
+// `globalThis.services.db` via `getUserFeatureSwitches`, but the marketing
+// SSR entry points (app/[locale]/layout.tsx → SiteHeader) never call
+// `initServices()`. For signed-in users with an active org this crashed every
+// `/{locale}/*` page render with `TypeError: Cannot read properties of
+// undefined (reading 'db')`. Returning false unconditionally hides the docs
+// nav and 404s `/docs` routes until the SSR services bootstrap is fixed.
 export async function canViewDocsForUser(
-  userId: string | null | undefined,
-  orgId: string | null | undefined,
+  _userId: string | null | undefined,
+  _orgId: string | null | undefined,
 ): Promise<boolean> {
-  if (!userId || !env().NEXT_PUBLIC_STRAPI_URL) {
-    return false;
-  }
-
-  const overrides = await loadFeatureSwitchOverrides(
-    orgId ?? undefined,
-    userId,
-  );
-
-  return isFeatureEnabled(FeatureSwitchKey.DocsSite, {
-    userId,
-    orgId: orgId ?? undefined,
-    overrides,
-  });
+  return false;
 }
 
 export async function canViewDocs(): Promise<boolean> {
-  const { userId, orgId } = await auth();
-  return canViewDocsForUser(userId, orgId);
+  return false;
 }
