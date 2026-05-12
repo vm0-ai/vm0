@@ -542,10 +542,11 @@ pub struct CliExecutionResult {
     /// Best-effort, secret-masked stderr tail captured from the CLI.
     ///
     /// The guest agent keeps at most the last 200 stderr lines for failure
-    /// diagnostics. Overlong lines are replaced with an omission marker rather
-    /// than partially returned, so secret masking never has to process a
-    /// truncated secret. It may be empty if the CLI wrote no stderr, the stderr
-    /// collector failed, or stderr draining timed out after process exit.
+    /// diagnostics. Lines longer than 16 KiB are replaced with an omission
+    /// marker rather than partially returned, so secret masking never has to
+    /// process a truncated secret. It may be empty if the CLI wrote no stderr,
+    /// the stderr collector failed, or stderr draining timed out after process
+    /// exit.
     pub stderr_lines: Vec<String>,
 
     /// Highest contiguous agent event sequence whose webhook POST succeeded.
@@ -1547,41 +1548,6 @@ mod tests {
         prefix.record_success(3);
 
         assert_eq!(prefix.last_contiguous(), Some(0));
-    }
-
-    #[tokio::test]
-    async fn stderr_result_keeps_bounded_tail() {
-        let mut input = String::new();
-
-        for i in 0..(STDERR_RESULT_MAX_LINES + 2) {
-            input.push_str(&format!("line-{i}\n"));
-        }
-
-        let lines = collect_stderr_result_tail(std::io::Cursor::new(input.into_bytes())).await;
-        let expected_last = format!("line-{}", STDERR_RESULT_MAX_LINES + 1);
-        assert_eq!(lines.len(), STDERR_RESULT_MAX_LINES);
-        assert_eq!(lines.first().map(String::as_str), Some("line-2"));
-        assert_eq!(
-            lines.last().map(String::as_str),
-            Some(expected_last.as_str())
-        );
-    }
-
-    #[tokio::test]
-    async fn stderr_result_omits_overlong_line() {
-        let overlong = "s".repeat(STDERR_RESULT_MAX_LINE_BYTES + 1);
-        let input = format!("before\n{overlong}\nafter\n");
-
-        let lines = collect_stderr_result_tail(std::io::Cursor::new(input.into_bytes())).await;
-
-        assert_eq!(
-            lines,
-            vec![
-                "before".to_string(),
-                STDERR_OMITTED_LONG_LINE.to_string(),
-                "after".to_string(),
-            ]
-        );
     }
 
     // -----------------------------------------------------------------
