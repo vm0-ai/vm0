@@ -49,6 +49,22 @@ export type DeleteGithubInstallationResponse = z.infer<
   typeof deleteGithubInstallationResponseSchema
 >;
 
+export const patchGithubInstallationBodySchema = z.object({
+  agentName: z.string().min(1),
+});
+
+export type PatchGithubInstallationBody = z.infer<
+  typeof patchGithubInstallationBodySchema
+>;
+
+export const updateGithubInstallationResponseSchema = z.object({
+  ok: z.literal(true),
+});
+
+export type UpdateGithubInstallationResponse = z.infer<
+  typeof updateGithubInstallationResponseSchema
+>;
+
 export const integrationsGithubContract = c.router({
   getInstallation: {
     method: "GET",
@@ -77,6 +93,22 @@ export const integrationsGithubContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Uninstall the authenticated user's GitHub App installation",
+  },
+
+  updateInstallation: {
+    method: "PATCH",
+    path: "/api/integrations/github",
+    headers: authHeadersSchema,
+    body: patchGithubInstallationBodySchema,
+    responses: {
+      200: updateGithubInstallationResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Update the authenticated user's GitHub App installation",
   },
 });
 

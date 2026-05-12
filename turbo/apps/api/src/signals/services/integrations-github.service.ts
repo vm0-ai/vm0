@@ -11,13 +11,13 @@ import {
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { authContext$ } from "../auth/auth-context";
 import { db$, writeDb$ } from "../external/db";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
-import { now } from "../../lib/time";
+import { now, nowDate } from "../../lib/time";
 import { zeroConnectorList } from "./zero-connector-data.service";
 import { userSecrets, userVariables } from "./zero-user-data.service";
 
@@ -212,6 +212,79 @@ export const deleteGithubInstallation$ = command(
     await db
       .delete(githubInstallations)
       .where(eq(githubInstallations.id, result.id));
+    signal.throwIfAborted();
+
+    return { status: 200 as const, body: { ok: true as const } };
+  },
+);
+
+export const updateGithubInstallation$ = command(
+  async (
+    { get, set },
+    args: { readonly agentName: string },
+    signal: AbortSignal,
+  ) => {
+    const auth = get(authContext$);
+    const db = set(writeDb$);
+
+    const [result] = await db
+      .select({
+        installationId: githubInstallations.id,
+        adminGithubUserId: githubInstallations.adminGithubUserId,
+        githubUserId: githubUserLinks.githubUserId,
+      })
+      .from(githubUserLinks)
+      .innerJoin(
+        githubInstallations,
+        eq(githubInstallations.id, githubUserLinks.installationId),
+      )
+      .where(eq(githubUserLinks.vm0UserId, auth.userId))
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!result) {
+      return errorResponse(404, "No GitHub installation found", "NOT_FOUND");
+    }
+
+    if (
+      !result.adminGithubUserId ||
+      result.githubUserId !== result.adminGithubUserId
+    ) {
+      return errorResponse(
+        403,
+        "Only the installation admin can change the default agent",
+        "FORBIDDEN",
+      );
+    }
+
+    if (!auth.orgId) {
+      return errorResponse(
+        400,
+        "Explicit org context required — ensure active org in session",
+        "BAD_REQUEST",
+      );
+    }
+
+    const [compose] = await db
+      .select({ id: agentComposes.id })
+      .from(agentComposes)
+      .where(
+        and(
+          eq(agentComposes.orgId, auth.orgId),
+          eq(agentComposes.name, args.agentName),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!compose) {
+      return errorResponse(404, "Agent not found", "NOT_FOUND");
+    }
+
+    await db
+      .update(githubInstallations)
+      .set({ defaultComposeId: compose.id, updatedAt: nowDate() })
+      .where(eq(githubInstallations.id, result.installationId));
     signal.throwIfAborted();
 
     return { status: 200 as const, body: { ok: true as const } };
