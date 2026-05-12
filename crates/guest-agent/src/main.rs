@@ -478,6 +478,43 @@ mod tests {
     }
 
     #[test]
+    fn cli_failure_message_preserves_exact_limits_without_omission() {
+        let _test_state_guard = lock_test_state();
+        let tmp = tempfile::tempdir().unwrap();
+        let system_log_path = tmp.path().join("system.log");
+        let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
+
+        let exact_limit_line = "x".repeat(MAX_LOGGED_CLI_STDERR_LINE_BYTES);
+        let stderr_lines = std::iter::once(exact_limit_line.clone())
+            .chain((1..MAX_LOGGED_CLI_STDERR_LINES).map(|i| format!("line {i}")))
+            .collect::<Vec<_>>();
+
+        let msg = cli_failure_message(1, &stderr_lines);
+        assert!(
+            msg.contains(&exact_limit_line),
+            "returned error message should preserve line at exact size limit"
+        );
+        assert!(
+            !msg.contains("...[truncated]"),
+            "returned error message should not truncate line at exact size limit"
+        );
+        assert!(
+            !msg.contains("omitted"),
+            "returned error message should not report omitted lines at exact line limit"
+        );
+
+        let system_log = std::fs::read_to_string(&system_log_path).unwrap();
+        assert!(
+            system_log.contains("Captured 20 stderr lines"),
+            "system log should include stderr count, got: {system_log}"
+        );
+        assert!(
+            !system_log.contains("omitted"),
+            "system log should not report omitted lines at exact line limit"
+        );
+    }
+
+    #[test]
     fn complete_execution_creates_recovery_checkpoint_after_cli_failure() {
         let _test_state_guard = lock_test_state();
         tokio::runtime::Builder::new_current_thread()
