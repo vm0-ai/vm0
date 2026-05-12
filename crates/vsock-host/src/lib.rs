@@ -23,7 +23,7 @@ use std::io;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -46,6 +46,7 @@ const SMALL_COMMAND_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
 const EXEC_TIMEOUT_EXIT_CODE: i32 = 124;
 const DEFAULT_COMMAND_STREAM_CAPACITY: usize = 32;
 const MAX_COMMAND_STREAM_CAPACITY: usize = 1024;
+const COPY_TEMP_CREATE_ATTEMPTS: usize = 16;
 const COMMAND_LABEL_LOG_PREFIX_MAX_BYTES: usize = 100;
 const COMMAND_CLOSE_ACTIVE_LOG_LIMIT: usize = 16;
 const COMMAND_FRAME_WRITE_SLOW_THRESHOLD: Duration = Duration::from_millis(500);
@@ -53,6 +54,7 @@ const COMMAND_STAGE_SLOW_THRESHOLD: Duration = Duration::from_secs(5);
 const COMMAND_FRAME_WRITE_NOT_STARTED: u8 = 0;
 const COMMAND_FRAME_WRITE_STARTED: u8 = 1;
 const COMMAND_FRAME_WRITE_COMPLETED: u8 = 2;
+static COPY_TEMP_NONCE: AtomicU64 = AtomicU64::new(1);
 
 /// Result of executing a command on the guest.
 #[derive(Debug, Clone)]
@@ -671,6 +673,40 @@ impl Drop for ChunkedWriteCleanupGuard {
                 )
                 .await;
             });
+        }
+    }
+}
+
+struct HostTempFileGuard {
+    path: PathBuf,
+    active: bool,
+}
+
+impl HostTempFileGuard {
+    fn new(path: PathBuf) -> Self {
+        Self { path, active: true }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    async fn remove_now(&mut self) {
+        if self.active {
+            self.active = false;
+            remove_temp_file(&self.path).await;
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.active = false;
+    }
+}
+
+impl Drop for HostTempFileGuard {
+    fn drop(&mut self) {
+        if self.active {
+            let _ = std::fs::remove_file(&self.path);
         }
     }
 }
@@ -1484,12 +1520,12 @@ fn command_result_to_exec_result(result: CommandOperationResult) -> io::Result<E
     })
 }
 
-fn copy_temp_path(host_path: &Path, seq: u32) -> PathBuf {
+fn copy_temp_path(host_path: &Path, process_id: u32, seq: u32, nonce: u64) -> PathBuf {
     let file_name = host_path
         .file_name()
         .map(|name| name.to_string_lossy())
         .unwrap_or_else(|| "copy".into());
-    host_path.with_file_name(format!(".{file_name}.vm0tmp-{seq}"))
+    host_path.with_file_name(format!(".{file_name}.vm0tmp-{process_id}-{seq}-{nonce}"))
 }
 
 async fn remove_temp_file(path: &Path) {
@@ -1498,6 +1534,33 @@ async fn remove_temp_file(path: &Path) {
         Err(err) if err.kind() == io::ErrorKind::NotFound => {}
         Err(_) => {}
     }
+}
+
+async fn create_copy_temp_file(
+    host_path: &Path,
+    seq: u32,
+) -> io::Result<(PathBuf, tokio::fs::File)> {
+    for _ in 0..COPY_TEMP_CREATE_ATTEMPTS {
+        let nonce = COPY_TEMP_NONCE.fetch_add(1, Ordering::Relaxed);
+        let temp_path = copy_temp_path(host_path, std::process::id(), seq, nonce);
+        match tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
+            .await
+        {
+            Ok(file) => return Ok((temp_path, file)),
+            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(err),
+        }
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        format!(
+            "copy_file could not create a unique temp file after {COPY_TEMP_CREATE_ATTEMPTS} attempts"
+        ),
+    ))
 }
 
 async fn write_copy_stream_event(
@@ -2131,11 +2194,13 @@ impl VsockHost {
             tokio::fs::create_dir_all(parent).await?;
         }
 
-        let temp_path = copy_temp_path(host_path, self.shared.next_seq());
+        let (temp_path, temp_file) =
+            create_copy_temp_file(host_path, self.shared.next_seq()).await?;
+        let mut temp_guard = HostTempFileGuard::new(temp_path);
         let copy_result = self
             .copy_file_to_temp(
                 path,
-                &temp_path,
+                temp_file,
                 stream_limit_bytes,
                 options.timeout_ms,
                 options.missing_ok,
@@ -2143,20 +2208,23 @@ impl VsockHost {
             .await;
         match copy_result {
             Ok(CopyFileOutcome::Copied { bytes_copied }) => {
-                match tokio::fs::rename(&temp_path, host_path).await {
-                    Ok(()) => Ok(CopyFileResult { bytes_copied }),
+                match tokio::fs::rename(temp_guard.path(), host_path).await {
+                    Ok(()) => {
+                        temp_guard.disarm();
+                        Ok(CopyFileResult { bytes_copied })
+                    }
                     Err(err) => {
-                        remove_temp_file(&temp_path).await;
+                        temp_guard.remove_now().await;
                         Err(err)
                     }
                 }
             }
             Ok(CopyFileOutcome::Missing) => {
-                remove_temp_file(&temp_path).await;
+                temp_guard.remove_now().await;
                 Ok(CopyFileResult { bytes_copied: 0 })
             }
             Err(err) => {
-                remove_temp_file(&temp_path).await;
+                temp_guard.remove_now().await;
                 Err(err)
             }
         }
@@ -2165,7 +2233,7 @@ impl VsockHost {
     async fn copy_file_to_temp(
         &self,
         path: &str,
-        temp_path: &Path,
+        mut temp_file: tokio::fs::File,
         stream_limit_bytes: u32,
         timeout_ms: u32,
         missing_ok: bool,
@@ -2199,7 +2267,6 @@ impl VsockHost {
             )
         })?;
         let wait_timeout = Duration::from_millis(timeout_ms as u64 + 5000);
-        let mut temp_file = tokio::fs::File::create(temp_path).await?;
         let mut bytes_copied = 0u64;
 
         let drain_result = tokio::time::timeout(wait_timeout, async {
@@ -2903,6 +2970,66 @@ mod tests {
         .await;
         let exec_result = exec_task.await.unwrap().unwrap();
         assert_eq!(exec_result.stdout, b"ok");
+    }
+
+    #[test]
+    fn copy_temp_path_distinguishes_process_seq_and_nonce() {
+        let host_path = PathBuf::from("/tmp/system.log");
+
+        let base = copy_temp_path(&host_path, 101, 7, 1);
+        assert_ne!(base, copy_temp_path(&host_path, 102, 7, 1));
+        assert_ne!(base, copy_temp_path(&host_path, 101, 8, 1));
+        assert_ne!(base, copy_temp_path(&host_path, 101, 7, 2));
+        assert_eq!(
+            base.file_name().and_then(|name| name.to_str()),
+            Some(".system.log.vm0tmp-101-7-1")
+        );
+    }
+
+    #[tokio::test]
+    async fn create_copy_temp_file_uses_unique_paths_for_same_seq() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "vsock-host-copy-temp-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let host_path = dir.join("system.log");
+
+        let (first_path, first_file) = create_copy_temp_file(&host_path, 7).await.unwrap();
+        let (second_path, second_file) = create_copy_temp_file(&host_path, 7).await.unwrap();
+
+        assert_ne!(first_path, second_path);
+        assert!(first_path.exists());
+        assert!(second_path.exists());
+        drop(first_file);
+        drop(second_file);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn host_temp_file_guard_removes_temp_on_drop() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "vsock-host-temp-guard-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(".system.log.vm0tmp-guard");
+        std::fs::write(&path, b"partial").unwrap();
+
+        {
+            let _guard = HostTempFileGuard::new(path.clone());
+        }
+
+        assert!(!path.exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
