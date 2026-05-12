@@ -181,7 +181,29 @@ export async function saveTelegramThreadSession(opts: {
   const userLinkKind = opts.userLinkKind ?? "custom";
 
   if (!existingSessionId && newSessionId) {
-    // New thread — create mapping
+    // New thread or intentionally reset thread — claim the mapping for the
+    // new agent session so DM roots like "dm" can move off an incompatible
+    // prior session.
+    const updated = await globalThis.services.db
+      .update(telegramThreadSessions)
+      .set({
+        agentSessionId: newSessionId,
+        lastProcessedMessageId: messageId,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          userLinkKind === "custom"
+            ? eq(telegramThreadSessions.telegramUserLinkId, userLinkId)
+            : eq(telegramThreadSessions.telegramOfficialUserLinkId, userLinkId),
+          eq(telegramThreadSessions.chatId, chatId),
+          eq(telegramThreadSessions.rootMessageId, rootMessageId),
+        ),
+      )
+      .returning({ id: telegramThreadSessions.id });
+
+    if (updated.length > 0) return;
+
     await globalThis.services.db
       .insert(telegramThreadSessions)
       .values({
@@ -609,10 +631,15 @@ export async function ensureOrgAndArtifact(
 /**
  * Resolve workspace agent name from composeId
  */
-export async function getWorkspaceAgent(
-  composeId: string,
-): Promise<
-  | { id: string; name: string; displayName: string | null; agentId: string }
+export async function getWorkspaceAgent(composeId: string): Promise<
+  | {
+      id: string;
+      name: string;
+      displayName: string | null;
+      agentId: string;
+      modelProviderId: string | null;
+      selectedModel: string | null;
+    }
   | undefined
 > {
   const db = globalThis.services.db;
@@ -635,6 +662,8 @@ export async function getWorkspaceAgent(
     .select({
       name: zeroAgents.name,
       displayName: zeroAgents.displayName,
+      modelProviderId: zeroAgents.modelProviderId,
+      selectedModel: zeroAgents.selectedModel,
     })
     .from(zeroAgents)
     .where(eq(zeroAgents.id, agentId))
@@ -645,6 +674,8 @@ export async function getWorkspaceAgent(
     name: agent?.name ?? compose.name,
     displayName: agent?.displayName ?? null,
     agentId,
+    modelProviderId: agent?.modelProviderId ?? null,
+    selectedModel: agent?.selectedModel ?? null,
   };
 }
 

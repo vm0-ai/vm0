@@ -16,13 +16,12 @@ import {
   resolveConnectionFromSlackUser,
   resolveDefaultComposeId,
   resolveEffectiveComposeId,
-  lookupThreadSession,
   enrichMessageContent,
   fetchConversationContexts,
   buildOrgConnectUrl,
   buildAgentLogsUrl,
   getWorkspaceAgent,
-  resolveSessionCompose,
+  resolveCompatibleThreadSession,
 } from "./shared";
 import { getAppUrl } from "../../url";
 import { logger } from "../../../shared/logger";
@@ -130,28 +129,17 @@ export async function handleOrgMention(
     },
   );
 
-  // 6. Look up existing thread session
-  let existingSessionId: string | undefined;
-  if (threadTs) {
-    const session = await lookupThreadSession(
-      context.channelId,
-      threadTs,
-      connection.id,
-    );
-    existingSessionId = session.existingSessionId;
-  }
-
-  // 6b. Validate session agent matches current default
-  if (existingSessionId) {
-    const sessionCompose = await resolveSessionCompose(
-      existingSessionId,
-      connection.vm0UserId,
-    );
-    if (sessionCompose && sessionCompose.composeId !== composeId) {
-      log.debug("Agent changed, starting new session");
-      existingSessionId = undefined;
-    }
-  }
+  // 6. Look up an existing thread session when it is compatible with this run.
+  const existingSessionId = await resolveCompatibleThreadSession({
+    channelId: context.channelId,
+    threadTs,
+    connectionId: connection.id,
+    userId: connection.vm0UserId,
+    orgId,
+    agentComposeId: composeId,
+    modelProviderId: agent.modelProviderId,
+    selectedModel: agent.selectedModel,
+  });
 
   // 7. Fetch conversation context
   const { executionContext } = await fetchConversationContexts(

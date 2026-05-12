@@ -10,6 +10,7 @@ import { resolveDefaultAgentComposeId } from "../../../infra/agent-compose/resol
 import { ensureStorageExists } from "../../../infra/storage/storage-service";
 import { createSlackClient, fetchSlackUserInfoMap } from "../../slack/client";
 import type { UserInfoOptions } from "../../integration-prompt";
+import { canReuseSessionForRunModel } from "../../context/session-model-compatibility";
 import {
   fetchThreadContext,
   fetchChannelContext,
@@ -171,7 +172,7 @@ export async function resolveEffectiveComposeId(
 /**
  * Look up an existing thread session.
  */
-export async function lookupThreadSession(
+async function lookupThreadSession(
   channelId: string,
   threadTs: string,
   connectionId: string,
@@ -399,7 +400,7 @@ export async function getWorkspaceAgent(composeId: string): Promise<
  * Used when continuing a conversation to ensure we use the session's agent,
  * not the workspace default.
  */
-export async function resolveSessionCompose(
+async function resolveSessionCompose(
   sessionId: string,
   userId: string,
 ): Promise<
@@ -423,6 +424,55 @@ export async function resolveSessionCompose(
     });
   }
   return undefined;
+}
+
+export async function resolveCompatibleThreadSession(opts: {
+  channelId: string;
+  threadTs: string;
+  connectionId: string;
+  userId: string;
+  orgId: string;
+  agentComposeId: string;
+  modelProviderId: string | null;
+  selectedModel: string | null;
+}): Promise<string | undefined> {
+  const session = await lookupThreadSession(
+    opts.channelId,
+    opts.threadTs,
+    opts.connectionId,
+  );
+  const existingSessionId = session.existingSessionId;
+  if (!existingSessionId) return undefined;
+
+  const sessionCompose = await resolveSessionCompose(
+    existingSessionId,
+    opts.userId,
+  );
+  if (sessionCompose && sessionCompose.composeId !== opts.agentComposeId) {
+    log.debug("Agent changed, starting new Slack session", {
+      sessionComposeId: sessionCompose.composeId,
+      currentComposeId: opts.agentComposeId,
+    });
+    return undefined;
+  }
+
+  const canReuseSession = await canReuseSessionForRunModel({
+    sessionId: existingSessionId,
+    userId: opts.userId,
+    orgId: opts.orgId,
+    agentComposeId: opts.agentComposeId,
+    modelProviderId: opts.modelProviderId,
+    selectedModel: opts.selectedModel,
+  });
+  if (!canReuseSession) {
+    log.debug("Model changed, starting new Slack session", {
+      composeId: opts.agentComposeId,
+      existingSessionId,
+    });
+    return undefined;
+  }
+
+  return existingSessionId;
 }
 
 /**

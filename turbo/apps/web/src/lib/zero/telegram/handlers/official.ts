@@ -42,6 +42,7 @@ import {
 } from "./shared";
 import { runAgentForTelegram } from "./run-agent";
 import { handleTelegramModelCommand } from "./model";
+import { canReuseSessionForRunModel } from "../../context/session-model-compatibility";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -73,6 +74,8 @@ async function resolveOfficialAgent(userLink: OfficialUserLink): Promise<
       composeId: string;
       agentId: string;
       agentName: string;
+      modelProviderId: string | null;
+      selectedModel: string | null;
     }
   | undefined
 > {
@@ -89,6 +92,8 @@ async function resolveOfficialAgent(userLink: OfficialUserLink): Promise<
     composeId,
     agentId: agent.agentId,
     agentName: getAgentDisplayLabel(agent),
+    modelProviderId: agent.modelProviderId,
+    selectedModel: agent.selectedModel,
   };
 }
 
@@ -217,7 +222,7 @@ export async function handleOfficialTelegramDirectMessage(
     userLinkId: userLink.id,
   });
   let existingSessionId = session.existingSessionId;
-  const lastProcessedMessageId = session.lastProcessedMessageId;
+  let lastProcessedMessageId = session.lastProcessedMessageId;
 
   if (existingSessionId) {
     const sessionCompose = await resolveSessionCompose(
@@ -226,6 +231,26 @@ export async function handleOfficialTelegramDirectMessage(
     );
     if (sessionCompose && sessionCompose.composeId !== agent.composeId) {
       existingSessionId = undefined;
+      lastProcessedMessageId = undefined;
+    }
+  }
+
+  if (existingSessionId) {
+    const canReuseSession = await canReuseSessionForRunModel({
+      sessionId: existingSessionId,
+      userId: userLink.vm0UserId,
+      orgId: userLink.orgId,
+      agentComposeId: agent.composeId,
+      modelProviderId: agent.modelProviderId,
+      selectedModel: agent.selectedModel,
+    });
+    if (!canReuseSession) {
+      log.debug("Model changed, starting new official session", {
+        composeId: agent.composeId,
+        existingSessionId,
+      });
+      existingSessionId = undefined;
+      lastProcessedMessageId = undefined;
     }
   }
 
@@ -361,6 +386,8 @@ export async function handleOfficialTelegramMention(
       chatId,
       userLink,
       agent.composeId,
+      agent.modelProviderId,
+      agent.selectedModel,
       runtime.botUsername,
     );
 
@@ -428,6 +455,8 @@ async function resolveOfficialThreadSession(
   chatId: string,
   userLink: OfficialUserLink,
   composeId: string,
+  modelProviderId: string | null,
+  selectedModel: string | null,
   botUsername: string | null,
 ): Promise<{
   rootMessageId: string | undefined;
@@ -457,6 +486,25 @@ async function resolveOfficialThreadSession(
       userLink.vm0UserId,
     );
     if (sessionCompose && sessionCompose.composeId !== composeId) {
+      existingSessionId = undefined;
+      lastProcessedMessageId = undefined;
+    }
+  }
+
+  if (existingSessionId) {
+    const canReuseSession = await canReuseSessionForRunModel({
+      sessionId: existingSessionId,
+      userId: userLink.vm0UserId,
+      orgId: userLink.orgId,
+      agentComposeId: composeId,
+      modelProviderId,
+      selectedModel,
+    });
+    if (!canReuseSession) {
+      log.debug("Model changed, starting new official session", {
+        composeId,
+        existingSessionId,
+      });
       existingSessionId = undefined;
       lastProcessedMessageId = undefined;
     }

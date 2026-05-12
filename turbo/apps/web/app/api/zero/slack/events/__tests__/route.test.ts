@@ -7,13 +7,23 @@ import {
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import {
+  completeTestRun,
   createTestCompose,
+  findTestRunCallbacks,
+  findTestRunsByUserAndPromptContaining,
+  findTestZeroRun,
+  insertOrgModelPolicy,
+  insertUserModelPreference,
+  setTestRunModelProvider,
+  setTestRunSelectedModel,
   updateOrgDefaultAgent,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   createTestSlackOrgInstallation,
+  insertTestSlackOrgThreadSession,
   seedTestSlackOrgConnection,
 } from "../../../../../../src/__tests__/db-test-seeders/slack";
+import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import {
   countSlackOrgInstallations,
   countSlackOrgConnections,
@@ -732,6 +742,104 @@ describe("POST /api/zero/slack/events", () => {
       const { WebClient } = await import("@slack/web-api");
       const mockClient = new WebClient();
       expect(mockClient.chat.postMessage).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("direct_message — session model compatibility", () => {
+    it("starts a new thread session when the selected model changed", async () => {
+      mockIsFeatureEnabled.mockReturnValue(true);
+
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+      const channelId = uniqueId("D-model");
+      const threadTs = "2400.001";
+      const { composeId, agentId } = await createTestCompose(uniqueId("agent"));
+      await updateOrgDefaultAgent(user.orgId, agentId);
+      await insertOrgModelPolicy({
+        orgId: user.orgId,
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+      });
+      await insertOrgModelPolicy({
+        orgId: user.orgId,
+        model: "claude-opus-4-7",
+      });
+      await insertUserModelPreference({
+        orgId: user.orgId,
+        userId: user.userId,
+        model: "claude-opus-4-7",
+      });
+      await createTestSlackOrgInstallation({
+        workspaceId,
+        orgId: user.orgId,
+      });
+      const { connectionId } = await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+
+      const previous = await seedTestRun(user.userId, composeId, {
+        prompt: "previous slack model session",
+        triggerSource: "slack",
+      });
+      const { agentSessionId } = await completeTestRun(
+        user.userId,
+        previous.runId,
+      );
+      await setTestRunModelProvider(previous.runId, "vm0");
+      await setTestRunSelectedModel(previous.runId, "claude-sonnet-4-6");
+      await insertTestSlackOrgThreadSession({
+        connectionId,
+        agentSessionId,
+        slackChannelId: channelId,
+        slackThreadTs: threadTs,
+      });
+
+      const prompt = `model changed ${uniqueId("slack")}`;
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "message",
+          channel_type: "im",
+          user: slackUserId,
+          text: prompt,
+          ts: "2400.002",
+          thread_ts: threadTs,
+          channel: channelId,
+          event_ts: "2400.002",
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const runs = await findTestRunsByUserAndPromptContaining(
+        user.userId,
+        prompt,
+      );
+      expect(runs).toHaveLength(1);
+      expect(runs[0]?.continuedFromSessionId).toBeNull();
+      expect(runs[0]?.sessionId).not.toBe(agentSessionId);
+      await expect(findTestZeroRun(runs[0]!.id)).resolves.toEqual(
+        expect.objectContaining({
+          triggerSource: "slack",
+          selectedModel: "claude-opus-4-7",
+        }),
+      );
+
+      const callbacks = await findTestRunCallbacks(runs[0]!.id);
+      expect(callbacks[0]?.payload).toEqual(
+        expect.objectContaining({
+          connectionId,
+          threadTs,
+          existingSessionId: undefined,
+        }),
+      );
     });
   });
 

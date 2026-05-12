@@ -26,6 +26,7 @@ export {
   findTestOfficialTelegramUserLink,
   findTestOfficialTelegramUserLinksByVm0UserId,
   findTestTelegramUserAgentPreference,
+  findTelegramThreadAgentSessionId,
   getTestTelegramBotToken,
   telegramUserLinkExists,
   telegramThreadSessionExists,

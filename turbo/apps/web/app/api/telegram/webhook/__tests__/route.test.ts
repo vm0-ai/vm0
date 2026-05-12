@@ -8,16 +8,24 @@ import {
 } from "../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
+  completeTestRun,
   createTelegramCallbackInstallation,
+  createTelegramThreadSession,
+  enableModelFirstModelProviderForUser,
   createTelegramInstallation,
   createTelegramPendingLinkInstallation,
   findTestRunCallbacks,
   findTestRunsByUserAndPromptContaining,
   findTestZeroRun,
+  insertOrgModelPolicy,
   insertTestOfficialTelegramUserLink,
+  insertUserModelPreference,
   PENDING_TELEGRAM_USER_ID,
   setDefaultAgentByComposeId,
+  setTestRunModelProvider,
+  setTestRunSelectedModel,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 import { GET as linkGET } from "../../../../api/integrations/telegram/link/route";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
@@ -502,6 +510,113 @@ describe("POST /api/telegram/webhook/[telegramBotId]", () => {
           agentId: composeId,
           existingSessionId: null,
           isDM: true,
+        }),
+      );
+    });
+
+    it("starts a new official DM session when the selected model changed", async () => {
+      context.setupMocks();
+      vi.stubEnv("TELEGRAM_OFFICIAL_BOT_TOKEN", OFFICIAL_BOT_TOKEN);
+      vi.stubEnv("TELEGRAM_OFFICIAL_BOT_USERNAME", "zero_vm0_bot");
+      vi.stubEnv("TELEGRAM_OFFICIAL_WEBHOOK_SECRET", OFFICIAL_WEBHOOK_SECRET);
+      reloadEnv();
+
+      const user = await context.setupUser();
+      const { composeId } = await createTestCompose(uniqueId("agent"));
+      await setDefaultAgentByComposeId(user.orgId, composeId);
+      await enableModelFirstModelProviderForUser(user.orgId, user.userId);
+      await insertOrgModelPolicy({
+        orgId: user.orgId,
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+      });
+      await insertOrgModelPolicy({
+        orgId: user.orgId,
+        model: "claude-opus-4-7",
+      });
+      await insertUserModelPreference({
+        orgId: user.orgId,
+        userId: user.userId,
+        model: "claude-opus-4-7",
+      });
+
+      const previous = await seedTestRun(user.userId, composeId, {
+        prompt: "previous telegram model session",
+        triggerSource: "telegram",
+      });
+      const { agentSessionId } = await completeTestRun(
+        user.userId,
+        previous.runId,
+      );
+      await setTestRunModelProvider(previous.runId, "vm0");
+      await setTestRunSelectedModel(previous.runId, "claude-sonnet-4-6");
+
+      const telegramUserId = Number(uniqueNumericId());
+      const officialLink = await insertTestOfficialTelegramUserLink({
+        telegramUserId: String(telegramUserId),
+        telegramUsername: "official_model_user",
+        vm0UserId: user.userId,
+        orgId: user.orgId,
+      });
+      await createTelegramThreadSession({
+        telegramOfficialUserLinkId: officialLink.id,
+        chatId: String(telegramUserId),
+        rootMessageId: "dm",
+        agentSessionId,
+      });
+
+      const sendChatActionHandler = http.post(
+        `https://api.telegram.org/bot${OFFICIAL_BOT_TOKEN}/sendChatAction`,
+        () => {
+          return HttpResponse.json({ ok: true, result: true });
+        },
+      );
+      server.use(sendChatActionHandler.handler);
+
+      const prompt = `model changed ${uniqueId("tg")}`;
+      const response = await POST(
+        createWebhookRequest(
+          {
+            update_id: 203,
+            message: {
+              message_id: 20,
+              chat: { id: telegramUserId, type: "private" },
+              from: { id: telegramUserId, username: "official_model_user" },
+              text: prompt,
+            },
+          },
+          OFFICIAL_WEBHOOK_SECRET,
+        ),
+        {
+          params: Promise.resolve({
+            telegramBotId: OFFICIAL_TELEGRAM_BOT_ID,
+          }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const runs = await findTestRunsByUserAndPromptContaining(
+        user.userId,
+        prompt,
+      );
+      expect(runs).toHaveLength(1);
+      expect(runs[0]?.continuedFromSessionId).toBeNull();
+      expect(runs[0]?.sessionId).not.toBe(agentSessionId);
+      await expect(findTestZeroRun(runs[0]!.id)).resolves.toEqual(
+        expect.objectContaining({
+          triggerSource: "telegram",
+          selectedModel: "claude-opus-4-7",
+        }),
+      );
+
+      const callbacks = await findTestRunCallbacks(runs[0]!.id);
+      expect(callbacks[0]?.payload).toEqual(
+        expect.objectContaining({
+          rootMessageId: "dm",
+          userLinkId: officialLink.id,
+          existingSessionId: null,
         }),
       );
     });

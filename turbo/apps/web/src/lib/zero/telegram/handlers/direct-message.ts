@@ -25,6 +25,7 @@ import {
 import { fetchTelegramContext } from "../context";
 import { runAgentForTelegram } from "./run-agent";
 import { buildTelegramErrorResponse } from "../format";
+import { canReuseSessionForRunModel } from "../../context/session-model-compatibility";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -113,29 +114,18 @@ export async function handleTelegramDirectMessage(
   // 6. Use "dm" sentinel as rootMessageId for single ongoing DM session
   const rootMessageId = "dm";
 
-  // 7. Look up existing session
-  const session = await lookupTelegramThreadSession(
-    chatId,
-    rootMessageId,
-    userLink.id,
-  );
-  let existingSessionId = session.existingSessionId;
-  const lastProcessedMessageId = session.lastProcessedMessageId;
-
-  // 7b. Validate session's agent matches current default — discard only on positive mismatch
-  if (existingSessionId) {
-    const sessionCompose = await resolveSessionCompose(
-      existingSessionId,
-      userLink.vm0UserId,
-    );
-    if (sessionCompose && sessionCompose.composeId !== composeId) {
-      log.debug("Agent changed, starting new session", {
-        sessionComposeId: sessionCompose.composeId,
-        currentComposeId: composeId,
-      });
-      existingSessionId = undefined;
-    }
-  }
+  // 7. Look up an existing DM session when it is compatible with this run.
+  const { existingSessionId, lastProcessedMessageId } =
+    await resolveDirectMessageSession({
+      chatId,
+      rootMessageId,
+      userLinkId: userLink.id,
+      userId: userLink.vm0UserId,
+      orgId: installation.orgId,
+      composeId,
+      modelProviderId: defaultAgent.modelProviderId,
+      selectedModel: defaultAgent.selectedModel,
+    });
 
   // 8. Fetch new conversation context; existing sessions already have older history.
   const { executionContext } = await fetchTelegramContext(
@@ -215,4 +205,62 @@ export async function handleTelegramDirectMessage(
       buildTelegramErrorResponse(errorDetail, linkUrl),
     );
   }
+}
+
+async function resolveDirectMessageSession(params: {
+  chatId: string;
+  rootMessageId: string;
+  userLinkId: string;
+  userId: string;
+  orgId: string;
+  composeId: string;
+  modelProviderId: string | null;
+  selectedModel: string | null;
+}): Promise<{
+  existingSessionId: string | undefined;
+  lastProcessedMessageId: string | undefined;
+}> {
+  const session = await lookupTelegramThreadSession(
+    params.chatId,
+    params.rootMessageId,
+    params.userLinkId,
+  );
+  let existingSessionId = session.existingSessionId;
+  let lastProcessedMessageId = session.lastProcessedMessageId;
+
+  if (existingSessionId) {
+    const sessionCompose = await resolveSessionCompose(
+      existingSessionId,
+      params.userId,
+    );
+    if (sessionCompose && sessionCompose.composeId !== params.composeId) {
+      log.debug("Agent changed, starting new session", {
+        sessionComposeId: sessionCompose.composeId,
+        currentComposeId: params.composeId,
+      });
+      existingSessionId = undefined;
+      lastProcessedMessageId = undefined;
+    }
+  }
+
+  if (existingSessionId) {
+    const canReuseSession = await canReuseSessionForRunModel({
+      sessionId: existingSessionId,
+      userId: params.userId,
+      orgId: params.orgId,
+      agentComposeId: params.composeId,
+      modelProviderId: params.modelProviderId,
+      selectedModel: params.selectedModel,
+    });
+    if (!canReuseSession) {
+      log.debug("Model changed, starting new session", {
+        composeId: params.composeId,
+        existingSessionId,
+      });
+      existingSessionId = undefined;
+      lastProcessedMessageId = undefined;
+    }
+  }
+
+  return { existingSessionId, lastProcessedMessageId };
 }

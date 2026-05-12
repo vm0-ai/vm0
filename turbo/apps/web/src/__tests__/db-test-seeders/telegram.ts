@@ -476,15 +476,21 @@ export async function createTelegramCallbackInstallation(
  * @why-db-direct Creates thread session for session tracking tests
  */
 export async function createTelegramThreadSession(params: {
-  telegramUserLinkId: string;
+  telegramUserLinkId?: string;
+  telegramOfficialUserLinkId?: string;
   chatId: string;
   rootMessageId: string;
   agentSessionId: string;
 }): Promise<void> {
   initServices();
 
+  if (!params.telegramUserLinkId && !params.telegramOfficialUserLinkId) {
+    throw new Error("createTelegramThreadSession: missing owner link id");
+  }
+
   await globalThis.services.db.insert(telegramThreadSessions).values({
-    telegramUserLinkId: params.telegramUserLinkId,
+    telegramUserLinkId: params.telegramUserLinkId ?? null,
+    telegramOfficialUserLinkId: params.telegramOfficialUserLinkId ?? null,
     chatId: params.chatId,
     rootMessageId: params.rootMessageId,
     agentSessionId: params.agentSessionId,

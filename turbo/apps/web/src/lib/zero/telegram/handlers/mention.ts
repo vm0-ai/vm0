@@ -25,6 +25,7 @@ import {
 import { fetchTelegramContext } from "../context";
 import { runAgentForTelegram } from "./run-agent";
 import { buildTelegramErrorResponse } from "../format";
+import { canReuseSessionForRunModel } from "../../context/session-model-compatibility";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -151,7 +152,10 @@ export async function handleTelegramMention(
       chatId,
       userLink.id,
       userLink.vm0UserId,
+      installation.orgId,
       composeId,
+      defaultAgent.modelProviderId,
+      defaultAgent.selectedModel,
       installation.botUsername,
     );
 
@@ -225,7 +229,10 @@ async function resolveThreadSession(
   chatId: string,
   userLinkId: string,
   vm0UserId: string,
+  orgId: string,
   composeId: string,
+  modelProviderId: string | null,
+  selectedModel: string | null,
   botUsername: string | null,
 ): Promise<{
   rootMessageId: string | undefined;
@@ -259,6 +266,25 @@ async function resolveThreadSession(
       log.debug("Agent changed, starting new session", {
         sessionComposeId: sessionCompose.composeId,
         currentComposeId: composeId,
+      });
+      existingSessionId = undefined;
+      lastProcessedMessageId = undefined;
+    }
+  }
+
+  if (existingSessionId) {
+    const canReuseSession = await canReuseSessionForRunModel({
+      sessionId: existingSessionId,
+      userId: vm0UserId,
+      orgId,
+      agentComposeId: composeId,
+      modelProviderId,
+      selectedModel,
+    });
+    if (!canReuseSession) {
+      log.debug("Model changed, starting new session", {
+        composeId,
+        existingSessionId,
       });
       existingSessionId = undefined;
       lastProcessedMessageId = undefined;

@@ -184,6 +184,7 @@ export {
   findTestTelegramUserLinksByVm0UserId,
   findTestTelegramUserAgentPreference,
   findTestTelegramInstallationsByOwner,
+  findTelegramThreadAgentSessionId,
   getTestTelegramBotToken,
   telegramUserLinkExists,
   telegramThreadSessionExists,

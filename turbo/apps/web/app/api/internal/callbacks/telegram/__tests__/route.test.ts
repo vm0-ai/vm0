@@ -13,6 +13,8 @@ import {
   createTestCompose,
   createSignedCallbackRequest,
   createTelegramCallbackInstallation,
+  findTelegramThreadAgentSessionId,
+  findTestRunRecord,
   insertTestTelegramUserLink,
   createTelegramThreadSession,
 } from "../../../../../../src/__tests__/api-test-helpers";
@@ -439,6 +441,48 @@ describe("POST /api/internal/callbacks/telegram", () => {
       const sent = sendMessageHandler.calls[0]!;
       expect(sent.text).toContain("<b>Done</b> with <code>code</code>");
       expect(sent.reply_parameters).toBeUndefined();
+    });
+
+    it("replaces an existing DM mapping when a new session was started", async () => {
+      const { userId, composeId, runId, payload, secret } =
+        await setupTelegramCallback();
+      const run = await findTestRunRecord(runId);
+      const oldSession = await createTestAgentSession(userId, composeId);
+      await createTelegramThreadSession({
+        telegramUserLinkId: payload.userLinkId,
+        chatId: payload.chatId,
+        rootMessageId: "dm",
+        agentSessionId: oldSession.id,
+      });
+
+      const chatActionHandler = telegramSendChatAction();
+      const sendMessageHandler = telegramSendMessage();
+      server.use(chatActionHandler.handler, sendMessageHandler.handler);
+
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/telegram",
+        {
+          runId,
+          status: "completed",
+          payload: {
+            ...payload,
+            rootMessageId: "dm",
+            existingSessionId: null,
+            isDM: true,
+          },
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const agentSessionId = await findTelegramThreadAgentSessionId({
+        telegramUserLinkId: payload.userLinkId,
+        chatId: payload.chatId,
+        rootMessageId: "dm",
+      });
+      expect(agentSessionId).toBe(run?.sessionId);
+      expect(agentSessionId).not.toBe(oldSession.id);
     });
 
     it("should delete legacy thinking placeholder when present", async () => {

@@ -170,3 +170,30 @@ export async function telegramThreadSessionExists(params: {
     .limit(1);
   return row !== undefined;
 }
+
+/**
+ * Find the agent session mapped to a Telegram thread.
+ */
+export async function findTelegramThreadAgentSessionId(params: {
+  telegramUserLinkId: string;
+  chatId: string;
+  rootMessageId: string;
+}): Promise<string | undefined> {
+  initServices();
+
+  const [row] = await globalThis.services.db
+    .select({ agentSessionId: telegramThreadSessions.agentSessionId })
+    .from(telegramThreadSessions)
+    .where(
+      and(
+        eq(
+          telegramThreadSessions.telegramUserLinkId,
+          params.telegramUserLinkId,
+        ),
+        eq(telegramThreadSessions.chatId, params.chatId),
+        eq(telegramThreadSessions.rootMessageId, params.rootMessageId),
+      ),
+    )
+    .limit(1);
+  return row?.agentSessionId;
+}
