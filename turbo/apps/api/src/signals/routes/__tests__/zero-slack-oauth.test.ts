@@ -280,10 +280,18 @@ describe("Slack OAuth API routes", () => {
     });
 
     it("creates an unbound installation for Slack-initiated installs", async () => {
+      const fixture = await track(
+        store.set(
+          seedSlackConnectOrg$,
+          { installationOrgId: null },
+          context.signal,
+        ),
+      );
+      await store.set(deleteSlackConnectOrg$, fixture, context.signal);
       mockOAuthSuccess({
-        teamId: "T_SLACK_INITIATED",
-        teamName: "Slack Workspace",
-        authedUserId: "U_INSTALLER",
+        teamId: fixture.slackWorkspaceId,
+        teamName: fixture.slackWorkspaceName,
+        authedUserId: fixture.slackUserId,
       });
 
       const response = await appRequest(
@@ -293,12 +301,12 @@ describe("Slack OAuth API routes", () => {
       expect(response.status).toBe(307);
       const location = response.headers.get("location");
       expect(location).toContain("/settings/slack");
-      expect(location).toContain("w=T_SLACK_INITIATED");
-      expect(location).toContain("u=U_INSTALLER");
+      expect(location).toContain(`w=${fixture.slackWorkspaceId}`);
+      expect(location).toContain(`u=${fixture.slackUserId}`);
 
       const installation = await store.set(
         findSlackOrgInstallation$,
-        "T_SLACK_INITIATED",
+        fixture.slackWorkspaceId,
         context.signal,
       );
       expect(installation?.orgId).toBeNull();
