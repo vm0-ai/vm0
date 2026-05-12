@@ -64,6 +64,7 @@ import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-provide
 import { zeroSecretsRoutes } from "./routes/zero-secrets";
 import { zeroSkillsRoutes } from "./routes/zero-skills";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
+import { zeroIntegrationsChatMessageRoutes } from "./routes/zero-integrations-chat-message";
 import { zeroIntegrationsSlackRoutes } from "./routes/zero-integrations-slack";
 import { zeroIntegrationsSlackMessageRoutes } from "./routes/zero-integrations-slack-message";
 import { zeroIntegrationsSlackUploadCompleteRoutes } from "./routes/zero-integrations-slack-upload-complete";
@@ -177,6 +178,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroSkillsRoutes,
   ...integrationsGithubRoutes,
   ...zeroSlackBrowserConnectRoutes,
+  ...zeroIntegrationsChatMessageRoutes,
   ...zeroSlackConnectRoutes,
   ...zeroSlackOauthRoutes,
   ...zeroIntegrationsSlackRoutes,

@@ -44,7 +44,10 @@ import { z } from "zod";
 import { env } from "../../lib/env";
 import { buildFileUrl } from "../../lib/file-url";
 import { db$, writeDb$ } from "../external/db";
-import { publishThreadListChanged } from "../external/realtime";
+import {
+  publishThreadListChanged,
+  publishUserSignal,
+} from "../external/realtime";
 import { listS3Objects } from "../external/s3";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
@@ -1131,6 +1134,65 @@ export const createChatThread$ = command(
     }
 
     return thread;
+  },
+);
+
+export function integrationChatThreadByOwner(args: {
+  readonly threadId: string;
+  readonly userId: string;
+}): Computed<Promise<{ readonly id: string } | null>> {
+  return computed(async (get): Promise<{ readonly id: string } | null> => {
+    const db = get(db$);
+    const [thread] = await db
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(
+        and(
+          eq(chatThreads.id, args.threadId),
+          eq(chatThreads.userId, args.userId),
+        ),
+      )
+      .limit(1);
+
+    return thread ?? null;
+  });
+}
+
+export const insertIntegrationChatMessage$ = command(
+  async (
+    { set },
+    args: {
+      readonly chatThreadId: string;
+      readonly userId: string;
+      readonly content: string;
+    },
+    signal: AbortSignal,
+  ): Promise<{ readonly id: string; readonly createdAt: Date }> => {
+    const writeDb = set(writeDb$);
+    const [message] = await writeDb
+      .insert(chatMessages)
+      .values({
+        chatThreadId: args.chatThreadId,
+        role: "assistant",
+        content: args.content,
+        runId: null,
+      })
+      .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
+    signal.throwIfAborted();
+
+    if (!message) {
+      throw new Error("Failed to insert integration chat message");
+    }
+
+    await publishUserSignal(
+      [args.userId],
+      `chatThreadMessageCreated:${args.chatThreadId}`,
+    );
+    signal.throwIfAborted();
+    await publishThreadListChanged(args.userId);
+    signal.throwIfAborted();
+
+    return message;
   },
 );
 
