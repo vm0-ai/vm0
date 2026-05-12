@@ -24,6 +24,7 @@ vi.stubEnv("R2_SECRET_ACCESS_KEY", "test-secret-key");
 vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-user-storages");
 vi.stubEnv("VM0_API_URL", "http://localhost:3000");
 vi.stubEnv("VM0_WEB_URL", "http://localhost:3001");
+vi.stubEnv("RESEND_FROM_DOMAIN", "mail.example.com");
 vi.stubEnv("GIT_COMMIT_SHA", "test-commit-sha");
 vi.stubEnv("ENV", "development");
 vi.stubEnv("AXIOM_TOKEN_SESSIONS", "xaat-test-sessions");

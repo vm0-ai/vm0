@@ -27,6 +27,11 @@ const userExportStatusResponseSchema = z.object({
   nextExportAt: z.string().nullable(),
 });
 
+const userExportStartResponseSchema = z.object({
+  jobId: z.string().uuid(),
+  status: z.enum(["pending", "running"]),
+});
+
 export const userExportContract = c.router({
   get: {
     method: "GET",
@@ -40,6 +45,20 @@ export const userExportContract = c.router({
     },
     summary: "Get current user export status",
   },
+  post: {
+    method: "POST",
+    path: "/api/user/export",
+    headers: authHeadersSchema,
+    body: z.undefined(),
+    responses: {
+      202: userExportStartResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      429: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Start a user data export",
+  },
 });
 
 export type UserExportContract = typeof userExportContract;
@@ -47,3 +66,6 @@ export type UserExportStatusResponse = z.infer<
   typeof userExportStatusResponseSchema
 >;
 export type UserExportJob = z.infer<typeof userExportJobSchema>;
+export type UserExportStartResponse = z.infer<
+  typeof userExportStartResponseSchema
+>;

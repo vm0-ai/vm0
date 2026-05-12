@@ -17,6 +17,7 @@ const SCHEMA = {
   VM0_DEBUG: z.string().default(""),
   VM0_API_URL: z.url(),
   VM0_WEB_URL: z.url(),
+  RESEND_FROM_DOMAIN: z.string().min(1).optional(),
   CRON_SECRET: z.string().min(1),
   R2_ACCESS_KEY_ID: z.string().min(1),
   R2_ACCOUNT_ID: z.string().min(1),

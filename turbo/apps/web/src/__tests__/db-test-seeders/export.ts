@@ -14,6 +14,9 @@ export async function insertTestExportJob(
     userId: string;
     status: string;
     s3Key?: string | null;
+    completedAt?: Date | null;
+    expiresAt?: Date | null;
+    error?: string | null;
   },
 ): Promise<{ id: string }> {
   initServices();
@@ -24,6 +27,9 @@ export async function insertTestExportJob(
       userId: options.userId,
       status: options.status,
       s3Key: options.s3Key ?? null,
+      completedAt: options.completedAt ?? null,
+      expiresAt: options.expiresAt ?? null,
+      error: options.error ?? null,
     })
     .returning({ id: exportJobs.id });
   return row!;
