@@ -424,3 +424,178 @@ describe("DELETE /api/zero/org/domains", () => {
     ).not.toHaveBeenCalled();
   });
 });
+
+describe("PATCH /api/zero/org/domains", () => {
+  const seededFixtures: OrgMembershipFixture[] = [];
+
+  afterEach(async () => {
+    while (seededFixtures.length > 0) {
+      const fixture = seededFixtures.pop();
+      if (fixture) {
+        await store.set(deleteOrgMembership$, fixture, context.signal);
+      }
+    }
+  });
+
+  it("verifies a domain for an admin", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(
+      await store.set(
+        seedOrgMembership$,
+        { orgId, userId, role: "admin" },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(userId, orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroOrgDomainsContract);
+
+    const response = await accept(
+      client.setVerified({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { domainId: "domain_test123", verified: true },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ message: "Domain verified" });
+    expect(
+      context.mocks.clerk.organizations.updateOrganizationDomain,
+    ).toHaveBeenCalledWith({
+      organizationId: orgId,
+      domainId: "domain_test123",
+      verified: true,
+    });
+  });
+
+  it("unverifies a domain for an admin", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(
+      await store.set(
+        seedOrgMembership$,
+        { orgId, userId, role: "admin" },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(userId, orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroOrgDomainsContract);
+
+    const response = await accept(
+      client.setVerified({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { domainId: "domain_test123", verified: false },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ message: "Domain unverified" });
+    expect(
+      context.mocks.clerk.organizations.updateOrganizationDomain,
+    ).toHaveBeenCalledWith({
+      organizationId: orgId,
+      domainId: "domain_test123",
+      verified: false,
+    });
+  });
+
+  it("returns 401 when not authenticated", async () => {
+    const client = setupApp({ context })(zeroOrgDomainsContract);
+
+    const response = await accept(
+      client.setVerified({
+        headers: {},
+        body: { domainId: "domain_test123", verified: true },
+      }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+    expect(
+      context.mocks.clerk.organizations.updateOrganizationDomain,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+
+    const client = setupApp({ context })(zeroOrgDomainsContract);
+
+    const response = await accept(
+      client.setVerified({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { domainId: "domain_test123", verified: true },
+      }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+    expect(
+      context.mocks.clerk.organizations.updateOrganizationDomain,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 when caller is not an admin", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(
+      await store.set(
+        seedOrgMembership$,
+        { orgId, userId, role: "member" },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(userId, orgId, "org:member");
+
+    const client = setupApp({ context })(zeroOrgDomainsContract);
+
+    const response = await accept(
+      client.setVerified({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { domainId: "domain_test123", verified: true },
+      }),
+      [403],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "Access denied",
+      code: "FORBIDDEN",
+    });
+    expect(
+      context.mocks.clerk.organizations.updateOrganizationDomain,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid bodies before calling Clerk", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(
+      await store.set(
+        seedOrgMembership$,
+        { orgId, userId, role: "admin" },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(userId, orgId, "org:admin");
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/org/domains", {
+      method: "PATCH",
+      headers: {
+        authorization: "Bearer clerk-session",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ domainId: "domain_test123" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+    expect(
+      context.mocks.clerk.organizations.updateOrganizationDomain,
+    ).not.toHaveBeenCalled();
+  });
+});

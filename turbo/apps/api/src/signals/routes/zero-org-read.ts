@@ -189,6 +189,40 @@ const removeDomainInner$ = command(async ({ get }, signal: AbortSignal) => {
   };
 });
 
+const setVerifiedDomainBody$ = bodyResultOf(zeroOrgDomainsContract.setVerified);
+
+const setVerifiedDomainInner$ = command(
+  async ({ get }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (auth.orgRole !== "admin") {
+      return adminRequired;
+    }
+
+    const bodyResult = await get(setVerifiedDomainBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const client = get(clerk$);
+    await client.organizations.updateOrganizationDomain({
+      organizationId: auth.orgId,
+      domainId: bodyResult.data.domainId,
+      verified: bodyResult.data.verified,
+    });
+    signal.throwIfAborted();
+
+    return {
+      status: 200 as const,
+      body: {
+        message: bodyResult.data.verified
+          ? "Domain verified"
+          : "Domain unverified",
+      },
+    };
+  },
+);
+
 const membersInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const body = await get(
@@ -239,6 +273,13 @@ export const zeroOrgReadRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       removeDomainInner$,
+    ),
+  },
+  {
+    route: zeroOrgDomainsContract.setVerified,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      setVerifiedDomainInner$,
     ),
   },
   {
