@@ -886,6 +886,22 @@ mod tests {
     }
 
     #[test]
+    fn parse_fio_json_rejects_active_direction_missing_iops() {
+        let json = br#"{
+            "jobs": [{
+                "read": {
+                    "total_ios": 512,
+                    "clat_ns": {"percentile": {"50.000000": 8000, "99.000000": 16000}}
+                }
+            }]
+        }"#;
+
+        let err = parse_fio_json(json).unwrap_err();
+
+        assert!(err.contains("active direction IOPS"), "{err}");
+    }
+
+    #[test]
     fn fio_vm_iops_sums_multiple_jobs() {
         let json = br#"{
             "jobs": [
@@ -924,6 +940,32 @@ mod tests {
                 },
                 {
                     "mixed": {
+                        "iops": 400.0,
+                        "total_ios": 400,
+                        "clat_ns": {"percentile": {"50.000000": 12000, "99.000000": 22000}}
+                    }
+                }
+            ]
+        }"#;
+
+        let err = parse_fio_json(json).unwrap_err();
+
+        assert!(err.contains("--group_reporting=1"), "{err}");
+    }
+
+    #[test]
+    fn parse_fio_json_rejects_multiple_read_latency_sections() {
+        let json = br#"{
+            "jobs": [
+                {
+                    "read": {
+                        "iops": 600.0,
+                        "total_ios": 600,
+                        "clat_ns": {"percentile": {"50.000000": 10000, "99.000000": 20000}}
+                    }
+                },
+                {
+                    "read": {
                         "iops": 400.0,
                         "total_ios": 400,
                         "clat_ns": {"percentile": {"50.000000": 12000, "99.000000": 22000}}
@@ -1003,10 +1045,42 @@ mod tests {
     }
 
     #[test]
+    fn parse_fio_json_rejects_mixed_latency_without_unified_stats_ignoring_inactive_mixed() {
+        let json = br#"{
+            "jobs": [{
+                "read": {
+                    "iops": 700.0,
+                    "total_ios": 700,
+                    "clat_ns": {"percentile": {"50.000000": 10000, "99.000000": 20000}}
+                },
+                "write": {
+                    "iops": 300.0,
+                    "total_ios": 300,
+                    "clat_ns": {"percentile": {"50.000000": 12000, "99.000000": 22000}}
+                },
+                "mixed": {"iops": 0.0, "total_ios": 0}
+            }]
+        }"#;
+
+        let err = parse_fio_json(json).unwrap_err();
+
+        assert!(err.contains("unified"), "{err}");
+    }
+
+    #[test]
     fn parse_fio_json_rejects_invalid_json() {
         let err = parse_fio_json(b"not json").unwrap_err();
 
         assert!(err.contains("parse fio JSON"), "{err}");
+    }
+
+    #[test]
+    fn parse_fio_json_rejects_missing_or_empty_jobs() {
+        let missing = parse_fio_json(br#"{}"#).unwrap_err();
+        assert!(missing.contains("missing jobs array"), "{missing}");
+
+        let empty = parse_fio_json(br#"{"jobs":[]}"#).unwrap_err();
+        assert!(empty.contains("jobs array is empty"), "{empty}");
     }
 
     #[test]
@@ -1015,6 +1089,7 @@ mod tests {
             bench_dm_owner_pid("bench-cow-1234-nbd-cow-bench-abcd"),
             Some(1234)
         );
+        assert_eq!(bench_dm_owner_pid("bench-cow-1234"), Some(1234));
     }
 
     #[test]
