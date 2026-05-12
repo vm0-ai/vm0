@@ -7,6 +7,7 @@ import {
   deleteInsertedVm0ApiKeys,
   getTestVm0ApiKey,
   insertOrgDefaultModelProvider,
+  insertOrgModelPolicy,
 } from "./api-test-helpers";
 import { testContext, uniqueId } from "./test-helpers";
 import { mockClerk } from "./clerk-mock";
@@ -238,6 +239,11 @@ describe("VM0 managed model provider", () => {
       const { orgId } = await setupOrg(userId, "org:admin", uniqueId("glm"));
 
       await insertOrgDefaultModelProvider(orgId, "vm0", "glm-5.1");
+      await insertOrgModelPolicy({
+        orgId,
+        model: "glm-5.1",
+        isDefault: true,
+      });
       await insertVm0ApiKeys([
         {
           vendor: "openrouter",
@@ -273,6 +279,11 @@ describe("VM0 managed model provider", () => {
       );
 
       await insertOrgDefaultModelProvider(orgId, "vm0", "deepseek-v4-pro");
+      await insertOrgModelPolicy({
+        orgId,
+        model: "deepseek-v4-pro",
+        isDefault: true,
+      });
       await insertVm0ApiKeys([
         {
           vendor: "deepseek",
@@ -310,6 +321,11 @@ describe("VM0 managed model provider", () => {
       );
 
       await insertOrgDefaultModelProvider(orgId, "vm0", "deepseek-v4-flash");
+      await insertOrgModelPolicy({
+        orgId,
+        model: "deepseek-v4-flash",
+        isDefault: true,
+      });
       await insertVm0ApiKeys([
         {
           vendor: "deepseek",
