@@ -45,13 +45,20 @@ const DEFAULT_COMMAND_CAPTURE_LIMIT_BYTES: u32 = 1024 * 1024;
 const SMALL_COMMAND_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
 const EXEC_TIMEOUT_EXIT_CODE: i32 = 124;
 const DEFAULT_COMMAND_STREAM_CAPACITY: usize = 32;
-const MAX_COMMAND_STREAM_CAPACITY: usize = 1024;
+// Large enough for the current 64 MiB guest-log copy cap even when the guest
+// emits stream events at the command drainer's 8 KiB read granularity.
+const MAX_COMMAND_STREAM_CAPACITY: usize = 8192;
 const COPY_TEMP_CREATE_ATTEMPTS: usize = 16;
 const COMMAND_LABEL_LOG_PREFIX_MAX_BYTES: usize = 100;
 const COMMAND_CLOSE_ACTIVE_LOG_LIMIT: usize = 16;
 const COMMAND_FRAME_WRITE_SLOW_THRESHOLD: Duration = Duration::from_millis(500);
 const COMMAND_STAGE_SLOW_THRESHOLD: Duration = Duration::from_secs(5);
 const COMMAND_DROP_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_secs(1);
+const COPY_FILE_STREAM_CHUNK_LIMIT: u32 = 64 * 1024;
+const COPY_FILE_STREAM_MAX_BYTES: u64 = 64 * 1024 * 1024;
+// Copying is the one built-in streaming consumer that must tolerate the host
+// reader briefly outrunning the temp-file writer without failing the command.
+const COPY_FILE_STREAM_QUEUE_CAPACITY: usize = MAX_COMMAND_STREAM_CAPACITY;
 const COMMAND_FRAME_WRITE_NOT_STARTED: u8 = 0;
 const COMMAND_FRAME_WRITE_STARTED: u8 = 1;
 const COMMAND_FRAME_WRITE_COMPLETED: u8 = 2;
@@ -2251,6 +2258,12 @@ impl VsockHost {
                 "copy_file max_bytes must be positive",
             ));
         }
+        if options.max_bytes > COPY_FILE_STREAM_MAX_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("copy_file max_bytes must be at most {COPY_FILE_STREAM_MAX_BYTES}"),
+            ));
+        }
         let stream_limit_bytes = u32::try_from(options.max_bytes).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -2328,12 +2341,12 @@ impl VsockHost {
                 label: "copy-file",
                 stdout: CommandOutputPolicy::Stream {
                     limit_bytes: stream_limit_bytes,
-                    chunk_limit_bytes: 64 * 1024,
+                    chunk_limit_bytes: COPY_FILE_STREAM_CHUNK_LIMIT,
                 },
                 stderr: CommandOutputPolicy::Capture {
                     limit_bytes: SMALL_COMMAND_CAPTURE_LIMIT_BYTES,
                 },
-                stream_queue_capacity: None,
+                stream_queue_capacity: Some(COPY_FILE_STREAM_QUEUE_CAPACITY),
             })
             .await?;
         let mut cancel_on_drop = CommandCancelOnDropGuard::new(&handle);
@@ -3116,6 +3129,35 @@ mod tests {
 
         assert!(!path.exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn copy_file_stream_settings_cover_max_copy_without_queue_overflow() {
+        assert_eq!(
+            COPY_FILE_STREAM_MAX_BYTES,
+            COPY_FILE_STREAM_CHUNK_LIMIT as u64 * 1024
+        );
+        assert_eq!(COPY_FILE_STREAM_QUEUE_CAPACITY, MAX_COMMAND_STREAM_CAPACITY);
+    }
+
+    #[tokio::test]
+    async fn copy_file_rejects_max_bytes_above_stream_budget() {
+        let (host, _guest, _decoder) = setup_host_and_guest().await;
+        let err = host
+            .copy_file(
+                "/tmp/large.log",
+                Path::new("/tmp/large.log"),
+                CopyFileOptions {
+                    max_bytes: COPY_FILE_STREAM_MAX_BYTES + 1,
+                    timeout_ms: 5000,
+                    missing_ok: false,
+                },
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("copy_file max_bytes"));
     }
 
     #[tokio::test]
