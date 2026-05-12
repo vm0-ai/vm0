@@ -91,7 +91,7 @@ UNIT="vm0-runner-${RUNNER_NAME}.service"
 # the final path.
 if ! stop_output=$(sudo systemctl stop "${UNIT}" 2>&1); then
   case "$stop_output" in
-    *"not loaded"*|*"not found"*) ;;
+    *"Unit ${UNIT} not loaded."*|*"Unit ${UNIT} could not be found."*|*"Unit ${UNIT} not found."*) ;;
     *)
       printf '%s\n' "$stop_output" >&2
       exit 1
