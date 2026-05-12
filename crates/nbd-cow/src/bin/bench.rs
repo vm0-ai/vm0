@@ -47,7 +47,10 @@ async fn main() {
     eprintln!("Work directory: {}", work_dir_path.display());
 
     let base_path = work_dir_path.join("base.img");
-    let base_size = base_size_mb * 1024 * 1024;
+    let base_size = base_size_bytes(base_size_mb).unwrap_or_else(|| {
+        eprintln!("ERROR: base image size is too large: {base_size_mb} MB");
+        std::process::exit(1);
+    });
 
     // Create base image
     eprintln!("== Creating base image ==");
@@ -163,6 +166,10 @@ struct FioWorkload {
     args: &'static str,
 }
 
+fn base_size_bytes(base_size_mb: u64) -> Option<u64> {
+    base_size_mb.checked_mul(1024 * 1024)
+}
+
 #[derive(Debug, Default)]
 struct FioResult {
     /// IOPS as seen by the VM / fio
@@ -269,7 +276,7 @@ struct DiskStats {
 
 impl DiskStats {
     fn total_ios(&self) -> u64 {
-        self.reads_completed + self.writes_completed
+        self.reads_completed.saturating_add(self.writes_completed)
     }
 }
 
@@ -491,6 +498,14 @@ fn parse_diskstats(content: &str, device_name: &str) -> Result<DiskStats, String
     Err(format!("device {device_name} not found in /proc/diskstats"))
 }
 
+fn diskstats_contains_device(content: &str, device_name: &str) -> bool {
+    content.lines().any(|line| {
+        line.split_whitespace()
+            .nth(2)
+            .is_some_and(|name| name == device_name)
+    })
+}
+
 /// Auto-detect the host disk by finding the block device backing /tmp.
 fn detect_host_disk() -> String {
     // Try to find the device for /tmp via df
@@ -504,7 +519,7 @@ fn detect_host_disk() -> String {
                 // Check /proc/diskstats for nvme or xvd devices
                 if let Ok(stats) = std::fs::read_to_string("/proc/diskstats") {
                     for candidate in &["nvme0n1", "xvda", "sda", "vda"] {
-                        if stats.contains(candidate) {
+                        if diskstats_contains_device(&stats, candidate) {
                             return (*candidate).to_string();
                         }
                     }
@@ -799,22 +814,10 @@ fn bench_dm_owner_pid(name: &str) -> Option<u32> {
 fn cleanup_stale_nbd_devices() {
     let max = nbd_cow::netlink::nbds_max();
     for i in 0..max {
-        let size_path = format!("/sys/block/nbd{i}/size");
-        let pid_path = format!("/sys/block/nbd{i}/pid");
-        let size: u64 = std::fs::read_to_string(&size_path)
-            .ok()
-            .and_then(|s| s.trim().parse().ok())
-            .unwrap_or(0);
-        if size == 0 {
-            continue;
-        }
-        let Some(pid) = std::fs::read_to_string(&pid_path)
-            .ok()
-            .and_then(|s| s.trim().parse().ok())
-        else {
+        let Some(candidate) = read_nbd_device_state(i) else {
             continue;
         };
-        if !nbd_cleanup_candidate_owner(pid) {
+        if !nbd_cleanup_candidate(candidate) {
             continue;
         }
 
@@ -827,10 +830,46 @@ fn cleanup_stale_nbd_devices() {
             }
         };
 
-        eprintln!("  Cleaning up stale /dev/nbd{i} (size={size}, pid={pid})...");
+        let Some(current) = read_nbd_device_state(i) else {
+            continue;
+        };
+        if !nbd_cleanup_candidate(current) {
+            continue;
+        }
+
+        eprintln!(
+            "  Cleaning up stale /dev/nbd{i} (size={}, pid={})...",
+            current.size, current.pid
+        );
         let _ = nbd_cow::netlink::disconnect(i);
         drop(claim);
     }
+}
+
+#[derive(Clone, Copy)]
+struct NbdDeviceState {
+    size: u64,
+    pid: u32,
+}
+
+fn read_nbd_device_state(index: u32) -> Option<NbdDeviceState> {
+    let size_path = format!("/sys/block/nbd{index}/size");
+    let pid_path = format!("/sys/block/nbd{index}/pid");
+    let size = std::fs::read_to_string(&size_path)
+        .ok()?
+        .trim()
+        .parse()
+        .ok()?;
+    let pid = std::fs::read_to_string(&pid_path)
+        .ok()?
+        .trim()
+        .parse()
+        .ok()?;
+    Some(NbdDeviceState { size, pid })
+}
+
+fn nbd_cleanup_candidate(state: NbdDeviceState) -> bool {
+    state.size != 0 && nbd_cleanup_candidate_owner(state.pid)
 }
 
 fn nbd_cleanup_candidate_owner(pid: u32) -> bool {
@@ -847,6 +886,22 @@ fn nbd_module_loaded() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn base_size_bytes_rejects_overflow() {
+        assert_eq!(base_size_bytes(1024), Some(1024 * 1024 * 1024));
+        assert_eq!(base_size_bytes(u64::MAX), None);
+    }
+
+    #[test]
+    fn diskstats_total_ios_saturates() {
+        let stats = DiskStats {
+            reads_completed: u64::MAX,
+            writes_completed: 1,
+        };
+
+        assert_eq!(stats.total_ios(), u64::MAX);
+    }
 
     #[test]
     fn parse_fio_json_sums_mixed_read_write_iops() {
@@ -1204,6 +1259,14 @@ mod tests {
     }
 
     #[test]
+    fn diskstats_contains_device_requires_exact_name_match() {
+        let stats = "259 10 nvme0n10 1 0 0 0 2 0 0 0\n";
+
+        assert!(!diskstats_contains_device(stats, "nvme0n1"));
+        assert!(diskstats_contains_device(stats, "nvme0n10"));
+    }
+
+    #[test]
     fn diskstats_device_name_strips_partition_suffixes() {
         assert_eq!(diskstats_device_name("/dev/nvme0n1p1"), "nvme0n1");
         assert_eq!(diskstats_device_name("/dev/mmcblk0p2"), "mmcblk0");
@@ -1244,6 +1307,19 @@ mod tests {
         assert!(!nbd_cleanup_candidate_owner(0));
         assert!(nbd_cleanup_candidate_owner(std::process::id()));
         assert!(nbd_cleanup_candidate_owner(u32::MAX));
+    }
+
+    #[test]
+    fn nbd_cleanup_candidate_requires_nonzero_size_and_cleanup_owner() {
+        assert!(!nbd_cleanup_candidate(NbdDeviceState {
+            size: 0,
+            pid: std::process::id()
+        }));
+        assert!(!nbd_cleanup_candidate(NbdDeviceState { size: 1, pid: 0 }));
+        assert!(nbd_cleanup_candidate(NbdDeviceState {
+            size: 1,
+            pid: std::process::id()
+        }));
     }
 
     #[test]
