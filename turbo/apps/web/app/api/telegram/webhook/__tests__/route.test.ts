@@ -21,6 +21,7 @@ import {
   insertTestOfficialTelegramUserLink,
   insertUserModelPreference,
   PENDING_TELEGRAM_USER_ID,
+  setOrgCredits,
   setDefaultAgentByComposeId,
   setTestRunModelProvider,
   setTestRunSelectedModel,
@@ -522,6 +523,7 @@ describe("POST /api/telegram/webhook/[telegramBotId]", () => {
       reloadEnv();
 
       const user = await context.setupUser();
+      await setOrgCredits(user.orgId, 100_000);
       const { composeId } = await createTestCompose(uniqueId("agent"));
       await setDefaultAgentByComposeId(user.orgId, composeId);
       await enableModelFirstModelProviderForUser(user.orgId, user.userId);

@@ -14,6 +14,7 @@ import {
   findTestZeroRun,
   insertOrgModelPolicy,
   insertUserModelPreference,
+  setOrgCredits,
   setTestRunModelProvider,
   setTestRunSelectedModel,
   updateOrgDefaultAgent,
@@ -748,6 +749,7 @@ describe("POST /api/zero/slack/events", () => {
   describe("direct_message — session model compatibility", () => {
     it("starts a new thread session when the selected model changed", async () => {
       mockIsFeatureEnabled.mockReturnValue(true);
+      await setOrgCredits(user.orgId, 100_000);
 
       const workspaceId = uniqueId("T-ws");
       const slackUserId = uniqueId("U-slack");
