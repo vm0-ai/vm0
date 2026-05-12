@@ -208,6 +208,12 @@ export {
 } from "./cli-auth";
 export { authContract, type AuthContract } from "./auth";
 export {
+  userExportContract,
+  type UserExportContract,
+  type UserExportJob,
+  type UserExportStatusResponse,
+} from "./user-export";
+export {
   testOAuthProviderAuthorizeContract,
   testOAuthProviderAuthorizeErrorSchema,
   testOAuthProviderAuthorizeQuerySchema,

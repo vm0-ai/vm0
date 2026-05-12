@@ -168,6 +168,26 @@ export function generatePresignedPutUrl(
   });
 }
 
+export function generatePresignedGetUrl(
+  bucket: string,
+  key: string,
+  expiresIn: number,
+  filename?: string,
+  usePublicEndpoint = false,
+): Computed<Promise<string>> {
+  return computed((get): Promise<string> => {
+    const client = get(usePublicEndpoint ? publicS3Client$ : s3Client$);
+    const command = new GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      ...(filename
+        ? { ResponseContentDisposition: `attachment; filename="${filename}"` }
+        : {}),
+    });
+    return getSignedUrl(client, command, { expiresIn });
+  });
+}
+
 export function putS3Object(
   bucket: string,
   key: string,

@@ -109,6 +109,7 @@ export {
   cliAuthTokenContract,
   cliAuthOrgContract,
   authContract,
+  userExportContract,
   cronCleanupSandboxesContract,
   cleanupResultSchema,
   cleanupResponseSchema,
