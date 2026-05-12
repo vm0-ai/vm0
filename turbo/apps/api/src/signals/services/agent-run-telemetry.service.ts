@@ -27,7 +27,8 @@ import {
 import { escapeAplString } from "../../lib/axiom-apl";
 
 interface AgentComposeContent {
-  readonly agents: Record<string, { readonly framework: string }>;
+  readonly agent?: { readonly framework?: string };
+  readonly agents?: Record<string, { readonly framework?: string } | undefined>;
 }
 
 interface AxiomAgentEvent {
@@ -88,11 +89,16 @@ interface RunWithCompose {
 }
 
 function extractFramework(composeContent: unknown): string {
-  const content = composeContent as AgentComposeContent | null;
-  const agentNames = content?.agents ? Object.keys(content.agents) : [];
-  const firstAgent =
-    agentNames.length > 0 ? content?.agents[agentNames[0]!] : null;
-  return firstAgent?.framework ?? "claude-code";
+  const content = composeContent as AgentComposeContent | null | undefined;
+  if (content?.agent?.framework) {
+    return content.agent.framework;
+  }
+
+  const agents = content?.agents;
+  const firstAgentKey = agents ? Object.keys(agents)[0] : undefined;
+  return firstAgentKey
+    ? (agents?.[firstAgentKey]?.framework ?? "claude-code")
+    : "claude-code";
 }
 
 function filterConsecutiveEvents(

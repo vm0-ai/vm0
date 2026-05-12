@@ -8,8 +8,10 @@ import {
   runSystemLogContract,
   runTelemetryContract,
 } from "@vm0/api-contracts/contracts/runs";
+import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { sandboxTelemetry } from "@vm0/db/schema/sandbox-telemetry";
 import { createStore } from "ccstate";
+import { eq } from "drizzle-orm";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -89,6 +91,7 @@ describe("GET /api/agent/runs/:id telemetry routes", () => {
       readonly result?: Record<string, unknown>;
       readonly error?: string;
       readonly lastEventSequence?: number;
+      readonly composeContent?: unknown;
     } = {},
   ): Promise<RunFixture> {
     const fixture = await track(
@@ -111,6 +114,13 @@ describe("GET /api/agent/runs/:id telemetry routes", () => {
       },
       context.signal,
     );
+    if (args.composeContent !== undefined) {
+      const db = store.set(writeDb$);
+      await db
+        .update(agentComposeVersions)
+        .set({ content: args.composeContent })
+        .where(eq(agentComposeVersions.composeId, composeId));
+    }
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     return {
@@ -238,6 +248,7 @@ describe("GET /api/agent/runs/:id telemetry routes", () => {
       status: "completed",
       result,
       lastEventSequence: 1,
+      composeContent: { agent: { framework: "codex" } },
     });
     context.mocks.axiom.query.mockResolvedValueOnce([
       makeAxiomEvent(
@@ -274,7 +285,7 @@ describe("GET /api/agent/runs/:id telemetry routes", () => {
     ]);
     expect(response.body.hasMore).toBeTruthy();
     expect(response.body.nextSequence).toBe(0);
-    expect(response.body.framework).toBe("claude-code");
+    expect(response.body.framework).toBe("codex");
     expect(response.body.run).toStrictEqual({
       status: "completed",
       result,
