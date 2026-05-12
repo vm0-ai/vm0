@@ -140,6 +140,10 @@ type DisableScheduleResult =
   | { readonly kind: "ok"; readonly response: ScheduleResponse }
   | { readonly kind: "not_found" };
 
+type DeleteScheduleResult =
+  | { readonly kind: "ok" }
+  | { readonly kind: "not_found" };
+
 type EnableScheduleResult =
   | { readonly kind: "ok"; readonly response: ScheduleResponse }
   | { readonly kind: "not_found" }
@@ -189,6 +193,38 @@ export const disableSchedule$ = command(
       kind: "ok",
       response: scheduleResponse(updated, ownership.displayName),
     };
+  },
+);
+
+export const deleteSchedule$ = command(
+  async (
+    { set },
+    args: ScheduleMutationArgs,
+    signal: AbortSignal,
+  ): Promise<DeleteScheduleResult> => {
+    const db = set(writeDb$);
+    const ownership = await verifyScheduleOwnership(
+      db,
+      args.userId,
+      args.orgId,
+      args.agentId,
+      args.name,
+    );
+    signal.throwIfAborted();
+    if (!ownership.ok) {
+      return { kind: "not_found" };
+    }
+
+    const [deleted] = await db
+      .delete(zeroAgentSchedules)
+      .where(eq(zeroAgentSchedules.id, ownership.schedule.id))
+      .returning({ id: zeroAgentSchedules.id });
+    signal.throwIfAborted();
+    if (!deleted) {
+      return { kind: "not_found" };
+    }
+
+    return { kind: "ok" };
   },
 );
 

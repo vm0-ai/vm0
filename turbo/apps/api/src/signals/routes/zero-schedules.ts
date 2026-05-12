@@ -1,5 +1,6 @@
 import { command, computed } from "ccstate";
 import {
+  zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
   zeroSchedulesMainContract,
 } from "@vm0/api-contracts/contracts/zero-schedules";
@@ -7,8 +8,9 @@ import {
 import { notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { bodyResultOf, pathParamsOf } from "../context/request";
+import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import {
+  deleteSchedule$,
   disableSchedule$,
   enableSchedule$,
   zeroScheduleList,
@@ -21,6 +23,29 @@ const listSchedulesInner$ = computed(async (get) => {
     zeroScheduleList({ orgId: auth.orgId, userId: auth.userId }),
   );
   return { status: 200 as const, body: result };
+});
+
+const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const params = get(pathParamsOf(zeroSchedulesByNameContract.delete));
+  const query = get(queryOf(zeroSchedulesByNameContract.delete));
+
+  const result = await set(
+    deleteSchedule$,
+    {
+      userId: auth.userId,
+      orgId: auth.orgId,
+      agentId: query.agentId,
+      name: params.name,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  if (result.kind === "not_found") {
+    return notFound("Resource not found");
+  }
+  return { status: 204 as const, body: undefined };
 });
 
 const disableInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -102,6 +127,17 @@ export const zeroSchedulesRoutes: readonly RouteEntry[] = [
         requiredCapability: "schedule:read",
       },
       listSchedulesInner$,
+    ),
+  },
+  {
+    route: zeroSchedulesByNameContract.delete,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "schedule:delete",
+      },
+      deleteInner$,
     ),
   },
   {
