@@ -764,10 +764,29 @@ impl Sandbox for MockSandbox {
                 path: path.to_string(),
                 max_bytes,
             });
-        self.read_file_results
+        if max_bytes == 0 {
+            return Err(SandboxError::Operation {
+                operation: SandboxOperation::Exec,
+                reason: SandboxOperationReason::Other,
+                message: "mock read_file max_bytes must be positive".into(),
+            });
+        }
+
+        let result = self
+            .read_file_results
             .lock_ignoring_poison()
             .pop_front()
-            .unwrap_or(Ok(None))
+            .unwrap_or(Ok(None))?;
+        if let Some(bytes) = &result
+            && bytes.len() as u64 > max_bytes
+        {
+            return Err(SandboxError::Operation {
+                operation: SandboxOperation::Exec,
+                reason: SandboxOperationReason::Other,
+                message: format!("mock read_file exceeded {max_bytes} bytes"),
+            });
+        }
+        Ok(result)
     }
 
     async fn copy_file(
@@ -1435,6 +1454,25 @@ mod tests {
         assert_eq!(result.bytes_copied, 9);
         assert_eq!(std::fs::read(path).unwrap(), b"log line\n");
         let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn sandbox_read_file_applies_mock_max_bytes() {
+        let sandbox = MockSandbox::new("test-1");
+        sandbox.push_read_file_result(Ok(Some(b"too long".to_vec())));
+
+        let err = sandbox.read_file("/tmp/system.log", 3).await.unwrap_err();
+
+        assert!(err.to_string().contains("exceeded 3 bytes"));
+    }
+
+    #[tokio::test]
+    async fn sandbox_read_file_rejects_zero_max_bytes() {
+        let sandbox = MockSandbox::new("test-1");
+
+        let err = sandbox.read_file("/tmp/system.log", 0).await.unwrap_err();
+
+        assert!(err.to_string().contains("max_bytes must be positive"));
     }
 
     #[tokio::test]

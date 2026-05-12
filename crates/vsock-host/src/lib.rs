@@ -5039,6 +5039,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_file_rejects_invalid_max_bytes_without_sending_frame() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let host = Arc::new(host);
+
+        let err = host.read_file("/tmp/empty.txt", 0, 5000).await.unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(operation_count(&host), 0);
+
+        let err = host
+            .read_file("/tmp/huge.txt", u64::from(u32::MAX) + 1, 5000)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(operation_count(&host), 0);
+        assert_connection_accepts_command_exec(&host, &mut guest, &mut decoder).await;
+    }
+
+    #[tokio::test]
+    async fn read_file_quotes_guest_path_with_single_quote() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let read_task =
+            tokio::spawn(async move { host.read_file("/tmp/session'one.txt", 1024, 5000).await });
+
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(msg.msg_type, MSG_COMMAND_START);
+        let decoded = vsock_proto::decode_command_start(&msg.payload).unwrap();
+        assert_eq!(
+            decoded.command,
+            "if test -f '/tmp/session'\\''one.txt'; then cat -- '/tmp/session'\\''one.txt'; else exit 66; fi"
+        );
+        send_command_result(
+            &mut guest,
+            msg.seq,
+            CommandTermination::Exited { exit_code: 0 },
+            b"ok",
+            b"",
+        )
+        .await;
+
+        let content = read_task.await.unwrap().unwrap();
+        assert_eq!(content.as_deref(), Some(&b"ok"[..]));
+    }
+
+    #[tokio::test]
     async fn copy_file_streams_to_temp_then_renames() {
         let (host, mut guest, mut decoder) = setup_host_and_guest().await;
         let unique = std::time::SystemTime::now()
@@ -5116,6 +5162,111 @@ mod tests {
                 .contains("vm0tmp")),
             "copy temp file should not remain"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn copy_file_rejects_invalid_options_without_sending_frame_or_creating_parent() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let host = Arc::new(host);
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "vsock-host-copy-invalid-{}-{unique}",
+            std::process::id()
+        ));
+        let host_path = dir.join("nested/system.log");
+
+        let err = host
+            .copy_file(
+                "/tmp/system.log",
+                &host_path,
+                CopyFileOptions {
+                    max_bytes: 0,
+                    timeout_ms: 5000,
+                    missing_ok: false,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(!dir.exists());
+
+        let err = host
+            .copy_file(
+                "/tmp/system.log",
+                &host_path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout_ms: 0,
+                    missing_ok: false,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(!dir.exists());
+        assert_eq!(operation_count(&host), 0);
+
+        assert_connection_accepts_command_exec(&host, &mut guest, &mut decoder).await;
+    }
+
+    #[tokio::test]
+    async fn copy_file_creates_parent_and_quotes_guest_path_with_single_quote() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "vsock-host-copy-parent-quote-{}-{unique}",
+            std::process::id()
+        ));
+        let host_path = dir.join("nested/system.log");
+        let copy_path = host_path.clone();
+
+        let copy_task = tokio::spawn(async move {
+            host.copy_file(
+                "/tmp/vm0-system-run's.log",
+                &copy_path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout_ms: 5000,
+                    missing_ok: false,
+                },
+            )
+            .await
+        });
+
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(msg.msg_type, MSG_COMMAND_START);
+        let decoded = vsock_proto::decode_command_start(&msg.payload).unwrap();
+        assert_eq!(
+            decoded.command,
+            "if test -f '/tmp/vm0-system-run'\\''s.log'; then cat -- '/tmp/vm0-system-run'\\''s.log'; else exit 66; fi"
+        );
+        send_command_output(
+            &mut guest,
+            msg.seq,
+            0,
+            CommandOutputStream::Stdout,
+            b"quoted path\n",
+            false,
+        )
+        .await;
+        send_stream_command_result(
+            &mut guest,
+            msg.seq,
+            CommandTermination::Exited { exit_code: 0 },
+            b"",
+        )
+        .await;
+
+        let result = copy_task.await.unwrap().unwrap();
+        assert_eq!(result.bytes_copied, 12);
+        assert_eq!(std::fs::read(&host_path).unwrap(), b"quoted path\n");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
