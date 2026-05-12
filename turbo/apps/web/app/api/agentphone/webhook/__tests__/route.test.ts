@@ -7,6 +7,7 @@ import {
   uniqueNumericId,
 } from "../../../../../src/__tests__/test-helpers";
 import {
+  completeTestRun,
   createTestCompose,
   createTestAgentSession,
   createAgentPhoneThreadSession,
@@ -16,12 +17,17 @@ import {
   getOrgMembersEntry,
   agentphoneThreadSessionExists,
   insertOrgModelPolicy,
+  insertUserModelPreference,
   findTestRunCallbacks,
   findTestRunsByUserAndPromptContaining,
   findTestZeroRun,
   insertTestAgentPhoneUserLink,
+  setOrgCredits,
   setDefaultAgentByComposeId,
+  setTestRunModelProvider,
+  setTestRunSelectedModel,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 import { http } from "../../../../../src/__tests__/msw";
 import { server } from "../../../../../src/mocks/server";
 import {
@@ -398,6 +404,87 @@ describe("POST /api/agentphone/webhook", () => {
     const saved = await getOrgMembersEntry(user.orgId, user.userId);
     expect(saved?.selectedModel).toBe("deepseek-v4-pro");
     expect(sendMessage.calls[0]?.body).toContain("Switched to DeepSeek V4 Pro");
+  });
+
+  it("starts a new AgentPhone session when the selected model changed", async () => {
+    const phone = uniquePhone();
+    const user = await context.setupUser();
+    await setOrgCredits(user.orgId, 100_000);
+    const { composeId } = await createTestCompose(uniqueId("agentphone-agent"));
+    await setDefaultAgentByComposeId(user.orgId, composeId);
+    await enableModelFirstModelProviderForUser(user.orgId, user.userId);
+    await insertOrgModelPolicy({
+      orgId: user.orgId,
+      model: "claude-sonnet-4-6",
+      isDefault: true,
+    });
+    await insertOrgModelPolicy({
+      orgId: user.orgId,
+      model: "claude-opus-4-7",
+    });
+    await insertUserModelPreference({
+      orgId: user.orgId,
+      userId: user.userId,
+      model: "claude-opus-4-7",
+    });
+
+    const previous = await seedTestRun(user.userId, composeId, {
+      prompt: "previous agentphone model session",
+      triggerSource: "agentphone",
+    });
+    const { agentSessionId } = await completeTestRun(
+      user.userId,
+      previous.runId,
+    );
+    await setTestRunModelProvider(previous.runId, "vm0");
+    await setTestRunSelectedModel(previous.runId, "claude-sonnet-4-6");
+
+    const link = await insertTestAgentPhoneUserLink({
+      phoneHandle: phone,
+      vm0UserId: user.userId,
+      orgId: user.orgId,
+    });
+    await createAgentPhoneThreadSession({
+      agentphoneUserLinkId: link.id,
+      agentSessionId,
+      lastProcessedMessageId: uniqueId("msg-before-model-change"),
+    });
+
+    const prompt = `model changed ${uniqueId("agentphone")}`;
+    const response = await POST(
+      createWebhookRequest(
+        createWebhookPayload({
+          from: phone,
+          message: prompt,
+          messageId: uniqueId("msg-model-change"),
+        }),
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    await context.mocks.flushAfter();
+
+    const runs = await findTestRunsByUserAndPromptContaining(
+      user.userId,
+      prompt,
+    );
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.continuedFromSessionId).toBeNull();
+    expect(runs[0]?.sessionId).not.toBe(agentSessionId);
+    await expect(findTestZeroRun(runs[0]!.id)).resolves.toEqual(
+      expect.objectContaining({
+        triggerSource: "agentphone",
+        selectedModel: "claude-opus-4-7",
+      }),
+    );
+
+    const callbacks = await findTestRunCallbacks(runs[0]!.id);
+    expect(callbacks[0]?.payload).toEqual(
+      expect.objectContaining({
+        userLinkId: link.id,
+        existingSessionId: null,
+      }),
+    );
   });
 
   it("handles /new_session by clearing the current AgentPhone session", async () => {

@@ -19,6 +19,7 @@ import {
   resolveSessionCompose,
   resolveTelegramAuditLogsUrl,
 } from "../../telegram/handlers/shared";
+import { canReuseSessionForRunModel } from "../../context/session-model-compatibility";
 import { handleAgentPhoneModelCommand } from "./model";
 import { runAgentForAgentPhone } from "./run-agent";
 import { logger } from "../../../shared/logger";
@@ -29,6 +30,8 @@ interface ResolvedAgentPhoneAgent {
   composeId: string;
   agentId: string;
   agentName: string;
+  modelProviderId: string | null;
+  selectedModel: string | null;
 }
 
 function parseAgentPhoneCommand(text: string): string | undefined {
@@ -102,6 +105,8 @@ async function resolveAgentPhoneAgent(
     composeId,
     agentId: agent.agentId,
     agentName: getAgentDisplayLabel(agent),
+    modelProviderId: agent.modelProviderId,
+    selectedModel: agent.selectedModel,
   };
 }
 
@@ -245,6 +250,25 @@ export async function handleAgentPhoneMessage(
       userLink.vm0UserId,
     );
     if (sessionCompose && sessionCompose.composeId !== agent.composeId) {
+      existingSessionId = undefined;
+      lastProcessedMessageId = undefined;
+    }
+  }
+
+  if (existingSessionId) {
+    const canReuseSession = await canReuseSessionForRunModel({
+      sessionId: existingSessionId,
+      userId: userLink.vm0UserId,
+      orgId: userLink.orgId,
+      agentComposeId: agent.composeId,
+      modelProviderId: agent.modelProviderId,
+      selectedModel: agent.selectedModel,
+    });
+    if (!canReuseSession) {
+      log.debug("Model changed, starting new AgentPhone session", {
+        composeId: agent.composeId,
+        existingSessionId,
+      });
       existingSessionId = undefined;
       lastProcessedMessageId = undefined;
     }
