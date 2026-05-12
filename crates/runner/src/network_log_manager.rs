@@ -7,7 +7,7 @@ use std::sync::Arc;
 #[cfg(test)]
 use tokio::sync::Semaphore;
 use tokio::sync::{Mutex, Notify};
-use tracing::{debug, warn};
+use tracing::warn;
 
 use crate::ids::RunId;
 use crate::network_log_drain::{NetworkLogDrainContext, NetworkLogDrainCoordinator};
@@ -288,7 +288,7 @@ impl NetworkLogManager {
             match result {
                 Ok(Ok(())) => {}
                 Ok(Err(e)) => {
-                    debug!(path = %path.display(), error = %e, "failed to write network log");
+                    warn!(path = %path.display(), error = %e, "failed to write network log")
                 }
                 Err(e) => {
                     warn!(path = %path.display(), error = %e, "network log writer task failed");
@@ -303,12 +303,12 @@ impl NetworkLogManager {
         let notify = {
             let mut state = self.inner.state.lock().await;
             let Some(path_state) = state.pending_paths.get_mut(&path) else {
-                debug!(path = %path.display(), "network log write completed for unknown path");
+                warn!(path = %path.display(), "network log write completed for unknown path");
                 return;
             };
 
             if path_state.pending == 0 {
-                debug!(path = %path.display(), "network log pending count already zero");
+                warn!(path = %path.display(), "network log pending count already zero");
                 return;
             }
 

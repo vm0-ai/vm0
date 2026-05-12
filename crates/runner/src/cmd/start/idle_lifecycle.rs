@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use sandbox::SandboxId;
 use tokio::task::JoinSet;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use crate::idle_pool::{
     DestroyOutcome, IdleDestroyJob, IdleDestroyPayload, IdlePool, IdlePoolSnapshot,
@@ -95,7 +95,7 @@ pub(super) async fn set_idle_status_snapshot(status: &StatusTracker, snapshot: I
         .set_idle_info_at_revision(snapshot.revision, snapshot.idle_vms)
         .await;
     if !applied {
-        debug!(
+        info!(
             revision = snapshot.revision,
             "ignored stale idle pool status snapshot"
         );
@@ -117,7 +117,7 @@ pub(super) async fn add_run_with_idle_status_snapshot(
         )
         .await;
     if !applied {
-        debug!(
+        info!(
             revision = snapshot.revision,
             "ignored stale idle pool status snapshot while adding active run"
         );

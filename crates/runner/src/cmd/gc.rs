@@ -773,7 +773,7 @@ async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64>
                     info!("[dry-run] would remove unused lock {name}");
                     removed += 1;
                 } else if let Err(e) = tokio::fs::remove_file(&lock_path).await {
-                    tracing::debug!("cannot remove {}: {e}", lock_path.display());
+                    warn!("cannot remove {}: {e}", lock_path.display());
                 } else {
                     info!("removed unused lock {name}");
                     removed += 1;
@@ -835,7 +835,7 @@ async fn gc_job_logs(home: &HomePaths, dry_run: bool) -> RunnerResult<(u64, u64)
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                 Err(e) => {
-                    tracing::debug!("cannot remove {}: {e}", entry.path().display());
+                    warn!("cannot remove {}: {e}", entry.path().display());
                     continue;
                 }
             }
@@ -975,9 +975,7 @@ async fn gc_versions(
                 // Log and treat as inactive — the version dir will still be
                 // removed, which is preferable to silently accumulating stale
                 // versions when systemd units are already gone.
-                tracing::debug!(
-                    "version {name}: cannot check unit status ({e}), assuming inactive"
-                );
+                warn!("version {name}: cannot check unit status ({e}), assuming inactive");
             }
         }
 
@@ -992,7 +990,7 @@ async fn gc_versions(
             if let Err(e) = tokio::fs::remove_dir_all(&version_bin).await
                 && e.kind() != std::io::ErrorKind::NotFound
             {
-                tracing::debug!("cannot remove {}: {e}", version_bin.display());
+                warn!("cannot remove {}: {e}", version_bin.display());
                 continue;
             }
 
@@ -1052,12 +1050,10 @@ async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<u32> {
                     cleaned += 1;
                 }
                 super::nbd::NbdOrphanDisconnect::Locked => {
-                    tracing::debug!(
-                        "nbd{device_index}: skipping disconnect, NBD device lock is held"
-                    );
+                    info!("nbd{device_index}: skipping disconnect, NBD device lock is held");
                 }
                 super::nbd::NbdOrphanDisconnect::Changed => {
-                    tracing::debug!(
+                    info!(
                         "nbd{device_index}: skipping disconnect, device state changed since scan"
                     );
                 }

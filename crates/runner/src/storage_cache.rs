@@ -33,7 +33,7 @@ use reqwest::Client;
 use sandbox::Sandbox;
 use tokio::fs;
 use tokio::io::AsyncReadExt as _;
-use tracing::{debug, warn};
+use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
@@ -272,7 +272,7 @@ async fn process_one(
         }
     };
     if size > CACHE_MAX_SIZE {
-        debug!(
+        info!(
             name = %target.name,
             version = %target.version,
             size,

@@ -401,6 +401,34 @@ struct RunnerStatusSnapshot {
     uptime: std::time::Duration,
 }
 
+#[derive(Debug)]
+enum RunnerStatusReadError {
+    Read {
+        path: PathBuf,
+        error: std::io::Error,
+    },
+    ParseJson {
+        path: PathBuf,
+        error: serde_json::Error,
+    },
+    ParseStartedAt {
+        started_at: String,
+        error: chrono::ParseError,
+    },
+}
+
+impl std::fmt::Display for RunnerStatusReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Read { path, error } => write!(f, "read {}: {error}", path.display()),
+            Self::ParseJson { path, error } => write!(f, "parse {}: {error}", path.display()),
+            Self::ParseStartedAt { started_at, error } => {
+                write!(f, "parse started_at {started_at:?}: {error}")
+            }
+        }
+    }
+}
+
 /// Decision from [`decide_gate`] — pure function that maps a status
 /// snapshot to the gate outcome without performing any I/O.
 #[derive(Debug, PartialEq, Eq)]
@@ -436,9 +464,12 @@ fn decide_gate(status: &RunnerStatusSnapshot) -> GateDecision {
 
 /// Read status.json at `base_dir`.
 ///
-/// Returns `None` on any I/O or parse failure — the caller should fall
-/// through to forceful stop (status unknown → cannot protect jobs).
-async fn read_runner_status(base_dir: &Path) -> Option<RunnerStatusSnapshot> {
+/// Returns an error on any I/O or parse failure — the caller should log the
+/// reason and fall through to forceful stop (status unknown → cannot protect
+/// jobs).
+async fn read_runner_status(
+    base_dir: &Path,
+) -> Result<RunnerStatusSnapshot, RunnerStatusReadError> {
     #[derive(serde::Deserialize)]
     struct StatusFile {
         mode: String,
@@ -451,25 +482,26 @@ async fn read_runner_status(base_dir: &Path) -> Option<RunnerStatusSnapshot> {
         // `sandbox_id` is present in the file but unused by the gate.
     }
     let path = base_dir.join("status.json");
-    let content = tokio::fs::read_to_string(&path)
-        .await
-        .inspect_err(|e| {
-            tracing::debug!(path = %path.display(), error = %e, "read status.json failed");
-        })
-        .ok()?;
+    let content =
+        tokio::fs::read_to_string(&path)
+            .await
+            .map_err(|error| RunnerStatusReadError::Read {
+                path: path.clone(),
+                error,
+            })?;
     let file: StatusFile = serde_json::from_str(&content)
-        .inspect_err(|e| tracing::debug!(error = %e, "parse status.json failed"))
-        .ok()?;
-    let started = chrono::DateTime::parse_from_rfc3339(&file.started_at)
-        .inspect_err(|e| {
-            tracing::debug!(started_at = %file.started_at, error = %e, "parse started_at failed");
-        })
-        .ok()?;
+        .map_err(|error| RunnerStatusReadError::ParseJson { path, error })?;
+    let started = chrono::DateTime::parse_from_rfc3339(&file.started_at).map_err(|error| {
+        RunnerStatusReadError::ParseStartedAt {
+            started_at: file.started_at.clone(),
+            error,
+        }
+    })?;
     let now = chrono::Utc::now();
     let uptime = (now - started.with_timezone(&chrono::Utc))
         .to_std()
         .unwrap_or_default();
-    Some(RunnerStatusSnapshot {
+    Ok(RunnerStatusSnapshot {
         mode: file.mode,
         run_ids: file.active_runs.into_iter().map(|r| r.run_id).collect(),
         uptime,
@@ -549,13 +581,17 @@ async fn check_active_jobs_gate(
         );
         return Ok(());
     };
-    let Some(status) = read_runner_status(&base_dir).await else {
-        warn!(
-            unit,
-            base_dir = %base_dir.display(),
-            "cannot read status.json — skipping active-jobs gate"
-        );
-        return Ok(());
+    let status = match read_runner_status(&base_dir).await {
+        Ok(status) => status,
+        Err(e) => {
+            warn!(
+                unit,
+                base_dir = %base_dir.display(),
+                error = %e,
+                "cannot read status.json — skipping active-jobs gate"
+            );
+            return Ok(());
+        }
     };
 
     match decide_gate(&status) {
@@ -777,14 +813,24 @@ async fn resume(args: ServiceResumeArgs) -> RunnerResult<()> {
     // Preflight: if status.json shows the runner is already past the
     // resumable point (Stopping = teardown in progress, Stopped = exited),
     // SIGUSR2 is too late.
-    if let Some(base_dir) = runner_base_dir(&args.name)
-        && let Some(status) = read_runner_status(&base_dir).await
-        && matches!(status.mode.as_str(), "stopping" | "stopped")
-    {
-        return Err(RunnerError::Internal(format!(
-            "{unit} is already shutting down (mode={}) — cannot resume",
-            status.mode
-        )));
+    if let Some(base_dir) = runner_base_dir(&args.name) {
+        match read_runner_status(&base_dir).await {
+            Ok(status) if matches!(status.mode.as_str(), "stopping" | "stopped") => {
+                return Err(RunnerError::Internal(format!(
+                    "{unit} is already shutting down (mode={}) — cannot resume",
+                    status.mode
+                )));
+            }
+            Ok(_) => {}
+            Err(e) => {
+                warn!(
+                    unit,
+                    base_dir = %base_dir.display(),
+                    error = %e,
+                    "cannot read status.json during resume preflight"
+                );
+            }
+        }
     }
 
     // Same race as in `drain`: the runner can exit after the preflight
@@ -1160,7 +1206,7 @@ mod tests {
     #[tokio::test]
     async fn read_runner_status_missing_file() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(read_runner_status(dir.path()).await.is_none());
+        assert!(read_runner_status(dir.path()).await.is_err());
     }
 
     #[tokio::test]
@@ -1169,8 +1215,8 @@ mod tests {
         tokio::fs::write(dir.path().join("status.json"), "{}")
             .await
             .unwrap();
-        // Missing required fields → None
-        assert!(read_runner_status(dir.path()).await.is_none());
+        // Missing required fields -> parse error.
+        assert!(read_runner_status(dir.path()).await.is_err());
     }
 
     #[tokio::test]
@@ -1180,7 +1226,7 @@ mod tests {
         tokio::fs::write(dir.path().join("status.json"), s)
             .await
             .unwrap();
-        assert!(read_runner_status(dir.path()).await.is_none());
+        assert!(read_runner_status(dir.path()).await.is_err());
     }
 
     #[tokio::test]
