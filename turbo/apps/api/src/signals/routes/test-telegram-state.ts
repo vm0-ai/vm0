@@ -50,6 +50,13 @@ interface SeedDefaultAgentInput {
   readonly name: string;
 }
 
+interface ComposeVersionInput {
+  readonly composeId: string;
+  readonly userId: string;
+  readonly name: string;
+  readonly headVersionId: string | null;
+}
+
 interface DefaultAgentSeed {
   readonly composeId: string;
   readonly versionId: string;
@@ -236,6 +243,7 @@ async function insertTelegramLinkIfMissing(
     readonly telegramUserId: string;
     readonly vm0UserId: string;
   },
+  signal: AbortSignal,
 ): Promise<string | null> {
   const [existing] = await db
     .select({ id: telegramUserLinks.id })
@@ -247,6 +255,7 @@ async function insertTelegramLinkIfMissing(
       ),
     )
     .limit(1);
+  signal.throwIfAborted();
   if (existing) {
     return existing.id;
   }
@@ -260,18 +269,21 @@ async function insertTelegramLinkIfMissing(
     })
     .onConflictDoNothing()
     .returning({ id: telegramUserLinks.id });
+  signal.throwIfAborted();
   return row?.id ?? null;
 }
 
 async function ensureStarterCreditGrant(
   tx: StarterGrantTx,
   orgId: string,
+  signal: AbortSignal,
 ): Promise<void> {
   const [existing] = await tx
     .select({ orgId: orgMetadata.orgId })
     .from(orgMetadata)
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
+  signal.throwIfAborted();
   if (existing) {
     return;
   }
@@ -291,6 +303,7 @@ async function ensureStarterCreditGrant(
     })
     .onConflictDoNothing()
     .returning({ id: creditExpiresRecord.id });
+  signal.throwIfAborted();
 
   if (inserted.length === 0) {
     return;
@@ -302,6 +315,7 @@ async function ensureStarterCreditGrant(
         ON CONFLICT (org_id)
         DO UPDATE SET credits = org_metadata.credits + ${STARTER_GRANT_AMOUNT}, updated_at = now()`,
   );
+  signal.throwIfAborted();
 }
 
 function defaultAgentContent(name: string) {
@@ -321,6 +335,7 @@ function defaultAgentContent(name: string) {
 async function getOrInsertCompose(
   db: Db,
   input: SeedDefaultAgentInput,
+  signal: AbortSignal,
 ): Promise<{ readonly id: string; readonly headVersionId: string | null }> {
   const [inserted] = await db
     .insert(agentComposes)
@@ -336,6 +351,7 @@ async function getOrInsertCompose(
       id: agentComposes.id,
       headVersionId: agentComposes.headVersionId,
     });
+  signal.throwIfAborted();
 
   if (inserted) {
     return inserted;
@@ -354,6 +370,7 @@ async function getOrInsertCompose(
       ),
     )
     .limit(1);
+  signal.throwIfAborted();
 
   if (!existing) {
     throw new Error("Failed to resolve agent compose after conflict");
@@ -363,37 +380,40 @@ async function getOrInsertCompose(
 
 async function ensureComposeVersion(
   db: Db,
-  composeId: string,
-  userId: string,
-  name: string,
-  headVersionId: string | null,
+  input: ComposeVersionInput,
+  signal: AbortSignal,
 ): Promise<string> {
-  if (headVersionId) {
-    return headVersionId;
+  if (input.headVersionId) {
+    return input.headVersionId;
   }
 
-  const content = defaultAgentContent(name);
+  const content = defaultAgentContent(input.name);
   const versionId = createHash("sha256")
-    .update(JSON.stringify(content) + composeId)
+    .update(JSON.stringify(content) + input.composeId)
     .digest("hex");
 
   await db
     .insert(agentComposeVersions)
     .values({
       id: versionId,
-      composeId,
+      composeId: input.composeId,
       content,
-      createdBy: userId,
+      createdBy: input.userId,
     })
     .onConflictDoNothing();
+  signal.throwIfAborted();
 
   const [updated] = await db
     .update(agentComposes)
     .set({ headVersionId: versionId, updatedAt: nowDate() })
     .where(
-      and(eq(agentComposes.id, composeId), isNull(agentComposes.headVersionId)),
+      and(
+        eq(agentComposes.id, input.composeId),
+        isNull(agentComposes.headVersionId),
+      ),
     )
     .returning({ headVersionId: agentComposes.headVersionId });
+  signal.throwIfAborted();
   if (updated?.headVersionId) {
     return updated.headVersionId;
   }
@@ -401,8 +421,9 @@ async function ensureComposeVersion(
   const [compose] = await db
     .select({ headVersionId: agentComposes.headVersionId })
     .from(agentComposes)
-    .where(eq(agentComposes.id, composeId))
+    .where(eq(agentComposes.id, input.composeId))
     .limit(1);
+  signal.throwIfAborted();
   if (compose?.headVersionId) {
     return compose.headVersionId;
   }
@@ -413,16 +434,22 @@ async function ensureComposeVersion(
 async function seedDefaultAgent(
   db: Db,
   input: SeedDefaultAgentInput,
+  signal: AbortSignal,
 ): Promise<DefaultAgentSeed> {
-  const compose = await getOrInsertCompose(db, input);
+  const compose = await getOrInsertCompose(db, input, signal);
+  signal.throwIfAborted();
   const composeId = compose.id;
   const versionId = await ensureComposeVersion(
     db,
-    composeId,
-    input.userId,
-    input.name,
-    compose.headVersionId,
+    {
+      composeId,
+      userId: input.userId,
+      name: input.name,
+      headVersionId: compose.headVersionId,
+    },
+    signal,
   );
+  signal.throwIfAborted();
 
   await db
     .insert(zeroAgents)
@@ -433,9 +460,11 @@ async function seedDefaultAgent(
       name: input.name,
     })
     .onConflictDoNothing();
+  signal.throwIfAborted();
 
   await db.transaction(async (tx) => {
-    await ensureStarterCreditGrant(tx, input.orgId);
+    await ensureStarterCreditGrant(tx, input.orgId, signal);
+    signal.throwIfAborted();
     await tx
       .insert(orgMetadata)
       .values({ orgId: input.orgId, defaultAgentId: composeId })
@@ -443,7 +472,9 @@ async function seedDefaultAgent(
         target: orgMetadata.orgId,
         set: { defaultAgentId: composeId, updatedAt: nowDate() },
       });
+    signal.throwIfAborted();
   });
+  signal.throwIfAborted();
 
   return { composeId, versionId, agentId: composeId };
 }
@@ -547,11 +578,15 @@ const postTestTelegramState$ = command(
     }
 
     const db = set(writeDb$);
-    const defaultAgent = await seedDefaultAgent(db, {
-      orgId,
-      userId,
-      name: DEFAULT_TEST_AGENT_NAME,
-    });
+    const defaultAgent = await seedDefaultAgent(
+      db,
+      {
+        orgId,
+        userId,
+        name: DEFAULT_TEST_AGENT_NAME,
+      },
+      signal,
+    );
     signal.throwIfAborted();
 
     const encryptedBotToken = encryptSecretValue(
@@ -593,11 +628,15 @@ const postTestTelegramState$ = command(
     const linkId =
       body.seed_link === false
         ? null
-        : await insertTelegramLinkIfMissing(db, {
-            installationId: botId,
-            telegramUserId,
-            vm0UserId: userId,
-          });
+        : await insertTelegramLinkIfMissing(
+            db,
+            {
+              installationId: botId,
+              telegramUserId,
+              vm0UserId: userId,
+            },
+            signal,
+          );
     signal.throwIfAborted();
 
     return {
