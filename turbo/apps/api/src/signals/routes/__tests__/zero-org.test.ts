@@ -105,6 +105,25 @@ async function deleteOrgComposite(
   await store.set(deleteOrgMembership$, fixture, context.signal);
 }
 
+async function readOrgCache(orgId: string): Promise<
+  | {
+      readonly slug: string;
+      readonly name: string;
+    }
+  | undefined
+> {
+  const writeDb = store.set(writeDb$);
+  const [cached] = await writeDb
+    .select({
+      slug: orgCache.slug,
+      name: orgCache.name,
+    })
+    .from(orgCache)
+    .where(eq(orgCache.orgId, orgId))
+    .limit(1);
+  return cached;
+}
+
 describe("GET /api/zero/org", () => {
   const seededFixtures: OrgMembershipFixture[] = [];
 
@@ -182,6 +201,304 @@ describe("GET /api/zero/org", () => {
     expect(response.body.id).toBe(orgId);
     expect(response.body.slug).toBe(slug);
     expect(response.body.role).toBe("admin");
+  });
+});
+
+describe("PUT /api/zero/org", () => {
+  const seededFixtures: OrgMembershipFixture[] = [];
+
+  afterEach(async () => {
+    while (seededFixtures.length > 0) {
+      const fixture = seededFixtures.pop();
+      if (fixture) {
+        await deleteOrgComposite(fixture);
+      }
+    }
+  });
+
+  it("updates org name", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const slug = `org-${randomUUID().slice(0, 8)}`;
+    seededFixtures.push(
+      await seedOrg({ orgId, userId, role: "member", slug, name: "Old Org" }),
+    );
+    mockClerkOrganization({
+      orgId,
+      slug,
+      name: "Updated Org",
+      createdBy: userId,
+    });
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroOrgContract);
+    const response = await accept(
+      client.update({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { name: "Updated Org" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      id: orgId,
+      slug,
+      name: "Updated Org",
+      tier: "free",
+    });
+    expect(
+      context.mocks.clerk.organizations.updateOrganization,
+    ).toHaveBeenCalledWith(orgId, { name: "Updated Org" });
+    await expect(readOrgCache(orgId)).resolves.toMatchObject({
+      slug,
+      name: "Updated Org",
+    });
+  });
+
+  it("rejects slug update without force", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(await seedOrg({ orgId, userId, role: "admin" }));
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroOrgContract);
+    const response = await accept(
+      client.update({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { slug: `org-${randomUUID().slice(0, 8)}` },
+      }),
+      [400],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "BAD_REQUEST",
+      message:
+        "Changing org slug may break existing references. Use --force to confirm.",
+    });
+    expect(
+      context.mocks.clerk.organizations.updateOrganization,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 when not authenticated", async () => {
+    const client = setupApp({ context })(zeroOrgContract);
+    const response = await accept(
+      client.update({ headers: {}, body: { name: "Updated Org" } }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns 400 when authenticated without an org", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+
+    const client = setupApp({ context })(zeroOrgContract);
+    const response = await accept(
+      client.update({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { name: "Updated Org" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "BAD_REQUEST",
+      message: "No org configured. Set your org with: zero org set <slug>",
+    });
+  });
+
+  it("rejects zero tokens", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(await seedOrg({ orgId, userId, role: "admin" }));
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId,
+      orgId,
+      runId: `run_${randomUUID()}`,
+      capabilities: [],
+      iat: seconds,
+      exp: seconds + 600,
+    });
+
+    const client = setupApp({ context })(zeroOrgContract);
+    const response = await accept(
+      client.update({
+        headers: { authorization: `Bearer ${token}` },
+        body: { name: "Updated Org" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "FORBIDDEN",
+      message: "This endpoint is not available for sandbox tokens",
+    });
+  });
+
+  it("updates org slug with force and refreshes cache", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const oldSlug = `org-${randomUUID().slice(0, 8)}`;
+    const newSlug = `org-${randomUUID().slice(0, 8)}`;
+    seededFixtures.push(
+      await seedOrg({
+        orgId,
+        userId,
+        role: "admin",
+        slug: oldSlug,
+        name: "Test Org",
+      }),
+    );
+    mockClerkOrganization({
+      orgId,
+      slug: newSlug,
+      name: "Test Org",
+      createdBy: userId,
+    });
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroOrgContract);
+    const response = await accept(
+      client.update({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { slug: newSlug, force: true },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      id: orgId,
+      slug: newSlug,
+      name: "Test Org",
+    });
+    expect(
+      context.mocks.clerk.organizations.updateOrganization,
+    ).toHaveBeenCalledWith(orgId, { slug: newSlug });
+    await expect(readOrgCache(orgId)).resolves.toMatchObject({
+      slug: newSlug,
+      name: "Test Org",
+    });
+  });
+
+  it("returns 409 when slug belongs to another org", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const otherOrgId = `org_${randomUUID()}`;
+    const takenSlug = `org-${randomUUID().slice(0, 8)}`;
+    seededFixtures.push(await seedOrg({ orgId, userId, role: "admin" }));
+    seededFixtures.push(
+      await seedOrg({
+        orgId: otherOrgId,
+        userId,
+        role: "admin",
+        slug: takenSlug,
+      }),
+    );
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroOrgContract);
+    const response = await accept(
+      client.update({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { slug: takenSlug, force: true },
+      }),
+      [409],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "CONFLICT",
+      message: `Org "${takenSlug}" already exists`,
+    });
+    expect(
+      context.mocks.clerk.organizations.updateOrganization,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects reserved slugs", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(await seedOrg({ orgId, userId, role: "admin" }));
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroOrgContract);
+    const response = await accept(
+      client.update({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { slug: "vm0-team", force: true },
+      }),
+      [400],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "BAD_REQUEST",
+      message: "Org slug is reserved",
+    });
+    expect(
+      context.mocks.clerk.organizations.updateOrganization,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns current org data for no-op body", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const slug = `org-${randomUUID().slice(0, 8)}`;
+    seededFixtures.push(
+      await seedOrg({
+        orgId,
+        userId,
+        role: "admin",
+        slug,
+        name: "Current Org",
+        tier: "pro",
+      }),
+    );
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroOrgContract);
+    const response = await accept(
+      client.update({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      id: orgId,
+      slug,
+      name: "Current Org",
+      tier: "pro",
+    });
+    expect(
+      context.mocks.clerk.organizations.updateOrganization,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 when caller is not an org member", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(await seedOrgCacheOnly(orgId));
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroOrgContract);
+    const response = await accept(
+      client.update({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { name: "Updated Org" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "FORBIDDEN",
+      message: "Access denied",
+    });
+    expect(
+      context.mocks.clerk.organizations.updateOrganization,
+    ).not.toHaveBeenCalled();
   });
 });
 

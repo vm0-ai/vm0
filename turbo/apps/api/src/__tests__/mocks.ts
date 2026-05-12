@@ -30,6 +30,7 @@ export interface ApiTestMocks {
       readonly getOrganizationInvitationList: AsyncMock;
       readonly getOrganizationMembershipList: AsyncMock;
       readonly revokeOrganizationInvitation: AsyncMock;
+      readonly updateOrganization: AsyncMock;
     };
     readonly users: {
       readonly getUserList: AsyncMock;
@@ -128,6 +129,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
         vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       revokeOrganizationInvitation:
         vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      updateOrganization: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     users: {
       getUserList: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -486,6 +488,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.clerk.organizations.getOrganizationInvitationList.mockReset();
   apiTestMocks.clerk.organizations.getOrganizationMembershipList.mockReset();
   apiTestMocks.clerk.organizations.revokeOrganizationInvitation.mockReset();
+  apiTestMocks.clerk.organizations.updateOrganization.mockReset();
   apiTestMocks.clerk.users.getUserList.mockReset();
   apiTestMocks.clerk.users.getOrganizationMembershipList.mockReset();
   apiTestMocks.s3.send.mockReset();

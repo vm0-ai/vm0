@@ -6,9 +6,11 @@ import { zeroOrgMembersContract } from "@vm0/api-contracts/contracts/zero-org-me
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { notFound } from "../../lib/error";
+import { bodyResultOf } from "../context/request";
+import { badRequestMessage, notFound } from "../../lib/error";
 import type { RouteEntry } from "../route";
 import {
+  updateZeroOrg$,
   zeroOrgDetail$,
   zeroOrgDomainsList,
   zeroOrgList,
@@ -40,6 +42,40 @@ const getOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return notFound("Organization not found");
   }
   return { status: 200 as const, body: org };
+});
+
+const updateOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(authContext$);
+  if (!auth.orgId) {
+    return badRequestMessage(
+      "No org configured. Set your org with: zero org set <slug>",
+    );
+  }
+
+  const bodyResult = await get(bodyResultOf(zeroOrgContract.update));
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+
+  const result = await set(
+    updateZeroOrg$,
+    {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      slug: bodyResult.data.slug,
+      name: bodyResult.data.name,
+      force: bodyResult.data.force,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  if ("status" in result) {
+    return result;
+  }
+
+  return { status: 200 as const, body: result };
 });
 
 const listOrgsInner$ = computed(async (get) => {
@@ -75,6 +111,10 @@ export const zeroOrgReadRoutes: readonly RouteEntry[] = [
   {
     route: zeroOrgContract.get,
     handler: authRoute({ acceptAnySandboxCapability: true }, getOrgInner$),
+  },
+  {
+    route: zeroOrgContract.update,
+    handler: authRoute({}, updateOrgInner$),
   },
   {
     route: zeroOrgListContract.list,

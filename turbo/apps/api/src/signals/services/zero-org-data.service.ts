@@ -17,6 +17,7 @@ import type { User } from "@clerk/backend";
 import { db$, writeDb$ } from "../external/db";
 import { clerk$ } from "../external/clerk";
 import { fetchClerkMembershipRequests } from "../external/clerk-membership-requests";
+import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
 
 const clerkOrgIdentitySchema = z.object({
@@ -44,6 +45,46 @@ interface OrgIdentity {
   readonly slug: string;
   readonly name: string;
   readonly createdBy: string | null;
+}
+
+const forbiddenAccess = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Access denied",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
+type OrgUpdateErrorResponse =
+  | ReturnType<typeof badRequestMessage>
+  | ReturnType<typeof conflict>
+  | ReturnType<typeof notFound>
+  | typeof forbiddenAccess;
+
+interface UpdateZeroOrgArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly slug?: string;
+  readonly name?: string;
+  readonly force?: boolean;
+}
+
+interface ClerkUpdate {
+  slug?: string;
+  name?: string;
+}
+
+function isReservedSlug(slug: string): boolean {
+  return (
+    slug.startsWith("vm0") ||
+    slug === "system" ||
+    slug === "admin" ||
+    slug === "api" ||
+    slug === "app" ||
+    slug === "www"
+  );
 }
 
 function isClerkNotFound(error: unknown): boolean {
@@ -159,6 +200,87 @@ export const zeroOrgDetail$ = command(
       role: (membership[0]?.role as OrgRole) ?? "member",
       createdBy: identity.createdBy ?? undefined,
     };
+  },
+);
+
+export const updateZeroOrg$ = command(
+  async (
+    { get, set },
+    args: UpdateZeroOrgArgs,
+    signal: AbortSignal,
+  ): Promise<OrgResponse | OrgUpdateErrorResponse> => {
+    const db = get(db$);
+    const [membership] = await db
+      .select({ role: orgMembersCache.role })
+      .from(orgMembersCache)
+      .where(
+        and(
+          eq(orgMembersCache.orgId, args.orgId),
+          eq(orgMembersCache.userId, args.userId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!membership) {
+      return forbiddenAccess;
+    }
+
+    const clerkUpdate: ClerkUpdate = {};
+
+    if (args.slug) {
+      if (!args.force) {
+        return badRequestMessage(
+          "Changing org slug may break existing references. Use --force to confirm.",
+        );
+      }
+
+      if (isReservedSlug(args.slug)) {
+        return badRequestMessage("Org slug is reserved");
+      }
+
+      const [existing] = await db
+        .select({ orgId: orgCache.orgId })
+        .from(orgCache)
+        .where(eq(orgCache.slug, args.slug))
+        .limit(1);
+      signal.throwIfAborted();
+
+      if (existing && existing.orgId !== args.orgId) {
+        return conflict(`Org "${args.slug}" already exists`);
+      }
+
+      clerkUpdate.slug = args.slug;
+    }
+
+    if (args.name) {
+      clerkUpdate.name = args.name;
+    }
+
+    if (clerkUpdate.slug || clerkUpdate.name) {
+      const client = get(clerk$);
+      await client.organizations.updateOrganization(args.orgId, clerkUpdate);
+      signal.throwIfAborted();
+
+      const writeDb = set(writeDb$);
+      await writeDb.delete(orgCache).where(eq(orgCache.orgId, args.orgId));
+      signal.throwIfAborted();
+    }
+
+    const org = await set(
+      zeroOrgDetail$,
+      { orgId: args.orgId, userId: args.userId },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (!org) {
+      return notFound(
+        "No org configured. Set your org with: zero org set <slug>",
+      );
+    }
+
+    return org;
   },
 );
 
