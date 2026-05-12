@@ -200,6 +200,8 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/logs/route.ts",
   "app/api/zero/logs/search/route.ts",
   "app/api/zero/me/model-providers/[type]/route.ts",
+  "app/api/zero/me/model-providers/codex-oauth-token/oauth/authorize/route.ts",
+  "app/api/zero/me/model-providers/codex-oauth-token/oauth/callback/route.ts",
   "app/api/zero/me/model-providers/route.ts",
   "app/api/zero/model-providers/[type]/default/route.ts",
   "app/api/zero/model-providers/[type]/model/route.ts",
