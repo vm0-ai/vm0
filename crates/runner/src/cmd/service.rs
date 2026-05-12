@@ -401,6 +401,17 @@ struct RunnerStatusSnapshot {
     uptime: std::time::Duration,
 }
 
+fn status_field_preview(value: &str) -> String {
+    const MAX_CHARS: usize = 128;
+    let mut chars = value.chars();
+    let preview = chars.by_ref().take(MAX_CHARS).collect::<String>();
+    if chars.next().is_some() {
+        format!("{preview}...[truncated]")
+    } else {
+        preview
+    }
+}
+
 #[derive(Debug)]
 enum RunnerStatusReadError {
     Read {
@@ -423,7 +434,11 @@ impl std::fmt::Display for RunnerStatusReadError {
             Self::Read { path, error } => write!(f, "read {}: {error}", path.display()),
             Self::ParseJson { path, error } => write!(f, "parse {}: {error}", path.display()),
             Self::ParseStartedAt { started_at, error } => {
-                write!(f, "parse started_at {started_at:?}: {error}")
+                write!(
+                    f,
+                    "parse started_at {:?}: {error}",
+                    status_field_preview(started_at)
+                )
             }
         }
     }
@@ -1202,6 +1217,24 @@ mod tests {
     // -----------------------------------------------------------------
     // status.json reader
     // -----------------------------------------------------------------
+
+    #[test]
+    fn status_field_preview_bounds_long_values_on_char_boundary() {
+        let exact = "x".repeat(128);
+        assert_eq!(status_field_preview(&exact), exact);
+
+        let long_ascii = "x".repeat(129);
+        assert_eq!(
+            status_field_preview(&long_ascii),
+            format!("{}...[truncated]", "x".repeat(128))
+        );
+
+        let long_unicode = "界".repeat(129);
+        assert_eq!(
+            status_field_preview(&long_unicode),
+            format!("{}...[truncated]", "界".repeat(128))
+        );
+    }
 
     #[tokio::test]
     async fn read_runner_status_missing_file() {
