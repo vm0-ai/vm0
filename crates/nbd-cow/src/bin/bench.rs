@@ -426,13 +426,13 @@ fn run_fio_with_iostat(
 
     let elapsed_secs = start.elapsed().as_secs_f64();
 
-    // Snapshot disk stats after
-    let after = read_diskstats(host_disk)?;
-
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("fio failed: {stderr}"));
     }
+
+    // Snapshot disk stats after
+    let after = read_diskstats(host_disk)?;
 
     let mut result = parse_fio_json(&output.stdout)?;
 
@@ -670,7 +670,7 @@ fn fio_latency_us(jobs: &[Value]) -> Result<(u64, u64), String> {
 }
 
 fn section_iops(job: &Value, section: &str) -> Option<f64> {
-    job.get(section)?.get("iops")?.as_f64()
+    nonnegative_f64(job.get(section)?.get("iops")?)
 }
 
 fn sum_section_iops(sections: &[&Value], section_name: &str) -> Result<f64, String> {
@@ -679,7 +679,7 @@ fn sum_section_iops(sections: &[&Value], section_name: &str) -> Result<f64, Stri
         .map(|section| {
             section
                 .get("iops")
-                .and_then(Value::as_f64)
+                .and_then(nonnegative_f64)
                 .ok_or_else(|| format!("fio JSON missing {section_name} IOPS for active section"))
         })
         .sum()
@@ -687,7 +687,7 @@ fn sum_section_iops(sections: &[&Value], section_name: &str) -> Result<f64, Stri
 
 fn section_is_active(section: &Value) -> bool {
     section_total_ios(section).unwrap_or(0) > 0
-        || section.get("iops").and_then(Value::as_f64).unwrap_or(0.0) > 0.0
+        || section.get("iops").and_then(nonnegative_f64).unwrap_or(0.0) > 0.0
 }
 
 fn section_total_ios(section: &Value) -> Option<u64> {
@@ -718,8 +718,16 @@ fn percentile_us(section: &Value, percentile: &str) -> Option<u64> {
     let value = section.get("clat_ns")?.get("percentile")?.get(percentile)?;
     let ns = value
         .as_u64()
-        .or_else(|| value.as_f64().map(|value| value as u64))?;
+        .or_else(|| nonnegative_f64(value).map(|value| value as u64))?;
     Some(ns / 1000)
+}
+
+fn nonnegative_f64(value: &Value) -> Option<f64> {
+    let value = value.as_f64()?;
+    value
+        .is_finite()
+        .then_some(value)
+        .filter(|value| *value >= 0.0)
 }
 
 fn attach_loop(path: &Path, read_only: bool) -> Result<String, String> {
@@ -986,6 +994,40 @@ mod tests {
 
         assert_eq!(result.lat_p50_us, 13);
         assert_eq!(result.lat_p99_us, 23);
+    }
+
+    #[test]
+    fn parse_fio_json_rejects_negative_iops() {
+        let json = br#"{
+            "jobs": [{
+                "mixed": {
+                    "iops": -1.0,
+                    "total_ios": 1000,
+                    "clat_ns": {"percentile": {"50.000000": 13000, "99.000000": 23000}}
+                }
+            }]
+        }"#;
+
+        let err = parse_fio_json(json).unwrap_err();
+
+        assert!(err.contains("mixed IOPS"), "{err}");
+    }
+
+    #[test]
+    fn parse_fio_json_rejects_negative_float_percentile_values() {
+        let json = br#"{
+            "jobs": [{
+                "mixed": {
+                    "iops": 1000.0,
+                    "total_ios": 1000,
+                    "clat_ns": {"percentile": {"50.000000": -1.0, "99.000000": 23000.0}}
+                }
+            }]
+        }"#;
+
+        let err = parse_fio_json(json).unwrap_err();
+
+        assert!(err.contains("mixed p50 latency"), "{err}");
     }
 
     #[test]
