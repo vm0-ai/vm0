@@ -901,7 +901,14 @@ async function dispatchZeroRun(
       apiStartTime: record.apiStartTime,
     });
 
-    // 8. Dispatch with pre-built context (callbacks already registered above)
+    // 8. Persist resolved model metadata before dispatch so failed runs still
+    // carry the model signature used for admission and context building. The
+    // queued path does the same before dispatching from the queue worker.
+    if (contextResult?.resolvedModelProvider || contextResult?.selectedModel) {
+      await updateZeroRunModelInfo(record.run.id, contextResult);
+    }
+
+    // 9. Dispatch with pre-built context (callbacks already registered above)
     const dispatchResult = await buildAndDispatchRun({
       runId: record.run.id,
       context: contextResult.context,
@@ -918,13 +925,6 @@ async function dispatchZeroRun(
         diagnosticSpans: contextResult.timings.diagnosticSpans,
       },
     });
-
-    // 9. Update zero-layer metadata with model fields resolved during dispatch.
-    // The base row (triggerSource, scheduleId, triggerAgentId) was already
-    // inserted in createZeroRunRecord; here we only backfill model info.
-    if (contextResult?.resolvedModelProvider || contextResult?.selectedModel) {
-      await updateZeroRunModelInfo(record.run.id, contextResult);
-    }
 
     return dispatchResult;
   } catch (error) {
