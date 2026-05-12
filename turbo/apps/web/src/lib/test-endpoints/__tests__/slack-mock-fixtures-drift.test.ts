@@ -5,8 +5,7 @@ import { SLACK_E2E_FIXTURES } from "../slack-mock-fixtures";
 
 /**
  * Cross-file contract test: asserts the hand-maintained BATS mirror at
- * `e2e/helpers/slack-fixtures.sh` agrees with the canonical TS source in
- * `src/lib/test-endpoints/slack-mock-fixtures.ts`.
+ * `e2e/helpers/slack-fixtures.sh` agrees with the shared TS fixture values.
  *
  * This is intentionally a contract check, not a unit test of internal
  * logic (no business behavior is exercised). Because the Slack mock

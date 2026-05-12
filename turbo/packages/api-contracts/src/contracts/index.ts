@@ -250,6 +250,21 @@ export {
   type TestSlackStateResponse,
 } from "./test-slack-state";
 export {
+  SLACK_E2E_FIXTURES,
+  SLACK_E2E_SCOPES,
+  testSlackMockAuthTestResponseSchema,
+  testSlackMockChatPostEphemeralResponseSchema,
+  testSlackMockChatPostMessageResponseSchema,
+  testSlackMockContract,
+  testSlackMockConversationMessagesResponseSchema,
+  testSlackMockConversationsOpenResponseSchema,
+  testSlackMockOauthAccessResponseSchema,
+  testSlackMockOkResponseSchema,
+  testSlackMockUsersInfoResponseSchema,
+  type TestSlackMockContract,
+  type TestSlackMockUsersInfoResponse,
+} from "./test-slack-mock";
+export {
   testTelegramStateContract,
   testTelegramStateErrorSchema,
   testTelegramStateResponseSchema,
