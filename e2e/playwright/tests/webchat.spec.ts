@@ -11,18 +11,22 @@ test("send a chat message and receive a response", async ({ page }) => {
   // Wait for composer to be ready
   const textarea = page.getByPlaceholder(/Ask me to automate/);
   await expect(textarea).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByTestId("app-skeleton")).toBeHidden({
-    timeout: 60_000,
-  });
+  await expect(page.getByTestId("app-skeleton")).toHaveAttribute(
+    "aria-hidden",
+    "true",
+    { timeout: 60_000 },
+  );
 
   // Send a message — mock claude executes this as bash
   const marker = `e2e-${Date.now()}`;
   await textarea.fill(`echo ${marker}`);
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await page.waitForURL(/\/chats\/[^/]+/, { timeout: 60_000 });
-  await expect(page.getByTestId("app-skeleton")).toBeHidden({
-    timeout: 60_000,
-  });
+  await expect(page.getByTestId("app-skeleton")).toHaveAttribute(
+    "aria-hidden",
+    "true",
+    { timeout: 60_000 },
+  );
 
   // Verify user message appears
   await expect(
