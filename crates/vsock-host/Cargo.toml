@@ -7,6 +7,7 @@ description = "Vsock host client for Firecracker VM communication"
 [dependencies]
 nix = { workspace = true, features = ["net"] }
 tokio = { workspace = true, features = ["net", "io-util", "time", "rt", "macros", "sync"] }
+tracing = { workspace = true }
 vsock-proto.workspace = true
 
 [lints]

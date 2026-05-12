@@ -739,6 +739,72 @@ fn command_capture_only_stdout_stderr_success() {
 }
 
 #[test]
+fn command_repeated_short_operations_soak() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    for seq in 130..138 {
+        let expected = format!("run-{seq}");
+        send_command_start(
+            &mut host_stream,
+            seq,
+            &format!("printf {expected}"),
+            5000,
+            CommandOutputPolicy::Capture { limit_bytes: 64 },
+            CommandOutputPolicy::Capture { limit_bytes: 64 },
+        );
+        let (chunks, result) = read_command_result(&mut host_stream, seq);
+
+        assert!(chunks.is_empty());
+        assert_eq!(
+            result.termination,
+            CommandTermination::Exited { exit_code: 0 }
+        );
+        assert_eq!(result.stdout, Some(expected.into_bytes()));
+        assert_eq!(result.stderr, Some(Vec::new()));
+        assert!(!result.stdout_truncated);
+        assert!(!result.stderr_truncated);
+    }
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn command_large_stdout_stderr_capture_soak() {
+    let (handle, mut host_stream) = start_guest_connection();
+    let len = 32 * 1024usize;
+
+    send_command_start(
+        &mut host_stream,
+        138,
+        "head -c 32768 /dev/zero | tr '\\0' o; head -c 32768 /dev/zero | tr '\\0' e >&2",
+        5000,
+        CommandOutputPolicy::Capture {
+            limit_bytes: len as u32,
+        },
+        CommandOutputPolicy::Capture {
+            limit_bytes: len as u32,
+        },
+    );
+    let (chunks, result) = read_command_result(&mut host_stream, 138);
+
+    assert!(chunks.is_empty());
+    assert_eq!(
+        result.termination,
+        CommandTermination::Exited { exit_code: 0 }
+    );
+    let stdout = result.stdout.unwrap();
+    let stderr = result.stderr.unwrap();
+    assert_eq!(stdout.len(), len);
+    assert_eq!(stderr.len(), len);
+    assert!(stdout.iter().all(|byte| *byte == b'o'));
+    assert!(stderr.iter().all(|byte| *byte == b'e'));
+    assert!(!result.stdout_truncated);
+    assert!(!result.stderr_truncated);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn command_stream_only_stdout_stderr_success() {
     let (handle, mut host_stream) = start_guest_connection();
 

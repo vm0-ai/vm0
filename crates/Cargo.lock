@@ -3651,6 +3651,7 @@ version = "0.12.1"
 dependencies = [
  "nix",
  "tokio",
+ "tracing",
  "vsock-proto",
 ]
 

@@ -149,10 +149,6 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
             // blocking the event loop. A blocking child process (e.g. reading a
             // pipe fd) would otherwise stall all subsequent messages.
             if msg.msg_type == MSG_COMMAND_START {
-                log(
-                    "INFO",
-                    &format!("Received: type=0x{:02X} seq={}", msg.msg_type, msg.seq),
-                );
                 if msg.seq == 0 {
                     send_command_error(0, "command start requires non-zero sequence", &writer)?;
                     continue;
@@ -166,10 +162,6 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                     command_registry.clone(),
                 )?;
             } else if msg.msg_type == MSG_COMMAND_CANCEL {
-                log(
-                    "INFO",
-                    &format!("Received: type=0x{:02X} seq={}", msg.msg_type, msg.seq),
-                );
                 if msg.seq == 0 {
                     send_command_error(0, "command cancel requires non-zero sequence", &writer)?;
                     continue;

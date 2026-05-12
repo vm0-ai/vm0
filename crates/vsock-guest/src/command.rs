@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use vsock_proto::{
     self, CommandCapturedOutput, CommandOutputPolicy, CommandOutputStream, CommandTermination,
@@ -37,21 +37,34 @@ const COMMAND_RESULT_DIAGNOSTIC_LEN_FIELD: usize = 2;
 const COMMAND_RESULT_MAX_DIAGNOSTIC_BYTES: usize = u16::MAX as usize;
 const COMMAND_CAPTURED_OUTPUT_OVERHEAD: usize = 1 + 1 + 4;
 const COMMAND_DISCARDED_OUTPUT_LEN: usize = 1;
+const COMMAND_STAGE_SLOW_THRESHOLD: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Default)]
 pub(crate) struct CommandRegistry {
-    inner: Arc<Mutex<HashMap<u32, Arc<AtomicBool>>>>,
+    inner: Arc<Mutex<HashMap<u32, CommandRegistryEntry>>>,
+}
+
+#[derive(Clone)]
+struct CommandRegistryEntry {
+    cancel: Arc<AtomicBool>,
+    label: String,
 }
 
 impl CommandRegistry {
-    pub(crate) fn register(&self, seq: u32) -> Result<CommandRegistration, ()> {
+    pub(crate) fn register(&self, seq: u32, label: &str) -> Result<CommandRegistration, ()> {
         let mut active = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if active.contains_key(&seq) {
             return Err(());
         }
 
         let cancel = Arc::new(AtomicBool::new(false));
-        active.insert(seq, cancel.clone());
+        active.insert(
+            seq,
+            CommandRegistryEntry {
+                cancel: cancel.clone(),
+                label: label.to_string(),
+            },
+        );
         Ok(CommandRegistration {
             registry: self.clone(),
             seq,
@@ -59,20 +72,18 @@ impl CommandRegistry {
         })
     }
 
-    pub(crate) fn cancel(&self, seq: u32) -> bool {
+    pub(crate) fn cancel(&self, seq: u32) -> Option<String> {
         let active = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let Some(cancel) = active.get(&seq) else {
-            return false;
-        };
-        cancel.store(true, Ordering::Release);
-        true
+        let cancel = active.get(&seq)?;
+        cancel.cancel.store(true, Ordering::Release);
+        Some(cancel.label.clone())
     }
 
     fn remove_if_same(&self, seq: u32, cancel: &Arc<AtomicBool>) {
         let mut active = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if active
             .get(&seq)
-            .is_some_and(|existing| Arc::ptr_eq(existing, cancel))
+            .is_some_and(|existing| Arc::ptr_eq(&existing.cancel, cancel))
         {
             active.remove(&seq);
         }
@@ -197,7 +208,7 @@ where
     S: ThreadSpawner,
 {
     let seq = request.seq;
-    let registration = match registry.register(seq) {
+    let registration = match registry.register(seq, &request.label) {
         Ok(registration) => registration,
         Err(()) => {
             return send_command_error(seq, "command operation already active", &writer);
@@ -226,6 +237,10 @@ where
         Ok(_) => Ok(()),
         Err(e) => {
             let diagnostic = format!("Failed to spawn command worker thread: {e}");
+            log(
+                "ERROR",
+                &format!("command: worker spawn failed seq={seq}: {e}"),
+            );
             send_command_result(
                 CommandResultFrame {
                     seq,
@@ -242,8 +257,14 @@ where
 }
 
 pub(crate) fn cancel_command_operation(registry: &CommandRegistry, seq: u32) {
-    if registry.cancel(seq) {
-        log("INFO", &format!("command: cancelled seq={seq}"));
+    if let Some(label) = registry.cancel(seq) {
+        log(
+            "INFO",
+            &format!(
+                "command: cancel requested seq={seq} label={}",
+                truncate_preview(&label)
+            ),
+        );
     }
 }
 
@@ -263,18 +284,6 @@ fn run_command_worker<S>(
 ) where
     S: ThreadSpawner,
 {
-    log(
-        "INFO",
-        &format!(
-            "command: label={} {} (timeout={}ms, sudo={}, {})",
-            truncate_preview(&request.label),
-            truncate_preview(&request.command),
-            request.timeout_ms,
-            request.sudo,
-            format_env_diagnostics(&request.command, &env_refs(&request.env)),
-        ),
-    );
-
     let started = Instant::now();
     if let Err(diagnostic) = validate_request(&request) {
         send_final_and_complete(
@@ -355,6 +364,7 @@ fn run_command_worker<S>(
         let (tx, rx) = mpsc::sync_channel(OUTPUT_CHANNEL_CAPACITY);
         match spawn_output_writer(
             request.seq,
+            request.label.clone(),
             rx,
             writer.clone(),
             command_cancel.clone(),
@@ -459,7 +469,11 @@ fn run_command_worker<S>(
     if completed < 2 {
         log(
             "WARN",
-            &format!("command: drain deadline reached after {DRAIN_DEADLINE_SECS}s"),
+            &format!(
+                "command: drain deadline reached seq={} label={} after {DRAIN_DEADLINE_SECS}s",
+                request.seq,
+                truncate_preview(&request.label)
+            ),
         );
     }
 
@@ -484,17 +498,13 @@ fn run_command_worker<S>(
         ),
     };
 
-    log(
-        "INFO",
-        &format!(
-            "command result: seq={}, termination={:?}, stdout_len={}, stderr_len={}, stdout_truncated={}, stderr_truncated={}",
-            request.seq,
-            termination,
-            stdout_result.captured.as_ref().map_or(0, Vec::len),
-            stderr_result.captured.as_ref().map_or(0, Vec::len),
-            stdout_result.capture_truncated,
-            stderr_result.capture_truncated,
-        ),
+    log_command_terminal_if_notable(
+        &request,
+        started,
+        termination,
+        &stdout_result,
+        &stderr_result,
+        &diagnostic,
     );
 
     send_final_and_complete(
@@ -602,6 +612,7 @@ fn stream_config(policy: CommandOutputPolicy) -> Option<BoundedStreamConfig> {
 
 fn spawn_output_writer<S>(
     seq: u32,
+    label: String,
     rx: Receiver<StreamEvent>,
     writer: GuestWriter,
     command_cancel: Arc<AtomicBool>,
@@ -627,7 +638,13 @@ where
                 ) {
                     Ok(payload) => payload,
                     Err(e) => {
-                        log("ERROR", &format!("command: failed to encode output: {e}"));
+                        log(
+                            "ERROR",
+                            &format!(
+                                "command: failed to encode output seq={seq} label={}: {e}",
+                                truncate_preview(&label)
+                            ),
+                        );
                         command_cancel.store(true, Ordering::Release);
                         drain_cancel.store(true, Ordering::Release);
                         break;
@@ -639,7 +656,10 @@ where
                     Err(e) => {
                         log(
                             "ERROR",
-                            &format!("command: failed to encode output frame: {e}"),
+                            &format!(
+                                "command: failed to encode output frame seq={seq} label={}: {e}",
+                                truncate_preview(&label)
+                            ),
                         );
                         command_cancel.store(true, Ordering::Release);
                         drain_cancel.store(true, Ordering::Release);
@@ -649,7 +669,10 @@ where
                 if let Err(e) = writer.write_frame(&frame) {
                     log(
                         "WARN",
-                        &format!("command: failed to send output chunk: {e}"),
+                        &format!(
+                            "command: failed to send output chunk seq={seq} label={}: {e}",
+                            truncate_preview(&label)
+                        ),
                     );
                     command_cancel.store(true, Ordering::Release);
                     drain_cancel.store(true, Ordering::Release);
@@ -796,6 +819,42 @@ fn duration_ms(started: Instant) -> u32 {
     u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX)
 }
 
+fn log_command_terminal_if_notable(
+    request: &CommandWorkerRequest,
+    started: Instant,
+    termination: CommandTermination,
+    stdout_result: &BoundedDrainResult,
+    stderr_result: &BoundedDrainResult,
+    diagnostic: &str,
+) {
+    let elapsed = started.elapsed();
+    let slow = elapsed >= COMMAND_STAGE_SLOW_THRESHOLD;
+    let notable = !matches!(termination, CommandTermination::Exited { .. })
+        || stdout_result.capture_truncated
+        || stderr_result.capture_truncated
+        || !diagnostic.is_empty();
+
+    if !slow && !notable {
+        return;
+    }
+
+    log(
+        "WARN",
+        &format!(
+            "command result: seq={} label={} elapsed_ms={} termination={:?} stdout_len={} stderr_len={} stdout_truncated={} stderr_truncated={} diagnostic_present={}",
+            request.seq,
+            truncate_preview(&request.label),
+            elapsed.as_millis(),
+            termination,
+            stdout_result.captured.as_ref().map_or(0, Vec::len),
+            stderr_result.captured.as_ref().map_or(0, Vec::len),
+            stdout_result.capture_truncated,
+            stderr_result.capture_truncated,
+            !diagnostic.is_empty(),
+        ),
+    );
+}
+
 fn join_output_writer(handle: Option<JoinHandle<()>>) {
     if let Some(handle) = handle {
         let _ = handle.join();
@@ -842,7 +901,7 @@ mod tests {
     fn wait_for_registry_release(registry: &CommandRegistry, seq: u32) {
         let deadline = Instant::now() + Duration::from_secs(3);
         while Instant::now() < deadline {
-            if registry.register(seq).is_ok() {
+            if registry.register(seq, "test").is_ok() {
                 return;
             }
             std::thread::yield_now();
@@ -853,19 +912,19 @@ mod tests {
     #[test]
     fn registry_rejects_duplicate_active_sequence_and_cleans_on_drop() {
         let registry = CommandRegistry::default();
-        let first = registry.register(7).unwrap();
-        assert!(registry.register(7).is_err());
+        let first = registry.register(7, "first").unwrap();
+        assert!(registry.register(7, "duplicate").is_err());
         drop(first);
-        assert!(registry.register(7).is_ok());
+        assert!(registry.register(7, "second").is_ok());
     }
 
     #[test]
     fn registry_cancel_sets_token_and_unknown_cancel_is_noop() {
         let registry = CommandRegistry::default();
-        let registration = registry.register(8).unwrap();
-        assert!(registry.cancel(8));
+        let registration = registry.register(8, "cancel-me").unwrap();
+        assert_eq!(registry.cancel(8).as_deref(), Some("cancel-me"));
         assert!(registration.cancel.load(Ordering::Acquire));
-        assert!(!registry.cancel(9));
+        assert!(registry.cancel(9).is_none());
     }
 
     #[test]
@@ -899,7 +958,7 @@ mod tests {
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
         let registry = CommandRegistry::default();
-        let _registration = registry.register(11).unwrap();
+        let _registration = registry.register(11, "duplicate").unwrap();
 
         start_command_operation_with_spawner(
             request(11, "echo duplicate"),
