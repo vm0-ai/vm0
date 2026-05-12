@@ -215,7 +215,6 @@ async fn run_nbd_cow_bench(
     eprintln!("  NBD module loaded, setting up NBD COW device...");
 
     let device_pool = DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig::default());
-    device_pool.warmup().await;
 
     for wl in workloads {
         let cow_path = work_dir.join("nbd-cow.img");

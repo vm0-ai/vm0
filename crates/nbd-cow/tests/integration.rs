@@ -656,32 +656,6 @@ async fn pool_release_and_reacquire_after_cooldown() {
     pool.cleanup().await;
 }
 
-/// Pool warmup should leave the public pooled-device path usable.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore]
-async fn pool_warmup_allows_pooled_create() {
-    require_root!();
-    require_nbd!();
-
-    let pool = nbd_cow::pool::DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig::default());
-    pool.warmup().await;
-
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let base = tmp.path().join("base.img");
-    create_test_base_image(&base);
-    let cow = tmp.path().join("cow.img");
-    let device = pool
-        .create_cow_device(&base, &cow, 64 * 1024 * 1024)
-        .await
-        .expect("create after warmup");
-
-    device
-        .destroy_with_retries(destroy_policy())
-        .await
-        .expect("destroy after warmup");
-    pool.cleanup().await;
-}
-
 /// After cleanup(), acquire must return NoFreeDevice immediately.
 /// This is a pure-logic test — no root or nbd module required.
 #[tokio::test(flavor = "multi_thread")]

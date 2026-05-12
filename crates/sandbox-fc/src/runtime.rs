@@ -50,7 +50,6 @@ impl FirecrackerRuntime {
 
         let t = std::time::Instant::now();
         let device_pool = DevicePoolHandle::new(DevicePoolConfig::default());
-        device_pool.warmup().await;
         info!(
             elapsed_ms = t.elapsed().as_millis() as u64,
             "runtime device pool created"

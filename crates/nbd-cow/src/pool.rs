@@ -183,9 +183,6 @@ impl LeaseReturnOperation {
 }
 
 enum DevicePoolCommand {
-    Warmup {
-        done: oneshot::Sender<()>,
-    },
     Acquire {
         respond_to: oneshot::Sender<Result<DeviceLease>>,
     },
@@ -236,18 +233,6 @@ impl DevicePoolHandle {
             .run(),
         );
         Self { commands }
-    }
-
-    /// Compatibility hook for older callers. Allocation is demand-only.
-    pub async fn warmup(&self) {
-        let (done, done_rx) = oneshot::channel();
-        if self
-            .commands
-            .send(DevicePoolCommand::Warmup { done })
-            .is_ok()
-        {
-            let _ = done_rx.await;
-        }
     }
 
     /// Clean up the underlying pool.
@@ -376,10 +361,6 @@ impl DevicePoolActor {
 
     async fn handle_command(&mut self, command: DevicePoolCommand) {
         match command {
-            DevicePoolCommand::Warmup { done } => {
-                self.pool.warmup();
-                let _ = done.send(());
-            }
             DevicePoolCommand::Acquire { respond_to } => {
                 self.pool.handle_acquire(respond_to);
             }
@@ -491,13 +472,6 @@ impl DevicePool {
         }
     }
 
-    /// Compatibility no-op. Allocation happens on demand.
-    fn warmup(&mut self) {
-        if self.active {
-            tracing::debug!(max_devices = self.max_devices, "device pool warmup skipped");
-        }
-    }
-
     fn handle_acquire(&mut self, respond_to: oneshot::Sender<Result<DeviceLease>>) {
         if !self.active {
             let _ = respond_to.send(Err(NbdCowError::NoFreeDevice));
@@ -564,7 +538,7 @@ impl DevicePool {
         match scan {
             Some(Ok(Ok(claim))) => {
                 if self.is_tracked(claim.index()) {
-                    tracing::debug!(
+                    tracing::warn!(
                         device_index = claim.index(),
                         "dropping scan result because index is already tracked"
                     );
@@ -746,7 +720,7 @@ impl DevicePool {
             return;
         }
         if !(self.device_appears_free)(index) {
-            tracing::debug!(
+            tracing::info!(
                 device_index = index,
                 "dropping expired NBD cooldown claim because device is not free"
             );
@@ -830,7 +804,7 @@ where
             }
             Ok(None) => {}
             Err(e) => {
-                tracing::debug!(
+                tracing::warn!(
                     device_index = i,
                     error = %e,
                     "cannot acquire NBD device lock, skipping index"
@@ -1071,19 +1045,6 @@ mod tests {
 
         drop(lease);
         assert!(weak_commands.upgrade().is_none());
-    }
-
-    #[tokio::test]
-    async fn warmup_after_cleanup_does_not_restart_pool() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let mut pool = test_pool_for_pending_scan(dir.path());
-
-        pool.cleanup().await;
-        pool.warmup();
-
-        assert!(!pool.active);
-        assert!(pool.pending.is_empty());
-        assert!(pool.cooldown.is_empty());
     }
 
     #[tokio::test]

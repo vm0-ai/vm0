@@ -1774,7 +1774,6 @@ async fn create_uncommitted_snapshot(
 
     let device_pool =
         nbd_cow::pool::DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig::default());
-    device_pool.warmup().await;
     let cow_device = device_pool
         .create_cow_device(&config.rootfs_path, &cow_file, base_size)
         .await
