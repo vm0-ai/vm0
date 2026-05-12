@@ -12,6 +12,25 @@ export const testSlackStateDeleteResponseSchema = z.object({
   ok: z.literal(true),
 });
 
+export const testSlackStatePostBodySchema = z.object({
+  team_id: z.string().optional(),
+  slack_user_id: z.string().optional(),
+  workspace_name: z.string().optional(),
+  bot_user_id: z.string().optional(),
+  email: z.string().optional(),
+  seed_connection: z.boolean().optional(),
+  seed_default_agent: z.boolean().optional(),
+});
+
+export const testSlackStatePostResponseSchema = z.object({
+  ok: z.literal(true),
+  team_id: z.string(),
+  org_id: z.string(),
+  vm0_user_id: z.string(),
+  connection_id: z.string().nullable(),
+  default_agent_id: z.string().nullable(),
+});
+
 const nullableDateStringSchema = z.string().nullable();
 
 export const testSlackStateResponseSchema = z.object({
@@ -99,6 +118,17 @@ export const testSlackStateContract = c.router({
     },
     summary: "Read Slack e2e diagnostic state for a test workspace",
   },
+  post: {
+    method: "POST",
+    path: "/api/test/slack-state",
+    body: testSlackStatePostBodySchema,
+    responses: {
+      200: testSlackStatePostResponseSchema,
+      400: testSlackStateErrorSchema,
+      404: z.string(),
+    },
+    summary: "Seed Slack e2e diagnostic state for a test workspace",
+  },
   delete: {
     method: "DELETE",
     path: "/api/test/slack-state",
@@ -117,6 +147,12 @@ export const testSlackStateContract = c.router({
 export type TestSlackStateContract = typeof testSlackStateContract;
 export type TestSlackStateDeleteResponse = z.infer<
   typeof testSlackStateDeleteResponseSchema
+>;
+export type TestSlackStatePostBody = z.infer<
+  typeof testSlackStatePostBodySchema
+>;
+export type TestSlackStatePostResponse = z.infer<
+  typeof testSlackStatePostResponseSchema
 >;
 export type TestSlackStateResponse = z.infer<
   typeof testSlackStateResponseSchema

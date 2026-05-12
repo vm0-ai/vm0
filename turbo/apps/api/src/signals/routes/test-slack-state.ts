@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import type { createClerkClient } from "@clerk/backend";
 import { command, computed } from "ccstate";
 import { testSlackStateContract } from "@vm0/api-contracts/contracts/test-slack-state";
 import {
@@ -5,23 +7,41 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { e2eSlackMockCallLog } from "@vm0/db/schema/e2e-slack-mock-call-log";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";
-import { queryOf } from "../context/request";
+import { nowDate } from "../../lib/time";
+import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
-import { db$, type ReadonlyDb, writeDb$ } from "../external/db";
+import { clerk$ } from "../external/clerk";
+import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route";
+import { encryptSecretValue } from "../services/crypto.utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
 } from "./test-oauth-provider-helpers";
+
+const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
+const DEFAULT_WORKSPACE_NAME = "E2E Test Workspace";
+const DEFAULT_AGENT_NAME = "e2e-slack-agent";
+const STARTER_GRANT_AMOUNT = 10_000;
+const STARTER_GRANT_SOURCE = "starter_grant";
+const SLACK_BOT_SCOPES = "chat:write,im:write,users:read";
+const SLACK_E2E_FIXTURES = {
+  botUserId: "U_E2E_BOT",
+  botToken: "xoxb-e2e-test-bot-token",
+} as const;
+
+type ClerkClient = ReturnType<typeof createClerkClient>;
+type StarterGrantTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 function isoString(value: Date): string {
   return value.toISOString();
@@ -48,6 +68,289 @@ function resolvedSlackApiUrl(): string | null {
   }
 
   return null;
+}
+
+async function resolveTestUserId(
+  clerk: ClerkClient,
+  email: string = DEFAULT_TEST_EMAIL,
+): Promise<string> {
+  const { data: users } = await clerk.users.getUserList({
+    emailAddress: [email],
+  });
+  const userId = users[0]?.id;
+  if (!userId) {
+    throw new Error(`Test user not found for email: ${email}`);
+  }
+  return userId;
+}
+
+async function resolveTestOrgId(
+  clerk: ClerkClient,
+  userId: string,
+): Promise<string> {
+  const memberships = await clerk.users.getOrganizationMembershipList({
+    userId,
+  });
+  const sorted = [...memberships.data].sort((a, b) => {
+    return a.createdAt - b.createdAt;
+  });
+  const orgId = sorted[0]?.organization.id;
+  if (!orgId) {
+    throw new Error(`Test user ${userId} has no organization membership`);
+  }
+  return orgId;
+}
+
+interface UpsertSlackInstallationInput {
+  readonly slackWorkspaceId: string;
+  readonly slackWorkspaceName?: string;
+  readonly orgId: string | null;
+  readonly botUserId: string;
+  readonly botToken: string;
+  readonly botScopes?: string | null;
+  readonly installedByUserId?: string;
+}
+
+async function upsertSlackInstallation(
+  db: Db,
+  input: UpsertSlackInstallationInput,
+): Promise<typeof slackOrgInstallations.$inferSelect> {
+  const encryptedBotToken = encryptSecretValue(input.botToken);
+  const [row] = await db
+    .insert(slackOrgInstallations)
+    .values({
+      slackWorkspaceId: input.slackWorkspaceId,
+      slackWorkspaceName: input.slackWorkspaceName,
+      orgId: input.orgId,
+      encryptedBotToken,
+      botUserId: input.botUserId,
+      botScopes: input.botScopes ?? null,
+      installedByUserId: input.installedByUserId,
+    })
+    .onConflictDoUpdate({
+      target: slackOrgInstallations.slackWorkspaceId,
+      set: {
+        orgId: input.orgId,
+        encryptedBotToken,
+        botUserId: input.botUserId,
+      },
+    })
+    .returning();
+
+  if (!row) {
+    throw new Error("Failed to upsert Slack installation");
+  }
+  return row;
+}
+
+interface UpsertSlackConnectionInput {
+  readonly slackUserId: string;
+  readonly slackWorkspaceId: string;
+  readonly vm0UserId: string;
+}
+
+async function insertSlackConnectionIfMissing(
+  db: Db,
+  input: UpsertSlackConnectionInput,
+): Promise<string | undefined> {
+  const [row] = await db
+    .insert(slackOrgConnections)
+    .values({
+      slackUserId: input.slackUserId,
+      slackWorkspaceId: input.slackWorkspaceId,
+      vm0UserId: input.vm0UserId,
+    })
+    .onConflictDoNothing()
+    .returning({ id: slackOrgConnections.id });
+  return row?.id;
+}
+
+interface SeedDefaultAgentInput {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly name: string;
+}
+
+async function seedDefaultAgent(
+  db: Db,
+  input: SeedDefaultAgentInput,
+): Promise<{ composeId: string; versionId: string; agentId: string }> {
+  const compose = await getOrInsertCompose(db, input);
+  const composeId = compose.id;
+  const versionId = await ensureComposeVersion(
+    db,
+    composeId,
+    input.userId,
+    input.name,
+    compose.headVersionId,
+  );
+
+  await db
+    .insert(zeroAgents)
+    .values({
+      id: composeId,
+      orgId: input.orgId,
+      owner: input.userId,
+      name: input.name,
+    })
+    .onConflictDoNothing();
+
+  await db.transaction(async (tx) => {
+    await ensureStarterCreditGrant(tx, input.orgId);
+    await tx
+      .insert(orgMetadata)
+      .values({ orgId: input.orgId, defaultAgentId: composeId })
+      .onConflictDoUpdate({
+        target: orgMetadata.orgId,
+        set: { defaultAgentId: composeId, updatedAt: nowDate() },
+      });
+  });
+
+  return { composeId, versionId, agentId: composeId };
+}
+
+async function getOrInsertCompose(
+  db: Db,
+  input: SeedDefaultAgentInput,
+): Promise<{ id: string; headVersionId: string | null }> {
+  const [inserted] = await db
+    .insert(agentComposes)
+    .values({
+      userId: input.userId,
+      orgId: input.orgId,
+      name: input.name,
+    })
+    .onConflictDoNothing({
+      target: [agentComposes.orgId, agentComposes.name],
+    })
+    .returning({
+      id: agentComposes.id,
+      headVersionId: agentComposes.headVersionId,
+    });
+
+  if (inserted) {
+    return inserted;
+  }
+
+  const [existing] = await db
+    .select({
+      id: agentComposes.id,
+      headVersionId: agentComposes.headVersionId,
+    })
+    .from(agentComposes)
+    .where(
+      and(
+        eq(agentComposes.orgId, input.orgId),
+        eq(agentComposes.name, input.name),
+      ),
+    )
+    .limit(1);
+
+  if (!existing) {
+    throw new Error("Failed to resolve agent compose after conflict");
+  }
+  return existing;
+}
+
+async function ensureComposeVersion(
+  db: Db,
+  composeId: string,
+  userId: string,
+  name: string,
+  headVersionId: string | null,
+): Promise<string> {
+  if (headVersionId) {
+    return headVersionId;
+  }
+
+  const content = defaultAgentContent(name);
+  const versionId = createHash("sha256")
+    .update(JSON.stringify(content) + composeId)
+    .digest("hex");
+  await db
+    .insert(agentComposeVersions)
+    .values({
+      id: versionId,
+      composeId,
+      content,
+      createdBy: userId,
+    })
+    .onConflictDoNothing();
+
+  const [updated] = await db
+    .update(agentComposes)
+    .set({ headVersionId: versionId, updatedAt: nowDate() })
+    .where(
+      and(eq(agentComposes.id, composeId), isNull(agentComposes.headVersionId)),
+    )
+    .returning({ headVersionId: agentComposes.headVersionId });
+  if (updated?.headVersionId) {
+    return updated.headVersionId;
+  }
+
+  const [compose] = await db
+    .select({ headVersionId: agentComposes.headVersionId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
+  if (compose?.headVersionId) {
+    return compose.headVersionId;
+  }
+
+  throw new Error("Failed to resolve agent compose head version");
+}
+
+function defaultAgentContent(name: string) {
+  return {
+    version: "1.0",
+    agents: {
+      [name]: {
+        framework: "claude-code",
+        environment: {
+          ANTHROPIC_API_KEY: "fake-e2e-anthropic-key",
+        },
+      },
+    },
+  };
+}
+
+async function ensureStarterCreditGrant(
+  tx: StarterGrantTx,
+  orgId: string,
+): Promise<void> {
+  const [existing] = await tx
+    .select({ orgId: orgMetadata.orgId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  if (existing) {
+    return;
+  }
+
+  const expiresAt = nowDate();
+  expiresAt.setMonth(expiresAt.getMonth() + 1);
+  const inserted = await tx
+    .insert(creditExpiresRecord)
+    .values({
+      orgId,
+      source: STARTER_GRANT_SOURCE,
+      stripeInvoiceId: null,
+      amount: STARTER_GRANT_AMOUNT,
+      remaining: STARTER_GRANT_AMOUNT,
+      expiresAt,
+    })
+    .onConflictDoNothing()
+    .returning({ id: creditExpiresRecord.id });
+  if (inserted.length === 0) {
+    return;
+  }
+
+  await tx.execute(
+    sql`INSERT INTO org_metadata (org_id, credits, created_at, updated_at)
+        VALUES (${orgId}, ${STARTER_GRANT_AMOUNT}, now(), now())
+        ON CONFLICT (org_id)
+        DO UPDATE SET credits = org_metadata.credits + ${STARTER_GRANT_AMOUNT}, updated_at = now()`,
+  );
 }
 
 async function slackInstallation(db: ReadonlyDb, teamId: string) {
@@ -276,6 +579,83 @@ const getSlackState$ = computed(async (get) => {
   };
 });
 
+const postSlackStateBody$ = bodyResultOf(testSlackStateContract.post);
+
+const postSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const request = get(request$);
+  if (!isTestEndpointAllowed(request)) {
+    return testEndpointNotFoundResponse();
+  }
+
+  const bodyResult = await get(postSlackStateBody$);
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+
+  const body = bodyResult.data;
+  if (!body.team_id || !body.slack_user_id) {
+    return {
+      status: 400 as const,
+      body: { error: "team_id and slack_user_id are required" },
+    };
+  }
+
+  const clerk = get(clerk$);
+  const userId = await resolveTestUserId(
+    clerk,
+    body.email ?? DEFAULT_TEST_EMAIL,
+  );
+  signal.throwIfAborted();
+
+  const orgId = await resolveTestOrgId(clerk, userId);
+  signal.throwIfAborted();
+
+  const db = set(writeDb$);
+  await upsertSlackInstallation(db, {
+    slackWorkspaceId: body.team_id,
+    slackWorkspaceName: body.workspace_name ?? DEFAULT_WORKSPACE_NAME,
+    orgId,
+    botUserId: body.bot_user_id ?? SLACK_E2E_FIXTURES.botUserId,
+    botToken: SLACK_E2E_FIXTURES.botToken,
+    botScopes: SLACK_BOT_SCOPES,
+    installedByUserId: userId,
+  });
+  signal.throwIfAborted();
+
+  let connectionId: string | undefined;
+  if (body.seed_connection) {
+    connectionId = await insertSlackConnectionIfMissing(db, {
+      slackUserId: body.slack_user_id,
+      slackWorkspaceId: body.team_id,
+      vm0UserId: userId,
+    });
+    signal.throwIfAborted();
+  }
+
+  let defaultAgent: { composeId: string; versionId: string } | undefined;
+  if (body.seed_default_agent) {
+    defaultAgent = await seedDefaultAgent(db, {
+      orgId,
+      userId,
+      name: DEFAULT_AGENT_NAME,
+    });
+    signal.throwIfAborted();
+  }
+
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      team_id: body.team_id,
+      org_id: orgId,
+      vm0_user_id: userId,
+      connection_id: connectionId ?? null,
+      default_agent_id: defaultAgent?.composeId ?? null,
+    },
+  };
+});
+
 const deleteSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   const request = get(request$);
   if (!isTestEndpointAllowed(request)) {
@@ -343,6 +723,10 @@ export const testSlackStateRoutes: readonly RouteEntry[] = [
   {
     route: testSlackStateContract.get,
     handler: getSlackState$,
+  },
+  {
+    route: testSlackStateContract.post,
+    handler: postSlackState$,
   },
   {
     route: testSlackStateContract.delete,
