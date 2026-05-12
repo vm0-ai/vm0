@@ -42,6 +42,19 @@ export const zeroOrgLogoContract = c.router({
     },
     summary: "Upload current organization logo",
   },
+  delete: {
+    method: "DELETE",
+    path: "/api/zero/org/logo",
+    headers: authHeadersSchema,
+    responses: {
+      200: zeroOrgLogoResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Remove current organization logo",
+  },
 });
 
 export type ZeroOrgLogoContract = typeof zeroOrgLogoContract;
