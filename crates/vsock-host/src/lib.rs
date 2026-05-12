@@ -882,11 +882,11 @@ async fn reader_loop(
         };
         for msg in messages {
             if msg.msg_type == MSG_ERROR {
+                // Intercept active command-operation errors before the legacy
+                // pending-request dispatch. If no command operation owns this
+                // seq, the error falls through as a normal request response.
                 match dispatch_command_error(&shared, &msg) {
                     Ok(true) => {
-                        // Command-operation errors are delivered through the operation
-                        // result channel. Legacy request errors fall through to the
-                        // pending-request dispatch below.
                         continue;
                     }
                     Ok(false) => {}
@@ -2789,6 +2789,52 @@ mod tests {
             .unwrap();
         let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    }
+
+    #[tokio::test]
+    async fn command_output_zero_stream_limit_accepts_empty_truncation_marker() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let mut handle = host
+            .command_stream(CommandStreamRequest {
+                timeout_ms: 5000,
+                command: "stream",
+                env: &[],
+                sudo: false,
+                label: "stream-zero-limit",
+                stdout: CommandOutputPolicy::Stream {
+                    limit_bytes: 0,
+                    chunk_limit_bytes: 16,
+                },
+                stderr: CommandOutputPolicy::Discard,
+                stream_queue_capacity: Some(1),
+            })
+            .await
+            .unwrap();
+        let mut rx = handle.take_stream_receiver().unwrap();
+
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        send_command_output(
+            &mut guest,
+            msg.seq,
+            0,
+            CommandOutputStream::Stdout,
+            b"",
+            true,
+        )
+        .await;
+        send_discarded_command_result(
+            &mut guest,
+            msg.seq,
+            CommandTermination::Exited { exit_code: 0 },
+        )
+        .await;
+
+        let event = rx.recv().await.unwrap();
+        assert_eq!(event.output_seq, 0);
+        assert_eq!(event.chunk, b"");
+        assert!(event.truncated);
+        let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+        assert!(!result.stream_overflowed);
     }
 
     #[tokio::test]
