@@ -149,6 +149,19 @@
   filter: invert(1);
 }
 
+/* Icon stroke widths are absolute screen pixels, not scaled with the SVG.
+   This prevents fractional stroke widths (e.g. 2 × 16/24 = 1.333px) that
+   cause jagged aliasing when rendering a 24×24 viewBox at sizes like 16px. */
+.zero-icon path,
+.zero-icon circle,
+.zero-icon rect,
+.zero-icon line,
+.zero-icon polyline,
+.zero-icon ellipse,
+.zero-icon polygon {
+  vector-effect: non-scaling-stroke;
+}
+
 /* Switch track: ensure visibility against card background in dark mode */
 :where([data-theme="dark"])
   .zero-app
