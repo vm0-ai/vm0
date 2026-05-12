@@ -1463,7 +1463,7 @@ jobs:
         with:
           workspaces: crates -> target
           shared-key: aarch64-musl-release
-          save-if: false
+          save-if: ${{ github.event.workflow_run.head_branch == 'main' }}
 
       - name: Notify Slack - Starting
         id: slack-start
@@ -1485,10 +1485,8 @@ jobs:
         id: timer
         run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      # IMPORTANT: these compile settings (--release, default linker, no
-      # custom RUSTFLAGS) must match crates.yml / turbo.yml so guest binary
-      # bytes and rootfs_hash are identical across pipelines. The shared
-      # R2 template cache intentionally ignores guest binaries. See #9192.
+      # IMPORTANT: production runner releases use the release profile. The
+      # shared R2 template cache intentionally ignores guest binaries. See #9192.
       - name: Cross-compile guest binaries for ARM64
         run: |
           cd crates

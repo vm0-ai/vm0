@@ -26,20 +26,20 @@ mkdir -p "$(dirname "$MANIFEST_PATH")"
 echo "=== Cross-compiling guest binaries for ${TARGET_TRIPLE} ==="
 (
   cd crates
-  cargo build --release --target "$TARGET_TRIPLE" \
+  cargo build --profile ci --target "$TARGET_TRIPLE" \
     -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-write-file
 )
 
 echo "=== Cross-compiling runner with embedded guests for ${TARGET_TRIPLE} ==="
 (
   cd crates
-  GUEST_AGENT_PATH="target/$TARGET_TRIPLE/release/guest-agent" \
-  GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/release/guest-download" \
-  GUEST_INIT_PATH="target/$TARGET_TRIPLE/release/guest-init" \
-  GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/release/guest-mock-claude" \
-  GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/release/guest-mock-codex" \
-  GUEST_RESEED_PATH="target/$TARGET_TRIPLE/release/guest-reseed" \
-  GUEST_WRITE_FILE_PATH="target/$TARGET_TRIPLE/release/guest-write-file" \
+  GUEST_AGENT_PATH="target/$TARGET_TRIPLE/ci/guest-agent" \
+  GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/ci/guest-download" \
+  GUEST_INIT_PATH="target/$TARGET_TRIPLE/ci/guest-init" \
+  GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/ci/guest-mock-claude" \
+  GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/ci/guest-mock-codex" \
+  GUEST_RESEED_PATH="target/$TARGET_TRIPLE/ci/guest-reseed" \
+  GUEST_WRITE_FILE_PATH="target/$TARGET_TRIPLE/ci/guest-write-file" \
   cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
 )
 
@@ -49,13 +49,13 @@ sha_file() {
 
 runner_sha=$(sha_file "${TARGET_DIR}/runner")
 guest_sha_json=$(jq -n \
-  --arg guest_agent "$(sha_file "crates/target/${TARGET_TRIPLE}/release/guest-agent")" \
-  --arg guest_download "$(sha_file "crates/target/${TARGET_TRIPLE}/release/guest-download")" \
-  --arg guest_init "$(sha_file "crates/target/${TARGET_TRIPLE}/release/guest-init")" \
-  --arg guest_mock_claude "$(sha_file "crates/target/${TARGET_TRIPLE}/release/guest-mock-claude")" \
-  --arg guest_mock_codex "$(sha_file "crates/target/${TARGET_TRIPLE}/release/guest-mock-codex")" \
-  --arg guest_reseed "$(sha_file "crates/target/${TARGET_TRIPLE}/release/guest-reseed")" \
-  --arg guest_write_file "$(sha_file "crates/target/${TARGET_TRIPLE}/release/guest-write-file")" \
+  --arg guest_agent "$(sha_file "crates/target/${TARGET_TRIPLE}/ci/guest-agent")" \
+  --arg guest_download "$(sha_file "crates/target/${TARGET_TRIPLE}/ci/guest-download")" \
+  --arg guest_init "$(sha_file "crates/target/${TARGET_TRIPLE}/ci/guest-init")" \
+  --arg guest_mock_claude "$(sha_file "crates/target/${TARGET_TRIPLE}/ci/guest-mock-claude")" \
+  --arg guest_mock_codex "$(sha_file "crates/target/${TARGET_TRIPLE}/ci/guest-mock-codex")" \
+  --arg guest_reseed "$(sha_file "crates/target/${TARGET_TRIPLE}/ci/guest-reseed")" \
+  --arg guest_write_file "$(sha_file "crates/target/${TARGET_TRIPLE}/ci/guest-write-file")" \
   '{
     "guest-agent": $guest_agent,
     "guest-download": $guest_download,

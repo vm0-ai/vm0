@@ -75,21 +75,21 @@ cmd_deploy() {
   # Build guests
   log "Building guest binaries..."
   cd "$CRATES_DIR"
-  cargo build --release --target "$TARGET" \
+  cargo build --profile ci --target "$TARGET" \
     -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-write-file
 
   # Build runner
   log "Building runner with embedded guests..."
-  GUEST_AGENT_PATH="target/$TARGET/release/guest-agent" \
-  GUEST_DOWNLOAD_PATH="target/$TARGET/release/guest-download" \
-  GUEST_INIT_PATH="target/$TARGET/release/guest-init" \
-  GUEST_MOCK_CLAUDE_PATH="target/$TARGET/release/guest-mock-claude" \
-  GUEST_MOCK_CODEX_PATH="target/$TARGET/release/guest-mock-codex" \
-  GUEST_RESEED_PATH="target/$TARGET/release/guest-reseed" \
-  GUEST_WRITE_FILE_PATH="target/$TARGET/release/guest-write-file" \
-  cargo build --release --target "$TARGET" -p runner
+  GUEST_AGENT_PATH="target/$TARGET/ci/guest-agent" \
+  GUEST_DOWNLOAD_PATH="target/$TARGET/ci/guest-download" \
+  GUEST_INIT_PATH="target/$TARGET/ci/guest-init" \
+  GUEST_MOCK_CLAUDE_PATH="target/$TARGET/ci/guest-mock-claude" \
+  GUEST_MOCK_CODEX_PATH="target/$TARGET/ci/guest-mock-codex" \
+  GUEST_RESEED_PATH="target/$TARGET/ci/guest-reseed" \
+  GUEST_WRITE_FILE_PATH="target/$TARGET/ci/guest-write-file" \
+  cargo build --profile ci --target "$TARGET" -p runner
 
-  BINARY="$CRATES_DIR/target/$TARGET/release/runner"
+  BINARY="$CRATES_DIR/target/$TARGET/ci/runner"
   log "Binary: $BINARY ($(du -h "$BINARY" | cut -f1))"
 
   # Stop old service before uploading (avoids "Text file busy").
@@ -100,7 +100,7 @@ cmd_deploy() {
   # Upload
   log "Deploying to $SSH_USER@$HOST..."
   ssh_cmd "sudo mkdir -p $REMOTE_BIN_DIR"
-  cat "$BINARY" | ssh_cmd "sudo install -m 755 /dev/stdin $REMOTE_BIN_DIR/runner"
+  ssh_cmd "sudo install -m 755 /dev/stdin $REMOTE_BIN_DIR/runner" < "$BINARY"
 
   # Setup (idempotent, downloads firecracker/kernel if missing)
   log "Running setup..."

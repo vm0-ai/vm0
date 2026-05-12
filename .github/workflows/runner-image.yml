@@ -213,7 +213,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates -> target
-          shared-key: aarch64-musl-release
+          shared-key: aarch64-musl-ci
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Setup SSH via Cloudflare Tunnel
