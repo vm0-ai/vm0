@@ -12,7 +12,9 @@ use std::process::Command;
 use nbd_cow::{DestroyRetryPolicy, pool::DevicePoolHandle};
 use serde_json::Value;
 
-const MIN_BASE_SIZE_MB: u64 = 512;
+// The largest fio workload writes 512 MiB. dm-snapshot COW needs extra space
+// for metadata, so keep the minimum at the default 1 GiB instead of 512 MiB.
+const MIN_BASE_SIZE_MB: u64 = 1024;
 
 #[tokio::main]
 async fn main() {
@@ -466,7 +468,13 @@ fn calculate_host_disk_iops(
         return Ok(0);
     }
 
-    let delta_ios = after.total_ios().saturating_sub(before.total_ios());
+    let before_ios = before.total_ios();
+    let after_ios = after.total_ios();
+    if after_ios < before_ios {
+        return Err("host disk IOPS counters decreased during fio run".to_string());
+    }
+
+    let delta_ios = after_ios - before_ios;
     float_to_u64(delta_ios as f64 / elapsed_secs, "host disk IOPS")
 }
 
@@ -970,7 +978,7 @@ mod tests {
     }
 
     #[test]
-    fn calculate_host_disk_iops_handles_counter_resets_and_invalid_time() {
+    fn calculate_host_disk_iops_rejects_counter_resets_and_invalid_time() {
         let before = DiskStats {
             reads_completed: 100,
             writes_completed: 50,
@@ -981,8 +989,8 @@ mod tests {
         };
 
         assert_eq!(calculate_host_disk_iops(&before, &after, 2.0).unwrap(), 25);
-        assert_eq!(calculate_host_disk_iops(&after, &before, 2.0).unwrap(), 0);
         assert_eq!(calculate_host_disk_iops(&before, &after, 0.0).unwrap(), 0);
+        assert!(calculate_host_disk_iops(&after, &before, 2.0).is_err());
         assert!(calculate_host_disk_iops(&before, &after, f64::NAN).is_err());
     }
 
