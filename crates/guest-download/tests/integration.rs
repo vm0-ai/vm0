@@ -241,13 +241,53 @@ fn wait_for_event(
     }
 }
 
+fn wait_for_events(
+    receiver: &mpsc::Receiver<String>,
+    count: usize,
+    timeout: Duration,
+) -> Result<Vec<String>, String> {
+    let deadline = Instant::now() + timeout;
+    let mut events = Vec::new();
+
+    while events.len() < count {
+        let now = Instant::now();
+        if now >= deadline {
+            return Err(format!(
+                "timed out waiting for {count} events, got {}",
+                events.len()
+            ));
+        }
+
+        match receiver.recv_timeout(deadline - now) {
+            Ok(event) => events.push(event),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                return Err(format!(
+                    "timed out waiting for {count} events, got {}",
+                    events.len()
+                ));
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return Err(format!(
+                    "event channel closed after {} of {count} events",
+                    events.len()
+                ));
+            }
+        }
+    }
+
+    Ok(events)
+}
+
 struct ReleaseOnDrop {
     sender: mpsc::Sender<()>,
+    count: usize,
 }
 
 impl Drop for ReleaseOnDrop {
     fn drop(&mut self) {
-        let _ = self.sender.send(());
+        for _ in 0..self.count {
+            let _ = self.sender.send(());
+        }
     }
 }
 
@@ -583,6 +623,7 @@ fn queued_independent_download_starts_when_slot_frees() {
     let (slow_release_tx, slow_release_rx) = mpsc::channel();
     let _slow_release_guard = ReleaseOnDrop {
         sender: slow_release_tx.clone(),
+        count: 1,
     };
     let slow_release_rx = Arc::new(Mutex::new(slow_release_rx));
     let active = Arc::new(AtomicUsize::new(0));
@@ -665,6 +706,71 @@ fn queued_independent_download_starts_when_slot_frees() {
 }
 
 #[test]
+fn download_concurrency_cap_limits_initial_starts() {
+    let dir = tempfile::tempdir().unwrap();
+    let (event_tx, event_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    let _release_guard = ReleaseOnDrop {
+        sender: release_tx.clone(),
+        count: 5,
+    };
+    let release_rx = Arc::new(Mutex::new(release_rx));
+    let mut servers = Vec::new();
+    let mut storages = Vec::new();
+
+    for i in 0..5 {
+        let server = MockServer::start();
+        let filename = format!("file_{i}.txt");
+        let content = format!("content_{i}");
+        let body = Arc::new(create_tar_gz(&[(&filename, content.as_bytes())]).unwrap());
+        let event_tx = event_tx.clone();
+        let release_rx = Arc::clone(&release_rx);
+
+        server.mock(move |when, then| {
+            when.method(GET).path("/storage.tar.gz");
+            then.respond_with(move |_req: &HttpMockRequest| {
+                let _ = event_tx.send(format!("start-{i}"));
+                release_rx
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(Duration::from_secs(10))
+                    .expect("timed out waiting to release blocked request");
+                gzip_response((*body).clone())
+            });
+        });
+
+        let mount = dir.path().join(format!("mount_{i}"));
+        storages.push((
+            mount.to_str().unwrap().to_owned(),
+            server.url("/storage.tar.gz"),
+        ));
+        servers.push(server);
+    }
+
+    let storage_refs: Vec<(&str, Option<&str>)> = storages
+        .iter()
+        .map(|(mount, url)| (mount.as_str(), Some(url.as_str())))
+        .collect();
+    let manifest = write_manifest(&dir, &storage_refs, None).unwrap();
+    let manifest_path = manifest.to_str().unwrap().to_owned();
+    let handle = std::thread::spawn(move || run_guest_download(&manifest_path));
+
+    let initial_starts = wait_for_events(&event_rx, 4, Duration::from_secs(5));
+    let fifth_before_release = event_rx.recv_timeout(Duration::from_millis(300));
+    for _ in 0..5 {
+        release_tx.send(()).unwrap();
+    }
+    let result = handle.join().unwrap();
+
+    assert_eq!(initial_starts.unwrap().len(), 4);
+    assert!(matches!(
+        fifth_before_release,
+        Err(mpsc::RecvTimeoutError::Timeout)
+    ));
+    assert!(result);
+}
+
+#[test]
 fn parent_child_mount_paths_are_serialized_for_overlapping_archives() {
     let parent_server = MockServer::start();
     let child_server = MockServer::start();
@@ -682,6 +788,7 @@ fn parent_child_mount_paths_are_serialized_for_overlapping_archives() {
     let (parent_release_tx, parent_release_rx) = mpsc::channel();
     let _parent_release_guard = ReleaseOnDrop {
         sender: parent_release_tx.clone(),
+        count: 1,
     };
     let parent_release_rx = Arc::new(Mutex::new(parent_release_rx));
 
