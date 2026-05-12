@@ -210,6 +210,27 @@ export const zeroComputerConnectorContract = c.router({
   },
 });
 
+/**
+ * Zero contract for POST /api/zero/connectors/remote-agent
+ * Creates the remote-agent connector once the user has at least one online host.
+ */
+export const zeroRemoteAgentConnectorContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/connectors/remote-agent",
+    headers: authHeadersSchema,
+    body: z.object({}).optional(),
+    responses: {
+      200: connectorResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Connect remote-agent connector",
+  },
+});
+
 export type ZeroConnectorsMainContract = typeof zeroConnectorsMainContract;
 export type ZeroConnectorsByTypeContract = typeof zeroConnectorsByTypeContract;
 export type ZeroConnectorScopeDiffContract =
@@ -221,3 +242,5 @@ export type ZeroConnectorSessionByIdContract =
   typeof zeroConnectorSessionByIdContract;
 export type ZeroComputerConnectorContract =
   typeof zeroComputerConnectorContract;
+export type ZeroRemoteAgentConnectorContract =
+  typeof zeroRemoteAgentConnectorContract;

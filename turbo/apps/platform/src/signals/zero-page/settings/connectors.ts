@@ -6,10 +6,17 @@ import {
   type ConnectorType,
   type ConnectorDisplayCategory,
 } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { hasRequiredScopes } from "@vm0/connectors/connector-utils";
+import {
+  zeroRemoteAgentHostsContract,
+  type RemoteAgentHost,
+  type RemoteAgentHostListResponse,
+} from "@vm0/api-contracts/contracts/zero-remote-agent";
 import {
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
+  zeroRemoteAgentConnectorContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   zeroSecretsContract,
@@ -27,7 +34,7 @@ import {
 } from "../../external/connectors.ts";
 import { apiBaseForNavigation$ } from "../../fetch.ts";
 import { zeroClient$ } from "../../api-client.ts";
-import { jsonParseOr, resetSignal, withCleanup } from "../../utils.ts";
+import { jsonParseOr, onRef, resetSignal, withCleanup } from "../../utils.ts";
 import { setAblyLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { resetPermissionDialog$ } from "./permission-dialog.ts";
@@ -36,6 +43,9 @@ import { sanitizeTokenInputRecord } from "./token-input.ts";
 const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
 const { get$: hiddenConnectorTypesRaw$, set$: setHiddenConnectorTypes$ } =
   localStorageSignals(HIDDEN_CONNECTIONS_STORAGE_KEY);
+export const REMOTE_AGENT_CONNECTOR_TYPE =
+  "remote-agent" as const satisfies ConnectorType;
+const REMOTE_AGENT_HOSTS_CHANGED_TOPIC = "remote-agent:hosts-changed";
 
 type PostConnectOptions = {
   readonly showPermissionDialog?: boolean;
@@ -66,6 +76,134 @@ export interface ConnectorTypeWithStatus {
   scopeMismatch: boolean;
   /** True if OAuth token refresh failed and user needs to reconnect. */
   needsReconnect: boolean;
+  /** Online remote-agent hosts for the virtual remote-agent connector. */
+  remoteAgentHosts?: RemoteAgentHost[];
+}
+
+const internalReloadRemoteAgentHosts$ = state(0);
+
+export function getRemoteAgentOnlineHosts(
+  hosts: readonly RemoteAgentHost[],
+): RemoteAgentHost[] {
+  return hosts.filter((host) => {
+    return host.status === "online";
+  });
+}
+
+export const remoteAgentHosts$ = computed(
+  async (get): Promise<RemoteAgentHostListResponse> => {
+    get(internalReloadRemoteAgentHosts$);
+    const features = await get(featureSwitch$);
+    if (!features?.[FeatureSwitchKey.RemoteAgent]) {
+      return { hosts: [] };
+    }
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroRemoteAgentHostsContract);
+    const result = await accept(client.list(), [200]);
+    return result.body as RemoteAgentHostListResponse;
+  },
+);
+
+const reloadRemoteAgentHosts$ = command(({ set }) => {
+  set(internalReloadRemoteAgentHosts$, (x) => {
+    return x + 1;
+  });
+});
+
+const reloadRemoteAgentHostsFromRealtime$ = command(({ set }) => {
+  set(reloadRemoteAgentHosts$);
+  return false;
+});
+
+const watchRemoteAgentHosts$ = command(async ({ set }, signal: AbortSignal) => {
+  set(reloadRemoteAgentHosts$);
+  await set(
+    setAblyLoop$,
+    REMOTE_AGENT_HOSTS_CHANGED_TOPIC,
+    reloadRemoteAgentHostsFromRealtime$,
+    signal,
+  );
+});
+
+export const remoteAgentHostsWatcherRef$ = onRef(
+  command(async ({ set }, _el: HTMLElement, signal: AbortSignal) => {
+    await set(watchRemoteAgentHosts$, signal);
+  }),
+);
+
+function isRemoteAgentConnector(type: ConnectorType): boolean {
+  return type === REMOTE_AGENT_CONNECTOR_TYPE;
+}
+
+function isConnectorFlagEnabled(
+  type: ConnectorType,
+  features: Record<string, boolean> | null | undefined,
+): boolean {
+  const flag = CONNECTOR_TYPES[type].featureFlag;
+  return !flag || !!features?.[flag];
+}
+
+function getAvailableAuthMethodsForConnector(
+  type: ConnectorType,
+  flagEnabled: boolean,
+): string[] {
+  const config = CONNECTOR_TYPES[type];
+  const methods = config.authMethods;
+  const availableAuthMethods: string[] = [];
+
+  if (flagEnabled && "oauth" in methods) {
+    availableAuthMethods.push("oauth");
+  }
+  if ("api-token" in methods && (flagEnabled || !config.strictFeatureFlag)) {
+    availableAuthMethods.push("api-token");
+  }
+  if (isRemoteAgentConnector(type) && flagEnabled && "api" in methods) {
+    availableAuthMethods.push("api");
+  }
+
+  return availableAuthMethods;
+}
+
+function buildConnectorTypeStatus(params: {
+  readonly type: ConnectorType;
+  readonly connector: ConnectorResponse | null;
+  readonly features: Record<string, boolean> | null | undefined;
+  readonly remoteAgentOnlineHosts: RemoteAgentHost[];
+}): ConnectorTypeWithStatus {
+  const config = CONNECTOR_TYPES[params.type];
+  const flag = config.featureFlag;
+  const isRemoteAgent = isRemoteAgentConnector(params.type);
+  const availableAuthMethods = getAvailableAuthMethodsForConnector(
+    params.type,
+    isConnectorFlagEnabled(params.type, params.features),
+  );
+  const hasApiToken = availableAuthMethods.includes("api-token");
+  const connected = params.connector !== null;
+
+  return {
+    type: params.type,
+    label:
+      flag && !hasApiToken && !isRemoteAgent
+        ? `[Experimental] ${config.label}`
+        : config.label,
+    helpText: config.helpText,
+    category: config.category,
+    tags: config.tags ?? [],
+    connected,
+    connector: params.connector,
+    availableAuthMethods,
+    scopeMismatch:
+      !isRemoteAgent &&
+      params.connector !== null &&
+      params.connector.authMethod === "oauth" &&
+      !hasRequiredScopes(params.type, params.connector.oauthScopes),
+    needsReconnect:
+      !isRemoteAgent && (params.connector?.needsReconnect ?? false),
+    ...(isRemoteAgent
+      ? { remoteAgentHosts: params.remoteAgentOnlineHosts }
+      : {}),
+  };
 }
 
 /**
@@ -112,53 +250,29 @@ export const allConnectorTypes$ = computed(async (get) => {
     }),
   );
   const features = await get(featureSwitch$);
+  const remoteAgentHostList = features?.[FeatureSwitchKey.RemoteAgent]
+    ? await get(remoteAgentHosts$)
+    : { hosts: [] };
+  const remoteAgentOnlineHosts = getRemoteAgentOnlineHosts(
+    remoteAgentHostList.hosts,
+  );
 
   const items = (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
     .filter((type) => {
-      const flag = CONNECTOR_TYPES[type].featureFlag;
-      const flagEnabled = !flag || !!features?.[flag];
-      const methods = CONNECTOR_TYPES[type].authMethods;
-      // Connector visible if any auth method should be shown. api-token is
-      // always available regardless of flag unless strictFeatureFlag is set;
-      // oauth requires the per-connector flag.
-      const showOauth = flagEnabled && "oauth" in methods;
-      const showApiToken =
-        "api-token" in methods &&
-        (flagEnabled || !CONNECTOR_TYPES[type].strictFeatureFlag);
-      return showOauth || showApiToken;
+      return (
+        getAvailableAuthMethodsForConnector(
+          type,
+          isConnectorFlagEnabled(type, features),
+        ).length > 0
+      );
     })
     .map((type) => {
-      const config = CONNECTOR_TYPES[type];
-      const connector = connectorMap.get(type) ?? null;
-      const flag = CONNECTOR_TYPES[type].featureFlag;
-      const flagEnabled = !flag || !!features?.[flag];
-      const showOauth = flagEnabled && "oauth" in config.authMethods;
-      const showApiToken =
-        "api-token" in config.authMethods &&
-        (flagEnabled || !config.strictFeatureFlag);
-      const availableAuthMethods: string[] = [];
-      if (showOauth) {
-        availableAuthMethods.push("oauth");
-      }
-      if (showApiToken) {
-        availableAuthMethods.push("api-token");
-      }
-      const isExperimental = !!flag && !showApiToken;
-      return {
+      return buildConnectorTypeStatus({
         type,
-        label: isExperimental ? `[Experimental] ${config.label}` : config.label,
-        helpText: config.helpText,
-        category: config.category,
-        tags: config.tags ?? [],
-        connected: connector !== null,
-        connector,
-        availableAuthMethods,
-        scopeMismatch:
-          connector !== null &&
-          connector.authMethod === "oauth" &&
-          !hasRequiredScopes(type, connector.oauthScopes),
-        needsReconnect: connector?.needsReconnect ?? false,
-      };
+        connector: connectorMap.get(type) ?? null,
+        features,
+        remoteAgentOnlineHosts,
+      });
     });
 
   // Sort connected connectors to the top of the list
@@ -355,6 +469,47 @@ const internalJustConnectedTypes$ = state<Set<string>>(new Set());
 export const justConnectedTypes$ = computed((get) => {
   return get(internalJustConnectedTypes$);
 });
+
+export const connectRemoteAgentConnector$ = command(
+  async (
+    { get, set },
+    options: PostConnectOptions,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroRemoteAgentConnectorContract, {
+      apiBase: "api",
+    });
+    await accept(
+      client.create({
+        body: {},
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+
+    set(internalJustConnectedTypes$, (prev) => {
+      return new Set([...prev, REMOTE_AGENT_CONNECTOR_TYPE]);
+    });
+    set(reloadConnectors$);
+    set(reloadRemoteAgentHosts$);
+
+    const hidden = new Set(get(hiddenConnectorTypes$));
+    hidden.delete(REMOTE_AGENT_CONNECTOR_TYPE);
+    set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
+
+    toast.success(
+      `${CONNECTOR_TYPES[REMOTE_AGENT_CONNECTOR_TYPE].label} connected`,
+      {
+        id: `connector-connected-${REMOTE_AGENT_CONNECTOR_TYPE}`,
+      },
+    );
+    if (options.showPermissionDialog) {
+      set(internalPermissionDialogType$, REMOTE_AGENT_CONNECTOR_TYPE);
+    }
+  },
+);
 
 /**
  * Disconnect a connector and clear its optimistic "just connected" flag.

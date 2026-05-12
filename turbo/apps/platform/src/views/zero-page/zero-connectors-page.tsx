@@ -40,6 +40,7 @@ import {
   setSelectedConnectorType$,
   pollingConnectorType$,
   justConnectedTypes$,
+  REMOTE_AGENT_CONNECTOR_TYPE,
   scopeReviewType$,
   setScopeReviewType$,
   permissionDialogType$,
@@ -358,6 +359,31 @@ function GlobalConnectorCard({
       );
     }
     if (connector.connected) {
+      if (connector.type === REMOTE_AGENT_CONNECTOR_TYPE) {
+        const hosts = connector.remoteAgentHosts ?? [];
+        const names = hosts.map((host) => {
+          return host.displayName;
+        });
+        const visibleNames = names.slice(0, 2).join(", ");
+        const extra = names.length > 2 ? ` +${names.length - 2}` : "";
+        const hasOnlineHosts = names.length > 0;
+        const label = !hasOnlineHosts
+          ? "No online hosts"
+          : `${visibleNames}${extra} online`;
+        return (
+          <span
+            className="flex items-center gap-2 text-xs text-muted-foreground truncate"
+            title={hasOnlineHosts ? names.join(", ") : "No online hosts"}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                hasOnlineHosts ? "bg-emerald-500" : "bg-muted-foreground/40"
+              }`}
+            />
+            <span className="truncate">{label}</span>
+          </span>
+        );
+      }
       return (
         <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />

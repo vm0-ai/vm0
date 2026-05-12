@@ -556,7 +556,8 @@ export type NonFirewallConnectorType =
   // lives in MODEL_PROVIDER_FIREWALL_CONFIGS, not here).
   | "codex-oauth"
   // Other
-  | "computer"; // not an API connector
+  | "computer" // not an API connector
+  | "remote-agent"; // virtual connector backed by vm0's remote-agent API
 
 /**
  * Compile-time exhaustiveness checks.

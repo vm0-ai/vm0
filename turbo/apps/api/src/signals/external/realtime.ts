@@ -27,6 +27,7 @@ function getRemoteAgentHostChannelName(hostId: string): string {
 
 const REMOTE_AGENT_DEVICE_APPROVED_EVENT = "approved";
 const REMOTE_AGENT_HOST_JOB_EVENT = "job";
+const REMOTE_AGENT_HOSTS_CHANGED_EVENT = "remote-agent:hosts-changed";
 
 /**
  * Publish a per-user invalidation/notification signal.
@@ -154,4 +155,10 @@ export async function publishRemoteAgentHostJobAvailable(
   );
   await channel.publish(REMOTE_AGENT_HOST_JOB_EVENT, { jobId });
   L.debug(`Published remote-agent job ${jobId} to host ${hostId}`);
+}
+
+export async function publishRemoteAgentHostsChanged(
+  userId: string,
+): Promise<void> {
+  await publishUserSignal([userId], REMOTE_AGENT_HOSTS_CHANGED_EVENT);
 }

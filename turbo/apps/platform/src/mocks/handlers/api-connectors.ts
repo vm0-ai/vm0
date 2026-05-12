@@ -22,6 +22,15 @@ export function resetMockConnectors(): void {
   mockConnectors = [];
 }
 
+export function upsertMockConnector(connector: ConnectorResponse): void {
+  mockConnectors = [
+    ...mockConnectors.filter((c) => {
+      return c.type !== connector.type;
+    }),
+    connector,
+  ];
+}
+
 export const apiConnectorsHandlers = [
   mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
     return respond(200, {

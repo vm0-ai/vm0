@@ -1,4 +1,9 @@
-import { useLastResolved, useGet, useSet } from "ccstate-react";
+import {
+  useLastLoadable,
+  useLastResolved,
+  useGet,
+  useSet,
+} from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Input } from "@vm0/ui/components/ui/input";
 import { Button } from "@vm0/ui/components/ui/button";
@@ -20,9 +25,14 @@ import {
   submitApiToken$,
   setTokenFormValue$,
   clearTokenForm$,
+  connectRemoteAgentConnector$,
   tokenFormValuesFor$,
   selectedConnectorType$,
   isStandaloneMode,
+  REMOTE_AGENT_CONNECTOR_TYPE,
+  getRemoteAgentOnlineHosts,
+  remoteAgentHostsWatcherRef$,
+  remoteAgentHosts$,
   type ConnectorTypeWithStatus,
 } from "../../../../signals/zero-page/settings/connectors.ts";
 import { hasTokenInputValue } from "../../../../signals/zero-page/settings/token-input.ts";
@@ -61,6 +71,10 @@ function renderMarkdown(text: string): string {
 // ---------------------------------------------------------------------------
 
 function connectedStatusText(item: ConnectorTypeWithStatus): string {
+  if (item.type === REMOTE_AGENT_CONNECTOR_TYPE) {
+    const count = item.remoteAgentHosts?.length ?? 0;
+    return count === 1 ? "1 host online" : `${count} hosts online`;
+  }
   if (item.needsReconnect) {
     return "Connection expired";
   }
@@ -71,6 +85,14 @@ function connectedStatusText(item: ConnectorTypeWithStatus): string {
     return `Connected as @${item.connector.externalUsername}`;
   }
   return "Connected";
+}
+
+function formatRemoteAgentBackends(backends: readonly string[]): string {
+  return backends
+    .map((backend) => {
+      return backend === "claude-code" ? "Claude Code" : "Codex";
+    })
+    .join(", ");
 }
 
 type PostConnectOptions = {
@@ -178,6 +200,101 @@ function ApiTokenForm({
   );
 }
 
+function RemoteAgentConnectContent({
+  item,
+  onSuccess,
+  showPermissionDialogOnConnect,
+}: {
+  item: ConnectorTypeWithStatus;
+  onSuccess: () => void | Promise<void>;
+  showPermissionDialogOnConnect: boolean;
+}) {
+  const config = CONNECTOR_TYPES[item.type];
+  const remoteAgentConfig = config.authMethods.api;
+  const hostListLoadable = useLastLoadable(remoteAgentHosts$);
+  const watchHostsRef = useSet(remoteAgentHostsWatcherRef$);
+  const [connectLoadable, connectRemoteAgent] = useLoadableSet(
+    connectRemoteAgentConnector$,
+  );
+  const pageSignal = useGet(pageSignal$);
+  const hosts =
+    hostListLoadable.state === "hasData"
+      ? getRemoteAgentOnlineHosts(hostListLoadable.data.hosts)
+      : (item.remoteAgentHosts ?? []);
+  const loading = hostListLoadable.state === "loading";
+  const connecting = connectLoadable.state === "loading";
+  const canConnect = !item.connected && hosts.length > 0 && !connecting;
+
+  const handleConnect = onDomEventFn(async () => {
+    if (!canConnect) {
+      return;
+    }
+    await connectRemoteAgent(
+      { showPermissionDialog: showPermissionDialogOnConnect },
+      pageSignal,
+    );
+    await onSuccess();
+  });
+
+  return (
+    <div ref={watchHostsRef} className="flex flex-col gap-3">
+      {remoteAgentConfig?.helpText && (
+        <div
+          className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
+          dangerouslySetInnerHTML={{
+            __html: renderMarkdown(remoteAgentConfig.helpText),
+          }}
+        />
+      )}
+
+      <div className="mt-1 flex items-center justify-between gap-3">
+        <h3 className="text-sm font-medium text-foreground">Online hosts</h3>
+        <span className="text-xs text-muted-foreground">
+          {loading ? "Checking..." : "Updates automatically"}
+        </span>
+      </div>
+
+      {loading && hosts.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Loading hosts...</p>
+      ) : hosts.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No online hosts yet. Start one with the command above; this list
+          updates automatically.
+        </p>
+      ) : (
+        <div className="flex flex-col divide-y divide-border/50 rounded-lg border border-border/60">
+          {hosts.map((host) => {
+            return (
+              <div key={host.id} className="flex flex-col gap-1 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  <span className="min-w-0 truncate text-sm font-medium text-foreground">
+                    {host.displayName}
+                  </span>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {formatRemoteAgentBackends(host.supportedBackends)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {!item.connected && (
+        <Button
+          type="button"
+          onClick={handleConnect}
+          disabled={!canConnect}
+          className="w-full"
+        >
+          {connecting ? "Connecting..." : "Connect"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Connect modal content (OAuth button + token form, or just token form)
 // ---------------------------------------------------------------------------
@@ -202,6 +319,16 @@ function ConnectModalContent({
   const config = CONNECTOR_TYPES[item.type];
   const hasOAuth = item.availableAuthMethods.includes("oauth");
   const hasApiToken = item.availableAuthMethods.includes("api-token");
+
+  if (item.type === REMOTE_AGENT_CONNECTOR_TYPE) {
+    return (
+      <RemoteAgentConnectContent
+        item={item}
+        onSuccess={onSuccess}
+        showPermissionDialogOnConnect={showPermissionDialogOnConnect}
+      />
+    );
+  }
 
   // While OAuth is in progress, only show connecting state
   if (isPolling) {

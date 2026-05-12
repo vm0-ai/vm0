@@ -52,6 +52,7 @@ import { figma } from "./connectors/figma";
 import { mercury } from "./connectors/mercury";
 import { minimax } from "./connectors/minimax";
 import { reportei } from "./connectors/reportei";
+import { remoteAgent } from "./connectors/remote-agent";
 import { serpapi } from "./connectors/serpapi";
 import { salesforce } from "./connectors/salesforce";
 import { reddit } from "./connectors/reddit";
@@ -422,6 +423,7 @@ const CONNECTOR_TYPES_DEF = {
   ...mercury,
   ...minimax,
   ...reportei,
+  ...remoteAgent,
   ...serpapi,
   ...salesforce,
   ...reddit,

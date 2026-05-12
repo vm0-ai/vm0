@@ -90,6 +90,10 @@ describe("getConnectorEnvironmentMapping", () => {
   it("returns non-empty mapping for connector types that surface env vars to the sandbox", () => {
     for (const type of connectorTypeSchema.options) {
       const mapping = getConnectorEnvironmentMapping(type);
+      if (type === "remote-agent") {
+        expect(mapping).toEqual({});
+        continue;
+      }
       expect(
         Object.keys(mapping).length,
         `${type} has empty environmentMapping`,

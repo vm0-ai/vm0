@@ -1,10 +1,12 @@
 import { createHash, randomBytes, randomInt } from "crypto";
 import { command } from "ccstate";
 import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type {
   RemoteAgentBackend,
   RemoteAgentHostStatus,
 } from "@vm0/api-contracts/contracts/zero-remote-agent";
+import { connectors } from "@vm0/db/schema/connector";
 import {
   remoteAgentDeviceCodes,
   remoteAgentHosts,
@@ -17,7 +19,9 @@ import {
   createRemoteAgentDeviceRealtimeSubscription,
   createRemoteAgentHostRealtimeSubscription,
   publishRemoteAgentDeviceApproved,
+  publishRemoteAgentHostsChanged,
   publishRemoteAgentHostJobAvailable,
+  publishUserSignal,
 } from "../external/realtime";
 import { safeAsync } from "../utils";
 import { logger } from "../../lib/log";
@@ -136,6 +140,23 @@ function serializeHost(row: typeof remoteAgentHosts.$inferSelect, now: Date) {
   };
 }
 
+function serializeRemoteAgentConnector(
+  row: typeof connectors.$inferSelect,
+): ConnectorResponse {
+  return {
+    id: row.id,
+    type: "remote-agent",
+    authMethod: row.authMethod,
+    externalId: row.externalId,
+    externalUsername: row.externalUsername,
+    externalEmail: row.externalEmail,
+    oauthScopes: row.oauthScopes ? JSON.parse(row.oauthScopes) : null,
+    needsReconnect: row.needsReconnect,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
 async function publishRemoteAgentJobAvailableSafe(
   hostId: string,
   jobId: string,
@@ -149,6 +170,38 @@ async function publishRemoteAgentJobAvailableSafe(
     L.warn("Failed to publish remote-agent job notification", {
       hostId,
       jobId,
+      error: publishResult.error,
+    });
+  }
+}
+
+async function publishRemoteAgentHostsChangedSafe(
+  userId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const publishResult = await safeAsync(() => {
+    return publishRemoteAgentHostsChanged(userId);
+  });
+  signal.throwIfAborted();
+  if ("error" in publishResult) {
+    L.warn("Failed to publish remote-agent host change", {
+      userId,
+      error: publishResult.error,
+    });
+  }
+}
+
+async function publishConnectorChangedSafe(
+  userId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const publishResult = await safeAsync(() => {
+    return publishUserSignal([userId], "connector:changed");
+  });
+  signal.throwIfAborted();
+  if ("error" in publishResult) {
+    L.warn("Failed to publish connector change", {
+      userId,
       error: publishResult.error,
     });
   }
@@ -330,83 +383,105 @@ export const pollRemoteAgentDeviceCode$ = command(
     const codeHash = hashSecret(normalizeDeviceCode(params.deviceCode));
     const pollTokenHash = hashSecret(params.pollToken);
 
-    return await writeDb.transaction(async (tx) => {
-      const [row] = await tx
-        .select()
-        .from(remoteAgentDeviceCodes)
-        .where(
-          and(
-            eq(remoteAgentDeviceCodes.codeHash, codeHash),
-            eq(remoteAgentDeviceCodes.pollTokenHash, pollTokenHash),
-          ),
-        )
-        .for("update")
-        .limit(1);
-      signal.throwIfAborted();
+    const result = await writeDb.transaction(
+      async (
+        tx,
+      ): Promise<PollRemoteAgentDeviceCodeResult & { userId?: string }> => {
+        const [row] = await tx
+          .select()
+          .from(remoteAgentDeviceCodes)
+          .where(
+            and(
+              eq(remoteAgentDeviceCodes.codeHash, codeHash),
+              eq(remoteAgentDeviceCodes.pollTokenHash, pollTokenHash),
+            ),
+          )
+          .for("update")
+          .limit(1);
+        signal.throwIfAborted();
 
-      if (!row) {
-        return { status: "invalid" as const };
-      }
+        if (!row) {
+          return { status: "invalid" as const };
+        }
 
-      if (hasExpired(row.expiresAt, now) && row.status !== "consumed") {
+        if (hasExpired(row.expiresAt, now) && row.status !== "consumed") {
+          await tx
+            .update(remoteAgentDeviceCodes)
+            .set({ status: "expired", updatedAt: now })
+            .where(eq(remoteAgentDeviceCodes.id, row.id));
+          signal.throwIfAborted();
+          return { status: "expired" as const };
+        }
+
+        if (row.status === "pending") {
+          return { status: "pending" as const };
+        }
+
+        if (row.status === "consumed" && row.hostId) {
+          return {
+            status: "linked" as const,
+            hostId: row.hostId,
+            ...(row.userId ? { userId: row.userId } : {}),
+          };
+        }
+
+        if (row.status !== "approved") {
+          return { status: "expired" as const };
+        }
+
+        if (!row.orgId || !row.userId) {
+          return { status: "invalid" as const };
+        }
+
+        const hostToken = generateOpaqueToken("vm0_remote_host");
+        const [host] = await tx
+          .insert(remoteAgentHosts)
+          .values({
+            orgId: row.orgId,
+            userId: row.userId,
+            displayName: normalizeHostName(row.hostName),
+            tokenHash: hashSecret(hostToken),
+            supportedBackends: row.supportedBackends,
+            status: "online",
+            lastSeenAt: now,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning({ id: remoteAgentHosts.id });
+        signal.throwIfAborted();
+
+        if (!host) {
+          throw new Error("Failed to link remote-agent host");
+        }
+
         await tx
           .update(remoteAgentDeviceCodes)
-          .set({ status: "expired", updatedAt: now })
+          .set({
+            status: "consumed",
+            hostId: host.id,
+            consumedAt: now,
+            updatedAt: now,
+          })
           .where(eq(remoteAgentDeviceCodes.id, row.id));
         signal.throwIfAborted();
-        return { status: "expired" as const };
-      }
 
-      if (row.status === "pending") {
-        return { status: "pending" as const };
-      }
-
-      if (row.status === "consumed" && row.hostId) {
-        return { status: "linked" as const, hostId: row.hostId };
-      }
-
-      if (row.status !== "approved") {
-        return { status: "expired" as const };
-      }
-
-      if (!row.orgId || !row.userId) {
-        return { status: "invalid" as const };
-      }
-
-      const hostToken = generateOpaqueToken("vm0_remote_host");
-      const [host] = await tx
-        .insert(remoteAgentHosts)
-        .values({
-          orgId: row.orgId,
-          userId: row.userId,
-          displayName: normalizeHostName(row.hostName),
-          tokenHash: hashSecret(hostToken),
-          supportedBackends: row.supportedBackends,
-          status: "online",
-          lastSeenAt: now,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning({ id: remoteAgentHosts.id });
-      signal.throwIfAborted();
-
-      if (!host) {
-        throw new Error("Failed to link remote-agent host");
-      }
-
-      await tx
-        .update(remoteAgentDeviceCodes)
-        .set({
-          status: "consumed",
+        return {
+          status: "linked" as const,
           hostId: host.id,
-          consumedAt: now,
-          updatedAt: now,
-        })
-        .where(eq(remoteAgentDeviceCodes.id, row.id));
-      signal.throwIfAborted();
+          hostToken,
+          userId: row.userId,
+        };
+      },
+    );
+    signal.throwIfAborted();
 
-      return { status: "linked" as const, hostId: host.id, hostToken };
-    });
+    if (result.status === "linked" && result.userId) {
+      await publishRemoteAgentHostsChangedSafe(result.userId, signal);
+      const { userId: _userId, ...publicResult } = result;
+      return publicResult;
+    }
+
+    return result;
   },
 );
 
@@ -422,6 +497,23 @@ export const heartbeatRemoteAgentHost$ = command(
   ): Promise<{ readonly hostId: string } | null> => {
     const writeDb = set(writeDb$);
     const now = nowDate();
+    const [existing] = await writeDb
+      .select()
+      .from(remoteAgentHosts)
+      .where(
+        and(
+          eq(remoteAgentHosts.tokenHash, hashSecret(params.hostToken)),
+          isNull(remoteAgentHosts.revokedAt),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!existing) {
+      return null;
+    }
+
+    const wasOnline = remoteAgentHostStatus(existing, now) === "online";
     const [row] = await writeDb
       .update(remoteAgentHosts)
       .set({
@@ -431,16 +523,19 @@ export const heartbeatRemoteAgentHost$ = command(
         lastSeenAt: now,
         updatedAt: now,
       })
-      .where(
-        and(
-          eq(remoteAgentHosts.tokenHash, hashSecret(params.hostToken)),
-          isNull(remoteAgentHosts.revokedAt),
-        ),
-      )
-      .returning({ id: remoteAgentHosts.id });
+      .where(eq(remoteAgentHosts.id, existing.id))
+      .returning({ id: remoteAgentHosts.id, userId: remoteAgentHosts.userId });
     signal.throwIfAborted();
 
-    return row ? { hostId: row.id } : null;
+    if (!row) {
+      return null;
+    }
+
+    if (!wasOnline) {
+      await publishRemoteAgentHostsChangedSafe(row.userId, signal);
+    }
+
+    return { hostId: row.id };
   },
 );
 
@@ -505,6 +600,84 @@ export const listRemoteAgentHosts$ = command(
   },
 );
 
+export const connectRemoteAgentConnector$ = command(
+  async (
+    { set },
+    params: {
+      readonly orgId: string;
+      readonly userId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<
+    | { readonly status: "connected"; readonly connector: ConnectorResponse }
+    | { readonly status: "no_online_host" }
+  > => {
+    const writeDb = set(writeDb$);
+    const now = nowDate();
+    const hostRows = await writeDb
+      .select()
+      .from(remoteAgentHosts)
+      .where(
+        and(
+          eq(remoteAgentHosts.orgId, params.orgId),
+          eq(remoteAgentHosts.userId, params.userId),
+          isNull(remoteAgentHosts.revokedAt),
+        ),
+      );
+    signal.throwIfAborted();
+
+    const hasOnlineHost = hostRows.some((host) => {
+      return remoteAgentHostStatus(host, now) === "online";
+    });
+    if (!hasOnlineHost) {
+      return { status: "no_online_host" as const };
+    }
+
+    const [row] = await writeDb
+      .insert(connectors)
+      .values({
+        type: "remote-agent",
+        authMethod: "api",
+        externalId: null,
+        externalUsername: null,
+        externalEmail: null,
+        oauthScopes: null,
+        tokenExpiresAt: null,
+        needsReconnect: false,
+        userId: params.userId,
+        orgId: params.orgId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [connectors.orgId, connectors.userId, connectors.type],
+        set: {
+          authMethod: "api",
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: null,
+          tokenExpiresAt: null,
+          needsReconnect: false,
+          updatedAt: now,
+        },
+      })
+      .returning();
+    signal.throwIfAborted();
+
+    if (!row) {
+      throw new Error("Failed to connect remote-agent connector");
+    }
+
+    await publishConnectorChangedSafe(params.userId, signal);
+
+    return {
+      status: "connected" as const,
+      connector: serializeRemoteAgentConnector(row),
+    };
+  },
+);
+
 export const startRemoteAgentHost$ = command(
   async (
     { set },
@@ -548,6 +721,8 @@ export const startRemoteAgentHost$ = command(
         return { status: "not_found" as const };
       }
 
+      await publishRemoteAgentHostsChangedSafe(params.userId, signal);
+
       return {
         status: "started" as const,
         hostId: host.id,
@@ -570,6 +745,8 @@ export const startRemoteAgentHost$ = command(
       throw new Error("Failed to start remote-agent host");
     }
 
+    await publishRemoteAgentHostsChangedSafe(params.userId, signal);
+
     return {
       status: "started" as const,
       hostId: host.id,
@@ -591,7 +768,7 @@ export const deleteRemoteAgentHost$ = command(
     const writeDb = set(writeDb$);
     const now = nowDate();
 
-    return await writeDb.transaction(async (tx) => {
+    const result = await writeDb.transaction(async (tx) => {
       const [host] = await tx
         .update(remoteAgentHosts)
         .set({
@@ -633,6 +810,13 @@ export const deleteRemoteAgentHost$ = command(
 
       return { status: "deleted" as const };
     });
+    signal.throwIfAborted();
+
+    if (result.status === "deleted") {
+      await publishRemoteAgentHostsChangedSafe(params.userId, signal);
+    }
+
+    return result;
   },
 );
 

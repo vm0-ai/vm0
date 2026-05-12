@@ -1,22 +1,27 @@
-import { computed } from "ccstate";
+import { command, computed } from "ccstate";
 import {
   zeroComputerConnectorContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsByTypeContract,
   zeroConnectorsMainContract,
   zeroConnectorsSearchContract,
+  zeroRemoteAgentConnectorContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
-import { notFound } from "../../lib/error";
+import { conflict, notFound } from "../../lib/error";
 import {
   zeroConnectorByType,
   zeroConnectorList,
   zeroConnectorScopeDiff,
   zeroConnectorSearch,
 } from "../services/zero-connector-data.service";
+import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import { connectRemoteAgentConnector$ } from "../services/zero-remote-agent.service";
 import type { RouteEntry } from "../route";
 
 const connectorReadAuth = {
@@ -24,6 +29,33 @@ const connectorReadAuth = {
   missingOrganizationStatus: 401,
   requiredCapability: "connector:read",
 } as const;
+
+const connectorWriteAuth = {
+  requireOrganization: true,
+  missingOrganizationStatus: 401,
+} as const;
+
+const remoteAgentDisabled = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Remote agent is not enabled",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
+function isRemoteAgentEnabled(params: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly overrides: Record<string, boolean>;
+}): boolean {
+  return isFeatureEnabled(FeatureSwitchKey.RemoteAgent, {
+    orgId: params.orgId,
+    userId: params.userId,
+    overrides: params.overrides,
+  });
+}
 
 const getConnectorListInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -96,10 +128,46 @@ const searchConnectorsInner$ = computed(async (get) => {
   return { status: 200 as const, body: { connectors: [...connectors] } };
 });
 
+const connectRemoteAgentConnectorInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const overrides = await get(
+      userFeatureSwitchOverrides(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (
+      !isRemoteAgentEnabled({
+        orgId: auth.orgId,
+        userId: auth.userId,
+        overrides,
+      })
+    ) {
+      return remoteAgentDisabled;
+    }
+
+    const result = await set(
+      connectRemoteAgentConnector$,
+      { orgId: auth.orgId, userId: auth.userId },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status === "no_online_host") {
+      return conflict("Start an online remote-agent host before connecting");
+    }
+
+    return { status: 200 as const, body: result.connector };
+  },
+);
+
 export const zeroConnectorsRoutes: readonly RouteEntry[] = [
   {
     route: zeroComputerConnectorContract.get,
     handler: authRoute(connectorReadAuth, getComputerConnectorInner$),
+  },
+  {
+    route: zeroRemoteAgentConnectorContract.create,
+    handler: authRoute(connectorWriteAuth, connectRemoteAgentConnectorInner$),
   },
   {
     route: zeroConnectorsSearchContract.search,
