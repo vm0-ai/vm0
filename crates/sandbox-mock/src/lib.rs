@@ -801,7 +801,9 @@ impl Sandbox for MockSandbox {
                 message: format!("mock copy_file exceeded {} bytes", options.max_bytes),
             });
         }
-        if let Some(parent) = host_path.parent() {
+        if let Some(parent) = host_path.parent()
+            && !parent.as_os_str().is_empty()
+        {
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(host_path, &bytes)?;
@@ -1405,6 +1407,34 @@ mod tests {
 
         assert!(err.to_string().contains("exceeded 3 bytes"));
         assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn sandbox_copy_file_allows_relative_host_path_without_parent() {
+        let sandbox = MockSandbox::new("test-1");
+        sandbox.push_copy_file_result(Ok(b"log line\n".to_vec()));
+        let file_name = format!(
+            "sandbox-mock-copy-relative-{}",
+            uuid::Uuid::new_v4().simple()
+        );
+        let path = Path::new(&file_name);
+
+        let result = sandbox
+            .copy_file(
+                "/tmp/system.log",
+                path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout: Duration::from_secs(5),
+                    missing_ok: false,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.bytes_copied, 9);
+        assert_eq!(std::fs::read(path).unwrap(), b"log line\n");
+        let _ = std::fs::remove_file(path);
     }
 
     #[tokio::test]
