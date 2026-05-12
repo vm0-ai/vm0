@@ -1,5 +1,28 @@
 # Changelog
 
+## [8.270.0](https://github.com/vm0-ai/vm0/compare/core-v8.269.1...core-v8.270.0) (2026-05-12)
+
+
+### Features
+
+* add strapi docs site route ([#12330](https://github.com/vm0-ai/vm0/issues/12330)) ([f5100df](https://github.com/vm0-ai/vm0/commit/f5100dfa9452cfd69dcdc790ff73a213e3702ba2))
+
+
+### Refactoring
+
+* **api:** migrate zero onboarding setup route ([#12975](https://github.com/vm0-ai/vm0/issues/12975)) ([a99038b](https://github.com/vm0-ai/vm0/commit/a99038ba5394dccfeeb2428171eaa9ff4ed20301))
+* **api:** migrate zero skills create route ([#12952](https://github.com/vm0-ai/vm0/issues/12952)) ([a9f063c](https://github.com/vm0-ai/vm0/commit/a9f063c85e9c217f5ee89b7ad46ad46efca5ac28))
+* **api:** migrate zero slack oauth routes ([#12958](https://github.com/vm0-ai/vm0/issues/12958)) ([7e76cde](https://github.com/vm0-ai/vm0/commit/7e76cde7a3ee7ee8358b7cdd5b060d265f41f9fc))
+* migrate user export status to api ([#12949](https://github.com/vm0-ai/vm0/issues/12949)) ([0286e19](https://github.com/vm0-ai/vm0/commit/0286e19438623b2a84f2b898e93655c3fdb270d2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.12.0
+    * @vm0/connectors bumped to 1.7.0
+
 ## [8.269.1](https://github.com/vm0-ai/vm0/compare/core-v8.269.0...core-v8.269.1) (2026-05-12)
 
 

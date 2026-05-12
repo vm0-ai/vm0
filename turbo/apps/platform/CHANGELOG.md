@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.345.1](https://github.com/vm0-ai/vm0/compare/app-v0.345.0...app-v0.345.1) (2026-05-12)
+
+
+### Bug Fixes
+
+* **platform:** remove telegram beta badge ([#12979](https://github.com/vm0-ai/vm0/issues/12979)) ([2b5924a](https://github.com/vm0-ai/vm0/commit/2b5924a9546bbf1c9f897ca2598fdcbadf7ff860))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.12.0
+    * @vm0/connectors bumped to 1.7.0
+    * @vm0/core bumped to 8.270.0
+
 ## [0.345.0](https://github.com/vm0-ai/vm0/compare/app-v0.344.1...app-v0.345.0) (2026-05-12)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.30.1...guest-agent-v0.30.2) (2026-05-12)
+
+
+### Bug Fixes
+
+* **guest-agent:** bound cli stderr diagnostics ([#12937](https://github.com/vm0-ai/vm0/issues/12937)) ([f640407](https://github.com/vm0-ai/vm0/commit/f64040738b75cc29b141bfa18960200fb30727f3))
+
 ## [0.30.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.30.0...guest-agent-v0.30.1) (2026-05-12)
 
 

@@ -1,5 +1,73 @@
 # Changelog
 
+## [1.36.0](https://github.com/vm0-ai/vm0/compare/api-v1.35.0...api-v1.36.0) (2026-05-12)
+
+
+### Features
+
+* add remote-agent run inspection commands ([#12971](https://github.com/vm0-ai/vm0/issues/12971)) ([27c2da0](https://github.com/vm0-ai/vm0/commit/27c2da07db02ed1b227fb70a93a64b3cb16a6926))
+* **api:** migrate org model-provider mutations ([#12972](https://github.com/vm0-ai/vm0/issues/12972)) ([54a5eb7](https://github.com/vm0-ai/vm0/commit/54a5eb775ee0194181b11a98fd9d1bbf641b6736))
+* **api:** migrate voice io post routes ([#12944](https://github.com/vm0-ai/vm0/issues/12944)) ([384fef8](https://github.com/vm0-ai/vm0/commit/384fef84e7b87163e0dc47f4a0112f11a72394ea))
+* **api:** migrate zero connector post routes ([#12987](https://github.com/vm0-ai/vm0/issues/12987)) ([45d831e](https://github.com/vm0-ai/vm0/commit/45d831e9a78dcdf34f1a0f473210a007f541ff5e))
+
+
+### Refactoring
+
+* **api:** migrate Codex OAuth model-provider routes ([#12956](https://github.com/vm0-ai/vm0/issues/12956)) ([721a18c](https://github.com/vm0-ai/vm0/commit/721a18c93b3994b0fc7d3ac0f0c8773386a5a69a))
+* **api:** migrate connector oauth direct routes ([#12962](https://github.com/vm0-ai/vm0/issues/12962)) ([2293ee9](https://github.com/vm0-ai/vm0/commit/2293ee986e4e55f1004d6d58c8d5550c4938a203))
+* **api:** migrate github integration delete route ([#12954](https://github.com/vm0-ai/vm0/issues/12954)) ([399dfe5](https://github.com/vm0-ai/vm0/commit/399dfe5f57514e3e7cad840f297643b4d5adceed))
+* **api:** migrate github oauth get routes ([#12986](https://github.com/vm0-ai/vm0/issues/12986)) ([ca4b7f1](https://github.com/vm0-ai/vm0/commit/ca4b7f1964f4762044a612ee867868166940fecf))
+* **api:** migrate permission access resolve route ([#12938](https://github.com/vm0-ai/vm0/issues/12938)) ([4f999a5](https://github.com/vm0-ai/vm0/commit/4f999a53da9a0d89ddb22d4da81b4294dd522168))
+* **api:** migrate slack integration delete route ([#12991](https://github.com/vm0-ai/vm0/issues/12991)) ([ffa5290](https://github.com/vm0-ai/vm0/commit/ffa5290b227dc8a162af3a06aa13b2e0a23ec9e2))
+* **api:** migrate slack state delete route ([#12968](https://github.com/vm0-ai/vm0/issues/12968)) ([4f84a71](https://github.com/vm0-ai/vm0/commit/4f84a7178a54373dffcfb0d7e5c0f004dadfdfe4))
+* **api:** migrate telegram integration get routes ([#12969](https://github.com/vm0-ai/vm0/issues/12969)) ([4e62786](https://github.com/vm0-ai/vm0/commit/4e62786c07b510166073c740552b4b7fec5b90e6))
+* **api:** migrate telegram test state seeding ([#12985](https://github.com/vm0-ai/vm0/issues/12985)) ([96b8fbb](https://github.com/vm0-ai/vm0/commit/96b8fbb62b7f6b3d55a322a8bbcd3a77df8cdb69))
+* **api:** migrate test slack state post route ([#12988](https://github.com/vm0-ai/vm0/issues/12988)) ([1a77b71](https://github.com/vm0-ai/vm0/commit/1a77b71818739e448f2bfa9529656c48421fdf36))
+* **api:** migrate test telegram state delete route ([#12977](https://github.com/vm0-ai/vm0/issues/12977)) ([5ade3b3](https://github.com/vm0-ai/vm0/commit/5ade3b3dcaebeb32e6fa7d15c9975c306a334601))
+* **api:** migrate zero agent update routes to api backend ([#12940](https://github.com/vm0-ai/vm0/issues/12940)) ([83758da](https://github.com/vm0-ai/vm0/commit/83758dadb4386cb00efb337bd9066b0f9083158c))
+* **api:** migrate zero agents delete route ([#12983](https://github.com/vm0-ai/vm0/issues/12983)) ([1a7b5af](https://github.com/vm0-ai/vm0/commit/1a7b5af6c0bf2e59909c6787b8cb54795354626c))
+* **api:** migrate zero api key creation ([#12993](https://github.com/vm0-ai/vm0/issues/12993)) ([34a915d](https://github.com/vm0-ai/vm0/commit/34a915d77fcd5b1a2158c0253e2db32e862fced8))
+* **api:** migrate zero connector deletes ([#12989](https://github.com/vm0-ai/vm0/issues/12989)) ([2a2706e](https://github.com/vm0-ai/vm0/commit/2a2706e8d61272ad7697f7ecb2aab737473cbbf9))
+* **api:** migrate zero developer support route ([#12984](https://github.com/vm0-ai/vm0/issues/12984)) ([2c23fcf](https://github.com/vm0-ai/vm0/commit/2c23fcf0b842b08ffc6e0c8ff781263cd84ed555))
+* **api:** migrate zero model providers delete route ([#12990](https://github.com/vm0-ai/vm0/issues/12990)) ([9cd2a73](https://github.com/vm0-ai/vm0/commit/9cd2a73ca2a477ee0cb49a0146cda591e6610507))
+* **api:** migrate zero onboarding setup route ([#12975](https://github.com/vm0-ai/vm0/issues/12975)) ([a99038b](https://github.com/vm0-ai/vm0/commit/a99038ba5394dccfeeb2428171eaa9ff4ed20301))
+* **api:** migrate zero org delete route ([#12973](https://github.com/vm0-ai/vm0/issues/12973)) ([7e4033e](https://github.com/vm0-ai/vm0/commit/7e4033e48ccbfbc87db90a46774887aa29da2c13))
+* **api:** migrate zero org domains add route ([#12966](https://github.com/vm0-ai/vm0/issues/12966)) ([20677d6](https://github.com/vm0-ai/vm0/commit/20677d68d455a18f778566efe9f904bc5b4cb16a))
+* **api:** migrate zero org domains delete route ([#12992](https://github.com/vm0-ai/vm0/issues/12992)) ([4a1f844](https://github.com/vm0-ai/vm0/commit/4a1f84484a0af16f8c39ff87560a5f7c926e9d05))
+* **api:** migrate zero org leave route ([#12963](https://github.com/vm0-ai/vm0/issues/12963)) ([e6271ef](https://github.com/vm0-ai/vm0/commit/e6271efe807772850185e808ef7446e549fb79f2))
+* **api:** migrate zero org logo upload route ([#12953](https://github.com/vm0-ai/vm0/issues/12953)) ([dee447f](https://github.com/vm0-ai/vm0/commit/dee447f07b6423fa426e41a3bef885f2d0d0f633))
+* **api:** migrate zero org update route ([#12942](https://github.com/vm0-ai/vm0/issues/12942)) ([2993177](https://github.com/vm0-ai/vm0/commit/2993177a164a592a4782aea1e9ef92ea6a4f496e))
+* **api:** migrate zero realtime token route ([#12955](https://github.com/vm0-ai/vm0/issues/12955)) ([d5d74f0](https://github.com/vm0-ai/vm0/commit/d5d74f0ea9b1709f6663471e98e7084d084fb3bb))
+* **api:** migrate zero report-error route ([#12961](https://github.com/vm0-ai/vm0/issues/12961)) ([f6a0127](https://github.com/vm0-ai/vm0/commit/f6a012768ed0939c2cabce390a0d7f0941e9188a))
+* **api:** migrate zero secrets post route ([#12946](https://github.com/vm0-ai/vm0/issues/12946)) ([bf2e7bf](https://github.com/vm0-ai/vm0/commit/bf2e7bffc08c3bc83be8dc5e04388955b5b9c1e4))
+* **api:** migrate zero skills create route ([#12952](https://github.com/vm0-ai/vm0/issues/12952)) ([a9f063c](https://github.com/vm0-ai/vm0/commit/a9f063c85e9c217f5ee89b7ad46ad46efca5ac28))
+* **api:** migrate zero slack oauth routes ([#12958](https://github.com/vm0-ai/vm0/issues/12958)) ([7e76cde](https://github.com/vm0-ai/vm0/commit/7e76cde7a3ee7ee8358b7cdd5b060d265f41f9fc))
+* **api:** migrate zero variables post route ([#12945](https://github.com/vm0-ai/vm0/issues/12945)) ([8d4607d](https://github.com/vm0-ai/vm0/commit/8d4607d2d11e737d8d9d0e4343bdee2bf905aa1d))
+* migrate agent compose delete route ([#12915](https://github.com/vm0-ai/vm0/issues/12915)) ([08408d6](https://github.com/vm0-ai/vm0/commit/08408d6756e737fb9c922757bd8b1be6012f635a))
+* migrate agent composes read routes to api ([#12950](https://github.com/vm0-ai/vm0/issues/12950)) ([bc0a2fb](https://github.com/vm0-ai/vm0/commit/bc0a2fb55b133e044c0dc991cfc50d5c95dc9d42))
+* migrate agent run telemetry to api ([#12981](https://github.com/vm0-ai/vm0/issues/12981)) ([451d2b5](https://github.com/vm0-ai/vm0/commit/451d2b5a44a878f0f4ce048424790ef2f1f90cb5))
+* migrate agent runs read routes to api ([#12974](https://github.com/vm0-ai/vm0/issues/12974)) ([edcb5a4](https://github.com/vm0-ai/vm0/commit/edcb5a41dec38adfce88a822812b14cf15182c18))
+* migrate agent sessions route to api ([#12939](https://github.com/vm0-ai/vm0/issues/12939)) ([f11ea4c](https://github.com/vm0-ai/vm0/commit/f11ea4c3c8916e942706b719d42fb2522b1fe5f4))
+* migrate github integration status to api ([#12976](https://github.com/vm0-ai/vm0/issues/12976)) ([bdf0270](https://github.com/vm0-ai/vm0/commit/bdf0270487661b5d8f44aac480e75ddcd651682b))
+* migrate integrations chat message route to api ([#12978](https://github.com/vm0-ai/vm0/issues/12978)) ([12a4171](https://github.com/vm0-ai/vm0/commit/12a41718f155c7e9c19a6c4b58898c656ee1fb7e))
+* migrate logs search to api ([#12960](https://github.com/vm0-ai/vm0/issues/12960)) ([fc42cf7](https://github.com/vm0-ai/vm0/commit/fc42cf7e4c7a78fe9d3eaf3c1c40acb28a52c20a))
+* migrate storage GET routes to api backend ([#12957](https://github.com/vm0-ai/vm0/issues/12957)) ([1fe70fb](https://github.com/vm0-ai/vm0/commit/1fe70fb9ff07ceaf9f986816f8879d1f7a86e034))
+* migrate telegram delete routes to api ([#12965](https://github.com/vm0-ai/vm0/issues/12965)) ([77881e0](https://github.com/vm0-ai/vm0/commit/77881e0342dd7489b5866e8c9c4d263efb137743))
+* migrate test slack state get to api ([#12948](https://github.com/vm0-ai/vm0/issues/12948)) ([0e8ff89](https://github.com/vm0-ai/vm0/commit/0e8ff89ef99316ad6dfc0291e517db2d1eead220))
+* migrate test telegram state GET to api backend ([#12943](https://github.com/vm0-ai/vm0/issues/12943)) ([e1ad37d](https://github.com/vm0-ai/vm0/commit/e1ad37d29feae5b567237e4f06510da4b832554f))
+* migrate user export status to api ([#12949](https://github.com/vm0-ai/vm0/issues/12949)) ([0286e19](https://github.com/vm0-ai/vm0/commit/0286e19438623b2a84f2b898e93655c3fdb270d2))
+* migrate zero usage GET routes to api ([#12936](https://github.com/vm0-ai/vm0/issues/12936)) ([6aa5612](https://github.com/vm0-ai/vm0/commit/6aa5612b961bc53fc5d1709c4215d8f4b47b8638))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.12.0
+    * @vm0/connectors bumped to 1.7.0
+    * @vm0/core bumped to 8.270.0
+    * @vm0/db bumped to 1.6.2
+
 ## [1.35.0](https://github.com/vm0-ai/vm0/compare/api-v1.34.0...api-v1.35.0) (2026-05-12)
 
 

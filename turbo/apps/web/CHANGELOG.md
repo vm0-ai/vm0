@@ -1,5 +1,35 @@
 # Changelog
 
+## [12.354.0](https://github.com/vm0-ai/vm0/compare/web-v12.353.0...web-v12.354.0) (2026-05-12)
+
+
+### Features
+
+* add strapi docs site route ([#12330](https://github.com/vm0-ai/vm0/issues/12330)) ([f5100df](https://github.com/vm0-ai/vm0/commit/f5100dfa9452cfd69dcdc790ff73a213e3702ba2))
+
+
+### Bug Fixes
+
+* avoid reusing integration sessions across model changes ([#12967](https://github.com/vm0-ai/vm0/issues/12967)) ([16e08ba](https://github.com/vm0-ai/vm0/commit/16e08ba750f9df43fd1c998d2d67953b0ba0a115))
+
+
+### Refactoring
+
+* **api:** migrate Codex OAuth model-provider routes ([#12956](https://github.com/vm0-ai/vm0/issues/12956)) ([721a18c](https://github.com/vm0-ai/vm0/commit/721a18c93b3994b0fc7d3ac0f0c8773386a5a69a))
+* **api:** migrate connector oauth direct routes ([#12962](https://github.com/vm0-ai/vm0/issues/12962)) ([2293ee9](https://github.com/vm0-ai/vm0/commit/2293ee986e4e55f1004d6d58c8d5550c4938a203))
+* **api:** migrate zero onboarding setup route ([#12975](https://github.com/vm0-ai/vm0/issues/12975)) ([a99038b](https://github.com/vm0-ai/vm0/commit/a99038ba5394dccfeeb2428171eaa9ff4ed20301))
+* **api:** migrate zero skills create route ([#12952](https://github.com/vm0-ai/vm0/issues/12952)) ([a9f063c](https://github.com/vm0-ai/vm0/commit/a9f063c85e9c217f5ee89b7ad46ad46efca5ac28))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.12.0
+    * @vm0/connectors bumped to 1.7.0
+    * @vm0/core bumped to 8.270.0
+    * @vm0/db bumped to 1.6.2
+
 ## [12.353.0](https://github.com/vm0-ai/vm0/compare/web-v12.352.0...web-v12.353.0) (2026-05-12)
 
 

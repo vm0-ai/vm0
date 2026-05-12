@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.12](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.11...guest-download-v0.20.12) (2026-05-12)
+
+
+### Refactoring
+
+* make guest-download scheduling slot-based ([#12951](https://github.com/vm0-ai/vm0/issues/12951)) ([ead49a3](https://github.com/vm0-ai/vm0/commit/ead49a37861fb5ac56d5dea6e65fca3e80a08c59))
+
 ## [0.20.11](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.10...guest-download-v0.20.11) (2026-05-12)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.6](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.17.5...guest-mock-claude-v0.17.6) (2026-05-12)
+
+
+### Bug Fixes
+
+* **guest-agent:** bound cli stderr diagnostics ([#12937](https://github.com/vm0-ai/vm0/issues/12937)) ([f640407](https://github.com/vm0-ai/vm0/commit/f64040738b75cc29b141bfa18960200fb30727f3))
+
 ## [0.17.5](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.17.4...guest-mock-claude-v0.17.5) (2026-05-03)
 
 
