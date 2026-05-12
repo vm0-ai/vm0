@@ -897,6 +897,16 @@ mod tests {
         .expect("condition not reached")
     }
 
+    async fn wait_for_path_absent(path: &Path) {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while path.exists() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("path was not deleted");
+    }
+
     #[tokio::test]
     async fn warmup_creates_ready_slots() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1233,6 +1243,58 @@ mod tests {
                 other => panic!("unexpected acquire result after cleanup: {other:?}"),
             }
         }
+    }
+
+    #[tokio::test]
+    async fn dropping_handle_cleans_ready_slots() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (controller, spawner) = ControlledSpawner::new();
+        let pool =
+            test_pool_with_spawner(test_config(tmp.path()), 1, 1, 4, Duration::ZERO, spawner);
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let warmup = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.warmup().await }
+        });
+        wait_for_snapshot(&handle, |snapshot| snapshot.pending == 1).await;
+
+        let slot = test_slot(tmp.path(), "ready-drop");
+        let workspace = slot.workspace.clone();
+        controller.take_request().send(Ok(slot)).unwrap();
+        warmup.await.unwrap();
+        assert!(workspace.exists());
+
+        drop(handle);
+
+        wait_for_path_absent(&workspace).await;
+    }
+
+    #[tokio::test]
+    async fn dropping_handle_drains_pending_slot_creation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (controller, spawner) = ControlledSpawner::new();
+        let pool =
+            test_pool_with_spawner(test_config(tmp.path()), 0, 1, 4, Duration::ZERO, spawner);
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let acquire = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+        wait_for_snapshot(&handle, |snapshot| {
+            snapshot.waiters == 1 && snapshot.pending == 1
+        })
+        .await;
+        acquire.abort();
+        assert!(acquire.await.unwrap_err().is_cancelled());
+
+        let slot = test_slot(tmp.path(), "pending-drop");
+        let workspace = slot.workspace.clone();
+        drop(handle);
+        controller.take_request().send(Ok(slot)).unwrap();
+
+        wait_for_path_absent(&workspace).await;
     }
 
     #[tokio::test]
