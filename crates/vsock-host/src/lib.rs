@@ -2250,7 +2250,9 @@ mod tests {
             "{}secret-tail",
             "a".repeat(COMMAND_LABEL_LOG_PREFIX_MAX_BYTES)
         );
-        let diagnostic = CommandOperationDiagnostic::new(7, &label);
+        let mut diagnostic = CommandOperationDiagnostic::new(7, &label);
+        diagnostic.registered_at =
+            Instant::now() - COMMAND_STAGE_SLOW_THRESHOLD - Duration::from_millis(1);
 
         assert_eq!(
             diagnostic.label_log,
@@ -2258,6 +2260,11 @@ mod tests {
         );
         assert!(!diagnostic.label_log.contains("secret-tail"));
         assert_eq!(diagnostic.frame("start").label_log, diagnostic.label_log);
+        assert_eq!(diagnostic.snapshot().label_log, diagnostic.label_log);
+        assert_eq!(
+            diagnostic.mark_first_output().unwrap().label_log,
+            diagnostic.label_log
+        );
     }
 
     #[test]
