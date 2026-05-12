@@ -542,11 +542,11 @@ pub struct CliExecutionResult {
     /// Best-effort, secret-masked stderr tail captured from the CLI.
     ///
     /// The guest agent keeps at most the last 200 stderr lines for failure
-    /// diagnostics. Lines longer than 16 KiB are replaced with an omission
-    /// marker rather than partially returned, so secret masking never has to
-    /// process a truncated secret. It may be empty if the CLI wrote no stderr
-    /// or stderr draining timed out after process exit, and it may be
-    /// incomplete if stderr reading fails.
+    /// diagnostics. Raw stderr lines longer than 16 KiB before their newline
+    /// are replaced with an omission marker rather than partially returned, so
+    /// secret masking never has to process a truncated secret. It may be empty
+    /// if the CLI wrote no stderr or stderr draining timed out after process
+    /// exit, and it may be incomplete if stderr reading fails.
     pub stderr_lines: Vec<String>,
 
     /// Highest contiguous agent event sequence whose webhook POST succeeded.
