@@ -653,6 +653,11 @@ fn validate_command_output(
             "command output received after stream truncation",
         ));
     }
+    if output.chunk.is_empty() && !output.truncated {
+        return Err(command_protocol_error(
+            "command output empty chunk must mark stream truncation",
+        ));
+    }
     if output.chunk.len() > stream.chunk_limit_bytes {
         return Err(command_protocol_error(
             "command output chunk exceeds requested chunk limit",
@@ -2835,6 +2840,44 @@ mod tests {
         assert!(event.truncated);
         let result = handle.wait(Duration::from_secs(5)).await.unwrap();
         assert!(!result.stream_overflowed);
+    }
+
+    #[tokio::test]
+    async fn command_output_empty_non_truncated_poisons_connection() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let handle = host
+            .command_stream(CommandStreamRequest {
+                timeout_ms: 5000,
+                command: "stream",
+                env: &[],
+                sudo: false,
+                label: "stream-empty",
+                stdout: CommandOutputPolicy::Stream {
+                    limit_bytes: 1024,
+                    chunk_limit_bytes: 16,
+                },
+                stderr: CommandOutputPolicy::Discard,
+                stream_queue_capacity: Some(1),
+            })
+            .await
+            .unwrap();
+
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        send_command_output(
+            &mut guest,
+            msg.seq,
+            0,
+            CommandOutputStream::Stdout,
+            b"",
+            false,
+        )
+        .await;
+
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
+        let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
     }
 
     #[tokio::test]
