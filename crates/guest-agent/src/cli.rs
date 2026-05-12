@@ -508,7 +508,9 @@ where
                 continue;
             }
 
-            if line.len() < STDERR_RESULT_MAX_LINE_BYTES {
+            if line.len() < STDERR_RESULT_MAX_LINE_BYTES
+                || (byte == b'\r' && line.len() == STDERR_RESULT_MAX_LINE_BYTES)
+            {
                 line.push(byte);
             } else {
                 line.clear();
@@ -538,7 +540,7 @@ pub struct CliExecutionResult {
     /// Best-effort, secret-masked stderr tail captured from the CLI.
     ///
     /// The guest agent keeps at most the last 200 stderr lines for failure
-    /// diagnostics. Raw stderr lines longer than 16 KiB before their newline
+    /// diagnostics. Stderr lines longer than 16 KiB after CRLF normalization
     /// are replaced with an omission marker rather than partially returned, so
     /// secret masking never has to process a truncated secret. Invalid UTF-8 is
     /// decoded lossily into a valid string. It may be empty if the CLI wrote no

@@ -29,6 +29,10 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
         "exact-limit-{}",
         "x".repeat(common::CLI_STDERR_RESULT_MAX_LINE_BYTES - "exact-limit-".len())
     );
+    let exact_limit_crlf_line = format!(
+        "exact-crlf-{}",
+        "x".repeat(common::CLI_STDERR_RESULT_MAX_LINE_BYTES - "exact-crlf-".len())
+    );
     let overlong_secret_line = format!(
         "overlong-secret-prefix-{secret}-{}",
         "x".repeat(common::CLI_STDERR_RESULT_MAX_LINE_BYTES)
@@ -37,8 +41,12 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
         exact_limit_line.len(),
         common::CLI_STDERR_RESULT_MAX_LINE_BYTES
     );
+    assert_eq!(
+        exact_limit_crlf_line.len(),
+        common::CLI_STDERR_RESULT_MAX_LINE_BYTES
+    );
 
-    stderr_payload.push_str("\ncrlf-line\r");
+    stderr_payload.push_str(&format!("\n{exact_limit_crlf_line}\r"));
     stderr_payload.push_str(&format!("\n{exact_limit_line}"));
     stderr_payload.push_str(&format!("\ncodex stderr includes {secret}"));
     stderr_payload.push_str(&format!("\n{overlong_secret_line}"));
@@ -83,14 +91,14 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
         cli_result
             .stderr_lines
             .iter()
-            .any(|line| line == "crlf-line"),
+            .any(|line| line == &exact_limit_crlf_line),
         "stderr result should strip trailing carriage returns, got: {stderr}"
     );
     assert!(
         !cli_result
             .stderr_lines
             .iter()
-            .any(|line| line == "crlf-line\r"),
+            .any(|line| line == &format!("{exact_limit_crlf_line}\r")),
         "stderr result should not keep trailing carriage returns, got: {stderr}"
     );
     assert!(

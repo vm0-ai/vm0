@@ -36,7 +36,7 @@ pub const CLEAN_EXIT: i32 = 0;
 /// `guest_agent::cli::CliExecutionResult`.
 pub const CLI_STDERR_RESULT_MAX_LINES: usize = 200;
 
-/// Documented maximum raw byte length for one returned stderr line.
+/// Documented maximum byte length for one returned stderr line after CRLF normalization.
 pub const CLI_STDERR_RESULT_MAX_LINE_BYTES: usize = 16 * 1024;
 
 /// Documented replacement for a stderr line that exceeds the diagnostic limit.
