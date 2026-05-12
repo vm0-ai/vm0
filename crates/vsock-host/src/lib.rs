@@ -142,6 +142,8 @@ pub struct CommandStreamRequest<'a> {
 struct CommandOperation {
     result_tx: oneshot::Sender<io::Result<CommandOperationResult>>,
     stream_tx: Option<mpsc::Sender<CommandOutputEvent>>,
+    stdout_capture: CommandCaptureState,
+    stderr_capture: CommandCaptureState,
     stdout_stream: Option<CommandStreamState>,
     stderr_stream: Option<CommandStreamState>,
     stream_overflowed: bool,
@@ -149,6 +151,11 @@ struct CommandOperation {
 
 enum Operation {
     Command(CommandOperation),
+}
+
+enum CommandCaptureState {
+    Discard,
+    Capture { limit_bytes: usize },
 }
 
 struct CommandStreamState {
@@ -586,6 +593,21 @@ fn command_output_policy_streams(policy: CommandOutputPolicy) -> bool {
     )
 }
 
+fn command_capture_state(policy: CommandOutputPolicy) -> CommandCaptureState {
+    match policy {
+        CommandOutputPolicy::Discard | CommandOutputPolicy::Stream { .. } => {
+            CommandCaptureState::Discard
+        }
+        CommandOutputPolicy::Capture { limit_bytes }
+        | CommandOutputPolicy::CaptureAndStream {
+            capture_limit_bytes: limit_bytes,
+            ..
+        } => CommandCaptureState::Capture {
+            limit_bytes: limit_bytes as usize,
+        },
+    }
+}
+
 fn command_stream_state(policy: CommandOutputPolicy) -> Option<CommandStreamState> {
     match policy {
         CommandOutputPolicy::Stream {
@@ -643,6 +665,45 @@ fn validate_command_output(
         stream.truncated = true;
     }
     Ok(())
+}
+
+fn validate_command_result_output(
+    name: &str,
+    state: &CommandCaptureState,
+    output: CommandCapturedOutput<'_>,
+) -> io::Result<()> {
+    match (state, output) {
+        (CommandCaptureState::Discard, CommandCapturedOutput::Discarded) => Ok(()),
+        (CommandCaptureState::Discard, CommandCapturedOutput::Captured { .. }) => {
+            Err(command_protocol_error(format!(
+                "command result {name} captured output for non-capturing policy",
+            )))
+        }
+        (
+            CommandCaptureState::Capture { limit_bytes },
+            CommandCapturedOutput::Captured { bytes, .. },
+        ) if bytes.len() <= *limit_bytes => Ok(()),
+        (
+            CommandCaptureState::Capture { limit_bytes },
+            CommandCapturedOutput::Captured { bytes, .. },
+        ) => Err(command_protocol_error(format!(
+            "command result {name} exceeds requested capture limit: {} > {limit_bytes}",
+            bytes.len()
+        ))),
+        (CommandCaptureState::Capture { .. }, CommandCapturedOutput::Discarded) => {
+            Err(command_protocol_error(format!(
+                "command result {name} discarded output for capturing policy",
+            )))
+        }
+    }
+}
+
+fn validate_command_result(
+    operation: &CommandOperation,
+    result: &vsock_proto::DecodedCommandResult<'_>,
+) -> io::Result<()> {
+    validate_command_result_output("stdout", &operation.stdout_capture, result.stdout)?;
+    validate_command_result_output("stderr", &operation.stderr_capture, result.stderr)
 }
 
 fn owned_captured_output(output: CommandCapturedOutput<'_>) -> CommandOwnedCapturedOutput {
@@ -720,6 +781,7 @@ fn dispatch_command_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result
     };
 
     if let Some(Operation::Command(operation)) = operation {
+        validate_command_result(&operation, &decoded)?;
         let CommandOperation {
             result_tx,
             stream_overflowed,
@@ -1299,6 +1361,8 @@ impl VsockHost {
         let operation = CommandOperation {
             result_tx,
             stream_tx,
+            stdout_capture: command_capture_state(request.stdout),
+            stderr_capture: command_capture_state(request.stderr),
             stdout_stream: command_stream_state(request.stdout),
             stderr_stream: command_stream_state(request.stderr),
             stream_overflowed: false,
@@ -1849,6 +1913,27 @@ mod tests {
         stream.write_all(&frame).await.unwrap();
     }
 
+    async fn send_raw_command_result(stream: &mut UnixStream, seq: u32, payload: Vec<u8>) {
+        let frame = vsock_proto::encode(MSG_COMMAND_RESULT, seq, &payload).unwrap();
+        stream.write_all(&frame).await.unwrap();
+    }
+
+    async fn send_discarded_command_result(
+        stream: &mut UnixStream,
+        seq: u32,
+        termination: CommandTermination,
+    ) {
+        let payload = vsock_proto::encode_command_result(
+            termination,
+            12,
+            CommandCapturedOutput::Discarded,
+            CommandCapturedOutput::Discarded,
+            "",
+        )
+        .unwrap();
+        send_raw_command_result(stream, seq, payload).await;
+    }
+
     async fn send_command_output(
         stream: &mut UnixStream,
         seq: u32,
@@ -1997,7 +2082,19 @@ mod tests {
     #[tokio::test]
     async fn command_result_preserves_non_default_metadata() {
         let (host, mut guest, mut decoder) = setup_host_and_guest().await;
-        let handle = start_capture_operation(&host, "metadata").await;
+        let handle = host
+            .start_command_operation(CommandOperationRequest {
+                timeout_ms: 5000,
+                command: "metadata",
+                env: &[],
+                sudo: false,
+                label: "metadata",
+                stdout: CommandOutputPolicy::Discard,
+                stderr: CommandOutputPolicy::Capture { limit_bytes: 1024 },
+                stream_queue_capacity: None,
+            })
+            .await
+            .unwrap();
         let msg = read_guest_message(&mut guest, &mut decoder).await;
         assert_eq!(msg.msg_type, MSG_COMMAND_START);
 
@@ -2027,6 +2124,169 @@ mod tests {
             }
         );
         assert_eq!(result.diagnostic, "wait failed");
+    }
+
+    #[tokio::test]
+    async fn command_result_capture_for_discard_policy_poisons_connection() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let handle = host
+            .start_command_operation(CommandOperationRequest {
+                timeout_ms: 5000,
+                command: "discard",
+                env: &[],
+                sudo: false,
+                label: "discard-result",
+                stdout: CommandOutputPolicy::Discard,
+                stderr: CommandOutputPolicy::Discard,
+                stream_queue_capacity: None,
+            })
+            .await
+            .unwrap();
+
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        let payload = vsock_proto::encode_command_result(
+            CommandTermination::Exited { exit_code: 0 },
+            1,
+            CommandCapturedOutput::Captured {
+                bytes: b"unexpected",
+                truncated: false,
+            },
+            CommandCapturedOutput::Discarded,
+            "",
+        )
+        .unwrap();
+        send_raw_command_result(&mut guest, msg.seq, payload).await;
+
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
+        let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    }
+
+    #[tokio::test]
+    async fn command_result_over_capture_limit_poisons_connection() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let handle = host
+            .start_command_operation(CommandOperationRequest {
+                timeout_ms: 5000,
+                command: "capture-limit",
+                env: &[],
+                sudo: false,
+                label: "capture-limit",
+                stdout: CommandOutputPolicy::Capture { limit_bytes: 4 },
+                stderr: CommandOutputPolicy::Discard,
+                stream_queue_capacity: None,
+            })
+            .await
+            .unwrap();
+
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        let payload = vsock_proto::encode_command_result(
+            CommandTermination::Exited { exit_code: 0 },
+            1,
+            CommandCapturedOutput::Captured {
+                bytes: b"abcde",
+                truncated: true,
+            },
+            CommandCapturedOutput::Discarded,
+            "",
+        )
+        .unwrap();
+        send_raw_command_result(&mut guest, msg.seq, payload).await;
+
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
+        let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    }
+
+    #[tokio::test]
+    async fn command_result_discard_for_capture_policy_poisons_connection() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let handle = host
+            .start_command_operation(CommandOperationRequest {
+                timeout_ms: 5000,
+                command: "missing-capture",
+                env: &[],
+                sudo: false,
+                label: "missing-capture",
+                stdout: CommandOutputPolicy::Capture { limit_bytes: 4 },
+                stderr: CommandOutputPolicy::Discard,
+                stream_queue_capacity: None,
+            })
+            .await
+            .unwrap();
+
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        let payload = vsock_proto::encode_command_result(
+            CommandTermination::Exited { exit_code: 0 },
+            1,
+            CommandCapturedOutput::Discarded,
+            CommandCapturedOutput::Discarded,
+            "",
+        )
+        .unwrap();
+        send_raw_command_result(&mut guest, msg.seq, payload).await;
+
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
+        let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    }
+
+    #[tokio::test]
+    async fn command_result_zero_capture_limit_accepts_empty_capture() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let handle = host
+            .start_command_operation(CommandOperationRequest {
+                timeout_ms: 5000,
+                command: "zero-capture",
+                env: &[],
+                sudo: false,
+                label: "zero-capture",
+                stdout: CommandOutputPolicy::Capture { limit_bytes: 0 },
+                stderr: CommandOutputPolicy::Capture { limit_bytes: 0 },
+                stream_queue_capacity: None,
+            })
+            .await
+            .unwrap();
+
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        let payload = vsock_proto::encode_command_result(
+            CommandTermination::Exited { exit_code: 0 },
+            1,
+            CommandCapturedOutput::Captured {
+                bytes: b"",
+                truncated: true,
+            },
+            CommandCapturedOutput::Captured {
+                bytes: b"",
+                truncated: false,
+            },
+            "",
+        )
+        .unwrap();
+        send_raw_command_result(&mut guest, msg.seq, payload).await;
+
+        let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+        assert_eq!(
+            result.stdout,
+            CommandOwnedCapturedOutput::Captured {
+                bytes: Vec::new(),
+                truncated: true,
+            }
+        );
+        assert_eq!(
+            result.stderr,
+            CommandOwnedCapturedOutput::Captured {
+                bytes: Vec::new(),
+                truncated: false,
+            }
+        );
+        assert!(is_connected(&host));
     }
 
     #[tokio::test]
@@ -2368,12 +2628,10 @@ mod tests {
         assert_eq!(err.chunk, b"err");
         assert!(err.truncated);
 
-        send_command_result(
+        send_discarded_command_result(
             &mut guest,
             msg.seq,
             CommandTermination::Exited { exit_code: 0 },
-            b"",
-            b"",
         )
         .await;
         let result = handle.wait(Duration::from_secs(5)).await.unwrap();
@@ -2421,12 +2679,10 @@ mod tests {
             false,
         )
         .await;
-        send_command_result(
+        send_discarded_command_result(
             &mut guest,
             msg.seq,
             CommandTermination::Exited { exit_code: 0 },
-            b"",
-            b"",
         )
         .await;
 
@@ -2640,12 +2896,10 @@ mod tests {
             false,
         )
         .await;
-        send_command_result(
+        send_discarded_command_result(
             &mut guest,
             msg.seq,
             CommandTermination::Exited { exit_code: 0 },
-            b"",
-            b"",
         )
         .await;
 
