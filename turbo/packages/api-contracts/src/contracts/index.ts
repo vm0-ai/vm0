@@ -930,6 +930,12 @@ export {
   type UsageInsightChatRow,
 } from "./zero-usage-insight";
 export {
+  usageContract,
+  type UsageContract,
+  type DailyUsage,
+  type UsageResponse,
+} from "./usage";
+export {
   zeroTeamContract,
   teamComposeItemSchema,
   type ZeroTeamContract,

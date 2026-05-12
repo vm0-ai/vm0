@@ -9,6 +9,7 @@ import { apiHealth$ } from "./routes/health";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { internalEventConsumerTelegramTypingRoutes } from "./routes/internal-event-consumers-telegram-typing";
 import { modelStatsRoutes } from "./routes/model-stats";
+import { usageRoutes } from "./routes/usage";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
 import { zeroAgentsRoutes } from "./routes/zero-agents";
 import { zeroApiKeysRoutes } from "./routes/zero-api-keys";
@@ -83,6 +84,7 @@ export const ROUTES: readonly RouteEntry[] = [
   },
   ...healthAuthProbeRoutes,
   ...internalEventConsumerTelegramTypingRoutes,
+  ...usageRoutes,
   ...deviceTokenRoutes,
   ...zeroAgentInstructionsRoutes,
   ...zeroAgentsRoutes,
