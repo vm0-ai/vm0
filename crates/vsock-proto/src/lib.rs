@@ -36,6 +36,8 @@
 //!
 //! Command operation messages are request-scoped; host/guest dispatch layers
 //! must use a non-zero sequence number for start/output/result/cancel.
+//! `command_output.output_seq` is per command operation and starts at 0,
+//! incrementing by 1 for each output frame across stdout and stderr.
 
 /// Header size (4-byte length prefix).
 pub const HEADER_SIZE: usize = 4;
@@ -655,6 +657,9 @@ pub fn encode_command_start(
 }
 
 /// Encode command_output payload: `[1B stream][4B output_seq][1B flags][4B chunk_len][chunk]`.
+///
+/// `output_seq` starts at 0 for each command operation and increments by 1
+/// for every output frame across stdout and stderr.
 pub fn encode_command_output(
     stream: CommandOutputStream,
     output_seq: u32,

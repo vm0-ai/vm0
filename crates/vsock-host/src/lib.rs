@@ -146,6 +146,7 @@ struct CommandOperation {
     stderr_capture: CommandCaptureState,
     stdout_stream: Option<CommandStreamState>,
     stderr_stream: Option<CommandStreamState>,
+    expected_output_seq: u32,
     stream_overflowed: bool,
 }
 
@@ -632,6 +633,12 @@ fn validate_command_output(
     operation: &mut CommandOperation,
     output: &vsock_proto::DecodedCommandOutput<'_>,
 ) -> io::Result<()> {
+    if output.output_seq != operation.expected_output_seq {
+        return Err(command_protocol_error(format!(
+            "command output seq mismatch: {} != {}",
+            output.output_seq, operation.expected_output_seq
+        )));
+    }
     let stream = match output.stream {
         CommandOutputStream::Stdout => &mut operation.stdout_stream,
         CommandOutputStream::Stderr => &mut operation.stderr_stream,
@@ -664,6 +671,7 @@ fn validate_command_output(
     if output.truncated {
         stream.truncated = true;
     }
+    operation.expected_output_seq = operation.expected_output_seq.wrapping_add(1);
     Ok(())
 }
 
@@ -794,7 +802,7 @@ fn dispatch_command_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result
     Ok(())
 }
 
-fn dispatch_command_error(shared: &Arc<Shared>, msg: &RawMessage) -> bool {
+fn dispatch_command_error(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<bool> {
     let operation = {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
@@ -806,12 +814,12 @@ fn dispatch_command_error(shared: &Arc<Shared>, msg: &RawMessage) -> bool {
     if let Some(Operation::Command(operation)) = operation {
         let err = vsock_proto::decode_error(&msg.payload)
             .map(|message| io::Error::other(message.to_string()))
-            .unwrap_or_else(command_protocol_error);
+            .map_err(command_protocol_error)?;
         let _ = operation.result_tx.send(Err(err));
-        return true;
+        return Ok(true);
     }
 
-    false
+    Ok(false)
 }
 
 /// Host-side vsock endpoint.
@@ -873,6 +881,22 @@ async fn reader_loop(
             Err(_) => break,
         };
         for msg in messages {
+            if msg.msg_type == MSG_ERROR {
+                match dispatch_command_error(&shared, &msg) {
+                    Ok(true) => {
+                        // Command-operation errors are delivered through the operation
+                        // result channel. Legacy request errors fall through to the
+                        // pending-request dispatch below.
+                        continue;
+                    }
+                    Ok(false) => {}
+                    Err(_) => {
+                        shared.poison_connection();
+                        return;
+                    }
+                }
+            }
+
             if msg.msg_type == MSG_COMMAND_OUTPUT {
                 if dispatch_command_output(&shared, &msg).is_err() {
                     shared.poison_connection();
@@ -883,11 +907,6 @@ async fn reader_loop(
                     shared.poison_connection();
                     return;
                 }
-            } else if msg.msg_type == MSG_ERROR && dispatch_command_error(&shared, &msg) {
-                // Command-operation errors are delivered through the operation
-                // result channel. Legacy request errors fall through to the
-                // pending-request dispatch below.
-                continue;
             } else if msg.msg_type == MSG_STDOUT_CHUNK && msg.seq == 0 {
                 if let Ok((pid, data)) = vsock_proto::decode_stdout_chunk(&msg.payload) {
                     let sender = {
@@ -1365,6 +1384,7 @@ impl VsockHost {
             stderr_capture: command_capture_state(request.stderr),
             stdout_stream: command_stream_state(request.stdout),
             stderr_stream: command_stream_state(request.stderr),
+            expected_output_seq: 0,
             stream_overflowed: false,
         };
 
@@ -2378,7 +2398,7 @@ mod tests {
         send_command_output(
             &mut guest,
             msg.seq,
-            1,
+            0,
             CommandOutputStream::Stderr,
             b"default-queued",
             false,
@@ -2600,7 +2620,7 @@ mod tests {
         send_command_output(
             &mut guest,
             msg.seq,
-            1,
+            0,
             CommandOutputStream::Stdout,
             b"out",
             false,
@@ -2609,7 +2629,7 @@ mod tests {
         send_command_output(
             &mut guest,
             msg.seq,
-            2,
+            1,
             CommandOutputStream::Stderr,
             b"err",
             true,
@@ -2618,13 +2638,13 @@ mod tests {
 
         let out = rx.recv().await.unwrap();
         assert_eq!(out.stream, CommandOutputStream::Stdout);
-        assert_eq!(out.output_seq, 1);
+        assert_eq!(out.output_seq, 0);
         assert_eq!(out.chunk, b"out");
         assert!(!out.truncated);
 
         let err = rx.recv().await.unwrap();
         assert_eq!(err.stream, CommandOutputStream::Stderr);
-        assert_eq!(err.output_seq, 2);
+        assert_eq!(err.output_seq, 1);
         assert_eq!(err.chunk, b"err");
         assert!(err.truncated);
 
@@ -2664,7 +2684,7 @@ mod tests {
         send_command_output(
             &mut guest,
             msg.seq,
-            1,
+            0,
             CommandOutputStream::Stdout,
             b"first",
             false,
@@ -2673,7 +2693,7 @@ mod tests {
         send_command_output(
             &mut guest,
             msg.seq,
-            2,
+            1,
             CommandOutputStream::Stdout,
             b"second",
             false,
@@ -2687,7 +2707,7 @@ mod tests {
         .await;
 
         let first = rx.recv().await.unwrap();
-        assert_eq!(first.output_seq, 1);
+        assert_eq!(first.output_seq, 0);
         assert_eq!(first.chunk, b"first");
         assert!(rx.recv().await.is_none());
 
@@ -2719,9 +2739,47 @@ mod tests {
         send_command_output(
             &mut guest,
             msg.seq,
-            1,
+            0,
             CommandOutputStream::Stdout,
             b"unexpected",
+            false,
+        )
+        .await;
+
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
+        let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    }
+
+    #[tokio::test]
+    async fn command_output_seq_gap_poisons_connection() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let handle = host
+            .command_stream(CommandStreamRequest {
+                timeout_ms: 5000,
+                command: "stream",
+                env: &[],
+                sudo: false,
+                label: "stream-seq",
+                stdout: CommandOutputPolicy::Stream {
+                    limit_bytes: 1024,
+                    chunk_limit_bytes: 16,
+                },
+                stderr: CommandOutputPolicy::Discard,
+                stream_queue_capacity: Some(1),
+            })
+            .await
+            .unwrap();
+
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        send_command_output(
+            &mut guest,
+            msg.seq,
+            1,
+            CommandOutputStream::Stdout,
+            b"gap",
             false,
         )
         .await;
@@ -2757,7 +2815,7 @@ mod tests {
         send_command_output(
             &mut guest,
             msg.seq,
-            1,
+            0,
             CommandOutputStream::Stdout,
             b"abcd",
             false,
@@ -2795,7 +2853,7 @@ mod tests {
         send_command_output(
             &mut guest,
             msg.seq,
-            1,
+            0,
             CommandOutputStream::Stdout,
             b"abc",
             false,
@@ -2804,7 +2862,7 @@ mod tests {
         send_command_output(
             &mut guest,
             msg.seq,
-            2,
+            1,
             CommandOutputStream::Stdout,
             b"de",
             false,
@@ -2842,7 +2900,7 @@ mod tests {
         send_command_output(
             &mut guest,
             msg.seq,
-            1,
+            0,
             CommandOutputStream::Stdout,
             b"",
             true,
@@ -2851,7 +2909,7 @@ mod tests {
         send_command_output(
             &mut guest,
             msg.seq,
-            2,
+            1,
             CommandOutputStream::Stdout,
             b"late",
             false,
@@ -2890,7 +2948,7 @@ mod tests {
         send_command_output(
             &mut guest,
             msg.seq,
-            1,
+            0,
             CommandOutputStream::Stdout,
             b"ignored",
             false,
@@ -2939,6 +2997,23 @@ mod tests {
         assert_eq!(operation_count(&host), 0);
 
         assert_connection_accepts_legacy_exec(&host, &mut guest, &mut decoder).await;
+    }
+
+    #[tokio::test]
+    async fn malformed_command_error_poisons_connection() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let handle = start_capture_operation(&host, "bad-error").await;
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(msg.msg_type, MSG_COMMAND_START);
+
+        let frame = vsock_proto::encode(MSG_ERROR, msg.seq, &[0]).unwrap();
+        guest.write_all(&frame).await.unwrap();
+
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
+        let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
     }
 
     #[tokio::test]
