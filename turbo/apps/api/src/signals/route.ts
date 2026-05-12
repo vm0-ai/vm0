@@ -1,6 +1,7 @@
 import type { AppRoute } from "@ts-rest/core";
 import { healthContract } from "@vm0/api-contracts/contracts/health";
 
+import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
 import { authMeRoutes } from "./routes/auth-me";
 import { audioTranscriptionsV1Routes } from "./routes/audio-transcriptions-v1";
 import type { SignalRouteHandler } from "./context/route";
@@ -88,6 +89,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...healthAuthProbeRoutes,
   ...internalEventConsumerTelegramTypingRoutes,
   ...usageRoutes,
+  ...agentCheckpointsRoutes,
   ...deviceTokenRoutes,
   ...zeroAgentInstructionsRoutes,
   ...zeroAgentsRoutes,
