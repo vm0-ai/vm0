@@ -51,6 +51,7 @@ const COMMAND_LABEL_LOG_PREFIX_MAX_BYTES: usize = 100;
 const COMMAND_CLOSE_ACTIVE_LOG_LIMIT: usize = 16;
 const COMMAND_FRAME_WRITE_SLOW_THRESHOLD: Duration = Duration::from_millis(500);
 const COMMAND_STAGE_SLOW_THRESHOLD: Duration = Duration::from_secs(5);
+const COMMAND_DROP_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_secs(1);
 const COMMAND_FRAME_WRITE_NOT_STARTED: u8 = 0;
 const COMMAND_FRAME_WRITE_STARTED: u8 = 1;
 const COMMAND_FRAME_WRITE_COMPLETED: u8 = 2;
@@ -617,6 +618,81 @@ impl Drop for CommandOperationHandle {
         if let Some(seq) = self.seq.take() {
             self.shared.remove_operation(seq);
         }
+    }
+}
+
+struct CommandCancelOnDropGuard {
+    shared: Option<Arc<Shared>>,
+    seq: u32,
+    diagnostic: CommandOperationDiagnostic,
+}
+
+impl CommandCancelOnDropGuard {
+    fn new(handle: &CommandOperationHandle) -> Option<Self> {
+        Some(Self {
+            shared: Some(Arc::clone(&handle.shared)),
+            seq: handle.seq?,
+            diagnostic: handle.diagnostic.clone(),
+        })
+    }
+
+    fn disarm(&mut self) {
+        self.shared = None;
+    }
+}
+
+impl Drop for CommandCancelOnDropGuard {
+    fn drop(&mut self) {
+        let Some(shared) = self.shared.take() else {
+            return;
+        };
+        let seq = self.seq;
+        let diagnostic = self.diagnostic.clone();
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+
+        handle.spawn(async move {
+            let payload = vsock_proto::encode_command_cancel();
+            let result = tokio::time::timeout(
+                COMMAND_DROP_CANCEL_WRITE_TIMEOUT,
+                write_command_frame(
+                    &shared,
+                    MSG_COMMAND_CANCEL,
+                    seq,
+                    &payload,
+                    Some(diagnostic.frame("drop-cancel")),
+                ),
+            )
+            .await;
+            match result {
+                Ok(Ok(())) => {
+                    tracing::info!(
+                        seq = seq,
+                        label = %diagnostic.label_log,
+                        elapsed_ms = diagnostic.elapsed_ms(),
+                        "command operation cancel sent on drop"
+                    );
+                }
+                Ok(Err(err)) => {
+                    tracing::warn!(
+                        seq = seq,
+                        label = %diagnostic.label_log,
+                        elapsed_ms = diagnostic.elapsed_ms(),
+                        error = %err,
+                        "command operation cancel on drop failed"
+                    );
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        seq = seq,
+                        label = %diagnostic.label_log,
+                        elapsed_ms = diagnostic.elapsed_ms(),
+                        "command operation cancel on drop timed out"
+                    );
+                }
+            }
+        });
     }
 }
 
@@ -2260,6 +2336,7 @@ impl VsockHost {
                 stream_queue_capacity: None,
             })
             .await?;
+        let mut cancel_on_drop = CommandCancelOnDropGuard::new(&handle);
         let mut stream_rx = handle.take_stream_receiver().ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -2286,10 +2363,16 @@ impl VsockHost {
             Ok(Ok(())) => {}
             Ok(Err(err)) => {
                 let _ = handle.cancel_and_wait(Duration::from_secs(1)).await;
+                if let Some(cancel_on_drop) = &mut cancel_on_drop {
+                    cancel_on_drop.disarm();
+                }
                 return Err(err);
             }
             Err(_) => {
                 let _ = handle.cancel_and_wait(Duration::from_secs(1)).await;
+                if let Some(cancel_on_drop) = &mut cancel_on_drop {
+                    cancel_on_drop.disarm();
+                }
                 return Err(io::Error::new(
                     io::ErrorKind::TimedOut,
                     format!("copy_file stream drain timed out for {path}"),
@@ -2298,6 +2381,9 @@ impl VsockHost {
         };
 
         let result = handle.wait(Duration::from_secs(5)).await?;
+        if let Some(cancel_on_drop) = &mut cancel_on_drop {
+            cancel_on_drop.disarm();
+        }
         match validate_copy_command_result(path, result, missing_ok)? {
             CopyFileCommandStatus::Present => {}
             CopyFileCommandStatus::Missing => return Ok(CopyFileOutcome::Missing),
@@ -5070,6 +5156,83 @@ mod tests {
                 .to_string_lossy()
                 .contains("vm0tmp")),
             "missing copy temp file should be removed"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn copy_file_cancellation_cancels_guest_command_and_removes_temp() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let host = Arc::new(host);
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "vsock-host-copy-cancel-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let host_path = dir.join("system.log");
+        let copy_path = host_path.clone();
+
+        let task_host = Arc::clone(&host);
+        let copy_task = tokio::spawn(async move {
+            task_host
+                .copy_file(
+                    "/tmp/vm0-system-run.log",
+                    &copy_path,
+                    CopyFileOptions {
+                        max_bytes: 1024,
+                        timeout_ms: 5000,
+                        missing_ok: false,
+                    },
+                )
+                .await
+        });
+
+        let start = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(start.msg_type, MSG_COMMAND_START);
+        send_command_output(
+            &mut guest,
+            start.seq,
+            0,
+            CommandOutputStream::Stdout,
+            b"partial",
+            false,
+        )
+        .await;
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if std::fs::read_dir(&dir).unwrap().any(|entry| {
+                    let path = entry.unwrap().path();
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .is_some_and(|name| name.contains("vm0tmp"))
+                        && std::fs::read(&path).is_ok_and(|bytes| bytes == b"partial")
+                }) {
+                    return;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+
+        copy_task.abort();
+        assert!(copy_task.await.unwrap_err().is_cancelled());
+
+        let cancel = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(cancel.msg_type, MSG_COMMAND_CANCEL);
+        assert_eq!(cancel.seq, start.seq);
+        assert!(!host_path.exists());
+        assert!(
+            std::fs::read_dir(&dir).unwrap().all(|entry| !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .contains("vm0tmp")),
+            "cancelled copy temp file should be removed"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
