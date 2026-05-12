@@ -13,7 +13,7 @@ import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -34,6 +34,7 @@ import {
 } from "./helpers/zero-route-test";
 import {
   deleteSlackIntegrationFixture$,
+  seedSlackOrgConnection$,
   seedSlackOrgInstallation$,
   type SlackIntegrationFixture,
 } from "./helpers/zero-integrations-slack";
@@ -365,6 +366,311 @@ describe("GET /api/zero/integrations/slack", () => {
       expect(response.body.isConnected).toBeFalsy();
       expect(response.body.environment).toBeUndefined();
     });
+  });
+});
+
+async function findSlackConnection(args: {
+  readonly workspaceId: string;
+  readonly userId: string;
+}): Promise<typeof slackOrgConnections.$inferSelect | undefined> {
+  const [connection] = await writeDb
+    .select()
+    .from(slackOrgConnections)
+    .where(
+      and(
+        eq(slackOrgConnections.slackWorkspaceId, args.workspaceId),
+        eq(slackOrgConnections.vm0UserId, args.userId),
+      ),
+    )
+    .limit(1);
+  return connection;
+}
+
+async function findSlackInstallation(
+  workspaceId: string,
+): Promise<typeof slackOrgInstallations.$inferSelect | undefined> {
+  const [installation] = await writeDb
+    .select()
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId))
+    .limit(1);
+  return installation;
+}
+
+function listWorkspaceSlackConnections(
+  workspaceId: string,
+): Promise<readonly (typeof slackOrgConnections.$inferSelect)[]> {
+  return writeDb
+    .select()
+    .from(slackOrgConnections)
+    .where(eq(slackOrgConnections.slackWorkspaceId, workspaceId));
+}
+
+describe("DELETE /api/zero/integrations/slack", () => {
+  const trackSlackFixture = createFixtureTracker<SlackIntegrationFixture>(
+    (fixture) => {
+      return store.set(deleteSlackIntegrationFixture$, fixture, context.signal);
+    },
+  );
+  const mocks = createZeroRouteMocks(context);
+
+  beforeEach(() => {
+    context.mocks.slack.views.publish.mockResolvedValue({ ok: true });
+  });
+
+  async function seedDeleteContext(
+    args: {
+      readonly userId?: string;
+      readonly orgId?: string;
+      readonly withConnection?: boolean;
+    } = {},
+  ): Promise<{
+    readonly orgId: string;
+    readonly userId: string;
+    readonly workspaceId: string;
+    readonly slackUserId: string | null;
+  }> {
+    const orgId = args.orgId ?? `org_${randomUUID()}`;
+    const userId = args.userId ?? `user_${randomUUID()}`;
+    const fixture = await trackSlackFixture(
+      store.set(seedSlackOrgInstallation$, { orgId }, context.signal),
+    );
+    const connection =
+      args.withConnection === false
+        ? null
+        : await store.set(
+            seedSlackOrgConnection$,
+            {
+              slackWorkspaceId: fixture.slackWorkspaceId,
+              vm0UserId: userId,
+            },
+            context.signal,
+          );
+
+    return {
+      orgId,
+      userId,
+      workspaceId: fixture.slackWorkspaceId,
+      slackUserId: connection?.slackUserId ?? null,
+    };
+  }
+
+  it("returns 401 when unauthenticated", async () => {
+    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+
+    const response = await accept(
+      client.disconnect({ headers: {}, query: {} }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns 404 when the user has no Slack connection", async () => {
+    const seeded = await seedDeleteContext({ withConnection: false });
+    mocks.clerk.session(seeded.userId, seeded.orgId);
+    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+
+    const response = await accept(
+      client.disconnect({
+        headers: { authorization: "Bearer clerk-session" },
+        query: {},
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
+    expect(response.body.error.message).toBe("No Slack connection found");
+  });
+
+  it("deletes only the current user's connection and refreshes App Home", async () => {
+    const seeded = await seedDeleteContext();
+    const otherUserId = `user_${randomUUID()}`;
+    const otherConnection = await store.set(
+      seedSlackOrgConnection$,
+      {
+        slackWorkspaceId: seeded.workspaceId,
+        vm0UserId: otherUserId,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(seeded.userId, seeded.orgId);
+    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+
+    const response = await accept(
+      client.disconnect({
+        headers: { authorization: "Bearer clerk-session" },
+        query: {},
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ ok: true });
+    await expect(
+      findSlackConnection({
+        workspaceId: seeded.workspaceId,
+        userId: seeded.userId,
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      findSlackConnection({
+        workspaceId: seeded.workspaceId,
+        userId: otherUserId,
+      }),
+    ).resolves.toMatchObject({ slackUserId: otherConnection.slackUserId });
+    expect(context.mocks.slack.views.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: seeded.slackUserId,
+        view: expect.objectContaining({
+          type: "home",
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              type: "actions",
+              elements: expect.arrayContaining([
+                expect.objectContaining({ action_id: "home_login_prompt" }),
+              ]),
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+});
+
+describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
+  const trackSlackFixture = createFixtureTracker<SlackIntegrationFixture>(
+    (fixture) => {
+      return store.set(deleteSlackIntegrationFixture$, fixture, context.signal);
+    },
+  );
+  const mocks = createZeroRouteMocks(context);
+
+  beforeEach(() => {
+    context.mocks.slack.views.publish.mockResolvedValue({ ok: true });
+  });
+
+  async function seedUninstallContext(
+    args: {
+      readonly orgId?: string;
+      readonly userId?: string;
+      readonly withInstallation?: boolean;
+    } = {},
+  ): Promise<{
+    readonly orgId: string;
+    readonly userId: string;
+    readonly workspaceId: string | null;
+    readonly slackUserIds: readonly string[];
+  }> {
+    const orgId = args.orgId ?? `org_${randomUUID()}`;
+    const userId = args.userId ?? `user_${randomUUID()}`;
+    if (args.withInstallation === false) {
+      return { orgId, userId, workspaceId: null, slackUserIds: [] };
+    }
+
+    const fixture = await trackSlackFixture(
+      store.set(seedSlackOrgInstallation$, { orgId }, context.signal),
+    );
+    const firstConnection = await store.set(
+      seedSlackOrgConnection$,
+      {
+        slackWorkspaceId: fixture.slackWorkspaceId,
+        vm0UserId: userId,
+      },
+      context.signal,
+    );
+    const secondConnection = await store.set(
+      seedSlackOrgConnection$,
+      {
+        slackWorkspaceId: fixture.slackWorkspaceId,
+        vm0UserId: `user_${randomUUID()}`,
+      },
+      context.signal,
+    );
+
+    return {
+      orgId,
+      userId,
+      workspaceId: fixture.slackWorkspaceId,
+      slackUserIds: [firstConnection.slackUserId, secondConnection.slackUserId],
+    };
+  }
+
+  it("returns 403 when a non-admin tries to uninstall", async () => {
+    const seeded = await seedUninstallContext();
+    mocks.clerk.session(seeded.userId, seeded.orgId, "org:member");
+    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+
+    const response = await accept(
+      client.disconnect({
+        headers: { authorization: "Bearer clerk-session" },
+        query: { action: "uninstall" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.code).toBe("FORBIDDEN");
+    expect(response.body.error.message).toBe("Admin access required");
+  });
+
+  it("returns 404 when no installation exists", async () => {
+    const seeded = await seedUninstallContext({ withInstallation: false });
+    mocks.clerk.session(seeded.userId, seeded.orgId, "org:admin");
+    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+
+    const response = await accept(
+      client.disconnect({
+        headers: { authorization: "Bearer clerk-session" },
+        query: { action: "uninstall" },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
+    expect(response.body.error.message).toBe("No Slack installation found");
+  });
+
+  it("publishes uninstalled App Home then deletes installation and connections", async () => {
+    const seeded = await seedUninstallContext();
+    mocks.clerk.session(seeded.userId, seeded.orgId, "org:admin");
+    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+
+    const response = await accept(
+      client.disconnect({
+        headers: { authorization: "Bearer clerk-session" },
+        query: { action: "uninstall" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ ok: true });
+    expect(context.mocks.slack.views.publish).toHaveBeenCalledTimes(2);
+    for (const slackUserId of seeded.slackUserIds) {
+      expect(context.mocks.slack.views.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user_id: slackUserId,
+          view: expect.objectContaining({
+            type: "home",
+            blocks: expect.arrayContaining([
+              expect.objectContaining({
+                type: "actions",
+                elements: expect.arrayContaining([
+                  expect.objectContaining({ action_id: "home_open_settings" }),
+                ]),
+              }),
+            ]),
+          }),
+        }),
+      );
+    }
+    const workspaceId = seeded.workspaceId;
+    expect(workspaceId).not.toBeNull();
+    if (workspaceId === null) {
+      throw new Error("workspaceId should be present for uninstall test");
+    }
+    await expect(findSlackInstallation(workspaceId)).resolves.toBeUndefined();
+    await expect(
+      listWorkspaceSlackConnections(workspaceId),
+    ).resolves.toStrictEqual([]);
   });
 });
 

@@ -1,6 +1,7 @@
-import { computed } from "ccstate";
+import { command, computed } from "ccstate";
 import { initContract } from "@ts-rest/core";
 import { z } from "zod";
+import type { View } from "@slack/web-api";
 import {
   slackOrgStatusSchema,
   zeroIntegrationsSlackContract,
@@ -14,7 +15,9 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { eq } from "drizzle-orm";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { and, eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -29,9 +32,12 @@ import {
   isSlackFileFetchError,
   MAX_SLACK_FILE_SIZE_BYTES,
 } from "../external/slack-file-fetcher";
-import { db$ } from "../external/db";
+import { createSlackClient } from "../external/slack-message-client";
+import { db$, writeDb$ } from "../external/db";
 import { zeroConnectorList } from "../services/zero-connector-data.service";
 import { userSecrets, userVariables } from "../services/zero-user-data.service";
+import { decryptSecretValue } from "../services/crypto.utils";
+import { env } from "../../lib/env";
 import type { RouteEntry } from "../route";
 import { safeAsync } from "../utils";
 
@@ -181,6 +187,253 @@ const getSlackStatusInner$ = computed(async (get) => {
 
   return { status: 200 as const, body };
 });
+
+function contractErrorResponse(
+  status: 403 | 404,
+  message: string,
+  code: "FORBIDDEN" | "NOT_FOUND",
+) {
+  return {
+    status,
+    body: { error: { message, code } },
+  };
+}
+
+function publishAppHome(
+  client: ReturnType<typeof createSlackClient>,
+  userId: string,
+  view: View,
+): Promise<void> {
+  return client.views.publish({ user_id: userId, view }).then(() => {
+    return undefined;
+  });
+}
+
+function buildConnectUrl(workspaceId: string, slackUserId: string): string {
+  const params = new URLSearchParams({ w: workspaceId, u: slackUserId });
+  return `${env("VM0_WEB_URL")}/settings/slack?${params.toString()}`;
+}
+
+function buildDisconnectedAppHomeView(args: {
+  readonly workspaceId: string;
+  readonly slackUserId: string;
+}): View {
+  return {
+    type: "home",
+    blocks: [
+      {
+        type: "header",
+        text: { type: "plain_text", text: "Welcome to Zero! :wave:" },
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "Connect your AI agents to Slack and interact with them through messages.",
+        },
+      },
+      { type: "divider" },
+      {
+        type: "section",
+        text: { type: "mrkdwn", text: ":x: *Account not connected*" },
+      },
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: { type: "plain_text", text: "Connect" },
+            url: buildConnectUrl(args.workspaceId, args.slackUserId),
+            action_id: "home_login_prompt",
+            style: "primary",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildUninstalledAppHomeView(): View {
+  return {
+    type: "home",
+    blocks: [
+      {
+        type: "header",
+        text: { type: "plain_text", text: "Welcome to Zero! :wave:" },
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "Connect your AI agents to Slack and interact with them through messages.",
+        },
+      },
+      { type: "divider" },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: ":warning: *Zero is not installed for this workspace*\nAsk a workspace admin to install Zero from the platform.",
+        },
+      },
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: { type: "plain_text", text: "Open Zero Settings" },
+            url: `${env("VM0_WEB_URL")}/works`,
+            action_id: "home_open_settings",
+            style: "primary",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+const deleteSlackIntegrationQuery$ = queryOf(
+  zeroIntegrationsSlackContract.disconnect,
+);
+
+const deleteSlackIntegration$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const query = get(deleteSlackIntegrationQuery$);
+
+    if (query.action === "uninstall") {
+      if (auth.orgRole !== "admin") {
+        return contractErrorResponse(403, "Admin access required", "FORBIDDEN");
+      }
+
+      const db = set(writeDb$);
+      const [installation] = await db
+        .select()
+        .from(slackOrgInstallations)
+        .where(eq(slackOrgInstallations.orgId, auth.orgId))
+        .limit(1);
+      signal.throwIfAborted();
+
+      if (!installation) {
+        return contractErrorResponse(
+          404,
+          "No Slack installation found",
+          "NOT_FOUND",
+        );
+      }
+
+      const connections = await db
+        .select({ slackUserId: slackOrgConnections.slackUserId })
+        .from(slackOrgConnections)
+        .where(
+          eq(
+            slackOrgConnections.slackWorkspaceId,
+            installation.slackWorkspaceId,
+          ),
+        );
+      signal.throwIfAborted();
+
+      if (connections.length > 0) {
+        const client = createSlackClient(
+          decryptSecretValue(installation.encryptedBotToken),
+        );
+        const view = buildUninstalledAppHomeView();
+        await Promise.allSettled(
+          connections.map((connection) => {
+            return publishAppHome(client, connection.slackUserId, view);
+          }),
+        );
+        signal.throwIfAborted();
+      }
+
+      await db
+        .delete(slackOrgConnections)
+        .where(
+          eq(
+            slackOrgConnections.slackWorkspaceId,
+            installation.slackWorkspaceId,
+          ),
+        );
+      signal.throwIfAborted();
+
+      await db
+        .delete(slackOrgInstallations)
+        .where(
+          eq(
+            slackOrgInstallations.slackWorkspaceId,
+            installation.slackWorkspaceId,
+          ),
+        );
+      signal.throwIfAborted();
+
+      return { status: 200 as const, body: { ok: true } };
+    }
+
+    const db = set(writeDb$);
+    const [installation] = await db
+      .select()
+      .from(slackOrgInstallations)
+      .where(eq(slackOrgInstallations.orgId, auth.orgId))
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!installation) {
+      return contractErrorResponse(
+        404,
+        "No Slack connection found",
+        "NOT_FOUND",
+      );
+    }
+
+    const [connection] = await db
+      .select({
+        id: slackOrgConnections.id,
+        slackUserId: slackOrgConnections.slackUserId,
+      })
+      .from(slackOrgConnections)
+      .where(
+        and(
+          eq(slackOrgConnections.vm0UserId, auth.userId),
+          eq(
+            slackOrgConnections.slackWorkspaceId,
+            installation.slackWorkspaceId,
+          ),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!connection) {
+      return contractErrorResponse(
+        404,
+        "No Slack connection found",
+        "NOT_FOUND",
+      );
+    }
+
+    await db
+      .delete(slackOrgConnections)
+      .where(eq(slackOrgConnections.id, connection.id));
+    signal.throwIfAborted();
+
+    const client = createSlackClient(
+      decryptSecretValue(installation.encryptedBotToken),
+    );
+    await publishAppHome(
+      client,
+      connection.slackUserId,
+      buildDisconnectedAppHomeView({
+        workspaceId: installation.slackWorkspaceId,
+        slackUserId: connection.slackUserId,
+      }),
+    ).catch(() => {
+      return undefined;
+    });
+    signal.throwIfAborted();
+
+    return { status: 200 as const, body: { ok: true } };
+  },
+);
 
 function jsonErrorResponse(
   status: number,
@@ -355,6 +608,10 @@ export const zeroIntegrationsSlackRoutes: readonly RouteEntry[] = [
   {
     route: zeroIntegrationsSlackContract.getStatus,
     handler: authRoute(slackReadAuth, getSlackStatusInner$),
+  },
+  {
+    route: zeroIntegrationsSlackContract.disconnect,
+    handler: authRoute(slackReadAuth, deleteSlackIntegration$),
   },
   {
     route: slackDownloadFileContract.download,
