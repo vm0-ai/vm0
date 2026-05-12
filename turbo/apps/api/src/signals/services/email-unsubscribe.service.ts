@@ -41,7 +41,6 @@ export async function verifyUnsubscribeToken(
 
   const userId = token.slice(0, dotIndex);
   const providedHmac = token.slice(dotIndex + 1);
-
   if (!userId || !providedHmac) {
     return null;
   }

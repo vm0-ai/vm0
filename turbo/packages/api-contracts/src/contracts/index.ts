@@ -217,8 +217,11 @@ export {
   emailUnsubscribeContract,
   emailUnsubscribeErrorSchema,
   emailUnsubscribeQuerySchema,
+  emailUnsubscribeResponseSchema,
   type EmailUnsubscribeContract,
+  type EmailUnsubscribeError,
   type EmailUnsubscribeQuery,
+  type EmailUnsubscribeResponse,
 } from "./email-unsubscribe";
 export {
   connectorsTypeAuthorizeContract,

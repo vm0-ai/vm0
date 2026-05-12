@@ -68,9 +68,33 @@ const getEmailUnsubscribe$ = command(
   },
 );
 
+const postEmailUnsubscribe$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const query = get(queryOf(emailUnsubscribeContract.unsubscribe));
+    if (!query.token) {
+      return missingTokenResponse();
+    }
+
+    const userId = await verifyUnsubscribeToken(query.token);
+    signal.throwIfAborted();
+    if (!userId) {
+      return invalidTokenResponse();
+    }
+
+    await set(unsubscribeEmailUser$, userId, signal);
+    signal.throwIfAborted();
+
+    return { status: 200 as const, body: { unsubscribed: true as const } };
+  },
+);
+
 export const emailUnsubscribeRoutes: readonly RouteEntry[] = [
   {
     route: emailUnsubscribeContract.get,
     handler: getEmailUnsubscribe$,
+  },
+  {
+    route: emailUnsubscribeContract.unsubscribe,
+    handler: postEmailUnsubscribe$,
   },
 ];

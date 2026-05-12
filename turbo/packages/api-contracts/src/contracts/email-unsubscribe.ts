@@ -8,6 +8,10 @@ export const emailUnsubscribeQuerySchema = z.object({
   token: z.string().optional(),
 });
 
+export const emailUnsubscribeResponseSchema = z.object({
+  unsubscribed: z.literal(true),
+});
+
 export const emailUnsubscribeErrorSchema = z.object({
   error: z.string(),
 });
@@ -26,7 +30,22 @@ export const emailUnsubscribeContract = c.router({
     },
     summary: "Unsubscribe from system email notifications",
   },
+  unsubscribe: {
+    method: "POST",
+    path: "/api/email/unsubscribe",
+    query: emailUnsubscribeQuerySchema,
+    body: z.undefined(),
+    responses: {
+      200: emailUnsubscribeResponseSchema,
+      400: emailUnsubscribeErrorSchema,
+    },
+    summary: "Unsubscribe a user from system-initiated emails",
+  },
 });
 
 export type EmailUnsubscribeContract = typeof emailUnsubscribeContract;
 export type EmailUnsubscribeQuery = z.infer<typeof emailUnsubscribeQuerySchema>;
+export type EmailUnsubscribeResponse = z.infer<
+  typeof emailUnsubscribeResponseSchema
+>;
+export type EmailUnsubscribeError = z.infer<typeof emailUnsubscribeErrorSchema>;
