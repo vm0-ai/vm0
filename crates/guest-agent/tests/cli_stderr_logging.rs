@@ -16,7 +16,13 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     let tmp = tempfile::tempdir()?;
     let secret = "super-secret-value";
     let mut stderr_payload = (0..(common::CLI_STDERR_RESULT_MAX_LINES + 1))
-        .map(|i| format!("line-{i}"))
+        .map(|i| {
+            if i == 42 {
+                String::new()
+            } else {
+                format!("line-{i}")
+            }
+        })
         .collect::<Vec<_>>()
         .join("\n");
     let exact_limit_line = format!(
@@ -68,6 +74,10 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     assert!(
         !cli_result.stderr_lines.iter().any(|line| line == "line-5"),
         "stderr result should drop old lines from the bounded tail, got: {stderr}"
+    );
+    assert!(
+        cli_result.stderr_lines.iter().any(String::is_empty),
+        "stderr result should preserve empty stderr lines, got: {stderr}"
     );
     assert!(
         cli_result
