@@ -241,8 +241,9 @@ describe("createApp", () => {
       await expect(observedBody).resolves.toBe('{"hello":"world"}');
     });
 
-    it("proxies realtime token requests without stale forwarded host metadata", async () => {
+    it("proxies unmatched POST requests without stale forwarded host metadata", async () => {
       mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+      const proxyPath = "/__legacy/proxy/realtime-token";
       const captured: {
         paths: string[];
         authorization: string[];
@@ -264,7 +265,7 @@ describe("createApp", () => {
       };
       useUndiciMock()
         .get("https://www.vm0.ai")
-        .intercept({ path: "/api/zero/realtime/token", method: "POST" })
+        .intercept({ path: proxyPath, method: "POST" })
         .reply((opts) => {
           captured.paths.push(opts.path);
           captured.authorization.push(
@@ -292,7 +293,7 @@ describe("createApp", () => {
         });
 
       const app = createApp({ signal: context.signal });
-      const response = await app.request("/api/zero/realtime/token", {
+      const response = await app.request(proxyPath, {
         method: "POST",
         headers: {
           authorization: "Bearer clerk-session",
@@ -310,7 +311,7 @@ describe("createApp", () => {
       await expect(response.json()).resolves.toStrictEqual({
         token: "proxied",
       });
-      expect(captured.paths).toStrictEqual(["/api/zero/realtime/token"]);
+      expect(captured.paths).toStrictEqual([proxyPath]);
       expect(captured.authorization).toStrictEqual(["Bearer clerk-session"]);
       expect(captured.origins).toStrictEqual(["https://app.vm0.ai"]);
       await expect(Promise.all(captured.bodies)).resolves.toStrictEqual(["{}"]);

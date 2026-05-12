@@ -29,6 +29,21 @@ const REMOTE_AGENT_DEVICE_APPROVED_EVENT = "approved";
 const REMOTE_AGENT_HOST_JOB_EVENT = "job";
 const REMOTE_AGENT_HOSTS_CHANGED_EVENT = "remote-agent:hosts-changed";
 
+export async function createPlatformUserRealtimeToken(
+  userId: string,
+): Promise<Ably.TokenRequest> {
+  const channelName = getUserChannelName(userId);
+  const tokenRequest = await ablyClient().auth.createTokenRequest({
+    capability: {
+      [channelName]: ["subscribe"],
+    },
+    ttl: 60 * 60 * 1000,
+    clientId: userId,
+  });
+  L.debug(`Generated platform realtime token for user:${userId}`);
+  return tokenRequest;
+}
+
 /**
  * Publish a per-user invalidation/notification signal.
  *
