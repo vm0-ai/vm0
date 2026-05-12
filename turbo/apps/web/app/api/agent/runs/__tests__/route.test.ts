@@ -10,11 +10,14 @@ import {
   createTestCliToken,
   deleteTestCliToken,
   createTestOrgModelProvider,
-  createTestOrgMultiAuthModelProvider,
+  createTestUserMultiAuthModelProvider,
   createTestConnector,
   createTestRun,
   getTestRun,
   completeTestRun,
+  insertVm0ApiKeys,
+  deleteInsertedVm0ApiKeys,
+  insertOrgModelPolicy,
   insertOrgCacheEntry,
   insertOrgMembersCacheEntry,
   getOrgCacheEntry,
@@ -52,8 +55,30 @@ import { reloadEnv } from "../../../../../src/env";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Route-level setup for feature-switch override state
 import { updateUserFeatureSwitches } from "../../../../../src/lib/zero/user/feature-switches-service";
+import {
+  DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+  getProviderRuntimeModel,
+  getVm0Vendor,
+} from "@vm0/api-contracts/contracts/model-providers";
 
 const context = testContext();
+
+afterEach(async () => {
+  await deleteInsertedVm0ApiKeys();
+});
+
+async function seedDefaultBuiltInModelKey() {
+  await insertVm0ApiKeys([
+    {
+      vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
+      model: getProviderRuntimeModel(
+        "vm0",
+        DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      ),
+      apiKey: "sk-ant-test-agent-route-built-in-default",
+    },
+  ]);
+}
 
 describe("POST /api/agent/runs - Internal Runs API", () => {
   let user: UserContext;
@@ -783,30 +808,16 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should fail when no model provider and no API key in compose", async () => {
-      // Create compose without API key and no environment block
+    it("should use built-in default when no model provider and no API key in compose", async () => {
+      await seedDefaultBuiltInModelKey();
+
       const { composeId } = await createTestCompose(uniqueId("no-mp"), {
         noEnvironmentBlock: true,
       });
 
-      // Resolution validates model providers before run creation —
-      // error returned because there's no way to authenticate to the LLM.
-      const request = createTestRequest(
-        "http://localhost:3000/api/agent/runs",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentComposeId: composeId,
-            prompt: "Test without model provider",
-          }),
-        },
-      );
-      const response = await POST(request);
-      const data = await response.json();
+      const data = await createTestRun(composeId, "Test without BYOK");
 
-      expect(response.status).toBe(422);
-      expect(data.error.code).toBe("NO_MODEL_PROVIDER");
+      expect(data.status).toBe("pending");
     });
 
     it("should skip injection when compose has explicit ANTHROPIC_API_KEY", async () => {
@@ -833,8 +844,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     it("should auto-inject model provider when no environment block exists", async () => {
       // Create org-level model provider (build-context resolves org-only)
       await createTestOrgModelProvider(
-        "claude-code-oauth-token",
-        "test-oauth-token",
+        "anthropic-api-key",
+        "test-api-key",
+        DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
       );
 
       // Create compose with no environment block at all
@@ -853,22 +865,40 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should succeed when aws-bedrock provider is configured and no API key in compose", async () => {
-      // Create org-level aws-bedrock provider (build-context resolves org-only)
-      await createTestOrgMultiAuthModelProvider("aws-bedrock", "api-key", {
-        AWS_BEARER_TOKEN_BEDROCK: "bedrock-token",
-        AWS_REGION: "us-east-1",
+    it("should succeed when a member multi-auth route is configured and no API key in compose", async () => {
+      await createTestUserMultiAuthModelProvider(
+        user.orgId,
+        user.userId,
+        "codex-oauth-token",
+        "auth_json",
+        {
+          CHATGPT_ACCESS_TOKEN: "test-access-token",
+          CHATGPT_REFRESH_TOKEN: "test-refresh-token",
+          CHATGPT_ACCOUNT_ID: "test-account-id",
+          CHATGPT_ID_TOKEN: "test-id-token",
+        },
+        "gpt-5.5",
+      );
+      await insertOrgModelPolicy({
+        orgId: user.orgId,
+        model: "gpt-5.5",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
       });
 
       // Create compose without API key
       const { composeId } = await createTestCompose(
-        `bedrock-success-${randomUUID().slice(0, 8)}`,
+        `codex-oauth-success-${randomUUID().slice(0, 8)}`,
         {
           skipDefaultApiKey: true,
         },
       );
 
-      const data = await createTestRun(composeId, "Test with bedrock provider");
+      const data = await createTestRun(
+        composeId,
+        "Test with member model provider",
+      );
 
       // Should succeed (not fail due to missing model provider)
       expect(data.status).toBe("pending");
