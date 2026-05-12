@@ -36,6 +36,7 @@ import {
   setMockOnboardingStatus,
   resetMockOnboardingStatus,
 } from "../../../mocks/handlers/api-onboarding.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -129,7 +130,9 @@ describe("model-provider-picker - agent/workspace default source", () => {
   beforeEach(() => {
     resetMockOrgModelProviders();
     resetMockOnboardingStatus();
-    setMockFeatureSwitches({});
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.ModelFirstModelProvider]: false,
+    });
     // Pin currentChatAgentId$ resolution to the test agent so route setup
     // on `/agents/:id/chat` doesn't race with the default-agent lookup.
     setMockOnboardingStatus({ defaultAgentId: AGENT_ID });

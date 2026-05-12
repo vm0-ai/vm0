@@ -11,6 +11,7 @@ import {
   type ModelProviderFramework,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { secrets } from "@vm0/db/schema/secret";
 import { encryptSecretValue } from "../../shared/crypto";
 import { badRequest, notFound } from "@vm0/api-services/errors";
@@ -807,6 +808,48 @@ async function upsertNoSecretModelProvider(
   };
 }
 
+async function resetOrgModelPoliciesForDeletedProvider(
+  orgId: string,
+  userId: string,
+  providerId: string,
+): Promise<void> {
+  if (userId !== ORG_SENTINEL_USER_ID) return;
+
+  await globalThis.services.db
+    .update(orgModelPolicies)
+    .set({
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+      modelProviderId: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(orgModelPolicies.orgId, orgId),
+        eq(orgModelPolicies.modelProviderId, providerId),
+      ),
+    );
+}
+
+async function syncOrgModelPoliciesToDefaultProvider(params: {
+  orgId: string;
+  userId: string;
+  provider: {
+    id: string;
+    type: string;
+    selectedModel: string | null;
+  } | null;
+}): Promise<void> {
+  if (params.userId !== ORG_SENTINEL_USER_ID || !params.provider) return;
+
+  await syncOrgDefaultModelPoliciesForProvider({
+    orgId: params.orgId,
+    providerType: params.provider.type as ModelProviderType,
+    modelProviderId: params.provider.type === "vm0" ? null : params.provider.id,
+    selectedModel: params.provider.selectedModel,
+  });
+}
+
 /**
  * Delete a model provider and its secret
  */
@@ -834,6 +877,8 @@ async function deleteModelProvider(
 
   const wasDefault = provider.isDefault;
   const secretId = provider.secretId;
+
+  await resetOrgModelPoliciesForDeletedProvider(orgId, userId, provider.id);
 
   // Delete secret (cascades to model_provider) - only for legacy providers
   if (secretId) {
@@ -876,7 +921,11 @@ async function deleteModelProvider(
   // (regardless of framework — workspace has at most one default).
   if (wasDefault) {
     const [nextDefault] = await globalThis.services.db
-      .select({ id: modelProviders.id, type: modelProviders.type })
+      .select({
+        id: modelProviders.id,
+        type: modelProviders.type,
+        selectedModel: modelProviders.selectedModel,
+      })
       .from(modelProviders)
       .where(
         and(eq(modelProviders.orgId, orgId), eq(modelProviders.userId, userId)),
@@ -894,6 +943,12 @@ async function deleteModelProvider(
         newDefaultType: nextDefault.type,
       });
     }
+
+    await syncOrgModelPoliciesToDefaultProvider({
+      orgId,
+      userId,
+      provider: nextDefault ?? null,
+    });
   }
 }
 
