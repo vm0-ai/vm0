@@ -5,6 +5,7 @@ import { createStore } from "ccstate";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { clearAllDetached } from "../../utils";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -322,6 +323,143 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     );
 
     expect(response.body.role).toBe("admin");
+  });
+
+  it("sends an ephemeral Slack confirmation when channel context is provided", async () => {
+    const fixture = await track(
+      store.set(seedSlackConnectOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroSlackConnectContract);
+    await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          workspaceId: fixture.slackWorkspaceId,
+          slackUserId: fixture.slackUserId,
+          channelId: "C_TEST_CHANNEL",
+          threadTs: "1234567890.123456",
+        },
+      }),
+      [200],
+    );
+
+    await clearAllDetached();
+
+    expect(context.mocks.slack.chat.postEphemeral).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "C_TEST_CHANNEL",
+        user: fixture.slackUserId,
+        text: "You're connected!",
+        thread_ts: "1234567890.123456",
+      }),
+    );
+    expect(context.mocks.slack.chat.postMessage).not.toHaveBeenCalled();
+
+    const connection = await store.set(
+      findSlackOrgConnection$,
+      {
+        slackWorkspaceId: fixture.slackWorkspaceId,
+        slackUserId: fixture.slackUserId,
+      },
+      context.signal,
+    );
+    expect(connection?.dmWelcomeSent).toBeFalsy();
+  });
+
+  it("sends a DM welcome when no channel context is provided", async () => {
+    const fixture = await track(
+      store.set(seedSlackConnectOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroSlackConnectContract);
+    await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          workspaceId: fixture.slackWorkspaceId,
+          slackUserId: fixture.slackUserId,
+        },
+      }),
+      [200],
+    );
+
+    await clearAllDetached();
+
+    expect(context.mocks.slack.chat.postEphemeral).not.toHaveBeenCalled();
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledTimes(2);
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        channel: fixture.slackUserId,
+        text: "You're connected!",
+      }),
+    );
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        channel: fixture.slackUserId,
+        text: "Hi! I'm Zero.",
+        thread_ts: "mock.ts",
+      }),
+    );
+
+    const connection = await store.set(
+      findSlackOrgConnection$,
+      {
+        slackWorkspaceId: fixture.slackWorkspaceId,
+        slackUserId: fixture.slackUserId,
+      },
+      context.signal,
+    );
+    expect(connection?.dmWelcomeSent).toBeTruthy();
+  });
+
+  it("falls back to DM welcome when ephemeral Slack confirmation fails", async () => {
+    const fixture = await track(
+      store.set(seedSlackConnectOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    context.mocks.slack.chat.postEphemeral.mockRejectedValueOnce(
+      Object.assign(new Error("not_in_channel"), {
+        data: { ok: false, error: "not_in_channel" },
+      }),
+    );
+
+    const client = setupApp({ context })(zeroSlackConnectContract);
+    await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          workspaceId: fixture.slackWorkspaceId,
+          slackUserId: fixture.slackUserId,
+          channelId: "C_TEST_CHANNEL",
+        },
+      }),
+      [200],
+    );
+
+    await clearAllDetached();
+
+    expect(context.mocks.slack.chat.postEphemeral).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "C_TEST_CHANNEL",
+        user: fixture.slackUserId,
+      }),
+    );
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledTimes(2);
+
+    const connection = await store.set(
+      findSlackOrgConnection$,
+      {
+        slackWorkspaceId: fixture.slackWorkspaceId,
+        slackUserId: fixture.slackUserId,
+      },
+      context.signal,
+    );
+    expect(connection?.dmWelcomeSent).toBeTruthy();
   });
 
   it("admin connects to an unbound workspace (binds it)", async () => {
