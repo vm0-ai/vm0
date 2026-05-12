@@ -82,15 +82,13 @@ async function installApiBypassCookie(
   }
 
   const healthUrl = new URL("/health", apiUrl);
-  healthUrl.searchParams.set("x-vercel-set-bypass-cookie", "true");
+  healthUrl.searchParams.set("x-vercel-set-bypass-cookie", "samesitenone");
   healthUrl.searchParams.set("x-vercel-protection-bypass", bypass);
-  const response = await page.goto(healthUrl.toString(), {
-    waitUntil: "domcontentloaded",
-  });
+  const response = await page.context().request.get(healthUrl.toString());
 
-  if (!response?.ok()) {
+  if (!response.ok()) {
     throw new Error(
-      `Failed to set Vercel bypass cookie for API preview (${response?.status() ?? "no response"})`,
+      `Failed to set Vercel bypass cookie for API preview (${response.status()})`,
     );
   }
 }
