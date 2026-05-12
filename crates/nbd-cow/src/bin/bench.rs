@@ -3,13 +3,16 @@
 //! Runs fio workloads on both a dm-snapshot device and an NBD COW device,
 //! then compares VM-visible IOPS, latency, AND actual host disk IOPS.
 //!
-//! Requires: root, nbd kernel module, fio, losetup, dmsetup.
+//! Requires: root, fio, losetup, dmsetup.
+//! NBD comparison also requires the nbd kernel module.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use nbd_cow::{DestroyRetryPolicy, pool::DevicePoolHandle};
 use serde_json::Value;
+
+const MIN_BASE_SIZE_MB: u64 = 512;
 
 #[tokio::main]
 async fn main() {
@@ -48,7 +51,9 @@ async fn main() {
 
     let base_path = work_dir_path.join("base.img");
     let base_size = base_size_bytes(base_size_mb).unwrap_or_else(|| {
-        eprintln!("ERROR: invalid base image size: {base_size_mb} MB");
+        eprintln!(
+            "ERROR: invalid base image size: {base_size_mb} MB (minimum {MIN_BASE_SIZE_MB} MB)"
+        );
         std::process::exit(1);
     });
 
@@ -167,7 +172,7 @@ struct FioWorkload {
 }
 
 fn base_size_bytes(base_size_mb: u64) -> Option<u64> {
-    if base_size_mb == 0 {
+    if base_size_mb < MIN_BASE_SIZE_MB {
         return None;
     }
     base_size_mb.checked_mul(1024 * 1024)
@@ -439,12 +444,7 @@ fn run_fio_with_iostat(
 
     let mut result = parse_fio_json(&output.stdout)?;
 
-    // Calculate actual host disk IOPS
-    let delta_ios = after.total_ios().saturating_sub(before.total_ios());
-    if elapsed_secs > 0.0 {
-        result.host_disk_iops =
-            fio_float_to_u64(delta_ios as f64 / elapsed_secs, "host disk IOPS")?;
-    }
+    result.host_disk_iops = calculate_host_disk_iops(&before, &after, elapsed_secs)?;
 
     eprintln!(
         "    VM IOPS: {}, Host disk IOPS: {}, Duration: {:.1}s",
@@ -452,6 +452,22 @@ fn run_fio_with_iostat(
     );
 
     Ok(result)
+}
+
+fn calculate_host_disk_iops(
+    before: &DiskStats,
+    after: &DiskStats,
+    elapsed_secs: f64,
+) -> Result<u64, String> {
+    if !elapsed_secs.is_finite() || elapsed_secs < 0.0 {
+        return Err("host disk IOPS duration is invalid".to_string());
+    }
+    if elapsed_secs == 0.0 {
+        return Ok(0);
+    }
+
+    let delta_ios = after.total_ios().saturating_sub(before.total_ios());
+    float_to_u64(delta_ios as f64 / elapsed_secs, "host disk IOPS")
 }
 
 /// Read /proc/diskstats for a given device name.
@@ -590,7 +606,7 @@ fn parse_fio_json(stdout: &[u8]) -> Result<FioResult, String> {
     let (lat_p50_us, lat_p99_us) = fio_latency_us(jobs)?;
 
     Ok(FioResult {
-        vm_iops: fio_float_to_u64(vm_iops, "VM IOPS")?,
+        vm_iops: float_to_u64(vm_iops, "fio JSON VM IOPS")?,
         lat_p50_us,
         lat_p99_us,
         host_disk_iops: 0,
@@ -742,11 +758,11 @@ fn percentile_us(section: &Value, percentile: &str) -> Option<u64> {
     Some(ns / 1000)
 }
 
-fn fio_float_to_u64(value: f64, field: &str) -> Result<u64, String> {
+fn float_to_u64(value: f64, field: &str) -> Result<u64, String> {
     if value.is_finite() && value >= 0.0 && value < u64::MAX as f64 {
         Ok(value as u64)
     } else {
-        Err(format!("fio JSON {field} is outside u64 range"))
+        Err(format!("{field} is outside u64 range"))
     }
 }
 
@@ -924,7 +940,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn base_size_bytes_rejects_overflow() {
+    fn base_size_bytes_rejects_too_small_values_and_overflow() {
+        assert_eq!(base_size_bytes(MIN_BASE_SIZE_MB - 1), None);
+        assert_eq!(
+            base_size_bytes(MIN_BASE_SIZE_MB),
+            Some(MIN_BASE_SIZE_MB * 1024 * 1024)
+        );
         assert_eq!(base_size_bytes(1024), Some(1024 * 1024 * 1024));
         assert_eq!(base_size_bytes(0), None);
         assert_eq!(base_size_bytes(u64::MAX), None);
@@ -941,11 +962,28 @@ mod tests {
     }
 
     #[test]
-    fn fio_float_to_u64_rejects_invalid_values() {
-        assert_eq!(fio_float_to_u64(42.9, "test").unwrap(), 42);
-        assert!(fio_float_to_u64(-1.0, "test").is_err());
-        assert!(fio_float_to_u64(f64::INFINITY, "test").is_err());
-        assert!(fio_float_to_u64(u64::MAX as f64, "test").is_err());
+    fn float_to_u64_rejects_invalid_values() {
+        assert_eq!(float_to_u64(42.9, "test").unwrap(), 42);
+        assert!(float_to_u64(-1.0, "test").is_err());
+        assert!(float_to_u64(f64::INFINITY, "test").is_err());
+        assert!(float_to_u64(u64::MAX as f64, "test").is_err());
+    }
+
+    #[test]
+    fn calculate_host_disk_iops_handles_counter_resets_and_invalid_time() {
+        let before = DiskStats {
+            reads_completed: 100,
+            writes_completed: 50,
+        };
+        let after = DiskStats {
+            reads_completed: 125,
+            writes_completed: 75,
+        };
+
+        assert_eq!(calculate_host_disk_iops(&before, &after, 2.0).unwrap(), 25);
+        assert_eq!(calculate_host_disk_iops(&after, &before, 2.0).unwrap(), 0);
+        assert_eq!(calculate_host_disk_iops(&before, &after, 0.0).unwrap(), 0);
+        assert!(calculate_host_disk_iops(&before, &after, f64::NAN).is_err());
     }
 
     #[test]
