@@ -359,9 +359,10 @@ fn run_command_worker<S>(
 
     let (output_tx, output_handle) = if needs_stream {
         let (tx, rx) = mpsc::sync_channel(OUTPUT_CHANNEL_CAPACITY);
+        let label_preview = truncate_preview(&request.label);
         match spawn_output_writer(
             request.seq,
-            request.label.clone(),
+            label_preview,
             rx,
             writer.clone(),
             command_cancel.clone(),
@@ -609,7 +610,7 @@ fn stream_config(policy: CommandOutputPolicy) -> Option<BoundedStreamConfig> {
 
 fn spawn_output_writer<S>(
     seq: u32,
-    label: String,
+    label_preview: String,
     rx: Receiver<StreamEvent>,
     writer: GuestWriter,
     command_cancel: Arc<AtomicBool>,
@@ -638,8 +639,7 @@ where
                         log(
                             "ERROR",
                             &format!(
-                                "command: failed to encode output seq={seq} label={}: {e}",
-                                truncate_preview(&label)
+                                "command: failed to encode output seq={seq} label={label_preview}: {e}"
                             ),
                         );
                         command_cancel.store(true, Ordering::Release);
@@ -654,8 +654,7 @@ where
                         log(
                             "ERROR",
                             &format!(
-                                "command: failed to encode output frame seq={seq} label={}: {e}",
-                                truncate_preview(&label)
+                                "command: failed to encode output frame seq={seq} label={label_preview}: {e}"
                             ),
                         );
                         command_cancel.store(true, Ordering::Release);
@@ -667,8 +666,7 @@ where
                     log(
                         "WARN",
                         &format!(
-                            "command: failed to send output chunk seq={seq} label={}: {e}",
-                            truncate_preview(&label)
+                            "command: failed to send output chunk seq={seq} label={label_preview}: {e}"
                         ),
                     );
                     command_cancel.store(true, Ordering::Release);
