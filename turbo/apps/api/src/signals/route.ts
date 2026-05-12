@@ -12,6 +12,7 @@ import { chatThreadsV1Routes } from "./routes/chat-threads-v1";
 import { deviceTokenRoutes } from "./routes/device-token";
 import { apiHealth$ } from "./routes/health";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
+import { githubOauthRoutes } from "./routes/github-oauth";
 import { internalEventConsumerTelegramTypingRoutes } from "./routes/internal-event-consumers-telegram-typing";
 import { logsSearchRoutes } from "./routes/logs-search";
 import { modelStatsRoutes } from "./routes/model-stats";
@@ -110,6 +111,7 @@ export const ROUTES: readonly RouteEntry[] = [
   },
   ...authMeRoutes,
   ...healthAuthProbeRoutes,
+  ...githubOauthRoutes,
   ...internalEventConsumerTelegramTypingRoutes,
   ...logsSearchRoutes,
   ...usageRoutes,

@@ -940,6 +940,14 @@ export {
   type IntegrationsGithubContract,
 } from "./integrations-github";
 export {
+  githubOauthContract,
+  githubOauthCallbackQuerySchema,
+  githubOauthInstallQuerySchema,
+  type GithubOauthCallbackQuery,
+  type GithubOauthContract,
+  type GithubOauthInstallQuery,
+} from "./github-oauth";
+export {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,
   zeroBillingPortalContract,
