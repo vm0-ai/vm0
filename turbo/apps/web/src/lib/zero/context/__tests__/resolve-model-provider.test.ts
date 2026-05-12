@@ -846,7 +846,7 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     await enableModelFirstModelProviderForUser(orgId, userId);
     await insertOrgModelPolicy({
       orgId,
-      model: "deepseek-v4-pro",
+      model: "gpt-5.5",
       isDefault: true,
       defaultProviderType: "vm0",
       credentialScope: "org",
@@ -860,7 +860,7 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
         false,
         undefined,
         undefined,
-        "deepseek-v4-pro",
+        "gpt-5.5",
       ),
     ).rejects.toSatisfy((err: unknown) => {
       return isBadRequest(err);

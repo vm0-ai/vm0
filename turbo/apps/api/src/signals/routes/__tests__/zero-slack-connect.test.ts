@@ -1,6 +1,9 @@
+import { randomUUID } from "node:crypto";
+
 import { zeroSlackConnectContract } from "@vm0/api-contracts/contracts/zero-slack-connect";
 import { createStore } from "ccstate";
 
+import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import {
   createFixtureTracker,
@@ -8,6 +11,8 @@ import {
 } from "./helpers/zero-route-test";
 import {
   deleteSlackConnectOrg$,
+  findSlackOrgConnection$,
+  findSlackOrgInstallation$,
   seedSlackConnectOrg$,
   type SlackConnectFixture,
 } from "./helpers/zero-slack-connect";
@@ -15,6 +20,34 @@ import {
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const SLACK_CONNECT_PATH = "/api/zero/integrations/slack/connect";
+
+async function postRawSlackConnect(body: string): Promise<{
+  readonly status: number;
+  readonly body: unknown;
+}> {
+  const app = createApp({ signal: context.signal });
+  const response = await app.request(SLACK_CONNECT_PATH, {
+    method: "POST",
+    headers: {
+      authorization: "Bearer clerk-session",
+      "content-type": "application/json",
+    },
+    body,
+  });
+
+  return {
+    status: response.status,
+    body: await response.json(),
+  };
+}
+
+function expectErrorCode(
+  body: unknown,
+  code: string,
+): asserts body is { readonly error: { readonly message: string } } {
+  expect(body).toMatchObject({ error: { code } });
+}
 
 describe("GET /api/zero/integrations/slack/connect", () => {
   const track = createFixtureTracker<SlackConnectFixture>((fixture) => {
@@ -139,5 +172,311 @@ describe("GET /api/zero/integrations/slack/connect", () => {
     );
 
     expect(response.body.isAdmin).toBeFalsy();
+  });
+});
+
+describe("POST /api/zero/integrations/slack/connect", () => {
+  const track = createFixtureTracker<SlackConnectFixture>((fixture) => {
+    return store.set(deleteSlackConnectOrg$, fixture, context.signal);
+  });
+
+  beforeEach(() => {
+    context.mocks.slack.chat.postMessage.mockResolvedValue({
+      ok: true,
+      ts: "mock.ts",
+      channel: "D_TEST",
+    });
+    context.mocks.slack.chat.postEphemeral.mockResolvedValue({
+      ok: true,
+      message_ts: "mock.ephemeral.ts",
+    });
+  });
+
+  it("returns 401 when not authenticated", async () => {
+    const client = setupApp({ context })(zeroSlackConnectContract);
+
+    const response = await accept(
+      client.connect({
+        headers: {},
+        body: {
+          workspaceId: "T-test",
+          slackUserId: "U-test",
+        },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
+  it("returns 400 when body is missing required fields", async () => {
+    const fixture = await track(
+      store.set(seedSlackConnectOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await postRawSlackConnect("{}");
+
+    expect(response.status).toBe(400);
+    expectErrorCode(response.body, "BAD_REQUEST");
+  });
+
+  it("returns 400 when body is not valid JSON", async () => {
+    const fixture = await track(
+      store.set(seedSlackConnectOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await postRawSlackConnect("not-json");
+
+    expect(response.status).toBe(400);
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Invalid JSON in request body",
+        code: "BAD_REQUEST",
+      },
+    });
+  });
+
+  it("returns 404 when workspace does not exist", async () => {
+    const fixture = await track(
+      store.set(seedSlackConnectOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroSlackConnectContract);
+    const response = await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          workspaceId: "T-nonexistent",
+          slackUserId: fixture.slackUserId,
+        },
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Workspace not found. Please install the Slack app first.",
+        code: "NOT_FOUND",
+      },
+    });
+  });
+
+  it("member connects successfully to a bound workspace", async () => {
+    const fixture = await track(
+      store.set(seedSlackConnectOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const client = setupApp({ context })(zeroSlackConnectContract);
+    const response = await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          workspaceId: fixture.slackWorkspaceId,
+          slackUserId: fixture.slackUserId,
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body.role).toBe("member");
+    const connection = await store.set(
+      findSlackOrgConnection$,
+      {
+        slackWorkspaceId: fixture.slackWorkspaceId,
+        slackUserId: fixture.slackUserId,
+      },
+      context.signal,
+    );
+    expect(connection).toMatchObject({
+      id: response.body.connectionId,
+      vm0UserId: fixture.userId,
+      slackWorkspaceId: fixture.slackWorkspaceId,
+    });
+  });
+
+  it("admin connects successfully to a bound workspace", async () => {
+    const fixture = await track(
+      store.set(seedSlackConnectOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroSlackConnectContract);
+    const response = await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          workspaceId: fixture.slackWorkspaceId,
+          slackUserId: fixture.slackUserId,
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body.role).toBe("admin");
+  });
+
+  it("admin connects to an unbound workspace (binds it)", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackConnectOrg$,
+        { installationOrgId: null },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroSlackConnectContract);
+    const response = await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          workspaceId: fixture.slackWorkspaceId,
+          slackUserId: fixture.slackUserId,
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body.role).toBe("admin");
+    const installation = await store.set(
+      findSlackOrgInstallation$,
+      fixture.slackWorkspaceId,
+      context.signal,
+    );
+    expect(installation?.orgId).toBe(fixture.orgId);
+    expect(installation?.installedByUserId).toBe(fixture.userId);
+  });
+
+  it("returns 403 when non-admin tries to connect unbound workspace", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackConnectOrg$,
+        { installationOrgId: null },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const client = setupApp({ context })(zeroSlackConnectContract);
+    const response = await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          workspaceId: fixture.slackWorkspaceId,
+          slackUserId: fixture.slackUserId,
+        },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.code).toBe("FORBIDDEN");
+    expect(response.body.error.message).toContain("Only org admins");
+  });
+
+  it("returns 403 when workspace is bound to a different org", async () => {
+    const targetOrgId = `org_${randomUUID()}`;
+    const fixture = await track(
+      store.set(
+        seedSlackConnectOrg$,
+        { installationOrgId: targetOrgId },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroSlackConnectContract);
+    const response = await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          workspaceId: fixture.slackWorkspaceId,
+          slackUserId: fixture.slackUserId,
+        },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.code).toBe("FORBIDDEN");
+    const connection = await store.set(
+      findSlackOrgConnection$,
+      {
+        slackWorkspaceId: fixture.slackWorkspaceId,
+        slackUserId: fixture.slackUserId,
+      },
+      context.signal,
+    );
+    expect(connection).toBeUndefined();
+  });
+
+  it("returns 403 with switch-org message when user is member of target org but wrong active org", async () => {
+    const targetOrgId = `org_${randomUUID()}`;
+    const fixture = await track(
+      store.set(
+        seedSlackConnectOrg$,
+        { installationOrgId: targetOrgId },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const client = setupApp({ context })(zeroSlackConnectContract);
+    const response = await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          workspaceId: fixture.slackWorkspaceId,
+          slackUserId: fixture.slackUserId,
+        },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.message).toContain(
+      "switch to the correct organization",
+    );
+  });
+
+  it("connect is idempotent - second connect returns success", async () => {
+    const fixture = await track(
+      store.set(seedSlackConnectOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroSlackConnectContract);
+    const first = await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          workspaceId: fixture.slackWorkspaceId,
+          slackUserId: fixture.slackUserId,
+        },
+      }),
+      [200],
+    );
+    const second = await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          workspaceId: fixture.slackWorkspaceId,
+          slackUserId: fixture.slackUserId,
+        },
+      }),
+      [200],
+    );
+
+    expect(second.body).toMatchObject({
+      success: true,
+      role: "admin",
+      connectionId: first.body.connectionId,
+    });
   });
 });

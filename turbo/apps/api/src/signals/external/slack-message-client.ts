@@ -14,6 +14,10 @@ type PostMessageResult =
     }
   | { readonly kind: "slack_error"; readonly error: string };
 
+type PostEphemeralResult =
+  | { readonly kind: "ok"; readonly ts: string | undefined }
+  | { readonly kind: "slack_error"; readonly error: string };
+
 export function createSlackClient(token: string): WebClient {
   return new WebClient(token);
 }
@@ -76,6 +80,34 @@ export async function postMessage(
     throw result.error;
   }
   return { kind: "ok", ts: result.ok.ts, channel: result.ok.channel };
+}
+
+export async function postEphemeral(
+  client: WebClient,
+  options: {
+    readonly channel: string;
+    readonly user: string;
+    readonly text: string;
+    readonly threadTs?: string;
+    readonly blocks?: (Block | KnownBlock)[];
+  },
+): Promise<PostEphemeralResult> {
+  const result = await safeAsync(() => {
+    return client.chat.postEphemeral({
+      channel: options.channel,
+      user: options.user,
+      text: options.text,
+      thread_ts: options.threadTs,
+      blocks: options.blocks,
+    });
+  });
+  if ("error" in result) {
+    if (isSlackPlatformError(result.error)) {
+      return { kind: "slack_error", error: result.error.data.error };
+    }
+    throw result.error;
+  }
+  return { kind: "ok", ts: result.ok.message_ts };
 }
 
 type GetUploadUrlResult =

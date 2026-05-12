@@ -44,6 +44,7 @@ export interface ApiTestMocks {
   readonly slack: {
     readonly chat: {
       readonly postMessage: AsyncMock;
+      readonly postEphemeral: AsyncMock;
     };
     readonly conversations: {
       readonly list: AsyncMock;
@@ -138,6 +139,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   const slack = {
     chat: {
       postMessage: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      postEphemeral: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     conversations: {
       list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -379,6 +381,7 @@ vi.mock("@slack/web-api", () => {
       return {
         chat: {
           postMessage: apiTestMocks.slack.chat.postMessage,
+          postEphemeral: apiTestMocks.slack.chat.postEphemeral,
         },
         conversations: {
           list: apiTestMocks.slack.conversations.list,
@@ -492,6 +495,7 @@ export function resetApiTestMocks(): void {
   );
   apiTestMocks.s3.clientConfig.mockReset();
   apiTestMocks.slack.chat.postMessage.mockReset();
+  apiTestMocks.slack.chat.postEphemeral.mockReset();
   apiTestMocks.slack.conversations.list.mockReset();
   apiTestMocks.slack.conversations.open.mockReset();
   apiTestMocks.slack.files.info.mockReset();
