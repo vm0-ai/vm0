@@ -159,9 +159,11 @@ describe("chat thread page — model picker read-only", () => {
     });
   });
 
-  // CHAT-LOCK-003: model-first selection is a user preference on new threads,
-  // but an already-started thread still keeps its own model locked.
-  it("renders model-first picker as plain text when thread has a user message (CHAT-LOCK-003)", async () => {
+  // CHAT-LOCK-003: in model-first mode the picker stays interactive even after
+  // a user turn — the user can switch models mid-thread; the composer sets
+  // `forceNewSession` on send so the server starts a fresh CLI session and
+  // injects the prior messages into the system prompt.
+  it("keeps model-first picker interactive when thread has a user message (CHAT-LOCK-003)", async () => {
     setMockFeatureSwitches({
       [FeatureSwitchKey.ModelFirstModelProvider]: true,
     });
@@ -175,11 +177,9 @@ describe("chat thread page — model picker read-only", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const label = await waitFor(() => {
-      return screen.getByLabelText("GLM-5.1");
+    await waitFor(() => {
+      return screen.getByRole("combobox", { name: /GLM-5\.1/i });
     });
-    expect(label.tagName).toBe("SPAN");
-    expect(screen.queryByRole("combobox", { name: "GLM-5.1" })).toBeNull();
   });
 
   // CHAT-LOCK-004: empty thread keeps the picker interactive.

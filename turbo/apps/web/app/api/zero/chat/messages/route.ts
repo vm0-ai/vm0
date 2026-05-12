@@ -27,8 +27,10 @@ import {
   buildWebAttachFilesPrompt,
   buildWebChatGoalPrompt,
   buildWebChatIncompleteContext,
+  buildWebChatPriorMessagesContext,
   type WebChatGoalContext,
   type WebChatIncompleteRound,
+  type WebChatPriorMessage,
 } from "../../../../../src/lib/zero/integration-prompt";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -127,17 +129,72 @@ const GOAL_DEFAULT_BUDGET = 10;
 
 function buildAppendSystemPrompt(
   incompleteContext: string,
+  priorContext: string,
   goalContext: WebChatGoalContext | null,
 ): string {
   return [
     buildWebChatPrompt(),
     goalContext ? buildWebChatGoalPrompt(goalContext) : "",
+    priorContext,
     incompleteContext,
   ]
     .filter((part) => {
       return typeof part === "string" && part.length > 0;
     })
     .join("\n\n");
+}
+
+/**
+ * Number of prior chat messages to embed in the system prompt when
+ * `forceNewSession` is set. Matches `PREVIOUS_CONTEXT_MESSAGES` (used by
+ * the title generator) — large enough to anchor the agent on the most
+ * recent exchange, small enough to stay well under any model context cap.
+ */
+const PRIOR_HISTORY_MESSAGE_LIMIT = 10;
+
+async function loadPriorMessagesForNewSession(
+  threadId: string,
+): Promise<WebChatPriorMessage[]> {
+  const rows = await getLatestMessagesByThreadId(
+    threadId,
+    PRIOR_HISTORY_MESSAGE_LIMIT,
+  );
+  return rows.map((row) => {
+    return {
+      role: row.role,
+      content: row.content,
+      attachFiles: row.attachFiles,
+    };
+  });
+}
+
+/**
+ * When the user switches models mid-thread (`forceNewSession`), the existing
+ * CLI session cannot be resumed under a different provider/model. Drop the
+ * thread's model pin so `resolveRunModelOverride` writes the new selection
+ * freshly, and build a prior-messages block to keep the agent's conversation
+ * context across the model switch. Returns "" for new threads / non-forced
+ * sends so the caller can `filter(Boolean).join()`.
+ */
+async function prepareForceNewSessionContext(
+  threadId: string,
+  forceNewSession: boolean,
+  isNewThread: boolean,
+): Promise<string> {
+  if (!forceNewSession || isNewThread) return "";
+  await globalThis.services.db
+    .update(chatThreads)
+    .set({
+      modelProviderId: null,
+      modelProviderType: null,
+      modelProviderCredentialScope: null,
+      selectedModel: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(chatThreads.id, threadId));
+  return buildWebChatPriorMessagesContext(
+    await loadPriorMessagesForNewSession(threadId),
+  );
 }
 
 interface GoalOriginRow {
@@ -690,10 +747,17 @@ async function resolveRunModelOverride(
     | { modelProviderId: string; selectedModel: string }
     | null
     | undefined,
+  forceNewSession: boolean,
 ): Promise<ResolvedThreadModelPin> {
   if (modelSelection !== undefined && modelSelection !== null) {
     if (modelFirstEnabled) {
-      const storedPin = await getExistingModelFirstThreadPin(threadId);
+      // When the user explicitly switched models mid-thread, ignore the
+      // stored-pin / first-run-pin fallbacks — both would re-route the new
+      // run to the previous model. Resolve fresh from the incoming
+      // `modelSelection` exactly as we do for a brand-new thread.
+      const storedPin = forceNewSession
+        ? null
+        : await getExistingModelFirstThreadPin(threadId);
       if (storedPin) {
         const pin = await persistModelFirstThreadPinIfUnset(
           threadId,
@@ -732,7 +796,12 @@ async function resolveRunModelOverride(
     });
   } else {
     if (modelFirstEnabled) {
-      const storedPin = await getExistingModelFirstThreadPin(threadId);
+      // forceNewSession with no explicit modelSelection still means "drop the
+      // prior session" — pick up the user's current default route instead of
+      // re-applying the thread's stale pin (or its first-run model).
+      const storedPin = forceNewSession
+        ? null
+        : await getExistingModelFirstThreadPin(threadId);
       if (storedPin) {
         const resolvedStoredPin = await resolveStoredModelFirstPin({
           orgId,
@@ -799,7 +868,14 @@ async function rejectIfThreadModelLocked(
   threadId: string,
   incoming: { modelProviderId: string; selectedModel: string } | null,
   modelFirstEnabled: boolean,
+  forceNewSession: boolean,
 ): Promise<boolean> {
+  // The composer surfaces a different selectedModel only when the user
+  // explicitly switched the picker mid-thread (model-first mode). Honor
+  // that intent — the lock is for accidental client divergence, not for
+  // user-driven model swaps.
+  if (forceNewSession) return false;
+
   if (modelFirstEnabled) {
     const existingPin = await getExistingModelFirstThreadPin(threadId);
     if (!existingPin?.selectedModel) {
@@ -905,6 +981,7 @@ async function validateThreadModelSelectionLock(params: {
   threadId: string | undefined;
   modelSelection: IncomingModelSelection;
   modelFirstEnabled: boolean;
+  forceNewSession: boolean;
   emit: (op: string, ms: number) => void;
 }) {
   const { threadId, modelSelection } = params;
@@ -917,6 +994,7 @@ async function validateThreadModelSelectionLock(params: {
       threadId,
       modelSelection,
       params.modelFirstEnabled,
+      params.forceNewSession,
     );
   });
   params.emit(CHAT_REQUEST_OPS.model_selection_lock_check, lockT.ms);
@@ -929,6 +1007,7 @@ async function validateSendModelSelection(params: {
   threadId: string | undefined;
   modelSelection: IncomingModelSelection;
   modelFirstEnabled: boolean;
+  forceNewSession: boolean;
   emit: (op: string, ms: number) => void;
 }) {
   const ownershipError = await validateLegacyModelSelectionOwnership({
@@ -943,6 +1022,7 @@ async function validateSendModelSelection(params: {
     threadId: params.threadId,
     modelSelection: params.modelSelection,
     modelFirstEnabled: params.modelFirstEnabled,
+    forceNewSession: params.forceNewSession,
     emit: params.emit,
   });
 }
@@ -962,6 +1042,7 @@ async function persistExplicitModelFirstSelection(params: {
   threadId: string;
   modelFirstEnabled: boolean;
   modelSelection: IncomingModelSelection;
+  forceNewSession: boolean;
 }): Promise<boolean> {
   if (
     !hasExplicitModelFirstSelection(
@@ -971,7 +1052,12 @@ async function persistExplicitModelFirstSelection(params: {
   ) {
     return false;
   }
-  const existingPin = await getExistingModelFirstThreadPin(params.threadId);
+  // When the user explicitly switched models mid-thread, treat their pick as
+  // the new preference — the stored / first-run pin is the old model and
+  // would otherwise short-circuit this update.
+  const existingPin = params.forceNewSession
+    ? null
+    : await getExistingModelFirstThreadPin(params.threadId);
   if (existingPin) {
     return false;
   }
@@ -1009,6 +1095,7 @@ async function resolveThread(
   existingThreadId: string | undefined,
   clientThreadId: string | undefined,
   agentPin: ThreadModelPin,
+  forceNewSession: boolean,
   dims?: ChatSpanDimensions,
 ): Promise<ResolvedThread> {
   const emit = (op: string, ms: number): void => {
@@ -1037,11 +1124,16 @@ async function resolveThread(
   // them in parallel caps wall time at the slowest arm. The prior 4th arm
   // (`getLatestMessagesByThreadId`) was a ~275ms P50 read used only by the
   // fire-and-forget title generator — now lifted off this critical path.
+  //
+  // When `forceNewSession` is set, the prior session is intentionally
+  // discarded so the latest-session-id lookup is skipped — the parallel
+  // shape is preserved with a no-op arm to keep span emission stable.
   const [threadT, sessionIdT, incompleteT] = await Promise.all([
     timed(async () => {
       return getChatThread(existingThreadId, userId);
     }),
     timed(async () => {
+      if (forceNewSession) return undefined;
       return getLatestSessionIdForThread(existingThreadId);
     }),
     timed(async () => {
@@ -1060,9 +1152,15 @@ async function resolveThread(
     dims.thread_is_new = false;
   }
 
-  const incompleteContext = buildWebChatIncompleteContext(
-    groupIncompleteRoundsByRunId(incompleteT.result),
-  );
+  // When forcing a new session, the user is mid-thread and the incomplete
+  // context belongs to the previous model's session — replaying it under a
+  // different model is meaningless and can confuse the agent. The prior
+  // messages context built downstream covers the conversation gap instead.
+  const incompleteContext = forceNewSession
+    ? ""
+    : buildWebChatIncompleteContext(
+        groupIncompleteRoundsByRunId(incompleteT.result),
+      );
 
   return {
     threadId: thread.id,
@@ -1309,11 +1407,19 @@ const router = tsr.router(chatMessagesContract, {
       authCtx.userId,
     );
 
+    // forceNewSession is set by the web composer when the user picked a
+    // different model than the thread's persisted pin. The thread-pin lock,
+    // session-id reuse, and incomplete-rounds context are all bypassed for
+    // this run, and prior chat messages are injected into the system prompt
+    // so the agent still has conversation context across the model switch.
+    const forceNewSession = body.forceNewSession === true;
+
     const modelSelectionError = await validateSendModelSelection({
       orgId: callerOrg.orgId,
       threadId: body.threadId,
       modelSelection: body.modelSelection,
       modelFirstEnabled,
+      forceNewSession,
       emit,
     });
     if (modelSelectionError) return modelSelectionError;
@@ -1345,8 +1451,15 @@ const router = tsr.router(chatMessagesContract, {
           body.threadId,
           body.clientThreadId,
           eagerPin,
+          forceNewSession,
           dims,
         );
+
+      const priorContext = await prepareForceNewSessionContext(
+        threadId,
+        forceNewSession,
+        isNewThread,
+      );
 
       const persistedExplicitModelFirstSelection =
         await persistExplicitModelFirstSelection({
@@ -1355,6 +1468,7 @@ const router = tsr.router(chatMessagesContract, {
           threadId,
           modelFirstEnabled,
           modelSelection: body.modelSelection,
+          forceNewSession,
         });
 
       if (await activeRunExistsForThread(threadId)) {
@@ -1392,6 +1506,7 @@ const router = tsr.router(chatMessagesContract, {
           },
           modelFirstEnabled,
           body.modelSelection,
+          forceNewSession,
         );
       });
       emit(CHAT_REQUEST_OPS.resolve_model_override, overrideT.ms);
@@ -1486,6 +1601,7 @@ const router = tsr.router(chatMessagesContract, {
         debugNoMockCodex: body.debugNoMockCodex,
         appendSystemPrompt: buildAppendSystemPrompt(
           incompleteContext,
+          priorContext,
           goalContext,
         ),
         callbacks: [chatCallback],

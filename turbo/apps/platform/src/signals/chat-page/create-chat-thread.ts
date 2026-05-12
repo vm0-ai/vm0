@@ -1545,6 +1545,19 @@ function createSendMessage(deps: SendMessageDeps) {
         { signal },
       );
 
+      // Model-first lets the user swap models mid-thread (the picker stays
+      // editable). When the new selection differs from the thread's pinned
+      // model, signal the server to start a fresh CLI session — resuming the
+      // existing sessionId across providers/models triggers
+      // PROVIDER_INCOMPATIBLE (or "Invalid signature in thinking block") on
+      // the runner side. The server then injects prior chat messages into
+      // the system prompt so the agent still has conversation context.
+      const threadPinSelectedModel = thread?.selectedModel ?? null;
+      const forceNewSession =
+        threadPinSelectedModel !== null &&
+        effectiveSelectedModel !== undefined &&
+        threadPinSelectedModel !== effectiveSelectedModel;
+
       const client = get(zeroClient$)(chatMessagesContract);
       const [, sendResult] = await Promise.all([
         set(flushDraftClear$, signal),
@@ -1559,6 +1572,7 @@ function createSendMessage(deps: SendMessageDeps) {
               modelSelection,
               attachFiles: result.attachFiles,
               ...(isGoal ? { goal: true } : {}),
+              ...(forceNewSession ? { forceNewSession: true } : {}),
             },
             fetchOptions: { signal },
           }),

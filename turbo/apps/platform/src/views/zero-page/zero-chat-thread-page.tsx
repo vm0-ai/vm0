@@ -2063,8 +2063,11 @@ function useChatComposerModel(
     modelSelection,
     setModelSelection: handleModelSelectionChange,
     sessionProviderType: threadData?.latestSessionProviderType ?? null,
-    // Lock after the first user turn; assistant-only preambles remain editable.
-    disabled: hasUserMessages,
+    // Classic mode keeps the legacy "one model per thread" lock after the
+    // first user turn. Model-first stays editable so the user can swap models
+    // mid-thread; the composer signals the server to start a fresh CLI
+    // session on send (sessionId continuation would fail across providers).
+    disabled: hasUserMessages && !modelFirstEnabled,
     agentDefault: agentModelDefault,
   });
   const modelPickerLoading =

@@ -267,6 +267,78 @@ export function buildWebAttachFilesPrompt(
   return blocks.join("\n");
 }
 
+export interface WebChatPriorMessage {
+  role: "user" | "assistant";
+  content: string;
+  attachFiles: string[] | null;
+}
+
+const WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP = 4000;
+const WEB_CHAT_PRIOR_PREAMBLE = [
+  "The messages below are completed rounds earlier in this chat thread. The",
+  "CLI session history has been reset for this run (the user switched models",
+  "mid-thread, so the previous session is not safe to resume), so the prior",
+  "conversation is shown here verbatim. RELATIVE_INDEX 0 is the most recent.",
+  "Treat them as part of the conversation you are continuing.",
+].join("\n");
+
+function truncateForPriorContext(value: string): string {
+  if (value.length <= WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP) return value;
+  return `${value.slice(0, WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP)}…[truncated]`;
+}
+
+function formatPriorAttachFiles(ids: string[] | null | undefined): string {
+  if (!ids || ids.length === 0) return "";
+  return ids
+    .map((id) => {
+      return `[Web file]\n   [ID] ${id}`;
+    })
+    .join("\n");
+}
+
+/**
+ * Build a transcript block describing successfully completed rounds earlier
+ * in the thread. Used when the web chat send forces a new CLI session (the
+ * user switched models mid-thread), so the agent still sees the prior
+ * conversation that would otherwise have lived only in the discarded CLI
+ * session history.
+ *
+ * Empty input returns `""` so the caller can `filter(Boolean).join()`.
+ */
+export function buildWebChatPriorMessagesContext(
+  msgs: WebChatPriorMessage[],
+): string {
+  if (msgs.length === 0) return "";
+
+  const total = msgs.length;
+  const blocks = msgs.map((m, idx) => {
+    const relativeIndex = idx - total + 1;
+    const attach = formatPriorAttachFiles(m.attachFiles);
+    const body = truncateForPriorContext(m.content);
+    const roleLabel = m.role === "user" ? "User" : "Assistant";
+    const lines = [
+      "---",
+      "",
+      `- RELATIVE_INDEX: ${relativeIndex}`,
+      `- ROLE: ${m.role}`,
+      "",
+      `${roleLabel}: ${body || "[empty message]"}`,
+    ];
+    if (attach) lines.push(attach);
+    return lines.join("\n");
+  });
+
+  return [
+    "# Prior Chat Thread Context",
+    "",
+    WEB_CHAT_PRIOR_PREAMBLE,
+    "",
+    blocks.join("\n\n"),
+    "",
+    "---",
+  ].join("\n");
+}
+
 export interface WebChatIncompleteRoundMessage {
   role: "user" | "assistant";
   content: string | null;
