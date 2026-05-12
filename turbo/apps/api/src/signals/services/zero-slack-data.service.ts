@@ -12,7 +12,7 @@ import { listConversations } from "../../lib/slack-client";
 import { decryptSecretValue } from "./crypto.utils";
 import type { ApiOrgRole } from "../../types/auth";
 
-const SLACK_BOT_SCOPES: readonly string[] = [
+export const SLACK_BOT_SCOPES: readonly string[] = [
   "app_mentions:read",
   "chat:write",
   "channels:read",

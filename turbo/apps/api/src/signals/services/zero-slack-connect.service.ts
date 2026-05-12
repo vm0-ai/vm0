@@ -159,6 +159,7 @@ export const connectSlackWorkspace$ = command(
       readonly slackUserId: string;
       readonly channelId?: string;
       readonly threadTs?: string;
+      readonly pendingPrompt?: string;
     },
     signal: AbortSignal,
   ): Promise<ConnectResult> => {
@@ -294,6 +295,7 @@ export const notifySlackConnect$ = command(
       readonly slackUserId: string;
       readonly channelId?: string;
       readonly threadTs?: string;
+      readonly pendingPrompt?: string;
     },
     signal: AbortSignal,
   ): Promise<void> => {
@@ -313,6 +315,8 @@ export const notifySlackConnect$ = command(
         text: "You're connected!",
         blocks,
         threadTs: args.threadTs,
+      }).catch(() => {
+        return { kind: "slack_error" as const, error: "post_ephemeral_failed" };
       });
       signal.throwIfAborted();
       sentEphemeral = result.kind === "ok";
@@ -338,6 +342,17 @@ export const notifySlackConnect$ = command(
       blocks: buildWelcomeMessage(),
     });
     signal.throwIfAborted();
+
+    if (args.pendingPrompt) {
+      const safePrompt = `\`\`\`${args.pendingPrompt.replaceAll("`", "'")}\`\`\``;
+      await postMessage(
+        client,
+        args.slackUserId,
+        `By the way, would you like me to run this for you?\n\n${safePrompt}\n\nJust paste it in a message and I'll get started!`,
+        { threadTs: connectMessage.ts },
+      );
+      signal.throwIfAborted();
+    }
 
     await writeDb
       .update(slackOrgConnections)
