@@ -226,23 +226,26 @@ fn cli_failure_message(code: i32, stderr_lines: &[String]) -> String {
     }
 
     log_info!(LOG_TAG, "Captured {} stderr lines", stderr_lines.len());
-    let has_omitted_lines = stderr_lines.len() > MAX_LOGGED_CLI_STDERR_LINES;
+    let omitted_lines = stderr_lines
+        .len()
+        .saturating_sub(MAX_LOGGED_CLI_STDERR_LINES);
     let mut message_lines = Vec::with_capacity(
-        stderr_lines.len().min(MAX_LOGGED_CLI_STDERR_LINES) + usize::from(has_omitted_lines),
+        stderr_lines.len().min(MAX_LOGGED_CLI_STDERR_LINES) + usize::from(omitted_lines > 0),
     );
-    for line in stderr_lines.iter().take(MAX_LOGGED_CLI_STDERR_LINES) {
+    if omitted_lines > 0 {
+        log_warn!(
+            LOG_TAG,
+            "CLI stderr: omitted {} earlier line(s)",
+            omitted_lines
+        );
+        message_lines.push(format!(
+            "...[omitted {omitted_lines} earlier stderr line(s)]"
+        ));
+    }
+    for line in stderr_lines.iter().skip(omitted_lines) {
         let line = truncate_cli_stderr_line(line);
         log_warn!(LOG_TAG, "CLI stderr: {line}");
         message_lines.push(line.into_owned());
-    }
-    if has_omitted_lines {
-        let omitted = stderr_lines.len() - MAX_LOGGED_CLI_STDERR_LINES;
-        log_warn!(
-            LOG_TAG,
-            "CLI stderr: omitted {} additional line(s)",
-            omitted
-        );
-        message_lines.push(format!("...[omitted {omitted} additional stderr line(s)]"));
     }
     message_lines.join(" ")
 }
@@ -432,11 +435,17 @@ mod tests {
         let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
 
         let long_line = format!("{}tail", "x".repeat(MAX_LOGGED_CLI_STDERR_LINE_BYTES + 1));
-        let stderr_lines = std::iter::once("codex stderr includes ***".to_string())
+        let stderr_lines = ["prefix line 0".to_string(), "prefix line 1".to_string()]
+            .into_iter()
+            .chain(std::iter::once("codex stderr includes ***".to_string()))
             .chain(std::iter::once(long_line.clone()))
-            .chain((0..MAX_LOGGED_CLI_STDERR_LINES).map(|i| format!("extra line {i}")))
+            .chain((0..(MAX_LOGGED_CLI_STDERR_LINES - 2)).map(|i| format!("extra line {i}")))
             .collect::<Vec<_>>();
         let msg = cli_failure_message(1, &stderr_lines);
+        assert!(
+            !msg.contains("prefix line"),
+            "returned error message should omit older stderr lines"
+        );
         assert!(
             msg.contains("codex stderr includes ***"),
             "returned error message should preserve stderr"
@@ -450,14 +459,18 @@ mod tests {
             "returned error message should not include bytes after the truncation boundary"
         );
         assert!(
-            msg.contains("...[omitted 2 additional stderr line(s)]"),
-            "returned error message should report omitted stderr lines"
+            msg.contains("...[omitted 2 earlier stderr line(s)]"),
+            "returned error message should report omitted earlier stderr lines"
         );
 
         let system_log = std::fs::read_to_string(&system_log_path).unwrap();
         assert!(
             system_log.contains("Captured 22 stderr lines"),
             "system log should include stderr count, got: {system_log}"
+        );
+        assert!(
+            !system_log.contains("prefix line"),
+            "system log should omit older stderr lines"
         );
         assert!(
             system_log.contains("CLI stderr: codex stderr includes ***"),
@@ -472,8 +485,8 @@ mod tests {
             "system log should not include bytes after the truncation boundary"
         );
         assert!(
-            system_log.contains("CLI stderr: omitted 2 additional line(s)"),
-            "system log should report omitted stderr lines, got: {system_log}"
+            system_log.contains("CLI stderr: omitted 2 earlier line(s)"),
+            "system log should report omitted earlier stderr lines, got: {system_log}"
         );
     }
 
