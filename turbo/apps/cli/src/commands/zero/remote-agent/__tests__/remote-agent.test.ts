@@ -17,6 +17,7 @@ describe("remote-agent command registration", () => {
     expect(subNames).toContain("list");
     expect(subNames).toContain("delete");
     expect(subNames).toContain("run");
+    expect(subNames).toContain("runs");
     expect(subNames).not.toContain("connect");
     expect(subNames).not.toContain("host");
     expect(subNames).not.toContain("kill");
@@ -36,6 +37,7 @@ describe("remote-agent command registration", () => {
     });
     expect(subNames).toContain("list");
     expect(subNames).toContain("run");
+    expect(subNames).toContain("runs");
     expect(subNames).not.toContain("start");
     expect(subNames).not.toContain("delete");
     expect(subNames).not.toContain("connect");

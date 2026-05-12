@@ -15,7 +15,7 @@ import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { authorization$ } from "../context/hono";
-import { bodyResultOf, pathParamsOf } from "../context/request";
+import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   claimRemoteAgentDeviceCode$,
@@ -27,6 +27,7 @@ import {
   deleteRemoteAgentHost$,
   getRemoteAgentJob$,
   heartbeatRemoteAgentHost$,
+  listRemoteAgentJobs$,
   listRemoteAgentHosts$,
   pollRemoteAgentDeviceCode$,
   startRemoteAgentHost$,
@@ -338,6 +339,41 @@ const hostsDeleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: { ok: true as const } };
 });
 
+const runListQuery$ = queryOf(zeroRemoteAgentRunContract.list);
+const runListInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const overrides = await get(
+    userFeatureSwitchOverrides(auth.orgId, auth.userId),
+  );
+  signal.throwIfAborted();
+  if (
+    !isRemoteAgentEnabled({
+      orgId: auth.orgId,
+      userId: auth.userId,
+      overrides,
+    })
+  ) {
+    return remoteAgentDisabled;
+  }
+
+  const query = get(runListQuery$);
+  const result = await set(
+    listRemoteAgentJobs$,
+    {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      status: query.status,
+      hostId: query.hostId,
+      hostName: query.hostName,
+      limit: query.limit,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  return { status: 200 as const, body: result };
+});
+
 const runCreateBody$ = bodyResultOf(zeroRemoteAgentRunContract.create);
 const runCreateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -563,6 +599,10 @@ export const zeroRemoteAgentRoutes: readonly RouteEntry[] = [
   {
     route: zeroRemoteAgentHostsContract.delete,
     handler: authRoute(remoteAgentAuthOptions, hostsDeleteInner$),
+  },
+  {
+    route: zeroRemoteAgentRunContract.list,
+    handler: authRoute(remoteAgentReadAuthOptions, runListInner$),
   },
   {
     route: zeroRemoteAgentRunContract.create,

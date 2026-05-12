@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomInt } from "crypto";
 import { command } from "ccstate";
-import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, type SQL } from "drizzle-orm";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type {
   RemoteAgentBackend,
@@ -62,6 +62,8 @@ type PollRemoteAgentDeviceCodeResult =
   | { readonly status: "expired" }
   | { readonly status: "invalid" };
 
+type RemoteAgentJobStatus = "queued" | "running" | "succeeded" | "failed";
+
 function generateCode(length = 8): string {
   let code = "";
   for (let i = 0; i < length; i++) {
@@ -105,13 +107,31 @@ function serializeJob(row: typeof remoteAgentJobs.$inferSelect) {
     hostId: row.hostId,
     backend: row.backend as RemoteAgentBackend | null,
     prompt: row.prompt,
-    status: row.status as "queued" | "running" | "succeeded" | "failed",
+    status: row.status as RemoteAgentJobStatus,
     output: row.output,
     error: row.error,
     exitCode: row.exitCode,
     createdAt: row.createdAt.toISOString(),
     startedAt: row.startedAt?.toISOString() ?? null,
     completedAt: row.completedAt?.toISOString() ?? null,
+  };
+}
+
+function serializeJobListItem(row: {
+  readonly job: typeof remoteAgentJobs.$inferSelect;
+  readonly hostName: string | null;
+}) {
+  return {
+    id: row.job.id,
+    hostId: row.job.hostId,
+    hostName: row.hostName,
+    backend: row.job.backend as RemoteAgentBackend | null,
+    prompt: row.job.prompt,
+    status: row.job.status as RemoteAgentJobStatus,
+    exitCode: row.job.exitCode,
+    createdAt: row.job.createdAt.toISOString(),
+    startedAt: row.job.startedAt?.toISOString() ?? null,
+    completedAt: row.job.completedAt?.toISOString() ?? null,
   };
 }
 
@@ -960,6 +980,58 @@ export const getRemoteAgentJob$ = command(
     signal.throwIfAborted();
 
     return row ? serializeJob(row) : null;
+  },
+);
+
+export const listRemoteAgentJobs$ = command(
+  async (
+    { set },
+    params: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly status?: RemoteAgentJobStatus;
+      readonly hostId?: string;
+      readonly hostName?: string;
+      readonly limit: number;
+    },
+    signal: AbortSignal,
+  ) => {
+    const writeDb = set(writeDb$);
+    const conditions: SQL[] = [
+      eq(remoteAgentJobs.orgId, params.orgId),
+      eq(remoteAgentJobs.userId, params.userId),
+    ];
+
+    if (params.status) {
+      conditions.push(eq(remoteAgentJobs.status, params.status));
+    }
+    if (params.hostId) {
+      conditions.push(eq(remoteAgentJobs.hostId, params.hostId));
+    }
+    if (params.hostName) {
+      conditions.push(eq(remoteAgentHosts.displayName, params.hostName));
+    }
+
+    const rows = await writeDb
+      .select({
+        job: remoteAgentJobs,
+        hostName: remoteAgentHosts.displayName,
+      })
+      .from(remoteAgentJobs)
+      .leftJoin(
+        remoteAgentHosts,
+        eq(remoteAgentJobs.hostId, remoteAgentHosts.id),
+      )
+      .where(and(...conditions))
+      .orderBy(desc(remoteAgentJobs.createdAt))
+      .limit(params.limit);
+    signal.throwIfAborted();
+
+    return {
+      runs: rows.map((row) => {
+        return serializeJobListItem(row);
+      }),
+    };
   },
 );
 

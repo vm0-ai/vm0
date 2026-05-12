@@ -196,6 +196,7 @@ export {
   createRemoteAgentHostRealtimeSubscription,
   deleteRemoteAgentHost,
   getRemoteAgentRun,
+  listRemoteAgentRuns,
   listRemoteAgentHosts,
   startRemoteAgentHost,
   sendRemoteAgentHeartbeat,

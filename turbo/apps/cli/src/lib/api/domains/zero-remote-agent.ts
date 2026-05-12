@@ -6,6 +6,8 @@ import type {
   RemoteAgentHostStartResponse,
   RemoteAgentRealtimeSubscription,
   RemoteAgentRunCreateResponse,
+  RemoteAgentRunListResponse,
+  RemoteAgentJobStatus,
   RemoteAgentRunResponse,
 } from "@vm0/api-contracts/contracts/zero-remote-agent";
 import {
@@ -150,7 +152,7 @@ export async function listRemoteAgentHosts(): Promise<RemoteAgentHostListRespons
   const config = await getRemoteAgentClientConfig();
   const client = initClient(zeroRemoteAgentHostsContract, config);
 
-  const result = await client.list();
+  const result = await client.list({ headers: {} });
 
   if (result.status === 200) {
     return result.body;
@@ -187,6 +189,30 @@ export async function getRemoteAgentRun(
   }
 
   handleError(result, "Failed to get remote-agent run");
+}
+
+export async function listRemoteAgentRuns(params: {
+  status?: RemoteAgentJobStatus;
+  hostId?: string;
+  hostName?: string;
+  limit?: number;
+}): Promise<RemoteAgentRunListResponse> {
+  const config = await getRemoteAgentClientConfig();
+  const client = initClient(zeroRemoteAgentRunContract, config);
+
+  const result = await client.list({
+    headers: {},
+    query: {
+      ...params,
+      limit: params.limit ?? 20,
+    },
+  });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to list remote-agent runs");
 }
 
 export async function claimNextRemoteAgentHostJob(params: {

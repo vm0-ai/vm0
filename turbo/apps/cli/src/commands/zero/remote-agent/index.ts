@@ -3,6 +3,7 @@ import { startCommand } from "./host";
 import { deleteCommand } from "./delete";
 import { listCommand } from "./list";
 import { runCommand } from "./run";
+import { runsCommand } from "./runs";
 
 export const remoteAgentCommand = new Command()
   .name("remote-agent")
@@ -10,10 +11,12 @@ export const remoteAgentCommand = new Command()
   .addCommand(startCommand)
   .addCommand(listCommand)
   .addCommand(deleteCommand)
-  .addCommand(runCommand);
+  .addCommand(runCommand)
+  .addCommand(runsCommand);
 
 export const zeroRemoteAgentCommand = new Command()
   .name("remote-agent")
   .description("Run jobs on remote-agent hosts")
   .addCommand(listCommand)
-  .addCommand(runCommand);
+  .addCommand(runCommand)
+  .addCommand(runsCommand);

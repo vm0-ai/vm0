@@ -75,6 +75,16 @@ export const remoteAgentRunResponseSchema = z.object({
   completedAt: z.string().nullable(),
 });
 
+export const remoteAgentRunListItemSchema = remoteAgentRunResponseSchema
+  .omit({ output: true, error: true })
+  .extend({
+    hostName: z.string().nullable(),
+  });
+
+export const remoteAgentRunListResponseSchema = z.object({
+  runs: z.array(remoteAgentRunListItemSchema),
+});
+
 export const remoteAgentHostJobNextResponseSchema = z.discriminatedUnion(
   "status",
   [
@@ -201,6 +211,23 @@ export const zeroRemoteAgentHostRealtimeContract = c.router({
 });
 
 export const zeroRemoteAgentRunContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/zero/remote-agent/runs",
+    headers: authHeadersSchema,
+    query: z.object({
+      status: remoteAgentJobStatusSchema.optional(),
+      hostId: z.string().min(1).optional(),
+      hostName: z.string().trim().min(1).max(128).optional(),
+      limit: z.coerce.number().int().min(1).max(100).default(20),
+    }),
+    responses: {
+      200: remoteAgentRunListResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "List remote-agent jobs",
+  },
   create: {
     method: "POST",
     path: "/api/zero/remote-agent/run",
@@ -341,6 +368,12 @@ export type RemoteAgentRunCreateResponse = z.infer<
 >;
 export type RemoteAgentRunResponse = z.infer<
   typeof remoteAgentRunResponseSchema
+>;
+export type RemoteAgentRunListItem = z.infer<
+  typeof remoteAgentRunListItemSchema
+>;
+export type RemoteAgentRunListResponse = z.infer<
+  typeof remoteAgentRunListResponseSchema
 >;
 export type RemoteAgentHostListResponse = z.infer<
   typeof remoteAgentHostListResponseSchema
