@@ -2,6 +2,7 @@ import { computed, type Computed } from "ccstate";
 import {
   DeleteObjectsCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
@@ -9,6 +10,7 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 import { env } from "../../lib/env";
+import { safeAsync } from "../utils";
 
 interface S3Object {
   readonly key: string;
@@ -216,5 +218,51 @@ export function downloadManifest(
       downloadS3Buffer(bucket, `${s3Key}/manifest.json`),
     );
     return JSON.parse(manifestBuffer.toString("utf8")) as S3StorageManifest;
+  });
+}
+
+export function s3ObjectExists(
+  bucket: string,
+  key: string,
+): Computed<Promise<boolean>> {
+  return computed(async (get): Promise<boolean> => {
+    const client = get(s3Client$);
+    const result = await safeAsync(async () => {
+      await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+    });
+    if ("ok" in result) {
+      return true;
+    }
+
+    const candidate = result.error as {
+      readonly name?: string;
+      readonly $metadata?: { readonly httpStatusCode?: number };
+    };
+    if (
+      candidate.name === "NotFound" ||
+      candidate.$metadata?.httpStatusCode === 404
+    ) {
+      return false;
+    }
+    throw result.error;
+  });
+}
+
+export function verifyS3FilesExist(
+  bucket: string,
+  s3Key: string,
+  fileCount: number,
+): Computed<Promise<boolean>> {
+  return computed(async (get): Promise<boolean> => {
+    const manifestKey = `${s3Key}/manifest.json`;
+    const archiveKey = `${s3Key}/archive.tar.gz`;
+    const [manifestExists, archiveExists] = await Promise.all([
+      get(s3ObjectExists(bucket, manifestKey)),
+      fileCount > 0
+        ? get(s3ObjectExists(bucket, archiveKey))
+        : Promise.resolve(true),
+    ]);
+
+    return manifestExists && archiveExists;
   });
 }
