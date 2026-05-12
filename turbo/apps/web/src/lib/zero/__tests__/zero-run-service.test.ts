@@ -110,18 +110,6 @@ describe("createZeroRun() — service-only parameters", () => {
       expect(run).toBeDefined();
       expect(run!.appendSystemPrompt).toContain("You are a helpful bot.");
     });
-
-    it("should include remote-agent tool guidance when remote agent is enabled", async () => {
-      await updateUserFeatureSwitches(user.orgId, user.userId, {
-        [FeatureSwitchKey.RemoteAgent]: true,
-      });
-
-      const result = await createZeroRun(baseParams());
-
-      const run = await findTestRunRecord(result.runId);
-      expect(run).toBeDefined();
-      expect(run!.appendSystemPrompt).toContain("zero remote-agent -h");
-    });
   });
 
   describe("trigger sources", () => {

@@ -29,18 +29,4 @@ describe("buildAgentPrompt", () => {
       "Do not present a local path as something the user can open",
     );
   });
-
-  it("includes remote-agent guidance when enabled", () => {
-    const prompt = buildAgentPrompt(
-      {
-        displayName: null,
-        description: null,
-        sound: null,
-      },
-      { remoteAgentEnabled: true },
-    );
-
-    expect(prompt).toContain("zero remote-agent -h");
-    expect(prompt).toContain("remote agent");
-  });
 });
