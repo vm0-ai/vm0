@@ -146,7 +146,7 @@ async fn wait_for_connected(ws_read: &mut WsRead) -> Result<ProtocolMessage, Err
                     });
                 }
                 _ => {
-                    tracing::debug!(action = msg.action, "Ignoring pre-CONNECTED message");
+                    tracing::info!(action = msg.action, "Ignoring pre-CONNECTED message");
                 }
             }
         }
@@ -230,7 +230,7 @@ async fn wait_for_attach_outcome(
                     return Ok(AttachOutcome::Closed(closed_error_or_default(msg.error)));
                 }
                 _ => {
-                    tracing::debug!(action = msg.action, "Ignoring pre-ATTACHED message");
+                    tracing::info!(action = msg.action, "Ignoring pre-ATTACHED message");
                 }
             }
         }
@@ -531,7 +531,7 @@ impl RealtimeStateMachine {
         if self.connection.terminal() || self.connection == next {
             return;
         }
-        tracing::debug!(
+        tracing::info!(
             previous = ?self.connection,
             current = ?next,
             queue_events = next.queue_events(),
@@ -545,7 +545,7 @@ impl RealtimeStateMachine {
         if self.channel == next {
             return;
         }
-        tracing::debug!(
+        tracing::info!(
             previous = ?self.channel,
             current = ?next,
             "Ably channel state transition",
@@ -1216,14 +1216,14 @@ async fn handle_message(
 ) -> LoopAction {
     match msg.action {
         action::HEARTBEAT => {
-            tracing::trace!("Heartbeat received");
+            tracing::info!("Heartbeat received");
         }
         action::MESSAGE => {
             if !message_targets_channel(&msg, &p.channel) {
                 return LoopAction::Continue;
             }
             if p.lifecycle.channel != ChannelLifecycleState::Attached {
-                tracing::debug!(
+                tracing::info!(
                     channel_state = ?p.lifecycle.channel,
                     "Skipping message while channel is not attached"
                 );
@@ -1390,7 +1390,7 @@ async fn handle_message(
             }
         }
         _ => {
-            tracing::debug!(action = msg.action, "Ignoring unknown action");
+            tracing::info!(action = msg.action, "Ignoring unknown action");
         }
     }
     LoopAction::Continue
