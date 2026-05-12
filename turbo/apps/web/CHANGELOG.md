@@ -1,5 +1,40 @@
 # Changelog
 
+## [12.352.0](https://github.com/vm0-ai/vm0/compare/web-v12.351.0...web-v12.352.0) (2026-05-12)
+
+
+### Features
+
+* add remote-agent cli execution flow ([#12671](https://github.com/vm0-ai/vm0/issues/12671)) ([4f68949](https://github.com/vm0-ai/vm0/commit/4f68949d869868851ef281911160bf2b138a75ec))
+* **web:** add Google Ads tag ([#12787](https://github.com/vm0-ai/vm0/issues/12787)) ([6ea0e9f](https://github.com/vm0-ai/vm0/commit/6ea0e9f94c9e48b46dccc3296488a5cdbeb770eb))
+
+
+### Bug Fixes
+
+* align zero logs no-org parity ([#12745](https://github.com/vm0-ai/vm0/issues/12745)) ([e4a9e23](https://github.com/vm0-ai/vm0/commit/e4a9e23b29b4fb05b781e5e68806737c21cac0a5))
+* align zero model provider route parity ([#12747](https://github.com/vm0-ai/vm0/issues/12747)) ([5864eca](https://github.com/vm0-ai/vm0/commit/5864ecab99087af29b1474036b750d8a46620080))
+* align zero org read parity ([#12763](https://github.com/vm0-ai/vm0/issues/12763)) ([8ea3279](https://github.com/vm0-ai/vm0/commit/8ea32795aef6a69525f7759723b784a2703f0356))
+* align zero schedules route parity ([#12762](https://github.com/vm0-ai/vm0/issues/12762)) ([cba985f](https://github.com/vm0-ai/vm0/commit/cba985f1091159ad5903eb8ff326ae4bc8067025))
+* align zero skills route parity ([#12773](https://github.com/vm0-ai/vm0/issues/12773)) ([4cd4998](https://github.com/vm0-ai/vm0/commit/4cd4998d80b5dd04dd60faa20215939839015756))
+* align zero slack channels no-org parity ([#12772](https://github.com/vm0-ai/vm0/issues/12772)) ([6f593c4](https://github.com/vm0-ai/vm0/commit/6f593c4da2d62c31c61e3a37325c3b5b375c3e6a))
+* align zero team route parity ([#12774](https://github.com/vm0-ai/vm0/issues/12774)) ([efdfcb3](https://github.com/vm0-ai/vm0/commit/efdfcb3e53b93702415a0e85920359b318c8a273))
+* align zero usage insight route parity ([#12775](https://github.com/vm0-ai/vm0/issues/12775)) ([2580064](https://github.com/vm0-ai/vm0/commit/2580064aee8ba4b8a560073a7c28878abfae4efd))
+* align zero user preferences no-org parity ([#12776](https://github.com/vm0-ai/vm0/issues/12776)) ([7791c06](https://github.com/vm0-ai/vm0/commit/7791c06200b53226f7db3f847ed6642486f078f9))
+* align zero web download parity ([#12780](https://github.com/vm0-ai/vm0/issues/12780)) ([8bea40a](https://github.com/vm0-ai/vm0/commit/8bea40a50b7b42876acf2250b196cb2ff78543c8))
+* mark slack model workspace default inline ([#12744](https://github.com/vm0-ai/vm0/issues/12744)) ([0acbb80](https://github.com/vm0-ai/vm0/commit/0acbb80eb0a4bb104baa98a15f1bb8927b8aef52))
+* pin model-first chat thread model ([#12740](https://github.com/vm0-ai/vm0/issues/12740)) ([de6006a](https://github.com/vm0-ai/vm0/commit/de6006ac76936e3f67257ac736e81a2c360b1c30))
+* upgrade next to patched version ([#12784](https://github.com/vm0-ai/vm0/issues/12784)) ([50a1a5a](https://github.com/vm0-ai/vm0/commit/50a1a5aff02f56c755e71111c26838f642eab4c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.10.0
+    * @vm0/connectors bumped to 1.5.0
+    * @vm0/core bumped to 8.269.0
+    * @vm0/db bumped to 1.6.0
+
 ## [12.351.0](https://github.com/vm0-ai/vm0/compare/web-v12.350.0...web-v12.351.0) (2026-05-11)
 
 

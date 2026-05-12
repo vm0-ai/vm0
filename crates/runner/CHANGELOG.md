@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.27](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.26...runner-rs-v0.100.27) (2026-05-12)
+
+
+### Performance Improvements
+
+* avoid downloading warmed runner templates ([#12731](https://github.com/vm0-ai/vm0/issues/12731)) ([eb5df7a](https://github.com/vm0-ai/vm0/commit/eb5df7aa28493373ce5ec734924e80d34fd372b4))
+
 ## [0.100.26](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.25...runner-rs-v0.100.26) (2026-05-11)
 
 ## [0.100.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.24...runner-rs-v0.100.25) (2026-05-10)

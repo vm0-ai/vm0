@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.11](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.10...guest-download-v0.20.11) (2026-05-12)
+
+
+### Refactoring
+
+* split guest-download modules ([#12729](https://github.com/vm0-ai/vm0/issues/12729)) ([069f1ea](https://github.com/vm0-ai/vm0/commit/069f1eadd4c1387e57f0d21cd9d29beb11df8cd9))
+
 ## [0.20.10](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.9...guest-download-v0.20.10) (2026-05-09)
 
 

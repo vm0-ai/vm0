@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.30.0...guest-agent-v0.30.1) (2026-05-12)
+
+
+### Bug Fixes
+
+* log masked cli stderr on failure ([#12786](https://github.com/vm0-ai/vm0/issues/12786)) ([0b7c456](https://github.com/vm0-ai/vm0/commit/0b7c456c731f194e7cb9165db91d4afcf7a7249a))
+
 ## [0.30.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.29.1...guest-agent-v0.30.0) (2026-05-11)
 
 

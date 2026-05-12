@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.344.1](https://github.com/vm0-ai/vm0/compare/app-v0.344.0...app-v0.344.1) (2026-05-12)
+
+
+### Bug Fixes
+
+* pin model-first chat thread model ([#12740](https://github.com/vm0-ai/vm0/issues/12740)) ([de6006a](https://github.com/vm0-ai/vm0/commit/de6006ac76936e3f67257ac736e81a2c360b1c30))
+* **platform:** lock chat thread model picker after start ([#12712](https://github.com/vm0-ai/vm0/issues/12712)) ([fec98f3](https://github.com/vm0-ai/vm0/commit/fec98f3695d9646ac44778a630792728ee08f237))
+
+
+### Refactoring
+
+* **chat:** drop count from queued strip header ([#12714](https://github.com/vm0-ai/vm0/issues/12714)) ([279d533](https://github.com/vm0-ai/vm0/commit/279d5337c27c8bd22f152997ff158b786b10a536))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.10.0
+    * @vm0/connectors bumped to 1.5.0
+    * @vm0/core bumped to 8.269.0
+
 ## [0.344.0](https://github.com/vm0-ai/vm0/compare/app-v0.343.0...app-v0.344.0) (2026-05-11)
 
 

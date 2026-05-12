@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.12.1](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.12.0...vsock-host-v0.12.1) (2026-05-12)
+
 ## [0.12.0](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.11.1...vsock-host-v0.12.0) (2026-05-10)
 
 

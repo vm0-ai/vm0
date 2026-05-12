@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.12.1...vsock-guest-v0.13.0) (2026-05-12)
+
+
+### Features
+
+* **vsock-guest:** add command operation worker ([#12738](https://github.com/vm0-ai/vm0/issues/12738)) ([80accba](https://github.com/vm0-ai/vm0/commit/80accba2f1767f1cce0964ce76608155d7375158))
+
 ## [0.12.1](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.12.0...vsock-guest-v0.12.1) (2026-05-10)
 
 

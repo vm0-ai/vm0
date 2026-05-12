@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.13.0...vsock-proto-v0.14.0) (2026-05-12)
+
+
+### Features
+
+* **vsock:** add command operation protocol surface ([#12707](https://github.com/vm0-ai/vm0/issues/12707)) ([67fff74](https://github.com/vm0-ai/vm0/commit/67fff74d52d5b2357c42a2888dcddc97c38b749d))
+
 ## [0.13.0](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.12.0...vsock-proto-v0.13.0) (2026-05-10)
 
 

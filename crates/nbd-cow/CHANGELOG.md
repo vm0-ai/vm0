@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.19](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.18...nbd-cow-v0.4.19) (2026-05-12)
+
+
+### Bug Fixes
+
+* **nbd-cow:** clean up ambiguous connect failures ([#12753](https://github.com/vm0-ai/vm0/issues/12753)) ([b0b342f](https://github.com/vm0-ai/vm0/commit/b0b342fc01460575c13705fb60d2c3b61299cb69))
+
 ## [0.4.18](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.17...nbd-cow-v0.4.18) (2026-05-09)
 
 

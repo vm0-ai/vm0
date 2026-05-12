@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.269.0](https://github.com/vm0-ai/vm0/compare/core-v8.268.0...core-v8.269.0) (2026-05-12)
+
+
+### Features
+
+* add remote-agent cli execution flow ([#12671](https://github.com/vm0-ai/vm0/issues/12671)) ([4f68949](https://github.com/vm0-ai/vm0/commit/4f68949d869868851ef281911160bf2b138a75ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.10.0
+    * @vm0/connectors bumped to 1.5.0
+
 ## [8.268.0](https://github.com/vm0-ai/vm0/compare/core-v8.267.3...core-v8.268.0) (2026-05-11)
 
 

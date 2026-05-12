@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.34.0](https://github.com/vm0-ai/vm0/compare/api-v1.33.0...api-v1.34.0) (2026-05-12)
+
+
+### Features
+
+* add remote-agent cli execution flow ([#12671](https://github.com/vm0-ai/vm0/issues/12671)) ([4f68949](https://github.com/vm0-ai/vm0/commit/4f68949d869868851ef281911160bf2b138a75ec))
+* **api:** migrate billing/redeem post to api backend (wave 6 [#14](https://github.com/vm0-ai/vm0/issues/14)) ([#12751](https://github.com/vm0-ai/vm0/issues/12751)) ([9848d11](https://github.com/vm0-ai/vm0/commit/9848d118aeb473d3abc56cc647b4f170f51e7a25))
+* **api:** migrate computer-use register+unregister to api backend (wave 6 [#16](https://github.com/vm0-ai/vm0/issues/16)) ([#12750](https://github.com/vm0-ai/vm0/issues/12750)) ([8437d31](https://github.com/vm0-ai/vm0/commit/8437d31c3cfb8765601337dbb8d58aa19da62ab9)), closes [#12737](https://github.com/vm0-ai/vm0/issues/12737) [#12290](https://github.com/vm0-ai/vm0/issues/12290)
+* **api:** migrate integrations/slack/message post to api backend (wave 6 [#15](https://github.com/vm0-ai/vm0/issues/15)) ([#12748](https://github.com/vm0-ai/vm0/issues/12748)) ([5d39641](https://github.com/vm0-ai/vm0/commit/5d396418e9de7689811f742bc6355abb06a0eedb))
+* **api:** migrate integrations/telegram/upload-file init+complete to api backend (wave 6 [#17](https://github.com/vm0-ai/vm0/issues/17)) ([#12752](https://github.com/vm0-ai/vm0/issues/12752)) ([6cb78ac](https://github.com/vm0-ai/vm0/commit/6cb78ac1f03145836e7fdd482b5cce235e83ef1e))
+* **api:** migrate org/members/credit-cap put to api backend (wave 6 [#13](https://github.com/vm0-ai/vm0/issues/13)) ([#12732](https://github.com/vm0-ai/vm0/issues/12732)) ([566a767](https://github.com/vm0-ai/vm0/commit/566a76775d26130b2e4444f4f5f40a89a1275e96)), closes [#12290](https://github.com/vm0-ai/vm0/issues/12290) [#12726](https://github.com/vm0-ai/vm0/issues/12726)
+* **api:** migrate org/membership-requests accept+reject to api backend (wave 6 [#12](https://github.com/vm0-ai/vm0/issues/12)) ([#12728](https://github.com/vm0-ai/vm0/issues/12728)) ([4df31c6](https://github.com/vm0-ai/vm0/commit/4df31c6c7e68fb53fca5643fa8c2f2add23ca04a))
+
+
+### Bug Fixes
+
+* align zero model provider route parity ([#12747](https://github.com/vm0-ai/vm0/issues/12747)) ([5864eca](https://github.com/vm0-ai/vm0/commit/5864ecab99087af29b1474036b750d8a46620080))
+* align zero org read parity ([#12763](https://github.com/vm0-ai/vm0/issues/12763)) ([8ea3279](https://github.com/vm0-ai/vm0/commit/8ea32795aef6a69525f7759723b784a2703f0356))
+* align zero skills route parity ([#12773](https://github.com/vm0-ai/vm0/issues/12773)) ([4cd4998](https://github.com/vm0-ai/vm0/commit/4cd4998d80b5dd04dd60faa20215939839015756))
+* align zero usage insight route parity ([#12775](https://github.com/vm0-ai/vm0/issues/12775)) ([2580064](https://github.com/vm0-ai/vm0/commit/2580064aee8ba4b8a560073a7c28878abfae4efd))
+* align zero web download parity ([#12780](https://github.com/vm0-ai/vm0/issues/12780)) ([8bea40a](https://github.com/vm0-ai/vm0/commit/8bea40a50b7b42876acf2250b196cb2ff78543c8))
+* pin model-first chat thread model ([#12740](https://github.com/vm0-ai/vm0/issues/12740)) ([de6006a](https://github.com/vm0-ai/vm0/commit/de6006ac76936e3f67257ac736e81a2c360b1c30))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.10.0
+    * @vm0/connectors bumped to 1.5.0
+    * @vm0/core bumped to 8.269.0
+    * @vm0/db bumped to 1.6.0
+
 ## [1.33.0](https://github.com/vm0-ai/vm0/compare/api-v1.32.0...api-v1.33.0) (2026-05-11)
 
 
