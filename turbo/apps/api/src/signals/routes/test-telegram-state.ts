@@ -1,11 +1,14 @@
+import { createHash } from "node:crypto";
+
 import { command, computed } from "ccstate";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { testTelegramStateContract } from "@vm0/api-contracts/contracts/test-telegram-state";
 import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { e2eTelegramMockCallLog } from "@vm0/db/schema/e2e-telegram-mock-call-log";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
@@ -15,10 +18,13 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { optionalEnv } from "../../lib/env";
+import { clerk$ } from "../external/clerk";
 import { request$ } from "../context/hono";
 import { queryOf } from "../context/request";
-import { db$, type ReadonlyDb, writeDb$ } from "../external/db";
+import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
+import { nowDate } from "../external/time";
 import type { RouteEntry } from "../route";
+import { encryptSecretValue } from "../services/crypto.utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -26,6 +32,29 @@ import {
 
 const testTelegramStateQuery$ = queryOf(testTelegramStateContract.get);
 const deleteTestTelegramStateQuery$ = queryOf(testTelegramStateContract.delete);
+const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
+const DEFAULT_TEST_AGENT_NAME = "e2e-slack-agent";
+const STARTER_GRANT_AMOUNT = 10_000;
+const STARTER_GRANT_SOURCE = "starter_grant";
+const TELEGRAM_E2E_FIXTURES = {
+  botUsername: "vm0_e2e_bot",
+  botToken: "123456:e2e-test-bot-token",
+  webhookSecret: "e2e-telegram-webhook-secret",
+} as const;
+
+type StarterGrantTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+interface SeedDefaultAgentInput {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly name: string;
+}
+
+interface DefaultAgentSeed {
+  readonly composeId: string;
+  readonly versionId: string;
+  readonly agentId: string;
+}
 
 function resolveTelegramApiUrlForDiagnostics(): string | null {
   const telegramApiUrl = optionalEnv("TELEGRAM_API_URL");
@@ -188,6 +217,237 @@ function loadMockCalls(db: ReadonlyDb) {
     .limit(50);
 }
 
+function readString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function readOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function isSeedRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+async function insertTelegramLinkIfMissing(
+  db: Db,
+  params: {
+    readonly installationId: string;
+    readonly telegramUserId: string;
+    readonly vm0UserId: string;
+  },
+): Promise<string | null> {
+  const [existing] = await db
+    .select({ id: telegramUserLinks.id })
+    .from(telegramUserLinks)
+    .where(
+      and(
+        eq(telegramUserLinks.installationId, params.installationId),
+        eq(telegramUserLinks.telegramUserId, params.telegramUserId),
+      ),
+    )
+    .limit(1);
+  if (existing) {
+    return existing.id;
+  }
+
+  const [row] = await db
+    .insert(telegramUserLinks)
+    .values({
+      installationId: params.installationId,
+      telegramUserId: params.telegramUserId,
+      vm0UserId: params.vm0UserId,
+    })
+    .onConflictDoNothing()
+    .returning({ id: telegramUserLinks.id });
+  return row?.id ?? null;
+}
+
+async function ensureStarterCreditGrant(
+  tx: StarterGrantTx,
+  orgId: string,
+): Promise<void> {
+  const [existing] = await tx
+    .select({ orgId: orgMetadata.orgId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  if (existing) {
+    return;
+  }
+
+  const expiresAt = nowDate();
+  expiresAt.setMonth(expiresAt.getMonth() + 1);
+
+  const inserted = await tx
+    .insert(creditExpiresRecord)
+    .values({
+      orgId,
+      source: STARTER_GRANT_SOURCE,
+      stripeInvoiceId: null,
+      amount: STARTER_GRANT_AMOUNT,
+      remaining: STARTER_GRANT_AMOUNT,
+      expiresAt,
+    })
+    .onConflictDoNothing()
+    .returning({ id: creditExpiresRecord.id });
+
+  if (inserted.length === 0) {
+    return;
+  }
+
+  await tx.execute(
+    sql`INSERT INTO org_metadata (org_id, credits, created_at, updated_at)
+        VALUES (${orgId}, ${STARTER_GRANT_AMOUNT}, now(), now())
+        ON CONFLICT (org_id)
+        DO UPDATE SET credits = org_metadata.credits + ${STARTER_GRANT_AMOUNT}, updated_at = now()`,
+  );
+}
+
+function defaultAgentContent(name: string) {
+  return {
+    version: "1.0",
+    agents: {
+      [name]: {
+        framework: "claude-code",
+        environment: {
+          ANTHROPIC_API_KEY: "fake-e2e-anthropic-key",
+        },
+      },
+    },
+  };
+}
+
+async function getOrInsertCompose(
+  db: Db,
+  input: SeedDefaultAgentInput,
+): Promise<{ readonly id: string; readonly headVersionId: string | null }> {
+  const [inserted] = await db
+    .insert(agentComposes)
+    .values({
+      userId: input.userId,
+      orgId: input.orgId,
+      name: input.name,
+    })
+    .onConflictDoNothing({
+      target: [agentComposes.orgId, agentComposes.name],
+    })
+    .returning({
+      id: agentComposes.id,
+      headVersionId: agentComposes.headVersionId,
+    });
+
+  if (inserted) {
+    return inserted;
+  }
+
+  const [existing] = await db
+    .select({
+      id: agentComposes.id,
+      headVersionId: agentComposes.headVersionId,
+    })
+    .from(agentComposes)
+    .where(
+      and(
+        eq(agentComposes.orgId, input.orgId),
+        eq(agentComposes.name, input.name),
+      ),
+    )
+    .limit(1);
+
+  if (!existing) {
+    throw new Error("Failed to resolve agent compose after conflict");
+  }
+  return existing;
+}
+
+async function ensureComposeVersion(
+  db: Db,
+  composeId: string,
+  userId: string,
+  name: string,
+  headVersionId: string | null,
+): Promise<string> {
+  if (headVersionId) {
+    return headVersionId;
+  }
+
+  const content = defaultAgentContent(name);
+  const versionId = createHash("sha256")
+    .update(JSON.stringify(content) + composeId)
+    .digest("hex");
+
+  await db
+    .insert(agentComposeVersions)
+    .values({
+      id: versionId,
+      composeId,
+      content,
+      createdBy: userId,
+    })
+    .onConflictDoNothing();
+
+  const [updated] = await db
+    .update(agentComposes)
+    .set({ headVersionId: versionId, updatedAt: nowDate() })
+    .where(
+      and(eq(agentComposes.id, composeId), isNull(agentComposes.headVersionId)),
+    )
+    .returning({ headVersionId: agentComposes.headVersionId });
+  if (updated?.headVersionId) {
+    return updated.headVersionId;
+  }
+
+  const [compose] = await db
+    .select({ headVersionId: agentComposes.headVersionId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
+  if (compose?.headVersionId) {
+    return compose.headVersionId;
+  }
+
+  throw new Error("Failed to resolve agent compose head version");
+}
+
+async function seedDefaultAgent(
+  db: Db,
+  input: SeedDefaultAgentInput,
+): Promise<DefaultAgentSeed> {
+  const compose = await getOrInsertCompose(db, input);
+  const composeId = compose.id;
+  const versionId = await ensureComposeVersion(
+    db,
+    composeId,
+    input.userId,
+    input.name,
+    compose.headVersionId,
+  );
+
+  await db
+    .insert(zeroAgents)
+    .values({
+      id: composeId,
+      orgId: input.orgId,
+      owner: input.userId,
+      name: input.name,
+    })
+    .onConflictDoNothing();
+
+  await db.transaction(async (tx) => {
+    await ensureStarterCreditGrant(tx, input.orgId);
+    await tx
+      .insert(orgMetadata)
+      .values({ orgId: input.orgId, defaultAgentId: composeId })
+      .onConflictDoUpdate({
+        target: orgMetadata.orgId,
+        set: { defaultAgentId: composeId, updatedAt: nowDate() },
+      });
+  });
+
+  return { composeId, versionId, agentId: composeId };
+}
+
 const getTestTelegramState$ = computed(async (get) => {
   const request = get(request$);
   if (!isTestEndpointAllowed(request)) {
@@ -241,6 +501,118 @@ const getTestTelegramState$ = computed(async (get) => {
     },
   };
 });
+
+const postTestTelegramState$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const request = get(request$);
+    if (!isTestEndpointAllowed(request)) {
+      return testEndpointNotFoundResponse();
+    }
+
+    const rawBody = await request.json().catch((): null => {
+      return null;
+    });
+    signal.throwIfAborted();
+    const body = isSeedRecord(rawBody) ? rawBody : {};
+    const botId = readString(body.bot_id);
+    const telegramUserId = readString(body.telegram_user_id);
+    if (!botId || !telegramUserId) {
+      return {
+        status: 400 as const,
+        body: { error: "bot_id and telegram_user_id are required" },
+      };
+    }
+
+    const email = readOptionalString(body.email) ?? DEFAULT_TEST_EMAIL;
+    const client = get(clerk$);
+    const { data: users } = await client.users.getUserList({
+      emailAddress: [email],
+    });
+    signal.throwIfAborted();
+    const userId = users[0]?.id;
+    if (!userId) {
+      throw new Error(`Test user not found for email: ${email}`);
+    }
+
+    const memberships = await client.users.getOrganizationMembershipList({
+      userId,
+    });
+    signal.throwIfAborted();
+    const sortedMemberships = [...memberships.data].sort((a, b) => {
+      return a.createdAt - b.createdAt;
+    });
+    const orgId = sortedMemberships[0]?.organization.id;
+    if (!orgId) {
+      throw new Error(`Test user ${userId} has no organization membership`);
+    }
+
+    const db = set(writeDb$);
+    const defaultAgent = await seedDefaultAgent(db, {
+      orgId,
+      userId,
+      name: DEFAULT_TEST_AGENT_NAME,
+    });
+    signal.throwIfAborted();
+
+    const encryptedBotToken = encryptSecretValue(
+      TELEGRAM_E2E_FIXTURES.botToken,
+    );
+    await db
+      .insert(telegramInstallations)
+      .values({
+        telegramBotId: botId,
+        botUsername:
+          readOptionalString(body.bot_username) ??
+          TELEGRAM_E2E_FIXTURES.botUsername,
+        encryptedBotToken,
+        webhookSecret:
+          readOptionalString(body.webhook_secret) ??
+          TELEGRAM_E2E_FIXTURES.webhookSecret,
+        defaultComposeId: defaultAgent.composeId,
+        ownerUserId: userId,
+        orgId,
+      })
+      .onConflictDoUpdate({
+        target: telegramInstallations.telegramBotId,
+        set: {
+          botUsername:
+            readOptionalString(body.bot_username) ??
+            TELEGRAM_E2E_FIXTURES.botUsername,
+          encryptedBotToken,
+          webhookSecret:
+            readOptionalString(body.webhook_secret) ??
+            TELEGRAM_E2E_FIXTURES.webhookSecret,
+          defaultComposeId: defaultAgent.composeId,
+          ownerUserId: userId,
+          orgId,
+          updatedAt: nowDate(),
+        },
+      });
+    signal.throwIfAborted();
+
+    const linkId =
+      body.seed_link === false
+        ? null
+        : await insertTelegramLinkIfMissing(db, {
+            installationId: botId,
+            telegramUserId,
+            vm0UserId: userId,
+          });
+    signal.throwIfAborted();
+
+    return {
+      status: 200 as const,
+      body: {
+        ok: true,
+        bot_id: botId,
+        org_id: orgId,
+        vm0_user_id: userId,
+        user_link_id: linkId,
+        default_agent_id: defaultAgent.composeId,
+      },
+    };
+  },
+);
 
 const deleteTestTelegramState$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -315,6 +687,10 @@ export const testTelegramStateRoutes: readonly RouteEntry[] = [
   {
     route: testTelegramStateContract.get,
     handler: getTestTelegramState$,
+  },
+  {
+    route: testTelegramStateContract.post,
+    handler: postTestTelegramState$,
   },
   {
     route: testTelegramStateContract.delete,

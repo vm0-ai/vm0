@@ -9,6 +9,7 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { e2eTelegramMockCallLog } from "@vm0/db/schema/e2e-telegram-mock-call-log";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
@@ -35,6 +36,12 @@ interface SeededTelegramState {
   readonly chatId: string;
 }
 
+interface SeededTelegramPostState {
+  readonly botId: string;
+  readonly orgId: string;
+  readonly composeId: string;
+}
+
 interface TelegramStateResponse {
   readonly installation: Record<string, unknown> | null;
   readonly links: readonly Record<string, unknown>[];
@@ -49,6 +56,15 @@ interface TelegramStateResponse {
   } | null;
   readonly resolved_telegram_api_url: string | null;
   readonly mock_calls: readonly Record<string, unknown>[];
+}
+
+interface TelegramStateSeedResponse {
+  readonly ok: true;
+  readonly bot_id: string;
+  readonly org_id: string;
+  readonly vm0_user_id: string;
+  readonly user_link_id: string | null;
+  readonly default_agent_id: string;
 }
 
 function requestApp(path: string, init?: RequestInit): Promise<Response> {
@@ -169,7 +185,63 @@ async function cleanupTelegramState(state: SeededTelegramState): Promise<void> {
     .where(eq(agentComposes.id, state.composeId));
 }
 
+async function cleanupTelegramPostState(
+  state: SeededTelegramPostState,
+): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb
+    .delete(telegramMessages)
+    .where(eq(telegramMessages.installationId, state.botId));
+  await writeDb
+    .delete(telegramUserLinks)
+    .where(eq(telegramUserLinks.installationId, state.botId));
+  await writeDb
+    .delete(telegramInstallations)
+    .where(eq(telegramInstallations.telegramBotId, state.botId));
+  await writeDb
+    .delete(creditExpiresRecord)
+    .where(eq(creditExpiresRecord.orgId, state.orgId));
+  await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, state.orgId));
+  await writeDb.delete(zeroAgents).where(eq(zeroAgents.id, state.composeId));
+  await writeDb
+    .delete(agentComposeVersions)
+    .where(eq(agentComposeVersions.composeId, state.composeId));
+  await writeDb
+    .delete(agentComposes)
+    .where(eq(agentComposes.id, state.composeId));
+}
+
 const trackTelegramState = createFixtureTracker(cleanupTelegramState);
+const trackTelegramPostState = createFixtureTracker(cleanupTelegramPostState);
+
+function mockClerkTestUser(args: {
+  readonly userId: string;
+  readonly orgId: string;
+}): void {
+  context.mocks.clerk.users.getUserList.mockResolvedValue({
+    data: [{ id: args.userId }],
+  });
+  context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+    data: [
+      {
+        createdAt: 2,
+        organization: { id: `org_ignored_${randomUUID()}` },
+      },
+      {
+        createdAt: 1,
+        organization: { id: args.orgId },
+      },
+    ],
+  });
+}
+
+function postTelegramState(body: Record<string, unknown>): Promise<Response> {
+  return requestApp("/api/test/telegram-state", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
 
 async function seedRun(
   state: SeededTelegramState,
@@ -333,6 +405,173 @@ describe("GET /api/test/telegram-state", () => {
         return call.chatId === seeded.chatId && call.method === "sendMessage";
       }),
     ).toBeTruthy();
+  });
+});
+
+describe("POST /api/test/telegram-state", () => {
+  beforeEach(() => {
+    context.mocks.clerk.users.getUserList.mockReset();
+    context.mocks.clerk.users.getOrganizationMembershipList.mockReset();
+  });
+
+  it("returns 404 when the test endpoint is not allowed", async () => {
+    mockEnv("ENV", "production");
+
+    const response = await postTelegramState({
+      bot_id: "bot-disabled",
+      telegram_user_id: "telegram-user",
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.text()).resolves.toBe("Not found");
+  });
+
+  it("returns 400 when required seed fields are missing", async () => {
+    mockEnv("ENV", "development");
+
+    const response = await postTelegramState({ bot_id: "bot-missing-user" });
+
+    expect(response.status).toBe(400);
+    await expect(readJson<{ error: string }>(response)).resolves.toStrictEqual({
+      error: "bot_id and telegram_user_id are required",
+    });
+  });
+
+  it("seeds a Telegram installation, user link, and shared default agent", async () => {
+    mockEnv("ENV", "development");
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const botId = `bot_${randomUUID()}`;
+    const telegramUserId = `telegram_${randomUUID()}`;
+    const email = `${randomUUID()}@example.test`;
+    mockClerkTestUser({ userId, orgId });
+
+    const response = await postTelegramState({
+      bot_id: botId,
+      telegram_user_id: telegramUserId,
+      bot_username: "custom_test_bot",
+      webhook_secret: "custom-webhook-secret",
+      email,
+    });
+
+    expect(response.status).toBe(200);
+    const body = await readJson<TelegramStateSeedResponse>(response);
+    await trackTelegramPostState(
+      Promise.resolve({ botId, orgId, composeId: body.default_agent_id }),
+    );
+    expect(body).toMatchObject({
+      ok: true,
+      bot_id: botId,
+      org_id: orgId,
+      vm0_user_id: userId,
+      default_agent_id: expect.any(String),
+    });
+    expect(body.user_link_id).toStrictEqual(expect.any(String));
+    expect(context.mocks.clerk.users.getUserList).toHaveBeenCalledWith({
+      emailAddress: [email],
+    });
+
+    const writeDb = store.set(writeDb$);
+    const [installation] = await writeDb
+      .select()
+      .from(telegramInstallations)
+      .where(eq(telegramInstallations.telegramBotId, botId))
+      .limit(1);
+    expect(installation).toMatchObject({
+      telegramBotId: botId,
+      botUsername: "custom_test_bot",
+      webhookSecret: "custom-webhook-secret",
+      defaultComposeId: body.default_agent_id,
+      ownerUserId: userId,
+      orgId,
+    });
+    expect(installation?.encryptedBotToken).toContain(":");
+
+    const links = await writeDb
+      .select()
+      .from(telegramUserLinks)
+      .where(eq(telegramUserLinks.installationId, botId));
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({
+      id: body.user_link_id,
+      telegramUserId,
+      vm0UserId: userId,
+    });
+
+    const [org] = await writeDb
+      .select()
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, orgId))
+      .limit(1);
+    expect(org).toMatchObject({
+      orgId,
+      defaultAgentId: body.default_agent_id,
+      credits: 10_000,
+      tier: "free",
+    });
+
+    const getResponse = await requestApp(
+      `/api/test/telegram-state?bot_id=${encodeURIComponent(botId)}`,
+    );
+    expect(getResponse.status).toBe(200);
+    const getBody = await readJson<TelegramStateResponse>(getResponse);
+    expect(getBody.installation).toMatchObject({
+      telegramBotId: botId,
+      orgId,
+      defaultComposeId: body.default_agent_id,
+    });
+    expect(getBody.links).toHaveLength(1);
+    expect(getBody.default_agent).toMatchObject({
+      id: body.default_agent_id,
+      name: "e2e-slack-agent",
+      orgId,
+    });
+  });
+
+  it("keeps POST idempotent and skips link creation when requested", async () => {
+    mockEnv("ENV", "development");
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const botId = `bot_${randomUUID()}`;
+    const telegramUserId = `telegram_${randomUUID()}`;
+    mockClerkTestUser({ userId, orgId });
+
+    const first = await postTelegramState({
+      bot_id: botId,
+      telegram_user_id: telegramUserId,
+    });
+    expect(first.status).toBe(200);
+    const firstBody = await readJson<TelegramStateSeedResponse>(first);
+    await trackTelegramPostState(
+      Promise.resolve({
+        botId,
+        orgId,
+        composeId: firstBody.default_agent_id,
+      }),
+    );
+
+    const second = await postTelegramState({
+      bot_id: botId,
+      telegram_user_id: telegramUserId,
+      seed_link: false,
+    });
+    expect(second.status).toBe(200);
+    const secondBody = await readJson<TelegramStateSeedResponse>(second);
+    expect(secondBody).toMatchObject({
+      bot_id: botId,
+      org_id: orgId,
+      vm0_user_id: userId,
+      user_link_id: null,
+      default_agent_id: firstBody.default_agent_id,
+    });
+
+    const links = await store
+      .set(writeDb$)
+      .select()
+      .from(telegramUserLinks)
+      .where(eq(telegramUserLinks.installationId, botId));
+    expect(links).toHaveLength(1);
+    expect(links[0]?.id).toBe(firstBody.user_link_id);
   });
 });
 

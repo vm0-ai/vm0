@@ -12,6 +12,17 @@ export const testTelegramStateErrorSchema = z.object({
   error: z.string(),
 });
 
+export const testTelegramStateSeedBodySchema = z
+  .object({
+    bot_id: z.unknown().optional(),
+    telegram_user_id: z.unknown().optional(),
+    bot_username: z.unknown().optional(),
+    webhook_secret: z.unknown().optional(),
+    email: z.unknown().optional(),
+    seed_link: z.unknown().optional(),
+  })
+  .passthrough();
+
 export const testTelegramStateComposeVersionSchema = z.object({
   id: z.string(),
   content_keys: z.array(z.string()),
@@ -32,6 +43,15 @@ export const testTelegramStateResponseSchema = z.object({
 
 export const testTelegramStateDeleteResponseSchema = z.object({
   ok: z.literal(true),
+});
+
+export const testTelegramStateSeedResponseSchema = z.object({
+  ok: z.literal(true),
+  bot_id: z.string(),
+  org_id: z.string(),
+  vm0_user_id: z.string(),
+  user_link_id: z.string().nullable(),
+  default_agent_id: z.string(),
 });
 
 export const testTelegramStateContract = c.router({
@@ -57,9 +77,26 @@ export const testTelegramStateContract = c.router({
     },
     summary: "Delete Telegram E2E test state",
   },
+  post: {
+    method: "POST",
+    path: "/api/test/telegram-state",
+    body: testTelegramStateSeedBodySchema,
+    responses: {
+      200: testTelegramStateSeedResponseSchema,
+      400: testTelegramStateErrorSchema,
+      404: z.string(),
+    },
+    summary: "Seed Telegram E2E test state",
+  },
 });
 
 export type TestTelegramStateContract = typeof testTelegramStateContract;
 export type TestTelegramStateResponse = z.infer<
   typeof testTelegramStateResponseSchema
+>;
+export type TestTelegramStateSeedBody = z.infer<
+  typeof testTelegramStateSeedBodySchema
+>;
+export type TestTelegramStateSeedResponse = z.infer<
+  typeof testTelegramStateSeedResponseSchema
 >;
