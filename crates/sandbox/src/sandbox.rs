@@ -23,6 +23,7 @@
 //!
 //! # Operations
 //! Once running, callers invoke [`exec`](Sandbox::exec) /
+//! [`read_file`](Sandbox::read_file) / [`copy_file`](Sandbox::copy_file) /
 //! [`write_file`](Sandbox::write_file) / [`spawn_watch`](Sandbox::spawn_watch) /
 //! [`wait_exit`](Sandbox::wait_exit) via the host-to-guest IPC channel
 //! (vsock, in the Firecracker backend). Operations race against a crash
@@ -63,6 +64,7 @@ use crate::types::{
 ///
 /// # Operations
 /// Once running, callers invoke [`exec`](Self::exec) /
+/// [`read_file`](Self::read_file) / [`copy_file`](Self::copy_file) /
 /// [`write_file`](Self::write_file) / [`spawn_watch`](Self::spawn_watch) /
 /// [`wait_exit`](Self::wait_exit) via the host-to-guest IPC channel
 /// (vsock, in the Firecracker backend). Operations race against a crash
