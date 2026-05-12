@@ -41,6 +41,7 @@ import { env, optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import {
+  deleteComputerConnector$,
   deleteZeroConnectorLocalState$,
   zeroConnectorByType,
   zeroConnectorList,
@@ -377,6 +378,47 @@ const createComputerConnectorInner$ = command(
   },
 );
 
+const deleteComputerConnectorInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const deleted = await set(
+      deleteComputerConnector$,
+      { orgId: auth.orgId, userId: auth.userId },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (!deleted) {
+      return notFound("Computer connector not found");
+    }
+
+    return { status: 204 as const, body: undefined };
+  },
+);
+
+const deleteConnectorByTypeInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const params = get(pathParamsOf(zeroConnectorsByTypeContract.delete));
+    const deleted = await set(
+      deleteZeroConnectorLocalState$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        type: params.type,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (!deleted) {
+      return notFound("Connector not found");
+    }
+
+    return { status: 204 as const, body: undefined };
+  },
+);
+
 const getScopeDiffInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroConnectorScopeDiffContract.getScopeDiff));
@@ -660,6 +702,10 @@ export const zeroConnectorsRoutes: readonly RouteEntry[] = [
     handler: authRoute(connectorReadAuth, getComputerConnectorInner$),
   },
   {
+    route: zeroComputerConnectorContract.delete,
+    handler: authRoute(connectorWriteAuth, deleteComputerConnectorInner$),
+  },
+  {
     route: zeroRemoteAgentConnectorContract.create,
     handler: authRoute(connectorWriteAuth, connectRemoteAgentConnectorInner$),
   },
@@ -690,5 +736,9 @@ export const zeroConnectorsRoutes: readonly RouteEntry[] = [
   {
     route: zeroConnectorsByTypeContract.get,
     handler: authRoute(connectorReadAuth, getConnectorByTypeInner$),
+  },
+  {
+    route: zeroConnectorsByTypeContract.delete,
+    handler: authRoute(connectorWriteAuth, deleteConnectorByTypeInner$),
   },
 ];
