@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq, and, gte, desc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../src/lib/infra/callback";
 import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { agentSessions } from "@vm0/db/schema/agent-session";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
@@ -65,26 +64,6 @@ function parsePayload(payload: unknown): TelegramCallbackPayload | null {
 
 function errorResponse(message: string, status: number): NextResponse {
   return NextResponse.json({ error: message }, { status });
-}
-
-async function findNewSessionId(
-  userId: string,
-  agentId: string,
-  runCreatedAt: Date,
-): Promise<string | undefined> {
-  const [newSession] = await globalThis.services.db
-    .select({ id: agentSessions.id })
-    .from(agentSessions)
-    .where(
-      and(
-        eq(agentSessions.userId, userId),
-        eq(agentSessions.agentComposeId, agentId),
-        gte(agentSessions.updatedAt, runCreatedAt),
-      ),
-    )
-    .orderBy(desc(agentSessions.updatedAt))
-    .limit(1);
-  return newSession?.id;
 }
 
 /**
@@ -204,7 +183,7 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
     .select({
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
-      createdAt: agentRuns.createdAt,
+      sessionId: agentRuns.sessionId,
       lastEventSequence: agentRuns.lastEventSequence,
     })
     .from(agentRuns)
@@ -285,9 +264,7 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
 
   // Save thread session mapping
   if (run && botReplyMessageId !== undefined) {
-    const newSessionId = !existingSessionId
-      ? await findNewSessionId(run.userId, agentId, run.createdAt)
-      : undefined;
+    const newSessionId = !existingSessionId ? run.sessionId : undefined;
 
     const newRootMessageId = isDM ? "dm" : String(botReplyMessageId);
 
