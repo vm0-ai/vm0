@@ -39,11 +39,9 @@ export const setupOnboardingPage$ = command(
 
     // Fire Google Ads conversion event: user arrived at onboarding after signup
     type GtagFn = (...args: unknown[]) => void;
-    (window as Window & { gtag?: GtagFn }).gtag?.(
-      "event",
-      "conversion",
-      { send_to: "AW-18144854014/OlLBCNXGgqwcEP7_kcxD" },
-    );
+    (window as Window & { gtag?: GtagFn }).gtag?.("event", "conversion", {
+      send_to: "AW-18144854014/OlLBCNXGgqwcEP7_kcxD",
+    });
 
     // Consume ?connector= (comma-separated) to pre-select connectors. The
     // param is left on the URL so a refresh during onboarding still pre-fills
