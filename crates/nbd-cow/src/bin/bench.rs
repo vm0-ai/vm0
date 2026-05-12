@@ -78,7 +78,11 @@ async fn main() {
 
     // --- dm-snapshot benchmark ---
     eprintln!("== Benchmarking dm-snapshot ==");
-    let dm_name = format!("bench-cow-{}", std::process::id());
+    let dm_name = work_dir_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| format!("bench-cow-{name}"))
+        .unwrap_or_else(|| format!("bench-cow-{}", std::process::id()));
     let dm_results = match run_dm_snapshot_bench(
         work_dir_path,
         &base_path,
