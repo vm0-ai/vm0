@@ -72,6 +72,9 @@ import { zeroUserPreferencesRoutes } from "./routes/zero-user-preferences";
 import { zeroUserModelPreferenceRoutes } from "./routes/zero-user-model-preference";
 import { zeroVoiceChatRoutes } from "./routes/zero-voice-chat";
 import { zeroVoiceIoQuotaRoutes } from "./routes/zero-voice-io-quota";
+import { zeroVoiceIoSpeechRoutes } from "./routes/zero-voice-io-speech";
+import { zeroVoiceIoSttRoutes } from "./routes/zero-voice-io-stt";
+import { zeroVoiceIoTtsRoutes } from "./routes/zero-voice-io-tts";
 import { zeroWebDownloadRoutes } from "./routes/zero-web-download";
 import { testOAuthProviderAuthorizeRoutes } from "./routes/test-oauth-provider-authorize";
 import { testOAuthProviderEchoRoutes } from "./routes/test-oauth-provider-echo";
@@ -122,6 +125,9 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroMeModelProvidersUpsertRoutes,
   ...zeroVoiceChatRoutes,
   ...zeroVoiceIoQuotaRoutes,
+  ...zeroVoiceIoSpeechRoutes,
+  ...zeroVoiceIoSttRoutes,
+  ...zeroVoiceIoTtsRoutes,
   ...zeroWebDownloadRoutes,
   ...zeroQueuePositionRoutes,
   ...zeroRemoteAgentRoutes,

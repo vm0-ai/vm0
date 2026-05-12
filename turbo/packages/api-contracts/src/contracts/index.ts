@@ -1081,6 +1081,27 @@ export {
   type AudioInputQuotaResponse,
 } from "./zero-voice-io-quota";
 export {
+  zeroVoiceIoSpeechContract,
+  zeroVoiceIoSpeechRequestSchema,
+  zeroVoiceIoSpeechResponseSchema,
+  type ZeroVoiceIoSpeechContract,
+  type ZeroVoiceIoSpeechRequest,
+  type ZeroVoiceIoSpeechResponse,
+} from "./zero-voice-io-speech";
+export {
+  zeroVoiceIoSttContract,
+  zeroVoiceIoSttResponseSchema,
+  zeroVoiceIoSttQuotaErrorSchema,
+  type ZeroVoiceIoSttContract,
+  type ZeroVoiceIoSttResponse,
+} from "./zero-voice-io-stt";
+export {
+  zeroVoiceIoTtsContract,
+  zeroVoiceIoTtsRequestSchema,
+  type ZeroVoiceIoTtsContract,
+  type ZeroVoiceIoTtsRequest,
+} from "./zero-voice-io-tts";
+export {
   zeroVoiceChatContract,
   voiceChatItemRoleSchema,
   voiceChatTaskStatusSchema,
