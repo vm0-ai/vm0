@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.35.0](https://github.com/vm0-ai/vm0/compare/api-v1.34.0...api-v1.35.0) (2026-05-12)
+
+
+### Features
+
+* add remote agent connector ([#12905](https://github.com/vm0-ai/vm0/issues/12905)) ([7627df6](https://github.com/vm0-ai/vm0/commit/7627df6dcb78e27bdac6d1c81d44f8f384b4de36))
+* **api:** add callback-route hmac auth primitive (prereq for Wave 6 [#19](https://github.com/vm0-ai/vm0/issues/19)) ([#12768](https://github.com/vm0-ai/vm0/issues/12768)) ([d25165a](https://github.com/vm0-ai/vm0/commit/d25165a0ea8618833484168fc46b974cedaf35a2))
+* **api:** migrate integrations/slack/connect post to api backend ([#12795](https://github.com/vm0-ai/vm0/issues/12795)) ([cea3812](https://github.com/vm0-ai/vm0/commit/cea381281078dcf2874279510d9e4ac074ac12f9))
+* **api:** migrate integrations/slack/upload-file init+complete to api backend (wave 6 [#18](https://github.com/vm0-ai/vm0/issues/18)) ([#12767](https://github.com/vm0-ai/vm0/issues/12767)) ([fad9050](https://github.com/vm0-ai/vm0/commit/fad9050746abb4292017e2c9e2f7542333d3e84f))
+
+
+### Refactoring
+
+* **api:** migrate usage route to api backend ([#12906](https://github.com/vm0-ai/vm0/issues/12906)) ([df42008](https://github.com/vm0-ai/vm0/commit/df42008a4dd9fece0a021e35c957ff343f713285))
+* **api:** migrate zero skills update route ([#12913](https://github.com/vm0-ai/vm0/issues/12913)) ([fe3000e](https://github.com/vm0-ai/vm0/commit/fe3000effede31da8b96643cf0d2491b6a11aaa2))
+* migrate agent checkpoints route to api ([#12914](https://github.com/vm0-ai/vm0/issues/12914)) ([004e3c6](https://github.com/vm0-ai/vm0/commit/004e3c6ff61164a62f926adddcbcd094b1093941))
+* migrate auth me GET to api backend ([#12911](https://github.com/vm0-ai/vm0/issues/12911)) ([9140e92](https://github.com/vm0-ai/vm0/commit/9140e92ee8be732e8e0a3421b516169cf0910181))
+* migrate permission access request list route ([#12904](https://github.com/vm0-ai/vm0/issues/12904)) ([44e5f1e](https://github.com/vm0-ai/vm0/commit/44e5f1eccdbcaa7bfdbc88cf31f2e64adbc6ac28))
+* migrate test oauth provider get routes to api ([#12916](https://github.com/vm0-ai/vm0/issues/12916)) ([37019ca](https://github.com/vm0-ai/vm0/commit/37019ca6abb6bb29a0d391976e6377bc2e2dd83c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.11.0
+    * @vm0/connectors bumped to 1.6.0
+    * @vm0/core bumped to 8.269.1
+    * @vm0/db bumped to 1.6.1
+
 ## [1.34.0](https://github.com/vm0-ai/vm0/compare/api-v1.33.0...api-v1.34.0) (2026-05-12)
 
 

@@ -1,5 +1,29 @@
 # Changelog
 
+## [12.353.0](https://github.com/vm0-ai/vm0/compare/web-v12.352.0...web-v12.353.0) (2026-05-12)
+
+
+### Features
+
+* add remote agent connector ([#12905](https://github.com/vm0-ai/vm0/issues/12905)) ([7627df6](https://github.com/vm0-ai/vm0/commit/7627df6dcb78e27bdac6d1c81d44f8f384b4de36))
+* add telegram model command ([#12710](https://github.com/vm0-ai/vm0/issues/12710)) ([4dd476d](https://github.com/vm0-ai/vm0/commit/4dd476dac67b9619bf1c753c3c3fd95f90ca43ef))
+* **api:** migrate integrations/slack/connect post to api backend ([#12795](https://github.com/vm0-ai/vm0/issues/12795)) ([cea3812](https://github.com/vm0-ai/vm0/commit/cea381281078dcf2874279510d9e4ac074ac12f9))
+
+
+### Bug Fixes
+
+* remove remote-agent prompt guidance ([#12797](https://github.com/vm0-ai/vm0/issues/12797)) ([4c7b5b5](https://github.com/vm0-ai/vm0/commit/4c7b5b5802fc7216b613d0a9e65e6e9fc9cb795e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.11.0
+    * @vm0/connectors bumped to 1.6.0
+    * @vm0/core bumped to 8.269.1
+    * @vm0/db bumped to 1.6.1
+
 ## [12.352.0](https://github.com/vm0-ai/vm0/compare/web-v12.351.0...web-v12.352.0) (2026-05-12)
 
 

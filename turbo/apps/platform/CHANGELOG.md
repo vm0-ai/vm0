@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.345.0](https://github.com/vm0-ai/vm0/compare/app-v0.344.1...app-v0.345.0) (2026-05-12)
+
+
+### Features
+
+* add remote agent connector ([#12905](https://github.com/vm0-ai/vm0/issues/12905)) ([7627df6](https://github.com/vm0-ai/vm0/commit/7627df6dcb78e27bdac6d1c81d44f8f384b4de36))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.11.0
+    * @vm0/connectors bumped to 1.6.0
+    * @vm0/core bumped to 8.269.1
+
 ## [0.344.1](https://github.com/vm0-ai/vm0/compare/app-v0.344.0...app-v0.344.1) (2026-05-12)
 
 

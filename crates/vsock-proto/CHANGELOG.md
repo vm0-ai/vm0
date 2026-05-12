@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.14.0...vsock-proto-v0.15.0) (2026-05-12)
+
+
+### Features
+
+* **vsock-host:** add command operation router ([#12782](https://github.com/vm0-ai/vm0/issues/12782)) ([e1ad973](https://github.com/vm0-ai/vm0/commit/e1ad97343e41c441d3539de961f44c91bbad9309))
+
 ## [0.14.0](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.13.0...vsock-proto-v0.14.0) (2026-05-12)
 
 
