@@ -19,7 +19,14 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
         .map(|i| format!("line-{i}"))
         .collect::<Vec<_>>()
         .join("\n");
+    let exact_limit_line = format!(
+        "exact-limit-{}",
+        "x".repeat(16 * 1024 - "exact-limit-".len())
+    );
+    assert_eq!(exact_limit_line.len(), 16 * 1024);
+
     stderr_payload.push_str("\ncrlf-line\r");
+    stderr_payload.push_str(&format!("\n{exact_limit_line}"));
     stderr_payload.push_str(&format!("\ncodex stderr includes {secret}"));
     stderr_payload.push_str(&format!("\n{}", "x".repeat(16 * 1024 + 1)));
     stderr_payload.push_str("\nafter-overlong-line");
@@ -46,10 +53,10 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     let stderr = cli_result.stderr_lines.join("\n");
     assert_eq!(
         cli_result.stderr_lines.first().map(String::as_str),
-        Some("line-5")
+        Some("line-6")
     );
     assert!(
-        !cli_result.stderr_lines.iter().any(|line| line == "line-4"),
+        !cli_result.stderr_lines.iter().any(|line| line == "line-5"),
         "stderr result should drop old lines from the bounded tail, got: {stderr}"
     );
     assert!(
@@ -69,6 +76,13 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     assert!(
         stderr.contains("codex stderr includes ***"),
         "stderr result should keep masked diagnostic, got: {stderr}"
+    );
+    assert!(
+        cli_result
+            .stderr_lines
+            .iter()
+            .any(|line| line == &exact_limit_line),
+        "stderr result should keep lines at the exact size limit, got: {stderr}"
     );
     assert!(
         stderr.contains("[stderr line omitted: exceeded diagnostic size limit]"),
