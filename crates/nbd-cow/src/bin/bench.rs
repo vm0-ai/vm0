@@ -36,10 +36,17 @@ async fn main() {
         }
     }
 
-    let work_dir = PathBuf::from("/tmp/nbd-cow-bench");
-    let _ = std::fs::create_dir_all(&work_dir);
+    let work_dir = tempfile::Builder::new()
+        .prefix("nbd-cow-bench-")
+        .tempdir()
+        .unwrap_or_else(|e| {
+            eprintln!("ERROR: failed to create benchmark work directory: {e}");
+            std::process::exit(1);
+        });
+    let work_dir_path = work_dir.path();
+    eprintln!("Work directory: {}", work_dir_path.display());
 
-    let base_path = work_dir.join("base.img");
+    let base_path = work_dir_path.join("base.img");
     let base_size = base_size_mb * 1024 * 1024;
 
     // Create base image
@@ -71,21 +78,29 @@ async fn main() {
 
     // --- dm-snapshot benchmark ---
     eprintln!("== Benchmarking dm-snapshot ==");
-    let dm_results =
-        match run_dm_snapshot_bench(&work_dir, &base_path, base_size, &workloads, &host_disk) {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("dm-snapshot bench failed: {e}");
-                vec![]
-            }
-        };
+    let dm_name = format!("bench-cow-{}", std::process::id());
+    let dm_results = match run_dm_snapshot_bench(
+        work_dir_path,
+        &base_path,
+        base_size,
+        &workloads,
+        &host_disk,
+        &dm_name,
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("dm-snapshot bench failed: {e}");
+            vec![]
+        }
+    };
 
     // --- NBD COW benchmark ---
     eprintln!("== Benchmarking NBD COW ==");
     // Clean up any stale NBD devices from previous runs
     cleanup_stale_nbd_devices();
     let nbd_results =
-        match run_nbd_cow_bench(&work_dir, &base_path, base_size, &workloads, &host_disk).await {
+        match run_nbd_cow_bench(work_dir_path, &base_path, base_size, &workloads, &host_disk).await
+        {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("NBD COW bench failed: {e}");
@@ -130,7 +145,7 @@ async fn main() {
     // Cleanup
     eprintln!();
     eprintln!("== Cleaning up ==");
-    let _ = std::fs::remove_dir_all(&work_dir);
+    drop(work_dir);
     eprintln!("Done.");
 }
 
@@ -185,15 +200,15 @@ impl Drop for LoopDeviceGuard {
 }
 
 struct DmMappingGuard {
-    name: &'static str,
+    name: String,
     removed: bool,
 }
 
 impl DmMappingGuard {
-    fn create(name: &'static str, table: &str) -> Result<Self, String> {
+    fn create(name: &str, table: &str) -> Result<Self, String> {
         run_cmd("dmsetup", &["create", name, "--table", table])?;
         Ok(Self {
-            name,
+            name: name.to_string(),
             removed: false,
         })
     }
@@ -206,7 +221,7 @@ impl DmMappingGuard {
         if self.removed {
             return Ok(());
         }
-        run_cmd("dmsetup", &["remove", self.name])?;
+        run_cmd("dmsetup", &["remove", &self.name])?;
         self.removed = true;
         Ok(())
     }
@@ -215,7 +230,7 @@ impl DmMappingGuard {
 impl Drop for DmMappingGuard {
     fn drop(&mut self) {
         if !self.removed {
-            let _ = run_cmd("dmsetup", &["remove", self.name]);
+            let _ = run_cmd("dmsetup", &["remove", &self.name]);
         }
     }
 }
@@ -255,6 +270,7 @@ fn run_dm_snapshot_bench(
     base_size: u64,
     workloads: &[FioWorkload],
     host_disk: &str,
+    dm_name: &str,
 ) -> Result<Vec<FioResult>, String> {
     let cow_path = work_dir.join("dm-cow.img");
     let sectors = base_size / 512;
@@ -267,7 +283,6 @@ fn run_dm_snapshot_bench(
         let _cow_file_cleanup = TempFileCleanup::new(cow_path.clone());
         let mut cow_loop = LoopDeviceGuard::attach(&cow_path, false)?;
 
-        let dm_name = "bench-cow";
         let table = format!(
             "0 {sectors} snapshot {} {} P 8",
             base_loop.device(),
