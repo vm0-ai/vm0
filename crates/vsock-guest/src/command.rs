@@ -938,6 +938,20 @@ mod tests {
     }
 
     #[test]
+    fn registry_cancel_returns_truncated_label_preview() {
+        let registry = CommandRegistry::default();
+        let long_label = format!("{}🔥tail", "a".repeat(99));
+        let registration = registry.register(10, &long_label).unwrap();
+
+        let preview = registry.cancel(10).unwrap();
+        assert_eq!(preview, truncate_preview(&long_label));
+        assert!(preview.ends_with("..."));
+        assert!(preview.len() < long_label.len());
+        assert!(!preview.contains('🔥'));
+        assert!(registration.cancel.load(Ordering::Acquire));
+    }
+
+    #[test]
     fn command_worker_spawn_failure_returns_start_failed_and_cleans_registry() {
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
