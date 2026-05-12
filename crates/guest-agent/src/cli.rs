@@ -498,11 +498,7 @@ where
             Err(_) => break,
         };
 
-        let Some(chunk) = buffer.get(..read) else {
-            break;
-        };
-
-        for &byte in chunk {
+        for &byte in buffer.iter().take(read) {
             if byte == b'\n' {
                 finish_stderr_result_line(&mut lines, &mut line, &mut line_omitted);
                 continue;
