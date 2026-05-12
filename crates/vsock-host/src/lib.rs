@@ -158,7 +158,7 @@ struct CommandOperation {
 #[derive(Clone)]
 struct CommandOperationDiagnostic {
     seq: u32,
-    label: String,
+    label_log: String,
     registered_at: Instant,
     first_output_at: Option<Instant>,
 }
@@ -355,7 +355,7 @@ impl CommandOperationDiagnostic {
     fn new(seq: u32, label: &str) -> Self {
         Self {
             seq,
-            label: label.to_string(),
+            label_log: command_label_log(label),
             registered_at: Instant::now(),
             first_output_at: None,
         }
@@ -364,7 +364,7 @@ impl CommandOperationDiagnostic {
     fn frame(&self, frame: &'static str) -> CommandFrameDiagnostic {
         CommandFrameDiagnostic {
             seq: self.seq,
-            label_log: command_label_log(&self.label),
+            label_log: self.label_log.clone(),
             frame,
         }
     }
@@ -376,7 +376,7 @@ impl CommandOperationDiagnostic {
     fn snapshot(&self) -> CommandOperationSnapshot {
         CommandOperationSnapshot {
             seq: self.seq,
-            label_log: command_label_log(&self.label),
+            label_log: self.label_log.clone(),
             elapsed_ms: self.elapsed_ms(),
         }
     }
@@ -391,7 +391,7 @@ impl CommandOperationDiagnostic {
         if elapsed_ms >= COMMAND_STAGE_SLOW_THRESHOLD.as_millis() {
             return Some(CommandOperationSnapshot {
                 seq: self.seq,
-                label_log: command_label_log(&self.label),
+                label_log: self.label_log.clone(),
                 elapsed_ms,
             });
         }
@@ -416,7 +416,7 @@ impl CommandOperationDiagnostic {
 
         tracing::warn!(
             seq = self.seq,
-            label = %command_label_log(&self.label),
+            label = %self.label_log,
             elapsed_ms,
             guest_duration_ms = result.duration_ms,
             termination = ?result.termination,
@@ -431,7 +431,7 @@ impl CommandOperationDiagnostic {
     fn log_error_response(&self, error: &io::Error) {
         tracing::warn!(
             seq = self.seq,
-            label = %command_label_log(&self.label),
+            label = %self.label_log,
             elapsed_ms = self.elapsed_ms(),
             error = %error,
             "command operation error response"
@@ -492,12 +492,12 @@ impl CommandOperationHandle {
         .await?;
         tracing::info!(
             seq = seq,
-            label = %command_label_log(&self.diagnostic.label),
+            label = %self.diagnostic.label_log,
             elapsed_ms = self.diagnostic.elapsed_ms(),
             "command operation cancel sent"
         );
 
-        let cancel_label_log = command_label_log(&self.diagnostic.label);
+        let cancel_label_log = self.diagnostic.label_log.clone();
         let registered_at = self.diagnostic.registered_at;
         let result = self.wait_with_timeout(timeout, true).await?;
         if result.termination == CommandTermination::Cancelled {
@@ -567,7 +567,7 @@ impl CommandOperationHandle {
                 self.result_rx = None;
                 tracing::warn!(
                     seq = seq,
-                    label = %command_label_log(&self.diagnostic.label),
+                    label = %self.diagnostic.label_log,
                     elapsed_ms = self.diagnostic.elapsed_ms(),
                     poison_connection = poison_on_timeout,
                     "command operation wait timeout"
@@ -2245,10 +2245,26 @@ mod tests {
     }
 
     #[test]
+    fn command_diagnostic_keeps_only_truncated_label_log() {
+        let label = format!(
+            "{}secret-tail",
+            "a".repeat(COMMAND_LABEL_LOG_PREFIX_MAX_BYTES)
+        );
+        let diagnostic = CommandOperationDiagnostic::new(7, &label);
+
+        assert_eq!(
+            diagnostic.label_log,
+            format!("{}...", "a".repeat(COMMAND_LABEL_LOG_PREFIX_MAX_BYTES))
+        );
+        assert!(!diagnostic.label_log.contains("secret-tail"));
+        assert_eq!(diagnostic.frame("start").label_log, diagnostic.label_log);
+    }
+
+    #[test]
     fn command_diagnostic_marks_only_first_slow_output() {
         let mut diagnostic = CommandOperationDiagnostic {
             seq: 9,
-            label: "slow-first-output".to_string(),
+            label_log: "slow-first-output".to_string(),
             registered_at: Instant::now() - COMMAND_STAGE_SLOW_THRESHOLD - Duration::from_millis(1),
             first_output_at: None,
         };
