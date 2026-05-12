@@ -12,14 +12,18 @@ use std::process::Command;
 use nbd_cow::{DestroyRetryPolicy, pool::DevicePoolHandle};
 use serde_json::Value;
 
+const DEFAULT_BASE_SIZE_MB: u64 = 1024;
 // The largest fio workload writes 512 MiB. dm-snapshot COW needs extra space
 // for metadata, so keep the minimum at the default 1 GiB instead of 512 MiB.
-const MIN_BASE_SIZE_MB: u64 = 1024;
+const MIN_BASE_SIZE_MB: u64 = DEFAULT_BASE_SIZE_MB;
 
 #[tokio::main]
 async fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    let base_size_mb: u64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(1024);
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let base_size_mb = parse_base_size_mb(&args).unwrap_or_else(|e| {
+        eprintln!("ERROR: {e}");
+        std::process::exit(1);
+    });
 
     eprintln!("=== NBD COW vs dm-snapshot Benchmark ===");
     eprintln!("Base image size: {base_size_mb} MB");
@@ -181,6 +185,16 @@ async fn main() {
 struct FioWorkload {
     name: &'static str,
     args: &'static str,
+}
+
+fn parse_base_size_mb(args: &[String]) -> Result<u64, String> {
+    match args {
+        [] => Ok(DEFAULT_BASE_SIZE_MB),
+        [value] => value
+            .parse::<u64>()
+            .map_err(|e| format!("invalid base image size {value:?}: {e}")),
+        _ => Err("usage: bench [base-size-mb]".to_string()),
+    }
 }
 
 fn base_size_bytes(base_size_mb: u64) -> Option<u64> {
@@ -980,6 +994,18 @@ fn nbd_module_loaded() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_base_size_mb_rejects_invalid_args() {
+        assert_eq!(parse_base_size_mb(&[]).unwrap(), DEFAULT_BASE_SIZE_MB);
+        assert_eq!(parse_base_size_mb(&["2048".to_string()]).unwrap(), 2048);
+
+        let invalid = parse_base_size_mb(&["abc".to_string()]).unwrap_err();
+        assert!(invalid.contains("invalid base image size"), "{invalid}");
+
+        let extra = parse_base_size_mb(&["1024".to_string(), "extra".to_string()]).unwrap_err();
+        assert!(extra.contains("usage"), "{extra}");
+    }
 
     #[test]
     fn base_size_bytes_rejects_too_small_values_and_overflow() {
