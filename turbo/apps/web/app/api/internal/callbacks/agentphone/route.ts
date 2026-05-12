@@ -7,6 +7,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { sendAgentPhoneMessage } from "../../../../../src/lib/zero/agentphone/client";
 import { resolveAgentPhoneReplyFooterText } from "../../../../../src/lib/zero/agentphone/footer";
 import {
+  resolveAgentPhoneUserLink,
   saveAgentPhoneThreadSession,
   storeOutboundAgentPhoneMessage,
 } from "../../../../../src/lib/zero/agentphone/shared";
@@ -86,6 +87,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   if (status === "progress") {
+    return NextResponse.json({ success: true });
+  }
+
+  const currentUserLink = await resolveAgentPhoneUserLink(payload.phoneHandle);
+  if (currentUserLink?.id !== payload.userLinkId) {
+    log.info("Skipping stale AgentPhone callback for disconnected phone link", {
+      runId,
+      userLinkId: payload.userLinkId,
+    });
     return NextResponse.json({ success: true });
   }
 

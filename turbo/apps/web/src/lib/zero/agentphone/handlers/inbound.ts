@@ -275,6 +275,7 @@ export async function handleAgentPhoneMessage(
   }
 
   const { executionContext } = await fetchAgentPhoneContext({
+    userLinkId: userLink.id,
     phoneHandle: event.fromNumber,
     lastProcessedMessageId,
     currentMessageId: event.messageId,

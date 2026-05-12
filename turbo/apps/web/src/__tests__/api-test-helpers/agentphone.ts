@@ -1,4 +1,5 @@
 export {
+  deleteTestAgentPhoneUserLinkById,
   insertTestAgentPhoneUserLink,
   seedTestAgentPhoneUserAgentPreference,
   createAgentPhoneThreadSession,

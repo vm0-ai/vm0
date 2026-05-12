@@ -17,6 +17,7 @@ import {
   getOrgMembersEntry,
   agentphoneThreadSessionExists,
   insertOrgModelPolicy,
+  insertTestAgentPhoneMessage,
   insertUserModelPreference,
   findTestRunCallbacks,
   findTestRunsByUserAndPromptContaining,
@@ -34,10 +35,10 @@ import {
   nextAfterArgForms,
   nextAfterCallbacks,
 } from "../../../../../src/__tests__/next-after-hooks";
+import { env } from "../../../../../src/env";
 import { POST } from "../route";
 
 const context = testContext();
-const WEBHOOK_SECRET = "test-agentphone-webhook-secret";
 const AGENTPHONE_AGENT_ID = "agt-agentphone-test";
 const TEST_AGENTPHONE_NUMBER = "+19039853128";
 
@@ -52,7 +53,10 @@ interface AgentPhoneSendMessageBody {
 }
 
 function signAgentPhoneWebhook(rawBody: string, timestamp: number): string {
-  return `sha256=${createHmac("sha256", WEBHOOK_SECRET)
+  const webhookSecret = env().AGENTPHONE_WEBHOOK_SECRET;
+  if (!webhookSecret) throw new Error("AGENTPHONE_WEBHOOK_SECRET missing");
+
+  return `sha256=${createHmac("sha256", webhookSecret)
     .update(`${String(timestamp)}.${rawBody}`)
     .digest("hex")}`;
 }
@@ -228,6 +232,14 @@ describe("POST /api/agentphone/webhook", () => {
       vm0UserId: user.userId,
       orgId: user.orgId,
     });
+    await insertTestAgentPhoneMessage({
+      agentphoneMessageId: uniqueId("previous-msg"),
+      phoneHandle: phone,
+      fromNumber: phone,
+      toNumber: TEST_AGENTPHONE_NUMBER,
+      direction: "inbound",
+      body: "previous owner secret",
+    });
 
     const response = await POST(
       createWebhookRequest(
@@ -249,9 +261,11 @@ describe("POST /api/agentphone/webhook", () => {
     );
     expect(runs).toHaveLength(1);
     expect(runs[0]?.orgId).toBe(user.orgId);
-    await expect(findTestZeroRun(runs[0]!.id)).resolves.toEqual(
+    const zeroRun = await findTestZeroRun(runs[0]!.id);
+    expect(zeroRun).toEqual(
       expect.objectContaining({ triggerSource: "agentphone" }),
     );
+    expect(runs[0]?.appendSystemPrompt).not.toContain("previous owner secret");
 
     const callbacks = await findTestRunCallbacks(runs[0]!.id);
     expect(callbacks).toHaveLength(1);

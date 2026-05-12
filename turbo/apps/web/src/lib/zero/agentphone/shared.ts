@@ -362,6 +362,7 @@ export async function storeOutboundAgentPhoneMessage(params: {
 }
 
 export async function fetchAgentPhoneContext(params: {
+  userLinkId: string;
   phoneHandle: string;
   lastProcessedMessageId?: string;
   currentMessageId?: string;
@@ -376,7 +377,12 @@ export async function fetchAgentPhoneContext(params: {
       direction: agentphoneMessages.direction,
     })
     .from(agentphoneMessages)
-    .where(eq(agentphoneMessages.phoneHandle, phoneHandle))
+    .where(
+      and(
+        eq(agentphoneMessages.agentphoneUserLinkId, params.userLinkId),
+        eq(agentphoneMessages.phoneHandle, phoneHandle),
+      ),
+    )
     .orderBy(desc(agentphoneMessages.createdAt))
     .limit(10);
 

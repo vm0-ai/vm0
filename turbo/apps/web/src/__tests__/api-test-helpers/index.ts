@@ -190,6 +190,7 @@ export {
   telegramThreadSessionExists,
 } from "./telegram";
 export {
+  deleteTestAgentPhoneUserLinkById,
   insertTestAgentPhoneUserLink,
   seedTestAgentPhoneUserAgentPreference,
   createAgentPhoneThreadSession,

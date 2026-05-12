@@ -13,6 +13,7 @@ import {
   createTestCompose,
   createTestRequest,
   createAgentPhoneThreadSession,
+  deleteTestAgentPhoneUserLinkById,
   findTestAgentPhoneThreadSession,
   findTestRunRecord,
   insertTestAgentPhoneUserLink,
@@ -187,6 +188,27 @@ describe("POST /api/internal/callbacks/agentphone", () => {
         lastProcessedMessageId: "msg-callback-1",
       }),
     );
+  });
+
+  it("skips completed callbacks after the phone link is disconnected", async () => {
+    const { runId, payload, secret, userLinkId } =
+      await setupAgentPhoneCallback();
+    await deleteTestAgentPhoneUserLinkById(userLinkId);
+    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+      { eventData: { result: "Should not be delivered." } },
+    ]);
+    const sendMessage = agentPhoneSendMessage();
+    server.use(sendMessage.handler);
+
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/agentphone",
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(sendMessage.calls).toHaveLength(0);
   });
 
   it("adds a model footer to AgentPhone replies", async () => {

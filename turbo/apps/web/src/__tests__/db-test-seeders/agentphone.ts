@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import { agentphoneMessages } from "@vm0/db/schema/agentphone-message";
 import { agentphoneThreadSessions } from "@vm0/db/schema/agentphone-thread-session";
@@ -26,6 +27,18 @@ export async function insertTestAgentPhoneUserLink(params: {
     })
     .returning({ id: agentphoneUserLinks.id });
   return row!;
+}
+
+/**
+ * @why-db-direct Removes AgentPhone link state to exercise disconnect and stale
+ * callback scenarios; no public test API exposes link deletion by id.
+ */
+export async function deleteTestAgentPhoneUserLinkById(id: string) {
+  initServices();
+
+  await globalThis.services.db
+    .delete(agentphoneUserLinks)
+    .where(eq(agentphoneUserLinks.id, id));
 }
 
 /**

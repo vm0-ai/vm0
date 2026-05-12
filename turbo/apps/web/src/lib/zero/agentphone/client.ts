@@ -2,7 +2,6 @@ import { env } from "../../../env";
 import { logger } from "../../shared/logger";
 
 const log = logger("agentphone");
-const DEFAULT_AGENTPHONE_API_BASE = "https://api.agentphone.to";
 
 interface AgentPhoneSentMessage {
   id: string;
@@ -13,7 +12,11 @@ interface AgentPhoneSentMessage {
 }
 
 function agentPhoneApiBase(): string {
-  return env().AGENTPHONE_API_BASE_URL ?? DEFAULT_AGENTPHONE_API_BASE;
+  const baseUrl = env().AGENTPHONE_API_BASE_URL;
+  if (!baseUrl) {
+    throw new Error("AGENTPHONE_API_BASE_URL is not configured");
+  }
+  return baseUrl;
 }
 
 export async function sendAgentPhoneMessage(opts: {

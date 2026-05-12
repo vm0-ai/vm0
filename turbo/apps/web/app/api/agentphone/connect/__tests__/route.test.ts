@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { HttpResponse } from "msw";
 import {
   findTestAgentPhoneUserLink,
+  insertTestAgentPhoneUserLink,
   signTestAgentPhoneConnectParams,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
@@ -106,6 +107,71 @@ describe("POST /api/agentphone/connect", () => {
         to_number: phone,
       }),
     );
+  });
+
+  it("normalizes phone handles before linking", async () => {
+    context.setupMocks();
+    const user = await context.setupUser();
+    const suffix = uniqueNumericId().slice(0, 4);
+    const phone = `(555) 555-${suffix}`;
+    const normalizedPhone = `555555${suffix}`;
+    const sendMessage = agentPhoneSendMessage();
+    server.use(sendMessage.handler);
+
+    const response = await POST(createConnectRequest(createConnectBody(phone)));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      phoneHandle: normalizedPhone,
+    });
+    await expect(findTestAgentPhoneUserLink(normalizedPhone)).resolves.toEqual(
+      expect.objectContaining({
+        phoneHandle: normalizedPhone,
+        vm0UserId: user.userId,
+        orgId: user.orgId,
+      }),
+    );
+  });
+
+  it("rejects phone handles already connected to another account", async () => {
+    context.setupMocks();
+    await context.setupUser();
+    const phone = uniquePhone();
+    await insertTestAgentPhoneUserLink({
+      phoneHandle: phone,
+      vm0UserId: uniqueId("existing-user"),
+      orgId: uniqueId("existing-org"),
+    });
+
+    const response = await POST(createConnectRequest(createConnectBody(phone)));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: expect.objectContaining({ code: "CONFLICT" }),
+    });
+  });
+
+  it("rejects a second phone handle for the same user and org", async () => {
+    context.setupMocks();
+    const user = await context.setupUser();
+    await insertTestAgentPhoneUserLink({
+      phoneHandle: uniquePhone(),
+      vm0UserId: user.userId,
+      orgId: user.orgId,
+    });
+    const nextPhone = uniquePhone();
+
+    const response = await POST(
+      createConnectRequest(createConnectBody(nextPhone)),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: expect.objectContaining({ code: "CONFLICT" }),
+    });
+    await expect(
+      findTestAgentPhoneUserLink(nextPhone),
+    ).resolves.toBeUndefined();
   });
 
   it("rejects invalid signatures", async () => {
