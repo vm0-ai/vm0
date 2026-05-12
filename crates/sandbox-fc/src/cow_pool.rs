@@ -1352,6 +1352,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cancelled_cleanup_waiter_does_not_cancel_actor_cleanup() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (controller, spawner) = ControlledSpawner::new();
+        let pool =
+            test_pool_with_spawner(test_config(tmp.path()), 0, 1, 4, Duration::ZERO, spawner);
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let acquire = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+        wait_for_snapshot(&handle, |snapshot| {
+            snapshot.waiters == 1 && snapshot.pending == 1
+        })
+        .await;
+
+        let cleanup_waiter = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.cleanup().await }
+        });
+        assert!(matches!(
+            acquire.await.unwrap(),
+            Err(CowPoolError::NotActive)
+        ));
+        cleanup_waiter.abort();
+        assert!(cleanup_waiter.await.unwrap_err().is_cancelled());
+
+        let (slot, dropped) = test_slot_with_drop_notify(tmp.path(), "cancelled-cleanup");
+        let workspace = slot.workspace.clone();
+        controller.take_request().send(Ok(slot)).unwrap();
+
+        assert_eq!(dropped.await.unwrap(), workspace);
+        assert!(!workspace.exists());
+        assert!(matches!(
+            handle.acquire().await,
+            Err(CowPoolError::ActorStopped | CowPoolError::NotActive)
+        ));
+    }
+
+    #[tokio::test]
     async fn slot_limit_enforced_under_concurrent_acquire() {
         let tmp = tempfile::tempdir().unwrap();
         let (controller, spawner) = ControlledSpawner::new();
