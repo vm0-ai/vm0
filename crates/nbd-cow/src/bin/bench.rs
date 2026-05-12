@@ -19,10 +19,14 @@ const MIN_BASE_SIZE_MB: u64 = DEFAULT_BASE_SIZE_MB;
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let base_size_mb = parse_base_size_mb(&args).unwrap_or_else(|e| {
+    let command = parse_bench_args(&args).unwrap_or_else(|e| {
         eprintln!("ERROR: {e}");
         std::process::exit(1);
     });
+    let BenchCommand::Run { base_size_mb } = command else {
+        println!("{}", usage());
+        return;
+    };
     let base_size = base_size_bytes(base_size_mb).unwrap_or_else(|| {
         eprintln!(
             "ERROR: invalid base image size: {base_size_mb} MB (minimum {MIN_BASE_SIZE_MB} MB)"
@@ -190,14 +194,28 @@ struct FioWorkload {
     args: &'static str,
 }
 
-fn parse_base_size_mb(args: &[String]) -> Result<u64, String> {
+#[derive(Debug, Eq, PartialEq)]
+enum BenchCommand {
+    Run { base_size_mb: u64 },
+    Help,
+}
+
+fn parse_bench_args(args: &[String]) -> Result<BenchCommand, String> {
     match args {
-        [] => Ok(DEFAULT_BASE_SIZE_MB),
+        [] => Ok(BenchCommand::Run {
+            base_size_mb: DEFAULT_BASE_SIZE_MB,
+        }),
+        [flag] if flag == "-h" || flag == "--help" => Ok(BenchCommand::Help),
         [value] => value
             .parse::<u64>()
+            .map(|base_size_mb| BenchCommand::Run { base_size_mb })
             .map_err(|e| format!("invalid base image size {value:?}: {e}")),
-        _ => Err("usage: bench [base-size-mb]".to_string()),
+        _ => Err(usage().to_string()),
     }
+}
+
+fn usage() -> &'static str {
+    "usage: bench [base-size-mb]"
 }
 
 fn base_size_bytes(base_size_mb: u64) -> Option<u64> {
@@ -999,14 +1017,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_base_size_mb_rejects_invalid_args() {
-        assert_eq!(parse_base_size_mb(&[]).unwrap(), DEFAULT_BASE_SIZE_MB);
-        assert_eq!(parse_base_size_mb(&["2048".to_string()]).unwrap(), 2048);
+    fn parse_bench_args_accepts_help_and_rejects_invalid_args() {
+        assert_eq!(
+            parse_bench_args(&[]).unwrap(),
+            BenchCommand::Run {
+                base_size_mb: DEFAULT_BASE_SIZE_MB
+            }
+        );
+        assert_eq!(
+            parse_bench_args(&["2048".to_string()]).unwrap(),
+            BenchCommand::Run { base_size_mb: 2048 }
+        );
+        assert_eq!(
+            parse_bench_args(&["--help".to_string()]).unwrap(),
+            BenchCommand::Help
+        );
 
-        let invalid = parse_base_size_mb(&["abc".to_string()]).unwrap_err();
+        let invalid = parse_bench_args(&["abc".to_string()]).unwrap_err();
         assert!(invalid.contains("invalid base image size"), "{invalid}");
 
-        let extra = parse_base_size_mb(&["1024".to_string(), "extra".to_string()]).unwrap_err();
+        let extra = parse_bench_args(&["1024".to_string(), "extra".to_string()]).unwrap_err();
         assert!(extra.contains("usage"), "{extra}");
     }
 
