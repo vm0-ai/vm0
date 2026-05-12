@@ -37,6 +37,7 @@ import {
   recomposeAgentIfStale$,
   serverSideZeroAgentCompose$,
 } from "../services/agent-compose.service";
+import { deleteComposeById$ } from "../services/zero-compose-data.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   agentResponse,
@@ -612,6 +613,52 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
+const deleteAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const member = { userId: auth.userId, role: auth.orgRole ?? "member" };
+  const params = get(pathParamsOf(zeroAgentsByIdContract.delete));
+
+  const writeDb = set(writeDb$);
+  const [agent] = await writeDb
+    .select({
+      id: zeroAgents.id,
+      name: zeroAgents.name,
+      owner: zeroAgents.owner,
+      visibility: zeroAgents.visibility,
+    })
+    .from(zeroAgents)
+    .where(and(eq(zeroAgents.orgId, auth.orgId), eq(zeroAgents.id, params.id)))
+    .limit(1);
+  signal.throwIfAborted();
+
+  if (!agent) {
+    return agentNotFound(params.id);
+  }
+
+  const permissionError = requireAgentPermission(
+    agent.owner,
+    member,
+    "delete agent",
+    { visibility: agent.visibility },
+  );
+  if (permissionError) {
+    return permissionError;
+  }
+
+  const result = await set(
+    deleteComposeById$,
+    { composeId: agent.id, composeName: agent.name, orgId: auth.orgId },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  if (result?.status === 409) {
+    return result;
+  }
+
+  return { status: 204 as const, body: undefined };
+});
+
 const updateAgentCustomConnectorsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -811,6 +858,12 @@ const agentWriteAuth = {
   requiredCapability: "agent:write",
 } as const;
 
+const agentDeleteAuth = {
+  requireOrganization: true,
+  missingOrganizationStatus: 401,
+  requiredCapability: "agent:delete",
+} as const;
+
 export const zeroAgentsRoutes: readonly RouteEntry[] = [
   {
     route: zeroAgentsMainContract.list,
@@ -823,6 +876,10 @@ export const zeroAgentsRoutes: readonly RouteEntry[] = [
   {
     route: zeroAgentsByIdContract.update,
     handler: authRoute(agentWriteAuth, updateAgentInner$),
+  },
+  {
+    route: zeroAgentsByIdContract.delete,
+    handler: authRoute(agentDeleteAuth, deleteAgentInner$),
   },
   {
     route: zeroUserConnectorsContract.get,
