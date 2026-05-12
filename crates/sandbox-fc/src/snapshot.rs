@@ -32,13 +32,8 @@ const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub const SNAPSHOT_COMPLETE_MARKER_CONTENT: &[u8] = b"snapshot-complete-v1\n";
 
-use crate::factory::{DESTROY_RETRIES, DESTROY_RETRY_DELAY};
-
 fn cow_destroy_retry_policy() -> DestroyRetryPolicy {
-    DestroyRetryPolicy {
-        attempts: DESTROY_RETRIES,
-        delay: DESTROY_RETRY_DELAY,
-    }
+    crate::factory::cow_destroy_retry_policy()
 }
 
 struct AbortOnDropTask<T> {

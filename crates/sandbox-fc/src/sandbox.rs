@@ -26,6 +26,7 @@ use crate::balloon;
 use crate::config::FirecrackerConfig;
 use crate::control;
 use crate::factory::InvariantConfig;
+use crate::leaked_resources::LeakedResources;
 use crate::network::{NetnsInfo, NetnsLease};
 use crate::paths::{SandboxPaths, SockPaths};
 use crate::process::{kill_process_group, kill_process_group_by_pid};
@@ -474,7 +475,7 @@ pub struct FirecrackerSandbox {
     guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
     /// Sender for leaked resource cleanup. When Drop fires without prior
     /// `factory.destroy()`, pool resources are sent here for async cleanup.
-    leak_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::factory::LeakedResources>>,
+    leak_tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
     delete_workspace_on_leak_cleanup: bool,
     /// Set to `true` by `factory.destroy()` to suppress Drop-based leak recovery.
     pub(crate) destroyed: bool,
@@ -529,7 +530,7 @@ impl FirecrackerSandbox {
         sock_paths: SockPaths,
         network: NetnsLease,
         cow_device: PooledNbdCowDevice,
-        leak_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::factory::LeakedResources>>,
+        leak_tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
     ) -> Self {
         let id = config.id.to_string();
         Self {
@@ -920,7 +921,7 @@ impl Drop for FirecrackerSandbox {
         if !self.destroyed
             && let Some(tx) = self.leak_tx.take()
         {
-            let resources = crate::factory::LeakedResources {
+            let resources = LeakedResources {
                 sandbox_id: self.id.clone(),
                 cow_device: self.cow_device.take(),
                 network: self.network.take_lease(),

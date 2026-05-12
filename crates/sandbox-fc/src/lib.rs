@@ -32,6 +32,7 @@ mod config;
 pub mod control;
 mod cow_pool;
 mod factory;
+mod leaked_resources;
 mod network;
 mod paths;
 mod prerequisites;
