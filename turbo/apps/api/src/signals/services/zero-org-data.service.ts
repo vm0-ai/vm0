@@ -18,7 +18,7 @@ import type {
 } from "@vm0/api-contracts/contracts/org-members";
 import type { User } from "@clerk/backend";
 
-import { db$, writeDb$, type Db } from "../external/db";
+import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { clerk$ } from "../external/clerk";
 import { fetchClerkMembershipRequests } from "../external/clerk-membership-requests";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
@@ -51,6 +51,8 @@ interface OrgIdentity {
   readonly createdBy: string | null;
 }
 
+const CACHE_TTL_MS = 60_000;
+
 const forbiddenAccess = Object.freeze({
   status: 403 as const,
   body: Object.freeze({
@@ -71,11 +73,26 @@ const adminCannotLeave = Object.freeze({
   }),
 });
 
+const orgDeleteForbidden = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Only admins can delete the organization",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
 type OrgUpdateErrorResponse =
   | ReturnType<typeof badRequestMessage>
   | ReturnType<typeof conflict>
   | ReturnType<typeof notFound>
   | typeof forbiddenAccess;
+
+type OrgDeleteErrorResponse =
+  | ReturnType<typeof badRequestMessage>
+  | ReturnType<typeof notFound>
+  | typeof orgDeleteForbidden;
 
 interface UpdateZeroOrgArgs {
   readonly orgId: string;
@@ -89,6 +106,12 @@ interface LeaveZeroOrgArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly role: OrgRole;
+}
+
+interface DeleteZeroOrgArgs {
+  readonly orgId: string;
+  readonly callerRole: OrgRole | undefined;
+  readonly slug: string;
 }
 
 interface ClerkUpdate {
@@ -177,6 +200,76 @@ function isClerkNotFound(error: unknown): boolean {
     Reflect.get(error, "code") === "NOT_FOUND" ||
     Reflect.get(error, "name") === "NotFoundError"
   );
+}
+
+async function getOrgIdentityForDelete(args: {
+  readonly db: ReadonlyDb;
+  readonly writeDb: Db;
+  readonly client: ReturnType<typeof clerk$.read>;
+  readonly orgId: string;
+}): Promise<OrgIdentity | null> {
+  const [cached] = await args.db
+    .select({
+      slug: orgCache.slug,
+      name: orgCache.name,
+      createdBy: orgCache.createdBy,
+      cachedAt: orgCache.cachedAt,
+    })
+    .from(orgCache)
+    .where(eq(orgCache.orgId, args.orgId))
+    .limit(1);
+
+  const now = nowDate();
+  if (cached && now.getTime() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
+    return {
+      slug: cached.slug,
+      name: cached.name,
+      createdBy: cached.createdBy,
+    };
+  }
+
+  const clerkOrg = await args.client.organizations
+    .getOrganization({ organizationId: args.orgId })
+    .catch((error: unknown) => {
+      if (isClerkNotFound(error)) {
+        return null;
+      }
+      throw error;
+    });
+
+  if (!clerkOrg) {
+    return null;
+  }
+
+  const parsed = clerkOrgIdentitySchema.parse(clerkOrg);
+  if (!parsed.slug) {
+    throw new Error(`Clerk organization ${args.orgId} has no slug`);
+  }
+
+  await args.writeDb
+    .insert(orgCache)
+    .values({
+      orgId: args.orgId,
+      slug: parsed.slug,
+      name: parsed.name ?? "",
+      createdBy: parsed.createdBy ?? null,
+      cachedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: orgCache.orgId,
+      set: {
+        slug: parsed.slug,
+        name: parsed.name ?? "",
+        createdBy: parsed.createdBy ?? null,
+        cachedAt: now,
+      },
+    });
+
+  return {
+    slug: parsed.slug,
+    name: parsed.name ?? "",
+    createdBy: parsed.createdBy ?? null,
+  };
 }
 
 interface ZeroOrgDetailArgs {
@@ -386,6 +479,102 @@ export const updateZeroOrg$ = command(
     }
 
     return org;
+  },
+);
+
+export const deleteZeroOrg$ = command(
+  async (
+    { get, set },
+    args: DeleteZeroOrgArgs,
+    signal: AbortSignal,
+  ): Promise<{ readonly message: string } | OrgDeleteErrorResponse> => {
+    if (args.callerRole !== "admin") {
+      return orgDeleteForbidden;
+    }
+
+    const db = get(db$);
+    const writeDb = set(writeDb$);
+    const client = get(clerk$);
+    const identity = await getOrgIdentityForDelete({
+      db,
+      writeDb,
+      client,
+      orgId: args.orgId,
+    });
+    signal.throwIfAborted();
+
+    if (!identity) {
+      return notFound("Resource not found");
+    }
+
+    if (args.slug !== identity.slug) {
+      return badRequestMessage("Organization name does not match");
+    }
+
+    const memberships =
+      await client.organizations.getOrganizationMembershipList({
+        organizationId: args.orgId,
+      });
+    signal.throwIfAborted();
+
+    const memberUserIds = memberships.data
+      .map((membership) => {
+        return membership.publicUserData?.userId;
+      })
+      .filter((userId): userId is string => {
+        return Boolean(userId);
+      });
+
+    for (const userId of memberUserIds) {
+      const [installation] = await db
+        .select({
+          slackWorkspaceId: slackOrgInstallations.slackWorkspaceId,
+        })
+        .from(slackOrgInstallations)
+        .where(eq(slackOrgInstallations.orgId, args.orgId))
+        .limit(1);
+      signal.throwIfAborted();
+
+      if (installation) {
+        await writeDb
+          .delete(slackOrgConnections)
+          .where(
+            and(
+              eq(slackOrgConnections.vm0UserId, userId),
+              eq(
+                slackOrgConnections.slackWorkspaceId,
+                installation.slackWorkspaceId,
+              ),
+            ),
+          );
+        signal.throwIfAborted();
+      }
+
+      await writeDb
+        .delete(orgMembersCache)
+        .where(
+          and(
+            eq(orgMembersCache.userId, userId),
+            eq(orgMembersCache.orgId, args.orgId),
+          ),
+        );
+      signal.throwIfAborted();
+
+      await writeDb
+        .delete(orgMembersMetadata)
+        .where(
+          and(
+            eq(orgMembersMetadata.userId, userId),
+            eq(orgMembersMetadata.orgId, args.orgId),
+          ),
+        );
+      signal.throwIfAborted();
+    }
+
+    await client.organizations.deleteOrganization(args.orgId);
+    signal.throwIfAborted();
+
+    return { message: "Organization deleted" };
   },
 );
 

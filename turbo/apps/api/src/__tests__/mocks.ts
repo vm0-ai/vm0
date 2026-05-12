@@ -33,6 +33,7 @@ export interface ApiTestMocks {
       readonly getOrganizationMembershipList: AsyncMock;
       readonly deleteOrganizationMembership: AsyncMock;
       readonly revokeOrganizationInvitation: AsyncMock;
+      readonly deleteOrganization: AsyncMock;
       readonly updateOrganization: AsyncMock;
       readonly updateOrganizationLogo: AsyncMock;
     };
@@ -143,6 +144,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
         vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       revokeOrganizationInvitation:
         vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      deleteOrganization: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       updateOrganization: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       updateOrganizationLogo: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
