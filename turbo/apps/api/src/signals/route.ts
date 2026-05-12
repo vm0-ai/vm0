@@ -14,6 +14,7 @@ import { chatThreadsV1Routes } from "./routes/chat-threads-v1";
 import { connectorsTypeAuthorizeRoutes } from "./routes/connectors-type-authorize";
 import { connectorsTypeCallbackRoutes } from "./routes/connectors-type-callback";
 import { deviceTokenRoutes } from "./routes/device-token";
+import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { apiHealth$ } from "./routes/health";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
@@ -134,6 +135,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...connectorsTypeAuthorizeRoutes,
   ...connectorsTypeCallbackRoutes,
   ...deviceTokenRoutes,
+  ...emailUnsubscribeRoutes,
   ...zeroAgentInstructionsRoutes,
   ...zeroAgentsRoutes,
   ...zeroApiKeysRoutes,

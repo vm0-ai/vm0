@@ -214,6 +214,13 @@ export {
   type UserExportStatusResponse,
 } from "./user-export";
 export {
+  emailUnsubscribeContract,
+  emailUnsubscribeErrorSchema,
+  emailUnsubscribeQuerySchema,
+  type EmailUnsubscribeContract,
+  type EmailUnsubscribeQuery,
+} from "./email-unsubscribe";
+export {
   connectorsTypeAuthorizeContract,
   type ConnectorsTypeAuthorizeContract,
 } from "./connectors-type-authorize";
