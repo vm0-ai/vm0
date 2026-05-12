@@ -35,6 +35,16 @@ function mockClerkOrganizationLogoUpload(
   });
 }
 
+function mockClerkOrganizationLogoDelete(
+  args: ClerkOrganizationLogoFixture,
+): void {
+  context.mocks.clerk.organizations.deleteOrganizationLogo.mockResolvedValue({
+    id: args.orgId,
+    imageUrl: args.imageUrl,
+    hasImage: args.hasImage,
+  });
+}
+
 function clerkNotFoundError(): Error {
   const error = new Error("Organization not found");
   error.name = "NotFoundError";
@@ -69,6 +79,14 @@ function postLogo(form: FormData, headers: HeadersInit = {}) {
     method: "POST",
     headers,
     body: form,
+  });
+}
+
+function deleteLogo(headers: HeadersInit = {}) {
+  const app = createApp({ signal: context.signal });
+  return app.request("/api/zero/org/logo", {
+    method: "DELETE",
+    headers,
   });
 }
 
@@ -411,6 +429,169 @@ describe("POST /api/zero/org/logo", () => {
     });
     expect(
       context.mocks.clerk.organizations.updateOrganizationLogo,
+    ).not.toHaveBeenCalled();
+  });
+});
+
+describe("DELETE /api/zero/org/logo", () => {
+  it("removes the current org logo", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId, "org:admin");
+    mockClerkOrganizationLogoDelete({
+      orgId,
+      imageUrl: "https://img.clerk.test/default-logo.png",
+      hasImage: true,
+    });
+
+    const response = await deleteLogo({
+      authorization: "Bearer clerk-session",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      logoUrl: "https://img.clerk.test/default-logo.png",
+      hasImage: true,
+    });
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationLogo,
+    ).toHaveBeenCalledWith(orgId);
+  });
+
+  it("returns null logoUrl when Clerk clears the image URL", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId, "org:admin");
+    mockClerkOrganizationLogoDelete({
+      orgId,
+      imageUrl: "",
+      hasImage: false,
+    });
+
+    const response = await deleteLogo({
+      authorization: "Bearer clerk-session",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      logoUrl: null,
+      hasImage: false,
+    });
+  });
+
+  it("returns 401 when not authenticated", async () => {
+    const response = await deleteLogo();
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationLogo,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the session has no active org", async () => {
+    const userId = `user_${randomUUID()}`;
+    mocks.clerk.session(userId, null);
+
+    const response = await deleteLogo({
+      authorization: "Bearer clerk-session",
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "Org not found", code: "BAD_REQUEST" },
+    });
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationLogo,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 when the current org role is not admin", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId, "org:member");
+
+    const response = await deleteLogo({
+      authorization: "Bearer clerk-session",
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Only admins can remove the logo",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationLogo,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("maps Clerk not-found errors to 404", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId, "org:admin");
+    context.mocks.clerk.organizations.deleteOrganizationLogo.mockRejectedValue(
+      clerkNotFoundError(),
+    );
+
+    const response = await deleteLogo({
+      authorization: "Bearer clerk-session",
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "Org not found", code: "BAD_REQUEST" },
+    });
+  });
+
+  it("maps Clerk forbidden errors to 403", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId, "org:admin");
+    context.mocks.clerk.organizations.deleteOrganizationLogo.mockRejectedValue(
+      clerkForbiddenError(),
+    );
+
+    const response = await deleteLogo({
+      authorization: "Bearer clerk-session",
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "Access denied", code: "BAD_REQUEST" },
+    });
+  });
+
+  it("rejects zero tokens", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId,
+      orgId,
+      runId: `run_${randomUUID()}`,
+      capabilities: [],
+      iat: seconds,
+      exp: seconds + 600,
+    });
+
+    const response = await deleteLogo({
+      authorization: `Bearer ${token}`,
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "This endpoint is not available for sandbox tokens",
+        code: "FORBIDDEN",
+      },
+    });
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationLogo,
     ).not.toHaveBeenCalled();
   });
 });

@@ -141,6 +141,42 @@ const postOrgLogoInner$ = command(async ({ get }, signal: AbortSignal) => {
   };
 });
 
+const deleteOrgLogoInner$ = command(async ({ get }, signal: AbortSignal) => {
+  const auth = get(authContext$);
+  const orgId = auth.orgId;
+  if (!orgId) {
+    return orgLogoNotFound;
+  }
+
+  if (auth.orgRole !== "admin") {
+    return orgLogoForbidden("Only admins can remove the logo");
+  }
+
+  const client = get(clerk$);
+  const result = await safeAsync(() => {
+    return client.organizations.deleteOrganizationLogo(orgId);
+  });
+  signal.throwIfAborted();
+
+  if ("error" in result) {
+    if (isOrgLookupNotFound(result.error)) {
+      return orgLogoNotFound;
+    }
+    if (isOrgLookupForbidden(result.error)) {
+      return orgLogoForbidden("Access denied");
+    }
+    throw result.error;
+  }
+
+  return {
+    status: 200 as const,
+    body: {
+      logoUrl: result.ok.imageUrl || null,
+      hasImage: result.ok.hasImage,
+    },
+  };
+});
+
 export const zeroOrgLogoRoutes: readonly RouteEntry[] = [
   {
     route: zeroOrgLogoContract.get,
@@ -149,5 +185,9 @@ export const zeroOrgLogoRoutes: readonly RouteEntry[] = [
   {
     route: zeroOrgLogoContract.post,
     handler: authRoute({}, postOrgLogoInner$),
+  },
+  {
+    route: zeroOrgLogoContract.delete,
+    handler: authRoute({}, deleteOrgLogoInner$),
   },
 ];
