@@ -723,6 +723,12 @@ export {
   type ZeroOrgLeaveContract,
   type ZeroOrgDeleteContract,
 } from "./zero-org";
+export {
+  zeroOrgLogoContract,
+  zeroOrgLogoResponseSchema,
+  type ZeroOrgLogoContract,
+  type ZeroOrgLogoResponse,
+} from "./zero-org-logo";
 export { zeroOrgListContract, type ZeroOrgListContract } from "./zero-org-list";
 export {
   zeroOrgMembersContract,

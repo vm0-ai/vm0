@@ -35,6 +35,7 @@ import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
 import { zeroOnboardingCompleteRoutes } from "./routes/zero-onboarding-complete";
 import { zeroOnboardingStatusRoutes } from "./routes/zero-onboarding-status";
 import { zeroOrgInviteRoutes } from "./routes/zero-org-invite";
+import { zeroOrgLogoRoutes } from "./routes/zero-org-logo";
 import { zeroOrgMembershipRequestsRoutes } from "./routes/zero-org-membership-requests";
 import { zeroOrgReadRoutes } from "./routes/zero-org-read";
 import { zeroPermissionAccessRequestsRoutes } from "./routes/zero-permission-access-requests";
@@ -124,6 +125,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroOnboardingCompleteRoutes,
   ...zeroOnboardingStatusRoutes,
   ...zeroOrgInviteRoutes,
+  ...zeroOrgLogoRoutes,
   ...zeroOrgMembershipRequestsRoutes,
   ...zeroOrgReadRoutes,
   ...zeroPermissionAccessRequestsRoutes,
