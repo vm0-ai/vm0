@@ -23,17 +23,15 @@ async fn main() {
         eprintln!("ERROR: {e}");
         std::process::exit(1);
     });
+    let base_size = base_size_bytes(base_size_mb).unwrap_or_else(|| {
+        eprintln!(
+            "ERROR: invalid base image size: {base_size_mb} MB (minimum {MIN_BASE_SIZE_MB} MB)"
+        );
+        std::process::exit(1);
+    });
 
     eprintln!("=== NBD COW vs dm-snapshot Benchmark ===");
     eprintln!("Base image size: {base_size_mb} MB");
-
-    // Detect host disk
-    let host_disk = detect_host_disk().unwrap_or_else(|e| {
-        eprintln!("ERROR: {e}");
-        std::process::exit(1);
-    });
-    eprintln!("Host disk: {host_disk}");
-    eprintln!();
 
     // Check prerequisites
     if !is_root() {
@@ -51,6 +49,14 @@ async fn main() {
         std::process::exit(1);
     }
 
+    // Detect host disk
+    let host_disk = detect_host_disk().unwrap_or_else(|e| {
+        eprintln!("ERROR: {e}");
+        std::process::exit(1);
+    });
+    eprintln!("Host disk: {host_disk}");
+    eprintln!();
+
     let work_dir = tempfile::Builder::new()
         .prefix("nbd-cow-bench-")
         .tempdir()
@@ -62,12 +68,6 @@ async fn main() {
     eprintln!("Work directory: {}", work_dir_path.display());
 
     let base_path = work_dir_path.join("base.img");
-    let base_size = base_size_bytes(base_size_mb).unwrap_or_else(|| {
-        eprintln!(
-            "ERROR: invalid base image size: {base_size_mb} MB (minimum {MIN_BASE_SIZE_MB} MB)"
-        );
-        std::process::exit(1);
-    });
 
     // Create base image
     eprintln!("== Creating base image ==");
