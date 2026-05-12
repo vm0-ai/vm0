@@ -1,17 +1,20 @@
-import { computed } from "ccstate";
+import { command, computed } from "ccstate";
 import {
   chatThreadV1GetContract,
   chatThreadV1MessagesContract,
+  chatThreadV1SendContract,
 } from "@vm0/api-contracts/contracts/chat-threads-v1";
 
-import { authContext$ } from "../auth/auth-context";
+import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { pathParamsOf, queryOf } from "../context/request";
+import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
+import { now } from "../external/time";
 import { notFound } from "../../lib/error";
 import {
   chatThreadMessagesV1,
   ownedChatThreadV1,
 } from "../services/chat-thread.service";
+import { sendChatThreadMessageV1$ } from "../services/chat-thread-v1-send.service";
 import type { RouteEntry } from "../route";
 
 const getThreadHandler$ = computed(async (get) => {
@@ -47,13 +50,48 @@ const getThreadMessagesHandler$ = computed(async (get) => {
   return { status: 200 as const, body: { messages: [...messages] } };
 });
 
+const sendThreadMessageBody$ = bodyResultOf(chatThreadV1SendContract.send);
+
+const sendThreadMessageHandler$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const apiStartTime = now();
+    const auth = get(organizationAuthContext$);
+    const body = await get(sendThreadMessageBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+
+    return await set(
+      sendChatThreadMessageV1$,
+      {
+        userId: auth.userId,
+        orgId: auth.orgId,
+        prompt: body.data.prompt,
+        threadId: body.data.threadId,
+        apiStartTime,
+      },
+      signal,
+    );
+  },
+);
+
 const getThread$ = authRoute({ accept: ["pat"] }, getThreadHandler$);
 const getThreadMessages$ = authRoute(
   { accept: ["pat"] },
   getThreadMessagesHandler$,
 );
+const sendThreadMessage$ = authRoute(
+  {
+    accept: ["pat"],
+    requireOrganization: true,
+    missingOrganizationStatus: 401,
+  },
+  sendThreadMessageHandler$,
+);
 
 export const chatThreadsV1Routes: readonly RouteEntry[] = [
   { route: chatThreadV1GetContract.get, handler: getThread$ },
   { route: chatThreadV1MessagesContract.list, handler: getThreadMessages$ },
+  { route: chatThreadV1SendContract.send, handler: sendThreadMessage$ },
 ];

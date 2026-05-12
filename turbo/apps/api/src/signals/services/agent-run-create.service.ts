@@ -26,6 +26,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { conversations } from "@vm0/db/schema/conversation";
@@ -49,7 +50,11 @@ import { writeDb$, type Db } from "../external/db";
 import { publishRunnerJobNotification } from "../external/realtime";
 import { now, nowDate } from "../external/time";
 import { safeAsync } from "../utils";
-import { decryptSecretValue, encryptSecretsMap } from "./crypto.utils";
+import {
+  decryptSecretValue,
+  encryptSecretValue,
+  encryptSecretsMap,
+} from "./crypto.utils";
 import { prepareAgentRunStorageManifest } from "./agent-run-storage.service";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
@@ -121,6 +126,12 @@ interface RunRecord {
   readonly id: string;
   readonly createdAt: Date;
   readonly sessionId: string;
+}
+
+interface RunCallback {
+  readonly url: string;
+  readonly secret: string;
+  readonly payload: unknown;
 }
 
 interface ResolvedModelProviderEnvironment {
@@ -831,6 +842,8 @@ async function insertRunRecord(
     readonly artifacts: readonly ContextArtifact[];
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
+    readonly callbacks: readonly RunCallback[] | undefined;
+    readonly chatThreadId: string | undefined;
   },
 ): Promise<RunRecord> {
   const sessionId =
@@ -886,7 +899,21 @@ async function insertRunRecord(
     triggerSource: args.body.triggerSource ?? "cli",
     modelProvider: args.modelProvider?.type ?? null,
     selectedModel: args.modelProvider?.selectedModel ?? null,
+    chatThreadId: args.chatThreadId ?? null,
   });
+
+  if (args.callbacks && args.callbacks.length > 0) {
+    await tx.insert(agentRunCallbacks).values(
+      args.callbacks.map((callback) => {
+        return {
+          runId: run.id,
+          url: callback.url,
+          encryptedSecret: encryptSecretValue(callback.secret),
+          payload: callback.payload,
+        };
+      }),
+    );
+  }
 
   return run;
 }
@@ -1073,6 +1100,8 @@ export const createAgentRun$ = command(
       readonly orgId: string;
       readonly body: CreateRunBody;
       readonly apiStartTime: number;
+      readonly callbacks?: readonly RunCallback[];
+      readonly chatThreadId?: string;
     },
     signal: AbortSignal,
   ): Promise<CreateRunRouteResult> => {
@@ -1156,6 +1185,8 @@ export const createAgentRun$ = command(
         artifacts,
         additionalVolumes,
         modelProvider,
+        callbacks: args.callbacks,
+        chatThreadId: args.chatThreadId,
       });
     });
     signal.throwIfAborted();

@@ -222,16 +222,17 @@ describe("createApp", () => {
     it("forwards POST bodies to the upstream", async () => {
       mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
       let observedBody: Promise<string> | undefined;
+      const proxyPath = "/__legacy/proxy/post-body";
       useUndiciMock()
         .get("https://www.vm0.ai")
-        .intercept({ path: "/api/v1/chat-threads/messages", method: "POST" })
+        .intercept({ path: proxyPath, method: "POST" })
         .reply((opts) => {
           observedBody = readBodyAsString(opts.body);
           return { statusCode: 202, data: "" };
         });
 
       const app = createApp({ signal: context.signal });
-      const response = await app.request("/api/v1/chat-threads/messages", {
+      const response = await app.request(proxyPath, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: '{"hello":"world"}',

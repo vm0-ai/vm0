@@ -85,6 +85,8 @@ export const chatThreadV1SendContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      429: apiErrorSchema,
+      503: apiErrorSchema,
     },
     summary:
       "Send a chat message — creates a new thread on the caller's default agent when threadId is omitted",
