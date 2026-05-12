@@ -1571,6 +1571,8 @@ jobs:
             # stop() returns Ok when no service exists, so no need for || true.
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name ${RUNNER_NAME} --force"
+            # shellcheck disable=SC2029
+            ssh "$REMOTE" "sudo rm -f ${RUNNER_DIR}/status.json"
 
             # Start as systemd transient service
             # shellcheck disable=SC2029
