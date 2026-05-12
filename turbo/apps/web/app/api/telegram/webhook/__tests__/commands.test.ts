@@ -515,7 +515,7 @@ describe("Telegram bot commands", () => {
 
       const text = sendMsg.calls[0]?.text ?? "";
       expect(text).toContain("Available models");
-      expect(text).toContain("/model default");
+      expect(text).not.toContain("/model default");
       expect(text).toContain("/model claude-sonnet-4-6");
       expect(text).toContain("/model deepseek-v4-pro");
       expect(text).toContain("DeepSeek V4 Pro");
@@ -573,7 +573,7 @@ describe("Telegram bot commands", () => {
       expect(saved?.selectedModel).toBe("claude-sonnet-4-6");
     });
 
-    it("should clear personal model preference with default", async () => {
+    it("should reject the old workspace default reset argument", async () => {
       await enableModelCommand();
       await insertUserModelPreference({
         orgId,
@@ -600,8 +600,11 @@ describe("Telegram bot commands", () => {
       await context.mocks.flushAfter();
 
       const saved = await getOrgMembersEntry(orgId, userId);
-      expect(saved?.selectedModel).toBeNull();
-      expect(sendMsg.calls[0]?.text).toContain("Switched to workspace default");
+      expect(saved?.selectedModel).toBe("deepseek-v4-pro");
+      expect(sendMsg.calls[0]?.text).toContain(
+        "Unknown model &quot;default&quot;.",
+      );
+      expect(sendMsg.calls[0]?.text).not.toContain("/model default");
     });
 
     it("should reject model switching when model-first is disabled", async () => {

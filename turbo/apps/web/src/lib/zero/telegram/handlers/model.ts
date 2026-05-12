@@ -16,13 +16,6 @@ import {
 } from "./shared";
 import type { TelegramHandlerUpdate } from "./types";
 
-const DEFAULT_MODEL_VALUES = new Set([
-  "default",
-  "workspace-default",
-  "workspace default",
-  "workspace_default",
-]);
-
 function commandArgument(text: string | undefined): string {
   const trimmed = text?.trim();
   if (!trimmed) return "";
@@ -101,10 +94,6 @@ function formatCurrentModelLine(picker: ModelPreferencePickerState): string {
 function formatTelegramModelOptionsMessage(
   picker: ModelPreferencePickerState,
 ): string {
-  const defaultLabel = picker.workspaceDefaultName
-    ? `Use workspace default (${picker.workspaceDefaultName})`
-    : "Use workspace default";
-  const defaultSuffix = !picker.currentSelectedModel ? " (current)" : "";
   const optionLines = picker.options.map((option) => {
     const markers = [
       option.model === picker.currentSelectedModel ? "current" : null,
@@ -124,9 +113,6 @@ function formatTelegramModelOptionsMessage(
     formatCurrentModelLine(picker),
     "",
     "Send one of these commands to switch:",
-    `• <code>/model default</code> - ${escapeHtml(
-      defaultLabel,
-    )}${defaultSuffix}`,
     ...optionLines,
   ].join("\n");
 }
@@ -188,19 +174,6 @@ export async function handleTelegramModelCommand(params: {
       params.client,
       chatId,
       formatTelegramModelOptionsMessage(picker),
-      replyOptions,
-    );
-    return;
-  }
-
-  if (DEFAULT_MODEL_VALUES.has(input.toLowerCase())) {
-    await updateUserModelPreference(params.orgId, params.userId, null);
-    await sendMessage(
-      params.client,
-      chatId,
-      formatTelegramCommandSuccess(
-        `Switched to ${formatWorkspaceDefaultName(picker)}.`,
-      ),
       replyOptions,
     );
     return;
