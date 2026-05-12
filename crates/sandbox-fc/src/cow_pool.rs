@@ -1466,6 +1466,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cancelled_warmup_waiter_keeps_pending_slot_for_cleanup() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (controller, spawner) = ControlledSpawner::new();
+        let pool =
+            test_pool_with_spawner(test_config(tmp.path()), 1, 1, 4, Duration::ZERO, spawner);
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let warmup = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.warmup().await }
+        });
+        wait_for_snapshot(&handle, |snapshot| snapshot.pending == 1).await;
+        warmup.abort();
+        assert!(warmup.await.unwrap_err().is_cancelled());
+
+        let cleanup = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.cleanup().await }
+        });
+        let (slot, dropped) = test_slot_with_drop_notify(tmp.path(), "cancelled-warmup");
+        let workspace = slot.workspace.clone();
+        controller.take_request().send(Ok(slot)).unwrap();
+
+        cleanup.await.unwrap();
+        assert_eq!(dropped.await.unwrap(), workspace);
+        assert!(!workspace.exists());
+        assert!(matches!(
+            handle.acquire().await,
+            Err(CowPoolError::ActorStopped | CowPoolError::NotActive)
+        ));
+    }
+
+    #[tokio::test]
     async fn slot_limit_enforced_under_concurrent_acquire() {
         let tmp = tempfile::tempdir().unwrap();
         let (controller, spawner) = ControlledSpawner::new();
