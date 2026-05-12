@@ -997,10 +997,35 @@ jobs:
       # Step 7: Generate test tokens for E2E tests (one per test user)
       - name: Generate E2E test tokens
         run: |
+          set -euo pipefail
+
+          set_model_first_off() {
+            local config_file="$1"
+            local token
+            token=$(jq -r '.token // empty' "$config_file")
+            if [[ -z "$token" ]]; then
+              echo "Error: Failed to read token from $config_file"
+              exit 1
+            fi
+
+            local headers=(-H "Content-Type: application/json" -H "Authorization: Bearer ${token}")
+            if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+              headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
+            fi
+
+            curl -fsS "${headers[@]}" \
+              -X POST \
+              -d '{"switches":{"modelFirstModelProvider":false}}' \
+              "${VM0_API_URL}/api/zero/feature-switches" >/dev/null
+          }
+
           e2e/scripts/generate-test-token.sh "${JOB_REF}+clerk_test+serial@vm0-e2e.ai"
           cp ~/.vm0/config.json "/tmp/e2e-token-serial.json"
+          set_model_first_off "/tmp/e2e-token-serial.json"
+
           e2e/scripts/generate-test-token.sh "${JOB_REF}+clerk_test+runner@vm0-e2e.ai"
           cp ~/.vm0/config.json "/tmp/e2e-token-runner.json"
+          set_model_first_off "/tmp/e2e-token-runner.json"
         env:
           VM0_API_URL: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
