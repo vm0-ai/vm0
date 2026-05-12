@@ -1,16 +1,27 @@
 import { command, computed, type Computed } from "ccstate";
+import { randomUUID } from "node:crypto";
 import type { OnboardingStatusResponse } from "@vm0/api-contracts/contracts/onboarding";
 import type { ConnectorType } from "@vm0/connectors/connectors";
+import { SEED_INSTRUCTIONS } from "@vm0/core/zero-seed-instructions";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import type { AuthContext } from "../../types/auth";
-import { db$, writeDb$ } from "../external/db";
+import { logger } from "../../lib/log";
+import { clerk$ } from "../external/clerk";
+import { db$, writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
+import { serverSideZeroAgentCompose$ } from "./agent-compose.service";
+import { upsertOrgNoSecretModelProvider$ } from "./zero-model-provider.service";
+
+const L = logger("onboarding.service");
+const STARTER_GRANT_AMOUNT = 10_000;
+const STARTER_GRANT_SOURCE = "starter_grant";
 
 interface DefaultAgentInfo {
   readonly composeId: string;
@@ -20,6 +31,306 @@ interface DefaultAgentInfo {
 type DefaultAgentMetadata = NonNullable<
   OnboardingStatusResponse["defaultAgentMetadata"]
 >;
+
+type OnboardingTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+interface OnboardingSetupArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly displayName: string;
+  readonly workspaceName?: string;
+  readonly sound?: string;
+  readonly avatarUrl?: string;
+  readonly selectedConnectors: readonly ConnectorType[];
+  readonly timezone?: string;
+}
+
+interface OnboardingSetupResponse {
+  readonly status: 200;
+  readonly body: { readonly agentId: string };
+}
+
+function nameToSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 64);
+}
+
+function isClerkSlugConflict(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+
+  const errors = Reflect.get(error, "errors");
+  if (!Array.isArray(errors)) {
+    return false;
+  }
+
+  return errors.some((entry: unknown) => {
+    if (typeof entry !== "object" || entry === null) {
+      return false;
+    }
+    const code = Reflect.get(entry, "code");
+    const message = Reflect.get(entry, "message");
+    const meta = Reflect.get(entry, "meta");
+    const paramName =
+      typeof meta === "object" && meta !== null
+        ? Reflect.get(meta, "paramName")
+        : undefined;
+
+    return (
+      code === "form_identifier_exists" ||
+      paramName === "slug" ||
+      (typeof message === "string" &&
+        (message.includes("already exists") || message.includes("slug")))
+    );
+  });
+}
+
+async function updateOrgWithOptionalSlug(
+  client: ReturnType<typeof clerk$.read>,
+  orgId: string,
+  name: string,
+  slug: string,
+): Promise<"updated" | "conflict"> {
+  return await client.organizations
+    .updateOrganization(orgId, { name, slug })
+    .then(() => {
+      return "updated" as const;
+    })
+    .catch((error: unknown) => {
+      if (isClerkSlugConflict(error)) {
+        return "conflict" as const;
+      }
+      throw error;
+    });
+}
+
+async function updateOrgNameAndSlug(
+  client: ReturnType<typeof clerk$.read>,
+  orgId: string,
+  workspaceName: string,
+): Promise<void> {
+  const name = workspaceName.trim();
+  if (!name) {
+    return;
+  }
+
+  const baseSlug = nameToSlug(name);
+  if (!baseSlug) {
+    await client.organizations.updateOrganization(orgId, { name });
+    return;
+  }
+
+  const slugCandidates = [
+    baseSlug,
+    `${baseSlug.slice(0, 56)}-${Math.random().toString(36).slice(2, 8)}`,
+  ].filter((slug) => {
+    return slug.length >= 3;
+  });
+
+  for (const slug of slugCandidates) {
+    if (
+      (await updateOrgWithOptionalSlug(client, orgId, name, slug)) === "updated"
+    ) {
+      return;
+    }
+  }
+
+  await client.organizations.updateOrganization(orgId, { name });
+}
+
+async function existingDefaultAgentId(
+  db: Db,
+  orgId: string,
+): Promise<string | null> {
+  const [orgRow] = await db
+    .select({ defaultAgentId: orgMetadata.defaultAgentId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+
+  if (!orgRow?.defaultAgentId) {
+    return null;
+  }
+
+  const [existing] = await db
+    .select({ id: zeroAgents.id })
+    .from(zeroAgents)
+    .where(
+      and(
+        eq(zeroAgents.id, orgRow.defaultAgentId),
+        eq(zeroAgents.orgId, orgId),
+      ),
+    )
+    .limit(1);
+
+  return existing?.id ?? null;
+}
+
+async function ensureAgentComposeRow(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly name: string;
+  },
+): Promise<string> {
+  const [created] = await db
+    .insert(agentComposes)
+    .values({ userId: args.userId, orgId: args.orgId, name: args.name })
+    .onConflictDoNothing()
+    .returning({ id: agentComposes.id });
+
+  if (created) {
+    return created.id;
+  }
+
+  const [existing] = await db
+    .select({ id: agentComposes.id })
+    .from(agentComposes)
+    .where(
+      and(
+        eq(agentComposes.orgId, args.orgId),
+        eq(agentComposes.name, args.name),
+      ),
+    )
+    .limit(1);
+
+  if (!existing) {
+    throw new Error("Expected existing agent compose after insert conflict");
+  }
+
+  return existing.id;
+}
+
+async function grantOrgCredits(
+  tx: OnboardingTx,
+  orgId: string,
+  amount: number,
+): Promise<void> {
+  await tx.execute(
+    sql`INSERT INTO org_metadata (org_id, credits, created_at, updated_at)
+        VALUES (${orgId}, ${amount}, now(), now())
+        ON CONFLICT (org_id)
+        DO UPDATE SET credits = org_metadata.credits + ${amount}, updated_at = now()`,
+  );
+}
+
+async function ensureStarterCreditGrant(
+  tx: OnboardingTx,
+  orgId: string,
+): Promise<void> {
+  const [existing] = await tx
+    .select({ orgId: orgMetadata.orgId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  if (existing) {
+    return;
+  }
+
+  const expiresAt = nowDate();
+  expiresAt.setMonth(expiresAt.getMonth() + 1);
+
+  const inserted = await tx
+    .insert(creditExpiresRecord)
+    .values({
+      orgId,
+      source: STARTER_GRANT_SOURCE,
+      stripeInvoiceId: null,
+      amount: STARTER_GRANT_AMOUNT,
+      remaining: STARTER_GRANT_AMOUNT,
+      expiresAt,
+    })
+    .onConflictDoNothing()
+    .returning({ id: creditExpiresRecord.id });
+
+  if (inserted.length === 0) {
+    return;
+  }
+
+  await grantOrgCredits(tx, orgId, STARTER_GRANT_AMOUNT);
+}
+
+async function upsertDefaultAgentWithStarterGrant(
+  db: Db,
+  args: { readonly orgId: string; readonly agentId: string },
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await ensureStarterCreditGrant(tx, args.orgId);
+    await tx
+      .insert(orgMetadata)
+      .values({ orgId: args.orgId, defaultAgentId: args.agentId })
+      .onConflictDoUpdate({
+        target: orgMetadata.orgId,
+        set: { defaultAgentId: args.agentId, updatedAt: nowDate() },
+      });
+  });
+}
+
+async function upsertSetupMemberMetadata(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly timezone?: string;
+  },
+): Promise<void> {
+  await db
+    .insert(orgMembersMetadata)
+    .values({
+      orgId: args.orgId,
+      userId: args.userId,
+      onboardingDone: true,
+      timezone: args.timezone ?? null,
+      createdAt: nowDate(),
+      updatedAt: nowDate(),
+    })
+    .onConflictDoUpdate({
+      target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
+      set: { onboardingDone: true, updatedAt: nowDate() },
+    });
+}
+
+async function replaceSelectedConnectors(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly agentId: string;
+    readonly selectedConnectors: readonly ConnectorType[];
+  },
+): Promise<void> {
+  if (args.selectedConnectors.length === 0) {
+    return;
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(userConnectors)
+      .where(
+        and(
+          eq(userConnectors.orgId, args.orgId),
+          eq(userConnectors.userId, args.userId),
+          eq(userConnectors.agentId, args.agentId),
+        ),
+      );
+    await tx.insert(userConnectors).values(
+      args.selectedConnectors.map((connectorType) => {
+        return {
+          orgId: args.orgId,
+          userId: args.userId,
+          agentId: args.agentId,
+          connectorType,
+        };
+      }),
+    );
+  });
+}
 
 function memberOnboardingDone(
   orgId: string,
@@ -209,5 +520,118 @@ export const completeOnboarding$ = command(
       );
     });
     signal.throwIfAborted();
+  },
+);
+
+export const setupOnboarding$ = command(
+  async (
+    { get, set },
+    args: OnboardingSetupArgs,
+    signal: AbortSignal,
+  ): Promise<OnboardingSetupResponse> => {
+    const writeDb = set(writeDb$);
+    const existingAgentId = await existingDefaultAgentId(writeDb, args.orgId);
+    signal.throwIfAborted();
+
+    if (existingAgentId) {
+      return { status: 200 as const, body: { agentId: existingAgentId } };
+    }
+
+    await set(
+      upsertOrgNoSecretModelProvider$,
+      {
+        orgId: args.orgId,
+        type: "vm0",
+        selectedModel: "claude-sonnet-4-6",
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    const agentName = randomUUID();
+    const composeId = await ensureAgentComposeRow(writeDb, {
+      orgId: args.orgId,
+      userId: args.userId,
+      name: agentName,
+    });
+    signal.throwIfAborted();
+
+    const composeResult = await set(
+      serverSideZeroAgentCompose$,
+      {
+        userId: args.userId,
+        orgId: args.orgId,
+        agentComposeId: composeId,
+        agentName,
+        instructions: SEED_INSTRUCTIONS,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (args.workspaceName?.trim()) {
+      const client = get(clerk$);
+      await updateOrgNameAndSlug(client, args.orgId, args.workspaceName).catch(
+        (error: unknown) => {
+          L.warn("Failed to update org name/slug (non-blocking)", {
+            orgId: args.orgId,
+            error,
+          });
+        },
+      );
+      signal.throwIfAborted();
+    }
+
+    await writeDb
+      .insert(zeroAgents)
+      .values({
+        id: composeResult.composeId,
+        orgId: args.orgId,
+        name: composeResult.composeName,
+        owner: args.userId,
+        displayName: args.displayName,
+        description: null,
+        sound: args.sound ?? null,
+        avatarUrl: args.avatarUrl ?? null,
+        customSkills: [],
+      })
+      .onConflictDoUpdate({
+        target: [zeroAgents.orgId, zeroAgents.name],
+        set: {
+          displayName: args.displayName,
+          sound: args.sound ?? null,
+          avatarUrl: args.avatarUrl ?? null,
+          updatedAt: nowDate(),
+        },
+      });
+    signal.throwIfAborted();
+
+    await upsertDefaultAgentWithStarterGrant(writeDb, {
+      orgId: args.orgId,
+      agentId: composeResult.composeId,
+    });
+    signal.throwIfAborted();
+
+    await upsertSetupMemberMetadata(writeDb, {
+      orgId: args.orgId,
+      userId: args.userId,
+      timezone: args.timezone,
+    });
+    signal.throwIfAborted();
+
+    await replaceSelectedConnectors(writeDb, {
+      orgId: args.orgId,
+      userId: args.userId,
+      agentId: composeResult.composeId,
+      selectedConnectors: args.selectedConnectors,
+    });
+    signal.throwIfAborted();
+
+    L.debug("Onboarding setup completed", {
+      orgId: args.orgId,
+      agentId: composeResult.composeId,
+    });
+
+    return { status: 200 as const, body: { agentId: composeResult.composeId } };
   },
 );
