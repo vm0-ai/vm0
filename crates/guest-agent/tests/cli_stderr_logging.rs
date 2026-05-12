@@ -23,6 +23,10 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
         "exact-limit-{}",
         "x".repeat(common::CLI_STDERR_RESULT_MAX_LINE_BYTES - "exact-limit-".len())
     );
+    let overlong_secret_line = format!(
+        "overlong-secret-prefix-{secret}-{}",
+        "x".repeat(common::CLI_STDERR_RESULT_MAX_LINE_BYTES)
+    );
     assert_eq!(
         exact_limit_line.len(),
         common::CLI_STDERR_RESULT_MAX_LINE_BYTES
@@ -31,10 +35,7 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     stderr_payload.push_str("\ncrlf-line\r");
     stderr_payload.push_str(&format!("\n{exact_limit_line}"));
     stderr_payload.push_str(&format!("\ncodex stderr includes {secret}"));
-    stderr_payload.push_str(&format!(
-        "\n{}",
-        "x".repeat(common::CLI_STDERR_RESULT_MAX_LINE_BYTES + 1)
-    ));
+    stderr_payload.push_str(&format!("\n{overlong_secret_line}"));
     stderr_payload.push_str("\nafter-overlong-line");
 
     unsafe {
@@ -96,6 +97,10 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     assert!(
         stderr.contains(common::CLI_STDERR_OMITTED_LONG_LINE),
         "stderr result should omit overlong lines, got: {stderr}"
+    );
+    assert!(
+        !stderr.contains("overlong-secret-prefix"),
+        "stderr result should not expose omitted overlong line content, got: {stderr}"
     );
     assert!(
         stderr.contains("after-overlong-line"),
