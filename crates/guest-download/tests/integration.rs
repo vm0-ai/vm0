@@ -771,6 +771,102 @@ fn download_concurrency_cap_limits_initial_starts() {
 }
 
 #[test]
+fn queued_conflict_does_not_block_later_independent_download() {
+    let parent_server = MockServer::start();
+    let child_server = MockServer::start();
+    let independent_server = MockServer::start();
+    let dir = tempfile::tempdir().unwrap();
+    let parent_mount = dir.path().join("claude");
+    let child_mount = dir.path().join("claude/skills/alpha");
+    let independent_mount = dir.path().join("independent");
+    let parent_tar = create_tar_gz(&[("config.json", b"parent config")]).unwrap();
+    let child_tar = create_tar_gz(&[("skill.json", b"child skill")]).unwrap();
+    let independent_tar = create_tar_gz(&[("data.txt", b"independent data")]).unwrap();
+    let (parent_started_tx, parent_started_rx) = mpsc::channel();
+    let (child_started_tx, child_started_rx) = mpsc::channel();
+    let (independent_started_tx, independent_started_rx) = mpsc::channel();
+    let (parent_release_tx, parent_release_rx) = mpsc::channel();
+    let _parent_release_guard = ReleaseOnDrop {
+        sender: parent_release_tx.clone(),
+        count: 1,
+    };
+    let parent_release_rx = Arc::new(Mutex::new(parent_release_rx));
+
+    let parent_release_rx_for_mock = Arc::clone(&parent_release_rx);
+    parent_server.mock(move |when, then| {
+        when.method(GET).path("/parent.tar.gz");
+        then.respond_with(move |_req: &HttpMockRequest| {
+            parent_started_tx.send(()).unwrap();
+            parent_release_rx_for_mock
+                .lock()
+                .unwrap()
+                .recv_timeout(Duration::from_secs(10))
+                .expect("timed out waiting to release parent request");
+            gzip_response(parent_tar.clone())
+        });
+    });
+    child_server.mock(move |when, then| {
+        when.method(GET).path("/child.tar.gz");
+        then.respond_with(move |_req: &HttpMockRequest| {
+            child_started_tx.send(()).unwrap();
+            gzip_response(child_tar.clone())
+        });
+    });
+    independent_server.mock(move |when, then| {
+        when.method(GET).path("/independent.tar.gz");
+        then.respond_with(move |_req: &HttpMockRequest| {
+            independent_started_tx.send(()).unwrap();
+            gzip_response(independent_tar.clone())
+        });
+    });
+
+    let url_parent = parent_server.url("/parent.tar.gz");
+    let url_child = child_server.url("/child.tar.gz");
+    let url_independent = independent_server.url("/independent.tar.gz");
+    let storages: Vec<(&str, Option<&str>)> = vec![
+        (parent_mount.to_str().unwrap(), Some(&url_parent)),
+        (child_mount.to_str().unwrap(), Some(&url_child)),
+        (independent_mount.to_str().unwrap(), Some(&url_independent)),
+    ];
+    let manifest = write_manifest(&dir, &storages, None).unwrap();
+    let manifest_path = manifest.to_str().unwrap().to_owned();
+    let handle = std::thread::spawn(move || run_guest_download(&manifest_path));
+
+    let parent_started = parent_started_rx.recv_timeout(Duration::from_secs(5));
+    let independent_started = independent_started_rx.recv_timeout(Duration::from_secs(5));
+    let child_before_release = child_started_rx.recv_timeout(Duration::from_millis(300));
+    parent_release_tx.send(()).unwrap();
+    let child_after_release =
+        if matches!(child_before_release, Err(mpsc::RecvTimeoutError::Timeout)) {
+            child_started_rx.recv_timeout(Duration::from_secs(5))
+        } else {
+            Ok(())
+        };
+    let result = handle.join().unwrap();
+
+    parent_started.unwrap();
+    independent_started.unwrap();
+    assert!(matches!(
+        child_before_release,
+        Err(mpsc::RecvTimeoutError::Timeout)
+    ));
+    child_after_release.unwrap();
+    assert!(result);
+    assert_eq!(
+        std::fs::read_to_string(parent_mount.join("config.json")).unwrap(),
+        "parent config"
+    );
+    assert_eq!(
+        std::fs::read_to_string(child_mount.join("skill.json")).unwrap(),
+        "child skill"
+    );
+    assert_eq!(
+        std::fs::read_to_string(independent_mount.join("data.txt")).unwrap(),
+        "independent data"
+    );
+}
+
+#[test]
 fn parent_child_mount_paths_are_serialized_for_overlapping_archives() {
     let parent_server = MockServer::start();
     let child_server = MockServer::start();
