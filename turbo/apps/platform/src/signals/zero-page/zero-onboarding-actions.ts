@@ -25,10 +25,18 @@ import { ROUTES } from "../route-paths.ts";
 import { slackOrgData$ } from "./zero-slack.ts";
 
 import { reloadBillingStatus$ } from "./billing.ts";
-import { reloadAgentById$, reloadAgents$ } from "../agent.ts";
+import { agentById, reloadAgentById$, reloadAgents$ } from "../agent.ts";
 import { reloadPinnedAgents$ } from "./zero-pinned-agents.ts";
 import { showAppSkeleton$, startSkeletonCycling$ } from "../app-skeleton.ts";
 import { sendNewThreadOptimistically$ } from "../chat-page/optimistic-chat-thread-page.ts";
+import { composerModelProviders$ } from "./composer-model-providers.ts";
+import { modelFirstModelProviderEnabled$ } from "../external/feature-switch.ts";
+import { orgModelPolicies$ } from "../external/org-model-policies.ts";
+import { userModelPreference$ } from "../external/user-model-preference.ts";
+import {
+  resolveEffectiveAgentDefaultSelection,
+  resolveModelFirstUserDefaultSelection,
+} from "./model-provider-default.ts";
 import { logger } from "../log.ts";
 
 const L = logger("OnboardingAddToSlack");
@@ -387,6 +395,35 @@ export const onboardingAddToSlack$ = command(
   },
 );
 
+/**
+ * Resolve a concrete model selection for a brand-new chat thread started
+ * from onboarding. Mirrors the resolution `chatPageAgentModelDefault$` does
+ * on the regular agent chat landing page, so use-case threads start with the
+ * same model the user would otherwise see in the composer picker.
+ */
+const resolveOnboardingModelSelection$ = command(
+  async ({ get }, agentId: string, signal: AbortSignal) => {
+    if (get(modelFirstModelProviderEnabled$)) {
+      const policies = await get(orgModelPolicies$);
+      signal.throwIfAborted();
+      const userPreference = await get(userModelPreference$);
+      signal.throwIfAborted();
+      return resolveModelFirstUserDefaultSelection({
+        userPreference,
+        policies,
+      });
+    }
+    const agent = await get(agentById(agentId));
+    signal.throwIfAborted();
+    const composerProviders = await get(composerModelProviders$);
+    signal.throwIfAborted();
+    return resolveEffectiveAgentDefaultSelection({
+      agent,
+      providers: composerProviders.providers,
+    });
+  },
+);
+
 export const onboardingContinueWeb$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(showAppSkeleton$);
@@ -426,6 +463,18 @@ export const onboardingContinueWeb$ = command(
           cleaned.delete("connector");
           set(updateSearchParams$, cleaned);
 
+          // Resolve a concrete modelSelection so the new thread starts with a
+          // real model. Model-first orgs read the (userId, orgId) preference
+          // (`userModelPreference$`); legacy orgs read the agent's default.
+          // Passing `null` would defer resolution to the backend, but the
+          // chat page reads the persisted thread's modelSelection back and
+          // would render an empty picker until the next user action.
+          const modelSelection = await set(
+            resolveOnboardingModelSelection$,
+            agentId,
+            signal,
+          );
+
           // Use the root signal (not the caller's page signal) so the POST
           // /chat/messages request survives the imminent /onboarding →
           // /chats/:threadId navigation. Aborting the fetch mid-flight would
@@ -437,7 +486,7 @@ export const onboardingContinueWeb$ = command(
             {
               agentId: agentId,
               prompt,
-              modelSelection: null,
+              modelSelection,
               goal: false,
             },
             rootSignal,
