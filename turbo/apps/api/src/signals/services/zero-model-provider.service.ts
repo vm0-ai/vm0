@@ -226,6 +226,27 @@ export const deleteUserModelProvider$ = command(
   },
 );
 
+export const deleteOrgModelProvider$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly type: ModelProviderType;
+    },
+    signal: AbortSignal,
+  ): Promise<NotFoundResponse | undefined> => {
+    return await set(
+      deleteUserModelProvider$,
+      {
+        orgId: args.orgId,
+        userId: ORG_SENTINEL_USER_ID,
+        type: args.type,
+      },
+      signal,
+    );
+  },
+);
+
 // ===========================================================================
 // Upsert path — POST /api/zero/me/model-providers
 //

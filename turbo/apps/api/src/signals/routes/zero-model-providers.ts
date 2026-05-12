@@ -6,6 +6,7 @@ import {
   type ModelProviderResponse,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
+  zeroModelProvidersByTypeContract,
   zeroModelProvidersDefaultContract,
   zeroModelProvidersMainContract,
 } from "@vm0/api-contracts/contracts/zero-model-providers";
@@ -17,6 +18,7 @@ import { badRequestMessage, isNotFoundResponse } from "../../lib/error";
 import { handleCodexAuthJsonPaste } from "../services/codex-auth-json-paste-handler";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
+  deleteOrgModelProvider$,
   setOrgModelProviderDefault$,
   upsertOrgModelProvider$,
   upsertOrgMultiAuthModelProvider$,
@@ -234,6 +236,32 @@ const setDefaultModelProviderInner$ = command(
   },
 );
 
+const deleteModelProviderInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (auth.orgRole !== "admin") {
+      return adminRequired;
+    }
+
+    const params = await get(
+      pathParamsOf(zeroModelProvidersByTypeContract.delete),
+    );
+    signal.throwIfAborted();
+
+    const result = await set(
+      deleteOrgModelProvider$,
+      { orgId: auth.orgId, type: params.type },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (isNotFoundResponse(result)) {
+      return result;
+    }
+    return { status: 204 as const, body: undefined };
+  },
+);
+
 export const zeroModelProvidersRoutes: readonly RouteEntry[] = [
   {
     route: zeroModelProvidersMainContract.list,
@@ -254,6 +282,13 @@ export const zeroModelProvidersRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       setDefaultModelProviderInner$,
+    ),
+  },
+  {
+    route: zeroModelProvidersByTypeContract.delete,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      deleteModelProviderInner$,
     ),
   },
 ];
