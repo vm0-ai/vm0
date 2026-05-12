@@ -5,8 +5,7 @@ import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { jsonParseOr } from "../utils.ts";
 
-export const BB0_PROVISIONING_SERVICE_UUID =
-  "bb000001-8f16-4b2a-9bb0-000000000001";
+const BB0_PROVISIONING_SERVICE_UUID = "bb000001-8f16-4b2a-9bb0-000000000001";
 
 const BB0_DEVICE_NAME_PREFIX = "Zero-Buddy-";
 const BB0_INFO_CHARACTERISTIC_UUID = "bb000002-8f16-4b2a-9bb0-000000000001";
@@ -22,7 +21,6 @@ type Bb0ConnectionStatus =
 
 type Bb0OperationStatus =
   | "idle"
-  | "reading"
   | "sending_wifi"
   | "confirming_code"
   | "confirmed";
@@ -292,21 +290,6 @@ export const connectBb0Device$ = command(
         operationStatus: "idle",
         infoNotificationsEnabled,
       };
-    });
-  },
-);
-
-export const refreshBb0DeviceStatus$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    set(internalProvisioningState$, (current): Bb0ProvisioningState => {
-      return { ...current, operationStatus: "reading" };
-    });
-
-    const session = requireSession(get(internalBleSession$));
-    set(internalDeviceInfo$, await readBb0Status(session));
-    signal.throwIfAborted();
-    set(internalProvisioningState$, (current): Bb0ProvisioningState => {
-      return { ...current, operationStatus: "idle" };
     });
   },
 );

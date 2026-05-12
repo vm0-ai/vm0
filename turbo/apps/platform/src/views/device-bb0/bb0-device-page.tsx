@@ -1,19 +1,13 @@
 import type { ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import {
-  IconCheck,
-  IconChevronDown,
-  IconLoader,
-  IconRefresh,
-} from "@tabler/icons-react";
+import { IconCheck, IconLoader } from "@tabler/icons-react";
 import { Button } from "@vm0/ui/components/ui/button";
 import { Input } from "@vm0/ui/components/ui/input";
 import { cn } from "@vm0/ui";
 import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  BB0_PROVISIONING_SERVICE_UUID,
   bb0BrowserSupport$,
   bb0CanConfirmCode$,
   bb0CanSendWifi$,
@@ -25,7 +19,6 @@ import {
   confirmBb0DeviceCode$,
   connectBb0Device$,
   disconnectBb0Device$,
-  refreshBb0DeviceStatus$,
   resetBb0Onboarding$,
   sendBb0WifiCredentials$,
   setBb0DeviceCodeInput$,
@@ -194,25 +187,6 @@ function BleConnectStep() {
           )}
         </div>
 
-        <details className="group">
-          <summary className="inline-flex cursor-pointer select-none items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-            Technical details
-            <IconChevronDown
-              size={11}
-              stroke={1.8}
-              className="transition-transform group-open:rotate-180"
-            />
-          </summary>
-          <div className="zero-border mt-2 rounded-lg bg-muted/30 px-3 py-2 text-xs leading-6 text-muted-foreground">
-            Filter: <code className="text-foreground">Zero-Buddy-*</code>
-            <br />
-            Service UUID:{" "}
-            <code className="break-all text-foreground">
-              {BB0_PROVISIONING_SERVICE_UUID}
-            </code>
-          </div>
-        </details>
-
         <StepError message={error} />
       </div>
     </div>
@@ -231,13 +205,10 @@ function WifiStep() {
   const pageSignal = useGet(pageSignal$);
   const setSsid = useSet(setBb0WifiSsid$);
   const setPassword = useSet(setBb0WifiPassword$);
-  const [refreshLoadable, refresh] = useLoadableSet(refreshBb0DeviceStatus$);
   const [wifiLoadable, sendWifi] = useLoadableSet(sendBb0WifiCredentials$);
   const connected = state.connectionStatus === "connected";
-  const refreshing = refreshLoadable.state === "loading";
   const sendingWifi = wifiLoadable.state === "loading";
-  const error =
-    loadableErrorMessage(wifiLoadable) ?? loadableErrorMessage(refreshLoadable);
+  const error = loadableErrorMessage(wifiLoadable);
 
   return (
     <div className="px-6 py-5">
@@ -284,40 +255,20 @@ function WifiStep() {
           </label>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <MorandiButton
-            disabled={!canSendWifi || sendingWifi || state.wifiSent}
-            onClick={() => {
-              detach(
-                sendWifi(pageSignal),
-                Reason.DomCallback,
-                "sendBb0WifiCredentials",
-              );
-            }}
-          >
-            {sendingWifi && <IconLoader size={14} className="animate-spin" />}
-            {state.wifiSent ? "Wi-Fi sent" : "Send Wi-Fi"}
-          </MorandiButton>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!connected || refreshing || state.wifiSent}
-            onClick={() => {
-              detach(
-                refresh(pageSignal),
-                Reason.DomCallback,
-                "refreshBb0DeviceStatus",
-              );
-            }}
-          >
-            {refreshing ? (
-              <IconLoader size={14} className="animate-spin" />
-            ) : (
-              <IconRefresh size={14} />
-            )}
-            Refresh status
-          </Button>
-        </div>
+        <MorandiButton
+          className="self-start"
+          disabled={!canSendWifi || sendingWifi || state.wifiSent}
+          onClick={() => {
+            detach(
+              sendWifi(pageSignal),
+              Reason.DomCallback,
+              "sendBb0WifiCredentials",
+            );
+          }}
+        >
+          {sendingWifi && <IconLoader size={14} className="animate-spin" />}
+          {state.wifiSent ? "Wi-Fi sent" : "Send Wi-Fi"}
+        </MorandiButton>
 
         {state.wifiSent && (
           <p className="text-xs leading-5 text-muted-foreground">
@@ -471,10 +422,12 @@ export function Bb0DevicePage() {
 
           {/* Troubleshoot footer */}
           <p className="px-1 text-xs text-muted-foreground">
-            Having trouble? Hold <code className="text-foreground">BtnA</code>,
-            press <code className="text-foreground">BtnB</code>, then release{" "}
-            <code className="text-foreground">BtnA</code> to restart setup mode,
-            and{" "}
+            Need to reset BB0? Press and hold the small button on the left side
+            of the device — just to the right of the{" "}
+            <code className="text-foreground">Stick S3</code> sticker — for
+            about two seconds. When the screen shows{" "}
+            <code className="text-foreground">reset</code>, release the button
+            and BB0 will reboot itself. You can also{" "}
             <button
               type="button"
               className="underline underline-offset-2 hover:text-foreground"
