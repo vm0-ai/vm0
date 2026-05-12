@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { replicateHandler } from "../replicate-handler";
+import { replicateHandler } from "@vm0/connectors/oauth-providers/providers/replicate-handler";
 
 describe("connector/providers/replicate", () => {
   describe("buildAuthUrl", () => {

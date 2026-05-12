@@ -3,7 +3,7 @@ import { HttpResponse } from "msw";
 import { server } from "../../../../../mocks/server";
 import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
-import { PROVIDER_HANDLERS } from "../../provider-registry";
+import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
 import {
   exchangeChatgptCode,
   refreshChatgptToken,
@@ -11,8 +11,8 @@ import {
   getChatgptRefreshSecretName,
   isChatgptRefreshError,
   type ChatgptRefreshError,
-} from "../codex-oauth";
-import { codexOauthHandler } from "../codex-oauth-handler";
+} from "@vm0/connectors/oauth-providers/providers/codex-oauth";
+import { codexOauthHandler } from "@vm0/connectors/oauth-providers/providers/codex-oauth-handler";
 
 const TOKEN_URL = "https://auth.openai.com/oauth/token";
 const CODEX_PUBLIC_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";

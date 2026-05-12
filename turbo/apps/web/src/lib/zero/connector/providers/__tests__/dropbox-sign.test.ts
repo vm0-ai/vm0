@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { dropboxSignHandler } from "../dropbox-sign-handler";
+import { dropboxSignHandler } from "@vm0/connectors/oauth-providers/providers/dropbox-sign-handler";
 
 describe("connector/providers/dropbox-sign", () => {
   describe("buildAuthUrl", () => {

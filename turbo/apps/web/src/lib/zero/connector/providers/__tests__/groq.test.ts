@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { groqHandler } from "../groq-handler";
+import { groqHandler } from "@vm0/connectors/oauth-providers/providers/groq-handler";
 
 describe("connector/providers/groq", () => {
   describe("buildAuthUrl", () => {

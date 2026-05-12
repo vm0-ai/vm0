@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { msg9Handler } from "../msg9-handler";
+import { msg9Handler } from "@vm0/connectors/oauth-providers/providers/msg9-handler";
 
 describe("connector/providers/msg9", () => {
   describe("buildAuthUrl", () => {

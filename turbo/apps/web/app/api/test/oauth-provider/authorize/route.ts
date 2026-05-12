@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isTestEndpointAllowed } from "../../../../../src/lib/auth/test-endpoint-guard";
-import { TEST_OAUTH_CLIENT_ID } from "../../../../../src/lib/zero/connector/providers/test-oauth";
+import { TEST_OAUTH_CLIENT_ID } from "@vm0/connectors/oauth-providers/providers/test-oauth";
 import {
   mintAuthCode,
   TEST_OAUTH_SCENARIOS,

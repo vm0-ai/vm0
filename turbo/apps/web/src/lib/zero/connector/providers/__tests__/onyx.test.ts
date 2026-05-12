@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { onyxHandler } from "../onyx-handler";
+import { onyxHandler } from "@vm0/connectors/oauth-providers/providers/onyx-handler";
 
 describe("connector/providers/onyx", () => {
   describe("buildAuthUrl", () => {

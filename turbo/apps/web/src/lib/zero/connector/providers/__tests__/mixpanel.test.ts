@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mixpanelHandler } from "../mixpanel-handler";
+import { mixpanelHandler } from "@vm0/connectors/oauth-providers/providers/mixpanel-handler";
 
 describe("connector/providers/mixpanel", () => {
   describe("buildAuthUrl", () => {

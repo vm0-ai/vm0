@@ -3,13 +3,13 @@ import { HttpResponse } from "msw";
 import { server } from "../../../../../mocks/server";
 import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
-import { PROVIDER_HANDLERS } from "../../provider-registry";
+import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
 import {
   buildMetaAdsAuthorizationUrl,
   exchangeMetaAdsCode,
   getMetaAdsSecretName,
-} from "../meta-ads";
-import { metaAdsHandler } from "../meta-ads-handler";
+} from "@vm0/connectors/oauth-providers/providers/meta-ads";
+import { metaAdsHandler } from "@vm0/connectors/oauth-providers/providers/meta-ads-handler";
 
 const TOKEN_URL = "https://graph.facebook.com/v22.0/oauth/access_token";
 const USER_URL = "https://graph.facebook.com/v22.0/me";

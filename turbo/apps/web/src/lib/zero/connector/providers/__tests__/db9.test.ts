@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { db9Handler } from "../db9-handler";
+import { db9Handler } from "@vm0/connectors/oauth-providers/providers/db9-handler";
 
 describe("connector/providers/db9", () => {
   describe("buildAuthUrl", () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { n8nHandler } from "../n8n-handler";
+import { n8nHandler } from "@vm0/connectors/oauth-providers/providers/n8n-handler";
 
 describe("connector/providers/n8n", () => {
   describe("buildAuthUrl", () => {

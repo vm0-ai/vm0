@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pipedriveHandler } from "../pipedrive-handler";
+import { pipedriveHandler } from "@vm0/connectors/oauth-providers/providers/pipedrive-handler";
 
 describe("connector/providers/pipedrive", () => {
   describe("buildAuthUrl", () => {

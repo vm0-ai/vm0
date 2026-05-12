@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { drive9Handler } from "../drive9-handler";
+import { drive9Handler } from "@vm0/connectors/oauth-providers/providers/drive9-handler";
 
 describe("connector/providers/drive9", () => {
   describe("buildAuthUrl", () => {

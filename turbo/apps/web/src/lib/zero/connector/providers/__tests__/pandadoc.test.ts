@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pandadocHandler } from "../pandadoc-handler";
+import { pandadocHandler } from "@vm0/connectors/oauth-providers/providers/pandadoc-handler";
 
 describe("connector/providers/pandadoc", () => {
   describe("buildAuthUrl", () => {

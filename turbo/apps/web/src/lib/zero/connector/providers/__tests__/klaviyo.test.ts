@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { klaviyoHandler } from "../klaviyo-handler";
+import { klaviyoHandler } from "@vm0/connectors/oauth-providers/providers/klaviyo-handler";
 
 describe("connector/providers/klaviyo", () => {
   describe("buildAuthUrl", () => {

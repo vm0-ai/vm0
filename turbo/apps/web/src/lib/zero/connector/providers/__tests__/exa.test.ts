@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { exaHandler } from "../exa-handler";
+import { exaHandler } from "@vm0/connectors/oauth-providers/providers/exa-handler";
 
 describe("connector/providers/exa", () => {
   describe("buildAuthUrl", () => {

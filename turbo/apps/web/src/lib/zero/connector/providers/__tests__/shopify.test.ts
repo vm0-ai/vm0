@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shopifyHandler } from "../shopify-handler";
+import { shopifyHandler } from "@vm0/connectors/oauth-providers/providers/shopify-handler";
 
 describe("connector/providers/shopify", () => {
   describe("buildAuthUrl", () => {

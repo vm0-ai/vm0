@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { workosHandler } from "../workos-handler";
+import { workosHandler } from "@vm0/connectors/oauth-providers/providers/workos-handler";
 
 describe("connector/providers/workos", () => {
   describe("buildAuthUrl", () => {

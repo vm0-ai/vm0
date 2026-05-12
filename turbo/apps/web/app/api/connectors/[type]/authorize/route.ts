@@ -8,7 +8,8 @@ import { getOrigin } from "../../../../../src/lib/shared/request/get-origin";
 import {
   type AuthUrlResult,
   PROVIDER_HANDLERS,
-} from "../../../../../src/lib/zero/connector/provider-registry";
+  providerEnvFromObject,
+} from "@vm0/connectors/oauth-providers";
 import { deleteConnector } from "../../../../../src/lib/zero/connector/connector-service";
 import { logger } from "../../../../../src/lib/shared/logger";
 import { and, eq } from "drizzle-orm";
@@ -149,7 +150,7 @@ export async function GET(
   const sessionId = url.searchParams.get("session");
 
   // Build authorization URL via provider registry
-  const currentEnv = env();
+  const currentEnv = providerEnvFromObject(env());
   const handler = PROVIDER_HANDLERS[connectorType];
   const clientId = handler.getClientId(currentEnv);
   if (!clientId) {

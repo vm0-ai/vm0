@@ -5,8 +5,8 @@ import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
 import { reloadEnv } from "../../../../../env";
 import { injectPlatformEnvSecrets } from "../../../context/resolve-secrets";
-import { PROVIDER_HANDLERS } from "../../provider-registry";
-import { googleAdsHandler } from "../google-ads-handler";
+import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import { googleAdsHandler } from "@vm0/connectors/oauth-providers/providers/google-ads-handler";
 
 const context = testContext();
 const TOKEN_URL = "https://oauth2.googleapis.com/token";

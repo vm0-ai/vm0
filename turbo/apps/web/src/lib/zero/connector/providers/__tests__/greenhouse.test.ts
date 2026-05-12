@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { greenhouseHandler } from "../greenhouse-handler";
+import { greenhouseHandler } from "@vm0/connectors/oauth-providers/providers/greenhouse-handler";
 
 describe("connector/providers/greenhouse", () => {
   describe("buildAuthUrl", () => {

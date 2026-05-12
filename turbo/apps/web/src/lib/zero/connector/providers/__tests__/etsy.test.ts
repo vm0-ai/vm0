@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { etsyHandler } from "../etsy-handler";
+import { etsyHandler } from "@vm0/connectors/oauth-providers/providers/etsy-handler";
 
 describe("connector/providers/etsy", () => {
   describe("buildAuthUrl", () => {

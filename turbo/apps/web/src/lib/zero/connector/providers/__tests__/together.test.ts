@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { togetherHandler } from "../together-handler";
+import { togetherHandler } from "@vm0/connectors/oauth-providers/providers/together-handler";
 
 describe("connector/providers/together", () => {
   describe("buildAuthUrl", () => {

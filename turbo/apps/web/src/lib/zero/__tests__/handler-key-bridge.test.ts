@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PROVIDER_HANDLERS } from "../connector/provider-registry";
+import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
 import {
   HANDLER_KEY_SOURCE_TYPE,
   MODEL_PROVIDER_HANDLER_KEY,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { typeformHandler } from "../typeform-handler";
+import { typeformHandler } from "@vm0/connectors/oauth-providers/providers/typeform-handler";
 
 describe("connector/providers/typeform", () => {
   describe("buildAuthUrl", () => {

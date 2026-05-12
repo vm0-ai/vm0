@@ -23,7 +23,7 @@ export function buildVercelAuthorizationUrl(
   _redirectUri: string,
   state: string,
 ): string {
-  const slug = globalThis.services.env.VERCEL_INTEGRATION_SLUG;
+  const slug = process.env.VERCEL_INTEGRATION_SLUG;
   if (!slug) {
     throw new Error("VERCEL_INTEGRATION_SLUG is not configured");
   }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pineconeHandler } from "../pinecone-handler";
+import { pineconeHandler } from "@vm0/connectors/oauth-providers/providers/pinecone-handler";
 
 describe("connector/providers/pinecone", () => {
   describe("buildAuthUrl", () => {

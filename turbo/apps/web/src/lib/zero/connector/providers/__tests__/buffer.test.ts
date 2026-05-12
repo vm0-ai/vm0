@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bufferHandler } from "../buffer-handler";
+import { bufferHandler } from "@vm0/connectors/oauth-providers/providers/buffer-handler";
 
 describe("connector/providers/buffer", () => {
   describe("buildAuthUrl", () => {

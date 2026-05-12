@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { codaHandler } from "../coda-handler";
+import { codaHandler } from "@vm0/connectors/oauth-providers/providers/coda-handler";
 
 describe("connector/providers/coda", () => {
   describe("buildAuthUrl", () => {

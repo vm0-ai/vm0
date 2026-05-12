@@ -8,7 +8,7 @@ import {
   exchangeGumroadCode,
   refreshGumroadToken,
   getGumroadSecretName,
-} from "../gumroad";
+} from "@vm0/connectors/oauth-providers/providers/gumroad";
 
 const context = testContext();
 

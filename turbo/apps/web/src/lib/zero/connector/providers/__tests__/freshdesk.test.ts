@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { freshdeskHandler } from "../freshdesk-handler";
+import { freshdeskHandler } from "@vm0/connectors/oauth-providers/providers/freshdesk-handler";
 
 describe("connector/providers/freshdesk", () => {
   describe("buildAuthUrl", () => {

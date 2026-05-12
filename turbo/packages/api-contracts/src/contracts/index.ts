@@ -214,6 +214,14 @@ export {
   type UserExportStatusResponse,
 } from "./user-export";
 export {
+  connectorsTypeAuthorizeContract,
+  type ConnectorsTypeAuthorizeContract,
+} from "./connectors-type-authorize";
+export {
+  connectorsTypeCallbackContract,
+  type ConnectorsTypeCallbackContract,
+} from "./connectors-type-callback";
+export {
   testOAuthProviderAuthorizeContract,
   testOAuthProviderAuthorizeErrorSchema,
   testOAuthProviderAuthorizeQuerySchema,

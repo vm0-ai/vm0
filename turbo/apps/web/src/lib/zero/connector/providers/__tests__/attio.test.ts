@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { attioHandler } from "../attio-handler";
+import { attioHandler } from "@vm0/connectors/oauth-providers/providers/attio-handler";
 
 describe("connector/providers/attio", () => {
   describe("buildAuthUrl", () => {

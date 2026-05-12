@@ -1,4 +1,5 @@
 import { command, computed } from "ccstate";
+import type { AppRoute } from "@ts-rest/core";
 import {
   zeroComputerConnectorContract,
   zeroConnectorAuthorizeContract,
@@ -22,6 +23,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { and, eq } from "drizzle-orm";
+import type { z } from "zod";
 
 import {
   authContext$,
@@ -51,6 +53,11 @@ const SESSION_COOKIE_NAME = "connector_oauth_session";
 const PKCE_COOKIE_NAME = "connector_oauth_pkce";
 const COOKIE_MAX_AGE = 15 * 60;
 const REDIRECT_STATUS = 307;
+
+type ConnectorAuthorizeRoute = AppRoute & {
+  readonly pathParams: z.ZodType<{ readonly type: string }>;
+  readonly query: z.ZodType<{ readonly session?: string }>;
+};
 
 const connectorReadAuth = {
   requireOrganization: true,
@@ -382,10 +389,10 @@ const connectRemoteAgentConnectorInner$ = command(
   },
 );
 
-const authorizeConnectorInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const params = get(pathParamsOf(zeroConnectorAuthorizeContract.authorize));
-    const query = get(queryOf(zeroConnectorAuthorizeContract.authorize));
+export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
+  return command(async ({ get, set }, signal: AbortSignal) => {
+    const params = get(pathParamsOf(route));
+    const query = get(queryOf(route));
     const request = get(request$).raw;
     const origin = getRequestOrigin(request);
     const requestUrl = new URL(request.url);
@@ -496,7 +503,11 @@ const authorizeConnectorInner$ = command(
       );
     }
     return response;
-  },
+  });
+}
+
+const authorizeConnectorInner$ = createAuthorizeConnectorInner(
+  zeroConnectorAuthorizeContract.authorize,
 );
 
 const getConnectorSessionByIdInner$ = command(

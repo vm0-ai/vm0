@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { heliconeHandler } from "../helicone-handler";
+import { heliconeHandler } from "@vm0/connectors/oauth-providers/providers/helicone-handler";
 
 describe("connector/providers/helicone", () => {
   describe("buildAuthUrl", () => {

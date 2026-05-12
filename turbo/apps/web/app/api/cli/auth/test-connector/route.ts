@@ -3,7 +3,7 @@ import { z } from "zod";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import { initServices } from "../../../../../src/lib/init-services";
 import { upsertOAuthConnector } from "../../../../../src/lib/zero/connector/connector-service";
-import { PROVIDER_HANDLERS } from "../../../../../src/lib/zero/connector/provider-registry";
+import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
 import {
   resolveTestUserId,
   resolveTestUserOrg,

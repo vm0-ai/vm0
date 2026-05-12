@@ -8,7 +8,7 @@ import {
   exchangeSpotifyCode,
   refreshSpotifyToken,
   getSpotifySecretName,
-} from "../spotify";
+} from "@vm0/connectors/oauth-providers/providers/spotify";
 
 const context = testContext();
 

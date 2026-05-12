@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { e2bHandler } from "../e2b-handler";
+import { e2bHandler } from "@vm0/connectors/oauth-providers/providers/e2b-handler";
 
 describe("connector/providers/e2b", () => {
   describe("buildAuthUrl", () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { lumaHandler } from "../luma-handler";
+import { lumaHandler } from "@vm0/connectors/oauth-providers/providers/luma-handler";
 
 describe("connector/providers/luma", () => {
   describe("buildAuthUrl", () => {

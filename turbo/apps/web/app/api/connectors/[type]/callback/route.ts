@@ -15,8 +15,9 @@ import { logger } from "../../../../../src/lib/shared/logger";
 import { getOrigin } from "../../../../../src/lib/shared/request/get-origin";
 import {
   PROVIDER_HANDLERS,
+  providerEnvFromObject,
   type OAuthTokenResult,
-} from "../../../../../src/lib/zero/connector/provider-registry";
+} from "@vm0/connectors/oauth-providers";
 
 const log = logger("api:connectors:callback");
 
@@ -67,7 +68,7 @@ async function exchangeTokenForConnector(
   state?: string,
   codeVerifier?: string,
 ): Promise<OAuthTokenResult> {
-  const currentEnv = env();
+  const currentEnv = providerEnvFromObject(env());
   const handler = PROVIDER_HANDLERS[connectorType];
   const clientId = handler.getClientId(currentEnv);
   const clientSecret = handler.getClientSecret(currentEnv);

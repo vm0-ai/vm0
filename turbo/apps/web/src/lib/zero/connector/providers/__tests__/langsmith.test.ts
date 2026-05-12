@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { langsmithHandler } from "../langsmith-handler";
+import { langsmithHandler } from "@vm0/connectors/oauth-providers/providers/langsmith-handler";
 
 describe("connector/providers/langsmith", () => {
   describe("buildAuthUrl", () => {

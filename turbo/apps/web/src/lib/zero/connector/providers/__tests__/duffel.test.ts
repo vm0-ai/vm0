@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { duffelHandler } from "../duffel-handler";
+import { duffelHandler } from "@vm0/connectors/oauth-providers/providers/duffel-handler";
 
 describe("connector/providers/duffel", () => {
   describe("buildAuthUrl", () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { wandbHandler } from "../wandb-handler";
+import { wandbHandler } from "@vm0/connectors/oauth-providers/providers/wandb-handler";
 
 describe("connector/providers/wandb", () => {
   describe("buildAuthUrl", () => {

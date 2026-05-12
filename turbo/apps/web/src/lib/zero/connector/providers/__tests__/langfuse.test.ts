@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { langfuseHandler } from "../langfuse-handler";
+import { langfuseHandler } from "@vm0/connectors/oauth-providers/providers/langfuse-handler";
 
 describe("connector/providers/langfuse", () => {
   describe("buildAuthUrl", () => {

@@ -1,4 +1,21 @@
-import { type Env } from "../../../env";
+export interface ProviderEnv {
+  readonly [name: string]: string | undefined;
+}
+
+export function providerEnvFromObject(values: object): ProviderEnv {
+  return new Proxy(
+    {},
+    {
+      get: (_target, property) => {
+        if (typeof property !== "string" || !Object.hasOwn(values, property)) {
+          return undefined;
+        }
+        const value = (values as Record<string, unknown>)[property];
+        return typeof value === "string" ? value : undefined;
+      },
+    },
+  ) as ProviderEnv;
+}
 
 export interface OAuthTokenResult {
   accessToken: string;
@@ -31,8 +48,8 @@ export interface ProviderHandler {
     state?: string,
     codeVerifier?: string,
   ): Promise<OAuthTokenResult>;
-  getClientId(currentEnv: Env): string | undefined;
-  getClientSecret(currentEnv: Env): string | undefined;
+  getClientId(currentEnv: ProviderEnv): string | undefined;
+  getClientSecret(currentEnv: ProviderEnv): string | undefined;
   getSecretName(): string;
   getRefreshSecretName?(): string;
   refreshToken?(

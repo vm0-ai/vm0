@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stabilityAiHandler } from "../stability-ai-handler";
+import { stabilityAiHandler } from "@vm0/connectors/oauth-providers/providers/stability-ai-handler";
 
 describe("connector/providers/stability-ai", () => {
   describe("buildAuthUrl", () => {

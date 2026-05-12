@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { browserUseHandler } from "../browser-use-handler";
+import { browserUseHandler } from "@vm0/connectors/oauth-providers/providers/browser-use-handler";
 
 describe("connector/providers/browser-use", () => {
   describe("buildAuthUrl", () => {

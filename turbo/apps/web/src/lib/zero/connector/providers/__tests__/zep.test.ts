@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { zepHandler } from "../zep-handler";
+import { zepHandler } from "@vm0/connectors/oauth-providers/providers/zep-handler";
 
 describe("connector/providers/zep", () => {
   describe("buildAuthUrl", () => {

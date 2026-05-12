@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { amplitudeHandler } from "../amplitude-handler";
+import { amplitudeHandler } from "@vm0/connectors/oauth-providers/providers/amplitude-handler";
 
 describe("connector/providers/amplitude", () => {
   describe("buildAuthUrl", () => {

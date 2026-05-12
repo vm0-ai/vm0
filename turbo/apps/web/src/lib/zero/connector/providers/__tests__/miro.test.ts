@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { miroHandler } from "../miro-handler";
+import { miroHandler } from "@vm0/connectors/oauth-providers/providers/miro-handler";
 
 describe("connector/providers/miro", () => {
   describe("buildAuthUrl", () => {

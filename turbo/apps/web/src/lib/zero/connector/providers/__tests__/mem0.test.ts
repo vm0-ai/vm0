@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mem0Handler } from "../mem0-handler";
+import { mem0Handler } from "@vm0/connectors/oauth-providers/providers/mem0-handler";
 
 describe("connector/providers/mem0", () => {
   describe("buildAuthUrl", () => {

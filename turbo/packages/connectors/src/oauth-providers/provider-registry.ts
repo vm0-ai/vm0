@@ -1,10 +1,10 @@
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { getConfiguredConnectorTypes as getConfiguredConnectorTypesFromEnv } from "@vm0/connectors/connector-utils";
-import { type Env } from "../../../env";
 import {
   type AuthUrlResult,
   type OAuthTokenResult,
   type ProviderHandler,
+  type ProviderEnv,
 } from "./provider-types";
 import { agentmailHandler } from "./providers/agentmail-handler";
 import { amplitudeHandler } from "./providers/amplitude-handler";
@@ -187,6 +187,8 @@ import { testOauthHandler } from "./providers/test-oauth-handler";
 import { wandbHandler } from "./providers/wandb-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
+export type { ProviderEnv };
+export { providerEnvFromObject } from "./provider-types";
 
 export const PROVIDER_HANDLERS: Record<
   Exclude<ConnectorType, "computer">,
@@ -377,9 +379,11 @@ export const PROVIDER_HANDLERS: Record<
  * Returns connector types whose OAuth credentials (or equivalent) are
  * configured in the current environment.
  */
-export function getConfiguredConnectorTypes(currentEnv: Env): ConnectorType[] {
+export function getConfiguredConnectorTypes(
+  currentEnv: ProviderEnv,
+): ConnectorType[] {
   return getConfiguredConnectorTypesFromEnv((name) => {
-    const value = currentEnv[name as keyof Env];
+    const value = currentEnv[name];
     return typeof value === "string" ? value : undefined;
   });
 }

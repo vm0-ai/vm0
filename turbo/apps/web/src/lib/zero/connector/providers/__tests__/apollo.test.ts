@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { apolloHandler } from "../apollo-handler";
+import { apolloHandler } from "@vm0/connectors/oauth-providers/providers/apollo-handler";
 
 describe("connector/providers/apollo", () => {
   describe("buildAuthUrl", () => {

@@ -6,7 +6,7 @@ import {
 import { and, eq } from "drizzle-orm";
 import { logger } from "../../shared/logger";
 import { connectors } from "@vm0/db/schema/connector";
-import { PROVIDER_HANDLERS } from "../connector/provider-registry";
+import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
 import { getSecretValues } from "../secret/secret-service";
 
 const log = logger("zero:build-context");

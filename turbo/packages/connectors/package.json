@@ -51,6 +51,18 @@
     "./github-url": {
       "import": "./src/github-url.ts",
       "types": "./src/github-url.ts"
+    },
+    "./oauth-providers": {
+      "import": "./src/oauth-providers/provider-registry.ts",
+      "types": "./src/oauth-providers/provider-registry.ts"
+    },
+    "./oauth-providers/*": {
+      "import": "./src/oauth-providers/*.ts",
+      "types": "./src/oauth-providers/*.ts"
+    },
+    "./oauth-providers/providers/*": {
+      "import": "./src/oauth-providers/providers/*.ts",
+      "types": "./src/oauth-providers/providers/*.ts"
     }
   },
   "scripts": {
@@ -66,6 +78,7 @@
   "devDependencies": {
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
+    "@types/node": "^24.3.0",
     "eslint": "^9.34.0",
     "oxlint": "^1.57.0",
     "oxlint-tsgolint": "0.21.1",

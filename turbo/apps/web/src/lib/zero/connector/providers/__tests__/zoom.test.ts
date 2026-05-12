@@ -8,7 +8,7 @@ import {
   exchangeZoomCode,
   refreshZoomToken,
   getZoomSecretName,
-} from "../zoom";
+} from "@vm0/connectors/oauth-providers/providers/zoom";
 
 const context = testContext();
 

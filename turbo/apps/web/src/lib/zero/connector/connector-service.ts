@@ -19,8 +19,11 @@ import { variables } from "@vm0/db/schema/variable";
 import { notFound, badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { getSecretValue, upsertSecretByOrg } from "../secret/secret-service";
-import { PROVIDER_HANDLERS } from "./provider-registry";
-import { isChatgptRefreshError } from "./providers/codex-oauth";
+import {
+  PROVIDER_HANDLERS,
+  providerEnvFromObject,
+} from "@vm0/connectors/oauth-providers";
+import { isChatgptRefreshError } from "@vm0/connectors/oauth-providers/providers/codex-oauth";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { publishUserSignal } from "../../infra/realtime/client";
 
@@ -449,7 +452,7 @@ export async function revokeConnectorToken(
   const handler = PROVIDER_HANDLERS[type as Exclude<ConnectorType, "computer">];
   if (!handler.revokeToken) return;
 
-  const env = globalThis.services.env;
+  const env = providerEnvFromObject(globalThis.services.env);
   const clientId = handler.getClientId(env);
   const clientSecret = handler.getClientSecret(env);
   if (!clientId || !clientSecret) {
@@ -638,7 +641,7 @@ export async function refreshConnectorAccessToken(
     return null;
   }
 
-  const env = globalThis.services.env;
+  const env = providerEnvFromObject(globalThis.services.env);
   const clientId = handler.getClientId(env);
   if (!clientId) {
     log.debug(

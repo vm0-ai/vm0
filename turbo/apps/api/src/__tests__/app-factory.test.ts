@@ -323,10 +323,11 @@ describe("createApp", () => {
 
     it("preserves multiple set-cookie response headers", async () => {
       mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+      const proxyPath = "/__legacy/proxy/oauth-cookie-roundtrip";
       useUndiciMock()
         .get("https://www.vm0.ai")
         .intercept({
-          path: "/api/connectors/github/authorize",
+          path: proxyPath,
           method: "GET",
         })
         .reply(302, "", {
@@ -340,7 +341,7 @@ describe("createApp", () => {
         });
 
       const app = createApp({ signal: context.signal });
-      const response = await app.request("/api/connectors/github/authorize", {
+      const response = await app.request(proxyPath, {
         method: "GET",
       });
 
