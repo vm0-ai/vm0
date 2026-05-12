@@ -85,7 +85,6 @@ function postExport<TStatus extends UserExportPostResponse["status"]>(
   return accept(
     client().post({
       headers,
-      body: undefined,
     }) as Promise<UserExportPostResponse>,
     statuses,
   );
