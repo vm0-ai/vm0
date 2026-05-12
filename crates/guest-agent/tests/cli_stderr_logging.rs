@@ -15,10 +15,11 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     let mock = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
     let secret = "super-secret-value";
-    let mut stderr_payload = (0..202)
+    let mut stderr_payload = (0..201)
         .map(|i| format!("line-{i}"))
         .collect::<Vec<_>>()
         .join("\n");
+    stderr_payload.push_str("\ncrlf-line\r");
     stderr_payload.push_str(&format!("\ncodex stderr includes {secret}"));
     stderr_payload.push_str(&format!("\n{}", "x".repeat(16 * 1024 + 1)));
     stderr_payload.push_str("\nafter-overlong-line");
@@ -50,6 +51,20 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     assert!(
         !cli_result.stderr_lines.iter().any(|line| line == "line-4"),
         "stderr result should drop old lines from the bounded tail, got: {stderr}"
+    );
+    assert!(
+        cli_result
+            .stderr_lines
+            .iter()
+            .any(|line| line == "crlf-line"),
+        "stderr result should strip trailing carriage returns, got: {stderr}"
+    );
+    assert!(
+        !cli_result
+            .stderr_lines
+            .iter()
+            .any(|line| line == "crlf-line\r"),
+        "stderr result should not keep trailing carriage returns, got: {stderr}"
     );
     assert!(
         stderr.contains("codex stderr includes ***"),

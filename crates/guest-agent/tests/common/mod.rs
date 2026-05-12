@@ -100,6 +100,7 @@ pub fn build_and_locate_mock() -> Result<PathBuf, String> {
 /// - `@hang-after-result` → SIGTERM path
 /// - `@hang-after-result-deaf` → SIGKILL escalation path
 /// - `@exit-after-result` → happy path (no signal ever fires)
+/// - `@fail-no-newline:<message>` → stderr EOF without trailing newline
 /// - `@stuck-tool-deaf` → forced-termination SIGKILL escalation path
 /// - `@stuck-tool-closed-stdout-deaf` → stdout EOF before forced termination
 ///
