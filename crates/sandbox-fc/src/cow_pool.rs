@@ -528,6 +528,7 @@ impl CowPool {
         let elapsed_ms = outcome.elapsed.as_millis() as u64;
         match outcome.result {
             Ok(slot) => {
+                self.warm_retry_at = None;
                 info!(
                     id = %slot.id,
                     purpose = ?outcome.purpose,
@@ -572,6 +573,8 @@ impl CowPool {
                 backoff_ms = self.warm_retry_backoff.as_millis() as u64,
                 "background COW slot creation failed; delaying warm retry"
             );
+            self.schedule_warm_retry();
+        } else if self.waiters.is_empty() {
             self.schedule_warm_retry();
         }
     }
@@ -1061,6 +1064,64 @@ mod tests {
             .send(Ok(test_slot(tmp.path(), "second")))
             .unwrap();
         drop(second.await.unwrap().unwrap());
+        handle.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn single_demand_failure_backs_off_warm_retry_until_next_demand() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (controller, spawner) = ControlledSpawner::new();
+        let pool = test_pool_with_spawner(
+            test_config(tmp.path()),
+            1,
+            1,
+            4,
+            Duration::from_secs(60),
+            spawner,
+        );
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let first = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+        wait_for_snapshot(&handle, |snapshot| snapshot.pending == 1).await;
+        controller
+            .take_request()
+            .send(Err(CowPoolError::CowFileCreation("demand failed".into())))
+            .unwrap();
+        assert!(matches!(
+            first.await.unwrap(),
+            Err(CowPoolError::CowFileCreation(_))
+        ));
+        wait_for_snapshot(&handle, |snapshot| {
+            snapshot.pending == 0 && snapshot.warm_retry_scheduled
+        })
+        .await;
+        assert_eq!(controller.request_count(), 0);
+
+        let second = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+        wait_for_snapshot(&handle, |snapshot| snapshot.pending == 1).await;
+        controller
+            .take_request()
+            .send(Ok(test_slot(tmp.path(), "demand-success")))
+            .unwrap();
+        drop(second.await.unwrap().unwrap());
+        wait_for_snapshot(&handle, |snapshot| {
+            snapshot.pending == 1 && !snapshot.warm_retry_scheduled
+        })
+        .await;
+        controller
+            .take_request()
+            .send(Ok(test_slot(tmp.path(), "warm-after-success")))
+            .unwrap();
+        wait_for_snapshot(&handle, |snapshot| {
+            snapshot.pending == 0 && snapshot.ready == 1
+        })
+        .await;
         handle.cleanup().await;
     }
 
