@@ -1,18 +1,21 @@
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
+import { count, eq, inArray } from "drizzle-orm";
 
 import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { e2eTelegramMockCallLog } from "@vm0/db/schema/e2e-telegram-mock-call-log";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramMessages } from "@vm0/db/schema/telegram-message";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -25,6 +28,7 @@ const store = createStore();
 
 interface SeededTelegramState {
   readonly botId: string;
+  readonly userId: string;
   readonly orgId: string;
   readonly composeId: string;
   readonly versionId: string;
@@ -119,11 +123,30 @@ async function seedTelegramState(): Promise<SeededTelegramState> {
     bodyJson: { ok: true },
   });
 
-  return { botId, orgId, composeId, versionId, chatId };
+  return { botId, userId, orgId, composeId, versionId, chatId };
 }
 
 async function cleanupTelegramState(state: SeededTelegramState): Promise<void> {
   const writeDb = store.set(writeDb$);
+  const runRows = await writeDb
+    .select({ id: agentRuns.id, sessionId: agentRuns.sessionId })
+    .from(agentRuns)
+    .where(eq(agentRuns.orgId, state.orgId));
+  const runIds = runRows.map((run) => {
+    return run.id;
+  });
+  if (runIds.length > 0) {
+    await writeDb.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
+    await writeDb.delete(agentRuns).where(inArray(agentRuns.id, runIds));
+  }
+  const sessionIds = runRows.map((run) => {
+    return run.sessionId;
+  });
+  if (sessionIds.length > 0) {
+    await writeDb
+      .delete(agentSessions)
+      .where(inArray(agentSessions.id, sessionIds));
+  }
   await writeDb
     .delete(e2eTelegramMockCallLog)
     .where(eq(e2eTelegramMockCallLog.chatId, state.chatId));
@@ -147,6 +170,79 @@ async function cleanupTelegramState(state: SeededTelegramState): Promise<void> {
 }
 
 const trackTelegramState = createFixtureTracker(cleanupTelegramState);
+
+async function seedRun(
+  state: SeededTelegramState,
+  triggerSource: "slack" | "telegram",
+): Promise<string> {
+  const writeDb = store.set(writeDb$);
+  const sessionId = randomUUID();
+  const runId = randomUUID();
+  await writeDb.insert(agentSessions).values({
+    id: sessionId,
+    userId: state.userId,
+    orgId: state.orgId,
+    agentComposeId: state.composeId,
+  });
+  await writeDb.insert(agentRuns).values({
+    id: runId,
+    userId: state.userId,
+    orgId: state.orgId,
+    sessionId,
+    status: "completed",
+    prompt: `${triggerSource} diagnostic run`,
+  });
+  await writeDb.insert(zeroRuns).values({
+    id: runId,
+    triggerSource,
+  });
+  return runId;
+}
+
+async function countInstallations(botId: string): Promise<number> {
+  const writeDb = store.set(writeDb$);
+  const [row] = await writeDb
+    .select({ value: count() })
+    .from(telegramInstallations)
+    .where(eq(telegramInstallations.telegramBotId, botId));
+  return row?.value ?? 0;
+}
+
+async function countLinks(botId: string): Promise<number> {
+  const writeDb = store.set(writeDb$);
+  const [row] = await writeDb
+    .select({ value: count() })
+    .from(telegramUserLinks)
+    .where(eq(telegramUserLinks.installationId, botId));
+  return row?.value ?? 0;
+}
+
+async function countMessages(botId: string): Promise<number> {
+  const writeDb = store.set(writeDb$);
+  const [row] = await writeDb
+    .select({ value: count() })
+    .from(telegramMessages)
+    .where(eq(telegramMessages.installationId, botId));
+  return row?.value ?? 0;
+}
+
+async function countAgentRuns(runId: string): Promise<number> {
+  const writeDb = store.set(writeDb$);
+  const [row] = await writeDb
+    .select({ value: count() })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId));
+  return row?.value ?? 0;
+}
+
+async function countZeroRuns(runId: string): Promise<number> {
+  const writeDb = store.set(writeDb$);
+  const [row] = await writeDb
+    .select({ value: count() })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, runId));
+  return row?.value ?? 0;
+}
 
 describe("GET /api/test/telegram-state", () => {
   it("returns 404 when the test endpoint is not allowed", async () => {
@@ -237,5 +333,73 @@ describe("GET /api/test/telegram-state", () => {
         return call.chatId === seeded.chatId && call.method === "sendMessage";
       }),
     ).toBeTruthy();
+  });
+});
+
+describe("DELETE /api/test/telegram-state", () => {
+  it("returns 404 when the test endpoint is not allowed", async () => {
+    mockEnv("ENV", "production");
+
+    const response = await requestApp("/api/test/telegram-state?bot_id=bot-1", {
+      method: "DELETE",
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.text()).resolves.toBe("Not found");
+  });
+
+  it("returns 400 when bot_id is missing", async () => {
+    mockEnv("ENV", "development");
+
+    const response = await requestApp("/api/test/telegram-state", {
+      method: "DELETE",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(readJson<{ error: string }>(response)).resolves.toStrictEqual({
+      error: "bot_id query param is required",
+    });
+  });
+
+  it("returns ok for an unknown bot without deleting unrelated state", async () => {
+    mockEnv("ENV", "development");
+    const seeded = await trackTelegramState(seedTelegramState());
+
+    const response = await requestApp(
+      `/api/test/telegram-state?bot_id=missing_${randomUUID()}`,
+      { method: "DELETE" },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(readJson<{ ok: true }>(response)).resolves.toStrictEqual({
+      ok: true,
+    });
+    await expect(countInstallations(seeded.botId)).resolves.toBe(1);
+    await expect(countLinks(seeded.botId)).resolves.toBe(1);
+    await expect(countMessages(seeded.botId)).resolves.toBe(1);
+  });
+
+  it("deletes Telegram state and only Telegram-triggered runs for the bot org", async () => {
+    mockEnv("ENV", "development");
+    const seeded = await trackTelegramState(seedTelegramState());
+    const telegramRunId = await seedRun(seeded, "telegram");
+    const slackRunId = await seedRun(seeded, "slack");
+
+    const response = await requestApp(
+      `/api/test/telegram-state?bot_id=${seeded.botId}`,
+      { method: "DELETE" },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(readJson<{ ok: true }>(response)).resolves.toStrictEqual({
+      ok: true,
+    });
+    await expect(countInstallations(seeded.botId)).resolves.toBe(0);
+    await expect(countLinks(seeded.botId)).resolves.toBe(0);
+    await expect(countMessages(seeded.botId)).resolves.toBe(0);
+    await expect(countZeroRuns(telegramRunId)).resolves.toBe(0);
+    await expect(countAgentRuns(telegramRunId)).resolves.toBe(0);
+    await expect(countZeroRuns(slackRunId)).resolves.toBe(1);
+    await expect(countAgentRuns(slackRunId)).resolves.toBe(1);
   });
 });

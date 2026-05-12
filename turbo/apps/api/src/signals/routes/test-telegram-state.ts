@@ -1,5 +1,5 @@
-import { computed } from "ccstate";
-import { desc, eq, sql } from "drizzle-orm";
+import { command, computed } from "ccstate";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { testTelegramStateContract } from "@vm0/api-contracts/contracts/test-telegram-state";
 import {
   agentComposes,
@@ -17,7 +17,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { optionalEnv } from "../../lib/env";
 import { request$ } from "../context/hono";
 import { queryOf } from "../context/request";
-import { db$, type ReadonlyDb } from "../external/db";
+import { db$, type ReadonlyDb, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route";
 import {
   isTestEndpointAllowed,
@@ -25,6 +25,7 @@ import {
 } from "./test-oauth-provider-helpers";
 
 const testTelegramStateQuery$ = queryOf(testTelegramStateContract.get);
+const deleteTestTelegramStateQuery$ = queryOf(testTelegramStateContract.delete);
 
 function resolveTelegramApiUrlForDiagnostics(): string | null {
   const telegramApiUrl = optionalEnv("TELEGRAM_API_URL");
@@ -241,9 +242,82 @@ const getTestTelegramState$ = computed(async (get) => {
   };
 });
 
+const deleteTestTelegramState$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const request = get(request$);
+    if (!isTestEndpointAllowed(request)) {
+      return testEndpointNotFoundResponse();
+    }
+
+    const query = get(deleteTestTelegramStateQuery$);
+    if (!query.bot_id) {
+      return {
+        status: 400 as const,
+        body: { error: "bot_id query param is required" },
+      };
+    }
+
+    const botId = query.bot_id;
+    const db = set(writeDb$);
+    const [existing] = await db
+      .select({ orgId: telegramInstallations.orgId })
+      .from(telegramInstallations)
+      .where(eq(telegramInstallations.telegramBotId, botId))
+      .limit(1);
+    signal.throwIfAborted();
+
+    await db
+      .delete(telegramMessages)
+      .where(eq(telegramMessages.installationId, botId));
+    signal.throwIfAborted();
+
+    await db
+      .delete(telegramUserLinks)
+      .where(eq(telegramUserLinks.installationId, botId));
+    signal.throwIfAborted();
+
+    await db
+      .delete(telegramInstallations)
+      .where(eq(telegramInstallations.telegramBotId, botId));
+    signal.throwIfAborted();
+
+    if (existing?.orgId) {
+      const telegramAgentRuns = await db
+        .select({ id: agentRuns.id })
+        .from(agentRuns)
+        .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
+        .where(
+          and(
+            eq(agentRuns.orgId, existing.orgId),
+            eq(zeroRuns.triggerSource, "telegram"),
+          ),
+        );
+      signal.throwIfAborted();
+
+      const ids = telegramAgentRuns.map((run) => {
+        return run.id;
+      });
+
+      if (ids.length > 0) {
+        await db.delete(zeroRuns).where(inArray(zeroRuns.id, ids));
+        signal.throwIfAborted();
+
+        await db.delete(agentRuns).where(inArray(agentRuns.id, ids));
+        signal.throwIfAborted();
+      }
+    }
+
+    return { status: 200 as const, body: { ok: true as const } };
+  },
+);
+
 export const testTelegramStateRoutes: readonly RouteEntry[] = [
   {
     route: testTelegramStateContract.get,
     handler: getTestTelegramState$,
+  },
+  {
+    route: testTelegramStateContract.delete,
+    handler: deleteTestTelegramState$,
   },
 ];

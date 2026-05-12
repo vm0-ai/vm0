@@ -30,6 +30,10 @@ export const testTelegramStateResponseSchema = z.object({
   mock_calls: z.array(z.unknown()),
 });
 
+export const testTelegramStateDeleteResponseSchema = z.object({
+  ok: z.literal(true),
+});
+
 export const testTelegramStateContract = c.router({
   get: {
     method: "GET",
@@ -41,6 +45,17 @@ export const testTelegramStateContract = c.router({
       404: z.string(),
     },
     summary: "Inspect Telegram E2E test state",
+  },
+  delete: {
+    method: "DELETE",
+    path: "/api/test/telegram-state",
+    query: testTelegramStateQuerySchema,
+    responses: {
+      200: testTelegramStateDeleteResponseSchema,
+      400: testTelegramStateErrorSchema,
+      404: z.string(),
+    },
+    summary: "Delete Telegram E2E test state",
   },
 });
 
