@@ -9,6 +9,7 @@ import {
   enableModelFirstModelProviderForUser,
   insertOrgModelPolicy,
   insertOrgDefaultModelProvider,
+  insertOrgNonDefaultModelProvider,
   insertUserDefaultModelProvider,
   insertUserModelPreference,
   insertTestChatThread,
@@ -1747,6 +1748,50 @@ describe("POST /api/zero/chat/messages", () => {
         const job = await findTestRunnerJobEntry(runId);
         expect(job).toBeDefined();
         expect(job!.executionContext.cliAgentType).toBe("claude-code");
+      });
+
+      it("honors explicit modelProvider when model-first default is a different provider", async () => {
+        const { agentId: composeAgentId } = await createTestCompose(
+          uniqueId("explicit-openai"),
+          { noEnvironmentBlock: true },
+        );
+        await insertOrgNonDefaultModelProvider(
+          user.orgId,
+          "openai-api-key",
+          "gpt-5",
+        );
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "openai-api-key",
+        );
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: composeAgentId,
+              prompt: "explicit openai",
+              modelProvider: "openai-api-key",
+            }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { threadId, runId } = await response.json();
+        await context.mocks.flushAfter();
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBe(providerId);
+        expect(override.selectedModel).toBe("gpt-5");
+
+        const run = await findTestZeroRun(runId);
+        expect(run?.modelProvider).toBe("openai-api-key");
+        expect(run?.modelProviderId).toBe(providerId);
+        expect(run?.selectedModel).toBe("gpt-5");
+
+        const job = await findTestRunnerJobEntry(runId);
+        expect(job).toBeDefined();
+        expect(job!.executionContext.cliAgentType).toBe("codex");
       });
     });
 

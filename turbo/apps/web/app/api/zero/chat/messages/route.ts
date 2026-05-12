@@ -686,6 +686,7 @@ async function resolveRunModelOverride(
   threadId: string,
   agent: { modelProviderId: string | null; selectedModel: string | null },
   modelFirstEnabled: boolean,
+  requestedModelProvider: string | undefined,
   modelSelection:
     | { modelProviderId: string; selectedModel: string }
     | null
@@ -746,7 +747,11 @@ async function resolveRunModelOverride(
         return resolvedPin(pin, true);
       }
 
-      const route = await resolveModelFirstRouteDescriptor({ orgId, userId });
+      const route = await resolveModelFirstRouteDescriptor({
+        orgId,
+        userId,
+        providerType: requestedModelProvider,
+      });
       const pin = await persistModelFirstThreadPinIfUnset(
         threadId,
         pinFromModelFirstRoute(route),
@@ -1381,6 +1386,11 @@ const router = tsr.router(chatMessagesContract, {
         };
       }
 
+      const requestedModelProvider =
+        body.modelProvider && body.modelProvider !== "default"
+          ? body.modelProvider
+          : undefined;
+
       const overrideT = await timed(async () => {
         return resolveRunModelOverride(
           callerOrg.orgId,
@@ -1391,6 +1401,7 @@ const router = tsr.router(chatMessagesContract, {
             selectedModel: agent.selectedModel,
           },
           modelFirstEnabled,
+          requestedModelProvider,
           body.modelSelection,
         );
       });
@@ -1457,10 +1468,6 @@ const router = tsr.router(chatMessagesContract, {
         payload: { threadId, agentId: body.agentId },
       };
 
-      const requestedModelProvider =
-        body.modelProvider && body.modelProvider !== "default"
-          ? body.modelProvider
-          : undefined;
       const modelProvider =
         override.modelProviderType ?? requestedModelProvider;
 
