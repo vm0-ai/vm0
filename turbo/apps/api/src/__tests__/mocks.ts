@@ -48,6 +48,10 @@ export interface ApiTestMocks {
       readonly getOrganizationMembershipList: AsyncMock;
     };
   };
+  readonly googleGenAi: {
+    readonly constructorArgs: SyncMock;
+    readonly generateContent: AsyncMock;
+  };
   readonly s3: {
     readonly send: AsyncMock;
     readonly getSignedUrl: AsyncMock;
@@ -113,6 +117,9 @@ export interface ApiTestMocks {
     readonly prices: {
       readonly retrieve: AsyncMock;
     };
+  };
+  readonly vercelOidc: {
+    readonly getToken: AsyncMock;
   };
   readonly telegram: {
     readonly getMe: AsyncMock;
@@ -258,6 +265,10 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     axiom,
     axiomLogging,
     clerk,
+    googleGenAi: {
+      constructorArgs: vi.fn<(...args: unknown[]) => void>(),
+      generateContent: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
     s3: {
       send: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       getSignedUrl: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -265,6 +276,9 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
     slack,
     stripe,
+    vercelOidc: {
+      getToken: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
     telegram,
     otel: {
       registerOTel: vi.fn<(...args: unknown[]) => void>(),
@@ -357,6 +371,28 @@ vi.mock("@clerk/backend", () => {
   return {
     createClerkClient: () => {
       return apiTestMocks.clerk;
+    },
+  };
+});
+
+vi.mock("@google/genai", () => {
+  class GoogleGenAI {
+    readonly models = {
+      generateContent: apiTestMocks.googleGenAi.generateContent,
+    };
+
+    constructor(args: unknown) {
+      apiTestMocks.googleGenAi.constructorArgs(args);
+    }
+  }
+
+  return { GoogleGenAI };
+});
+
+vi.mock("@vercel/oidc", () => {
+  return {
+    getVercelOidcToken: (): Promise<unknown> => {
+      return apiTestMocks.vercelOidc.getToken();
     },
   };
 });

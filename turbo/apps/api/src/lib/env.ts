@@ -63,6 +63,14 @@ const SCHEMA = {
   TELEGRAM_OFFICIAL_BOT_USERNAME: z.string().optional(),
   TELEGRAM_OFFICIAL_WEBHOOK_SECRET: z.string().optional(),
   SLACK_CLIENT_ID: z.string().optional(),
+  // Gemini via Vertex AI (Vercel OIDC -> GCP Workload Identity Federation).
+  // Production should use the GCP_* vars; dev/test may use GEMINI_API_KEY.
+  GCP_PROJECT_ID: z.string().min(1).optional(),
+  GCP_PROJECT_NUMBER: z.string().min(1).optional(),
+  GCP_SERVICE_ACCOUNT_EMAIL: z.string().min(1).optional(),
+  GCP_WORKLOAD_IDENTITY_POOL_ID: z.string().min(1).optional(),
+  GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: z.string().min(1).optional(),
+  GEMINI_API_KEY: z.string().min(1).optional(),
 } as const;
 
 const baseEnv = createEnv<undefined, typeof SCHEMA>({

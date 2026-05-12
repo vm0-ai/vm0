@@ -16,6 +16,7 @@ import { connectorsTypeAuthorizeRoutes } from "./routes/connectors-type-authoriz
 import { connectorsTypeCallbackRoutes } from "./routes/connectors-type-callback";
 import { deviceTokenRoutes } from "./routes/device-token";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
+import { generateImageRoutes } from "./routes/generate-image";
 import { apiHealth$ } from "./routes/health";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
@@ -151,6 +152,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...connectorsTypeCallbackRoutes,
   ...deviceTokenRoutes,
   ...emailUnsubscribeRoutes,
+  ...generateImageRoutes,
   ...zeroAgentInstructionsRoutes,
   ...zeroAgentsRoutes,
   ...zeroApiKeysRoutes,
