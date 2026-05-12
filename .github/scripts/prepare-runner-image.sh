@@ -89,7 +89,15 @@ UNIT="vm0-runner-${RUNNER_NAME}.service"
 # This CI cleanup is intentionally forceful. Avoid executing the existing
 # runner binary here: a cancelled prior prepare can leave a truncated binary at
 # the final path.
-sudo systemctl stop "${UNIT}" 2>/dev/null || true
+if ! stop_output=$(sudo systemctl stop "${UNIT}" 2>&1); then
+  case "$stop_output" in
+    *"not loaded"*|*"not found"*) ;;
+    *)
+      printf '%s\n' "$stop_output" >&2
+      exit 1
+      ;;
+  esac
+fi
 
 if sudo systemctl is-active --quiet "${UNIT}" 2>/dev/null; then
   echo "runner service ${UNIT} is still active after stop" >&2
