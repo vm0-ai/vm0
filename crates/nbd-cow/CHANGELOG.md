@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.20](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.19...nbd-cow-v0.4.20) (2026-05-12)
+
+
+### Bug Fixes
+
+* report workload fio metrics in nbd-cow bench ([#12947](https://github.com/vm0-ai/vm0/issues/12947)) ([e3d34d2](https://github.com/vm0-ai/vm0/commit/e3d34d2bb2510ef11f6d0ed2af5ff2a13ab8cc19))
+
 ## [0.4.19](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.18...nbd-cow-v0.4.19) (2026-05-12)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.5](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.29.4...sandbox-fc-v0.29.5) (2026-05-12)
+
+
+### Refactoring
+
+* split Firecracker factory modules ([#13037](https://github.com/vm0-ai/vm0/issues/13037)) ([bc13e7c](https://github.com/vm0-ai/vm0/commit/bc13e7c5833ecc5ecf23216f5c8f808a5d97d752))
+
 ## [0.29.4](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.29.3...sandbox-fc-v0.29.4) (2026-05-12)
 
 ## [0.29.3](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.29.2...sandbox-fc-v0.29.3) (2026-05-12)

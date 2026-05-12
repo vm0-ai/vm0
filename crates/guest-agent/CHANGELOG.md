@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.30.2...guest-agent-v0.30.3) (2026-05-12)
+
+
+### Refactoring
+
+* split guest artifact snapshot modules ([#13014](https://github.com/vm0-ai/vm0/issues/13014)) ([69d4ebc](https://github.com/vm0-ai/vm0/commit/69d4ebc10f4d72f485401640a66063e2243c115d))
+
 ## [0.30.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.30.1...guest-agent-v0.30.2) (2026-05-12)
 
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.271.0](https://github.com/vm0-ai/vm0/compare/core-v8.270.0...core-v8.271.0) (2026-05-12)
+
+
+### Features
+
+* add AgentPhone iMessage transport ([#12964](https://github.com/vm0-ai/vm0/issues/12964)) ([abd2e25](https://github.com/vm0-ai/vm0/commit/abd2e2539582926c940949e010e0656dab4fd2c0))
+
+
+### Refactoring
+
+* **api:** migrate telegram mock route ([#12995](https://github.com/vm0-ai/vm0/issues/12995)) ([7c7d409](https://github.com/vm0-ai/vm0/commit/7c7d4095ef24e9dc2343b83853da58e32081156f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.13.0
+
 ## [8.270.0](https://github.com/vm0-ai/vm0/compare/core-v8.269.1...core-v8.270.0) (2026-05-12)
 
 

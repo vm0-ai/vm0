@@ -1,5 +1,28 @@
 # Changelog
 
+## [12.355.0](https://github.com/vm0-ai/vm0/compare/web-v12.354.0...web-v12.355.0) (2026-05-12)
+
+
+### Features
+
+* add AgentPhone iMessage transport ([#12964](https://github.com/vm0-ai/vm0/issues/12964)) ([abd2e25](https://github.com/vm0-ai/vm0/commit/abd2e2539582926c940949e010e0656dab4fd2c0))
+
+
+### Refactoring
+
+* **api:** migrate telegram mock route ([#12995](https://github.com/vm0-ai/vm0/issues/12995)) ([7c7d409](https://github.com/vm0-ai/vm0/commit/7c7d4095ef24e9dc2343b83853da58e32081156f))
+* **api:** migrate user export POST ([#13034](https://github.com/vm0-ai/vm0/issues/13034)) ([193fed0](https://github.com/vm0-ai/vm0/commit/193fed08017d9767be51c73ae5d083e761917447))
+* remove vm0 default agent env fallback ([#13011](https://github.com/vm0-ai/vm0/issues/13011)) ([5c90dfe](https://github.com/vm0-ai/vm0/commit/5c90dfe1f1aa7ce32dbadac90c6de53c0066e12f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.13.0
+    * @vm0/core bumped to 8.271.0
+    * @vm0/db bumped to 1.7.0
+
 ## [12.354.0](https://github.com/vm0-ai/vm0/compare/web-v12.353.0...web-v12.354.0) (2026-05-12)
 
 
