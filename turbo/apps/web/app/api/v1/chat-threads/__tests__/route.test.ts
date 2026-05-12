@@ -5,6 +5,7 @@ import { POST as sendMessage } from "../messages/route";
 import {
   createTestRequest,
   createTestCompose,
+  disableModelFirstModelProviderForUser,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -26,6 +27,12 @@ import { generateSandboxToken } from "../../../../../src/lib/auth/sandbox-token"
 import { randomUUID } from "crypto";
 
 const context = testContext();
+
+async function setupLegacyUser(options?: { prefix?: string }) {
+  const user = await context.setupUser(options);
+  await disableModelFirstModelProviderForUser(user.orgId, user.userId);
+  return user;
+}
 
 const GET_THREAD_URL = (threadId: string) => {
   return `http://localhost:3000/api/v1/chat-threads/${threadId}`;
@@ -52,7 +59,7 @@ describe("GET /api/v1/chat-threads/:threadId", () => {
 
   beforeEach(async () => {
     context.setupMocks();
-    user = await context.setupUser();
+    user = await setupLegacyUser();
     const compose = await createTestCompose(uniqueId("v1-get-thread"));
     const agentId = await getTestZeroAgentId(user.orgId, compose.name);
     threadId = await insertTestChatThread(user.userId, agentId, "t");
@@ -167,7 +174,7 @@ describe("GET /api/v1/chat-threads/:threadId/messages", () => {
 
   beforeEach(async () => {
     context.setupMocks();
-    user = await context.setupUser();
+    user = await setupLegacyUser();
     const compose = await createTestCompose(uniqueId("v1-get-msgs"));
     const agentId = await getTestZeroAgentId(user.orgId, compose.name);
     threadId = await insertTestChatThread(user.userId, agentId, "t");
@@ -301,7 +308,7 @@ describe("POST /api/v1/chat-threads/messages", () => {
 
   beforeEach(async () => {
     context.setupMocks();
-    user = await context.setupUser();
+    user = await setupLegacyUser();
   });
 
   it("returns 401 without API key", async () => {

@@ -17,6 +17,7 @@ import {
   insertOrgMembersEntry,
   findTestRunsByUserAndPrompt,
   createTestVolume,
+  disableModelFirstModelProviderForUser,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { createTestZeroAgent } from "../../../../../src/__tests__/db-test-seeders/agents";
 import { getTestZeroAgentId } from "../../../../../src/__tests__/db-test-assertions/agents";
@@ -42,6 +43,12 @@ import { bindCustomSkillToAgent } from "../../../../../src/__tests__/db-test-see
 const context = testContext();
 
 const URL = "http://localhost:3000/api/zero/runs";
+
+async function setupLegacyUser(options?: { prefix?: string }) {
+  const user = await context.setupUser(options);
+  await disableModelFirstModelProviderForUser(user.orgId, user.userId);
+  return user;
+}
 
 function postRun(body: Record<string, unknown>) {
   return POST(
@@ -86,7 +93,7 @@ describe("POST /api/zero/runs", () => {
     let agentName: string;
 
     beforeEach(async () => {
-      user = await context.setupUser();
+      user = await setupLegacyUser();
       const compose = await createTestCompose(uniqueId("session-agent"));
       agentName = compose.name;
       agentId = await getTestZeroAgentId(user.orgId, compose.name);
@@ -149,7 +156,8 @@ describe("POST /api/zero/runs", () => {
         visibility: "private",
       });
 
-      const otherUser = await context.setupUser({ prefix: "private-runner" });
+      const otherUser = await setupLegacyUser({ prefix: "private-runner" });
+      await disableModelFirstModelProviderForUser(user.orgId, otherUser.userId);
       mockClerk({
         userId: otherUser.userId,
         orgId: user.orgId,
@@ -219,7 +227,7 @@ describe("POST /api/zero/runs", () => {
     let agentId: string;
 
     beforeEach(async () => {
-      user = await context.setupUser();
+      user = await setupLegacyUser();
       const compose = await createTestCompose(uniqueId("trigger-agent"));
       agentId = await getTestZeroAgentId(user.orgId, compose.name);
       vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
@@ -331,7 +339,7 @@ describe("POST /api/zero/runs", () => {
     let agentId: string;
 
     beforeEach(async () => {
-      user = await context.setupUser();
+      user = await setupLegacyUser();
       const agentName = uniqueId("agent");
       await createTestCompose(agentName);
       agentId = await getTestZeroAgentId(user.orgId, agentName);
@@ -640,7 +648,7 @@ describe("POST /api/zero/runs", () => {
     let agentId: string;
 
     beforeEach(async () => {
-      user = await context.setupUser();
+      user = await setupLegacyUser();
       const agentName = uniqueId("fwd-agent");
       await createTestCompose(agentName);
       agentId = await getTestZeroAgentId(user.orgId, agentName);
@@ -664,7 +672,7 @@ describe("POST /api/zero/runs", () => {
     let agentId: string;
 
     beforeEach(async () => {
-      user = await context.setupUser();
+      user = await setupLegacyUser();
       const agentName = uniqueId("info-agent");
       await createTestCompose(agentName);
       agentId = await getTestZeroAgentId(user.orgId, agentName);
@@ -740,7 +748,7 @@ describe("POST /api/zero/runs", () => {
     let user: UserContext;
 
     beforeEach(async () => {
-      user = await context.setupUser();
+      user = await setupLegacyUser();
       vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
       reloadEnv();
     });
@@ -894,7 +902,7 @@ describe("POST /api/zero/runs — credit check", () => {
 
   beforeEach(async () => {
     context.setupMocks();
-    user = await context.setupUser();
+    user = await setupLegacyUser();
     const compose = await createTestCompose(uniqueId("credit-agent"));
     agentId = await getTestZeroAgentId(user.orgId, compose.name);
     vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");

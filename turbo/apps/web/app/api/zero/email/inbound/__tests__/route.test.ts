@@ -12,6 +12,7 @@ import {
   findTestCallbacksByRunId,
   insertOrgDefaultModelProvider,
   updateOrgDefaultAgent,
+  disableModelFirstModelProviderForUser,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { createTestEmailThreadSession } from "../../../../../../src/__tests__/db-test-seeders/email";
 import { generateReplyToken } from "../../../../../../src/lib/zero/email/handlers/shared";
@@ -25,6 +26,12 @@ import { http } from "../../../../../../src/__tests__/msw";
 
 const context = testContext();
 const mockResend = vi.mocked(new Resend(""), true);
+
+async function setupLegacyUser(options?: { prefix?: string }) {
+  const user = await context.setupUser(options);
+  await disableModelFirstModelProviderForUser(user.orgId, user.userId);
+  return user;
+}
 
 /** Mock factory: override receiving.get response for a single test */
 function mockReceivedEmailGet(data: {
@@ -138,7 +145,7 @@ describe("POST /api/zero/email/inbound", () => {
 
   it("should process inbound email reply and dispatch agent run", async () => {
     // Given a user with a compose and email thread session
-    const user = await context.setupUser();
+    const user = await setupLegacyUser();
     await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
     const { composeId, agentId } = await createTestCompose(
       uniqueId("email-agent"),
@@ -247,7 +254,7 @@ describe("POST /api/zero/email/inbound", () => {
 
   it("should send error reply for emails with empty content after quote stripping", async () => {
     // Given a user with a compose and email thread session
-    const user = await context.setupUser({ prefix: "empty-reply" });
+    const user = await setupLegacyUser({ prefix: "empty-reply" });
     const { composeId, agentId } = await createTestCompose(
       uniqueId("empty-agent"),
     );
@@ -346,7 +353,7 @@ describe("POST /api/zero/email/inbound", () => {
     mockResend.emails.receiving.get.mockClear();
 
     // Given a user with a compose and email thread session
-    const user = await context.setupUser({ prefix: "reply-unreg" });
+    const user = await setupLegacyUser({ prefix: "reply-unreg" });
     const { composeId, agentId } = await createTestCompose(
       uniqueId("reply-unreg-agent"),
     );
@@ -402,7 +409,7 @@ describe("POST /api/zero/email/inbound", () => {
     mockResend.emails.receiving.get.mockClear();
 
     // Given user A owns the session
-    const userA = await context.setupUser({ prefix: "reply-owner" });
+    const userA = await setupLegacyUser({ prefix: "reply-owner" });
     const { composeId, agentId } = await createTestCompose(
       uniqueId("reply-diff-agent"),
     );
@@ -456,7 +463,7 @@ describe("POST /api/zero/email/inbound", () => {
 
   it("should send error reply when reply email fails DMARC verification", async () => {
     // Given a user with a compose and email thread session
-    const user = await context.setupUser({ prefix: "reply-dmarc" });
+    const user = await setupLegacyUser({ prefix: "reply-dmarc" });
     const { composeId, agentId } = await createTestCompose(
       uniqueId("reply-dmarc-agent"),
     );
@@ -526,7 +533,7 @@ describe("POST /api/zero/email/inbound", () => {
   describe("Email Trigger (org@domain)", () => {
     it("should dispatch agent run for valid trigger email", async () => {
       // Given a user with an org and compose
-      const user = await context.setupUser({ prefix: "trigger-user" });
+      const user = await setupLegacyUser({ prefix: "trigger-user" });
 
       const suffix = user.userId.slice("trigger-user-".length);
       const orgSlug = `org-${suffix}`;
@@ -662,7 +669,7 @@ describe("POST /api/zero/email/inbound", () => {
       mockResend.emails.receiving.get.mockClear();
 
       // Create a user with an org
-      const ownerUser = await context.setupUser({ prefix: "perm-owner" });
+      const ownerUser = await setupLegacyUser({ prefix: "perm-owner" });
       const suffix = ownerUser.userId.slice("perm-owner-".length);
       const orgSlug = `org-${suffix}`;
 
@@ -701,7 +708,7 @@ describe("POST /api/zero/email/inbound", () => {
       mockResend.emails.receiving.get.mockClear();
 
       // Create a user with an org but do NOT set a default agent
-      const user = await context.setupUser({ prefix: "no-default" });
+      const user = await setupLegacyUser({ prefix: "no-default" });
       const suffix = user.userId.slice("no-default-".length);
       const orgSlug = `org-${suffix}`;
 
@@ -736,7 +743,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     it("should send error reply when DMARC fails", async () => {
-      const user = await context.setupUser({ prefix: "dmarc-fail" });
+      const user = await setupLegacyUser({ prefix: "dmarc-fail" });
       const suffix = user.userId.slice("dmarc-fail-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("dmarc-agent");
@@ -791,7 +798,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     it("should send error reply when DMARC is none even if DKIM passes", async () => {
-      const user = await context.setupUser({ prefix: "dkim-pass" });
+      const user = await setupLegacyUser({ prefix: "dkim-pass" });
       const suffix = user.userId.slice("dkim-pass-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("dkim-agent");
@@ -844,7 +851,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     it("should send error reply when authentication-results header is missing", async () => {
-      const user = await context.setupUser({ prefix: "no-auth" });
+      const user = await setupLegacyUser({ prefix: "no-auth" });
       const suffix = user.userId.slice("no-auth-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("noauth-agent");
@@ -894,7 +901,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     it("should send error reply when all authentication methods fail", async () => {
-      const user = await context.setupUser({ prefix: "all-fail" });
+      const user = await setupLegacyUser({ prefix: "all-fail" });
       const suffix = user.userId.slice("all-fail-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("allfail-agent");
@@ -947,7 +954,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     it("should send error reply when email body is empty", async () => {
-      const user = await context.setupUser({ prefix: "empty-trigger" });
+      const user = await setupLegacyUser({ prefix: "empty-trigger" });
       const suffix = user.userId.slice("empty-trigger-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("empty-body-agent");
@@ -995,7 +1002,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     it("should extract content from HTML when text is empty", async () => {
-      const user = await context.setupUser({ prefix: "html-trigger" });
+      const user = await setupLegacyUser({ prefix: "html-trigger" });
       const suffix = user.userId.slice("html-trigger-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("html-agent");
@@ -1046,7 +1053,7 @@ describe("POST /api/zero/email/inbound", () => {
   });
 
   it("should extract content from HTML when text is empty (reply)", async () => {
-    const user = await context.setupUser({ prefix: "html-reply" });
+    const user = await setupLegacyUser({ prefix: "html-reply" });
     await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
     const { composeId, agentId } = await createTestCompose(
       uniqueId("html-reply-agent"),
@@ -1108,7 +1115,7 @@ describe("POST /api/zero/email/inbound", () => {
 
   describe("Email Trigger with Attachments", () => {
     it("should include attachment URLs in prompt when email has attachments", async () => {
-      const user = await context.setupUser({ prefix: "att-trigger" });
+      const user = await setupLegacyUser({ prefix: "att-trigger" });
       const suffix = user.userId.slice("att-trigger-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("att-agent");
@@ -1204,7 +1211,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     it("should skip oversized attachment with 'exceeds size limit' message", async () => {
-      const user = await context.setupUser({ prefix: "att-oversize" });
+      const user = await setupLegacyUser({ prefix: "att-oversize" });
       const suffix = user.userId.slice("att-oversize-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("oversize-agent");
@@ -1266,7 +1273,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     it("should skip attachment with 'download failed' when download returns error", async () => {
-      const user = await context.setupUser({ prefix: "att-dl-fail" });
+      const user = await setupLegacyUser({ prefix: "att-dl-fail" });
       const suffix = user.userId.slice("att-dl-fail-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("dlfail-agent");
@@ -1336,7 +1343,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     it("should handle multiple attachments with mixed results", async () => {
-      const user = await context.setupUser({ prefix: "att-mixed" });
+      const user = await setupLegacyUser({ prefix: "att-mixed" });
       const suffix = user.userId.slice("att-mixed-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("mixed-agent");
@@ -1443,7 +1450,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     it("should replace inline image data URI with placeholder in prompt", async () => {
-      const user = await context.setupUser({ prefix: "inline-img" });
+      const user = await setupLegacyUser({ prefix: "inline-img" });
       const suffix = user.userId.slice("inline-img-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("inline-agent");
@@ -1527,7 +1534,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     it("should handle inline image without alt text", async () => {
-      const user = await context.setupUser({ prefix: "inline-noalt" });
+      const user = await setupLegacyUser({ prefix: "inline-noalt" });
       const suffix = user.userId.slice("inline-noalt-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("noalt-agent");
@@ -1605,7 +1612,7 @@ describe("POST /api/zero/email/inbound", () => {
 
   describe("Email Reply with Attachments", () => {
     it("should include attachment URLs in prompt when reply has attachments", async () => {
-      const user = await context.setupUser({ prefix: "att-reply" });
+      const user = await setupLegacyUser({ prefix: "att-reply" });
       await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
       const { composeId, agentId } = await createTestCompose(
         uniqueId("att-reply-agent"),
@@ -1797,7 +1804,7 @@ describe("POST /api/zero/email/inbound", () => {
 
   it("should send error reply when handler throws unexpected exception", async () => {
     // Set up a valid trigger scenario so the handler proceeds past address parsing
-    const user = await context.setupUser({ prefix: "crash-user" });
+    const user = await setupLegacyUser({ prefix: "crash-user" });
     const suffix = user.userId.slice("crash-user-".length);
     const orgSlug = `org-${suffix}`;
     const agentName = uniqueId("crash-agent");
