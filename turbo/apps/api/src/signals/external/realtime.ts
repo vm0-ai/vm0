@@ -4,6 +4,7 @@ import type { RemoteAgentRealtimeSubscription } from "@vm0/api-contracts/contrac
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { singleton } from "../../lib/singleton";
+import { safeAsync } from "../utils";
 
 const L = logger("Realtime");
 
@@ -136,6 +137,27 @@ export async function publishCancelToRunnerGroup(
   const channel = client.channels.get(`runner-group:${group}`);
   await channel.publish("cancel", { runId });
   L.debug(`Published cancel ${runId} to runner-group:${group}`);
+}
+
+export async function publishRunnerJobNotification(
+  group: string,
+  runId: string,
+  profile: string,
+): Promise<boolean> {
+  const result = await safeAsync(async () => {
+    const channel = ablyClient().channels.get(`runner-group:${group}`);
+    await channel.publish("job", { runId, profile });
+    L.debug(`Published job ${runId} to runner-group:${group}`);
+  });
+  if ("ok" in result) {
+    return true;
+  }
+  L.warn("Failed to publish runner job notification", {
+    group,
+    runId,
+    error: result.error,
+  });
+  return false;
 }
 
 export async function createRemoteAgentDeviceRealtimeSubscription(

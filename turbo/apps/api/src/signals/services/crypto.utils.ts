@@ -64,3 +64,13 @@ export function decryptSecretsMap(
     JSON.parse(decryptSecretValue(encryptedData)) as unknown,
   );
 }
+
+export function encryptSecretsMap(
+  secrets: Record<string, string> | null | undefined,
+): string | null {
+  if (!secrets) {
+    return null;
+  }
+
+  return encryptSecretValue(JSON.stringify(secrets));
+}

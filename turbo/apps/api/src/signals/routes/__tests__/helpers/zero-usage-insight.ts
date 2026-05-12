@@ -8,6 +8,7 @@ import {
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
@@ -196,6 +197,28 @@ export const deleteUsageInsightFixture$ = command(
         and(eq(agentComposes.orgId, orgId), eq(agentComposes.userId, userId)),
       );
     signal.throwIfAborted();
+
+    const storageRows = await db
+      .select({ id: storages.id })
+      .from(storages)
+      .where(eq(storages.orgId, orgId));
+    signal.throwIfAborted();
+    const storageIds = storageRows.map((row) => {
+      return row.id;
+    });
+    if (storageIds.length > 0) {
+      await db
+        .update(storages)
+        .set({ headVersionId: null })
+        .where(inArray(storages.id, storageIds));
+      signal.throwIfAborted();
+      await db
+        .delete(storageVersions)
+        .where(inArray(storageVersions.storageId, storageIds));
+      signal.throwIfAborted();
+      await db.delete(storages).where(eq(storages.orgId, orgId));
+      signal.throwIfAborted();
+    }
   },
 );
 

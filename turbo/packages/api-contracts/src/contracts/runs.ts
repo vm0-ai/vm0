@@ -262,6 +262,7 @@ export const runsMainContract = c.router({
       402: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      429: apiErrorSchema,
       422: apiErrorSchema,
       503: apiErrorSchema,
     },
