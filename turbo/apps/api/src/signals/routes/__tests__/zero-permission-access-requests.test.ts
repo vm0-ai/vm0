@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { RawPermissionPolicies } from "@vm0/connectors/firewall-types";
 import {
+  permissionAccessRequestsCreateContract,
   permissionAccessRequestsListContract,
   permissionAccessRequestsResolveContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
@@ -185,6 +186,10 @@ function apiClient() {
   return setupApp({ context })(permissionAccessRequestsListContract);
 }
 
+function createApiClient() {
+  return setupApp({ context })(permissionAccessRequestsCreateContract);
+}
+
 function resolveApiClient() {
   return setupApp({ context })(permissionAccessRequestsResolveContract);
 }
@@ -225,6 +230,286 @@ function mockClerkUsers(
 
 beforeEach(() => {
   mockClerkUsers([]);
+});
+
+describe("POST /api/zero/permission-access-requests", () => {
+  const track = createFixtureTracker<PermissionAccessOrgFixture>((fixture) => {
+    return store.set(deletePermissionAccessOrg$, fixture, context.signal);
+  });
+
+  it("creates a permission access request", async () => {
+    const fixture = await track(
+      store.set(seedPermissionAccessOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.ownerUserId, fixture.orgId);
+
+    const response = await accept(
+      createApiClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          connectorRef: "github",
+          permission: "issues:read",
+          reason: "Need to read issues",
+        },
+      }),
+      [201],
+    );
+
+    expect(response.body).toMatchObject({
+      agentId: fixture.agentId,
+      connectorRef: "github",
+      permission: "issues:read",
+      action: "allow",
+      reason: "Need to read issues",
+      status: "pending",
+      requesterUserId: fixture.ownerUserId,
+      requesterName: null,
+      resolvedBy: null,
+      resolvedAt: null,
+    });
+    expect(response.body.id).toStrictEqual(expect.any(String));
+    expect(response.body.createdAt).toStrictEqual(expect.any(String));
+  });
+
+  it("deduplicates pending requests by updating the reason", async () => {
+    const fixture = await track(
+      store.set(seedPermissionAccessOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.ownerUserId, fixture.orgId);
+
+    const first = await accept(
+      createApiClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          connectorRef: "github",
+          permission: "issues:read",
+          reason: "First reason",
+        },
+      }),
+      [201],
+    );
+    const second = await accept(
+      createApiClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          connectorRef: "github",
+          permission: "issues:read",
+          reason: "Updated reason",
+        },
+      }),
+      [201],
+    );
+
+    expect(second.body.id).toBe(first.body.id);
+    expect(second.body.reason).toBe("Updated reason");
+  });
+
+  it("creates a request with an explicit action", async () => {
+    const fixture = await track(
+      store.set(seedPermissionAccessOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.ownerUserId, fixture.orgId);
+
+    const response = await accept(
+      createApiClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          connectorRef: "github",
+          permission: "issues:read",
+          action: "deny",
+          reason: "Should not read issues",
+        },
+      }),
+      [201],
+    );
+
+    expect(response.body.action).toBe("deny");
+    expect(response.body.permission).toBe("issues:read");
+  });
+
+  it("treats different actions as separate requests for deduplication", async () => {
+    const fixture = await track(
+      store.set(seedPermissionAccessOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.ownerUserId, fixture.orgId);
+
+    const allow = await accept(
+      createApiClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          connectorRef: "github",
+          permission: "issues:read",
+          action: "allow",
+        },
+      }),
+      [201],
+    );
+    const deny = await accept(
+      createApiClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          connectorRef: "github",
+          permission: "issues:read",
+          action: "deny",
+        },
+      }),
+      [201],
+    );
+
+    expect(deny.body.id).not.toBe(allow.body.id);
+    expect(allow.body.action).toBe("allow");
+    expect(deny.body.action).toBe("deny");
+  });
+
+  it("reuses a rejected request and resets it to pending", async () => {
+    const fixture = await track(
+      store.set(seedPermissionAccessOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.ownerUserId, fixture.orgId);
+
+    const created = await accept(
+      createApiClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          connectorRef: "github",
+          permission: "issues:read",
+          reason: "First try",
+        },
+      }),
+      [201],
+    );
+    await accept(
+      resolveApiClient().resolve({
+        headers: authHeaders(),
+        body: { requestId: created.body.id, action: "reject" },
+      }),
+      [200],
+    );
+
+    const resent = await accept(
+      createApiClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          connectorRef: "github",
+          permission: "issues:read",
+          reason: "Second try",
+        },
+      }),
+      [201],
+    );
+
+    expect(resent.body.id).toBe(created.body.id);
+    expect(resent.body.status).toBe("pending");
+    expect(resent.body.reason).toBe("Second try");
+    expect(resent.body.resolvedBy).toBeNull();
+    expect(resent.body.resolvedAt).toBeNull();
+  });
+
+  it("returns 400 for an unknown connector ref", async () => {
+    const fixture = await track(
+      store.set(seedPermissionAccessOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.ownerUserId, fixture.orgId);
+
+    const response = await accept(
+      createApiClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          connectorRef: "nonexistent-connector",
+          permission: "read",
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Unknown connector ref: nonexistent-connector",
+        code: "VALIDATION_ERROR",
+      },
+    });
+  });
+
+  it("returns 404 for a nonexistent agent", async () => {
+    const fixture = await track(
+      store.set(seedPermissionAccessOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.ownerUserId, fixture.orgId);
+    const agentId = randomUUID();
+
+    const response = await accept(
+      createApiClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId,
+          connectorRef: "github",
+          permission: "issues:read",
+        },
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: `Agent not found: ${agentId}`,
+        code: "NOT_FOUND",
+      },
+    });
+  });
+
+  it("returns 401 without auth", async () => {
+    const response = await accept(
+      createApiClient().create({
+        headers: {},
+        body: {
+          agentId: randomUUID(),
+          connectorRef: "github",
+          permission: "issues:read",
+        },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("allows non-admin members to create requests", async () => {
+    const fixture = await track(
+      store.set(seedPermissionAccessOrg$, {}, context.signal),
+    );
+    const memberUserId = `user_${randomUUID()}`;
+    await store.set(
+      seedOrgMember$,
+      { orgId: fixture.orgId, userId: memberUserId, role: "member" },
+      context.signal,
+    );
+    mocks.clerk.session(memberUserId, fixture.orgId, "org:member");
+
+    const response = await accept(
+      createApiClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          connectorRef: "github",
+          permission: "issues:read",
+        },
+      }),
+      [201],
+    );
+
+    expect(response.body.requesterUserId).toBe(memberUserId);
+  });
 });
 
 describe("GET /api/zero/permission-access-requests", () => {

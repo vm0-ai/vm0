@@ -1,5 +1,6 @@
 import { command, computed } from "ccstate";
 import {
+  permissionAccessRequestsCreateContract,
   permissionAccessRequestsListContract,
   permissionAccessRequestsResolveContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
@@ -8,6 +9,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, queryOf } from "../context/request";
 import {
+  createPermissionAccessRequest$,
   listPermissionAccessRequests,
   resolvePermissionAccessRequest$,
 } from "../services/zero-permission-access-requests.service";
@@ -24,6 +26,7 @@ const missingLookupQuery = Object.freeze({
 });
 
 const listQuery$ = queryOf(permissionAccessRequestsListContract.list);
+const createBody$ = bodyResultOf(permissionAccessRequestsCreateContract.create);
 const resolveBody$ = bodyResultOf(
   permissionAccessRequestsResolveContract.resolve,
 );
@@ -49,6 +52,33 @@ const listPermissionAccessRequestsInner$ = computed(async (get) => {
 
   return { status: 200 as const, body: [...requests] };
 });
+
+const createPermissionAccessRequestInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const bodyResult = await get(createBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const result = await set(
+      createPermissionAccessRequest$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        request: bodyResult.data,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if ("kind" in result) {
+      return { status: 201 as const, body: result.request };
+    }
+    return result;
+  },
+);
 
 const resolvePermissionAccessRequestInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -80,6 +110,17 @@ const resolvePermissionAccessRequestInner$ = command(
 );
 
 export const zeroPermissionAccessRequestsRoutes: readonly RouteEntry[] = [
+  {
+    route: permissionAccessRequestsCreateContract.create,
+    handler: authRoute(
+      {
+        requiredCapability: "agent:write",
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+      },
+      createPermissionAccessRequestInner$,
+    ),
+  },
   {
     route: permissionAccessRequestsListContract.list,
     handler: authRoute(

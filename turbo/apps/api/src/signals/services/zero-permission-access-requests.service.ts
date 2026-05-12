@@ -1,8 +1,10 @@
 import { command, computed, type Computed } from "ccstate";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
+import { isFirewallConnectorType } from "@vm0/connectors/firewalls";
 import type { RawPermissionPolicies } from "@vm0/connectors/firewall-types";
 import { and, eq, or } from "drizzle-orm";
 import type {
+  CreatePermissionAccessRequest,
   PermissionAccessRequestResponse,
   ResolvePermissionAccessRequest,
 } from "@vm0/api-contracts/contracts/zero-agents";
@@ -39,6 +41,12 @@ interface ListPermissionAccessRequestsArgs {
   readonly status?: string;
 }
 
+interface CreatePermissionAccessRequestArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly request: CreatePermissionAccessRequest;
+}
+
 interface ResolvePermissionAccessRequestArgs {
   readonly orgId: string;
   readonly userId: string;
@@ -57,6 +65,21 @@ type AlreadyResolvedResponse = {
   };
 };
 
+type ValidationErrorResponse = {
+  readonly status: 400;
+  readonly body: {
+    readonly error: {
+      readonly message: string;
+      readonly code: "VALIDATION_ERROR";
+    };
+  };
+};
+
+type CreatePermissionAccessRequestResult =
+  | { readonly kind: "ok"; readonly request: PermissionAccessRequestResponse }
+  | ReturnType<typeof notFound>
+  | ValidationErrorResponse;
+
 type ResolvePermissionAccessRequestResult =
   | { readonly kind: "ok"; readonly request: PermissionAccessRequestResponse }
   | ReturnType<typeof notFound>
@@ -74,6 +97,18 @@ function alreadyResolved(status: string): AlreadyResolvedResponse {
       error: {
         message: `Request already resolved with status: ${status}`,
         code: "ALREADY_RESOLVED",
+      },
+    },
+  };
+}
+
+function validationError(message: string): ValidationErrorResponse {
+  return {
+    status: 400 as const,
+    body: {
+      error: {
+        message,
+        code: "VALIDATION_ERROR" as const,
       },
     },
   };
@@ -120,6 +155,84 @@ function buildReviewUrl(agentId: string, requestId: string): string {
   return `${appUrl}/agents/${agentId}/permissions?request=${requestId}`;
 }
 
+interface SlackDmTarget {
+  readonly client: ReturnType<typeof createSlackClient>;
+  readonly slackUserId: string;
+}
+
+async function resolveSlackDmTarget(
+  db: Db,
+  orgId: string,
+  userId: string,
+): Promise<SlackDmTarget | null> {
+  const [installation] = await db
+    .select()
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.orgId, orgId))
+    .limit(1);
+  if (!installation) {
+    return null;
+  }
+
+  const [connection] = await db
+    .select()
+    .from(slackOrgConnections)
+    .where(
+      and(
+        eq(slackOrgConnections.vm0UserId, userId),
+        eq(slackOrgConnections.slackWorkspaceId, installation.slackWorkspaceId),
+      ),
+    )
+    .limit(1);
+  if (!connection) {
+    return null;
+  }
+
+  return {
+    client: createSlackClient(
+      decryptSecretValue(installation.encryptedBotToken),
+    ),
+    slackUserId: connection.slackUserId,
+  };
+}
+
+async function notifyOwnerOfRequest(
+  db: Db,
+  params: {
+    readonly orgId: string;
+    readonly ownerUserId: string;
+    readonly agentId: string;
+    readonly requestId: string;
+    readonly agentDisplayName: string;
+    readonly requesterName: string;
+    readonly permission: string;
+    readonly connectorRef: string;
+    readonly action: string;
+    readonly reason?: string | null;
+  },
+): Promise<void> {
+  const target = await resolveSlackDmTarget(
+    db,
+    params.orgId,
+    params.ownerUserId,
+  );
+  if (!target) {
+    return;
+  }
+
+  const label = connectorLabel(params.connectorRef);
+  const url = buildReviewUrl(params.agentId, params.requestId);
+  const lines = [
+    `${params.requesterName} is requesting to ${params.action} "${params.permission}" on ${label} for agent ${params.agentDisplayName}.`,
+  ];
+  if (params.reason) {
+    lines.push(`Reason: ${params.reason}`);
+  }
+  lines.push(`<${url}|Review request>`);
+
+  await postMessage(target.client, target.slackUserId, lines.join("\n"));
+}
+
 async function notifyRequesterOfResolution(
   db: Db,
   params: {
@@ -134,38 +247,21 @@ async function notifyRequesterOfResolution(
     readonly resolution: ResolvePermissionAccessRequest["action"];
   },
 ): Promise<void> {
-  const [installation] = await db
-    .select()
-    .from(slackOrgInstallations)
-    .where(eq(slackOrgInstallations.orgId, params.orgId))
-    .limit(1);
-  if (!installation) {
-    return;
-  }
-
-  const [connection] = await db
-    .select()
-    .from(slackOrgConnections)
-    .where(
-      and(
-        eq(slackOrgConnections.vm0UserId, params.requesterUserId),
-        eq(slackOrgConnections.slackWorkspaceId, installation.slackWorkspaceId),
-      ),
-    )
-    .limit(1);
-  if (!connection) {
-    return;
-  }
-
-  const client = createSlackClient(
-    decryptSecretValue(installation.encryptedBotToken),
+  const target = await resolveSlackDmTarget(
+    db,
+    params.orgId,
+    params.requesterUserId,
   );
+  if (!target) {
+    return;
+  }
+
   const label = connectorLabel(params.connectorRef);
   const outcome = params.resolution === "approve" ? "approved" : "denied";
   const url = buildReviewUrl(params.agentId, params.requestId);
   await postMessage(
-    client,
-    connection.slackUserId,
+    target.client,
+    target.slackUserId,
     `Your request to ${params.action} "${params.permission}" on ${label} for agent ${params.agentDisplayName} has been ${outcome}. <${url}|View>`,
   );
 }
@@ -280,6 +376,115 @@ export function listPermissionAccessRequests(
     },
   );
 }
+
+export const createPermissionAccessRequest$ = command(
+  async (
+    { get, set },
+    args: CreatePermissionAccessRequestArgs,
+    signal: AbortSignal,
+  ): Promise<CreatePermissionAccessRequestResult> => {
+    const db = set(writeDb$);
+    const client = get(clerk$);
+    const request = args.request;
+
+    if (!isFirewallConnectorType(request.connectorRef)) {
+      return validationError(`Unknown connector ref: ${request.connectorRef}`);
+    }
+
+    const [agent] = await db
+      .select({
+        id: zeroAgents.id,
+        owner: zeroAgents.owner,
+        displayName: zeroAgents.displayName,
+      })
+      .from(zeroAgents)
+      .where(
+        and(
+          eq(zeroAgents.orgId, args.orgId),
+          eq(zeroAgents.id, request.agentId),
+          visibleZeroAgentCondition(args.userId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!agent) {
+      return notFound(`Agent not found: ${request.agentId}`);
+    }
+
+    const [existing] = await db
+      .select()
+      .from(permissionAccessRequests)
+      .where(
+        and(
+          eq(permissionAccessRequests.agentId, request.agentId),
+          eq(permissionAccessRequests.connectorRef, request.connectorRef),
+          eq(permissionAccessRequests.permission, request.permission),
+          eq(permissionAccessRequests.action, request.action),
+          eq(permissionAccessRequests.requesterUserId, args.userId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    const [row] = existing
+      ? await db
+          .update(permissionAccessRequests)
+          .set({
+            reason: request.reason ?? existing.reason,
+            method: request.method ?? existing.method,
+            path: request.path ?? existing.path,
+            status: "pending",
+            resolvedBy: null,
+            resolvedAt: null,
+          })
+          .where(eq(permissionAccessRequests.id, existing.id))
+          .returning()
+      : await db
+          .insert(permissionAccessRequests)
+          .values({
+            orgId: args.orgId,
+            agentId: request.agentId,
+            requesterUserId: args.userId,
+            connectorRef: request.connectorRef,
+            permission: request.permission,
+            action: request.action,
+            method: request.method,
+            path: request.path,
+            reason: request.reason,
+          })
+          .returning();
+    signal.throwIfAborted();
+
+    if (!row) {
+      throw new Error("Permission access request create did not return a row");
+    }
+
+    log.debug(
+      `${existing ? "Reused" : "Created"} permission access request: ${row.id} for agent: ${request.agentId}`,
+    );
+
+    const requesterNames = await requesterNameMap(client, [args.userId]);
+    signal.throwIfAborted();
+
+    void notifyOwnerOfRequest(db, {
+      orgId: args.orgId,
+      ownerUserId: agent.owner,
+      agentId: request.agentId,
+      requestId: row.id,
+      agentDisplayName: agent.displayName ?? request.agentId,
+      requesterName: requesterNames.get(args.userId) ?? args.userId,
+      permission: request.permission,
+      connectorRef: request.connectorRef,
+      action: request.action,
+      reason: request.reason,
+    }).catch((error: unknown) => {
+      log.error("Failed to notify owner of permission request", { error });
+    });
+
+    return { kind: "ok", request: formatPermissionAccessRequest(row) };
+  },
+);
 
 export const resolvePermissionAccessRequest$ = command(
   async (
