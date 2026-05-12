@@ -22,16 +22,14 @@ const getUsageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const query = get(queryOf(usageContract.get));
   const now = nowDate();
 
-  const endDate =
-    query.end_date !== undefined ? parseDateParam(query.end_date) : now;
+  const endDate = query.end_date ? parseDateParam(query.end_date) : now;
   if (!endDate) {
     return badRequestMessage("Invalid end_date format. Use ISO 8601 format.");
   }
 
-  const startDate =
-    query.start_date !== undefined
-      ? parseDateParam(query.start_date)
-      : new Date(endDate.getTime() - DEFAULT_RANGE_MS);
+  const startDate = query.start_date
+    ? parseDateParam(query.start_date)
+    : new Date(endDate.getTime() - DEFAULT_RANGE_MS);
   if (!startDate) {
     return badRequestMessage("Invalid start_date format. Use ISO 8601 format.");
   }

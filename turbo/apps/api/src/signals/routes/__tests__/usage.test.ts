@@ -202,6 +202,32 @@ describe("GET /api/usage", () => {
     });
   });
 
+  it("treats empty date query parameters as the default range", async () => {
+    const fixture = await track(seedUsageFixture());
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    await seedCompletedRun(fixture, {
+      createdAt: new Date("2026-05-12T10:00:00.000Z"),
+      durationMs: 60_000,
+    });
+
+    const response = await accept(
+      apiClient().get({
+        query: { start_date: "", end_date: "" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.period).toStrictEqual({
+      start: "2026-05-05T12:00:00.000Z",
+      end: "2026-05-12T12:00:00.000Z",
+    });
+    expect(response.body.summary).toStrictEqual({
+      total_runs: 1,
+      total_run_time_ms: 60_000,
+    });
+  });
+
   it("rejects invalid start_date format", async () => {
     const fixture = await track(seedUsageFixture());
     mocks.clerk.session(fixture.userId, fixture.orgId);
