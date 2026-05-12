@@ -106,7 +106,6 @@ import {
   Reason,
 } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
-import { BetaBadge } from "./components/settings/beta-badge.tsx";
 import telegramIconImg from "./components/settings/icons/telegram.svg";
 
 interface DefaultAgentLabel {
@@ -1887,7 +1886,6 @@ export function ZeroTelegramSettingsPage() {
                   <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
                     Telegram
                   </h1>
-                  <BetaBadge />
                 </div>
                 <p className="mt-0.5 text-sm text-muted-foreground">
                   Manage bot routing for this workspace

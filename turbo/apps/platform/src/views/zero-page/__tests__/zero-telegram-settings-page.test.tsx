@@ -106,9 +106,7 @@ describe("telegram settings page", () => {
     setupTelegramPage();
 
     await waitFor(() => {
-      expect(screen.getByTestId("telegram-beta-badge")).toHaveTextContent(
-        "Beta",
-      );
+      expect(screen.queryByTestId("telegram-beta-badge")).toBeNull();
       expect(screen.getByText("@alpha_bot")).toBeInTheDocument();
       expect(screen.getByText("@beta_bot")).toBeInTheDocument();
       expect(

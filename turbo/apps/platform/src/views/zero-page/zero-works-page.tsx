@@ -34,7 +34,6 @@ import { telegramBots$ } from "../../signals/zero-page/zero-telegram.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
-import { BetaBadge } from "./components/settings/beta-badge.tsx";
 import slackIconImg from "./components/settings/icons/slack.svg";
 import telegramIconImg from "./components/settings/icons/telegram.svg";
 
@@ -297,7 +296,6 @@ function TelegramCard() {
             <div className="truncate text-sm font-medium text-foreground">
               Telegram
             </div>
-            <BetaBadge />
           </div>
           <div className="truncate text-sm text-muted-foreground">
             {summary}
