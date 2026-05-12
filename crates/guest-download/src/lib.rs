@@ -50,9 +50,9 @@ pub fn run(manifest_path: &str) -> bool {
         cleanup::cleanup_stale_paths(&cleanup_paths, &preserved_paths);
     }
 
-    // Pre-create all target directories before parallel downloads.
-    // This avoids races between parent-child mount paths (e.g. /home/user/.claude
-    // and /home/user/.claude/skills/foo) when they land in the same concurrent chunk.
+    // Pre-create all target directories before downloads. This keeps directory
+    // creation independent from scheduler order; overlapping mount paths are
+    // serialized by the download scheduler during extraction.
     for task in &download_tasks {
         let mount_path = task.mount_path();
         if let Err(e) = fs::create_dir_all(mount_path) {
