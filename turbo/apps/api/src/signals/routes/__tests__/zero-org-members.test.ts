@@ -93,6 +93,19 @@ function mockClerkUsers(users: readonly ClerkUserFixture[]): void {
   });
 }
 
+function clerkUser(args: {
+  readonly id: string;
+  readonly email: string;
+}): ClerkUserFixture {
+  return {
+    id: args.id,
+    email: args.email,
+    firstName: null,
+    lastName: null,
+    imageUrl: "",
+  };
+}
+
 interface CleanupFixture {
   readonly orgId?: string;
   readonly workspaceId?: string;
@@ -490,6 +503,210 @@ describe("GET /api/zero/org/members", () => {
 
     expect(response.body.membershipRequests).toStrictEqual([]);
     expect(response.body.members).toHaveLength(1);
+  });
+});
+
+describe("PATCH /api/zero/org/members", () => {
+  it("returns 401 when unauthenticated", async () => {
+    const client = setupApp({ context })(zeroOrgMembersContract);
+
+    const response = await accept(
+      client.updateRole({
+        headers: {},
+        body: { email: "member@example.com", role: "admin" },
+      }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mocks.clerk.session(uniqueId("user"), null);
+    const client = setupApp({ context })(zeroOrgMembersContract);
+
+    const response = await accept(
+      client.updateRole({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { email: "member@example.com", role: "admin" },
+      }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns 400 for an invalid body without updating Clerk", async () => {
+    const orgId = uniqueId("org");
+    const userId = uniqueId("user");
+    mocks.clerk.session(userId, orgId, "org:admin");
+    const app = createApp({ signal: context.signal });
+
+    const response = await app.request("/api/zero/org/members", {
+      method: "PATCH",
+      headers: {
+        authorization: "Bearer clerk-session",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ email: "not-an-email", role: "admin" }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body).toMatchObject({ error: { code: "BAD_REQUEST" } });
+    expect(
+      context.mocks.clerk.organizations.updateOrganizationMembership,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("updates another member role for an admin caller", async () => {
+    const orgId = uniqueId("org");
+    const adminUserId = uniqueId("user-admin");
+    const targetUserId = uniqueId("user-target");
+    const targetEmail = "member@example.com";
+    mocks.clerk.session(adminUserId, orgId, "org:admin");
+    mockClerkUsers([clerkUser({ id: targetUserId, email: targetEmail })]);
+    const client = setupApp({ context })(zeroOrgMembersContract);
+
+    const response = await accept(
+      client.updateRole({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { email: targetEmail, role: "admin" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      message: `Updated role for ${targetEmail}`,
+    });
+    expect(
+      context.mocks.clerk.organizations.updateOrganizationMembership,
+    ).toHaveBeenCalledWith({
+      organizationId: orgId,
+      userId: targetUserId,
+      role: "org:admin",
+    });
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 for non-admin callers without updating Clerk", async () => {
+    const orgId = uniqueId("org");
+    const userId = uniqueId("user");
+    mocks.clerk.session(userId, orgId, "org:member");
+    const client = setupApp({ context })(zeroOrgMembersContract);
+
+    const response = await accept(
+      client.updateRole({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { email: "member@example.com", role: "admin" },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Access denied", code: "FORBIDDEN" },
+    });
+    expect(context.mocks.clerk.users.getUserList).not.toHaveBeenCalled();
+    expect(
+      context.mocks.clerk.organizations.updateOrganizationMembership,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the target email does not resolve to a user", async () => {
+    const orgId = uniqueId("org");
+    const adminUserId = uniqueId("user-admin");
+    mocks.clerk.session(adminUserId, orgId, "org:admin");
+    mockClerkUsers([]);
+    const client = setupApp({ context })(zeroOrgMembersContract);
+
+    const response = await accept(
+      client.updateRole({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { email: "missing@example.com", role: "member" },
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Resource not found", code: "NOT_FOUND" },
+    });
+    expect(
+      context.mocks.clerk.organizations.updateOrganizationMembership,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when the only admin tries to demote themselves", async () => {
+    const orgId = uniqueId("org");
+    const adminUserId = uniqueId("user-admin");
+    const adminEmail = "admin@example.com";
+    mocks.clerk.session(adminUserId, orgId, "org:admin");
+    mockClerkUsers([clerkUser({ id: adminUserId, email: adminEmail })]);
+    mockClerkMemberships([
+      {
+        userId: adminUserId,
+        role: "org:admin",
+        createdAtMs: 1_700_000_000_000,
+      },
+    ]);
+    const client = setupApp({ context })(zeroOrgMembersContract);
+
+    const response = await accept(
+      client.updateRole({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { email: adminEmail, role: "member" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Invalid request", code: "BAD_REQUEST" },
+    });
+    expect(
+      context.mocks.clerk.organizations.updateOrganizationMembership,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("allows an admin to demote themselves when another admin exists", async () => {
+    const orgId = uniqueId("org");
+    const adminUserId = uniqueId("user-admin");
+    const otherAdminUserId = uniqueId("user-other-admin");
+    const adminEmail = "admin@example.com";
+    mocks.clerk.session(adminUserId, orgId, "org:admin");
+    mockClerkUsers([clerkUser({ id: adminUserId, email: adminEmail })]);
+    mockClerkMemberships([
+      {
+        userId: adminUserId,
+        role: "org:admin",
+        createdAtMs: 1_700_000_000_000,
+      },
+      {
+        userId: otherAdminUserId,
+        role: "org:admin",
+        createdAtMs: 1_700_000_100_000,
+      },
+    ]);
+    const client = setupApp({ context })(zeroOrgMembersContract);
+
+    const response = await accept(
+      client.updateRole({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { email: adminEmail, role: "member" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      message: `Updated role for ${adminEmail}`,
+    });
+    expect(
+      context.mocks.clerk.organizations.updateOrganizationMembership,
+    ).toHaveBeenCalledWith({
+      organizationId: orgId,
+      userId: adminUserId,
+      role: "org:member",
+    });
   });
 });
 

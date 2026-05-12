@@ -99,6 +99,11 @@ type RemoveZeroOrgMemberErrorResponse =
   | ReturnType<typeof notFound>
   | typeof forbiddenAccess;
 
+type UpdateZeroOrgMemberRoleErrorResponse =
+  | ReturnType<typeof badRequestMessage>
+  | ReturnType<typeof notFound>
+  | typeof forbiddenAccess;
+
 interface UpdateZeroOrgArgs {
   readonly orgId: string;
   readonly userId: string;
@@ -124,6 +129,14 @@ interface RemoveZeroOrgMemberArgs {
   readonly callerUserId: string;
   readonly callerRole: OrgRole;
   readonly email: string;
+}
+
+interface UpdateZeroOrgMemberRoleArgs {
+  readonly callerUserId: string;
+  readonly orgId: string;
+  readonly callerRole: OrgRole | undefined;
+  readonly targetEmail: string;
+  readonly newRole: OrgRole;
 }
 
 interface ClerkUpdate {
@@ -465,6 +478,57 @@ export const removeZeroOrgMember$ = command(
     signal.throwIfAborted();
 
     return { message: `Removed ${args.email} from org` };
+  },
+);
+
+export const updateZeroOrgMemberRole$ = command(
+  async (
+    { get },
+    args: UpdateZeroOrgMemberRoleArgs,
+    signal: AbortSignal,
+  ): Promise<OrgMessageResponse | UpdateZeroOrgMemberRoleErrorResponse> => {
+    if (args.callerRole !== "admin") {
+      return forbiddenAccess;
+    }
+
+    const client = get(clerk$);
+    const users = await client.users.getUserList({
+      emailAddress: [args.targetEmail],
+    });
+    signal.throwIfAborted();
+
+    const targetUser = users.data[0];
+    if (!targetUser) {
+      return notFound("Resource not found");
+    }
+
+    if (targetUser.id === args.callerUserId) {
+      if (args.newRole !== "member") {
+        return badRequestMessage("Invalid request");
+      }
+
+      const memberships =
+        await client.organizations.getOrganizationMembershipList({
+          organizationId: args.orgId,
+        });
+      signal.throwIfAborted();
+
+      const adminCount = memberships.data.filter((membership) => {
+        return membership.role === "org:admin";
+      }).length;
+      if (adminCount < 2) {
+        return badRequestMessage("Invalid request");
+      }
+    }
+
+    await client.organizations.updateOrganizationMembership({
+      organizationId: args.orgId,
+      userId: targetUser.id,
+      role: args.newRole === "admin" ? "org:admin" : "org:member",
+    });
+    signal.throwIfAborted();
+
+    return { message: `Updated role for ${args.targetEmail}` };
   },
 );
 
