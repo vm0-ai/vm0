@@ -13,6 +13,7 @@ import {
   setOrgCredits,
   getOrgCredits,
   insertTestUsagePricing,
+  disableModelFirstModelProviderForUser,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -29,6 +30,7 @@ async function setupOrg(userId: string) {
   const orgId = `org_mock_${userId}`;
   mockClerk({ userId, orgId, orgRole: "org:admin" });
   await createTestOrg(slug);
+  await disableModelFirstModelProviderForUser(orgId, userId);
   return { slug, orgId };
 }
 

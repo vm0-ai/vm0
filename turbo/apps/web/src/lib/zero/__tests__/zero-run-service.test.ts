@@ -17,6 +17,7 @@ import {
   getTestUserPreferencesAll,
   updateTestUserPreferencesAll,
   createTestOrgModelProvider,
+  disableModelFirstModelProviderForUser,
 } from "../../../__tests__/api-test-helpers";
 import {
   clearComposeHeadVersion,
@@ -60,6 +61,7 @@ describe("createZeroRun() — service-only parameters", () => {
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
+    await disableModelFirstModelProviderForUser(user.orgId, user.userId);
     const agentName = uniqueId("agent");
     await createTestCompose(agentName);
     agentId = await getTestZeroAgentId(user.orgId, agentName);

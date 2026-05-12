@@ -16,6 +16,7 @@ import {
   insertTestZeroRun,
   deleteOrgRow,
   insertCreditExpiresRecord,
+  disableModelFirstModelProviderForUser,
 } from "../../../__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
 import { getTestModelProviderIdByType } from "../../../__tests__/db-test-assertions/org";
@@ -45,6 +46,7 @@ describe("credit check (infra queue path)", () => {
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
+    await disableModelFirstModelProviderForUser(user.orgId, user.userId);
     const compose = await createTestCompose(uniqueId("agent"));
     composeId = compose.composeId;
     versionId = compose.versionId;
@@ -323,6 +325,7 @@ describe("model provider check (queue dispatch path)", () => {
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
+    await disableModelFirstModelProviderForUser(user.orgId, user.userId);
     vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
     reloadEnv();
   });
@@ -376,6 +379,7 @@ describe("checkOrgCredits (general vm0 credit gate)", () => {
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
+    await disableModelFirstModelProviderForUser(user.orgId, user.userId);
   });
 
   async function expectInsufficientCredits(fn: () => Promise<void>) {
@@ -476,6 +480,7 @@ describe("checkOrgCreditsForRunAdmission (resolved provider LLM wrapper)", () =>
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
+    await disableModelFirstModelProviderForUser(user.orgId, user.userId);
   });
 
   async function expectInsufficientCredits(fn: () => Promise<void>) {

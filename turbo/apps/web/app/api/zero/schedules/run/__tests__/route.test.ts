@@ -6,6 +6,7 @@ import {
   createTestOrg,
   createTestSchedule,
   enableTestSchedule,
+  disableModelFirstModelProviderForUser,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { createTestZeroAgent } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import {
@@ -22,6 +23,7 @@ async function setupOrg(userId: string) {
 
   mockClerk({ userId, orgId, orgRole: "org:admin" });
   await createTestOrg(slug);
+  await disableModelFirstModelProviderForUser(orgId, userId);
 
   return { slug, orgId };
 }

@@ -17,6 +17,7 @@ import {
   insertTestOfficialTelegramUserLink,
   PENDING_TELEGRAM_USER_ID,
   setDefaultAgentByComposeId,
+  disableModelFirstModelProviderForUser,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { GET as linkGET } from "../../../../api/integrations/telegram/link/route";
 import { server } from "../../../../../src/mocks/server";
@@ -235,6 +236,7 @@ describe("POST /api/telegram/webhook/[telegramBotId]", () => {
   it("should ignore group replies to a different bot", async () => {
     context.setupMocks();
     const user = await context.setupUser();
+    await disableModelFirstModelProviderForUser(user.orgId, user.userId);
     const { composeId } = await createTestCompose(uniqueId("agent"));
     const installation = await createTelegramCallbackInstallation(
       composeId,
@@ -273,6 +275,7 @@ describe("POST /api/telegram/webhook/[telegramBotId]", () => {
     it("should complete pending link on first DM from admin", async () => {
       context.setupMocks();
       const user = await context.setupUser();
+      await disableModelFirstModelProviderForUser(user.orgId, user.userId);
       const { composeId } = await createTestCompose(uniqueId("agent"));
 
       const pending = await createTelegramPendingLinkInstallation(
@@ -438,6 +441,7 @@ describe("POST /api/telegram/webhook/[telegramBotId]", () => {
       reloadEnv();
 
       const user = await context.setupUser();
+      await disableModelFirstModelProviderForUser(user.orgId, user.userId);
       const { composeId } = await createTestCompose(uniqueId("agent"));
       await setDefaultAgentByComposeId(user.orgId, composeId);
       const telegramUserId = Number(uniqueNumericId());

@@ -7,6 +7,7 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
+  disableModelFirstModelProviderForUser,
   enableModelFirstModelProviderForUser,
   insertOrgModelPolicy,
   insertUserModelPreference,
@@ -75,6 +76,7 @@ describe("POST /api/zero/slack/commands", () => {
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
+    await disableModelFirstModelProviderForUser(user.orgId, user.userId);
     reloadEnv();
   });
 

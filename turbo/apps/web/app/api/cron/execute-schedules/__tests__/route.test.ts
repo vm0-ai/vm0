@@ -9,6 +9,7 @@ import {
   getTestSchedule,
   getTestScheduleRuns,
   getTestRun,
+  disableModelFirstModelProviderForUser,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   disableAllSchedules,
@@ -33,6 +34,7 @@ describe("GET /api/cron/execute-schedules", () => {
   beforeEach(async () => {
     context.setupMocks();
     const user = await context.setupUser();
+    await disableModelFirstModelProviderForUser(user.orgId, user.userId);
     testOrgId = user.orgId;
 
     const agentName = uniqueId("cron-agent");
