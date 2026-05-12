@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use nbd_cow::{DestroyRetryPolicy, pool::DevicePoolHandle};
+use serde_json::Value;
 
 #[tokio::main]
 async fn main() {
@@ -263,6 +264,8 @@ fn run_fio_with_iostat(
         .arg("--runtime=10")
         .arg("--time_based")
         .arg("--output-format=json")
+        .arg("--group_reporting=1")
+        .arg("--unified_rw_reporting=1")
         .output()
         .map_err(|e| format!("fio failed to start: {e}"))?;
 
@@ -368,44 +371,133 @@ fn create_sparse_file(path: &Path, size: u64) {
 }
 
 fn parse_fio_json(stdout: &[u8]) -> Result<FioResult, String> {
-    let text = String::from_utf8_lossy(stdout);
-    let mut result = FioResult::default();
+    let root: Value = serde_json::from_slice(stdout).map_err(|e| format!("parse fio JSON: {e}"))?;
+    let jobs = fio_jobs(&root)?;
+    let vm_iops = fio_vm_iops(jobs)?;
+    let (lat_p50_us, lat_p99_us) = fio_latency_us(jobs)?;
 
-    for pattern in &["\"iops\""] {
-        for line in text.lines() {
-            if line.contains(pattern)
-                && let Some(val) = extract_number(line)
-                && val > result.vm_iops
-            {
-                result.vm_iops = val;
-            }
-        }
-    }
-
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if trimmed.contains("\"50.000000\"")
-            && let Some(val) = extract_number(trimmed)
-        {
-            result.lat_p50_us = val / 1000;
-        }
-        if trimmed.contains("\"99.000000\"")
-            && let Some(val) = extract_number(trimmed)
-        {
-            result.lat_p99_us = val / 1000;
-        }
-    }
-
-    Ok(result)
+    Ok(FioResult {
+        vm_iops: vm_iops as u64,
+        lat_p50_us,
+        lat_p99_us,
+        host_disk_iops: 0,
+    })
 }
 
-fn extract_number(s: &str) -> Option<u64> {
-    let after_colon = s.rsplit(':').next()?;
-    let cleaned: String = after_colon
-        .chars()
-        .filter(|c| c.is_ascii_digit() || *c == '.')
-        .collect();
-    cleaned.split('.').next()?.parse().ok()
+fn fio_jobs(root: &Value) -> Result<&[Value], String> {
+    let jobs = root
+        .get("jobs")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "fio JSON missing jobs array".to_string())?;
+    if jobs.is_empty() {
+        return Err("fio JSON jobs array is empty".to_string());
+    }
+    Ok(jobs)
+}
+
+fn fio_vm_iops(jobs: &[Value]) -> Result<f64, String> {
+    let mut saw_mixed_iops = false;
+    let mixed_iops = jobs
+        .iter()
+        .filter_map(|job| {
+            section_iops(job, "mixed").inspect(|_| {
+                saw_mixed_iops = true;
+            })
+        })
+        .sum::<f64>();
+    if saw_mixed_iops {
+        return Ok(mixed_iops);
+    }
+
+    let mut saw_iops = false;
+    let total = jobs
+        .iter()
+        .flat_map(|job| DIRECTIONS.iter().map(move |direction| (job, *direction)))
+        .filter_map(|(job, direction)| {
+            section_iops(job, direction).inspect(|_| {
+                saw_iops = true;
+            })
+        })
+        .sum::<f64>();
+
+    if !saw_iops {
+        return Err("fio JSON missing IOPS fields".to_string());
+    }
+    Ok(total)
+}
+
+const DIRECTIONS: [&str; 3] = ["read", "write", "trim"];
+
+fn fio_latency_us(jobs: &[Value]) -> Result<(u64, u64), String> {
+    if jobs.iter().any(|job| job.get("mixed").is_some()) {
+        return jobs
+            .iter()
+            .filter_map(|job| job.get("mixed"))
+            .find(|section| {
+                percentile_us(section, "50.000000").is_some()
+                    && percentile_us(section, "99.000000").is_some()
+            })
+            .ok_or_else(|| "fio JSON missing mixed latency percentiles".to_string())
+            .and_then(|section| section_latency_us(section, "mixed"));
+    }
+
+    let active_directions = DIRECTIONS
+        .iter()
+        .copied()
+        .filter(|direction| {
+            jobs.iter()
+                .filter_map(|job| job.get(*direction))
+                .any(section_is_active)
+        })
+        .collect::<Vec<_>>();
+
+    match active_directions.as_slice() {
+        [] => Err("fio JSON has no active read/write/trim direction".to_string()),
+        [direction] => {
+            let Some(section) = jobs
+                .iter()
+                .filter_map(|job| job.get(*direction))
+                .find(|section| section_is_active(section))
+            else {
+                return Err(format!("fio JSON missing active {direction} section"));
+            };
+            section_latency_us(section, direction)
+        }
+        directions => Err(format!(
+            "fio JSON has mixed directions ({}) but no unified mixed latency; rerun with --unified_rw_reporting=1",
+            directions.join(",")
+        )),
+    }
+}
+
+fn section_iops(job: &Value, section: &str) -> Option<f64> {
+    job.get(section)?.get("iops")?.as_f64()
+}
+
+fn section_is_active(section: &Value) -> bool {
+    section_total_ios(section).unwrap_or(0) > 0
+        || section.get("iops").and_then(Value::as_f64).unwrap_or(0.0) > 0.0
+}
+
+fn section_total_ios(section: &Value) -> Option<u64> {
+    section.get("total_ios")?.as_u64()
+}
+
+fn section_latency_us(section: &Value, section_name: &str) -> Result<(u64, u64), String> {
+    let p50 = percentile_us(section, "50.000000")
+        .ok_or_else(|| format!("fio JSON missing {section_name} p50 latency"))?;
+    let p99 = percentile_us(section, "99.000000")
+        .ok_or_else(|| format!("fio JSON missing {section_name} p99 latency"))?;
+    Ok((p50, p99))
+}
+
+fn percentile_us(section: &Value, percentile: &str) -> Option<u64> {
+    let ns = section
+        .get("clat_ns")?
+        .get("percentile")?
+        .get(percentile)?
+        .as_u64()?;
+    Some(ns / 1000)
 }
 
 fn attach_loop(path: &Path, read_only: bool) -> Result<String, String> {
@@ -490,4 +582,174 @@ fn nbd_module_loaded() -> bool {
     std::fs::read_to_string("/proc/modules")
         .map(|s| s.lines().any(|l| l.starts_with("nbd ")))
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_fio_json_sums_mixed_read_write_iops() {
+        let json = br#"{
+            "jobs": [{
+                "read": {
+                    "iops": 700.0,
+                    "total_ios": 700,
+                    "clat_ns": {"percentile": {"50.000000": 10000, "99.000000": 20000}}
+                },
+                "write": {
+                    "iops": 300.0,
+                    "total_ios": 300,
+                    "clat_ns": {"percentile": {"50.000000": 12000, "99.000000": 22000}}
+                },
+                "trim": {"iops": 0.0, "total_ios": 0},
+                "mixed": {
+                    "iops": 1000.0,
+                    "total_ios": 1000,
+                    "clat_ns": {"percentile": {"50.000000": 11000, "99.000000": 21000}}
+                }
+            }]
+        }"#;
+
+        let result = parse_fio_json(json).unwrap();
+
+        assert_eq!(result.vm_iops, 1000);
+        assert_eq!(result.lat_p50_us, 11);
+        assert_eq!(result.lat_p99_us, 21);
+    }
+
+    #[test]
+    fn fio_vm_iops_sums_read_write_without_mixed() {
+        let json = br#"{
+            "jobs": [{
+                "read": {"iops": 700.0, "total_ios": 700},
+                "write": {"iops": 300.0, "total_ios": 300},
+                "trim": {"iops": 0.0, "total_ios": 0}
+            }]
+        }"#;
+        let root: Value = serde_json::from_slice(json).unwrap();
+        let jobs = fio_jobs(&root).unwrap();
+
+        assert_eq!(fio_vm_iops(jobs).unwrap() as u64, 1000);
+    }
+
+    #[test]
+    fn parse_fio_json_prefers_mixed_section() {
+        let json = br#"{
+            "jobs": [{
+                "read": {"iops": 700.0, "total_ios": 700},
+                "write": {"iops": 300.0, "total_ios": 300},
+                "trim": {"iops": 0.0, "total_ios": 0},
+                "mixed": {
+                    "iops": 950.0,
+                    "total_ios": 1000,
+                    "clat_ns": {"percentile": {"50.000000": 13000, "99.000000": 23000}}
+                }
+            }]
+        }"#;
+
+        let result = parse_fio_json(json).unwrap();
+
+        assert_eq!(result.vm_iops, 950);
+        assert_eq!(result.lat_p50_us, 13);
+        assert_eq!(result.lat_p99_us, 23);
+    }
+
+    #[test]
+    fn parse_fio_json_sums_multiple_jobs() {
+        let json = br#"{
+            "jobs": [
+                {
+                    "mixed": {
+                        "iops": 600.0,
+                        "total_ios": 600,
+                        "clat_ns": {"percentile": {"50.000000": 10000, "99.000000": 20000}}
+                    }
+                },
+                {
+                    "mixed": {
+                        "iops": 400.0,
+                        "total_ios": 400,
+                        "clat_ns": {"percentile": {"50.000000": 12000, "99.000000": 22000}}
+                    }
+                }
+            ]
+        }"#;
+
+        let result = parse_fio_json(json).unwrap();
+
+        assert_eq!(result.vm_iops, 1000);
+    }
+
+    #[test]
+    fn parse_fio_json_accepts_read_only_without_mixed() {
+        let json = br#"{
+            "jobs": [{
+                "read": {
+                    "iops": 512.0,
+                    "total_ios": 512,
+                    "clat_ns": {"percentile": {"50.000000": 8000, "99.000000": 16000}}
+                },
+                "write": {"iops": 0.0, "total_ios": 0},
+                "trim": {"iops": 0.0, "total_ios": 0}
+            }]
+        }"#;
+
+        let result = parse_fio_json(json).unwrap();
+
+        assert_eq!(result.vm_iops, 512);
+        assert_eq!(result.lat_p50_us, 8);
+        assert_eq!(result.lat_p99_us, 16);
+    }
+
+    #[test]
+    fn parse_fio_json_accepts_write_only_without_mixed() {
+        let json = br#"{
+            "jobs": [{
+                "read": {"iops": 0.0, "total_ios": 0},
+                "write": {
+                    "iops": 256.0,
+                    "total_ios": 256,
+                    "clat_ns": {"percentile": {"50.000000": 9000, "99.000000": 18000}}
+                },
+                "trim": {"iops": 0.0, "total_ios": 0}
+            }]
+        }"#;
+
+        let result = parse_fio_json(json).unwrap();
+
+        assert_eq!(result.vm_iops, 256);
+        assert_eq!(result.lat_p50_us, 9);
+        assert_eq!(result.lat_p99_us, 18);
+    }
+
+    #[test]
+    fn parse_fio_json_rejects_mixed_latency_without_unified_stats() {
+        let json = br#"{
+            "jobs": [{
+                "read": {
+                    "iops": 700.0,
+                    "total_ios": 700,
+                    "clat_ns": {"percentile": {"50.000000": 10000, "99.000000": 20000}}
+                },
+                "write": {
+                    "iops": 300.0,
+                    "total_ios": 300,
+                    "clat_ns": {"percentile": {"50.000000": 12000, "99.000000": 22000}}
+                },
+                "trim": {"iops": 0.0, "total_ios": 0}
+            }]
+        }"#;
+
+        let err = parse_fio_json(json).unwrap_err();
+
+        assert!(err.contains("unified"), "{err}");
+    }
+
+    #[test]
+    fn parse_fio_json_rejects_invalid_json() {
+        let err = parse_fio_json(b"not json").unwrap_err();
+
+        assert!(err.contains("parse fio JSON"), "{err}");
+    }
 }

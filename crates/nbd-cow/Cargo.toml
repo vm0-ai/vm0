@@ -7,6 +7,7 @@ edition.workspace = true
 bitvec = { workspace = true }
 libc = { workspace = true }
 nix = { workspace = true, features = ["fs"] }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-util = { workspace = true }
