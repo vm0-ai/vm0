@@ -1216,7 +1216,7 @@ async fn handle_message(
 ) -> LoopAction {
     match msg.action {
         action::HEARTBEAT => {
-            tracing::info!("Heartbeat received");
+            tracing::trace!("Heartbeat received");
         }
         action::MESSAGE => {
             if !message_targets_channel(&msg, &p.channel) {

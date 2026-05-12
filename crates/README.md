@@ -52,9 +52,9 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 
 ## Logging
 
-Runner Rust logs are recorded at `info` and above by default. Use `debug` or
-`trace` only for local diagnostics that are acceptable to miss in production
-logs, CI logs, and Axiom.
+Runner Rust logs are recorded to local files, stderr, and CI at `info` and
+above by default. Axiom ingests `warn` and above. Use `debug` or `trace` only
+for local diagnostics that are acceptable to miss in production logs.
 
 ## TLS in Guest Binaries
 
