@@ -543,6 +543,11 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
       return store.set(deleteSlackIntegrationFixture$, fixture, context.signal);
     },
   );
+  const trackOrgMembership = createFixtureTracker<OrgMembershipFixture>(
+    (fixture) => {
+      return store.set(deleteOrgMembership$, fixture, context.signal);
+    },
+  );
   const mocks = createZeroRouteMocks(context);
 
   beforeEach(() => {
@@ -631,6 +636,18 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
 
   it("publishes uninstalled App Home then deletes installation and connections", async () => {
     const seeded = await seedUninstallContext();
+    await trackOrgMembership(
+      store.set(
+        seedOrgMembership$,
+        {
+          orgId: seeded.orgId,
+          userId: seeded.userId,
+          role: "admin",
+          seedOrgCache: false,
+        },
+        context.signal,
+      ),
+    );
     mocks.clerk.session(seeded.userId, seeded.orgId, "org:admin");
     const client = setupApp({ context })(zeroIntegrationsSlackContract);
 
@@ -671,6 +688,10 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
     await expect(
       listWorkspaceSlackConnections(workspaceId),
     ).resolves.toStrictEqual([]);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "slack:changed",
+      null,
+    );
   });
 });
 

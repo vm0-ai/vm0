@@ -26,6 +26,7 @@ import {
   zeroSlackOrgInstallation,
   zeroSlackOrgStatus,
 } from "../services/zero-slack-data.service";
+import { publishSlackAdminSignal$ } from "../services/zero-slack-connect.service";
 import { getFileInfo, isSlackApiClientError } from "../../lib/slack-client";
 import {
   fetchSlackFile,
@@ -364,6 +365,13 @@ const deleteSlackIntegration$ = command(
             installation.slackWorkspaceId,
           ),
         );
+      signal.throwIfAborted();
+
+      await set(
+        publishSlackAdminSignal$,
+        { orgId: auth.orgId, topic: "slack:changed" },
+        signal,
+      );
       signal.throwIfAborted();
 
       return { status: 200 as const, body: { ok: true } };
