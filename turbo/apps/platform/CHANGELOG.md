@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.347.0](https://github.com/vm0-ai/vm0/compare/app-v0.346.1...app-v0.347.0) (2026-05-12)
+
+
+### Features
+
+* force a fresh CLI session when the user switches models mid-thread ([#13047](https://github.com/vm0-ai/vm0/issues/13047)) ([0b54497](https://github.com/vm0-ai/vm0/commit/0b54497433c6e114f323cea7a52342afbcb30fca))
+* **platform:** condense onboarding into a "try it" flow for use-case deep links ([#13051](https://github.com/vm0-ai/vm0/issues/13051)) ([d233ed4](https://github.com/vm0-ai/vm0/commit/d233ed4ed36ab03ff76b64dc8723b8829443bcaa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.14.0
+    * @vm0/core bumped to 8.271.1
+
 ## [0.346.1](https://github.com/vm0-ai/vm0/compare/app-v0.346.0...app-v0.346.1) (2026-05-12)
 
 
