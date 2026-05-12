@@ -98,6 +98,7 @@ import { storagesDownloadRoutes } from "./routes/storages-download";
 import { storagesListRoutes } from "./routes/storages-list";
 import { testOAuthProviderAuthorizeRoutes } from "./routes/test-oauth-provider-authorize";
 import { testOAuthProviderEchoRoutes } from "./routes/test-oauth-provider-echo";
+import { testOAuthProviderTokenRoutes } from "./routes/test-oauth-provider-token";
 import { testOAuthProviderUserinfoRoutes } from "./routes/test-oauth-provider-userinfo";
 import { testSlackStateRoutes } from "./routes/test-slack-state";
 import { testTelegramStateRoutes } from "./routes/test-telegram-state";
@@ -209,6 +210,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...modelStatsRoutes,
   ...testOAuthProviderAuthorizeRoutes,
   ...testOAuthProviderEchoRoutes,
+  ...testOAuthProviderTokenRoutes,
   ...testOAuthProviderUserinfoRoutes,
   ...testSlackStateRoutes,
   ...testTelegramStateRoutes,

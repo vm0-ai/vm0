@@ -236,6 +236,13 @@ export {
   type TestOAuthProviderEchoResponse,
 } from "./test-oauth-provider-echo";
 export {
+  testOAuthProviderTokenContract,
+  testOAuthProviderTokenErrorSchema,
+  testOAuthProviderTokenResponseSchema,
+  type TestOAuthProviderTokenContract,
+  type TestOAuthProviderTokenResponse,
+} from "./test-oauth-provider-token";
+export {
   testOAuthProviderUserinfoContract,
   testOAuthProviderUserinfoErrorSchema,
   testOAuthProviderUserinfoResponseSchema,

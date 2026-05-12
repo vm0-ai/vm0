@@ -4,6 +4,7 @@ import { env, optionalEnv } from "../../lib/env";
 import { now } from "../../lib/time";
 
 export const TEST_OAUTH_CLIENT_ID = "test-oauth-client";
+export const TEST_OAUTH_CLIENT_SECRET = "test-oauth-secret";
 
 const TEST_OAUTH_SCENARIOS = [
   "success",
@@ -12,10 +13,11 @@ const TEST_OAUTH_SCENARIOS = [
   "revoked",
 ] as const;
 
-type TestOAuthScenario = (typeof TEST_OAUTH_SCENARIOS)[number];
+export type TestOAuthScenario = (typeof TEST_OAUTH_SCENARIOS)[number];
 
 const TOKEN_PREFIX = "testoauth_";
 const ACCESS_PREFIX = `${TOKEN_PREFIX}at_`;
+const REFRESH_PREFIX = `${TOKEN_PREFIX}rt_`;
 const CODE_PREFIX = `${TOKEN_PREFIX}code_`;
 
 interface HeaderReader {
@@ -64,6 +66,10 @@ export function mintAccessToken(expiresInSecs: number): string {
   return `${ACCESS_PREFIX}${expiresAtMs}_${randomId()}`;
 }
 
+export function mintRefreshToken(scenario: TestOAuthScenario): string {
+  return `${REFRESH_PREFIX}${scenario}_${randomId()}`;
+}
+
 export function mintExpiredAccessToken(): string {
   const pastMs = now() - 1000;
   return `${ACCESS_PREFIX}${pastMs}_${randomId()}`;
@@ -71,6 +77,37 @@ export function mintExpiredAccessToken(): string {
 
 export function isTestOAuthAccessToken(value: string): boolean {
   return value.startsWith(ACCESS_PREFIX);
+}
+
+export function isTestOAuthRefreshToken(value: string): boolean {
+  return value.startsWith(REFRESH_PREFIX);
+}
+
+function parseScenarioFromToken(
+  value: string,
+  prefix: string,
+): TestOAuthScenario | null {
+  if (!value.startsWith(prefix)) {
+    return null;
+  }
+
+  const tail = value.slice(prefix.length);
+  const underscoreIdx = tail.indexOf("_");
+  if (underscoreIdx === -1) {
+    return null;
+  }
+
+  return parseTestOAuthScenario(tail.slice(0, underscoreIdx));
+}
+
+export function parseScenarioFromCode(code: string): TestOAuthScenario | null {
+  return parseScenarioFromToken(code, CODE_PREFIX);
+}
+
+export function parseScenarioFromRefreshToken(
+  refreshToken: string,
+): TestOAuthScenario | null {
+  return parseScenarioFromToken(refreshToken, REFRESH_PREFIX);
 }
 
 function parseAccessTokenExpiryMs(token: string): number | null {

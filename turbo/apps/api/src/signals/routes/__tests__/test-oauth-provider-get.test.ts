@@ -11,11 +11,13 @@ import {
 
 const context = testContext();
 const AUTHORIZE_ROUTE = "/api/test/oauth-provider/authorize";
+const TOKEN_ROUTE = "/api/test/oauth-provider/token";
 const USERINFO_ROUTE = "/api/test/oauth-provider/userinfo";
 const ECHO_ROUTE = "/api/test/oauth-provider/echo";
 
 interface ErrorBody {
   readonly error: string;
+  readonly error_description?: string;
 }
 
 interface EchoBody {
@@ -27,6 +29,14 @@ interface UserinfoBody {
   readonly email: string;
   readonly id: string;
   readonly username: string;
+}
+
+interface TokenBody {
+  readonly access_token: string;
+  readonly refresh_token: string;
+  readonly token_type: "Bearer";
+  readonly expires_in: number;
+  readonly scope: string;
 }
 
 function requestApp(path: string, init?: RequestInit): Promise<Response> {
@@ -49,6 +59,14 @@ function validAuthorizePath(overrides: Record<string, string> = {}): string {
   });
 }
 
+function tokenRequest(body: Record<string, string>): RequestInit {
+  return {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(body).toString(),
+  };
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
@@ -61,7 +79,7 @@ afterEach(() => {
   clearMockNow();
 });
 
-describe("GET /api/test/oauth-provider/*", () => {
+describe("/api/test/oauth-provider/*", () => {
   it("returns 404 for all scoped GET routes in production", async () => {
     mockEnv("ENV", "production");
 
@@ -75,6 +93,18 @@ describe("GET /api/test/oauth-provider/*", () => {
     await expect(userinfo.text()).resolves.toBe("Not found");
     expect(echo.status).toBe(404);
     await expect(echo.text()).resolves.toBe("Not found");
+  });
+
+  it("returns 404 for the token route in production", async () => {
+    mockEnv("ENV", "production");
+
+    const response = await requestApp(
+      TOKEN_ROUTE,
+      tokenRequest({ grant_type: "authorization_code" }),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.text()).resolves.toBe("Not found");
   });
 
   it("requires the preview bypass secret when ENV is preview", async () => {
@@ -144,6 +174,275 @@ describe("GET /api/test/oauth-provider/*", () => {
       expect(response.status).toBe(400);
       await expect(readJson<ErrorBody>(response)).resolves.toStrictEqual({
         error: "invalid_scenario",
+      });
+    });
+  });
+
+  describe("token authorization_code", () => {
+    it("exchanges a valid authorization code for tokens", async () => {
+      mockEnv("ENV", "development");
+      mockNow(new Date("2026-05-12T00:00:00.000Z"));
+
+      const authorize = await requestApp(validAuthorizePath());
+      const location = authorize.headers.get("location");
+      expect(location).not.toBeNull();
+      const code = new URL(location ?? "").searchParams.get("code");
+      expect(code).not.toBeNull();
+
+      const response = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "authorization_code",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          code: code ?? "",
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      const body = await readJson<TokenBody>(response);
+      expect(body.access_token).toMatch(/^testoauth_at_/);
+      expect(body.refresh_token).toMatch(/^testoauth_rt_/);
+      expect(body.token_type).toBe("Bearer");
+      expect(body.expires_in).toBe(3600);
+      expect(body.scope).toBe("read");
+    });
+
+    it("rejects requests without a form body", async () => {
+      mockEnv("ENV", "development");
+
+      const response = await requestApp(TOKEN_ROUTE, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+
+      expect(response.status).toBe(400);
+      await expect(readJson<ErrorBody>(response)).resolves.toStrictEqual({
+        error: "invalid_request",
+        error_description: "expected form body",
+      });
+    });
+
+    it("rejects invalid client credentials", async () => {
+      mockEnv("ENV", "development");
+
+      const response = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "authorization_code",
+          client_id: "wrong",
+          client_secret: "wrong",
+          code: "testoauth_code_success_abc",
+        }),
+      );
+
+      expect(response.status).toBe(401);
+      await expect(readJson<ErrorBody>(response)).resolves.toStrictEqual({
+        error: "invalid_client",
+      });
+    });
+
+    it("rejects a missing authorization code", async () => {
+      mockEnv("ENV", "development");
+
+      const response = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "authorization_code",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+        }),
+      );
+
+      expect(response.status).toBe(400);
+      await expect(readJson<ErrorBody>(response)).resolves.toStrictEqual({
+        error: "invalid_request",
+        error_description: "code required",
+      });
+    });
+
+    it("rejects an invalid authorization code", async () => {
+      mockEnv("ENV", "development");
+
+      const response = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "authorization_code",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          code: "testoauth_code_unknown_abc",
+        }),
+      );
+
+      expect(response.status).toBe(400);
+      await expect(readJson<ErrorBody>(response)).resolves.toStrictEqual({
+        error: "invalid_grant",
+        error_description: "malformed or unknown code",
+      });
+    });
+
+    it("returns 401 for a revoked authorization code", async () => {
+      mockEnv("ENV", "development");
+
+      const authorize = await requestApp(
+        validAuthorizePath({ scenario: "revoked" }),
+      );
+      const location = authorize.headers.get("location");
+      expect(location).not.toBeNull();
+      const code = new URL(location ?? "").searchParams.get("code");
+
+      const response = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "authorization_code",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          code: code ?? "",
+        }),
+      );
+
+      expect(response.status).toBe(401);
+      await expect(readJson<ErrorBody>(response)).resolves.toStrictEqual({
+        error: "invalid_grant",
+        error_description: "token revoked",
+      });
+    });
+
+    it("returns an immediate-expiry token for expired-access scenario", async () => {
+      mockEnv("ENV", "development");
+
+      const authorize = await requestApp(
+        validAuthorizePath({ scenario: "expired-access" }),
+      );
+      const location = authorize.headers.get("location");
+      expect(location).not.toBeNull();
+      const code = new URL(location ?? "").searchParams.get("code");
+
+      const response = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "authorization_code",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          code: code ?? "",
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      const body = await readJson<TokenBody>(response);
+      expect(body.expires_in).toBe(0);
+    });
+  });
+
+  describe("token refresh_token", () => {
+    it("mints a fresh access token for a valid refresh token", async () => {
+      mockEnv("ENV", "development");
+
+      const authorize = await requestApp(validAuthorizePath());
+      const location = authorize.headers.get("location");
+      expect(location).not.toBeNull();
+      const code = new URL(location ?? "").searchParams.get("code");
+      const firstResponse = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "authorization_code",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          code: code ?? "",
+        }),
+      );
+      const first = await readJson<TokenBody>(firstResponse);
+
+      const response = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "refresh_token",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          refresh_token: first.refresh_token,
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      const refreshed = await readJson<TokenBody>(response);
+      expect(refreshed.access_token).toMatch(/^testoauth_at_/);
+      expect(refreshed.access_token).not.toBe(first.access_token);
+    });
+
+    it("rejects an invalid-refresh scenario token", async () => {
+      mockEnv("ENV", "development");
+
+      const response = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "refresh_token",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          refresh_token: "testoauth_rt_invalid-refresh_abc",
+        }),
+      );
+
+      expect(response.status).toBe(400);
+      await expect(readJson<ErrorBody>(response)).resolves.toStrictEqual({
+        error: "invalid_grant",
+        error_description: "refresh token rejected",
+      });
+    });
+
+    it("rejects a malformed prefixed refresh token", async () => {
+      mockEnv("ENV", "development");
+
+      const response = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "refresh_token",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          refresh_token: "testoauth_rt_unknown_abc",
+        }),
+      );
+
+      expect(response.status).toBe(400);
+      await expect(readJson<ErrorBody>(response)).resolves.toStrictEqual({
+        error: "invalid_grant",
+        error_description: "malformed or unknown refresh token scenario",
+      });
+    });
+
+    it("accepts arbitrary opaque refresh tokens as success", async () => {
+      mockEnv("ENV", "development");
+
+      const response = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "refresh_token",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          refresh_token: "arbitrary-opaque-token",
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      const body = await readJson<TokenBody>(response);
+      expect(body.access_token).toMatch(/^testoauth_at_/);
+    });
+
+    it("rejects an unsupported grant type", async () => {
+      mockEnv("ENV", "development");
+
+      const response = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "password",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+        }),
+      );
+
+      expect(response.status).toBe(400);
+      await expect(readJson<ErrorBody>(response)).resolves.toStrictEqual({
+        error: "unsupported_grant_type",
       });
     });
   });
