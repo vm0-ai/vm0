@@ -142,11 +142,20 @@ pub struct CommandStreamRequest<'a> {
 struct CommandOperation {
     result_tx: oneshot::Sender<io::Result<CommandOperationResult>>,
     stream_tx: Option<mpsc::Sender<CommandOutputEvent>>,
+    stdout_stream: Option<CommandStreamState>,
+    stderr_stream: Option<CommandStreamState>,
     stream_overflowed: bool,
 }
 
 enum Operation {
     Command(CommandOperation),
+}
+
+struct CommandStreamState {
+    limit_bytes: usize,
+    chunk_limit_bytes: usize,
+    emitted_bytes: usize,
+    truncated: bool,
 }
 
 /// Connection lifecycle, expressed as data rather than a separate atomic flag.
@@ -577,6 +586,65 @@ fn command_output_policy_streams(policy: CommandOutputPolicy) -> bool {
     )
 }
 
+fn command_stream_state(policy: CommandOutputPolicy) -> Option<CommandStreamState> {
+    match policy {
+        CommandOutputPolicy::Stream {
+            limit_bytes,
+            chunk_limit_bytes,
+        }
+        | CommandOutputPolicy::CaptureAndStream {
+            stream_limit_bytes: limit_bytes,
+            chunk_limit_bytes,
+            ..
+        } => Some(CommandStreamState {
+            limit_bytes: limit_bytes as usize,
+            chunk_limit_bytes: chunk_limit_bytes as usize,
+            emitted_bytes: 0,
+            truncated: false,
+        }),
+        CommandOutputPolicy::Discard | CommandOutputPolicy::Capture { .. } => None,
+    }
+}
+
+fn validate_command_output(
+    operation: &mut CommandOperation,
+    output: &vsock_proto::DecodedCommandOutput<'_>,
+) -> io::Result<()> {
+    let stream = match output.stream {
+        CommandOutputStream::Stdout => &mut operation.stdout_stream,
+        CommandOutputStream::Stderr => &mut operation.stderr_stream,
+    };
+    let Some(stream) = stream else {
+        return Err(command_protocol_error(
+            "command output received for non-streaming output policy",
+        ));
+    };
+    if stream.truncated {
+        return Err(command_protocol_error(
+            "command output received after stream truncation",
+        ));
+    }
+    if output.chunk.len() > stream.chunk_limit_bytes {
+        return Err(command_protocol_error(
+            "command output chunk exceeds requested chunk limit",
+        ));
+    }
+    let emitted_bytes = stream
+        .emitted_bytes
+        .checked_add(output.chunk.len())
+        .ok_or_else(|| command_protocol_error("command output stream byte count overflow"))?;
+    if emitted_bytes > stream.limit_bytes {
+        return Err(command_protocol_error(
+            "command output exceeds requested stream limit",
+        ));
+    }
+    stream.emitted_bytes = emitted_bytes;
+    if output.truncated {
+        stream.truncated = true;
+    }
+    Ok(())
+}
+
 fn owned_captured_output(output: CommandCapturedOutput<'_>) -> CommandOwnedCapturedOutput {
     match output {
         CommandCapturedOutput::Discarded => CommandOwnedCapturedOutput::Discarded,
@@ -619,6 +687,7 @@ fn dispatch_command_output(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result
     {
         let decoded =
             vsock_proto::decode_command_output(&msg.payload).map_err(command_protocol_error)?;
+        validate_command_output(operation, &decoded)?;
         if let Some(tx) = operation.stream_tx.take() {
             match tx.try_reserve_owned() {
                 Ok(permit) => {
@@ -1230,6 +1299,8 @@ impl VsockHost {
         let operation = CommandOperation {
             result_tx,
             stream_tx,
+            stdout_stream: command_stream_state(request.stdout),
+            stderr_stream: command_stream_state(request.stderr),
             stream_overflowed: false,
         };
 
@@ -2366,6 +2437,176 @@ mod tests {
 
         let result = handle.wait(Duration::from_secs(5)).await.unwrap();
         assert!(result.stream_overflowed);
+    }
+
+    #[tokio::test]
+    async fn command_output_for_non_streamed_side_poisons_connection() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let handle = host
+            .command_stream(CommandStreamRequest {
+                timeout_ms: 5000,
+                command: "stream",
+                env: &[],
+                sudo: false,
+                label: "stream-side",
+                stdout: CommandOutputPolicy::Discard,
+                stderr: CommandOutputPolicy::Stream {
+                    limit_bytes: 1024,
+                    chunk_limit_bytes: 16,
+                },
+                stream_queue_capacity: Some(1),
+            })
+            .await
+            .unwrap();
+
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        send_command_output(
+            &mut guest,
+            msg.seq,
+            1,
+            CommandOutputStream::Stdout,
+            b"unexpected",
+            false,
+        )
+        .await;
+
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
+        let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    }
+
+    #[tokio::test]
+    async fn command_output_over_requested_chunk_limit_poisons_connection() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let handle = host
+            .command_stream(CommandStreamRequest {
+                timeout_ms: 5000,
+                command: "stream",
+                env: &[],
+                sudo: false,
+                label: "stream-limits",
+                stdout: CommandOutputPolicy::Stream {
+                    limit_bytes: 4,
+                    chunk_limit_bytes: 3,
+                },
+                stderr: CommandOutputPolicy::Discard,
+                stream_queue_capacity: Some(4),
+            })
+            .await
+            .unwrap();
+
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        send_command_output(
+            &mut guest,
+            msg.seq,
+            1,
+            CommandOutputStream::Stdout,
+            b"abcd",
+            false,
+        )
+        .await;
+
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
+        let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    }
+
+    #[tokio::test]
+    async fn command_output_over_requested_stream_limit_poisons_connection() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let handle = host
+            .command_stream(CommandStreamRequest {
+                timeout_ms: 5000,
+                command: "stream",
+                env: &[],
+                sudo: false,
+                label: "stream-total-limit",
+                stdout: CommandOutputPolicy::Stream {
+                    limit_bytes: 4,
+                    chunk_limit_bytes: 3,
+                },
+                stderr: CommandOutputPolicy::Discard,
+                stream_queue_capacity: Some(4),
+            })
+            .await
+            .unwrap();
+
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        send_command_output(
+            &mut guest,
+            msg.seq,
+            1,
+            CommandOutputStream::Stdout,
+            b"abc",
+            false,
+        )
+        .await;
+        send_command_output(
+            &mut guest,
+            msg.seq,
+            2,
+            CommandOutputStream::Stdout,
+            b"de",
+            false,
+        )
+        .await;
+
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
+        let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    }
+
+    #[tokio::test]
+    async fn command_output_after_truncation_poisons_connection() {
+        let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+        let handle = host
+            .command_stream(CommandStreamRequest {
+                timeout_ms: 5000,
+                command: "stream",
+                env: &[],
+                sudo: false,
+                label: "stream-truncated",
+                stdout: CommandOutputPolicy::Stream {
+                    limit_bytes: 4,
+                    chunk_limit_bytes: 4,
+                },
+                stderr: CommandOutputPolicy::Discard,
+                stream_queue_capacity: Some(4),
+            })
+            .await
+            .unwrap();
+
+        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        send_command_output(
+            &mut guest,
+            msg.seq,
+            1,
+            CommandOutputStream::Stdout,
+            b"",
+            true,
+        )
+        .await;
+        send_command_output(
+            &mut guest,
+            msg.seq,
+            2,
+            CommandOutputStream::Stdout,
+            b"late",
+            false,
+        )
+        .await;
+
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
+        let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
     }
 
     #[tokio::test]
