@@ -94,6 +94,11 @@ type OrgDeleteErrorResponse =
   | ReturnType<typeof notFound>
   | typeof orgDeleteForbidden;
 
+type RemoveZeroOrgMemberErrorResponse =
+  | ReturnType<typeof badRequestMessage>
+  | ReturnType<typeof notFound>
+  | typeof forbiddenAccess;
+
 interface UpdateZeroOrgArgs {
   readonly orgId: string;
   readonly userId: string;
@@ -112,6 +117,13 @@ interface DeleteZeroOrgArgs {
   readonly orgId: string;
   readonly callerRole: OrgRole | undefined;
   readonly slug: string;
+}
+
+interface RemoveZeroOrgMemberArgs {
+  readonly orgId: string;
+  readonly callerUserId: string;
+  readonly callerRole: OrgRole;
+  readonly email: string;
 }
 
 interface ClerkUpdate {
@@ -398,6 +410,61 @@ export const leaveZeroOrg$ = command(
     signal.throwIfAborted();
 
     return { message: "Left org" };
+  },
+);
+
+export const removeZeroOrgMember$ = command(
+  async (
+    { get, set },
+    args: RemoveZeroOrgMemberArgs,
+    signal: AbortSignal,
+  ): Promise<OrgMessageResponse | RemoveZeroOrgMemberErrorResponse> => {
+    if (args.callerRole !== "admin") {
+      return forbiddenAccess;
+    }
+
+    const client = get(clerk$);
+    const users = await client.users.getUserList({
+      emailAddress: [args.email],
+    });
+    signal.throwIfAborted();
+
+    const target = users.data[0];
+    if (!target) {
+      return notFound("Resource not found");
+    }
+
+    if (target.id === args.callerUserId) {
+      return badRequestMessage("Invalid request");
+    }
+
+    const memberships =
+      await client.organizations.getOrganizationMembershipList({
+        organizationId: args.orgId,
+      });
+    signal.throwIfAborted();
+
+    const membership = memberships.data.find((entry) => {
+      return entry.publicUserData?.userId === target.id;
+    });
+    if (!membership) {
+      return notFound("Resource not found");
+    }
+
+    await client.organizations.deleteOrganizationMembership({
+      organizationId: args.orgId,
+      userId: target.id,
+    });
+    signal.throwIfAborted();
+
+    await cleanupOrgMember(
+      set(writeDb$),
+      { orgId: args.orgId, userId: target.id },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    return { message: `Removed ${args.email} from org` };
   },
 );
 

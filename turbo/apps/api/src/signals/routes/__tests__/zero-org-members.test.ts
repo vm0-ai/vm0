@@ -1,14 +1,26 @@
 import { randomUUID } from "node:crypto";
 
+import { createStore } from "ccstate";
+import { and, eq } from "drizzle-orm";
 import { zeroOrgMembersContract } from "@vm0/api-contracts/contracts/zero-org-members";
 import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { http, HttpResponse } from "msw";
 
+import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { writeDb$ } from "../../external/db";
+import {
+  createFixtureTracker,
+  createZeroRouteMocks,
+} from "./helpers/zero-route-test";
 
 const context = testContext();
+const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 interface ClerkOrgFixture {
@@ -79,6 +91,121 @@ function mockClerkUsers(users: readonly ClerkUserFixture[]): void {
   context.mocks.clerk.users.getUserList.mockResolvedValue({
     data: users.map(clerkUserPayload),
   });
+}
+
+interface CleanupFixture {
+  readonly orgId?: string;
+  readonly workspaceId?: string;
+}
+
+const trackCleanup = createFixtureTracker(
+  async (fixture: CleanupFixture): Promise<void> => {
+    const writeDb = store.set(writeDb$);
+    if (fixture.workspaceId) {
+      await writeDb
+        .delete(slackOrgConnections)
+        .where(eq(slackOrgConnections.slackWorkspaceId, fixture.workspaceId));
+      await writeDb
+        .delete(slackOrgInstallations)
+        .where(eq(slackOrgInstallations.slackWorkspaceId, fixture.workspaceId));
+    }
+
+    if (fixture.orgId) {
+      await writeDb
+        .delete(orgMembersMetadata)
+        .where(eq(orgMembersMetadata.orgId, fixture.orgId));
+      await writeDb
+        .delete(orgMembersCache)
+        .where(eq(orgMembersCache.orgId, fixture.orgId));
+    }
+  },
+);
+
+function uniqueId(prefix: string): string {
+  return `${prefix}_${randomUUID().slice(0, 8)}`;
+}
+
+async function seedMemberRows(orgId: string, userId: string): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await trackCleanup(Promise.resolve({ orgId }));
+  await writeDb.insert(orgMembersCache).values({
+    orgId,
+    userId,
+    role: "member",
+  });
+  await writeDb.insert(orgMembersMetadata).values({ orgId, userId });
+}
+
+async function seedSlackConnection(args: {
+  readonly orgId: string;
+  readonly workspaceId: string;
+  readonly userId: string;
+}): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await trackCleanup(Promise.resolve({ workspaceId: args.workspaceId }));
+  await writeDb.insert(slackOrgInstallations).values({
+    slackWorkspaceId: args.workspaceId,
+    slackWorkspaceName: "Org Members Test Workspace",
+    orgId: args.orgId,
+    encryptedBotToken: "encrypted-token",
+    botUserId: uniqueId("bot"),
+  });
+  await writeDb.insert(slackOrgConnections).values({
+    slackUserId: uniqueId("slack-user"),
+    slackWorkspaceId: args.workspaceId,
+    vm0UserId: args.userId,
+  });
+}
+
+async function readMemberCache(
+  orgId: string,
+  userId: string,
+): Promise<typeof orgMembersCache.$inferSelect | undefined> {
+  const writeDb = store.set(writeDb$);
+  const [row] = await writeDb
+    .select()
+    .from(orgMembersCache)
+    .where(
+      and(eq(orgMembersCache.orgId, orgId), eq(orgMembersCache.userId, userId)),
+    )
+    .limit(1);
+  return row;
+}
+
+async function readMemberMetadata(
+  orgId: string,
+  userId: string,
+): Promise<typeof orgMembersMetadata.$inferSelect | undefined> {
+  const writeDb = store.set(writeDb$);
+  const [row] = await writeDb
+    .select()
+    .from(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.orgId, orgId),
+        eq(orgMembersMetadata.userId, userId),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
+async function readSlackConnection(
+  workspaceId: string,
+  userId: string,
+): Promise<typeof slackOrgConnections.$inferSelect | undefined> {
+  const writeDb = store.set(writeDb$);
+  const [row] = await writeDb
+    .select()
+    .from(slackOrgConnections)
+    .where(
+      and(
+        eq(slackOrgConnections.slackWorkspaceId, workspaceId),
+        eq(slackOrgConnections.vm0UserId, userId),
+      ),
+    )
+    .limit(1);
+  return row;
 }
 
 interface MembershipRequestFixture {
@@ -363,5 +490,247 @@ describe("GET /api/zero/org/members", () => {
 
     expect(response.body.membershipRequests).toStrictEqual([]);
     expect(response.body.members).toHaveLength(1);
+  });
+});
+
+describe("DELETE /api/zero/org/members", () => {
+  it("returns 401 when not authenticated", async () => {
+    const client = setupApp({ context })(zeroOrgMembersContract);
+
+    const response = await accept(
+      client.removeMember({
+        headers: {},
+        body: { email: "member@example.com" },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mocks.clerk.session(uniqueId("user"), null);
+    const client = setupApp({ context })(zeroOrgMembersContract);
+
+    const response = await accept(
+      client.removeMember({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { email: "member@example.com" },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 400 for an invalid body", async () => {
+    const userId = uniqueId("user");
+    const orgId = uniqueId("org");
+    mocks.clerk.session(userId, orgId, "org:admin");
+    const app = createApp({ signal: context.signal });
+
+    const response = await app.request("/api/zero/org/members", {
+      method: "DELETE",
+      headers: {
+        authorization: "Bearer clerk-session",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ email: "invalid-email" }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body).toMatchObject({ error: { code: "BAD_REQUEST" } });
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationMembership,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 for non-admin members", async () => {
+    const userId = uniqueId("user");
+    const orgId = uniqueId("org");
+    mocks.clerk.session(userId, orgId, "org:member");
+    const client = setupApp({ context })(zeroOrgMembersContract);
+
+    const response = await accept(
+      client.removeMember({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { email: "member@example.com" },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Access denied", code: "FORBIDDEN" },
+    });
+    expect(context.mocks.clerk.users.getUserList).not.toHaveBeenCalled();
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationMembership,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the target email does not resolve to a Clerk user", async () => {
+    const userId = uniqueId("user");
+    const orgId = uniqueId("org");
+    mocks.clerk.session(userId, orgId, "org:admin");
+    mockClerkUsers([]);
+    const client = setupApp({ context })(zeroOrgMembersContract);
+
+    const response = await accept(
+      client.removeMember({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { email: "missing@example.com" },
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Resource not found", code: "NOT_FOUND" },
+    });
+    expect(context.mocks.clerk.users.getUserList).toHaveBeenCalledWith({
+      emailAddress: ["missing@example.com"],
+    });
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).not.toHaveBeenCalled();
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationMembership,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when an admin attempts to remove themselves", async () => {
+    const userId = uniqueId("user");
+    const orgId = uniqueId("org");
+    mocks.clerk.session(userId, orgId, "org:admin");
+    mockClerkUsers([
+      {
+        id: userId,
+        email: "admin@example.com",
+        firstName: null,
+        lastName: null,
+        imageUrl: "",
+      },
+    ]);
+    const client = setupApp({ context })(zeroOrgMembersContract);
+
+    const response = await accept(
+      client.removeMember({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { email: "admin@example.com" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Invalid request", code: "BAD_REQUEST" },
+    });
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).not.toHaveBeenCalled();
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationMembership,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the target user is not an organization member", async () => {
+    const adminUserId = uniqueId("user-admin");
+    const targetUserId = uniqueId("user-target");
+    const orgId = uniqueId("org");
+    mocks.clerk.session(adminUserId, orgId, "org:admin");
+    mockClerkUsers([
+      {
+        id: targetUserId,
+        email: "target@example.com",
+        firstName: null,
+        lastName: null,
+        imageUrl: "",
+      },
+    ]);
+    mockClerkMemberships([
+      {
+        userId: adminUserId,
+        role: "org:admin",
+        createdAtMs: 1_700_000_000_000,
+      },
+    ]);
+    const client = setupApp({ context })(zeroOrgMembersContract);
+
+    const response = await accept(
+      client.removeMember({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { email: "target@example.com" },
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Resource not found", code: "NOT_FOUND" },
+    });
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationMembership,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("removes a target member through Clerk and cleans member-local rows", async () => {
+    const adminUserId = uniqueId("user-admin");
+    const targetUserId = uniqueId("user-target");
+    const orgId = uniqueId("org");
+    const workspaceId = uniqueId("workspace");
+    const targetEmail = "target@example.com";
+    mocks.clerk.session(adminUserId, orgId, "org:admin");
+    mockClerkUsers([
+      {
+        id: targetUserId,
+        email: targetEmail,
+        firstName: null,
+        lastName: null,
+        imageUrl: "",
+      },
+    ]);
+    mockClerkMemberships([
+      {
+        userId: targetUserId,
+        role: "org:member",
+        createdAtMs: 1_700_000_000_000,
+      },
+    ]);
+    await seedMemberRows(orgId, targetUserId);
+    await seedSlackConnection({ orgId, workspaceId, userId: targetUserId });
+    context.mocks.clerk.organizations.deleteOrganizationMembership.mockResolvedValue(
+      {},
+    );
+    const client = setupApp({ context })(zeroOrgMembersContract);
+
+    const response = await accept(
+      client.removeMember({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { email: targetEmail },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      message: `Removed ${targetEmail} from org`,
+    });
+    expect(context.mocks.clerk.users.getUserList).toHaveBeenCalledWith({
+      emailAddress: [targetEmail],
+    });
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledWith({ organizationId: orgId });
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationMembership,
+    ).toHaveBeenCalledWith({ organizationId: orgId, userId: targetUserId });
+    await expect(readMemberCache(orgId, targetUserId)).resolves.toBeUndefined();
+    await expect(
+      readMemberMetadata(orgId, targetUserId),
+    ).resolves.toBeUndefined();
+    await expect(
+      readSlackConnection(workspaceId, targetUserId),
+    ).resolves.toBeUndefined();
   });
 });

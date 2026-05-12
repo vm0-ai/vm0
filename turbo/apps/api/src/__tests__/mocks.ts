@@ -542,7 +542,9 @@ export function resetApiTestMocks(): void {
   apiTestMocks.clerk.organizations.getOrganizationInvitationList.mockReset();
   apiTestMocks.clerk.organizations.getOrganizationMembershipList.mockReset();
   apiTestMocks.clerk.organizations.deleteOrganizationLogo.mockReset();
+  apiTestMocks.clerk.organizations.deleteOrganizationMembership.mockReset();
   apiTestMocks.clerk.organizations.revokeOrganizationInvitation.mockReset();
+  apiTestMocks.clerk.organizations.deleteOrganization.mockReset();
   apiTestMocks.clerk.organizations.updateOrganization.mockReset();
   apiTestMocks.clerk.organizations.updateOrganizationLogo.mockReset();
   apiTestMocks.clerk.users.getUserList.mockReset();
