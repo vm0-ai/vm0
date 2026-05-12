@@ -9,6 +9,7 @@ import {
   createTestAgentSession,
   createTelegramCallbackInstallation,
   enableModelFirstModelProviderForUser,
+  disableModelFirstModelProviderForUser,
   getOrgMembersEntry,
   insertOrgModelPolicy,
   insertUserModelPreference,
@@ -610,6 +611,7 @@ describe("Telegram bot commands", () => {
     });
 
     it("should reject model switching when model-first is disabled", async () => {
+      await disableModelFirstModelProviderForUser(orgId, userId);
       const sendMsg = telegramSendMessage();
       server.use(sendMsg.handler);
 
