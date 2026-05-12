@@ -122,6 +122,16 @@ describe("use cases translation coverage", () => {
 describe("buildPromptHref", () => {
   const connectors = USE_CASES[0]!.connectors;
 
+  it("points at /onboarding so Try It always goes through the connector step", () => {
+    const href = buildPromptHref(
+      "show me recent errors",
+      connectors,
+      "https://app.example.com",
+    );
+    const url = new URL(href);
+    expect(url.pathname).toBe("/onboarding");
+  });
+
   it("strips @Zero prefix from the prompt", () => {
     const href = buildPromptHref(
       "@Zero top 3 Sentry errors in the last 24h",
@@ -153,7 +163,7 @@ describe("buildPromptHref", () => {
     expect(href).toContain("prompt=hello+world+%26+friends");
   });
 
-  it("omits empty params", () => {
+  it("returns the bare platform URL when both params are empty", () => {
     expect(buildPromptHref("", [], "https://app.example.com")).toBe(
       "https://app.example.com",
     );

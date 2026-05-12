@@ -84,6 +84,33 @@ export const markConnectorsFromUrl$ = command(({ set }) => {
   set(internalConnectorsFromUrl$, true);
 });
 
+/**
+ * True when the user arrived via a "use case" deep link carrying both
+ * `?connector=` and `?prompt=`. In this mode the onboarding is condensed —
+ * step 4 ("Where would you like to work?") is skipped and step 3 grows an
+ * editable composer so the user can tweak the prompt before continuing
+ * straight into the web chat with their default agent.
+ */
+const internalUseCaseMode$ = state(false);
+const internalPromptDraft$ = state("");
+
+export const onboardingIsUseCase$ = computed((get) => {
+  return get(internalUseCaseMode$);
+});
+
+export const onboardingPromptDraft$ = computed((get) => {
+  return get(internalPromptDraft$);
+});
+
+export const markUseCaseMode$ = command(({ set }, prompt: string) => {
+  set(internalUseCaseMode$, true);
+  set(internalPromptDraft$, prompt);
+});
+
+export const setOnboardingPromptDraft$ = command(({ set }, value: string) => {
+  set(internalPromptDraft$, value);
+});
+
 export const zeroOnboardingStep$ = computed(async (get) => {
   const userStep = get(userStep$);
   if (userStep !== null) {
@@ -153,6 +180,8 @@ export const toggleZeroConnector$ = command(
 export const resetOnboardingStep$ = command(({ set }) => {
   set(userStep$, null);
   set(internalConnectorsFromUrl$, false);
+  set(internalUseCaseMode$, false);
+  set(internalPromptDraft$, "");
 });
 
 /**

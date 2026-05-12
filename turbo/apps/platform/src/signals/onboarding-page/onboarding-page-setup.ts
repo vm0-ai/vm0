@@ -10,6 +10,7 @@ import { updatePage$ } from "../react-router.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import {
   markConnectorsFromUrl$,
+  markUseCaseMode$,
   resetOnboardingStep$,
   toggleZeroConnector$,
   zeroNeedsOnboarding$,
@@ -26,13 +27,22 @@ export const setupOnboardingPage$ = command(
     set(resetOnboardingStep$);
     signal.throwIfAborted();
 
-    // If onboarding is not needed, redirect to home
+    // Detect use-case deep link early — `?prompt=...&connector=...` lets even
+    // already-onboarded users land here intentionally (to try a suggested
+    // task), so we must NOT auto-redirect them home in that case.
+    const earlyParams = get(searchParams$);
+    const hasUseCaseLink =
+      (earlyParams.get("prompt")?.length ?? 0) > 0 &&
+      earlyParams.get("connector") !== null;
+
+    // If onboarding is not needed and there's no use-case deep link, send the
+    // user home — the page has nothing to show.
     const needsOnboarding = await get(zeroNeedsOnboarding$);
     signal.throwIfAborted();
     const needsMemberOnboarding = await get(zeroNeedsMemberOnboarding$);
     signal.throwIfAborted();
 
-    if (!needsOnboarding && !needsMemberOnboarding) {
+    if (!needsOnboarding && !needsMemberOnboarding && !hasUseCaseLink) {
       set(detachedNavigateTo$, "/", { replace: true });
       return;
     }
@@ -74,6 +84,20 @@ export const setupOnboardingPage$ = command(
       if (unique.length > 0) {
         set(markConnectorsFromUrl$);
       }
+    }
+
+    // "Use case" deep link: ?prompt=... + ?connector=... together signal that
+    // the user came in from a specific suggested task. We seed an editable
+    // prompt draft and switch onboarding into condensed mode where step 4
+    // ("Where would you like to work?") is skipped and step 3 grows a
+    // composer + "Try It" CTA that goes straight to the web chat.
+    const promptParam = params.get("prompt");
+    if (
+      promptParam !== null &&
+      promptParam.length > 0 &&
+      connectorParam !== null
+    ) {
+      set(markUseCaseMode$, promptParam);
     }
   },
 );

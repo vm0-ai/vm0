@@ -1666,5 +1666,9 @@ export function buildPromptHref(
   if (cleaned) qs.set("prompt", cleaned);
   if (connector) qs.set("connector", connector);
   const query = qs.toString();
-  return query ? `${platformUrl}/?${query}` : platformUrl;
+  // Route Try It through /onboarding so the user always sees the connector
+  // setup + editable prompt composer first — regardless of whether the user
+  // is fresh or already onboarded. The /onboarding page itself decides
+  // whether to show the workspace step or jump straight to step 3.
+  return query ? `${platformUrl}/onboarding?${query}` : platformUrl;
 }

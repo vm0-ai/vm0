@@ -27,10 +27,14 @@ import {
   toggleZeroConnector$,
   connectorSearch$,
   setConnectorSearch$,
+  onboardingIsUseCase$,
+  onboardingPromptDraft$,
+  setOnboardingPromptDraft$,
 } from "../../signals/zero-page/zero-onboarding.ts";
 import {
   onboardingDisplayName$,
   onboardingAddToSlack$,
+  onboardingBackendWillAuthorizeConnectors$,
   onboardingContinueWeb$,
   onboardingContinueTelegram$,
   onboardingEffectiveStep$,
@@ -41,6 +45,7 @@ import {
   onboardingShowBack$,
   onboardingShowNext$,
   onboardingNextDisabled$,
+  onboardingNextLabel$,
   onboardingStepBack$,
   onboardingStepNext$,
   onboardingIsAdmin$,
@@ -354,7 +359,43 @@ function ConnectStepContent() {
           })}
         </div>
       )}
+      <UseCasePromptComposer />
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Use case "Try It" composer — only renders when onboarding arrived via the
+// `?prompt=...&connector=...` deep link. A plain editable textarea so the
+// user can tweak the suggested prompt before clicking the footer "Try It".
+// No internal send button — the footer button is the single CTA.
+// ---------------------------------------------------------------------------
+
+function UseCasePromptComposer() {
+  const isUseCase = useGet(onboardingIsUseCase$);
+  const draft = useGet(onboardingPromptDraft$);
+  const setDraft = useSet(setOnboardingPromptDraft$);
+
+  if (!isUseCase) {
+    return null;
+  }
+
+  return (
+    <div data-testid="onboarding-prompt-composer" className="w-full mt-6">
+      <p className="text-xs font-medium text-muted-foreground mb-2">
+        Your first prompt
+      </p>
+      <textarea
+        data-testid="onboarding-prompt-input"
+        value={draft}
+        onChange={(e) => {
+          setDraft(e.target.value);
+        }}
+        autoFocus
+        rows={4}
+        className="w-full resize-none rounded-xl zero-border bg-background px-4 py-3 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      />
+    </div>
   );
 }
 
@@ -737,6 +778,11 @@ function OrbitIllustration() {
 function OnboardingProgressBar() {
   const currentStep = useLastResolved(onboardingCurrentStepIndex$) ?? 0;
   const visibleSteps = useLastResolved(onboardingVisibleSteps$) ?? [];
+  // A single-step flow has nothing to track — hide the bar to avoid the
+  // visual "always 100%" stripe (use-case revisit by an onboarded user).
+  if (visibleSteps.length <= 1) {
+    return null;
+  }
   return (
     <ProgressBar totalSteps={visibleSteps.length} currentStep={currentStep} />
   );
@@ -746,6 +792,7 @@ function OnboardingFooterNav() {
   const showBack = useLastResolved(onboardingShowBack$) ?? false;
   const showNext = useLastResolved(onboardingShowNext$) ?? false;
   const nextDisabled = useLastResolved(onboardingNextDisabled$) ?? false;
+  const nextLabel = useLastResolved(onboardingNextLabel$) ?? "Next";
   const stepBack = useSet(onboardingStepBack$);
   const stepNext = useSet(onboardingStepNext$);
   const pageSignal = useGet(pageSignal$);
@@ -773,7 +820,7 @@ function OnboardingFooterNav() {
             className="rounded-lg min-w-[100px]"
             disabled={nextDisabled}
           >
-            Next
+            {nextLabel}
           </Button>
         )}
       </div>
@@ -1026,6 +1073,12 @@ export function ZeroOnboarding() {
   const selectedConnectorType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
   const clearPermissionDialog = useSet(setPermissionDialogType$);
+  // We suppress the post-connect permission dialog only when the backend will
+  // bulk-authorize selected connectors at the end of onboarding. Already-
+  // onboarded users entering via a use-case deep link need the dialog so each
+  // new connector is authorized to their existing default agent.
+  const suppressPermissionDialog =
+    useLastResolved(onboardingBackendWillAuthorizeConnectors$) ?? true;
 
   if (!effectiveStep) {
     return null;
@@ -1043,9 +1096,9 @@ export function ZeroOnboarding() {
             return setSelected(null);
           }}
           onSuccess={() => {
-            // During onboarding the backend authorizes connectors for the
-            // default agent at step 4, so suppress the permission dialog.
-            clearPermissionDialog(null);
+            if (suppressPermissionDialog) {
+              clearPermissionDialog(null);
+            }
           }}
         />
       )}

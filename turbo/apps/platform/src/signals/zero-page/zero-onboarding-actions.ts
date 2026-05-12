@@ -3,6 +3,7 @@ import {
   zeroNeedsOnboarding$,
   zeroNeedsMemberOnboarding$,
   zeroOnboardingStep$,
+  zeroOnboardingStatus$,
   zeroAgentName$,
   zeroWorkspaceName$,
   zeroSelectedConnectors$,
@@ -10,9 +11,16 @@ import {
   completeZeroOnboarding$,
   completeMemberOnboarding$,
   connectorsFromUrl$,
+  onboardingIsUseCase$,
+  onboardingPromptDraft$,
 } from "./zero-onboarding.ts";
 import { currentChatAgentDisplayName$ } from "../agent-chat.ts";
-import { detachedNavigateTo$, searchParams$ } from "../route.ts";
+import {
+  detachedNavigateTo$,
+  searchParams$,
+  updateSearchParams$,
+} from "../route.ts";
+import { rootSignal$ } from "../root-signal.ts";
 import { ROUTES } from "../route-paths.ts";
 import { slackOrgData$ } from "./zero-slack.ts";
 
@@ -20,6 +28,7 @@ import { reloadBillingStatus$ } from "./billing.ts";
 import { reloadAgentById$, reloadAgents$ } from "../agent.ts";
 import { reloadPinnedAgents$ } from "./zero-pinned-agents.ts";
 import { showAppSkeleton$, startSkeletonCycling$ } from "../app-skeleton.ts";
+import { sendNewThreadOptimistically$ } from "../chat-page/optimistic-chat-thread-page.ts";
 import { logger } from "../log.ts";
 
 const L = logger("OnboardingAddToSlack");
@@ -51,6 +60,13 @@ export const onboardingEffectiveConnectors$ = computed((get) => {
  */
 export const onboardingEffectiveStep$ = computed(async (get) => {
   const step = await get(zeroOnboardingStep$);
+  const isUseCase = get(onboardingIsUseCase$);
+  // Already-onboarded user arriving via a use-case deep link: there is no
+  // onboarding to do, but we still want to show step 3 so they can review
+  // connectors + tweak the prompt before hitting Try It.
+  if ((!step || step === "done") && isUseCase) {
+    return "3";
+  }
   if (!step || step === "done") {
     return undefined;
   }
@@ -62,9 +78,13 @@ export const onboardingEffectiveStep$ = computed(async (get) => {
   if (fromUrl && step === "2") {
     return "3";
   }
-  const selected = get(zeroSelectedConnectors$);
-  if (step === "3" && selected.length === 0) {
-    return "4";
+  // Use-case mode has no step 4 — stay on step 3 even with an empty
+  // selection so the composer + Try It CTA remain visible.
+  if (!isUseCase) {
+    const selected = get(zeroSelectedConnectors$);
+    if (step === "3" && selected.length === 0) {
+      return "4";
+    }
   }
   return step;
 });
@@ -72,20 +92,36 @@ export const onboardingEffectiveStep$ = computed(async (get) => {
 /**
  * Steps shown in the progress bar. Admin owns step 1; step 3 only appears
  * when at least one connector is selected. Step 2 (the picker) is omitted
- * when connectors arrived via `?connector=` deep link.
+ * when connectors arrived via `?connector=` deep link. Step 4 ("Where would
+ * you like to work?") is omitted in "use case" mode — the Try It CTA on
+ * step 3 goes straight to web chat.
  */
 export const onboardingVisibleSteps$ = computed(async (get) => {
   const isAdmin = await get(zeroNeedsOnboarding$);
+  const needsMember = await get(zeroNeedsMemberOnboarding$);
   const selected = get(zeroSelectedConnectors$);
   const hasSelected = selected.length > 0;
   const fromUrl = get(connectorsFromUrl$);
+  const isUseCase = get(onboardingIsUseCase$);
+  // Already-onboarded user arriving via use-case deep link: collapse the
+  // flow to a single step 3 (composer + connectors). No workspace step
+  // because the workspace already exists.
+  if (isUseCase && !isAdmin && !needsMember) {
+    return (hasSelected ? ["3"] : []) as readonly string[];
+  }
   if (isAdmin) {
+    if (isUseCase) {
+      return (hasSelected ? ["1", "3"] : ["1"]) as readonly string[];
+    }
     if (fromUrl) {
       return (hasSelected ? ["1", "3", "4"] : ["1", "4"]) as readonly string[];
     }
     return (
       hasSelected ? ["1", "2", "3", "4"] : ["1", "2", "4"]
     ) as readonly string[];
+  }
+  if (isUseCase) {
+    return (hasSelected ? ["3"] : []) as readonly string[];
   }
   if (fromUrl) {
     return (hasSelected ? ["3", "4"] : ["4"]) as readonly string[];
@@ -127,6 +163,21 @@ export const onboardingStepKey$ = computed(async (get) => {
 // Navigation
 // ---------------------------------------------------------------------------
 
+/**
+ * True when the running flow will run the onboarding "complete/setup" backend
+ * call at finish, which bulk-authorizes selected connectors to the default
+ * agent. The post-connect permission dialog can be suppressed in that case;
+ * already-onboarded users (use-case revisit) must run the dialog so each new
+ * connector is authorized individually.
+ */
+export const onboardingBackendWillAuthorizeConnectors$ = computed(
+  async (get) => {
+    const needsOnboarding = await get(zeroNeedsOnboarding$);
+    const needsMember = await get(zeroNeedsMemberOnboarding$);
+    return needsOnboarding || needsMember;
+  },
+);
+
 /** Show the back button on every step except the first visible one. */
 export const onboardingShowBack$ = computed(async (get) => {
   const step = await get(onboardingEffectiveStep$);
@@ -148,6 +199,20 @@ export const onboardingNextDisabled$ = computed(async (get) => {
     return !get(zeroWorkspaceName$).trim();
   }
   return false;
+});
+
+/**
+ * Label shown on the primary forward button in the footer. "Try It" on the
+ * terminal step of a use-case flow signals that clicking finishes onboarding
+ * and jumps into the chat; everywhere else it's a plain "Next".
+ */
+export const onboardingNextLabel$ = computed(async (get) => {
+  const step = await get(onboardingEffectiveStep$);
+  const isUseCase = get(onboardingIsUseCase$);
+  if (isUseCase && step === "3") {
+    return "Try It";
+  }
+  return "Next";
 });
 
 export const onboardingStepBack$ = command(
@@ -177,12 +242,18 @@ export const onboardingStepBack$ = command(
 );
 
 export const onboardingStepNext$ = command(
-  async ({ get, set }, _signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     const step = await get(onboardingEffectiveStep$);
+    signal.throwIfAborted();
     const hasSelected = get(zeroSelectedConnectors$).length > 0;
     const fromUrl = get(connectorsFromUrl$);
+    const isUseCase = get(onboardingIsUseCase$);
     switch (step) {
       case "1": {
+        if (isUseCase) {
+          set(setZeroStep$, "3");
+          break;
+        }
         set(setZeroStep$, fromUrl ? (hasSelected ? "3" : "4") : "2");
         break;
       }
@@ -191,6 +262,12 @@ export const onboardingStepNext$ = command(
         break;
       }
       case "3": {
+        if (isUseCase) {
+          // Try It: create org + default agent, authorize selected connectors,
+          // navigate to the new agent's web chat with the edited prompt.
+          await set(onboardingContinueWeb$, signal);
+          break;
+        }
         set(setZeroStep$, "4");
         break;
       }
@@ -205,7 +282,10 @@ export const onboardingStepNext$ = command(
 export const onboardingShowDialog$ = computed(async (get) => {
   const needsOnboarding = await get(zeroNeedsOnboarding$);
   const needsMember = await get(zeroNeedsMemberOnboarding$);
-  return needsOnboarding || needsMember;
+  // Already-onboarded users still see the dialog when they arrive via a
+  // use-case deep link, so they can review connectors + edit the prompt.
+  const isUseCase = get(onboardingIsUseCase$);
+  return needsOnboarding || needsMember || isUseCase;
 });
 
 // ---------------------------------------------------------------------------
@@ -245,6 +325,20 @@ export const completeOnboarding$ = command(
   },
 );
 
+/**
+ * Resolve the prompt to carry forward when finishing onboarding. The editable
+ * composer (use-case mode) wins over the raw `?prompt=` URL param; falling
+ * back to the URL keeps the historical behavior intact when the composer
+ * isn't shown.
+ */
+export const onboardingResolvedPrompt$ = computed((get) => {
+  const draft = get(onboardingPromptDraft$).trim();
+  if (draft.length > 0) {
+    return draft;
+  }
+  return get(searchParams$).get("prompt");
+});
+
 export const onboardingAddToSlack$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(showAppSkeleton$);
@@ -265,7 +359,7 @@ export const onboardingAddToSlack$ = command(
         // workspace app is already installed). Either one continues the
         // onboarding flow in Slack — open whichever the backend offered.
         const targetUrl = slackData.installUrl ?? slackData.connectUrl;
-        const prompt = get(searchParams$).get("prompt");
+        const prompt = get(onboardingResolvedPrompt$);
 
         if (targetUrl) {
           const url = new URL(targetUrl, window.location.origin);
@@ -283,7 +377,7 @@ export const onboardingAddToSlack$ = command(
           });
         }
 
-        // Forward ?prompt= to /works so the page can keep the same context
+        // Forward the prompt to /works so the page can keep the same context
         // (e.g. re-opening the DM) once the OAuth tab returns.
         set(detachedNavigateTo$, "/works", {
           searchParams: prompt ? new URLSearchParams({ prompt }) : undefined,
@@ -300,16 +394,59 @@ export const onboardingContinueWeb$ = command(
     await Promise.all([
       set(startSkeletonCycling$, signal),
       (async () => {
-        const agentId = await set(completeOnboarding$, signal);
+        // Already-onboarded users (typical "use-case deep link revisit")
+        // skip the setup/complete API — calling /onboarding/complete would
+        // overwrite their existing connector authorizations on the default
+        // agent. Read defaultAgentId from status and continue.
+        const status = await get(zeroOnboardingStatus$);
+        signal.throwIfAborted();
+        const alreadyOnboarded =
+          !status.needsOnboarding && status.defaultAgentId !== null;
+        const agentId = alreadyOnboarded
+          ? status.defaultAgentId
+          : await set(completeOnboarding$, signal);
 
         if (!agentId) {
           return;
         }
 
-        // Forward ?prompt= to the chat page so the composer gets pre-filled
-        // with the prompt the user arrived with.
-        const prompt = get(searchParams$).get("prompt");
+        const prompt = get(onboardingResolvedPrompt$);
+        const isUseCase = get(onboardingIsUseCase$);
 
+        // Use-case mode: send the prompt as the first message in a brand-new
+        // thread so the user lands inside the running thread instead of an
+        // empty composer. sendNewThreadOptimistically$ handles the navigate
+        // to `/chats/:threadId`.
+        if (isUseCase && prompt && prompt.length > 0) {
+          // Drop the onboarding deep-link params from the URL before the
+          // optimistic router forwards search params to /chats/:threadId —
+          // otherwise the new chat URL still carries ?prompt= + ?connector=.
+          const cleaned = new URLSearchParams(get(searchParams$));
+          cleaned.delete("prompt");
+          cleaned.delete("connector");
+          set(updateSearchParams$, cleaned);
+
+          // Use the root signal (not the caller's page signal) so the POST
+          // /chat/messages request survives the imminent /onboarding →
+          // /chats/:threadId navigation. Aborting the fetch mid-flight would
+          // surface as "Chat not found" once the persisted thread fails to
+          // resolve.
+          const rootSignal = get(rootSignal$);
+          await set(
+            sendNewThreadOptimistically$,
+            {
+              agentId: agentId,
+              prompt,
+              modelSelection: null,
+              goal: false,
+            },
+            rootSignal,
+          );
+          return;
+        }
+
+        // Classic deep-link flow: navigate to the agent's empty composer page
+        // and forward the prompt so it gets pre-filled.
         set(detachedNavigateTo$, "/agents/:agentId/chat", {
           pathParams: { agentId: agentId },
           searchParams: prompt ? new URLSearchParams({ prompt }) : undefined,
