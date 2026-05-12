@@ -37,7 +37,11 @@ export const updateAgentPermissionPolicies$ = command(
     const db = set(writeDb$);
 
     const [existing] = await db
-      .select({ id: zeroAgents.id, owner: zeroAgents.owner })
+      .select({
+        id: zeroAgents.id,
+        owner: zeroAgents.owner,
+        visibility: zeroAgents.visibility,
+      })
       .from(zeroAgents)
       .where(
         and(eq(zeroAgents.orgId, args.orgId), eq(zeroAgents.id, args.agentId)),
@@ -53,6 +57,7 @@ export const updateAgentPermissionPolicies$ = command(
       existing.owner,
       { userId: args.userId, role: args.role },
       "update permission policies",
+      { visibility: existing.visibility },
     );
     if (forbidden) {
       return forbidden;

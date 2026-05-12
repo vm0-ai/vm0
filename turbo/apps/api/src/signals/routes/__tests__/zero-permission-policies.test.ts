@@ -202,6 +202,59 @@ describe("PUT /api/zero/permission-policies", () => {
     expect(response.body.permissionPolicies).toStrictEqual(slackAllow());
   });
 
+  it("returns 403 when an org admin updates another user's private agent", async () => {
+    const ownerFixture = uniqueOrgUser("zpp-private-owner");
+    const adminFixture = {
+      orgId: ownerFixture.orgId,
+      userId: `user_zpp-private-admin_${randomUUID().slice(0, 8)}`,
+    };
+    await store.set(
+      seedOrgMembership$,
+      {
+        orgId: ownerFixture.orgId,
+        userId: ownerFixture.userId,
+        role: "member",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedOrgMembership$,
+      {
+        orgId: adminFixture.orgId,
+        userId: adminFixture.userId,
+        role: "admin",
+        seedOrgCache: false,
+      },
+      context.signal,
+    );
+    const { agentId } = await store.set(
+      seedCompose$,
+      {
+        orgId: ownerFixture.orgId,
+        userId: ownerFixture.userId,
+        visibility: "private",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(adminFixture.userId, adminFixture.orgId);
+
+    const client = setupApp({ context })(zeroAgentPermissionPoliciesContract);
+    const response = await accept(
+      client.update({
+        body: { agentId, policies: slackAllow() },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Only the private agent owner can update permission policies",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
   it("returns 403 for a non-owner member", async () => {
     const ownerFixture = uniqueOrgUser("zpp-owner2");
     const memberFixture = {

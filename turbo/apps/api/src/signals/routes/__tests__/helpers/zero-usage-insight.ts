@@ -202,6 +202,7 @@ export const seedCompose$ = command(
       userId: string;
       name?: string;
       displayName?: string | null;
+      visibility?: "public" | "private";
     },
     signal: AbortSignal,
   ): Promise<ComposeResult> => {
@@ -223,6 +224,7 @@ export const seedCompose$ = command(
         owner: args.userId,
         name,
         displayName: args.displayName ?? null,
+        visibility: args.visibility ?? "public",
       })
       .onConflictDoNothing();
     signal.throwIfAborted();
