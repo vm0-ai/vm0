@@ -57,7 +57,7 @@ interface AgentUpdateBody {
   readonly displayName?: string;
   readonly description?: string;
   readonly sound?: string;
-  readonly avatarUrl?: string;
+  readonly avatarUrl?: string | null;
   readonly customSkills?: readonly string[];
   readonly modelProviderId?: string | null;
   readonly selectedModel?: string | null;
@@ -65,12 +65,15 @@ interface AgentUpdateBody {
   readonly visibility?: ZeroAgentVisibility;
 }
 
-interface ExistingAgentForUpdate {
+interface ExistingAgentVisibility {
+  readonly owner: string | null;
+  readonly visibility: ZeroAgentVisibility | null;
+}
+
+interface ExistingAgentForUpdate extends ExistingAgentVisibility {
   readonly id: string;
   readonly name: string;
   readonly customSkills: readonly string[] | null;
-  readonly owner: string | null;
-  readonly visibility: ZeroAgentVisibility | null;
 }
 
 interface AgentMember {
@@ -242,6 +245,26 @@ function findAgentForUpdate(
     });
 }
 
+function findAgentMetadataForUpdate(
+  writeDb: Db,
+  orgId: string,
+  agentId: string,
+) {
+  return writeDb
+    .select({
+      id: zeroAgents.id,
+      name: zeroAgents.name,
+      owner: zeroAgents.owner,
+      visibility: zeroAgents.visibility,
+    })
+    .from(zeroAgents)
+    .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.id, agentId)))
+    .limit(1)
+    .then((rows) => {
+      return rows[0] ?? null;
+    });
+}
+
 function requireAgentConfigurationPermission(
   existing: ExistingAgentForUpdate,
   member: AgentMember,
@@ -257,7 +280,7 @@ function requireAgentConfigurationPermission(
 }
 
 function visibilityOwnerError(
-  existing: ExistingAgentForUpdate,
+  existing: ExistingAgentVisibility,
   member: AgentMember,
   requestedVisibility: ZeroAgentVisibility | undefined,
 ) {
@@ -330,7 +353,7 @@ async function validateAgentVisibilityUpdate(args: {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly member: AgentMember;
-  readonly existing: ExistingAgentForUpdate;
+  readonly existing: ExistingAgentVisibility;
   readonly requestedVisibility: ZeroAgentVisibility | undefined;
   readonly nextVisibility: ZeroAgentVisibility;
   readonly signal: AbortSignal;
@@ -613,6 +636,87 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
+const updateAgentMetadataBody$ = bodyResultOf(
+  zeroAgentsByIdContract.updateMetadata,
+);
+
+const updateAgentMetadataInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const member = { userId: auth.userId, role: auth.orgRole ?? "member" };
+    const params = get(pathParamsOf(zeroAgentsByIdContract.updateMetadata));
+    const body = await get(updateAgentMetadataBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+
+    const writeDb = set(writeDb$);
+    const existing = await findAgentMetadataForUpdate(
+      writeDb,
+      auth.orgId,
+      params.id,
+    );
+    signal.throwIfAborted();
+    if (!existing) {
+      return agentNotFound(params.id);
+    }
+
+    const permissionError = requireAgentPermission(
+      existing.owner,
+      member,
+      "update agent profile",
+      { visibility: existing.visibility },
+    );
+    if (permissionError) {
+      return permissionError;
+    }
+
+    if (body.data.visibility !== undefined) {
+      const visibilityError = await validateAgentVisibilityUpdate({
+        get,
+        writeDb,
+        orgId: auth.orgId,
+        member,
+        existing,
+        requestedVisibility: body.data.visibility,
+        nextVisibility: body.data.visibility,
+        signal,
+      });
+      if (visibilityError) {
+        return visibilityError;
+      }
+    }
+
+    const modelError = await validateModelSelection(
+      writeDb,
+      auth.orgId,
+      body.data.modelProviderId,
+      body.data.selectedModel,
+    );
+    signal.throwIfAborted();
+    if (modelError) {
+      return modelError;
+    }
+
+    await writeDb
+      .update(zeroAgents)
+      .set(buildAgentUpsertConflictSet(body.data, nowDate()))
+      .where(eq(zeroAgents.id, params.id));
+    signal.throwIfAborted();
+
+    const agent = await readAgentForResponse(writeDb, auth.orgId, params.id);
+    signal.throwIfAborted();
+
+    return {
+      status: 200 as const,
+      body: agent
+        ? agentResponse(agent)
+        : defaultAgentResponse({ agentId: params.id, ownerId: auth.userId }),
+    };
+  },
+);
+
 const deleteAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const member = { userId: auth.userId, role: auth.orgRole ?? "member" };
@@ -876,6 +980,10 @@ export const zeroAgentsRoutes: readonly RouteEntry[] = [
   {
     route: zeroAgentsByIdContract.update,
     handler: authRoute(agentWriteAuth, updateAgentInner$),
+  },
+  {
+    route: zeroAgentsByIdContract.updateMetadata,
+    handler: authRoute(agentWriteAuth, updateAgentMetadataInner$),
   },
   {
     route: zeroAgentsByIdContract.delete,

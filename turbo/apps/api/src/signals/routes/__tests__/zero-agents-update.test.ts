@@ -5,6 +5,7 @@ import {
   zeroAgentsByIdContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 
@@ -365,6 +366,436 @@ describe("PUT /api/zero/agents/:id", () => {
 
     expect(response.body).toStrictEqual({
       error: { message: `Agent not found: ${agentId}`, code: "NOT_FOUND" },
+    });
+  });
+});
+
+describe("PATCH /api/zero/agents/:id", () => {
+  const track = createFixtureTracker<SkillsFixture>((fixture) => {
+    return store.set(deleteSkillsForFixture$, fixture, context.signal);
+  });
+  const trackModelProviders = createFixtureTracker<OrgModelProviderFixture>(
+    (fixture) => {
+      return store.set(deleteOrgModelProviders$, fixture, context.signal);
+    },
+  );
+
+  it("returns 401 when the request is unauthenticated", async () => {
+    const response = await accept(
+      agentsClient().updateMetadata({
+        params: { id: randomUUID() },
+        headers: {},
+        body: {},
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 403 for a sandbox token without agent:write capability", async () => {
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      runId: `run_${randomUUID()}`,
+      capabilities: ["agent:read"],
+      iat: seconds,
+      exp: seconds + 60,
+    });
+
+    const response = await accept(
+      agentsClient().updateMetadata({
+        params: { id: randomUUID() },
+        headers: { authorization: `Bearer ${token}` },
+        body: {},
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Missing required capability: agent:write",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("updates metadata fields and preserves omitted fields without recomposing", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Original Agent",
+        description: "Original description",
+        sound: "calm",
+        avatarUrl: "preset:4",
+        customSkills: ["existing-skill"],
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      agentsClient().updateMetadata({
+        params: { id: agent.agentId },
+        headers: authHeaders(),
+        body: {
+          displayName: "Updated Agent",
+          description: "Updated description",
+          avatarUrl: null,
+          preferPersonalProvider: true,
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      agentId: agent.agentId,
+      ownerId: fixture.userId,
+      displayName: "Updated Agent",
+      description: "Updated description",
+      sound: "calm",
+      avatarUrl: null,
+      customSkills: ["existing-skill"],
+      preferPersonalProvider: true,
+    });
+
+    const [compose] = await store
+      .set(writeDb$)
+      .select({ headVersionId: agentComposes.headVersionId })
+      .from(agentComposes)
+      .where(eq(agentComposes.id, agent.agentId));
+    expect(compose?.headVersionId).toBeNull();
+  });
+
+  it("returns 400 for invalid path params", async () => {
+    const response = await accept(
+      agentsClient().updateMetadata({
+        params: { id: "not-a-uuid" },
+        headers: authHeaders(),
+        body: { displayName: "Invalid" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("returns 404 for an unknown agent", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const agentId = randomUUID();
+
+    const response = await accept(
+      agentsClient().updateMetadata({
+        params: { id: agentId },
+        headers: authHeaders(),
+        body: {},
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: `Agent not found: ${agentId}`, code: "NOT_FOUND" },
+    });
+  });
+
+  it("returns 403 when a non-owner member updates another user's agent", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId, "org:member");
+
+    const response = await accept(
+      agentsClient().updateMetadata({
+        params: { id: agent.agentId },
+        headers: authHeaders(),
+        body: { displayName: "Nope" },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Only the agent owner or org admin can update agent profile",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("allows an org admin to update another user's public agent", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const adminUserId = `user_${randomUUID()}`;
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Owner Agent",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(adminUserId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      agentsClient().updateMetadata({
+        params: { id: agent.agentId },
+        headers: authHeaders(),
+        body: { displayName: "Admin Updated" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      agentId: agent.agentId,
+      ownerId: fixture.userId,
+      displayName: "Admin Updated",
+    });
+  });
+
+  it("returns 403 when an org admin updates another user's private agent", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const adminUserId = `user_${randomUUID()}`;
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        visibility: "private",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(adminUserId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      agentsClient().updateMetadata({
+        params: { id: agent.agentId },
+        headers: authHeaders(),
+        body: { displayName: "Admin Updated" },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Only the private agent owner can update agent profile",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("allows an owner to update private agent metadata without changing visibility", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Private Agent",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      agentsClient().updateMetadata({
+        params: { id: agent.agentId },
+        headers: authHeaders(),
+        body: { displayName: "Owner Updated Private Agent" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      agentId: agent.agentId,
+      displayName: "Owner Updated Private Agent",
+      visibility: "private",
+    });
+  });
+
+  it("returns 403 when private visibility is requested while the feature is disabled", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      agentsClient().updateMetadata({
+        params: { id: agent.agentId },
+        headers: authHeaders(),
+        body: { visibility: "private" },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Private agents are not available for this account",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("returns 400 when modelProviderId is outside the organization", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const modelProviderId = randomUUID();
+
+    const response = await accept(
+      agentsClient().updateMetadata({
+        params: { id: agent.agentId },
+        headers: authHeaders(),
+        body: { modelProviderId, selectedModel: "claude-sonnet-4-6" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: `Model provider "${modelProviderId}" not found in this org`,
+        code: "BAD_REQUEST",
+      },
+    });
+  });
+
+  it("returns 400 when the selected model is not available for the provider", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    await trackModelProviders(Promise.resolve({ orgId: fixture.orgId }));
+    const provider = await store.set(
+      seedOrgModelProvider$,
+      {
+        orgId: fixture.orgId,
+        type: "anthropic-api-key",
+      },
+      context.signal,
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      agentsClient().updateMetadata({
+        params: { id: agent.agentId },
+        headers: authHeaders(),
+        body: {
+          modelProviderId: provider.id,
+          selectedModel: "gpt-4-not-a-claude-model",
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("gpt-4-not-a-claude-model");
+    expect(response.body.error.message).toContain("not available");
+  });
+
+  it("updates model selection and preferPersonalProvider", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    await trackModelProviders(Promise.resolve({ orgId: fixture.orgId }));
+    const provider = await store.set(
+      seedOrgModelProvider$,
+      {
+        orgId: fixture.orgId,
+        type: "anthropic-api-key",
+      },
+      context.signal,
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      agentsClient().updateMetadata({
+        params: { id: agent.agentId },
+        headers: authHeaders(),
+        body: {
+          modelProviderId: provider.id,
+          selectedModel: "claude-sonnet-4-6",
+          preferPersonalProvider: true,
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      modelProviderId: provider.id,
+      selectedModel: "claude-sonnet-4-6",
+      preferPersonalProvider: true,
+    });
+
+    const [row] = await store
+      .set(writeDb$)
+      .select({
+        modelProviderId: zeroAgents.modelProviderId,
+        selectedModel: zeroAgents.selectedModel,
+        preferPersonalProvider: zeroAgents.preferPersonalProvider,
+      })
+      .from(zeroAgents)
+      .where(eq(zeroAgents.id, agent.agentId));
+    expect(row).toStrictEqual({
+      modelProviderId: provider.id,
+      selectedModel: "claude-sonnet-4-6",
+      preferPersonalProvider: true,
     });
   });
 });
