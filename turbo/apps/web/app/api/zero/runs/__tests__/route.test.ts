@@ -1006,9 +1006,16 @@ describe("POST /api/zero/runs — credit check", () => {
     it("should reject when org default is VM0 and credits = 0", async () => {
       await setOrgCredits(user.orgId, 0);
       await insertOrgDefaultModelProvider(user.orgId, "vm0");
+      const noKeyCompose = await createTestCompose(uniqueId("vm0-default"), {
+        skipDefaultApiKey: true,
+      });
+      const noKeyAgentId = await getTestZeroAgentId(
+        user.orgId,
+        noKeyCompose.name,
+      );
 
       const response = await postRun({
-        agentId,
+        agentId: noKeyAgentId,
         prompt: "Credit check test",
       });
 
@@ -1031,7 +1038,7 @@ describe("POST /api/zero/runs — credit check", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should allow when no org default provider and credits = 0", async () => {
+    it("should allow model-first run with vm0 route and credits = 0", async () => {
       await setOrgCredits(user.orgId, 0);
 
       const response = await postRun({
@@ -1136,9 +1143,16 @@ describe("POST /api/zero/runs — credit check", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should reject VM0 run when default provider is vm0 and creditEnabled is false", async () => {
+    it("should reject VM0 run when model policy routes to vm0 and creditEnabled is false", async () => {
       await setOrgCredits(user.orgId, 10000);
       await insertOrgDefaultModelProvider(user.orgId, "vm0");
+      const noKeyCompose = await createTestCompose(uniqueId("vm0-default"), {
+        skipDefaultApiKey: true,
+      });
+      const noKeyAgentId = await getTestZeroAgentId(
+        user.orgId,
+        noKeyCompose.name,
+      );
       await insertOrgMembersEntry({
         orgId: user.orgId,
         userId: user.userId,
@@ -1147,7 +1161,7 @@ describe("POST /api/zero/runs — credit check", () => {
       });
 
       const response = await postRun({
-        agentId,
+        agentId: noKeyAgentId,
         prompt: "Credit check test",
       });
 

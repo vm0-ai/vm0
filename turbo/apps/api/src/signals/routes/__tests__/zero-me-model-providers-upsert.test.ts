@@ -49,7 +49,6 @@ async function setPersonalSwitches(
 
 async function enableAllPersonalSwitches(orgId: string, userId: string) {
   await setPersonalSwitches(orgId, userId, {
-    [FeatureSwitchKey.ModelFirstModelProvider]: true,
     [FeatureSwitchKey.CodexOauthProvider]: true,
   });
 }
@@ -142,26 +141,6 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     expect(response.body).toMatchObject({ error: { code: "UNAUTHORIZED" } });
   });
 
-  it("returns 404 when ModelFirstModelProvider is off", async () => {
-    const fixture = uniqueOrgUser("zmmp-upsert-feature-off");
-    await track(Promise.resolve(fixture));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
-    const response = await accept(
-      client.upsert({
-        body: { type: "claude-code-oauth-token", secret: "sk-ant-test" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-    expect(response.body).toStrictEqual({
-      error: { message: "Not found", code: "NOT_FOUND" },
-    });
-  });
-
   it("creates a single-secret personal provider", async () => {
     const fixture = uniqueOrgUser("zmmp-single-create");
     await track(Promise.resolve(fixture));
@@ -182,7 +161,7 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       provider: {
         type: "claude-code-oauth-token",
         framework: "claude-code",
-        isDefault: true,
+        isDefault: false,
       },
       created: true,
     });
@@ -480,7 +459,6 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     const fixture = uniqueOrgUser("zmmp-codex-gate-off");
     await track(Promise.resolve(fixture));
     await setPersonalSwitches(fixture.orgId, fixture.userId, {
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: false,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);

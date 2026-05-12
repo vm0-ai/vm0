@@ -11,7 +11,6 @@ import {
   completeTestRun,
   createTelegramCallbackInstallation,
   createTelegramThreadSession,
-  enableModelFirstModelProviderForUser,
   createTelegramInstallation,
   createTelegramPendingLinkInstallation,
   findTestRunCallbacks,
@@ -526,7 +525,6 @@ describe("POST /api/telegram/webhook/[telegramBotId]", () => {
       await setOrgCredits(user.orgId, 100_000);
       const { composeId } = await createTestCompose(uniqueId("agent"));
       await setDefaultAgentByComposeId(user.orgId, composeId);
-      await enableModelFirstModelProviderForUser(user.orgId, user.userId);
       await insertOrgModelPolicy({
         orgId: user.orgId,
         model: "claude-sonnet-4-6",

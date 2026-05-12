@@ -47,12 +47,6 @@ export const VM0_ORG_SLUG = "vm0";
 
 /**
  * Canonical model-first catalog.
- *
- * This is intentionally separate from the legacy per-provider `models` arrays:
- * provider-first selection keeps using those arrays while the
- * `modelFirstModelProvider` feature switch is off. Follow-up work can use this
- * flat list for org model policies and model-first pickers without changing the
- * current provider-first UI/runtime behavior.
  */
 export const SUPPORTED_RUN_MODELS = [
   "claude-opus-4-7",
@@ -1447,15 +1441,6 @@ export const upsertModelProviderResponseSchema = z.object({
 export type UpsertModelProviderResponse = z.infer<
   typeof upsertModelProviderResponseSchema
 >;
-
-/**
- * Update model request schema
- */
-export const updateModelRequestSchema = z.object({
-  selectedModel: z.string().optional(),
-});
-
-export type UpdateModelRequest = z.infer<typeof updateModelRequestSchema>;
 
 export const orgModelPolicyRouteStatusSchema = z.enum([
   "valid",

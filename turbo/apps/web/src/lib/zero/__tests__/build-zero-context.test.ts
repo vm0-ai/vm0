@@ -16,6 +16,7 @@ import {
   deleteInsertedVm0ApiKeys,
   insertTestConnectorSecret,
   createTestOrgModelProvider,
+  insertOrgModelPolicy,
 } from "../../../__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
 import {
@@ -37,7 +38,7 @@ import { upsertSecretByOrg } from "../secret/secret-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { setVariable } from "../variable/variable-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
-import { isNoModelProvider } from "@vm0/api-services/errors";
+import { isInsufficientCredits } from "@vm0/api-services/errors";
 import { reloadEnv } from "../../../env";
 import {
   AUTO_MEMORY_ARTIFACT_NAME,
@@ -79,18 +80,40 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
     };
   }
 
+  async function useOrgProviderPolicyDefault(
+    type: "anthropic-api-key" | "openai-api-key",
+    secret: string,
+    model: string,
+  ): Promise<string> {
+    const { provider } = await upsertOrgModelProvider(
+      user.orgId,
+      type,
+      secret,
+      model,
+    );
+    await insertOrgModelPolicy({
+      orgId: user.orgId,
+      model,
+      isDefault: true,
+      defaultProviderType: type,
+      credentialScope: "org",
+      modelProviderId: provider.id,
+    });
+    return provider.id;
+  }
+
   describe("Model Provider Resolution", () => {
-    it("should use org default provider", async () => {
+    it("should use the workspace model policy route", async () => {
       const agentName = uniqueId("no-key-agent");
       await createTestCompose(agentName, {
         skipDefaultApiKey: true,
       });
       const noKeyAgentId = await getTestZeroAgentId(user.orgId, agentName);
 
-      await upsertOrgModelProvider(
-        user.orgId,
+      await useOrgProviderPolicyDefault(
         "anthropic-api-key",
         "org-api-key",
+        "claude-sonnet-4-6",
       );
 
       const result = await createZeroRun(baseParams({ agentId: noKeyAgentId }));
@@ -112,8 +135,7 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       });
       const modelAgentId = await getTestZeroAgentId(user.orgId, agentName);
 
-      await upsertOrgModelProvider(
-        user.orgId,
+      await useOrgProviderPolicyDefault(
         "anthropic-api-key",
         "org-api-key",
         "claude-opus-4-6",
@@ -141,6 +163,14 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
         "vm0",
         "claude-opus-4-6",
       );
+      await insertOrgModelPolicy({
+        orgId: user.orgId,
+        model: "claude-opus-4-6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      });
       await insertVm0ApiKeys([
         {
           vendor: "anthropic",
@@ -161,7 +191,7 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       );
     });
 
-    it("should error when no org default provider exists", async () => {
+    it("should error when built-in default has no available credits", async () => {
       const agentName = uniqueId("no-key-agent");
       await createTestCompose(agentName, {
         skipDefaultApiKey: true,
@@ -170,7 +200,7 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
 
       await expect(
         createZeroRun(baseParams({ agentId: noKeyAgentId })),
-      ).rejects.toSatisfy(isNoModelProvider);
+      ).rejects.toSatisfy(isInsufficientCredits);
     });
 
     it("should leave billableFirewalls empty for user-paid providers", async () => {
@@ -182,10 +212,10 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       });
       const userPaidAgentId = await getTestZeroAgentId(user.orgId, agentName);
 
-      await upsertOrgModelProvider(
-        user.orgId,
+      await useOrgProviderPolicyDefault(
         "anthropic-api-key",
         "org-api-key",
+        "claude-sonnet-4-6",
       );
 
       const result = await createZeroRun(
@@ -210,10 +240,10 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       });
       const connAgentId = await getTestZeroAgentId(user.orgId, agentName);
 
-      await upsertOrgModelProvider(
-        user.orgId,
+      await useOrgProviderPolicyDefault(
         "anthropic-api-key",
         "org-api-key",
+        "claude-sonnet-4-6",
       );
       await context.createConnector(user.orgId, {
         userId: user.userId,
@@ -553,7 +583,18 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       await seedUserFeatureSwitches(user.orgId, user.userId, {
         codexBeta: true,
       });
-      await createTestOrgModelProvider("openai-api-key", "org-openai-key");
+      const provider = await createTestOrgModelProvider(
+        "openai-api-key",
+        "org-openai-key",
+      );
+      await insertOrgModelPolicy({
+        orgId: user.orgId,
+        model: "gpt-5.5",
+        isDefault: true,
+        defaultProviderType: "openai-api-key",
+        credentialScope: "org",
+        modelProviderId: provider.id,
+      });
 
       const result = await createZeroRun(baseParams({ agentId: codexAgentId }));
       await context.mocks.flushAfter();

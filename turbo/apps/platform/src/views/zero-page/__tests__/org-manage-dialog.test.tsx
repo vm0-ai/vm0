@@ -40,7 +40,7 @@ describe("org manage dialog - display", () => {
     ).toBeInTheDocument();
 
     // Admin-visible tabs
-    expect(screen.getByText(/Model Providers/i)).toBeInTheDocument();
+    expect(screen.getByText("Models")).toBeInTheDocument();
     expect(screen.getByText("Credit balance")).toBeInTheDocument();
   });
 

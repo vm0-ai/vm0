@@ -146,14 +146,17 @@ send_chat_run_message() {
     # crates/guest-mock-codex/src/main.rs:233-245. The chat/messages contract
     # exposes this flag via chatMessagesContract.body.debugNoMockCodex, mirroring
     # the same passthrough on /api/zero/runs.
-    # `modelProvider: "openai-api-key"` overrides workspace-default resolution
-    # in resolveModelProviderSecrets — required because the shared e2e
-    # workspace may already have a different-framework default after
-    # #11743's single-default constraint.
+    # Model-first selection can carry either the sentinel provider id for an org
+    # policy route, or a concrete provider id for an explicit model/provider pin.
+    # BYOK smoke tests use a concrete id so they do not mutate shared org policy.
+    local selected_model="${CODEX_ZERO_SELECTED_MODEL:-gpt-5.5}"
+    local model_provider_id="${CODEX_ZERO_MODEL_PROVIDER_ID:-00000000-0000-4000-8000-000000000000}"
     payload=$(jq -nc \
         --arg agentId "$agent_id" \
         --arg prompt "$prompt" \
-        '{agentId: $agentId, prompt: $prompt, modelProvider: "openai-api-key", hasTextContent: true, debugNoMockCodex: true}')
+        --arg modelProviderId "$model_provider_id" \
+        --arg selectedModel "$selected_model" \
+        '{agentId: $agentId, prompt: $prompt, modelSelection: {modelProviderId: $modelProviderId, selectedModel: $selectedModel}, hasTextContent: true, debugNoMockCodex: true}')
     body=$(_codex_zero_curl "/api/zero/chat/messages" \
         -X POST \
         -d "$payload")

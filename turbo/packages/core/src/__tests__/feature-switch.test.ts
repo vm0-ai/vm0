@@ -51,33 +51,6 @@ describe("isFeatureEnabled", () => {
     );
   });
 
-  it("should enable model-first model provider for staff orgs", () => {
-    expect(isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, {})).toBe(
-      false,
-    );
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, {
-        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-      }),
-    ).toBe(true);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, {
-        orgId: "org_nonexistent",
-      }),
-    ).toBe(false);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, {
-        overrides: { [FeatureSwitchKey.ModelFirstModelProvider]: true },
-      }),
-    ).toBe(true);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, {
-        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-        overrides: { [FeatureSwitchKey.ModelFirstModelProvider]: false },
-      }),
-    ).toBe(false);
-  });
-
   it("should return true when orgId matches even if userId does not", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.ConnectorCategories, {
@@ -109,7 +82,6 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(states[FeatureSwitchKey.ConnectorCategories]).toBe(true);
-    expect(states[FeatureSwitchKey.ModelFirstModelProvider]).toBe(true);
     // Globally enabled should still be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
     // Switches without org hashes should remain false

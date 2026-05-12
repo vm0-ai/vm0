@@ -45,9 +45,9 @@ export function OrgDeleteProviderDialog() {
         </DialogHeader>
         <DialogDescription>
           This will remove the workspace provider and its settings, including
-          keys and tokens. If it&apos;s the default provider, VM0 will switch to
-          another one and all members&apos; agents may be affected. You can
-          always add it back later and set it up again.
+          keys and tokens. Model routes that use this provider will need to be
+          updated before they can run again. You can always add it back later
+          and set it up again.
         </DialogDescription>
         <DialogFooter>
           <Button

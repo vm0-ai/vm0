@@ -53,18 +53,11 @@ import {
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  isSupportedRunModel,
-  type ModelProviderResponse,
-  type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
+import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  featureSwitch$,
-  modelFirstModelProviderEnabled$,
-} from "../../signals/external/feature-switch.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
 import {
   autoReadEnabled$,
@@ -132,7 +125,6 @@ import {
   type QueuedComposerItem,
 } from "./zero-chat-composer.tsx";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
-import { composerModelProviders$ } from "../../signals/zero-page/composer-model-providers.ts";
 import { modelFirstPersonalOauthState$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
 import { updateUserModelPreference$ } from "../../signals/external/user-model-preference.ts";
 import {
@@ -1904,63 +1896,24 @@ function shouldAutoFocusComposer({
   );
 }
 
-interface ChatComposerModelProviders {
-  providers: ModelProviderResponse[];
-}
-
 interface ChatComposerModelPickerConfig {
-  providers: ModelProviderResponse[];
   value: ModelProviderSelection | null;
   onChange: (value: ModelProviderSelection | null) => void;
-  sessionProviderType: ModelProviderType | null;
   disabled: boolean;
-  agentDefault: ModelProviderSelection | null;
-  showUseDefault?: boolean;
+  defaultSelection: ModelProviderSelection | null;
 }
 
 function resolveChatComposerModelPicker(params: {
-  composerProviders: ChatComposerModelProviders | undefined;
-  modelFirstEnabled: boolean;
   modelSelection: ModelProviderSelection | null;
   setModelSelection: (value: ModelProviderSelection | null) => void;
-  sessionProviderType: ModelProviderType | null;
   disabled: boolean;
-  agentDefault: ModelProviderSelection | null;
-}): ChatComposerModelPickerConfig | undefined {
-  if (
-    !params.composerProviders ||
-    (!params.modelFirstEnabled &&
-      params.composerProviders.providers.length === 0)
-  ) {
-    return undefined;
-  }
+  defaultSelection: ModelProviderSelection | null;
+}): ChatComposerModelPickerConfig {
   return {
-    providers: params.composerProviders.providers,
     value: params.modelSelection,
     onChange: params.setModelSelection,
-    sessionProviderType: params.sessionProviderType,
     disabled: params.disabled,
-    agentDefault: params.agentDefault,
-    showUseDefault: !params.modelFirstEnabled,
-  };
-}
-
-function usePersistModelFirstSelection(
-  modelFirstEnabled: boolean,
-  signal: AbortSignal,
-) {
-  const updateUserModelPreference = useSet(updateUserModelPreference$);
-  return (selection: ModelProviderSelection | null): void => {
-    if (!modelFirstEnabled || !isSupportedRunModel(selection?.selectedModel)) {
-      return;
-    }
-    detach(
-      updateUserModelPreference(
-        { selectedModel: selection.selectedModel },
-        signal,
-      ),
-      Reason.DomCallback,
-    );
+    defaultSelection: params.defaultSelection,
   };
 }
 
@@ -2008,13 +1961,8 @@ function useChatComposerQueue(
 
 function useChatComposerModel(
   thread: ChatThreadSignals,
-  {
-    hasUserMessages,
-    pageSignal,
-  }: {
-    hasUserMessages: boolean;
-    pageSignal: AbortSignal;
-  },
+  pageSignal: AbortSignal,
+  hasUserMessage: boolean,
 ) {
   // Per-thread composer state lives in ccstate signals on the factory so the
   // initial value seeds from threadData once it resolves (a React useState
@@ -2022,63 +1970,49 @@ function useChatComposerModel(
   // internally flips to a user-override once `setModelSelection$` is called,
   // so unsaved edits survive subsequent threadData$ reloads.
   const threadDataLoadable = useLoadable(thread.threadData$);
-  const composerProvidersLoadable = useLoadable(composerModelProviders$);
   const modelSelectionLoadable = useLoadable(thread.modelSelection$);
-  const agentModelDefaultLoadable = useLoadable(thread.agentModelDefault$);
-  const threadData =
-    threadDataLoadable.state === "hasData"
-      ? threadDataLoadable.data
-      : undefined;
-  const composerProviders =
-    composerProvidersLoadable.state === "hasData"
-      ? composerProvidersLoadable.data
-      : undefined;
+  const defaultModelSelectionLoadable = useLoadable(
+    thread.defaultModelSelection$,
+  );
   const modelSelection =
     modelSelectionLoadable.state === "hasData"
       ? modelSelectionLoadable.data
       : null;
   const setModelSelection = useSet(thread.setModelSelection$);
-  const agentModelDefault =
-    agentModelDefaultLoadable.state === "hasData"
-      ? agentModelDefaultLoadable.data
+  const updateUserModelPreference = useSet(updateUserModelPreference$);
+  const defaultModelSelection =
+    defaultModelSelectionLoadable.state === "hasData"
+      ? defaultModelSelectionLoadable.data
       : null;
-  const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
   const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
   const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
-  const persistModelFirstSelection = usePersistModelFirstSelection(
-    modelFirstEnabled,
-    pageSignal,
-  );
 
   const handleModelSelectionChange = (
     selection: ModelProviderSelection | null,
   ): void => {
     setModelSelection(selection);
-    persistModelFirstSelection(selection);
+    const selectedModel = selection?.selectedModel;
+    if (isSupportedRunModel(selectedModel)) {
+      detach(
+        updateUserModelPreference({ selectedModel }, pageSignal),
+        Reason.DomCallback,
+      );
+    }
   };
 
   const modelPicker = resolveChatComposerModelPicker({
-    composerProviders,
-    modelFirstEnabled,
     modelSelection,
     setModelSelection: handleModelSelectionChange,
-    sessionProviderType: threadData?.latestSessionProviderType ?? null,
-    // Classic mode keeps the legacy "one model per thread" lock after the
-    // first user turn. Model-first stays editable so the user can swap models
-    // mid-thread; the composer signals the server to start a fresh CLI
-    // session on send (sessionId continuation would fail across providers).
-    disabled: hasUserMessages && !modelFirstEnabled,
-    agentDefault: agentModelDefault,
+    disabled: hasUserMessage,
+    defaultSelection: defaultModelSelection,
   });
   const modelPickerLoading =
     threadDataLoadable.state === "loading" ||
-    composerProvidersLoadable.state === "loading" ||
     modelSelectionLoadable.state === "loading" ||
-    agentModelDefaultLoadable.state === "loading";
+    defaultModelSelectionLoadable.state === "loading";
   const submitBlockerProps = resolveChatComposerSubmitBlocker({
     state: modelFirstOauthState,
     modelSelection,
-    agentModelDefault,
     onAction: openPersonalOauthConfiguration,
   });
 
@@ -2097,10 +2031,12 @@ function ChatThreadComposer({
   thread: ChatThreadSignals;
   autoFocus?: boolean;
 }) {
-  const groups = useLastResolved(thread.groupedChatMessages$) ?? [];
+  const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
+  const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
   const hasMessages = groups.length > 0;
-  const hasUserMessages = groups.some((g) => {
-    return g.role === "user";
+  const messagesResolved = groupsLoadable.state === "hasData";
+  const hasUserMessage = groups.some((group) => {
+    return group.role === "user" && group.messages.length > 0;
   });
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   const allFinishedLoadable = useLastLoadable(thread.allFinished$);
@@ -2126,7 +2062,7 @@ function ChatThreadComposer({
     modelPickerLoading,
     submitBlockerProps,
     modelSelection,
-  } = useChatComposerModel(thread, { hasUserMessages, pageSignal });
+  } = useChatComposerModel(thread, pageSignal, hasUserMessage);
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const queueWhileSending = canQueueMessage({
     sending,
@@ -2192,7 +2128,7 @@ function ChatThreadComposer({
             setInputRef={setInputRef}
             actionsLoading={skeletonVisible}
             modelPicker={modelPicker}
-            modelPickerLoading={modelPickerLoading}
+            modelPickerLoading={modelPickerLoading || !messagesResolved}
             submitBlocker={submitBlockerProps}
             queuedItems={queuedItems}
             onRemoveQueuedItem={onRemoveQueuedItem}

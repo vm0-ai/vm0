@@ -310,7 +310,7 @@ describe("POST /api/zero/onboarding/setup", () => {
     await expect(readVm0Provider(fixture.orgId)).resolves.toMatchObject({
       userId: "__org__",
       type: "vm0",
-      isDefault: true,
+      isDefault: false,
       selectedModel: "claude-sonnet-4-6",
       secretId: null,
       authMethod: null,

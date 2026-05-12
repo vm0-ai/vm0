@@ -20,6 +20,7 @@ import {
 } from "../zero-page/chat-draft.ts";
 import {
   collectSuccessfulAttachmentInfos,
+  isVisualAttachment,
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
@@ -41,19 +42,14 @@ import type { ModelProviderSelection } from "../../views/zero-page/components/mo
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
-import {
-  goalEnabled$,
-  modelFirstModelProviderEnabled$,
-} from "../external/feature-switch.ts";
+import { goalEnabled$ } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
-import { composerModelProviders$ } from "../zero-page/composer-model-providers.ts";
 import {
   MODEL_FIRST_SELECTION_PROVIDER_ID,
-  resolveEffectiveAgentDefaultSelection,
   resolveModelFirstUserDefaultSelection,
-} from "../zero-page/model-provider-default.ts";
+} from "../zero-page/model-default-selection.ts";
 import {
   writeChatMessageToClipboard,
   type ChatClipboardPayload,
@@ -258,7 +254,7 @@ export interface ChatThreadSignals {
   // ── Agent info (derived from threadData$.agentId) ─────────────────────────
   agentId$: Computed<Promise<string | null>>;
   agentDisplayName$: Computed<Promise<string | null>>;
-  agentModelDefault$: Computed<Promise<ModelProviderSelection | null>>;
+  defaultModelSelection$: Computed<Promise<ModelProviderSelection | null>>;
   agentPinned$: Computed<Promise<boolean | null>>;
   // ── Per-thread UI state ───────────────────────────────────────────────────
   timelineExpandedIds$: Computed<Set<string>>;
@@ -335,41 +331,16 @@ function createModelSelection(
       if (user.kind === "set") {
         return user.value;
       }
-      const modelFirstEnabled = get(modelFirstModelProviderEnabled$);
-      if (modelFirstEnabled) {
-        const thread = await get(threadData$);
-        if (thread?.selectedModel) {
-          return {
-            modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-            selectedModel: thread.selectedModel,
-          };
-        }
-        // Unstarted model-first threads inherit the current user preference;
-        // started threads carry selectedModel on the thread row.
-        return null;
-      }
       const thread = await get(threadData$);
-      if (thread?.modelProviderId && thread.selectedModel) {
+      if (thread?.selectedModel) {
         return {
-          modelProviderId: thread.modelProviderId,
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
           selectedModel: thread.selectedModel,
         };
       }
-      // No thread override → fall back to the agent's default, then the
-      // workspace default. Seeding here (rather than letting the picker show
-      // its null-value fallback) keeps the picker's displayed model identical
-      // to what the send body carries.
-      // Without this seed, the backend would receive `modelSelection: null`
-      // while the UI advertised a specific model, producing a display/run
-      // mismatch.
-      const agent = thread?.agentId
-        ? await get(agentById(thread.agentId))
-        : null;
-      const composerProviders = await get(composerModelProviders$);
-      return resolveEffectiveAgentDefaultSelection({
-        agent,
-        providers: composerProviders.providers,
-      });
+      // Unstarted model-first threads inherit the current user preference;
+      // started threads carry selectedModel on the thread row.
+      return null;
     },
   );
 
@@ -410,7 +381,7 @@ function createAgentInfoSignals(
   threadId: string,
   threadData$: Computed<Promise<ChatThread | null>>,
 ) {
-  // agentId$ is read by avatar / pinned / model-default UI on first paint.
+  // agentId$ is read by avatar and pinned UI on first paint.
   // Resolving it via threadData$ blocks the avatar render on the
   // chat-threads/:id round-trip, even though the agentId rarely changes
   // for a given thread. Consult the IDB cache first; on miss, fall back
@@ -443,25 +414,13 @@ function createAgentInfoSignals(
     return agent?.displayName ?? null;
   });
 
-  const agentModelDefault$ = computed(
+  const defaultModelSelection$ = computed(
     async (get): Promise<ModelProviderSelection | null> => {
-      const agentId = await get(agentId$);
-      if (!agentId) {
-        return null;
-      }
-      const agent = await get(agentById(agentId));
-      if (get(modelFirstModelProviderEnabled$)) {
-        const policies = await get(orgModelPolicies$);
-        const userPreference = await get(userModelPreference$);
-        return resolveModelFirstUserDefaultSelection({
-          userPreference,
-          policies,
-        });
-      }
-      const composerProviders = await get(composerModelProviders$);
-      return resolveEffectiveAgentDefaultSelection({
-        agent,
-        providers: composerProviders.providers,
+      const policies = await get(orgModelPolicies$);
+      const userPreference = await get(userModelPreference$);
+      return resolveModelFirstUserDefaultSelection({
+        userPreference,
+        policies,
       });
     },
   );
@@ -475,7 +434,7 @@ function createAgentInfoSignals(
     return ids.includes(agentId);
   });
 
-  return { agentId$, agentDisplayName$, agentModelDefault$, agentPinned$ };
+  return { agentId$, agentDisplayName$, defaultModelSelection$, agentPinned$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -1481,29 +1440,22 @@ function createSendMessage(deps: SendMessageDeps) {
       // dropdown item). The Goal feature switch gates that UI affordance, so
       // the explicit `options.goal` flag is the source of truth here.
       const isGoal = options.goal === true && get(goalEnabled$);
+      const hasVisualAttachments = get(draft.attachments$).some(
+        (attachment) => {
+          return isVisualAttachment(attachment);
+        },
+      );
       let effectiveSelectedModel = modelSelection?.selectedModel;
-      if (!effectiveSelectedModel) {
-        if (get(modelFirstModelProviderEnabled$)) {
-          const policies = await get(orgModelPolicies$);
-          signal.throwIfAborted();
-          const userPreference = await get(userModelPreference$);
-          signal.throwIfAborted();
-          effectiveSelectedModel =
-            resolveModelFirstUserDefaultSelection({
-              userPreference,
-              policies,
-            })?.selectedModel ?? undefined;
-        } else {
-          const agent = await get(agentById(agentId));
-          signal.throwIfAborted();
-          const composerProviders = await get(composerModelProviders$);
-          signal.throwIfAborted();
-          effectiveSelectedModel =
-            resolveEffectiveAgentDefaultSelection({
-              agent,
-              providers: composerProviders.providers,
-            })?.selectedModel ?? undefined;
-        }
+      if (!effectiveSelectedModel && hasVisualAttachments) {
+        const policies = await get(orgModelPolicies$);
+        signal.throwIfAborted();
+        const userPreference = await get(userModelPreference$);
+        signal.throwIfAborted();
+        effectiveSelectedModel =
+          resolveModelFirstUserDefaultSelection({
+            userPreference,
+            policies,
+          })?.selectedModel ?? undefined;
       }
 
       const result = await set(
@@ -1924,7 +1876,7 @@ export function createChatThreadSignals(
     createSkeletonSignals();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
-  const { agentId$, agentDisplayName$, agentModelDefault$, agentPinned$ } =
+  const { agentId$, agentDisplayName$, defaultModelSelection$, agentPinned$ } =
     createAgentInfoSignals(threadId, threadData$);
   const {
     timelineExpandedIds$,
@@ -2012,7 +1964,7 @@ export function createChatThreadSignals(
     setComposerFileInput$,
     agentId$,
     agentDisplayName$,
-    agentModelDefault$,
+    defaultModelSelection$,
     agentPinned$,
     timelineExpandedIds$,
     toggleTimelineExpanded$,

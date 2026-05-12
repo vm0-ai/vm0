@@ -126,10 +126,6 @@ export const pwaOfflineCacheEnabled$ = computed((get) => {
   return get(featureSwitch$)[FeatureSwitchKey.PwaOfflineCache] ?? false;
 });
 
-export const modelFirstModelProviderEnabled$ = computed((get) => {
-  return get(featureSwitch$)[FeatureSwitchKey.ModelFirstModelProvider] ?? false;
-});
-
 export const goalEnabled$ = computed((get) => {
   return get(featureSwitch$)[FeatureSwitchKey.Goal] ?? false;
 });

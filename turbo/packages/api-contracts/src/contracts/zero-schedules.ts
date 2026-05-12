@@ -61,9 +61,6 @@ const zeroDeployScheduleRequestSchema = z
     volumeVersions: z.record(z.string(), z.string()).optional(),
     agentId: z.string().uuid("Invalid agent ID"),
     enabled: z.boolean().optional(),
-    modelProviderId: z.string().uuid().nullable().optional(),
-    selectedModel: z.string().nullable().optional(),
-    preferPersonalProvider: z.boolean().optional(),
   })
   .refine(
     (data) => {

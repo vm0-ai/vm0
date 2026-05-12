@@ -18,10 +18,7 @@ import { reloadEnv } from "../../../../../../src/env";
 
 /**
  * Override `isFeatureEnabled` for the `Goal` switch only — every other key
- * delegates to the real registry. A blanket `mockReturnValue(true)` would
- * flip on `ModelFirstModelProvider` and route the request through a
- * credit-checked vm0-managed provider path, breaking the 201 assertions
- * with a 402 in tests that seed `anthropic-api-key` instead.
+ * delegates to the real registry.
  */
 let goalSwitchEnabled = true;
 vi.mock("@vm0/core/feature-switch", async (importOriginal) => {

@@ -159,6 +159,17 @@ interface ResolvedAdmissionProvider {
   selectedModel?: string;
 }
 
+function hasExplicitModelProviderConfig(
+  composeContent: AgentComposeYaml,
+): boolean {
+  const firstAgent = composeContent.agents
+    ? Object.values(composeContent.agents)[0]
+    : undefined;
+  return MODEL_PROVIDER_ENV_VARS.some((v) => {
+    return firstAgent?.environment?.[v] !== undefined;
+  });
+}
+
 async function resolveProviderForAdmission(params: {
   orgId: string;
   userId: string;
@@ -167,7 +178,17 @@ async function resolveProviderForAdmission(params: {
   modelProviderCredentialScope?: string | null;
   selectedModelOverride?: string | null;
   composeFramework: string;
+  composeContent?: AgentComposeYaml;
 }): Promise<ResolvedAdmissionProvider> {
+  if (
+    params.composeContent &&
+    hasExplicitModelProviderConfig(params.composeContent) &&
+    !params.modelProvider &&
+    !params.modelProviderId &&
+    !params.modelProviderCredentialScope
+  ) {
+    return { providerType: null, providerFramework: null };
+  }
   if (params.modelProvider && !(params.modelProvider in MODEL_PROVIDER_TYPES)) {
     return { providerType: null, providerFramework: null };
   }
@@ -218,6 +239,7 @@ export async function resolveRunAdmissionContext(params: {
   modelProviderCredentialScope?: string | null;
   selectedModelOverride?: string | null;
   composeFramework: string;
+  composeContent?: AgentComposeYaml;
 }): Promise<RunAdmissionContext> {
   const provider = await resolveProviderForAdmission(params);
   return {
@@ -266,15 +288,8 @@ export async function checkModelProviderConfigured(
   modelProviderId?: string | null,
   modelProviderCredentialScope?: string | null,
 ): Promise<void> {
-  const firstAgent = composeContent.agents
-    ? Object.values(composeContent.agents)[0]
-    : undefined;
   const framework = resolveRuntimeFramework({ agentCompose: composeContent });
-
-  const hasExplicitConfig = MODEL_PROVIDER_ENV_VARS.some((v) => {
-    return firstAgent?.environment?.[v] !== undefined;
-  });
-  if (hasExplicitConfig) return;
+  if (hasExplicitModelProviderConfig(composeContent)) return;
   if (modelProvider && !(modelProvider in MODEL_PROVIDER_TYPES)) return;
 
   await resolveModelRoute({

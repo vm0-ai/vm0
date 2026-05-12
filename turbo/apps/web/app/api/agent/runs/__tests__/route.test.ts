@@ -10,7 +10,7 @@ import {
   createTestCliToken,
   deleteTestCliToken,
   createTestOrgModelProvider,
-  createTestOrgMultiAuthModelProvider,
+  insertOrgModelPolicy,
   createTestConnector,
   createTestRun,
   getTestRun,
@@ -54,6 +54,21 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { updateUserFeatureSwitches } from "../../../../../src/lib/zero/user/feature-switches-service";
 
 const context = testContext();
+
+async function createAnthropicModelPolicy(orgId: string): Promise<void> {
+  const provider = await createTestOrgModelProvider(
+    "anthropic-api-key",
+    "test-api-key",
+  );
+  await insertOrgModelPolicy({
+    orgId,
+    model: "claude-sonnet-4-6",
+    isDefault: true,
+    defaultProviderType: "anthropic-api-key",
+    credentialScope: "org",
+    modelProviderId: provider.id,
+  });
+}
 
 describe("POST /api/agent/runs - Internal Runs API", () => {
   let user: UserContext;
@@ -437,7 +452,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     it("should succeed org member agent run with model provider", async () => {
       // User A (owner) creates an agent with a model provider configured
       const ownerUser = user;
-      await createTestOrgModelProvider("anthropic-api-key", "test-api-key");
+      await createAnthropicModelPolicy(ownerUser.orgId);
       const { composeId: sharedComposeId } = await createTestCompose(
         uniqueId("shared-mp"),
         { skipDefaultApiKey: true },
@@ -771,7 +786,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
   describe("Model Provider Injection", () => {
     it("should succeed when model provider is configured and no API key in compose", async () => {
       // Create org-level model provider (build-context resolves org-only)
-      await createTestOrgModelProvider("anthropic-api-key", "test-api-key");
+      await createAnthropicModelPolicy(user.orgId);
 
       // Create compose without API key
       const { composeId } = await createTestCompose(uniqueId("mp-agent"), {
@@ -805,8 +820,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const response = await POST(request);
       const data = await response.json();
 
-      expect(response.status).toBe(422);
-      expect(data.error.code).toBe("NO_MODEL_PROVIDER");
+      expect(response.status).toBe(400);
+      expect(data.error.code).toBe("BAD_REQUEST");
     });
 
     it("should skip injection when compose has explicit ANTHROPIC_API_KEY", async () => {
@@ -832,10 +847,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should auto-inject model provider when no environment block exists", async () => {
       // Create org-level model provider (build-context resolves org-only)
-      await createTestOrgModelProvider(
-        "claude-code-oauth-token",
-        "test-oauth-token",
-      );
+      await createAnthropicModelPolicy(user.orgId);
 
       // Create compose with no environment block at all
       const { composeId } = await createTestCompose(
@@ -853,12 +865,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should succeed when aws-bedrock provider is configured and no API key in compose", async () => {
-      // Create org-level aws-bedrock provider (build-context resolves org-only)
-      await createTestOrgMultiAuthModelProvider("aws-bedrock", "api-key", {
-        AWS_BEARER_TOKEN_BEDROCK: "bedrock-token",
-        AWS_REGION: "us-east-1",
-      });
+    it("should succeed when a model-first BYOK route is configured and no API key in compose", async () => {
+      await createAnthropicModelPolicy(user.orgId);
 
       // Create compose without API key
       const { composeId } = await createTestCompose(

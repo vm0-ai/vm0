@@ -18,6 +18,7 @@ import {
   chatThreadsContract,
   chatMessagesContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   zeroRunAgentEventsContract,
@@ -161,6 +162,49 @@ describe("talk navigation", () => {
     });
 
     sendDeferred.resolve();
+  });
+
+  it("does not wait for model policies before showing a text-only optimistic first message", async () => {
+    const user = userEvent.setup();
+    const sendDeferred = createDeferredPromise<void>(context.signal);
+    const modelPoliciesDeferred = createDeferredPromise<void>(context.signal);
+    mockChatAPIs({ waitForSend: sendDeferred.promise });
+    server.use(
+      mockApi(zeroModelPoliciesMainContract.list, async ({ respond }) => {
+        await modelPoliciesDeferred.promise;
+        return respond(200, {
+          policies: [],
+          workspaceDefaultModel: null,
+          workspaceDefaultPolicyId: null,
+        });
+      }),
+    );
+
+    try {
+      detachedSetupPage({
+        context,
+        path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
+      });
+
+      const textarea = await waitFor(() => {
+        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+      });
+      await fill(textarea, "Hello while model policies load");
+      await user.keyboard("{Enter}");
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("Hello while model policies load"),
+        ).toBeInTheDocument();
+      });
+    } finally {
+      if (!modelPoliciesDeferred.settled()) {
+        modelPoliciesDeferred.resolve();
+      }
+      if (!sendDeferred.settled()) {
+        sendDeferred.resolve();
+      }
+    }
   });
 
   it("shows the optimistic new thread in the sidebar before the send request returns", async () => {

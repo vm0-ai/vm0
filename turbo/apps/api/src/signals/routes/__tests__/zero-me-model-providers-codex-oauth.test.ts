@@ -69,7 +69,6 @@ async function enableAllPersonalSwitches(
   userId: string,
 ): Promise<void> {
   await setPersonalSwitches(orgId, userId, {
-    [FeatureSwitchKey.ModelFirstModelProvider]: true,
     [FeatureSwitchKey.CodexOauthProvider]: true,
   });
 }
@@ -130,7 +129,6 @@ describe("GET /api/zero/me/model-providers/codex-oauth-token/oauth", () => {
       Promise.resolve(uniqueOrgUser("codex-oauth-authz-off")),
     );
     await setPersonalSwitches(fixture.orgId, fixture.userId, {
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: false,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
@@ -318,7 +316,6 @@ describe("GET /api/zero/me/model-providers/codex-oauth-token/oauth", () => {
       Promise.resolve(uniqueOrgUser("codex-oauth-callback-off")),
     );
     await setPersonalSwitches(fixture.orgId, fixture.userId, {
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: false,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);

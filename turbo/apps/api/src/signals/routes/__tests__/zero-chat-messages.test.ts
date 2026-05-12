@@ -874,12 +874,6 @@ describe("POST /api/zero/chat/messages", () => {
     const fixture = await track(seedFixture());
     const writeDb = store.set(writeDb$);
     await seedVm0Credits(fixture, 1000);
-    await writeDb.insert(userFeatureSwitches).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      switches: { modelFirstModelProvider: true },
-      updatedAt: nowDate(),
-    });
     await writeDb.insert(orgModelPolicies).values([
       {
         orgId: fixture.orgId,
@@ -945,12 +939,6 @@ describe("POST /api/zero/chat/messages", () => {
     const fixture = await track(seedFixture());
     const writeDb = store.set(writeDb$);
     await seedVm0Credits(fixture, 0);
-    await writeDb.insert(userFeatureSwitches).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      switches: { modelFirstModelProvider: true },
-      updatedAt: nowDate(),
-    });
     await writeDb.insert(orgModelPolicies).values({
       orgId: fixture.orgId,
       model: "claude-sonnet-4-6",
@@ -981,7 +969,7 @@ describe("POST /api/zero/chat/messages", () => {
     expect(run).toBeUndefined();
   });
 
-  it("returns 402 when provider-first VM0 modelSelection has no spendable credits", async () => {
+  it("returns 402 when explicit VM0 modelSelection has no spendable credits", async () => {
     const fixture = await track(seedFixture());
     await seedVm0Credits(fixture, 0);
     const providerId = await seedModelProvider(fixture, "claude-sonnet-4-6", {
@@ -1037,7 +1025,7 @@ describe("POST /api/zero/chat/messages", () => {
     expect(response.body.error.code).toBe("BAD_REQUEST");
   });
 
-  it("locks an existing provider-first thread to its first model selection", async () => {
+  it("locks an existing thread to its first model selection", async () => {
     const fixture = await track(seedFixture());
     const providerId = await seedModelProvider(fixture, "claude-sonnet-4-6");
 
@@ -1074,7 +1062,7 @@ describe("POST /api/zero/chat/messages", () => {
     );
   });
 
-  it("returns 422 when a provider-first thread pin points at a deleted provider", async () => {
+  it("returns 422 when a thread pin points at a deleted provider", async () => {
     const fixture = await track(seedFixture());
     const providerId = await seedModelProvider(fixture, "claude-sonnet-4-6");
 

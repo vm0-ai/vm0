@@ -11,7 +11,7 @@ import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { isOfficialTelegramBotId } from "./official";
-import { getOrgDefaultModelProvider } from "../model-provider/model-provider-service";
+import { ensureOrgModelPolicies } from "../model-policy/org-model-policy-service";
 import { escapeHtml } from "./format";
 
 function telegramUserMention(telegramUserId: string, label: string): string {
@@ -92,14 +92,23 @@ async function resolveRunSelectedModel(
   return row?.selectedModel ?? undefined;
 }
 
+async function resolveWorkspaceDefaultModel(
+  orgId: string,
+): Promise<string | undefined> {
+  const policies = await ensureOrgModelPolicies(orgId);
+  return (
+    policies.find((policy) => {
+      return policy.isDefault;
+    })?.model ?? undefined
+  );
+}
+
 async function resolveAgentReplyModelLabel(
   orgId: string,
   runId: string,
 ): Promise<string | undefined> {
   const selectedModel = await resolveRunSelectedModel(runId);
-  const model =
-    selectedModel ??
-    (await getOrgDefaultModelProvider(orgId, "claude-code"))?.selectedModel;
+  const model = selectedModel ?? (await resolveWorkspaceDefaultModel(orgId));
 
   return model ? escapeHtml(getModelDisplayName(model)) : undefined;
 }

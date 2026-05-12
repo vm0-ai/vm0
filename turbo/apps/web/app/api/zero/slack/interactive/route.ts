@@ -443,10 +443,8 @@ async function handleModelPickerSubmit(
     botToken,
     slackUserId: payload.user.id,
     channelId,
-    selectedModel: option.isDefault ? null : option.model,
-    switchedTo: option.isDefault
-      ? `workspace default (${option.label})`
-      : option.label,
+    selectedModel: option.model,
+    switchedTo: option.label,
   });
 
   return new Response("", { status: 200 });

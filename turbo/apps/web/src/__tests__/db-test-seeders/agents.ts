@@ -247,12 +247,11 @@ export async function deleteTestCompose(composeId: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * Pin a zero_agents row to a specific model provider + selected-model pair.
- * Used by tests that need an agent whose default provider is explicitly set,
- * so chat-thread eager-pin paths can be exercised.
+ * Seed retired zero_agents model fields directly. Used by tests that verify
+ * model-first routing ignores legacy agent-level model settings.
  *
- * @why-db-direct The agent provider pin is normally set by compose creation /
- * agent edit API routes; tests need a direct setter for isolated setup.
+ * @why-db-direct These fields no longer have a public write path; tests need a
+ * direct setter to cover stale persisted data.
  */
 export async function setTestZeroAgentModelProvider(
   agentId: string,

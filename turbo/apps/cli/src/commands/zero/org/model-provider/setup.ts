@@ -4,12 +4,9 @@ import prompts from "prompts";
 import {
   listZeroOrgModelProviders,
   upsertZeroOrgModelProvider,
-  updateZeroOrgModelProviderModel,
-  setZeroOrgModelProviderDefault,
 } from "../../../../lib/api";
 import {
   MODEL_PROVIDER_TYPES,
-  hasModelSelection,
   hasAuthMethods,
   getSelectableProviderTypes,
   type ModelProviderType,
@@ -19,7 +16,6 @@ import { withErrorHandler } from "../../../../lib/command";
 import {
   type SetupInput,
   handleNonInteractiveMode,
-  promptForModelSelection,
   promptForAuthMethod,
   promptForSecrets,
   collectSecrets,
@@ -113,11 +109,9 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
     }
 
     if (actionResponse.action === "keep") {
-      const selectedModel = await promptForModelSelection(type);
       return {
         type,
         keepExistingSecret: true,
-        selectedModel,
         isInteractiveMode: true,
       };
     }
@@ -136,13 +130,11 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
   if (hasAuthMethods(type)) {
     const authMethod = await promptForAuthMethod(type);
     const secrets = await promptForSecrets(type, authMethod);
-    const selectedModel = await promptForModelSelection(type);
 
     return {
       type,
       authMethod,
       secrets,
-      selectedModel,
       isInteractiveMode: true,
     };
   }
@@ -168,43 +160,8 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
   }
 
   const secret = secretResponse.secret as string;
-  const selectedModel = await promptForModelSelection(type);
 
-  return { type, secret, selectedModel, isInteractiveMode: true };
-}
-
-async function promptSetAsDefault(
-  type: ModelProviderType,
-  framework: string,
-  isDefault: boolean,
-): Promise<void> {
-  if (isDefault) return;
-
-  let cancelled = false;
-  const response = await prompts(
-    {
-      type: "confirm",
-      name: "setDefault",
-      message: "Set this provider as default?",
-      initial: false,
-    },
-    {
-      onCancel: () => {
-        cancelled = true;
-        return false;
-      },
-    },
-  );
-
-  if (cancelled) {
-    console.log(chalk.dim("Cancelled"));
-    return;
-  }
-
-  if (response.setDefault) {
-    await setZeroOrgModelProviderDefault(type);
-    console.log(chalk.green(`✓ Default for ${framework} set to "${type}"`));
-  }
+  return { type, secret, isInteractiveMode: true };
 }
 
 export const setupCommand = new Command()
@@ -221,14 +178,12 @@ export const setupCommand = new Command()
     "-a, --auth-method <method>",
     "Auth method (required for multi-auth providers like aws-bedrock)",
   )
-  .option("-m, --model <model>", "Model selection (for non-interactive mode)")
   .action(
     withErrorHandler(
       async (options: {
         type?: string;
         secret?: string[];
         authMethod?: string;
-        model?: string;
       }) => {
         let input: SetupInput;
         const secretArgs = options.secret ?? [];
@@ -238,7 +193,6 @@ export const setupCommand = new Command()
             type: options.type,
             secret: secretArgs,
             authMethod: options.authMethod,
-            model: options.model,
             commandPrefix: "zero org model-provider setup",
           });
         } else if (options.type || secretArgs.length > 0) {
@@ -253,67 +207,24 @@ export const setupCommand = new Command()
 
         // Handle "keep existing secret" flow
         if (input.keepExistingSecret) {
-          const provider = await updateZeroOrgModelProviderModel(
-            input.type,
-            input.selectedModel,
+          console.log(
+            chalk.green(`✓ Org model provider "${input.type}" unchanged`),
           );
-
-          const defaultNote = provider.isDefault
-            ? ` (default for ${provider.framework})`
-            : "";
-          const modelNote = provider.selectedModel
-            ? ` with model: ${provider.selectedModel}`
-            : "";
-
-          if (!hasModelSelection(input.type)) {
-            console.log(
-              chalk.green(`✓ Org model provider "${input.type}" unchanged`),
-            );
-          } else {
-            console.log(
-              chalk.green(
-                `✓ Org model provider "${input.type}" updated${defaultNote}${modelNote}`,
-              ),
-            );
-          }
-          if (input.isInteractiveMode) {
-            await promptSetAsDefault(
-              input.type,
-              provider.framework,
-              provider.isDefault,
-            );
-          }
           return;
         }
 
         // Standard upsert flow with secret
-        const { provider, created } = await upsertZeroOrgModelProvider({
+        const { created } = await upsertZeroOrgModelProvider({
           type: input.type,
           secret: input.secret,
           authMethod: input.authMethod,
           secrets: input.secrets,
-          selectedModel: input.selectedModel,
         });
 
         const action = created ? "created" : "updated";
-        const defaultNote = provider.isDefault
-          ? ` (default for ${provider.framework})`
-          : "";
-        const modelNote = provider.selectedModel
-          ? ` with model: ${provider.selectedModel}`
-          : "";
         console.log(
-          chalk.green(
-            `✓ Org model provider "${input.type}" ${action}${defaultNote}${modelNote}`,
-          ),
+          chalk.green(`✓ Org model provider "${input.type}" ${action}`),
         );
-        if (input.isInteractiveMode) {
-          await promptSetAsDefault(
-            input.type,
-            provider.framework,
-            provider.isDefault,
-          );
-        }
       },
     ),
   );

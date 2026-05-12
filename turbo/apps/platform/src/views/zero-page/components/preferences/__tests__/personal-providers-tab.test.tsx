@@ -72,25 +72,9 @@ async function openModelConfiguration() {
   click(screen.getByText("Personal Models"));
 }
 
-describe("personal-providers-tab — feature switch gating", () => {
-  it("hides the Personal Models tab when modelFirstModelProvider is off", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: false,
-    });
-    mockPreferences();
-    detachedSetupPage({ context, path: "/settings" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Time Zone")).toBeInTheDocument();
-    });
-
-    expect(screen.queryByText("Personal Models")).not.toBeInTheDocument();
-  });
-
-  it("shows the Personal Models tab when modelFirstModelProvider is on", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+describe("personal-providers-tab — settings navigation", () => {
+  it("shows the Personal Models tab", async () => {
+    setMockFeatureSwitches({});
     mockPreferences();
     detachedSetupPage({ context, path: "/settings" });
 
@@ -103,7 +87,6 @@ describe("personal-providers-tab — feature switch gating", () => {
 describe("personal-providers-tab — OAuth-only configuration", () => {
   it("opens directly from the model-configuration tab search param", async () => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: true,
     });
     mockPreferences();
@@ -122,7 +105,6 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
 
   it("renders fixed OAuth actions without default or add-provider UI", async () => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: true,
     });
     mockPreferences();
@@ -164,7 +146,6 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
 
   it("hides ChatGPT OAuth when the Codex OAuth provider switch is off", async () => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: false,
     });
     mockPreferences();
@@ -189,7 +170,6 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
 
   it("opens the Claude Code OAuth write dialog without a model selector", async () => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: true,
     });
     mockPreferences();
@@ -210,7 +190,6 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
 
   it("shows saved OAuth state on the fixed cards", async () => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: true,
     });
     mockPreferences();
@@ -255,7 +234,6 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
 
   it("disconnects ChatGPT (Codex) auth.json from the fixed card", async () => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: true,
     });
     mockPreferences();
@@ -282,7 +260,6 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
 
   it("keeps OAuth cards visible while the provider list refreshes", async () => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: true,
     });
     mockPreferences();
@@ -331,7 +308,6 @@ describe("personal-providers-tab — ChatGPT (Codex) auth.json flow", () => {
       .spyOn(window, "open")
       .mockReturnValue({ closed: true } as Window);
     setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: true,
     });
     mockPreferences();
@@ -350,7 +326,6 @@ describe("personal-providers-tab — ChatGPT (Codex) auth.json flow", () => {
 
   it("opens the auth.json reconnect dialog for stale ChatGPT (Codex)", async () => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: true,
     });
     mockPreferences();

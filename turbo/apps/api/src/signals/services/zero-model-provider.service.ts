@@ -15,7 +15,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
-import { and, eq, inArray, ne, notExists, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { db$, writeDb$, type Db } from "../external/db";
 import { badRequestMessage, notFound } from "../../lib/error";
@@ -127,11 +127,6 @@ type NotFoundResponse = ReturnType<typeof notFound>;
  *   - Multi-auth providers: deletes the per-auth-method secrets by name,
  *     then deletes the model_provider row explicitly.
  *
- * If the deleted row was the user's default provider, promotes the oldest
- * remaining (orgId, userId) provider to default — matches web's invariant
- * that a user always has at most one default and it transitions to a
- * surviving row when the previous default is removed.
- *
  * Non-transactional, matching web. A partial failure (secret-delete
  * succeeds, provider-delete fails) would leave an orphan provider row —
  * web has the same gap; transactional rewrite is a separate follow-up.
@@ -170,8 +165,6 @@ export const deleteUserModelProvider$ = command(
       return notFound("Resource not found");
     }
 
-    const wasDefault = provider.isDefault;
-
     if (provider.secretId) {
       await writeDb.delete(secrets).where(eq(secrets.id, provider.secretId));
       signal.throwIfAborted();
@@ -198,28 +191,6 @@ export const deleteUserModelProvider$ = command(
         .delete(modelProviders)
         .where(eq(modelProviders.id, provider.id));
       signal.throwIfAborted();
-    }
-
-    if (wasDefault) {
-      const [next] = await writeDb
-        .select({ id: modelProviders.id })
-        .from(modelProviders)
-        .where(
-          and(
-            eq(modelProviders.orgId, args.orgId),
-            eq(modelProviders.userId, args.userId),
-          ),
-        )
-        .orderBy(modelProviders.createdAt)
-        .limit(1);
-      signal.throwIfAborted();
-      if (next) {
-        await writeDb
-          .update(modelProviders)
-          .set({ isDefault: true, updatedAt: nowDate() })
-          .where(eq(modelProviders.id, next.id));
-        signal.throwIfAborted();
-      }
     }
 
     return undefined;
@@ -341,44 +312,6 @@ function assertVm0OrgOnly(
     );
   }
   return null;
-}
-
-/**
- * Atomically assign isDefault=true to a provider, but only if no other provider
- * already has isDefault=true for the same (orgId, userId) scope. Workspace-
- * scoped, paired with the partial unique index `idx_model_providers_one_default_per_user`.
- *
- * Returns true if isDefault was set, false if another default already exists.
- */
-async function assignDefaultIfFirst(
-  writeDb: Db,
-  orgId: string,
-  userId: string,
-  providerId: string,
-): Promise<boolean> {
-  const result = await writeDb
-    .update(modelProviders)
-    .set({ isDefault: true })
-    .where(
-      and(
-        eq(modelProviders.id, providerId),
-        notExists(
-          writeDb
-            .select({ id: sql`1` })
-            .from(modelProviders)
-            .where(
-              and(
-                eq(modelProviders.orgId, orgId),
-                eq(modelProviders.userId, userId),
-                eq(modelProviders.isDefault, true),
-                ne(modelProviders.id, providerId),
-              ),
-            ),
-        ),
-      ),
-    )
-    .returning({ id: modelProviders.id });
-  return result.length > 0;
 }
 
 interface MultiAuthMetadata {
@@ -614,27 +547,13 @@ export const upsertUserModelProvider$ = command(
 
     const wasCreated = !existingProvider;
 
-    let isDefault = provider.isDefault;
-    if (!isDefault) {
-      const assigned = await assignDefaultIfFirst(
-        writeDb,
-        args.orgId,
-        args.userId,
-        provider.id,
-      );
-      signal.throwIfAborted();
-      if (assigned) {
-        isDefault = true;
-      }
-    }
-
     return {
       provider: toModelProviderInfo({
         id: provider.id,
         userId: args.userId,
         type: args.type,
         secretName,
-        isDefault,
+        isDefault: provider.isDefault,
         selectedModel: provider.selectedModel,
         tokenExpiresAt: provider.tokenExpiresAt,
         needsReconnect: provider.needsReconnect,
@@ -831,20 +750,6 @@ export const upsertUserMultiAuthModelProvider$ = command(
 
     const wasCreated = !existingProvider;
 
-    let isDefault = provider.isDefault;
-    if (!isDefault) {
-      const assigned = await assignDefaultIfFirst(
-        writeDb,
-        args.orgId,
-        args.userId,
-        provider.id,
-      );
-      signal.throwIfAborted();
-      if (assigned) {
-        isDefault = true;
-      }
-    }
-
     return {
       provider: toModelProviderInfo({
         id: provider.id,
@@ -852,7 +757,7 @@ export const upsertUserMultiAuthModelProvider$ = command(
         type: args.type,
         authMethod: args.authMethod,
         secretNames,
-        isDefault,
+        isDefault: provider.isDefault,
         selectedModel: provider.selectedModel,
         tokenExpiresAt: provider.tokenExpiresAt,
         needsReconnect: provider.needsReconnect,
@@ -987,28 +892,12 @@ export const upsertOrgNoSecretModelProvider$ = command(
       throw new Error("Expected no-secret model provider upsert to return row");
     }
 
-    const wasCreated = !existingProvider;
-
-    let isDefault = provider.isDefault;
-    if (!isDefault) {
-      const assigned = await assignDefaultIfFirst(
-        writeDb,
-        args.orgId,
-        ORG_SENTINEL_USER_ID,
-        provider.id,
-      );
-      signal.throwIfAborted();
-      if (assigned) {
-        isDefault = true;
-      }
-    }
-
     return {
       provider: toModelProviderInfo({
         id: provider.id,
         userId: ORG_SENTINEL_USER_ID,
         type: args.type,
-        isDefault,
+        isDefault: provider.isDefault,
         selectedModel: provider.selectedModel,
         tokenExpiresAt: provider.tokenExpiresAt,
         needsReconnect: provider.needsReconnect,
@@ -1018,153 +907,7 @@ export const upsertOrgNoSecretModelProvider$ = command(
         createdAt: provider.createdAt,
         updatedAt: provider.updatedAt,
       }),
-      created: wasCreated,
+      created: !existingProvider,
     };
-  },
-);
-
-export const setOrgModelProviderDefault$ = command(
-  async (
-    { set },
-    args: { readonly orgId: string; readonly type: ModelProviderType },
-    signal: AbortSignal,
-  ): Promise<NotFoundResponse | ModelProviderInfo> => {
-    const writeDb = set(writeDb$);
-    const secretName = getSecretNameForType(args.type) ?? null;
-
-    const [target] = await writeDb
-      .select()
-      .from(modelProviders)
-      .where(
-        and(
-          eq(modelProviders.orgId, args.orgId),
-          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-          eq(modelProviders.type, args.type),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (!target) {
-      return notFound("Resource not found");
-    }
-
-    if (target.isDefault) {
-      return toModelProviderInfo({
-        id: target.id,
-        userId: ORG_SENTINEL_USER_ID,
-        type: args.type,
-        secretName,
-        authMethod: target.authMethod,
-        isDefault: true,
-        selectedModel: target.selectedModel,
-        tokenExpiresAt: target.tokenExpiresAt,
-        needsReconnect: target.needsReconnect,
-        lastRefreshErrorCode: target.lastRefreshErrorCode,
-        workspaceName: target.workspaceName,
-        planType: target.planType,
-        createdAt: target.createdAt,
-        updatedAt: target.updatedAt,
-      });
-    }
-
-    const updatedAt = nowDate();
-    await writeDb.transaction(async (tx) => {
-      await tx
-        .update(modelProviders)
-        .set({ isDefault: false, updatedAt })
-        .where(
-          and(
-            eq(modelProviders.orgId, args.orgId),
-            eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-            eq(modelProviders.isDefault, true),
-            ne(modelProviders.id, target.id),
-          ),
-        );
-      signal.throwIfAborted();
-
-      await tx
-        .update(modelProviders)
-        .set({ isDefault: true, updatedAt })
-        .where(eq(modelProviders.id, target.id));
-      signal.throwIfAborted();
-    });
-    signal.throwIfAborted();
-
-    return toModelProviderInfo({
-      id: target.id,
-      userId: ORG_SENTINEL_USER_ID,
-      type: args.type,
-      secretName,
-      authMethod: target.authMethod,
-      isDefault: true,
-      selectedModel: target.selectedModel,
-      tokenExpiresAt: target.tokenExpiresAt,
-      needsReconnect: target.needsReconnect,
-      lastRefreshErrorCode: target.lastRefreshErrorCode,
-      workspaceName: target.workspaceName,
-      planType: target.planType,
-      createdAt: target.createdAt,
-      updatedAt,
-    });
-  },
-);
-
-export const updateOrgModelProviderModel$ = command(
-  async (
-    { set },
-    args: {
-      readonly orgId: string;
-      readonly type: ModelProviderType;
-      readonly selectedModel?: string;
-    },
-    signal: AbortSignal,
-  ): Promise<NotFoundResponse | ModelProviderInfo> => {
-    const writeDb = set(writeDb$);
-    const secretName = getSecretNameForType(args.type) ?? null;
-    const updatedAt = nowDate();
-
-    const [provider] = await writeDb
-      .update(modelProviders)
-      .set({
-        selectedModel: args.selectedModel ?? null,
-        updatedAt,
-      })
-      .where(
-        and(
-          eq(modelProviders.orgId, args.orgId),
-          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-          eq(modelProviders.type, args.type),
-        ),
-      )
-      .returning();
-    signal.throwIfAborted();
-
-    if (!provider) {
-      return notFound("Resource not found");
-    }
-
-    L.debug("model provider model updated", {
-      providerId: provider.id,
-      type: args.type,
-      selectedModel: args.selectedModel,
-    });
-
-    return toModelProviderInfo({
-      id: provider.id,
-      userId: ORG_SENTINEL_USER_ID,
-      type: args.type,
-      secretName,
-      authMethod: provider.authMethod,
-      isDefault: provider.isDefault,
-      selectedModel: provider.selectedModel,
-      tokenExpiresAt: provider.tokenExpiresAt,
-      needsReconnect: provider.needsReconnect,
-      lastRefreshErrorCode: provider.lastRefreshErrorCode,
-      workspaceName: provider.workspaceName,
-      planType: provider.planType,
-      createdAt: provider.createdAt,
-      updatedAt: provider.updatedAt,
-    });
   },
 );

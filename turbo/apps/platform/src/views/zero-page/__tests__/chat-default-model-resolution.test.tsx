@@ -4,7 +4,7 @@
  * Covers the priority chain for what model name appears next to the Send
  * button on the chat composer:
  *
- *   thread override  >  agent default  >  org default
+ *   thread override  >  user preference  >  workspace default
  *
  * Entry points: /agents/:agentId/chat (landing page) and /chats/:threadId
  * (thread page).
@@ -56,6 +56,10 @@ import {
   resetMockOrgModelPolicies,
   setMockOrgModelPolicies,
 } from "../../../mocks/handlers/api-org-model-policies.ts";
+import {
+  resetMockUserModelPreference,
+  setMockUserModelPreference,
+} from "../../../mocks/handlers/api-user-model-preference.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import {
   setMockOnboardingStatus,
@@ -139,14 +143,15 @@ function buildProvider(
   };
 }
 
-function buildMemberOauthPolicy(
-  overrides: Partial<OrgModelPolicy> = {},
+function buildModelPolicy(
+  overrides: Partial<OrgModelPolicy> & Pick<OrgModelPolicy, "model">,
 ): OrgModelPolicy {
+  const { model, ...rest } = overrides;
   return {
     id: "00000000-0000-4000-a000-000000000101",
-    model: "claude-opus-4-7",
+    model,
     modelLabel: "Claude Opus 4.7",
-    isDefault: true,
+    isDefault: false,
     defaultProviderType: "claude-code-oauth-token",
     credentialScope: "member",
     modelProviderId: null,
@@ -154,53 +159,89 @@ function buildMemberOauthPolicy(
     routeStatusReason: null,
     createdAt: "2026-05-08T00:00:00.000Z",
     updatedAt: "2026-05-08T00:00:00.000Z",
-    ...overrides,
+    ...rest,
   };
 }
 
+function buildMemberOauthPolicy(
+  overrides: Partial<OrgModelPolicy> = {},
+): OrgModelPolicy {
+  return buildModelPolicy({
+    model: "claude-opus-4-7",
+    modelLabel: "Claude Opus 4.7",
+    isDefault: true,
+    defaultProviderType: "claude-code-oauth-token",
+    credentialScope: "member",
+    modelProviderId: null,
+    ...overrides,
+  });
+}
+
 /**
- * Seed three providers and mark one as the org default with the specified
- * selectedModel. This lets scenarios name agent/thread models from the
- * non-default providers without bumping into "that provider is the default"
- * ambiguity.
+ * Seed providers plus model-first policies. Provider rows are never marked as
+ * defaults; the workspace default lives on the policy for the selected model.
  */
-function mockOrgProviders(options: {
-  defaultProviderId:
-    | typeof ANTHROPIC_PROVIDER_ID
-    | typeof MOONSHOT_PROVIDER_ID
-    | typeof ZAI_PROVIDER_ID;
-  defaultSelectedModel: string;
-}) {
+function mockOrgProviders(options: { defaultSelectedModel: string }) {
   setMockOrgModelProviders([
     buildProvider({
       id: MOONSHOT_PROVIDER_ID,
       type: "moonshot-api-key",
       secretName: "MOONSHOT_API_KEY",
-      isDefault: options.defaultProviderId === MOONSHOT_PROVIDER_ID,
-      selectedModel:
-        options.defaultProviderId === MOONSHOT_PROVIDER_ID
-          ? options.defaultSelectedModel
-          : "kimi-k2.5",
     }),
     buildProvider({
       id: ANTHROPIC_PROVIDER_ID,
       type: "anthropic-api-key",
       secretName: "ANTHROPIC_API_KEY",
-      isDefault: options.defaultProviderId === ANTHROPIC_PROVIDER_ID,
-      selectedModel:
-        options.defaultProviderId === ANTHROPIC_PROVIDER_ID
-          ? options.defaultSelectedModel
-          : "claude-sonnet-4-6",
     }),
     buildProvider({
       id: ZAI_PROVIDER_ID,
       type: "zai-api-key",
       secretName: "ZAI_API_KEY",
-      isDefault: options.defaultProviderId === ZAI_PROVIDER_ID,
-      selectedModel:
-        options.defaultProviderId === ZAI_PROVIDER_ID
-          ? options.defaultSelectedModel
-          : "glm-5.1",
+    }),
+  ]);
+  setMockOrgModelPolicies([
+    buildModelPolicy({
+      id: "00000000-0000-4000-a000-000000000201",
+      model: "kimi-k2.5",
+      modelLabel: "Kimi K2.5",
+      isDefault: options.defaultSelectedModel === "kimi-k2.5",
+      defaultProviderType: "moonshot-api-key",
+      credentialScope: "org",
+      modelProviderId: MOONSHOT_PROVIDER_ID,
+    }),
+    buildModelPolicy({
+      id: "00000000-0000-4000-a000-000000000202",
+      model: "claude-sonnet-4-6",
+      modelLabel: "Claude Sonnet 4.6",
+      isDefault: options.defaultSelectedModel === "claude-sonnet-4-6",
+      defaultProviderType: "anthropic-api-key",
+      credentialScope: "org",
+      modelProviderId: ANTHROPIC_PROVIDER_ID,
+    }),
+    buildModelPolicy({
+      id: "00000000-0000-4000-a000-000000000203",
+      model: "claude-opus-4-7",
+      modelLabel: "Claude Opus 4.7",
+      defaultProviderType: "anthropic-api-key",
+      credentialScope: "org",
+      modelProviderId: ANTHROPIC_PROVIDER_ID,
+    }),
+    buildModelPolicy({
+      id: "00000000-0000-4000-a000-000000000204",
+      model: "claude-opus-4-6",
+      modelLabel: "Claude Opus 4.6",
+      defaultProviderType: "anthropic-api-key",
+      credentialScope: "org",
+      modelProviderId: ANTHROPIC_PROVIDER_ID,
+    }),
+    buildModelPolicy({
+      id: "00000000-0000-4000-a000-000000000205",
+      model: "glm-5.1",
+      modelLabel: "GLM-5.1",
+      isDefault: options.defaultSelectedModel === "glm-5.1",
+      defaultProviderType: "zai-api-key",
+      credentialScope: "org",
+      modelProviderId: ZAI_PROVIDER_ID,
     }),
   ]);
 }
@@ -255,14 +296,15 @@ async function expectComposerShowsModel(displayName: string): Promise<void> {
   });
 }
 
-// Thread page composer renders the model as plain text (picker is locked
-// once the thread has stored values). No combobox exists there.
+// Thread page composer shows stored model values read-only once a user message
+// exists.
 async function expectThreadComposerShowsModel(
   displayName: string,
 ): Promise<void> {
   await waitFor(() => {
-    expect(screen.getByLabelText(displayName).tagName).toBe("SPAN");
+    expect(screen.getByLabelText(displayName)).toBeInTheDocument();
   });
+  expect(screen.queryByRole("combobox", { name: displayName })).toBeNull();
 }
 
 async function expectAgentChatLoaded(): Promise<void> {
@@ -283,6 +325,7 @@ describe("chat composer — default model resolution", () => {
     resetMockOrgModelProviders();
     resetMockPersonalModelProviders();
     resetMockOrgModelPolicies();
+    resetMockUserModelPreference();
     resetMockOnboardingStatus();
     setMockFeatureSwitches({});
     // Align onboarding default with the test agent so currentChatAgentId$
@@ -291,14 +334,13 @@ describe("chat composer — default model resolution", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Scenario 1 — org default flows through when the agent has no custom model
+  // Scenario 1 — workspace default flows through when no user preference exists
   // ---------------------------------------------------------------------------
 
-  // CHAT-DM-001: Org default (Kimi K2.5) is shown next to Send on the
-  // /agents/:id/chat composer when the agent has no model configured.
-  it("shows the org default when the agent has no custom model (CHAT-DM-001)", async () => {
+  // CHAT-DM-001: Workspace default (Kimi K2.5) is shown next to Send on the
+  // /agents/:id/chat composer when the user has no model preference.
+  it("shows the workspace default when no user preference exists (CHAT-DM-001)", async () => {
     mockOrgProviders({
-      defaultProviderId: MOONSHOT_PROVIDER_ID,
       defaultSelectedModel: "kimi-k2.5",
     });
     mockAgent({ modelProviderId: null, selectedModel: null });
@@ -310,19 +352,22 @@ describe("chat composer — default model resolution", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Scenario 2 — agent default overrides org default
+  // Scenario 2 — user preference overrides workspace default
   // ---------------------------------------------------------------------------
 
-  // CHAT-DM-002: When the agent is pinned to Opus 4.7, the composer shows
-  // Opus 4.7 even though the org default is Kimi K2.5.
-  it("shows the agent default when set (Opus 4.7 over org Kimi) (CHAT-DM-002)", async () => {
+  // CHAT-DM-002: When the user preference is Opus 4.7, the composer shows
+  // Opus 4.7 even though the workspace default is Kimi K2.5.
+  it("shows the user preference when set (Opus 4.7 over workspace Kimi) (CHAT-DM-002)", async () => {
     mockOrgProviders({
-      defaultProviderId: MOONSHOT_PROVIDER_ID,
       defaultSelectedModel: "kimi-k2.5",
     });
-    mockAgent({
-      modelProviderId: ANTHROPIC_PROVIDER_ID,
+    setMockUserModelPreference({
       selectedModel: "claude-opus-4-7",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockAgent({
+      modelProviderId: null,
+      selectedModel: null,
     });
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
@@ -334,9 +379,7 @@ describe("chat composer — default model resolution", () => {
   it("blocks agent chat submit and opens Claude Code OAuth token input from the model warning", async () => {
     const user = userEvent.setup();
     let sendRequests = 0;
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+    setMockFeatureSwitches({});
     setMockOrgModelPolicies([buildMemberOauthPolicy()]);
     setMockPersonalModelProviders([]);
     mockAgent({ modelProviderId: null, selectedModel: null });
@@ -398,7 +441,6 @@ describe("chat composer — default model resolution", () => {
       .mockReturnValue({ closed: true } as Window);
     let sendRequests = 0;
     setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexBeta]: true,
       [FeatureSwitchKey.CodexOauthProvider]: true,
     });
@@ -449,18 +491,19 @@ describe("chat composer — default model resolution", () => {
     expect(openSpy).not.toHaveBeenCalled();
   });
 
-  // CHAT-DM-003: Updating the agent's model (e.g. from Opus 4.7 -> 4.6 via
-  // the profile tab) flows through: mounting a fresh chat page against an
-  // agent whose stored model is Opus 4.6 shows Opus 4.6. This pins the
-  // "re-enter chat after editing profile" leg of the workflow.
-  it("shows the updated agent default (Opus 4.6) after a profile edit (CHAT-DM-003)", async () => {
+  // CHAT-DM-003: Updating the user's model preference flows through: mounting
+  // a fresh chat page after the preference changes shows the new model.
+  it("shows the updated user preference (Opus 4.6) (CHAT-DM-003)", async () => {
     mockOrgProviders({
-      defaultProviderId: MOONSHOT_PROVIDER_ID,
       defaultSelectedModel: "kimi-k2.5",
     });
-    mockAgent({
-      modelProviderId: ANTHROPIC_PROVIDER_ID,
+    setMockUserModelPreference({
       selectedModel: "claude-opus-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockAgent({
+      modelProviderId: null,
+      selectedModel: "claude-opus-4-7",
     });
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
@@ -476,7 +519,6 @@ describe("chat composer — default model resolution", () => {
       .mockReturnValue({ closed: true } as Window);
     let sendRequests = 0;
     setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexBeta]: true,
       [FeatureSwitchKey.CodexOauthProvider]: true,
     });
@@ -527,11 +569,10 @@ describe("chat composer — default model resolution", () => {
     expect(openSpy).not.toHaveBeenCalled();
   });
 
-  // CHAT-DM-004: When the agent is reset to "use org default" (both fields
-  // null), the composer falls back to the org default.
-  it("falls back to the org default when the agent clears its model (CHAT-DM-004)", async () => {
+  // CHAT-DM-004: When the user has no model preference, the composer falls
+  // back to the workspace default.
+  it("falls back to the workspace default when the user has no model preference (CHAT-DM-004)", async () => {
     mockOrgProviders({
-      defaultProviderId: MOONSHOT_PROVIDER_ID,
       defaultSelectedModel: "kimi-k2.5",
     });
     mockAgent({ modelProviderId: null, selectedModel: null });
@@ -542,12 +583,11 @@ describe("chat composer — default model resolution", () => {
     await expectComposerShowsModel("Kimi K2.5");
   });
 
-  // CHAT-DM-005: When org admin switches the org default (e.g. from Kimi
+  // CHAT-DM-005: When org admin switches the workspace default (e.g. from Kimi
   // to Sonnet via the org manage page), mounting a fresh chat page with
   // the new default-provider state shows the new default.
-  it("shows an updated org default (Sonnet) for agents on org default (CHAT-DM-005)", async () => {
+  it("shows an updated workspace default (Sonnet) when no user preference exists (CHAT-DM-005)", async () => {
     mockOrgProviders({
-      defaultProviderId: ANTHROPIC_PROVIDER_ID,
       defaultSelectedModel: "claude-sonnet-4-6",
     });
     mockAgent({ modelProviderId: null, selectedModel: null });
@@ -561,7 +601,6 @@ describe("chat composer — default model resolution", () => {
   it("blocks visual attachments on a text-only model but allows other files", async () => {
     const user = userEvent.setup();
     mockOrgProviders({
-      defaultProviderId: ZAI_PROVIDER_ID,
       defaultSelectedModel: "glm-5.1",
     });
     mockAgent({ modelProviderId: null, selectedModel: null });
@@ -604,7 +643,6 @@ describe("chat composer — default model resolution", () => {
   it("filters existing visual attachments while a text-only model is selected", async () => {
     const user = userEvent.setup();
     mockOrgProviders({
-      defaultProviderId: ANTHROPIC_PROVIDER_ID,
       defaultSelectedModel: "claude-sonnet-4-6",
     });
     mockAgent({ modelProviderId: null, selectedModel: null });
@@ -667,7 +705,6 @@ describe("chat composer — default model resolution", () => {
     const user = userEvent.setup();
     let capturedAttachFiles: unknown = "not-called";
     mockOrgProviders({
-      defaultProviderId: ANTHROPIC_PROVIDER_ID,
       defaultSelectedModel: "claude-sonnet-4-6",
     });
     mockAgent({ modelProviderId: null, selectedModel: null });
@@ -726,7 +763,6 @@ describe("chat composer — default model resolution", () => {
     const user = userEvent.setup();
     let capturedAttachFiles: unknown = "not-called";
     mockOrgProviders({
-      defaultProviderId: ZAI_PROVIDER_ID,
       defaultSelectedModel: "glm-5.1",
     });
     mockAgent({ modelProviderId: null, selectedModel: null });
@@ -755,12 +791,6 @@ describe("chat composer — default model resolution", () => {
     await expectAgentChatLoaded();
     await expectComposerShowsModel("GLM-5.1");
 
-    await user.click(screen.getByRole("combobox", { name: "GLM-5.1" }));
-    await user.click(
-      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
-    );
-    await expectComposerShowsModel("Claude Sonnet 4.6");
-
     const fileInput =
       document.querySelector<HTMLInputElement>('input[type="file"]')!;
     await user.upload(
@@ -768,14 +798,8 @@ describe("chat composer — default model resolution", () => {
       new File(["image"], "screenshot.png", { type: "image/png" }),
     );
     await expect(
-      screen.findByLabelText("Open image preview for screenshot.png"),
-    ).resolves.toBeInTheDocument();
-
-    await user.click(
-      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
-    );
-    await user.click(await screen.findByLabelText("Use agent default model"));
-    await expectComposerShowsModel("GLM-5.1");
+      screen.findAllByText(/GLM-5\.1 cannot recognize images or videos/i),
+    ).resolves.not.toHaveLength(0);
 
     const textarea = screen.getByPlaceholderText(
       PLACEHOLDER,
@@ -788,23 +812,26 @@ describe("chat composer — default model resolution", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Scenario 3 — thread override outranks both agent and org defaults
+  // Scenario 3 — thread override outranks user and workspace defaults
   // ---------------------------------------------------------------------------
 
   // CHAT-DM-006: A thread that was started with a user-picked model (GLM)
-  // keeps showing that model on /chats/:id regardless of what the agent or
-  // org defaults are.
-  it("thread override (GLM-5.1) wins over agent and org defaults (CHAT-DM-006)", async () => {
+  // keeps showing that model on /chats/:id regardless of user/workspace
+  // defaults.
+  it("thread override (GLM-5.1) wins over user and workspace defaults (CHAT-DM-006)", async () => {
     mockOrgProviders({
-      defaultProviderId: MOONSHOT_PROVIDER_ID,
       defaultSelectedModel: "kimi-k2.5",
     });
+    setMockUserModelPreference({
+      selectedModel: "claude-opus-4-7",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
     mockAgent({
-      modelProviderId: ANTHROPIC_PROVIDER_ID,
+      modelProviderId: null,
       selectedModel: "claude-opus-4-7",
     });
     mockThread({
-      modelProviderId: ZAI_PROVIDER_ID,
+      modelProviderId: null,
       selectedModel: "glm-5.1",
       messages: [
         {
@@ -821,18 +848,20 @@ describe("chat composer — default model resolution", () => {
     await expectThreadComposerShowsModel("GLM-5.1");
   });
 
-  // CHAT-DM-007: When the thread has no override, the composer on the
-  // thread page falls back to the agent default (same rule as on the
-  // landing page) — ensuring the override chain is consistent across both
-  // entry points.
-  it("thread without override falls back to the agent default (CHAT-DM-007)", async () => {
+  // CHAT-DM-007: When the thread has no override, the composer on the thread
+  // page falls back to the user preference — ensuring the override chain is
+  // consistent across both entry points.
+  it("thread without override falls back to the user preference (CHAT-DM-007)", async () => {
     mockOrgProviders({
-      defaultProviderId: MOONSHOT_PROVIDER_ID,
       defaultSelectedModel: "kimi-k2.5",
     });
-    mockAgent({
-      modelProviderId: ANTHROPIC_PROVIDER_ID,
+    setMockUserModelPreference({
       selectedModel: "claude-opus-4-7",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockAgent({
+      modelProviderId: null,
+      selectedModel: "glm-5.1",
     });
     mockThread({ modelProviderId: null, selectedModel: null });
 

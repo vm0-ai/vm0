@@ -171,26 +171,8 @@ function clickDialogButton(dialog: HTMLElement, label: string): void {
 }
 
 describe("org-providers-tab — stale banner reconnect", () => {
-  it("keeps legacy default provider controls when model-first is off", async () => {
-    await openProvidersPage();
-
-    await expect(
-      screen.findByText("Default provider"),
-    ).resolves.toBeInTheDocument();
-    expect(screen.getAllByText("Model Providers").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Model")).not.toBeInTheDocument();
-    expect(screen.queryByText("Personal Models")).not.toBeInTheDocument();
-    expect(screen.queryByText("Workspace default:")).not.toBeInTheDocument();
-    expect(screen.queryByText("Default model")).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(/Members see models in this order/i),
-    ).not.toBeInTheDocument();
-  });
-
-  it("shows model policies instead of legacy default provider when model-first is on", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+  it("shows model policies instead of provider-row controls", async () => {
+    setMockFeatureSwitches({});
 
     await openProvidersPage();
 
@@ -217,7 +199,6 @@ describe("org-providers-tab — stale banner reconnect", () => {
 
   it("hides the stale Codex reconnect banner when the Codex OAuth provider switch is off", async () => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexOauthProvider]: false,
     });
     setMockOrgModelProviders([makeStaleProvider()]);
@@ -234,9 +215,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
   });
 
   it("changes the default model from the default selector", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+    setMockFeatureSwitches({});
 
     await openProvidersPage();
 
@@ -260,9 +239,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
   });
 
   it("adds a model from the model policy list", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+    setMockFeatureSwitches({});
 
     await openProvidersPage();
 
@@ -293,9 +270,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
   });
 
   it("keeps the add model dialog open after closing nested API key edit", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+    setMockFeatureSwitches({});
     setMockOrgModelProviders([makeAnthropicProvider()]);
 
     await openProvidersPage();
@@ -323,9 +298,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
   });
 
   it("keeps the add model dialog open after closing nested API key add", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+    setMockFeatureSwitches({});
 
     await openProvidersPage();
 
@@ -352,9 +325,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
   });
 
   it("closes the add model dialog after nested API key add succeeds", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+    setMockFeatureSwitches({});
 
     await openProvidersPage();
 
@@ -381,9 +352,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
   });
 
   it("deletes a model from the model policy list", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+    setMockFeatureSwitches({});
 
     await openProvidersPage();
 
@@ -402,7 +371,6 @@ describe("org-providers-tab — stale banner reconnect", () => {
 
   it("hides ChatGPT Codex route options when the Codex OAuth provider switch is off", async () => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexBeta]: true,
       [FeatureSwitchKey.CodexOauthProvider]: false,
     });
@@ -421,9 +389,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
   });
 
   it("stores OAuth routes as member credentials without token input", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+    setMockFeatureSwitches({});
 
     await openProvidersPage();
 
@@ -455,7 +421,6 @@ describe("org-providers-tab — stale banner reconnect", () => {
 
   it("stores ChatGPT OAuth routes without opening paste auth", async () => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
       [FeatureSwitchKey.CodexBeta]: true,
       [FeatureSwitchKey.CodexOauthProvider]: true,
     });

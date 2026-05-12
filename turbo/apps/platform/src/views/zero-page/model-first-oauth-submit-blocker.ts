@@ -103,7 +103,6 @@ function resolveModelConfigurationSubmitBlocker(params: {
 export function resolveChatComposerSubmitBlocker(params: {
   state: ModelFirstPersonalOauthState | null | undefined;
   modelSelection: ModelProviderSelection | null;
-  agentModelDefault: ModelProviderSelection | null;
   onAction: (
     providerType: MemberOauthProviderType,
     codexPasteMode: CodexPasteDialogMode,

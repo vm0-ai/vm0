@@ -63,7 +63,7 @@ wait_for_log() {
         echo "# wait_for_log: no expected strings after --"
         return 1
     fi
-    local _wfl_timeout=30
+    local _wfl_timeout="${WAIT_FOR_LOG_TIMEOUT:-30}"
     local _wfl_elapsed=0
     while (( _wfl_elapsed < _wfl_timeout )); do
         # Append --all for non-search commands to fetch complete logs
@@ -98,4 +98,84 @@ cleanup_test_volume() {
     if [ -n "$TEST_VOLUME_DIR" ] && [ -d "$TEST_VOLUME_DIR" ]; then
         rm -rf "$TEST_VOLUME_DIR"
     fi
+}
+
+zero_auth_token() {
+    if [[ -n "${ZERO_TOKEN:-}" ]]; then
+        printf '%s' "$ZERO_TOKEN"
+    elif [[ -n "${VM0_TOKEN:-}" ]]; then
+        printf '%s' "$VM0_TOKEN"
+    else
+        jq -r '.token // empty' "$HOME/.vm0/config.json"
+    fi
+}
+
+zero_api_url() {
+    if [[ -n "${VM0_API_URL:-}" ]]; then
+        case "$VM0_API_URL" in
+            http*) printf '%s' "$VM0_API_URL" ;;
+            *)     printf 'https://%s' "$VM0_API_URL" ;;
+        esac
+    else
+        jq -r '.apiUrl // "https://www.vm0.ai"' "$HOME/.vm0/config.json"
+    fi
+}
+
+zero_curl() {
+    local path="$1"; shift
+    local token base
+    token=$(zero_auth_token)
+    base=$(zero_api_url)
+    local -a hdrs=(-H "Authorization: Bearer $token" -H "Content-Type: application/json")
+    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+        hdrs+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+    fi
+    curl -fsS "${hdrs[@]}" "$@" "$base$path"
+}
+
+zero_model_provider_id_by_type() {
+    local provider_type="$1"
+    local body provider_id
+    body=$(zero_curl "/api/zero/model-providers")
+    provider_id=$(printf '%s' "$body" \
+        | jq -r --arg type "$provider_type" \
+            '.modelProviders[] | select(.type == $type) | .id' \
+        | head -1)
+    if [[ -z "$provider_id" || "$provider_id" == "null" ]]; then
+        echo "# No org model provider found for type: $provider_type" >&2
+        return 1
+    fi
+    printf '%s' "$provider_id"
+}
+
+zero_model_first_selection_provider_id() {
+    printf '%s' "00000000-0000-4000-8000-000000000000"
+}
+
+zero_chat_run_with_model_selection() {
+    local agent_id="$1"
+    local prompt="$2"
+    local model_provider_id="$3"
+    local selected_model="$4"
+    local debug_no_mock_claude="${5:-false}"
+    local debug_no_mock_codex="${6:-false}"
+    local payload body
+
+    payload=$(jq -nc \
+        --arg agentId "$agent_id" \
+        --arg prompt "$prompt" \
+        --arg modelProviderId "$model_provider_id" \
+        --arg selectedModel "$selected_model" \
+        --argjson debugNoMockClaude "$debug_no_mock_claude" \
+        --argjson debugNoMockCodex "$debug_no_mock_codex" \
+        '{agentId: $agentId, prompt: $prompt, modelSelection: {modelProviderId: $modelProviderId, selectedModel: $selectedModel}, hasTextContent: true, debugNoMockClaude: $debugNoMockClaude, debugNoMockCodex: $debugNoMockCodex}')
+
+    body=$(zero_curl "/api/zero/chat/messages" -X POST -d "$payload")
+    LAST_RUN_ID=$(printf '%s' "$body" | jq -r '.runId // ""')
+    LAST_THREAD_ID=$(printf '%s' "$body" | jq -r '.threadId // ""')
+    export LAST_RUN_ID LAST_THREAD_ID
+    [[ -n "$LAST_RUN_ID" && -n "$LAST_THREAD_ID" ]] || {
+        echo "# zero_chat_run_with_model_selection: bad response: $body" >&2
+        return 1
+    }
 }

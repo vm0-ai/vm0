@@ -1,4 +1,3 @@
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import {
   getCanonicalModelDisplayName,
@@ -55,16 +54,6 @@ export async function getModelPreferencePickerState(params: {
     userId: params.userId,
     overrides,
   });
-
-  if (!featureStates[FeatureSwitchKey.ModelFirstModelProvider]) {
-    return {
-      enabled: false,
-      options: [],
-      currentSelectedModel: null,
-      workspaceDefaultModel: null,
-      workspaceDefaultName: null,
-    };
-  }
 
   const visibleModels = new Set(getVm0VisibleModels(featureStates));
   const policies = await ensureOrgModelPolicies(params.orgId, params.userId);

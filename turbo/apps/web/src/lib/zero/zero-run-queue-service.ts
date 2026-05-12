@@ -608,6 +608,7 @@ export async function dispatchQueuedZeroRun(
     modelProviderCredentialScope: params.modelProviderCredentialScope,
     selectedModelOverride: params.selectedModelOverride,
     composeFramework,
+    composeContent,
   });
 
   await checkOrgCreditsForRunAdmission(admissionContext);

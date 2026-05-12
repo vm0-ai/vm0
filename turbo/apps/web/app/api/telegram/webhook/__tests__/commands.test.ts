@@ -8,7 +8,6 @@ import {
   createTestCompose,
   createTestAgentSession,
   createTelegramCallbackInstallation,
-  enableModelFirstModelProviderForUser,
   getOrgMembersEntry,
   insertOrgModelPolicy,
   insertUserModelPreference,
@@ -471,7 +470,6 @@ describe("Telegram bot commands", () => {
 
   describe("/model command", () => {
     async function enableModelCommand(): Promise<void> {
-      await enableModelFirstModelProviderForUser(orgId, userId);
       await insertOrgModelPolicy({
         orgId,
         model: "claude-sonnet-4-6",
@@ -607,7 +605,7 @@ describe("Telegram bot commands", () => {
       expect(sendMsg.calls[0]?.text).not.toContain("/model default");
     });
 
-    it("should reject model switching when model-first is disabled", async () => {
+    it("should switch models without a model-first feature switch", async () => {
       const sendMsg = telegramSendMessage();
       server.use(sendMsg.handler);
 
@@ -627,9 +625,9 @@ describe("Telegram bot commands", () => {
       expect(response.status).toBe(200);
       await context.mocks.flushAfter();
 
-      expect(sendMsg.calls[0]?.text).toContain("not available");
+      expect(sendMsg.calls[0]?.text).toContain("Switched to DeepSeek V4 Pro");
       const saved = await getOrgMembersEntry(orgId, userId);
-      expect(saved?.selectedModel).toBeFalsy();
+      expect(saved?.selectedModel).toBe("deepseek-v4-pro");
     });
   });
 

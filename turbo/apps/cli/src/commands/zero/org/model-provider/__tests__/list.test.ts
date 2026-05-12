@@ -39,7 +39,7 @@ describe("zero org model-provider list command", () => {
                 type: "anthropic-api-key",
                 framework: "claude-code",
                 selectedModel: "claude-sonnet-4-5-20250514",
-                isDefault: true,
+                isDefault: false,
                 createdAt: "2025-01-01T00:00:00Z",
                 updatedAt: "2025-01-01T00:00:00Z",
               },
@@ -64,9 +64,9 @@ describe("zero org model-provider list command", () => {
       expect(logCalls).toContain("claude-code");
       expect(logCalls).toContain("anthropic-api-key");
       expect(logCalls).toContain("openai-api-key");
-      expect(logCalls).toContain("(default)");
-      expect(logCalls).toContain("claude-sonnet-4-5-20250514");
-      expect(logCalls).toContain("gpt-4");
+      expect(logCalls).not.toContain("(default)");
+      expect(logCalls).not.toContain("claude-sonnet-4-5-20250514");
+      expect(logCalls).not.toContain("gpt-4");
       expect(logCalls).toContain("2 provider(s)");
     });
 

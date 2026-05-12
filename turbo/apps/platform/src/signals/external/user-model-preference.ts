@@ -6,15 +6,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { zeroClient$ } from "../api-client.ts";
 import { currentOrgInfo$ } from "../auth.ts";
-import { modelFirstModelProviderEnabled$ } from "./feature-switch.ts";
 import { accept } from "../../lib/accept.ts";
-
-function emptyUserModelPreference(): UserModelPreferenceResponse {
-  return {
-    selectedModel: null,
-    updatedAt: null,
-  };
-}
 
 interface UserModelPreferenceSnapshot {
   orgId: string | null;
@@ -27,11 +19,6 @@ const internalReloadUserModelPreference$ = state(0);
 
 export const userModelPreference$ = computed(async (get) => {
   get(internalReloadUserModelPreference$);
-  const modelFirstEnabled = get(modelFirstModelProviderEnabled$);
-  if (!modelFirstEnabled) {
-    return emptyUserModelPreference();
-  }
-
   const org = await get(currentOrgInfo$);
   const orgId = org?.id ?? null;
   const snapshot = get(internalUserModelPreferenceSnapshot$);

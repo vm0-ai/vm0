@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { POST as createAgentRoute } from "../agents/route";
 import { PUT as updateInstructionsRoute } from "../agents/[id]/instructions/route";
 import { POST as upsertModelProviderRoute } from "../model-providers/route";
+import { insertOrgModelPolicy } from "../../../../src/__tests__/api-test-helpers";
 import type { UserContext } from "../../../../src/__tests__/test-helpers";
 
 interface TestContext {
@@ -33,6 +34,18 @@ export async function onboardNewOrgAndUser(context: TestContext): Promise<{
       `upsertModelProviderRoute failed with status ${providerRes.status}`,
     );
   }
+  const providerData = (await providerRes.json()) as {
+    provider: { id: string };
+  };
+
+  await insertOrgModelPolicy({
+    orgId: user.orgId,
+    model: "claude-sonnet-4-6",
+    isDefault: true,
+    defaultProviderType: "anthropic-api-key",
+    credentialScope: "org",
+    modelProviderId: providerData.provider.id,
+  });
 
   // 3. Create agent
   const agentRes = await createAgentRoute(

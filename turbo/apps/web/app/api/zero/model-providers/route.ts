@@ -82,7 +82,7 @@ const router = tsr.router(zeroModelProvidersMainContract, {
       );
     }
 
-    const { type, secret, authMethod, secrets, selectedModel } = body;
+    const { type, secret, authMethod, secrets } = body;
 
     if (type === "openai-api-key") {
       const overrides = await loadFeatureSwitchOverrides(
@@ -123,19 +123,14 @@ const router = tsr.router(zeroModelProvidersMainContract, {
         scope: "org",
         orgId: org.orgId,
         rawAuthJson: raw,
-        selectedModel,
-        upsert: ({
-          authMethod: pasteAuthMethod,
-          secretValues,
-          selectedModel: model,
-          metadata,
-        }) => {
+        selectedModel: undefined,
+        upsert: ({ authMethod: pasteAuthMethod, secretValues, metadata }) => {
           return upsertOrgMultiAuthModelProvider(
             org.orgId,
             "codex-oauth-token",
             pasteAuthMethod,
             secretValues,
-            model,
+            undefined,
             metadata,
           );
         },
@@ -145,7 +140,6 @@ const router = tsr.router(zeroModelProvidersMainContract, {
     log.debug("upserting org model provider", {
       orgId: org.orgId,
       type,
-      selectedModel,
     });
 
     try {
@@ -156,7 +150,7 @@ const router = tsr.router(zeroModelProvidersMainContract, {
         const result = await upsertOrgNoSecretModelProvider(
           org.orgId,
           type,
-          selectedModel,
+          undefined,
         );
         provider = result.provider;
         created = result.created;
@@ -172,7 +166,7 @@ const router = tsr.router(zeroModelProvidersMainContract, {
           type,
           authMethod,
           secrets,
-          selectedModel,
+          undefined,
         );
         provider = result.provider;
         created = result.created;
@@ -187,7 +181,7 @@ const router = tsr.router(zeroModelProvidersMainContract, {
           org.orgId,
           type,
           secret,
-          selectedModel,
+          undefined,
         );
         provider = result.provider;
         created = result.created;

@@ -3,8 +3,6 @@ import { POST } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  enableModelFirstModelProviderForUser,
-  insertOrgDefaultModelProvider,
   insertOrgModelPolicy,
   insertUserModelPreference,
   setOrgCredits,
@@ -48,8 +46,6 @@ describe("POST /api/zero/chat/messages — forceNewSession (model-first)", () =>
     agentId = await getTestZeroAgentId(user.orgId, compose.name);
     vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
     reloadEnv();
-    await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
-    await enableModelFirstModelProviderForUser(user.orgId, user.userId);
     await setOrgCredits(user.orgId, 10_000);
     await insertOrgModelPolicy({
       orgId: user.orgId,

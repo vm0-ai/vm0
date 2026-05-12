@@ -5,7 +5,6 @@ import {
   getDefaultModel,
   hasAuthMethods,
   getSecretsForAuthMethod,
-  MODEL_PROVIDER_TYPES,
   getProviderRuntimeModel,
   getVm0ConcreteProviderType,
   getVm0Vendor,
@@ -16,27 +15,20 @@ import {
 import {
   badRequest,
   modelProviderConnectRequired,
-  noModelProvider,
   providerDeleted,
   staleProvider,
 } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import {
-  getOrgDefaultModelProvider,
-  getOrgAnyDefaultModelProvider,
   getModelProviderById,
-  getOrgModelProviderByType,
   getUserModelProviderByType,
 } from "../model-provider/model-provider-service";
 import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { MODEL_PROVIDER_HANDLER_KEY } from "../handler-key-bridge";
 import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
-import {
-  isModelFirstModelProviderEnabled,
-  resolveModelFirstRouteDescriptor,
-} from "../model-policy/model-first-route-service";
+import { resolveModelFirstRouteDescriptor } from "../model-policy/model-first-route-service";
 import { getAppUrl } from "../url";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import type { ModelProviderInfo } from "../model-provider/model-provider-service";
@@ -92,32 +84,6 @@ export const MODEL_PROVIDER_ENV_VARS = [
   "AWS_SESSION_TOKEN",
   "AWS_REGION",
 ];
-
-/**
- * Resolve model provider type from explicit value or pre-fetched default.
- * Single DB query: caller passes the already-fetched defaultProvider.
- */
-function resolveProviderType(
-  defaultProvider: Awaited<ReturnType<typeof getOrgDefaultModelProvider>>,
-  explicitModelProvider?: string,
-): ModelProviderType {
-  let providerType: ModelProviderType;
-
-  if (explicitModelProvider) {
-    if (!(explicitModelProvider in MODEL_PROVIDER_TYPES)) {
-      throw badRequest(
-        `Unknown model provider type "${explicitModelProvider}". Valid types: ${Object.keys(MODEL_PROVIDER_TYPES).join(", ")}`,
-      );
-    }
-    providerType = explicitModelProvider as ModelProviderType;
-  } else if (defaultProvider?.type) {
-    providerType = defaultProvider.type;
-  } else {
-    throw noModelProvider();
-  }
-
-  return providerType;
-}
 
 /**
  * Resolve environment mapping for a provider type
@@ -177,7 +143,7 @@ function resolveEnvironmentMapping(
 }
 
 export interface ResolveModelProviderSecretTimings {
-  defaultProviderLookup: number;
+  modelPolicyLookup: number;
   matchingProviderLookup: number;
   vm0ProviderResolution?: number;
   multiAuthSecretResolution?: number;
@@ -186,7 +152,7 @@ export interface ResolveModelProviderSecretTimings {
 }
 
 interface ResolvedModelRouteModel {
-  /** Model explicitly chosen by the caller, provider row, or model-first policy. */
+  /** Model explicitly chosen by the caller or model-first policy. */
   selected: string | undefined;
   /** Effective canonical model after default fallback, when the provider has one. */
   canonical: string | undefined;
@@ -223,7 +189,7 @@ interface ResolvedModelRouteSourceProvider {
 }
 
 interface ResolvedModelRoute {
-  source: "legacy" | "model-first";
+  source: "model-first";
   framework: ModelProviderFramework;
   model: ResolvedModelRouteModel;
   provider: ResolvedModelRouteProvider;
@@ -263,7 +229,7 @@ interface ModelProviderSecretResult {
   /** The logical model name selected by the user (e.g. "claude-sonnet-4-6").
    *  Used for model usage billing. */
   selectedModel?: string;
-  /** Model-first route ownership for audit/pinning. Undefined on legacy paths. */
+  /** Model-first route ownership for audit/pinning. */
   credentialScope?: ModelProviderCredentialScope;
   /** Org-scoped model provider row used by model-first API-key routes. */
   modelProviderId?: string | null;
@@ -448,17 +414,10 @@ function buildResolvedModelRoute(params: {
   };
 }
 
-function shouldExposeRouteCredentialMetadata(
-  route: ResolvedModelRoute,
-): boolean {
-  return route.source === "model-first" || route.provider.type === "vm0";
-}
-
 function withRouteMetadata(
   route: ResolvedModelRoute,
   result: ModelProviderSecretResult,
 ): ModelProviderSecretResult {
-  const includeCredentialMetadata = shouldExposeRouteCredentialMetadata(route);
   const selectedModel =
     route.provider.type === "vm0"
       ? route.model.canonical
@@ -469,12 +428,8 @@ function withRouteMetadata(
     framework: route.framework,
     concreteProviderType: route.provider.concreteType,
     selectedModel,
-    credentialScope: includeCredentialMetadata
-      ? route.credential.scope
-      : undefined,
-    modelProviderId: includeCredentialMetadata
-      ? route.credential.modelProviderId
-      : undefined,
+    credentialScope: route.credential.scope,
+    modelProviderId: route.credential.modelProviderId,
   };
 }
 
@@ -717,56 +672,6 @@ async function materializeModelRoute(params: {
   });
 }
 
-/**
- * Resolve the row used as the resolution anchor: explicit ID pin → org chain.
- * Returns null only when no org default exists; the caller then funnels into
- * the explicit-type-override path or `noModelProvider()`.
- */
-async function resolveDefaultProviderRow(params: {
-  orgId: string;
-  userId: string;
-  framework: string;
-  modelProviderId: string | undefined;
-}): Promise<Awaited<ReturnType<typeof getOrgDefaultModelProvider>>> {
-  const { orgId, userId, framework, modelProviderId } = params;
-  if (modelProviderId) {
-    return getModelProviderById(orgId, userId, modelProviderId);
-  }
-  return (
-    (await getOrgDefaultModelProvider(orgId, framework)) ??
-    (await getOrgAnyDefaultModelProvider(orgId))
-  );
-}
-
-/**
- * Resolve the row whose `selectedModel` / `authMethod` should drive secret
- * resolution for `providerType`. When `defaultProvider` already matches the
- * type, reuse it. Otherwise — only on the explicit type-override path
- * (where `explicitModelProvider` was set and no `modelProviderId` pin) —
- * look up the org row by type. Returns null when no row exists; callers then
- * fall back to `getDefaultModel`.
- */
-async function resolveMatchingProviderForType(params: {
-  orgId: string;
-  providerType: ModelProviderType;
-  defaultProvider: Awaited<ReturnType<typeof getOrgDefaultModelProvider>>;
-  explicitModelProvider: string | undefined;
-  modelProviderId: string | undefined;
-}): Promise<Awaited<ReturnType<typeof getOrgDefaultModelProvider>>> {
-  const {
-    orgId,
-    providerType,
-    defaultProvider,
-    explicitModelProvider,
-    modelProviderId,
-  } = params;
-  if (defaultProvider && defaultProvider.type === providerType) {
-    return defaultProvider;
-  }
-  if (!explicitModelProvider || modelProviderId) return null;
-  return getOrgModelProviderByType(orgId, providerType);
-}
-
 async function resolveModelFirstModelRoute(
   params: ResolveModelRouteParams,
 ): Promise<ResolvedModelRoute> {
@@ -823,68 +728,10 @@ async function resolveModelFirstModelRoute(
   });
 }
 
-async function resolveLegacyModelRoute(
-  params: ResolveModelRouteParams,
-  timings?: ResolveModelProviderSecretTimings,
-): Promise<ResolvedModelRoute> {
-  const defaultProviderStart = Date.now();
-  const defaultProvider = await resolveDefaultProviderRow({
-    orgId: params.orgId,
-    userId: params.userId,
-    framework: params.framework,
-    modelProviderId: params.modelProviderId,
-  });
-  if (timings) {
-    timings.defaultProviderLookup = Date.now() - defaultProviderStart;
-  }
-
-  const providerType = resolveProviderType(
-    defaultProvider,
-    params.explicitModelProvider,
-  );
-
-  const matchingProviderStart = Date.now();
-  const matchingProvider = await resolveMatchingProviderForType({
-    orgId: params.orgId,
-    providerType,
-    defaultProvider,
-    explicitModelProvider: params.explicitModelProvider,
-    modelProviderId: params.modelProviderId,
-  });
-  if (timings) {
-    timings.matchingProviderLookup = Date.now() - matchingProviderStart;
-  }
-
-  assertProviderFresh(matchingProvider);
-
-  const selectedModel =
-    params.selectedModelOverride ??
-    matchingProvider?.selectedModel ??
-    undefined;
-  const credentialScope: ModelProviderCredentialScope =
-    matchingProvider?.userId && matchingProvider.userId !== ORG_SENTINEL_USER_ID
-      ? "member"
-      : "org";
-
-  return buildResolvedModelRoute({
-    source: "legacy",
-    providerType,
-    selectedModel,
-    credentialScope,
-    modelProviderId: matchingProvider?.id ?? null,
-    ownerUserId: matchingProvider?.userId ?? ORG_SENTINEL_USER_ID,
-    sourceProvider: matchingProvider,
-  });
-}
-
 export async function resolveModelRoute(
   params: ResolveModelRouteParams,
-  timings?: ResolveModelProviderSecretTimings,
 ): Promise<ResolvedModelRoute> {
-  if (await isModelFirstModelProviderEnabled(params.orgId, params.userId)) {
-    return resolveModelFirstModelRoute(params);
-  }
-  return resolveLegacyModelRoute(params, timings);
+  return resolveModelFirstModelRoute(params);
 }
 
 /**
@@ -908,7 +755,7 @@ export async function resolveModelProviderSecrets(
 ): Promise<ModelProviderSecretResult> {
   const secrets: Record<string, string> | undefined = undefined;
   const timings: ResolveModelProviderSecretTimings = {
-    defaultProviderLookup: 0,
+    modelPolicyLookup: 0,
     matchingProviderLookup: 0,
   };
 
@@ -925,18 +772,15 @@ export async function resolveModelProviderSecrets(
     };
   }
 
-  const route = await resolveModelRoute(
-    {
-      orgId,
-      userId,
-      framework,
-      explicitModelProvider,
-      modelProviderId,
-      selectedModelOverride,
-      modelProviderCredentialScope,
-    },
-    timings,
-  );
+  const route = await resolveModelRoute({
+    orgId,
+    userId,
+    framework,
+    explicitModelProvider,
+    modelProviderId,
+    selectedModelOverride,
+    modelProviderCredentialScope,
+  });
   const result = await materializeModelRoute({ orgId, route, timings });
   return { ...result, timings };
 }

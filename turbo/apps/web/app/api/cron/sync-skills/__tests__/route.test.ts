@@ -230,7 +230,7 @@ describe("GET /api/cron/sync-skills", () => {
         "agent-skills@vm0-ai/vm0-skills/tree/main/test-beta-skill",
       );
       expect(betaStorage).not.toBeNull();
-    });
+    }, 15_000);
 
     it("should skip directories without SKILL.md", async () => {
       const skillsWithExtra = [

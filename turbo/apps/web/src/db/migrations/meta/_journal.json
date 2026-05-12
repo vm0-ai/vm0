@@ -2577,6 +2577,13 @@
       "when": 1778568290359,
       "tag": "0367_faithful_vulcan",
       "breakpoints": true
+    },
+    {
+      "idx": 368,
+      "version": "7",
+      "when": 1778577567740,
+      "tag": "0368_bizarre_lorna_dane",
+      "breakpoints": true
     }
   ]
 }

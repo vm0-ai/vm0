@@ -1,4 +1,3 @@
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   getCanonicalModelDisplayName,
   getVm0VisibleModels,
@@ -53,14 +52,6 @@ export async function getSlackModelPickerState(params: {
     userId: params.userId,
     overrides,
   });
-
-  if (!featureStates[FeatureSwitchKey.ModelFirstModelProvider]) {
-    return {
-      enabled: false,
-      options: [],
-      currentSelectedModel: null,
-    };
-  }
 
   const visibleModels = new Set(getVm0VisibleModels(featureStates));
   const policies = await ensureOrgModelPolicies(params.orgId, params.userId);

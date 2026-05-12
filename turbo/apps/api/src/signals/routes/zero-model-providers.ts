@@ -7,9 +7,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   zeroModelProvidersByTypeContract,
-  zeroModelProvidersDefaultContract,
   zeroModelProvidersMainContract,
-  zeroModelProvidersUpdateModelContract,
 } from "@vm0/api-contracts/contracts/zero-model-providers";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -20,8 +18,6 @@ import { handleCodexAuthJsonPaste } from "../services/codex-auth-json-paste-hand
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   deleteOrgModelProvider$,
-  setOrgModelProviderDefault$,
-  updateOrgModelProviderModel$,
   upsertOrgModelProvider$,
   upsertOrgMultiAuthModelProvider$,
   upsertOrgNoSecretModelProvider$,
@@ -101,8 +97,7 @@ const upsertModelProviderInner$ = command(
       return bodyResult.response;
     }
 
-    const { type, secret, authMethod, secrets, selectedModel } =
-      bodyResult.data;
+    const { type, secret, authMethod, secrets } = bodyResult.data;
 
     const overrides = await get(
       userFeatureSwitchOverrides(auth.orgId, auth.userId),
@@ -135,7 +130,7 @@ const upsertModelProviderInner$ = command(
         scope: "org",
         orgId: auth.orgId,
         rawAuthJson: raw,
-        selectedModel,
+        selectedModel: undefined,
         upsert: async (pasteArgs) => {
           const result = await set(
             upsertOrgMultiAuthModelProvider$,
@@ -144,7 +139,6 @@ const upsertModelProviderInner$ = command(
               type: "codex-oauth-token",
               authMethod: pasteArgs.authMethod,
               secretValues: pasteArgs.secretValues,
-              selectedModel: pasteArgs.selectedModel,
               metadata: pasteArgs.metadata,
             },
             signal,
@@ -162,7 +156,7 @@ const upsertModelProviderInner$ = command(
     if (type === "vm0") {
       const result = await set(
         upsertOrgNoSecretModelProvider$,
-        { orgId: auth.orgId, type, selectedModel },
+        { orgId: auth.orgId, type },
         signal,
       );
       signal.throwIfAborted();
@@ -185,7 +179,6 @@ const upsertModelProviderInner$ = command(
           type,
           authMethod,
           secretValues: secrets,
-          selectedModel,
         },
         signal,
       );
@@ -201,7 +194,7 @@ const upsertModelProviderInner$ = command(
     }
     const result = await set(
       upsertOrgModelProvider$,
-      { orgId: auth.orgId, type, secret, selectedModel },
+      { orgId: auth.orgId, type, secret },
       signal,
     );
     signal.throwIfAborted();
@@ -209,70 +202,6 @@ const upsertModelProviderInner$ = command(
       return result;
     }
     return shapeUpsertResult(result.provider, result.created);
-  },
-);
-
-const setDefaultModelProviderInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    if (auth.orgRole !== "admin") {
-      return adminRequired;
-    }
-
-    const params = await get(
-      pathParamsOf(zeroModelProvidersDefaultContract.setDefault),
-    );
-    signal.throwIfAborted();
-
-    const result = await set(
-      setOrgModelProviderDefault$,
-      { orgId: auth.orgId, type: params.type },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (isNotFoundResponse(result)) {
-      return result;
-    }
-    return { status: 200 as const, body: toModelProviderResponse(result) };
-  },
-);
-
-const updateModelProviderModelInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    if (auth.orgRole !== "admin") {
-      return adminRequired;
-    }
-
-    const params = await get(
-      pathParamsOf(zeroModelProvidersUpdateModelContract.updateModel),
-    );
-    signal.throwIfAborted();
-
-    const bodyResult = await get(
-      bodyResultOf(zeroModelProvidersUpdateModelContract.updateModel),
-    );
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return bodyResult.response;
-    }
-
-    const result = await set(
-      updateOrgModelProviderModel$,
-      {
-        orgId: auth.orgId,
-        type: params.type,
-        selectedModel: bodyResult.data.selectedModel,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (isNotFoundResponse(result)) {
-      return result;
-    }
-    return { status: 200 as const, body: toModelProviderResponse(result) };
   },
 );
 
@@ -315,20 +244,6 @@ export const zeroModelProvidersRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       upsertModelProviderInner$,
-    ),
-  },
-  {
-    route: zeroModelProvidersDefaultContract.setDefault,
-    handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      setDefaultModelProviderInner$,
-    ),
-  },
-  {
-    route: zeroModelProvidersUpdateModelContract.updateModel,
-    handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      updateModelProviderModelInner$,
     ),
   },
   {

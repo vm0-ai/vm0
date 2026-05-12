@@ -215,7 +215,7 @@ describe("POST /api/internal/callbacks/agentphone", () => {
       expect.objectContaining({
         agent_id: AGENTPHONE_AGENT_ID,
         to_number: payload.phoneHandle,
-        body: "Done from AgentPhone.",
+        body: "Done from AgentPhone.\n\nClaude Sonnet 4.6",
       }),
     ]);
 

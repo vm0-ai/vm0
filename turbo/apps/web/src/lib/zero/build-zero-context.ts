@@ -199,7 +199,7 @@ interface BuildZeroContextParams {
   captureNetworkBodies?: boolean;
   // Model provider for automatic secret injection
   modelProvider?: string;
-  // Per-agent or per-schedule model provider override (by provider ID + model)
+  // Explicit run-level model override (by provider ID + model)
   modelProviderId?: string;
   modelProviderCredentialScope?: string;
   selectedModelOverride?: string;
@@ -579,8 +579,8 @@ function buildDiagnosticSpans(
     },
     { op: "api_build_merge_permissions", ms: timings.mergePermissions },
     ...optionalDiagnosticSpan(
-      "api_build_model_provider_default_lookup",
-      modelProvider?.defaultProviderLookup,
+      "api_build_model_provider_policy_lookup",
+      modelProvider?.modelPolicyLookup,
     ),
     ...optionalDiagnosticSpan(
       "api_build_model_provider_matching_lookup",

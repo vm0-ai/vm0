@@ -87,8 +87,6 @@ export {
   listZeroOrgModelProviders,
   upsertZeroOrgModelProvider,
   deleteZeroOrgModelProvider,
-  setZeroOrgModelProviderDefault,
-  updateZeroOrgModelProviderModel,
 } from "./domains/zero-org-model-providers";
 
 // Domain modules - Zero Agents

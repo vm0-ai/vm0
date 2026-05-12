@@ -123,8 +123,6 @@ export async function handleTelegramDirectMessage(
       userId: userLink.vm0UserId,
       orgId: installation.orgId,
       composeId,
-      modelProviderId: defaultAgent.modelProviderId,
-      selectedModel: defaultAgent.selectedModel,
     });
 
   // 8. Fetch new conversation context; existing sessions already have older history.
@@ -214,8 +212,6 @@ async function resolveDirectMessageSession(params: {
   userId: string;
   orgId: string;
   composeId: string;
-  modelProviderId: string | null;
-  selectedModel: string | null;
 }): Promise<{
   existingSessionId: string | undefined;
   lastProcessedMessageId: string | undefined;
@@ -249,8 +245,6 @@ async function resolveDirectMessageSession(params: {
       userId: params.userId,
       orgId: params.orgId,
       agentComposeId: params.composeId,
-      modelProviderId: params.modelProviderId,
-      selectedModel: params.selectedModel,
     });
     if (!canReuseSession) {
       log.debug("Model changed, starting new session", {

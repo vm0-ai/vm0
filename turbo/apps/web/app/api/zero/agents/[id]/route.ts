@@ -24,8 +24,7 @@ import {
   visibleZeroAgentCondition,
 } from "../../../../../src/lib/zero/agent-visibility";
 import { deleteComposeById } from "../../../../../src/lib/infra/agent-compose/compose-service";
-import { isBadRequest, isConflict } from "@vm0/api-services/errors";
-import { validateModelSelection } from "../../../../../src/lib/zero/model-provider/validate-model-selection";
+import { isConflict } from "@vm0/api-services/errors";
 import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { logger } from "../../../../../src/lib/shared/logger";
 
@@ -53,9 +52,6 @@ type AgentUpdateBody = {
   sound?: string | null;
   avatarUrl?: string | null;
   customSkills?: string[];
-  modelProviderId?: string | null;
-  selectedModel?: string | null;
-  preferPersonalProvider?: boolean;
   visibility?: "public" | "private";
 };
 
@@ -181,15 +177,9 @@ function buildAgentUpsertConflictSet(body: AgentUpdateBody, now: Date) {
     ...(body.sound !== undefined && { sound: body.sound }),
     ...(body.avatarUrl !== undefined && { avatarUrl: body.avatarUrl }),
     ...(body.customSkills !== undefined && { customSkills: body.customSkills }),
-    ...(body.modelProviderId !== undefined && {
-      modelProviderId: body.modelProviderId,
-    }),
-    ...(body.selectedModel !== undefined && {
-      selectedModel: body.selectedModel,
-    }),
-    ...(body.preferPersonalProvider !== undefined && {
-      preferPersonalProvider: body.preferPersonalProvider,
-    }),
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
     ...(body.visibility !== undefined && { visibility: body.visibility }),
   };
 }
@@ -226,9 +216,9 @@ function agentResponseBody(
       agent.unknownPermissionPolicies,
     ),
     customSkills: agent.customSkills,
-    modelProviderId: agent.modelProviderId,
-    selectedModel: agent.selectedModel,
-    preferPersonalProvider: agent.preferPersonalProvider,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
     visibility: agent.visibility,
   };
 }
@@ -343,24 +333,6 @@ const router = tsr.router(zeroAgentsByIdContract, {
     );
     if (visibilityError) return visibilityError;
 
-    try {
-      await validateModelSelection({
-        orgId: org.orgId,
-        modelProviderId: body.modelProviderId,
-        selectedModel: body.selectedModel,
-      });
-    } catch (error) {
-      if (isBadRequest(error)) {
-        return {
-          status: 400 as const,
-          body: {
-            error: { message: error.message, code: "BAD_REQUEST" },
-          },
-        };
-      }
-      throw error;
-    }
-
     // Use provided customSkills if present, otherwise keep existing
     const customSkills = body.customSkills ?? existing.customSkills ?? [];
 
@@ -409,9 +381,9 @@ const router = tsr.router(zeroAgentsByIdContract, {
         sound: body.sound ?? null,
         avatarUrl: body.avatarUrl ?? null,
         customSkills,
-        modelProviderId: body.modelProviderId ?? null,
-        selectedModel: body.selectedModel ?? null,
-        preferPersonalProvider: body.preferPersonalProvider ?? false,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
         visibility: nextVisibility,
       })
       .onConflictDoUpdate({
@@ -483,24 +455,6 @@ const router = tsr.router(zeroAgentsByIdContract, {
     );
     if (visibilityError) return visibilityError;
 
-    try {
-      await validateModelSelection({
-        orgId: org.orgId,
-        modelProviderId: body.modelProviderId,
-        selectedModel: body.selectedModel,
-      });
-    } catch (error) {
-      if (isBadRequest(error)) {
-        return {
-          status: 400 as const,
-          body: {
-            error: { message: error.message, code: "BAD_REQUEST" },
-          },
-        };
-      }
-      throw error;
-    }
-
     // Update metadata — only overwrite fields explicitly provided
     const now = new Date();
     await globalThis.services.db
@@ -517,15 +471,9 @@ const router = tsr.router(zeroAgentsByIdContract, {
         ...(body.avatarUrl !== undefined && {
           avatarUrl: body.avatarUrl,
         }),
-        ...(body.modelProviderId !== undefined && {
-          modelProviderId: body.modelProviderId,
-        }),
-        ...(body.selectedModel !== undefined && {
-          selectedModel: body.selectedModel,
-        }),
-        ...(body.preferPersonalProvider !== undefined && {
-          preferPersonalProvider: body.preferPersonalProvider,
-        }),
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
         ...(body.visibility !== undefined && {
           visibility: body.visibility,
         }),

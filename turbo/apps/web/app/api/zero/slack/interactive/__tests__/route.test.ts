@@ -7,7 +7,6 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
-  enableModelFirstModelProviderForUser,
   getOrgMembersEntry,
   insertOrgModelPolicy,
   insertUserModelPreference,
@@ -344,7 +343,6 @@ describe("POST /api/zero/slack/interactive", () => {
         slackWorkspaceId: workspaceId,
         vm0UserId: user.userId,
       });
-      await enableModelFirstModelProviderForUser(user.orgId, user.userId);
       await insertOrgModelPolicy({
         orgId: user.orgId,
         model: "claude-sonnet-4-6",
@@ -381,7 +379,7 @@ describe("POST /api/zero/slack/interactive", () => {
       expect(ephemeralArgs?.text).toContain("DeepSeek V4 Pro");
     });
 
-    it("clears the selected model when user picks the workspace default model", async () => {
+    it("saves the selected model when user picks the workspace default model", async () => {
       const workspaceId = uniqueId("T-ws");
       const slackUserId = uniqueId("U-slack");
       await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
@@ -390,7 +388,6 @@ describe("POST /api/zero/slack/interactive", () => {
         slackWorkspaceId: workspaceId,
         vm0UserId: user.userId,
       });
-      await enableModelFirstModelProviderForUser(user.orgId, user.userId);
       await insertOrgModelPolicy({
         orgId: user.orgId,
         model: "claude-sonnet-4-6",
@@ -418,7 +415,7 @@ describe("POST /api/zero/slack/interactive", () => {
       expect(response.status).toBe(200);
 
       const saved = await getOrgMembersEntry(user.orgId, user.userId);
-      expect(saved?.selectedModel).toBeNull();
+      expect(saved?.selectedModel).toBe("claude-sonnet-4-6");
     });
 
     it("rejects models that are not available to the org", async () => {
@@ -430,7 +427,6 @@ describe("POST /api/zero/slack/interactive", () => {
         slackWorkspaceId: workspaceId,
         vm0UserId: user.userId,
       });
-      await enableModelFirstModelProviderForUser(user.orgId, user.userId);
       await insertOrgModelPolicy({
         orgId: user.orgId,
         model: "claude-sonnet-4-6",

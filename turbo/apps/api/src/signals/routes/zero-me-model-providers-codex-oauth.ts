@@ -131,10 +131,7 @@ function missingOrganizationResponse(): Response {
 function isModelProviderOAuthEnabled(
   params: Parameters<typeof isFeatureEnabled>[1],
 ): boolean {
-  return (
-    isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, params) &&
-    isFeatureEnabled(FeatureSwitchKey.CodexOauthProvider, params)
-  );
+  return isFeatureEnabled(FeatureSwitchKey.CodexOauthProvider, params);
 }
 
 function errorMessage(error: unknown): string {

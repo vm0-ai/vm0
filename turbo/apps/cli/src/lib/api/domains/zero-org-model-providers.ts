@@ -1,13 +1,10 @@
 import { initClient } from "@ts-rest/core";
 import {
   zeroModelProvidersByTypeContract,
-  zeroModelProvidersDefaultContract,
   zeroModelProvidersMainContract,
-  zeroModelProvidersUpdateModelContract,
 } from "@vm0/api-contracts/contracts/zero-model-providers";
 import type {
   ModelProviderListResponse,
-  ModelProviderResponse,
   ModelProviderType,
   UpsertModelProviderResponse,
 } from "@vm0/api-contracts/contracts/model-providers";
@@ -37,7 +34,6 @@ export async function upsertZeroOrgModelProvider(body: {
   secret?: string;
   authMethod?: string;
   secrets?: Record<string, string>;
-  selectedModel?: string;
 }): Promise<UpsertModelProviderResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroModelProvidersMainContract, config);
@@ -69,46 +65,4 @@ export async function deleteZeroOrgModelProvider(
   }
 
   handleError(result, `Org model provider "${type}" not found`);
-}
-
-/**
- * Set an org-level model provider as default for its framework via zero API (admin only)
- */
-export async function setZeroOrgModelProviderDefault(
-  type: ModelProviderType,
-): Promise<ModelProviderResponse> {
-  const config = await getClientConfig();
-  const client = initClient(zeroModelProvidersDefaultContract, config);
-
-  const result = await client.setDefault({
-    params: { type },
-  });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, "Failed to set default org model provider");
-}
-
-/**
- * Update model selection for an existing org-level provider via zero API (admin only)
- */
-export async function updateZeroOrgModelProviderModel(
-  type: ModelProviderType,
-  selectedModel?: string,
-): Promise<ModelProviderResponse> {
-  const config = await getClientConfig();
-  const client = initClient(zeroModelProvidersUpdateModelContract, config);
-
-  const result = await client.updateModel({
-    params: { type },
-    body: { selectedModel },
-  });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, "Failed to update org model provider");
 }

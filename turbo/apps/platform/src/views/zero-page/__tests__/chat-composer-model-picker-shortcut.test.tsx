@@ -29,11 +29,13 @@ import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
 } from "../../../mocks/handlers/api-org-model-providers.ts";
-import { resetMockOrgModelPolicies } from "../../../mocks/handlers/api-org-model-policies.ts";
+import {
+  resetMockOrgModelPolicies,
+  setMockOrgModelPolicies,
+} from "../../../mocks/handlers/api-org-model-policies.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import { setChatShortcutHelpOpen$ } from "../../../signals/chat-page/chat-shortcut-help.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const THREAD_ID = "thread-test-shortcut";
@@ -108,11 +110,9 @@ describe("chat composer — mod+alt+. opens the model picker", () => {
     expect(screen.getAllByRole("option").length).toBeGreaterThan(0);
   });
 
-  it("does not show the agent default option in the model-first chat picker", async () => {
+  it("opens directly to model options in the model-first chat picker", async () => {
     const user = userEvent.setup();
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+    setMockFeatureSwitches({});
     setMockOrgModelProviders([]);
 
     await openThreadWithPicker();
@@ -124,21 +124,17 @@ describe("chat composer — mod+alt+. opens the model picker", () => {
     await waitFor(() => {
       expect(screen.getByRole("listbox")).toBeInTheDocument();
     });
-    expect(screen.queryByText("Use agent default")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Use workspace default model")).toBeNull();
     expect(screen.getByText("Models")).toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("Use agent default model"),
-    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("option", { name: /Claude Opus 4\.7/ }),
     ).toBeInTheDocument();
   });
 
   // CHAT-SHORT-MP-002
-  it("is a no-op in the textarea when the model picker is not rendered", async () => {
-    // Feature switch off → no picker rendered → shortcut should not crash and
-    // should not summon a listbox from elsewhere in the DOM.
+  it("opens the model-first picker even when no provider rows are configured", async () => {
     resetMockOrgModelProviders();
+    setMockFeatureSwitches({});
 
     const user = userEvent.setup();
     mockChatLifecycle({ threadId: THREAD_ID });
@@ -148,16 +144,16 @@ describe("chat composer — mod+alt+. opens the model picker", () => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
     });
 
-    // Picker trigger must not be present when the feature switch is off.
-    expect(screen.queryByRole("combobox", { name: /claude/i })).toBeNull();
+    expect(
+      screen.getByRole("combobox", { name: /claude sonnet/i }),
+    ).toBeInTheDocument();
 
     click(textarea);
     await user.keyboard("{Control>}{Alt>}.{/Alt}{/Control}");
 
-    // Nothing opens — the binding guard (`if (modelPicker)`) must short-circuit.
-    expect(screen.queryByRole("listbox")).toBeNull();
-    // And the textarea text must not have captured the period as typed input —
-    // processShortcut always calls preventDefault() regardless of the guard.
+    await waitFor(() => {
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+    });
     expect(textarea.value).toBe("");
   });
 });
@@ -202,22 +198,8 @@ describe("chat composer — mobile icon trigger", () => {
     // A provider exists (so the composer renders the picker) but none is
     // marked as default, so `effectiveDefault` is null.
     setMockFeatureSwitches({});
-    setMockOrgModelProviders([
-      {
-        id: PROVIDER_ID,
-        type: "anthropic-api-key",
-        framework: "claude-code",
-        secretName: "ANTHROPIC_API_KEY",
-        authMethod: null,
-        secretNames: null,
-        isDefault: false,
-        selectedModel: DEFAULT_MODEL,
-        needsReconnect: false,
-        lastRefreshErrorCode: null,
-        createdAt: "2024-01-01T00:00:00Z",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-    ]);
+    resetMockOrgModelProviders();
+    setMockOrgModelPolicies([]);
 
     mockChatLifecycle({ threadId: THREAD_ID });
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });

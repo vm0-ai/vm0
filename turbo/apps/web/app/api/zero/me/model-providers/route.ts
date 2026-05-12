@@ -28,12 +28,6 @@ import { isBadRequest } from "@vm0/api-services/errors";
 
 const log = logger("api:zero-me-model-providers");
 
-function isModelFirstPersonalProviderApiEnabled(
-  params: Parameters<typeof isFeatureEnabled>[1],
-): boolean {
-  return isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, params);
-}
-
 function isModelFirstPersonalProviderType(type: ModelProviderType): boolean {
   return type === "claude-code-oauth-token" || type === "codex-oauth-token";
 }
@@ -49,19 +43,6 @@ const router = tsr.router(zeroPersonalModelProvidersMainContract, {
     }
 
     const { org } = await resolveOrg(authCtx);
-
-    const overrides = await loadFeatureSwitchOverrides(
-      org.orgId,
-      authCtx.userId,
-    );
-    const personalEnabled = isModelFirstPersonalProviderApiEnabled({
-      userId: authCtx.userId,
-      orgId: org.orgId,
-      overrides,
-    });
-    if (!personalEnabled) {
-      return createErrorResponse("NOT_FOUND", "Not found");
-    }
 
     const providers = await listUserModelProviders(org.orgId, authCtx.userId);
     const visibleProviders = providers.filter((provider) => {
@@ -104,25 +85,16 @@ const router = tsr.router(zeroPersonalModelProvidersMainContract, {
 
     const { org } = await resolveOrg(authCtx);
 
-    const overrides = await loadFeatureSwitchOverrides(
-      org.orgId,
-      authCtx.userId,
-    );
-    const personalEnabled = isModelFirstPersonalProviderApiEnabled({
-      userId: authCtx.userId,
-      orgId: org.orgId,
-      overrides,
-    });
-    if (!personalEnabled) {
-      return createErrorResponse("NOT_FOUND", "Not found");
-    }
-
     const { type, secret, authMethod, secrets, selectedModel } = body;
     if (!isModelFirstPersonalProviderType(type)) {
       return createErrorResponse("NOT_FOUND", `Provider "${type}" not found`);
     }
 
     if (type === "codex-oauth-token" && authMethod === "auth_json") {
+      const overrides = await loadFeatureSwitchOverrides(
+        org.orgId,
+        authCtx.userId,
+      );
       const eligible = isFeatureEnabled(FeatureSwitchKey.CodexOauthProvider, {
         orgId: org.orgId,
         userId: authCtx.userId,

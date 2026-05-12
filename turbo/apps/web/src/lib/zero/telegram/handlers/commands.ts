@@ -248,7 +248,7 @@ export async function handleHelpCommand(
  * Handle /model command
  *
  * Lists available models when called without an argument and persists the
- * caller's personal model preference when a model argument matches.
+ * caller's model preference when a model argument matches.
  */
 export async function handleModelCommand(
   update: TelegramHandlerUpdate,

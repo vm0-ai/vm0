@@ -67,10 +67,6 @@ export const orgModelPolicies = pgTable(
         sql`credential_scope <> 'member' OR model_provider_id IS NULL`,
       ),
       check(
-        "chk_org_model_policies_org_scope_provider_id",
-        sql`credential_scope <> 'org' OR default_provider_type = 'vm0' OR model_provider_id IS NOT NULL`,
-      ),
-      check(
         "chk_org_model_policies_member_scope_oauth_provider",
         sql`credential_scope <> 'member' OR default_provider_type IN ('claude-code-oauth-token', 'codex-oauth-token')`,
       ),

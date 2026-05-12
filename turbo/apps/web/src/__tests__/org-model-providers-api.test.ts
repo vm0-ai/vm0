@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { GET, POST } from "../../app/api/zero/model-providers/route";
 import { DELETE } from "../../app/api/zero/model-providers/[type]/route";
-import { POST as setDefaultRoute } from "../../app/api/zero/model-providers/[type]/default/route";
 import { createTestRequest, createTestOrg } from "./api-test-helpers";
 import { testContext, uniqueId } from "./test-helpers";
 import { mockClerk } from "./clerk-mock";
@@ -85,7 +84,7 @@ describe("Org model-provider API", () => {
       const data = await response.json();
       expect(data.provider.type).toBe("anthropic-api-key");
       expect(data.provider.framework).toBe("claude-code");
-      expect(data.provider.isDefault).toBe(true);
+      expect(data.provider.isDefault).toBe(false);
       expect(data.created).toBe(true);
     });
 
@@ -215,68 +214,6 @@ describe("Org model-provider API", () => {
     });
   });
 
-  describe("POST /api/zero/model-providers/:type/default", () => {
-    it("should set org provider as default", async () => {
-      const userId = uniqueId("omp-default");
-      await setupOrg(userId, "org:admin");
-
-      // Create two providers
-      await POST(
-        createTestRequest(orgUrl(""), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "anthropic-api-key",
-            secret: "key-1",
-          }),
-        }),
-      );
-      await POST(
-        createTestRequest(orgUrl(""), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "claude-code-oauth-token",
-            secret: "token-1",
-          }),
-        }),
-      );
-
-      // Set second as default
-      const response = await setDefaultRoute(
-        createTestRequest(orgUrl("/claude-code-oauth-token/default"), {
-          method: "POST",
-        }),
-      );
-      expect(response.status).toBe(200);
-
-      const data = await response.json();
-      expect(data.isDefault).toBe(true);
-      expect(data.type).toBe("claude-code-oauth-token");
-
-      // Verify first is no longer default
-      const listRes = await GET(createTestRequest(orgUrl("")));
-      const listData = await listRes.json();
-      const anthropic = listData.modelProviders.find((p: { type: string }) => {
-        return p.type === "anthropic-api-key";
-      });
-      expect(anthropic).toBeDefined();
-      expect(anthropic.isDefault).toBe(false);
-    });
-
-    it("should return 403 for non-admin member", async () => {
-      const userId = uniqueId("omp-def-member");
-      await setupOrg(userId, "org:member");
-
-      const response = await setDefaultRoute(
-        createTestRequest(orgUrl("/anthropic-api-key/default"), {
-          method: "POST",
-        }),
-      );
-      expect(response.status).toBe(403);
-    });
-  });
-
   describe("list after CRUD operations", () => {
     it("should list created org providers", async () => {
       const userId = uniqueId("omp-listcrud");
@@ -302,7 +239,7 @@ describe("Org model-provider API", () => {
       expect(data.modelProviders[0].type).toBe("anthropic-api-key");
       expect(data.modelProviders[0].framework).toBe("claude-code");
       expect(data.modelProviders[0].secretName).toBe("ANTHROPIC_API_KEY");
-      expect(data.modelProviders[0].isDefault).toBe(true);
+      expect(data.modelProviders[0].isDefault).toBe(false);
       expect(data.modelProviders[0].id).toBeDefined();
       expect(data.modelProviders[0].createdAt).toBeDefined();
       expect(data.modelProviders[0].updatedAt).toBeDefined();

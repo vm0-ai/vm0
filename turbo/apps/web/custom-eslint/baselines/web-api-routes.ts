@@ -11,10 +11,14 @@
  * `response.done` and `transcription.completed` usage to these
  * Vercel-served endpoints; apps/api would not be a viable home today.
  *
- * Intentional exception: remote-agent is implemented in apps/api, but local CLI
- * commands use the same VM0_API_URL prefix as `vm0 auth login`
- * (`http://localhost:3000`). The web catch-all route is a thin proxy to
- * VM0_API_BACKEND_URL so local and production CLI URL resolution stays aligned.
+ * Intentional exception: remote-agent routes are implemented in apps/api, but
+ * CLI and platform callers use the same VM0_API_URL prefix as `vm0 auth login`
+ * (`http://localhost:3000`). The web routes are thin proxies to
+ * VM0_API_BACKEND_URL so local and production URL resolution stays aligned.
+ *
+ * Intentional exception: model policy and user model preference routes live in
+ * apps/web while the rest of Zero's bearer-token web API still authenticates
+ * through requireAuth/resolveOrg in the Next.js runtime.
  *
  * Intentional exception: official shared AgentPhone messaging uses the same
  * in-process callback/run machinery as Telegram. Keep the webhook, connect
@@ -216,8 +220,8 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/me/model-providers/codex-oauth-token/oauth/authorize/route.ts",
   "app/api/zero/me/model-providers/codex-oauth-token/oauth/callback/route.ts",
   "app/api/zero/me/model-providers/route.ts",
-  "app/api/zero/model-providers/[type]/default/route.ts",
-  "app/api/zero/model-providers/[type]/model/route.ts",
+  "app/api/zero/model-policies/route.ts",
+  "app/api/zero/user-model-preference/route.ts",
   "app/api/zero/model-providers/[type]/route.ts",
   "app/api/zero/model-providers/route.ts",
   "app/api/zero/onboarding/complete/route.ts",

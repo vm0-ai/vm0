@@ -7,7 +7,6 @@ import {
   getSkillStorageName,
 } from "@vm0/core/storage-names";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { orgTierSchema } from "@vm0/api-contracts/contracts/orgs";
 import { resolveFirewallPolicies } from "@vm0/connectors/firewalls";
 import {
@@ -91,9 +90,7 @@ function toAllowedCustomConnectorIds(
 }
 
 /**
- * Union projection of zero_agents columns consumed by a run — covers both the
- * route handler's needs (id / modelProviderId / selectedModel) and the service
- * Round 1 needs (identity + permission policies + customSkills + orgId).
+ * Projection of zero_agents columns consumed by a run.
  */
 export interface ZeroAgentForRun {
   id: string;
@@ -106,8 +103,6 @@ export interface ZeroAgentForRun {
   owner: string;
   visibility: "public" | "private";
   customSkills: string[];
-  modelProviderId: string | null;
-  selectedModel: string | null;
 }
 
 type OrgAdmissionMetadata = Pick<OrgMetadata, "orgId" | "tier"> & {
@@ -115,10 +110,9 @@ type OrgAdmissionMetadata = Pick<OrgMetadata, "orgId" | "tier"> & {
 };
 
 /**
- * Fetch the union projection of zero_agents needed to create a run. Shared by
- * the web chat route (404 check + model override fields) and the service's
- * Round 1 pre-flight — callers that pre-fetch pass the result through as
- * `preloadedAgent` so the service skips this query.
+ * Fetch the zero_agents projection needed to create a run. Callers that
+ * pre-fetch pass the result through as `preloadedAgent` so the service skips
+ * this query.
  */
 export async function fetchZeroAgentForRun(
   agentId: string,
@@ -135,8 +129,6 @@ export async function fetchZeroAgentForRun(
       owner: zeroAgents.owner,
       visibility: zeroAgents.visibility,
       customSkills: zeroAgents.customSkills,
-      modelProviderId: zeroAgents.modelProviderId,
-      selectedModel: zeroAgents.selectedModel,
     })
     .from(zeroAgents)
     .where(eq(zeroAgents.id, agentId))
@@ -164,11 +156,11 @@ export interface CreateZeroRunParams {
   sessionId?: string;
   appendSystemPrompt?: string;
   modelProvider?: string;
-  /** Per-agent or per-schedule model provider ID override. */
+  /** Explicit per-run model provider ID override, used by pinned routes. */
   modelProviderId?: string;
   /** Model-first credential scope for pinned routes. */
   modelProviderCredentialScope?: string;
-  /** Per-agent or per-schedule selected model override. */
+  /** Explicit per-run selected model override. */
   selectedModelOverride?: string;
   callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
   scheduleId?: string;
@@ -213,10 +205,9 @@ export interface CreateZeroRunParams {
    */
   userProfile?: { email: string; name: string | null };
   /**
-   * Model-first only: honor this request's selectedModelOverride as an
-   * explicit user choice. Other stored agent/schedule overrides are ignored
-   * under model-first so routing falls back to the user's model preference, then the
-   * workspace default policy.
+   * Model-first only: honor this request's model provider + selected model as
+   * an explicit user choice. Other stored defaults are ignored so routing falls
+   * back to the user's model preference, then the workspace default policy.
    */
   explicitModelFirstModelSelection?: boolean;
 }
@@ -294,7 +285,7 @@ function buildSystemSkillVolumes(
   });
 }
 
-/** Resolve model with agent-level fallback so every trigger inherits agent defaults. */
+/** Resolve the explicit run-level model override before user/workspace fallback. */
 function resolveEffectiveModel(
   params: Pick<
     CreateZeroRunParams,
@@ -303,33 +294,27 @@ function resolveEffectiveModel(
     | "selectedModelOverride"
     | "explicitModelFirstModelSelection"
   >,
-  row?: ZeroAgentForRun | null,
-  options?: { modelFirstEnabled?: boolean },
 ): {
   modelProviderId?: string;
   modelProviderCredentialScope?: string;
   selectedModelOverride?: string;
 } {
-  if (options?.modelFirstEnabled) {
-    return params.explicitModelFirstModelSelection
-      ? {
-          modelProviderId: params.modelProviderId ?? undefined,
-          modelProviderCredentialScope: params.modelProviderCredentialScope,
-          selectedModelOverride: params.selectedModelOverride ?? undefined,
-        }
-      : {
-          modelProviderCredentialScope: undefined,
-          selectedModelOverride: undefined,
-        };
+  if (params.explicitModelFirstModelSelection) {
+    return {
+      modelProviderId: params.modelProviderId ?? undefined,
+      modelProviderCredentialScope: params.modelProviderCredentialScope,
+      selectedModelOverride: params.selectedModelOverride ?? undefined,
+    };
   }
 
-  return {
-    modelProviderId:
-      params.modelProviderId ?? row?.modelProviderId ?? undefined,
-    modelProviderCredentialScope: params.modelProviderCredentialScope,
-    selectedModelOverride:
-      params.selectedModelOverride ?? row?.selectedModel ?? undefined,
-  };
+  if (params.selectedModelOverride !== undefined) {
+    return {
+      modelProviderCredentialScope: undefined,
+      selectedModelOverride: params.selectedModelOverride,
+    };
+  }
+
+  return {};
 }
 
 function resolveRunModelForRecord(
@@ -339,12 +324,7 @@ function resolveRunModelForRecord(
     modelProviderCredentialScope?: string;
     selectedModel?: string;
   },
-  options: { modelFirstEnabled: boolean },
 ): ReturnType<typeof resolveEffectiveModel> {
-  if (!options.modelFirstEnabled) {
-    return effectiveModel;
-  }
-
   return {
     modelProviderId:
       effectiveModel.modelProviderId ??
@@ -714,17 +694,7 @@ async function createZeroRunRecord(
     userInfo,
     params.appendSystemPrompt,
   );
-  const modelFirstEnabled = isFeatureEnabled(
-    FeatureSwitchKey.ModelFirstModelProvider,
-    {
-      orgId: resolved.orgId,
-      userId: params.userId,
-      overrides: featureOverrides,
-    },
-  );
-  const effectiveModel = resolveEffectiveModel(params, row, {
-    modelFirstEnabled,
-  });
+  const effectiveModel = resolveEffectiveModel(params);
 
   // ── Round 3: Pre-flight checks (need compose content) ───────────────
   authorizeCompose(params.userId, resolved.orgId, {
@@ -745,6 +715,7 @@ async function createZeroRunRecord(
     modelProviderCredentialScope: effectiveModel.modelProviderCredentialScope,
     selectedModelOverride: effectiveModel.selectedModelOverride,
     composeFramework,
+    composeContent: resolved.composeContent,
   });
   const runFramework = resolveRuntimeFramework({
     providerFramework: admissionContext.providerFramework,
@@ -754,7 +725,6 @@ async function createZeroRunRecord(
   const resolvedRunModel = resolveRunModelForRecord(
     effectiveModel,
     admissionContext,
-    { modelFirstEnabled },
   );
 
   if (!params.sessionId) {

@@ -6,22 +6,16 @@
  * - Card visible when feature switch is on (DoD: gate-on)
  * - Click on the card opens the codex auth.json paste dialog
  *   (replaces the broken cross-origin OAuth redirect; #11980)
- * - Existing-provider row renders workspace name + plan pill when fields
- *   present on codex-oauth-token provider (DoD: post-OAuth display)
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setOrgAddProviderDialogOpen$ } from "../../../signals/zero-page/settings/org-model-providers.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
-import {
-  resetMockOrgModelProviders,
-  setMockOrgModelProviders,
-} from "../../../mocks/handlers/api-org-model-providers.ts";
+import { resetMockOrgModelProviders } from "../../../mocks/handlers/api-org-model-providers.ts";
 
 const context = testContext();
 
@@ -30,38 +24,6 @@ async function openProvidersPage() {
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
-}
-
-/**
- * Build a codex-oauth-token provider row with optional workspaceName /
- * planType fields. These fields are part of the model-provider response
- * contract (declared optional so other provider types can omit them); the
- * codex-oauth-token callback delivered in #11909 populates them.
- */
-function makeChatgptProvider(
-  extras: { workspaceName?: string; planType?: string } = {},
-): ModelProviderResponse {
-  return {
-    id: "00000000-0000-4000-a000-000000000010",
-    type: "codex-oauth-token",
-    framework: "codex",
-    secretName: "CHATGPT_ACCESS_TOKEN",
-    authMethod: "oauth",
-    secretNames: [
-      "CHATGPT_ACCESS_TOKEN",
-      "CHATGPT_REFRESH_TOKEN",
-      "CHATGPT_ACCOUNT_ID",
-      "CHATGPT_ID_TOKEN",
-    ],
-    isDefault: true,
-    selectedModel: null,
-    needsReconnect: false,
-    lastRefreshErrorCode: null,
-    createdAt: "2026-05-06T00:00:00Z",
-    updatedAt: "2026-05-06T00:00:00Z",
-    workspaceName: extras.workspaceName,
-    planType: extras.planType,
-  };
 }
 
 describe("connect ChatGPT card — feature switch gating", () => {
@@ -120,95 +82,6 @@ describe("connect Codex card — click handler", () => {
       expect(
         screen.getByRole("dialog", { name: /Connect Codex/i }),
       ).toBeInTheDocument();
-    });
-  });
-});
-
-describe("provider row footer — workspace + plan display", () => {
-  beforeEach(() => {
-    setMockFeatureSwitches({});
-    resetMockOrgModelProviders();
-  });
-
-  it("renders workspace name and plan pill when extras are present", async () => {
-    setMockOrgModelProviders([
-      makeChatgptProvider({
-        workspaceName: "Acme Corp Workspace",
-        planType: "plus",
-      }),
-    ]);
-
-    await openProvidersPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Acme Corp Workspace")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Plus")).toBeInTheDocument();
-  });
-
-  it("renders only the workspace name when planType is absent", async () => {
-    setMockOrgModelProviders([
-      makeChatgptProvider({ workspaceName: "Acme Corp" }),
-    ]);
-
-    await openProvidersPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Acme Corp")).toBeInTheDocument();
-    });
-    expect(
-      screen.queryByText(/^(Plus|Pro|Business|Edu|Enterprise)$/),
-    ).toBeNull();
-  });
-
-  it("renders only the workspace name when planType is an unknown string", async () => {
-    // Drift guard: server may ship a value outside the known plan set
-    // (e.g. "team"). Render the workspace name without a plan pill rather
-    // than capitalizing an unrecognized value.
-    setMockOrgModelProviders([
-      makeChatgptProvider({ workspaceName: "Acme Corp", planType: "team" }),
-    ]);
-
-    await openProvidersPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Acme Corp")).toBeInTheDocument();
-    });
-    expect(screen.queryByText("Team")).toBeNull();
-  });
-
-  it("falls back to 'Configured' label when extras are absent", async () => {
-    setMockOrgModelProviders([makeChatgptProvider()]);
-
-    await openProvidersPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Configured")).toBeInTheDocument();
-    });
-  });
-
-  it("falls back to 'Configured' label for non-chatgpt provider types", async () => {
-    setMockOrgModelProviders([
-      {
-        id: "00000000-0000-4000-a000-000000000020",
-        type: "anthropic-api-key",
-        framework: "claude-code",
-        secretName: "ANTHROPIC_API_KEY",
-        authMethod: null,
-        secretNames: null,
-        isDefault: false,
-        selectedModel: null,
-        needsReconnect: false,
-        lastRefreshErrorCode: null,
-        createdAt: "2026-05-06T00:00:00Z",
-        updatedAt: "2026-05-06T00:00:00Z",
-      },
-    ]);
-
-    await openProvidersPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Configured")).toBeInTheDocument();
     });
   });
 });

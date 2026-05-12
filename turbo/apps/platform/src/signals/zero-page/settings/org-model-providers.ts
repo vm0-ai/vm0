@@ -20,13 +20,11 @@ import {
   deleteOrgModelProvider$,
   orgModelProviders$,
   reloadOrgModelProviders$,
-  setDefaultOrgModelProvider$,
 } from "../../external/org-model-providers.ts";
 import {
   orgModelPolicies$,
   updateOrgModelPolicies$,
 } from "../../external/org-model-policies.ts";
-import { modelFirstModelProviderEnabled$ } from "../../external/feature-switch.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
 import { closeModelPolicyDialog$ } from "./org-model-policy-dialog.ts";
@@ -302,15 +300,6 @@ export const orgConfiguredProviders$ = computed(async (get) => {
   });
 });
 
-export const orgDefaultProvider$ = computed(async (get) => {
-  const providers = await get(orgConfiguredProviders$);
-  return (
-    providers.find((p) => {
-      return p.isDefault;
-    }) ?? null
-  );
-});
-
 // ---------------------------------------------------------------------------
 // Commands: dialog open/close
 // ---------------------------------------------------------------------------
@@ -494,9 +483,7 @@ export const orgSubmitDialog$ = command(
       return;
     }
 
-    // Build request
     const request: Record<string, unknown> = { type: providerType };
-    const modelFirstEnabled = get(modelFirstModelProviderEnabled$);
 
     if (isMultiAuth) {
       request.authMethod = formValues.authMethod;
@@ -505,15 +492,6 @@ export const orgSubmitDialog$ = command(
       });
     } else if (hasTokenInputValue(formValues.secret)) {
       request.secret = sanitizeTokenInput(formValues.secret);
-    }
-
-    if (
-      !modelFirstEnabled &&
-      hasModelSelection(providerType) &&
-      !formValues.useDefaultModel &&
-      formValues.selectedModel
-    ) {
-      request.selectedModel = formValues.selectedModel;
     }
 
     const promise = (async () => {
@@ -585,12 +563,6 @@ export const orgSubmitDialog$ = command(
 // Commands: delete
 // ---------------------------------------------------------------------------
 
-export const orgOpenDeleteDialog$ = command(
-  ({ set }, providerType: ModelProviderType) => {
-    set(internalOrgDeleteDialogState$, { open: true, providerType });
-  },
-);
-
 export const orgCloseDeleteDialog$ = command(({ set }) => {
   set(internalOrgDeleteDialogState$, { open: false, providerType: null });
 });
@@ -611,30 +583,6 @@ export const orgConfirmDelete$ = command(
       signal.throwIfAborted();
       toast.success(`${providerLabel} removed successfully`);
       set(internalOrgDeleteDialogState$, { open: false, providerType: null });
-    })();
-
-    set(internalOrgActionPromise$, promise);
-    signal.addEventListener("abort", () => {
-      set(internalOrgActionPromise$, null);
-    });
-
-    await promise;
-    signal.throwIfAborted();
-  },
-);
-
-// ---------------------------------------------------------------------------
-// Commands: set default provider
-// ---------------------------------------------------------------------------
-
-export const orgSetDefaultProvider$ = command(
-  async ({ set }, type: ModelProviderType, signal: AbortSignal) => {
-    const providerLabel = MODEL_PROVIDER_TYPES[type]?.label ?? type;
-
-    const promise = (async () => {
-      await set(setDefaultOrgModelProvider$, type, signal);
-      signal.throwIfAborted();
-      toast.success(`${providerLabel} set as default`);
     })();
 
     set(internalOrgActionPromise$, promise);

@@ -2,8 +2,6 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { GET, POST } from "../route";
 import { DELETE } from "../[type]/route";
-import { POST as setDefaultPOST } from "../[type]/default/route";
-import { PATCH as updateModelPATCH } from "../[type]/model/route";
 import {
   createTestRequest,
   setTestModelProviderNeedsReconnect,
@@ -46,14 +44,6 @@ function upsertUrl(): string {
 
 function deleteUrl(type: string): string {
   return `${BASE_URL}/${type}`;
-}
-
-function setDefaultUrl(type: string): string {
-  return `${BASE_URL}/${type}/default`;
-}
-
-function updateModelUrl(type: string): string {
-  return `${BASE_URL}/${type}/model`;
 }
 
 async function expectUnauthorized(
@@ -140,22 +130,6 @@ describe("Org-level model provider routes", () => {
       });
       await expectUnauthorized(DELETE(request));
     });
-
-    it("set default returns 401", async () => {
-      const request = createTestRequest(setDefaultUrl("anthropic-api-key"), {
-        method: "POST",
-      });
-      await expectUnauthorized(setDefaultPOST(request));
-    });
-
-    it("update model returns 401", async () => {
-      const request = createTestRequest(updateModelUrl("anthropic-api-key"), {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selectedModel: "claude-3-5-sonnet-latest" }),
-      });
-      await expectUnauthorized(updateModelPATCH(request));
-    });
   });
 
   // ---------------------------------------------------------------------------
@@ -180,14 +154,14 @@ describe("Org-level model provider routes", () => {
       expect(providers[0]?.type).toBe("anthropic-api-key");
     });
 
-    it("should show first provider as default", async () => {
+    it("should not mark the first provider as default", async () => {
       await createProvider("anthropic-api-key", "test-key");
 
       const providers = await listProviders();
-      expect(providers[0]?.isDefault).toBe(true);
+      expect(providers[0]?.isDefault).toBe(false);
     });
 
-    it("should not show second same-framework provider as default", async () => {
+    it("should not mark same-framework providers as default", async () => {
       await createProvider("anthropic-api-key", "key-1");
       await createProvider("claude-code-oauth-token", "token-1");
 
@@ -198,20 +172,18 @@ describe("Org-level model provider routes", () => {
       const oauth = providers.find((p) => {
         return p.type === "claude-code-oauth-token";
       });
-      expect(anthropic!.isDefault).toBe(true);
+      expect(anthropic!.isDefault).toBe(false);
       expect(oauth!.isDefault).toBe(false);
     });
 
-    it("should find default provider for framework via list", async () => {
+    it("does not mark provider rows as framework defaults via list", async () => {
       await createProvider("anthropic-api-key", "test-key");
 
       const providers = await listProviders();
-      const defaultProvider = providers.find((p) => {
+      const frameworkDefaultProvider = providers.find((p) => {
         return p.isDefault && p.framework === "claude-code";
       });
-      expect(defaultProvider).toBeDefined();
-      expect(defaultProvider!.type).toBe("anthropic-api-key");
-      expect(defaultProvider!.isDefault).toBe(true);
+      expect(frameworkDefaultProvider).toBeUndefined();
     });
 
     it("should have no default for framework when no providers exist", async () => {
@@ -240,7 +212,7 @@ describe("Org-level model provider routes", () => {
       expect(data.provider.type).toBe("anthropic-api-key");
       expect(data.provider.framework).toBe("claude-code");
       expect(data.provider.secretName).toBe("ANTHROPIC_API_KEY");
-      expect(data.provider.isDefault).toBe(true);
+      expect(data.provider.isDefault).toBe(false);
     });
 
     it("should update existing org provider on re-upsert", async () => {
@@ -254,7 +226,7 @@ describe("Org-level model provider routes", () => {
       expect(data2.provider.id).toBe(data1.provider.id);
     });
 
-    it("should store selectedModel", async () => {
+    it("should ignore provider-level selectedModel", async () => {
       const response = await createProvider(
         "moonshot-api-key",
         "test-key",
@@ -263,7 +235,7 @@ describe("Org-level model provider routes", () => {
       const data = await response.json();
 
       expect(response.status).toBe(201);
-      expect(data.provider.selectedModel).toBe("kimi-k2.5");
+      expect(data.provider.selectedModel).toBeNull();
     });
 
     it("should create org-level AWS Bedrock provider", async () => {
@@ -326,7 +298,7 @@ describe("Org-level model provider routes", () => {
       expect(response.status).toBe(404);
     });
 
-    it("should reassign org default on delete", async () => {
+    it("should not promote a remaining provider on delete", async () => {
       await createProvider("anthropic-api-key", "key-1");
       await createProvider("claude-code-oauth-token", "token-1");
 
@@ -338,38 +310,7 @@ describe("Org-level model provider routes", () => {
       const providers = await listProviders();
       expect(providers).toHaveLength(1);
       expect(providers[0]?.type).toBe("claude-code-oauth-token");
-      expect(providers[0]?.isDefault).toBe(true);
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // POST /api/zero/model-providers/[type]/default  (set default)
-  // ---------------------------------------------------------------------------
-
-  describe("POST /api/zero/model-providers/[type]/default", () => {
-    it("should switch org default with setDefault", async () => {
-      await createProvider("anthropic-api-key", "key-1");
-      await createProvider("claude-code-oauth-token", "token-1");
-
-      const request = createTestRequest(
-        setDefaultUrl("claude-code-oauth-token"),
-        { method: "POST" },
-      );
-      const response = await setDefaultPOST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.isDefault).toBe(true);
-
-      const providers = await listProviders();
-      const anthropic = providers.find((p) => {
-        return p.type === "anthropic-api-key";
-      });
-      const oauth = providers.find((p) => {
-        return p.type === "claude-code-oauth-token";
-      });
-      expect(anthropic!.isDefault).toBe(false);
-      expect(oauth!.isDefault).toBe(true);
+      expect(providers[0]?.isDefault).toBe(false);
     });
   });
 
@@ -424,22 +365,17 @@ describe("Org-level model provider routes", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Cross-framework default — workspace-scoped (issue #11743)
-  //
-  // The workspace has at most one `is_default = true` row per (orgId, userId),
-  // regardless of framework. Adding a provider in a different framework must
-  // not steal default from the existing one; setDefault and delete-fallback
-  // both operate workspace-wide.
+  // Cross-framework providers no longer maintain provider-level defaults.
   // ---------------------------------------------------------------------------
 
-  describe("cross-framework default (workspace-scoped)", () => {
+  describe("cross-framework providers", () => {
     beforeEach(() => {
       mockIsFeatureEnabled.mockImplementation(() => {
         return true;
       });
     });
 
-    it("does not steal default when adding a different-framework provider", async () => {
+    it("does not mark any cross-framework provider as default", async () => {
       await createProvider("anthropic-api-key", "ant-key");
       await createProvider("openai-api-key", "sk-proj-test", "gpt-5.5");
 
@@ -451,37 +387,16 @@ describe("Org-level model provider routes", () => {
         return p.type === "openai-api-key";
       });
 
-      expect(anthropic!.isDefault).toBe(true);
+      expect(anthropic!.isDefault).toBe(false);
       expect(openai!.isDefault).toBe(false);
       expect(
         providers.filter((p) => {
           return p.isDefault;
         }),
-      ).toHaveLength(1);
+      ).toHaveLength(0);
     });
 
-    it("setDefault flips default across frameworks atomically", async () => {
-      await createProvider("anthropic-api-key", "ant-key");
-      await createProvider("openai-api-key", "sk-proj-test", "gpt-5.5");
-
-      const request = createTestRequest(setDefaultUrl("openai-api-key"), {
-        method: "POST",
-      });
-      const response = await setDefaultPOST(request);
-      expect(response.status).toBe(200);
-
-      const providers = await listProviders();
-      const anthropic = providers.find((p) => {
-        return p.type === "anthropic-api-key";
-      });
-      const openai = providers.find((p) => {
-        return p.type === "openai-api-key";
-      });
-      expect(anthropic!.isDefault).toBe(false);
-      expect(openai!.isDefault).toBe(true);
-    });
-
-    it("delete reassigns default to earliest cross-framework provider", async () => {
+    it("delete does not promote the remaining cross-framework provider", async () => {
       await createProvider("anthropic-api-key", "ant-key");
       await createProvider("openai-api-key", "sk-proj-test", "gpt-5.5");
 
@@ -493,7 +408,7 @@ describe("Org-level model provider routes", () => {
       const providers = await listProviders();
       expect(providers).toHaveLength(1);
       expect(providers[0]?.type).toBe("openai-api-key");
-      expect(providers[0]?.isDefault).toBe(true);
+      expect(providers[0]?.isDefault).toBe(false);
     });
   });
 

@@ -5,9 +5,7 @@ import { createStore } from "ccstate";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   zeroModelProvidersByTypeContract,
-  zeroModelProvidersDefaultContract,
   zeroModelProvidersMainContract,
-  zeroModelProvidersUpdateModelContract,
 } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
@@ -253,7 +251,7 @@ describe("GET /api/zero/model-providers", () => {
       {
         orgId,
         type: "anthropic-api-key",
-        isDefault: true,
+        isDefault: false,
         secretName: "ANTHROPIC_API_KEY",
       },
       context.signal,
@@ -271,7 +269,7 @@ describe("GET /api/zero/model-providers", () => {
     expect(response.body.modelProviders[0]?.type).toBe("anthropic-api-key");
   });
 
-  it("shows first provider as default", async () => {
+  it("does not show first provider as default", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     await track(Promise.resolve({ orgId }));
@@ -281,7 +279,7 @@ describe("GET /api/zero/model-providers", () => {
       {
         orgId,
         type: "anthropic-api-key",
-        isDefault: true,
+        isDefault: false,
         secretName: "ANTHROPIC_API_KEY",
       },
       context.signal,
@@ -295,10 +293,10 @@ describe("GET /api/zero/model-providers", () => {
       [200],
     );
 
-    expect(response.body.modelProviders[0]?.isDefault).toBeTruthy();
+    expect(response.body.modelProviders[0]?.isDefault).toBeFalsy();
   });
 
-  it("does not show second same-framework provider as default", async () => {
+  it("does not show same-framework providers as default", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     await track(Promise.resolve({ orgId }));
@@ -308,7 +306,7 @@ describe("GET /api/zero/model-providers", () => {
       {
         orgId,
         type: "anthropic-api-key",
-        isDefault: true,
+        isDefault: false,
         secretName: "ANTHROPIC_API_KEY",
       },
       context.signal,
@@ -338,11 +336,11 @@ describe("GET /api/zero/model-providers", () => {
     const oauth = response.body.modelProviders.find((provider) => {
       return provider.type === "claude-code-oauth-token";
     });
-    expect(anthropic?.isDefault).toBeTruthy();
+    expect(anthropic?.isDefault).toBeFalsy();
     expect(oauth?.isDefault).toBeFalsy();
   });
 
-  it("finds default provider for framework via list", async () => {
+  it("does not mark provider rows as framework defaults via list", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     await track(Promise.resolve({ orgId }));
@@ -352,7 +350,7 @@ describe("GET /api/zero/model-providers", () => {
       {
         orgId,
         type: "anthropic-api-key",
-        isDefault: true,
+        isDefault: false,
         secretName: "ANTHROPIC_API_KEY",
       },
       context.signal,
@@ -369,9 +367,7 @@ describe("GET /api/zero/model-providers", () => {
     const defaultProvider = response.body.modelProviders.find((provider) => {
       return provider.isDefault && provider.framework === "claude-code";
     });
-    expect(defaultProvider).toBeDefined();
-    expect(defaultProvider?.type).toBe("anthropic-api-key");
-    expect(defaultProvider?.isDefault).toBeTruthy();
+    expect(defaultProvider).toBeUndefined();
   });
 
   it("has no default for framework when no providers exist", async () => {
@@ -460,7 +456,6 @@ describe("POST /api/zero/model-providers", () => {
         body: {
           type: "anthropic-api-key",
           secret: "sk-ant-v1",
-          selectedModel: "claude-3-5-sonnet-latest",
         },
       }),
       [201],
@@ -471,7 +466,6 @@ describe("POST /api/zero/model-providers", () => {
         body: {
           type: "anthropic-api-key",
           secret: "sk-ant-v2",
-          selectedModel: "claude-sonnet-4-5",
         },
       }),
       [200],
@@ -480,8 +474,8 @@ describe("POST /api/zero/model-providers", () => {
     expect(first.body.created).toBeTruthy();
     expect(second.body.created).toBeFalsy();
     expect(second.body.provider.id).toBe(first.body.provider.id);
-    expect(second.body.provider.selectedModel).toBe("claude-sonnet-4-5");
-    expect(second.body.provider.isDefault).toBeTruthy();
+    expect(second.body.provider.selectedModel).toBeNull();
+    expect(second.body.provider.isDefault).toBeFalsy();
     await expect(
       findOrgModelProviderSecret(fixture.orgId, "ANTHROPIC_API_KEY"),
     ).resolves.toBe("sk-ant-v2");
@@ -561,7 +555,6 @@ describe("POST /api/zero/model-providers", () => {
         body: {
           type: "openai-api-key",
           secret: "sk-proj-test",
-          selectedModel: "gpt-5.5",
         },
       }),
       [201],
@@ -578,7 +571,6 @@ describe("POST /api/zero/model-providers", () => {
         body: {
           type: "openai-api-key",
           secret: "sk-proj-test",
-          selectedModel: "gpt-5.5",
         },
       }),
       [404],
@@ -597,7 +589,7 @@ describe("POST /api/zero/model-providers", () => {
     expect(other.body.provider.type).toBe("anthropic-api-key");
   });
 
-  it("does not let a different-framework provider steal default", async () => {
+  it("does not mark provider rows as defaults across frameworks", async () => {
     const fixture = uniqueOrgUser("zmp-cross-framework");
     await track(Promise.resolve({ orgId: fixture.orgId }));
     await setSwitches(fixture.orgId, fixture.userId, {
@@ -619,7 +611,6 @@ describe("POST /api/zero/model-providers", () => {
         body: {
           type: "openai-api-key",
           secret: "sk-proj-test",
-          selectedModel: "gpt-5.5",
         },
       }),
       [201],
@@ -633,12 +624,12 @@ describe("POST /api/zero/model-providers", () => {
       list.body.modelProviders.filter((provider) => {
         return provider.isDefault;
       }),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
     expect(
       list.body.modelProviders.find((provider) => {
         return provider.type === "anthropic-api-key";
       })?.isDefault,
-    ).toBeTruthy();
+    ).toBeFalsy();
     expect(
       list.body.modelProviders.find((provider) => {
         return provider.type === "openai-api-key";
@@ -655,7 +646,7 @@ describe("POST /api/zero/model-providers", () => {
     const response = await accept(
       client.upsert({
         headers: { authorization: "Bearer clerk-session" },
-        body: { type: "vm0", selectedModel: "vm0-default" },
+        body: { type: "vm0" },
       }),
       [201],
     );
@@ -663,7 +654,7 @@ describe("POST /api/zero/model-providers", () => {
     expect(response.body.provider.type).toBe("vm0");
     expect(response.body.provider.secretName).toBeNull();
     expect(response.body.provider.authMethod).toBeNull();
-    expect(response.body.provider.selectedModel).toBe("vm0-default");
+    expect(response.body.provider.selectedModel).toBeNull();
   });
 
   it("handles codex auth_json paste and never stores the raw blob", async () => {
@@ -831,134 +822,6 @@ describe("POST /api/zero/model-providers", () => {
   });
 });
 
-describe("PATCH /api/zero/model-providers/:type/model", () => {
-  const track = createFixtureTracker<OrgModelProviderFixture>((fixture) => {
-    return store.set(deleteOrgModelProviders$, fixture, context.signal);
-  });
-
-  it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(zeroModelProvidersUpdateModelContract);
-
-    const response = await accept(
-      client.updateModel({
-        headers: {},
-        params: { type: "anthropic-api-key" },
-        body: { selectedModel: "claude-sonnet-4-5" },
-      }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, null);
-    const client = setupApp({ context })(zeroModelProvidersUpdateModelContract);
-
-    const response = await accept(
-      client.updateModel({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { type: "anthropic-api-key" },
-        body: { selectedModel: "claude-sonnet-4-5" },
-      }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 403 for non-admin members", async () => {
-    const fixture = uniqueOrgUser("zmp-model-member");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const client = setupApp({ context })(zeroModelProvidersUpdateModelContract);
-
-    const response = await accept(
-      client.updateModel({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { type: "anthropic-api-key" },
-        body: { selectedModel: "claude-sonnet-4-5" },
-      }),
-      [403],
-    );
-
-    expect(response.body.error.message).toBe(
-      "Only admins can manage org model providers",
-    );
-  });
-
-  it("returns 404 when the target provider is absent", async () => {
-    const fixture = uniqueOrgUser("zmp-model-missing");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroModelProvidersUpdateModelContract);
-
-    const response = await accept(
-      client.updateModel({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { type: "anthropic-api-key" },
-        body: { selectedModel: "claude-sonnet-4-5" },
-      }),
-      [404],
-    );
-
-    expect(response.body.error.message).toBe("Resource not found");
-  });
-
-  it("updates and clears the selected model for an org provider", async () => {
-    const fixture = uniqueOrgUser("zmp-model-update");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
-    const seeded = await store.set(
-      seedOrgModelProvider$,
-      {
-        orgId: fixture.orgId,
-        type: "anthropic-api-key",
-        isDefault: true,
-        selectedModel: "claude-3-5-sonnet-latest",
-        secretName: "ANTHROPIC_API_KEY",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroModelProvidersUpdateModelContract);
-
-    const updated = await accept(
-      client.updateModel({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { type: "anthropic-api-key" },
-        body: { selectedModel: "claude-sonnet-4-5" },
-      }),
-      [200],
-    );
-
-    expect(updated.body.id).toBe(seeded.id);
-    expect(updated.body.type).toBe("anthropic-api-key");
-    expect(updated.body.secretName).toBe("ANTHROPIC_API_KEY");
-    expect(updated.body.authMethod).toBeNull();
-    expect(updated.body.isDefault).toBeTruthy();
-    expect(updated.body.selectedModel).toBe("claude-sonnet-4-5");
-    await expect(
-      readOrgModelProviderState(fixture.orgId, "anthropic-api-key"),
-    ).resolves.toMatchObject({ selectedModel: "claude-sonnet-4-5" });
-
-    const cleared = await accept(
-      client.updateModel({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { type: "anthropic-api-key" },
-        body: {},
-      }),
-      [200],
-    );
-
-    expect(cleared.body.id).toBe(seeded.id);
-    expect(cleared.body.selectedModel).toBeNull();
-    await expect(
-      readOrgModelProviderState(fixture.orgId, "anthropic-api-key"),
-    ).resolves.toMatchObject({ selectedModel: null });
-  });
-});
-
 describe("DELETE /api/zero/model-providers/:type", () => {
   const track = createFixtureTracker<OrgModelProviderFixture>((fixture) => {
     return store.set(deleteOrgModelProviders$, fixture, context.signal);
@@ -1123,7 +986,7 @@ describe("DELETE /api/zero/model-providers/:type", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("promotes the oldest remaining provider when deleting the default", async () => {
+  it("does not promote another provider when deleting an old default row", async () => {
     const fixture = uniqueOrgUser("zmp-delete-default");
     await track(Promise.resolve({ orgId: fixture.orgId }));
     await store.set(
@@ -1168,139 +1031,6 @@ describe("DELETE /api/zero/model-providers/:type", () => {
         ),
       )
       .limit(1);
-    expect(remaining?.isDefault).toBeTruthy();
-  });
-});
-
-describe("POST /api/zero/model-providers/:type/default", () => {
-  const track = createFixtureTracker<OrgModelProviderFixture>((fixture) => {
-    return store.set(deleteOrgModelProviders$, fixture, context.signal);
-  });
-
-  it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(zeroModelProvidersDefaultContract);
-
-    const response = await accept(
-      client.setDefault({
-        headers: {},
-        params: { type: "anthropic-api-key" },
-      }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, null);
-    const client = setupApp({ context })(zeroModelProvidersDefaultContract);
-
-    const response = await accept(
-      client.setDefault({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { type: "anthropic-api-key" },
-      }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 403 for non-admin members", async () => {
-    const fixture = uniqueOrgUser("zmp-default-member");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const client = setupApp({ context })(zeroModelProvidersDefaultContract);
-
-    const response = await accept(
-      client.setDefault({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { type: "anthropic-api-key" },
-      }),
-      [403],
-    );
-
-    expect(response.body.error.message).toBe(
-      "Only admins can manage org model providers",
-    );
-  });
-
-  it("returns 404 when the target provider is absent", async () => {
-    const fixture = uniqueOrgUser("zmp-default-missing");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroModelProvidersDefaultContract);
-
-    const response = await accept(
-      client.setDefault({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { type: "anthropic-api-key" },
-      }),
-      [404],
-    );
-
-    expect(response.body.error.message).toBe("Resource not found");
-  });
-
-  it("switches the workspace default across frameworks", async () => {
-    const fixture = uniqueOrgUser("zmp-default-switch");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
-    await setSwitches(fixture.orgId, fixture.userId, {
-      [FeatureSwitchKey.CodexBeta]: true,
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const mainClient = setupApp({ context })(zeroModelProvidersMainContract);
-    const defaultClient = setupApp({ context })(
-      zeroModelProvidersDefaultContract,
-    );
-
-    await accept(
-      mainClient.upsert({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { type: "anthropic-api-key", secret: "sk-ant-test" },
-      }),
-      [201],
-    );
-    await accept(
-      mainClient.upsert({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          type: "openai-api-key",
-          secret: "sk-proj-test",
-          selectedModel: "gpt-5.5",
-        },
-      }),
-      [201],
-    );
-
-    const setDefault = await accept(
-      defaultClient.setDefault({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { type: "openai-api-key" },
-      }),
-      [200],
-    );
-    expect(setDefault.body.isDefault).toBeTruthy();
-
-    const list = await accept(
-      mainClient.list({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-    expect(
-      list.body.modelProviders.filter((provider) => {
-        return provider.isDefault;
-      }),
-    ).toHaveLength(1);
-    expect(
-      list.body.modelProviders.find((provider) => {
-        return provider.type === "anthropic-api-key";
-      })?.isDefault,
-    ).toBeFalsy();
-    expect(
-      list.body.modelProviders.find((provider) => {
-        return provider.type === "openai-api-key";
-      })?.isDefault,
-    ).toBeTruthy();
+    expect(remaining?.isDefault).toBeFalsy();
   });
 });

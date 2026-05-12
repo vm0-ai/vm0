@@ -77,11 +77,7 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import {
-  getModelImageInputSupport,
-  type ModelProviderResponse,
-  type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
+import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
   ModelProviderPicker,
@@ -106,7 +102,6 @@ import {
   authorizeConnector$,
   deauthorizeConnector$,
 } from "../../signals/zero-page/zero-connectors.ts";
-import { resolveWorkspaceDefaultSelection } from "../../signals/zero-page/model-provider-default.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   showAddDialog$,
@@ -201,20 +196,12 @@ interface ZeroChatComposerProps {
    * hides the picker entirely (e.g. callers that haven't opted in).
    */
   modelPicker?: {
-    providers: ModelProviderResponse[];
     value: ModelProviderSelection | null;
     onChange: (value: ModelProviderSelection | null) => void;
-    /**
-     * Provider type of the current session's first run. When set, options whose
-     * base URL differs are disabled to preserve session continuity.
-     */
-    sessionProviderType: ModelProviderType | null;
     // When true, picker is read-only (e.g. existing chat thread).
     disabled?: boolean;
-    /** The agent-level default model, shown as a "Default" tag in the dropdown. */
-    agentDefault?: ModelProviderSelection | null;
-    /** Hide the "Use default" row in compact chat pickers. */
-    showUseDefault?: boolean;
+    /** Effective default model from user preference, then workspace default. */
+    defaultSelection?: ModelProviderSelection | null;
   };
   /** When true, render a skeleton in the model picker slot. */
   modelPickerLoading?: boolean;
@@ -271,10 +258,10 @@ function resolveComposerModelForSelection(
   if (selection) {
     return selection;
   }
-  if (modelPicker.agentDefault) {
-    return modelPicker.agentDefault;
+  if (modelPicker.defaultSelection) {
+    return modelPicker.defaultSelection;
   }
-  return resolveWorkspaceDefaultSelection(modelPicker.providers);
+  return null;
 }
 
 interface VisualAttachmentUnsupportedState {
@@ -1033,7 +1020,6 @@ function ComposerModelPickerSlot({
       {submitBlocker && <ModelConfigurationWarning blocker={submitBlocker} />}
       {modelPicker && (
         <ModelProviderPicker
-          providers={modelPicker.providers}
           value={modelPicker.value}
           onChange={onModelPickerChange}
           placeholder="Default"
@@ -1042,15 +1028,11 @@ function ComposerModelPickerSlot({
             "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
             "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
           )}
-          sessionProviderType={modelPicker.sessionProviderType}
           compactTrigger
           mobileIconTrigger
           open={modelPickerOpen}
           onOpenChange={onModelPickerOpenChange}
           disabled={modelPicker.disabled}
-          agentDefault={modelPicker.agentDefault}
-          inheritLabel="agent"
-          showUseDefault={modelPicker.showUseDefault}
         />
       )}
     </>

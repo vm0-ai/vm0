@@ -1,10 +1,8 @@
 /**
- * Thread-page model picker read-only behaviour.
+ * Thread-page model picker model-first behaviour.
  *
- * Rule: once a chat thread has at least one user message the composer's model
- * picker becomes read-only. The provider must remain consistent within a
- * session. Threads with only assistant messages or no messages keep the picker
- * interactive.
+ * Rule: the composer's model picker is editable only before the first user
+ * message. Once a user turn exists, the thread model is shown read-only.
  *
  * Entry point: /chats/:threadId thread page.
  * Mock (external): Web API via MSW (feature switch + org providers + thread
@@ -14,7 +12,6 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   chatMessagesContract,
   chatThreadByIdContract,
@@ -132,19 +129,18 @@ describe("chat thread page — model picker read-only", () => {
     ]);
   });
 
-  // CHAT-LOCK-001: picker on a thread with a user message renders as plain
-  // text — no combobox/button — so the provider cannot be switched mid-session.
-  it("renders picker as plain text when thread has a user message (CHAT-LOCK-001)", async () => {
+  // CHAT-LOCK-001: once a user turn exists, the model can no longer be changed
+  // from the thread composer.
+  it("shows a read-only model when thread has a user message (CHAT-LOCK-001)", async () => {
     setupMocks([makeUserMessage()]);
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const label = await waitFor(() => {
-      return screen.getByLabelText("Claude Sonnet 4.6");
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Claude Sonnet 4\.6/i)).toBeInTheDocument();
     });
-    expect(label.tagName).toBe("SPAN");
     expect(
-      screen.queryByRole("combobox", { name: "Claude Sonnet 4.6" }),
+      screen.queryByRole("combobox", { name: /Claude Sonnet 4\.6/i }),
     ).toBeNull();
   });
 
@@ -159,14 +155,9 @@ describe("chat thread page — model picker read-only", () => {
     });
   });
 
-  // CHAT-LOCK-003: in model-first mode the picker stays interactive even after
-  // a user turn — the user can switch models mid-thread; the composer sets
-  // `forceNewSession` on send so the server starts a fresh CLI session and
-  // injects the prior messages into the system prompt.
-  it("keeps model-first picker interactive when thread has a user message (CHAT-LOCK-003)", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+  // CHAT-LOCK-003: thread-pinned model wins the initial display over the user's
+  // current model preference, and is read-only once a user message exists.
+  it("shows the thread-pinned model read-only when the thread has a user message (CHAT-LOCK-003)", async () => {
     setMockUserModelPreference({
       selectedModel: "claude-sonnet-4-6",
       updatedAt: "2026-03-10T00:00:00Z",
@@ -178,8 +169,9 @@ describe("chat thread page — model picker read-only", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await waitFor(() => {
-      return screen.getByRole("combobox", { name: /GLM-5\.1/i });
+      expect(screen.getByLabelText(/GLM-5\.1/i)).toBeInTheDocument();
     });
+    expect(screen.queryByRole("combobox", { name: /GLM-5\.1/i })).toBeNull();
   });
 
   // CHAT-LOCK-004: empty thread keeps the picker interactive.

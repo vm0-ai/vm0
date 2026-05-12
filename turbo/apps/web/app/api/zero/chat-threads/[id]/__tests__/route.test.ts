@@ -10,7 +10,6 @@ import {
   setTestChatThreadRenamedAt,
   setTestRunModelProvider,
   setTestRunSelectedModel,
-  enableModelFirstModelProviderForUser,
   insertOrgModelPolicy,
   insertUserModelPreference,
 } from "../../../../../../src/__tests__/api-test-helpers";
@@ -263,7 +262,6 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
   });
 
   it("returns the first run model for unpinned model-first threads", async () => {
-    await enableModelFirstModelProviderForUser(testOrgId, testUserId);
     await insertOrgModelPolicy({
       orgId: testOrgId,
       model: "claude-opus-4-7",

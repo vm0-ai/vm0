@@ -12,7 +12,6 @@ import {
   createTestAgentSession,
   createAgentPhoneThreadSession,
   countTestAgentPhoneMessages,
-  enableModelFirstModelProviderForUser,
   findTestAgentPhoneUserLink,
   getOrgMembersEntry,
   agentphoneThreadSessionExists,
@@ -410,7 +409,6 @@ describe("POST /api/agentphone/webhook", () => {
       vm0UserId: user.userId,
       orgId: user.orgId,
     });
-    await enableModelFirstModelProviderForUser(user.orgId, user.userId);
     await insertOrgModelPolicy({
       orgId: user.orgId,
       model: "claude-sonnet-4-6",
@@ -447,7 +445,6 @@ describe("POST /api/agentphone/webhook", () => {
     await setOrgCredits(user.orgId, 100_000);
     const { composeId } = await createTestCompose(uniqueId("agentphone-agent"));
     await setDefaultAgentByComposeId(user.orgId, composeId);
-    await enableModelFirstModelProviderForUser(user.orgId, user.userId);
     await insertOrgModelPolicy({
       orgId: user.orgId,
       model: "claude-sonnet-4-6",

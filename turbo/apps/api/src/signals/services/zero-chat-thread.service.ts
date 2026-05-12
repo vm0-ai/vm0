@@ -11,8 +11,6 @@ import {
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
@@ -49,7 +47,6 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { listS3Objects } from "../external/s3";
-import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
 const REPORT_ERROR_STREAK_THRESHOLD = 2;
 
@@ -342,22 +339,7 @@ function effectiveModelFirstThreadPin(params: {
     if (!params.thread.orgId) {
       return null;
     }
-
-    const overrides = await get(
-      userFeatureSwitchOverrides(params.thread.orgId, params.userId),
-    );
-    const modelFirstEnabled = isFeatureEnabled(
-      FeatureSwitchKey.ModelFirstModelProvider,
-      {
-        orgId: params.thread.orgId,
-        userId: params.userId,
-        overrides,
-      },
-    );
-    if (!modelFirstEnabled) {
-      return null;
-    }
-    return get(firstRunModelPinForThread(params.thread.id));
+    return await get(firstRunModelPinForThread(params.thread.id));
   });
 }
 

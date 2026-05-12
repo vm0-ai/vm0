@@ -1,6 +1,5 @@
 import { command, computed, state } from "ccstate";
 import type { Tone } from "../../../views/zero-page/zero-tone-constants.ts";
-import type { ModelProviderSelection } from "../../../views/zero-page/components/model-provider-picker.tsx";
 
 // ---------------------------------------------------------------------------
 // Form fields
@@ -40,21 +39,6 @@ export const setSettingsAvatarUrl$ = command(
   },
 );
 
-const internalModelSelection$ = state<ModelProviderSelection | null>(null);
-export const settingsModelSelection$ = computed((get) => {
-  return get(internalModelSelection$);
-});
-export const setSettingsModelSelection$ = command(
-  ({ set }, value: ModelProviderSelection | null) => {
-    set(internalModelSelection$, value);
-  },
-);
-
-const internalPreferPersonalProvider$ = state(false);
-export const settingsPreferPersonalProvider$ = computed((get) => {
-  return get(internalPreferPersonalProvider$);
-});
-
 const internalVisibility$ = state<"public" | "private">("public");
 export const settingsVisibility$ = computed((get) => {
   return get(internalVisibility$);
@@ -74,8 +58,6 @@ interface SavedSettings {
   description: string;
   tone: Tone;
   avatarUrl: string | null;
-  modelSelection: ModelProviderSelection | null;
-  preferPersonalProvider: boolean;
   visibility: "public" | "private";
 }
 
@@ -84,25 +66,16 @@ const internalSavedSettings$ = state<SavedSettings>({
   description: "",
   tone: "professional",
   avatarUrl: null,
-  modelSelection: null,
-  preferPersonalProvider: false,
   visibility: "public",
 });
 
 export const settingsDirty$ = computed((get) => {
   const saved = get(internalSavedSettings$);
-  const currentModel = get(internalModelSelection$);
-  const savedModel = saved.modelSelection;
-  const modelChanged =
-    currentModel?.modelProviderId !== savedModel?.modelProviderId ||
-    currentModel?.selectedModel !== savedModel?.selectedModel;
   return (
     get(internalAgentName$) !== saved.name ||
     get(internalDesc$) !== saved.description ||
     get(internalTone$) !== saved.tone ||
     get(internalAvatarUrl$) !== saved.avatarUrl ||
-    modelChanged ||
-    get(internalPreferPersonalProvider$) !== saved.preferPersonalProvider ||
     get(internalVisibility$) !== saved.visibility
   );
 });
@@ -116,8 +89,6 @@ interface FormSource {
   description: string;
   tone: Tone;
   avatarUrl: string | null;
-  modelSelection: ModelProviderSelection | null;
-  preferPersonalProvider: boolean;
   visibility: "public" | "private";
 }
 
@@ -135,11 +106,6 @@ export const initSettingsForm$ = command(({ get, set }, opts: FormSource) => {
     current.description === opts.description &&
     current.tone === opts.tone &&
     current.avatarUrl === opts.avatarUrl &&
-    current.modelSelection?.modelProviderId ===
-      opts.modelSelection?.modelProviderId &&
-    current.modelSelection?.selectedModel ===
-      opts.modelSelection?.selectedModel &&
-    current.preferPersonalProvider === opts.preferPersonalProvider &&
     current.visibility === opts.visibility
   ) {
     return;
@@ -149,16 +115,12 @@ export const initSettingsForm$ = command(({ get, set }, opts: FormSource) => {
   set(internalDesc$, opts.description);
   set(internalTone$, opts.tone);
   set(internalAvatarUrl$, opts.avatarUrl);
-  set(internalModelSelection$, opts.modelSelection);
-  set(internalPreferPersonalProvider$, opts.preferPersonalProvider);
   set(internalVisibility$, opts.visibility);
   set(internalSavedSettings$, {
     name: opts.name,
     description: opts.description,
     tone: opts.tone,
     avatarUrl: opts.avatarUrl,
-    modelSelection: opts.modelSelection,
-    preferPersonalProvider: opts.preferPersonalProvider,
     visibility: opts.visibility,
   });
 });
@@ -173,8 +135,6 @@ export const resetSettingsForm$ = command(({ get, set }) => {
   set(internalDesc$, saved.description);
   set(internalTone$, saved.tone);
   set(internalAvatarUrl$, saved.avatarUrl);
-  set(internalModelSelection$, saved.modelSelection);
-  set(internalPreferPersonalProvider$, saved.preferPersonalProvider);
   set(internalVisibility$, saved.visibility);
 });
 
@@ -188,8 +148,6 @@ export const markSettingsSaved$ = command(({ get, set }) => {
     description: get(internalDesc$),
     tone: get(internalTone$),
     avatarUrl: get(internalAvatarUrl$),
-    modelSelection: get(internalModelSelection$),
-    preferPersonalProvider: get(internalPreferPersonalProvider$),
     visibility: get(internalVisibility$),
   });
 });

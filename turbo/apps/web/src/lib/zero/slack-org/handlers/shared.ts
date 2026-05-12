@@ -361,8 +361,6 @@ export async function getWorkspaceAgent(composeId: string): Promise<
       name: string;
       displayName: string | null;
       agentId: string;
-      modelProviderId: string | null;
-      selectedModel: string | null;
     }
   | undefined
 > {
@@ -372,8 +370,6 @@ export async function getWorkspaceAgent(composeId: string): Promise<
       id: zeroAgents.id,
       name: zeroAgents.name,
       displayName: zeroAgents.displayName,
-      modelProviderId: zeroAgents.modelProviderId,
-      selectedModel: zeroAgents.selectedModel,
     })
     .from(zeroAgents)
     .where(eq(zeroAgents.id, composeId))
@@ -386,8 +382,6 @@ export async function getWorkspaceAgent(composeId: string): Promise<
     name: agent.name,
     displayName: agent.displayName,
     agentId: agent.id,
-    modelProviderId: agent.modelProviderId,
-    selectedModel: agent.selectedModel,
   };
 }
 
@@ -429,8 +423,6 @@ export async function resolveCompatibleThreadSession(opts: {
   userId: string;
   orgId: string;
   agentComposeId: string;
-  modelProviderId: string | null;
-  selectedModel: string | null;
 }): Promise<string | undefined> {
   const session = await lookupThreadSession(
     opts.channelId,
@@ -457,8 +449,6 @@ export async function resolveCompatibleThreadSession(opts: {
     userId: opts.userId,
     orgId: opts.orgId,
     agentComposeId: opts.agentComposeId,
-    modelProviderId: opts.modelProviderId,
-    selectedModel: opts.selectedModel,
   });
   if (!canReuseSession) {
     log.debug("Model changed, starting new Slack session", {

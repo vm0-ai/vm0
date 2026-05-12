@@ -95,8 +95,6 @@ interface AgentForChatSend {
   readonly orgId: string;
   readonly owner: string;
   readonly visibility: "public" | "private";
-  readonly modelProviderId: string | null;
-  readonly selectedModel: string | null;
 }
 
 interface ThreadModelPin {
@@ -170,7 +168,6 @@ interface NormalSendArgs {
 interface PreparedNormalSend {
   readonly db: Db;
   readonly agent: AgentForChatSend;
-  readonly modelFirst: boolean;
   readonly forceNewSession: boolean;
   readonly goalSetup: GoalSetup;
   readonly thread: ResolvedThread;
@@ -210,6 +207,8 @@ const PRIOR_HISTORY_MESSAGE_LIMIT = 10;
 const WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP = 4000;
 const WEB_CHAT_INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
 const ORG_SENTINEL_USER_ID = "__org__";
+const MODEL_FIRST_SELECTION_PROVIDER_ID =
+  "00000000-0000-4000-8000-000000000000";
 
 function forbidden(message: string) {
   return {
@@ -490,8 +489,6 @@ async function loadAgentForChatSend(
       orgId: zeroAgents.orgId,
       owner: zeroAgents.owner,
       visibility: zeroAgents.visibility,
-      modelProviderId: zeroAgents.modelProviderId,
-      selectedModel: zeroAgents.selectedModel,
     })
     .from(zeroAgents)
     .where(eq(zeroAgents.id, agentId))
@@ -663,19 +660,6 @@ async function activeRunExistsForThread(
     )
     .limit(1);
   return run !== undefined;
-}
-
-async function modelFirstEnabled(
-  get: SignalGetter,
-  orgId: string,
-  userId: string,
-): Promise<boolean> {
-  const overrides = await get(userFeatureSwitchOverrides(orgId, userId));
-  return isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, {
-    orgId,
-    userId,
-    overrides,
-  });
 }
 
 async function goalEnabled(
@@ -854,11 +838,40 @@ async function existingModelFirstThreadPin(
   );
 }
 
-async function resolveModelSelectionPin(
-  db: Db,
-  orgId: string,
-  selectedModel: string,
-): Promise<ThreadModelPin> {
+function emptyModelFirstThreadPin(): ThreadModelPin {
+  return {
+    modelProviderId: null,
+    modelProviderType: null,
+    modelProviderCredentialScope: null,
+    selectedModel: null,
+  };
+}
+
+async function resolveModelSelectionPin(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly modelSelection: NonNullable<IncomingModelSelection>;
+}): Promise<ThreadModelPin | ReturnType<typeof badRequestMessage>> {
+  const { db, orgId, userId, modelSelection } = params;
+  if (modelSelection.modelProviderId !== MODEL_FIRST_SELECTION_PROVIDER_ID) {
+    const available = await modelProviderPinAvailable({
+      db,
+      orgId,
+      userId,
+      modelProviderId: modelSelection.modelProviderId,
+    });
+    if (!available) {
+      return badRequestMessage("Unknown model provider for this workspace");
+    }
+    return {
+      modelProviderId: modelSelection.modelProviderId,
+      modelProviderType: null,
+      modelProviderCredentialScope: null,
+      selectedModel: modelSelection.selectedModel,
+    };
+  }
+
   const [policy] = await db
     .select({
       model: orgModelPolicies.model,
@@ -870,7 +883,7 @@ async function resolveModelSelectionPin(
     .where(
       and(
         eq(orgModelPolicies.orgId, orgId),
-        eq(orgModelPolicies.model, selectedModel),
+        eq(orgModelPolicies.model, modelSelection.selectedModel),
       ),
     )
     .limit(1);
@@ -879,7 +892,7 @@ async function resolveModelSelectionPin(
       modelProviderId: null,
       modelProviderType: null,
       modelProviderCredentialScope: null,
-      selectedModel,
+      selectedModel: modelSelection.selectedModel,
     };
   }
   return {
@@ -888,6 +901,45 @@ async function resolveModelSelectionPin(
     modelProviderCredentialScope: policy.credentialScope,
     selectedModel: policy.model,
   };
+}
+
+async function resolveStoredModelFirstPin(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly pin: ThreadModelPin;
+}): Promise<
+  | ThreadModelPin
+  | ReturnType<typeof providerDeleted>
+  | ReturnType<typeof badRequestMessage>
+> {
+  if (!params.pin.selectedModel) {
+    return params.pin;
+  }
+  if (params.pin.modelProviderId) {
+    const available = await modelProviderPinAvailable({
+      db: params.db,
+      orgId: params.orgId,
+      userId: params.userId,
+      modelProviderId: params.pin.modelProviderId,
+    });
+    if (!available) {
+      return providerDeleted();
+    }
+    return params.pin;
+  }
+  if (params.pin.modelProviderType || params.pin.modelProviderCredentialScope) {
+    return params.pin;
+  }
+  return resolveModelSelectionPin({
+    db: params.db,
+    orgId: params.orgId,
+    userId: params.userId,
+    modelSelection: {
+      modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+      selectedModel: params.pin.selectedModel,
+    },
+  });
 }
 
 async function persistThreadPinIfUnset(
@@ -916,63 +968,41 @@ async function resolveRunModelPin(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly threadId: string;
-  readonly agent: AgentForChatSend;
-  readonly modelFirst: boolean;
   readonly modelSelection: IncomingModelSelection;
   readonly forceNewSession: boolean;
-}): Promise<ThreadModelPin | ReturnType<typeof providerDeleted>> {
-  if (params.modelFirst) {
-    const existing = params.forceNewSession
-      ? null
-      : await existingModelFirstThreadPin(params.db, params.threadId);
-    if (existing) {
-      return persistThreadPinIfUnset(params.db, params.threadId, existing);
+}): Promise<
+  | ThreadModelPin
+  | ReturnType<typeof providerDeleted>
+  | ReturnType<typeof badRequestMessage>
+> {
+  const existing = params.forceNewSession
+    ? null
+    : await existingModelFirstThreadPin(params.db, params.threadId);
+  if (existing) {
+    const pin = await resolveStoredModelFirstPin({
+      db: params.db,
+      orgId: params.orgId,
+      userId: params.userId,
+      pin: existing,
+    });
+    if ("status" in pin) {
+      return pin;
     }
-    const pin = params.modelSelection
-      ? await resolveModelSelectionPin(
-          params.db,
-          params.orgId,
-          params.modelSelection.selectedModel,
-        )
-      : await defaultModelFirstPin(params.db, params.orgId, params.userId);
     return persistThreadPinIfUnset(params.db, params.threadId, pin);
   }
 
-  if (params.modelSelection !== undefined && params.modelSelection !== null) {
-    const pin = {
-      modelProviderId: params.modelSelection.modelProviderId,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: params.modelSelection.selectedModel,
-    };
-    await params.db
-      .update(chatThreads)
-      .set({ ...pin, updatedAt: nowDate() })
-      .where(eq(chatThreads.id, params.threadId));
-    return pin;
-  }
-
-  const stored = await getStoredThreadModelPin(params.db, params.threadId);
-  if (stored) {
-    if (
-      stored.modelProviderId &&
-      !(await modelProviderPinAvailable({
+  const pin = params.modelSelection
+    ? await resolveModelSelectionPin({
         db: params.db,
         orgId: params.orgId,
         userId: params.userId,
-        modelProviderId: stored.modelProviderId,
-      }))
-    ) {
-      return providerDeleted();
-    }
-    return stored;
+        modelSelection: params.modelSelection,
+      })
+    : await defaultModelFirstPin(params.db, params.orgId, params.userId);
+  if ("status" in pin) {
+    return pin;
   }
-  return {
-    modelProviderId: params.agent.modelProviderId,
-    modelProviderType: null,
-    modelProviderCredentialScope: null,
-    selectedModel: params.agent.selectedModel,
-  };
+  return persistThreadPinIfUnset(params.db, params.threadId, pin);
 }
 
 async function validateModelSelection(params: {
@@ -981,25 +1011,19 @@ async function validateModelSelection(params: {
   readonly userId: string;
   readonly threadId: string | undefined;
   readonly modelSelection: IncomingModelSelection;
-  readonly modelFirst: boolean;
   readonly forceNewSession: boolean;
 }): Promise<ReturnType<typeof badRequestMessage> | undefined> {
-  if (params.modelSelection && !params.modelFirst) {
-    const [provider] = await params.db
-      .select({ id: modelProviders.id })
-      .from(modelProviders)
-      .where(
-        and(
-          eq(modelProviders.id, params.modelSelection.modelProviderId),
-          eq(modelProviders.orgId, params.orgId),
-          or(
-            eq(modelProviders.userId, params.userId),
-            eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-          ),
-        ),
-      )
-      .limit(1);
-    if (!provider) {
+  if (
+    params.modelSelection &&
+    params.modelSelection.modelProviderId !== MODEL_FIRST_SELECTION_PROVIDER_ID
+  ) {
+    const available = await modelProviderPinAvailable({
+      db: params.db,
+      orgId: params.orgId,
+      userId: params.userId,
+      modelProviderId: params.modelSelection.modelProviderId,
+    });
+    if (!available) {
       return badRequestMessage("Unknown model provider for this workspace");
     }
   }
@@ -1012,9 +1036,10 @@ async function validateModelSelection(params: {
     return undefined;
   }
 
-  const existing = params.modelFirst
-    ? await existingModelFirstThreadPin(params.db, params.threadId)
-    : await getStoredThreadModelPin(params.db, params.threadId);
+  const existing = await existingModelFirstThreadPin(
+    params.db,
+    params.threadId,
+  );
   if (!existing?.selectedModel) {
     return undefined;
   }
@@ -1054,11 +1079,15 @@ async function maybePersistExplicitModelFirstSelection(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly threadId: string;
-  readonly modelFirst: boolean;
   readonly modelSelection: IncomingModelSelection;
   readonly forceNewSession: boolean;
 }): Promise<boolean> {
-  if (!params.modelFirst || !params.modelSelection) {
+  if (!params.modelSelection) {
+    return false;
+  }
+  if (
+    params.modelSelection.modelProviderId !== MODEL_FIRST_SELECTION_PROVIDER_ID
+  ) {
     return false;
   }
   const existing = params.forceNewSession
@@ -1110,7 +1139,7 @@ async function resolveThread(params: {
   readonly agentId: string;
   readonly existingThreadId: string | undefined;
   readonly clientThreadId: string | undefined;
-  readonly agentPin: ThreadModelPin;
+  readonly initialPin: ThreadModelPin;
   readonly forceNewSession: boolean;
 }): Promise<ResolvedThread | ReturnType<typeof notFound>> {
   if (!params.existingThreadId) {
@@ -1118,7 +1147,7 @@ async function resolveThread(params: {
       userId: params.userId,
       agentId: params.agentId,
       clientThreadId: params.clientThreadId,
-      pin: params.agentPin,
+      pin: params.initialPin,
     });
     return {
       threadId: thread.id,
@@ -1617,8 +1646,6 @@ const prepareNormalSend$ = command(
       return forbidden("Only the private agent owner can run this agent");
     }
 
-    const useModelFirst = await modelFirstEnabled(get, args.orgId, args.userId);
-    signal.throwIfAborted();
     const forceNewSession = args.body.forceNewSession === true;
     const modelError = await validateModelSelection({
       db,
@@ -1626,7 +1653,6 @@ const prepareNormalSend$ = command(
       userId: args.userId,
       threadId: args.body.threadId,
       modelSelection: args.body.modelSelection,
-      modelFirst: useModelFirst,
       forceNewSession,
     });
     signal.throwIfAborted();
@@ -1645,29 +1671,13 @@ const prepareNormalSend$ = command(
       return goalSetup;
     }
 
-    const eagerPin = args.body.threadId
-      ? {
-          modelProviderId: agent.modelProviderId,
-          modelProviderType: null,
-          modelProviderCredentialScope: null,
-          selectedModel: agent.selectedModel,
-        }
-      : useModelFirst
-        ? await defaultModelFirstPin(db, args.orgId, args.userId)
-        : {
-            modelProviderId: agent.modelProviderId,
-            modelProviderType: null,
-            modelProviderCredentialScope: null,
-            selectedModel: agent.selectedModel,
-          };
-
     const thread = await resolveThread({
       db,
       userId: args.userId,
       agentId: args.body.agentId,
       existingThreadId: args.body.threadId,
       clientThreadId: args.body.clientThreadId,
-      agentPin: eagerPin,
+      initialPin: emptyModelFirstThreadPin(),
       forceNewSession,
     });
     signal.throwIfAborted();
@@ -1689,7 +1699,6 @@ const prepareNormalSend$ = command(
         orgId: args.orgId,
         userId: args.userId,
         threadId: thread.threadId,
-        modelFirst: useModelFirst,
         modelSelection: args.body.modelSelection,
         forceNewSession,
       });
@@ -1698,7 +1707,6 @@ const prepareNormalSend$ = command(
     return {
       db,
       agent,
-      modelFirst: useModelFirst,
       forceNewSession,
       goalSetup,
       thread,
@@ -1863,8 +1871,6 @@ const createNormalChatRun$ = command(
       orgId: args.orgId,
       userId: args.userId,
       threadId: prepared.thread.threadId,
-      agent: prepared.agent,
-      modelFirst: prepared.modelFirst,
       modelSelection: args.body.modelSelection,
       forceNewSession: prepared.forceNewSession,
     });

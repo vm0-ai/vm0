@@ -1,21 +1,16 @@
 /**
- * Regression tests for the agent-vs-workspace default labeling and the
- * "Use default" reset option in ModelProviderPicker.
+ * Regression tests for model-first picker defaults.
  *
  * Background (refactor/chat-optimization):
- *   Bug 1 — when an agent did not specify a default, the picker fell back to
- *   the workspace default but mislabeled it as "Agent default".
- *   Bug 2 — the INHERIT_SENTINEL item was removed, so a user who had
- *   overridden the model had no way to revert to the inherited default.
+ *   The inherited user/workspace default should resolve the trigger display,
+ *   but it should not appear as a separate "Use default" option in the menu.
  *
  * These tests exercise the picker via the agent chat page entry point so
  * signals, MSW handlers, and rendering all run for real — only the Web API
  * is mocked, per project testing principles.
  *
- * Agent-has-a-model tests wait on `document.title` (set by the same reactive
- * chain that feeds the picker) to confirm the agent data has propagated
- * before asserting on the trigger label — the pattern used throughout
- * `chat-default-model-resolution.test.tsx`.
+ * Agent model fields are intentionally ignored: model-first uses the user's
+ * model preference first, then the workspace default.
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
@@ -36,6 +31,10 @@ import {
   setMockOnboardingStatus,
   resetMockOnboardingStatus,
 } from "../../../mocks/handlers/api-onboarding.ts";
+import {
+  resetMockUserModelPreference,
+  setMockUserModelPreference,
+} from "../../../mocks/handlers/api-user-model-preference.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -99,9 +98,8 @@ function setupProviders() {
 
 /**
  * Wait for the agent chat page to finish initialising. `document.title` is
- * updated by the same reactive chain (`currentChatAgent$` -> display name)
- * that feeds the picker's `agentDefault` prop, so once the title contains
- * the agent name, the picker has received the agent-level default.
+ * updated by the same reactive chain (`currentChatAgent$` -> display name),
+ * so once the title contains the agent name, the chat page has initialised.
  */
 async function expectAgentChatLoaded(): Promise<void> {
   await waitFor(() => {
@@ -119,16 +117,15 @@ async function openPickerOnAgentChat(
   });
   await user.click(trigger);
   await waitFor(() => {
-    expect(
-      screen.getByRole("option", { name: /Use .+ default/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
   });
 }
 
-describe("model-provider-picker - agent/workspace default source", () => {
+describe("model-provider-picker - user/workspace default source", () => {
   beforeEach(() => {
     resetMockOrgModelProviders();
     resetMockOnboardingStatus();
+    resetMockUserModelPreference();
     setMockFeatureSwitches({});
     // Pin currentChatAgentId$ resolution to the test agent so route setup
     // on `/agents/:id/chat` doesn't race with the default-agent lookup.
@@ -136,38 +133,32 @@ describe("model-provider-picker - agent/workspace default source", () => {
     setupProviders();
   });
 
-  // MPKR-AD-002: Chat picker uses inheritLabel="agent", so the badge and
-  // toggle always say "Agent default" even when the agent has no model set
-  // and the resolved default comes from the workspace.
-  it("shows model options without default badge in chat context (MPKR-AD-002)", async () => {
+  it("does not show default badges in chat context (MPKR-AD-002)", async () => {
     const user = userEvent.setup();
     mockAgentWith({ modelProviderId: null, selectedModel: null });
 
     await openPickerOnAgentChat(user, "Claude Sonnet 4.6");
 
-    // Model items no longer carry a default badge — the toggle row
-    // already communicates which model is the inherited default.
+    expect(screen.queryByLabelText(/Use .+ default model/)).toBeNull();
     expect(screen.queryByText("Agent default")).not.toBeInTheDocument();
     expect(screen.queryByText("Workspace default")).not.toBeInTheDocument();
   });
 
-  // MPKR-AD-004: The inherit toggle in chat shows "Use agent default" with
-  // the effective model name.
-  it("toggle shows 'Use agent default' with model name (MPKR-AD-004)", async () => {
+  // MPKR-AD-004: Default inheritance is implicit; the menu opens directly on
+  // model options instead of a "Use workspace default" toggle.
+  it("does not show a workspace default toggle (MPKR-AD-004)", async () => {
     const user = userEvent.setup();
     mockAgentWith({ modelProviderId: null, selectedModel: null });
 
     await openPickerOnAgentChat(user, "Claude Sonnet 4.6");
 
-    const toggle = screen.getByLabelText("Use agent default model");
-    expect(toggle).toBeInTheDocument();
+    expect(screen.queryByLabelText("Use workspace default model")).toBeNull();
+    expect(screen.getByText("Models")).toBeInTheDocument();
     expect(screen.getAllByText("Claude Sonnet 4.6").length).toBeGreaterThan(0);
   });
 
-  // MPKR-AD-005: When the agent specifies its own default (Opus 4.7), the
-  // picker trigger shows the agent model — not the workspace default. This
-  // pins the primary regression scenario for Bug 1 (agent default mislabel).
-  it("trigger shows the agent model when the agent specifies one (MPKR-AD-005)", async () => {
+  // MPKR-AD-005: Agent model fields no longer affect the picker.
+  it("ignores an agent model and shows the workspace default (MPKR-AD-005)", async () => {
     mockAgentWith({
       modelProviderId: ANTHROPIC_PROVIDER_ID,
       selectedModel: "claude-opus-4-7",
@@ -178,16 +169,19 @@ describe("model-provider-picker - agent/workspace default source", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("combobox", { name: "Claude Opus 4.7" }),
+        screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
       ).toBeInTheDocument();
     });
   });
 
-  // MPKR-AD-006: Opening the dropdown when the agent has its own model still
-  // surfaces the "Use agent default" toggle, reflecting the agent's model
-  // (Opus 4.7) — not the workspace default (Sonnet 4.6).
-  it("toggle reflects the agent model as the inherited default (MPKR-AD-006)", async () => {
+  // MPKR-AD-006: A user preference becomes the inherited trigger value without
+  // surfacing a separate personal-default option.
+  it("uses the user preference without showing a personal default option (MPKR-AD-006)", async () => {
     const user = userEvent.setup();
+    setMockUserModelPreference({
+      selectedModel: "claude-opus-4-7",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
     mockAgentWith({
       modelProviderId: ANTHROPIC_PROVIDER_ID,
       selectedModel: "claude-opus-4-7",
@@ -201,13 +195,11 @@ describe("model-provider-picker - agent/workspace default source", () => {
     });
     await user.click(trigger);
 
-    const toggle = await waitFor(() => {
-      return screen.getByLabelText("Use agent default model");
+    await waitFor(() => {
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
     });
-    expect(toggle).toBeInTheDocument();
-    // The toggle row must show the agent's model as the inherited value,
-    // and the Sonnet-based workspace default must not leak through as the
-    // inherited label.
+    expect(screen.queryByLabelText("Use personal default model")).toBeNull();
+    expect(screen.getByText("Models")).toBeInTheDocument();
     expect(screen.getAllByText("Claude Opus 4.7").length).toBeGreaterThan(0);
   });
 });

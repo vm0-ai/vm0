@@ -37,9 +37,6 @@ export const createOrgScheduleFromForm$ = command(
         timezone: values.timezone,
         intervalSeconds: values.loopMinutes * 60,
         agentId: values.agentId,
-        modelProviderId: values.modelProviderId,
-        selectedModel: values.selectedModel,
-        preferPersonalProvider: values.preferPersonalProvider,
         ...(values.freq === "every_week"
           ? { dayOfWeek: values.dayOfWeek }
           : {}),

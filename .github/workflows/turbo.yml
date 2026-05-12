@@ -718,6 +718,7 @@ jobs:
           web-url: ${{ needs.prepare.outputs.web-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-url: ${{ needs.prepare.outputs.web-preview-url }}
+          api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -808,6 +809,7 @@ jobs:
           web-url: ${{ needs.prepare.outputs.web-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-url: ${{ needs.prepare.outputs.web-preview-url }}
+          api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -1675,6 +1677,34 @@ jobs:
           path: /tmp
       - name: Setup test token
         run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-runner.json ~/.vm0/config.json
+      - name: Reset model-first defaults
+        run: |
+          set -euo pipefail
+          token="$(jq -r '.token // empty' ~/.vm0/config.json)"
+          if [ -z "$token" ]; then
+            echo "::error::Missing runner E2E token"
+            exit 1
+          fi
+
+          headers=(-H "Authorization: Bearer ${token}" -H "Content-Type: application/json")
+          if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
+            headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
+          fi
+
+          payload="$(jq -nc '{
+            policies: [
+              {model: "claude-opus-4-7", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
+              {model: "claude-sonnet-4-6", isDefault: true, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
+              {model: "deepseek-v4-pro", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
+              {model: "gpt-5.5", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null}
+            ]
+          }')"
+
+          curl -fsS "${headers[@]}" -X PUT -d "$payload" "${VM0_API_URL}/api/zero/model-policies" >/dev/null
+          curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null}' "${VM0_API_URL}/api/zero/user-model-preference" >/dev/null
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap test account
         run: |
           zero org model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"

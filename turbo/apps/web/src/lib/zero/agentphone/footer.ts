@@ -3,7 +3,7 @@ import { getModelDisplayName } from "@vm0/core/model-display-name";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { getOrgDefaultModelProvider } from "../model-provider/model-provider-service";
+import { ensureOrgModelPolicies } from "../model-policy/org-model-policy-service";
 import { resolveDefaultAgentId } from "../resolve-default-agent";
 
 function plainLabel(value: string | null | undefined): string | undefined {
@@ -66,14 +66,23 @@ async function resolveRunSelectedModel(
   return row?.selectedModel ?? undefined;
 }
 
+async function resolveWorkspaceDefaultModel(
+  orgId: string,
+): Promise<string | undefined> {
+  const policies = await ensureOrgModelPolicies(orgId);
+  return (
+    policies.find((policy) => {
+      return policy.isDefault;
+    })?.model ?? undefined
+  );
+}
+
 async function resolveModelLabel(
   orgId: string,
   runId: string,
 ): Promise<string | undefined> {
   const selectedModel = await resolveRunSelectedModel(runId);
-  const model =
-    selectedModel ??
-    (await getOrgDefaultModelProvider(orgId, "claude-code"))?.selectedModel;
+  const model = selectedModel ?? (await resolveWorkspaceDefaultModel(orgId));
 
   return model ? getModelDisplayName(model) : undefined;
 }

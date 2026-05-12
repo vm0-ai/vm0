@@ -350,7 +350,7 @@ export function buildHelpMessage(opts?: {
     ? "\n\u2022 `/zero switch` - Choose which agent responds to your messages"
     : "";
   const modelLine = canModel
-    ? "\n\u2022 `/zero model` - Choose your personal default model"
+    ? "\n\u2022 `/zero model` - Choose your model"
     : "";
   return [
     {
@@ -642,7 +642,7 @@ export function buildModelPickerModal(args: {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: "Choose your personal default model. This only affects your own runs.",
+          text: "Choose your model. This only affects your own runs.",
         },
       },
       {

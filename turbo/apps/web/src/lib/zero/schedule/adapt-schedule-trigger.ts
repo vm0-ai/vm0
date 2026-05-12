@@ -14,8 +14,6 @@ interface ScheduleTriggerContext {
   triggerType: string;
   cronExpression: string | undefined;
   timezone: string;
-  modelProviderId?: string | null;
-  selectedModel?: string | null;
   apiStartTime: number;
 }
 
@@ -31,8 +29,6 @@ export function adaptScheduleTrigger(
     triggerSource: "schedule",
     apiStartTime: ctx.apiStartTime,
     callbacks: buildScheduleCallbacks(ctx),
-    modelProviderId: ctx.modelProviderId ?? undefined,
-    selectedModelOverride: ctx.selectedModel ?? undefined,
   };
 }
 

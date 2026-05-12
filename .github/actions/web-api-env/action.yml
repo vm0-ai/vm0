@@ -33,6 +33,10 @@ inputs:
     description: "Preview or production API URL"
     required: false
     default: ""
+  api-backend-url:
+    description: "Backend API URL used by web proxy routes"
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -48,6 +52,7 @@ runs:
         INPUT_WEB_URL: ${{ inputs.web-url }}
         INPUT_APP_URL: ${{ inputs.app-url }}
         INPUT_API_URL: ${{ inputs.api-url }}
+        INPUT_API_BACKEND_URL: ${{ inputs.api-backend-url }}
       run: |
         set -euo pipefail
 
@@ -118,6 +123,7 @@ runs:
           web_url="${INPUT_WEB_URL:-https://www.vm0.ai}"
           app_url="${INPUT_APP_URL:-https://app.vm0.ai}"
           api_url="${INPUT_API_URL:-$(repo_var VM0_API_URL)}"
+          api_backend_url="$(first_non_empty "$INPUT_API_BACKEND_URL" "$(repo_var VM0_API_BACKEND_URL)")"
           axiom_dataset_suffix="prod"
           deploy_env="production"
           runner_default_group="vm0/production"
@@ -129,6 +135,7 @@ runs:
           web_url="$INPUT_WEB_URL"
           app_url="$INPUT_APP_URL"
           api_url="$INPUT_API_URL"
+          api_backend_url="$INPUT_API_BACKEND_URL"
           axiom_dataset_suffix="dev"
           deploy_env="preview"
           runner_default_group="vm0/development-${INPUT_JOB_REF}"
@@ -139,6 +146,9 @@ runs:
         fi
 
         add_env VM0_API_URL "$api_url"
+        if [[ -n "$api_backend_url" ]]; then
+          add_env VM0_API_BACKEND_URL "$api_backend_url"
+        fi
         if [[ "$INPUT_APP" == "api" ]]; then
           add_env VM0_WEB_URL "$web_url"
           add_env ENV "$deploy_env"
