@@ -839,9 +839,9 @@ describe("POST /api/zero/slack/events", () => {
         expect.objectContaining({
           connectionId,
           threadTs,
-          existingSessionId: undefined,
         }),
       );
+      expect(callbacks[0]?.payload).not.toHaveProperty("existingSessionId");
     });
   });
 
