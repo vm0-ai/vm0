@@ -68,6 +68,11 @@ const resetEnv = vi.hoisted(() => {
     vi.stubEnv("RESEND_API_KEY", "re_test_api_key");
     vi.stubEnv("RESEND_WEBHOOK_SECRET", "whsec_test_webhook_secret");
     vi.stubEnv("RESEND_FROM_DOMAIN", "vm7.bot");
+    // AgentPhone official iMessage integration
+    vi.stubEnv("AGENTPHONE_API_KEY", "test-agentphone-api-key");
+    vi.stubEnv("AGENTPHONE_API_BASE_URL", "https://api.agentphone.to");
+    vi.stubEnv("AGENTPHONE_IMESSAGE_NUMBER", "+19039853128");
+    vi.stubEnv("AGENTPHONE_WEBHOOK_SECRET", "test-agentphone-webhook-secret");
     // GitHub App integration test vars
     vi.stubEnv("GITHUB_APP_ID", "123456");
     vi.stubEnv("GITHUB_APP_SLUG", "vm0-test-app");

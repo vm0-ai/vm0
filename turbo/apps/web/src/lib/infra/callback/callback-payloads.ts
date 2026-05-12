@@ -19,6 +19,18 @@ export interface TelegramCallbackPayload {
   thinkingMessageId?: string | null;
 }
 
+export interface IMessageCallbackPayload {
+  messageId: string;
+  conversationId: string | null;
+  phoneHandle: string;
+  fromNumber: string;
+  toNumber: string;
+  userLinkId: string;
+  agentId: string;
+  agentphoneAgentId: string;
+  existingSessionId: string | null;
+}
+
 export interface SlackOrgCallbackPayload {
   workspaceId: string;
   channelId: string;

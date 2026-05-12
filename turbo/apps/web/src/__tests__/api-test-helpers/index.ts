@@ -190,6 +190,19 @@ export {
   telegramThreadSessionExists,
 } from "./telegram";
 export {
+  insertTestIMessageUserLink,
+  seedTestIMessageUserAgentPreference,
+  createIMessageThreadSession,
+  insertTestIMessageMessage,
+  signTestIMessageConnectParams,
+  countTestIMessageMessages,
+  findTestIMessageUserLink,
+  findTestIMessageUserLinksByVm0UserId,
+  findTestIMessageUserAgentPreference,
+  imessageThreadSessionExists,
+  findTestIMessageThreadSession,
+} from "./imessage";
+export {
   updateOrgStripeFields,
   updateOrgAutoRecharge,
   updateOrgStripeSubscription,

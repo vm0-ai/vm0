@@ -5,6 +5,7 @@
 type IntegrationPlatform =
   | "Email"
   | "GitHub"
+  | "iMessage"
   | "Schedule"
   | "Slack"
   | "Telegram"
@@ -58,6 +59,7 @@ export interface UserInfoOptions {
   telegramUsername?: string;
   telegramUserId?: string;
   telegramLanguage?: string;
+  imessageHandle?: string;
 }
 
 /**
@@ -91,6 +93,9 @@ export function buildUserInfo(options: UserInfoOptions): string {
   }
   if (options.telegramLanguage) {
     lines.push(`Telegram language: ${options.telegramLanguage}`);
+  }
+  if (options.imessageHandle) {
+    lines.push(`iMessage handle: ${options.imessageHandle}`);
   }
   return `# Current User Info\n${lines.join("\n")}`;
 }
@@ -151,6 +156,32 @@ export function buildTelegramPrompt(
   }
   if (opts.messageThreadId) {
     headerParts.push(`Message thread ID: ${opts.messageThreadId}`);
+  }
+
+  const header = headerParts.join("\n");
+  return [header, threadContext].filter(Boolean).join("\n\n");
+}
+
+/**
+ * Build the full appendSystemPrompt for iMessage integration.
+ */
+export function buildIMessagePrompt(
+  opts: {
+    sharedNumber: string;
+    phoneHandle: string;
+    conversationId?: string | null;
+    messageId?: string;
+  },
+  threadContext: string,
+): string {
+  const headerParts = [buildIntegrationPrompt("iMessage")];
+  headerParts.push(`Shared iMessage number: ${opts.sharedNumber}`);
+  headerParts.push(`User phone handle: ${opts.phoneHandle}`);
+  if (opts.conversationId) {
+    headerParts.push(`Conversation ID: ${opts.conversationId}`);
+  }
+  if (opts.messageId) {
+    headerParts.push(`Message ID: ${opts.messageId}`);
   }
 
   const header = headerParts.join("\n");
