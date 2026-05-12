@@ -51,7 +51,11 @@ async fn main() {
 
     // Create base image
     eprintln!("== Creating base image ==");
-    create_sparse_file(&base_path, base_size);
+    if let Err(e) = create_sparse_file(&base_path, base_size) {
+        eprintln!("ERROR: {e}");
+        drop(work_dir);
+        std::process::exit(1);
+    }
 
     let workloads = vec![
         FioWorkload {
@@ -78,10 +82,11 @@ async fn main() {
 
     // --- dm-snapshot benchmark ---
     eprintln!("== Benchmarking dm-snapshot ==");
+    cleanup_stale_dm_mappings();
     let dm_name = work_dir_path
         .file_name()
         .and_then(|name| name.to_str())
-        .map(|name| format!("bench-cow-{name}"))
+        .map(|name| format!("bench-cow-{}-{name}", std::process::id()))
         .unwrap_or_else(|| format!("bench-cow-{}", std::process::id()));
     let dm_results = match run_dm_snapshot_bench(
         work_dir_path,
@@ -283,8 +288,8 @@ fn run_dm_snapshot_bench(
     let mut base_loop = LoopDeviceGuard::attach(base_path, true)?;
 
     for wl in workloads {
-        create_sparse_file(&cow_path, base_size);
         let _cow_file_cleanup = TempFileCleanup::new(cow_path.clone());
+        create_sparse_file(&cow_path, base_size)?;
         let mut cow_loop = LoopDeviceGuard::attach(&cow_path, false)?;
 
         let table = format!(
@@ -474,15 +479,12 @@ fn detect_host_disk() -> String {
     "nvme0n1".to_string()
 }
 
-fn create_sparse_file(path: &Path, size: u64) {
-    let f = std::fs::File::create(path).unwrap_or_else(|e| {
-        eprintln!("Failed to create {}: {e}", path.display());
-        std::process::exit(1);
-    });
-    f.set_len(size).unwrap_or_else(|e| {
-        eprintln!("Failed to set file size: {e}");
-        std::process::exit(1);
-    });
+fn create_sparse_file(path: &Path, size: u64) -> Result<(), String> {
+    let f = std::fs::File::create(path)
+        .map_err(|e| format!("failed to create {}: {e}", path.display()))?;
+    f.set_len(size)
+        .map_err(|e| format!("failed to set {} size: {e}", path.display()))?;
+    Ok(())
 }
 
 fn parse_fio_json(stdout: &[u8]) -> Result<FioResult, String> {
@@ -691,6 +693,39 @@ fn tool_exists(name: &str) -> bool {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
+}
+
+fn cleanup_stale_dm_mappings() {
+    let Ok(output) = Command::new("dmsetup").arg("ls").output() else {
+        return;
+    };
+    if !output.status.success() {
+        return;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let Some(name) = line.split_whitespace().next() else {
+            continue;
+        };
+        let Some(pid) = bench_dm_owner_pid(name) else {
+            continue;
+        };
+        if std::path::Path::new(&format!("/proc/{pid}")).exists() {
+            continue;
+        }
+
+        eprintln!("  Cleaning up stale dm mapping {name} (owner pid={pid})...");
+        let _ = run_cmd("dmsetup", &["remove", name]);
+    }
+}
+
+fn bench_dm_owner_pid(name: &str) -> Option<u32> {
+    name.strip_prefix("bench-cow-")?
+        .split('-')
+        .next()?
+        .parse()
+        .ok()
 }
 
 /// Try to disconnect NBD devices owned by our process that still have a non-zero
@@ -972,5 +1007,20 @@ mod tests {
         let err = parse_fio_json(b"not json").unwrap_err();
 
         assert!(err.contains("parse fio JSON"), "{err}");
+    }
+
+    #[test]
+    fn bench_dm_owner_pid_parses_pid_from_bench_mapping_name() {
+        assert_eq!(
+            bench_dm_owner_pid("bench-cow-1234-nbd-cow-bench-abcd"),
+            Some(1234)
+        );
+    }
+
+    #[test]
+    fn bench_dm_owner_pid_rejects_non_bench_or_invalid_names() {
+        assert_eq!(bench_dm_owner_pid("other-1234-nbd-cow-bench-abcd"), None);
+        assert_eq!(bench_dm_owner_pid("bench-cow-nbd-cow-bench-abcd"), None);
+        assert_eq!(bench_dm_owner_pid("bench-cow-"), None);
     }
 }
