@@ -419,16 +419,14 @@ fn log_process_log_reader_join(
     result: Result<(), tokio::task::JoinError>,
     after_abort: bool,
 ) {
-    if let Err(e) = result {
-        if after_abort && e.is_cancelled() {
-            trace!(stream = stream.name(), "process log reader aborted");
-        } else {
-            warn!(
-                stream = stream.name(),
-                error = %e,
-                "process log reader task exited unexpectedly"
-            );
-        }
+    if let Err(e) = result
+        && !(after_abort && e.is_cancelled())
+    {
+        warn!(
+            stream = stream.name(),
+            error = %e,
+            "process log reader task exited unexpectedly"
+        );
     }
 }
 

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use tokio::sync::watch;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use crate::api::ApiClient;
 use crate::sandbox::SandboxState;
@@ -98,7 +98,7 @@ async fn run_loop(api_sock: PathBuf, memory_mb: u32, mut state_rx: watch::Receiv
     let client = ApiClient::new(&api_sock);
     let max_inflate = memory_mb.saturating_sub(MIN_GUEST_MIB);
     if max_inflate == 0 {
-        debug!(
+        info!(
             memory_mb,
             MIN_GUEST_MIB, "balloon controller disabled: memory_mb <= MIN_GUEST_MIB"
         );
@@ -119,7 +119,6 @@ async fn run_loop(api_sock: PathBuf, memory_mb: u32, mut state_rx: watch::Receiv
                 tick_count += 1;
             }
             _ = wait_for_crash_or_stop(&mut state_rx) => {
-                debug!("balloon controller exiting: VM stopped or crashed");
                 return;
             }
         }
@@ -216,7 +215,7 @@ fn read_host_meminfo() -> Option<(u64, u64)> {
     let content = match std::fs::read_to_string("/proc/meminfo") {
         Ok(c) => c,
         Err(e) => {
-            debug!(error = %e, "failed to read /proc/meminfo");
+            warn!(error = %e, "failed to read /proc/meminfo");
             return None;
         }
     };
