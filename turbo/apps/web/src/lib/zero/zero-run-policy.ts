@@ -8,6 +8,7 @@ import {
 } from "@vm0/api-services/errors";
 import {
   MODEL_PROVIDER_TYPES,
+  type ModelProviderCredentialScope,
   type ModelProviderFramework,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
