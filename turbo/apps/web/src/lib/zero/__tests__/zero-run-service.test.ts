@@ -17,7 +17,7 @@ import {
   getTestUserPreferencesAll,
   updateTestUserPreferencesAll,
   createTestOrgModelProvider,
-  disableModelFirstModelProviderForUser,
+  insertOrgDefaultModelProvider,
 } from "../../../__tests__/api-test-helpers";
 import {
   clearComposeHeadVersion,
@@ -61,7 +61,7 @@ describe("createZeroRun() — service-only parameters", () => {
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
-    await disableModelFirstModelProviderForUser(user.orgId, user.userId);
+    await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
     const agentName = uniqueId("agent");
     await createTestCompose(agentName);
     agentId = await getTestZeroAgentId(user.orgId, agentName);
@@ -364,6 +364,7 @@ describe("createZeroRun() — service-only parameters", () => {
           environment: { OPENAI_API_KEY: "test-api-key" },
         },
       });
+      await insertOrgDefaultModelProvider(user.orgId, "openai-api-key");
       const codexAgentId = await getTestZeroAgentId(user.orgId, agentName);
       await bindCustomSkillToAgent(codexAgentId, "my-skill");
 
@@ -408,6 +409,7 @@ describe("createZeroRun() — service-only parameters", () => {
         codexBeta: true,
       });
       await createTestOrgModelProvider("openai-api-key", "org-openai-key");
+      await insertOrgDefaultModelProvider(user.orgId, "openai-api-key");
 
       const result = await createZeroRun(
         baseParams({ agentId: providerCodexAgentId }),
@@ -660,7 +662,7 @@ describe("createZeroRun() — service-only parameters", () => {
       await createTestCompose(agentName);
       await createTestZeroAgent(user.orgId, agentName, {
         displayName: "ModelBot",
-        selectedModel: "test-model-from-agent",
+        selectedModel: "claude-sonnet-4-6",
       });
       const modelAgentId = await getTestZeroAgentId(user.orgId, agentName);
 
@@ -676,7 +678,7 @@ describe("createZeroRun() — service-only parameters", () => {
 
       const zeroRun = await findTestZeroRun(result.runId);
       expect(zeroRun).toBeDefined();
-      expect(zeroRun!.selectedModel).toBe("test-model-from-agent");
+      expect(zeroRun!.selectedModel).toBe("claude-sonnet-4-6");
     });
 
     it("should let caller overrides take priority over agent defaults", async () => {
@@ -684,14 +686,15 @@ describe("createZeroRun() — service-only parameters", () => {
       await createTestCompose(agentName);
       await createTestZeroAgent(user.orgId, agentName, {
         displayName: "OverrideModelBot",
-        selectedModel: "agent-default-model",
+        selectedModel: "claude-sonnet-4-6",
       });
       const overrideAgentId = await getTestZeroAgentId(user.orgId, agentName);
 
       const result = await createZeroRun(
         baseParams({
           agentId: overrideAgentId,
-          selectedModelOverride: "caller-explicit-model",
+          selectedModelOverride: "claude-opus-4-7",
+          explicitModelFirstModelSelection: true,
           triggerSource: "slack",
         }),
       );
@@ -701,7 +704,7 @@ describe("createZeroRun() — service-only parameters", () => {
 
       const zeroRun = await findTestZeroRun(result.runId);
       expect(zeroRun).toBeDefined();
-      expect(zeroRun!.selectedModel).toBe("caller-explicit-model");
+      expect(zeroRun!.selectedModel).toBe("claude-opus-4-7");
     });
   });
 
@@ -730,6 +733,7 @@ describe("createZeroRun() — service-only parameters", () => {
           environment: { OPENAI_API_KEY: "test-api-key" },
         },
       });
+      await insertOrgDefaultModelProvider(user.orgId, "openai-api-key");
       const codexAgentId = await getTestZeroAgentId(user.orgId, agentName);
 
       const result = await createZeroRun(baseParams({ agentId: codexAgentId }));

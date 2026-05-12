@@ -17,7 +17,6 @@ import {
   insertOrgMembersEntry,
   findTestRunsByUserAndPrompt,
   createTestVolume,
-  disableModelFirstModelProviderForUser,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { createTestZeroAgent } from "../../../../../src/__tests__/db-test-seeders/agents";
 import { getTestZeroAgentId } from "../../../../../src/__tests__/db-test-assertions/agents";
@@ -46,7 +45,7 @@ const URL = "http://localhost:3000/api/zero/runs";
 
 async function setupLegacyUser(options?: { prefix?: string }) {
   const user = await context.setupUser(options);
-  await disableModelFirstModelProviderForUser(user.orgId, user.userId);
+  await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
   return user;
 }
 
@@ -157,7 +156,6 @@ describe("POST /api/zero/runs", () => {
       });
 
       const otherUser = await setupLegacyUser({ prefix: "private-runner" });
-      await disableModelFirstModelProviderForUser(user.orgId, otherUser.userId);
       mockClerk({
         userId: otherUser.userId,
         orgId: user.orgId,

@@ -24,7 +24,7 @@ import {
   findTestUsageEvent,
   setOrgCredits,
   getOrgCredits,
-  disableModelFirstModelProviderForUser,
+  insertOrgDefaultModelProvider,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { createTestEmailThreadSession } from "../../../../../../src/__tests__/db-test-seeders/email";
 import { generateReplyToken } from "../../../../../../src/lib/zero/email/handlers/shared";
@@ -58,7 +58,7 @@ describe("POST /api/webhooks/agent/complete", () => {
     reloadEnv();
     context.setupMocks();
     user = await context.setupUser();
-    await disableModelFirstModelProviderForUser(user.orgId, user.userId);
+    await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
 
     // Create compose for test runs
     const { composeId } = await createTestCompose(uniqueId("complete"));
@@ -255,11 +255,7 @@ describe("POST /api/webhooks/agent/complete", () => {
 
     it("should reject complete for run owned by different user", async () => {
       // Create another user with their own run
-      const otherUser = await context.setupUser({ prefix: "other" });
-      await disableModelFirstModelProviderForUser(
-        otherUser.orgId,
-        otherUser.userId,
-      );
+      await context.setupUser({ prefix: "other" });
       const { composeId: otherComposeId } = await createTestCompose(
         `other-compose-${Date.now()}`,
       );
@@ -1020,10 +1016,6 @@ describe("POST /api/webhooks/agent/complete", () => {
     it("should dispatch email reply callback when registered", async () => {
       // Set up an email reply callback
       const emailUser = await context.setupUser({ prefix: "email-cb" });
-      await disableModelFirstModelProviderForUser(
-        emailUser.orgId,
-        emailUser.userId,
-      );
       mockClerk({ userId: emailUser.userId });
       const { composeId, agentId } = await createTestCompose(
         uniqueId("reply-agent"),
@@ -1090,8 +1082,8 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       // Use a separate user to avoid concurrency interference
       const qUser = await context.setupUser({ prefix: "queue-drain" });
-      await disableModelFirstModelProviderForUser(qUser.orgId, qUser.userId);
       mockClerk({ userId: qUser.userId });
+      await insertOrgDefaultModelProvider(qUser.orgId, "anthropic-api-key");
       const { composeId, versionId } = await createTestCompose(
         uniqueId("drain-agent"),
       );
@@ -1151,10 +1143,6 @@ describe("POST /api/webhooks/agent/complete", () => {
     it("should dispatch schedule callbacks when registered", async () => {
       // Use a separate user for concurrency
       const schedUser = await context.setupUser({ prefix: "sched-cb" });
-      await disableModelFirstModelProviderForUser(
-        schedUser.orgId,
-        schedUser.userId,
-      );
       mockClerk({ userId: schedUser.userId });
       const agentName = uniqueId("sched-agent");
       const { composeId } = await createTestCompose(agentName);

@@ -14,7 +14,7 @@ import {
   setTestRunStatus,
   updateOrgTier,
   insertOrgMembersCacheEntry,
-  disableModelFirstModelProviderForUser,
+  insertOrgDefaultModelProvider,
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
 import type { CreateRunParams } from "../../infra/run/run-service";
@@ -43,7 +43,7 @@ const context = testContext();
 
 async function setupLegacyUser(options?: { prefix?: string }) {
   const user = await context.setupUser(options);
-  await disableModelFirstModelProviderForUser(user.orgId, user.userId);
+  await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
   return user;
 }
 
@@ -265,7 +265,6 @@ describe("run-queue-service", () => {
 
       // Bob is a different user in the same org
       const bob = await setupLegacyUser({ prefix: "test-bob" });
-      await disableModelFirstModelProviderForUser(user.orgId, bob.userId);
 
       // Bob's run gets queued (enqueue directly to bypass authorization)
       const bobRun = await enqueueRun(
@@ -467,7 +466,6 @@ describe("run-queue-service", () => {
 
       // Create second user sharing user1's org
       const user2 = await setupLegacyUser({ prefix: "test-user-2" });
-      await disableModelFirstModelProviderForUser(user.orgId, user2.userId);
 
       // user2's run gets queued in the same org
       const run2 = await enqueueRun(
@@ -502,7 +500,6 @@ describe("run-queue-service", () => {
 
       // Create second user sharing user1's org
       const user2 = await setupLegacyUser({ prefix: "test-user-2" });
-      await disableModelFirstModelProviderForUser(user.orgId, user2.userId);
 
       // user2's run gets queued in the same org
       const run2 = await enqueueRun(

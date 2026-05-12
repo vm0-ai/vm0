@@ -5,7 +5,7 @@ import { POST as sendMessage } from "../messages/route";
 import {
   createTestRequest,
   createTestCompose,
-  disableModelFirstModelProviderForUser,
+  insertOrgDefaultModelProvider,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -30,7 +30,7 @@ const context = testContext();
 
 async function setupLegacyUser(options?: { prefix?: string }) {
   const user = await context.setupUser(options);
-  await disableModelFirstModelProviderForUser(user.orgId, user.userId);
+  await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
   return user;
 }
 

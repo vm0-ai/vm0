@@ -12,7 +12,6 @@ import {
   findTestCallbacksByRunId,
   insertOrgDefaultModelProvider,
   updateOrgDefaultAgent,
-  disableModelFirstModelProviderForUser,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { createTestEmailThreadSession } from "../../../../../../src/__tests__/db-test-seeders/email";
 import { generateReplyToken } from "../../../../../../src/lib/zero/email/handlers/shared";
@@ -29,7 +28,7 @@ const mockResend = vi.mocked(new Resend(""), true);
 
 async function setupLegacyUser(options?: { prefix?: string }) {
   const user = await context.setupUser(options);
-  await disableModelFirstModelProviderForUser(user.orgId, user.userId);
+  await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
   return user;
 }
 

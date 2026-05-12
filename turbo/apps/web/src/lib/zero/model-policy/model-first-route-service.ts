@@ -3,6 +3,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   MODEL_PROVIDER_TYPES,
+  getDefaultModel,
   getSecretNameForType,
   isModelSupportedByProvider,
   isSupportedRunModel,
@@ -105,12 +106,9 @@ function validateRouteShape(route: ModelFirstRouteDescriptor): void {
     if (route.modelProviderId) {
       throw badRequest("Member-scoped model routes cannot store provider IDs");
     }
-    if (
-      route.providerType !== "claude-code-oauth-token" &&
-      route.providerType !== "codex-oauth-token"
-    ) {
+    if (route.providerType === "vm0") {
       throw badRequest(
-        `Member-scoped model routes require an OAuth provider, got "${route.providerType}"`,
+        "Built-in model routes cannot use member-scoped credentials",
       );
     }
     return;
@@ -167,6 +165,46 @@ async function getOrgProviderById(
     type,
     framework: MODEL_PROVIDER_TYPES[type].framework,
     secretName: getSecretNameForType(type) ?? null,
+    secretNames: null,
+  };
+}
+
+async function getOrgProviderByType(
+  orgId: string,
+  providerType: ModelProviderType,
+): Promise<ModelProviderInfo | null> {
+  const [row] = await globalThis.services.db
+    .select({
+      id: modelProviders.id,
+      userId: modelProviders.userId,
+      type: modelProviders.type,
+      isDefault: modelProviders.isDefault,
+      selectedModel: modelProviders.selectedModel,
+      authMethod: modelProviders.authMethod,
+      tokenExpiresAt: modelProviders.tokenExpiresAt,
+      needsReconnect: modelProviders.needsReconnect,
+      lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
+      workspaceName: modelProviders.workspaceName,
+      planType: modelProviders.planType,
+      createdAt: modelProviders.createdAt,
+      updatedAt: modelProviders.updatedAt,
+    })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        eq(modelProviders.type, providerType),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return null;
+  return {
+    ...row,
+    type: providerType,
+    framework: MODEL_PROVIDER_TYPES[providerType].framework,
+    secretName: getSecretNameForType(providerType) ?? null,
     secretNames: null,
   };
 }
@@ -259,7 +297,7 @@ async function deriveRouteFromPinnedProvider(
 ): Promise<ModelFirstRouteDescriptor> {
   const provider = await getModelProviderById(orgId, userId, modelProviderId);
   if (!provider) {
-    throw badRequest("Pinned model provider route is no longer valid");
+    throw providerDeleted();
   }
   const credentialScope =
     provider.userId === ORG_SENTINEL_USER_ID ? "org" : "member";
@@ -267,8 +305,47 @@ async function deriveRouteFromPinnedProvider(
     selectedModel,
     providerType: provider.type,
     credentialScope,
-    modelProviderId: credentialScope === "org" ? modelProviderId : null,
+    modelProviderId:
+      credentialScope === "org" && provider.type !== "vm0"
+        ? modelProviderId
+        : null,
   };
+}
+
+async function inferSelectedModelForExplicitRoute(
+  params: Pick<
+    ResolveRouteParams,
+    "orgId" | "userId" | "providerType" | "modelProviderId"
+  >,
+): Promise<SupportedRunModel> {
+  if (params.modelProviderId) {
+    const provider = await getModelProviderById(
+      params.orgId,
+      params.userId,
+      params.modelProviderId,
+    );
+    if (!provider) {
+      throw providerDeleted();
+    }
+    return canonicalizeRunModel(
+      provider.selectedModel ?? getDefaultModel(provider.type) ?? "",
+    );
+  }
+
+  if (params.providerType) {
+    const providerType = parseProviderType(params.providerType);
+    const provider =
+      providerType === "vm0" ||
+      providerType === "claude-code-oauth-token" ||
+      providerType === "codex-oauth-token"
+        ? null
+        : await getOrgProviderByType(params.orgId, providerType);
+    return canonicalizeRunModel(
+      provider?.selectedModel ?? getDefaultModel(providerType) ?? "",
+    );
+  }
+
+  throw badRequest("A model selection is required for explicit model routes");
 }
 
 async function validateModelConfigured(
@@ -283,14 +360,35 @@ async function validateModelConfigured(
   }
 }
 
+async function validatePinnedProviderExists(params: {
+  orgId: string;
+  userId: string;
+  modelProviderId?: string | null;
+}): Promise<void> {
+  if (!params.modelProviderId) return;
+  const provider = await getModelProviderById(
+    params.orgId,
+    params.userId,
+    params.modelProviderId,
+  );
+  if (!provider) {
+    throw providerDeleted();
+  }
+}
+
 export async function resolveModelFirstRouteDescriptor(
   params: ResolveRouteParams,
 ): Promise<ModelFirstRouteDescriptor> {
-  if (!params.selectedModel) {
-    return resolveUserPreferenceOrDefaultRoute(params.orgId, params.userId);
+  let selectedModelInput = params.selectedModel;
+  if (!selectedModelInput) {
+    if (!params.providerType && !params.modelProviderId) {
+      return resolveUserPreferenceOrDefaultRoute(params.orgId, params.userId);
+    }
+    selectedModelInput = await inferSelectedModelForExplicitRoute(params);
   }
 
-  const selectedModel = canonicalizeRunModel(params.selectedModel);
+  const selectedModel = canonicalizeRunModel(selectedModelInput);
+  await validatePinnedProviderExists(params);
   await validateModelConfigured(params.orgId, selectedModel);
 
   const providerType = params.providerType
@@ -302,6 +400,13 @@ export async function resolveModelFirstRouteDescriptor(
 
   let route: ModelFirstRouteDescriptor | undefined;
   if (providerType) {
+    const inferredOrgProvider =
+      !params.modelProviderId &&
+      providerType !== "vm0" &&
+      providerType !== "claude-code-oauth-token" &&
+      providerType !== "codex-oauth-token"
+        ? await getOrgProviderByType(params.orgId, providerType)
+        : null;
     route = {
       selectedModel,
       providerType,
@@ -311,7 +416,8 @@ export async function resolveModelFirstRouteDescriptor(
         providerType === "codex-oauth-token"
           ? "member"
           : "org"),
-      modelProviderId: params.modelProviderId ?? null,
+      modelProviderId:
+        params.modelProviderId ?? inferredOrgProvider?.id ?? null,
     };
   } else if (params.modelProviderId) {
     route = await deriveRouteFromPinnedProvider(

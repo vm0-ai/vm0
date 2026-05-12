@@ -7,12 +7,11 @@ import {
   createTestRequest,
   createTestCompose,
   enableModelFirstModelProviderForUser,
-  disableModelFirstModelProviderForUser,
   insertOrgModelPolicy,
   insertOrgDefaultModelProvider,
-  insertOrgNonDefaultModelProvider,
   insertUserDefaultModelProvider,
   insertUserModelPreference,
+  insertTestChatThread,
   deleteTestModelProvider,
   setTestZeroAgentModelProvider,
   setOrgCredits,
@@ -112,7 +111,6 @@ describe("POST /api/zero/chat/messages", () => {
       agentId = await getTestZeroAgentId(user.orgId, compose.name);
       vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
       reloadEnv();
-      await disableModelFirstModelProviderForUser(user.orgId, user.userId);
       await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
     });
 
@@ -1210,13 +1208,14 @@ describe("POST /api/zero/chat/messages", () => {
         expect(data.error.code).toBe("BAD_REQUEST");
       });
 
-      it("accepts first modelSelection on a freshly-created thread", async () => {
+      it("rejects later modelSelection after the default model is pinned", async () => {
         const providerId = await getTestModelProviderIdByType(
           user.orgId,
           "anthropic-api-key",
         );
 
-        // Create a thread with no modelSelection — stored values remain null.
+        // With model-first enabled, a first send without modelSelection still
+        // pins the thread to the effective default model route.
         const create = await POST(
           createTestRequest(URL, {
             method: "POST",
@@ -1235,10 +1234,10 @@ describe("POST /api/zero/chat/messages", () => {
         expect(completedRun.status).toBe("completed");
 
         const override = await getTestChatThreadModelOverride(threadId);
-        expect(override.modelProviderId).toBeNull();
-        expect(override.selectedModel).toBeNull();
+        expect(override.modelProviderId).toBe(providerId);
+        expect(override.selectedModel).toBe("claude-opus-4-7");
 
-        // First modelSelection on this thread must be accepted.
+        // A later picker value cannot change an already-pinned thread.
         const response = await POST(
           createTestRequest(URL, {
             method: "POST",
@@ -1249,15 +1248,15 @@ describe("POST /api/zero/chat/messages", () => {
               threadId,
               modelSelection: {
                 modelProviderId: providerId,
-                selectedModel: "claude-opus-4-7",
+                selectedModel: "claude-sonnet-4-6",
               },
             }),
           }),
         );
-        expect(response.status).toBe(201);
+        expect(response.status).toBe(400);
       });
 
-      it("rejects a providerId from a different org", async () => {
+      it("ignores legacy providerId ownership when model-first routes by selected model", async () => {
         // Create a second org and set up a provider under it.
         const otherContext = testContext();
         otherContext.setupMocks();
@@ -1286,18 +1285,29 @@ describe("POST /api/zero/chat/messages", () => {
             }),
           }),
         );
-        expect(response.status).toBe(400);
+        expect(response.status).toBe(201);
+        const { threadId } = await response.json();
+
+        const ownProviderId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBe(ownProviderId);
+        expect(override.selectedModel).toBe("claude-opus-4-7");
       });
     });
 
     describe("credit check with modelSelection", () => {
       it("rejects vm0 provider via modelSelection when org credits depleted", async () => {
         await setOrgCredits(user.orgId, 0);
-        await insertOrgNonDefaultModelProvider(user.orgId, "vm0");
-        const vm0ProviderId = await getTestModelProviderIdByType(
-          user.orgId,
-          "vm0",
-        );
+        await insertOrgModelPolicy({
+          orgId: user.orgId,
+          model: "claude-opus-4-7",
+          isDefault: true,
+          defaultProviderType: "vm0",
+          credentialScope: "org",
+        });
 
         const response = await POST(
           createTestRequest(URL, {
@@ -1307,7 +1317,7 @@ describe("POST /api/zero/chat/messages", () => {
               agentId,
               prompt: "should be rejected due to credits",
               modelSelection: {
-                modelProviderId: vm0ProviderId,
+                modelProviderId: randomUUID(),
                 selectedModel: "claude-opus-4-7",
               },
             }),
@@ -1561,9 +1571,9 @@ describe("POST /api/zero/chat/messages", () => {
             body: JSON.stringify({ agentId, prompt: "should fail", threadId }),
           }),
         );
-        expect(followUp.status).toBe(422);
         const data = await followUp.json();
         expect(data.error.code).toBe("PROVIDER_DELETED");
+        expect(followUp.status).toBe(422);
 
         // The thread row keeps the now-stale UUID so the resolver can
         // detect the orphan-pin state on later sends.
@@ -1572,8 +1582,12 @@ describe("POST /api/zero/chat/messages", () => {
         expect(override.selectedModel).toBe("claude-opus-4-7");
       });
 
-      it("leaves thread NULL when agent has no provider configured", async () => {
-        // Default test agent has no modelProviderId / selectedModel.
+      it("pins the default model route when agent has no provider configured", async () => {
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+
         const response = await POST(
           createTestRequest(URL, {
             method: "POST",
@@ -1585,30 +1599,24 @@ describe("POST /api/zero/chat/messages", () => {
         const { threadId } = await response.json();
 
         const override = await getTestChatThreadModelOverride(threadId);
-        expect(override.modelProviderId).toBeNull();
-        expect(override.selectedModel).toBeNull();
+        expect(override.modelProviderId).toBe(providerId);
+        expect(override.selectedModel).toBe("claude-opus-4-7");
       });
 
-      it("falls back to agent provider when legacy thread has NULL pin", async () => {
-        // Create the thread with no pin (mirrors a row from before
-        // the eager-pin migration).
-        const create = await POST(
-          createTestRequest(URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ agentId, prompt: "legacy" }),
-          }),
+      it("pins the default route when legacy thread has NULL pin", async () => {
+        const threadId = await insertTestChatThread(
+          user.userId,
+          agentId,
+          "legacy",
         );
-        expect(create.status).toBe(201);
-        const { threadId } = await create.json();
 
         const before = await getTestChatThreadModelOverride(threadId);
         expect(before.modelProviderId).toBeNull();
         expect(before.selectedModel).toBeNull();
 
         // Now pin the agent and resend without a per-run modelSelection.
-        // The send must succeed using the agent's current provider; the
-        // thread itself stays NULL until the user explicitly picks.
+        // Model-first resolves from the workspace model route and persists
+        // that route onto legacy NULL threads.
         const providerId = await getTestModelProviderIdByType(
           user.orgId,
           "anthropic-api-key",
@@ -1629,8 +1637,8 @@ describe("POST /api/zero/chat/messages", () => {
         expect(followUp.status).toBe(201);
 
         const after = await getTestChatThreadModelOverride(threadId);
-        expect(after.modelProviderId).toBeNull();
-        expect(after.selectedModel).toBeNull();
+        expect(after.modelProviderId).toBe(providerId);
+        expect(after.selectedModel).toBe("claude-opus-4-7");
       });
     });
 
@@ -1809,7 +1817,7 @@ describe("POST /api/zero/chat/messages", () => {
         expect(job!.executionContext.cliAgentType).toBe("codex");
       });
 
-      it("fails the second-message run when resolvedFramework no longer matches the conversation's framework", async () => {
+      it("keeps the second-message run on the pinned framework after the org default changes", async () => {
         const { agentId: composeAgentId } = await createTestCompose(
           uniqueId("continue-codex-mismatch"),
           { noEnvironmentBlock: true },
@@ -1845,13 +1853,8 @@ describe("POST /api/zero/chat/messages", () => {
         const { agentSessionId } = await completeTestRun(user.userId, runId);
         await setTestSessionFramework(agentSessionId, "codex");
 
-        // Flip the org default back to anthropic-api-key so the
-        // resolved framework for the second message is claude-code.
-        const codexId = await getTestModelProviderIdByType(
-          user.orgId,
-          "openai-api-key",
-        );
-        await deleteTestModelProvider(codexId);
+        // Flip the org default back to anthropic-api-key. The existing thread
+        // must continue on its pinned openai-api-key route.
         await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
 
         const second = await POST(
@@ -1865,17 +1868,13 @@ describe("POST /api/zero/chat/messages", () => {
             }),
           }),
         );
-        // Phase 1 admits the run; the framework-compat check runs in
-        // Phase 2 (deferred dispatch) and surfaces as a failed run.
         expect(second.status).toBe(201);
         const { runId: secondRunId } = await second.json();
         await context.mocks.flushAfter();
 
-        const failedRun = await getTestRun(secondRunId);
-        expect(failedRun.status).toBe("failed");
-        expect(failedRun.error).toMatch(
-          /framework changed from "codex" to "claude-code"/,
-        );
+        const job = await findTestRunnerJobEntry(secondRunId);
+        expect(job).toBeDefined();
+        expect(job!.executionContext.cliAgentType).toBe("codex");
       });
     });
 
@@ -1923,15 +1922,15 @@ describe("POST /api/zero/chat/messages", () => {
         expect(job!.executionContext.cliAgentType).toBe("codex");
       });
 
-      it("returns 422 NO_MODEL_PROVIDER when org has no default provider at all", async () => {
+      it("returns 402 INSUFFICIENT_CREDITS when only the built-in default route remains", async () => {
         const { agentId: composeAgentId } = await createTestCompose(
           uniqueId("no-default-provider"),
           { noEnvironmentBlock: true },
         );
 
-        // Wipe the beforeEach-seeded anthropic provider so the org has
-        // no isDefault: true provider for any framework — the genuine
-        // "no provider configured at all" failure mode.
+        // Wipe the beforeEach-seeded anthropic provider. With model-first on
+        // by default, the org still has the built-in vm0 model route, so
+        // admission fails on vm0 credits rather than "no provider".
         const anthropicId = await getTestModelProviderIdByType(
           user.orgId,
           "anthropic-api-key",
@@ -1948,9 +1947,9 @@ describe("POST /api/zero/chat/messages", () => {
             }),
           }),
         );
-        expect(response.status).toBe(422);
+        expect(response.status).toBe(402);
         const data = await response.json();
-        expect(data.error.code).toBe("NO_MODEL_PROVIDER");
+        expect(data.error.code).toBe("INSUFFICIENT_CREDITS");
       });
     });
 

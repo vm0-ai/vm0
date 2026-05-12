@@ -7,8 +7,8 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
-  disableModelFirstModelProviderForUser,
   enableModelFirstModelProviderForUser,
+  insertOrgDefaultModelProvider,
   insertOrgModelPolicy,
   insertUserModelPreference,
   updateOrgDefaultAgent,
@@ -76,7 +76,7 @@ describe("POST /api/zero/slack/commands", () => {
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
-    await disableModelFirstModelProviderForUser(user.orgId, user.userId);
+    await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
     reloadEnv();
   });
 
@@ -487,7 +487,7 @@ describe("POST /api/zero/slack/commands", () => {
       );
     });
 
-    it("returns an error when model-first is not enabled", async () => {
+    it("opens the model picker when model-first is enabled by default", async () => {
       const workspaceId = uniqueId("T-ws");
       const slackUserId = uniqueId("U-slack");
       await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
@@ -506,13 +506,10 @@ describe("POST /api/zero/slack/commands", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.response_type).toBe("ephemeral");
-      expect(JSON.stringify(data.blocks)).toContain("not available");
 
       const { WebClient } = await import("@slack/web-api");
       const mockClient = new WebClient();
-      expect(mockClient.views.open).not.toHaveBeenCalled();
+      expect(mockClient.views.open).toHaveBeenCalledOnce();
     });
 
     it("help output advertises model only for connected model-first users", async () => {

@@ -234,6 +234,18 @@ export async function insertOrgDefaultModelProvider(
       isDefault: true,
       selectedModel: selectedModel ?? null,
     })
+    .onConflictDoUpdate({
+      target: [
+        modelProviders.orgId,
+        modelProviders.userId,
+        modelProviders.type,
+      ],
+      set: {
+        isDefault: true,
+        selectedModel: selectedModel ?? null,
+        updatedAt: new Date(),
+      },
+    })
     .returning({ id: modelProviders.id });
   if (!row) throw new Error("insertOrgDefaultModelProvider: insert failed");
   return row.id;
@@ -527,33 +539,6 @@ export async function enableModelFirstModelProviderForUser(
       target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
       set: {
         switches: { modelFirstModelProvider: true },
-        updatedAt: new Date(),
-      },
-    });
-}
-
-/**
- * Disable the `modelFirstModelProvider` feature switch for legacy-path tests.
- *
- * @why-db-direct Tests need deterministic feature switch state now that the
- *   global rollout default is enabled.
- */
-export async function disableModelFirstModelProviderForUser(
-  orgId: string,
-  userId: string,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .insert(userFeatureSwitches)
-    .values({
-      orgId,
-      userId,
-      switches: { modelFirstModelProvider: false },
-    })
-    .onConflictDoUpdate({
-      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
-      set: {
-        switches: { modelFirstModelProvider: false },
         updatedAt: new Date(),
       },
     });

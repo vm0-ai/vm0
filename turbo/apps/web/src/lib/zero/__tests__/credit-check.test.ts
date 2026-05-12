@@ -16,7 +16,6 @@ import {
   insertTestZeroRun,
   deleteOrgRow,
   insertCreditExpiresRecord,
-  disableModelFirstModelProviderForUser,
 } from "../../../__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
 import { getTestModelProviderIdByType } from "../../../__tests__/db-test-assertions/org";
@@ -46,7 +45,6 @@ describe("credit check (infra queue path)", () => {
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
-    await disableModelFirstModelProviderForUser(user.orgId, user.userId);
     const compose = await createTestCompose(uniqueId("agent"));
     composeId = compose.composeId;
     versionId = compose.versionId;
@@ -325,23 +323,21 @@ describe("model provider check (queue dispatch path)", () => {
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
-    await disableModelFirstModelProviderForUser(user.orgId, user.userId);
     vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
     reloadEnv();
   });
 
-  it("should fail queued zero run when no model provider configured at dispatch time", async () => {
+  it("should fail queued default model-first VM0 run when credits are depleted at dispatch time", async () => {
     vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
     reloadEnv();
 
-    // Create compose WITHOUT default ANTHROPIC_API_KEY so model provider check applies
+    // Create compose WITHOUT default ANTHROPIC_API_KEY so the model-first
+    // workspace default uses the built-in VM0 route.
     const agentName = uniqueId("agent");
     const compose = await createTestCompose(agentName, {
       skipDefaultApiKey: true,
     });
     const agentId = await getTestZeroAgentId(user.orgId, agentName);
-
-    // No org-level model provider configured — checkModelProviderConfigured will throw
 
     // Create a running run to force the next one into the queue
     await seedTestRun(user.userId, compose.composeId, {
@@ -359,17 +355,18 @@ describe("model provider check (queue dispatch path)", () => {
       agentName,
     });
     await insertTestZeroRun(queued.runId);
+    await setOrgCredits(user.orgId, 0);
 
     // Mark running run as completed
     await markRunningRunsAsCompleted(user.userId);
 
-    // Drain queue — dispatchQueuedZeroRun should fail with noModelProvider
+    // Drain queue — dispatchQueuedZeroRun should fail at the VM0 credit gate.
     await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
 
-    // Run should be marked as failed with model provider error
+    // Run should be marked as failed with a credit error.
     const run = await findTestRunRecord(queued.runId);
     expect(run!.status).toBe("failed");
-    expect(run!.error).toContain("No model provider configured");
+    expect(run!.error).toContain("Insufficient credits");
   });
 });
 
@@ -379,7 +376,6 @@ describe("checkOrgCredits (general vm0 credit gate)", () => {
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
-    await disableModelFirstModelProviderForUser(user.orgId, user.userId);
   });
 
   async function expectInsufficientCredits(fn: () => Promise<void>) {
@@ -480,7 +476,6 @@ describe("checkOrgCreditsForRunAdmission (resolved provider LLM wrapper)", () =>
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
-    await disableModelFirstModelProviderForUser(user.orgId, user.userId);
   });
 
   async function expectInsufficientCredits(fn: () => Promise<void>) {

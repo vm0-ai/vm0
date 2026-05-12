@@ -13,7 +13,7 @@ import {
   setOrgCredits,
   getOrgCredits,
   insertTestUsagePricing,
-  disableModelFirstModelProviderForUser,
+  insertOrgDefaultModelProvider,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -30,7 +30,7 @@ async function setupOrg(userId: string) {
   const orgId = `org_mock_${userId}`;
   mockClerk({ userId, orgId, orgRole: "org:admin" });
   await createTestOrg(slug);
-  await disableModelFirstModelProviderForUser(orgId, userId);
+  await insertOrgDefaultModelProvider(orgId, "anthropic-api-key");
   return { slug, orgId };
 }
 
