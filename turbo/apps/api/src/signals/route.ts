@@ -81,6 +81,8 @@ import { zeroVoiceIoSpeechRoutes } from "./routes/zero-voice-io-speech";
 import { zeroVoiceIoSttRoutes } from "./routes/zero-voice-io-stt";
 import { zeroVoiceIoTtsRoutes } from "./routes/zero-voice-io-tts";
 import { zeroWebDownloadRoutes } from "./routes/zero-web-download";
+import { storagesDownloadRoutes } from "./routes/storages-download";
+import { storagesListRoutes } from "./routes/storages-list";
 import { testOAuthProviderAuthorizeRoutes } from "./routes/test-oauth-provider-authorize";
 import { testOAuthProviderEchoRoutes } from "./routes/test-oauth-provider-echo";
 import { testOAuthProviderUserinfoRoutes } from "./routes/test-oauth-provider-userinfo";
@@ -171,6 +173,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroTeamRoutes,
   ...zeroUploadsCompleteRoutes,
   ...zeroUploadsPrepareRoutes,
+  ...storagesDownloadRoutes,
+  ...storagesListRoutes,
   ...zeroUsageInsightRoutes,
   ...zeroUsageMembersRoutes,
   ...zeroUsageRunsRoutes,
