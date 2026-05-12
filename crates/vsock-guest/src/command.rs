@@ -819,6 +819,10 @@ fn duration_ms(started: Instant) -> u32 {
     u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX)
 }
 
+fn command_termination_is_notable(termination: CommandTermination) -> bool {
+    !matches!(termination, CommandTermination::Exited { exit_code: 0 })
+}
+
 fn log_command_terminal_if_notable(
     request: &CommandWorkerRequest,
     started: Instant,
@@ -829,7 +833,7 @@ fn log_command_terminal_if_notable(
 ) {
     let elapsed = started.elapsed();
     let slow = elapsed >= COMMAND_STAGE_SLOW_THRESHOLD;
-    let notable = !matches!(termination, CommandTermination::Exited { .. })
+    let notable = command_termination_is_notable(termination)
         || stdout_result.capture_truncated
         || stderr_result.capture_truncated
         || !diagnostic.is_empty();
@@ -907,6 +911,17 @@ mod tests {
             std::thread::yield_now();
         }
         panic!("command registry entry for seq={seq} was not released");
+    }
+
+    #[test]
+    fn command_termination_notable_tracks_nonzero_exit() {
+        assert!(!command_termination_is_notable(
+            CommandTermination::Exited { exit_code: 0 }
+        ));
+        assert!(command_termination_is_notable(CommandTermination::Exited {
+            exit_code: 1
+        }));
+        assert!(command_termination_is_notable(CommandTermination::TimedOut));
     }
 
     #[test]

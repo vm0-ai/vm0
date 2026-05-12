@@ -44,6 +44,7 @@ const DEFAULT_COMMAND_CAPTURE_LIMIT_BYTES: u32 = 1024 * 1024;
 const DEFAULT_COMMAND_STREAM_CAPACITY: usize = 32;
 const MAX_COMMAND_STREAM_CAPACITY: usize = 1024;
 const COMMAND_LABEL_LOG_MAX_BYTES: usize = 100;
+const COMMAND_CLOSE_ACTIVE_LOG_LIMIT: usize = 16;
 const COMMAND_FRAME_WRITE_SLOW_THRESHOLD: Duration = Duration::from_millis(500);
 const COMMAND_STAGE_SLOW_THRESHOLD: Duration = Duration::from_secs(5);
 const COMMAND_FRAME_WRITE_NOT_STARTED: u8 = 0;
@@ -743,7 +744,7 @@ fn command_protocol_error(error: impl ToString) -> io::Error {
 }
 
 fn command_termination_is_notable(termination: CommandTermination) -> bool {
-    !matches!(termination, CommandTermination::Exited { .. })
+    !matches!(termination, CommandTermination::Exited { exit_code: 0 })
 }
 
 fn command_label_log(label: &str) -> String {
@@ -793,6 +794,7 @@ fn log_command_operations_closed(reason: &'static str, operations: &[CommandOper
 
     let active_operations = operations
         .iter()
+        .take(COMMAND_CLOSE_ACTIVE_LOG_LIMIT)
         .map(|operation| {
             format!(
                 "seq={} label={} elapsed_ms={}",
@@ -803,9 +805,13 @@ fn log_command_operations_closed(reason: &'static str, operations: &[CommandOper
         })
         .collect::<Vec<_>>()
         .join(", ");
+    let active_omitted = operations
+        .len()
+        .saturating_sub(COMMAND_CLOSE_ACTIVE_LOG_LIMIT);
     tracing::warn!(
         reason = reason,
         active_count = operations.len(),
+        active_omitted,
         active_operations = %active_operations,
         "closing connection with active command operations"
     );
@@ -2151,6 +2157,17 @@ mod tests {
     fn is_connected(host: &VsockHost) -> bool {
         let guard = host.shared.state.lock().unwrap_or_else(|e| e.into_inner());
         matches!(&*guard, ConnectionState::Connected { .. })
+    }
+
+    #[test]
+    fn command_termination_notable_tracks_nonzero_exit() {
+        assert!(!command_termination_is_notable(
+            CommandTermination::Exited { exit_code: 0 }
+        ));
+        assert!(command_termination_is_notable(CommandTermination::Exited {
+            exit_code: 1
+        }));
+        assert!(command_termination_is_notable(CommandTermination::TimedOut));
     }
 
     async fn read_guest_message(stream: &mut UnixStream, decoder: &mut Decoder) -> RawMessage {
