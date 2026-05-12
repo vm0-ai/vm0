@@ -86,11 +86,10 @@ RUNNER_DIR=$2
 RUNNER_NAME=$3
 UNIT="vm0-runner-${RUNNER_NAME}.service"
 
-if [ -x "${BIN_DIR}/runner" ]; then
-  sudo "${BIN_DIR}/runner" service stop --name "${RUNNER_NAME}" --force
-else
-  sudo systemctl stop "${UNIT}" 2>/dev/null || true
-fi
+# This CI cleanup is intentionally forceful. Avoid executing the existing
+# runner binary here: a cancelled prior prepare can leave a truncated binary at
+# the final path.
+sudo systemctl stop "${UNIT}" 2>/dev/null || true
 
 if sudo systemctl is-active --quiet "${UNIT}" 2>/dev/null; then
   echo "runner service ${UNIT} is still active after stop" >&2
@@ -113,7 +112,33 @@ REMOTE_SCRIPT
     return 1
   fi
 
-  if ! ssh "$remote" sudo install -m 755 /dev/stdin "${BIN_DIR}/runner" < "${TARGET_DIR}/runner"; then
+  local tmp_runner="${BIN_DIR}/runner.${HEAD_SHA}.${host_index}.tmp"
+  if ! ssh "$remote" sudo install -m 755 /dev/stdin "${tmp_runner}" < "${TARGET_DIR}/runner"; then
+    return 1
+  fi
+
+  if ! ssh "$remote" bash -s -- "${tmp_runner}" "${BIN_DIR}/runner" "${runner_sha}" <<'REMOTE_SCRIPT'
+set -euo pipefail
+TMP_RUNNER=$1
+FINAL_RUNNER=$2
+EXPECTED_SHA=$3
+
+cleanup_tmp() {
+  sudo rm -f "${TMP_RUNNER}"
+}
+trap cleanup_tmp EXIT
+
+actual_sha=$(sudo sha256sum "${TMP_RUNNER}" | awk '{print $1}')
+if [ "${actual_sha}" != "${EXPECTED_SHA}" ]; then
+  echo "runner sha mismatch: ${actual_sha} != ${EXPECTED_SHA}" >&2
+  exit 1
+fi
+
+sudo "${TMP_RUNNER}" --version >/dev/null
+sudo mv -f "${TMP_RUNNER}" "${FINAL_RUNNER}"
+trap - EXIT
+REMOTE_SCRIPT
+  then
     return 1
   fi
 
