@@ -845,3 +845,246 @@ export const upsertUserMultiAuthModelProvider$ = command(
     };
   },
 );
+
+export const upsertOrgModelProvider$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly type: ModelProviderType;
+      readonly secret: string;
+      readonly selectedModel?: string;
+    },
+    signal: AbortSignal,
+  ) => {
+    return await set(
+      upsertUserModelProvider$,
+      {
+        orgId: args.orgId,
+        userId: ORG_SENTINEL_USER_ID,
+        type: args.type,
+        secret: args.secret,
+        selectedModel: args.selectedModel,
+      },
+      signal,
+    );
+  },
+);
+
+export const upsertOrgMultiAuthModelProvider$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly type: ModelProviderType;
+      readonly authMethod: string;
+      readonly secretValues: Record<string, string>;
+      readonly selectedModel?: string;
+      readonly metadata?: MultiAuthMetadata;
+    },
+    signal: AbortSignal,
+  ) => {
+    return await set(
+      upsertUserMultiAuthModelProvider$,
+      {
+        orgId: args.orgId,
+        userId: ORG_SENTINEL_USER_ID,
+        type: args.type,
+        authMethod: args.authMethod,
+        secretValues: args.secretValues,
+        selectedModel: args.selectedModel,
+        metadata: args.metadata,
+      },
+      signal,
+    );
+  },
+);
+
+export const upsertOrgNoSecretModelProvider$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly type: ModelProviderType;
+      readonly selectedModel?: string;
+    },
+    signal: AbortSignal,
+  ): Promise<
+    | BadRequestResponse
+    | { readonly provider: ModelProviderInfo; readonly created: boolean }
+  > => {
+    const vm0 = assertVm0OrgOnly(args.type, ORG_SENTINEL_USER_ID);
+    if (vm0) {
+      return vm0;
+    }
+
+    const writeDb = set(writeDb$);
+
+    L.debug("upserting org no-secret model provider", {
+      orgId: args.orgId,
+      type: args.type,
+      selectedModel: args.selectedModel,
+    });
+
+    const [existingProvider] = await writeDb
+      .select({ id: modelProviders.id })
+      .from(modelProviders)
+      .where(
+        and(
+          eq(modelProviders.orgId, args.orgId),
+          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+          eq(modelProviders.type, args.type),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    const [provider] = await writeDb
+      .insert(modelProviders)
+      .values({
+        type: args.type,
+        userId: ORG_SENTINEL_USER_ID,
+        isDefault: false,
+        selectedModel: args.selectedModel ?? null,
+        orgId: args.orgId,
+      })
+      .onConflictDoUpdate({
+        target: [
+          modelProviders.orgId,
+          modelProviders.userId,
+          modelProviders.type,
+        ],
+        set: {
+          selectedModel: args.selectedModel ?? null,
+          updatedAt: nowDate(),
+        },
+      })
+      .returning();
+    signal.throwIfAborted();
+
+    if (!provider) {
+      throw new Error("Expected no-secret model provider upsert to return row");
+    }
+
+    const wasCreated = !existingProvider;
+
+    let isDefault = provider.isDefault;
+    if (!isDefault) {
+      const assigned = await assignDefaultIfFirst(
+        writeDb,
+        args.orgId,
+        ORG_SENTINEL_USER_ID,
+        provider.id,
+      );
+      signal.throwIfAborted();
+      if (assigned) {
+        isDefault = true;
+      }
+    }
+
+    return {
+      provider: toModelProviderInfo({
+        id: provider.id,
+        userId: ORG_SENTINEL_USER_ID,
+        type: args.type,
+        isDefault,
+        selectedModel: provider.selectedModel,
+        tokenExpiresAt: provider.tokenExpiresAt,
+        needsReconnect: provider.needsReconnect,
+        lastRefreshErrorCode: provider.lastRefreshErrorCode,
+        workspaceName: provider.workspaceName,
+        planType: provider.planType,
+        createdAt: provider.createdAt,
+        updatedAt: provider.updatedAt,
+      }),
+      created: wasCreated,
+    };
+  },
+);
+
+export const setOrgModelProviderDefault$ = command(
+  async (
+    { set },
+    args: { readonly orgId: string; readonly type: ModelProviderType },
+    signal: AbortSignal,
+  ): Promise<NotFoundResponse | ModelProviderInfo> => {
+    const writeDb = set(writeDb$);
+    const secretName = getSecretNameForType(args.type) ?? null;
+
+    const [target] = await writeDb
+      .select()
+      .from(modelProviders)
+      .where(
+        and(
+          eq(modelProviders.orgId, args.orgId),
+          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+          eq(modelProviders.type, args.type),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!target) {
+      return notFound("Resource not found");
+    }
+
+    if (target.isDefault) {
+      return toModelProviderInfo({
+        id: target.id,
+        userId: ORG_SENTINEL_USER_ID,
+        type: args.type,
+        secretName,
+        authMethod: target.authMethod,
+        isDefault: true,
+        selectedModel: target.selectedModel,
+        tokenExpiresAt: target.tokenExpiresAt,
+        needsReconnect: target.needsReconnect,
+        lastRefreshErrorCode: target.lastRefreshErrorCode,
+        workspaceName: target.workspaceName,
+        planType: target.planType,
+        createdAt: target.createdAt,
+        updatedAt: target.updatedAt,
+      });
+    }
+
+    const updatedAt = nowDate();
+    await writeDb.transaction(async (tx) => {
+      await tx
+        .update(modelProviders)
+        .set({ isDefault: false, updatedAt })
+        .where(
+          and(
+            eq(modelProviders.orgId, args.orgId),
+            eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+            eq(modelProviders.isDefault, true),
+            ne(modelProviders.id, target.id),
+          ),
+        );
+      signal.throwIfAborted();
+
+      await tx
+        .update(modelProviders)
+        .set({ isDefault: true, updatedAt })
+        .where(eq(modelProviders.id, target.id));
+      signal.throwIfAborted();
+    });
+    signal.throwIfAborted();
+
+    return toModelProviderInfo({
+      id: target.id,
+      userId: ORG_SENTINEL_USER_ID,
+      type: args.type,
+      secretName,
+      authMethod: target.authMethod,
+      isDefault: true,
+      selectedModel: target.selectedModel,
+      tokenExpiresAt: target.tokenExpiresAt,
+      needsReconnect: target.needsReconnect,
+      lastRefreshErrorCode: target.lastRefreshErrorCode,
+      workspaceName: target.workspaceName,
+      planType: target.planType,
+      createdAt: target.createdAt,
+      updatedAt,
+    });
+  },
+);

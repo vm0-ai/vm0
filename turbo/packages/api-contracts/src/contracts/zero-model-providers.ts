@@ -41,6 +41,7 @@ export const zeroModelProvidersMainContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
+      404: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Create or update an org-level model provider (admin only)",
