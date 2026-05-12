@@ -7,6 +7,7 @@ import { zeroOrgMembersContract } from "@vm0/api-contracts/contracts/zero-org-me
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
+import { clerk$ } from "../external/clerk";
 import { badRequestMessage, notFound } from "../../lib/error";
 import type { RouteEntry } from "../route";
 import {
@@ -101,6 +102,34 @@ const listDomainsInner$ = computed(async (get) => {
   return { status: 200 as const, body };
 });
 
+const addDomainBody$ = bodyResultOf(zeroOrgDomainsContract.add);
+
+const addDomainInner$ = command(async ({ get }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  if (auth.orgRole !== "admin") {
+    return adminRequired;
+  }
+
+  const bodyResult = await get(addDomainBody$);
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+
+  const client = get(clerk$);
+  await client.organizations.createOrganizationDomain({
+    organizationId: auth.orgId,
+    name: bodyResult.data.name,
+    enrollmentMode: bodyResult.data.enrollmentMode,
+  });
+  signal.throwIfAborted();
+
+  return {
+    status: 200 as const,
+    body: { message: `Domain ${bodyResult.data.name} added` },
+  };
+});
+
 const membersInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const body = await get(
@@ -133,6 +162,13 @@ export const zeroOrgReadRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       listDomainsInner$,
+    ),
+  },
+  {
+    route: zeroOrgDomainsContract.add,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      addDomainInner$,
     ),
   },
   {

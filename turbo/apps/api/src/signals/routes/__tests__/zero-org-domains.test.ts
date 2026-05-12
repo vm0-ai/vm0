@@ -4,6 +4,7 @@ import { zeroOrgDomainsContract } from "@vm0/api-contracts/contracts/zero-org-do
 import { createStore } from "ccstate";
 import { afterEach } from "vitest";
 
+import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import {
   deleteOrgMembership$,
@@ -119,5 +120,165 @@ describe("GET /api/zero/org/domains", () => {
     );
 
     expect(response.body.error.code).toBe("FORBIDDEN");
+  });
+});
+
+describe("POST /api/zero/org/domains", () => {
+  const seededFixtures: OrgMembershipFixture[] = [];
+
+  afterEach(async () => {
+    while (seededFixtures.length > 0) {
+      const fixture = seededFixtures.pop();
+      if (fixture) {
+        await store.set(deleteOrgMembership$, fixture, context.signal);
+      }
+    }
+  });
+
+  it("adds a domain for an admin", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(
+      await store.set(
+        seedOrgMembership$,
+        { orgId, userId, role: "admin" },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(userId, orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroOrgDomainsContract);
+
+    const response = await accept(
+      client.add({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          name: "example.com",
+          enrollmentMode: "manual_invitation",
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      message: "Domain example.com added",
+    });
+    expect(
+      context.mocks.clerk.organizations.createOrganizationDomain,
+    ).toHaveBeenCalledWith({
+      organizationId: orgId,
+      name: "example.com",
+      enrollmentMode: "manual_invitation",
+    });
+  });
+
+  it("returns 401 when not authenticated", async () => {
+    const client = setupApp({ context })(zeroOrgDomainsContract);
+
+    const response = await accept(
+      client.add({
+        headers: {},
+        body: {
+          name: "example.com",
+          enrollmentMode: "manual_invitation",
+        },
+      }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+    expect(
+      context.mocks.clerk.organizations.createOrganizationDomain,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+
+    const client = setupApp({ context })(zeroOrgDomainsContract);
+
+    const response = await accept(
+      client.add({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          name: "example.com",
+          enrollmentMode: "manual_invitation",
+        },
+      }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+    expect(
+      context.mocks.clerk.organizations.createOrganizationDomain,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 when caller is not an admin", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(
+      await store.set(
+        seedOrgMembership$,
+        { orgId, userId, role: "member" },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(userId, orgId, "org:member");
+
+    const client = setupApp({ context })(zeroOrgDomainsContract);
+
+    const response = await accept(
+      client.add({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          name: "example.com",
+          enrollmentMode: "manual_invitation",
+        },
+      }),
+      [403],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "Access denied",
+      code: "FORBIDDEN",
+    });
+    expect(
+      context.mocks.clerk.organizations.createOrganizationDomain,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid enrollment modes before calling Clerk", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(
+      await store.set(
+        seedOrgMembership$,
+        { orgId, userId, role: "admin" },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(userId, orgId, "org:admin");
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/org/domains", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer clerk-session",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "example.com",
+        enrollmentMode: "invalid",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+    expect(
+      context.mocks.clerk.organizations.createOrganizationDomain,
+    ).not.toHaveBeenCalled();
   });
 });
