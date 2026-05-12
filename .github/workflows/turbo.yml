@@ -1510,11 +1510,31 @@ jobs:
           PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
+          read_host_capacity() {
+            local HOST=$1
+            local REMOTE="${METAL_USER}@${HOST}"
+            local MC=""
+
+            for _ in $(seq 1 60); do
+              # shellcheck disable=SC2029
+              MC=$(ssh "$REMOTE" "sudo jq -r '.max_concurrent // empty' ${RUNNER_DIR}/status.json 2>/dev/null") || true
+              if [[ "$MC" =~ ^[0-9]+$ ]]; then
+                echo "$MC"
+                return 0
+              fi
+              sleep 1
+            done
+
+            echo "::error::Failed to read max_concurrent from ${HOST}" >&2
+            return 1
+          }
+
           start_on_host() {
             local HOST=$1
             local HOST_INDEX=$2
             local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
             local REMOTE="${METAL_USER}@${HOST}"
+            local MC
             echo "=== Starting runner ${RUNNER_NAME} on ${HOST} ==="
 
             # Look up per-host hashes
@@ -1561,8 +1581,13 @@ jobs:
               --env USE_MOCK_CLAUDE=true \
               --env USE_MOCK_CODEX=true"
 
-            # Health check — wait for runner startup, then verify
-            sleep 5
+            # Wait for the runner main loop to publish status.json before
+            # health checks. systemd-run returns once the process starts, but
+            # proxy/DNS setup and the initial status write can take longer.
+            if ! MC=$(read_host_capacity "$HOST"); then
+              return 1
+            fi
+            echo "Runner status ready on ${HOST}: max_concurrent=${MC}"
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo ${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"
             echo "=== Runner started on ${HOST} ==="
@@ -1596,10 +1621,7 @@ jobs:
           # Sum auto-detected max_concurrent from all hosts' status.json
           TOTAL=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-            # shellcheck disable=SC2029
-            MC=$(ssh "${METAL_USER}@${HOST}" "grep -o '\"max_concurrent\": [0-9]*' ${RUNNER_DIR}/status.json | grep -o '[0-9]*'") || true
-            if [ -z "$MC" ] || ! [[ "$MC" =~ ^[0-9]+$ ]]; then
-              echo "::error::Failed to read max_concurrent from ${HOST}"
+            if ! MC=$(read_host_capacity "$HOST"); then
               exit 1
             fi
             echo "Host ${HOST}: max_concurrent=${MC}"
