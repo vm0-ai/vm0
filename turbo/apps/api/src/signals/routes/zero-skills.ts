@@ -15,6 +15,7 @@ import { conflict, notFound } from "../../lib/error";
 import { writeDb$ } from "../external/db";
 import { zeroSkillList } from "../services/zero-catalog-data.service";
 import { uploadVolumeServerSide$ } from "../services/storage-volume-upload.service";
+import { deleteZeroSkill$ } from "../services/zero-skill-delete.service";
 import { updateZeroSkill$ } from "../services/zero-skill-update.service";
 import type { RouteEntry } from "../route";
 
@@ -33,6 +34,16 @@ const adminRequired = Object.freeze({
   body: Object.freeze({
     error: Object.freeze({
       message: "Only org admins can update custom skills",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
+const deleteAdminRequired = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Only org admins can delete custom skills",
       code: "FORBIDDEN",
     }),
   }),
@@ -141,6 +152,27 @@ const updateSkillInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: updated };
 });
 
+const deleteSkillInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  if (auth.orgRole !== "admin") {
+    return deleteAdminRequired;
+  }
+
+  const params = get(pathParamsOf(zeroSkillsDetailContract.delete));
+  const deleted = await set(
+    deleteZeroSkill$,
+    { orgId: auth.orgId, skillName: params.name },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  if (!deleted) {
+    return notFound(`Skill not found: ${params.name}`);
+  }
+
+  return { status: 204 as const, body: undefined };
+});
+
 export const zeroSkillsRoutes: readonly RouteEntry[] = [
   {
     route: zeroSkillsCollectionContract.list,
@@ -173,6 +205,17 @@ export const zeroSkillsRoutes: readonly RouteEntry[] = [
         requiredCapability: "agent:write",
       },
       updateSkillInner$,
+    ),
+  },
+  {
+    route: zeroSkillsDetailContract.delete,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "agent:write",
+      },
+      deleteSkillInner$,
     ),
   },
 ];

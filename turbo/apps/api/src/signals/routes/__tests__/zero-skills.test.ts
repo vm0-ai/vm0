@@ -77,6 +77,16 @@ function s3PutInputs(): readonly Record<string, unknown>[] {
   });
 }
 
+function s3DeleteInputs(): readonly Record<string, unknown>[] {
+  return context.mocks.s3.send.mock.calls
+    .map(([command]) => {
+      return s3CommandInput(command);
+    })
+    .filter((input) => {
+      return "Delete" in input;
+    });
+}
+
 interface SkillStorageState {
   readonly skillUpdatedAt: Date | undefined;
   readonly storage:
@@ -140,6 +150,19 @@ async function readSkillStorageState(
     .where(eq(storageVersions.id, storage.headVersionId));
 
   return { skillUpdatedAt: skill?.updatedAt, storage, version };
+}
+
+async function readAgentCustomSkills(
+  agentId: string,
+): Promise<readonly string[]> {
+  const writeDb = store.set(writeDb$);
+  const [agent] = await writeDb
+    .select({ customSkills: zeroAgents.customSkills })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, agentId))
+    .limit(1);
+
+  return agent?.customSkills ?? [];
 }
 
 function expectS3VolumeUploads(s3Key: string, versionId: string): void {
@@ -955,6 +978,230 @@ describe("PUT /api/zero/skills/:name", () => {
     }
 
     expectS3VolumeUploads(state.version.s3Key, state.storage.headVersionId);
+  });
+});
+
+describe("DELETE /api/zero/skills/:name", () => {
+  const track = createFixtureTracker<SkillsFixture>((fixture) => {
+    return store.set(deleteSkillsForFixture$, fixture, context.signal);
+  });
+
+  it("returns 401 when the request is unauthenticated", async () => {
+    const response = await detailClient().delete({
+      headers: {},
+      params: { name: "any" },
+    });
+
+    expect(response.status).toBe(401);
+    if (response.status !== 401) {
+      throw new Error("Expected unauthorized response");
+    }
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+
+    const response = await detailClient().delete({
+      headers: authHeaders(),
+      params: { name: "any" },
+    });
+
+    expect(response.status).toBe(401);
+    if (response.status !== 401) {
+      throw new Error("Expected unauthorized response");
+    }
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 403 when an org member deletes a skill", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    await store.set(
+      seedSkill$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "admin-skill",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const response = await detailClient().delete({
+      headers: authHeaders(),
+      params: { name: "admin-skill" },
+    });
+
+    expect(response.status).toBe(403);
+    if (response.status !== 403) {
+      throw new Error("Expected forbidden response");
+    }
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Only org admins can delete custom skills",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("returns 404 for a non-existent skill", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await detailClient().delete({
+      headers: authHeaders(),
+      params: { name: "no-such-skill" },
+    });
+
+    expect(response.status).toBe(404);
+    if (response.status !== 404) {
+      throw new Error("Expected not found response");
+    }
+    expect(response.body).toStrictEqual({
+      error: { message: "Skill not found: no-such-skill", code: "NOT_FOUND" },
+    });
+  });
+
+  it("deletes a skill and removes its storage volume", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const skillName = "stored-skill";
+    const storageName = getCustomSkillStorageName(skillName);
+    const storagePrefix = `orgs/${fixture.orgId}/${storageName}`;
+    const s3Key = `${storagePrefix}/v1`;
+    await store.set(
+      seedSkill$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: skillName,
+      },
+      context.signal,
+    );
+    await store.set(
+      seedSkillStorage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        skillName,
+        s3Key,
+        headVersionId: `head-${randomUUID()}`,
+      },
+      context.signal,
+    );
+    mocks.s3.listObjects([
+      {
+        bucket: "test-user-storages",
+        key: `${storagePrefix}/manifest.json`,
+        size: 10,
+      },
+      {
+        bucket: "test-user-storages",
+        key: `${storagePrefix}/archive.tar.gz`,
+        size: 20,
+      },
+    ]);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const before = await readSkillStorageState(fixture, skillName);
+    expect(before.skillUpdatedAt).toBeDefined();
+    expect(before.storage?.s3Prefix).toBe(storagePrefix);
+
+    const response = await detailClient().delete({
+      headers: authHeaders(),
+      params: { name: skillName },
+    });
+
+    expect(response.status).toBe(204);
+    if (response.status !== 204) {
+      throw new Error("Expected no content response");
+    }
+    expect(response.body).toBeUndefined();
+
+    const after = await readSkillStorageState(fixture, skillName);
+    expect(after.skillUpdatedAt).toBeUndefined();
+    expect(after.storage).toBeUndefined();
+    expect(after.version).toBeUndefined();
+
+    const [deleteInput] = s3DeleteInputs();
+    expect(deleteInput).toStrictEqual({
+      Bucket: "test-user-storages",
+      Delete: {
+        Objects: [
+          { Key: `${storagePrefix}/manifest.json` },
+          { Key: `${storagePrefix}/archive.tar.gz` },
+        ],
+      },
+    });
+  });
+
+  it("unbinds a deleted skill from all affected agents", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const skillName = "shared-skill";
+    await store.set(
+      seedSkill$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: skillName,
+      },
+      context.signal,
+    );
+    const firstAgent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        customSkills: [skillName, "keep-one"],
+      },
+      context.signal,
+    );
+    const secondAgent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        customSkills: ["other", skillName],
+      },
+      context.signal,
+    );
+    const unaffectedAgent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        customSkills: ["other"],
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await detailClient().delete({
+      headers: authHeaders(),
+      params: { name: skillName },
+    });
+
+    expect(response.status).toBe(204);
+    await expect(
+      readAgentCustomSkills(firstAgent.agentId),
+    ).resolves.toStrictEqual(["keep-one"]);
+    await expect(
+      readAgentCustomSkills(secondAgent.agentId),
+    ).resolves.toStrictEqual(["other"]);
+    await expect(
+      readAgentCustomSkills(unaffectedAgent.agentId),
+    ).resolves.toStrictEqual(["other"]);
   });
 });
 
