@@ -14,9 +14,9 @@ use crate::network::NetnsPoolHandle;
 const LEAK_CLEANUP_SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 pub(super) struct LeakCleaner {
-    pub(super) tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
-    pub(super) shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
-    pub(super) handle: Option<tokio::task::JoinHandle<()>>,
+    tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
+    shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
+    handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl LeakCleaner {
@@ -36,6 +36,19 @@ impl LeakCleaner {
 
     pub(super) fn sender(&self) -> Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>> {
         self.tx.clone()
+    }
+
+    #[cfg(test)]
+    pub(super) fn from_parts_for_test(
+        tx: tokio::sync::mpsc::UnboundedSender<LeakedResources>,
+        shutdown_tx: tokio::sync::oneshot::Sender<()>,
+        handle: tokio::task::JoinHandle<()>,
+    ) -> Self {
+        Self {
+            tx: Some(tx),
+            shutdown_tx: Some(shutdown_tx),
+            handle: Some(handle),
+        }
     }
 
     pub(super) async fn shutdown(mut self) {
@@ -198,7 +211,7 @@ mod tests {
         },
     };
 
-    use crate::factory::cow_cleanup::{DESTROY_RETRIES, DESTROY_RETRY_DELAY};
+    use crate::factory::cow_cleanup::cow_destroy_retry_policy;
     use crate::network::NetnsPool;
 
     fn test_leaked_resource(sandbox_id: &str) -> LeakedResources {
@@ -444,8 +457,10 @@ mod tests {
 
     #[test]
     fn leak_cleaner_shutdown_timeout_covers_cow_destroy_retry_budget() {
-        let retry_budget = DESTROY_RETRY_DELAY
-            .checked_mul(DESTROY_RETRIES)
+        let retry_policy = cow_destroy_retry_policy();
+        let retry_budget = retry_policy
+            .delay
+            .checked_mul(retry_policy.attempts)
             .expect("destroy retry budget should fit in Duration");
 
         assert!(

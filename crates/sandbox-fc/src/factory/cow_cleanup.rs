@@ -7,10 +7,10 @@ use nbd_cow::{DestroyRetryPolicy, PooledNbdCowDevice};
 /// Maximum attempts to destroy a COW device after killing Firecracker.
 /// After kill_process_group + child.wait(), the kernel may still be
 /// releasing file descriptors (particularly the NBD device fd).
-pub(crate) const DESTROY_RETRIES: u32 = 5;
+const DESTROY_RETRIES: u32 = 5;
 
 /// Delay between COW device destroy retries.
-pub(crate) const DESTROY_RETRY_DELAY: Duration = Duration::from_millis(500);
+const DESTROY_RETRY_DELAY: Duration = Duration::from_millis(500);
 
 pub(crate) fn cow_destroy_retry_policy() -> DestroyRetryPolicy {
     DestroyRetryPolicy {

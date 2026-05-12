@@ -585,11 +585,7 @@ mod tests {
             let _ = shutdown_rx.await;
             leak_events.lock().unwrap().push("leak_cleaner");
         });
-        factory.leak_cleaner = Some(LeakCleaner {
-            tx: Some(tx),
-            shutdown_tx: Some(shutdown_tx),
-            handle: Some(handle),
-        });
+        factory.leak_cleaner = Some(LeakCleaner::from_parts_for_test(tx, shutdown_tx, handle));
 
         let waiter =
             factory
