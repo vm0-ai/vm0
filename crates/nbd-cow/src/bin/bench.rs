@@ -96,6 +96,7 @@ async fn main() {
     // --- dm-snapshot benchmark ---
     eprintln!("== Benchmarking dm-snapshot ==");
     cleanup_stale_dm_mappings();
+    let mut bench_failed = false;
     let dm_name = work_dir_path
         .file_name()
         .and_then(|name| name.to_str())
@@ -112,6 +113,7 @@ async fn main() {
         Ok(r) => r,
         Err(e) => {
             eprintln!("dm-snapshot bench failed: {e}");
+            bench_failed = true;
             vec![]
         }
     };
@@ -126,6 +128,7 @@ async fn main() {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("NBD COW bench failed: {e}");
+                bench_failed = true;
                 vec![]
             }
         };
@@ -169,6 +172,10 @@ async fn main() {
     eprintln!("== Cleaning up ==");
     drop(work_dir);
     eprintln!("Done.");
+
+    if bench_failed {
+        std::process::exit(1);
+    }
 }
 
 struct FioWorkload {
