@@ -149,6 +149,93 @@ struct FioResult {
     host_disk_iops: u64,
 }
 
+struct LoopDeviceGuard {
+    device: String,
+    detached: bool,
+}
+
+impl LoopDeviceGuard {
+    fn attach(path: &Path, read_only: bool) -> Result<Self, String> {
+        Ok(Self {
+            device: attach_loop(path, read_only)?,
+            detached: false,
+        })
+    }
+
+    fn device(&self) -> &str {
+        &self.device
+    }
+
+    fn detach(&mut self) -> Result<(), String> {
+        if self.detached {
+            return Ok(());
+        }
+        detach_loop(&self.device)?;
+        self.detached = true;
+        Ok(())
+    }
+}
+
+impl Drop for LoopDeviceGuard {
+    fn drop(&mut self) {
+        if !self.detached {
+            let _ = detach_loop(&self.device);
+        }
+    }
+}
+
+struct DmMappingGuard {
+    name: &'static str,
+    removed: bool,
+}
+
+impl DmMappingGuard {
+    fn create(name: &'static str, table: &str) -> Result<Self, String> {
+        run_cmd("dmsetup", &["create", name, "--table", table])?;
+        Ok(Self {
+            name,
+            removed: false,
+        })
+    }
+
+    fn device_path(&self) -> String {
+        format!("/dev/mapper/{}", self.name)
+    }
+
+    fn remove(&mut self) -> Result<(), String> {
+        if self.removed {
+            return Ok(());
+        }
+        run_cmd("dmsetup", &["remove", self.name])?;
+        self.removed = true;
+        Ok(())
+    }
+}
+
+impl Drop for DmMappingGuard {
+    fn drop(&mut self) {
+        if !self.removed {
+            let _ = run_cmd("dmsetup", &["remove", self.name]);
+        }
+    }
+}
+
+struct TempFileCleanup {
+    path: PathBuf,
+}
+
+impl TempFileCleanup {
+    fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+}
+
+impl Drop for TempFileCleanup {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 /// Snapshot of /proc/diskstats for a specific device.
 #[derive(Debug, Clone)]
 struct DiskStats {
@@ -173,28 +260,32 @@ fn run_dm_snapshot_bench(
     let sectors = base_size / 512;
     let mut results = Vec::new();
 
-    let base_loop = attach_loop(base_path, true)?;
+    let mut base_loop = LoopDeviceGuard::attach(base_path, true)?;
 
     for wl in workloads {
         create_sparse_file(&cow_path, base_size);
-        let cow_loop = attach_loop(&cow_path, false)?;
+        let _cow_file_cleanup = TempFileCleanup::new(cow_path.clone());
+        let mut cow_loop = LoopDeviceGuard::attach(&cow_path, false)?;
 
         let dm_name = "bench-cow";
-        let table = format!("0 {sectors} snapshot {base_loop} {cow_loop} P 8");
-        run_cmd("dmsetup", &["create", dm_name, "--table", &table])?;
+        let table = format!(
+            "0 {sectors} snapshot {} {} P 8",
+            base_loop.device(),
+            cow_loop.device()
+        );
+        let mut dm_mapping = DmMappingGuard::create(dm_name, &table)?;
 
-        let device = format!("/dev/mapper/{dm_name}");
+        let device = dm_mapping.device_path();
         eprintln!("  Running fio ({}) on {device}...", wl.name);
 
         let result = run_fio_with_iostat(&device, wl, host_disk)?;
         results.push(result);
 
-        let _ = run_cmd("dmsetup", &["remove", dm_name]);
-        detach_loop(&cow_loop)?;
-        let _ = std::fs::remove_file(&cow_path);
+        dm_mapping.remove()?;
+        cow_loop.detach()?;
     }
 
-    detach_loop(&base_loop)?;
+    base_loop.detach()?;
     Ok(results)
 }
 
@@ -218,32 +309,37 @@ async fn run_nbd_cow_bench(
     let device_pool = DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig::default());
     device_pool.warmup().await;
 
-    for wl in workloads {
-        let cow_path = work_dir.join("nbd-cow.img");
+    let result: Result<Vec<FioResult>, String> = async {
+        for wl in workloads {
+            let cow_path = work_dir.join("nbd-cow.img");
+            let _cow_file_cleanup = TempFileCleanup::new(cow_path.clone());
 
-        let device = device_pool
-            .create_cow_device(base_path, &cow_path, base_size)
-            .await
-            .map_err(|e| format!("failed to create NBD COW device: {e}"))?;
+            let device = device_pool
+                .create_cow_device(base_path, &cow_path, base_size)
+                .await
+                .map_err(|e| format!("failed to create NBD COW device: {e}"))?;
 
-        let dev_path = device.device_path().to_string_lossy().to_string();
-        eprintln!("  Running fio ({}) on {dev_path}...", wl.name);
+            let dev_path = device.device_path().to_string_lossy().to_string();
+            eprintln!("  Running fio ({}) on {dev_path}...", wl.name);
 
-        let result = run_fio_with_iostat(&dev_path, wl, host_disk)?;
-        results.push(result);
+            let result = run_fio_with_iostat(&dev_path, wl, host_disk)?;
+            results.push(result);
 
-        device
-            .destroy_with_retries(DestroyRetryPolicy {
-                attempts: 1,
-                delay: std::time::Duration::ZERO,
-            })
-            .await
-            .map_err(|e| format!("failed to destroy NBD device: {e}"))?;
-        let _ = std::fs::remove_file(&cow_path);
+            device
+                .destroy_with_retries(DestroyRetryPolicy {
+                    attempts: 1,
+                    delay: std::time::Duration::ZERO,
+                })
+                .await
+                .map_err(|e| format!("failed to destroy NBD device: {e}"))?;
+        }
+
+        Ok(results)
     }
+    .await;
 
     device_pool.cleanup().await;
-    Ok(results)
+    result
 }
 
 /// Run fio while sampling /proc/diskstats before and after to measure actual host disk IOPS.
