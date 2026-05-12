@@ -314,6 +314,24 @@ async function expectAgentChatLoaded(): Promise<void> {
   });
 }
 
+async function selectComposerModel(
+  user: ReturnType<typeof userEvent.setup>,
+  currentDisplayName: string,
+  optionName: RegExp,
+): Promise<void> {
+  await user.click(screen.getByRole("combobox", { name: currentDisplayName }));
+  await screen.findByRole("listbox");
+  if (!screen.queryByRole("option", { name: optionName })) {
+    const showAllModels = screen.queryAllByRole("button").find((el) => {
+      return /show all models/i.test(el.textContent ?? "");
+    });
+    if (showAllModels) {
+      await user.click(showAllModels);
+    }
+  }
+  await user.click(await screen.findByRole("option", { name: optionName }));
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -672,10 +690,7 @@ describe("chat composer — default model resolution", () => {
       screen.findByLabelText("Open image preview for screenshot.png"),
     ).resolves.toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
-    );
-    await user.click(await screen.findByRole("option", { name: /GLM-5\.1/ }));
+    await selectComposerModel(user, "Claude Sonnet 4.6", /GLM-5\.1/);
 
     await expectComposerShowsModel("GLM-5.1");
     await expect(
@@ -691,10 +706,7 @@ describe("chat composer — default model resolution", () => {
       expect(screen.getByLabelText("Send")).toBeDisabled();
     });
 
-    await user.click(screen.getByRole("combobox", { name: "GLM-5.1" }));
-    await user.click(
-      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
-    );
+    await selectComposerModel(user, "GLM-5.1", /Claude Sonnet 4\.6/);
 
     await expectComposerShowsModel("Claude Sonnet 4.6");
     await expect(
@@ -746,10 +758,7 @@ describe("chat composer — default model resolution", () => {
       screen.findByLabelText("Open image preview for screenshot.png"),
     ).resolves.toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
-    );
-    await user.click(await screen.findByRole("option", { name: /GLM-5\.1/ }));
+    await selectComposerModel(user, "Claude Sonnet 4.6", /GLM-5\.1/);
     await expectComposerShowsModel("GLM-5.1");
 
     const textarea = screen.getByPlaceholderText(
@@ -795,10 +804,7 @@ describe("chat composer — default model resolution", () => {
     await expectAgentChatLoaded();
     await expectComposerShowsModel("GLM-5.1");
 
-    await user.click(screen.getByRole("combobox", { name: "GLM-5.1" }));
-    await user.click(
-      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
-    );
+    await selectComposerModel(user, "GLM-5.1", /Claude Sonnet 4\.6/);
     await expectComposerShowsModel("Claude Sonnet 4.6");
 
     const fileInput =
@@ -811,10 +817,7 @@ describe("chat composer — default model resolution", () => {
       screen.findByLabelText("Open image preview for screenshot.png"),
     ).resolves.toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
-    );
-    await user.click(await screen.findByRole("option", { name: /GLM-5\.1/ }));
+    await selectComposerModel(user, "Claude Sonnet 4.6", /GLM-5\.1/);
     await expectComposerShowsModel("GLM-5.1");
 
     const textarea = screen.getByPlaceholderText(
