@@ -4,6 +4,7 @@ import {
   createTestRequest,
   createTestOrg,
   createTestCompose,
+  setDefaultAgentByComposeId,
   insertTestGitHubInstallation,
   insertTestGitHubInstallationWithAdmin,
   insertTestGitHubUserLink,
@@ -37,7 +38,9 @@ describe("/api/integrations/github", () => {
     it("should return 404 with installUrl when no installation exists", async () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
-      await createTestOrg(uniqueId("gh-org"));
+      const org = await createTestOrg(uniqueId("gh-org"));
+      const { composeId } = await createTestCompose(uniqueId("gh-agent"));
+      await setDefaultAgentByComposeId(org.id, composeId);
 
       const request = createTestRequest(
         "http://localhost:3000/api/integrations/github",
@@ -48,7 +51,7 @@ describe("/api/integrations/github", () => {
 
       expect(response.status).toBe(404);
       expect(data.error.code).toBe("NOT_FOUND");
-      expect(data.installUrl).toBeDefined();
+      expect(data.installUrl).toContain(`composeId=${composeId}`);
     });
 
     it("should return installation data when installed", async () => {

@@ -11,7 +11,6 @@ import {
   listAppInstallations,
   getInstallationAccessToken,
 } from "../../../../../src/lib/zero/github/github-app";
-import { resolveDefaultAgentComposeId } from "../../../../../src/lib/infra/agent-compose/resolve-default";
 import { linkVm0User } from "../callback/route";
 import { logger } from "../../../../../src/lib/shared/logger";
 
@@ -214,11 +213,7 @@ async function tryLinkFromGitHubApi(
   const ghInstall = installations[0]!;
   const ghInstallationId = String(ghInstall.id);
 
-  let resolvedComposeId = composeId;
-  if (!resolvedComposeId) {
-    resolvedComposeId = await resolveDefaultAgentComposeId();
-  }
-  if (!resolvedComposeId) {
+  if (!composeId) {
     return null;
   }
 
@@ -242,7 +237,7 @@ async function tryLinkFromGitHubApi(
       targetId: String(ghInstall.account.id),
       targetName: ghInstall.account.login,
       adminGithubUserId,
-      defaultComposeId: resolvedComposeId,
+      defaultComposeId: composeId,
     })
     .returning({ id: githubInstallations.id });
 

@@ -65,7 +65,6 @@ function initEnv() {
       TELEGRAM_OFFICIAL_BOT_TOKEN: z.string().min(1).optional(),
       TELEGRAM_OFFICIAL_BOT_USERNAME: z.string().min(1).optional(),
       TELEGRAM_OFFICIAL_WEBHOOK_SECRET: z.string().min(1).optional(),
-      VM0_DEFAULT_AGENT: z.string().min(1).optional(), // Default agent compose/agent UUID for new integrations
       // Ahrefs OAuth (for connector)
       AHREFS_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       AHREFS_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -325,7 +324,6 @@ function initEnv() {
         process.env.TELEGRAM_OFFICIAL_BOT_USERNAME,
       TELEGRAM_OFFICIAL_WEBHOOK_SECRET:
         process.env.TELEGRAM_OFFICIAL_WEBHOOK_SECRET,
-      VM0_DEFAULT_AGENT: process.env.VM0_DEFAULT_AGENT,
       AHREFS_OAUTH_CLIENT_ID: process.env.AHREFS_OAUTH_CLIENT_ID,
       AHREFS_OAUTH_CLIENT_SECRET: process.env.AHREFS_OAUTH_CLIENT_SECRET,
       AIRTABLE_OAUTH_CLIENT_ID: process.env.AIRTABLE_OAUTH_CLIENT_ID,

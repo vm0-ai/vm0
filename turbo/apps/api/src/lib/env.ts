@@ -62,7 +62,6 @@ const SCHEMA = {
   TELEGRAM_OFFICIAL_BOT_TOKEN: z.string().optional(),
   TELEGRAM_OFFICIAL_BOT_USERNAME: z.string().optional(),
   TELEGRAM_OFFICIAL_WEBHOOK_SECRET: z.string().optional(),
-  VM0_DEFAULT_AGENT: z.string().optional(),
   SLACK_CLIENT_ID: z.string().optional(),
 } as const;
 

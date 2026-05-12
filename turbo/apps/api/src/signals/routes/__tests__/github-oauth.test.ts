@@ -448,8 +448,6 @@ describe("GitHub OAuth API routes", () => {
   });
 
   it("redirects callback with an error when no default compose is configured", async () => {
-    mockEnv("VM0_DEFAULT_AGENT", "");
-
     const response = await appRequest(
       "/api/github/oauth/callback?installation_id=12345&setup_action=install",
     );

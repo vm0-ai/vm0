@@ -9,6 +9,7 @@ import {
 import { connectors } from "@vm0/db/schema/connector";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
 import { and, eq } from "drizzle-orm";
@@ -27,6 +28,12 @@ interface GithubFixture {
   readonly userId: string;
   readonly composeId: string;
   readonly installationRowId: string;
+}
+
+interface DefaultAgentFixture {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly composeId: string;
 }
 
 interface SeedGithubFixtureOptions {
@@ -168,6 +175,34 @@ async function cleanupGithubFixture(fixture: GithubFixture): Promise<void> {
     .where(eq(agentComposes.id, fixture.composeId));
 }
 
+async function seedDefaultAgentFixture(): Promise<DefaultAgentFixture> {
+  const orgId = `org_${randomUUID()}`;
+  const userId = `user_${randomUUID()}`;
+  const composeId = randomUUID();
+
+  await writeDb.insert(agentComposes).values({
+    id: composeId,
+    orgId,
+    userId,
+    name: `default-github-agent-${composeId}`,
+  });
+  await writeDb.insert(orgMetadata).values({
+    orgId,
+    defaultAgentId: composeId,
+  });
+
+  return { orgId, userId, composeId };
+}
+
+async function cleanupDefaultAgentFixture(
+  fixture: DefaultAgentFixture,
+): Promise<void> {
+  await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
+  await writeDb
+    .delete(agentComposes)
+    .where(eq(agentComposes.id, fixture.composeId));
+}
+
 async function seedSecret(args: {
   readonly orgId: string;
   readonly userId: string;
@@ -214,6 +249,7 @@ async function seedGithubConnector(args: {
 
 describe("GET /api/integrations/github", () => {
   const fixtures: GithubFixture[] = [];
+  const defaultAgentFixtures: DefaultAgentFixture[] = [];
 
   beforeEach(() => {
     context.mocks.clerk.authenticateRequest.mockReset();
@@ -227,6 +263,12 @@ describe("GET /api/integrations/github", () => {
       const fixture = fixtures.pop();
       if (fixture) {
         await cleanupGithubFixture(fixture);
+      }
+    }
+    while (defaultAgentFixtures.length > 0) {
+      const fixture = defaultAgentFixtures.pop();
+      if (fixture) {
+        await cleanupDefaultAgentFixture(fixture);
       }
     }
   });
@@ -245,8 +287,9 @@ describe("GET /api/integrations/github", () => {
   });
 
   it("returns 404 with installUrl when the authenticated user has no GitHub installation", async () => {
-    const userId = `user_${randomUUID()}`;
-    mockSession(userId, null);
+    const fixture = await seedDefaultAgentFixture();
+    defaultAgentFixtures.push(fixture);
+    mockSession(fixture.userId, fixture.orgId);
     mockEnv("VM0_API_URL", "https://api.vm0.test");
     mockOptionalEnv("GITHUB_APP_SLUG", "vm0-test");
     const client = setupApp({ context })(integrationsGithubContract);
@@ -262,8 +305,8 @@ describe("GET /api/integrations/github", () => {
         code: "NOT_FOUND",
       },
       installUrl: `https://api.vm0.test/api/github/oauth/install?vm0UserId=${encodeURIComponent(
-        userId,
-      )}`,
+        fixture.userId,
+      )}&composeId=${fixture.composeId}`,
     });
   });
 

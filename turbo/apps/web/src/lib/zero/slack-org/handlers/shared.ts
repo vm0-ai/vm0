@@ -6,7 +6,6 @@ import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-prefe
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { orgMetadata as orgTable } from "@vm0/db/schema/org-metadata";
 import { getAppUrl } from "../../url";
-import { resolveDefaultAgentComposeId } from "../../../infra/agent-compose/resolve-default";
 import { ensureStorageExists } from "../../../infra/storage/storage-service";
 import { createSlackClient, fetchSlackUserInfoMap } from "../../slack/client";
 import type { UserInfoOptions } from "../../integration-prompt";
@@ -68,7 +67,6 @@ export async function resolveConnectionFromSlackUser(
 /**
  * Resolve default agent compose ID from org table.
  * Since zero_agents.id = composeId, defaultAgentId IS the composeId.
- * Falls back to VM0_DEFAULT_AGENT env var.
  */
 export async function resolveDefaultComposeId(
   orgId: string,
@@ -79,9 +77,7 @@ export async function resolveDefaultComposeId(
     .where(eq(orgTable.orgId, orgId))
     .limit(1);
 
-  if (orgRow?.defaultAgentId) return orgRow.defaultAgentId;
-
-  return resolveDefaultAgentComposeId();
+  return orgRow?.defaultAgentId ?? null;
 }
 
 /**

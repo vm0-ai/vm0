@@ -378,7 +378,6 @@ export async function tryLinkGithubFromRemoteInstallations(args: {
   readonly privateKey: string;
   readonly vm0UserId: string;
   readonly composeId: string | null;
-  readonly fallbackComposeId: string | null;
   readonly signal: AbortSignal;
 }): Promise<boolean> {
   const installationsResult = await safeAsync(() => {
@@ -426,8 +425,7 @@ export async function tryLinkGithubFromRemoteInstallations(args: {
     return false;
   }
 
-  const resolvedComposeId = args.composeId ?? args.fallbackComposeId;
-  if (!resolvedComposeId) {
+  if (!args.composeId) {
     return false;
   }
 
@@ -453,7 +451,7 @@ export async function tryLinkGithubFromRemoteInstallations(args: {
       targetId: String(ghInstall.account.id),
       targetName: ghInstall.account.login,
       adminGithubUserId,
-      defaultComposeId: resolvedComposeId,
+      defaultComposeId: args.composeId,
     })
     .returning({ id: githubInstallations.id });
   args.signal.throwIfAborted();

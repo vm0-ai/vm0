@@ -119,7 +119,7 @@ function defaultAgentId(args: {
       .from(orgMetadata)
       .where(eq(orgMetadata.orgId, args.orgId))
       .limit(1);
-    return row?.defaultAgentId ?? env("VM0_DEFAULT_AGENT") ?? null;
+    return row?.defaultAgentId ?? null;
   });
 }
 

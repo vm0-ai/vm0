@@ -146,8 +146,7 @@ export function computeReplyRecipients(opts: {
 
 /**
  * Resolve the org's default agent ID (zero layer).
- * Delegates to resolveDefaultAgentId which handles both the org_metadata
- * primary path and the VM0_DEFAULT_AGENT env var fallback.
+ * Delegates to resolveDefaultAgentId, which reads org_metadata.defaultAgentId.
  */
 export async function resolveDefaultAgent(
   orgId: string,

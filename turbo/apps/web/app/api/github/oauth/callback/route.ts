@@ -12,7 +12,6 @@ import {
   getInstallationInfo,
 } from "../../../../../src/lib/zero/github/github-app";
 import { getAppUrl } from "../../../../../src/lib/zero/url";
-import { resolveDefaultAgentComposeId } from "../../../../../src/lib/infra/agent-compose/resolve-default";
 
 /**
  * GitHub App OAuth Callback Endpoint
@@ -104,15 +103,10 @@ export async function GET(request: Request) {
     }
   }
 
-  // Resolve composeId: use state value or fall back to VM0_DEFAULT_AGENT env var
-  let composeId = state.composeId;
-  if (!composeId) {
-    composeId = await resolveDefaultAgentComposeId();
-  }
-
+  const composeId = state.composeId;
   if (!composeId) {
     return NextResponse.redirect(
-      `${appUrl}/works?error=${encodeURIComponent("Missing default agent. Please set VM0_DEFAULT_AGENT or select an agent before connecting GitHub.")}`,
+      `${appUrl}/works?error=${encodeURIComponent("Missing default agent. Please select an agent before connecting GitHub.")}`,
     );
   }
 

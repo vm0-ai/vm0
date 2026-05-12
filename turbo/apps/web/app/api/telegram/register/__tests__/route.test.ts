@@ -378,7 +378,6 @@ describe("POST /api/telegram/register", () => {
     expect(response.status).toBe(400);
     expect(body.error.code).toBe("BAD_REQUEST");
     expect(body.error.message).toContain("No default agent specified");
-    expect(body.error.message).not.toContain("VM0_DEFAULT_AGENT");
   });
 
   it("returns 404 when defaultAgentId references a nonexistent agent", async () => {

@@ -80,7 +80,6 @@ const installGithubOauth$ = command(
         privateKey,
         vm0UserId: query.vm0UserId,
         composeId: query.composeId ?? null,
-        fallbackComposeId: env("VM0_DEFAULT_AGENT") ?? null,
         signal,
       });
       signal.throwIfAborted();
@@ -143,10 +142,10 @@ const callbackGithubOauth$ = command(
       );
     }
 
-    const composeId = state.composeId ?? env("VM0_DEFAULT_AGENT") ?? null;
+    const composeId = state.composeId;
     if (!composeId) {
       return worksErrorRedirect(
-        "Missing default agent. Please set VM0_DEFAULT_AGENT or select an agent before connecting GitHub.",
+        "Missing default agent. Please select an agent before connecting GitHub.",
       );
     }
 

@@ -10,6 +10,7 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
 import { authContext$ } from "../auth/auth-context";
@@ -31,13 +32,19 @@ function errorResponse(
   return { status, body: { error: { message, code } } };
 }
 
-function githubInstallUrl(userId: string): string | null {
+function githubInstallUrl(
+  userId: string,
+  composeId: string | null,
+): string | null {
   if (!optionalEnv("GITHUB_APP_SLUG")) {
     return null;
   }
 
   const url = new URL("/api/github/oauth/install", env("VM0_API_URL"));
   url.searchParams.set("vm0UserId", userId);
+  if (composeId) {
+    url.searchParams.set("composeId", composeId);
+  }
   return url.toString();
 }
 
@@ -237,6 +244,15 @@ export const getGithubInstallation$ = computed(async (get) => {
     .limit(1);
 
   if (!result) {
+    const [orgRow] = auth.orgId
+      ? await db
+          .select({ defaultAgentId: orgMetadata.defaultAgentId })
+          .from(orgMetadata)
+          .where(eq(orgMetadata.orgId, auth.orgId))
+          .limit(1)
+      : [];
+    const defaultComposeId = orgRow?.defaultAgentId ?? null;
+
     return {
       status: 404 as const,
       body: {
@@ -244,7 +260,7 @@ export const getGithubInstallation$ = computed(async (get) => {
           message: "No GitHub installation found",
           code: "NOT_FOUND",
         },
-        installUrl: githubInstallUrl(auth.userId),
+        installUrl: githubInstallUrl(auth.userId, defaultComposeId),
       },
     };
   }

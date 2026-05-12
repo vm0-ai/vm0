@@ -63,8 +63,9 @@ export async function GET(request: Request) {
   if (!result) {
     const { GITHUB_APP_SLUG } = env();
     const baseUrl = getApiUrl();
+    const { org } = await resolveOrg(authCtx);
     const installUrl = GITHUB_APP_SLUG
-      ? `${baseUrl}/api/github/oauth/install?vm0UserId=${encodeURIComponent(userId)}`
+      ? githubInstallUrl(baseUrl, userId, org.defaultAgentId)
       : null;
 
     return NextResponse.json(
@@ -168,6 +169,19 @@ export async function GET(request: Request) {
       missingVars,
     },
   });
+}
+
+function githubInstallUrl(
+  baseUrl: string,
+  userId: string,
+  composeId: string | null,
+): string {
+  const url = new URL("/api/github/oauth/install", baseUrl);
+  url.searchParams.set("vm0UserId", userId);
+  if (composeId) {
+    url.searchParams.set("composeId", composeId);
+  }
+  return url.toString();
 }
 
 /**
