@@ -1109,3 +1109,62 @@ export const setOrgModelProviderDefault$ = command(
     });
   },
 );
+
+export const updateOrgModelProviderModel$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly type: ModelProviderType;
+      readonly selectedModel?: string;
+    },
+    signal: AbortSignal,
+  ): Promise<NotFoundResponse | ModelProviderInfo> => {
+    const writeDb = set(writeDb$);
+    const secretName = getSecretNameForType(args.type) ?? null;
+    const updatedAt = nowDate();
+
+    const [provider] = await writeDb
+      .update(modelProviders)
+      .set({
+        selectedModel: args.selectedModel ?? null,
+        updatedAt,
+      })
+      .where(
+        and(
+          eq(modelProviders.orgId, args.orgId),
+          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+          eq(modelProviders.type, args.type),
+        ),
+      )
+      .returning();
+    signal.throwIfAborted();
+
+    if (!provider) {
+      return notFound("Resource not found");
+    }
+
+    L.debug("model provider model updated", {
+      providerId: provider.id,
+      type: args.type,
+      selectedModel: args.selectedModel,
+    });
+
+    return toModelProviderInfo({
+      id: provider.id,
+      userId: ORG_SENTINEL_USER_ID,
+      type: args.type,
+      secretName,
+      authMethod: provider.authMethod,
+      isDefault: provider.isDefault,
+      selectedModel: provider.selectedModel,
+      tokenExpiresAt: provider.tokenExpiresAt,
+      needsReconnect: provider.needsReconnect,
+      lastRefreshErrorCode: provider.lastRefreshErrorCode,
+      workspaceName: provider.workspaceName,
+      planType: provider.planType,
+      createdAt: provider.createdAt,
+      updatedAt: provider.updatedAt,
+    });
+  },
+);

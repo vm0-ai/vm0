@@ -7,6 +7,7 @@ import {
   zeroModelProvidersByTypeContract,
   zeroModelProvidersDefaultContract,
   zeroModelProvidersMainContract,
+  zeroModelProvidersUpdateModelContract,
 } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
@@ -169,6 +170,7 @@ async function readOrgModelProviderState(
   orgId: string,
   type: string,
 ): Promise<{
+  readonly selectedModel: string | null;
   readonly tokenExpiresAt: Date | null;
   readonly workspaceName: string | null;
   readonly planType: string | null;
@@ -178,6 +180,7 @@ async function readOrgModelProviderState(
   const writeDb = store.set(writeDb$);
   const [row] = await writeDb
     .select({
+      selectedModel: modelProviders.selectedModel,
       tokenExpiresAt: modelProviders.tokenExpiresAt,
       workspaceName: modelProviders.workspaceName,
       planType: modelProviders.planType,
@@ -825,6 +828,134 @@ describe("POST /api/zero/model-providers", () => {
     expect(blocked.body.error.message).toBe(
       'Provider "codex-oauth-token" not found',
     );
+  });
+});
+
+describe("PATCH /api/zero/model-providers/:type/model", () => {
+  const track = createFixtureTracker<OrgModelProviderFixture>((fixture) => {
+    return store.set(deleteOrgModelProviders$, fixture, context.signal);
+  });
+
+  it("returns 401 when unauthenticated", async () => {
+    const client = setupApp({ context })(zeroModelProvidersUpdateModelContract);
+
+    const response = await accept(
+      client.updateModel({
+        headers: {},
+        params: { type: "anthropic-api-key" },
+        body: { selectedModel: "claude-sonnet-4-5" },
+      }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    const userId = `user_${randomUUID()}`;
+    mocks.clerk.session(userId, null);
+    const client = setupApp({ context })(zeroModelProvidersUpdateModelContract);
+
+    const response = await accept(
+      client.updateModel({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { type: "anthropic-api-key" },
+        body: { selectedModel: "claude-sonnet-4-5" },
+      }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns 403 for non-admin members", async () => {
+    const fixture = uniqueOrgUser("zmp-model-member");
+    await track(Promise.resolve({ orgId: fixture.orgId }));
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const client = setupApp({ context })(zeroModelProvidersUpdateModelContract);
+
+    const response = await accept(
+      client.updateModel({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { type: "anthropic-api-key" },
+        body: { selectedModel: "claude-sonnet-4-5" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Only admins can manage org model providers",
+    );
+  });
+
+  it("returns 404 when the target provider is absent", async () => {
+    const fixture = uniqueOrgUser("zmp-model-missing");
+    await track(Promise.resolve({ orgId: fixture.orgId }));
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const client = setupApp({ context })(zeroModelProvidersUpdateModelContract);
+
+    const response = await accept(
+      client.updateModel({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { type: "anthropic-api-key" },
+        body: { selectedModel: "claude-sonnet-4-5" },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.message).toBe("Resource not found");
+  });
+
+  it("updates and clears the selected model for an org provider", async () => {
+    const fixture = uniqueOrgUser("zmp-model-update");
+    await track(Promise.resolve({ orgId: fixture.orgId }));
+    const seeded = await store.set(
+      seedOrgModelProvider$,
+      {
+        orgId: fixture.orgId,
+        type: "anthropic-api-key",
+        isDefault: true,
+        selectedModel: "claude-3-5-sonnet-latest",
+        secretName: "ANTHROPIC_API_KEY",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const client = setupApp({ context })(zeroModelProvidersUpdateModelContract);
+
+    const updated = await accept(
+      client.updateModel({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { type: "anthropic-api-key" },
+        body: { selectedModel: "claude-sonnet-4-5" },
+      }),
+      [200],
+    );
+
+    expect(updated.body.id).toBe(seeded.id);
+    expect(updated.body.type).toBe("anthropic-api-key");
+    expect(updated.body.secretName).toBe("ANTHROPIC_API_KEY");
+    expect(updated.body.authMethod).toBeNull();
+    expect(updated.body.isDefault).toBeTruthy();
+    expect(updated.body.selectedModel).toBe("claude-sonnet-4-5");
+    await expect(
+      readOrgModelProviderState(fixture.orgId, "anthropic-api-key"),
+    ).resolves.toMatchObject({ selectedModel: "claude-sonnet-4-5" });
+
+    const cleared = await accept(
+      client.updateModel({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { type: "anthropic-api-key" },
+        body: {},
+      }),
+      [200],
+    );
+
+    expect(cleared.body.id).toBe(seeded.id);
+    expect(cleared.body.selectedModel).toBeNull();
+    await expect(
+      readOrgModelProviderState(fixture.orgId, "anthropic-api-key"),
+    ).resolves.toMatchObject({ selectedModel: null });
   });
 });
 

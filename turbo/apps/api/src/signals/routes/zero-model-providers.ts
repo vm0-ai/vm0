@@ -9,6 +9,7 @@ import {
   zeroModelProvidersByTypeContract,
   zeroModelProvidersDefaultContract,
   zeroModelProvidersMainContract,
+  zeroModelProvidersUpdateModelContract,
 } from "@vm0/api-contracts/contracts/zero-model-providers";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -20,6 +21,7 @@ import { userFeatureSwitchOverrides } from "../services/feature-switches.service
 import {
   deleteOrgModelProvider$,
   setOrgModelProviderDefault$,
+  updateOrgModelProviderModel$,
   upsertOrgModelProvider$,
   upsertOrgMultiAuthModelProvider$,
   upsertOrgNoSecretModelProvider$,
@@ -236,6 +238,44 @@ const setDefaultModelProviderInner$ = command(
   },
 );
 
+const updateModelProviderModelInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (auth.orgRole !== "admin") {
+      return adminRequired;
+    }
+
+    const params = await get(
+      pathParamsOf(zeroModelProvidersUpdateModelContract.updateModel),
+    );
+    signal.throwIfAborted();
+
+    const bodyResult = await get(
+      bodyResultOf(zeroModelProvidersUpdateModelContract.updateModel),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const result = await set(
+      updateOrgModelProviderModel$,
+      {
+        orgId: auth.orgId,
+        type: params.type,
+        selectedModel: bodyResult.data.selectedModel,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (isNotFoundResponse(result)) {
+      return result;
+    }
+    return { status: 200 as const, body: toModelProviderResponse(result) };
+  },
+);
+
 const deleteModelProviderInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -282,6 +322,13 @@ export const zeroModelProvidersRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       setDefaultModelProviderInner$,
+    ),
+  },
+  {
+    route: zeroModelProvidersUpdateModelContract.updateModel,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      updateModelProviderModelInner$,
     ),
   },
   {
