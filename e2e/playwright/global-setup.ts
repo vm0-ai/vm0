@@ -40,12 +40,24 @@ async function createTestToken(email: string): Promise<string> {
       },
     },
   );
-  const data = (await response.json()) as {
+  type TestTokenResponse = {
     access_token?: string;
     error?: unknown;
   };
+  const body = await response.text();
+  let data: TestTokenResponse = {};
+  try {
+    data = body ? (JSON.parse(body) as TestTokenResponse) : {};
+  } catch {
+    data = {};
+  }
   if (!response.ok || !data.access_token) {
-    throw new Error(`Failed to create E2E test token: ${JSON.stringify(data)}`);
+    const detail = data.error
+      ? JSON.stringify(data.error)
+      : body || response.statusText;
+    throw new Error(
+      `Failed to create E2E test token (${response.status}): ${detail}`,
+    );
   }
   return data.access_token;
 }
