@@ -1,27 +1,7 @@
-//! VAS artifact upload — SHA-256 hashing, tar.gz creation, S3 presigned upload.
-//!
-//! Flow (caller first walks the mount via [`walk_files`], then invokes
-//! [`create_snapshot`] with the pre-walked file list):
-//! 1. POST `/storages/prepare` with file list → get presigned URLs
-//! 2. If deduplicated, POST `/storages/commit` to update HEAD
-//! 3. Create tar.gz archive
-//! 4. Create manifest.json
-//! 5. PUT archive + manifest to S3
-//! 6. POST `/storages/commit`
-
-use crate::constants;
-use crate::error::AgentError;
-use crate::http::HttpClient;
-use crate::urls;
-use api_contracts::generated::types::webhooks::agent::storages::{
-    commit as storage_commit, prepare as storage_prepare,
-};
+use super::FileEntry;
 use flate2::Compression;
 use flate2::write::GzEncoder;
-use guest_common::telemetry::record_sandbox_op;
-use guest_common::{log_error, log_info, log_warn};
-use serde::Serialize;
-use serde_json::json;
+use guest_common::log_warn;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, Metadata};
 use std::io::{self, Read};
@@ -30,339 +10,9 @@ use thiserror::Error;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
-#[derive(Serialize, Clone)]
-pub(crate) struct FileEntry {
-    pub(crate) path: String,
-    pub(crate) hash: String,
-    pub(crate) size: u64,
-}
-
-pub(crate) struct SnapshotResult {
-    pub(crate) version_id: String,
-}
-
-pub(crate) struct CreateSnapshotRequest<'a> {
-    pub(crate) mount_path: &'a str,
-    pub(crate) files: Vec<FileEntry>,
-    pub(crate) storage_name: &'a str,
-    pub(crate) storage_type: &'a str,
-    pub(crate) run_id: &'a str,
-    pub(crate) message: &'a str,
-    pub(crate) parent_version_id: &'a str,
-}
-
-fn non_empty_string(value: &str) -> Option<String> {
-    if value.is_empty() {
-        None
-    } else {
-        Some(value.to_string())
-    }
-}
-
-fn to_prepare_files(files: &[FileEntry]) -> Vec<storage_prepare::RequestFile> {
-    files
-        .iter()
-        .map(|file| storage_prepare::RequestFile {
-            path: file.path.clone(),
-            hash: file.hash.clone(),
-            size: file.size,
-        })
-        .collect()
-}
-
-fn to_commit_files(files: &[FileEntry]) -> Vec<storage_commit::RequestFile> {
-    files
-        .iter()
-        .map(|file| storage_commit::RequestFile {
-            path: file.path.clone(),
-            hash: file.hash.clone(),
-            size: file.size,
-        })
-        .collect()
-}
-
-/// Walk `mount_path` in a blocking task and collect `FileEntry` records,
-/// recording the hash-compute op and emitting a "Found N files" log. Exposed
-/// so the checkpoint step can pre-walk once, decide whether to skip, and reuse
-/// the result for `create_snapshot` without a second walk.
-pub(crate) async fn walk_files(mount_path: &str) -> Result<Vec<FileEntry>, AgentError> {
-    log_info!(LOG_TAG, "Computing file hashes...");
-    let hash_start = std::time::Instant::now();
-    let mount = mount_path.to_string();
-    let files = tokio::task::spawn_blocking(move || collect_file_metadata(&mount))
-        .await
-        .map_err(|e| AgentError::Execution(format!("hash task panicked: {e}")))?;
-    record_sandbox_op("artifact_hash_compute", hash_start.elapsed(), true, None);
-    log_info!(LOG_TAG, "Found {} files", files.len());
-    Ok(files)
-}
-
-/// Create a VAS snapshot using direct S3 upload. Caller provides the
-/// pre-walked file list (see [`walk_files`]) — this lets the checkpoint step
-/// share one walk between its skip-check fingerprint and the snapshot upload.
-pub(crate) async fn create_snapshot(
-    http: &HttpClient,
-    request: CreateSnapshotRequest<'_>,
-) -> Result<SnapshotResult, AgentError> {
-    let CreateSnapshotRequest {
-        mount_path,
-        files,
-        storage_name,
-        storage_type,
-        run_id,
-        message,
-        parent_version_id,
-    } = request;
-
-    log_info!(
-        LOG_TAG,
-        "Creating direct upload snapshot for '{storage_name}'"
-    );
-
-    // Step 1: Prepare
-    log_info!(LOG_TAG, "Calling prepare endpoint...");
-    let prep_start = std::time::Instant::now();
-    let prep_payload = storage_prepare::Request {
-        run_id: run_id.to_string(),
-        storage_name: storage_name.to_string(),
-        storage_type: storage_type.to_string(),
-        files: to_prepare_files(&files),
-        parent_version_id: non_empty_string(parent_version_id),
-        force: None,
-        base_version: None,
-        changes: None,
-    };
-
-    let prep_result = http
-        .post_json(
-            urls::storage_prepare_url(),
-            &prep_payload,
-            constants::HTTP_MAX_RETRIES,
-        )
-        .await;
-    let prep_resp = match prep_result {
-        Ok(Some(v)) => v,
-        Ok(None) => {
-            record_sandbox_op("artifact_prepare_api", prep_start.elapsed(), false, None);
-            return Err(AgentError::Checkpoint("Empty prepare response".into()));
-        }
-        Err(e) => {
-            record_sandbox_op("artifact_prepare_api", prep_start.elapsed(), false, None);
-            return Err(e);
-        }
-    };
-    let prep: storage_prepare::Response = match serde_json::from_value(prep_resp) {
-        Ok(prep) => prep,
-        Err(e) => {
-            let message = e.to_string();
-            record_sandbox_op(
-                "artifact_prepare_api",
-                prep_start.elapsed(),
-                false,
-                Some(&message),
-            );
-            return Err(AgentError::Checkpoint(message));
-        }
-    };
-
-    let version_id = prep.version_id;
-    record_sandbox_op("artifact_prepare_api", prep_start.elapsed(), true, None);
-
-    // Step 2: Deduplication check
-    if prep.existing {
-        log_info!(
-            LOG_TAG,
-            "Version already exists (deduplicated), updating HEAD"
-        );
-        log_info!(LOG_TAG, "Validating deduplicated artifact inputs...");
-        let validate_start = std::time::Instant::now();
-        let validate_mount = mount_path.to_string();
-        let validate_files = files.clone();
-        let validate_result = match tokio::task::spawn_blocking(move || {
-            validate_archive_inputs(&validate_mount, &validate_files)
-        })
-        .await
-        {
-            Ok(result) => result,
-            Err(e) => {
-                record_sandbox_op(
-                    "artifact_archive_validate",
-                    validate_start.elapsed(),
-                    false,
-                    None,
-                );
-                return Err(AgentError::Execution(format!(
-                    "archive validation task panicked: {e}"
-                )));
-            }
-        };
-        if let Err(e) = validate_result {
-            log_error!(LOG_TAG, "Failed to validate deduplicated archive: {e}");
-            record_sandbox_op(
-                "artifact_archive_validate",
-                validate_start.elapsed(),
-                false,
-                None,
-            );
-            return Err(AgentError::Checkpoint(
-                "Failed to validate archive inputs".into(),
-            ));
-        }
-        record_sandbox_op(
-            "artifact_archive_validate",
-            validate_start.elapsed(),
-            true,
-            None,
-        );
-
-        let commit_payload = storage_commit::Request {
-            run_id: run_id.to_string(),
-            storage_name: storage_name.to_string(),
-            storage_type: storage_type.to_string(),
-            version_id: version_id.clone(),
-            parent_version_id: non_empty_string(parent_version_id),
-            files: to_commit_files(&files),
-            message: None,
-        };
-        let resp = http
-            .post_json(
-                urls::storage_commit_url(),
-                &commit_payload,
-                constants::HTTP_MAX_RETRIES,
-            )
-            .await?;
-        let commit_success = resp
-            .map(|v| {
-                serde_json::from_value::<storage_commit::Response>(v)
-                    .map(|commit| commit.success)
-                    .unwrap_or_else(|e| {
-                        log_warn!(LOG_TAG, "Failed to parse dedup commit response: {e}");
-                        false
-                    })
-            })
-            .unwrap_or(false);
-        if !commit_success {
-            return Err(AgentError::Checkpoint("Failed to update HEAD".into()));
-        }
-        return Ok(SnapshotResult { version_id });
-    }
-
-    // Step 3: Get presigned URLs
-    let uploads = prep
-        .uploads
-        .ok_or_else(|| AgentError::Checkpoint("No upload URLs in prepare response".into()))?;
-    let archive_url = uploads.archive.presigned_url;
-    let manifest_url = uploads.manifest.presigned_url;
-
-    // Step 4: Create archive + manifest in temp dir
-    let temp_dir = tempfile::tempdir().map_err(AgentError::Io)?;
-    let archive_path = temp_dir.path().join("archive.tar.gz");
-    let manifest_path = temp_dir.path().join("manifest.json");
-
-    // Create archive (blocking)
-    log_info!(LOG_TAG, "Creating archive...");
-    let arc_start = std::time::Instant::now();
-    let mp = mount_path.to_string();
-    let ap = archive_path.clone();
-    let archive_files = files.clone();
-    let archive_result =
-        tokio::task::spawn_blocking(move || create_archive(&mp, &ap, &archive_files))
-            .await
-            .map_err(|e| AgentError::Execution(format!("archive task panicked: {e}")))?;
-    if let Err(e) = archive_result {
-        log_error!(LOG_TAG, "Failed to create archive: {e}");
-        record_sandbox_op("artifact_archive_create", arc_start.elapsed(), false, None);
-        return Err(AgentError::Checkpoint("Failed to create archive".into()));
-    }
-    record_sandbox_op("artifact_archive_create", arc_start.elapsed(), true, None);
-
-    // Create manifest
-    let manifest = json!({
-        "version": 1,
-        "files": files,
-        "createdAt": guest_common::log::timestamp(),
-    });
-    std::fs::write(
-        &manifest_path,
-        serde_json::to_string_pretty(&manifest)
-            .map_err(|e| AgentError::Checkpoint(e.to_string()))?,
-    )
-    .map_err(|e| AgentError::Checkpoint(format!("Failed to write manifest: {e}")))?;
-
-    // Step 5: Upload to S3
-    log_info!(LOG_TAG, "Uploading archive to S3...");
-    let s3_start = std::time::Instant::now();
-    if let Err(e) = http
-        .put_presigned_file(&archive_url, &archive_path, "application/gzip")
-        .await
-    {
-        record_sandbox_op("artifact_s3_upload", s3_start.elapsed(), false, None);
-        return Err(e);
-    }
-
-    log_info!(LOG_TAG, "Uploading manifest to S3...");
-    let manifest_data = tokio::fs::read(&manifest_path).await?;
-    if let Err(e) = http
-        .put_presigned(&manifest_url, manifest_data.into(), "application/json")
-        .await
-    {
-        record_sandbox_op("artifact_s3_upload", s3_start.elapsed(), false, None);
-        return Err(e);
-    }
-    record_sandbox_op("artifact_s3_upload", s3_start.elapsed(), true, None);
-
-    // Step 6: Commit
-    log_info!(LOG_TAG, "Calling commit endpoint...");
-    let commit_start = std::time::Instant::now();
-    let commit_payload = storage_commit::Request {
-        run_id: run_id.to_string(),
-        storage_name: storage_name.to_string(),
-        storage_type: storage_type.to_string(),
-        version_id: version_id.clone(),
-        parent_version_id: non_empty_string(parent_version_id),
-        files: to_commit_files(&files),
-        message: Some(message.to_string()),
-    };
-    let resp = match http
-        .post_json(
-            urls::storage_commit_url(),
-            &commit_payload,
-            constants::HTTP_MAX_RETRIES,
-        )
-        .await
-    {
-        Ok(v) => v,
-        Err(e) => {
-            record_sandbox_op("artifact_commit_api", commit_start.elapsed(), false, None);
-            return Err(e);
-        }
-    };
-    let commit_success = resp
-        .map(|v| {
-            serde_json::from_value::<storage_commit::Response>(v)
-                .map(|commit| commit.success)
-                .unwrap_or_else(|e| {
-                    log_warn!(LOG_TAG, "Failed to parse commit response: {e}");
-                    false
-                })
-        })
-        .unwrap_or(false);
-
-    if !commit_success {
-        record_sandbox_op("artifact_commit_api", commit_start.elapsed(), false, None);
-        return Err(AgentError::Checkpoint("Commit failed".into()));
-    }
-
-    record_sandbox_op("artifact_commit_api", commit_start.elapsed(), true, None);
-    let short_id = version_id.get(..8).unwrap_or(&version_id);
-    log_info!(LOG_TAG, "Direct upload snapshot created: {short_id}");
-
-    Ok(SnapshotResult { version_id })
-}
-
 /// Walk directory and compute SHA-256 for each file, skipping `.git` and `.vm0`.
 #[cfg(unix)]
-pub(crate) fn collect_file_metadata(dir_path: &str) -> Vec<FileEntry> {
+pub(super) fn collect_file_metadata(dir_path: &str) -> Vec<FileEntry> {
     let mut files = Vec::new();
     let root = match open_archive_dir(Path::new(dir_path)) {
         Ok(root) => root,
@@ -376,7 +26,7 @@ pub(crate) fn collect_file_metadata(dir_path: &str) -> Vec<FileEntry> {
 }
 
 #[cfg(not(unix))]
-pub(crate) fn collect_file_metadata(dir_path: &str) -> Vec<FileEntry> {
+pub(super) fn collect_file_metadata(dir_path: &str) -> Vec<FileEntry> {
     log_warn!(
         LOG_TAG,
         "Artifact metadata collection requires Unix no-follow path opening: {dir_path}"
@@ -453,7 +103,7 @@ fn compute_file_hash_from_reader(mut reader: impl Read) -> Result<(String, u64),
 }
 
 #[derive(Debug, Error)]
-enum ArchiveError {
+pub(super) enum ArchiveError {
     #[error("failed to create archive output {}: {source}", path.display())]
     CreateOutput { path: PathBuf, source: io::Error },
     #[error("invalid archive path {path:?}: path must be relative and stay within the artifact")]
@@ -496,7 +146,7 @@ enum ArchiveError {
 /// entries that `walk_dir` skipped will be included, and files that changed
 /// after manifest collection fail the snapshot instead of producing a mismatched
 /// archive.
-fn create_archive(
+pub(super) fn create_archive(
     dir_path: &str,
     tar_path: &Path,
     files: &[FileEntry],
@@ -522,7 +172,10 @@ fn create_archive(
     Ok(())
 }
 
-fn validate_archive_inputs(dir_path: &str, files: &[FileEntry]) -> Result<(), ArchiveError> {
+pub(super) fn validate_archive_inputs(
+    dir_path: &str,
+    files: &[FileEntry],
+) -> Result<(), ArchiveError> {
     let root = Path::new(dir_path);
     for file in files {
         validate_archive_file(root, file)?;
@@ -821,7 +474,6 @@ mod tests {
     use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs as unix_fs;
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
-    use std::sync::LazyLock;
 
     fn extract_archive(tar_path: &Path, extract_dir: &Path) -> io::Result<()> {
         let file = File::open(tar_path)?;
@@ -840,14 +492,6 @@ mod tests {
             Err(io::Error::last_os_error())
         }
     }
-
-    static SNAPSHOT_MOCK_SERVER: LazyLock<httpmock::MockServer> = LazyLock::new(|| {
-        let server = httpmock::MockServer::start();
-        unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-        }
-        server
-    });
 
     fn disable_system_log() {
         guest_common::log::clear_system_log_file();
@@ -1219,58 +863,6 @@ mod tests {
             err.to_string().to_ascii_lowercase().contains("nul"),
             "got: {err}"
         );
-    }
-
-    #[tokio::test]
-    async fn dedup_snapshot_validation_failure_does_not_commit() {
-        disable_system_log();
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-        std::fs::write(root.join("target.txt"), "before").unwrap();
-        let files = collect_file_metadata(root.to_str().unwrap());
-        std::fs::write(root.join("target.txt"), "after!").unwrap();
-
-        let server = &*SNAPSHOT_MOCK_SERVER;
-
-        let prepare = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/webhooks/agent/storages/prepare");
-            then.status(200).json_body(serde_json::json!({
-                "versionId": "v-existing",
-                "existing": true
-            }));
-        });
-        let commit = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/webhooks/agent/storages/commit");
-            then.status(200)
-                .json_body(serde_json::json!({ "success": true }));
-        });
-
-        let http = HttpClient::new().unwrap();
-        let result = create_snapshot(
-            &http,
-            CreateSnapshotRequest {
-                mount_path: root.to_str().unwrap(),
-                files,
-                storage_name: "storage",
-                storage_type: "artifact",
-                run_id: "run-id",
-                message: "message",
-                parent_version_id: "",
-            },
-        )
-        .await;
-
-        let Err(err) = result else {
-            panic!("create_snapshot unexpectedly succeeded");
-        };
-        assert!(
-            err.to_string()
-                .contains("Failed to validate archive inputs")
-        );
-        prepare.assert_calls(1);
-        commit.assert_calls(0);
     }
 
     #[test]
