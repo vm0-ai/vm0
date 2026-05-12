@@ -247,6 +247,27 @@ export async function saveAgentPhoneThreadSession(opts: {
   runStatus: string;
 }): Promise<void> {
   if (!opts.existingSessionId && opts.newSessionId) {
+    const updated = await globalThis.services.db
+      .update(agentphoneThreadSessions)
+      .set({
+        agentSessionId: opts.newSessionId,
+        conversationId: opts.conversationId,
+        lastProcessedMessageId: opts.messageId,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(agentphoneThreadSessions.agentphoneUserLinkId, opts.userLinkId),
+          eq(
+            agentphoneThreadSessions.rootMessageId,
+            AGENTPHONE_ROOT_MESSAGE_ID,
+          ),
+        ),
+      )
+      .returning({ id: agentphoneThreadSessions.id });
+
+    if (updated.length > 0) return;
+
     await globalThis.services.db
       .insert(agentphoneThreadSessions)
       .values({

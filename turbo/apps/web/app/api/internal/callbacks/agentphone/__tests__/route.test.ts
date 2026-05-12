@@ -12,8 +12,11 @@ import {
   createTestCallback,
   createTestCompose,
   createTestRequest,
+  createAgentPhoneThreadSession,
   findTestAgentPhoneThreadSession,
+  findTestRunRecord,
   insertTestAgentPhoneUserLink,
+  setTestRunSelectedModel,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { http } from "../../../../../../src/__tests__/msw";
@@ -184,6 +187,62 @@ describe("POST /api/internal/callbacks/agentphone", () => {
         lastProcessedMessageId: "msg-callback-1",
       }),
     );
+  });
+
+  it("adds a model footer to AgentPhone replies", async () => {
+    const { runId, payload, secret } = await setupAgentPhoneCallback();
+    await setTestRunSelectedModel(runId, "claude-opus-4-7");
+    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+      { eventData: { result: "Done from AgentPhone." } },
+    ]);
+    const sendMessage = agentPhoneSendMessage();
+    server.use(sendMessage.handler);
+
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/agentphone",
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(sendMessage.calls[0]?.body).toBe(
+      "Done from AgentPhone.\n\nClaude Opus 4.7",
+    );
+  });
+
+  it("replaces an existing DM mapping when a new session was started", async () => {
+    const { runId, payload, secret, userId, composeId, userLinkId } =
+      await setupAgentPhoneCallback();
+    const run = await findTestRunRecord(runId);
+    const oldSession = await createTestAgentSession(userId, composeId);
+    await createAgentPhoneThreadSession({
+      agentphoneUserLinkId: userLinkId,
+      agentSessionId: oldSession.id,
+    });
+    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+      { eventData: { result: "New session response." } },
+    ]);
+    const sendMessage = agentPhoneSendMessage();
+    server.use(sendMessage.handler);
+
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/agentphone",
+      {
+        runId,
+        status: "completed",
+        payload: { ...payload, existingSessionId: null },
+      },
+      secret,
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    const thread = await findTestAgentPhoneThreadSession({
+      agentphoneUserLinkId: userLinkId,
+    });
+    expect(thread?.agentSessionId).toBe(run?.sessionId);
+    expect(thread?.agentSessionId).not.toBe(oldSession.id);
   });
 
   it("sends failed run errors through AgentPhone", async () => {

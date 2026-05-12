@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, desc, eq, gte } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../src/lib/infra/callback";
 import { extractRunOutput } from "../../../../../src/lib/infra/run/extract-run-output";
-import { agentSessions } from "@vm0/db/schema/agent-session";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { sendAgentPhoneMessage } from "../../../../../src/lib/zero/agentphone/client";
+import { resolveAgentPhoneReplyFooterText } from "../../../../../src/lib/zero/agentphone/footer";
 import {
   saveAgentPhoneThreadSession,
   storeOutboundAgentPhoneMessage,
@@ -50,38 +50,23 @@ function errorResponse(message: string, status: number): NextResponse {
   return NextResponse.json({ error: message }, { status });
 }
 
-async function findNewSessionId(
-  userId: string,
-  agentId: string,
-  runCreatedAt: Date,
-): Promise<string | undefined> {
-  const [newSession] = await globalThis.services.db
-    .select({ id: agentSessions.id })
-    .from(agentSessions)
-    .where(
-      and(
-        eq(agentSessions.userId, userId),
-        eq(agentSessions.agentComposeId, agentId),
-        gte(agentSessions.updatedAt, runCreatedAt),
-      ),
-    )
-    .orderBy(desc(agentSessions.updatedAt))
-    .limit(1);
-  return newSession?.id;
-}
-
 function buildAgentPhoneCompletionText(params: {
   status: "completed" | "failed";
   result: string | null;
   error: string | null;
   logsUrl: string | undefined;
+  footerText: string | undefined;
 }): string {
   const main =
     params.status === "completed"
       ? (params.result ?? "Task completed successfully.")
       : (params.error ?? "The agent encountered an error during execution.");
 
-  return [main, params.logsUrl ? `View run: ${params.logsUrl}` : null]
+  return [
+    main,
+    params.logsUrl ? `View run: ${params.logsUrl}` : null,
+    params.footerText,
+  ]
     .filter((part): part is string => {
       return Boolean(part);
     })
@@ -108,7 +93,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .select({
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
-      createdAt: agentRuns.createdAt,
+      sessionId: agentRuns.sessionId,
       lastEventSequence: agentRuns.lastEventSequence,
     })
     .from(agentRuns)
@@ -131,11 +116,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         runId,
       })
     : undefined;
+  const footerText = run
+    ? await resolveAgentPhoneReplyFooterText({
+        orgId: run.orgId,
+        runId,
+        agentId: payload.agentId,
+      })
+    : undefined;
   const body = buildAgentPhoneCompletionText({
     status,
     result: runOutput.result,
     error: runOutput.error,
     logsUrl,
+    footerText,
   });
 
   const sent = await sendAgentPhoneMessage({
@@ -157,9 +150,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   });
 
   if (run) {
-    const newSessionId = !payload.existingSessionId
-      ? await findNewSessionId(run.userId, payload.agentId, run.createdAt)
-      : undefined;
+    const newSessionId = !payload.existingSessionId ? run.sessionId : undefined;
 
     await saveAgentPhoneThreadSession({
       userLinkId: payload.userLinkId,
