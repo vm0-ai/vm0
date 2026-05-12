@@ -229,6 +229,13 @@ export {
   type TestOAuthProviderUserinfoResponse,
 } from "./test-oauth-provider-userinfo";
 export {
+  testTelegramStateContract,
+  testTelegramStateErrorSchema,
+  testTelegramStateResponseSchema,
+  type TestTelegramStateContract,
+  type TestTelegramStateResponse,
+} from "./test-telegram-state";
+export {
   cronCleanupSandboxesContract,
   cleanupResultSchema,
   cleanupResponseSchema,

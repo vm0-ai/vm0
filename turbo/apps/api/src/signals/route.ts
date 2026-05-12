@@ -76,6 +76,7 @@ import { zeroWebDownloadRoutes } from "./routes/zero-web-download";
 import { testOAuthProviderAuthorizeRoutes } from "./routes/test-oauth-provider-authorize";
 import { testOAuthProviderEchoRoutes } from "./routes/test-oauth-provider-echo";
 import { testOAuthProviderUserinfoRoutes } from "./routes/test-oauth-provider-userinfo";
+import { testTelegramStateRoutes } from "./routes/test-telegram-state";
 
 export type { SignalRouteHandler };
 
@@ -162,4 +163,5 @@ export const ROUTES: readonly RouteEntry[] = [
   ...testOAuthProviderAuthorizeRoutes,
   ...testOAuthProviderEchoRoutes,
   ...testOAuthProviderUserinfoRoutes,
+  ...testTelegramStateRoutes,
 ];
