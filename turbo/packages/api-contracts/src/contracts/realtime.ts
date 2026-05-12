@@ -35,6 +35,7 @@ export const runnerRealtimeTokenContract = c.router({
     }),
     responses: {
       200: ablyTokenRequestSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       500: apiErrorSchema,

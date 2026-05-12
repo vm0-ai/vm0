@@ -1,6 +1,10 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
+import { z } from "zod";
+
 import { env } from "../../lib/env";
+
+const secretsMapSchema = z.record(z.string(), z.string());
 
 /**
  * Encrypt a single secret value using AES-256-GCM.
@@ -47,4 +51,16 @@ export function decryptSecretValue(encrypted: string): string {
   ]);
 
   return decrypted.toString("utf8");
+}
+
+export function decryptSecretsMap(
+  encryptedData: string | null,
+): Record<string, string> | null {
+  if (!encryptedData) {
+    return null;
+  }
+
+  return secretsMapSchema.parse(
+    JSON.parse(decryptSecretValue(encryptedData)) as unknown,
+  );
 }

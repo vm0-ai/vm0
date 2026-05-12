@@ -44,6 +44,19 @@ export async function createPlatformUserRealtimeToken(
   return tokenRequest;
 }
 
+export async function createRunnerGroupRealtimeToken(
+  group: string,
+): Promise<Ably.TokenRequest> {
+  const tokenRequest = await ablyClient().auth.createTokenRequest({
+    capability: {
+      [`runner-group:${group}`]: ["subscribe"],
+    },
+    ttl: 60 * 60 * 1000,
+  });
+  L.debug(`Generated runner group realtime token for ${group}`);
+  return tokenRequest;
+}
+
 /**
  * Publish a per-user invalidation/notification signal.
  *
@@ -70,6 +83,18 @@ export async function publishUserSignal(
     }),
   );
   L.debug(`Published "${topic}" to ${userIds.length} user(s)`);
+}
+
+export async function publishRunChangedForUserSafely(
+  userId: string,
+  runId: string,
+  payload: unknown = null,
+): Promise<void> {
+  await publishUserSignal([userId], `run:changed:${runId}`, payload).catch(
+    (error: unknown) => {
+      L.warn("Failed to publish run changed signal", { runId, error });
+    },
+  );
 }
 
 /**
