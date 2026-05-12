@@ -39,8 +39,8 @@ pub struct FirecrackerFactory {
     /// Base image path and size (bytes), populated during startup.
     base_image_path: Option<std::path::PathBuf>,
     base_image_size: u64,
-    /// Pre-warming pool for COW files.
-    cow_pool: Option<tokio::sync::Mutex<crate::cow_pool::CowPool>>,
+    /// Bounded producer for one-shot COW slots.
+    cow_pool: Option<crate::cow_pool::CowPoolHandle>,
     started: bool,
     cleanup_group: FactoryCleanupGroup,
     /// Owns the channel/task that drains leaked sandbox resources from Drop.
@@ -110,7 +110,7 @@ impl FirecrackerFactory {
     /// # Panics
     /// Panics if called before `startup()` — this is a programming error.
     #[allow(clippy::expect_used)]
-    fn cow_pool(&self) -> &tokio::sync::Mutex<crate::cow_pool::CowPool> {
+    fn cow_pool(&self) -> &crate::cow_pool::CowPoolHandle {
         self.cow_pool.as_ref().expect("factory not started")
     }
 }
@@ -182,9 +182,9 @@ impl SandboxFactory for FirecrackerFactory {
             base_size,
             golden_cow: self.config.snapshot.as_ref().map(|s| s.cow_path.clone()),
         };
-        let mut cow_pool = crate::cow_pool::CowPool::new(cow_pool_config);
+        let cow_pool = crate::cow_pool::CowPoolHandle::new(cow_pool_config);
         cow_pool.warmup().await;
-        self.cow_pool = Some(tokio::sync::Mutex::new(cow_pool));
+        self.cow_pool = Some(cow_pool);
 
         // Spawn background task to clean up resources leaked by sandbox Drop
         // impls that fire without going through factory.destroy().
@@ -225,12 +225,14 @@ impl SandboxFactory for FirecrackerFactory {
             async {
                 // Acquire a pre-warmed COW slot from the pool.
                 // The slot provides: workspace dir (already created) and cow file.
-                let slot = self.cow_pool().lock().await.acquire().await.map_err(|e| {
-                    SandboxError::Initialization {
-                        phase: SandboxInitializationPhase::SandboxAllocation,
-                        message: format!("acquire COW slot: {e}"),
-                    }
-                })?;
+                let slot =
+                    self.cow_pool()
+                        .acquire()
+                        .await
+                        .map_err(|e| SandboxError::Initialization {
+                            phase: SandboxInitializationPhase::SandboxAllocation,
+                            message: format!("acquire COW slot: {e}"),
+                        })?;
                 tx.track_slot(slot);
 
                 // The slot workspace is {workspaces_dir}/{slot_uuid}/.
@@ -362,8 +364,7 @@ impl SandboxFactory for FirecrackerFactory {
         }
 
         // Clean up COW pool (delete pre-warmed COW files).
-        if let Some(pool_mutex) = self.cow_pool.take() {
-            let mut pool = pool_mutex.into_inner();
+        if let Some(pool) = self.cow_pool.take() {
             pool.cleanup().await;
         }
 

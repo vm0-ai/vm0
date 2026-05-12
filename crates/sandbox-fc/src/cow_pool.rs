@@ -1,37 +1,50 @@
-//! COW Device Pool for Firecracker VMs
+//! COW slot producer for Firecracker VMs.
 //!
-//! Pre-warms COW files in the background to reduce sandbox creation latency.
-//! NBD device claims are acquired on demand by
-//! `DevicePoolHandle::create_cow_device()`.
-//!
-//! Follows the [`NetnsPool`](crate::network::NetnsPool) pattern:
-//! - Fixed buffer of pre-warmed slots
-//! - Three-tier acquire: queue → pending → on-demand
-//! - Background replenishment after each acquire
-//! - No recycling (COW files have dirty data after VM use)
+//! Pre-creates one-shot COW slots in bounded background workers to reduce
+//! sandbox creation latency. A slot is consumed by one sandbox and is never
+//! returned to this producer.
 
 use std::collections::VecDeque;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::{Duration, Instant as StdInstant};
 
+use tokio::sync::{mpsc, oneshot};
+use tokio::task::{JoinHandle, JoinSet};
+use tokio::time::Instant as TokioInstant;
 use tracing::{error, info, warn};
 
-/// Number of pre-warmed COW slots to maintain in the queue.
+/// Number of ready COW slots to keep warm in steady state.
 const BUFFER_SIZE: usize = 4;
 
-/// Maximum slots in the pool pipeline at any time (queue + pending + creating).
-/// Prevents runaway NBD device consumption. In practice the pool stays near
-/// `BUFFER_SIZE`; this is a safety ceiling.
-const MAX_SLOTS: u32 = 256;
+/// Maximum simultaneous blocking slot creation workers.
+const MAX_CONCURRENT_SLOT_CREATIONS: usize = 4;
 
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
+/// Maximum slots still owned by the producer pipeline (ready + pending).
+const MAX_SLOTS: usize = 256;
 
-/// Configuration for creating a [`CowPool`].
+/// Backoff for warm-buffer retries after background creation failures.
+const WARM_RETRY_BACKOFF: Duration = Duration::from_secs(1);
+
+type AcquireResult = Result<PrewarmedSlot, CowPoolError>;
+type SlotSpawner =
+    Arc<dyn Fn(CowPoolConfig) -> JoinHandle<Result<PrewarmedSlot, CowPoolError>> + Send + Sync>;
+
+#[cfg(test)]
+#[derive(Debug)]
+struct CowPoolSnapshot {
+    ready: usize,
+    pending: usize,
+    waiters: usize,
+    pipeline_slots: usize,
+    warm_retry_scheduled: bool,
+}
+
+/// Configuration for creating a [`CowPoolHandle`].
 #[derive(Clone)]
 pub(crate) struct CowPoolConfig {
-    /// Base directory for workspaces (e.g., `{base_dir}/workspaces`).
+    /// Base directory for workspaces (for example, `{base_dir}/workspaces`).
     pub workspaces_dir: PathBuf,
     /// Base image size in bytes (for creating sparse COW files in fresh mode).
     pub base_size: u64,
@@ -39,12 +52,12 @@ pub(crate) struct CowPoolConfig {
     pub golden_cow: Option<PathBuf>,
 }
 
-/// A pre-warmed slot: workspace directory + COW file created.
+/// A pre-warmed one-shot slot: workspace directory + COW file.
 ///
 /// The caller must create the NBD device on acquire via
 /// `DevicePoolHandle::create_cow_device()`.
 pub(crate) struct PrewarmedSlot {
-    /// Unique slot ID (UUID). Used as workspace directory name.
+    /// Unique slot ID. Used as workspace directory name before checkout.
     pub id: String,
     /// Path to the workspace directory: `{workspaces_dir}/{id}/`.
     pub workspace: PathBuf,
@@ -83,231 +96,633 @@ impl std::fmt::Debug for PrewarmedSlot {
     }
 }
 
-struct SlotCapacityGuard<'a> {
-    next_slot_idx: &'a mut u32,
-}
-
-impl<'a> SlotCapacityGuard<'a> {
-    fn reserve(next_slot_idx: &'a mut u32) -> Self {
-        *next_slot_idx += 1;
-        Self { next_slot_idx }
-    }
-}
-
-impl Drop for SlotCapacityGuard<'_> {
-    fn drop(&mut self) {
-        *self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
-    }
-}
-
 /// Pool error type.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum CowPoolError {
     #[error("COW file creation failed: {0}")]
     CowFileCreation(String),
     #[error("slot limit reached (max {max})")]
-    SlotLimitReached { max: u32 },
+    SlotLimitReached { max: usize },
+    #[error("pool actor stopped")]
+    ActorStopped,
     #[error("pool is not active")]
     NotActive,
 }
 
-// ---------------------------------------------------------------------------
-// CowPool
-// ---------------------------------------------------------------------------
-
-/// Pre-warming pool for COW file resources.
-///
-/// Maintains a buffer of pre-created COW files. On [`acquire`](Self::acquire),
-/// pops a slot and the caller claims and connects an NBD device with
-/// `DevicePoolHandle::create_cow_device()`.
-pub(crate) struct CowPool {
-    active: bool,
-    queue: VecDeque<PrewarmedSlot>,
-    pending: tokio::task::JoinSet<Result<PrewarmedSlot, CowPoolError>>,
-    next_slot_idx: u32,
-    config: CowPoolConfig,
+/// Cloneable handle to the COW slot producer.
+#[derive(Clone)]
+pub(crate) struct CowPoolHandle {
+    commands: mpsc::UnboundedSender<CowPoolCommand>,
+    cleanup: mpsc::UnboundedSender<oneshot::Sender<()>>,
 }
 
-impl CowPool {
-    /// Create a new pool without allocating resources.
+enum CowPoolCommand {
+    Warmup {
+        done: oneshot::Sender<()>,
+    },
+    Acquire {
+        requested_at: StdInstant,
+        respond_to: oneshot::Sender<AcquireResult>,
+    },
+    #[cfg(test)]
+    Snapshot {
+        respond_to: oneshot::Sender<CowPoolSnapshot>,
+    },
+}
+
+struct CowPoolActor {
+    pool: CowPool,
+    commands: mpsc::UnboundedReceiver<CowPoolCommand>,
+    cleanup: mpsc::UnboundedReceiver<oneshot::Sender<()>>,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum CreationPurpose {
+    Demand,
+    Warm,
+}
+
+struct SlotCreationOutcome {
+    purpose: CreationPurpose,
+    elapsed: Duration,
+    result: Result<PrewarmedSlot, CowPoolError>,
+}
+
+struct AcquireWaiter {
+    requested_at: StdInstant,
+    respond_to: oneshot::Sender<AcquireResult>,
+}
+
+/// Single-owner state for the bounded one-shot COW slot producer.
+pub(crate) struct CowPool {
+    active: bool,
+    ready: VecDeque<PrewarmedSlot>,
+    pending: JoinSet<SlotCreationOutcome>,
+    waiters: VecDeque<AcquireWaiter>,
+    warmup_waiters: Vec<oneshot::Sender<()>>,
+    pipeline_slots: usize,
+    buffer_size: usize,
+    max_concurrent_creations: usize,
+    max_slots: usize,
+    warm_retry_backoff: Duration,
+    warm_retry_at: Option<TokioInstant>,
+    config: CowPoolConfig,
+    slot_spawner: SlotSpawner,
+}
+
+impl CowPoolHandle {
+    /// Create a new shared COW slot producer handle.
     ///
-    /// Call [`warmup`](Self::warmup) to pre-warm the initial buffer.
-    pub fn new(config: CowPoolConfig) -> Self {
-        Self {
-            active: true,
-            queue: VecDeque::with_capacity(BUFFER_SIZE),
-            pending: tokio::task::JoinSet::new(),
-            next_slot_idx: 0,
-            config,
+    /// Must be called from a Tokio runtime: the handle owns a background
+    /// manager task that serializes all producer state transitions.
+    pub(crate) fn new(config: CowPoolConfig) -> Self {
+        Self::from_pool(CowPool::new(config))
+    }
+
+    fn from_pool(pool: CowPool) -> Self {
+        let (commands, command_rx) = mpsc::unbounded_channel();
+        let (cleanup, cleanup_rx) = mpsc::unbounded_channel();
+        tokio::spawn(
+            CowPoolActor {
+                pool,
+                commands: command_rx,
+                cleanup: cleanup_rx,
+            }
+            .run(),
+        );
+        Self { commands, cleanup }
+    }
+
+    /// Pre-warm the initial ready-slot buffer.
+    pub(crate) async fn warmup(&self) {
+        let (done, done_rx) = oneshot::channel();
+        if self.commands.send(CowPoolCommand::Warmup { done }).is_ok() {
+            let _ = done_rx.await;
         }
     }
 
-    /// Pre-warm the initial buffer of slots in parallel.
-    ///
-    /// Called from `factory.startup()`. Errors during pre-warm are logged
-    /// but do not prevent the pool from operating (acquire falls back to
-    /// on-demand creation).
-    pub async fn warmup(&mut self) {
-        let missing = BUFFER_SIZE.saturating_sub(self.queue.len() + self.pending.len());
-        for _ in 0..missing {
-            if !self.spawn_slot_creation() {
+    /// Acquire a one-shot pre-warmed COW slot.
+    pub(crate) async fn acquire(&self) -> Result<PrewarmedSlot, CowPoolError> {
+        let (respond_to, response) = oneshot::channel();
+        if self
+            .commands
+            .send(CowPoolCommand::Acquire {
+                requested_at: StdInstant::now(),
+                respond_to,
+            })
+            .is_err()
+        {
+            return Err(CowPoolError::ActorStopped);
+        }
+        response.await.map_err(|_| CowPoolError::ActorStopped)?
+    }
+
+    /// Clean up the producer. Pending blocking creation workers are drained.
+    pub(crate) async fn cleanup(&self) {
+        let (done, done_rx) = oneshot::channel();
+        if self.cleanup.send(done).is_ok() {
+            let _ = done_rx.await;
+        }
+    }
+
+    #[cfg(test)]
+    fn new_for_test(pool: CowPool) -> Self {
+        Self::from_pool(pool)
+    }
+
+    #[cfg(test)]
+    async fn snapshot(&self) -> CowPoolSnapshot {
+        let (respond_to, response) = oneshot::channel();
+        self.commands
+            .send(CowPoolCommand::Snapshot { respond_to })
+            .expect("COW pool actor stopped before snapshot");
+        response.await.expect("COW pool actor dropped snapshot")
+    }
+}
+
+impl CowPoolActor {
+    async fn run(mut self) {
+        let mut commands_open = true;
+        let mut cleanup_open = true;
+        loop {
+            if !commands_open && !cleanup_open {
+                break;
+            }
+
+            let retry_deadline = self.pool.warm_retry_at;
+            let has_pending = !self.pool.pending.is_empty();
+            tokio::select! {
+                biased;
+
+                cleanup = self.cleanup.recv(), if cleanup_open => {
+                    match cleanup {
+                        Some(done) => {
+                            self.pool.cleanup().await;
+                            let _ = done.send(());
+                            return;
+                        }
+                        None => cleanup_open = false,
+                    }
+                }
+                command = self.commands.recv(), if commands_open => {
+                    match command {
+                        Some(command) => self.handle_command(command),
+                        None => commands_open = false,
+                    }
+                }
+                completion = self.pool.pending.join_next(), if has_pending => {
+                    self.pool.handle_creation_join(completion);
+                }
+                () = sleep_until_deadline(retry_deadline), if retry_deadline.is_some() => {
+                    self.pool.warm_retry_at = None;
+                    self.pool.pump();
+                    self.pool.maybe_finish_warmup();
+                }
+            }
+        }
+
+        self.pool.cleanup().await;
+    }
+
+    fn handle_command(&mut self, command: CowPoolCommand) {
+        match command {
+            CowPoolCommand::Warmup { done } => self.pool.handle_warmup(done),
+            CowPoolCommand::Acquire {
+                requested_at,
+                respond_to,
+            } => self.pool.handle_acquire(requested_at, respond_to),
+            #[cfg(test)]
+            CowPoolCommand::Snapshot { respond_to } => {
+                let _ = respond_to.send(self.pool.snapshot());
+            }
+        }
+    }
+}
+
+async fn sleep_until_deadline(deadline: Option<TokioInstant>) {
+    if let Some(deadline) = deadline {
+        tokio::time::sleep_until(deadline).await;
+    } else {
+        std::future::pending::<()>().await;
+    }
+}
+
+impl CowPool {
+    /// Create a new producer without allocating resources.
+    pub fn new(config: CowPoolConfig) -> Self {
+        Self::new_with_options(
+            config,
+            BUFFER_SIZE,
+            MAX_CONCURRENT_SLOT_CREATIONS,
+            MAX_SLOTS,
+            WARM_RETRY_BACKOFF,
+            default_slot_spawner(),
+        )
+    }
+
+    fn new_with_options(
+        config: CowPoolConfig,
+        buffer_size: usize,
+        max_concurrent_creations: usize,
+        max_slots: usize,
+        warm_retry_backoff: Duration,
+        slot_spawner: SlotSpawner,
+    ) -> Self {
+        Self {
+            active: true,
+            ready: VecDeque::with_capacity(buffer_size),
+            pending: JoinSet::new(),
+            waiters: VecDeque::new(),
+            warmup_waiters: Vec::new(),
+            pipeline_slots: 0,
+            buffer_size,
+            max_concurrent_creations,
+            max_slots,
+            warm_retry_backoff,
+            warm_retry_at: None,
+            config,
+            slot_spawner,
+        }
+    }
+
+    fn handle_warmup(&mut self, done: oneshot::Sender<()>) {
+        if !self.active {
+            let _ = done.send(());
+            return;
+        }
+        self.warmup_waiters.push(done);
+        self.pump();
+        self.maybe_finish_warmup();
+    }
+
+    fn handle_acquire(
+        &mut self,
+        requested_at: StdInstant,
+        respond_to: oneshot::Sender<AcquireResult>,
+    ) {
+        if !self.active {
+            let _ = respond_to.send(Err(CowPoolError::NotActive));
+            return;
+        }
+
+        self.waiters.push_back(AcquireWaiter {
+            requested_at,
+            respond_to,
+        });
+        self.pump();
+    }
+
+    fn pump(&mut self) {
+        if !self.active {
+            return;
+        }
+
+        self.prune_closed_waiters();
+        self.assign_ready_slots();
+        while !self.waiters.is_empty()
+            && self.ready.is_empty()
+            && self.pending.is_empty()
+            && self.pipeline_slots >= self.max_slots
+        {
+            let _ = self.fail_one_waiter(CowPoolError::SlotLimitReached {
+                max: self.max_slots,
+            });
+        }
+
+        let desired_pipeline = self.desired_pipeline_slots();
+        if desired_pipeline <= self.pipeline_slots {
+            return;
+        }
+        if self.waiters.is_empty() && self.warm_retry_at.is_some() {
+            return;
+        }
+
+        let purpose = if self.waiters.is_empty() {
+            CreationPurpose::Warm
+        } else {
+            CreationPurpose::Demand
+        };
+
+        while self.pipeline_slots < desired_pipeline
+            && self.pipeline_slots < self.max_slots
+            && self.pending.len() < self.max_concurrent_creations
+        {
+            if !self.spawn_slot_creation(purpose) {
                 break;
             }
         }
-        while let Some(result) = self.pending.join_next().await {
-            match result {
-                Ok(Ok(slot)) => self.queue.push_back(slot),
-                Ok(Err(e)) => {
-                    self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
-                    error!(error = %e, "pre-warm slot creation failed");
+    }
+
+    fn desired_pipeline_slots(&self) -> usize {
+        let desired = self.buffer_size.saturating_add(self.waiters.len());
+        desired.min(self.max_slots)
+    }
+
+    fn prune_closed_waiters(&mut self) {
+        self.waiters.retain(|waiter| !waiter.respond_to.is_closed());
+    }
+
+    fn assign_ready_slots(&mut self) {
+        while let Some(slot) = self.ready.pop_front() {
+            match self.assign_slot_to_waiter(slot) {
+                AssignOutcome::Assigned => {
+                    self.pipeline_slots = self.pipeline_slots.saturating_sub(1);
                 }
-                Err(e) => {
-                    self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
-                    error!(error = %e, "pre-warm task panicked");
+                AssignOutcome::NoWaiter(slot) => {
+                    self.ready.push_front(slot);
+                    break;
                 }
             }
         }
-        if self.queue.is_empty() {
+    }
+
+    fn assign_slot_to_waiter(&mut self, mut slot: PrewarmedSlot) -> AssignOutcome {
+        while let Some(waiter) = self.waiters.pop_front() {
+            let waited_ms = waiter.requested_at.elapsed().as_millis() as u64;
+            let slot_id = slot.id.clone();
+            match waiter.respond_to.send(Ok(slot)) {
+                Ok(()) => {
+                    info!(
+                        id = %slot_id,
+                        waited_ms,
+                        ready = self.ready.len(),
+                        pending = self.pending.len(),
+                        waiters = self.waiters.len(),
+                        "acquired COW slot"
+                    );
+                    return AssignOutcome::Assigned;
+                }
+                Err(Ok(returned_slot)) => {
+                    slot = returned_slot;
+                }
+                Err(Err(_)) => {
+                    return AssignOutcome::Assigned;
+                }
+            }
+        }
+        AssignOutcome::NoWaiter(slot)
+    }
+
+    fn fail_one_waiter(&mut self, mut error: CowPoolError) -> Option<CowPoolError> {
+        while let Some(waiter) = self.waiters.pop_front() {
+            match waiter.respond_to.send(Err(error)) {
+                Ok(()) => return None,
+                Err(Err(returned_error)) => {
+                    error = returned_error;
+                }
+                Err(Ok(slot)) => {
+                    self.ready.push_front(slot);
+                    return None;
+                }
+            }
+        }
+        Some(error)
+    }
+
+    fn spawn_slot_creation(&mut self, purpose: CreationPurpose) -> bool {
+        if !self.active
+            || self.pending.len() >= self.max_concurrent_creations
+            || self.pipeline_slots >= self.max_slots
+        {
+            return false;
+        }
+
+        self.pipeline_slots += 1;
+        let config = self.config.clone();
+        let spawner = Arc::clone(&self.slot_spawner);
+        self.pending.spawn(async move {
+            let started = StdInstant::now();
+            let handle = spawner(config);
+            let result = handle
+                .await
+                .map_err(|e| CowPoolError::CowFileCreation(format!("join: {e}")))
+                .and_then(|result| result);
+            SlotCreationOutcome {
+                purpose,
+                elapsed: started.elapsed(),
+                result,
+            }
+        });
+        true
+    }
+
+    fn handle_creation_join(
+        &mut self,
+        completion: Option<Result<SlotCreationOutcome, tokio::task::JoinError>>,
+    ) {
+        let Some(completion) = completion else {
+            self.maybe_finish_warmup();
+            return;
+        };
+        match completion {
+            Ok(outcome) => self.handle_creation_outcome(outcome),
+            Err(e) => {
+                self.handle_creation_failure(CowPoolError::CowFileCreation(format!("join: {e}")));
+            }
+        }
+        self.pump();
+        self.maybe_finish_warmup();
+    }
+
+    fn handle_creation_outcome(&mut self, outcome: SlotCreationOutcome) {
+        let elapsed_ms = outcome.elapsed.as_millis() as u64;
+        match outcome.result {
+            Ok(slot) => {
+                info!(
+                    id = %slot.id,
+                    purpose = ?outcome.purpose,
+                    elapsed_ms,
+                    ready = self.ready.len(),
+                    pending = self.pending.len(),
+                    waiters = self.waiters.len(),
+                    pipeline_slots = self.pipeline_slots,
+                    "COW slot created"
+                );
+                if self.active {
+                    self.ready.push_back(slot);
+                } else {
+                    self.pipeline_slots = self.pipeline_slots.saturating_sub(1);
+                    drop(slot);
+                }
+            }
+            Err(e) => {
+                error!(
+                    purpose = ?outcome.purpose,
+                    elapsed_ms,
+                    error = %e,
+                    ready = self.ready.len(),
+                    pending = self.pending.len(),
+                    waiters = self.waiters.len(),
+                    pipeline_slots = self.pipeline_slots,
+                    "COW slot creation failed"
+                );
+                self.handle_creation_failure(e);
+            }
+        }
+    }
+
+    fn handle_creation_failure(&mut self, error: CowPoolError) {
+        self.pipeline_slots = self.pipeline_slots.saturating_sub(1);
+        if !self.active {
+            return;
+        }
+        if let Some(error) = self.fail_one_waiter(error) {
             warn!(
-                "COW pool warmup produced no ready slots — all acquire calls will use on-demand creation"
+                error = %error,
+                backoff_ms = self.warm_retry_backoff.as_millis() as u64,
+                "background COW slot creation failed; delaying warm retry"
+            );
+            self.schedule_warm_retry();
+        }
+    }
+
+    fn schedule_warm_retry(&mut self) {
+        if self.warm_retry_at.is_none() {
+            self.warm_retry_at = Some(TokioInstant::now() + self.warm_retry_backoff);
+        }
+    }
+
+    fn maybe_finish_warmup(&mut self) {
+        if !self.pending.is_empty() || self.warmup_waiters.is_empty() {
+            return;
+        }
+
+        let waiters = std::mem::take(&mut self.warmup_waiters);
+        for done in waiters {
+            let _ = done.send(());
+        }
+        if self.ready.is_empty() {
+            warn!(
+                "COW pool warmup produced no ready slots - acquire calls will create slots on demand"
             );
         }
         info!(
-            ready = self.queue.len(),
-            buffer = BUFFER_SIZE,
+            ready = self.ready.len(),
+            buffer = self.buffer_size,
             "COW pool warmed up"
         );
     }
 
-    /// Acquire a pre-warmed slot.
-    ///
-    /// Three-tier strategy (same as `NetnsPool`):
-    /// 1. Pop from ready queue (instant)
-    /// 2. Await in-flight background task
-    /// 3. Create on-demand (blocking fallback)
-    pub async fn acquire(&mut self) -> Result<PrewarmedSlot, CowPoolError> {
-        if !self.active {
-            return Err(CowPoolError::NotActive);
-        }
-        self.drain_completed();
-
-        // Tier 1: pop from queue.
-        if let Some(slot) = self.queue.pop_front() {
-            self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
-            info!(id = %slot.id, remaining = self.queue.len(), "acquired COW slot from pool");
-            self.maybe_replenish();
-            return Ok(slot);
-        }
-
-        // Tier 2: await in-flight background task.
-        while let Some(result) = self.pending.join_next().await {
-            match result {
-                Ok(Ok(slot)) => {
-                    self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
-                    info!(id = %slot.id, "acquired COW slot from pending");
-                    self.maybe_replenish();
-                    return Ok(slot);
-                }
-                Ok(Err(e)) => {
-                    self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
-                    error!(error = %e, "pending slot creation failed");
-                }
-                Err(e) => {
-                    self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
-                    error!(error = %e, "pending slot task panicked");
-                }
-            }
-        }
-
-        // Tier 3: create on-demand (blocking fallback).
-        info!("COW pool exhausted, creating slot on-demand");
-        if self.next_slot_idx >= MAX_SLOTS {
-            return Err(CowPoolError::SlotLimitReached { max: MAX_SLOTS });
-        }
-        let config = self.config.clone();
-        let reservation = SlotCapacityGuard::reserve(&mut self.next_slot_idx);
-        let result = tokio::task::spawn_blocking(move || create_slot(&config)).await;
-        drop(reservation);
-        match result {
-            Ok(Ok(slot)) => {
-                self.maybe_replenish();
-                Ok(slot)
-            }
-            Ok(Err(e)) => Err(e),
-            Err(e) => Err(CowPoolError::CowFileCreation(format!("join: {e}"))),
-        }
-    }
-
-    /// Shut down the pool: wait for pending tasks, destroy all queued slots.
-    pub async fn cleanup(&mut self) {
-        if !self.active && self.pending.is_empty() && self.queue.is_empty() {
+    /// Shut down the producer and drop all pool-owned slots.
+    async fn cleanup(&mut self) {
+        if !self.active && self.pending.is_empty() && self.ready.is_empty() {
             return;
         }
+
+        let started = StdInstant::now();
+        let pending_at_start = self.pending.len();
+        let ready_at_start = self.ready.len();
         self.active = false;
+        self.warm_retry_at = None;
+        self.fail_all_waiters();
+        self.finish_warmup_waiters();
 
-        // Wait for in-flight spawn_blocking tasks to complete.
-        // Unlike async tasks, spawn_blocking tasks cannot be cancelled —
-        // abort_all would mark them as Cancelled, discarding the created
-        // slot and leaking its COW file. So we wait instead.
-        while let Some(result) = self.pending.join_next().await {
-            match result {
-                Ok(Ok(slot)) => self.queue.push_back(slot),
-                Ok(Err(e)) => {
-                    self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
-                    error!(error = %e, "pending slot creation failed during cleanup");
-                }
-                Err(e) => {
-                    self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
-                    error!(error = %e, "pending task panicked during cleanup");
-                }
-            }
-        }
-
-        let count = self.queue.len();
-        info!(count, "cleaning up COW pool");
-
-        while let Some(slot) = self.queue.pop_front() {
-            self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
+        while let Some(slot) = self.ready.pop_front() {
+            self.pipeline_slots = self.pipeline_slots.saturating_sub(1);
             destroy_slot(slot);
         }
-        info!("COW pool cleanup complete");
+
+        while let Some(completion) = self.pending.join_next().await {
+            self.handle_cleanup_completion(completion);
+        }
+
+        if self.pipeline_slots != 0 {
+            warn!(
+                pipeline_slots = self.pipeline_slots,
+                "COW pool cleanup finished with nonzero pipeline accounting"
+            );
+            self.pipeline_slots = 0;
+        }
+
+        info!(
+            pending_at_start,
+            ready_at_start,
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "COW pool cleanup complete"
+        );
     }
 
-    // -----------------------------------------------------------------------
-    // Internal helpers
-    // -----------------------------------------------------------------------
+    fn fail_all_waiters(&mut self) {
+        while let Some(waiter) = self.waiters.pop_front() {
+            let _ = waiter.respond_to.send(Err(CowPoolError::NotActive));
+        }
+    }
 
-    /// Drain completed background tasks into the queue.
-    fn drain_completed(&mut self) {
-        while let Some(result) = self.pending.try_join_next() {
-            match result {
-                Ok(Ok(slot)) => self.queue.push_back(slot),
-                Ok(Err(e)) => {
-                    self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
-                    error!(error = %e, "background slot creation failed");
-                }
-                Err(e) => {
-                    self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
-                    error!(error = %e, "background slot creation panicked");
-                }
+    fn finish_warmup_waiters(&mut self) {
+        for done in std::mem::take(&mut self.warmup_waiters) {
+            let _ = done.send(());
+        }
+    }
+
+    fn handle_cleanup_completion(
+        &mut self,
+        completion: Result<SlotCreationOutcome, tokio::task::JoinError>,
+    ) {
+        self.pipeline_slots = self.pipeline_slots.saturating_sub(1);
+        match completion {
+            Ok(SlotCreationOutcome {
+                result: Ok(slot),
+                elapsed,
+                ..
+            }) => {
+                info!(
+                    id = %slot.id,
+                    elapsed_ms = elapsed.as_millis() as u64,
+                    "dropping late COW slot during cleanup"
+                );
+                drop(slot);
+            }
+            Ok(SlotCreationOutcome {
+                result: Err(e),
+                elapsed,
+                ..
+            }) => {
+                error!(
+                    error = %e,
+                    elapsed_ms = elapsed.as_millis() as u64,
+                    "pending COW slot creation failed during cleanup"
+                );
+            }
+            Err(e) => {
+                error!(error = %e, "pending COW slot task panicked during cleanup");
             }
         }
     }
 
-    /// Spawn one background replenishment task if the queue is below threshold.
-    fn maybe_replenish(&mut self) {
-        self.spawn_slot_creation();
-    }
-
-    fn spawn_slot_creation(&mut self) -> bool {
-        if self.queue.len() + self.pending.len() >= BUFFER_SIZE || self.next_slot_idx >= MAX_SLOTS {
-            return false;
+    #[cfg(test)]
+    fn snapshot(&self) -> CowPoolSnapshot {
+        CowPoolSnapshot {
+            ready: self.ready.len(),
+            pending: self.pending.len(),
+            waiters: self.waiters.len(),
+            pipeline_slots: self.pipeline_slots,
+            warm_retry_scheduled: self.warm_retry_at.is_some(),
         }
-        self.next_slot_idx += 1;
-        let config = self.config.clone();
-        self.pending.spawn_blocking(move || create_slot(&config));
-        true
     }
+}
+
+enum AssignOutcome {
+    Assigned,
+    NoWaiter(PrewarmedSlot),
+}
+
+impl Drop for CowPool {
+    fn drop(&mut self) {
+        if self.active || !self.pending.is_empty() || !self.waiters.is_empty() {
+            warn!(
+                active = self.active,
+                ready = self.ready.len(),
+                pending = self.pending.len(),
+                waiters = self.waiters.len(),
+                pipeline_slots = self.pipeline_slots,
+                "CowPool dropped without cleanup"
+            );
+        }
+    }
+}
+
+fn default_slot_spawner() -> SlotSpawner {
+    Arc::new(|config| tokio::task::spawn_blocking(move || create_slot(&config)))
 }
 
 // ---------------------------------------------------------------------------
@@ -387,282 +802,463 @@ pub(crate) fn destroy_slot(slot: PrewarmedSlot) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
 
     fn test_config(dir: &Path) -> CowPoolConfig {
         CowPoolConfig {
             workspaces_dir: dir.to_owned(),
-            base_size: 64 * 1024 * 1024, // 64 MiB
+            base_size: 64 * 1024 * 1024,
             golden_cow: None,
         }
     }
 
-    // -- State machine tests (no root required) --------------------------------
-
-    #[tokio::test]
-    async fn acquire_not_active_returns_error() {
-        let tmp = tempfile::tempdir().unwrap();
-        let mut pool = CowPool::new(test_config(tmp.path()));
-        pool.active = false;
-        let err = pool.acquire().await.unwrap_err();
-        assert!(
-            matches!(err, CowPoolError::NotActive),
-            "expected NotActive, got {err}"
-        );
+    fn test_slot(dir: &Path, id: &str) -> PrewarmedSlot {
+        let workspace = dir.join(id);
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::write(workspace.join("cow.img"), b"cow").unwrap();
+        PrewarmedSlot {
+            id: id.to_owned(),
+            workspace,
+        }
     }
 
-    #[tokio::test]
-    async fn cleanup_idempotent() {
-        let tmp = tempfile::tempdir().unwrap();
-        let mut pool = CowPool::new(test_config(tmp.path()));
-        pool.cleanup().await;
-        assert!(!pool.active);
-        // Second cleanup is a no-op (no panic).
-        pool.cleanup().await;
+    fn test_pool_with_spawner(
+        config: CowPoolConfig,
+        buffer_size: usize,
+        max_concurrent_creations: usize,
+        max_slots: usize,
+        warm_retry_backoff: Duration,
+        slot_spawner: SlotSpawner,
+    ) -> CowPool {
+        CowPool::new_with_options(
+            config,
+            buffer_size,
+            max_concurrent_creations,
+            max_slots,
+            warm_retry_backoff,
+            slot_spawner,
+        )
     }
 
-    #[tokio::test]
-    async fn cancelled_cleanup_can_retry_after_pool_marked_inactive() {
-        let tmp = tempfile::tempdir().unwrap();
-        let config = test_config(tmp.path());
-        let ws = tmp.path().join("cleanup-retry-slot");
-        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
-        let (release_tx, release_rx) = std::sync::mpsc::channel();
-        let mut pool = CowPool::new(config);
-        pool.next_slot_idx = 1;
-        pool.pending.spawn_blocking({
-            let ws = ws.clone();
-            move || {
-                std::fs::create_dir_all(&ws).unwrap();
-                std::fs::write(ws.join("cow.img"), b"cow").unwrap();
-                entered_tx.send(()).unwrap();
-                release_rx.recv().unwrap();
-                Ok(PrewarmedSlot {
-                    id: "pending".into(),
-                    workspace: ws,
+    type ControlledSlotRequest = oneshot::Sender<Result<PrewarmedSlot, CowPoolError>>;
+
+    struct ControlledSpawner {
+        requests: Arc<Mutex<VecDeque<ControlledSlotRequest>>>,
+    }
+
+    impl ControlledSpawner {
+        fn new() -> (Self, SlotSpawner) {
+            let requests = Arc::new(Mutex::new(VecDeque::new()));
+            let spawner_requests = Arc::clone(&requests);
+            let spawner: SlotSpawner = Arc::new(move |_config| {
+                let (complete, complete_rx) = oneshot::channel();
+                spawner_requests.lock().unwrap().push_back(complete);
+                tokio::spawn(async move {
+                    complete_rx
+                        .await
+                        .unwrap_or_else(|_| Err(CowPoolError::CowFileCreation("cancelled".into())))
                 })
-            }
-        });
-
-        {
-            let cleanup = pool.cleanup();
-            tokio::pin!(cleanup);
-            tokio::select! {
-                result = &mut cleanup => panic!("cleanup completed before pending slot was released: {result:?}"),
-                result = entered_rx => result.expect("pending slot creation should enter"),
-            }
+            });
+            (Self { requests }, spawner)
         }
 
-        assert!(!pool.active);
-        assert_eq!(
-            pool.pending.len(),
-            1,
-            "cancelled cleanup must leave pending slot owned by the pool"
-        );
-        release_tx.send(()).unwrap();
-        pool.cleanup().await;
-
-        assert_eq!(pool.next_slot_idx, 0);
-        assert!(pool.pending.is_empty());
-        assert!(pool.queue.is_empty());
-        assert!(!ws.exists(), "retried cleanup should remove pending slot");
-    }
-
-    #[tokio::test]
-    async fn warmup_with_bad_config_does_not_panic() {
-        // Point to a nonexistent golden COW file — all pre-warm tasks will
-        // fail, but warmup must handle errors gracefully.
-        let tmp = tempfile::tempdir().unwrap();
-        let config = CowPoolConfig {
-            workspaces_dir: tmp.path().to_owned(),
-            base_size: 64 * 1024 * 1024,
-            golden_cow: Some(PathBuf::from("/nonexistent/golden.img")),
-        };
-        let mut pool = CowPool::new(config);
-        pool.warmup().await;
-        // Queue should be empty (all tasks failed).
-        assert_eq!(pool.queue.len(), 0);
-        // next_slot_idx should be reclaimed after failures.
-        assert_eq!(pool.next_slot_idx, 0);
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn cancelled_warmup_keeps_pending_slots_for_cleanup() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspaces = tmp.path().join("workspaces");
-        let fifo = tmp.path().join("golden.fifo");
-        nix::unistd::mkfifo(
-            &fifo,
-            nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR,
-        )
-        .unwrap();
-        let config = CowPoolConfig {
-            workspaces_dir: workspaces.clone(),
-            base_size: 64 * 1024 * 1024,
-            golden_cow: Some(fifo.clone()),
-        };
-        let mut pool = CowPool::new(config);
-        pool.next_slot_idx = MAX_SLOTS - 1;
-
-        {
-            let warmup = pool.warmup();
-            tokio::pin!(warmup);
-            tokio::select! {
-                result = &mut warmup => panic!("warmup completed before cancellation: {result:?}"),
-                () = wait_for_workspace_entry(&workspaces) => {}
-            }
+        fn take_request(&self) -> oneshot::Sender<Result<PrewarmedSlot, CowPoolError>> {
+            self.requests
+                .lock()
+                .unwrap()
+                .pop_front()
+                .expect("missing slot creation request")
         }
 
-        assert!(
-            !pool.pending.is_empty(),
-            "cancelled warmup must leave pending slots owned by the pool"
-        );
-        assert_eq!(pool.next_slot_idx, MAX_SLOTS);
-
-        let writer = tokio::task::spawn_blocking(move || {
-            use std::io::Write;
-
-            let mut fifo = std::fs::OpenOptions::new().write(true).open(fifo).unwrap();
-            fifo.write_all(b"cow").unwrap();
-        });
-        tokio::time::timeout(std::time::Duration::from_secs(1), writer)
-            .await
-            .expect("fifo writer should not block forever")
-            .unwrap();
-        tokio::time::timeout(std::time::Duration::from_secs(1), pool.cleanup())
-            .await
-            .expect("cleanup should drain cancelled warmup slots");
-
-        assert_eq!(pool.next_slot_idx, MAX_SLOTS - 1);
-        assert!(pool.pending.is_empty());
-        assert!(pool.queue.is_empty());
-        assert!(!workspace_entry_exists(&workspaces));
-    }
-
-    #[tokio::test]
-    async fn acquire_exhausted_with_bad_config_returns_error() {
-        let tmp = tempfile::tempdir().unwrap();
-        let config = CowPoolConfig {
-            workspaces_dir: tmp.path().to_owned(),
-            base_size: 64 * 1024 * 1024,
-            golden_cow: Some(PathBuf::from("/nonexistent/golden.img")),
-        };
-        let mut pool = CowPool::new(config);
-        // Don't warmup — go straight to acquire.
-        let result = pool.acquire().await;
-        assert!(result.is_err());
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn cancelled_on_demand_acquire_reclaims_slot_capacity() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspaces = tmp.path().join("workspaces");
-        let fifo = tmp.path().join("golden.fifo");
-        nix::unistd::mkfifo(
-            &fifo,
-            nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR,
-        )
-        .unwrap();
-        let config = CowPoolConfig {
-            workspaces_dir: workspaces.clone(),
-            base_size: 64 * 1024 * 1024,
-            golden_cow: Some(fifo.clone()),
-        };
-        let mut pool = CowPool::new(config);
-        pool.next_slot_idx = MAX_SLOTS - 1;
-
-        {
-            let acquire = pool.acquire();
-            tokio::pin!(acquire);
-            tokio::select! {
-                result = &mut acquire => panic!("on-demand acquire completed before cancellation: {result:?}"),
-                () = wait_for_workspace_entry(&workspaces) => {}
-            }
+        fn request_count(&self) -> usize {
+            self.requests.lock().unwrap().len()
         }
+    }
 
-        assert_eq!(
-            pool.next_slot_idx,
-            MAX_SLOTS - 1,
-            "cancelled on-demand acquire must reclaim reserved capacity"
-        );
-
-        let writer = tokio::task::spawn_blocking(move || {
-            use std::io::Write;
-
-            let mut fifo = std::fs::OpenOptions::new().write(true).open(fifo).unwrap();
-            fifo.write_all(b"cow").unwrap();
-        });
-        tokio::time::timeout(std::time::Duration::from_secs(1), writer)
-            .await
-            .expect("fifo writer should not block forever")
-            .unwrap();
-
-        tokio::time::timeout(std::time::Duration::from_secs(1), async {
-            while workspace_entry_exists(&workspaces) {
+    async fn wait_for_snapshot<F>(handle: &CowPoolHandle, predicate: F) -> CowPoolSnapshot
+    where
+        F: Fn(&CowPoolSnapshot) -> bool,
+    {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let snapshot = handle.snapshot().await;
+                if predicate(&snapshot) {
+                    return snapshot;
+                }
                 tokio::task::yield_now().await;
             }
         })
         .await
-        .expect("detached on-demand slot should be dropped after creation");
+        .expect("condition not reached")
     }
 
     #[tokio::test]
-    async fn cancelled_pending_acquire_keeps_slot_for_cleanup() {
+    async fn warmup_creates_ready_slots() {
         let tmp = tempfile::tempdir().unwrap();
-        let config = test_config(tmp.path());
-        let ws = tmp.path().join("pending-acquire-slot");
-        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
-        let (release_tx, release_rx) = std::sync::mpsc::channel();
-        let mut pool = CowPool::new(config);
-        pool.next_slot_idx = 1;
-        pool.pending.spawn_blocking({
-            let ws = ws.clone();
-            move || {
-                std::fs::create_dir_all(&ws).unwrap();
-                std::fs::write(ws.join("cow.img"), b"cow").unwrap();
-                entered_tx.send(()).unwrap();
-                release_rx.recv().unwrap();
-                Ok(PrewarmedSlot {
-                    id: "pending".into(),
-                    workspace: ws,
-                })
-            }
-        });
+        let handle = CowPoolHandle::new(test_config(tmp.path()));
 
-        {
-            let acquire = pool.acquire();
-            tokio::pin!(acquire);
-            tokio::select! {
-                result = &mut acquire => panic!("pending acquire completed before cancellation: {result:?}"),
-                result = entered_rx => result.expect("pending slot creation should enter"),
+        handle.warmup().await;
+
+        let snapshot = handle.snapshot().await;
+        assert_eq!(snapshot.ready, BUFFER_SIZE);
+        assert_eq!(snapshot.pending, 0);
+        assert_eq!(snapshot.pipeline_slots, BUFFER_SIZE);
+        handle.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn acquire_after_cleanup_returns_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let handle = CowPoolHandle::new(test_config(tmp.path()));
+
+        handle.cleanup().await;
+
+        let err = handle.acquire().await.unwrap_err();
+        assert!(
+            matches!(err, CowPoolError::ActorStopped | CowPoolError::NotActive),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn burst_acquire_starts_bounded_slot_creations() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (controller, spawner) = ControlledSpawner::new();
+        let pool =
+            test_pool_with_spawner(test_config(tmp.path()), 0, 2, 10, Duration::ZERO, spawner);
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let mut acquires = Vec::new();
+        for _ in 0..5 {
+            let handle = handle.clone();
+            acquires.push(tokio::spawn(async move { handle.acquire().await }));
+        }
+
+        wait_for_snapshot(&handle, |snapshot| {
+            snapshot.waiters == 5 && snapshot.pending == 2 && snapshot.pipeline_slots == 2
+        })
+        .await;
+        assert_eq!(controller.request_count(), 2);
+
+        for i in 0..5 {
+            controller
+                .take_request()
+                .send(Ok(test_slot(tmp.path(), &format!("slot-{i}"))))
+                .unwrap();
+            if i < 3 {
+                wait_for_snapshot(&handle, |snapshot| snapshot.pending > 0).await;
             }
         }
 
-        assert_eq!(
-            pool.pending.len(),
-            1,
-            "cancelled join_next must leave pending slot owned by the pool"
-        );
-        release_tx.send(()).unwrap();
-        pool.cleanup().await;
-
-        assert_eq!(pool.next_slot_idx, 0);
-        assert!(pool.pending.is_empty());
-        assert!(pool.queue.is_empty());
-        assert!(!ws.exists(), "cleanup should remove pending acquire slot");
+        for acquire in acquires {
+            drop(acquire.await.unwrap().unwrap());
+        }
+        handle.cleanup().await;
     }
 
     #[tokio::test]
-    async fn slot_limit_enforced() {
+    async fn checked_out_slot_stops_consuming_pipeline_capacity() {
         let tmp = tempfile::tempdir().unwrap();
-        let mut pool = CowPool::new(test_config(tmp.path()));
-        pool.next_slot_idx = MAX_SLOTS;
-        let err = pool.acquire().await.unwrap_err();
-        assert!(
-            matches!(err, CowPoolError::SlotLimitReached { max: MAX_SLOTS }),
-            "expected SlotLimitReached, got {err}"
+        let (controller, spawner) = ControlledSpawner::new();
+        let pool =
+            test_pool_with_spawner(test_config(tmp.path()), 0, 1, 1, Duration::ZERO, spawner);
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let first = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+        wait_for_snapshot(&handle, |snapshot| snapshot.pending == 1).await;
+        controller
+            .take_request()
+            .send(Ok(test_slot(tmp.path(), "first")))
+            .unwrap();
+        let first_slot = first.await.unwrap().unwrap();
+
+        wait_for_snapshot(&handle, |snapshot| snapshot.pipeline_slots == 0).await;
+        let second = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+        wait_for_snapshot(&handle, |snapshot| snapshot.pending == 1).await;
+        controller
+            .take_request()
+            .send(Ok(test_slot(tmp.path(), "second")))
+            .unwrap();
+        let second_slot = second.await.unwrap().unwrap();
+
+        drop(first_slot);
+        drop(second_slot);
+        handle.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn cancelled_acquire_does_not_lose_completed_slot() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (controller, spawner) = ControlledSpawner::new();
+        let pool =
+            test_pool_with_spawner(test_config(tmp.path()), 0, 1, 4, Duration::ZERO, spawner);
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let first = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+        wait_for_snapshot(&handle, |snapshot| snapshot.pending == 1).await;
+        first.abort();
+
+        let second = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+        controller
+            .take_request()
+            .send(Ok(test_slot(tmp.path(), "survives-cancel")))
+            .unwrap();
+
+        let slot = second.await.unwrap().unwrap();
+        assert_eq!(slot.id, "survives-cancel");
+        drop(slot);
+        handle.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn creation_failure_fails_one_waiter_and_retries_remaining_waiter() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (controller, spawner) = ControlledSpawner::new();
+        let pool =
+            test_pool_with_spawner(test_config(tmp.path()), 0, 1, 4, Duration::ZERO, spawner);
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let first = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+        let second = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+        wait_for_snapshot(&handle, |snapshot| {
+            snapshot.waiters == 2 && snapshot.pending == 1
+        })
+        .await;
+
+        controller
+            .take_request()
+            .send(Err(CowPoolError::CowFileCreation("boom".into())))
+            .unwrap();
+
+        assert!(matches!(
+            first.await.unwrap(),
+            Err(CowPoolError::CowFileCreation(_))
+        ));
+        wait_for_snapshot(&handle, |snapshot| {
+            snapshot.waiters == 1 && snapshot.pending == 1
+        })
+        .await;
+        controller
+            .take_request()
+            .send(Ok(test_slot(tmp.path(), "second")))
+            .unwrap();
+        drop(second.await.unwrap().unwrap());
+        handle.cleanup().await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn warm_replenishment_failure_uses_backoff() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (controller, spawner) = ControlledSpawner::new();
+        let pool = test_pool_with_spawner(
+            test_config(tmp.path()),
+            1,
+            1,
+            4,
+            Duration::from_secs(10),
+            spawner,
         );
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let warmup = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.warmup().await }
+        });
+        wait_for_snapshot(&handle, |snapshot| snapshot.pending == 1).await;
+        controller
+            .take_request()
+            .send(Err(CowPoolError::CowFileCreation("missing golden".into())))
+            .unwrap();
+        warmup.await.unwrap();
+        wait_for_snapshot(&handle, |snapshot| {
+            snapshot.pending == 0 && snapshot.warm_retry_scheduled
+        })
+        .await;
+        assert_eq!(controller.request_count(), 0);
+
+        tokio::time::advance(Duration::from_secs(10)).await;
+        wait_for_snapshot(&handle, |snapshot| snapshot.pending == 1).await;
+        controller
+            .take_request()
+            .send(Err(CowPoolError::CowFileCreation("still missing".into())))
+            .unwrap();
+        wait_for_snapshot(&handle, |snapshot| snapshot.pending == 0).await;
+        handle.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn cleanup_rejects_waiters_and_drops_late_pending_slot() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (controller, spawner) = ControlledSpawner::new();
+        let pool =
+            test_pool_with_spawner(test_config(tmp.path()), 0, 1, 4, Duration::ZERO, spawner);
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let acquire = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+        wait_for_snapshot(&handle, |snapshot| {
+            snapshot.waiters == 1 && snapshot.pending == 1
+        })
+        .await;
+
+        let cleanup = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.cleanup().await }
+        });
+        let result = acquire.await.unwrap();
+        assert!(matches!(result, Err(CowPoolError::NotActive)));
+
+        let late_slot = test_slot(tmp.path(), "late");
+        let late_workspace = late_slot.workspace.clone();
+        controller.take_request().send(Ok(late_slot)).unwrap();
+        cleanup.await.unwrap();
+        assert!(!late_workspace.exists());
+        assert!(matches!(
+            handle.acquire().await,
+            Err(CowPoolError::ActorStopped | CowPoolError::NotActive)
+        ));
+    }
+
+    #[tokio::test]
+    async fn cleanup_is_not_starved_by_queued_acquires() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (controller, spawner) = ControlledSpawner::new();
+        let pool =
+            test_pool_with_spawner(test_config(tmp.path()), 0, 1, 4, Duration::ZERO, spawner);
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let mut acquires = Vec::new();
+        for _ in 0..20 {
+            let handle = handle.clone();
+            acquires.push(tokio::spawn(async move { handle.acquire().await }));
+        }
+        wait_for_snapshot(&handle, |snapshot| snapshot.pending == 1).await;
+
+        let cleanup = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.cleanup().await }
+        });
+        controller
+            .take_request()
+            .send(Ok(test_slot(tmp.path(), "cleanup")))
+            .unwrap();
+        cleanup.await.unwrap();
+
+        for acquire in acquires {
+            match acquire.await.unwrap() {
+                Err(CowPoolError::NotActive | CowPoolError::ActorStopped) => {}
+                other => panic!("unexpected acquire result after cleanup: {other:?}"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn slot_limit_enforced_under_concurrent_acquire() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (controller, spawner) = ControlledSpawner::new();
+        let pool =
+            test_pool_with_spawner(test_config(tmp.path()), 0, 4, 2, Duration::ZERO, spawner);
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let mut acquires = Vec::new();
+        for _ in 0..4 {
+            let handle = handle.clone();
+            acquires.push(tokio::spawn(async move { handle.acquire().await }));
+        }
+
+        wait_for_snapshot(&handle, |snapshot| {
+            snapshot.waiters == 4 && snapshot.pending == 2 && snapshot.pipeline_slots == 2
+        })
+        .await;
+        assert_eq!(controller.request_count(), 2);
+
+        for i in 0..2 {
+            controller
+                .take_request()
+                .send(Ok(test_slot(tmp.path(), &format!("limited-{i}"))))
+                .unwrap();
+        }
+        wait_for_snapshot(&handle, |snapshot| snapshot.pending == 2).await;
+        for i in 2..4 {
+            controller
+                .take_request()
+                .send(Ok(test_slot(tmp.path(), &format!("limited-{i}"))))
+                .unwrap();
+        }
+        for acquire in acquires {
+            drop(acquire.await.unwrap().unwrap());
+        }
+        handle.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn zero_slot_limit_fails_all_waiters_without_hanging() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (_controller, spawner) = ControlledSpawner::new();
+        let pool =
+            test_pool_with_spawner(test_config(tmp.path()), 0, 1, 0, Duration::ZERO, spawner);
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let first = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+        let second = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+
+        assert!(matches!(
+            first.await.unwrap(),
+            Err(CowPoolError::SlotLimitReached { max: 0 })
+        ));
+        assert!(matches!(
+            second.await.unwrap(),
+            Err(CowPoolError::SlotLimitReached { max: 0 })
+        ));
+        let snapshot = handle.snapshot().await;
+        assert_eq!(snapshot.waiters, 0);
+        assert_eq!(snapshot.pending, 0);
+        handle.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn warmup_with_bad_config_does_not_panic() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = CowPoolConfig {
+            workspaces_dir: tmp.path().to_owned(),
+            base_size: 64 * 1024 * 1024,
+            golden_cow: Some(PathBuf::from("/nonexistent/golden.img")),
+        };
+        let handle = CowPoolHandle::new(config);
+
+        handle.warmup().await;
+
+        let snapshot = handle.snapshot().await;
+        assert_eq!(snapshot.ready, 0);
+        assert_eq!(snapshot.pending, 0);
+        assert_eq!(snapshot.pipeline_slots, 0);
+        handle.cleanup().await;
     }
 
     #[test]
@@ -678,13 +1274,8 @@ mod tests {
             matches!(err, CowPoolError::CowFileCreation(_)),
             "expected CowFileCreation, got {err}"
         );
-        // Workspace dir should be cleaned up after cow file creation failure.
         let entries: Vec<_> = std::fs::read_dir(tmp.path()).unwrap().collect();
-        assert_eq!(
-            entries.len(),
-            0,
-            "workspace dir should be cleaned up on cow file creation failure"
-        );
+        assert_eq!(entries.len(), 0);
     }
 
     #[test]
@@ -693,10 +1284,9 @@ mod tests {
         let config = test_config(tmp.path());
         let slot = create_slot(&config).unwrap();
         let cow_file = slot.cow_file();
-        assert!(cow_file.exists(), "COW file should be created");
+        assert!(cow_file.exists());
         let meta = std::fs::metadata(&cow_file).unwrap();
-        assert_eq!(meta.len(), 64 * 1024 * 1024, "COW file should be 64 MiB");
-        // Cleanup
+        assert_eq!(meta.len(), 64 * 1024 * 1024);
         destroy_slot(slot);
     }
 
@@ -708,92 +1298,6 @@ mod tests {
         let ws = slot.workspace.clone();
         assert!(ws.exists());
         destroy_slot(slot);
-        assert!(!ws.exists(), "workspace should be removed");
-    }
-
-    #[test]
-    fn dropped_slot_removes_workspace() {
-        let tmp = tempfile::tempdir().unwrap();
-        let config = test_config(tmp.path());
-        let slot = create_slot(&config).unwrap();
-        let ws = slot.workspace.clone();
-        assert!(ws.exists());
-        drop(slot);
-        assert!(!ws.exists(), "workspace should be removed on slot drop");
-    }
-
-    #[test]
-    fn dropped_pool_removes_queued_slots() {
-        let tmp = tempfile::tempdir().unwrap();
-        let config = test_config(tmp.path());
-        let slot = create_slot(&config).unwrap();
-        let ws = slot.workspace.clone();
-        assert!(ws.exists());
-
-        let mut pool = CowPool::new(config);
-        pool.queue.push_back(slot);
-        drop(pool);
-
-        assert!(!ws.exists(), "queued slot should be removed on pool drop");
-    }
-
-    fn workspace_entry_exists(path: &Path) -> bool {
-        match std::fs::read_dir(path) {
-            Ok(mut entries) => entries.next().is_some(),
-            Err(e) if e.kind() == ErrorKind::NotFound => false,
-            Err(e) => panic!("read workspace dir {}: {e}", path.display()),
-        }
-    }
-
-    async fn wait_for_workspace_entry(path: &Path) {
-        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
-        while !workspace_entry_exists(path) {
-            assert!(
-                tokio::time::Instant::now() < deadline,
-                "workspace entry was not created under {}",
-                path.display()
-            );
-            tokio::task::yield_now().await;
-        }
-    }
-
-    #[tokio::test]
-    async fn dropped_pool_removes_late_pending_slot() {
-        let tmp = tempfile::tempdir().unwrap();
-        let config = test_config(tmp.path());
-        let ws = tmp.path().join("pending-slot");
-        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
-        let (release_tx, release_rx) = std::sync::mpsc::channel();
-        let mut pool = CowPool::new(config);
-
-        pool.pending.spawn_blocking({
-            let ws = ws.clone();
-            move || {
-                std::fs::create_dir_all(&ws).unwrap();
-                std::fs::write(ws.join("cow.img"), b"cow").unwrap();
-                entered_tx.send(()).unwrap();
-                release_rx.recv().unwrap();
-                Ok(PrewarmedSlot {
-                    id: "pending".into(),
-                    workspace: ws,
-                })
-            }
-        });
-
-        tokio::time::timeout(std::time::Duration::from_secs(1), entered_rx)
-            .await
-            .expect("pending slot creation should enter")
-            .unwrap();
-        assert!(ws.exists());
-        drop(pool);
-        release_tx.send(()).unwrap();
-
-        tokio::time::timeout(std::time::Duration::from_secs(1), async {
-            while ws.exists() {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("late pending slot workspace should be removed after pool drop");
+        assert!(!ws.exists());
     }
 }
