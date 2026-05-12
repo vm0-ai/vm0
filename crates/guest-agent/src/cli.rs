@@ -469,14 +469,19 @@ fn finish_stderr_result_line(
     lines: &mut VecDeque<String>,
     line: &mut Vec<u8>,
     line_omitted: &mut bool,
+    strip_trailing_cr: bool,
 ) {
     if *line_omitted {
         push_stderr_result_line(lines, STDERR_OMITTED_LONG_LINE.to_string());
     } else {
-        if line.last() == Some(&b'\r') {
+        if strip_trailing_cr && line.last() == Some(&b'\r') {
             line.pop();
         }
-        push_stderr_result_line(lines, String::from_utf8_lossy(line).into_owned());
+        if line.len() > STDERR_RESULT_MAX_LINE_BYTES {
+            push_stderr_result_line(lines, STDERR_OMITTED_LONG_LINE.to_string());
+        } else {
+            push_stderr_result_line(lines, String::from_utf8_lossy(line).into_owned());
+        }
     }
     line.clear();
     *line_omitted = false;
@@ -500,7 +505,7 @@ where
 
         for &byte in buffer.iter().take(read) {
             if byte == b'\n' {
-                finish_stderr_result_line(&mut lines, &mut line, &mut line_omitted);
+                finish_stderr_result_line(&mut lines, &mut line, &mut line_omitted, true);
                 continue;
             }
 
@@ -520,7 +525,7 @@ where
     }
 
     if !line.is_empty() || line_omitted {
-        finish_stderr_result_line(&mut lines, &mut line, &mut line_omitted);
+        finish_stderr_result_line(&mut lines, &mut line, &mut line_omitted, false);
     }
 
     lines.into_iter().collect()
