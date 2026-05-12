@@ -3,6 +3,7 @@ import { healthContract } from "@vm0/api-contracts/contracts/health";
 
 import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
 import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
+import { agentComposesReadRoutes } from "./routes/agent-composes-read";
 import { agentSessionsRoutes } from "./routes/agent-sessions-id";
 import { authMeRoutes } from "./routes/auth-me";
 import { audioTranscriptionsV1Routes } from "./routes/audio-transcriptions-v1";
@@ -98,6 +99,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...internalEventConsumerTelegramTypingRoutes,
   ...usageRoutes,
   ...agentCheckpointsRoutes,
+  ...agentComposesReadRoutes,
   ...agentComposesByIdRoutes,
   ...agentSessionsRoutes,
   ...deviceTokenRoutes,
