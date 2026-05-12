@@ -22,7 +22,7 @@ const updateMetadataInner$ = command(
 
     if (!auth.orgId) {
       return badRequestMessage(
-        "Explicit org context required - ensure active org in session",
+        "Explicit org context required — ensure active org in session",
       );
     }
 

@@ -93,6 +93,27 @@ describe("PATCH /api/agent/composes/:id/metadata", () => {
     });
   });
 
+  it("returns 400 without an active organization", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+
+    const client = setupApp({ context })(composesMetadataContract);
+    const response = await accept(
+      client.updateMetadata({
+        params: { id: randomUUID() },
+        body: { displayName: "No Org" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        code: "BAD_REQUEST",
+        message: "Explicit org context required — ensure active org in session",
+      },
+    });
+  });
+
   it("creates zero_agents row when none exists", async () => {
     const fixture = await track(
       store.set(
