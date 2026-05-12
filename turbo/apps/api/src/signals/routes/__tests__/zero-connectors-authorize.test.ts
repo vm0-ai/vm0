@@ -1,12 +1,16 @@
 import { randomUUID } from "node:crypto";
 
 import { connectors } from "@vm0/db/schema/connector";
+import { secrets } from "@vm0/db/schema/secret";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
+import { server } from "../../../mocks/server";
+import { encryptSecretValue } from "../../services/crypto.utils";
 import { writeDb$ } from "../../external/db";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testContext } from "../../../__tests__/test-helpers";
@@ -87,6 +91,7 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
       const orgId = orgIds.pop();
       if (orgId) {
         await db.delete(connectors).where(eq(connectors.orgId, orgId));
+        await db.delete(secrets).where(eq(secrets.orgId, orgId));
       }
     }
   });
@@ -343,5 +348,50 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
       "connector:changed",
       null,
     );
+  });
+
+  it("best-effort revokes GitHub grants before local cleanup", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    const db = store.set(writeDb$);
+    const [connector] = await db
+      .insert(connectors)
+      .values({ orgId, userId, type: "github", authMethod: "oauth" })
+      .returning({ id: connectors.id });
+    expect(connector).toBeDefined();
+    await db.insert(secrets).values({
+      orgId,
+      userId,
+      name: "GITHUB_ACCESS_TOKEN",
+      type: "connector",
+      encryptedValue: encryptSecretValue("gh-access-token"),
+    });
+
+    let revokeAuthorization: string | null = null;
+    let revokeBody = "";
+    server.use(
+      http.delete(
+        "https://api.github.com/applications/test-client-id/grant",
+        async ({ request }) => {
+          revokeAuthorization = request.headers.get("authorization");
+          revokeBody = await request.text();
+          return new HttpResponse(null, { status: 204 });
+        },
+      ),
+    );
+
+    mocks.clerk.session(userId, orgId);
+    const app = createApp({ signal: context.signal });
+    const response = await app.request(authorizeUrl("github"), {
+      method: "GET",
+      headers: sessionHeaders(),
+    });
+
+    expect(response.status).toBe(307);
+    expect(revokeAuthorization).toBe(
+      `Basic ${Buffer.from("test-client-id:test-client-secret").toString("base64")}`,
+    );
+    expect(revokeBody).toContain('"access_token":"gh-access-token"');
   });
 });

@@ -9,6 +9,7 @@ import {
   deriveApiTokenConnectedTypes,
   getApiTokenFieldsByType,
   getConfiguredConnectorTypes,
+  getConnectorOAuthEnvKeys,
   getConnectorProvidedSecretNames,
   getScopeDiff,
 } from "@vm0/connectors/connector-utils";
@@ -26,8 +27,9 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
-import { db$, writeDb$ } from "../external/db";
+import { db$, type Db, writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
+import { decryptSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
 type StoredConnectorRow = {
@@ -321,6 +323,137 @@ export function zeroConnectorByType(args: {
   });
 }
 
+function revocableConnectorAccessTokenName(
+  type: ConnectorType,
+): string | undefined {
+  switch (type) {
+    case "github": {
+      return "GITHUB_ACCESS_TOKEN";
+    }
+    case "linear": {
+      return "LINEAR_ACCESS_TOKEN";
+    }
+    case "slack": {
+      return "SLACK_ACCESS_TOKEN";
+    }
+    default: {
+      return undefined;
+    }
+  }
+}
+
+async function revokeConnectorToken(args: {
+  readonly type: ConnectorType;
+  readonly accessToken: string;
+}): Promise<void> {
+  const envKeys = getConnectorOAuthEnvKeys(args.type);
+  const clientId = envKeys ? optionalEnv(envKeys.clientId) : undefined;
+  const clientSecret = envKeys ? optionalEnv(envKeys.clientSecret) : undefined;
+  if (!clientId || !clientSecret) {
+    return;
+  }
+
+  if (args.type === "github") {
+    const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
+      "base64",
+    );
+    const response = await fetch(
+      `https://api.github.com/applications/${clientId}/grant`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Basic ${credentials}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+        body: JSON.stringify({ access_token: args.accessToken }),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`GitHub grant revocation failed: ${response.status}`);
+    }
+    return;
+  }
+
+  if (args.type === "slack") {
+    const response = await fetch("https://slack.com/api/auth.revoke", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${args.accessToken}`,
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`Slack token revocation failed: ${response.status}`);
+    }
+    const data = (await response.json()) as { ok: boolean; error?: string };
+    if (!data.ok) {
+      throw new Error(data.error ?? "Slack token revocation returned ok=false");
+    }
+    return;
+  }
+
+  if (args.type === "linear") {
+    const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
+      "base64",
+    );
+    const response = await fetch("https://api.linear.app/oauth/revoke", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Basic ${credentials}`,
+      },
+      body: new URLSearchParams({
+        token: args.accessToken,
+        token_type_hint: "access_token",
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`Linear token revocation failed: ${response.status}`);
+    }
+  }
+}
+
+async function revokeExistingConnectorToken(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly type: ConnectorType;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const accessTokenName = revocableConnectorAccessTokenName(args.type);
+  if (!accessTokenName) {
+    return;
+  }
+
+  const [accessTokenSecret] = await args.db
+    .select({ encryptedValue: secrets.encryptedValue })
+    .from(secrets)
+    .where(
+      and(
+        eq(secrets.orgId, args.orgId),
+        eq(secrets.userId, args.userId),
+        eq(secrets.name, accessTokenName),
+        eq(secrets.type, "connector"),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  if (!accessTokenSecret?.encryptedValue) {
+    return;
+  }
+
+  // Provider revocation is best-effort; local cleanup still owns visible state.
+  await revokeConnectorToken({
+    type: args.type,
+    accessToken: decryptSecretValue(accessTokenSecret.encryptedValue),
+  }).catch(() => {
+    return undefined;
+  });
+  args.signal.throwIfAborted();
+}
+
 export const deleteZeroConnectorLocalState$ = command(
   async (
     { set },
@@ -348,6 +481,16 @@ export const deleteZeroConnectorLocalState$ = command(
     signal.throwIfAborted();
 
     if (existing) {
+      if (existing.authMethod === "oauth") {
+        await revokeExistingConnectorToken({
+          db: writeDb,
+          orgId: args.orgId,
+          userId: args.userId,
+          type: args.type,
+          signal,
+        });
+      }
+
       await writeDb.delete(connectors).where(eq(connectors.id, existing.id));
       signal.throwIfAborted();
       deleted = true;
