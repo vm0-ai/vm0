@@ -758,12 +758,10 @@ fn command_label_log(label: &str) -> String {
         return label.to_string();
     }
 
-    let end = label
-        .char_indices()
-        .take_while(|(index, _)| *index < COMMAND_LABEL_LOG_MAX_BYTES)
-        .last()
-        .map(|(index, ch)| index + ch.len_utf8())
-        .unwrap_or(COMMAND_LABEL_LOG_MAX_BYTES);
+    let mut end = COMMAND_LABEL_LOG_MAX_BYTES;
+    while !label.is_char_boundary(end) {
+        end -= 1;
+    }
     format!("{}...", &label[..end])
 }
 
@@ -2184,6 +2182,21 @@ mod tests {
         }
     }
 
+    fn command_operation_for_snapshot(seq: u32, label: &str) -> Operation {
+        let (result_tx, _result_rx) = oneshot::channel();
+        Operation::Command(CommandOperation {
+            diagnostic: CommandOperationDiagnostic::new(seq, label),
+            result_tx,
+            stream_tx: None,
+            stdout_capture: CommandCaptureState::Discard,
+            stderr_capture: CommandCaptureState::Discard,
+            stdout_stream: None,
+            stderr_stream: None,
+            expected_output_seq: 0,
+            stream_overflowed: false,
+        })
+    }
+
     fn is_connected(host: &VsockHost) -> bool {
         let guard = host.shared.state.lock().unwrap_or_else(|e| e.into_inner());
         matches!(&*guard, ConnectionState::Connected { .. })
@@ -2198,6 +2211,76 @@ mod tests {
             exit_code: 1
         }));
         assert!(command_termination_is_notable(CommandTermination::TimedOut));
+    }
+
+    #[test]
+    fn command_label_log_truncates_at_utf8_boundary() {
+        let exact = "a".repeat(COMMAND_LABEL_LOG_MAX_BYTES);
+        assert_eq!(command_label_log(&exact), exact);
+
+        let over_ascii = format!("{}b", "a".repeat(COMMAND_LABEL_LOG_MAX_BYTES));
+        assert_eq!(
+            command_label_log(&over_ascii),
+            format!("{}...", "a".repeat(COMMAND_LABEL_LOG_MAX_BYTES))
+        );
+
+        let boundary = format!(
+            "{}\u{00e9}tail",
+            "a".repeat(COMMAND_LABEL_LOG_MAX_BYTES - 2)
+        );
+        assert_eq!(
+            command_label_log(&boundary),
+            format!("{}\u{00e9}...", "a".repeat(COMMAND_LABEL_LOG_MAX_BYTES - 2))
+        );
+
+        let crossing = format!(
+            "{}\u{00e9}tail",
+            "a".repeat(COMMAND_LABEL_LOG_MAX_BYTES - 1)
+        );
+        assert_eq!(
+            command_label_log(&crossing),
+            format!("{}...", "a".repeat(COMMAND_LABEL_LOG_MAX_BYTES - 1))
+        );
+    }
+
+    #[test]
+    fn command_diagnostic_marks_only_first_slow_output() {
+        let mut diagnostic = CommandOperationDiagnostic {
+            seq: 9,
+            label: "slow-first-output".to_string(),
+            registered_at: Instant::now() - COMMAND_STAGE_SLOW_THRESHOLD - Duration::from_millis(1),
+            first_output_at: None,
+        };
+
+        let snapshot = diagnostic.mark_first_output().unwrap();
+        assert_eq!(snapshot.seq, 9);
+        assert_eq!(snapshot.label, "slow-first-output");
+        assert!(snapshot.elapsed_ms >= COMMAND_STAGE_SLOW_THRESHOLD.as_millis());
+        assert!(diagnostic.mark_first_output().is_none());
+    }
+
+    #[test]
+    fn command_operation_close_snapshot_limits_logged_operations() {
+        let active_count = COMMAND_CLOSE_ACTIVE_LOG_LIMIT + 3;
+        let mut operations = HashMap::new();
+        for seq in 0..active_count {
+            operations.insert(
+                seq as u32,
+                command_operation_for_snapshot(seq as u32, &format!("operation-{seq}")),
+            );
+        }
+
+        let snapshot = command_operation_close_snapshot(&operations);
+        assert_eq!(snapshot.active_count, active_count);
+        assert_eq!(snapshot.operations.len(), COMMAND_CLOSE_ACTIVE_LOG_LIMIT);
+        assert_eq!(
+            snapshot.active_count - snapshot.operations.len(),
+            active_count - COMMAND_CLOSE_ACTIVE_LOG_LIMIT
+        );
+        for operation in snapshot.operations {
+            assert!(operations.contains_key(&operation.seq));
+            assert!(operation.label.starts_with("operation-"));
+        }
     }
 
     async fn read_guest_message(stream: &mut UnixStream, decoder: &mut Decoder) -> RawMessage {
