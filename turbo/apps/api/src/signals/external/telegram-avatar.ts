@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { env } from "../../lib/env";
 import { now } from "./time";
@@ -17,6 +17,38 @@ function computeAvatarHmacSignature(
   return createHmac("sha256", secret)
     .update(`${expiresAt}.${botId}`)
     .digest("hex");
+}
+
+export function verifyTelegramBotAvatarUrlSignature(params: {
+  readonly botId: string;
+  readonly expiresAt: string | undefined;
+  readonly signature: string | undefined;
+}): boolean {
+  if (!params.expiresAt || !params.signature) {
+    return false;
+  }
+
+  const expiresAt = Number(params.expiresAt);
+  if (!Number.isSafeInteger(expiresAt)) {
+    return false;
+  }
+
+  if (expiresAt < Math.floor(now() / 1000)) {
+    return false;
+  }
+
+  const expected = Buffer.from(
+    computeAvatarHmacSignature(
+      params.botId,
+      env("SECRETS_ENCRYPTION_KEY"),
+      expiresAt,
+    ),
+    "hex",
+  );
+  const received = Buffer.from(params.signature, "hex");
+  return (
+    received.length === expected.length && timingSafeEqual(received, expected)
+  );
 }
 
 export function buildTelegramBotAvatarUrl(botId: string): string {

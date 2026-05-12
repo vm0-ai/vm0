@@ -1,15 +1,45 @@
-interface TelegramApiError {
+interface TelegramApiErrorPayload {
   readonly ok: false;
   readonly description: string;
+  readonly error_code?: number;
 }
 
-function isTelegramApiError(value: unknown): value is TelegramApiError {
+function isTelegramApiErrorPayload(
+  value: unknown,
+): value is TelegramApiErrorPayload {
   return (
     typeof value === "object" &&
     value !== null &&
     "ok" in value &&
-    (value as TelegramApiError).ok === false
+    (value as TelegramApiErrorPayload).ok === false
   );
+}
+
+interface TelegramApiErrorShape {
+  readonly status: number;
+  readonly description: string | undefined;
+}
+
+class TelegramApiError extends Error implements TelegramApiErrorShape {
+  readonly status: number;
+  readonly description: string | undefined;
+
+  constructor(status: number, statusText: string, description?: string) {
+    super(
+      description
+        ? `Telegram API error: ${status} ${description}`
+        : `Telegram API error: ${status} ${statusText}`,
+    );
+    this.name = "TelegramApiError";
+    this.status = status;
+    this.description = description;
+  }
+}
+
+export function isTelegramApiError(
+  value: unknown,
+): value is Error & TelegramApiErrorShape {
+  return value instanceof TelegramApiError;
 }
 
 async function callTelegramApi<T>(
@@ -24,16 +54,16 @@ async function callTelegramApi<T>(
 
   const response = await fetch(`${url}${searchParams}`);
 
-  if (!response.ok) {
-    throw new Error(
-      `Telegram API error: ${response.status} ${response.statusText}`,
-    );
-  }
-
   const data: unknown = await response.json();
 
-  if (isTelegramApiError(data)) {
-    throw new Error(`Telegram API error: ${data.description}`);
+  const errorPayload = isTelegramApiErrorPayload(data) ? data : null;
+
+  if (!response.ok || errorPayload) {
+    throw new TelegramApiError(
+      response.status,
+      response.statusText,
+      errorPayload?.description,
+    );
   }
 
   return data as T;
@@ -87,9 +117,35 @@ export async function deleteWebhook(token: string): Promise<void> {
   }
 
   const data: unknown = await response.json();
-  if (isTelegramApiError(data)) {
+  if (isTelegramApiErrorPayload(data)) {
     throw new Error(`Telegram API error: ${data.description}`);
   }
+}
+
+export interface TelegramUserProfilePhoto {
+  readonly file_id: string;
+  readonly file_unique_id?: string;
+  readonly width: number;
+  readonly height: number;
+  readonly file_size?: number;
+}
+
+export async function getUserProfilePhotos(
+  token: string,
+  userId: string | number,
+  limit: number,
+): Promise<readonly (readonly TelegramUserProfilePhoto[])[]> {
+  const result = await callTelegramApi<{
+    readonly ok: true;
+    readonly result: {
+      readonly total_count: number;
+      readonly photos: readonly (readonly TelegramUserProfilePhoto[])[];
+    };
+  }>(token, "getUserProfilePhotos", {
+    user_id: String(userId),
+    limit: String(limit),
+  });
+  return result.result.photos;
 }
 
 /**
@@ -116,7 +172,7 @@ export async function sendChatAction(
     );
   }
   const data: unknown = await response.json();
-  if (isTelegramApiError(data)) {
+  if (isTelegramApiErrorPayload(data)) {
     throw new Error(`Telegram API error: ${data.description}`);
   }
 }
@@ -188,7 +244,7 @@ export async function sendMessage(
     };
   }
 
-  if (isTelegramApiError(data)) {
+  if (isTelegramApiErrorPayload(data)) {
     return {
       kind: "telegram-error",
       status: response.status,
@@ -283,7 +339,7 @@ export async function sendDocument(
     };
   }
 
-  if (isTelegramApiError(data)) {
+  if (isTelegramApiErrorPayload(data)) {
     return {
       kind: "telegram-error",
       status: response.status,

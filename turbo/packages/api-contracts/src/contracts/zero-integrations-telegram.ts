@@ -197,8 +197,41 @@ export const zeroIntegrationsTelegramContract = c.router({
     responses: {
       200: telegramLinkStatusResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
     },
     summary: "Check if the authenticated user is linked to a Telegram bot",
+  },
+  avatar: {
+    method: "GET",
+    path: "/api/integrations/telegram/:botId/avatar",
+    headers: authHeadersSchema,
+    pathParams: z.object({ botId: z.string().min(1) }),
+    query: z.object({
+      exp: z.string().optional(),
+      sig: z.string().optional(),
+    }),
+    responses: {
+      200: c.otherResponse({
+        contentType: "application/octet-stream",
+        body: z.unknown(),
+      }),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      413: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary: "Proxy a Telegram bot avatar",
+  },
+  authCallback: {
+    method: "GET",
+    path: "/api/integrations/telegram/auth-callback",
+    responses: {
+      200: c.otherResponse({
+        contentType: "text/html",
+        body: z.unknown(),
+      }),
+    },
+    summary: "Return the Telegram auth callback bridge page",
   },
   link: {
     method: "POST",

@@ -169,7 +169,7 @@ describe("zeroTelegramBots service", () => {
       tokenStatus: "unknown",
       official: { configured: false },
     });
-    expect(bots[0]?.avatarUrl).toBe("");
+    expect(bots[0]?.avatarUrl).toBeNull();
   });
 
   it("uses the user's selected compose preference for the official bot agent", async () => {

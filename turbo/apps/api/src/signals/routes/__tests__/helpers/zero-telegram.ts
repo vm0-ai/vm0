@@ -5,6 +5,7 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
+import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { eq, inArray } from "drizzle-orm";
@@ -48,6 +49,12 @@ interface SeedOfficialUserLinkValues {
   readonly orgId: string;
   readonly userId: string;
   readonly telegramUserId: string;
+}
+
+interface SeedTelegramUserLinkValues {
+  readonly installationId: string;
+  readonly telegramUserId: string;
+  readonly vm0UserId: string;
 }
 
 interface SeedUserAgentPreferenceValues {
@@ -152,6 +159,22 @@ export const seedOfficialUserLink$ = command(
       orgId: values.orgId,
       vm0UserId: values.userId,
       telegramUserId: values.telegramUserId,
+    });
+    signal.throwIfAborted();
+  },
+);
+
+export const seedTelegramUserLink$ = command(
+  async (
+    { set },
+    values: SeedTelegramUserLinkValues,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const writeDb = set(writeDb$);
+    await writeDb.insert(telegramUserLinks).values({
+      installationId: values.installationId,
+      telegramUserId: values.telegramUserId,
+      vm0UserId: values.vm0UserId,
     });
     signal.throwIfAborted();
   },
