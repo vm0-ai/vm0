@@ -15,20 +15,26 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     let mock = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
     let secret = "super-secret-value";
-    let mut stderr_payload = (0..201)
+    let mut stderr_payload = (0..(common::CLI_STDERR_RESULT_MAX_LINES + 1))
         .map(|i| format!("line-{i}"))
         .collect::<Vec<_>>()
         .join("\n");
     let exact_limit_line = format!(
         "exact-limit-{}",
-        "x".repeat(16 * 1024 - "exact-limit-".len())
+        "x".repeat(common::CLI_STDERR_RESULT_MAX_LINE_BYTES - "exact-limit-".len())
     );
-    assert_eq!(exact_limit_line.len(), 16 * 1024);
+    assert_eq!(
+        exact_limit_line.len(),
+        common::CLI_STDERR_RESULT_MAX_LINE_BYTES
+    );
 
     stderr_payload.push_str("\ncrlf-line\r");
     stderr_payload.push_str(&format!("\n{exact_limit_line}"));
     stderr_payload.push_str(&format!("\ncodex stderr includes {secret}"));
-    stderr_payload.push_str(&format!("\n{}", "x".repeat(16 * 1024 + 1)));
+    stderr_payload.push_str(&format!(
+        "\n{}",
+        "x".repeat(common::CLI_STDERR_RESULT_MAX_LINE_BYTES + 1)
+    ));
     stderr_payload.push_str("\nafter-overlong-line");
 
     unsafe {
@@ -49,7 +55,10 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     .expect("execute_cli should return promptly")?;
 
     assert_eq!(cli_result.exit_code, 1);
-    assert_eq!(cli_result.stderr_lines.len(), 200);
+    assert_eq!(
+        cli_result.stderr_lines.len(),
+        common::CLI_STDERR_RESULT_MAX_LINES
+    );
     let stderr = cli_result.stderr_lines.join("\n");
     assert_eq!(
         cli_result.stderr_lines.first().map(String::as_str),
@@ -85,7 +94,7 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
         "stderr result should keep lines at the exact size limit, got: {stderr}"
     );
     assert!(
-        stderr.contains("[stderr line omitted: exceeded diagnostic size limit]"),
+        stderr.contains(common::CLI_STDERR_OMITTED_LONG_LINE),
         "stderr result should omit overlong lines, got: {stderr}"
     );
     assert!(

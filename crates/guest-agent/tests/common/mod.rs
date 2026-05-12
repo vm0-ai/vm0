@@ -32,6 +32,17 @@ pub const SIGKILL_EXIT: i32 = 137;
 /// Normal clean exit. Reap should never fire on this path.
 pub const CLEAN_EXIT: i32 = 0;
 
+/// Documented maximum number of stderr lines returned in
+/// `guest_agent::cli::CliExecutionResult`.
+pub const CLI_STDERR_RESULT_MAX_LINES: usize = 200;
+
+/// Documented maximum raw byte length for one returned stderr line.
+pub const CLI_STDERR_RESULT_MAX_LINE_BYTES: usize = 16 * 1024;
+
+/// Documented replacement for a stderr line that exceeds the diagnostic limit.
+pub const CLI_STDERR_OMITTED_LONG_LINE: &str =
+    "[stderr line omitted: exceeded diagnostic size limit]";
+
 /// Build the mock binary (idempotent when up to date) and resolve its
 /// filesystem path.
 ///

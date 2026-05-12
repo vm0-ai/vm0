@@ -13,7 +13,7 @@ use std::time::Duration;
 async fn cli_failure_omits_overlong_final_stderr() -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
-    let overlong_line = "x".repeat(16 * 1024 + 1);
+    let overlong_line = "x".repeat(common::CLI_STDERR_RESULT_MAX_LINE_BYTES + 1);
 
     unsafe {
         common::setup_env(
@@ -40,7 +40,7 @@ async fn cli_failure_omits_overlong_final_stderr() -> Result<(), Box<dyn std::er
     assert_eq!(cli_result.exit_code, 1);
     assert_eq!(
         cli_result.stderr_lines,
-        vec!["[stderr line omitted: exceeded diagnostic size limit]"]
+        vec![common::CLI_STDERR_OMITTED_LONG_LINE]
     );
 
     Ok(())
