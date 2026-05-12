@@ -17,7 +17,11 @@ import type {
   SecretListResponse,
   SecretType,
 } from "@vm0/api-contracts/contracts/secrets";
-import type { VariableListResponse } from "@vm0/api-contracts/contracts/variables";
+import type {
+  SetVariableRequest,
+  VariableListResponse,
+  VariableResponse,
+} from "@vm0/api-contracts/contracts/variables";
 import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { secrets } from "@vm0/db/schema/secret";
@@ -333,6 +337,56 @@ export function userVariables({
     };
   });
 }
+
+export const setUserVariable$ = command(
+  async (
+    { set },
+    args: UserScopedQuery & { readonly variable: SetVariableRequest },
+    signal: AbortSignal,
+  ): Promise<VariableResponse> => {
+    const updatedAt = nowDate();
+    const writeDb = set(writeDb$);
+    const [row] = await writeDb
+      .insert(variables)
+      .values({
+        orgId: args.orgId,
+        userId: args.userId,
+        name: args.variable.name,
+        value: args.variable.value,
+        description: args.variable.description ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [variables.orgId, variables.userId, variables.name],
+        set: {
+          value: args.variable.value,
+          description: args.variable.description ?? null,
+          updatedAt,
+        },
+      })
+      .returning({
+        id: variables.id,
+        name: variables.name,
+        value: variables.value,
+        description: variables.description,
+        createdAt: variables.createdAt,
+        updatedAt: variables.updatedAt,
+      });
+    signal.throwIfAborted();
+
+    if (!row) {
+      throw new Error("Expected variable upsert to return a row");
+    }
+
+    return {
+      id: row.id,
+      name: row.name,
+      value: row.value,
+      description: row.description,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  },
+);
 
 export function userSecrets({
   orgId,
