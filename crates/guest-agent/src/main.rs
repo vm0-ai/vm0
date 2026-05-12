@@ -528,6 +528,41 @@ mod tests {
     }
 
     #[test]
+    fn cli_failure_message_truncates_on_utf8_boundary() {
+        let _test_state_guard = lock_test_state();
+        let tmp = tempfile::tempdir().unwrap();
+        let system_log_path = tmp.path().join("system.log");
+        let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
+
+        let prefix = "x".repeat(MAX_LOGGED_CLI_STDERR_LINE_BYTES - 1);
+        let stderr_line = format!("{prefix}é-tail");
+        let msg = cli_failure_message(1, &[stderr_line]);
+
+        assert!(
+            msg.contains(&prefix),
+            "returned error message should preserve bytes before the truncation boundary"
+        );
+        assert!(
+            msg.contains("...[truncated]"),
+            "returned error message should indicate truncation"
+        );
+        assert!(
+            !msg.contains("é-tail"),
+            "returned error message should not split or include the over-boundary character"
+        );
+
+        let system_log = std::fs::read_to_string(&system_log_path).unwrap();
+        assert!(
+            system_log.contains("...[truncated]"),
+            "system log should indicate truncation, got: {system_log}"
+        );
+        assert!(
+            !system_log.contains("é-tail"),
+            "system log should not split or include the over-boundary character"
+        );
+    }
+
+    #[test]
     fn complete_execution_creates_recovery_checkpoint_after_cli_failure() {
         let _test_state_guard = lock_test_state();
         tokio::runtime::Builder::new_current_thread()
