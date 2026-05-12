@@ -10,6 +10,8 @@
 //!   @fail-no-newline:<message>
 //!                             - Output message to stderr without a trailing
 //!                               newline and exit with code 1
+//!   @fail-invalid-utf8        - Output invalid UTF-8 bytes to stderr and exit
+//!                               with code 1
 //!   @stuck-tool               - Emit WebFetch tool_use then hang (test stuck-tool watchdog)
 //!   @stuck-tool-deaf          - Same, but ignores SIGTERM so only SIGKILL
 //!                               can terminate it
@@ -319,6 +321,13 @@ fn main() -> ExitCode {
     // Special test prefix: @fail-no-newline:<message>
     if let Some(msg) = parsed.prompt.strip_prefix("@fail-no-newline:") {
         eprint!("{msg}");
+        let _ = std::io::stderr().flush();
+        return ExitCode::from(1);
+    }
+
+    // Special test prefix: @fail-invalid-utf8
+    if parsed.prompt == "@fail-invalid-utf8" {
+        let _ = std::io::stderr().write_all(b"invalid-\xff-stderr\n");
         let _ = std::io::stderr().flush();
         return ExitCode::from(1);
     }
