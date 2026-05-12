@@ -10,6 +10,7 @@ import {
   VOLUME_ORG_USER_ID,
 } from "@vm0/core/storage-names";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroSkills } from "@vm0/db/schema/zero-skill";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
@@ -177,6 +178,279 @@ function expectS3VolumeUploads(s3Key: string, versionId: string): void {
     expect.objectContaining({ path: "templates/prompt.md", size: 12 }),
   ]);
 }
+
+describe("POST /api/zero/skills", () => {
+  const track = createFixtureTracker<SkillsFixture>((fixture) => {
+    return store.set(deleteSkillsForFixture$, fixture, context.signal);
+  });
+
+  it("returns 401 when the request is unauthenticated", async () => {
+    const response = await accept(
+      listClient().create({
+        headers: {},
+        body: { name: "my-skill", files: skillFiles("# My Skill") },
+      }),
+      [401],
+    );
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+
+    const response = await accept(
+      listClient().create({
+        headers: authHeaders(),
+        body: { name: "my-skill", files: skillFiles("# My Skill") },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 403 when an org member creates a skill", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const response = await accept(
+      listClient().create({
+        headers: authHeaders(),
+        body: { name: "member-skill", files: skillFiles("# Member") },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Only org admins can create custom skills",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("creates a skill and returns nullable metadata defaults", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    context.mocks.s3.send.mockResolvedValue({});
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      listClient().create({
+        headers: authHeaders(),
+        body: { name: "my-skill", files: skillFiles("# My Skill") },
+      }),
+      [201],
+    );
+
+    expect(response.body).toStrictEqual({
+      name: "my-skill",
+      displayName: null,
+      description: null,
+    });
+  });
+
+  it("creates a skill with metadata", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    context.mocks.s3.send.mockResolvedValue({});
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      listClient().create({
+        headers: authHeaders(),
+        body: {
+          name: "my-skill",
+          displayName: "My Skill",
+          description: "A useful skill",
+          files: skillFiles("# Content"),
+        },
+      }),
+      [201],
+    );
+
+    expect(response.body).toStrictEqual({
+      name: "my-skill",
+      displayName: "My Skill",
+      description: "A useful skill",
+    });
+  });
+
+  it("rejects duplicate skill names with 409", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    await store.set(
+      seedSkill$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "my-skill",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      listClient().create({
+        headers: authHeaders(),
+        body: { name: "my-skill", files: skillFiles("# Duplicate") },
+      }),
+      [409],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: 'Skill "my-skill" already exists in this organization',
+        code: "CONFLICT",
+      },
+    });
+  });
+
+  it("rejects built-in seed skill names with 409", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      listClient().create({
+        headers: authHeaders(),
+        body: { name: "deep-dive", files: skillFiles("# Built in") },
+      }),
+      [409],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: 'Skill name "deep-dive" conflicts with a built-in skill',
+        code: "CONFLICT",
+      },
+    });
+  });
+
+  it("returns 400 for invalid file body", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      listClient().create({
+        headers: authHeaders(),
+        body: {
+          name: "invalid-skill",
+          files: [{ path: "README.md", content: "# Missing skill" }],
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("stores the skill row and uploads a custom skill volume", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const createdAt = new Date("2026-05-12T05:00:00.000Z");
+    const skillName = "stored-skill";
+    context.mocks.s3.send.mockResolvedValue({});
+    mockNow(createdAt);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      listClient().create({
+        headers: authHeaders(),
+        body: {
+          name: skillName,
+          displayName: "Stored Skill",
+          description: "Stored through API",
+          files: [
+            { path: "SKILL.md", content: "# Updated Content" },
+            { path: "templates/prompt.md", content: "Use the tool" },
+          ],
+        },
+      }),
+      [201],
+    );
+
+    expect(response.body.name).toBe(skillName);
+
+    const writeDb = store.set(writeDb$);
+    const [skill] = await writeDb
+      .select()
+      .from(zeroSkills)
+      .where(
+        and(
+          eq(zeroSkills.orgId, fixture.orgId),
+          eq(zeroSkills.name, skillName),
+        ),
+      )
+      .limit(1);
+    expect(skill).toMatchObject({
+      orgId: fixture.orgId,
+      name: skillName,
+      displayName: "Stored Skill",
+      description: "Stored through API",
+      createdBy: fixture.userId,
+    });
+
+    const storageName = getCustomSkillStorageName(skillName);
+    const state = await readSkillStorageState(fixture, skillName);
+    expect(state.storage?.s3Prefix).toBe(
+      `${fixture.orgId}/volume/${storageName}`,
+    );
+    expect(state.storage?.size).toBe(29);
+    expect(state.storage?.fileCount).toBe(2);
+    expect(state.storage?.headVersionId).toBeTruthy();
+    expect(state.version?.size).toBe(29);
+    expect(state.version?.fileCount).toBe(2);
+
+    if (!state.storage?.headVersionId || !state.version) {
+      throw new Error("Expected skill storage to have a head version");
+    }
+
+    expectS3VolumeUploads(state.version.s3Key, state.storage.headVersionId);
+  });
+
+  it("does not bind a created org skill to existing agents", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const { agentId } = await store.set(
+      seedAgentForInstructions$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    context.mocks.s3.send.mockResolvedValue({});
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    await accept(
+      listClient().create({
+        headers: authHeaders(),
+        body: { name: "unbound-skill", files: skillFiles("# Unbound") },
+      }),
+      [201],
+    );
+
+    const writeDb = store.set(writeDb$);
+    const [agent] = await writeDb
+      .select({ customSkills: zeroAgents.customSkills })
+      .from(zeroAgents)
+      .where(eq(zeroAgents.id, agentId))
+      .limit(1);
+    expect(agent?.customSkills).toStrictEqual([]);
+  });
+});
 
 describe("GET /api/zero/skills", () => {
   const track = createFixtureTracker<SkillsFixture>((fixture) => {
