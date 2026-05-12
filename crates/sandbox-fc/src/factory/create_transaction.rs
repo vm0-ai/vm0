@@ -566,6 +566,7 @@ mod tests {
         crate::cow_pool::PrewarmedSlot {
             id: id.into(),
             workspace,
+            drop_notify: None,
         }
     }
 

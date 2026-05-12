@@ -61,6 +61,8 @@ pub(crate) struct PrewarmedSlot {
     pub id: String,
     /// Path to the workspace directory: `{workspaces_dir}/{id}/`.
     pub workspace: PathBuf,
+    #[cfg(test)]
+    pub(crate) drop_notify: Option<oneshot::Sender<PathBuf>>,
 }
 
 impl PrewarmedSlot {
@@ -84,6 +86,10 @@ impl PrewarmedSlot {
 impl Drop for PrewarmedSlot {
     fn drop(&mut self) {
         self.remove_workspace();
+        #[cfg(test)]
+        if let Some(drop_notify) = self.drop_notify.take() {
+            let _ = drop_notify.send(self.workspace.clone());
+        }
     }
 }
 
@@ -746,7 +752,12 @@ fn create_slot(config: &CowPoolConfig) -> Result<PrewarmedSlot, CowPoolError> {
         return Err(e);
     }
 
-    Ok(PrewarmedSlot { id, workspace })
+    Ok(PrewarmedSlot {
+        id,
+        workspace,
+        #[cfg(test)]
+        drop_notify: None,
+    })
 }
 
 /// Create the COW file: sparse-copy from golden image or allocate fresh.
@@ -824,7 +835,18 @@ mod tests {
         PrewarmedSlot {
             id: id.to_owned(),
             workspace,
+            drop_notify: None,
         }
+    }
+
+    fn test_slot_with_drop_notify(
+        dir: &Path,
+        id: &str,
+    ) -> (PrewarmedSlot, oneshot::Receiver<PathBuf>) {
+        let (drop_notify, dropped) = oneshot::channel();
+        let mut slot = test_slot(dir, id);
+        slot.drop_notify = Some(drop_notify);
+        (slot, dropped)
     }
 
     fn test_pool_with_spawner(
@@ -895,16 +917,6 @@ mod tests {
         })
         .await
         .expect("condition not reached")
-    }
-
-    async fn wait_for_path_absent(path: &Path) {
-        tokio::time::timeout(Duration::from_secs(1), async {
-            while path.exists() {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("path was not deleted");
     }
 
     #[tokio::test]
@@ -1259,7 +1271,7 @@ mod tests {
         });
         wait_for_snapshot(&handle, |snapshot| snapshot.pending == 1).await;
 
-        let slot = test_slot(tmp.path(), "ready-drop");
+        let (slot, dropped) = test_slot_with_drop_notify(tmp.path(), "ready-drop");
         let workspace = slot.workspace.clone();
         controller.take_request().send(Ok(slot)).unwrap();
         warmup.await.unwrap();
@@ -1267,7 +1279,8 @@ mod tests {
 
         drop(handle);
 
-        wait_for_path_absent(&workspace).await;
+        assert_eq!(dropped.await.unwrap(), workspace);
+        assert!(!workspace.exists());
     }
 
     #[tokio::test]
@@ -1289,12 +1302,13 @@ mod tests {
         acquire.abort();
         assert!(acquire.await.unwrap_err().is_cancelled());
 
-        let slot = test_slot(tmp.path(), "pending-drop");
+        let (slot, dropped) = test_slot_with_drop_notify(tmp.path(), "pending-drop");
         let workspace = slot.workspace.clone();
         drop(handle);
         controller.take_request().send(Ok(slot)).unwrap();
 
-        wait_for_path_absent(&workspace).await;
+        assert_eq!(dropped.await.unwrap(), workspace);
+        assert!(!workspace.exists());
     }
 
     #[tokio::test]
