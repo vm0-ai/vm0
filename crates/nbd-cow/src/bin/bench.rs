@@ -810,7 +810,6 @@ fn cleanup_stale_nbd_devices() {
 
         eprintln!("  Cleaning up stale /dev/nbd{i} (size={size}, pid={pid})...");
         let _ = nbd_cow::netlink::disconnect(i);
-        std::thread::sleep(std::time::Duration::from_millis(200));
         drop(claim);
     }
 }
