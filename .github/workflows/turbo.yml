@@ -1864,7 +1864,7 @@ jobs:
         with:
           node-version: 22
       - name: Install Chrome for Puppeteer
-        run: npx puppeteer browsers install chrome
+        run: npx --yes --package @puppeteer/browsers@2.10.13 browsers install chrome
       - name: Install LHCI CLI
         run: npm install -g @lhci/cli
       - name: Run Lighthouse CI (web)
@@ -1935,7 +1935,7 @@ jobs:
         with:
           node-version: 22
       - name: Install Chrome for Puppeteer
-        run: npx puppeteer browsers install chrome
+        run: npx --yes --package @puppeteer/browsers@2.10.13 browsers install chrome
       - name: Install LHCI CLI
         run: npm install -g @lhci/cli
       - name: Run Lighthouse CI (app)
