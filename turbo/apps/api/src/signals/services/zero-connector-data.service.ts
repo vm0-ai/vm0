@@ -55,6 +55,7 @@ type StoredConnectorRow = {
 
 const oauthScopesSchema = z.array(z.string());
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 3600;
+const COMPUTER_CONNECTOR_AUTH_TOKEN_SECRET = "COMPUTER_CONNECTOR_AUTHTOKEN";
 const COMPUTER_CONNECTOR_SECRET_NAMES = [
   "COMPUTER_CONNECTOR_BRIDGE_TOKEN",
   "COMPUTER_CONNECTOR_DOMAIN_ID",
@@ -69,6 +70,13 @@ interface ExternalUserInfo {
 
 function parseOauthScopes(value: string | null): string[] | null {
   return value ? oauthScopesSchema.parse(JSON.parse(value)) : null;
+}
+
+function getSecretNameForConnector(type: ConnectorType): string {
+  if (type === "computer") {
+    return COMPUTER_CONNECTOR_AUTH_TOKEN_SECRET;
+  }
+  return PROVIDER_HANDLERS[type].getSecretName();
 }
 
 function storedConnectorRowToResponse(
@@ -613,10 +621,12 @@ async function upsertConnectorSecret(
 }
 
 function connectorTokenExpiresAt(args: {
-  readonly type: Exclude<ConnectorType, "computer">;
+  readonly type: ConnectorType;
   readonly expiresIn: number | undefined;
 }): Date | null {
-  const isRefreshable = Boolean(PROVIDER_HANDLERS[args.type].refreshToken);
+  const isRefreshable =
+    args.type !== "computer" &&
+    Boolean(PROVIDER_HANDLERS[args.type].refreshToken);
   const fallbackSecs = isRefreshable
     ? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS
     : null;
@@ -632,7 +642,7 @@ export const upsertOAuthConnector$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly type: Exclude<ConnectorType, "computer">;
+      readonly type: ConnectorType;
       readonly accessToken: string;
       readonly userInfo: ExternalUserInfo;
       readonly oauthScopes: readonly string[];
@@ -646,7 +656,6 @@ export const upsertOAuthConnector$ = command(
     readonly created: boolean;
   }> => {
     const writeDb = set(writeDb$);
-    const handler = PROVIDER_HANDLERS[args.type];
     const tokenExpiresAt = connectorTokenExpiresAt({
       type: args.type,
       expiresIn: args.expiresIn,
@@ -655,7 +664,7 @@ export const upsertOAuthConnector$ = command(
     await upsertConnectorSecret(writeDb, {
       orgId: args.orgId,
       userId: args.userId,
-      name: handler.getSecretName(),
+      name: getSecretNameForConnector(args.type),
       value: args.accessToken,
       description: `OAuth token for ${args.type} connector`,
     });
