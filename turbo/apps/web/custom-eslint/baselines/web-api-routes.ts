@@ -16,7 +16,7 @@
  * (`http://localhost:3000`). The web catch-all route is a thin proxy to
  * VM0_API_BACKEND_URL so local and production CLI URL resolution stays aligned.
  *
- * Intentional exception: official shared AgentPhone iMessage uses the same
+ * Intentional exception: official shared AgentPhone messaging uses the same
  * in-process callback/run machinery as Telegram. Keep the webhook, connect
  * redirect, and internal callback routes in apps/web until integration
  * callbacks move out of the Next.js runtime.
@@ -43,8 +43,8 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/agent/runs/queue/route.ts",
   "app/api/agent/runs/route.ts",
   "app/api/agent/sessions/[id]/route.ts",
-  "app/api/agentphone/imessage/connect/route.ts",
-  "app/api/agentphone/imessage/webhook/route.ts",
+  "app/api/agentphone/connect/route.ts",
+  "app/api/agentphone/webhook/route.ts",
   "app/api/auth/me/route.ts",
   "app/api/cli/auth/device/route.ts",
   "app/api/cli/auth/org/route.ts",
@@ -81,7 +81,7 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/internal/callbacks/agent/route.ts",
   "app/api/internal/callbacks/chat/route.ts",
   "app/api/internal/callbacks/github/issues/route.ts",
-  "app/api/internal/callbacks/imessage/route.ts",
+  "app/api/internal/callbacks/agentphone/route.ts",
   "app/api/internal/callbacks/schedule/cron/route.ts",
   "app/api/internal/callbacks/schedule/loop/route.ts",
   "app/api/internal/callbacks/slack/org/route.ts",

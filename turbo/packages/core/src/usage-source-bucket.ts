@@ -24,7 +24,7 @@ export function triggerSourceToBucket(
     case "schedule":
       return "schedule";
     default:
-      // telegram, github, cli, agent, phone, imessage, voice-chat, null
+      // telegram, github, cli, agent, phone, agentphone, voice-chat, null
       return "others";
   }
 }

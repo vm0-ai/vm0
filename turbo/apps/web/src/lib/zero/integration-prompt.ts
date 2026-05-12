@@ -5,7 +5,7 @@
 type IntegrationPlatform =
   | "Email"
   | "GitHub"
-  | "iMessage"
+  | "AgentPhone"
   | "Schedule"
   | "Slack"
   | "Telegram"
@@ -59,7 +59,7 @@ export interface UserInfoOptions {
   telegramUsername?: string;
   telegramUserId?: string;
   telegramLanguage?: string;
-  imessageHandle?: string;
+  agentphoneHandle?: string;
 }
 
 /**
@@ -94,8 +94,8 @@ export function buildUserInfo(options: UserInfoOptions): string {
   if (options.telegramLanguage) {
     lines.push(`Telegram language: ${options.telegramLanguage}`);
   }
-  if (options.imessageHandle) {
-    lines.push(`iMessage handle: ${options.imessageHandle}`);
+  if (options.agentphoneHandle) {
+    lines.push(`Text message handle: ${options.agentphoneHandle}`);
   }
   return `# Current User Info\n${lines.join("\n")}`;
 }
@@ -163,9 +163,9 @@ export function buildTelegramPrompt(
 }
 
 /**
- * Build the full appendSystemPrompt for iMessage integration.
+ * Build the full appendSystemPrompt for AgentPhone integration.
  */
-export function buildIMessagePrompt(
+export function buildAgentPhonePrompt(
   opts: {
     sharedNumber: string;
     phoneHandle: string;
@@ -174,8 +174,8 @@ export function buildIMessagePrompt(
   },
   threadContext: string,
 ): string {
-  const headerParts = [buildIntegrationPrompt("iMessage")];
-  headerParts.push(`Shared iMessage number: ${opts.sharedNumber}`);
+  const headerParts = [buildIntegrationPrompt("AgentPhone")];
+  headerParts.push(`Shared AgentPhone number: ${opts.sharedNumber}`);
   headerParts.push(`User phone handle: ${opts.phoneHandle}`);
   if (opts.conversationId) {
     headerParts.push(`Conversation ID: ${opts.conversationId}`);

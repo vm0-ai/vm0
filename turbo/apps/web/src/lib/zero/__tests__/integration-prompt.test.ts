@@ -4,7 +4,7 @@ import {
   buildSchedulePrompt,
   buildSlackPrompt,
   buildTelegramPrompt,
-  buildIMessagePrompt,
+  buildAgentPhonePrompt,
   buildGitHubPrompt,
   buildWebChatPrompt,
 } from "../integration-prompt";
@@ -133,24 +133,24 @@ describe("buildTelegramPrompt", () => {
   });
 });
 
-describe("buildIMessagePrompt", () => {
+describe("buildAgentPhonePrompt", () => {
   it("should combine integration header with thread context", () => {
-    const result = buildIMessagePrompt(
+    const result = buildAgentPhonePrompt(
       {
         sharedNumber: "+19039853128",
         phoneHandle: "+15551234567",
         conversationId: "conv-1",
         messageId: "msg-1",
       },
-      "iMessage thread here",
+      "AgentPhone thread here",
     );
 
-    expect(result).toContain("You are currently running inside: iMessage");
-    expect(result).toContain("Shared iMessage number: +19039853128");
+    expect(result).toContain("You are currently running inside: AgentPhone");
+    expect(result).toContain("Shared AgentPhone number: +19039853128");
     expect(result).toContain("User phone handle: +15551234567");
     expect(result).toContain("Conversation ID: conv-1");
     expect(result).toContain("Message ID: msg-1");
-    expect(result).toContain("iMessage thread here");
+    expect(result).toContain("AgentPhone thread here");
   });
 });
 

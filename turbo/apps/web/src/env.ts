@@ -67,7 +67,7 @@ function initEnv() {
       TELEGRAM_OFFICIAL_WEBHOOK_SECRET: z.string().min(1).optional(),
       AGENTPHONE_API_KEY: z.string().min(1).optional(),
       AGENTPHONE_API_BASE_URL: z.url().optional(),
-      AGENTPHONE_IMESSAGE_NUMBER: z.string().min(1).optional(),
+      AGENTPHONE_PHONE_NUMBER: z.string().min(1).optional(),
       AGENTPHONE_WEBHOOK_SECRET: z.string().min(1).optional(),
       // Ahrefs OAuth (for connector)
       AHREFS_OAUTH_CLIENT_ID: z.string().min(1).optional(),
@@ -330,7 +330,7 @@ function initEnv() {
         process.env.TELEGRAM_OFFICIAL_WEBHOOK_SECRET,
       AGENTPHONE_API_KEY: process.env.AGENTPHONE_API_KEY,
       AGENTPHONE_API_BASE_URL: process.env.AGENTPHONE_API_BASE_URL,
-      AGENTPHONE_IMESSAGE_NUMBER: process.env.AGENTPHONE_IMESSAGE_NUMBER,
+      AGENTPHONE_PHONE_NUMBER: process.env.AGENTPHONE_PHONE_NUMBER,
       AGENTPHONE_WEBHOOK_SECRET: process.env.AGENTPHONE_WEBHOOK_SECRET,
       AHREFS_OAUTH_CLIENT_ID: process.env.AHREFS_OAUTH_CLIENT_ID,
       AHREFS_OAUTH_CLIENT_SECRET: process.env.AHREFS_OAUTH_CLIENT_SECRET,

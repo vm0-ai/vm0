@@ -3707,8 +3707,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.imessage_messages": {
-      "name": "imessage_messages",
+    "public.agentphone_messages": {
+      "name": "agentphone_messages",
       "schema": "",
       "columns": {
         "id": {
@@ -3742,8 +3742,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "imessage_user_link_id": {
-          "name": "imessage_user_link_id",
+        "agentphone_user_link_id": {
+          "name": "agentphone_user_link_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -3812,8 +3812,8 @@
         }
       },
       "indexes": {
-        "idx_imessage_messages_agentphone_message": {
-          "name": "idx_imessage_messages_agentphone_message",
+        "idx_agentphone_messages_agentphone_message": {
+          "name": "idx_agentphone_messages_agentphone_message",
           "columns": [
             {
               "expression": "agentphone_message_id",
@@ -3827,8 +3827,8 @@
           "method": "btree",
           "with": {}
         },
-        "idx_imessage_messages_webhook_id": {
-          "name": "idx_imessage_messages_webhook_id",
+        "idx_agentphone_messages_webhook_id": {
+          "name": "idx_agentphone_messages_webhook_id",
           "columns": [
             {
               "expression": "webhook_id",
@@ -3843,8 +3843,8 @@
           "method": "btree",
           "with": {}
         },
-        "idx_imessage_messages_handle_created": {
-          "name": "idx_imessage_messages_handle_created",
+        "idx_agentphone_messages_handle_created": {
+          "name": "idx_agentphone_messages_handle_created",
           "columns": [
             {
               "expression": "phone_handle",
@@ -3864,11 +3864,11 @@
           "method": "btree",
           "with": {}
         },
-        "idx_imessage_messages_user_link": {
-          "name": "idx_imessage_messages_user_link",
+        "idx_agentphone_messages_user_link": {
+          "name": "idx_agentphone_messages_user_link",
           "columns": [
             {
-              "expression": "imessage_user_link_id",
+              "expression": "agentphone_user_link_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -3881,12 +3881,12 @@
         }
       },
       "foreignKeys": {
-        "imessage_messages_imessage_user_link_id_imessage_user_links_id_fk": {
-          "name": "imessage_messages_imessage_user_link_id_imessage_user_links_id_fk",
-          "tableFrom": "imessage_messages",
-          "tableTo": "imessage_user_links",
+        "agentphone_messages_agentphone_user_link_id_agentphone_user_links_id_fk": {
+          "name": "agentphone_messages_agentphone_user_link_id_agentphone_user_links_id_fk",
+          "tableFrom": "agentphone_messages",
+          "tableTo": "agentphone_user_links",
           "columnsFrom": [
-            "imessage_user_link_id"
+            "agentphone_user_link_id"
           ],
           "columnsTo": [
             "id"
@@ -3901,8 +3901,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.imessage_thread_sessions": {
-      "name": "imessage_thread_sessions",
+    "public.agentphone_thread_sessions": {
+      "name": "agentphone_thread_sessions",
       "schema": "",
       "columns": {
         "id": {
@@ -3912,8 +3912,8 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "imessage_user_link_id": {
-          "name": "imessage_user_link_id",
+        "agentphone_user_link_id": {
+          "name": "agentphone_user_link_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -3958,11 +3958,11 @@
         }
       },
       "indexes": {
-        "idx_imessage_thread_sessions_link_root": {
-          "name": "idx_imessage_thread_sessions_link_root",
+        "idx_agentphone_thread_sessions_link_root": {
+          "name": "idx_agentphone_thread_sessions_link_root",
           "columns": [
             {
-              "expression": "imessage_user_link_id",
+              "expression": "agentphone_user_link_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -3979,11 +3979,11 @@
           "method": "btree",
           "with": {}
         },
-        "idx_imessage_thread_sessions_user_link": {
-          "name": "idx_imessage_thread_sessions_user_link",
+        "idx_agentphone_thread_sessions_user_link": {
+          "name": "idx_agentphone_thread_sessions_user_link",
           "columns": [
             {
-              "expression": "imessage_user_link_id",
+              "expression": "agentphone_user_link_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -3996,12 +3996,12 @@
         }
       },
       "foreignKeys": {
-        "imessage_thread_sessions_imessage_user_link_id_imessage_user_links_id_fk": {
-          "name": "imessage_thread_sessions_imessage_user_link_id_imessage_user_links_id_fk",
-          "tableFrom": "imessage_thread_sessions",
-          "tableTo": "imessage_user_links",
+        "agentphone_thread_sessions_agentphone_user_link_id_agentphone_user_links_id_fk": {
+          "name": "agentphone_thread_sessions_agentphone_user_link_id_agentphone_user_links_id_fk",
+          "tableFrom": "agentphone_thread_sessions",
+          "tableTo": "agentphone_user_links",
           "columnsFrom": [
-            "imessage_user_link_id"
+            "agentphone_user_link_id"
           ],
           "columnsTo": [
             "id"
@@ -4009,9 +4009,9 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "imessage_thread_sessions_agent_session_id_agent_sessions_id_fk": {
-          "name": "imessage_thread_sessions_agent_session_id_agent_sessions_id_fk",
-          "tableFrom": "imessage_thread_sessions",
+        "agentphone_thread_sessions_agent_session_id_agent_sessions_id_fk": {
+          "name": "agentphone_thread_sessions_agent_session_id_agent_sessions_id_fk",
+          "tableFrom": "agentphone_thread_sessions",
           "tableTo": "agent_sessions",
           "columnsFrom": [
             "agent_session_id"
@@ -4029,8 +4029,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.imessage_user_agent_preferences": {
-      "name": "imessage_user_agent_preferences",
+    "public.agentphone_user_agent_preferences": {
+      "name": "agentphone_user_agent_preferences",
       "schema": "",
       "columns": {
         "vm0_user_id": {
@@ -4068,9 +4068,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "imessage_user_agent_preferences_selected_compose_id_agent_composes_id_fk": {
-          "name": "imessage_user_agent_preferences_selected_compose_id_agent_composes_id_fk",
-          "tableFrom": "imessage_user_agent_preferences",
+        "agentphone_user_agent_preferences_selected_compose_id_agent_composes_id_fk": {
+          "name": "agentphone_user_agent_preferences_selected_compose_id_agent_composes_id_fk",
+          "tableFrom": "agentphone_user_agent_preferences",
           "tableTo": "agent_composes",
           "columnsFrom": [
             "selected_compose_id"
@@ -4083,8 +4083,8 @@
         }
       },
       "compositePrimaryKeys": {
-        "imessage_user_agent_preferences_pkey": {
-          "name": "imessage_user_agent_preferences_pkey",
+        "agentphone_user_agent_preferences_pkey": {
+          "name": "agentphone_user_agent_preferences_pkey",
           "columns": [
             "vm0_user_id",
             "org_id"
@@ -4096,8 +4096,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.imessage_user_links": {
-      "name": "imessage_user_links",
+    "public.agentphone_user_links": {
+      "name": "agentphone_user_links",
       "schema": "",
       "columns": {
         "id": {
@@ -4141,8 +4141,8 @@
         }
       },
       "indexes": {
-        "idx_imessage_user_links_phone_handle": {
-          "name": "idx_imessage_user_links_phone_handle",
+        "idx_agentphone_user_links_phone_handle": {
+          "name": "idx_agentphone_user_links_phone_handle",
           "columns": [
             {
               "expression": "phone_handle",
@@ -4156,8 +4156,8 @@
           "method": "btree",
           "with": {}
         },
-        "idx_imessage_user_links_vm0_org": {
-          "name": "idx_imessage_user_links_vm0_org",
+        "idx_agentphone_user_links_vm0_org": {
+          "name": "idx_agentphone_user_links_vm0_org",
           "columns": [
             {
               "expression": "vm0_user_id",
@@ -4177,8 +4177,8 @@
           "method": "btree",
           "with": {}
         },
-        "idx_imessage_user_links_org": {
-          "name": "idx_imessage_user_links_org",
+        "idx_agentphone_user_links_org": {
+          "name": "idx_agentphone_user_links_org",
           "columns": [
             {
               "expression": "org_id",

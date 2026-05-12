@@ -190,18 +190,18 @@ export {
   telegramThreadSessionExists,
 } from "./telegram";
 export {
-  insertTestIMessageUserLink,
-  seedTestIMessageUserAgentPreference,
-  createIMessageThreadSession,
-  insertTestIMessageMessage,
-  signTestIMessageConnectParams,
-  countTestIMessageMessages,
-  findTestIMessageUserLink,
-  findTestIMessageUserLinksByVm0UserId,
-  findTestIMessageUserAgentPreference,
-  imessageThreadSessionExists,
-  findTestIMessageThreadSession,
-} from "./imessage";
+  insertTestAgentPhoneUserLink,
+  seedTestAgentPhoneUserAgentPreference,
+  createAgentPhoneThreadSession,
+  insertTestAgentPhoneMessage,
+  signTestAgentPhoneConnectParams,
+  countTestAgentPhoneMessages,
+  findTestAgentPhoneUserLink,
+  findTestAgentPhoneUserLinksByVm0UserId,
+  findTestAgentPhoneUserAgentPreference,
+  agentphoneThreadSessionExists,
+  findTestAgentPhoneThreadSession,
+} from "./agentphone";
 export {
   updateOrgStripeFields,
   updateOrgAutoRecharge,

@@ -19,7 +19,7 @@ export interface TelegramCallbackPayload {
   thinkingMessageId?: string | null;
 }
 
-export interface IMessageCallbackPayload {
+export interface AgentPhoneCallbackPayload {
   messageId: string;
   conversationId: string | null;
   phoneHandle: string;
