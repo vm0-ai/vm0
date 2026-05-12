@@ -8,6 +8,8 @@ import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
+import { integrationsTelegramBotIdRoutes } from "./integrations-telegram-bot-id";
+import { integrationsTelegramLinkRoutes } from "./integrations-telegram-link";
 import { buildFileDownloadUrl, getFile } from "../external/telegram-client";
 import {
   getOfficialTelegramBotConfig,
@@ -179,6 +181,8 @@ const telegramReadAuth = {
 } as const;
 
 export const zeroIntegrationsTelegramRoutes: readonly RouteEntry[] = [
+  ...integrationsTelegramLinkRoutes,
+  ...integrationsTelegramBotIdRoutes,
   {
     route: integrationsTelegramBotListContract.listBots,
     handler: authRoute(telegramReadAuth, getTelegramBotsInner$),

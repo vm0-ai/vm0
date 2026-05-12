@@ -74,6 +74,24 @@ export function buildFileDownloadUrl(token: string, filePath: string): string {
   return `https://api.telegram.org/file/bot${token}/${filePath}`;
 }
 
+export async function deleteWebhook(token: string): Promise<void> {
+  const response = await fetch(
+    `https://api.telegram.org/bot${token}/deleteWebhook`,
+    { method: "POST" },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Telegram API error: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  const data: unknown = await response.json();
+  if (isTelegramApiError(data)) {
+    throw new Error(`Telegram API error: ${data.description}`);
+  }
+}
+
 /**
  * Send a chat action (e.g. typing indicator) to a Telegram chat.
  *
