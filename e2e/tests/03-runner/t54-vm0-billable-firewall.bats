@@ -5,8 +5,8 @@
 # Uses `zero run --model-provider` for per-run provider selection — the test
 # never changes the shared e2e org's default, so no race with other chunks.
 #
-# t54-0: no override; resolver uses bootstrap claude-code-oauth-token default.
-#   Mock token 401s upstream but the firewall tag is stamped; "$" marker absent.
+# t54-0: no override; resolver uses bootstrap anthropic-api-key default.
+#   BYOK firewall tag is stamped; "$" marker absent.
 # t54-1: --model-provider vm0 → concrete anthropic-api-key (fake pool key →
 #   401), billableFirewalls covers the firewall → "$" marker present.
 
@@ -19,7 +19,7 @@ setup_file() {
 
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
 
-    # Ensure vm0 provider coexists with bootstrap claude-code-oauth-token.
+    # Ensure vm0 provider coexists with bootstrap anthropic-api-key.
     # CLI non-interactive mode requires --secret; the API route detects
     # type === "vm0" and routes to the no-secret upsert, ignoring it.
     $ZERO_CLI org model-provider setup \
@@ -53,8 +53,8 @@ teardown_file() {
         return 1
     }
 
-    wait_for_log "$RUN_ID" --network -- "[model-provider:claude-code-oauth-token]"
-    refute_output --partial '[model-provider:claude-code-oauth-token $]'
+    wait_for_log "$RUN_ID" --network -- "[model-provider:anthropic-api-key]"
+    refute_output --partial '[model-provider:anthropic-api-key $]'
 }
 
 @test "t54-1: vm0 meta-provider — firewall billable" {

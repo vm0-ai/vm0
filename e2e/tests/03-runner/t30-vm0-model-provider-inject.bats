@@ -2,8 +2,8 @@
 
 # Test model-provider credential injection into container environment
 #
-# Verifies that the stable model-provider set by ser-t03 is correctly
-# injected into the container as CLAUDE_CODE_OAUTH_TOKEN.
+# Verifies that the stable bootstrap model-provider is correctly
+# injected into the container as ANTHROPIC_API_KEY.
 
 load '../../helpers/setup'
 
@@ -54,9 +54,9 @@ EOF
 
     run $VM0_CLI run "$AGENT_NAME" \
         --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "echo INJECTED=\$CLAUDE_CODE_OAUTH_TOKEN"
+        "echo INJECTED=\$ANTHROPIC_API_KEY"
 
     assert_success
     # Token is replaced with a firewall placeholder (proxy injects real token at runtime).
-    assert_output --partial "INJECTED=sk-ant-oat01-CoffeeSafeLocal"
+    assert_output --partial "INJECTED=sk-ant-api03-CoffeeSafeLocal"
 }

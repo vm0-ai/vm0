@@ -1162,6 +1162,8 @@ jobs:
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v7
@@ -1654,10 +1656,14 @@ jobs:
         run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-runner.json ~/.vm0/config.json
       - name: Bootstrap test account
         run: |
-          zero org model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
+          zero org model-provider setup \
+            --type "anthropic-api-key" \
+            --secret "$ANTHROPIC_API_KEY" \
+            --model "claude-sonnet-4-6"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
 
   # Skip on push to main - runner tests are only needed for PRs
   cli-e2e-03-runner:
