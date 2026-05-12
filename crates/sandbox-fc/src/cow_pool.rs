@@ -254,6 +254,8 @@ impl CowPoolActor {
             tokio::select! {
                 biased;
 
+                // Cleanup must preempt queued acquires, and completed slot
+                // creations must not be starved by a busy command channel.
                 cleanup = self.cleanup.recv(), if cleanup_open => {
                     match cleanup {
                         Some(done) => {
@@ -264,14 +266,14 @@ impl CowPoolActor {
                         None => cleanup_open = false,
                     }
                 }
+                completion = self.pool.pending.join_next(), if has_pending => {
+                    self.pool.handle_creation_join(completion);
+                }
                 command = self.commands.recv(), if commands_open => {
                     match command {
                         Some(command) => self.handle_command(command),
                         None => commands_open = false,
                     }
-                }
-                completion = self.pool.pending.join_next(), if has_pending => {
-                    self.pool.handle_creation_join(completion);
                 }
                 () = sleep_until_deadline(retry_deadline), if retry_deadline.is_some() => {
                     self.pool.warm_retry_at = None;
