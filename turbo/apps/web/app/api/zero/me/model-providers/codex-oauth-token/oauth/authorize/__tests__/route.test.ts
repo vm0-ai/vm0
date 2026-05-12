@@ -52,6 +52,8 @@ describe("GET /api/zero/me/model-providers/codex-oauth-token/oauth/authorize", (
       "http://localhost:3001/api/zero/me/model-providers/codex-oauth-token/oauth/authorize?from=settings",
     ]);
     expect(forwardedHeaders[0]?.get("cookie")).toBe("__session=opaque");
+    expect(forwardedHeaders[0]?.get("x-forwarded-host")).toBe("localhost:3000");
+    expect(forwardedHeaders[0]?.get("x-forwarded-proto")).toBe("http");
     expect(response.headers.getSetCookie()).toStrictEqual([
       "model_provider_oauth_state=abc; Max-Age=900; Path=/; HttpOnly",
       "model_provider_oauth_pkce=verifier; Max-Age=900; Path=/; HttpOnly",

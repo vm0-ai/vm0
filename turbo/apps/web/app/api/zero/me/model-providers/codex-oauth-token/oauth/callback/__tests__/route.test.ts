@@ -52,6 +52,8 @@ describe("GET /api/zero/me/model-providers/codex-oauth-token/oauth/callback", ()
     expect(forwardedHeaders[0]?.get("cookie")).toBe(
       "model_provider_oauth_state=state-1; model_provider_oauth_pkce=verifier-1",
     );
+    expect(forwardedHeaders[0]?.get("x-forwarded-host")).toBe("localhost:3000");
+    expect(forwardedHeaders[0]?.get("x-forwarded-proto")).toBe("http");
     expect(response.headers.getSetCookie()).toStrictEqual([
       "model_provider_oauth_state=; Max-Age=0; Path=/",
       "model_provider_oauth_pkce=; Max-Age=0; Path=/",

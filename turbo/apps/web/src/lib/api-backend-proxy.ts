@@ -24,6 +24,9 @@ function buildProxyHeaders(request: Request): Headers {
       headers.set(key, value);
     }
   }
+  const requestUrl = new URL(request.url);
+  headers.set("x-forwarded-host", requestUrl.host);
+  headers.set("x-forwarded-proto", requestUrl.protocol.replace(":", ""));
   return headers;
 }
 
