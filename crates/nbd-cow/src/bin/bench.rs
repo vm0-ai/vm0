@@ -430,15 +430,11 @@ const DIRECTIONS: [&str; 3] = ["read", "write", "trim"];
 
 fn fio_latency_us(jobs: &[Value]) -> Result<(u64, u64), String> {
     if jobs.iter().any(|job| job.get("mixed").is_some()) {
-        return jobs
+        let latency_sections = jobs
             .iter()
             .filter_map(|job| job.get("mixed"))
-            .find(|section| {
-                percentile_us(section, "50.000000").is_some()
-                    && percentile_us(section, "99.000000").is_some()
-            })
-            .ok_or_else(|| "fio JSON missing mixed latency percentiles".to_string())
-            .and_then(|section| section_latency_us(section, "mixed"));
+            .collect::<Vec<_>>();
+        return single_latency_section(latency_sections, "mixed");
     }
 
     let active_directions = DIRECTIONS
@@ -454,14 +450,12 @@ fn fio_latency_us(jobs: &[Value]) -> Result<(u64, u64), String> {
     match active_directions.as_slice() {
         [] => Err("fio JSON has no active read/write/trim direction".to_string()),
         [direction] => {
-            let Some(section) = jobs
+            let latency_sections = jobs
                 .iter()
                 .filter_map(|job| job.get(*direction))
-                .find(|section| section_is_active(section))
-            else {
-                return Err(format!("fio JSON missing active {direction} section"));
-            };
-            section_latency_us(section, direction)
+                .filter(|section| section_is_active(section))
+                .collect::<Vec<_>>();
+            single_latency_section(latency_sections, direction)
         }
         directions => Err(format!(
             "fio JSON has mixed directions ({}) but no unified mixed latency; rerun with --unified_rw_reporting=1",
@@ -491,12 +485,23 @@ fn section_latency_us(section: &Value, section_name: &str) -> Result<(u64, u64),
     Ok((p50, p99))
 }
 
+fn single_latency_section(sections: Vec<&Value>, section_name: &str) -> Result<(u64, u64), String> {
+    match sections.as_slice() {
+        [] => Err(format!(
+            "fio JSON missing {section_name} latency percentiles"
+        )),
+        [section] => section_latency_us(section, section_name),
+        _ => Err(format!(
+            "fio JSON has multiple {section_name} latency sections; rerun with --group_reporting=1"
+        )),
+    }
+}
+
 fn percentile_us(section: &Value, percentile: &str) -> Option<u64> {
-    let ns = section
-        .get("clat_ns")?
-        .get("percentile")?
-        .get(percentile)?
-        .as_u64()?;
+    let value = section.get("clat_ns")?.get("percentile")?.get(percentile)?;
+    let ns = value
+        .as_u64()
+        .or_else(|| value.as_f64().map(|value| value as u64))?;
     Some(ns / 1000)
 }
 
@@ -656,7 +661,51 @@ mod tests {
     }
 
     #[test]
-    fn parse_fio_json_sums_multiple_jobs() {
+    fn parse_fio_json_accepts_float_percentile_values() {
+        let json = br#"{
+            "jobs": [{
+                "mixed": {
+                    "iops": 1000.0,
+                    "total_ios": 1000,
+                    "clat_ns": {"percentile": {"50.000000": 13000.0, "99.000000": 23000.0}}
+                }
+            }]
+        }"#;
+
+        let result = parse_fio_json(json).unwrap();
+
+        assert_eq!(result.lat_p50_us, 13);
+        assert_eq!(result.lat_p99_us, 23);
+    }
+
+    #[test]
+    fn fio_vm_iops_sums_multiple_jobs() {
+        let json = br#"{
+            "jobs": [
+                {
+                    "mixed": {
+                        "iops": 600.0,
+                        "total_ios": 600,
+                        "clat_ns": {"percentile": {"50.000000": 10000, "99.000000": 20000}}
+                    }
+                },
+                {
+                    "mixed": {
+                        "iops": 400.0,
+                        "total_ios": 400,
+                        "clat_ns": {"percentile": {"50.000000": 12000, "99.000000": 22000}}
+                    }
+                }
+            ]
+        }"#;
+        let root: Value = serde_json::from_slice(json).unwrap();
+        let jobs = fio_jobs(&root).unwrap();
+
+        assert_eq!(fio_vm_iops(jobs).unwrap() as u64, 1000);
+    }
+
+    #[test]
+    fn parse_fio_json_rejects_multiple_mixed_latency_sections() {
         let json = br#"{
             "jobs": [
                 {
@@ -676,9 +725,9 @@ mod tests {
             ]
         }"#;
 
-        let result = parse_fio_json(json).unwrap();
+        let err = parse_fio_json(json).unwrap_err();
 
-        assert_eq!(result.vm_iops, 1000);
+        assert!(err.contains("--group_reporting=1"), "{err}");
     }
 
     #[test]
