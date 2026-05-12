@@ -194,7 +194,7 @@ describe("createApp", () => {
       let observedAuthorization: string | undefined;
       useUndiciMock()
         .get("https://www.vm0.ai")
-        .intercept({ path: "/api/agent/runs?limit=5", method: "GET" })
+        .intercept({ path: "/api/legacy/fallthrough?limit=5", method: "GET" })
         .reply((opts) => {
           observedPath = opts.path;
           observedAuthorization = headerValue(opts.headers, "authorization");
@@ -208,14 +208,14 @@ describe("createApp", () => {
         });
 
       const app = createApp({ signal: context.signal });
-      const response = await app.request("/api/agent/runs?limit=5", {
+      const response = await app.request("/api/legacy/fallthrough?limit=5", {
         method: "GET",
         headers: { authorization: "Bearer legacy" },
       });
 
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toStrictEqual({ runs: [] });
-      expect(observedPath).toBe("/api/agent/runs?limit=5");
+      expect(observedPath).toBe("/api/legacy/fallthrough?limit=5");
       expect(observedAuthorization).toBe("Bearer legacy");
     });
 

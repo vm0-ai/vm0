@@ -35,6 +35,11 @@ interface SeedRunArgs {
   readonly scheduleId?: string;
   readonly chatThreadId?: string;
   readonly status?: string;
+  readonly prompt?: string;
+  readonly createdAt?: Date;
+  readonly startedAt?: Date | null;
+  readonly completedAt?: Date | null;
+  readonly continuedFromSessionId?: string | null;
   readonly sandboxReuseResult?: string | null;
   readonly result?: Record<string, unknown> | null;
   readonly error?: string | null;
@@ -273,9 +278,13 @@ export const seedRun$ = command(
         userId: args.userId,
         orgId: args.orgId,
         agentComposeVersionId: versionId,
-        prompt: "test prompt",
+        prompt: args.prompt ?? "test prompt",
         status: args.status ?? "pending",
         sessionId: session.id,
+        createdAt: args.createdAt,
+        startedAt: args.startedAt,
+        completedAt: args.completedAt,
+        continuedFromSessionId: args.continuedFromSessionId,
         sandboxReuseResult: args.sandboxReuseResult ?? null,
         result: args.result ?? null,
         error: args.error ?? null,

@@ -4,10 +4,12 @@ import {
   type TriggerSource,
 } from "@vm0/api-contracts/contracts/logs";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
-import type {
-  GetRunResponse,
-  QueueResponse,
-  RunStatus,
+import {
+  ALL_RUN_STATUSES,
+  type GetRunResponse,
+  type QueueResponse,
+  type RunStatus,
+  type RunsListResponse,
 } from "@vm0/api-contracts/contracts/runs";
 import {
   sandboxReuseResultSchema,
@@ -30,8 +32,10 @@ import {
   desc,
   eq,
   gt,
+  gte,
   inArray,
   isNotNull,
+  lte,
   or,
   sql,
 } from "drizzle-orm";
@@ -51,6 +55,10 @@ const TIER_CONCURRENCY_LIMITS = Object.freeze<Record<OrgTier, number>>({
 type ReadDb = Pick<Db, "select">;
 type QueueItem = QueueResponse["queue"][number];
 type RunningTaskItem = QueueResponse["runningTasks"][number];
+
+type RunListResult =
+  | { readonly kind: "ok"; readonly body: RunsListResponse }
+  | { readonly kind: "bad-request"; readonly message: string };
 
 interface QueuedRunRow {
   readonly id: string;
@@ -289,6 +297,105 @@ export function zeroRunById(args: {
       createdAt: run.createdAt.toISOString(),
       startedAt: run.startedAt?.toISOString(),
       completedAt: run.completedAt?.toISOString(),
+    };
+  });
+}
+
+export function agentRunList(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly status?: string;
+  readonly agent?: string;
+  readonly since?: string;
+  readonly until?: string;
+  readonly limit: number;
+}): Computed<Promise<RunListResult>> {
+  return computed(async (get): Promise<RunListResult> => {
+    const statusValues = args.status
+      ? args.status.split(",").map((status) => {
+          return status.trim();
+        })
+      : ["queued", "pending", "running"];
+
+    for (const status of statusValues) {
+      if (!ALL_RUN_STATUSES.includes(status as RunStatus)) {
+        return {
+          kind: "bad-request",
+          message: `Invalid status: ${status}. Valid values: ${ALL_RUN_STATUSES.join(", ")}`,
+        };
+      }
+    }
+
+    const conditions = [
+      eq(agentRuns.userId, args.userId),
+      eq(agentRuns.orgId, args.orgId),
+      inArray(agentRuns.status, statusValues as RunStatus[]),
+    ];
+
+    if (args.agent) {
+      conditions.push(eq(agentComposes.name, args.agent));
+    }
+
+    if (args.since) {
+      const sinceDate = new Date(args.since);
+      if (Number.isNaN(sinceDate.getTime())) {
+        return {
+          kind: "bad-request",
+          message: "Invalid since timestamp format",
+        };
+      }
+      conditions.push(gte(agentRuns.createdAt, sinceDate));
+    }
+
+    if (args.until) {
+      const untilDate = new Date(args.until);
+      if (Number.isNaN(untilDate.getTime())) {
+        return {
+          kind: "bad-request",
+          message: "Invalid until timestamp format",
+        };
+      }
+      conditions.push(lte(agentRuns.createdAt, untilDate));
+    }
+
+    const rows = await get(db$)
+      .select({
+        id: agentRuns.id,
+        status: agentRuns.status,
+        prompt: agentRuns.prompt,
+        appendSystemPrompt: agentRuns.appendSystemPrompt,
+        createdAt: agentRuns.createdAt,
+        startedAt: agentRuns.startedAt,
+        composeName: agentComposes.name,
+      })
+      .from(agentRuns)
+      .leftJoin(
+        agentComposeVersions,
+        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+      )
+      .leftJoin(
+        agentComposes,
+        eq(agentComposeVersions.composeId, agentComposes.id),
+      )
+      .where(and(...conditions))
+      .orderBy(desc(agentRuns.createdAt))
+      .limit(args.limit);
+
+    return {
+      kind: "ok",
+      body: {
+        runs: rows.map((run) => {
+          return {
+            id: run.id,
+            agentName: run.composeName ?? "unknown",
+            status: run.status as RunStatus,
+            prompt: run.prompt,
+            appendSystemPrompt: run.appendSystemPrompt,
+            createdAt: run.createdAt.toISOString(),
+            startedAt: run.startedAt?.toISOString() ?? null,
+          };
+        }),
+      },
     };
   });
 }
