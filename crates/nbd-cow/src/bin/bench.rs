@@ -492,17 +492,26 @@ fn fio_jobs(root: &Value) -> Result<&[Value], String> {
 }
 
 fn fio_vm_iops(jobs: &[Value]) -> Result<f64, String> {
-    let mut saw_mixed_iops = false;
-    let mixed_iops = jobs
+    let active_mixed_sections = jobs
         .iter()
-        .filter_map(|job| {
-            section_iops(job, "mixed").inspect(|_| {
-                saw_mixed_iops = true;
-            })
+        .filter_map(|job| job.get("mixed"))
+        .filter(|section| section_is_active(section))
+        .collect::<Vec<_>>();
+    if !active_mixed_sections.is_empty() {
+        return sum_section_iops(&active_mixed_sections, "mixed");
+    }
+
+    let active_direction_sections = jobs
+        .iter()
+        .flat_map(|job| {
+            DIRECTIONS
+                .iter()
+                .filter_map(move |direction| job.get(*direction))
         })
-        .sum::<f64>();
-    if saw_mixed_iops {
-        return Ok(mixed_iops);
+        .filter(|section| section_is_active(section))
+        .collect::<Vec<_>>();
+    if !active_direction_sections.is_empty() {
+        return sum_section_iops(&active_direction_sections, "active direction");
     }
 
     let mut saw_iops = false;
@@ -525,12 +534,13 @@ fn fio_vm_iops(jobs: &[Value]) -> Result<f64, String> {
 const DIRECTIONS: [&str; 3] = ["read", "write", "trim"];
 
 fn fio_latency_us(jobs: &[Value]) -> Result<(u64, u64), String> {
-    if jobs.iter().any(|job| job.get("mixed").is_some()) {
-        let latency_sections = jobs
-            .iter()
-            .filter_map(|job| job.get("mixed"))
-            .collect::<Vec<_>>();
-        return single_latency_section(latency_sections, "mixed");
+    let active_mixed_sections = jobs
+        .iter()
+        .filter_map(|job| job.get("mixed"))
+        .filter(|section| section_is_active(section))
+        .collect::<Vec<_>>();
+    if !active_mixed_sections.is_empty() {
+        return single_latency_section(active_mixed_sections, "mixed");
     }
 
     let active_directions = DIRECTIONS
@@ -562,6 +572,18 @@ fn fio_latency_us(jobs: &[Value]) -> Result<(u64, u64), String> {
 
 fn section_iops(job: &Value, section: &str) -> Option<f64> {
     job.get(section)?.get("iops")?.as_f64()
+}
+
+fn sum_section_iops(sections: &[&Value], section_name: &str) -> Result<f64, String> {
+    sections
+        .iter()
+        .map(|section| {
+            section
+                .get("iops")
+                .and_then(Value::as_f64)
+                .ok_or_else(|| format!("fio JSON missing {section_name} IOPS for active section"))
+        })
+        .sum()
 }
 
 fn section_is_active(section: &Value) -> bool {
@@ -772,6 +794,41 @@ mod tests {
 
         assert_eq!(result.lat_p50_us, 13);
         assert_eq!(result.lat_p99_us, 23);
+    }
+
+    #[test]
+    fn parse_fio_json_ignores_inactive_mixed_section_for_read_only() {
+        let json = br#"{
+            "jobs": [{
+                "read": {
+                    "iops": 512.0,
+                    "total_ios": 512,
+                    "clat_ns": {"percentile": {"50.000000": 8000, "99.000000": 16000}}
+                },
+                "write": {"iops": 0.0, "total_ios": 0},
+                "trim": {"iops": 0.0, "total_ios": 0},
+                "mixed": {"iops": 0.0, "total_ios": 0}
+            }]
+        }"#;
+
+        let result = parse_fio_json(json).unwrap();
+
+        assert_eq!(result.vm_iops, 512);
+        assert_eq!(result.lat_p50_us, 8);
+        assert_eq!(result.lat_p99_us, 16);
+    }
+
+    #[test]
+    fn parse_fio_json_rejects_active_mixed_section_missing_latency() {
+        let json = br#"{
+            "jobs": [{
+                "mixed": {"iops": 1000.0, "total_ios": 1000}
+            }]
+        }"#;
+
+        let err = parse_fio_json(json).unwrap_err();
+
+        assert!(err.contains("mixed p50 latency"), "{err}");
     }
 
     #[test]
