@@ -139,6 +139,9 @@ importers:
       '@t3-oss/env-core':
         specifier: ^0.13.11
         version: 0.13.11(typescript@5.9.3)(zod@4.3.6)
+      '@team-plain/typescript-sdk':
+        specifier: ^5.12.1
+        version: 5.12.1
       '@vercel/functions':
         specifier: ^3.4.4
         version: 3.4.4(@aws-sdk/credential-provider-web-identity@3.972.38)
@@ -160,6 +163,9 @@ importers:
       ably:
         specifier: ^2.21.0
         version: 2.21.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      archiver:
+        specifier: ^7.0.1
+        version: 7.0.1
       ccstate:
         specifier: ^5.3.0
         version: 5.3.0
@@ -200,6 +206,12 @@ importers:
       '@ts-rest/core':
         specifier: 3.53.0-rc.1
         version: 3.53.0-rc.1(@types/node@24.3.0)
+      '@types/adm-zip':
+        specifier: ^0.5.8
+        version: 0.5.8
+      '@types/archiver':
+        specifier: ^7.0.0
+        version: 7.0.0
       '@types/node':
         specifier: ^24.3.0
         version: 24.3.0
@@ -218,6 +230,9 @@ importers:
       '@vm0/typescript-config':
         specifier: workspace:*
         version: link:../../packages/typescript-config
+      adm-zip:
+        specifier: ^0.5.17
+        version: 0.5.17
       eslint:
         specifier: ^9.34.0
         version: 9.39.4(jiti@2.6.1)
