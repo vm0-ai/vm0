@@ -162,6 +162,33 @@ const addDomainInner$ = command(async ({ get }, signal: AbortSignal) => {
   };
 });
 
+const removeDomainBody$ = bodyResultOf(zeroOrgDomainsContract.remove);
+
+const removeDomainInner$ = command(async ({ get }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  if (auth.orgRole !== "admin") {
+    return adminRequired;
+  }
+
+  const bodyResult = await get(removeDomainBody$);
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+
+  const client = get(clerk$);
+  await client.organizations.deleteOrganizationDomain({
+    organizationId: auth.orgId,
+    domainId: bodyResult.data.domainId,
+  });
+  signal.throwIfAborted();
+
+  return {
+    status: 200 as const,
+    body: { message: "Domain removed" },
+  };
+});
+
 const membersInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const body = await get(
@@ -205,6 +232,13 @@ export const zeroOrgReadRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       addDomainInner$,
+    ),
+  },
+  {
+    route: zeroOrgDomainsContract.remove,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      removeDomainInner$,
     ),
   },
   {

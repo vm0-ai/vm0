@@ -282,3 +282,145 @@ describe("POST /api/zero/org/domains", () => {
     ).not.toHaveBeenCalled();
   });
 });
+
+describe("DELETE /api/zero/org/domains", () => {
+  const seededFixtures: OrgMembershipFixture[] = [];
+
+  afterEach(async () => {
+    while (seededFixtures.length > 0) {
+      const fixture = seededFixtures.pop();
+      if (fixture) {
+        await store.set(deleteOrgMembership$, fixture, context.signal);
+      }
+    }
+  });
+
+  it("removes a domain for an admin", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(
+      await store.set(
+        seedOrgMembership$,
+        { orgId, userId, role: "admin" },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(userId, orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroOrgDomainsContract);
+
+    const response = await accept(
+      client.remove({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { domainId: "domain_test123" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ message: "Domain removed" });
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationDomain,
+    ).toHaveBeenCalledWith({
+      organizationId: orgId,
+      domainId: "domain_test123",
+    });
+  });
+
+  it("returns 401 when not authenticated", async () => {
+    const client = setupApp({ context })(zeroOrgDomainsContract);
+
+    const response = await accept(
+      client.remove({
+        headers: {},
+        body: { domainId: "domain_test123" },
+      }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationDomain,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+
+    const client = setupApp({ context })(zeroOrgDomainsContract);
+
+    const response = await accept(
+      client.remove({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { domainId: "domain_test123" },
+      }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationDomain,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 when caller is not an admin", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(
+      await store.set(
+        seedOrgMembership$,
+        { orgId, userId, role: "member" },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(userId, orgId, "org:member");
+
+    const client = setupApp({ context })(zeroOrgDomainsContract);
+
+    const response = await accept(
+      client.remove({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { domainId: "domain_test123" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "Access denied",
+      code: "FORBIDDEN",
+    });
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationDomain,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid bodies before calling Clerk", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(
+      await store.set(
+        seedOrgMembership$,
+        { orgId, userId, role: "admin" },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(userId, orgId, "org:admin");
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/org/domains", {
+      method: "DELETE",
+      headers: {
+        authorization: "Bearer clerk-session",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationDomain,
+    ).not.toHaveBeenCalled();
+  });
+});
