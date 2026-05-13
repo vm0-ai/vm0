@@ -18,8 +18,8 @@
 //! | 0x00 | G→H       | ready             | (empty) |
 //! | 0x01 | H→G       | ping              | (empty) |
 //! | 0x02 | G→H       | pong              | (empty) |
-//! | 0x03 | H→G       | exec              | `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)` |
-//! | 0x04 | G→H       | exec_result       | `[4B exit_code][4B stdout_len][stdout][4B stderr_len][stderr]` |
+//! | 0x03 | —         | retired           | legacy exec, do not reuse |
+//! | 0x04 | —         | retired           | legacy exec_result, do not reuse |
 //! | 0x05 | H→G       | write_file        | `[2B path_len][path][1B flags][4B content_len][content]` (flags: `SUDO=0x01`, `APPEND=0x02`) |
 //! | 0x06 | G→H       | write_file_result | `[1B success][2B error_len][error]` |
 //! | 0x07 | H→G       | spawn_watch       | `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)([2B log_path_len][log_path])` (flags: `SUDO=0x01`, `STREAM_STDOUT=0x02`) |
@@ -52,8 +52,6 @@ pub const MIN_BODY_SIZE: usize = 5;
 pub const MSG_READY: u8 = 0x00;
 pub const MSG_PING: u8 = 0x01;
 pub const MSG_PONG: u8 = 0x02;
-pub const MSG_EXEC: u8 = 0x03;
-pub const MSG_EXEC_RESULT: u8 = 0x04;
 pub const MSG_WRITE_FILE: u8 = 0x05;
 pub const MSG_WRITE_FILE_RESULT: u8 = 0x06;
 pub const MSG_SPAWN_WATCH: u8 = 0x07;
@@ -70,9 +68,6 @@ pub const MSG_ERROR: u8 = 0xFF;
 
 /// Default vsock port for host-guest communication.
 pub const VSOCK_PORT: u32 = 1000;
-
-// Exec payload flags.
-pub const EXEC_FLAG_SUDO: u8 = 0x01;
 
 // Spawn-watch payload flags.
 pub const SPAWN_WATCH_FLAG_SUDO: u8 = 0x01;
@@ -358,47 +353,14 @@ pub fn encode(msg_type: u8, seq: u32, payload: &[u8]) -> Result<Vec<u8>, Protoco
     Ok(buf)
 }
 
-/// Encode exec payload: `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)`.
-///
-/// The env section is only appended when `env` is non-empty, keeping the
-/// payload backward-compatible with old decoders that don't expect it.
-pub fn encode_exec(timeout_ms: u32, command: &str, env: &[(&str, &str)], sudo: bool) -> Vec<u8> {
-    let cmd = command.as_bytes();
-    let env_size: usize = if env.is_empty() {
-        0
-    } else {
-        4 + env
-            .iter()
-            .map(|(k, v)| 8 + k.len() + v.len())
-            .sum::<usize>()
-    };
-    let mut p = Vec::with_capacity(9 + cmd.len() + env_size);
-    p.extend_from_slice(&timeout_ms.to_be_bytes());
-    p.push(if sudo { EXEC_FLAG_SUDO } else { 0 });
-    p.extend_from_slice(&(cmd.len() as u32).to_be_bytes());
-    p.extend_from_slice(cmd);
-    if !env.is_empty() {
-        p.extend_from_slice(&(env.len() as u32).to_be_bytes());
-        for (key, val) in env {
-            let kb = key.as_bytes();
-            let vb = val.as_bytes();
-            p.extend_from_slice(&(kb.len() as u32).to_be_bytes());
-            p.extend_from_slice(kb);
-            p.extend_from_slice(&(vb.len() as u32).to_be_bytes());
-            p.extend_from_slice(vb);
-        }
-    }
-    p
-}
-
-/// Encode spawn_watch payload: exec fields + optional `[2B log_path_len][log_path]`.
+/// Encode spawn_watch payload: command fields + optional `[2B log_path_len][log_path]`.
 ///
 /// `stream_stdout` controls whether stdout is streamed to the host via
 /// `MSG_STDOUT_CHUNK`. `stdout_log_path`, when present, additionally asks
 /// the guest to tee streamed stdout to that file.
 ///
-/// Unlike `encode_exec`, this always writes the env section (even when empty)
-/// so `decode_spawn_watch` can unambiguously find the log_path boundary.
+/// This always writes the env section (even when empty) so
+/// `decode_spawn_watch` can unambiguously find the log_path boundary.
 pub fn encode_spawn_watch(
     timeout_ms: u32,
     command: &str,
@@ -452,14 +414,6 @@ pub fn encode_spawn_watch(
         p.extend_from_slice(path_bytes);
     }
     Ok(p)
-}
-
-/// Encode exec_result payload: `[4B exit_code][4B stdout_len][stdout][4B stderr_len][stderr]`.
-pub fn encode_exec_result(exit_code: i32, stdout: &[u8], stderr: &[u8]) -> Vec<u8> {
-    let mut p = Vec::with_capacity(12 + stdout.len() + stderr.len());
-    p.extend_from_slice(&exit_code.to_be_bytes());
-    append_output_pair(&mut p, stdout, stderr);
-    p
 }
 
 fn append_output_pair(p: &mut Vec<u8>, stdout: &[u8], stderr: &[u8]) {
@@ -792,35 +746,40 @@ pub fn encode_error(message: &str) -> Vec<u8> {
 // Decode
 // ---------------------------------------------------------------------------
 
-struct DecodedExecInner<'a> {
-    exec: DecodedExec<'a>,
+struct DecodedCommandFieldsInner<'a> {
+    fields: DecodedCommandFields<'a>,
     offset: usize,
     raw_flags: u8,
 }
 
-/// Decode exec/spawn_watch shared fields.
+/// Decode the command-shaped prefix used by spawn_watch payloads.
 ///
-/// The env section is optional: if the payload ends right after the command,
-/// an empty vec is returned (backward-compatible with old encoders).
-fn decode_exec_inner(payload: &[u8], sudo_flag: u8) -> Result<DecodedExecInner<'_>, ProtocolError> {
-    let timeout_ms =
-        read_u32_at(payload, 0).ok_or(ProtocolError::InvalidPayload("exec payload too short"))?;
-    let flags =
-        read_u8_at(payload, 4).ok_or(ProtocolError::InvalidPayload("exec payload too short"))?;
+/// The env section is optional: if the payload ends right after the command, an
+/// empty vec is returned. `encode_spawn_watch` always writes the env section so
+/// the optional log path remains unambiguous for new payloads.
+fn decode_command_fields(
+    payload: &[u8],
+    sudo_flag: u8,
+) -> Result<DecodedCommandFieldsInner<'_>, ProtocolError> {
+    let timeout_ms = read_u32_at(payload, 0).ok_or(ProtocolError::InvalidPayload(
+        "command fields payload too short",
+    ))?;
+    let flags = read_u8_at(payload, 4).ok_or(ProtocolError::InvalidPayload(
+        "command fields payload too short",
+    ))?;
     let sudo = (flags & sudo_flag) != 0;
-    let cmd_len = read_u32_at(payload, 5)
-        .ok_or(ProtocolError::InvalidPayload("exec payload too short"))? as usize;
-    let command = std::str::from_utf8(
-        payload
-            .get(9..9 + cmd_len)
-            .ok_or(ProtocolError::InvalidPayload("exec command truncated"))?,
-    )
+    let cmd_len = read_u32_at(payload, 5).ok_or(ProtocolError::InvalidPayload(
+        "command fields payload too short",
+    ))? as usize;
+    let command = std::str::from_utf8(payload.get(9..9 + cmd_len).ok_or(
+        ProtocolError::InvalidPayload("command fields command truncated"),
+    )?)
     .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in command"))?;
 
     let env_start = 9 + cmd_len;
     if env_start >= payload.len() {
-        return Ok(DecodedExecInner {
-            exec: DecodedExec {
+        return Ok(DecodedCommandFieldsInner {
+            fields: DecodedCommandFields {
                 timeout_ms,
                 command,
                 env: Vec::new(),
@@ -831,44 +790,40 @@ fn decode_exec_inner(payload: &[u8], sudo_flag: u8) -> Result<DecodedExecInner<'
         });
     }
 
-    let env_count = read_u32_at(payload, env_start)
-        .ok_or(ProtocolError::InvalidPayload("exec env count truncated"))?
-        as usize;
+    let env_count = read_u32_at(payload, env_start).ok_or(ProtocolError::InvalidPayload(
+        "command fields env count truncated",
+    ))? as usize;
     // Do not pre-allocate based on env_count: it is untrusted wire data and a
     // malformed message can claim u32::MAX pairs. The per-iteration bounds
     // checks below return an error as soon as the payload runs out.
     let mut env = Vec::new();
     let mut offset = env_start + 4;
     for _ in 0..env_count {
-        let key_len = read_u32_at(payload, offset)
-            .ok_or(ProtocolError::InvalidPayload("exec env key_len truncated"))?
-            as usize;
+        let key_len = read_u32_at(payload, offset).ok_or(ProtocolError::InvalidPayload(
+            "command fields env key_len truncated",
+        ))? as usize;
         offset += 4;
-        let key = std::str::from_utf8(
-            payload
-                .get(offset..offset + key_len)
-                .ok_or(ProtocolError::InvalidPayload("exec env key truncated"))?,
-        )
+        let key = std::str::from_utf8(payload.get(offset..offset + key_len).ok_or(
+            ProtocolError::InvalidPayload("command fields env key truncated"),
+        )?)
         .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in env key"))?;
         offset += key_len;
 
-        let val_len = read_u32_at(payload, offset)
-            .ok_or(ProtocolError::InvalidPayload("exec env val_len truncated"))?
-            as usize;
+        let val_len = read_u32_at(payload, offset).ok_or(ProtocolError::InvalidPayload(
+            "command fields env val_len truncated",
+        ))? as usize;
         offset += 4;
-        let val = std::str::from_utf8(
-            payload
-                .get(offset..offset + val_len)
-                .ok_or(ProtocolError::InvalidPayload("exec env value truncated"))?,
-        )
+        let val = std::str::from_utf8(payload.get(offset..offset + val_len).ok_or(
+            ProtocolError::InvalidPayload("command fields env value truncated"),
+        )?)
         .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in env value"))?;
         offset += val_len;
 
         env.push((key, val));
     }
 
-    Ok(DecodedExecInner {
-        exec: DecodedExec {
+    Ok(DecodedCommandFieldsInner {
+        fields: DecodedCommandFields {
             timeout_ms,
             command,
             env,
@@ -879,22 +834,17 @@ fn decode_exec_inner(payload: &[u8], sudo_flag: u8) -> Result<DecodedExecInner<'
     })
 }
 
-/// Decode exec payload into a [`DecodedExec`] struct.
-pub fn decode_exec(payload: &[u8]) -> Result<DecodedExec<'_>, ProtocolError> {
-    decode_exec_inner(payload, EXEC_FLAG_SUDO).map(|d| d.exec)
-}
-
-/// Decode spawn_watch payload. Extends exec fields with streaming metadata.
+/// Decode spawn_watch payload. Extends command fields with streaming metadata.
 ///
-/// Wire format: `[exec fields...]([2B log_path_len][log_path])`.
-/// The log_path section is optional — if the payload ends after the exec
+/// Wire format: `[command fields...]([2B log_path_len][log_path])`.
+/// The log_path section is optional — if the payload ends after the command
 /// fields, `stdout_log_path` is `None`.
 pub fn decode_spawn_watch(payload: &[u8]) -> Result<DecodedSpawnWatch<'_>, ProtocolError> {
-    let DecodedExecInner {
-        exec,
+    let DecodedCommandFieldsInner {
+        fields,
         offset,
         raw_flags,
-    } = decode_exec_inner(payload, SPAWN_WATCH_FLAG_SUDO)?;
+    } = decode_command_fields(payload, SPAWN_WATCH_FLAG_SUDO)?;
     let stream_flag = (raw_flags & SPAWN_WATCH_FLAG_STREAM_STDOUT) != 0;
     let stdout_log_path = if offset == payload.len() {
         None
@@ -927,76 +877,49 @@ pub fn decode_spawn_watch(payload: &[u8]) -> Result<DecodedSpawnWatch<'_>, Proto
         ));
     }
     Ok(DecodedSpawnWatch {
-        exec,
+        fields,
         stream_stdout: stream_flag,
         stdout_log_path,
     })
 }
 
-/// Decode exec_result payload. Returns `(exit_code, stdout, stderr)`.
-pub fn decode_exec_result(payload: &[u8]) -> Result<(i32, &[u8], &[u8]), ProtocolError> {
-    let exit_code =
-        read_i32_at(payload, 0).ok_or(ProtocolError::InvalidPayload("exec_result too short"))?;
-    let (stdout, stderr) = decode_output_pair_at(payload, 4, OutputPairContext::ExecResult)?;
-    Ok((exit_code, stdout, stderr))
-}
-
-#[derive(Clone, Copy)]
-enum OutputPairContext {
-    ExecResult,
-    ProcessExit,
-}
-
-impl OutputPairContext {
-    fn too_short(self) -> &'static str {
-        match self {
-            Self::ExecResult => "exec_result too short",
-            Self::ProcessExit => "process_exit too short",
-        }
-    }
-
-    fn stdout_truncated(self) -> &'static str {
-        match self {
-            Self::ExecResult => "exec_result stdout truncated",
-            Self::ProcessExit => "process_exit stdout truncated",
-        }
-    }
-
-    fn stderr_truncated(self) -> &'static str {
-        match self {
-            Self::ExecResult => "exec_result stderr truncated",
-            Self::ProcessExit => "process_exit stderr truncated",
-        }
-    }
-}
-
-fn decode_output_pair_at(
-    payload: &[u8],
-    offset: usize,
-    ctx: OutputPairContext,
-) -> Result<(&[u8], &[u8]), ProtocolError> {
+fn decode_output_pair_at(payload: &[u8], offset: usize) -> Result<(&[u8], &[u8]), ProtocolError> {
     let stdout_len = read_u32_at(payload, offset)
-        .ok_or(ProtocolError::InvalidPayload(ctx.too_short()))? as usize;
-    let stdout_start = offset
-        .checked_add(4)
-        .ok_or(ProtocolError::InvalidPayload(ctx.stdout_truncated()))?;
-    let stderr_len_offset = stdout_start
-        .checked_add(stdout_len)
-        .ok_or(ProtocolError::InvalidPayload(ctx.stdout_truncated()))?;
-    let stdout = payload
-        .get(stdout_start..stderr_len_offset)
-        .ok_or(ProtocolError::InvalidPayload(ctx.stdout_truncated()))?;
+        .ok_or(ProtocolError::InvalidPayload("process_exit too short"))?
+        as usize;
+    let stdout_start = offset.checked_add(4).ok_or(ProtocolError::InvalidPayload(
+        "process_exit stdout truncated",
+    ))?;
+    let stderr_len_offset =
+        stdout_start
+            .checked_add(stdout_len)
+            .ok_or(ProtocolError::InvalidPayload(
+                "process_exit stdout truncated",
+            ))?;
+    let stdout =
+        payload
+            .get(stdout_start..stderr_len_offset)
+            .ok_or(ProtocolError::InvalidPayload(
+                "process_exit stdout truncated",
+            ))?;
     let stderr_len = read_u32_at(payload, stderr_len_offset)
-        .ok_or(ProtocolError::InvalidPayload(ctx.too_short()))? as usize;
+        .ok_or(ProtocolError::InvalidPayload("process_exit too short"))?
+        as usize;
     let stderr_start = stderr_len_offset
         .checked_add(4)
-        .ok_or(ProtocolError::InvalidPayload(ctx.stderr_truncated()))?;
+        .ok_or(ProtocolError::InvalidPayload(
+            "process_exit stderr truncated",
+        ))?;
     let stderr_end = stderr_start
         .checked_add(stderr_len)
-        .ok_or(ProtocolError::InvalidPayload(ctx.stderr_truncated()))?;
+        .ok_or(ProtocolError::InvalidPayload(
+            "process_exit stderr truncated",
+        ))?;
     let stderr = payload
         .get(stderr_start..stderr_end)
-        .ok_or(ProtocolError::InvalidPayload(ctx.stderr_truncated()))?;
+        .ok_or(ProtocolError::InvalidPayload(
+            "process_exit stderr truncated",
+        ))?;
     Ok((stdout, stderr))
 }
 
@@ -1050,17 +973,17 @@ pub fn decode_spawn_watch_result(payload: &[u8]) -> Result<u32, ProtocolError> {
     ))
 }
 
-/// Decoded exec/spawn_watch fields.
-pub struct DecodedExec<'a> {
+/// Decoded command fields shared by spawn_watch payloads.
+pub struct DecodedCommandFields<'a> {
     pub timeout_ms: u32,
     pub command: &'a str,
     pub env: Vec<(&'a str, &'a str)>,
     pub sudo: bool,
 }
 
-/// Decoded spawn_watch fields: exec fields + stdout streaming options.
+/// Decoded spawn_watch fields: command fields + stdout streaming options.
 pub struct DecodedSpawnWatch<'a> {
-    pub exec: DecodedExec<'a>,
+    pub fields: DecodedCommandFields<'a>,
     /// Whether vsock-guest should stream stdout chunks to the host.
     pub stream_stdout: bool,
     /// Optional guest-side file path where vsock-guest also tees stdout.
@@ -1076,7 +999,7 @@ pub fn decode_process_exit(payload: &[u8]) -> Result<ProcessExit<'_>, ProtocolEr
         read_u32_at(payload, 0).ok_or(ProtocolError::InvalidPayload("process_exit too short"))?;
     let exit_code =
         read_i32_at(payload, 4).ok_or(ProtocolError::InvalidPayload("process_exit too short"))?;
-    let (stdout, stderr) = decode_output_pair_at(payload, 8, OutputPairContext::ProcessExit)?;
+    let (stdout, stderr) = decode_output_pair_at(payload, 8)?;
     Ok((pid, exit_code, stdout, stderr))
 }
 
@@ -1459,11 +1382,11 @@ mod tests {
 
     #[test]
     fn encode_decode_roundtrip_with_payload() {
-        let data = encode(MSG_EXEC, 42, b"hello world").unwrap();
+        let data = encode(MSG_PING, 42, b"hello world").unwrap();
         let mut dec = Decoder::new();
         let msgs = dec.decode(&data).unwrap();
         assert_eq!(msgs.len(), 1);
-        assert_eq!(msgs[0].msg_type, MSG_EXEC);
+        assert_eq!(msgs[0].msg_type, MSG_PING);
         assert_eq!(msgs[0].seq, 42);
         assert_eq!(msgs[0].payload, b"hello world");
     }
@@ -1514,55 +1437,6 @@ mod tests {
         let mut dec = Decoder::new();
         let err = dec.decode(&bad).unwrap_err();
         assert!(matches!(err, ProtocolError::MessageTooSmall(2)));
-    }
-
-    #[test]
-    fn exec_payload_roundtrip() {
-        let payload = encode_exec(5000, "echo hello", &[], false);
-        let d = decode_exec(&payload).unwrap();
-        assert_eq!(d.timeout_ms, 5000);
-        assert_eq!(d.command, "echo hello");
-        assert!(d.env.is_empty());
-        assert!(!d.sudo);
-    }
-
-    #[test]
-    fn exec_payload_roundtrip_with_sudo() {
-        let payload = encode_exec(5000, "date -s @123", &[], true);
-        let d = decode_exec(&payload).unwrap();
-        assert_eq!(d.timeout_ms, 5000);
-        assert_eq!(d.command, "date -s @123");
-        assert!(d.env.is_empty());
-        assert!(d.sudo);
-    }
-
-    #[test]
-    fn exec_payload_roundtrip_with_env() {
-        let env_vars = [("PATH", "/usr/bin"), ("HOME", "/home/user")];
-        let payload = encode_exec(3000, "ls", &env_vars, false);
-        let d = decode_exec(&payload).unwrap();
-        assert_eq!(d.timeout_ms, 3000);
-        assert_eq!(d.command, "ls");
-        assert_eq!(d.env, vec![("PATH", "/usr/bin"), ("HOME", "/home/user")]);
-        assert!(!d.sudo);
-    }
-
-    #[test]
-    fn exec_result_payload_roundtrip() {
-        let payload = encode_exec_result(0, b"out", b"err");
-        let (code, stdout, stderr) = decode_exec_result(&payload).unwrap();
-        assert_eq!(code, 0);
-        assert_eq!(stdout, b"out");
-        assert_eq!(stderr, b"err");
-    }
-
-    #[test]
-    fn exec_result_empty_output() {
-        let payload = encode_exec_result(1, &[], &[]);
-        let (code, stdout, stderr) = decode_exec_result(&payload).unwrap();
-        assert_eq!(code, 1);
-        assert!(stdout.is_empty());
-        assert!(stderr.is_empty());
     }
 
     #[test]
@@ -1650,10 +1524,10 @@ mod tests {
         )
         .unwrap();
         let d = decode_spawn_watch(&payload).unwrap();
-        assert_eq!(d.exec.timeout_ms, 5000);
-        assert_eq!(d.exec.command, "echo hello");
-        assert_eq!(d.exec.env, vec![("FOO", "bar")]);
-        assert!(!d.exec.sudo);
+        assert_eq!(d.fields.timeout_ms, 5000);
+        assert_eq!(d.fields.command, "echo hello");
+        assert_eq!(d.fields.env, vec![("FOO", "bar")]);
+        assert!(!d.fields.sudo);
         assert!(d.stream_stdout);
         assert_eq!(d.stdout_log_path.unwrap(), "/tmp/vm0-system-123.log");
     }
@@ -1662,10 +1536,10 @@ mod tests {
     fn spawn_watch_payload_roundtrip_stream_only() {
         let payload = encode_spawn_watch(3000, "ls", &[], true, true, None).unwrap();
         let d = decode_spawn_watch(&payload).unwrap();
-        assert_eq!(d.exec.timeout_ms, 3000);
-        assert_eq!(d.exec.command, "ls");
-        assert!(d.exec.env.is_empty());
-        assert!(d.exec.sudo);
+        assert_eq!(d.fields.timeout_ms, 3000);
+        assert_eq!(d.fields.command, "ls");
+        assert!(d.fields.env.is_empty());
+        assert!(d.fields.sudo);
         assert!(d.stream_stdout);
         assert!(d.stdout_log_path.is_none());
     }
@@ -1674,7 +1548,7 @@ mod tests {
     fn spawn_watch_payload_roundtrip_buffered() {
         let payload = encode_spawn_watch(1000, "cmd", &[], false, false, None).unwrap();
         let d = decode_spawn_watch(&payload).unwrap();
-        assert_eq!(d.exec.command, "cmd");
+        assert_eq!(d.fields.command, "cmd");
         assert!(!d.stream_stdout);
         assert!(d.stdout_log_path.is_none());
     }
@@ -2737,56 +2611,6 @@ mod tests {
     }
 
     #[test]
-    fn decode_exec_too_short() {
-        assert!(decode_exec(&[0; 4]).is_err());
-    }
-
-    #[test]
-    fn decode_exec_rejects_oversized_env_count() {
-        // Valid exec header (empty cmd, no env) plus an env_count field claiming
-        // u32::MAX pairs but no actual pair bytes. Must return Err without
-        // attempting to allocate a vector sized by env_count.
-        let mut p = encode_exec(1000, "", &[], false);
-        p.extend_from_slice(&u32::MAX.to_be_bytes());
-        assert!(matches!(
-            decode_exec(&p),
-            Err(ProtocolError::InvalidPayload(_))
-        ));
-    }
-
-    #[test]
-    fn decode_exec_result_too_short() {
-        assert!(decode_exec_result(&[0; 8]).is_err());
-    }
-
-    #[test]
-    fn decode_exec_result_rejects_truncated_stdout() {
-        let mut payload = 0_i32.to_be_bytes().to_vec();
-        payload.extend_from_slice(&3_u32.to_be_bytes());
-        payload.extend_from_slice(b"ab");
-
-        let err = decode_exec_result(&payload).unwrap_err();
-        assert!(matches!(
-            err,
-            ProtocolError::InvalidPayload("exec_result stdout truncated")
-        ));
-    }
-
-    #[test]
-    fn decode_exec_result_rejects_truncated_stderr() {
-        let mut payload = 0_i32.to_be_bytes().to_vec();
-        payload.extend_from_slice(&0_u32.to_be_bytes());
-        payload.extend_from_slice(&3_u32.to_be_bytes());
-        payload.extend_from_slice(b"xy");
-
-        let err = decode_exec_result(&payload).unwrap_err();
-        assert!(matches!(
-            err,
-            ProtocolError::InvalidPayload("exec_result stderr truncated")
-        ));
-    }
-
-    #[test]
     fn decode_process_exit_rejects_truncated_stdout() {
         let mut payload = 123_u32.to_be_bytes().to_vec();
         payload.extend_from_slice(&1_i32.to_be_bytes());
@@ -2816,14 +2640,7 @@ mod tests {
     }
 
     #[test]
-    fn decode_output_pair_messages_allow_trailing_bytes() {
-        let mut exec_result = encode_exec_result(0, b"out", b"err");
-        exec_result.extend_from_slice(b"trailing");
-        let (code, stdout, stderr) = decode_exec_result(&exec_result).unwrap();
-        assert_eq!(code, 0);
-        assert_eq!(stdout, b"out");
-        assert_eq!(stderr, b"err");
-
+    fn decode_process_exit_allows_trailing_bytes() {
         let mut process_exit = encode_process_exit(123, 1, b"out", b"err");
         process_exit.extend_from_slice(b"trailing");
         let (pid, code, stdout, stderr) = decode_process_exit(&process_exit).unwrap();
@@ -2836,24 +2653,6 @@ mod tests {
     #[test]
     fn decode_write_file_too_short() {
         assert!(decode_write_file(&[0; 3]).is_err());
-    }
-
-    #[test]
-    fn full_message_exec_roundtrip() {
-        let payload = encode_exec(10000, "ls -la", &[], false);
-        let msg = encode(MSG_EXEC, 5, &payload).unwrap();
-
-        let mut dec = Decoder::new();
-        let msgs = dec.decode(&msg).unwrap();
-        assert_eq!(msgs.len(), 1);
-        assert_eq!(msgs[0].msg_type, MSG_EXEC);
-        assert_eq!(msgs[0].seq, 5);
-
-        let d = decode_exec(&msgs[0].payload).unwrap();
-        assert_eq!(d.timeout_ms, 10000);
-        assert_eq!(d.command, "ls -la");
-        assert!(d.env.is_empty());
-        assert!(!d.sudo);
     }
 
     #[test]

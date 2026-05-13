@@ -13,18 +13,13 @@ use vsock_proto::{
 
 use crate::drain::drain_into_vec_cancellable;
 use crate::error::to_io_error;
-use crate::exec::{
-    format_env_diagnostics, spawn_in_own_process_group, spawn_with_pipes, truncate_preview,
-};
+use crate::exec::spawn_in_own_process_group;
 use crate::log::log;
 use crate::process::{extract_exit_code, kill_and_reap_child, kill_process_tree};
 use crate::shutdown::handle_shutdown;
 use crate::threading::{SystemThreadSpawner, ThreadSpawner, spawn_scoped_named};
 use crate::user::apply_write_file_identity;
-use crate::wait::{
-    WaitOutcome, await_drain_deadline, finalize_buffered_result,
-    wait_with_drain_and_timeout_or_cancelled, wait_with_kill_timeout,
-};
+use crate::wait::{WaitOutcome, await_drain_deadline, wait_with_kill_timeout};
 
 const THREAD_WRITE_STDERR: &str = "vsock-write-stderr";
 const THREAD_WRITE_STDIN: &str = "vsock-write-stdin";
@@ -36,60 +31,6 @@ static DEBUG_GUEST_WRITE_FILE_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
 pub(crate) enum MessageOutcome {
     Response(Vec<u8>),
     Shutdown(Vec<u8>),
-}
-
-/// Handle exec message
-pub(crate) fn handle_exec(
-    timeout_ms: u32,
-    command: &str,
-    env: &[(&str, &str)],
-    sudo: bool,
-    connection_cancel: &AtomicBool,
-) -> (i32, Vec<u8>, Vec<u8>) {
-    log(
-        "INFO",
-        &format!(
-            "exec: {} (timeout={}ms, sudo={}, {})",
-            truncate_preview(command),
-            timeout_ms,
-            sudo,
-            format_env_diagnostics(command, env),
-        ),
-    );
-
-    let spawned = match spawn_with_pipes(command, env, sudo) {
-        Ok(c) => c,
-        Err(e) => {
-            return (
-                1,
-                Vec::new(),
-                format!(
-                    "Failed to execute: {e} ({})",
-                    format_env_diagnostics(command, env)
-                )
-                .into_bytes(),
-            );
-        }
-    };
-    let crate::exec::SpawnedCommand {
-        child,
-        env_script: _env_script,
-    } = spawned;
-
-    let (outcome, stdout, stderr_buf) =
-        wait_with_drain_and_timeout_or_cancelled(child, timeout_ms, connection_cancel);
-    let result = finalize_buffered_result(outcome, stdout, stderr_buf);
-
-    log(
-        "INFO",
-        &format!(
-            "exec result: exit_code={}, stdout_len={}, stderr_len={}",
-            result.0,
-            result.1.len(),
-            result.2.len()
-        ),
-    );
-    result
 }
 
 /// Handle write_file message
@@ -276,7 +217,7 @@ pub(crate) fn set_debug_guest_write_file_path(path: PathBuf) -> Result<(), PathB
 
 /// Handle incoming message and return the connection-loop outcome.
 ///
-/// `MSG_EXEC` and `MSG_SPAWN_WATCH` are handled separately in
+/// Command operation and `MSG_SPAWN_WATCH` are handled separately in
 /// `handle_connection` because they run in background threads.
 pub(crate) fn handle_message(msg: &RawMessage) -> io::Result<MessageOutcome> {
     log(
