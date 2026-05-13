@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { command, computed, type Computed } from "ccstate";
 import { and, count, eq, inArray } from "drizzle-orm";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
@@ -28,6 +30,7 @@ import {
   requireAgentPermission,
 } from "../../lib/require-agent-permission";
 import {
+  createServerSideZeroAgentCompose$,
   recomposeAgentIfStale$,
   serverSideZeroAgentCompose$,
 } from "../services/agent-compose.service";
@@ -98,6 +101,12 @@ function validationError(message: string) {
 function publicAgentLimitError() {
   return conflict(
     "This organization has reached the maximum number of agents (7). Delete an existing agent before making this agent public.",
+  );
+}
+
+function publicAgentCreateLimitError() {
+  return conflict(
+    "This organization has reached the maximum number of agents (7). Delete an existing agent before creating a new one.",
   );
 }
 
@@ -401,6 +410,130 @@ function readAgentForResponse(writeDb: Db, orgId: string, agentId: string) {
       return rows[0] ?? null;
     });
 }
+
+const createAgentBody$ = bodyResultOf(zeroAgentsMainContract.create);
+
+const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const body = await get(createAgentBody$);
+  signal.throwIfAborted();
+  if (!body.ok) {
+    return body.response;
+  }
+
+  const writeDb = set(writeDb$);
+  const customSkills = body.data.customSkills ?? [];
+  const visibility = body.data.visibility ?? "public";
+  const visibilityError = await privateVisibilityError({
+    get,
+    orgId: auth.orgId,
+    userId: auth.userId,
+    nextVisibility: visibility,
+    signal,
+  });
+  if (visibilityError) {
+    return visibilityError;
+  }
+
+  const customSkillsError = await validateCustomSkills(
+    writeDb,
+    auth.orgId,
+    customSkills,
+  );
+  signal.throwIfAborted();
+  if (customSkillsError) {
+    return customSkillsError;
+  }
+
+  const agentName = randomUUID();
+  const compose = await set(
+    createServerSideZeroAgentCompose$,
+    {
+      userId: auth.userId,
+      orgId: auth.orgId,
+      agentName,
+      instructions: "",
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  const metadata = {
+    displayName: body.data.displayName ?? null,
+    description: body.data.description ?? null,
+    sound: body.data.sound ?? null,
+    avatarUrl: body.data.avatarUrl ?? null,
+    customSkills: [...customSkills],
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
+    visibility,
+  };
+
+  const result = await writeDb.transaction(async (tx) => {
+    await tx
+      .select({ id: zeroAgents.id })
+      .from(zeroAgents)
+      .where(eq(zeroAgents.orgId, auth.orgId))
+      .for("update");
+    signal.throwIfAborted();
+
+    if (visibility === "public") {
+      const [publicAgentCount] = await tx
+        .select({ value: count() })
+        .from(zeroAgents)
+        .where(
+          and(
+            eq(zeroAgents.orgId, auth.orgId),
+            eq(zeroAgents.visibility, "public"),
+          ),
+        );
+      signal.throwIfAborted();
+
+      if ((publicAgentCount?.value ?? 0) >= PUBLIC_AGENT_LIMIT) {
+        return { blocked: true as const };
+      }
+    }
+
+    await tx
+      .insert(zeroAgents)
+      .values({
+        id: compose.composeId,
+        orgId: auth.orgId,
+        name: compose.composeName,
+        owner: auth.userId,
+        ...metadata,
+      })
+      .onConflictDoUpdate({
+        target: [zeroAgents.orgId, zeroAgents.name],
+        set: {
+          ...metadata,
+          updatedAt: nowDate(),
+        },
+      });
+    signal.throwIfAborted();
+
+    return { blocked: false as const };
+  });
+  signal.throwIfAborted();
+
+  if (result.blocked) {
+    return publicAgentCreateLimitError();
+  }
+
+  const agent = await readAgentForResponse(
+    writeDb,
+    auth.orgId,
+    compose.composeId,
+  );
+  signal.throwIfAborted();
+
+  if (!agent) {
+    throw new Error(`Created zero agent not found: ${compose.composeId}`);
+  }
+
+  return { status: 201 as const, body: agentResponse(agent) };
+});
 
 const listAgentsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -884,6 +1017,10 @@ const agentDeleteAuth = {
 } as const;
 
 export const zeroAgentsRoutes: readonly RouteEntry[] = [
+  {
+    route: zeroAgentsMainContract.create,
+    handler: authRoute(agentWriteAuth, createAgentInner$),
+  },
   {
     route: zeroAgentsMainContract.list,
     handler: authRoute(agentReadAuth, listAgentsInner$),

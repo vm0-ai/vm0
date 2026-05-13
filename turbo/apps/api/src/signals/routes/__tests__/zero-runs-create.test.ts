@@ -191,6 +191,10 @@ const trackModelProviders = createFixtureTracker<{ readonly orgId: string }>(
     );
   },
 );
+const trackVm0ApiKey = createFixtureTracker<string>(async (label) => {
+  const db = store.set(writeDb$);
+  await db.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, label));
+});
 
 async function fixture(): Promise<UsageInsightFixture> {
   const created = await track(
@@ -262,11 +266,12 @@ async function seedVm0ApiKey(args: {
   readonly apiKey: string;
 }): Promise<void> {
   const db = store.set(writeDb$);
+  const label = await trackVm0ApiKey(Promise.resolve(`test-${randomUUID()}`));
   await db.insert(vm0ApiKeys).values({
     vendor: args.vendor,
     model: args.model,
     apiKey: args.apiKey,
-    label: `test-${randomUUID()}`,
+    label,
   });
 }
 
@@ -1263,6 +1268,11 @@ describe("POST /api/zero/runs", () => {
     await setOrgCredits(fx.orgId, 100);
     await setMemberCredits({ orgId: fx.orgId, userId: fx.userId });
     await seedExpiredCredits({ orgId: fx.orgId, remaining: 100 });
+    await seedVm0ApiKey({
+      vendor: "anthropic",
+      model: "claude-opus-4-6",
+      apiKey: "sk-vm0-managed",
+    });
     await seedDefaultModelProvider({ orgId: fx.orgId, type: "vm0" });
 
     const response = await accept(
