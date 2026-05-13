@@ -873,6 +873,53 @@ mod tests {
         })
     }
 
+    async fn run_with_split_response<T, Fut>(
+        response: MockResponse,
+        call: impl FnOnce(PathBuf) -> Fut,
+    ) -> (T, MockRequest)
+    where
+        T: Send + 'static,
+        Fut: std::future::Future<Output = T> + Send + 'static,
+    {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let (request_tx, request_rx) = oneshot::channel();
+        let (header_written_tx, header_written_rx) = oneshot::channel();
+        let (write_body_tx, write_body_rx) = oneshot::channel();
+        let mut server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let request = read_mock_request(&mut stream).await.unwrap();
+            request_tx.send(request).unwrap();
+
+            let header = format!(
+                "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n\r\n",
+                response.status,
+                response.reason,
+                response.body.len()
+            );
+            stream.write_all(header.as_bytes()).await.unwrap();
+            header_written_tx.send(()).unwrap();
+
+            write_body_rx.await.unwrap();
+            stream.write_all(response.body.as_bytes()).await.unwrap();
+        });
+
+        let mut client_task = tokio::spawn(call(sock_path));
+
+        tokio::select! {
+            result = header_written_rx => result.unwrap(),
+            _ = &mut client_task => panic!("client completed before split response header"),
+            result = &mut server => panic!("mock server exited before split response header: {result:?}"),
+        }
+        write_body_tx.send(()).unwrap();
+
+        let output = client_task.await.unwrap();
+        let request = request_rx.await.unwrap();
+        server.await.unwrap();
+        (output, request)
+    }
+
     #[tokio::test]
     async fn mock_firecracker_api_reads_split_request_body() {
         let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
@@ -1248,50 +1295,42 @@ mod tests {
 
     #[tokio::test]
     async fn get_balloon_statistics_reads_split_response_body() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("fc.sock");
-        let listener = UnixListener::bind(&sock_path).unwrap();
         let body =
-            r#"{"target_mib":768,"actual_mib":384,"target_pages":196608,"actual_pages":98304}"#
-                .to_string();
-        let (request_tx, request_rx) = oneshot::channel();
-        let (header_written_tx, header_written_rx) = oneshot::channel();
-        let (write_body_tx, write_body_rx) = oneshot::channel();
-        let mut server = tokio::spawn(async move {
-            let (mut stream, _) = listener.accept().await.unwrap();
-            let request = read_mock_request(&mut stream).await.unwrap();
-            request_tx.send(request).unwrap();
+            r#"{"target_mib":768,"actual_mib":384,"target_pages":196608,"actual_pages":98304}"#;
+        let (result, request) =
+            run_with_split_response(MockResponse::ok_body(body), |sock_path| async move {
+                let client = ApiClient::new(&sock_path);
+                client.get_balloon_statistics().await
+            })
+            .await;
 
-            let header = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len());
-            stream.write_all(header.as_bytes()).await.unwrap();
-            header_written_tx.send(()).unwrap();
-
-            write_body_rx.await.unwrap();
-            stream.write_all(body.as_bytes()).await.unwrap();
-        });
-
-        let client_sock_path = sock_path.clone();
-        let mut client_task = tokio::spawn(async move {
-            let client = ApiClient::new(&client_sock_path);
-            client.get_balloon_statistics().await
-        });
-
-        tokio::select! {
-            result = header_written_rx => result.unwrap(),
-            result = &mut client_task => panic!("client completed before split response header: {result:?}"),
-            result = &mut server => panic!("mock server exited before split response header: {result:?}"),
-        }
-        write_body_tx.send(()).unwrap();
-
-        let stats = client_task.await.unwrap().unwrap();
+        let stats = result.unwrap();
         assert_eq!(stats.target_mib, 768);
         assert_eq!(stats.actual_mib, 384);
         assert_eq!(stats.target_pages, 196_608);
         assert_eq!(stats.actual_pages, 98_304);
 
-        let request = request_rx.await.unwrap();
         assert_request(&request, "GET", "/balloon/statistics");
-        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn load_snapshot_error_reads_split_response_body() {
+        let fault_message = "snapshot body arrived after headers";
+        let (result, request) = run_with_split_response(
+            MockResponse::bad_request_fault(fault_message),
+            |sock_path| async move {
+                let client = ApiClient::new(&sock_path);
+                client.load_snapshot("/snap/state", "/snap/memory").await
+            },
+        )
+        .await;
+
+        let ApiError::Http { status, body } = result.unwrap_err() else {
+            panic!("expected Http error");
+        };
+        assert_eq!(status, 400);
+        assert_eq!(body, fault_message);
+        assert_request(&request, "PUT", "/snapshot/load");
     }
 
     #[tokio::test]
