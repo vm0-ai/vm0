@@ -1100,9 +1100,9 @@ pub fn decode_error(payload: &[u8]) -> Result<&str, ProtocolError> {
 
 #[cfg(test)]
 mod tests {
-    use crate::wire::MAX_PAYLOAD_SIZE;
-
     use super::*;
+
+    const MAX_PAYLOAD_SIZE: usize = MAX_MESSAGE_SIZE - MIN_BODY_SIZE;
 
     #[test]
     fn encode_decode_roundtrip_empty_payload() {
