@@ -3675,6 +3675,80 @@
           "Define 'ready' once, up front. Encoding 'CI green + changelog + no migrations' in the prompt is the one-time cost; every future release benefits.",
           "Chain with Auto-Merge Releases for true hands-off shipping: this use case catches problems, auto-merge ships the release once everything clears."
         ]
+      },
+      "support-driven-bug-fixes": {
+        "title": "Fix Customer-Reported Bugs Without Engineering Bottlenecks",
+        "description": "Paste a customer's bug report into Slack. Zero reads it, investigates the code, opens a PR with a fix, and shares a preview link — no engineering handoff required.",
+        "timeSaved": "~2 hours saved per bug",
+        "scenario": "A customer flags a bug. The support rep pastes it into Slack and mentions Zero. Zero reads the report, traces the issue in the codebase, opens a GitHub issue, submits a pull request with the fix, and shares a live preview link — all before the ticket reaches the engineering backlog. The support team closes the loop with the customer the same day.",
+        "promptVariants": [
+          {
+            "label": "Forward a customer report",
+            "prompt": "@Zero a customer on iPhone 15 reported the PWA hamburger menu is hidden under the status bar and unresponsive. Fix it and share a preview link."
+          },
+          {
+            "label": "From email body",
+            "prompt": "@Zero customer email: 'The export button doesn't work on Firefox. Clicking it does nothing.' File a bug and fix it if you can."
+          },
+          {
+            "label": "Batch triage",
+            "prompt": "@Zero I have 3 customer-reported bugs from this week. Investigate all of them, create GitHub issues, and fix anything that's a quick win."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Sarah",
+            "text": "@Zero a customer emailed in: the PWA hamburger menu overlaps the status bar on iPhone and can't be tapped. Fix it and share a preview link."
+          },
+          {
+            "name": "Zero",
+            "text": "PR submitted: github.com/your-org/app/pull/11709\n\nPreview URL (live once CI deploys): https://pr-11709.yourapp.ai\n\nFix: added safe-area-inset-top padding to the top nav bar — hamburger button now clears the iOS status bar. 2-line change."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Support pastes the bug report into Slack",
+            "description": "The support rep copies the customer's report — an email, a screenshot description, or their own notes — directly into Slack and mentions Zero. No ticket system, no context switching."
+          },
+          {
+            "title": "Zero investigates and submits a fix",
+            "description": "Zero reads the report, traces the issue in the codebase, opens a GitHub issue with full context, and submits a pull request with the fix."
+          },
+          {
+            "title": "Preview link shared back in Slack",
+            "description": "Zero replies in the same thread with the PR link and a live preview URL so the support rep can verify the fix and close the loop with the customer."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Verify with a preview link",
+            "description": "Test the fix before it merges",
+            "examplePrompt": "@Zero the preview is live — confirm the hamburger button is now accessible and the layout looks correct on mobile."
+          },
+          {
+            "title": "Draft a customer reply",
+            "description": "Let the customer know their issue is resolved",
+            "examplePrompt": "@Zero draft a reply to the customer saying their bug has been fixed and will be live in the next deploy."
+          },
+          {
+            "title": "Automate recurring reports",
+            "description": "Route all bug emails to Zero automatically",
+            "examplePrompt": "@Zero whenever a customer email tagged 'bug' arrives in support@, post it in #bugs and start investigating automatically."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero reads the bug report from your Slack message and replies in the same thread with the PR link and preview URL."
+          },
+          {
+            "description": "Zero opens a GitHub issue with full context and submits a pull request with the fix, linking the issue to the PR automatically."
+          }
+        ],
+        "tips": [
+          "Include the device, browser, or OS in your report — Zero uses that to narrow down the fix faster.",
+          "Attach screenshots directly to your Slack message. Zero can read images and use them to understand the visual bug.",
+          "If Zero opens a PR but isn't confident about the fix, it will say so. Iterate with follow-up messages in the same thread."
+        ]
       }
     },
     "filter": {
