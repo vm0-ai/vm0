@@ -921,6 +921,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn pipeline_slots_include_ready_and_pending_slots() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (controller, spawner) = ControlledSpawner::new();
+        let pool =
+            test_pool_with_spawner(test_config(tmp.path()), 2, 1, 4, Duration::ZERO, spawner);
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let warmup = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.warmup().await }
+        });
+        wait_for_snapshot(&handle, |snapshot| {
+            snapshot.ready == 0 && snapshot.pending == 1 && snapshot.pipeline_slots == 1
+        })
+        .await;
+
+        controller
+            .take_request()
+            .send(Ok(test_slot(tmp.path(), "ready")))
+            .unwrap();
+        wait_for_snapshot(&handle, |snapshot| {
+            snapshot.ready == 1 && snapshot.pending == 1 && snapshot.pipeline_slots == 2
+        })
+        .await;
+
+        controller
+            .take_request()
+            .send(Ok(test_slot(tmp.path(), "pending")))
+            .unwrap();
+        warmup.await.unwrap();
+        let snapshot = handle.snapshot().await;
+        assert_eq!(snapshot.ready, 2);
+        assert_eq!(snapshot.pending, 0);
+        assert_eq!(snapshot.pipeline_slots, 2);
+        handle.cleanup().await;
+    }
+
+    #[tokio::test]
     async fn acquire_after_cleanup_returns_error() {
         let tmp = tempfile::tempdir().unwrap();
         let handle = CowPoolHandle::new(test_config(tmp.path()));
