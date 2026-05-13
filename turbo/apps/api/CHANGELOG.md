@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.43.0](https://github.com/vm0-ai/vm0/compare/api-v1.42.1...api-v1.43.0) (2026-05-13)
+
+
+### Features
+
+* **zero:** expose gpt-image-2 generation options ([#13190](https://github.com/vm0-ai/vm0/issues/13190)) ([b2df33d](https://github.com/vm0-ai/vm0/commit/b2df33d007203bd298c28fcc52d41bbaa5161c24))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.19.0
+    * @vm0/core bumped to 8.274.1
+    * @vm0/db bumped to 1.9.2
+
 ## [1.42.1](https://github.com/vm0-ai/vm0/compare/api-v1.42.0...api-v1.42.1) (2026-05-13)
 
 
