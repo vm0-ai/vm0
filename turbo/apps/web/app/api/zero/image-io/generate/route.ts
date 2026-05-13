@@ -368,6 +368,45 @@ function extensionForFormat(format: string): string {
   return format === "jpeg" ? "jpg" : format;
 }
 
+function outputCompressionField(options: ImageOptions) {
+  return options.outputCompression !== undefined
+    ? { outputCompression: options.outputCompression }
+    : {};
+}
+
+function openAiRequestBody(options: ImageOptions) {
+  return {
+    model: MODEL,
+    prompt: options.prompt,
+    n: 1,
+    size: options.size,
+    quality: options.quality,
+    background: options.background,
+    output_format: options.outputFormat,
+    ...(options.outputCompression !== undefined
+      ? { output_compression: options.outputCompression }
+      : {}),
+    moderation: options.moderation,
+  };
+}
+
+function imageMetadata(
+  responseBody: OpenAiImageGenerationResponse,
+  options: ImageOptions,
+  outputFormat: string,
+) {
+  return {
+    generatedBy: "zero-official-image",
+    model: MODEL,
+    imageSize: responseBody.size ?? options.size,
+    quality: responseBody.quality ?? options.quality,
+    background: responseBody.background ?? options.background,
+    outputFormat,
+    ...outputCompressionField(options),
+    moderation: options.moderation,
+  };
+}
+
 async function handlePost(request: Request): Promise<Response> {
   initServices();
 
@@ -409,19 +448,7 @@ async function handlePost(request: Request): Promise<Response> {
       Authorization: `Bearer ${env().OPENAI_API_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: MODEL,
-      prompt: options.prompt,
-      n: 1,
-      size: options.size,
-      quality: options.quality,
-      background: options.background,
-      output_format: options.outputFormat,
-      ...(options.outputCompression !== undefined
-        ? { output_compression: options.outputCompression }
-        : {}),
-      moderation: options.moderation,
-    }),
+    body: JSON.stringify(openAiRequestBody(options)),
     signal: request.signal,
   });
 
@@ -492,18 +519,7 @@ async function handlePost(request: Request): Promise<Response> {
     sizeBytes: imageBytes.byteLength,
     url,
     s3Key,
-    metadata: {
-      generatedBy: "zero-official-image",
-      model: MODEL,
-      imageSize: responseBody.size ?? options.size,
-      quality: responseBody.quality ?? options.quality,
-      background: responseBody.background ?? options.background,
-      outputFormat,
-      ...(options.outputCompression !== undefined
-        ? { outputCompression: options.outputCompression }
-        : {}),
-      moderation: options.moderation,
-    },
+    metadata: imageMetadata(responseBody, options, outputFormat),
   });
 
   const usageRows = [
@@ -542,9 +558,7 @@ async function handlePost(request: Request): Promise<Response> {
     quality: responseBody.quality ?? options.quality,
     background: responseBody.background ?? options.background,
     outputFormat,
-    ...(options.outputCompression !== undefined
-      ? { outputCompression: options.outputCompression }
-      : {}),
+    ...outputCompressionField(options),
     moderation: options.moderation,
     revisedPrompt: image.revised_prompt,
     usage,
