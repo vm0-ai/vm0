@@ -468,6 +468,28 @@ export async function setTestChatThreadRenamedAt(
 }
 
 /**
+ * Set the model-first pin columns on a chat thread.
+ *
+ * @why-db-direct Model pins are persisted by the chat send route. Tests need to
+ * model legacy threads that predate those columns being populated.
+ */
+export async function setTestChatThreadModelPin(
+  threadId: string,
+  pin: {
+    modelProviderId?: string | null;
+    modelProviderType?: string | null;
+    modelProviderCredentialScope?: string | null;
+    selectedModel?: string | null;
+  },
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(chatThreads)
+    .set(pin)
+    .where(eq(chatThreads.id, threadId));
+}
+
+/**
  * Set last_read_message_id on a chat thread directly in the database.
  *
  * @why-db-direct Tests need to seed exact read state without invoking the

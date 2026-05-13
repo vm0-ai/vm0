@@ -11,6 +11,7 @@ import {
   insertUserDefaultModelProvider,
   insertUserModelPreference,
   deleteTestModelProvider,
+  setTestChatThreadModelPin,
   setTestZeroAgentModelProvider,
   setOrgCredits,
   findTestCallbacksByRunId,
@@ -21,6 +22,7 @@ import {
   countUserRows,
   completeTestRun,
   setTestRunStatus,
+  setTestRunModelProviderMetadata,
   getTestUserMessageRunStorage,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -1496,6 +1498,55 @@ describe("POST /api/zero/chat/messages", () => {
         await expect(
           getTestUserSelectedModel(user.orgId, user.userId),
         ).resolves.toBe("claude-sonnet-4-6");
+      });
+
+      it("normalizes legacy built-in first-run pins that still carry provider IDs", async () => {
+        const first = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "first on built-in",
+            }),
+          }),
+        );
+        expect(first.status).toBe(201);
+        const { threadId, runId } = await first.json();
+        await context.mocks.flushAfter();
+        await setTestRunStatus(runId, "completed");
+
+        await setTestRunModelProviderMetadata(runId, {
+          modelProvider: "vm0",
+          modelProviderId: randomUUID(),
+          modelProviderCredentialScope: "org",
+          selectedModel: "claude-opus-4-7",
+        });
+        await setTestChatThreadModelPin(threadId, {
+          modelProviderId: null,
+          modelProviderType: null,
+          modelProviderCredentialScope: null,
+          selectedModel: null,
+        });
+
+        const followUp = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "follow up on legacy thread",
+              threadId,
+            }),
+          }),
+        );
+        expect(followUp.status).toBe(201);
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override).toEqual({
+          modelProviderId: null,
+          selectedModel: "claude-opus-4-7",
+        });
       });
     });
 

@@ -618,6 +618,17 @@ function resolvedPin(
   };
 }
 
+function normalizeStoredModelFirstPin(pin: ThreadModelPin): ThreadModelPin {
+  if (pin.modelProviderType !== "vm0" || pin.modelProviderId === null) {
+    return pin;
+  }
+
+  return {
+    ...pin,
+    modelProviderId: null,
+  };
+}
+
 async function getStoredThreadModelPin(
   threadId: string,
 ): Promise<ThreadModelPin | null> {
@@ -706,13 +717,14 @@ async function resolveStoredModelFirstPin(params: {
   userId: string;
   pin: ThreadModelPin;
 }): Promise<ThreadModelPin> {
+  const pin = normalizeStoredModelFirstPin(params.pin);
   const route = await resolveModelFirstRouteDescriptor({
     orgId: params.orgId,
     userId: params.userId,
-    selectedModel: params.pin.selectedModel,
-    providerType: params.pin.modelProviderType ?? undefined,
-    credentialScope: params.pin.modelProviderCredentialScope ?? undefined,
-    modelProviderId: params.pin.modelProviderId ?? undefined,
+    selectedModel: pin.selectedModel,
+    providerType: pin.modelProviderType ?? undefined,
+    credentialScope: pin.modelProviderCredentialScope ?? undefined,
+    modelProviderId: pin.modelProviderId ?? undefined,
   });
   return pinFromModelFirstRoute(route);
 }

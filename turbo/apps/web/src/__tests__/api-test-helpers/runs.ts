@@ -13,6 +13,7 @@ export {
   setTestRunResult,
   setTestRunModelProvider,
   setTestRunSelectedModel,
+  setTestRunModelProviderMetadata,
   insertTestZeroRun,
   expireQueueEntry,
   insertTestQueueEntry,

@@ -2598,6 +2598,13 @@
       "when": 1778660773822,
       "tag": "0370_clear_builtin_model_route_provider_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 371,
+      "version": "7",
+      "when": 1778665486616,
+      "tag": "0371_clear_legacy_chat_thread_builtin_provider_ids",
+      "breakpoints": true
     }
   ]
 }
