@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { hostedDeployments, hostedSites } from "@vm0/db/schema/hosted-site";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 
@@ -47,7 +48,7 @@ async function seedHostedSitesEnabled(): Promise<HostedSiteFixture> {
   await writeDb.insert(userFeatureSwitches).values({
     orgId,
     userId,
-    switches: { hostedSites: true },
+    switches: { [FeatureSwitchKey.HostedSites]: true },
   });
   return track(Promise.resolve({ orgId, userId }));
 }

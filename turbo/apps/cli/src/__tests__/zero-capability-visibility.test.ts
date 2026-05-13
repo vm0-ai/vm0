@@ -28,6 +28,7 @@ function buildCommands(): Command[] {
     new Command("whoami"),
     new Command("built-in"),
     new Command("web"),
+    new Command("host"),
     new Command("remote-agent"),
     new Command("local-browser"),
   ];
@@ -152,6 +153,7 @@ describe("registerZeroCommands", () => {
       "phone",
       "variable",
       "built-in",
+      "host",
       "remote-agent",
       "local-browser",
     ]);
@@ -291,6 +293,31 @@ describe("registerZeroCommands", () => {
 
     expect(visibleCommandNames(prog)).toContain("built-in");
     expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should show host when host:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["host:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("host");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should hide host when host:write capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(hiddenCommandNames(prog)).toContain("host");
   });
 
   it("should hide telegram when file read and telegram write capabilities are missing", () => {

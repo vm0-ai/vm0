@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   agentComposes,
   agentComposeVersions,
@@ -526,9 +527,10 @@ describe("POST /api/zero/chat/messages", () => {
 
     const secrets = await runExecutionSecrets(response.body.runId!);
     expect(secrets?.ZERO_TOKEN).toMatch(/^vm0_sandbox_/);
-    expect(verifyZeroToken(secrets!.ZERO_TOKEN!)?.capabilities).not.toContain(
-      "agent-run:write",
-    );
+    const zeroAuth = verifyZeroToken(secrets!.ZERO_TOKEN!);
+    expect(zeroAuth?.capabilities).not.toContain("agent-run:write");
+    expect(zeroAuth?.capabilities).not.toContain("host:read");
+    expect(zeroAuth?.capabilities).not.toContain("host:write");
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadMessageCreated:${response.body.threadId}`,
       null,
@@ -684,7 +686,10 @@ describe("POST /api/zero/chat/messages", () => {
       .values({
         orgId: fixture.orgId,
         userId: fixture.userId,
-        switches: { computerUse: true },
+        switches: {
+          [FeatureSwitchKey.ComputerUse]: true,
+          [FeatureSwitchKey.HostedSites]: true,
+        },
         updatedAt: nowDate(),
       });
 
@@ -697,6 +702,8 @@ describe("POST /api/zero/chat/messages", () => {
     const secrets = await runExecutionSecrets(response.body.runId!);
     const zeroAuth = verifyZeroToken(secrets!.ZERO_TOKEN!);
     expect(zeroAuth?.capabilities).toContain("computer-use:write");
+    expect(zeroAuth?.capabilities).toContain("host:read");
+    expect(zeroAuth?.capabilities).toContain("host:write");
   });
 
   it("persists attachments on the user message and injects them into the run prompt", async () => {
