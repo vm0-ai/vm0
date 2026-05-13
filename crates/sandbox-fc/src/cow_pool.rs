@@ -260,8 +260,9 @@ impl CowPoolActor {
             tokio::select! {
                 biased;
 
-                // Cleanup must preempt queued acquires, and completed slot
-                // creations must not be starved by a busy command channel.
+                // Cleanup must preempt queued acquires. Completed slot
+                // creations and due warm retries must not be starved by a
+                // busy command channel.
                 cleanup = self.cleanup.recv(), if cleanup_open => {
                     match cleanup {
                         Some(done) => {
@@ -275,16 +276,16 @@ impl CowPoolActor {
                 completion = self.pool.pending.join_next(), if has_pending => {
                     self.pool.handle_creation_join(completion);
                 }
+                () = sleep_until_deadline(retry_deadline), if retry_deadline.is_some() => {
+                    self.pool.warm_retry_at = None;
+                    self.pool.pump();
+                    self.pool.maybe_finish_warmup();
+                }
                 command = self.commands.recv(), if commands_open => {
                     match command {
                         Some(command) => self.handle_command(command),
                         None => commands_open = false,
                     }
-                }
-                () = sleep_until_deadline(retry_deadline), if retry_deadline.is_some() => {
-                    self.pool.warm_retry_at = None;
-                    self.pool.pump();
-                    self.pool.maybe_finish_warmup();
                 }
             }
         }
@@ -1222,6 +1223,52 @@ mod tests {
             .send(Err(CowPoolError::CowFileCreation("still missing".into())))
             .unwrap();
         wait_for_snapshot(&handle, |snapshot| snapshot.pending == 0).await;
+        handle.cleanup().await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn due_warm_retry_runs_before_snapshot_command() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (controller, spawner) = ControlledSpawner::new();
+        let pool = test_pool_with_spawner(
+            test_config(tmp.path()),
+            1,
+            1,
+            4,
+            Duration::from_secs(10),
+            spawner,
+        );
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let warmup = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.warmup().await }
+        });
+        wait_for_snapshot(&handle, |snapshot| snapshot.pending == 1).await;
+        controller
+            .take_request()
+            .send(Err(CowPoolError::CowFileCreation("missing golden".into())))
+            .unwrap();
+        warmup.await.unwrap();
+        wait_for_snapshot(&handle, |snapshot| {
+            snapshot.pending == 0 && snapshot.warm_retry_scheduled
+        })
+        .await;
+
+        tokio::time::advance(Duration::from_secs(10)).await;
+
+        let snapshot = handle.snapshot().await;
+        assert_eq!(snapshot.pending, 1);
+        assert!(!snapshot.warm_retry_scheduled);
+
+        controller
+            .take_request()
+            .send(Ok(test_slot(tmp.path(), "retry-before-snapshot")))
+            .unwrap();
+        wait_for_snapshot(&handle, |snapshot| {
+            snapshot.pending == 0 && snapshot.ready == 1
+        })
+        .await;
         handle.cleanup().await;
     }
 
