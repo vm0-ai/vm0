@@ -1635,6 +1635,42 @@ export const USE_CASES: UseCase[] = [
     promptVariantCount: 3,
     slackPreviewCount: 2,
   },
+  {
+    slug: "support-driven-bug-fixes",
+    color: "#7abe9a",
+    screenshots: [
+      "/assets/use-cases/support-driven-bug-fixes.jpg",
+      "/assets/use-cases/support-driven-bug-fixes-2.jpg",
+    ],
+    avatar: {
+      rotation: 1,
+      skin: 3,
+      hairStyle: 2,
+      hairColor: 4,
+      expression: 3,
+      intensity: "h",
+    },
+    roles: ["support", "engineering"],
+    capability: "instant",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, GITHUB],
+    integrations: [
+      { connector: SLACK, required: true },
+      { connector: GITHUB, required: true },
+    ],
+    relatedSlugs: [
+      "file-bugs-from-slack",
+      "error-triage-daily",
+      "customer-360",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
 ];
 
 // ---------------------------------------------------------------------------
