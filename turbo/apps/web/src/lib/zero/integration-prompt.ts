@@ -192,16 +192,6 @@ export function buildAgentPhonePrompt(
     headerParts.push(`Message ID: ${opts.messageId}`);
   }
 
-  headerParts.push(
-    [
-      "",
-      "# AgentPhone Tools",
-      "When an AgentPhone message includes an [AgentPhone file] block, download it with `zero phone download-file <ID> -o <path>` before inspecting the contents.",
-      "To send an extra text message outside the final run reply, use `zero phone message --to <phone> --text <message>`.",
-      "To send a local file, use `zero phone upload-file --to <phone> -f <path>` and include `--caption` when useful.",
-    ].join("\n"),
-  );
-
   const header = headerParts.join("\n");
   return [header, threadContext].filter(Boolean).join("\n\n");
 }

@@ -151,6 +151,8 @@ describe("buildAgentPhonePrompt", () => {
     expect(result).toContain("Conversation ID: conv-1");
     expect(result).toContain("Message ID: msg-1");
     expect(result).toContain("AgentPhone thread here");
+    expect(result).not.toContain("# AgentPhone Tools");
+    expect(result).not.toContain("zero phone upload-file");
   });
 });
 

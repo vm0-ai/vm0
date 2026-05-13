@@ -20,6 +20,9 @@ describe("buildAgentPrompt", () => {
     expect(prompt).toContain("zero slack upload-file");
     expect(prompt).toContain("zero telegram message");
     expect(prompt).toContain("zero telegram bot list");
+    expect(prompt).toContain("zero phone --help");
+    expect(prompt).toContain("zero phone download-file");
+    expect(prompt).toContain("zero phone upload-file");
     expect(prompt).toContain("explicitly choose the bot with `--bot-id`");
     expect(prompt).toContain(
       "When the user asks to generate anything (for example, image, video, audio, or website)",
