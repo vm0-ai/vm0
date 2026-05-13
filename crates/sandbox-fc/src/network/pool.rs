@@ -1188,9 +1188,9 @@ impl NetnsPool {
 
     /// Acquire a namespace from the pool, or create one on-demand if empty.
     ///
-    /// The direct API is kept for one-shot local users. Shared users should use
-    /// `NetnsPoolHandle::acquire` so the mutex is not held while waiting for
-    /// namespace creation.
+    /// The direct API is kept for one-shot local users. Runtime-managed shared
+    /// pools use an internal handle that releases the pool lock before waiting
+    /// for namespace creation.
     pub async fn acquire(&mut self) -> Result<NetnsLease> {
         loop {
             match self.prepare_acquire()? {
