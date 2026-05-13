@@ -698,6 +698,28 @@ mod tests {
         );
     }
 
+    #[test]
+    fn ignores_tmp_and_invalid_job_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let provider =
+            default_provider(dir.path(), CancellationToken::new(), empty_cancel_tokens());
+
+        let profile_dir =
+            local_queue::profile_jobs_dir(dir.path(), crate::profile::DEFAULT_PROFILE).unwrap();
+        std::fs::create_dir_all(&profile_dir).unwrap();
+        std::fs::write(
+            profile_dir.join(format!("{}.job.tmp", RunId::new_v4())),
+            b"{}",
+        )
+        .unwrap();
+        std::fs::write(profile_dir.join("not-a-run-id.job"), b"{}").unwrap();
+
+        assert!(
+            provider.find_unclaimed_job().is_none(),
+            "tmp and invalid job files must not be discovered"
+        );
+    }
+
     #[tokio::test]
     async fn empty_result_does_not_hide_retryable_job() {
         let dir = tempfile::tempdir().unwrap();
@@ -1009,6 +1031,30 @@ mod tests {
         assert!(
             !cancel_path.exists(),
             "cancel file should be deleted when the result is already terminal"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancel_file_with_empty_result_and_pending_job_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let tokens = empty_cancel_tokens();
+        let provider = default_provider(dir.path(), cancel, tokens);
+
+        let run_id = RunId::new_v4();
+        let cancel_path = local_queue::cancel_path(dir.path(), run_id);
+        let result_path = local_queue::result_path(dir.path(), run_id);
+        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
+        std::fs::write(&cancel_path, b"").unwrap();
+        std::fs::write(&result_path, b"").unwrap();
+        write_job(dir.path(), run_id, "pending job");
+
+        let candidate = provider.discover().await.unwrap();
+        assert_eq!(candidate.run_id(), run_id);
+        assert!(
+            cancel_path.exists(),
+            "empty result file is not terminal, so cancel should stay pending"
         );
     }
 
