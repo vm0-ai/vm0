@@ -20,10 +20,11 @@ interface NavMenuProps {
   alignOffset?: number;
   items: NavMenuItem[];
   openId: string | null;
-  onOpenChange: (id: string | null) => void;
+  onOpen: (id: string) => void;
+  onClose: () => void;
+  onCancelClose: () => void;
+  onScheduleClose: () => void;
 }
-
-const CLOSE_DELAY_MS = 250;
 
 export function NavMenu({
   id,
@@ -31,55 +32,39 @@ export function NavMenu({
   items,
   alignOffset = 0,
   openId,
-  onOpenChange,
+  onOpen,
+  onClose,
+  onCancelClose,
+  onScheduleClose,
 }: NavMenuProps) {
   const open = openId === id;
-  const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const cancelClose = React.useCallback(() => {
-    if (closeTimer.current !== null) {
-      clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  }, []);
-
-  const scheduleClose = React.useCallback(() => {
-    cancelClose();
-    closeTimer.current = setTimeout(() => {
-      onOpenChange(null);
-    }, CLOSE_DELAY_MS);
-  }, [cancelClose, onOpenChange]);
 
   const openSelf = React.useCallback(() => {
-    cancelClose();
-    onOpenChange(id);
-  }, [cancelClose, id, onOpenChange]);
-
-  React.useEffect(() => {
-    return () => {
-      cancelClose();
-    };
-  }, [cancelClose]);
+    onOpen(id);
+  }, [id, onOpen]);
 
   const handleSelect = () => {
-    cancelClose();
-    onOpenChange(null);
+    onClose();
   };
 
   return (
     <PopoverPrimitive.Root
       open={open}
       onOpenChange={(next) => {
-        onOpenChange(next ? id : null);
+        if (next) {
+          onOpen(id);
+          return;
+        }
+        onClose();
       }}
     >
       <PopoverPrimitive.Trigger
         type="button"
         className={`nav-trigger${open ? " nav-trigger-active" : ""}`}
+        data-nav-menu-id={id}
         onPointerEnter={openSelf}
-        onPointerLeave={scheduleClose}
         onFocus={openSelf}
-        onBlur={scheduleClose}
+        onBlur={onScheduleClose}
       >
         {label}
         <IconChevronDown
@@ -94,8 +79,9 @@ export function NavMenu({
           alignOffset={alignOffset}
           sideOffset={8}
           className="nav-popover"
-          onPointerEnter={cancelClose}
-          onPointerLeave={scheduleClose}
+          data-nav-popover-id={id}
+          onPointerEnter={onCancelClose}
+          onPointerLeave={onScheduleClose}
           onOpenAutoFocus={(event: Event) => {
             event.preventDefault();
           }}
@@ -149,6 +135,7 @@ function NavMenuRow({ item, onSelect }: NavMenuRowProps) {
         target="_blank"
         rel="noopener noreferrer"
         className="nav-popover-item"
+        onPointerDown={onSelect}
         onClick={onSelect}
       >
         {body}
@@ -157,7 +144,12 @@ function NavMenuRow({ item, onSelect }: NavMenuRowProps) {
   }
 
   return (
-    <Link href={item.href} className="nav-popover-item" onClick={onSelect}>
+    <Link
+      href={item.href}
+      className="nav-popover-item"
+      onPointerDown={onSelect}
+      onClick={onSelect}
+    >
       {body}
     </Link>
   );

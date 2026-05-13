@@ -422,6 +422,7 @@ body {
 
 /* ===== NAV POPOVER (mega-menu panel) ===== */
 .nav-popover {
+  position: relative;
   width: 320px;
   background: hsl(var(--gray-0));
   border: 0.7px solid hsl(var(--gray-200));
@@ -443,6 +444,7 @@ body {
   right: 0;
   top: -10px;
   height: 10px;
+  pointer-events: none;
 }
 
 .nav-popover[data-state="open"] {

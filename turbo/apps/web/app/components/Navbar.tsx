@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import Image from "next/image";
 import NextLink from "next/link";
 import { Link } from "../../navigation";
@@ -26,6 +32,24 @@ interface NavbarProps {
 const GITHUB_URL = "https://github.com/vm0-ai/vm0";
 const STATUS_URL = "https://status.vm0.ai";
 const DEMO_URL = "https://calendar.app.google/csdygPrHHyNgxpTPA";
+const NAV_MENU_CLOSE_DELAY_MS = 250;
+const NAV_MENU_TRIGGER_HOTZONE_Y = 18;
+const NAV_MENU_TRIGGER_HOTZONE_X = 12;
+const NAV_MENU_POPOVER_HOTZONE = 8;
+
+function containsPoint(
+  rect: DOMRect,
+  clientX: number,
+  clientY: number,
+  margin = 0,
+): boolean {
+  return (
+    clientX >= rect.left - margin &&
+    clientX <= rect.right + margin &&
+    clientY >= rect.top - margin &&
+    clientY <= rect.bottom + margin
+  );
+}
 
 export function Navbar({
   initialIsSignedIn = false,
@@ -38,6 +62,219 @@ export function Navbar({
   const { signOut } = useClerk();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const desktopNavRef = useRef<HTMLDivElement | null>(null);
+  const closeMenuTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelMenuClose = useCallback(() => {
+    if (closeMenuTimer.current !== null) {
+      clearTimeout(closeMenuTimer.current);
+      closeMenuTimer.current = null;
+    }
+  }, []);
+
+  const openNavMenu = useCallback(
+    (id: string) => {
+      cancelMenuClose();
+      setOpenMenuId(id);
+    },
+    [cancelMenuClose],
+  );
+
+  const closeNavMenu = useCallback(() => {
+    cancelMenuClose();
+    setOpenMenuId(null);
+  }, [cancelMenuClose]);
+
+  const scheduleNavMenuClose = useCallback(() => {
+    cancelMenuClose();
+    closeMenuTimer.current = setTimeout(() => {
+      setOpenMenuId(null);
+      closeMenuTimer.current = null;
+    }, NAV_MENU_CLOSE_DELAY_MS);
+  }, [cancelMenuClose]);
+
+  const navMenuIdFromTriggerHotzone = useCallback(
+    (clientX: number, clientY: number): string | null => {
+      const root = desktopNavRef.current;
+      if (!root) {
+        return null;
+      }
+      const triggerRects = Array.from(
+        root.querySelectorAll<HTMLButtonElement>("[data-nav-menu-id]"),
+      )
+        .map((trigger) => {
+          return {
+            id: trigger.dataset.navMenuId ?? "",
+            rect: trigger.getBoundingClientRect(),
+          };
+        })
+        .filter((entry) => {
+          return entry.id.length > 0;
+        })
+        .sort((a, b) => {
+          return a.rect.left - b.rect.left;
+        });
+
+      if (triggerRects.length === 0) {
+        return null;
+      }
+      const firstTrigger = triggerRects[0];
+      const lastTrigger = triggerRects[triggerRects.length - 1];
+      if (!firstTrigger || !lastTrigger) {
+        return null;
+      }
+
+      const top =
+        Math.min(...triggerRects.map((entry) => entry.rect.top)) -
+        NAV_MENU_TRIGGER_HOTZONE_Y;
+      const bottom =
+        Math.max(...triggerRects.map((entry) => entry.rect.bottom)) +
+        NAV_MENU_TRIGGER_HOTZONE_Y;
+      if (clientY < top || clientY > bottom) {
+        return null;
+      }
+
+      const left = firstTrigger.rect.left - NAV_MENU_TRIGGER_HOTZONE_X;
+      const right = lastTrigger.rect.right + NAV_MENU_TRIGGER_HOTZONE_X;
+      if (clientX < left || clientX > right) {
+        return null;
+      }
+
+      return triggerRects.reduce((nearest, current) => {
+        const currentCenter = current.rect.left + current.rect.width / 2;
+        const nearestCenter = nearest.rect.left + nearest.rect.width / 2;
+        return Math.abs(currentCenter - clientX) <
+          Math.abs(nearestCenter - clientX)
+          ? current
+          : nearest;
+      }).id;
+    },
+    [],
+  );
+
+  const isPointerInOpenPopoverHotzone = useCallback(
+    (clientX: number, clientY: number): boolean => {
+      if (openMenuId === null) {
+        return false;
+      }
+      const popover = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-nav-popover-id]"),
+      ).find((element) => {
+        return element.dataset.navPopoverId === openMenuId;
+      });
+      if (!popover) {
+        return false;
+      }
+      return containsPoint(
+        popover.getBoundingClientRect(),
+        clientX,
+        clientY,
+        NAV_MENU_POPOVER_HOTZONE,
+      );
+    },
+    [openMenuId],
+  );
+
+  const isPointerInOpenMenuBridge = useCallback(
+    (clientX: number, clientY: number): boolean => {
+      if (openMenuId === null) {
+        return false;
+      }
+      const root = desktopNavRef.current;
+      if (!root) {
+        return false;
+      }
+      const trigger = Array.from(
+        root.querySelectorAll<HTMLButtonElement>("[data-nav-menu-id]"),
+      ).find((element) => {
+        return element.dataset.navMenuId === openMenuId;
+      });
+      const popover = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-nav-popover-id]"),
+      ).find((element) => {
+        return element.dataset.navPopoverId === openMenuId;
+      });
+      if (!trigger || !popover) {
+        return false;
+      }
+
+      const triggerRect = trigger.getBoundingClientRect();
+      const popoverRect = popover.getBoundingClientRect();
+      const left =
+        Math.min(triggerRect.left, popoverRect.left) - NAV_MENU_POPOVER_HOTZONE;
+      const right =
+        Math.max(triggerRect.right, popoverRect.right) +
+        NAV_MENU_POPOVER_HOTZONE;
+      const top =
+        Math.min(triggerRect.bottom, popoverRect.top) -
+        NAV_MENU_POPOVER_HOTZONE;
+      const bottom =
+        Math.max(triggerRect.bottom, popoverRect.top) +
+        NAV_MENU_POPOVER_HOTZONE;
+
+      return (
+        clientX >= left &&
+        clientX <= right &&
+        clientY >= top &&
+        clientY <= bottom
+      );
+    },
+    [openMenuId],
+  );
+
+  const syncOpenMenuForPointer = useCallback(
+    (clientX: number, clientY: number) => {
+      const menuId = navMenuIdFromTriggerHotzone(clientX, clientY);
+      if (menuId) {
+        openNavMenu(menuId);
+        return;
+      }
+      if (
+        isPointerInOpenPopoverHotzone(clientX, clientY) ||
+        isPointerInOpenMenuBridge(clientX, clientY)
+      ) {
+        cancelMenuClose();
+        return;
+      }
+      closeNavMenu();
+    },
+    [
+      cancelMenuClose,
+      closeNavMenu,
+      isPointerInOpenMenuBridge,
+      isPointerInOpenPopoverHotzone,
+      navMenuIdFromTriggerHotzone,
+      openNavMenu,
+    ],
+  );
+
+  const handleDesktopNavPointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      syncOpenMenuForPointer(event.clientX, event.clientY);
+    },
+    [syncOpenMenuForPointer],
+  );
+
+  useEffect(() => {
+    return () => {
+      cancelMenuClose();
+    };
+  }, [cancelMenuClose]);
+
+  useEffect(() => {
+    if (openMenuId === null) {
+      return undefined;
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      syncOpenMenuForPointer(event.clientX, event.clientY);
+    };
+
+    document.addEventListener("pointermove", handlePointerMove);
+    return () => {
+      document.removeEventListener("pointermove", handlePointerMove);
+    };
+  }, [openMenuId, syncOpenMenuForPointer]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -155,7 +392,12 @@ export function Navbar({
             </Link>
           </div>
 
-          <div className="nav-center nav-desktop">
+          <div
+            ref={desktopNavRef}
+            className="nav-center nav-desktop"
+            onPointerMove={handleDesktopNavPointerMove}
+            onPointerLeave={scheduleNavMenuClose}
+          >
             <Link href="/use-cases" className="nav-link">
               {t("useCases")}
             </Link>
@@ -165,7 +407,10 @@ export function Navbar({
               items={resourcesItems}
               alignOffset={-40}
               openId={openMenuId}
-              onOpenChange={setOpenMenuId}
+              onOpen={openNavMenu}
+              onClose={closeNavMenu}
+              onCancelClose={cancelMenuClose}
+              onScheduleClose={scheduleNavMenuClose}
             />
             <NavMenu
               id="trust-and-tech"
@@ -173,7 +418,10 @@ export function Navbar({
               items={trustItems}
               alignOffset={40}
               openId={openMenuId}
-              onOpenChange={setOpenMenuId}
+              onOpen={openNavMenu}
+              onClose={closeNavMenu}
+              onCancelClose={cancelMenuClose}
+              onScheduleClose={scheduleNavMenuClose}
             />
             <Link href="/pricing" className="nav-link">
               {t("pricing")}

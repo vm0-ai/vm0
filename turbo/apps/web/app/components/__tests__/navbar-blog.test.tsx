@@ -1,6 +1,14 @@
+// @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
-import type { ComponentProps } from "react";
+import type {
+  AnchorHTMLAttributes,
+  ButtonHTMLAttributes,
+  ComponentProps,
+  HTMLAttributes,
+  ReactNode,
+} from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { ThemeProvider } from "../ThemeProvider";
 import { Navbar } from "../Navbar";
 
@@ -13,13 +21,14 @@ vi.mock("next-intl/navigation", () => {
           href,
           children,
           className,
+          ...props
         }: {
           href: string;
-          children: React.ReactNode;
+          children: ReactNode;
           className?: string;
-        }) => {
+        } & AnchorHTMLAttributes<HTMLAnchorElement>) => {
           return (
-            <a href={href} className={className}>
+            <a href={href} className={className} {...props}>
               {children}
             </a>
           );
@@ -69,13 +78,14 @@ vi.mock("next/link", () => {
       href,
       children,
       className,
+      ...props
     }: {
       href: string;
-      children: React.ReactNode;
+      children: ReactNode;
       className?: string;
-    }) => {
+    } & AnchorHTMLAttributes<HTMLAnchorElement>) => {
       return (
-        <a href={href} className={className}>
+        <a href={href} className={className} {...props}>
           {children}
         </a>
       );
@@ -107,7 +117,7 @@ vi.mock("@tabler/icons-react", () => {
 
 // External: @radix-ui/react-popover (used by NavMenu)
 vi.mock("@radix-ui/react-popover", () => {
-  const passthrough = ({ children }: { children?: React.ReactNode }) => {
+  const passthrough = ({ children }: { children?: ReactNode }) => {
     return <>{children}</>;
   };
   return {
@@ -115,14 +125,26 @@ vi.mock("@radix-ui/react-popover", () => {
     Trigger: ({
       children,
       className,
+      ...props
     }: {
-      children?: React.ReactNode;
+      children?: ReactNode;
       className?: string;
-    }) => {
-      return <button className={className}>{children}</button>;
+    } & ButtonHTMLAttributes<HTMLButtonElement>) => {
+      return (
+        <button className={className} {...props}>
+          {children}
+        </button>
+      );
     },
     Portal: passthrough,
-    Content: passthrough,
+    Content: ({
+      children,
+      ...props
+    }: {
+      children?: ReactNode;
+    } & HTMLAttributes<HTMLDivElement>) => {
+      return <div {...props}>{children}</div>;
+    },
   };
 });
 
@@ -132,6 +154,56 @@ function renderNavbar(props: ComponentProps<typeof Navbar> = {}) {
       <Navbar {...props} />
     </ThemeProvider>,
   );
+}
+
+function renderNavbarClient(props: ComponentProps<typeof Navbar> = {}) {
+  return render(
+    <ThemeProvider>
+      <Navbar {...props} />
+    </ThemeProvider>,
+  );
+}
+
+function getDesktopNavTrigger(label: string): HTMLButtonElement {
+  const trigger = screen.getAllByRole("button").find((button) => {
+    return (
+      button.classList.contains("nav-trigger") &&
+      button.textContent?.includes(label)
+    );
+  });
+  if (!trigger) {
+    throw new Error(`Missing nav trigger: ${label}`);
+  }
+  return trigger as HTMLButtonElement;
+}
+
+function getNavPopover(id: string): HTMLElement {
+  const popover = document.querySelector<HTMLElement>(
+    `[data-nav-popover-id="${id}"]`,
+  );
+  if (!popover) {
+    throw new Error(`Missing nav popover: ${id}`);
+  }
+  return popover;
+}
+
+function setElementRect(
+  element: Element,
+  rect: Pick<DOMRect, "bottom" | "height" | "left" | "right" | "top" | "width">,
+): void {
+  Object.defineProperty(element, "getBoundingClientRect", {
+    configurable: true,
+    value: () => {
+      return {
+        x: rect.left,
+        y: rect.top,
+        ...rect,
+        toJSON: () => {
+          return rect;
+        },
+      };
+    },
+  });
 }
 
 describe("Navbar blog link visibility", () => {
@@ -154,5 +226,96 @@ describe("Navbar blog link visibility", () => {
   it("renders docs link only when the server-side feature gate allows it", () => {
     expect(renderNavbar()).not.toContain('href="/docs"');
     expect(renderNavbar({ initialShowDocs: true })).toContain('href="/docs"');
+  });
+});
+
+describe("Navbar dropdown interactions", () => {
+  it("keeps the newly hovered menu open when a previous close timer expires", () => {
+    vi.useFakeTimers();
+    try {
+      renderNavbarClient();
+
+      const resources = getDesktopNavTrigger("resources");
+      const trust = getDesktopNavTrigger("trustAndTech");
+
+      const navCenter = document.querySelector<HTMLDivElement>(".nav-center");
+      expect(navCenter).not.toBeNull();
+      setElementRect(resources, {
+        left: 100,
+        right: 180,
+        top: 10,
+        bottom: 30,
+        width: 80,
+        height: 20,
+      });
+      setElementRect(trust, {
+        left: 220,
+        right: 340,
+        top: 10,
+        bottom: 30,
+        width: 120,
+        height: 20,
+      });
+
+      fireEvent.pointerEnter(resources);
+      expect(resources).toHaveClass("nav-trigger-active");
+
+      fireEvent.pointerMove(navCenter!, { clientX: 215, clientY: 20 });
+      expect(resources).not.toHaveClass("nav-trigger-active");
+      expect(trust).toHaveClass("nav-trigger-active");
+
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+
+      expect(trust).toHaveClass("nav-trigger-active");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("closes the open menu when a dropdown item is selected", () => {
+    renderNavbarClient();
+
+    const resources = getDesktopNavTrigger("resources");
+    fireEvent.pointerEnter(resources);
+    expect(resources).toHaveClass("nav-trigger-active");
+
+    const firstItem =
+      document.querySelector<HTMLAnchorElement>(".nav-popover-item");
+    expect(firstItem).not.toBeNull();
+    fireEvent.pointerDown(firstItem!);
+
+    expect(resources).not.toHaveClass("nav-trigger-active");
+  });
+
+  it("closes the open menu when the pointer leaves the computed hotzone", () => {
+    renderNavbarClient();
+
+    const resources = getDesktopNavTrigger("resources");
+    const popover = getNavPopover("resources");
+    setElementRect(resources, {
+      left: 100,
+      right: 180,
+      top: 10,
+      bottom: 30,
+      width: 80,
+      height: 20,
+    });
+    setElementRect(popover, {
+      left: 80,
+      right: 400,
+      top: 42,
+      bottom: 220,
+      width: 320,
+      height: 178,
+    });
+
+    fireEvent.pointerEnter(resources);
+    expect(resources).toHaveClass("nav-trigger-active");
+
+    fireEvent.pointerMove(document, { clientX: 500, clientY: 260 });
+
+    expect(resources).not.toHaveClass("nav-trigger-active");
   });
 });
