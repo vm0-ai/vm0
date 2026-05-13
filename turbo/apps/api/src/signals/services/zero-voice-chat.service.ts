@@ -538,6 +538,7 @@ export const createVoiceChatTask$ = command(
     | ErrorResponse<400, "BAD_REQUEST">
     | ErrorResponse<403, "FORBIDDEN">
     | ErrorResponse<404, "NOT_FOUND">
+    | ErrorResponse<402, "INSUFFICIENT_CREDITS">
     | ErrorResponse<429, "CONCURRENT_RUN_LIMIT">
     | ErrorResponse<503, "PROVIDER_UNAVAILABLE">
   > => {

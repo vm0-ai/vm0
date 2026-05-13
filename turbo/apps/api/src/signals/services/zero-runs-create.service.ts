@@ -25,16 +25,15 @@ import {
   agentComposes,
 } from "@vm0/db/schema/agent-compose";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { modelProviders } from "@vm0/db/schema/model-provider";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command } from "ccstate";
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
 
-import { optionalEnv } from "../../lib/env";
+import { env } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
 import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
@@ -49,8 +48,6 @@ const DISALLOWED_TOOLS = [
   "ScheduleWakeup",
   "AskUserQuestion",
 ] as const;
-
-const ORG_SENTINEL_USER_ID = "__org__";
 
 const TONE_INSTRUCTIONS: Readonly<Record<string, string>> = {
   professional:
@@ -104,12 +101,6 @@ interface AdditionalVolume {
   readonly system?: boolean;
 }
 
-interface CreditCheckRow extends Record<string, unknown> {
-  readonly credit_enabled: boolean | null;
-  readonly credits: string | null;
-  readonly unsettled_expired: string | null;
-}
-
 function forbidden(message: string) {
   return {
     status: 403 as const,
@@ -122,24 +113,8 @@ function forbidden(message: string) {
   };
 }
 
-function insufficientCredits() {
-  return {
-    status: 402 as const,
-    body: {
-      error: {
-        message: "Insufficient credits. Please add credits to continue.",
-        code: "INSUFFICIENT_CREDITS",
-      },
-    },
-  };
-}
-
 function apiUrl(): string {
-  return (
-    optionalEnv("VM0_API_URL") ??
-    optionalEnv("VM0_WEB_URL") ??
-    "http://localhost:3000"
-  );
+  return env("VM0_API_URL");
 }
 
 function generateCallbackSecret(): string {
@@ -383,105 +358,6 @@ async function loadAllowedCustomConnectorIds(
   });
 }
 
-async function defaultModelProviderType(
-  db: Db,
-  args: { readonly orgId: string; readonly userId: string },
-): Promise<string | null> {
-  const rows = await db
-    .select({
-      type: modelProviders.type,
-      userId: modelProviders.userId,
-    })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.orgId, args.orgId),
-        eq(modelProviders.isDefault, true),
-        or(
-          eq(modelProviders.userId, args.userId),
-          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        ),
-      ),
-    );
-
-  const personalDefault = rows.find((row) => {
-    return row.userId === args.userId;
-  });
-  return personalDefault?.type ?? rows[0]?.type ?? null;
-}
-
-async function usesVm0ModelProvider(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly modelProviderId: string | null;
-    readonly requestedModelProvider: string | undefined;
-  },
-): Promise<boolean> {
-  if (args.requestedModelProvider) {
-    return args.requestedModelProvider === "vm0";
-  }
-
-  if (args.modelProviderId) {
-    const [provider] = await db
-      .select({ type: modelProviders.type })
-      .from(modelProviders)
-      .where(
-        and(
-          eq(modelProviders.orgId, args.orgId),
-          eq(modelProviders.id, args.modelProviderId),
-        ),
-      )
-      .limit(1);
-    return provider?.type === "vm0";
-  }
-
-  const defaultType = await defaultModelProviderType(db, args);
-  return defaultType === "vm0";
-}
-
-async function checkVm0Credits(
-  db: Db,
-  args: { readonly orgId: string; readonly userId: string },
-) {
-  const { rows } = await db.execute<CreditCheckRow>(sql`
-    WITH member AS (
-      SELECT credit_enabled FROM org_members_metadata
-      WHERE org_id = ${args.orgId} AND user_id = ${args.userId}
-      LIMIT 1
-    ),
-    org AS (
-      SELECT credits FROM org_metadata
-      WHERE org_id = ${args.orgId}
-      LIMIT 1
-    ),
-    expired AS (
-      SELECT COALESCE(SUM(remaining), 0)::bigint AS total
-      FROM credit_expires_record
-      WHERE org_id = ${args.orgId}
-        AND expires_at <= now()
-        AND remaining > 0
-    )
-    SELECT
-      (SELECT credit_enabled FROM member) AS credit_enabled,
-      (SELECT credits FROM org) AS credits,
-      (SELECT total FROM expired) AS unsettled_expired
-  `);
-
-  const row = rows[0];
-  if (!row || row.credits === null) {
-    return notFound("Org metadata not found");
-  }
-  if (row.credit_enabled === false) {
-    return insufficientCredits();
-  }
-
-  const credits = Number(row.credits);
-  const unsettledExpired = Number(row.unsettled_expired ?? 0);
-  return credits - unsettledExpired > 0 ? null : insufficientCredits();
-}
-
 async function loadUserInfo(
   db: Db,
   args: {
@@ -624,24 +500,6 @@ export const createZeroRun$ = command(
     });
     signal.throwIfAborted();
 
-    const shouldCheckCredits = await usesVm0ModelProvider(db, {
-      userId: args.auth.userId,
-      orgId: args.auth.orgId,
-      modelProviderId: agent.modelProviderId,
-      requestedModelProvider: args.body.modelProvider,
-    });
-    signal.throwIfAborted();
-    if (shouldCheckCredits) {
-      const creditGate = await checkVm0Credits(db, {
-        userId: args.auth.userId,
-        orgId: args.auth.orgId,
-      });
-      signal.throwIfAborted();
-      if (creditGate) {
-        return creditGate;
-      }
-    }
-
     const triggerAgentId = await triggerAgentIdForAuth(db, args.auth);
     signal.throwIfAborted();
 
@@ -696,6 +554,7 @@ export const createZeroRun$ = command(
         extraEnvironment: { ZERO_AGENT_ID: agent.id },
         callbacks: callbacksForTriggerAgent(triggerAgentId),
         includeZeroTokenSecret: true,
+        enforceVm0Credits: true,
         queueOnConcurrencyLimit: true,
         prependAdditionalVolumes,
         allowedConnectorTypes,

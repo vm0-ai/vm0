@@ -250,6 +250,7 @@ type CreateRunRouteResult =
   | ApiErrorResponse<400, "BAD_REQUEST">
   | ApiErrorResponse<403, "FORBIDDEN">
   | ApiErrorResponse<404, "NOT_FOUND">
+  | ApiErrorResponse<402, "INSUFFICIENT_CREDITS">
   | ApiErrorResponse<429, "CONCURRENT_RUN_LIMIT">
   | ApiErrorResponse<503, "PROVIDER_UNAVAILABLE">;
 
@@ -276,12 +277,19 @@ interface CreateAgentRunArgs {
   readonly validateEnvironmentReferences?: boolean;
   readonly zeroRunMetadata?: ZeroRunMetadata;
   readonly queueOnConcurrencyLimit?: boolean;
+  readonly enforceVm0Credits?: boolean;
 }
 
 interface ConnectorRuntimeContext {
   readonly secrets: Record<string, string> | undefined;
   readonly secretConnectorMap: Record<string, string> | undefined;
   readonly connectorTypes: readonly ConnectorType[];
+}
+
+interface CreditCheckRow extends Record<string, unknown> {
+  readonly credit_enabled: boolean | null;
+  readonly credits: string | null;
+  readonly unsettled_expired: string | null;
 }
 
 interface CustomConnectorRuntimeContext {
@@ -293,6 +301,18 @@ function forbidden(message: string): ApiErrorResponse<403, "FORBIDDEN"> {
   return {
     status: 403,
     body: { error: { message, code: "FORBIDDEN" } },
+  };
+}
+
+function insufficientCredits(): ApiErrorResponse<402, "INSUFFICIENT_CREDITS"> {
+  return {
+    status: 402,
+    body: {
+      error: {
+        message: "Insufficient credits. Please add credits to continue.",
+        code: "INSUFFICIENT_CREDITS",
+      },
+    },
   };
 }
 
@@ -1562,6 +1582,47 @@ async function checkRunConcurrencyLimit(
   return activeCount >= limit ? concurrentRunLimit() : null;
 }
 
+async function checkVm0Credits(
+  db: Db,
+  args: { readonly orgId: string; readonly userId: string },
+): Promise<CreateRunErrorResult | null> {
+  const { rows } = await db.execute<CreditCheckRow>(sql`
+    WITH member AS (
+      SELECT credit_enabled FROM org_members_metadata
+      WHERE org_id = ${args.orgId} AND user_id = ${args.userId}
+      LIMIT 1
+    ),
+    org AS (
+      SELECT credits FROM org_metadata
+      WHERE org_id = ${args.orgId}
+      LIMIT 1
+    ),
+    expired AS (
+      SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+      FROM credit_expires_record
+      WHERE org_id = ${args.orgId}
+        AND expires_at <= now()
+        AND remaining > 0
+    )
+    SELECT
+      (SELECT credit_enabled FROM member) AS credit_enabled,
+      (SELECT credits FROM org) AS credits,
+      (SELECT total FROM expired) AS unsettled_expired
+  `);
+
+  const row = rows[0];
+  if (!row || row.credits === null) {
+    return notFound("Org metadata not found");
+  }
+  if (row.credit_enabled === false) {
+    return insufficientCredits();
+  }
+
+  const credits = Number(row.credits);
+  const unsettledExpired = Number(row.unsettled_expired ?? 0);
+  return credits - unsettledExpired > 0 ? null : insufficientCredits();
+}
+
 async function lookupComposeByVersion(
   db: Db,
   versionId: string,
@@ -2385,6 +2446,48 @@ interface PreparedRunContext {
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
 }
 
+async function resolveRunModelProvider(
+  db: Db,
+  args: CreateAgentRunArgs,
+  content: AgentComposeContent,
+  framework: SupportedFramework,
+  signal: AbortSignal,
+): Promise<ResolvedModelProviderEnvironment | null | CreateRunErrorResult> {
+  const hasFrameworkKey = hasExplicitFrameworkApiKey(content, framework);
+  const shouldResolveModelProvider =
+    !hasFrameworkKey || args.modelProviderType === "vm0";
+  const modelProvider = shouldResolveModelProvider
+    ? await resolveModelProviderEnvironment(db, {
+        orgId: args.orgId,
+        userId: args.userId,
+        framework,
+        modelProviderId: args.modelProviderId,
+        modelProviderType: args.modelProviderType,
+        selectedModelOverride: args.selectedModelOverride,
+      })
+    : null;
+  signal.throwIfAborted();
+
+  if (!shouldResolveModelProvider || modelProvider) {
+    return modelProvider;
+  }
+
+  if (args.enforceVm0Credits && args.modelProviderType === "vm0") {
+    const creditGate = await checkVm0Credits(db, {
+      userId: args.userId,
+      orgId: args.orgId,
+    });
+    signal.throwIfAborted();
+    if (creditGate) {
+      return creditGate;
+    }
+  }
+
+  return providerUnavailable(
+    `No model provider configured and ${frameworkApiKeyEnv(framework)} is not declared in compose environment`,
+  );
+}
+
 async function prepareRunContext(
   db: Db,
   args: CreateAgentRunArgs,
@@ -2444,25 +2547,15 @@ async function prepareRunContext(
     return validation;
   }
 
-  const hasFrameworkKey = hasExplicitFrameworkApiKey(
+  const modelProvider = await resolveRunModelProvider(
+    db,
+    args,
     resolved.content,
     validation.framework,
+    signal,
   );
-  const modelProvider = hasFrameworkKey
-    ? null
-    : await resolveModelProviderEnvironment(db, {
-        orgId: args.orgId,
-        userId: args.userId,
-        framework: validation.framework,
-        modelProviderId: args.modelProviderId,
-        modelProviderType: args.modelProviderType,
-        selectedModelOverride: args.selectedModelOverride,
-      });
-  signal.throwIfAborted();
-  if (!hasFrameworkKey && !modelProvider) {
-    return providerUnavailable(
-      `No model provider configured and ${frameworkApiKeyEnv(validation.framework)} is not declared in compose environment`,
-    );
+  if (isRouteError(modelProvider)) {
+    return modelProvider;
   }
 
   const [
@@ -2647,6 +2740,17 @@ export const createAgentRun$ = command(
     const context = await prepareRunContext(db, args, signal);
     if (isRouteError(context)) {
       return context;
+    }
+
+    if (args.enforceVm0Credits && context.modelProvider?.type === "vm0") {
+      const creditGate = await checkVm0Credits(db, {
+        userId: args.userId,
+        orgId: args.orgId,
+      });
+      signal.throwIfAborted();
+      if (creditGate) {
+        return creditGate;
+      }
     }
 
     const transactionResult = await insertRunWithConcurrency(db, args, context);

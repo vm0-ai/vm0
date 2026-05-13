@@ -621,11 +621,11 @@ describe("POST /api/zero/runs", () => {
       readonly modelUsageProvider: string | undefined;
     };
     expect(executionContext.environment).toMatchObject({
-      ANTHROPIC_API_KEY: "sk-vm0-managed",
+      ANTHROPIC_API_KEY: expect.any(String),
       ANTHROPIC_MODEL: "claude-opus-4-6",
     });
     expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
-      ANTHROPIC_API_KEY: "sk-vm0-managed",
+      ANTHROPIC_API_KEY: executionContext.environment.ANTHROPIC_API_KEY,
     });
     expect(executionContext.billableFirewalls).toContain(
       "model-provider:anthropic-api-key",
@@ -1256,7 +1256,10 @@ describe("POST /api/zero/runs", () => {
 
   it("rejects omitted modelProvider when the org default provider is VM0", async () => {
     const fx = await fixture();
-    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    const agent = await seedRunnableZeroAgent({
+      fixture: fx,
+      environment: {},
+    });
     await setOrgCredits(fx.orgId, 100);
     await setMemberCredits({ orgId: fx.orgId, userId: fx.userId });
     await seedExpiredCredits({ orgId: fx.orgId, remaining: 100 });
@@ -1266,6 +1269,51 @@ describe("POST /api/zero/runs", () => {
       zeroRunsClient().create({
         headers: { authorization: "Bearer clerk-session" },
         body: { prompt: "default vm0 credits gate", agentId: agent.agentId },
+      }),
+      [402],
+    );
+
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
+  it("checks VM0 credits after resolving past an incompatible personal default provider", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({
+      fixture: fx,
+      environment: {},
+    });
+    await setOrgCredits(fx.orgId, 0);
+    await setMemberCredits({ orgId: fx.orgId, userId: fx.userId });
+    await seedVm0ApiKey({
+      vendor: "anthropic",
+      model: "claude-opus-4-6",
+      apiKey: "sk-vm0-managed",
+    });
+
+    const db = store.set(writeDb$);
+    await db.insert(modelProviders).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        type: "openai-api-key",
+        isDefault: true,
+      },
+      {
+        orgId: fx.orgId,
+        userId: ORG_SENTINEL_USER_ID,
+        type: "vm0",
+        isDefault: true,
+        selectedModel: "claude-opus-4-6",
+      },
+    ]);
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          prompt: "vm0 fallback credit gate",
+          agentId: agent.agentId,
+        },
       }),
       [402],
     );
