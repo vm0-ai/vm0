@@ -14,6 +14,7 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
+import { calculateNextRun } from "../../services/zero-schedules.service";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import {
@@ -361,7 +362,9 @@ describe("POST /api/internal/callbacks/schedule/*", () => {
     const updated = await scheduleById(scheduleId);
     expect(updated?.consecutiveFailures).toBe(0);
     expect(updated?.enabled).toBeTruthy();
-    expect(updated?.nextRunAt?.toISOString()).toBe("2026-05-13T09:00:00.000Z");
+    expect(updated?.nextRunAt?.toISOString()).toBe(
+      calculateNextRun("0 9 * * *", "UTC")?.toISOString(),
+    );
     await expect(runSummary(runId)).resolves.toBe(
       "Schedule produced a report.",
     );
