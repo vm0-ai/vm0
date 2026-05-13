@@ -19,7 +19,7 @@ use vsock_proto::{
 
 const EXIT_CODE_TIMEOUT: i32 = 124;
 const DRAIN_DEADLINE_SECS: u64 = 5;
-const RETIRED_EXEC_MESSAGE_TYPE: u8 = 0x03;
+const RETIRED_EXEC_MESSAGE_TYPES: &[u8] = &[0x03, 0x04];
 const LARGE_ENV_COMMAND: &str =
     "printf '%s:%s:%s:%s:%s\\n' \"$SMALL\" \"${#BIG_A}\" \"${#BIG_B}\" \"${#BIG_C}\" \"${#BIG_D}\"";
 
@@ -233,22 +233,29 @@ fn read_and_discard_message(stream: &mut impl std::io::Read) {
 }
 
 #[test]
-fn retired_exec_message_returns_unknown_error_without_running_payload() {
+fn retired_exec_message_types_return_unknown_error_without_running_payload() {
     let marker_path = unique_tmp_path("retired-exec", ".marker");
     let (handle, mut host_stream) = start_guest_connection();
 
-    let payload = encode_retired_exec_payload(&format!("touch {}", marker_path.as_str()));
-    let msg = vsock_proto::encode(RETIRED_EXEC_MESSAGE_TYPE, 77, &payload).unwrap();
-    host_stream.write_all(&msg).unwrap();
+    for (index, msg_type) in RETIRED_EXEC_MESSAGE_TYPES.iter().copied().enumerate() {
+        let payload = if msg_type == 0x03 {
+            encode_retired_exec_payload(&format!("touch {}", marker_path.as_str()))
+        } else {
+            Vec::new()
+        };
+        let seq = 77 + index as u32;
+        let msg = vsock_proto::encode(msg_type, seq, &payload).unwrap();
+        host_stream.write_all(&msg).unwrap();
 
-    let response = read_message(&mut host_stream);
-    assert_eq!(response.msg_type, MSG_ERROR);
-    assert_eq!(response.seq, 77);
-    let error = vsock_proto::decode_error(&response.payload).unwrap();
-    assert!(
-        error.contains("0x03"),
-        "unknown-message error should name retired type: {error}"
-    );
+        let response = read_message(&mut host_stream);
+        assert_eq!(response.msg_type, MSG_ERROR);
+        assert_eq!(response.seq, seq);
+        let error = vsock_proto::decode_error(&response.payload).unwrap();
+        assert!(
+            error.contains(&format!("0x{msg_type:02X}")),
+            "unknown-message error should name retired type: {error}"
+        );
+    }
     assert!(
         !std::path::Path::new(marker_path.as_str()).exists(),
         "retired exec payload must not be executed",

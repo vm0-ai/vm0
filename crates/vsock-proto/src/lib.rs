@@ -747,7 +747,10 @@ pub fn encode_error(message: &str) -> Vec<u8> {
 // ---------------------------------------------------------------------------
 
 struct DecodedCommandFieldsInner<'a> {
-    fields: DecodedCommandFields<'a>,
+    timeout_ms: u32,
+    command: &'a str,
+    env: Vec<(&'a str, &'a str)>,
+    sudo: bool,
     offset: usize,
     raw_flags: u8,
 }
@@ -757,17 +760,14 @@ struct DecodedCommandFieldsInner<'a> {
 /// The env section is optional: if the payload ends right after the command, an
 /// empty vec is returned. `encode_spawn_watch` always writes the env section so
 /// the optional log path remains unambiguous for new payloads.
-fn decode_command_fields(
-    payload: &[u8],
-    sudo_flag: u8,
-) -> Result<DecodedCommandFieldsInner<'_>, ProtocolError> {
+fn decode_command_fields(payload: &[u8]) -> Result<DecodedCommandFieldsInner<'_>, ProtocolError> {
     let timeout_ms = read_u32_at(payload, 0).ok_or(ProtocolError::InvalidPayload(
         "command fields payload too short",
     ))?;
     let flags = read_u8_at(payload, 4).ok_or(ProtocolError::InvalidPayload(
         "command fields payload too short",
     ))?;
-    let sudo = (flags & sudo_flag) != 0;
+    let sudo = (flags & SPAWN_WATCH_FLAG_SUDO) != 0;
     let cmd_len = read_u32_at(payload, 5).ok_or(ProtocolError::InvalidPayload(
         "command fields payload too short",
     ))? as usize;
@@ -779,12 +779,10 @@ fn decode_command_fields(
     let env_start = 9 + cmd_len;
     if env_start >= payload.len() {
         return Ok(DecodedCommandFieldsInner {
-            fields: DecodedCommandFields {
-                timeout_ms,
-                command,
-                env: Vec::new(),
-                sudo,
-            },
+            timeout_ms,
+            command,
+            env: Vec::new(),
+            sudo,
             offset: env_start,
             raw_flags: flags,
         });
@@ -823,12 +821,10 @@ fn decode_command_fields(
     }
 
     Ok(DecodedCommandFieldsInner {
-        fields: DecodedCommandFields {
-            timeout_ms,
-            command,
-            env,
-            sudo,
-        },
+        timeout_ms,
+        command,
+        env,
+        sudo,
         offset,
         raw_flags: flags,
     })
@@ -841,10 +837,13 @@ fn decode_command_fields(
 /// fields, `stdout_log_path` is `None`.
 pub fn decode_spawn_watch(payload: &[u8]) -> Result<DecodedSpawnWatch<'_>, ProtocolError> {
     let DecodedCommandFieldsInner {
-        fields,
+        timeout_ms,
+        command,
+        env,
+        sudo,
         offset,
         raw_flags,
-    } = decode_command_fields(payload, SPAWN_WATCH_FLAG_SUDO)?;
+    } = decode_command_fields(payload)?;
     let stream_flag = (raw_flags & SPAWN_WATCH_FLAG_STREAM_STDOUT) != 0;
     let stdout_log_path = if offset == payload.len() {
         None
@@ -877,7 +876,10 @@ pub fn decode_spawn_watch(payload: &[u8]) -> Result<DecodedSpawnWatch<'_>, Proto
         ));
     }
     Ok(DecodedSpawnWatch {
-        fields,
+        timeout_ms,
+        command,
+        env,
+        sudo,
         stream_stdout: stream_flag,
         stdout_log_path,
     })
@@ -973,17 +975,12 @@ pub fn decode_spawn_watch_result(payload: &[u8]) -> Result<u32, ProtocolError> {
     ))
 }
 
-/// Decoded command fields shared by spawn_watch payloads.
-pub struct DecodedCommandFields<'a> {
+/// Decoded spawn_watch fields.
+pub struct DecodedSpawnWatch<'a> {
     pub timeout_ms: u32,
     pub command: &'a str,
     pub env: Vec<(&'a str, &'a str)>,
     pub sudo: bool,
-}
-
-/// Decoded spawn_watch fields: command fields + stdout streaming options.
-pub struct DecodedSpawnWatch<'a> {
-    pub fields: DecodedCommandFields<'a>,
     /// Whether vsock-guest should stream stdout chunks to the host.
     pub stream_stdout: bool,
     /// Optional guest-side file path where vsock-guest also tees stdout.
@@ -1524,10 +1521,10 @@ mod tests {
         )
         .unwrap();
         let d = decode_spawn_watch(&payload).unwrap();
-        assert_eq!(d.fields.timeout_ms, 5000);
-        assert_eq!(d.fields.command, "echo hello");
-        assert_eq!(d.fields.env, vec![("FOO", "bar")]);
-        assert!(!d.fields.sudo);
+        assert_eq!(d.timeout_ms, 5000);
+        assert_eq!(d.command, "echo hello");
+        assert_eq!(d.env, vec![("FOO", "bar")]);
+        assert!(!d.sudo);
         assert!(d.stream_stdout);
         assert_eq!(d.stdout_log_path.unwrap(), "/tmp/vm0-system-123.log");
     }
@@ -1536,10 +1533,10 @@ mod tests {
     fn spawn_watch_payload_roundtrip_stream_only() {
         let payload = encode_spawn_watch(3000, "ls", &[], true, true, None).unwrap();
         let d = decode_spawn_watch(&payload).unwrap();
-        assert_eq!(d.fields.timeout_ms, 3000);
-        assert_eq!(d.fields.command, "ls");
-        assert!(d.fields.env.is_empty());
-        assert!(d.fields.sudo);
+        assert_eq!(d.timeout_ms, 3000);
+        assert_eq!(d.command, "ls");
+        assert!(d.env.is_empty());
+        assert!(d.sudo);
         assert!(d.stream_stdout);
         assert!(d.stdout_log_path.is_none());
     }
@@ -1548,7 +1545,7 @@ mod tests {
     fn spawn_watch_payload_roundtrip_buffered() {
         let payload = encode_spawn_watch(1000, "cmd", &[], false, false, None).unwrap();
         let d = decode_spawn_watch(&payload).unwrap();
-        assert_eq!(d.fields.command, "cmd");
+        assert_eq!(d.command, "cmd");
         assert!(!d.stream_stdout);
         assert!(d.stdout_log_path.is_none());
     }

@@ -161,10 +161,10 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                 // stdout chunks could arrive at the host before the result.
                 handle_spawn_watch(
                     SpawnWatchRequest {
-                        timeout_ms: d.fields.timeout_ms,
-                        command: d.fields.command,
-                        env: &d.fields.env,
-                        sudo: d.fields.sudo,
+                        timeout_ms: d.timeout_ms,
+                        command: d.command,
+                        env: &d.env,
+                        sudo: d.sudo,
                         stream_stdout: d.stream_stdout,
                         stdout_log_path: d.stdout_log_path,
                     },
