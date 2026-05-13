@@ -13,6 +13,14 @@ use crate::idle_pool::ParkingState;
 // Test 1: Normal discover → claim → execute → complete
 // -----------------------------------------------------------------------
 
+#[test]
+fn local_registration_stays_visible_while_draining() {
+    assert!(local_registration_active_for_mode(RunnerMode::Running));
+    assert!(local_registration_active_for_mode(RunnerMode::Draining));
+    assert!(!local_registration_active_for_mode(RunnerMode::Stopping));
+    assert!(!local_registration_active_for_mode(RunnerMode::Stopped));
+}
+
 #[tokio::test(start_paused = true)]
 async fn main_loop_discover_claim_execute_complete() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);

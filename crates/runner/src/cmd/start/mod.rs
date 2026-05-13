@@ -806,6 +806,10 @@ fn set_local_registration_active(
     }
 }
 
+fn local_registration_active_for_mode(mode: RunnerMode) -> bool {
+    matches!(mode, RunnerMode::Running | RunnerMode::Draining)
+}
+
 async fn run(config: RunConfig) -> RunnerResult<()> {
     let RunConfig {
         id: runner_id,
@@ -960,7 +964,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             status.set_mode(mode).await;
             set_local_registration_active(
                 local_registration.as_ref(),
-                matches!(mode, RunnerMode::Running),
+                local_registration_active_for_mode(mode),
                 mode,
             );
         }
@@ -1124,7 +1128,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 send_heartbeat(&hb_ctx, current_mode).await;
                 set_local_registration_active(
                     local_registration.as_ref(),
-                    matches!(current_mode, RunnerMode::Running),
+                    local_registration_active_for_mode(current_mode),
                     current_mode,
                 );
             }
