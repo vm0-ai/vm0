@@ -257,6 +257,19 @@ impl JobProvider for LocalProvider {
                 return None;
             }
         };
+        let requested_profile = req
+            .profile
+            .as_deref()
+            .unwrap_or(crate::profile::DEFAULT_PROFILE);
+        if !self.supported_profiles.contains(requested_profile) {
+            warn!(
+                run_id = %run_id,
+                profile = requested_profile,
+                "local: claimed job no longer matches supported profiles"
+            );
+            let _ = std::fs::remove_file(&claim_file);
+            return None;
+        }
 
         info!(run_id = %run_id, "local: job claimed");
         Some(ExecutionContext {
@@ -816,5 +829,26 @@ mod tests {
             "error must mention invalid JSON, got: {:?}",
             resp.error
         );
+    }
+
+    #[tokio::test]
+    async fn claim_rejects_unsupported_profile_after_discovery_race() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = make_provider(dir.path(), cancel, empty_cancel_tokens());
+
+        let run_id = RunId::new_v4();
+        write_job_with_profile(dir.path(), run_id, "default job", Some("vm0/default"));
+
+        let (discovered, profile) = provider.find_unclaimed_job().unwrap();
+        assert_eq!(discovered, run_id);
+        assert_eq!(profile, "vm0/default");
+
+        write_job_with_profile(dir.path(), run_id, "large job", Some("vm0/large"));
+
+        assert!(provider.claim(run_id).await.is_none());
+        assert!(dir.path().join(format!("{run_id}.job")).exists());
+        assert!(!dir.path().join(format!("{run_id}.claim")).exists());
+        assert!(!dir.path().join(format!("{run_id}.result")).exists());
     }
 }
