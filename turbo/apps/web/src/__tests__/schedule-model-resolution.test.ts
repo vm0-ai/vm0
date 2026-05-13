@@ -1,15 +1,17 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { randomUUID } from "crypto";
+import { POST as sendChatMessageRoute } from "../../app/api/zero/chat/messages/route";
 import { POST as deployScheduleRoute } from "../../app/api/zero/schedules/route";
 import { adaptScheduleTrigger } from "../lib/zero/schedule/adapt-schedule-trigger";
-import { normalizeModelFirstRouteDescriptor } from "../lib/zero/model-policy/model-first-route-service";
 import {
   createTestRequest,
   createTestCompose,
   createTestOrgModelProvider,
   createTestOrg,
+  insertOrgDefaultModelProvider,
+  setOrgCredits,
 } from "./api-test-helpers";
 import { mockClerk } from "./clerk-mock";
+import { getTestChatThreadModelOverride } from "./db-test-assertions/org";
 import { testContext, uniqueId } from "./test-helpers";
 
 const context = testContext();
@@ -171,18 +173,40 @@ describe("Schedule model resolution", () => {
   });
 
   describe("legacy built-in model route normalization", () => {
-    it("clears stale provider IDs before route validation", () => {
-      const result = normalizeModelFirstRouteDescriptor({
-        selectedModel: "claude-opus-4-7",
-        providerType: "vm0",
-        credentialScope: "org",
-        modelProviderId: randomUUID(),
-      });
+    it("clears stale provider IDs through chat route model selection", async () => {
+      const userId = uniqueId("sched-legacy-route");
+      const slug = uniqueId("schedlegacy");
+      mockClerk({ userId, orgRole: "org:admin" });
+      const { id: orgId } = await createTestOrg(slug);
 
-      expect(result).toEqual({
+      mockClerk({ userId, orgId, orgRole: "org:admin" });
+      const { agentId } = await createTestCompose(uniqueId("agent"));
+      await setOrgCredits(orgId, 10_000);
+      const providerId = await insertOrgDefaultModelProvider(
+        orgId,
+        "vm0",
+        "claude-opus-4-7",
+      );
+
+      const response = await sendChatMessageRoute(
+        createTestRequest("http://localhost:3000/api/zero/chat/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "chat with legacy built-in provider pin",
+            modelSelection: {
+              modelProviderId: providerId,
+              selectedModel: "claude-opus-4-7",
+            },
+          }),
+        }),
+      );
+
+      expect(response.status).toBe(201);
+      const { threadId } = await response.json();
+      await expect(getTestChatThreadModelOverride(threadId)).resolves.toEqual({
         selectedModel: "claude-opus-4-7",
-        providerType: "vm0",
-        credentialScope: "org",
         modelProviderId: null,
       });
     });

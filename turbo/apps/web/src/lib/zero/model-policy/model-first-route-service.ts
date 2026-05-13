@@ -77,7 +77,7 @@ function routeShapeFromPolicy(
   });
 }
 
-export function normalizeModelFirstRouteDescriptor(
+function normalizeModelFirstRouteDescriptor(
   route: ModelFirstRouteDescriptor,
 ): ModelFirstRouteDescriptor {
   if (route.providerType === "vm0" && route.modelProviderId) {
@@ -329,6 +329,7 @@ export async function resolveModelFirstRouteDescriptor(
     return resolveRouteFromPolicy(params.orgId, policy);
   }
 
+  route = normalizeModelFirstRouteDescriptor(route);
   if (!(await validateOrgProviderRoute(params.orgId, route))) {
     throw providerDeleted();
   }
