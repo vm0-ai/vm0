@@ -47,9 +47,7 @@ pub(in super::super) async fn status_idle_sessions(status_path: &std::path::Path
     status_idle_sessions_and_active_runs(status_path).await.0
 }
 
-pub(in super::super) async fn status_mode_if_exists(
-    status_path: &std::path::Path,
-) -> Option<Option<String>> {
+async fn status_mode_if_exists(status_path: &std::path::Path) -> Option<Option<String>> {
     match tokio::fs::try_exists(status_path).await {
         Ok(true) => {
             let raw = tokio::fs::read_to_string(status_path).await.unwrap();
@@ -149,7 +147,7 @@ pub(in super::super) async fn wait_status_idle_sessions_and_active_runs(
     .await;
 }
 
-pub(in super::super) async fn status_idle_sessions_and_active_runs_if_exists(
+async fn status_idle_sessions_and_active_runs_if_exists(
     status_path: &std::path::Path,
 ) -> Option<(Vec<String>, Vec<String>)> {
     match tokio::fs::try_exists(status_path).await {

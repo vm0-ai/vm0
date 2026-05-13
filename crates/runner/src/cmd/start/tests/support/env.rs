@@ -91,7 +91,7 @@ pub(in super::super) fn mock_run_config_with_delay(
     )
 }
 
-pub(in super::super) fn build_mock_run_config(
+fn build_mock_run_config(
     profiles: BTreeMap<String, config::ProfileConfig>,
     budget_vcpu: u32,
     budget_memory_mb: u32,
@@ -129,7 +129,7 @@ pub(in super::super) fn mock_run_config_with_api_url(
     )
 }
 
-pub(in super::super) fn build_mock_run_config_with_runtime(
+fn build_mock_run_config_with_runtime(
     profiles: BTreeMap<String, config::ProfileConfig>,
     budget_vcpu: u32,
     budget_memory_mb: u32,
@@ -241,15 +241,11 @@ pub(in super::super) fn build_mock_run_config_with_runtime(
     (config, env)
 }
 
-pub(in super::super) fn profiles_min_vcpu(
-    profiles: &BTreeMap<String, config::ProfileConfig>,
-) -> u32 {
+fn profiles_min_vcpu(profiles: &BTreeMap<String, config::ProfileConfig>) -> u32 {
     profiles.values().map(|p| p.vcpu).min().unwrap_or(1)
 }
 
-pub(in super::super) fn profiles_min_memory(
-    profiles: &BTreeMap<String, config::ProfileConfig>,
-) -> u32 {
+fn profiles_min_memory(profiles: &BTreeMap<String, config::ProfileConfig>) -> u32 {
     profiles.values().map(|p| p.memory_mb).min().unwrap_or(1)
 }
 

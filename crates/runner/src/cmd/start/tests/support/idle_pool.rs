@@ -5,7 +5,7 @@ use crate::resource_budget::BudgetLease;
 use sandbox::{SandboxFactory, SandboxId};
 use sandbox_mock::{MockSandbox, MockSandboxFactory};
 
-pub(in super::super) fn make_test_park_candidate(
+fn make_test_park_candidate(
     session_id: &str,
     profile_name: &str,
     budget_lease: BudgetLease,

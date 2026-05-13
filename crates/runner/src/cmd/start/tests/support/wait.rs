@@ -6,12 +6,12 @@ use crate::idle_pool::ParkingState;
 
 const WAIT_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
-pub(in super::super) enum WaitProbe<T> {
+pub(super) enum WaitProbe<T> {
     Ready(T),
     Pending(String),
 }
 
-pub(in super::super) async fn wait_for_probe<T, F, Fut>(timeout: Duration, mut probe: F) -> T
+pub(super) async fn wait_for_probe<T, F, Fut>(timeout: Duration, mut probe: F) -> T
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = WaitProbe<T>>,
