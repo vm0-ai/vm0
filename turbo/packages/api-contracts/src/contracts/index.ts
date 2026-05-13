@@ -1206,6 +1206,15 @@ export {
   type PushSubscriptionsContract,
 } from "./push-subscriptions";
 export {
+  zeroImageIoGenerateContract,
+  zeroImageIoGenerateRequestSchema,
+  zeroImageIoGenerateResponseSchema,
+  zeroImageIoUsageSchema,
+  type ZeroImageIoGenerateContract,
+  type ZeroImageIoGenerateRequest,
+  type ZeroImageIoGenerateResponse,
+} from "./zero-image-io-generate";
+export {
   zeroVoiceIoQuotaContract,
   audioInputQuotaResponseSchema,
   type ZeroVoiceIoQuotaContract,

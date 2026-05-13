@@ -57,6 +57,7 @@ import { zeroDefaultAgentRoutes } from "./routes/zero-default-agent";
 import { zeroDeveloperSupportRoutes } from "./routes/zero-developer-support";
 import { zeroFeatureSwitchesRoutes } from "./routes/zero-feature-switches";
 import { zeroInsightsRoutes } from "./routes/zero-insights";
+import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
 import { zeroLogsRoutes } from "./routes/zero-logs";
 import { zeroMemberCreditCapRoutes } from "./routes/zero-member-credit-cap";
 import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
@@ -190,6 +191,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroDeveloperSupportRoutes,
   ...zeroFeatureSwitchesRoutes,
   ...zeroInsightsRoutes,
+  ...zeroImageIoGenerateRoutes,
   ...zeroLogsRoutes,
   ...zeroMemberCreditCapRoutes,
   ...zeroModelPoliciesRoutes,
