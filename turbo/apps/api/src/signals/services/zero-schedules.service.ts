@@ -82,7 +82,7 @@ function scheduleResponse(
   };
 }
 
-function calculateNextRun(
+export function calculateNextRun(
   cronExpression: string,
   timezone: string,
 ): Date | null {

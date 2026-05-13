@@ -20,6 +20,11 @@ export const internalCallbackSuccessSchema = z.object({
   success: z.literal(true),
 });
 
+export const internalCallbackSuccessWithSkippedSchema =
+  internalCallbackSuccessSchema.extend({
+    skipped: z.literal(true).optional(),
+  });
+
 export const internalCallbackErrorSchema = z.object({
   error: z.string(),
 });

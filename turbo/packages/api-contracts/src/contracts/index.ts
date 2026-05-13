@@ -1229,10 +1229,19 @@ export {
   type InternalCallbacksAgentContract,
 } from "./internal-callbacks-agent";
 export {
+  internalCallbacksScheduleContract,
+  scheduleCronCallbackPayloadSchema,
+  scheduleLoopCallbackPayloadSchema,
+  type InternalCallbacksScheduleContract,
+  type ScheduleCronCallbackPayload,
+  type ScheduleLoopCallbackPayload,
+} from "./internal-callbacks-schedule";
+export {
   internalCallbackBodySchema,
   internalCallbackErrorSchema,
   internalCallbackHeadersSchema,
   internalCallbackSuccessSchema,
+  internalCallbackSuccessWithSkippedSchema,
   type InternalCallbackBody,
 } from "./internal-callbacks-shared";
 export {
