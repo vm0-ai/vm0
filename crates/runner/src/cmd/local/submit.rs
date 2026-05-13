@@ -244,10 +244,14 @@ async fn run_submit_with_home(args: SubmitArgs, home: HomePaths) -> RunnerResult
     // Write atomically: tmp file then rename.
     let tmp_path = job_dir.join(format!("{job_id}.job.tmp"));
     let job_path = local_queue::job_path(&group_dir, &profile, job_id)?;
-    std::fs::write(&tmp_path, &json)
-        .map_err(|e| RunnerError::Internal(format!("write job file: {e}")))?;
-    std::fs::rename(&tmp_path, &job_path)
-        .map_err(|e| RunnerError::Internal(format!("rename job file: {e}")))?;
+    if let Err(e) = std::fs::write(&tmp_path, &json) {
+        let _ = remove_file_if_exists(&tmp_path);
+        return Err(RunnerError::Internal(format!("write job file: {e}")));
+    }
+    if let Err(e) = std::fs::rename(&tmp_path, &job_path) {
+        let _ = remove_file_if_exists(&tmp_path);
+        return Err(RunnerError::Internal(format!("rename job file: {e}")));
+    }
 
     // Poll for result, listening for Ctrl+C to cancel.
     let result_path = local_queue::result_path(&group_dir, job_id);

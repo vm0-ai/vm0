@@ -144,7 +144,84 @@ impl LocalProvider {
                 // Only delete after successful trigger — crash-safe.
                 let _ = std::fs::remove_file(local_queue::cancel_path(&self.group_dir, *run_id));
             }
-            // No token yet → leave file for next scan (job may not be claimed yet).
+            // No token yet: keep the request if another local runner may own it
+            // or if the job still exists and may be claimed later. Otherwise the
+            // cancel is stale, commonly from a cancel/complete race after claim
+            // resolution, and can be removed to avoid unbounded queue litter.
+            else if !self.cancel_has_pending_target(*run_id) {
+                let _ = std::fs::remove_file(local_queue::cancel_path(&self.group_dir, *run_id));
+            }
+        }
+    }
+
+    fn cancel_has_pending_target(&self, run_id: RunId) -> bool {
+        if local_queue::claim_path(&self.group_dir, run_id).exists() {
+            return true;
+        }
+        self.job_file_exists(run_id).unwrap_or(true)
+    }
+
+    fn job_file_exists(&self, run_id: RunId) -> Option<bool> {
+        self.find_job_file(run_id).map(|path| path.is_some())
+    }
+
+    fn find_job_file(&self, run_id: RunId) -> Option<Option<PathBuf>> {
+        let jobs_dir = local_queue::jobs_dir(&self.group_dir);
+        let orgs = match std::fs::read_dir(&jobs_dir) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Some(None),
+            Err(e) => {
+                warn!(path = %jobs_dir.display(), error = %e, "local: cannot scan jobs dir for job file");
+                return None;
+            }
+        };
+
+        for org in orgs.filter_map(Result::ok) {
+            if !org.file_type().map(|ty| ty.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            let org_path = org.path();
+            let profiles = match std::fs::read_dir(&org_path) {
+                Ok(entries) => entries,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => {
+                    warn!(path = %org_path.display(), error = %e, "local: cannot scan profile org dir for job file");
+                    return None;
+                }
+            };
+            for profile in profiles.filter_map(Result::ok) {
+                if !profile.file_type().map(|ty| ty.is_dir()).unwrap_or(false) {
+                    continue;
+                }
+                let path = profile.path().join(format!("{run_id}.job"));
+                match std::fs::metadata(&path) {
+                    Ok(_) => return Some(Some(path)),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => {
+                        warn!(run_id = %run_id, path = %path.display(), error = %e, "local: cannot stat job file");
+                        return None;
+                    }
+                }
+            }
+        }
+
+        Some(None)
+    }
+
+    fn remove_job_file_if_present(&self, run_id: RunId) -> bool {
+        let Some(path) = self.find_job_file(run_id) else {
+            return false;
+        };
+        let Some(path) = path else {
+            return true;
+        };
+        match std::fs::remove_file(&path) {
+            Ok(()) => true,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
+            Err(e) => {
+                warn!(run_id = %run_id, path = %path.display(), error = %e, "local: failed to remove job file after result failure");
+                false
+            }
         }
     }
 
@@ -232,6 +309,7 @@ impl LocalProvider {
         let result_file = local_queue::result_path(&self.group_dir, run_id);
         if let Err(e) = std::fs::write(&tmp_file, &json) {
             warn!(run_id = %run_id, error = %e, "local: failed to write result file");
+            let _ = std::fs::remove_file(&tmp_file);
             return false;
         }
         if let Err(e) = std::fs::rename(&tmp_file, &result_file) {
@@ -411,6 +489,10 @@ impl JobProvider for LocalProvider {
         _reuse_result: Option<SandboxReuseResult>,
     ) {
         if !self.write_result(run_id, exit_code, error) {
+            if self.remove_job_file_if_present(run_id) {
+                let _ = std::fs::remove_file(local_queue::cancel_path(&self.group_dir, run_id));
+                let _ = std::fs::remove_file(local_queue::claim_path(&self.group_dir, run_id));
+            }
             return;
         }
         // Best-effort cleanup of cancel file (may have been written after the
@@ -804,13 +886,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancel_file_unknown_run_id_no_panic() {
+    async fn cancel_file_without_pending_target_is_deleted() {
         let dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
         let tokens = empty_cancel_tokens();
         let provider = default_provider(dir.path(), cancel, tokens);
 
-        // Write cancel file for a run_id that has no token.
+        // Write cancel file for a run_id that has no token, claim, or job.
         let unknown_id = RunId::new_v4();
         let cancel_path = local_queue::cancel_path(dir.path(), unknown_id);
         std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
@@ -819,12 +901,38 @@ mod tests {
         let job_id = RunId::new_v4();
         write_job(dir.path(), job_id, "still works");
 
-        // Should not panic. Cancel file is kept (no matching token yet).
+        // Should not panic. The stale cancel file is cleaned up.
+        let candidate = provider.discover().await.unwrap();
+        assert_eq!(candidate.run_id(), job_id);
+        assert!(
+            !cancel_path.exists(),
+            "cancel file should be deleted when no pending target exists"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancel_file_with_claim_owned_by_other_runner_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let tokens = empty_cancel_tokens();
+        let provider = default_provider(dir.path(), cancel, tokens);
+
+        let run_id = RunId::new_v4();
+        let cancel_path = local_queue::cancel_path(dir.path(), run_id);
+        let claim_path = local_queue::claim_path(dir.path(), run_id);
+        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(claim_path.parent().unwrap()).unwrap();
+        std::fs::write(&cancel_path, b"").unwrap();
+        std::fs::write(&claim_path, b"").unwrap();
+
+        let job_id = RunId::new_v4();
+        write_job(dir.path(), job_id, "still works");
+
         let candidate = provider.discover().await.unwrap();
         assert_eq!(candidate.run_id(), job_id);
         assert!(
             cancel_path.exists(),
-            "cancel file should be kept when no token matches"
+            "cancel file should be kept when another runner may own the claim"
         );
     }
 
@@ -851,6 +959,43 @@ mod tests {
         assert!(
             !claim_path.exists(),
             "complete() should clean up claim file"
+        );
+    }
+
+    #[tokio::test]
+    async fn complete_result_failure_removes_job_before_claim() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = default_provider(dir.path(), cancel, empty_cancel_tokens());
+
+        let run_id = RunId::new_v4();
+        let job_path =
+            local_queue::job_path(dir.path(), crate::profile::DEFAULT_PROFILE, run_id).unwrap();
+        let claim_path = local_queue::claim_path(dir.path(), run_id);
+        let cancel_path = local_queue::cancel_path(dir.path(), run_id);
+        let result_dir = local_queue::results_dir(dir.path());
+        std::fs::create_dir_all(job_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(claim_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+
+        std::fs::write(&job_path, b"{}").unwrap();
+        std::fs::write(&claim_path, b"").unwrap();
+        std::fs::write(&cancel_path, b"").unwrap();
+        std::fs::write(&result_dir, b"not a directory").unwrap();
+
+        provider.complete(run_id, 0, None, None, None).await;
+
+        assert!(
+            !job_path.exists(),
+            "job must be removed before releasing claim when result write fails"
+        );
+        assert!(
+            !claim_path.exists(),
+            "claim can be released after the job is no longer retryable"
+        );
+        assert!(
+            !cancel_path.exists(),
+            "cancel file should not be stranded after terminal cleanup"
         );
     }
 
