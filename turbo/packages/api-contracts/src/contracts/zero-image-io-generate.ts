@@ -12,6 +12,8 @@ export const zeroImageIoGenerateRequestSchema = z
     quality: z.unknown().optional(),
     background: z.unknown().optional(),
     outputFormat: z.unknown().optional(),
+    outputCompression: z.unknown().optional(),
+    moderation: z.unknown().optional(),
   })
   .passthrough();
 
@@ -34,6 +36,8 @@ export const zeroImageIoGenerateResponseSchema = z.object({
   quality: z.string(),
   background: z.string(),
   outputFormat: z.string(),
+  outputCompression: z.number().optional(),
+  moderation: z.string().optional(),
   revisedPrompt: z.string().optional(),
   usage: zeroImageIoUsageSchema,
 });

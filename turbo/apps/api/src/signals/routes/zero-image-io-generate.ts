@@ -68,6 +68,10 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       quality: options.quality,
       background: options.background,
       output_format: options.outputFormat,
+      ...(options.outputCompression !== undefined
+        ? { output_compression: options.outputCompression }
+        : {}),
+      moderation: options.moderation,
     }),
     signal,
   });

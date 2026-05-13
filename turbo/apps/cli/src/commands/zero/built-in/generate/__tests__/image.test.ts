@@ -12,6 +12,7 @@ import { http, HttpResponse } from "msw";
 import chalk from "chalk";
 import { server } from "../../../../../mocks/server";
 import { zeroBuiltInCommand } from "../../index";
+import { imageCommand } from "../image";
 
 const IMAGE_URL = "http://localhost:3000/api/zero/image-io/generate";
 const IMAGE_RESULT = {
@@ -26,6 +27,7 @@ const IMAGE_RESULT = {
   quality: "medium",
   background: "opaque",
   outputFormat: "png",
+  moderation: "auto",
   usage: {
     textInputTokens: 1000,
     imageInputTokens: 0,
@@ -47,32 +49,31 @@ describe("zero built-in generate image command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
+    vi.stubEnv("ZERO_TOKEN", "test-token");
   });
 
   afterEach(() => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    vi.unstubAllEnvs();
   });
 
   it("should generate an image and print the /f file URL", async () => {
+    let capturedBody: unknown;
     server.use(
       http.post(IMAGE_URL, async ({ request }) => {
         expect(request.headers.get("authorization")).toBe("Bearer test-token");
         expect(request.headers.get("content-type")).toBe("application/json");
-        expect(await request.json()).toEqual({
-          prompt: "A watercolor fox",
-          size: "1024x1536",
-          quality: "high",
-          background: "transparent",
-          outputFormat: "webp",
-        });
+        capturedBody = await request.json();
 
         return HttpResponse.json({
           ...IMAGE_RESULT,
-          imageSize: "1024x1536",
-          quality: "high",
-          background: "transparent",
+          imageSize: "2048x1152",
+          quality: "auto",
+          background: "opaque",
           outputFormat: "webp",
+          outputCompression: 50,
+          moderation: "low",
         });
       }),
     );
@@ -85,21 +86,36 @@ describe("zero built-in generate image command", () => {
       "--prompt",
       "A watercolor fox",
       "--size",
-      "1024x1536",
+      "2048x1152",
       "--quality",
-      "high",
+      "auto",
       "--background",
-      "transparent",
+      "opaque",
       "--format",
       "webp",
+      "--compression",
+      "50",
+      "--moderation",
+      "low",
     ]);
 
+    expect(capturedBody).toEqual({
+      prompt: "A watercolor fox",
+      size: "2048x1152",
+      quality: "auto",
+      background: "opaque",
+      outputFormat: "webp",
+      outputCompression: 50,
+      moderation: "low",
+    });
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(`Image generated: ${IMAGE_RESULT.url}`);
     expect(stdout).toContain(`File: ${IMAGE_RESULT.filename}`);
-    expect(stdout).toContain("Size: 1024x1536");
-    expect(stdout).toContain("Quality: high");
+    expect(stdout).toContain("Size: 2048x1152");
+    expect(stdout).toContain("Quality: auto");
     expect(stdout).toContain("Format: webp");
+    expect(stdout).toContain("Compression: 50");
+    expect(stdout).toContain("Moderation: low");
     expect(stdout).toContain("Credits charged: 65");
   });
 
@@ -133,7 +149,28 @@ describe("zero built-in generate image command", () => {
       imageSize: "1024x1024",
       quality: "medium",
       outputFormat: "png",
+      moderation: "auto",
     });
+  });
+
+  it("should describe GPT Image 2 generation capabilities in help", () => {
+    let helpOutput = "";
+    imageCommand.configureOutput({
+      writeOut: (str: string) => {
+        helpOutput += str;
+      },
+    });
+
+    imageCommand.outputHelp();
+
+    expect(helpOutput).toContain("any valid WIDTHxHEIGHT");
+    expect(helpOutput).toContain("3840x2160");
+    expect(helpOutput).toContain("edges divisible by 16");
+    expect(helpOutput).toContain("--compression 0-100");
+    expect(helpOutput).toContain("Moderation: auto or low");
+    expect(helpOutput).toContain("does not support transparent");
+    expect(helpOutput).toContain("backgrounds");
+    expect(helpOutput).toContain("image edits, reference images, masks");
   });
 
   it("should surface API errors", async () => {

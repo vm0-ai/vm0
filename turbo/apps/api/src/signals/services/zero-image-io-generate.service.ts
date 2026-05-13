@@ -17,6 +17,11 @@ export const OPENAI_IMAGE_GENERATION_URL =
   "https://api.openai.com/v1/images/generations";
 export const IMAGE_IO_MODEL = "gpt-image-2";
 const IMAGE_IO_MAX_PROMPT_LENGTH = 32_000;
+const IMAGE_IO_MIN_PIXELS = 655_360;
+const IMAGE_IO_MAX_PIXELS = 8_294_400;
+const IMAGE_IO_MAX_EDGE = 3_840;
+const IMAGE_IO_EDGE_MULTIPLE = 16;
+const IMAGE_IO_MAX_ASPECT_RATIO = 3;
 
 const USAGE_KIND = "image";
 const USAGE_PROVIDER = IMAGE_IO_MODEL;
@@ -29,15 +34,15 @@ const REQUIRED_PRICING_CATEGORIES = [
   IMAGE_OUTPUT_CATEGORY,
 ] as const;
 
-const IMAGE_SIZES = ["1024x1024", "1024x1536", "1536x1024"] as const;
 const IMAGE_QUALITIES = ["low", "medium", "high", "auto"] as const;
-const IMAGE_BACKGROUNDS = ["auto", "opaque", "transparent"] as const;
+const IMAGE_BACKGROUNDS = ["auto", "opaque"] as const;
 const IMAGE_OUTPUT_FORMATS = ["png", "webp", "jpeg"] as const;
+const IMAGE_MODERATIONS = ["auto", "low"] as const;
 
-type ImageSize = (typeof IMAGE_SIZES)[number];
 type ImageQuality = (typeof IMAGE_QUALITIES)[number];
 type ImageBackground = (typeof IMAGE_BACKGROUNDS)[number];
 type ImageOutputFormat = (typeof IMAGE_OUTPUT_FORMATS)[number];
+type ImageModeration = (typeof IMAGE_MODERATIONS)[number];
 type PricingCategory = (typeof REQUIRED_PRICING_CATEGORIES)[number];
 
 type ErrorStatus = 400 | 402 | 500 | 502 | 503;
@@ -63,10 +68,12 @@ export type ImagePricing = ReadonlyMap<PricingCategory, ImagePricingRow>;
 
 interface ImageOptions {
   readonly prompt: string;
-  readonly size: ImageSize;
+  readonly size: string;
   readonly quality: ImageQuality;
   readonly background: ImageBackground;
   readonly outputFormat: ImageOutputFormat;
+  readonly outputCompression: number | undefined;
+  readonly moderation: ImageModeration;
 }
 
 export interface ImageUsage {
@@ -83,6 +90,8 @@ interface ParsedImageGeneration {
   readonly quality: string;
   readonly background: string;
   readonly outputFormat: ImageOutputFormat;
+  readonly outputCompression: number | undefined;
+  readonly moderation: ImageModeration;
   readonly usage: ImageUsage;
 }
 
@@ -98,6 +107,8 @@ interface RecordedImage {
   readonly quality: string;
   readonly background: string;
   readonly outputFormat: ImageOutputFormat;
+  readonly outputCompression: number | undefined;
+  readonly moderation: ImageModeration;
   readonly revisedPrompt: string | undefined;
   readonly usage: ImageUsage;
 }
@@ -180,6 +191,28 @@ function readString(
     : fallback;
 }
 
+function readOptionalInteger(
+  body: Record<string, unknown>,
+  key: string,
+): number | ErrorResponse | undefined {
+  const value = body[key];
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim().length > 0
+        ? Number(value.trim())
+        : Number.NaN;
+  if (!Number.isInteger(parsed)) {
+    return badRequest(`${key} must be an integer`);
+  }
+
+  return parsed;
+}
+
 function includesString<T extends string>(
   values: readonly T[],
   value: string,
@@ -187,6 +220,49 @@ function includesString<T extends string>(
   return values.some((candidate) => {
     return candidate === value;
   });
+}
+
+function validateImageSize(size: string): ErrorResponse | null {
+  if (size === "auto") {
+    return null;
+  }
+
+  const match = /^(\d+)x(\d+)$/.exec(size);
+  if (!match) {
+    return badRequest(`Unsupported image size: ${size}`);
+  }
+
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  const longEdge = Math.max(width, height);
+  const shortEdge = Math.min(width, height);
+  const pixels = width * height;
+
+  if (longEdge > IMAGE_IO_MAX_EDGE) {
+    return badRequest(
+      `Unsupported image size: ${size}; max edge is ${IMAGE_IO_MAX_EDGE}px`,
+    );
+  }
+  if (
+    width % IMAGE_IO_EDGE_MULTIPLE !== 0 ||
+    height % IMAGE_IO_EDGE_MULTIPLE !== 0
+  ) {
+    return badRequest(
+      `Unsupported image size: ${size}; both edges must be multiples of ${IMAGE_IO_EDGE_MULTIPLE}px`,
+    );
+  }
+  if (longEdge / shortEdge > IMAGE_IO_MAX_ASPECT_RATIO) {
+    return badRequest(
+      `Unsupported image size: ${size}; aspect ratio must be at most ${IMAGE_IO_MAX_ASPECT_RATIO}:1`,
+    );
+  }
+  if (pixels < IMAGE_IO_MIN_PIXELS || pixels > IMAGE_IO_MAX_PIXELS) {
+    return badRequest(
+      `Unsupported image size: ${size}; total pixels must be between ${IMAGE_IO_MIN_PIXELS} and ${IMAGE_IO_MAX_PIXELS}`,
+    );
+  }
+
+  return null;
 }
 
 export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
@@ -205,8 +281,9 @@ export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
   }
 
   const size = readString(body, "size", "1024x1024");
-  if (!includesString(IMAGE_SIZES, size)) {
-    return badRequest(`Unsupported image size: ${size}`);
+  const sizeError = validateImageSize(size);
+  if (sizeError) {
+    return sizeError;
   }
 
   const quality = readString(body, "quality", "medium");
@@ -215,6 +292,9 @@ export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
   }
 
   const background = readString(body, "background", "auto");
+  if (background === "transparent") {
+    return badRequest("gpt-image-2 does not support transparent backgrounds");
+  }
   if (!includesString(IMAGE_BACKGROUNDS, background)) {
     return badRequest(`Unsupported image background: ${background}`);
   }
@@ -223,11 +303,37 @@ export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
   if (!includesString(IMAGE_OUTPUT_FORMATS, outputFormat)) {
     return badRequest(`Unsupported image output format: ${outputFormat}`);
   }
-  if (background === "transparent" && outputFormat === "jpeg") {
-    return badRequest("transparent background requires png or webp output");
+
+  const outputCompression = readOptionalInteger(body, "outputCompression");
+  if (typeof outputCompression === "object") {
+    return outputCompression;
+  }
+  if (
+    outputCompression !== undefined &&
+    (outputCompression < 0 || outputCompression > 100)
+  ) {
+    return badRequest("outputCompression must be between 0 and 100");
+  }
+  if (outputCompression !== undefined && outputFormat === "png") {
+    return badRequest(
+      "outputCompression is only supported for jpeg or webp output",
+    );
   }
 
-  return { prompt, size, quality, background, outputFormat };
+  const moderation = readString(body, "moderation", "auto");
+  if (!includesString(IMAGE_MODERATIONS, moderation)) {
+    return badRequest(`Unsupported image moderation: ${moderation}`);
+  }
+
+  return {
+    prompt,
+    size,
+    quality,
+    background,
+    outputFormat,
+    outputCompression,
+    moderation,
+  };
 }
 
 function mapPricingRows(
@@ -449,6 +555,8 @@ export function parseImageGenerationResult(
     quality: response.quality ?? options.quality,
     background: response.background ?? options.background,
     outputFormat,
+    outputCompression: options.outputCompression,
+    moderation: options.moderation,
     usage,
   };
 }
@@ -538,6 +646,10 @@ export const recordGeneratedImage$ = command(
           quality: params.generation.quality,
           background: params.generation.background,
           outputFormat: params.generation.outputFormat,
+          ...(params.generation.outputCompression !== undefined
+            ? { outputCompression: params.generation.outputCompression }
+            : {}),
+          moderation: params.generation.moderation,
         },
       },
       signal,
@@ -595,6 +707,8 @@ export const recordGeneratedImage$ = command(
       quality: params.generation.quality,
       background: params.generation.background,
       outputFormat: params.generation.outputFormat,
+      outputCompression: params.generation.outputCompression,
+      moderation: params.generation.moderation,
       revisedPrompt: params.generation.revisedPrompt,
       usage: params.generation.usage,
     };

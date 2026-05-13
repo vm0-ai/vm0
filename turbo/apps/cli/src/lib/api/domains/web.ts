@@ -207,6 +207,8 @@ interface GenerateWebImageOptions {
   quality?: string;
   background?: string;
   outputFormat?: string;
+  outputCompression?: number;
+  moderation?: string;
 }
 
 interface GenerateWebImageResult {
@@ -221,6 +223,8 @@ interface GenerateWebImageResult {
   quality: string;
   background: string;
   outputFormat: string;
+  outputCompression?: number;
+  moderation?: string;
   revisedPrompt?: string;
   usage: {
     textInputTokens: number;
@@ -479,6 +483,10 @@ export async function generateWebImage(
         ...(options.quality ? { quality: options.quality } : {}),
         ...(options.background ? { background: options.background } : {}),
         ...(options.outputFormat ? { outputFormat: options.outputFormat } : {}),
+        ...(options.outputCompression !== undefined
+          ? { outputCompression: options.outputCompression }
+          : {}),
+        ...(options.moderation ? { moderation: options.moderation } : {}),
       }),
     },
   );

@@ -395,7 +395,7 @@ describe("POST /api/zero/image-io/generate", () => {
     expect(calledOpenAi).toBeFalsy();
   });
 
-  it("rejects transparent JPEG requests before OpenAI", async () => {
+  it("rejects transparent background requests before OpenAI", async () => {
     const fixture = await track(seedImageFixture({}));
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledOpenAi = false;
@@ -413,14 +413,14 @@ describe("POST /api/zero/image-io/generate", () => {
       body: JSON.stringify({
         prompt: "a transparent badge",
         background: "transparent",
-        outputFormat: "jpeg",
+        outputFormat: "webp",
       }),
     });
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toStrictEqual({
       error: {
-        message: "transparent background requires png or webp output",
+        message: "gpt-image-2 does not support transparent backgrounds",
         code: "BAD_REQUEST",
       },
     });
@@ -514,9 +514,9 @@ describe("POST /api/zero/image-io/generate", () => {
               revised_prompt: "A small robot paints a sunflower.",
             },
           ],
-          output_format: "png",
-          size: "1024x1024",
-          quality: "medium",
+          output_format: "webp",
+          size: "2048x1152",
+          quality: "auto",
           background: "opaque",
           usage: {
             total_tokens: usage.totalTokens,
@@ -542,20 +542,28 @@ describe("POST /api/zero/image-io/generate", () => {
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
         prompt: "a small robot painting a sunflower",
+        size: "2048x1152",
+        quality: "auto",
+        background: "opaque",
+        outputFormat: "webp",
+        outputCompression: 50,
+        moderation: "low",
       }),
     });
 
     expect(response.status).toBe(200);
     const body: unknown = await response.json();
     expect(body).toMatchObject({
-      contentType: "image/png",
+      contentType: "image/webp",
       size: IMAGE_BYTES.byteLength,
       creditsCharged,
       model: IMAGE_IO_MODEL,
-      imageSize: "1024x1024",
-      quality: "medium",
+      imageSize: "2048x1152",
+      quality: "auto",
       background: "opaque",
-      outputFormat: "png",
+      outputFormat: "webp",
+      outputCompression: 50,
+      moderation: "low",
       revisedPrompt: "A small robot paints a sunflower.",
       usage,
     });
@@ -564,10 +572,12 @@ describe("POST /api/zero/image-io/generate", () => {
       model: IMAGE_IO_MODEL,
       prompt: "a small robot painting a sunflower",
       n: 1,
-      size: "1024x1024",
-      quality: "medium",
-      background: "auto",
-      output_format: "png",
+      size: "2048x1152",
+      quality: "auto",
+      background: "opaque",
+      output_format: "webp",
+      output_compression: 50,
+      moderation: "low",
     });
 
     if (
@@ -584,7 +594,7 @@ describe("POST /api/zero/image-io/generate", () => {
     const fileId = String(body.id);
     const filename = String(body.filename);
     const url = String(body.url);
-    expect(filename).toBe(`image-${fileId.slice(0, 8)}.png`);
+    expect(filename).toBe(`image-${fileId.slice(0, 8)}.webp`);
     expect(url).toBe(
       `http://localhost:3000/f/${encodeURIComponent(
         fixture.userId.replace(/^user_/, ""),
@@ -596,7 +606,7 @@ describe("POST /api/zero/image-io/generate", () => {
     expect(putInput.Key).toBe(
       `uploads/${fixture.userId}/${fileId}/${filename}`,
     );
-    expect(putInput.ContentType).toBe("image/png");
+    expect(putInput.ContentType).toBe("image/webp");
     const putBody = putInput.Body;
     expect(Buffer.isBuffer(putBody)).toBeTruthy();
     if (!Buffer.isBuffer(putBody)) {
@@ -617,17 +627,19 @@ describe("POST /api/zero/image-io/generate", () => {
       userId: fixture.userId,
       orgId: fixture.orgId,
       filename,
-      contentType: "image/png",
+      contentType: "image/webp",
       sizeBytes: IMAGE_BYTES.byteLength,
       url,
     });
     expect(uploadRows[0]?.metadata).toMatchObject({
       generatedBy: "zero-official-image",
       model: IMAGE_IO_MODEL,
-      imageSize: "1024x1024",
-      quality: "medium",
+      imageSize: "2048x1152",
+      quality: "auto",
       background: "opaque",
-      outputFormat: "png",
+      outputFormat: "webp",
+      outputCompression: 50,
+      moderation: "low",
       s3Key: `uploads/${fixture.userId}/${fileId}/${filename}`,
     });
 

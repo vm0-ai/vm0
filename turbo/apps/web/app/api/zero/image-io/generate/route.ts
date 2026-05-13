@@ -32,11 +32,16 @@ const REQUIRED_PRICING_CATEGORIES = [
   IMAGE_OUTPUT_CATEGORY,
 ] as const;
 const MAX_PROMPT_LENGTH = 32_000;
+const MIN_IMAGE_PIXELS = 655_360;
+const MAX_IMAGE_PIXELS = 8_294_400;
+const MAX_IMAGE_EDGE = 3_840;
+const IMAGE_EDGE_MULTIPLE = 16;
+const MAX_ASPECT_RATIO = 3;
 
-const SIZES = new Set(["1024x1024", "1024x1536", "1536x1024"]);
 const QUALITIES = new Set(["low", "medium", "high", "auto"]);
-const BACKGROUNDS = new Set(["auto", "opaque", "transparent"]);
+const BACKGROUNDS = new Set(["auto", "opaque"]);
 const OUTPUT_FORMATS = new Set(["png", "webp", "jpeg"]);
+const MODERATIONS = new Set(["auto", "low"]);
 
 type PricingCategory = (typeof REQUIRED_PRICING_CATEGORIES)[number];
 
@@ -46,6 +51,8 @@ interface ImageOptions {
   quality: string;
   background: string;
   outputFormat: string;
+  outputCompression: number | undefined;
+  moderation: string;
 }
 
 interface OpenAiImageGenerationResponse {
@@ -91,6 +98,76 @@ function readString(
     : fallback;
 }
 
+function readOptionalInteger(
+  body: Record<string, unknown>,
+  key: string,
+): number | undefined | Response {
+  const value = body[key];
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim().length > 0
+        ? Number(value.trim())
+        : Number.NaN;
+  if (!Number.isInteger(parsed)) {
+    return errorResponse(`${key} must be an integer`, "BAD_REQUEST", 400);
+  }
+
+  return parsed;
+}
+
+function validateImageSize(size: string): Response | null {
+  if (size === "auto") {
+    return null;
+  }
+
+  const match = /^(\d+)x(\d+)$/.exec(size);
+  if (!match) {
+    return errorResponse(`Unsupported image size: ${size}`, "BAD_REQUEST", 400);
+  }
+
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  const longEdge = Math.max(width, height);
+  const shortEdge = Math.min(width, height);
+  const pixels = width * height;
+
+  if (longEdge > MAX_IMAGE_EDGE) {
+    return errorResponse(
+      `Unsupported image size: ${size}; max edge is ${MAX_IMAGE_EDGE}px`,
+      "BAD_REQUEST",
+      400,
+    );
+  }
+  if (width % IMAGE_EDGE_MULTIPLE !== 0 || height % IMAGE_EDGE_MULTIPLE !== 0) {
+    return errorResponse(
+      `Unsupported image size: ${size}; both edges must be multiples of ${IMAGE_EDGE_MULTIPLE}px`,
+      "BAD_REQUEST",
+      400,
+    );
+  }
+  if (longEdge / shortEdge > MAX_ASPECT_RATIO) {
+    return errorResponse(
+      `Unsupported image size: ${size}; aspect ratio must be at most ${MAX_ASPECT_RATIO}:1`,
+      "BAD_REQUEST",
+      400,
+    );
+  }
+  if (pixels < MIN_IMAGE_PIXELS || pixels > MAX_IMAGE_PIXELS) {
+    return errorResponse(
+      `Unsupported image size: ${size}; total pixels must be between ${MIN_IMAGE_PIXELS} and ${MAX_IMAGE_PIXELS}`,
+      "BAD_REQUEST",
+      400,
+    );
+  }
+
+  return null;
+}
+
 function parseImageOptions(body: unknown): ImageOptions | Response {
   if (!isRecord(body)) {
     return errorResponse("Invalid JSON body", "BAD_REQUEST", 400);
@@ -109,9 +186,8 @@ function parseImageOptions(body: unknown): ImageOptions | Response {
   }
 
   const size = readString(body, "size", "1024x1024");
-  if (!SIZES.has(size)) {
-    return errorResponse(`Unsupported image size: ${size}`, "BAD_REQUEST", 400);
-  }
+  const sizeError = validateImageSize(size);
+  if (sizeError) return sizeError;
 
   const quality = readString(body, "quality", "medium");
   if (!QUALITIES.has(quality)) {
@@ -123,6 +199,13 @@ function parseImageOptions(body: unknown): ImageOptions | Response {
   }
 
   const background = readString(body, "background", "auto");
+  if (background === "transparent") {
+    return errorResponse(
+      "gpt-image-2 does not support transparent backgrounds",
+      "BAD_REQUEST",
+      400,
+    );
+  }
   if (!BACKGROUNDS.has(background)) {
     return errorResponse(
       `Unsupported image background: ${background}`,
@@ -139,15 +222,45 @@ function parseImageOptions(body: unknown): ImageOptions | Response {
       400,
     );
   }
-  if (background === "transparent" && outputFormat === "jpeg") {
+
+  const outputCompression = readOptionalInteger(body, "outputCompression");
+  if (outputCompression instanceof Response) return outputCompression;
+  if (
+    outputCompression !== undefined &&
+    (outputCompression < 0 || outputCompression > 100)
+  ) {
     return errorResponse(
-      "transparent background requires png or webp output",
+      "outputCompression must be between 0 and 100",
+      "BAD_REQUEST",
+      400,
+    );
+  }
+  if (outputCompression !== undefined && outputFormat === "png") {
+    return errorResponse(
+      "outputCompression is only supported for jpeg or webp output",
       "BAD_REQUEST",
       400,
     );
   }
 
-  return { prompt, size, quality, background, outputFormat };
+  const moderation = readString(body, "moderation", "auto");
+  if (!MODERATIONS.has(moderation)) {
+    return errorResponse(
+      `Unsupported image moderation: ${moderation}`,
+      "BAD_REQUEST",
+      400,
+    );
+  }
+
+  return {
+    prompt,
+    size,
+    quality,
+    background,
+    outputFormat,
+    outputCompression,
+    moderation,
+  };
 }
 
 async function loadImagePricing(): Promise<
@@ -304,6 +417,10 @@ async function handlePost(request: Request): Promise<Response> {
       quality: options.quality,
       background: options.background,
       output_format: options.outputFormat,
+      ...(options.outputCompression !== undefined
+        ? { output_compression: options.outputCompression }
+        : {}),
+      moderation: options.moderation,
     }),
     signal: request.signal,
   });
@@ -382,6 +499,10 @@ async function handlePost(request: Request): Promise<Response> {
       quality: responseBody.quality ?? options.quality,
       background: responseBody.background ?? options.background,
       outputFormat,
+      ...(options.outputCompression !== undefined
+        ? { outputCompression: options.outputCompression }
+        : {}),
+      moderation: options.moderation,
     },
   });
 
@@ -421,6 +542,10 @@ async function handlePost(request: Request): Promise<Response> {
     quality: responseBody.quality ?? options.quality,
     background: responseBody.background ?? options.background,
     outputFormat,
+    ...(options.outputCompression !== undefined
+      ? { outputCompression: options.outputCompression }
+      : {}),
+    moderation: options.moderation,
     revisedPrompt: image.revised_prompt,
     usage,
   });

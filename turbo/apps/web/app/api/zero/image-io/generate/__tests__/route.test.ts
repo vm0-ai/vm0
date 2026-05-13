@@ -46,7 +46,10 @@ type ImageResponse = {
   model: string;
   imageSize: string;
   quality: string;
+  background: string;
   outputFormat: string;
+  outputCompression?: number;
+  moderation?: string;
   usage: {
     textInputTokens: number;
     imageInputTokens: number;
@@ -159,6 +162,26 @@ describe("POST /api/zero/image-io/generate", () => {
     expect(body.error.code).toBe("BAD_REQUEST");
   });
 
+  it("returns 400 when transparent background is requested", async () => {
+    const userId = uniqueId("image-transparent");
+    await setupOrg(userId);
+
+    const response = await POST(
+      imageRequest({
+        prompt: "a transparent badge",
+        background: "transparent",
+        outputFormat: "webp",
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toMatchObject({
+      code: "BAD_REQUEST",
+      message: "gpt-image-2 does not support transparent backgrounds",
+    });
+  });
+
   it("returns 402 when the org has no spendable credits", async () => {
     const userId = uniqueId("image-empty-wallet");
     const { orgId } = await setupOrg(userId);
@@ -210,10 +233,12 @@ describe("POST /api/zero/image-io/generate", () => {
           model: MODEL,
           prompt: "a small robot painting a sunflower",
           n: 1,
-          size: "1024x1024",
-          quality: "medium",
-          background: "auto",
-          output_format: "png",
+          size: "2048x1152",
+          quality: "auto",
+          background: "opaque",
+          output_format: "webp",
+          output_compression: 50,
+          moderation: "low",
         });
 
         return HttpResponse.json({
@@ -224,9 +249,9 @@ describe("POST /api/zero/image-io/generate", () => {
               revised_prompt: "A small robot paints a sunflower.",
             },
           ],
-          output_format: "png",
-          size: "1024x1024",
-          quality: "medium",
+          output_format: "webp",
+          size: "2048x1152",
+          quality: "auto",
           background: "opaque",
           usage: {
             total_tokens: 3000,
@@ -243,7 +268,15 @@ describe("POST /api/zero/image-io/generate", () => {
 
     const response = await POST(
       imageRequest(
-        { prompt: "a small robot painting a sunflower" },
+        {
+          prompt: "a small robot painting a sunflower",
+          size: "2048x1152",
+          quality: "auto",
+          background: "opaque",
+          outputFormat: "webp",
+          outputCompression: 50,
+          moderation: "low",
+        },
         { Authorization: `Bearer ${token}` },
       ),
     );
@@ -251,14 +284,17 @@ describe("POST /api/zero/image-io/generate", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as ImageResponse;
     expect(body).toMatchObject({
-      filename: expect.stringMatching(/^image-[0-9a-f-]{8}\.png$/),
-      contentType: "image/png",
+      filename: expect.stringMatching(/^image-[0-9a-f-]{8}\.webp$/),
+      contentType: "image/webp",
       size: IMAGE_BYTES.byteLength,
       creditsCharged: 78,
       model: MODEL,
-      imageSize: "1024x1024",
-      quality: "medium",
-      outputFormat: "png",
+      imageSize: "2048x1152",
+      quality: "auto",
+      background: "opaque",
+      outputFormat: "webp",
+      outputCompression: 50,
+      moderation: "low",
       usage: {
         textInputTokens: 1000,
         imageInputTokens: 0,
@@ -277,7 +313,7 @@ describe("POST /api/zero/image-io/generate", () => {
     expect(bucket).toBe("test-bucket");
     expect(key).toBe(`uploads/${userId}/${body.id}/${body.filename}`);
     expect(uploadedBytes.equals(IMAGE_BYTES)).toBe(true);
-    expect(contentType).toBe("image/png");
+    expect(contentType).toBe("image/webp");
 
     const rows = await findTestRunUploadedFiles("schedule", body.id);
     expect(rows).toHaveLength(1);
@@ -288,13 +324,19 @@ describe("POST /api/zero/image-io/generate", () => {
       userId,
       orgId,
       filename: body.filename,
-      contentType: "image/png",
+      contentType: "image/webp",
       sizeBytes: IMAGE_BYTES.byteLength,
       url: body.url,
       metadata: expect.objectContaining({
         generatedBy: "zero-official-image",
         model: MODEL,
         s3Key: `uploads/${userId}/${body.id}/${body.filename}`,
+        imageSize: "2048x1152",
+        quality: "auto",
+        background: "opaque",
+        outputFormat: "webp",
+        outputCompression: 50,
+        moderation: "low",
       }),
     });
     expect(mockAblyPublish).toHaveBeenCalledWith(
