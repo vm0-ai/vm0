@@ -659,18 +659,31 @@ mod tests {
     }
 
     #[cfg(target_os = "linux")]
-    fn kill_pidfd_and_wait(pidfd: &std::os::fd::OwnedFd) {
+    fn signal_pidfd(pidfd: &std::os::fd::OwnedFd, signal: libc::c_int) -> std::io::Result<()> {
         // SAFETY: best-effort cleanup of a test-owned background process.
-        let _ = unsafe {
+        let result = unsafe {
             libc::syscall(
                 libc::SYS_pidfd_send_signal,
                 std::os::fd::AsRawFd::as_raw_fd(pidfd),
-                libc::SIGKILL,
+                signal,
                 std::ptr::null::<libc::siginfo_t>(),
                 0,
             )
         };
-        let _ = wait_for_pidfd_exit(pidfd, Duration::from_secs(1));
+        if result == 0 {
+            return Ok(());
+        }
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() == Some(libc::ESRCH) {
+            return Ok(());
+        }
+        Err(err)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn kill_pidfd_and_wait(pidfd: &std::os::fd::OwnedFd) -> std::io::Result<bool> {
+        signal_pidfd(pidfd, libc::SIGKILL)?;
+        wait_for_pidfd_exit(pidfd, Duration::from_secs(1))
     }
 
     #[test]
@@ -1094,15 +1107,26 @@ mod tests {
 
         let outcome = wait_with_kill_timeout(child.take().unwrap(), 100);
         if !matches!(outcome, WaitOutcome::TimedOut) {
-            kill_pidfd_and_wait(&background_pidfd);
+            kill_pidfd_and_wait(&background_pidfd)
+                .unwrap_or_else(|e| panic!("failed to clean up background pidfd: {e}"));
             panic!("expected timeout kill to return WaitOutcome::TimedOut");
         }
 
-        if !wait_for_pidfd_exit(&background_pidfd, Duration::from_secs(2)).unwrap() {
-            kill_pidfd_and_wait(&background_pidfd);
-            panic!(
-                "timeout kill should terminate background pid {background_pid} in the process group"
-            );
+        match wait_for_pidfd_exit(&background_pidfd, Duration::from_secs(2)) {
+            Ok(true) => {}
+            Ok(false) => {
+                kill_pidfd_and_wait(&background_pidfd)
+                    .unwrap_or_else(|e| panic!("failed to clean up background pidfd: {e}"));
+                panic!(
+                    "timeout kill should terminate background pid {background_pid} in the process group"
+                );
+            }
+            Err(e) => {
+                let cleanup = kill_pidfd_and_wait(&background_pidfd);
+                panic!(
+                    "failed to wait for background pid {background_pid} exit: {e}; cleanup={cleanup:?}"
+                );
+            }
         }
     }
 }
