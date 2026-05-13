@@ -616,7 +616,7 @@ mod tests {
             let result = unsafe { libc::poll(&mut pollfd, 1, timeout_ms) };
             if result > 0 {
                 let revents = pollfd.revents;
-                if revents & libc::POLLNVAL != 0 {
+                if revents & (libc::POLLERR | libc::POLLNVAL) != 0 {
                     return Err(std::io::Error::other("pidfd became invalid while polling"));
                 }
                 if revents & (libc::POLLIN | libc::POLLHUP) != 0 {
