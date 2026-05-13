@@ -96,8 +96,6 @@ const MODEL_BRAND_ICON: Readonly<Record<SupportedRunModel, ModelProviderType>> =
     "gpt-5.5": "openai-api-key",
     "gpt-5.4": "openai-api-key",
     "gpt-5.4-mini": "openai-api-key",
-    "gpt-5.3-codex": "openai-api-key",
-    "gpt-5.2": "openai-api-key",
   };
 
 function getModelIconType(model: SupportedRunModel): ModelProviderType {
