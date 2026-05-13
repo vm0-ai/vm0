@@ -32,6 +32,7 @@ import { githubOauthRoutes } from "./routes/github-oauth";
 import { internalCallbacksAgentRoutes } from "./routes/internal-callbacks-agent";
 import { internalCallbacksGithubIssuesRoutes } from "./routes/internal-callbacks-github-issues";
 import { internalCallbacksScheduleRoutes } from "./routes/internal-callbacks-schedule";
+import { internalCallbacksSlackOrgRoutes } from "./routes/internal-callbacks-slack-org";
 import { internalCallbacksTelegramRoutes } from "./routes/internal-callbacks-telegram";
 import { internalEventConsumerAxiomRoutes } from "./routes/internal-event-consumers-axiom";
 import { internalEventConsumerChatAssistantRoutes } from "./routes/internal-event-consumers-chat-assistant";
@@ -154,6 +155,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...internalCallbacksAgentRoutes,
   ...internalCallbacksGithubIssuesRoutes,
   ...internalCallbacksScheduleRoutes,
+  ...internalCallbacksSlackOrgRoutes,
   ...internalCallbacksTelegramRoutes,
   ...internalEventConsumerAxiomRoutes,
   ...internalEventConsumerChatAssistantRoutes,

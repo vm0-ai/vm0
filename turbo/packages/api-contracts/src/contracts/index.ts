@@ -178,6 +178,12 @@ export {
   type TelegramCallbackPayload,
 } from "./internal-callbacks-telegram";
 export {
+  internalCallbacksSlackOrgContract,
+  slackOrgCallbackPayloadSchema,
+  type InternalCallbacksSlackOrgContract,
+  type SlackOrgCallbackPayload,
+} from "./internal-callbacks-slack-org";
+export {
   sandboxReuseResultSchema,
   webhookEventsContract,
   webhookCompleteContract,

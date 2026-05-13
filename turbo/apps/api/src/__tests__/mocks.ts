@@ -59,6 +59,11 @@ export interface ApiTestMocks {
     readonly clientConfig: SyncMock;
   };
   readonly slack: {
+    readonly assistant: {
+      readonly threads: {
+        readonly setStatus: AsyncMock;
+      };
+    };
     readonly chat: {
       readonly postMessage: AsyncMock;
       readonly postEphemeral: AsyncMock;
@@ -183,6 +188,11 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   };
 
   const slack = {
+    assistant: {
+      threads: {
+        setStatus: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      },
+    },
     chat: {
       postMessage: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       postEphemeral: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -478,6 +488,11 @@ vi.mock("@slack/web-api", () => {
   return {
     WebClient: vi.fn(function (): unknown {
       return {
+        assistant: {
+          threads: {
+            setStatus: apiTestMocks.slack.assistant.threads.setStatus,
+          },
+        },
         chat: {
           postMessage: apiTestMocks.slack.chat.postMessage,
           postEphemeral: apiTestMocks.slack.chat.postEphemeral,
@@ -625,6 +640,7 @@ export function resetApiTestMocks(): void {
     "https://r2.example.com/upload?sig=test",
   );
   apiTestMocks.s3.clientConfig.mockReset();
+  apiTestMocks.slack.assistant.threads.setStatus.mockReset();
   apiTestMocks.slack.chat.postMessage.mockReset();
   apiTestMocks.slack.chat.postEphemeral.mockReset();
   apiTestMocks.slack.conversations.list.mockReset();

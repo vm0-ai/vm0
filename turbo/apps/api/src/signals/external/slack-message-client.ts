@@ -82,6 +82,19 @@ export async function postMessage(
   return { kind: "ok", ts: result.ok.ts, channel: result.ok.channel };
 }
 
+export async function setThreadStatus(
+  client: WebClient,
+  channel: string,
+  threadTs: string,
+  status: string,
+): Promise<void> {
+  await client.assistant.threads.setStatus({
+    channel_id: channel,
+    thread_ts: threadTs,
+    status,
+  });
+}
+
 export async function postEphemeral(
   client: WebClient,
   options: {
