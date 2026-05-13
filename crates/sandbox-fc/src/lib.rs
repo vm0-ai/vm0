@@ -9,9 +9,7 @@
 //! The main entry points are:
 //!
 //! - [`FirecrackerRuntime`], which manages shared host resources and creates
-//!   [`FirecrackerFactory`] instances.
-//! - [`FirecrackerFactory`], which creates and destroys [`FirecrackerSandbox`]
-//!   instances for a configured rootfs, kernel, and profile.
+//!   sandbox factories for configured rootfs, kernel, and profile settings.
 //! - [`FirecrackerSandbox`], the running microVM implementation of the
 //!   `sandbox::Sandbox` trait.
 //! - [`FirecrackerControl`], which exposes control-plane operations for a
