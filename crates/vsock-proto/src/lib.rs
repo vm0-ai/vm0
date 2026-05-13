@@ -37,50 +37,27 @@
 //! `command_output.output_seq` is per command operation and starts at 0,
 //! incrementing by 1 for each output frame across stdout and stderr.
 
-/// Header size (4-byte length prefix).
-pub const HEADER_SIZE: usize = 4;
+mod error;
+mod frame;
+mod read;
+mod wire;
 
-/// Maximum message body size (16 MB).
-pub const MAX_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
+pub use error::ProtocolError;
+pub use frame::{Decoder, RawMessage, encode};
+pub use wire::{
+    COMMAND_CAPTURED_OUTPUT_FLAG_TRUNCATED, COMMAND_FLAG_SUDO, COMMAND_OUTPUT_FLAG_TRUNCATED,
+    HEADER_SIZE, MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_COMMAND_CANCEL, MSG_COMMAND_OUTPUT,
+    MSG_COMMAND_RESULT, MSG_COMMAND_START, MSG_ERROR, MSG_PING, MSG_PONG, MSG_PROCESS_EXIT,
+    MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT,
+    MSG_STDOUT_CHUNK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, SPAWN_WATCH_FLAG_STREAM_STDOUT,
+    SPAWN_WATCH_FLAG_SUDO, VSOCK_PORT, WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_SUDO,
+};
 
-/// Minimum body size: type (1) + seq (4).
-pub const MIN_BODY_SIZE: usize = 5;
-
-// Message type constants.
-pub const MSG_READY: u8 = 0x00;
-pub const MSG_PING: u8 = 0x01;
-pub const MSG_PONG: u8 = 0x02;
-pub const MSG_WRITE_FILE: u8 = 0x03;
-pub const MSG_WRITE_FILE_RESULT: u8 = 0x04;
-pub const MSG_SPAWN_WATCH: u8 = 0x05;
-pub const MSG_SPAWN_WATCH_RESULT: u8 = 0x06;
-pub const MSG_PROCESS_EXIT: u8 = 0x07;
-pub const MSG_SHUTDOWN: u8 = 0x08;
-pub const MSG_SHUTDOWN_ACK: u8 = 0x09;
-pub const MSG_STDOUT_CHUNK: u8 = 0x0A;
-pub const MSG_COMMAND_START: u8 = 0x0B;
-pub const MSG_COMMAND_OUTPUT: u8 = 0x0C;
-pub const MSG_COMMAND_RESULT: u8 = 0x0D;
-pub const MSG_COMMAND_CANCEL: u8 = 0x0E;
-pub const MSG_ERROR: u8 = 0xFF;
-
-/// Default vsock port for host-guest communication.
-pub const VSOCK_PORT: u32 = 1000;
-
-// Spawn-watch payload flags.
-pub const SPAWN_WATCH_FLAG_SUDO: u8 = 0x01;
-pub const SPAWN_WATCH_FLAG_STREAM_STDOUT: u8 = 0x02;
-
-// Command operation payload flags.
-pub const COMMAND_FLAG_SUDO: u8 = 0x01;
-pub const COMMAND_OUTPUT_FLAG_TRUNCATED: u8 = 0x01;
-pub const COMMAND_CAPTURED_OUTPUT_FLAG_TRUNCATED: u8 = 0x01;
-
-// Write-file payload flags.
-pub const WRITE_FILE_FLAG_SUDO: u8 = 0x01;
-pub const WRITE_FILE_FLAG_APPEND: u8 = 0x02;
-
-const MAX_PAYLOAD_SIZE: usize = MAX_MESSAGE_SIZE - MIN_BODY_SIZE;
+use crate::read::{
+    checked_payload_len_add, ensure_payload_fits_message, ensure_u16_len, ensure_u32_len,
+    expect_consumed, read_i32, read_i32_at, read_slice, read_str, read_u8, read_u8_at, read_u16,
+    read_u16_at, read_u32, read_u32_at,
+};
 
 const COMMAND_OUTPUT_STREAM_STDOUT: u8 = 0x00;
 const COMMAND_OUTPUT_STREAM_STDERR: u8 = 0x01;
@@ -187,169 +164,9 @@ pub struct DecodedCommandResult<'a> {
     pub diagnostic: &'a str,
 }
 
-/// Protocol error.
-#[derive(Debug, Clone)]
-pub enum ProtocolError {
-    MessageTooLarge(usize),
-    MessageTooSmall(usize),
-    InvalidPayload(&'static str),
-    PayloadTooLarge(&'static str, usize),
-}
-
-impl std::fmt::Display for ProtocolError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::MessageTooLarge(size) => write!(f, "message too large: {size}"),
-            Self::MessageTooSmall(size) => write!(f, "message too small: {size}"),
-            Self::InvalidPayload(msg) => write!(f, "invalid payload: {msg}"),
-            Self::PayloadTooLarge(field, size) => {
-                write!(f, "payload field too large: {field} ({size} bytes)")
-            }
-        }
-    }
-}
-
-impl std::error::Error for ProtocolError {}
-
-/// Read a `u8` from `data` at `offset`. Returns `None` if out of bounds.
-fn read_u8_at(data: &[u8], offset: usize) -> Option<u8> {
-    data.get(offset).copied()
-}
-
-/// Read a `u16` from `data` at `offset`. Returns `None` if out of bounds.
-fn read_u16_at(data: &[u8], offset: usize) -> Option<u16> {
-    let end = offset.checked_add(2)?;
-    let bytes: [u8; 2] = data.get(offset..end)?.try_into().ok()?;
-    Some(u16::from_be_bytes(bytes))
-}
-
-/// Read a `u32` from `data` at `offset`. Returns `None` if out of bounds.
-fn read_u32_at(data: &[u8], offset: usize) -> Option<u32> {
-    let end = offset.checked_add(4)?;
-    let bytes: [u8; 4] = data.get(offset..end)?.try_into().ok()?;
-    Some(u32::from_be_bytes(bytes))
-}
-
-/// Read an `i32` from `data` at `offset`. Returns `None` if out of bounds.
-fn read_i32_at(data: &[u8], offset: usize) -> Option<i32> {
-    let end = offset.checked_add(4)?;
-    let bytes: [u8; 4] = data.get(offset..end)?.try_into().ok()?;
-    Some(i32::from_be_bytes(bytes))
-}
-
-fn ensure_payload_fits_message(payload_len: usize) -> Result<(), ProtocolError> {
-    let body_len = MIN_BODY_SIZE
-        .checked_add(payload_len)
-        .ok_or(ProtocolError::MessageTooLarge(usize::MAX))?;
-    if payload_len > MAX_PAYLOAD_SIZE || body_len > MAX_MESSAGE_SIZE {
-        return Err(ProtocolError::MessageTooLarge(body_len));
-    }
-    Ok(())
-}
-
-fn checked_payload_len_add(total: usize, add: usize) -> Result<usize, ProtocolError> {
-    total
-        .checked_add(add)
-        .ok_or(ProtocolError::MessageTooLarge(usize::MAX))
-}
-
-fn ensure_u16_len(field: &'static str, len: usize) -> Result<u16, ProtocolError> {
-    if len > u16::MAX as usize {
-        return Err(ProtocolError::PayloadTooLarge(field, len));
-    }
-    Ok(len as u16)
-}
-
-fn ensure_u32_len(field: &'static str, len: usize) -> Result<u32, ProtocolError> {
-    if len > u32::MAX as usize {
-        return Err(ProtocolError::PayloadTooLarge(field, len));
-    }
-    Ok(len as u32)
-}
-
-fn read_u8(payload: &[u8], offset: &mut usize, err: &'static str) -> Result<u8, ProtocolError> {
-    let value = read_u8_at(payload, *offset).ok_or(ProtocolError::InvalidPayload(err))?;
-    *offset += 1;
-    Ok(value)
-}
-
-fn read_u16(payload: &[u8], offset: &mut usize, err: &'static str) -> Result<u16, ProtocolError> {
-    let value = read_u16_at(payload, *offset).ok_or(ProtocolError::InvalidPayload(err))?;
-    *offset += 2;
-    Ok(value)
-}
-
-fn read_u32(payload: &[u8], offset: &mut usize, err: &'static str) -> Result<u32, ProtocolError> {
-    let value = read_u32_at(payload, *offset).ok_or(ProtocolError::InvalidPayload(err))?;
-    *offset += 4;
-    Ok(value)
-}
-
-fn read_i32(payload: &[u8], offset: &mut usize, err: &'static str) -> Result<i32, ProtocolError> {
-    let value = read_i32_at(payload, *offset).ok_or(ProtocolError::InvalidPayload(err))?;
-    *offset += 4;
-    Ok(value)
-}
-
-fn read_slice<'a>(
-    payload: &'a [u8],
-    offset: &mut usize,
-    len: usize,
-    err: &'static str,
-) -> Result<&'a [u8], ProtocolError> {
-    let end = (*offset)
-        .checked_add(len)
-        .ok_or(ProtocolError::InvalidPayload(err))?;
-    let slice = payload
-        .get(*offset..end)
-        .ok_or(ProtocolError::InvalidPayload(err))?;
-    *offset = end;
-    Ok(slice)
-}
-
-fn read_str<'a>(
-    payload: &'a [u8],
-    offset: &mut usize,
-    len: usize,
-    truncated_err: &'static str,
-    utf8_err: &'static str,
-) -> Result<&'a str, ProtocolError> {
-    std::str::from_utf8(read_slice(payload, offset, len, truncated_err)?)
-        .map_err(|_| ProtocolError::InvalidPayload(utf8_err))
-}
-
-fn expect_consumed(payload: &[u8], offset: usize, err: &'static str) -> Result<(), ProtocolError> {
-    if offset != payload.len() {
-        return Err(ProtocolError::InvalidPayload(err));
-    }
-    Ok(())
-}
-
-/// A raw decoded message.
-#[derive(Debug, Clone)]
-pub struct RawMessage {
-    pub msg_type: u8,
-    pub seq: u32,
-    pub payload: Vec<u8>,
-}
-
 // ---------------------------------------------------------------------------
 // Encode
 // ---------------------------------------------------------------------------
-
-/// Encode a raw message: `[4-byte length][1-byte type][4-byte seq][payload]`.
-pub fn encode(msg_type: u8, seq: u32, payload: &[u8]) -> Result<Vec<u8>, ProtocolError> {
-    let body_len = 1 + 4 + payload.len();
-    if body_len > MAX_MESSAGE_SIZE {
-        return Err(ProtocolError::MessageTooLarge(body_len));
-    }
-    let mut buf = Vec::with_capacity(HEADER_SIZE + body_len);
-    buf.extend_from_slice(&(body_len as u32).to_be_bytes());
-    buf.push(msg_type);
-    buf.extend_from_slice(&seq.to_be_bytes());
-    buf.extend_from_slice(payload);
-    Ok(buf)
-}
 
 /// Encode spawn_watch payload: command fields + optional `[2B log_path_len][log_path]`.
 ///
@@ -1281,87 +1098,10 @@ pub fn decode_error(payload: &[u8]) -> Result<&str, ProtocolError> {
     .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in error"))
 }
 
-// ---------------------------------------------------------------------------
-// Decoder (buffered, handles partial reads)
-// ---------------------------------------------------------------------------
-
-/// Buffered message decoder for streaming data.
-pub struct Decoder {
-    buf: Vec<u8>,
-}
-
-impl Decoder {
-    pub fn new() -> Self {
-        Self {
-            buf: Vec::with_capacity(64 * 1024),
-        }
-    }
-
-    /// Feed data and extract complete messages.
-    pub fn decode(&mut self, data: &[u8]) -> Result<Vec<RawMessage>, ProtocolError> {
-        self.buf.extend_from_slice(data);
-        let mut messages = Vec::new();
-        let mut offset = 0;
-
-        while offset + HEADER_SIZE <= self.buf.len() {
-            let length = match read_u32_at(&self.buf, offset) {
-                Some(v) => v as usize,
-                None => break,
-            };
-
-            if length > MAX_MESSAGE_SIZE {
-                self.buf.clear();
-                return Err(ProtocolError::MessageTooLarge(length));
-            }
-            if length < MIN_BODY_SIZE {
-                self.buf.clear();
-                return Err(ProtocolError::MessageTooSmall(length));
-            }
-
-            let total = HEADER_SIZE + length;
-            if offset + total > self.buf.len() {
-                break;
-            }
-
-            let msg_type = match read_u8_at(&self.buf, offset + HEADER_SIZE) {
-                Some(v) => v,
-                None => break,
-            };
-            let seq = match read_u32_at(&self.buf, offset + HEADER_SIZE + 1) {
-                Some(v) => v,
-                None => break,
-            };
-            let payload = self
-                .buf
-                .get(offset + HEADER_SIZE + MIN_BODY_SIZE..offset + total)
-                .unwrap_or_default()
-                .to_vec();
-
-            messages.push(RawMessage {
-                msg_type,
-                seq,
-                payload,
-            });
-            offset += total;
-        }
-
-        // Compact: remove consumed bytes once at the end
-        if offset > 0 {
-            self.buf.drain(..offset);
-        }
-
-        Ok(messages)
-    }
-}
-
-impl Default for Decoder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use crate::wire::MAX_PAYLOAD_SIZE;
+
     use super::*;
 
     #[test]
