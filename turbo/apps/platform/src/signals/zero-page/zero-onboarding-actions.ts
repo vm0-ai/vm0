@@ -527,7 +527,7 @@ export const onboardingContinueAgentPhone$ = command(
           return;
         }
 
-        set(detachedNavigateTo$, ROUTES.works);
+        set(detachedNavigateTo$, ROUTES.settingsAgentPhone);
       })(),
     ]);
   },

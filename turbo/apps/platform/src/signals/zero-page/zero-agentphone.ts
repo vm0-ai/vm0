@@ -11,6 +11,9 @@ import { setAblyLoop$ } from "../realtime.ts";
 
 const internalReload$ = state(0);
 const internalPhoneForm$ = state("");
+const internalConnectDialogOpen$ = state(false);
+const internalVerificationPhone$ = state<string | null>(null);
+const internalShowPhoneError$ = state(false);
 
 function normalizeAgentPhoneHandle(value: string): string {
   return value.trim().replace(/[^\d+]/gu, "");
@@ -22,6 +25,18 @@ function isValidAgentPhoneHandle(value: string): boolean {
 
 export const agentPhonePhoneForm$ = computed((get) => {
   return get(internalPhoneForm$);
+});
+
+export const agentPhoneConnectDialogOpen$ = computed((get) => {
+  return get(internalConnectDialogOpen$);
+});
+
+export const agentPhoneVerificationPhone$ = computed((get) => {
+  return get(internalVerificationPhone$);
+});
+
+export const agentPhoneShowPhoneError$ = computed((get) => {
+  return get(internalShowPhoneError$);
 });
 
 export const agentPhonePhoneFormNormalized$ = computed((get) => {
@@ -40,6 +55,30 @@ export const agentPhonePhoneFormError$ = computed((get) => {
 
 export const setAgentPhonePhoneForm$ = command(({ set }, value: string) => {
   set(internalPhoneForm$, value);
+});
+
+export const setAgentPhoneConnectDialogOpen$ = command(
+  ({ set }, value: boolean) => {
+    set(internalConnectDialogOpen$, value);
+  },
+);
+
+export const setAgentPhoneVerificationPhone$ = command(
+  ({ set }, value: string | null) => {
+    set(internalVerificationPhone$, value);
+  },
+);
+
+export const setAgentPhoneShowPhoneError$ = command(
+  ({ set }, value: boolean) => {
+    set(internalShowPhoneError$, value);
+  },
+);
+
+export const resetAgentPhoneConnectUi$ = command(({ set }) => {
+  set(internalPhoneForm$, "");
+  set(internalVerificationPhone$, null);
+  set(internalShowPhoneError$, false);
 });
 
 export const agentPhoneLinkStatus$ = computed(

@@ -1,4 +1,3 @@
-import { type FormEvent, useState } from "react";
 import {
   useGet,
   useSet,
@@ -13,12 +12,10 @@ import {
   IconCircleCheck,
   IconDotsVertical,
   IconDownload,
-  IconLoader2,
   IconSettings,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Button } from "@vm0/ui";
-import { Input } from "@vm0/ui/components/ui/input";
 import {
   Popover,
   PopoverContent,
@@ -41,16 +38,7 @@ import {
   setShowUninstallDialog$,
 } from "../../signals/zero-page/zero-slack.ts";
 import { telegramBots$ } from "../../signals/zero-page/zero-telegram.ts";
-import {
-  agentPhoneLinkStatus$,
-  agentPhonePhoneForm$,
-  agentPhonePhoneFormError$,
-  agentPhonePhoneFormNormalized$,
-  disconnectAgentPhone$,
-  setAgentPhonePhoneForm$,
-  startAgentPhoneLink$,
-  waitForAgentPhoneConnection$,
-} from "../../signals/zero-page/zero-agentphone.ts";
+import { agentPhoneLinkStatus$ } from "../../signals/zero-page/zero-agentphone.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
@@ -337,194 +325,10 @@ function TelegramCard() {
   );
 }
 
-function getAgentPhoneErrorMessage(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : "AgentPhone request failed. Try again.";
-}
-
-function AgentPhoneConnectDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const phoneForm = useGet(agentPhonePhoneForm$);
-  const normalizedPhone = useLastResolved(agentPhonePhoneFormNormalized$) ?? "";
-  const phoneError = useLastResolved(agentPhonePhoneFormError$) ?? null;
-  const setPhoneForm = useSet(setAgentPhonePhoneForm$);
-  const pageSignal = useGet(pageSignal$);
-  const [startLoadable, startLink] = useLoadableSet(startAgentPhoneLink$);
-  const [connectLoadable, waitForConnection] = useLoadableSet(
-    waitForAgentPhoneConnection$,
-  );
-  const [verificationPhone, setVerificationPhone] = useState<string | null>(
-    null,
-  );
-  const [requestError, setRequestError] = useState<string | null>(null);
-  const [showPhoneError, setShowPhoneError] = useState(false);
-  const starting = startLoadable.state === "loading";
-  const connecting = connectLoadable.state === "loading";
-  const busy = starting || connecting;
-  const visiblePhoneError = showPhoneError ? phoneError : null;
-
-  const close = (nextOpen: boolean) => {
-    if (!nextOpen && starting) {
-      return;
-    }
-    if (!nextOpen && !connecting) {
-      setPhoneForm("");
-      setVerificationPhone(null);
-      setRequestError(null);
-      setShowPhoneError(false);
-    }
-    onOpenChange(nextOpen);
-  };
-
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!normalizedPhone || phoneError || busy) {
-      setShowPhoneError(true);
-      return;
-    }
-    setVerificationPhone(null);
-    setRequestError(null);
-    setShowPhoneError(false);
-    detach(
-      (async () => {
-        try {
-          const result = await startLink(pageSignal);
-          setVerificationPhone(result.phoneHandle);
-          await waitForConnection(pageSignal);
-          if (!pageSignal.aborted) {
-            close(false);
-          }
-        } catch (error) {
-          if (!pageSignal.aborted) {
-            setRequestError(getAgentPhoneErrorMessage(error));
-          }
-        }
-      })(),
-      Reason.DomCallback,
-    );
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={close}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Connect AgentPhone</DialogTitle>
-          <DialogDescription>
-            Enter your phone number. We will text a verification link that
-            connects this workspace.
-          </DialogDescription>
-        </DialogHeader>
-        <form className="grid gap-3" onSubmit={submit}>
-          <label
-            htmlFor="agentphone-phone-input"
-            className="text-sm font-medium text-foreground"
-          >
-            Phone number
-          </label>
-          <Input
-            id="agentphone-phone-input"
-            data-testid="agentphone-phone-input"
-            type="tel"
-            inputMode="tel"
-            placeholder="+1 555 555 1212"
-            value={phoneForm}
-            disabled={busy}
-            onBlur={() => {
-              setShowPhoneError(true);
-            }}
-            onChange={(event) => {
-              setRequestError(null);
-              setVerificationPhone(null);
-              setPhoneForm(event.target.value);
-            }}
-            onFocus={() => {
-              setShowPhoneError(false);
-            }}
-          />
-          {normalizedPhone ? (
-            <p
-              className="text-xs text-muted-foreground"
-              data-testid="agentphone-normalized-phone"
-            >
-              We will text {normalizedPhone}.
-            </p>
-          ) : null}
-          {visiblePhoneError ? (
-            <p className="text-sm text-destructive" role="alert">
-              {visiblePhoneError}
-            </p>
-          ) : null}
-          {requestError ? (
-            <p className="text-sm text-destructive" role="alert">
-              {requestError}
-            </p>
-          ) : null}
-          {verificationPhone ? (
-            <div
-              className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground"
-              role="status"
-            >
-              <span className="flex items-center gap-2">
-                {connecting ? (
-                  <IconLoader2 size={14} className="shrink-0 animate-spin" />
-                ) : (
-                  <IconCircleCheck
-                    size={14}
-                    className="shrink-0 text-green-600"
-                  />
-                )}
-                <span>
-                  Verification text sent to {verificationPhone}. Open the link
-                  in that text to finish connecting.
-                </span>
-              </span>
-            </div>
-          ) : null}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={starting}
-              onClick={() => {
-                close(false);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={!normalizedPhone || Boolean(phoneError) || busy}
-            >
-              {busy ? <IconLoader2 size={14} className="animate-spin" /> : null}
-              {starting
-                ? "Sending..."
-                : connecting
-                  ? "Connecting..."
-                  : "Send verification"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function AgentPhoneCard() {
   const statusLoadable = useLastLoadable(agentPhoneLinkStatus$);
   const status =
     statusLoadable.state === "hasData" ? statusLoadable.data : null;
-  const [disconnectLoadable, disconnect] = useLoadableSet(
-    disconnectAgentPhone$,
-  );
-  const disconnecting = disconnectLoadable.state === "loading";
-  const pageSignal = useGet(pageSignal$);
-  const [connectOpen, setConnectOpen] = useState(false);
   const isConnected = status?.linked ?? false;
   const connectedPhone = status?.linked ? status.phoneHandle : null;
   const summary = status?.agentPhoneNumber
@@ -532,81 +336,42 @@ function AgentPhoneCard() {
     : "Text-message access to Zero";
 
   return (
-    <>
-      <div className="zero-card flex flex-col">
-        <div className="flex items-center gap-4 p-4">
-          <div className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden">
-            <img src={imessageIconImg} alt="" className="h-7 w-7" />
-          </div>
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
+    <Link
+      pathname={ROUTES.settingsAgentPhone}
+      className="zero-card flex flex-col text-inherit no-underline transition-colors hover:bg-muted/30"
+      aria-label="Open AgentPhone settings"
+    >
+      <div className="flex items-center gap-4 p-4">
+        <div className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden">
+          <img src={imessageIconImg} alt="" className="h-7 w-7" />
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex min-w-0 items-center gap-2">
             <div className="truncate text-sm font-medium text-foreground">
               AgentPhone
             </div>
-            <div className="truncate text-sm text-muted-foreground">
-              {summary}
-            </div>
           </div>
-          {isConnected ? (
-            <span
-              data-testid="agentphone-connected-indicator"
-              className="inline-flex min-w-0 max-w-52 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
-            >
-              <IconCircleCheck className="h-3 w-3 text-green-600" />
-              <span className="min-w-0 truncate" title={connectedPhone ?? ""}>
-                {connectedPhone ? `Connected (${connectedPhone})` : "Connected"}
-              </span>
-            </span>
-          ) : null}
-          {status !== null && !isConnected ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 shrink-0 gap-1.5 rounded-lg"
-              aria-label="Connect AgentPhone"
-              onClick={() => {
-                setConnectOpen(true);
-              }}
-            >
-              Connect
-            </Button>
-          ) : null}
-          {isConnected ? (
-            <Popover>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  className="shrink-0 rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  aria-label="AgentPhone more options"
-                >
-                  <IconDotsVertical size={16} stroke={1.5} />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent
-                align="end"
-                className="flex w-40 flex-col gap-0.5 p-2"
-              >
-                <button
-                  type="button"
-                  aria-label="Disconnect AgentPhone"
-                  disabled={disconnecting}
-                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
-                  onClick={() => {
-                    return detach(disconnect(pageSignal), Reason.DomCallback);
-                  }}
-                >
-                  {disconnecting ? "Disconnecting..." : "Disconnect"}
-                </button>
-              </PopoverContent>
-            </Popover>
-          ) : null}
+          <div className="truncate text-sm text-muted-foreground">
+            {summary}
+          </div>
         </div>
+        {isConnected ? (
+          <span
+            data-testid="agentphone-connected-indicator"
+            className="inline-flex min-w-0 max-w-52 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
+          >
+            <IconCircleCheck className="h-3 w-3 text-green-600" />
+            <span className="min-w-0 truncate" title={connectedPhone ?? ""}>
+              {connectedPhone ? `Connected (${connectedPhone})` : "Connected"}
+            </span>
+          </span>
+        ) : null}
+        <span className="shrink-0 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-secondary-foreground">
+          <IconSettings size={14} stroke={1.5} />
+          Manage
+        </span>
       </div>
-      <AgentPhoneConnectDialog
-        open={connectOpen}
-        onOpenChange={setConnectOpen}
-      />
-    </>
+    </Link>
   );
 }
 

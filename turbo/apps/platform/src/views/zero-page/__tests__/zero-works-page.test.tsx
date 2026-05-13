@@ -9,22 +9,17 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import {
-  detachedSetupPage,
-  click,
-  fill,
-} from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   zeroIntegrationsSlackContract,
   type SlackOrgStatus,
 } from "@vm0/api-contracts/contracts/zero-integrations-slack";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 import { pathname$ } from "../../../signals/route.ts";
 import { setMockAgentPhoneIntegration } from "../../../mocks/handlers/api-integrations-agentphone.ts";
 
@@ -151,7 +146,7 @@ describe("works page - AgentPhone integration card", () => {
     });
   });
 
-  it("shows AgentPhone connection status and disconnect action", async () => {
+  it("shows AgentPhone connection status and opens settings", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     setMockAgentPhoneIntegration({
       linked: true,
@@ -175,21 +170,19 @@ describe("works page - AgentPhone integration card", () => {
       expect(
         screen.getByTestId("agentphone-connected-indicator"),
       ).toHaveTextContent("Connected (+15555551212)");
+      expect(
+        screen.getByLabelText("Open AgentPhone settings"),
+      ).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("AgentPhone more options"));
-
-    expect(await screen.findByText("Disconnect")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Open AgentPhone settings")).toBeNull();
-
-    click(screen.getByText("Disconnect"));
+    click(screen.getByLabelText("Open AgentPhone settings"));
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Connect AgentPhone")).toBeInTheDocument();
+      expect(context.store.get(pathname$)).toBe("/settings/agentphone");
     });
   });
 
-  it("opens AgentPhone connect dialog from the card and starts verification", async () => {
+  it("opens AgentPhone settings when the user is unlinked", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     setMockAgentPhoneIntegration({
       linked: false,
@@ -203,108 +196,16 @@ describe("works page - AgentPhone integration card", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Connect AgentPhone")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Connect AgentPhone"));
-    const input = await screen.findByTestId("agentphone-phone-input");
-    await fill(input, "+1 (555) 555-1212");
-
-    await waitFor(() => {
       expect(
-        screen.getByTestId("agentphone-normalized-phone"),
-      ).toHaveTextContent("+15555551212");
-    });
-
-    click(screen.getByText("Send verification"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Verification text sent to \+15555551212/i),
+        screen.getByLabelText("Open AgentPhone settings"),
       ).toBeInTheDocument();
-      expect(screen.getByText("Connecting...")).toBeDisabled();
-    });
-    await waitFor(() => {
-      expect(hasSubscription("agentphone:changed")).toBe(true);
+      expect(screen.queryByLabelText("Connect AgentPhone")).toBeNull();
     });
 
-    setMockAgentPhoneIntegration({
-      linked: true,
-      phoneHandle: "+15555551212",
-      agentPhoneNumber: "+19039853128",
-      configured: true,
-    });
-    triggerAblyEvent("agentphone:changed");
+    click(screen.getByLabelText("Open AgentPhone settings"));
 
     await waitFor(() => {
-      expect(
-        screen.getByTestId("agentphone-connected-indicator"),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("validates AgentPhone phone number format before sending verification", async () => {
-    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
-    setMockAgentPhoneIntegration({
-      linked: false,
-      agentPhoneNumber: "+19039853128",
-      configured: true,
-    });
-    detachedSetupPage({
-      context,
-      path: "/works",
-      featureSwitches: { [FeatureSwitchKey.AgentPhoneAppUi]: true },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Connect AgentPhone")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Connect AgentPhone"));
-    const input = await screen.findByTestId("agentphone-phone-input");
-    await fill(input, "555-1212");
-
-    expect(
-      screen.queryByText(
-        "Enter a phone number with country code, like +1 555 555 1212.",
-      ),
-    ).not.toBeInTheDocument();
-
-    fireEvent.blur(input);
-    await waitFor(() => {
-      expect(
-        screen.getByText(
-          "Enter a phone number with country code, like +1 555 555 1212.",
-        ),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getByText("Send verification")).toBeDisabled();
-
-    fireEvent.focus(input);
-    await waitFor(() => {
-      expect(
-        screen.queryByText(
-          "Enter a phone number with country code, like +1 555 555 1212.",
-        ),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("shows AgentPhone connect action whenever the user is unlinked", async () => {
-    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
-    setMockAgentPhoneIntegration({
-      linked: false,
-      agentPhoneNumber: "+19039853128",
-      configured: false,
-    });
-    detachedSetupPage({
-      context,
-      path: "/works",
-      featureSwitches: { [FeatureSwitchKey.AgentPhoneAppUi]: true },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Connect AgentPhone")).toBeInTheDocument();
+      expect(context.store.get(pathname$)).toBe("/settings/agentphone");
     });
   });
 });

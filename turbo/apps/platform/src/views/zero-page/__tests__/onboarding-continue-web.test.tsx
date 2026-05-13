@@ -335,7 +335,7 @@ describe("onboarding set up AgentPhone → settings page", () => {
     click(screen.getByTestId("onboarding-agentphone-option"));
 
     await waitFor(() => {
-      expect(pathname()).toBe("/works");
+      expect(pathname()).toBe("/settings/agentphone");
     });
   });
 });
