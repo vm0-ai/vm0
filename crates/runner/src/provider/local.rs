@@ -159,7 +159,7 @@ impl LocalProvider {
         for offset in 0..profile_count {
             let Some(profile) = self
                 .supported_profiles
-                .get((start + offset) % profile_count)
+                .get(start.wrapping_add(offset) % profile_count)
             else {
                 continue;
             };
@@ -228,7 +228,7 @@ impl LocalProvider {
         }
 
         // Atomic write: tmp then rename, so submit never reads a partial file.
-        let tmp_file = result_dir.join(format!("{run_id}.result.tmp"));
+        let tmp_file = result_dir.join(format!("{run_id}.{}.result.tmp", RunId::new_v4()));
         let result_file = local_queue::result_path(&self.group_dir, run_id);
         if let Err(e) = std::fs::write(&tmp_file, &json) {
             warn!(run_id = %run_id, error = %e, "local: failed to write result file");
@@ -236,6 +236,7 @@ impl LocalProvider {
         }
         if let Err(e) = std::fs::rename(&tmp_file, &result_file) {
             warn!(run_id = %run_id, error = %e, "local: failed to rename result file");
+            let _ = std::fs::remove_file(&tmp_file);
             return false;
         }
         true
@@ -248,10 +249,10 @@ impl LocalProvider {
         job_file: &std::path::Path,
         error: String,
     ) {
-        let _ = std::fs::remove_file(claim_file);
         if self.write_result(run_id, 1, Some(&error)) {
             let _ = std::fs::remove_file(job_file);
         }
+        let _ = std::fs::remove_file(claim_file);
     }
 }
 
@@ -323,20 +324,11 @@ impl JobProvider for LocalProvider {
                 warn!(run_id = %run_id, error = %e, "local: invalid job JSON, marking job as failed");
                 // Submit writes .job atomically (tmp + rename), so a malformed
                 // .job is a permanent error — retrying the parse will just
-                // spin. Ordering below is chosen so a failure inside complete()
-                // leaves the job retryable instead of stranded:
-                //   1. remove .claim — lets another runner (or the next poll)
-                //      rediscover the job if complete() below fails;
-                //   2. write .result via complete() — notifies the submitter;
-                //   3. remove .job — only after the submitter has a result, so
-                //      a complete() failure keeps .job around for retry.
-                //
-                // Retry is safe: complete() uses tmp + rename, so a partial
-                // first attempt leaves no observable .result, and a later
-                // attempt atomically replaces whatever is there. Multi-runner
-                // race (A and B both handle the same poison) is benign for the
-                // same reason — both write the same parse error, last rename
-                // wins, submitter sees one consistent result.
+                // spin. Keep the claim until after the result attempt so other
+                // local runners do not repeatedly process the same poison job.
+                // If the result write fails, the claim is released and the job
+                // remains retryable. If it succeeds, the result becomes the
+                // durable terminal marker before the bad job is removed.
                 self.fail_claimed_job(
                     run_id,
                     &claim_file,
