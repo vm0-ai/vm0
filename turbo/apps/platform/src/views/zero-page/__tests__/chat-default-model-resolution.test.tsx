@@ -295,15 +295,16 @@ async function expectComposerShowsModel(displayName: string): Promise<void> {
   });
 }
 
-// Thread page composer shows stored model values read-only once a user message
-// exists.
+// Thread page composer shows stored model values in the editable picker once a
+// user message exists.
 async function expectThreadComposerShowsModel(
   displayName: string,
 ): Promise<void> {
   await waitFor(() => {
-    expect(screen.getByLabelText(displayName)).toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: displayName }),
+    ).toBeInTheDocument();
   });
-  expect(screen.queryByRole("combobox", { name: displayName })).toBeNull();
 }
 
 async function expectAgentChatLoaded(): Promise<void> {
