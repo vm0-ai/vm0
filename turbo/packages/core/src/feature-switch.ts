@@ -238,6 +238,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.AgentPhoneWorksControls]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Show AgentPhone connect and disconnect controls directly on the Works page. When off, the Works card links to the AgentPhone settings page.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatMessageStartButton]: {
     maintainer: "linghan@vm0.ai",
     description:

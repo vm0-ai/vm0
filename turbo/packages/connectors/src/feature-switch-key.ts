@@ -42,6 +42,7 @@ export enum FeatureSwitchKey {
   TestOauthConnector = "testOauthConnector",
   ChatHeaderNewButton = "chatHeaderNewButton",
   AgentPhoneAppUi = "agentPhoneAppUi",
+  AgentPhoneWorksControls = "agentPhoneWorksControls",
 
   ChatMessageStartButton = "chatMessageStartButton",
   Goal = "goal",

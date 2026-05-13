@@ -328,6 +328,8 @@ export function ZeroWorksPage() {
   const displayNameLoadable = useLoadable(currentChatAgentDisplayName$);
   const features = useLastResolved(featureSwitch$);
   const showAgentPhone = features?.[FeatureSwitchKey.AgentPhoneAppUi] ?? false;
+  const showAgentPhoneWorksControls =
+    features?.[FeatureSwitchKey.AgentPhoneWorksControls] ?? false;
   const displayName =
     displayNameLoadable.state === "hasData"
       ? (displayNameLoadable.data ?? "Zero")
@@ -350,7 +352,11 @@ export function ZeroWorksPage() {
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
           <SlackCard displayName={displayName} />
           <TelegramCard />
-          {showAgentPhone ? <AgentPhoneCard /> : null}
+          {showAgentPhone ? (
+            <AgentPhoneCard
+              controls={showAgentPhoneWorksControls ? "inline" : "manage-link"}
+            />
+          ) : null}
         </div>
       </main>
     </div>

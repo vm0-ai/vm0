@@ -60,6 +60,19 @@ function renderWorksPage() {
   detachedSetupPage({ context, path: "/works" });
 }
 
+function agentPhoneAppSwitches() {
+  return {
+    [FeatureSwitchKey.AgentPhoneAppUi]: true,
+  };
+}
+
+function agentPhoneInlineSwitches() {
+  return {
+    [FeatureSwitchKey.AgentPhoneAppUi]: true,
+    [FeatureSwitchKey.AgentPhoneWorksControls]: true,
+  };
+}
+
 describe("works page - slack integration status display", () => {
   it("renders the Slack integration card on the works page (CONN-D-058)", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
@@ -162,7 +175,7 @@ describe("works page - AgentPhone integration card", () => {
     detachedSetupPage({
       context,
       path: "/works",
-      featureSwitches: { [FeatureSwitchKey.AgentPhoneAppUi]: true },
+      featureSwitches: agentPhoneInlineSwitches(),
     });
 
     await waitFor(() => {
@@ -179,6 +192,37 @@ describe("works page - AgentPhone integration card", () => {
     });
   });
 
+  it("links to AgentPhone settings when works controls are disabled", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    setMockAgentPhoneIntegration({
+      linked: false,
+      agentPhoneNumber: "+19039853128",
+      configured: true,
+    });
+    detachedSetupPage({
+      context,
+      path: "/works",
+      featureSwitches: {
+        ...agentPhoneAppSwitches(),
+        [FeatureSwitchKey.AgentPhoneWorksControls]: false,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("AgentPhone")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open AgentPhone settings"),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Connect AgentPhone")).toBeNull();
+    });
+
+    click(screen.getByLabelText("Open AgentPhone settings"));
+
+    await waitFor(() => {
+      expect(context.store.get(pathname$)).toBe("/settings/agentphone");
+    });
+  });
+
   it("starts verification from the list page and refreshes when AgentPhone connects", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     setMockAgentPhoneIntegration({
@@ -189,7 +233,7 @@ describe("works page - AgentPhone integration card", () => {
     detachedSetupPage({
       context,
       path: "/works",
-      featureSwitches: { [FeatureSwitchKey.AgentPhoneAppUi]: true },
+      featureSwitches: agentPhoneInlineSwitches(),
     });
 
     await waitFor(() => {
@@ -247,7 +291,7 @@ describe("works page - AgentPhone integration card", () => {
     detachedSetupPage({
       context,
       path: "/works",
-      featureSwitches: { [FeatureSwitchKey.AgentPhoneAppUi]: true },
+      featureSwitches: agentPhoneInlineSwitches(),
     });
 
     await waitFor(() => {
@@ -295,7 +339,7 @@ describe("works page - AgentPhone integration card", () => {
     detachedSetupPage({
       context,
       path: "/works",
-      featureSwitches: { [FeatureSwitchKey.AgentPhoneAppUi]: true },
+      featureSwitches: agentPhoneInlineSwitches(),
     });
 
     await waitFor(() => {
