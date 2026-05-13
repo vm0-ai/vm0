@@ -649,19 +649,6 @@ function ProviderTypeSelect({
   );
 }
 
-function ProviderTypeStatic({ type }: { type: ModelProviderType | null }) {
-  if (!type) {
-    return null;
-  }
-
-  return (
-    <div className="flex h-10 items-center gap-2 text-sm text-foreground">
-      <ProviderIcon type={type} size={16} />
-      <span>{getUILabel(type)}</span>
-    </div>
-  );
-}
-
 function buildPolicyUpdate(params: {
   policies: OrgModelPolicy[];
   model: SupportedRunModel;
@@ -995,15 +982,6 @@ function ModelPolicyRouteDialog({
                 when the team should run through one billing account or one
                 centrally managed key.
               </p>
-            </div>
-          )}
-
-          {dialog.routeKind === "oauth" && (
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium text-foreground">
-                OAuth provider
-              </label>
-              <ProviderTypeStatic type={selectedProviderType} />
             </div>
           )}
 

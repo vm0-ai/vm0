@@ -398,7 +398,12 @@ describe("org-providers-tab — stale banner reconnect", () => {
     );
     const dialog = await openModelPolicyDialog(row);
     clickRouteChoice(dialog, "BYOK: member OAuth");
-    expect(within(dialog).getByText("Claude Code (OAuth token)")).toBeDefined();
+    expect(
+      within(dialog).queryByText("OAuth provider"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("Claude Code (OAuth token)"),
+    ).not.toBeInTheDocument();
     expect(within(dialog).queryByRole("combobox")).not.toBeInTheDocument();
     expect(
       within(dialog).queryByText(/OAuth routes are personal/i),
@@ -430,7 +435,12 @@ describe("org-providers-tab — stale banner reconnect", () => {
     const row = await screen.findByTestId("org-model-policy-row-gpt-5.5");
     const dialog = await openModelPolicyDialog(row);
     clickRouteChoice(dialog, "BYOK: member OAuth");
-    expect(within(dialog).getByText("ChatGPT (Codex)")).toBeDefined();
+    expect(
+      within(dialog).queryByText("OAuth provider"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("ChatGPT (Codex)"),
+    ).not.toBeInTheDocument();
     expect(within(dialog).queryByRole("combobox")).not.toBeInTheDocument();
     clickDialogButton(dialog, "Save changes");
 
