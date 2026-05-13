@@ -1247,6 +1247,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_balloon_statistics_reads_split_response_body() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let body =
+            r#"{"target_mib":768,"actual_mib":384,"target_pages":196608,"actual_pages":98304}"#
+                .to_string();
+        let (request_tx, mut requests) = mpsc::unbounded_channel();
+        let (header_written_tx, header_written_rx) = oneshot::channel();
+        let (write_body_tx, write_body_rx) = oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let request = read_mock_request(&mut stream).await.unwrap();
+            request_tx.send(request).unwrap();
+
+            let header = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len());
+            stream.write_all(header.as_bytes()).await.unwrap();
+            header_written_tx.send(()).unwrap();
+
+            write_body_rx.await.unwrap();
+            stream.write_all(body.as_bytes()).await.unwrap();
+        });
+
+        let client_sock_path = sock_path.clone();
+        let client_task = tokio::spawn(async move {
+            let client = ApiClient::new(&client_sock_path);
+            client.get_balloon_statistics().await
+        });
+
+        header_written_rx.await.unwrap();
+        write_body_tx.send(()).unwrap();
+
+        let stats = client_task.await.unwrap().unwrap();
+        assert_eq!(stats.target_mib, 768);
+        assert_eq!(stats.actual_mib, 384);
+        assert_eq!(stats.target_pages, 196_608);
+        assert_eq!(stats.actual_pages, 98_304);
+
+        let request = requests.recv().await.unwrap();
+        assert_request(&request, "GET", "/balloon/statistics");
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn get_balloon_statistics_handles_minimal_response() {
         let body = r#"{"target_mib":0,"actual_mib":0,"target_pages":0,"actual_pages":0}"#;
         let mut api = MockFirecrackerApi::with_responses([MockResponse::ok_body(body)]);
