@@ -38,13 +38,44 @@ export function NavMenu({
   onScheduleClose,
 }: NavMenuProps) {
   const open = openId === id;
+  const suppressNextFocusOpen = React.useRef(false);
+  const suppressFocusTimer = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const openSelf = React.useCallback(() => {
     onOpen(id);
   }, [id, onOpen]);
 
+  const handleFocus = React.useCallback(() => {
+    if (suppressNextFocusOpen.current) {
+      return;
+    }
+    onOpen(id);
+  }, [id, onOpen]);
+
+  const clearSuppressedFocus = React.useCallback(() => {
+    if (suppressFocusTimer.current !== null) {
+      clearTimeout(suppressFocusTimer.current);
+    }
+    suppressFocusTimer.current = setTimeout(() => {
+      suppressNextFocusOpen.current = false;
+      suppressFocusTimer.current = null;
+    }, 0);
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (suppressFocusTimer.current !== null) {
+        clearTimeout(suppressFocusTimer.current);
+      }
+    };
+  }, []);
+
   const handleSelect = () => {
+    suppressNextFocusOpen.current = true;
     onClose();
+    clearSuppressedFocus();
   };
 
   return (
@@ -63,7 +94,7 @@ export function NavMenu({
         className={`nav-trigger${open ? " nav-trigger-active" : ""}`}
         data-nav-menu-id={id}
         onPointerEnter={openSelf}
-        onFocus={openSelf}
+        onFocus={handleFocus}
         onBlur={onScheduleClose}
       >
         {label}
@@ -84,6 +115,11 @@ export function NavMenu({
           onPointerLeave={onScheduleClose}
           onOpenAutoFocus={(event: Event) => {
             event.preventDefault();
+          }}
+          onCloseAutoFocus={(event: Event) => {
+            if (suppressNextFocusOpen.current) {
+              event.preventDefault();
+            }
           }}
         >
           {items.map((item) => {
