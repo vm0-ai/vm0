@@ -659,9 +659,17 @@ mod tests {
     }
 
     #[cfg(target_os = "linux")]
-    fn kill_background_pid_and_wait(pid: libc::pid_t, pidfd: &std::os::fd::OwnedFd) {
+    fn kill_pidfd_and_wait(pidfd: &std::os::fd::OwnedFd) {
         // SAFETY: best-effort cleanup of a test-owned background process.
-        let _ = unsafe { libc::kill(pid, libc::SIGKILL) };
+        let _ = unsafe {
+            libc::syscall(
+                libc::SYS_pidfd_send_signal,
+                std::os::fd::AsRawFd::as_raw_fd(pidfd),
+                libc::SIGKILL,
+                std::ptr::null::<libc::siginfo_t>(),
+                0,
+            )
+        };
         let _ = wait_for_pidfd_exit(pidfd, Duration::from_secs(1));
     }
 
@@ -1086,12 +1094,12 @@ mod tests {
 
         let outcome = wait_with_kill_timeout(child.take().unwrap(), 100);
         if !matches!(outcome, WaitOutcome::TimedOut) {
-            kill_background_pid_and_wait(background_pid, &background_pidfd);
+            kill_pidfd_and_wait(&background_pidfd);
             panic!("expected timeout kill to return WaitOutcome::TimedOut");
         }
 
         if !wait_for_pidfd_exit(&background_pidfd, Duration::from_secs(2)).unwrap() {
-            kill_background_pid_and_wait(background_pid, &background_pidfd);
+            kill_pidfd_and_wait(&background_pidfd);
             panic!(
                 "timeout kill should terminate background pid {background_pid} in the process group"
             );
