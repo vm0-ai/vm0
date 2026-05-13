@@ -163,7 +163,11 @@ fn trimmed_message(message: &str) -> Option<String> {
 }
 
 fn mask_and_truncate_diagnostic(message: &str, masker: &SecretMasker) -> String {
-    truncate_diagnostic_message(&masker.mask_string(message))
+    truncate_diagnostic_message(&escape_log_line_breaks(&masker.mask_string(message)))
+}
+
+fn escape_log_line_breaks(message: &str) -> String {
+    message.replace('\r', "\\r").replace('\n', "\\n")
 }
 
 fn truncate_diagnostic_message(message: &str) -> String {
@@ -604,6 +608,22 @@ mod tests {
             Some(CodexFailureDiagnostic {
                 event_type: "error",
                 message: "request failed with token ***".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_failure_diagnostic_escapes_line_breaks() {
+        let event = serde_json::json!({
+            "type": "error",
+            "message": "first line\nsecond line\rthird line"
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "first line\\nsecond line\\rthird line".to_string(),
             })
         );
     }
