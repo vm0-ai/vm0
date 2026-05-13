@@ -476,7 +476,7 @@ describe("POST /api/zero/slack/commands", () => {
       expect(values).not.toContain("__workspace_default__");
       expect(values).toContain("claude-sonnet-4-6");
       expect(values).toContain("deepseek-v4-pro");
-      expect(values).not.toContain("gpt-5.5");
+      expect(values).toContain("gpt-5.5");
       expect(labels).toContain("Claude Sonnet 4.6 (workspace default)");
       expect(inputBlock?.element?.initial_option?.value).toBe(
         "deepseek-v4-pro",
