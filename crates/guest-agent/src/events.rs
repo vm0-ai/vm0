@@ -16,6 +16,7 @@ use serde_json::{Value, json};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const CODEX_FAILURE_DIAGNOSTIC_MAX_BYTES: usize = 4096;
+const CODEX_FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX: &str = "...[truncated]";
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct CodexFailureDiagnostic {
@@ -79,28 +80,18 @@ pub(crate) fn masked_codex_failure_diagnostic(
     event: &Value,
     masker: &SecretMasker,
 ) -> Option<CodexFailureDiagnostic> {
-    if !is_codex_failure_event_type(event) {
-        return None;
-    }
-
-    let mut masked_event = event.clone();
-    masker.mask_value(&mut masked_event);
-    extract_codex_failure_diagnostic(&masked_event)
-}
-
-fn is_codex_failure_event_type(event: &Value) -> bool {
-    match event.get("type").and_then(Value::as_str) {
-        Some("error" | "turn.failed") => true,
-        Some("turn.completed") => codex_turn_completed_failure_status(event).is_some(),
-        _ => false,
-    }
+    let diagnostic = extract_codex_failure_diagnostic(event)?;
+    Some(CodexFailureDiagnostic {
+        event_type: diagnostic.event_type,
+        message: mask_and_truncate_diagnostic(&diagnostic.message, masker),
+    })
 }
 
 fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnostic> {
     match event.get("type").and_then(Value::as_str)? {
         "error" => Some(CodexFailureDiagnostic {
             event_type: "error",
-            message: message_from_field(event.get("message"))
+            message: raw_message_from_field(event.get("message"))
                 .or_else(|| codex_error_message(event.get("error")))
                 .unwrap_or_else(|| "error".into()),
         }),
@@ -137,7 +128,7 @@ fn codex_turn_completed_failure_status(event: &Value) -> Option<&'static str> {
 
 fn codex_error_message(error: Option<&Value>) -> Option<String> {
     let error = error?;
-    if let Some(message) = message_from_field(Some(error)) {
+    if let Some(message) = raw_message_from_field(Some(error)) {
         return Some(message);
     }
 
@@ -146,33 +137,33 @@ fn codex_error_message(error: Option<&Value>) -> Option<String> {
     combined_message_and_details(message, details)
 }
 
-fn message_from_field(value: Option<&Value>) -> Option<String> {
-    value
-        .and_then(Value::as_str)
-        .and_then(normalized_diagnostic_message)
+fn raw_message_from_field(value: Option<&Value>) -> Option<String> {
+    value.and_then(Value::as_str).and_then(trimmed_message)
 }
 
 fn combined_message_and_details(message: Option<&str>, details: Option<&str>) -> Option<String> {
     match (
-        message.and_then(normalized_diagnostic_message),
-        details.and_then(normalized_diagnostic_message),
+        message.and_then(trimmed_message),
+        details.and_then(trimmed_message),
     ) {
-        (Some(message), Some(details)) => Some(truncate_diagnostic_message(&format!(
-            "{message} ({details})"
-        ))),
+        (Some(message), Some(details)) => Some(format!("{message} ({details})")),
         (Some(message), None) => Some(message),
         (None, Some(details)) => Some(details),
         (None, None) => None,
     }
 }
 
-fn normalized_diagnostic_message(message: &str) -> Option<String> {
+fn trimmed_message(message: &str) -> Option<String> {
     let message = message.trim();
     if message.is_empty() {
         return None;
     }
 
-    Some(truncate_diagnostic_message(message))
+    Some(message.to_string())
+}
+
+fn mask_and_truncate_diagnostic(message: &str, masker: &SecretMasker) -> String {
+    truncate_diagnostic_message(&masker.mask_string(message))
 }
 
 fn truncate_diagnostic_message(message: &str) -> String {
@@ -180,11 +171,16 @@ fn truncate_diagnostic_message(message: &str) -> String {
         return message.to_string();
     }
 
-    let mut end = CODEX_FAILURE_DIAGNOSTIC_MAX_BYTES;
+    let mut end =
+        CODEX_FAILURE_DIAGNOSTIC_MAX_BYTES - CODEX_FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX.len();
     while !message.is_char_boundary(end) {
         end -= 1;
     }
-    format!("{}...[truncated]", &message[..end])
+    format!(
+        "{}{}",
+        &message[..end],
+        CODEX_FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX
+    )
 }
 
 /// POST a prepared event payload to the webhook endpoint.
@@ -609,6 +605,49 @@ mod tests {
                 event_type: "error",
                 message: "request failed with token ***".to_string(),
             })
+        );
+    }
+
+    #[test]
+    fn codex_failure_diagnostic_masks_before_truncating() {
+        let prefix = "x".repeat(
+            CODEX_FAILURE_DIAGNOSTIC_MAX_BYTES
+                - CODEX_FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX.len()
+                - "super".len(),
+        );
+        let event = serde_json::json!({
+            "type": "error",
+            "message": format!("{prefix}supersecret after-boundary")
+        });
+        let masker = SecretMasker::from_raw("c3VwZXJzZWNyZXQ=");
+        let diagnostic = masked_codex_failure_diagnostic(&event, &masker)
+            .expect("error event should produce a diagnostic");
+
+        assert!(
+            diagnostic.message.contains("***"),
+            "diagnostic should keep the masked token marker: {diagnostic:?}"
+        );
+        assert!(
+            !diagnostic.message.contains("super"),
+            "diagnostic should not leak a partial secret near the truncation boundary: {diagnostic:?}"
+        );
+    }
+
+    #[test]
+    fn codex_failure_diagnostic_truncates_to_max_bytes() {
+        let event = serde_json::json!({
+            "type": "error",
+            "message": "x".repeat(CODEX_FAILURE_DIAGNOSTIC_MAX_BYTES + 100)
+        });
+        let diagnostic = masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw(""))
+            .expect("error event should produce a diagnostic");
+
+        assert_eq!(diagnostic.message.len(), CODEX_FAILURE_DIAGNOSTIC_MAX_BYTES);
+        assert!(
+            diagnostic
+                .message
+                .ends_with(CODEX_FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX),
+            "diagnostic should end with truncation marker: {diagnostic:?}"
         );
     }
 
