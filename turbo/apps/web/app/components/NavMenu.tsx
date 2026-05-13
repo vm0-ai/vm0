@@ -19,8 +19,8 @@ interface NavMenuProps {
   label: string;
   alignOffset?: number;
   items: NavMenuItem[];
-  openId: string | null;
-  onOpen: (id: string) => void;
+  open: boolean;
+  onOpen: () => void;
   onClose: () => void;
   onSelect: () => void;
   onCancelClose: () => void;
@@ -32,52 +32,15 @@ export function NavMenu({
   label,
   items,
   alignOffset = 0,
-  openId,
+  open,
   onOpen,
   onClose,
   onSelect,
   onCancelClose,
   onScheduleClose,
 }: NavMenuProps) {
-  const open = openId === id;
-  const suppressNextFocusOpen = React.useRef(false);
-  const suppressFocusTimer = React.useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-
-  const openSelf = React.useCallback(() => {
-    onOpen(id);
-  }, [id, onOpen]);
-
-  const handleFocus = React.useCallback(() => {
-    if (suppressNextFocusOpen.current) {
-      return;
-    }
-    onOpen(id);
-  }, [id, onOpen]);
-
-  const clearSuppressedFocus = React.useCallback(() => {
-    if (suppressFocusTimer.current !== null) {
-      clearTimeout(suppressFocusTimer.current);
-    }
-    suppressFocusTimer.current = setTimeout(() => {
-      suppressNextFocusOpen.current = false;
-      suppressFocusTimer.current = null;
-    }, 0);
-  }, []);
-
-  React.useEffect(() => {
-    return () => {
-      if (suppressFocusTimer.current !== null) {
-        clearTimeout(suppressFocusTimer.current);
-      }
-    };
-  }, []);
-
   const handleSelect = () => {
-    suppressNextFocusOpen.current = true;
     onSelect();
-    clearSuppressedFocus();
   };
 
   return (
@@ -85,7 +48,7 @@ export function NavMenu({
       open={open}
       onOpenChange={(next) => {
         if (next) {
-          onOpen(id);
+          onOpen();
           return;
         }
         onClose();
@@ -95,8 +58,8 @@ export function NavMenu({
         type="button"
         className={`nav-trigger${open ? " nav-trigger-active" : ""}`}
         data-nav-menu-id={id}
-        onPointerEnter={openSelf}
-        onFocus={handleFocus}
+        onPointerEnter={onOpen}
+        onFocus={onOpen}
         onBlur={onScheduleClose}
       >
         {label}
@@ -119,9 +82,7 @@ export function NavMenu({
             event.preventDefault();
           }}
           onCloseAutoFocus={(event: Event) => {
-            if (suppressNextFocusOpen.current) {
-              event.preventDefault();
-            }
+            event.preventDefault();
           }}
         >
           {items.map((item) => {

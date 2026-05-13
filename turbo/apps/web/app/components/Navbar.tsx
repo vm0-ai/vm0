@@ -2,6 +2,7 @@
 
 import {
   type PointerEvent as ReactPointerEvent,
+  type RefObject,
   useCallback,
   useEffect,
   useRef,
@@ -37,6 +38,13 @@ const NAV_MENU_TRIGGER_HOTZONE_Y = 18;
 const NAV_MENU_TRIGGER_HOTZONE_X = 12;
 const NAV_MENU_POPOVER_HOTZONE = 8;
 const NAV_MENU_SELECT_REOPEN_BLOCK_MS = 350;
+const DESKTOP_NAV_MENU_IDS = ["resources", "trust-and-tech"] as const;
+
+type DesktopNavMenuId = (typeof DESKTOP_NAV_MENU_IDS)[number];
+
+function isDesktopNavMenuId(id: string | undefined): id is DesktopNavMenuId {
+  return DESKTOP_NAV_MENU_IDS.includes(id as DesktopNavMenuId);
+}
 
 function containsPoint(
   rect: DOMRect,
@@ -52,63 +60,55 @@ function containsPoint(
   );
 }
 
-export function Navbar({
-  initialIsSignedIn = false,
-  initialShowDocs = false,
-}: NavbarProps) {
-  const { theme } = useTheme();
-  const t = useTranslations("nav");
-  const { isSignedIn: clerkIsSignedIn, isLoaded } = useUser();
-  const isSignedIn = isLoaded ? clerkIsSignedIn : initialIsSignedIn;
-  const { signOut } = useClerk();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const desktopNavRef = useRef<HTMLDivElement | null>(null);
-  const closeMenuTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const blockMenuOpenUntil = useRef(0);
+function useDesktopNavMenus(desktopNavRef: RefObject<HTMLDivElement | null>) {
+  const [openMenuId, setOpenMenuId] = useState<DesktopNavMenuId | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blockOpenUntilRef = useRef(0);
 
-  const cancelMenuClose = useCallback(() => {
-    if (closeMenuTimer.current !== null) {
-      clearTimeout(closeMenuTimer.current);
-      closeMenuTimer.current = null;
+  const cancelClose = useCallback(() => {
+    if (closeTimerRef.current === null) {
+      return;
     }
+    clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
   }, []);
 
-  const openNavMenu = useCallback(
-    (id: string) => {
-      if (Date.now() < blockMenuOpenUntil.current) {
+  const openMenu = useCallback(
+    (id: DesktopNavMenuId) => {
+      if (Date.now() < blockOpenUntilRef.current) {
         return;
       }
-      cancelMenuClose();
+      cancelClose();
       setOpenMenuId(id);
     },
-    [cancelMenuClose],
+    [cancelClose],
   );
 
-  const closeNavMenu = useCallback(() => {
-    cancelMenuClose();
+  const closeMenu = useCallback(() => {
+    cancelClose();
     setOpenMenuId(null);
-  }, [cancelMenuClose]);
+  }, [cancelClose]);
 
-  const selectNavMenuItem = useCallback(() => {
-    blockMenuOpenUntil.current = Date.now() + NAV_MENU_SELECT_REOPEN_BLOCK_MS;
-    closeNavMenu();
-  }, [closeNavMenu]);
+  const selectMenuItem = useCallback(() => {
+    blockOpenUntilRef.current = Date.now() + NAV_MENU_SELECT_REOPEN_BLOCK_MS;
+    closeMenu();
+  }, [closeMenu]);
 
-  const scheduleNavMenuClose = useCallback(() => {
-    cancelMenuClose();
-    closeMenuTimer.current = setTimeout(() => {
+  const scheduleClose = useCallback(() => {
+    cancelClose();
+    closeTimerRef.current = setTimeout(() => {
       setOpenMenuId(null);
-      closeMenuTimer.current = null;
+      closeTimerRef.current = null;
     }, NAV_MENU_CLOSE_DELAY_MS);
-  }, [cancelMenuClose]);
+  }, [cancelClose]);
 
-  const navMenuIdFromTriggerHotzone = useCallback(
-    (clientX: number, clientY: number): string | null => {
+  const getMenuIdFromTriggerHotzone = useCallback(
+    (clientX: number, clientY: number): DesktopNavMenuId | null => {
       const root = desktopNavRef.current;
       if (!root) {
         return null;
       }
+
       const triggerRects = Array.from(
         root.querySelectorAll<HTMLButtonElement>("[data-nav-menu-id]"),
       )
@@ -118,8 +118,8 @@ export function Navbar({
             rect: trigger.getBoundingClientRect(),
           };
         })
-        .filter((entry) => {
-          return entry.id.length > 0;
+        .filter((entry): entry is { id: DesktopNavMenuId; rect: DOMRect } => {
+          return isDesktopNavMenuId(entry.id);
         })
         .sort((a, b) => {
           return a.rect.left - b.rect.left;
@@ -128,6 +128,7 @@ export function Navbar({
       if (triggerRects.length === 0) {
         return null;
       }
+
       const firstTrigger = triggerRects[0];
       const lastTrigger = triggerRects[triggerRects.length - 1];
       if (!firstTrigger || !lastTrigger) {
@@ -165,57 +166,51 @@ export function Navbar({
           : nearest;
       }).id;
     },
-    [],
+    [desktopNavRef],
   );
 
-  const isPointerInOpenPopoverHotzone = useCallback(
-    (clientX: number, clientY: number): boolean => {
-      if (openMenuId === null) {
-        return false;
-      }
-      const popover = Array.from(
-        document.querySelectorAll<HTMLElement>("[data-nav-popover-id]"),
-      ).find((element) => {
-        return element.dataset.navPopoverId === openMenuId;
-      });
-      if (!popover) {
-        return false;
-      }
-      return containsPoint(
-        popover.getBoundingClientRect(),
-        clientX,
-        clientY,
-        NAV_MENU_POPOVER_HOTZONE,
-      );
-    },
-    [openMenuId],
-  );
+  const getOpenMenuElements = useCallback(() => {
+    if (openMenuId === null) {
+      return null;
+    }
 
-  const isPointerInOpenMenuBridge = useCallback(
+    const root = desktopNavRef.current;
+    if (!root) {
+      return null;
+    }
+
+    const trigger = Array.from(
+      root.querySelectorAll<HTMLButtonElement>("[data-nav-menu-id]"),
+    ).find((element) => {
+      return element.dataset.navMenuId === openMenuId;
+    });
+    const popover = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-nav-popover-id]"),
+    ).find((element) => {
+      return element.dataset.navPopoverId === openMenuId;
+    });
+    if (!trigger || !popover) {
+      return null;
+    }
+
+    return { trigger, popover };
+  }, [desktopNavRef, openMenuId]);
+
+  const isPointerInOpenMenuHotzone = useCallback(
     (clientX: number, clientY: number): boolean => {
-      if (openMenuId === null) {
-        return false;
-      }
-      const root = desktopNavRef.current;
-      if (!root) {
-        return false;
-      }
-      const trigger = Array.from(
-        root.querySelectorAll<HTMLButtonElement>("[data-nav-menu-id]"),
-      ).find((element) => {
-        return element.dataset.navMenuId === openMenuId;
-      });
-      const popover = Array.from(
-        document.querySelectorAll<HTMLElement>("[data-nav-popover-id]"),
-      ).find((element) => {
-        return element.dataset.navPopoverId === openMenuId;
-      });
-      if (!trigger || !popover) {
+      const elements = getOpenMenuElements();
+      if (!elements) {
         return false;
       }
 
-      const triggerRect = trigger.getBoundingClientRect();
-      const popoverRect = popover.getBoundingClientRect();
+      const triggerRect = elements.trigger.getBoundingClientRect();
+      const popoverRect = elements.popover.getBoundingClientRect();
+      if (
+        containsPoint(popoverRect, clientX, clientY, NAV_MENU_POPOVER_HOTZONE)
+      ) {
+        return true;
+      }
+
       const left =
         Math.min(triggerRect.left, popoverRect.left) - NAV_MENU_POPOVER_HOTZONE;
       const right =
@@ -235,62 +230,98 @@ export function Navbar({
         clientY <= bottom
       );
     },
-    [openMenuId],
+    [getOpenMenuElements],
   );
 
-  const syncOpenMenuForPointer = useCallback(
+  const syncMenuForPointer = useCallback(
     (clientX: number, clientY: number) => {
-      const menuId = navMenuIdFromTriggerHotzone(clientX, clientY);
+      const menuId = getMenuIdFromTriggerHotzone(clientX, clientY);
       if (menuId) {
-        openNavMenu(menuId);
+        openMenu(menuId);
         return;
       }
-      if (
-        isPointerInOpenPopoverHotzone(clientX, clientY) ||
-        isPointerInOpenMenuBridge(clientX, clientY)
-      ) {
-        cancelMenuClose();
+
+      if (isPointerInOpenMenuHotzone(clientX, clientY)) {
+        cancelClose();
         return;
       }
-      closeNavMenu();
+
+      closeMenu();
     },
     [
-      cancelMenuClose,
-      closeNavMenu,
-      isPointerInOpenMenuBridge,
-      isPointerInOpenPopoverHotzone,
-      navMenuIdFromTriggerHotzone,
-      openNavMenu,
+      cancelClose,
+      closeMenu,
+      getMenuIdFromTriggerHotzone,
+      isPointerInOpenMenuHotzone,
+      openMenu,
     ],
   );
 
-  const handleDesktopNavPointerMove = useCallback(
+  const handlePointerMove = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      syncOpenMenuForPointer(event.clientX, event.clientY);
+      syncMenuForPointer(event.clientX, event.clientY);
     },
-    [syncOpenMenuForPointer],
+    [syncMenuForPointer],
   );
 
   useEffect(() => {
     return () => {
-      cancelMenuClose();
+      cancelClose();
     };
-  }, [cancelMenuClose]);
+  }, [cancelClose]);
 
   useEffect(() => {
     if (openMenuId === null) {
       return undefined;
     }
 
-    const handlePointerMove = (event: PointerEvent) => {
-      syncOpenMenuForPointer(event.clientX, event.clientY);
+    const handleDocumentPointerMove = (event: PointerEvent) => {
+      syncMenuForPointer(event.clientX, event.clientY);
     };
 
-    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointermove", handleDocumentPointerMove);
     return () => {
-      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointermove", handleDocumentPointerMove);
     };
-  }, [openMenuId, syncOpenMenuForPointer]);
+  }, [openMenuId, syncMenuForPointer]);
+
+  return {
+    openMenuId,
+    openMenu,
+    closeMenu,
+    selectMenuItem,
+    cancelClose,
+    scheduleClose,
+    handlePointerMove,
+  };
+}
+
+export function Navbar({
+  initialIsSignedIn = false,
+  initialShowDocs = false,
+}: NavbarProps) {
+  const { theme } = useTheme();
+  const t = useTranslations("nav");
+  const { isSignedIn: clerkIsSignedIn, isLoaded } = useUser();
+  const isSignedIn = isLoaded ? clerkIsSignedIn : initialIsSignedIn;
+  const { signOut } = useClerk();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const desktopNavRef = useRef<HTMLDivElement | null>(null);
+  const {
+    openMenuId,
+    openMenu,
+    closeMenu,
+    selectMenuItem,
+    cancelClose,
+    scheduleClose,
+    handlePointerMove,
+  } = useDesktopNavMenus(desktopNavRef);
+  const openResourcesMenu = useCallback(() => {
+    openMenu("resources");
+  }, [openMenu]);
+  const openTrustMenu = useCallback(() => {
+    openMenu("trust-and-tech");
+  }, [openMenu]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -411,8 +442,8 @@ export function Navbar({
           <div
             ref={desktopNavRef}
             className="nav-center nav-desktop"
-            onPointerMove={handleDesktopNavPointerMove}
-            onPointerLeave={scheduleNavMenuClose}
+            onPointerMove={handlePointerMove}
+            onPointerLeave={scheduleClose}
           >
             <Link href="/use-cases" className="nav-link">
               {t("useCases")}
@@ -422,24 +453,24 @@ export function Navbar({
               label={t("resources")}
               items={resourcesItems}
               alignOffset={-40}
-              openId={openMenuId}
-              onOpen={openNavMenu}
-              onClose={closeNavMenu}
-              onSelect={selectNavMenuItem}
-              onCancelClose={cancelMenuClose}
-              onScheduleClose={scheduleNavMenuClose}
+              open={openMenuId === "resources"}
+              onOpen={openResourcesMenu}
+              onClose={closeMenu}
+              onSelect={selectMenuItem}
+              onCancelClose={cancelClose}
+              onScheduleClose={scheduleClose}
             />
             <NavMenu
               id="trust-and-tech"
               label={t("trustAndTech")}
               items={trustItems}
               alignOffset={40}
-              openId={openMenuId}
-              onOpen={openNavMenu}
-              onClose={closeNavMenu}
-              onSelect={selectNavMenuItem}
-              onCancelClose={cancelMenuClose}
-              onScheduleClose={scheduleNavMenuClose}
+              open={openMenuId === "trust-and-tech"}
+              onOpen={openTrustMenu}
+              onClose={closeMenu}
+              onSelect={selectMenuItem}
+              onCancelClose={cancelClose}
+              onScheduleClose={scheduleClose}
             />
             <Link href="/pricing" className="nav-link">
               {t("pricing")}
