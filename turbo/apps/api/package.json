@@ -31,6 +31,7 @@
     "@vercel/functions": "^3.4.4",
     "@vercel/oidc": "^3.2.1",
     "@vercel/otel": "^2.1.2",
+    "@vercel/sandbox": "^1.10.2",
     "@vm0/api-contracts": "workspace:*",
     "@vm0/connectors": "workspace:*",
     "@vm0/core": "workspace:*",

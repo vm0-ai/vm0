@@ -45,6 +45,7 @@ import { modelStatsRoutes } from "./routes/model-stats";
 import { runnersRoutes } from "./routes/runners";
 import { usageRoutes } from "./routes/usage";
 import { userExportRoutes } from "./routes/user-export";
+import { vercelSandboxSmokeRoutes } from "./routes/vercel-sandbox-smoke";
 import { webhooksClerkRoutes } from "./routes/webhooks-clerk";
 import { webhooksGithubRoutes } from "./routes/webhooks-github";
 import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
@@ -178,6 +179,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...logsSearchRoutes,
   ...usageRoutes,
   ...userExportRoutes,
+  ...vercelSandboxSmokeRoutes,
   ...webhooksClerkRoutes,
   ...webhooksGithubRoutes,
   ...webhooksStripeRoutes,
