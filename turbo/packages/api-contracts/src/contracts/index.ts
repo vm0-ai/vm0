@@ -1229,6 +1229,12 @@ export {
   type InternalCallbacksAgentContract,
 } from "./internal-callbacks-agent";
 export {
+  githubIssuesCallbackPayloadSchema,
+  internalCallbacksGithubIssuesContract,
+  type GitHubIssuesCallbackPayload,
+  type InternalCallbacksGithubIssuesContract,
+} from "./internal-callbacks-github-issues";
+export {
   internalCallbacksScheduleContract,
   scheduleCronCallbackPayloadSchema,
   scheduleLoopCallbackPayloadSchema,
