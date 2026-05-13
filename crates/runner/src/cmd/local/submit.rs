@@ -4,6 +4,7 @@
 //! for a group-wide `{job_id}.result` file written by the runner that claimed
 //! the job.
 
+use std::os::unix::fs::MetadataExt;
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -78,6 +79,12 @@ fn remove_file_if_exists(path: &std::path::Path) -> bool {
     }
 }
 
+struct PublishedMarker {
+    bytes: Vec<u8>,
+    dev: u64,
+    ino: u64,
+}
+
 /// Clean up queue files after a completed job has produced a result.
 fn cleanup_completed_files(
     job_path: &std::path::Path,
@@ -97,7 +104,7 @@ fn write_abandoned_result_marker(
     result_path: &std::path::Path,
     run_id: RunId,
     error: &str,
-) -> Option<Vec<u8>> {
+) -> Option<PublishedMarker> {
     // The result file is the durable terminal marker observed by local
     // runners.  Use it to prevent an abandoned job from being rediscovered
     // without creating a fake claim that could strand the job if submit exits.
@@ -137,6 +144,13 @@ fn write_abandoned_result_marker(
         let _ = remove_file_if_exists(&tmp_path);
         return None;
     }
+    let metadata = match file.metadata() {
+        Ok(metadata) => metadata,
+        Err(_) => {
+            let _ = remove_file_if_exists(&tmp_path);
+            return None;
+        }
+    };
     drop(file);
 
     // Publish with a no-clobber hard link so a runner result that wins the
@@ -147,15 +161,25 @@ fn write_abandoned_result_marker(
         return None;
     }
     let _ = remove_file_if_exists(&tmp_path);
-    Some(json)
+    Some(PublishedMarker {
+        bytes: json,
+        dev: metadata.dev(),
+        ino: metadata.ino(),
+    })
 }
 
-fn remove_marker_if_unchanged(result_path: &std::path::Path, marker: Option<&[u8]>) {
+fn remove_marker_if_unchanged(result_path: &std::path::Path, marker: Option<&PublishedMarker>) {
     let Some(marker) = marker else {
         return;
     };
+    let Ok(metadata) = std::fs::metadata(result_path) else {
+        return;
+    };
+    if metadata.dev() != marker.dev || metadata.ino() != marker.ino {
+        return;
+    }
     if std::fs::read(result_path)
-        .map(|current| current == marker)
+        .map(|current| current == marker.bytes)
         .unwrap_or(false)
     {
         let _ = remove_file_if_exists(result_path);
@@ -168,7 +192,7 @@ fn cleanup_abandoned_files(
     result_path: &std::path::Path,
     cancel_path: &std::path::Path,
     claim_path: &std::path::Path,
-    marker: Option<&[u8]>,
+    marker: Option<&PublishedMarker>,
 ) {
     if remove_file_if_exists(job_path) && !claim_path.exists() {
         let _ = remove_file_if_exists(cancel_path);
@@ -190,7 +214,7 @@ fn abandon_job(
         result_path,
         cancel_path,
         claim_path,
-        marker.as_deref(),
+        marker.as_ref(),
     );
 }
 
@@ -430,7 +454,7 @@ mod tests {
         let marker =
             write_abandoned_result_marker(&result_path, job_id, "local submit abandoned").unwrap();
 
-        assert_eq!(std::fs::read(&result_path).unwrap(), marker);
+        assert_eq!(std::fs::read(&result_path).unwrap(), marker.bytes);
         let result_dir = local_queue::results_dir(group_dir);
         let tmp_files: Vec<_> = std::fs::read_dir(result_dir)
             .unwrap()
@@ -438,6 +462,41 @@ mod tests {
             .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("tmp"))
             .collect();
         assert!(tmp_files.is_empty(), "tmp files left behind: {tmp_files:?}");
+    }
+
+    #[test]
+    fn abandoned_cleanup_keeps_replaced_result_with_same_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let job_path =
+            local_queue::job_path(group_dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap();
+        let result_path = local_queue::result_path(group_dir, job_id);
+        let cancel_path = local_queue::cancel_path(group_dir, job_id);
+        let claim_path = local_queue::claim_path(group_dir, job_id);
+        std::fs::create_dir_all(job_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+
+        std::fs::write(&job_path, b"{}").unwrap();
+        std::fs::write(&cancel_path, b"").unwrap();
+        let marker =
+            write_abandoned_result_marker(&result_path, job_id, "local submit abandoned").unwrap();
+        let replacement_path = result_path.with_extension("replacement");
+        std::fs::write(&replacement_path, &marker.bytes).unwrap();
+        std::fs::rename(&replacement_path, &result_path).unwrap();
+
+        cleanup_abandoned_files(
+            &job_path,
+            &result_path,
+            &cancel_path,
+            &claim_path,
+            Some(&marker),
+        );
+
+        assert!(
+            result_path.exists(),
+            "cleanup must not remove a result that replaced the submit marker"
+        );
     }
 
     async fn wait_for_job_and_write_success(
