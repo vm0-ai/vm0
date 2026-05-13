@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import { getZeroRunAgentEvents, getZeroRun } from "../../../lib/api";
 import type { RunResult } from "../../../lib/api";
-import { parseEvent } from "../../../lib/events/event-parser-factory";
+import { EventStreamNormalizer } from "../../../lib/events/event-stream-normalizer";
 import { EventRenderer } from "../../../lib/events/event-renderer";
 import type { PollResult, EventRenderingOptions } from "../../run/shared";
 
@@ -154,6 +154,7 @@ export async function pollZeroEvents(
   options?: EventRenderingOptions,
 ): Promise<PollResult> {
   const renderer = new EventRenderer({ verbose: options?.verbose });
+  const normalizer = new EventStreamNormalizer();
 
   let lastSequence = -1;
   let complete = false;
@@ -161,6 +162,11 @@ export async function pollZeroEvents(
   let terminalRunResponse: TerminalRunResponse | undefined;
   let terminalSeenAt = 0;
   let lastTerminalProgressAt = 0;
+  const flushPendingEvents = (): void => {
+    for (const parsed of normalizer.flush()) {
+      renderer.render(parsed);
+    }
+  };
 
   while (!complete) {
     // 1. Fetch events from telemetry endpoint
@@ -177,9 +183,11 @@ export async function pollZeroEvents(
 
     // 2. Parse and render each event
     for (const event of contiguousEvents) {
-      const eventData = event.eventData as Record<string, unknown>;
-      const parsed = parseEvent(eventData, eventsResponse.framework);
-      if (parsed) {
+      const parsedEvents = normalizer.process(
+        event.eventData,
+        eventsResponse.framework,
+      );
+      for (const parsed of parsedEvents) {
         renderer.render(parsed);
       }
     }
@@ -222,6 +230,7 @@ export async function pollZeroEvents(
           blockedByGap,
         )
       ) {
+        flushPendingEvents();
         result = renderTerminalRunResult(runId, terminalRunResponse);
         complete = true;
       }

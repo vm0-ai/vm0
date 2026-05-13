@@ -30,6 +30,10 @@ function makeEvent(
   };
 }
 
+function countOccurrences(text: string, pattern: string): number {
+  return text.split(pattern).length - 1;
+}
+
 const RUN_ID = "abc12345-1234-1234-1234-123456789abc";
 
 describe("zero logs view command", () => {
@@ -223,6 +227,54 @@ describe("zero logs view command", () => {
     expect(logCalls).toContain("Codex Started");
     expect(logCalls).toContain("Codex zero output");
     expect(logCalls).toContain("Codex Completed");
+  });
+
+  it("should collapse paired Codex error and turn.failed when default tail order is descending", async () => {
+    server.use(
+      http.get(
+        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 3,
+                eventType: "turn.failed",
+                createdAt: "2024-01-15T10:30:02Z",
+                eventData: {
+                  type: "turn.failed",
+                  error: "Rate limit exceeded",
+                },
+              },
+              {
+                sequenceNumber: 2,
+                eventType: "error",
+                createdAt: "2024-01-15T10:30:01Z",
+                eventData: {
+                  type: "error",
+                  message: "API connection failed",
+                },
+              },
+              {
+                sequenceNumber: 1,
+                eventType: "thread.started",
+                createdAt: "2024-01-15T10:30:00Z",
+                eventData: {
+                  type: "thread.started",
+                  thread_id: "thread-zero-1",
+                },
+              },
+            ],
+            framework: "codex",
+            hasMore: false,
+          });
+        },
+      ),
+    );
+
+    await zeroLogsCommand.parseAsync(["node", "cli", RUN_ID]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
   });
 
   it("should handle authentication error", async () => {
