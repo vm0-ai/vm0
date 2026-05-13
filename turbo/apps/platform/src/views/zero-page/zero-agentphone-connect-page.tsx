@@ -6,7 +6,6 @@ import {
   IconArrowLeft,
   IconCircleCheck,
   IconLoader2,
-  IconMessageCircle,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -19,6 +18,7 @@ import {
 } from "../../signals/zero-page/agentphone-connect-params.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
+import imessageIconImg from "./components/settings/icons/imessage.svg";
 
 function BackLink() {
   return (
@@ -64,8 +64,13 @@ function MessageMark({
   }
 
   return (
-    <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-      <IconMessageCircle size={28} />
+    <span className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden">
+      <img
+        src={imessageIconImg}
+        alt=""
+        className="h-7 w-7"
+        data-testid="agentphone-connect-icon"
+      />
     </span>
   );
 }

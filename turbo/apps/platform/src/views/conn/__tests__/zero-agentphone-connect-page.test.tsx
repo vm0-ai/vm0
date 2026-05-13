@@ -7,6 +7,7 @@ import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { parseAgentPhoneConnectParams } from "../../../signals/zero-page/agentphone-connect-params.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
+import imessageIconImg from "../../zero-page/components/settings/icons/imessage.svg";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -105,6 +106,14 @@ describe("zero agentphone connect page", () => {
     await waitFor(() => {
       expect(screen.getByText("Connect phone number")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("agentphone-connect-icon")).toHaveAttribute(
+      "src",
+      imessageIconImg,
+    );
+    expect(screen.getByTestId("agentphone-connect-icon")).toHaveClass(
+      "h-7",
+      "w-7",
+    );
     expect(
       screen.getByText(
         "Link this phone number to your VM0 account so you can interact with Zero from text messages.",

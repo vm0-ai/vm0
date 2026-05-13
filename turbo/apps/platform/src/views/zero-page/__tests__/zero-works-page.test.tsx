@@ -198,6 +198,9 @@ describe("works page - AgentPhone integration card", () => {
 
     click(screen.getByLabelText("Connect AgentPhone"));
     const input = await screen.findByTestId("agentphone-phone-input");
+    expect(
+      screen.getByText(/SMS and MMS replies may not be delivered reliably/u),
+    ).toBeInTheDocument();
     await fill(input, "+1 (555) 555-1212");
 
     await waitFor(() => {

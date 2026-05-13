@@ -44,6 +44,7 @@ import {
   startAgentPhoneLink$,
   waitForAgentPhoneConnection$,
 } from "../../signals/zero-page/zero-agentphone.ts";
+import { AGENTPHONE_SMS_MMS_CONNECT_RISK_MESSAGE } from "../../signals/zero-page/agentphone-connect-params.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import imessageIconImg from "./components/settings/icons/imessage.svg";
 
@@ -182,6 +183,9 @@ function AgentPhoneConnectDialog() {
             connects this workspace.
           </DialogDescription>
         </DialogHeader>
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+          {AGENTPHONE_SMS_MMS_CONNECT_RISK_MESSAGE}
+        </div>
         <form className="grid gap-3" onSubmit={submit}>
           <label
             htmlFor="agentphone-phone-input"
