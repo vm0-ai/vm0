@@ -7,7 +7,7 @@
  * - Real (internal): All CLI code, formatters, validators
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 import { mainRunCommand } from "../run";
@@ -73,6 +73,12 @@ describe("zero run command", () => {
         },
       ),
     );
+  });
+
+  afterEach(() => {
+    mockExit.mockClear();
+    mockConsoleLog.mockClear();
+    mockConsoleError.mockClear();
   });
 
   describe("agent ID validation", () => {
