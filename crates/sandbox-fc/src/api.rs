@@ -824,6 +824,27 @@ mod tests {
         assert_eq!(request.path, path, "raw request: {}", request.raw);
     }
 
+    #[tokio::test]
+    async fn mock_firecracker_api_reads_split_request_body() {
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let mut stream = UnixStream::connect(api.socket_path()).await.unwrap();
+
+        stream
+            .write_all(
+                b"PUT /split HTTP/1.1\r\n\
+                  Host: localhost\r\n\
+                  Content-Length: 14\r\n\
+                  \r\n",
+            )
+            .await
+            .unwrap();
+        stream.write_all(br#"{"split":true}"#).await.unwrap();
+
+        let request = api.next_request().await;
+        assert_request(&request, "PUT", "/split");
+        assert_eq!(request.body, r#"{"split":true}"#);
+    }
+
     #[test]
     fn api_error_is_retryable_connection_refused() {
         let err = ApiError::Connect(std::io::Error::new(
@@ -960,8 +981,9 @@ mod tests {
 
     #[tokio::test]
     async fn load_snapshot_returns_error_on_non_204() {
+        let fault_message = r#"bad "snapshot" \ path"#;
         let mut api =
-            MockFirecrackerApi::with_responses([MockResponse::bad_request_fault("bad snapshot")]);
+            MockFirecrackerApi::with_responses([MockResponse::bad_request_fault(fault_message)]);
         let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let result = client.load_snapshot("/snap/state", "/snap/memory").await;
@@ -970,7 +992,7 @@ mod tests {
         };
         assert_eq!(status, 400);
         // fault_message is extracted from JSON response (matches TS behavior).
-        assert_eq!(body, "bad snapshot");
+        assert_eq!(body, fault_message);
 
         let request = api.next_request().await;
         assert_request(&request, "PUT", "/snapshot/load");
