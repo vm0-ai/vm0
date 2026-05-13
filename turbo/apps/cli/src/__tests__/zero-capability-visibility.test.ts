@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Command, Help } from "commander";
-import { registerZeroCommands } from "../zero";
+import { buildZeroHelpText, registerZeroCommands } from "../zero";
 import { decodeZeroTokenPayload } from "../lib/api/zero-token";
 
 function buildZeroToken(payload: Record<string, unknown>): string {
@@ -308,6 +308,17 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
+  it("should show the host help example when host:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["host:write"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Host a static site?",
+    );
+  });
+
   it("should hide host when host:write capability is missing", () => {
     const token = buildZeroToken({
       scope: "zero",
@@ -318,6 +329,17 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("host");
+  });
+
+  it("should hide the host help example when host:write capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+      "Host a static site?",
+    );
   });
 
   it("should hide telegram when file read and telegram write capabilities are missing", () => {

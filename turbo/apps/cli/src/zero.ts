@@ -108,6 +108,36 @@ function shouldHideCommand(
   return !payload.capabilities.includes(requiredCap);
 }
 
+export function buildZeroHelpText(
+  payload: ZeroTokenPayload | undefined = decodeZeroTokenPayload(),
+): string {
+  const examples = [
+    "  Check a connector?     zero doctor check-connector --env-name <ENV_NAME>",
+    "  Send a Slack message?  zero slack message send --help",
+    "  List Telegram bots?    zero telegram bot list",
+    "  Send Telegram?         zero telegram message send --help",
+    "  Upload Telegram?       zero telegram upload-file --help",
+    "  Download Telegram?     zero telegram download-file --help",
+    "  Send AgentPhone?       zero phone message --help",
+    "  Upload AgentPhone?     zero phone upload-file --help",
+    "  Download AgentPhone?   zero phone download-file --help",
+    "  Set up a schedule?     zero schedule setup --help",
+    "  Update yourself?       zero agent --help",
+    "  Manage custom skills?  zero skill --help",
+    "  Generate image?        zero built-in generate image --help",
+    "  Generate voice?        zero built-in generate voice --help",
+    ...(shouldHideCommand("local-browser", payload)
+      ? []
+      : ["  Read browser context?  zero local-browser --help"]),
+    ...(shouldHideCommand("host", payload)
+      ? []
+      : ["  Host a static site?    zero host ./dist --site my-site --spa"]),
+    "  Check your identity?   zero whoami",
+  ];
+
+  return `\nExamples:\n${examples.join("\n")}`;
+}
+
 /**
  * Register commands with visibility based on ZERO_TOKEN capabilities.
  * Commands not granted by the token are registered as hidden via
@@ -139,28 +169,9 @@ program
     "Zero CLI — interact with the zero platform from inside the sandbox",
   )
   .version(__CLI_VERSION__)
-  .addHelpText(
-    "after",
-    `
-Examples:
-  Check a connector?     zero doctor check-connector --env-name <ENV_NAME>
-  Send a Slack message?  zero slack message send --help
-  List Telegram bots?    zero telegram bot list
-  Send Telegram?         zero telegram message send --help
-  Upload Telegram?       zero telegram upload-file --help
-  Download Telegram?     zero telegram download-file --help
-  Send AgentPhone?       zero phone message --help
-  Upload AgentPhone?     zero phone upload-file --help
-  Download AgentPhone?   zero phone download-file --help
-  Set up a schedule?     zero schedule setup --help
-  Update yourself?       zero agent --help
-  Manage custom skills?  zero skill --help
-  Generate image?        zero built-in generate image --help
-  Generate voice?        zero built-in generate voice --help
-  Read browser context?  zero local-browser --help
-  Host a static site?    zero host ./dist --site my-site --spa
-  Check your identity?   zero whoami`,
-  );
+  .addHelpText("after", () => {
+    return buildZeroHelpText();
+  });
 
 export { program };
 
