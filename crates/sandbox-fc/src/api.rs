@@ -919,7 +919,11 @@ mod tests {
         .expect("timed out waiting for split response header");
         write_body_tx.send(()).unwrap();
 
-        let (output, ()) = tokio::join!(&mut client, &mut server);
+        let (output, ()) = tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, async {
+            tokio::join!(&mut client, &mut server)
+        })
+        .await
+        .expect("timed out waiting for split response completion");
         let request = request_rx.await.unwrap();
         (output, request)
     }
