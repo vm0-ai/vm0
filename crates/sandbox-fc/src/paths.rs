@@ -25,6 +25,10 @@ impl Default for RuntimePaths {
 }
 
 impl RuntimePaths {
+    /// Creates runtime path helpers rooted at `RUNTIME_DIR`.
+    ///
+    /// This only records the runtime root; it does not create, validate, or
+    /// canonicalize filesystem entries.
     pub fn new() -> Self {
         Self {
             base_dir: PathBuf::from(RUNTIME_DIR),
@@ -56,6 +60,10 @@ impl Default for LockPaths {
 }
 
 impl LockPaths {
+    /// Creates lock path helpers rooted at `/var/lock`.
+    ///
+    /// This only records the lock root; it does not create, validate, or
+    /// canonicalize filesystem entries.
     pub fn new() -> Self {
         Self {
             base_dir: PathBuf::from("/var/lock"),
@@ -79,6 +87,10 @@ pub struct FactoryPaths {
 }
 
 impl FactoryPaths {
+    /// Creates factory path helpers rooted at `base_dir`.
+    ///
+    /// This only stores the root path; it does not create, validate, or
+    /// canonicalize filesystem entries.
     pub fn new(base_dir: PathBuf) -> Self {
         Self { base_dir }
     }
@@ -100,10 +112,15 @@ pub struct SandboxPaths {
 }
 
 impl SandboxPaths {
+    /// Creates per-sandbox path helpers rooted at `workspace`.
+    ///
+    /// This only stores the workspace path; it does not create, validate, or
+    /// canonicalize filesystem entries.
     pub fn new(workspace: PathBuf) -> Self {
         Self { workspace }
     }
 
+    /// Returns the sandbox workspace root directory.
     pub fn workspace(&self) -> &Path {
         &self.workspace
     }
@@ -126,10 +143,15 @@ pub struct SockPaths {
 }
 
 impl SockPaths {
+    /// Creates socket path helpers rooted at `dir`.
+    ///
+    /// This only stores the socket directory path; it does not create,
+    /// validate, or canonicalize filesystem entries.
     pub fn new(dir: PathBuf) -> Self {
         Self { dir }
     }
 
+    /// Returns the runtime socket root directory.
     pub fn dir(&self) -> &Path {
         &self.dir
     }
@@ -161,10 +183,15 @@ pub struct SnapshotOutputPaths {
 }
 
 impl SnapshotOutputPaths {
+    /// Creates snapshot output path helpers rooted at `output_dir`.
+    ///
+    /// This only stores the output directory path; it does not create,
+    /// validate, or canonicalize filesystem entries.
     pub fn new(output_dir: PathBuf) -> Self {
         Self { output_dir }
     }
 
+    /// Returns the snapshot output root directory.
     pub fn dir(&self) -> &Path {
         &self.output_dir
     }
