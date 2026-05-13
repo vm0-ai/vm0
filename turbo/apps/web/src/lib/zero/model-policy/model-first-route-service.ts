@@ -69,12 +69,22 @@ function routeShapeFromPolicy(
   const providerType = parseProviderType(policy.defaultProviderType);
   const credentialScope = parseCredentialScope(policy.credentialScope);
 
-  return {
+  return normalizeModelFirstRouteDescriptor({
     selectedModel,
     providerType,
     credentialScope,
     modelProviderId: policy.modelProviderId ?? null,
-  };
+  });
+}
+
+export function normalizeModelFirstRouteDescriptor(
+  route: ModelFirstRouteDescriptor,
+): ModelFirstRouteDescriptor {
+  if (route.providerType === "vm0" && route.modelProviderId) {
+    return { ...route, modelProviderId: null };
+  }
+
+  return route;
 }
 
 function validateRouteShape(route: ModelFirstRouteDescriptor): void {

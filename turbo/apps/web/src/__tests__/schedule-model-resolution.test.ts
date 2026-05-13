@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { randomUUID } from "crypto";
 import { POST as deployScheduleRoute } from "../../app/api/zero/schedules/route";
 import { adaptScheduleTrigger } from "../lib/zero/schedule/adapt-schedule-trigger";
+import { normalizeModelFirstRouteDescriptor } from "../lib/zero/model-policy/model-first-route-service";
 import {
   createTestRequest,
   createTestCompose,
@@ -165,6 +167,24 @@ describe("Schedule model resolution", () => {
 
       expect(result.modelProviderId).toBeUndefined();
       expect(result.selectedModelOverride).toBeUndefined();
+    });
+  });
+
+  describe("legacy built-in model route normalization", () => {
+    it("clears stale provider IDs before route validation", () => {
+      const result = normalizeModelFirstRouteDescriptor({
+        selectedModel: "claude-opus-4-7",
+        providerType: "vm0",
+        credentialScope: "org",
+        modelProviderId: randomUUID(),
+      });
+
+      expect(result).toEqual({
+        selectedModel: "claude-opus-4-7",
+        providerType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      });
     });
   });
 });
