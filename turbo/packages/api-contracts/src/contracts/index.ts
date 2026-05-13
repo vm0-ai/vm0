@@ -1225,6 +1225,17 @@ export {
   type ZeroImageIoGenerateResponse,
 } from "./zero-image-io-generate";
 export {
+  internalCallbacksAgentContract,
+  type InternalCallbacksAgentContract,
+} from "./internal-callbacks-agent";
+export {
+  internalCallbackBodySchema,
+  internalCallbackErrorSchema,
+  internalCallbackHeadersSchema,
+  internalCallbackSuccessSchema,
+  type InternalCallbackBody,
+} from "./internal-callbacks-shared";
+export {
   zeroVoiceIoQuotaContract,
   audioInputQuotaResponseSchema,
   type ZeroVoiceIoQuotaContract,
