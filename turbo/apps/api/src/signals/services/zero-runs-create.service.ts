@@ -38,7 +38,7 @@ import { env } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
 import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
-import { createAgentRun$ } from "./agent-run-create.service";
+import { createAgentRun$, type RunCallback } from "./agent-run-create.service";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 
@@ -269,6 +269,17 @@ function buildAppendSystemPrompt(args: {
     .join("\n\n");
 }
 
+function mergeAppendSystemPrompt(
+  base: string,
+  appendSystemPrompt: string | undefined,
+): string {
+  return [base, appendSystemPrompt]
+    .filter((part): part is string => {
+      return Boolean(part);
+    })
+    .join("\n\n");
+}
+
 async function inferAgentIdFromSession(
   db: Db,
   args: {
@@ -473,6 +484,35 @@ function createRunBody(args: {
   };
 }
 
+function createIntegrationRunBody(args: {
+  readonly prompt: string;
+  readonly sessionId: string | undefined;
+  readonly agent: ZeroAgentRunRecord;
+  readonly userInfo: UserInfo;
+  readonly permissionPolicies:
+    | ReturnType<typeof resolveFirewallPolicies>
+    | undefined;
+  readonly triggerSource: TriggerSource;
+  readonly appendSystemPrompt: string | undefined;
+}) {
+  return {
+    prompt: args.prompt,
+    agentComposeId: args.agent.id,
+    sessionId: args.sessionId,
+    permissionPolicies: args.permissionPolicies ?? undefined,
+    triggerSource: args.triggerSource,
+    appendSystemPrompt: mergeAppendSystemPrompt(
+      buildAppendSystemPrompt({
+        agent: args.agent,
+        userInfo: args.userInfo,
+      }),
+      args.appendSystemPrompt,
+    ),
+    disallowedTools: [...DISALLOWED_TOOLS],
+    vars: { ZERO_AGENT_ID: args.agent.id },
+  };
+}
+
 function callbacksForTriggerAgent(triggerAgentId: string | undefined) {
   return triggerAgentId
     ? [
@@ -484,6 +524,104 @@ function callbacksForTriggerAgent(triggerAgentId: string | undefined) {
       ]
     : undefined;
 }
+
+export const createZeroIntegrationRun$ = command(
+  async (
+    { set },
+    args: {
+      readonly userId: string;
+      readonly orgId: string;
+      readonly agentId: string;
+      readonly sessionId?: string;
+      readonly prompt: string;
+      readonly appendSystemPrompt?: string;
+      readonly triggerSource: TriggerSource;
+      readonly callbacks?: readonly RunCallback[];
+      readonly apiStartTime: number;
+    },
+    signal: AbortSignal,
+  ) => {
+    const db = set(writeDb$);
+    const agent = await loadZeroAgent(db, args.agentId);
+    signal.throwIfAborted();
+    if (!agent || agent.orgId !== args.orgId) {
+      return notFound("Agent not found");
+    }
+
+    if (agent.visibility === "private" && agent.owner !== args.userId) {
+      return forbidden("Only the private agent owner can run this agent");
+    }
+
+    const userInfo = await loadUserInfo(db, {
+      userId: args.userId,
+      orgId: args.orgId,
+    });
+    signal.throwIfAborted();
+
+    const allowedConnectorTypes = await loadAllowedConnectorTypes(db, {
+      userId: args.userId,
+      orgId: args.orgId,
+      agentId: agent.id,
+    });
+    signal.throwIfAborted();
+    const allowedCustomConnectorIds = await loadAllowedCustomConnectorIds(db, {
+      userId: args.userId,
+      orgId: args.orgId,
+      agentId: agent.id,
+    });
+    signal.throwIfAborted();
+
+    const agentPermissionPolicies = resolveFirewallPolicies(
+      toFirewallPolicies(
+        agent.permissionPolicies,
+        agent.unknownPermissionPolicies,
+      ),
+      [...allowedConnectorTypes],
+    );
+
+    const framework = resolveAgentFramework(agent.content);
+    if (!framework) {
+      return badRequestMessage(
+        "Agent must have a supported framework configured",
+      );
+    }
+
+    const prependAdditionalVolumes = [
+      ...buildSystemSkillVolumes(allowedConnectorTypes, framework),
+      ...buildCustomSkillVolumes(agent.customSkills, framework),
+    ];
+
+    return await set(
+      createAgentRun$,
+      {
+        userId: args.userId,
+        orgId: args.orgId,
+        body: createIntegrationRunBody({
+          prompt: args.prompt,
+          sessionId: args.sessionId,
+          agent,
+          userInfo,
+          permissionPolicies: agentPermissionPolicies,
+          triggerSource: args.triggerSource,
+          appendSystemPrompt: args.appendSystemPrompt,
+        }),
+        apiStartTime: args.apiStartTime,
+        modelProviderId: agent.modelProviderId ?? undefined,
+        selectedModelOverride: agent.selectedModel ?? undefined,
+        extraEnvironment: { ZERO_AGENT_ID: agent.id },
+        callbacks: args.callbacks,
+        includeZeroTokenSecret: true,
+        enforceVm0Credits: true,
+        queueOnConcurrencyLimit: true,
+        prependAdditionalVolumes,
+        allowedConnectorTypes,
+        allowedCustomConnectorIds,
+        validateEnvironmentReferences: false,
+      },
+      signal,
+    );
+  },
+);
 
 export const createZeroRun$ = command(
   async (

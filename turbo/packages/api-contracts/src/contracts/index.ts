@@ -197,7 +197,10 @@ export {
 } from "./internal-callbacks-voice-chat";
 export {
   sandboxReuseResultSchema,
+  webhookClerkContract,
   webhookEventsContract,
+  webhookGithubContract,
+  webhookStripeContract,
   webhookCompleteContract,
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
@@ -220,7 +223,10 @@ export {
   type WebhookStoragesPrepareContract,
   type WebhookStoragesCommitContract,
   webhookUsageEventContract,
+  type WebhookClerkContract,
   type WebhookUsageEventContract,
+  type WebhookGithubContract,
+  type WebhookStripeContract,
 } from "./webhooks";
 export {
   cliAuthDeviceContract,

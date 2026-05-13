@@ -45,6 +45,9 @@ import { modelStatsRoutes } from "./routes/model-stats";
 import { runnersRoutes } from "./routes/runners";
 import { usageRoutes } from "./routes/usage";
 import { userExportRoutes } from "./routes/user-export";
+import { webhooksClerkRoutes } from "./routes/webhooks-clerk";
+import { webhooksGithubRoutes } from "./routes/webhooks-github";
+import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
 import { zeroAgentsRoutes } from "./routes/zero-agents";
 import { zeroApiKeysRoutes } from "./routes/zero-api-keys";
@@ -173,6 +176,9 @@ export const ROUTES: readonly RouteEntry[] = [
   ...logsSearchRoutes,
   ...usageRoutes,
   ...userExportRoutes,
+  ...webhooksClerkRoutes,
+  ...webhooksGithubRoutes,
+  ...webhooksStripeRoutes,
   ...agentCheckpointsRoutes,
   ...agentComposesReadRoutes,
   ...agentComposesByIdRoutes,

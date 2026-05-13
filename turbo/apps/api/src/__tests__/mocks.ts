@@ -7,6 +7,7 @@ import { mockStripeClient } from "../signals/external/stripe-client";
 type AsyncMock = Mock<(...args: unknown[]) => Promise<unknown>>;
 type BooleanMock = Mock<(...args: unknown[]) => boolean>;
 type SyncMock = Mock<(...args: unknown[]) => void>;
+type UnknownMock = Mock<(...args: unknown[]) => unknown>;
 
 export interface ApiTestMocks {
   readonly axiom: {
@@ -27,6 +28,7 @@ export interface ApiTestMocks {
   };
   readonly clerk: {
     readonly authenticateRequest: AsyncMock;
+    readonly verifyWebhook: AsyncMock;
     readonly organizations: {
       readonly createOrganizationDomain: AsyncMock;
       readonly deleteOrganizationDomain: AsyncMock;
@@ -110,6 +112,10 @@ export interface ApiTestMocks {
     readonly subscriptions: {
       readonly retrieve: AsyncMock;
       readonly update: AsyncMock;
+      readonly cancel: AsyncMock;
+    };
+    readonly webhooks: {
+      readonly constructEvent: UnknownMock;
     };
     readonly checkout: {
       readonly sessions: {
@@ -159,6 +165,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
 
   const clerk = {
     authenticateRequest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    verifyWebhook: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     organizations: {
       createOrganizationDomain:
         vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -246,6 +253,10 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     subscriptions: {
       retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       update: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      cancel: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
+    webhooks: {
+      constructEvent: vi.fn<(...args: unknown[]) => unknown>(),
     },
     checkout: {
       sessions: {
@@ -400,6 +411,14 @@ vi.mock("@clerk/backend", () => {
   };
 });
 
+vi.mock("@clerk/backend/webhooks", () => {
+  return {
+    verifyWebhook: (...args: unknown[]): Promise<unknown> => {
+      return apiTestMocks.clerk.verifyWebhook(...args);
+    },
+  };
+});
+
 vi.mock("@google/genai", () => {
   class GoogleGenAI {
     readonly models = {
@@ -470,6 +489,10 @@ vi.mock("stripe", async (importOriginal) => {
         subscriptions: {
           retrieve: apiTestMocks.stripe.subscriptions.retrieve,
           update: apiTestMocks.stripe.subscriptions.update,
+          cancel: apiTestMocks.stripe.subscriptions.cancel,
+        },
+        webhooks: {
+          constructEvent: apiTestMocks.stripe.webhooks.constructEvent,
         },
         checkout: {
           sessions: {
@@ -635,6 +658,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.axiomLogging.error.mockReset();
   apiTestMocks.axiomLogging.flush.mockReset();
   apiTestMocks.clerk.authenticateRequest.mockReset();
+  apiTestMocks.clerk.verifyWebhook.mockReset();
   apiTestMocks.clerk.organizations.createOrganizationDomain.mockReset();
   apiTestMocks.clerk.organizations.deleteOrganizationDomain.mockReset();
   apiTestMocks.clerk.organizations.createOrganizationInvitation.mockReset();
@@ -682,6 +706,8 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.customers.create.mockReset();
   apiTestMocks.stripe.subscriptions.retrieve.mockReset();
   apiTestMocks.stripe.subscriptions.update.mockReset();
+  apiTestMocks.stripe.subscriptions.cancel.mockReset();
+  apiTestMocks.stripe.webhooks.constructEvent.mockReset();
   apiTestMocks.stripe.checkout.sessions.create.mockReset();
   apiTestMocks.stripe.checkout.sessions.retrieve.mockReset();
   apiTestMocks.stripe.checkout.sessions.expire.mockReset();
