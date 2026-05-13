@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.350.0](https://github.com/vm0-ai/vm0/compare/app-v0.349.0...app-v0.350.0) (2026-05-13)
+
+
+### Features
+
+* **platform:** eager-init workspace at step 1 + sticky admin scope ([#13053](https://github.com/vm0-ai/vm0/issues/13053)) ([3cd2809](https://github.com/vm0-ai/vm0/commit/3cd28090374ffc7da60f76aa10ee1f4e600a638c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.274.0
+
 ## [0.349.0](https://github.com/vm0-ai/vm0/compare/app-v0.348.3...app-v0.349.0) (2026-05-13)
 
 

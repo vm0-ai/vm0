@@ -1299,7 +1299,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.31"
+version = "0.16.32"
 dependencies = [
  "libc",
  "nix",
@@ -2529,7 +2529,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.100.35"
+version = "0.100.36"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2743,7 +2743,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.30.0"
+version = "0.30.1"
 dependencies = [
  "async-trait",
  "base64",
@@ -3640,7 +3640,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.15.0"
+version = "0.15.1"
 dependencies = [
  "libc",
  "vsock-proto",
@@ -3648,7 +3648,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "nix",
  "tokio",
@@ -3658,11 +3658,11 @@ dependencies = [
 
 [[package]]
 name = "vsock-proto"
-version = "0.15.2"
+version = "0.15.3"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.31"
+version = "0.9.32"
 dependencies = [
  "guest-write-file",
  "tokio",

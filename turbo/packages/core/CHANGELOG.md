@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.274.0](https://github.com/vm0-ai/vm0/compare/core-v8.273.0...core-v8.274.0) (2026-05-13)
+
+
+### Features
+
+* **feature-switch:** enable QueueMessage globally ([#13173](https://github.com/vm0-ai/vm0/issues/13173)) ([4688de0](https://github.com/vm0-ai/vm0/commit/4688de0a3294eb987607e4e2ac2fc8b4320a5286))
+
 ## [8.273.0](https://github.com/vm0-ai/vm0/compare/core-v8.272.2...core-v8.273.0) (2026-05-13)
 
 

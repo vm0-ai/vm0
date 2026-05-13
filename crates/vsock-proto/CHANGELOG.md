@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.3](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.15.2...vsock-proto-v0.15.3) (2026-05-13)
+
+
+### Refactoring
+
+* split remaining vsock payload modules ([#13183](https://github.com/vm0-ai/vm0/issues/13183)) ([16910fb](https://github.com/vm0-ai/vm0/commit/16910fbe2581e5d01cbd7d176096848636ac3166))
+* **vsock-proto:** split command payload module ([#13175](https://github.com/vm0-ai/vm0/issues/13175)) ([6ae69ff](https://github.com/vm0-ai/vm0/commit/6ae69ff38bba443320c3949c631607a7f02a2465))
+
 ## [0.15.2](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.15.1...vsock-proto-v0.15.2) (2026-05-13)
 
 
