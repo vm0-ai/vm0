@@ -373,7 +373,13 @@ describe("zero sidebar - delete thread button shows confirmation (SIDEBAR-D-018)
     const menuTriggers = screen.getAllByLabelText("Open chat menu");
     click(menuTriggers[0]);
     const deleteItem = await waitFor(() => {
-      return screen.getByRole("menuitem", { name: /Delete chat/i });
+      const item = screen.getAllByRole("menuitem").find((el) => {
+        return /Delete chat/i.test(el.textContent ?? "");
+      });
+      if (!item) {
+        throw new Error("Delete chat menu item not visible yet");
+      }
+      return item;
     });
     click(deleteItem);
 
@@ -431,7 +437,13 @@ describe("zero sidebar - confirm delete removes thread (SIDEBAR-D-019)", () => {
     const menuTriggers = screen.getAllByLabelText("Open chat menu");
     click(menuTriggers[0]);
     const deleteItem = await waitFor(() => {
-      return screen.getByRole("menuitem", { name: /Delete chat/i });
+      const item = screen.getAllByRole("menuitem").find((el) => {
+        return /Delete chat/i.test(el.textContent ?? "");
+      });
+      if (!item) {
+        throw new Error("Delete chat menu item not visible yet");
+      }
+      return item;
     });
     click(deleteItem);
 

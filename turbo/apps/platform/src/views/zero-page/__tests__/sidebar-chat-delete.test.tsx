@@ -131,7 +131,13 @@ async function deleteThread(nthButton: number) {
   click(menuTriggers[nthButton - 1]);
 
   const deleteItem = await waitFor(() => {
-    return screen.getByRole("menuitem", { name: /Delete chat/i });
+    const item = screen.getAllByRole("menuitem").find((el) => {
+      return /Delete chat/i.test(el.textContent ?? "");
+    });
+    if (!item) {
+      throw new Error("Delete chat menu item not visible yet");
+    }
+    return item;
   });
   click(deleteItem);
 
