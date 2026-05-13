@@ -10,6 +10,7 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import slackIcon from "./components/settings/icons/slack.svg";
 import telegramIcon from "./components/settings/icons/telegram.svg";
+import imessageIcon from "./components/settings/icons/imessage.svg";
 import { getAvatarPresets } from "./zero-avatars.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import zeroAnimatedSrc from "./assets/zero-animated.webp";
@@ -69,7 +70,6 @@ import {
   IconCircleCheck,
   IconCircleCheckFilled,
   IconLoader,
-  IconMessageCircle,
   IconSearch,
 } from "@tabler/icons-react";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -531,8 +531,8 @@ function WhereToWorkContent() {
         {showAgentPhone && (
           <WhereToWorkOption
             icon={
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <IconMessageCircle size={22} stroke={1.8} />
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden">
+                <img src={imessageIcon} alt="" className="h-7 w-7" />
               </span>
             }
             title={`Add ${name || "Zero"} to AgentPhone`}

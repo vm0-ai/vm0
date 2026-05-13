@@ -220,7 +220,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.AgentPhoneAppUi]: {
     maintainer: "linghan@vm0.ai",
     description:
-      "Show first-class AgentPhone app surfaces: settings, Works card, and onboarding entry points.",
+      "Show first-class AgentPhone app surfaces: Works card and onboarding entry points.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

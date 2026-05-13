@@ -14,6 +14,7 @@ import {
   seedOfficialUserLink$,
   seedOrgDefaultAgent$,
   seedTelegramInstallation$,
+  seedTelegramUserLink$,
   seedUserAgentPreference$,
   type TelegramFixture,
 } from "./helpers/zero-telegram";
@@ -114,6 +115,18 @@ describe("zeroTelegramBots service", () => {
     builder.composeIds.push(ownerInstall.composeId);
     builder.telegramBotIds.push(ownerInstall.telegramBotId);
 
+    await store.set(
+      seedTelegramUserLink$,
+      {
+        installationId: ownerBotId,
+        telegramUserId: "tg_owner",
+        telegramUsername: "owner_tg",
+        telegramDisplayName: "Owner User",
+        vm0UserId: userId,
+      },
+      context.signal,
+    );
+
     const otherInstall = await store.set(
       seedTelegramInstallation$,
       {
@@ -144,6 +157,11 @@ describe("zeroTelegramBots service", () => {
       return bot.id === ownerBotId;
     });
     expect(ownerBot?.isOwner).toBeTruthy();
+    expect(ownerBot?.connectedUser).toStrictEqual({
+      telegramUserId: "tg_owner",
+      telegramUsername: "owner_tg",
+      telegramDisplayName: "Owner User",
+    });
     const otherBot = bots.find((bot) => {
       return bot.id === otherBotId;
     });
@@ -246,7 +264,13 @@ describe("zeroTelegramBots service", () => {
 
     await store.set(
       seedOfficialUserLink$,
-      { orgId, userId, telegramUserId },
+      {
+        orgId,
+        userId,
+        telegramUserId,
+        telegramUsername: "ada_tg",
+        telegramDisplayName: "Ada Lovelace",
+      },
       context.signal,
     );
 
@@ -256,6 +280,11 @@ describe("zeroTelegramBots service", () => {
 
     expect(bots[0]?.isConnected).toBeTruthy();
     expect(bots[0]?.official?.linkedTelegramUserId).toBe(telegramUserId);
+    expect(bots[0]?.connectedUser).toStrictEqual({
+      telegramUserId,
+      telegramUsername: "ada_tg",
+      telegramDisplayName: "Ada Lovelace",
+    });
   });
 
   it("marks the official bot disconnected when the user has no link row", async () => {

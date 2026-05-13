@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import { zeroIntegrationsAgentPhoneContract } from "@vm0/api-contracts/contracts/zero-integrations-agentphone";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { agentphoneVerificationSendCooldowns } from "@vm0/db/schema/agentphone-verification-send-cooldown";
 import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
 import { command, computed } from "ccstate";
 import { and, eq } from "drizzle-orm";
@@ -30,9 +31,18 @@ const agentPhoneAuthOptions = {
   missingOrganizationStatus: 401,
 } as const;
 
+const VERIFICATION_SEND_COOLDOWN_MS = 60_000;
+
 const startLinkBody$ = bodyResultOf(
   zeroIntegrationsAgentPhoneContract.startLink,
 );
+
+type VerificationSendCooldownScope = "phone" | "user_org";
+
+interface VerificationSendCooldownKey {
+  readonly scope: VerificationSendCooldownScope;
+  readonly scopeKey: string;
+}
 
 function forbidden() {
   return {
@@ -70,6 +80,19 @@ function unavailable() {
   };
 }
 
+function tooManyVerificationTexts() {
+  return {
+    status: 429 as const,
+    body: {
+      error: {
+        message:
+          "Verification text was just sent. Wait a minute before trying again.",
+        code: "TOO_MANY_REQUESTS",
+      },
+    },
+  };
+}
+
 function getAgentPhoneConfig(): AgentPhoneConfig {
   const agentphoneAgentId = optionalEnv("AGENTPHONE_AGENT_ID") ?? null;
   const apiBaseUrl = optionalEnv("AGENTPHONE_API_BASE_URL") ?? null;
@@ -87,8 +110,35 @@ function getAgentPhoneConfig(): AgentPhoneConfig {
   };
 }
 
+function agentPhoneCooldownKeys(params: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly phoneHandle: string;
+}): readonly VerificationSendCooldownKey[] {
+  const keys: VerificationSendCooldownKey[] = [
+    {
+      scope: "phone",
+      scopeKey: params.phoneHandle,
+    },
+    {
+      scope: "user_org",
+      scopeKey: `${params.orgId}:${params.userId}`,
+    },
+  ];
+
+  return keys.sort((left, right) => {
+    return `${left.scope}:${left.scopeKey}`.localeCompare(
+      `${right.scope}:${right.scopeKey}`,
+    );
+  });
+}
+
 function normalizePhoneHandle(value: string): string {
   return value.trim().replace(/[^\d+]/gu, "");
+}
+
+function isValidPhoneHandle(value: string): boolean {
+  return /^\+[1-9]\d{7,14}$/u.test(value);
 }
 
 function signAgentPhoneConnectParams(params: {
@@ -120,7 +170,7 @@ function buildAgentPhoneConnectUrl(params: {
       timestamp,
     }),
   });
-  return `${env("VM0_WEB_URL").replace(/\/$/u, "")}/agentphone/connect?${query.toString()}`;
+  return `${env("APP_URL").replace(/\/$/u, "")}/agentphone/connect?${query.toString()}`;
 }
 
 async function sendAgentPhoneMessage(params: {
@@ -208,7 +258,7 @@ const getLinkStatus$ = computed(async (get) => {
   };
 });
 
-const startLink$ = command(async ({ get }, signal: AbortSignal) => {
+const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
   const gate = await get(requireAgentPhoneUi$);
   signal.throwIfAborted();
   if (!gate.ok) {
@@ -222,17 +272,17 @@ const startLink$ = command(async ({ get }, signal: AbortSignal) => {
   }
 
   const phoneHandle = normalizePhoneHandle(bodyResult.data.phoneHandle);
-  if (!phoneHandle) {
-    return badRequestMessage("Enter a valid phone number");
+  if (!isValidPhoneHandle(phoneHandle)) {
+    return badRequestMessage(
+      "Enter a phone number with country code, like +1 555 555 1212",
+    );
   }
 
   const config = getAgentPhoneConfig();
-  if (
-    !config.configured ||
-    !config.agentphoneAgentId ||
-    !config.apiBaseUrl ||
-    !config.apiKey
-  ) {
+  const agentphoneAgentId = config.agentphoneAgentId;
+  const apiBaseUrl = config.apiBaseUrl;
+  const apiKey = config.apiKey;
+  if (!config.configured || !agentphoneAgentId || !apiBaseUrl || !apiKey) {
     return notConfigured();
   }
 
@@ -270,23 +320,87 @@ const startLink$ = command(async ({ get }, signal: AbortSignal) => {
 
   const connectUrl = buildAgentPhoneConnectUrl({
     phoneHandle,
-    agentphoneAgentId: config.agentphoneAgentId,
+    agentphoneAgentId,
   });
-  const sent = await sendAgentPhoneMessage({
-    config: {
-      ...config,
-      agentphoneAgentId: config.agentphoneAgentId,
-      apiBaseUrl: config.apiBaseUrl,
-      apiKey: config.apiKey,
-    },
-    toNumber: phoneHandle,
-    body: `Confirm this phone number for VM0: ${connectUrl}`,
-    signal,
+
+  const cooldownKeys = agentPhoneCooldownKeys({
+    orgId: gate.auth.orgId,
+    userId: gate.auth.userId,
+    phoneHandle,
+  });
+  const sendResult = await set(writeDb$).transaction(async (tx) => {
+    const sentAt = new Date(now());
+    const cooldownCutoff = sentAt.getTime() - VERIFICATION_SEND_COOLDOWN_MS;
+
+    for (const key of cooldownKeys) {
+      await tx
+        .insert(agentphoneVerificationSendCooldowns)
+        .values({
+          scope: key.scope,
+          scopeKey: key.scopeKey,
+        })
+        .onConflictDoNothing();
+
+      const [cooldown] = await tx
+        .select({
+          lastSentAt: agentphoneVerificationSendCooldowns.lastSentAt,
+        })
+        .from(agentphoneVerificationSendCooldowns)
+        .where(
+          and(
+            eq(agentphoneVerificationSendCooldowns.scope, key.scope),
+            eq(agentphoneVerificationSendCooldowns.scopeKey, key.scopeKey),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      signal.throwIfAborted();
+
+      if (
+        cooldown?.lastSentAt &&
+        cooldown.lastSentAt.getTime() > cooldownCutoff
+      ) {
+        return { ok: false as const, response: tooManyVerificationTexts() };
+      }
+    }
+
+    const sent = await sendAgentPhoneMessage({
+      config: {
+        ...config,
+        agentphoneAgentId,
+        apiBaseUrl,
+        apiKey,
+      },
+      toNumber: phoneHandle,
+      body: `Confirm this phone number for VM0: ${connectUrl}`,
+      signal,
+    }).catch(() => {
+      return false;
+    });
+    signal.throwIfAborted();
+
+    if (!sent) {
+      return { ok: false as const, response: unavailable() };
+    }
+
+    for (const key of cooldownKeys) {
+      await tx
+        .update(agentphoneVerificationSendCooldowns)
+        .set({ lastSentAt: sentAt, updatedAt: sentAt })
+        .where(
+          and(
+            eq(agentphoneVerificationSendCooldowns.scope, key.scope),
+            eq(agentphoneVerificationSendCooldowns.scopeKey, key.scopeKey),
+          ),
+        );
+    }
+
+    return { ok: true as const };
   });
   signal.throwIfAborted();
 
-  if (!sent) {
-    return unavailable();
+  if (!sendResult.ok) {
+    return sendResult.response;
   }
 
   return {

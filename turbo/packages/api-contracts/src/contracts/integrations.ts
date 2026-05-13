@@ -167,6 +167,12 @@ export type IntegrationsPhoneMessageContract =
  */
 const telegramBotTokenStatusSchema = z.enum(["valid", "invalid", "unknown"]);
 
+const telegramConnectedUserSchema = z.object({
+  telegramUserId: z.string(),
+  telegramUsername: z.string().nullable(),
+  telegramDisplayName: z.string().nullable(),
+});
+
 const telegramBotListItemSchema = z.object({
   id: z.string(),
   kind: z.enum(["custom", "official"]).optional(),
@@ -174,6 +180,7 @@ const telegramBotListItemSchema = z.object({
   agent: z.object({ id: z.string(), name: z.string() }).nullable(),
   isOwner: z.boolean(),
   isConnected: z.boolean(),
+  connectedUser: telegramConnectedUserSchema.nullable().optional(),
   tokenStatus: telegramBotTokenStatusSchema,
   official: z
     .object({

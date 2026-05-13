@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { zeroIntegrationsAgentPhoneContract } from "@vm0/api-contracts/contracts/zero-integrations-agentphone";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { agentphoneVerificationSendCooldowns } from "@vm0/db/schema/agentphone-verification-send-cooldown";
 import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
@@ -44,6 +45,19 @@ const trackSwitch = createFixtureTracker(
         and(
           eq(userFeatureSwitches.orgId, fixture.orgId),
           eq(userFeatureSwitches.userId, fixture.userId),
+        ),
+      );
+  },
+);
+
+const trackVerificationSendCooldown = createFixtureTracker(
+  async (fixture: { readonly scope: string; readonly scopeKey: string }) => {
+    await writeDb
+      .delete(agentphoneVerificationSendCooldowns)
+      .where(
+        and(
+          eq(agentphoneVerificationSendCooldowns.scope, fixture.scope),
+          eq(agentphoneVerificationSendCooldowns.scopeKey, fixture.scopeKey),
         ),
       );
   },
@@ -98,6 +112,24 @@ async function insertAgentPhoneUserLink(params: {
 }): Promise<void> {
   await writeDb.insert(agentphoneUserLinks).values(params);
   await trackPhone(Promise.resolve({ phoneHandle: params.phoneHandle }));
+}
+
+async function trackAgentPhoneVerificationCooldowns(params: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly phoneHandles: readonly string[];
+}): Promise<void> {
+  await trackVerificationSendCooldown(
+    Promise.resolve({
+      scope: "user_org",
+      scopeKey: `${params.orgId}:${params.userId}`,
+    }),
+  );
+  for (const phoneHandle of params.phoneHandles) {
+    await trackVerificationSendCooldown(
+      Promise.resolve({ scope: "phone", scopeKey: phoneHandle }),
+    );
+  }
 }
 
 async function findAgentPhoneUserLink(phoneHandle: string) {
@@ -174,7 +206,11 @@ describe("/api/integrations/agentphone/link", () => {
   });
 
   it("sends a signed verification link and does not silently link the phone", async () => {
-    await setupEnabledUser();
+    const user = await setupEnabledUser();
+    await trackAgentPhoneVerificationCooldowns({
+      ...user,
+      phoneHandles: ["+15555551212"],
+    });
     const sendMessage = agentPhoneSendMessage();
     server.use(sendMessage.handler);
     const client = setupApp({ context })(zeroIntegrationsAgentPhoneContract);
@@ -182,24 +218,67 @@ describe("/api/integrations/agentphone/link", () => {
     const response = await accept(
       client.startLink({
         headers: { authorization: "Bearer clerk-session" },
-        body: { phoneHandle: "(555) 555-1212" },
+        body: { phoneHandle: "+1 (555) 555-1212" },
       }),
       [200],
     );
 
     expect(response.body).toStrictEqual({
-      phoneHandle: "5555551212",
+      phoneHandle: "+15555551212",
       verificationSent: true,
     });
     expect(sendMessage.calls).toHaveLength(1);
     expect(sendMessage.calls[0]).toStrictEqual(
       expect.objectContaining({
         agent_id: "agt-test-agentphone",
-        to_number: "5555551212",
+        to_number: "+15555551212",
       }),
     );
     expect(sendMessage.calls[0]?.body).toContain("/agentphone/connect?");
-    await expect(findAgentPhoneUserLink("5555551212")).resolves.toBeUndefined();
+    expect(sendMessage.calls[0]?.body).toContain(
+      "http://localhost:3002/agentphone/connect?",
+    );
+    await expect(
+      findAgentPhoneUserLink("+15555551212"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rate limits consecutive verification texts for the same user", async () => {
+    const user = await setupEnabledUser();
+    const firstPhone = uniquePhone();
+    const secondPhone = uniquePhone();
+    await trackAgentPhoneVerificationCooldowns({
+      ...user,
+      phoneHandles: [firstPhone, secondPhone],
+    });
+    const sendMessage = agentPhoneSendMessage();
+    server.use(sendMessage.handler);
+    const client = setupApp({ context })(zeroIntegrationsAgentPhoneContract);
+
+    await accept(
+      client.startLink({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { phoneHandle: firstPhone },
+      }),
+      [200],
+    );
+
+    const response = await accept(
+      client.startLink({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { phoneHandle: secondPhone },
+      }),
+      [429],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message:
+          "Verification text was just sent. Wait a minute before trying again.",
+        code: "TOO_MANY_REQUESTS",
+      },
+    });
+    expect(sendMessage.calls).toHaveLength(1);
   });
 
   it("rejects empty normalized phone input", async () => {
@@ -216,6 +295,26 @@ describe("/api/integrations/agentphone/link", () => {
 
     expect(response.body).toStrictEqual({
       error: expect.objectContaining({ code: "BAD_REQUEST" }),
+    });
+  });
+
+  it("rejects phone input without an explicit country code", async () => {
+    await setupEnabledUser();
+    const client = setupApp({ context })(zeroIntegrationsAgentPhoneContract);
+
+    const response = await accept(
+      client.startLink({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { phoneHandle: "555-555-1212" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: expect.objectContaining({
+        code: "BAD_REQUEST",
+        message: "Enter a phone number with country code, like +1 555 555 1212",
+      }),
     });
   });
 

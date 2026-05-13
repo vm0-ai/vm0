@@ -39,6 +39,7 @@ import * as agentphoneUserLinkSchema from "./schema/agentphone-user-link";
 import * as agentphoneUserAgentPreferenceSchema from "./schema/agentphone-user-agent-preference";
 import * as agentphoneThreadSessionSchema from "./schema/agentphone-thread-session";
 import * as agentphoneMessageSchema from "./schema/agentphone-message";
+import * as agentphoneVerificationSendCooldownSchema from "./schema/agentphone-verification-send-cooldown";
 import * as slackOrgInstallationSchema from "./schema/slack-org-installation";
 import * as slackOrgConnectionSchema from "./schema/slack-org-connection";
 import * as slackOrgThreadSessionSchema from "./schema/slack-org-thread-session";
@@ -116,6 +117,7 @@ export const schema = {
   ...agentphoneUserAgentPreferenceSchema,
   ...agentphoneThreadSessionSchema,
   ...agentphoneMessageSchema,
+  ...agentphoneVerificationSendCooldownSchema,
   ...orgSchema,
   ...orgCacheSchema,
   ...orgMembersSchema,

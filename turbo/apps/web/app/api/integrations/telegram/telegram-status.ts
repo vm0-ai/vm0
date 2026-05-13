@@ -84,10 +84,9 @@ async function getOrgCompose(
 async function getTelegramUserLink(telegramBotId: string, userId: string) {
   const [userLink] = await globalThis.services.db
     .select({
-      id: telegramUserLinks.id,
       telegramUserId: telegramUserLinks.telegramUserId,
-      installationId: telegramUserLinks.installationId,
-      vm0UserId: telegramUserLinks.vm0UserId,
+      telegramUsername: telegramUserLinks.telegramUsername,
+      telegramDisplayName: telegramUserLinks.telegramDisplayName,
     })
     .from(telegramUserLinks)
     .where(
@@ -104,10 +103,9 @@ async function getTelegramUserLink(telegramBotId: string, userId: string) {
 async function getOfficialUserLink(orgId: string, userId: string) {
   const [userLink] = await globalThis.services.db
     .select({
-      id: telegramOfficialUserLinks.id,
       telegramUserId: telegramOfficialUserLinks.telegramUserId,
-      vm0UserId: telegramOfficialUserLinks.vm0UserId,
-      orgId: telegramOfficialUserLinks.orgId,
+      telegramUsername: telegramOfficialUserLinks.telegramUsername,
+      telegramDisplayName: telegramOfficialUserLinks.telegramDisplayName,
     })
     .from(telegramOfficialUserLinks)
     .where(
@@ -273,6 +271,7 @@ export async function buildTelegramBot(
     agent: compose ? { id: compose.id, name: compose.name } : null,
     isOwner: installation.ownerUserId === userId,
     isConnected: !!userLink,
+    connectedUser: userLink,
     tokenStatus,
   };
 }
@@ -300,6 +299,7 @@ export async function buildOfficialTelegramBot(params: {
       : null,
     isOwner: false,
     isConnected: !!userLink,
+    connectedUser: userLink,
     tokenStatus: config.botToken ? "valid" : "unknown",
     official: {
       configured: config.configured,
@@ -334,6 +334,7 @@ export async function buildTelegramBotStatus(
     agent: compose ? { id: compose.id, name: compose.name } : null,
     isOwner: installation.ownerUserId === userId,
     isConnected: !!userLink,
+    connectedUser: userLink,
     tokenStatus,
     domainConfigured,
     environment,

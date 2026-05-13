@@ -28,6 +28,10 @@ function normalizeAgentPhoneHandle(value: string): string {
   return value.trim().replace(/[^\d+]/gu, "");
 }
 
+function isValidAgentPhoneHandle(value: string): boolean {
+  return /^\+[1-9]\d{7,14}$/u.test(value);
+}
+
 export const apiIntegrationsAgentPhoneHandlers = [
   mockApi(zeroIntegrationsAgentPhoneContract.getLinkStatus, ({ respond }) => {
     return respond(200, mockAgentPhoneStatus);
@@ -35,9 +39,12 @@ export const apiIntegrationsAgentPhoneHandlers = [
 
   mockApi(zeroIntegrationsAgentPhoneContract.startLink, ({ body, respond }) => {
     const phoneHandle = normalizeAgentPhoneHandle(body.phoneHandle);
-    if (!phoneHandle) {
+    if (!isValidAgentPhoneHandle(phoneHandle)) {
       return respond(400, {
-        error: { message: "Enter a valid phone number", code: "BAD_REQUEST" },
+        error: {
+          message: "Enter a phone number with country code",
+          code: "BAD_REQUEST",
+        },
       });
     }
     return respond(200, {

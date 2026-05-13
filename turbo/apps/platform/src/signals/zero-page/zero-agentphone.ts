@@ -7,12 +7,17 @@ import {
 } from "@vm0/api-contracts/contracts/zero-integrations-agentphone";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 
 const internalReload$ = state(0);
 const internalPhoneForm$ = state("");
 
 function normalizeAgentPhoneHandle(value: string): string {
   return value.trim().replace(/[^\d+]/gu, "");
+}
+
+function isValidAgentPhoneHandle(value: string): boolean {
+  return /^\+[1-9]\d{7,14}$/u.test(value);
 }
 
 export const agentPhonePhoneForm$ = computed((get) => {
@@ -28,17 +33,13 @@ export const agentPhonePhoneFormError$ = computed((get) => {
   if (!raw.trim()) {
     return null;
   }
-  return get(agentPhonePhoneFormNormalized$)
+  return isValidAgentPhoneHandle(get(agentPhonePhoneFormNormalized$))
     ? null
-    : "Enter a valid phone number.";
+    : "Enter a phone number with country code, like +1 555 555 1212.";
 });
 
 export const setAgentPhonePhoneForm$ = command(({ set }, value: string) => {
   set(internalPhoneForm$, value);
-});
-
-export const resetAgentPhoneSettingsUi$ = command(({ set }) => {
-  set(internalPhoneForm$, "");
 });
 
 export const agentPhoneLinkStatus$ = computed(
@@ -54,7 +55,7 @@ export const agentPhoneLinkStatus$ = computed(
   },
 );
 
-export const reloadAgentPhoneLinkStatus$ = command(({ set }) => {
+const reloadAgentPhoneLinkStatus$ = command(({ set }) => {
   set(internalReload$, (prev) => {
     return prev + 1;
   });
@@ -66,8 +67,10 @@ export const startAgentPhoneLink$ = command(
     signal: AbortSignal,
   ): Promise<AgentPhoneStartLinkResponse> => {
     const phoneHandle = get(agentPhonePhoneFormNormalized$);
-    if (!phoneHandle) {
-      throw new Error("Enter a valid phone number.");
+    if (!isValidAgentPhoneHandle(phoneHandle)) {
+      throw new Error(
+        "Enter a phone number with country code, like +1 555 555 1212.",
+      );
     }
 
     const client = get(zeroClient$)(zeroIntegrationsAgentPhoneContract, {
@@ -85,6 +88,37 @@ export const startAgentPhoneLink$ = command(
     set(reloadAgentPhoneLinkStatus$);
     toast.success("Verification text sent");
     return { phoneHandle, verificationSent: true };
+  },
+);
+
+export const waitForAgentPhoneConnection$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const current = await get(agentPhoneLinkStatus$);
+    signal.throwIfAborted();
+    if (current.linked) {
+      return;
+    }
+
+    const onAgentPhoneChanged$ = command(
+      async ({ get, set }, sig: AbortSignal) => {
+        set(reloadAgentPhoneLinkStatus$);
+        const client = get(zeroClient$)(zeroIntegrationsAgentPhoneContract, {
+          apiBase: "api",
+        });
+        const result = await accept(
+          client.getLinkStatus({
+            headers: {},
+            fetchOptions: { signal: sig },
+          }),
+          [200],
+          { toast: false },
+        );
+        return result.body.linked;
+      },
+    );
+
+    await set(setAblyLoop$, "agentphone:changed", onAgentPhoneChanged$, signal);
+    toast.success("AgentPhone connected");
   },
 );
 

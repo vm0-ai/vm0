@@ -9,6 +9,7 @@ import {
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import {
   createTestTelegramInstallation,
+  insertTestOfficialTelegramUserLink,
   insertTestTelegramUserLink,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { server } from "../../../../../src/mocks/server";
@@ -211,7 +212,9 @@ describe("/api/integrations/telegram", () => {
       });
       await insertTestTelegramUserLink({
         installationId: botId,
-        telegramUserId: uniqueId("tg-user"),
+        telegramUserId: "tg-user-ada",
+        telegramUsername: "ada_tg",
+        telegramDisplayName: "Ada Lovelace",
         vm0UserId: user.userId,
       });
 
@@ -229,9 +232,46 @@ describe("/api/integrations/telegram", () => {
             id: botId,
             isOwner: false,
             isConnected: true,
+            connectedUser: {
+              telegramUserId: "tg-user-ada",
+              telegramUsername: "ada_tg",
+              telegramDisplayName: "Ada Lovelace",
+            },
           }),
         ]),
       );
+    });
+
+    it("includes the connected official Telegram user profile", async () => {
+      const user = await context.setupUser();
+
+      await insertTestOfficialTelegramUserLink({
+        orgId: user.orgId,
+        vm0UserId: user.userId,
+        telegramUserId: "official-user-ada",
+        telegramUsername: "official_ada",
+        telegramDisplayName: "Official Ada",
+      });
+
+      const response = await GET(telegramRequest());
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.bots).toEqual([
+        expect.objectContaining({
+          id: OFFICIAL_TELEGRAM_BOT_ID,
+          kind: "official",
+          isConnected: true,
+          connectedUser: {
+            telegramUserId: "official-user-ada",
+            telegramUsername: "official_ada",
+            telegramDisplayName: "Official Ada",
+          },
+          official: expect.objectContaining({
+            linkedTelegramUserId: "official-user-ada",
+          }),
+        }),
+      ]);
     });
 
     it("marks a bot token invalid when Telegram rejects the stored token", async () => {

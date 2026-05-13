@@ -73,6 +73,7 @@ export const zeroIntegrationsAgentPhoneContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
+      429: apiErrorSchema,
       409: apiErrorSchema,
       503: apiErrorSchema,
     },
