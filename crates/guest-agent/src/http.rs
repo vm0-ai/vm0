@@ -20,6 +20,7 @@ use tokio::io::{AsyncRead, AsyncSeekExt, ReadBuf};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const HTTP_TOO_MANY_REQUESTS: u16 = 429;
+const DEFAULT_RETRY_DELAY: Duration = Duration::from_secs(1);
 
 /// Shared guest-agent HTTP client.
 ///
@@ -31,10 +32,19 @@ const HTTP_TOO_MANY_REQUESTS: u16 = 429;
 #[derive(Clone)]
 pub struct HttpClient {
     inner: Option<Client>,
+    retry_delay: Duration,
 }
 
 impl HttpClient {
     pub fn new() -> Result<Self, AgentError> {
+        Self::with_retry_delay(DEFAULT_RETRY_DELAY)
+    }
+
+    /// Build a client with a custom retry delay.
+    ///
+    /// Production callers should use [`HttpClient::new`]. Integration tests use
+    /// this to cover real retry behavior without paying production backoff time.
+    pub fn with_retry_delay(retry_delay: Duration) -> Result<Self, AgentError> {
         let inner = Client::builder()
             .connect_timeout(Duration::from_secs(constants::HTTP_CONNECT_TIMEOUT_SECS))
             .timeout(Duration::from_secs(constants::HTTP_TIMEOUT_SECS))
@@ -43,14 +53,20 @@ impl HttpClient {
                 AgentError::Http(format!("failed to build guest-agent HTTP client: {e}"))
             })?;
 
-        Ok(Self { inner: Some(inner) })
+        Ok(Self {
+            inner: Some(inner),
+            retry_delay,
+        })
     }
 
     pub fn for_current_env() -> Result<Self, AgentError> {
         if env::has_api() {
             Self::new()
         } else {
-            Ok(Self { inner: None })
+            Ok(Self {
+                inner: None,
+                retry_delay: DEFAULT_RETRY_DELAY,
+            })
         }
     }
 
@@ -66,6 +82,7 @@ impl HttpClient {
 async fn send_with_retry<BuildRequest, BuildRequestFuture, BuildClientError, ClientErrorFuture>(
     label: &str,
     max_retries: u32,
+    retry_delay: Duration,
     final_error: String,
     mut build_request: BuildRequest,
     mut build_client_error: BuildClientError,
@@ -99,7 +116,7 @@ where
         }
 
         if attempt < max_retries {
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            tokio::time::sleep(retry_delay).await;
         }
     }
 
@@ -122,6 +139,7 @@ impl HttpClient {
         let resp = send_with_retry(
             "POST",
             max_retries,
+            self.retry_delay,
             format!("POST failed after {max_retries} attempts to {url}"),
             || {
                 let mut req = client
@@ -194,6 +212,7 @@ impl HttpClient {
         send_with_retry(
             "PUT presigned",
             max_retries,
+            self.retry_delay,
             format!("PUT presigned failed after {max_retries} attempts"),
             move || {
                 let data = data.clone();
@@ -338,6 +357,7 @@ impl HttpClient {
         send_with_retry(
             "PUT presigned",
             max_retries,
+            self.retry_delay,
             format!("PUT presigned failed after {max_retries} attempts"),
             move || {
                 let source_file = Arc::clone(&source_file);
@@ -396,7 +416,10 @@ mod tests {
 
     #[tokio::test]
     async fn disabled_client_fails_before_request_build() {
-        let client = HttpClient { inner: None };
+        let client = HttpClient {
+            inner: None,
+            retry_delay: DEFAULT_RETRY_DELAY,
+        };
         let result = client
             .post_json("http://127.0.0.1:1/test", &serde_json::json!({}), 1)
             .await;
@@ -409,7 +432,10 @@ mod tests {
 
     #[tokio::test]
     async fn disabled_client_raw_upload_fails_before_request_build() {
-        let client = HttpClient { inner: None };
+        let client = HttpClient {
+            inner: None,
+            retry_delay: DEFAULT_RETRY_DELAY,
+        };
         let result = client
             .put_presigned(
                 "http://127.0.0.1:1/upload",
@@ -426,7 +452,10 @@ mod tests {
 
     #[tokio::test]
     async fn disabled_client_stream_upload_fails_before_file_open() {
-        let client = HttpClient { inner: None };
+        let client = HttpClient {
+            inner: None,
+            retry_delay: DEFAULT_RETRY_DELAY,
+        };
         let result = client
             .put_presigned_file(
                 "http://127.0.0.1:1/upload",

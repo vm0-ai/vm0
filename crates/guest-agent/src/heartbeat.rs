@@ -27,14 +27,19 @@ pub async fn heartbeat_loop(
     http: HttpClient,
     shutdown: CancellationToken,
 ) -> Result<(), AgentError> {
-    heartbeat_loop_with_interval(http, shutdown, constants::HEARTBEAT_INTERVAL_SECS).await
+    heartbeat_loop_with_interval(
+        http,
+        shutdown,
+        Duration::from_secs(constants::HEARTBEAT_INTERVAL_SECS),
+    )
+    .await
 }
 
-/// Like [`heartbeat_loop`] but with a configurable interval (for testing).
+/// Like [`heartbeat_loop`] but with a configurable interval.
 pub async fn heartbeat_loop_with_interval(
     http: HttpClient,
     shutdown: CancellationToken,
-    interval_secs: u64,
+    interval: Duration,
 ) -> Result<(), AgentError> {
     // No API token → local/test mode; heartbeat has no server to reach.
     if !env::has_api() {
@@ -42,7 +47,7 @@ pub async fn heartbeat_loop_with_interval(
         return Ok(());
     }
 
-    let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
+    let mut interval = tokio::time::interval(interval);
     let mut is_first = true;
     let mut consecutive_failures: u32 = 0;
 

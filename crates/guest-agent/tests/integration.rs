@@ -1,7 +1,7 @@
 // Each #[tokio::test] spins up an isolated single-thread runtime, so
 // tokio::sync::Mutex cannot wake waiters across runtimes.  A std Mutex
 // serialises correctly (each runtime owns its own OS thread).
-#![allow(clippy::await_holding_lock)]
+#![allow(clippy::await_holding_lock, clippy::expect_used)]
 
 use base64::Engine;
 use bytes::Bytes;
@@ -35,12 +35,19 @@ static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
 macro_rules! http_client {
     () => {
-        guest_agent::http::HttpClient::new().unwrap()
+        test_http_client(TEST_HTTP_RETRY_DELAY)
     };
 }
 
+const TEST_HTTP_RETRY_DELAY: Duration = Duration::from_millis(10);
+const TEST_HTTP_RETRY_SWITCH_DELAY: Duration = Duration::from_millis(100);
+const TEST_HEARTBEAT_INTERVAL: Duration = Duration::from_millis(100);
 const MOCK_CALL_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const MOCK_CALL_TIMEOUT: Duration = Duration::from_secs(10);
+
+fn test_http_client(retry_delay: Duration) -> guest_agent::http::HttpClient {
+    guest_agent::http::HttpClient::with_retry_delay(retry_delay).expect("build test http client")
+}
 
 async fn wait_mock_calls(
     mock_: &httpmock::Mock<'_>,
@@ -194,7 +201,11 @@ async fn post_json_retry_then_succeed() {
     });
 
     let url = format!("{}/test/retry-succeed", server.base_url());
-    let handle = tokio::spawn(async move { http_client!().post_json(&url, &json!({}), 3).await });
+    let handle = tokio::spawn(async move {
+        test_http_client(TEST_HTTP_RETRY_SWITCH_DELAY)
+            .post_json(&url, &json!({}), 3)
+            .await
+    });
 
     // Wait until the failure mock has been hit twice, then remove it so
     // the third attempt falls through to the success mock.
@@ -363,7 +374,7 @@ async fn put_presigned_retry_then_succeed() {
     let url = format!("{}/test/put-retry", server.base_url());
     let data = Bytes::from_static(b"retry data");
     let handle = tokio::spawn(async move {
-        http_client!()
+        test_http_client(TEST_HTTP_RETRY_SWITCH_DELAY)
             .put_presigned(&url, data, "application/octet-stream")
             .await
     });
@@ -510,7 +521,7 @@ async fn put_presigned_file_retry_then_succeed() {
     let url = format!("{}/test/put-file-retry", server.base_url());
     let path = file_path.clone();
     let handle = tokio::spawn(async move {
-        http_client!()
+        test_http_client(TEST_HTTP_RETRY_SWITCH_DELAY)
             .put_presigned_file(&url, &path, "application/gzip")
             .await
     });
@@ -553,7 +564,7 @@ async fn put_presigned_file_retry_fails_if_source_shrinks() {
     let url = format!("{}/test/put-file-retry-shrunk", server.base_url());
     let path = file_path.clone();
     let handle = tokio::spawn(async move {
-        http_client!()
+        test_http_client(TEST_HTTP_RETRY_SWITCH_DELAY)
             .put_presigned_file(&url, &path, "application/gzip")
             .await
     });
@@ -598,7 +609,7 @@ async fn put_presigned_file_retry_uses_original_length_if_source_grows() {
     let url = format!("{}/test/put-file-retry-grown", server.base_url());
     let path = file_path.clone();
     let handle = tokio::spawn(async move {
-        http_client!()
+        test_http_client(TEST_HTTP_RETRY_SWITCH_DELAY)
             .put_presigned_file(&url, &path, "application/gzip")
             .await
     });
@@ -645,7 +656,7 @@ async fn put_presigned_file_retry_uses_original_handle_if_path_is_replaced() {
     let url = format!("{}/test/put-file-retry-replaced", server.base_url());
     let path = file_path.clone();
     let handle = tokio::spawn(async move {
-        http_client!()
+        test_http_client(TEST_HTTP_RETRY_SWITCH_DELAY)
             .put_presigned_file(&url, &path, "application/gzip")
             .await
     });
@@ -776,9 +787,6 @@ async fn heartbeat_consecutive_failures_fatal() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
 
-    // Use a 1s heartbeat interval so the test completes in ~3s (3 failures).
-    const TEST_INTERVAL: u64 = 1;
-
     // First heartbeat succeeds.
     let success_mock = server.mock(|when, then| {
         when.method(POST).path("/api/webhooks/agent/heartbeat");
@@ -791,7 +799,7 @@ async fn heartbeat_consecutive_failures_fatal() {
         guest_agent::heartbeat::heartbeat_loop_with_interval(
             http_client!(),
             shutdown_clone,
-            TEST_INTERVAL,
+            TEST_HEARTBEAT_INTERVAL,
         )
         .await
     });
@@ -841,9 +849,6 @@ async fn heartbeat_recovery_resets_counter() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
 
-    // Use a 1s heartbeat interval so the test completes quickly.
-    const TEST_INTERVAL: u64 = 1;
-
     // Sequence: success → 2 failures → success (reset)
     // The loop should NOT exit because failures never reach 3 consecutive.
 
@@ -858,7 +863,7 @@ async fn heartbeat_recovery_resets_counter() {
         guest_agent::heartbeat::heartbeat_loop_with_interval(
             http_client!(),
             shutdown_clone,
-            TEST_INTERVAL,
+            TEST_HEARTBEAT_INTERVAL,
         )
         .await
     });
