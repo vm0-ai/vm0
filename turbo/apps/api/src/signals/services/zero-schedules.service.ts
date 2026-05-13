@@ -85,8 +85,9 @@ function scheduleResponse(
 export function calculateNextRun(
   cronExpression: string,
   timezone: string,
+  startFrom: Date = nowDate(),
 ): Date | null {
-  return new Cron(cronExpression, { timezone }).nextRun();
+  return new Cron(cronExpression, { timezone }).nextRun(startFrom);
 }
 
 type OwnershipResult =

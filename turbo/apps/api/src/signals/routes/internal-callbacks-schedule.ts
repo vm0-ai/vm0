@@ -65,7 +65,11 @@ function nextRunAtForSchedule(
 ): Date | null {
   if (payload.kind === "cron") {
     return payload.data.cronExpression
-      ? calculateNextRun(payload.data.cronExpression, schedule.timezone)
+      ? calculateNextRun(
+          payload.data.cronExpression,
+          schedule.timezone,
+          completedAt,
+        )
       : null;
   }
 
