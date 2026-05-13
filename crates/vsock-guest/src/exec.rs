@@ -580,6 +580,53 @@ mod tests {
         path.exists()
     }
 
+    #[cfg(target_os = "linux")]
+    fn open_pidfd(pid: libc::pid_t) -> std::io::Result<std::os::fd::OwnedFd> {
+        use std::os::fd::FromRawFd;
+
+        // SAFETY: `pidfd_open` does not dereference user pointers. On success
+        // it returns a new file descriptor owned by this process.
+        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        // SAFETY: `fd` is a fresh descriptor returned by `pidfd_open` above.
+        Ok(unsafe { std::os::fd::OwnedFd::from_raw_fd(fd as std::os::fd::RawFd) })
+    }
+
+    #[cfg(target_os = "linux")]
+    fn wait_for_pidfd_exit(
+        pidfd: &std::os::fd::OwnedFd,
+        timeout: Duration,
+    ) -> std::io::Result<bool> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Ok(false);
+            }
+            let timeout_ms = remaining.as_millis().clamp(1, i32::MAX as u128) as i32;
+            let mut pollfd = libc::pollfd {
+                fd: std::os::fd::AsRawFd::as_raw_fd(pidfd),
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            // SAFETY: `pollfd` points to one initialized descriptor entry.
+            let result = unsafe { libc::poll(&mut pollfd, 1, timeout_ms) };
+            if result > 0 {
+                return Ok(true);
+            }
+            if result == 0 {
+                return Ok(false);
+            }
+            let err = std::io::Error::last_os_error();
+            if err.kind() != std::io::ErrorKind::Interrupted {
+                return Err(err);
+            }
+        }
+    }
+
     fn temp_dir(label: &str) -> (PathBuf, TempDirGuard) {
         let dir = std::env::temp_dir().join(format!(
             "vsock-guest-{label}-{}-{}",
@@ -973,25 +1020,17 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     #[test]
     fn spawn_in_own_process_group_timeout_kills_background_child() {
-        let dir = std::env::temp_dir().join(format!(
-            "vsock-guest-pg-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let _guard = TempDirGuard(dir.clone());
+        let (dir, _guard) = temp_dir("pg");
         let ready = dir.join("ready");
-        let survived = dir.join("survived");
+        let background_pid = dir.join("background-pid");
         let ready_arg = shell_escape_value(ready.to_str().unwrap());
-        let survived_arg = shell_escape_value(survived.to_str().unwrap());
-        let script =
-            format!("trap '' HUP; (sleep 1; touch {survived_arg}) & touch {ready_arg}; wait");
+        let background_pid_arg = shell_escape_value(background_pid.to_str().unwrap());
+        let script = format!(
+            "trap '' HUP; sleep 60 & echo $! > {background_pid_arg}; touch {ready_arg}; wait"
+        );
 
         let mut command = build_exec_command(&script, false);
         command.stdout(Stdio::null()).stderr(Stdio::null());
@@ -1000,14 +1039,23 @@ mod tests {
             wait_for_path(&ready, Duration::from_secs(2)),
             "background child should be started before timeout kill is tested"
         );
+        let background_pid: libc::pid_t = std::fs::read_to_string(&background_pid)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let background_pidfd = open_pidfd(background_pid)
+            .unwrap_or_else(|e| panic!("failed to open pidfd for pid {background_pid}: {e}"));
 
         let outcome = wait_with_kill_timeout(child, 100);
         assert!(matches!(outcome, WaitOutcome::TimedOut));
 
-        std::thread::sleep(Duration::from_millis(1500));
-        assert!(
-            !survived.exists(),
-            "timeout kill should terminate background children in the process group"
-        );
+        if !wait_for_pidfd_exit(&background_pidfd, Duration::from_secs(2)).unwrap() {
+            // SAFETY: best-effort cleanup of the test-owned background pid.
+            let _ = unsafe { libc::kill(background_pid, libc::SIGKILL) };
+            panic!(
+                "timeout kill should terminate background pid {background_pid} in the process group"
+            );
+        }
     }
 }
