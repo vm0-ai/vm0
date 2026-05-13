@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.148.2](https://github.com/vm0-ai/vm0/compare/cli-v9.148.1...cli-v9.148.2) (2026-05-13)
+
+
+### Bug Fixes
+
+* **cli:** collapse duplicate codex failure results ([#13125](https://github.com/vm0-ai/vm0/issues/13125)) ([a3b961c](https://github.com/vm0-ai/vm0/commit/a3b961ce69da1d937926986177164180218c0d92))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.16.1
+    * @vm0/connectors bumped to 1.8.1
+    * @vm0/core bumped to 8.272.1
+
 ## [9.148.1](https://github.com/vm0-ai/vm0/compare/cli-v9.148.0...cli-v9.148.1) (2026-05-13)
 
 

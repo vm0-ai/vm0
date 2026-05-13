@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.39.1](https://github.com/vm0-ai/vm0/compare/api-v1.39.0...api-v1.39.1) (2026-05-13)
+
+
+### Bug Fixes
+
+* anchor cron schedule next run time ([#13138](https://github.com/vm0-ai/vm0/issues/13138)) ([b7c78e0](https://github.com/vm0-ai/vm0/commit/b7c78e0a9f423b055f69186741f4d841cd2aeef6))
+* restore website docs and nav behavior ([#13123](https://github.com/vm0-ai/vm0/issues/13123)) ([6d2f45f](https://github.com/vm0-ai/vm0/commit/6d2f45f4870150fd9ac72773099721a68acbc1ac))
+
+
+### Refactoring
+
+* make codex providers feature-switch free ([#13126](https://github.com/vm0-ai/vm0/issues/13126)) ([6a3e7b3](https://github.com/vm0-ai/vm0/commit/6a3e7b37ff6fb0cd473bd72f61ff80e6ca74195f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.16.1
+    * @vm0/connectors bumped to 1.8.1
+    * @vm0/core bumped to 8.272.1
+    * @vm0/db bumped to 1.8.1
+
 ## [1.39.0](https://github.com/vm0-ai/vm0/compare/api-v1.38.0...api-v1.39.0) (2026-05-13)
 
 

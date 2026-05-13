@@ -1,5 +1,28 @@
 # Changelog
 
+## [12.358.1](https://github.com/vm0-ai/vm0/compare/web-v12.358.0...web-v12.358.1) (2026-05-13)
+
+
+### Bug Fixes
+
+* align agentphone audit link label ([#13141](https://github.com/vm0-ai/vm0/issues/13141)) ([0e9b75b](https://github.com/vm0-ai/vm0/commit/0e9b75b9a6ab61f90c97d9ba1971160545352291))
+* restore website docs and nav behavior ([#13123](https://github.com/vm0-ai/vm0/issues/13123)) ([6d2f45f](https://github.com/vm0-ai/vm0/commit/6d2f45f4870150fd9ac72773099721a68acbc1ac))
+
+
+### Refactoring
+
+* make codex providers feature-switch free ([#13126](https://github.com/vm0-ai/vm0/issues/13126)) ([6a3e7b3](https://github.com/vm0-ai/vm0/commit/6a3e7b37ff6fb0cd473bd72f61ff80e6ca74195f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.16.1
+    * @vm0/connectors bumped to 1.8.1
+    * @vm0/core bumped to 8.272.1
+    * @vm0/db bumped to 1.8.1
+
 ## [12.358.0](https://github.com/vm0-ai/vm0/compare/web-v12.357.0...web-v12.358.0) (2026-05-13)
 
 

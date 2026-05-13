@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.272.1](https://github.com/vm0-ai/vm0/compare/core-v8.272.0...core-v8.272.1) (2026-05-13)
+
+
+### Refactoring
+
+* make codex providers feature-switch free ([#13126](https://github.com/vm0-ai/vm0/issues/13126)) ([6a3e7b3](https://github.com/vm0-ai/vm0/commit/6a3e7b37ff6fb0cd473bd72f61ff80e6ca74195f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.16.1
+    * @vm0/connectors bumped to 1.8.1
+
 ## [8.272.0](https://github.com/vm0-ai/vm0/compare/core-v8.271.2...core-v8.272.0) (2026-05-13)
 
 
