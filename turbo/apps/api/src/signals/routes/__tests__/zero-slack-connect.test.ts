@@ -12,6 +12,7 @@ import {
 } from "./helpers/zero-route-test";
 import {
   deleteSlackConnectOrg$,
+  findArtifactStorage$,
   findSlackOrgConnection$,
   findSlackOrgInstallation$,
   seedSlackConnectOrg$,
@@ -22,6 +23,38 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const SLACK_CONNECT_PATH = "/api/zero/integrations/slack/connect";
+
+function userIdsFromClerkListArgs(args: unknown): readonly string[] {
+  if (typeof args !== "object" || args === null || !("userId" in args)) {
+    return [];
+  }
+  const userId = args.userId;
+  if (
+    !Array.isArray(userId) ||
+    !userId.every((candidate) => {
+      return typeof candidate === "string";
+    })
+  ) {
+    return [];
+  }
+  return userId;
+}
+
+function mockClerkUsersById(): void {
+  context.mocks.clerk.users.getUserList.mockImplementation((args: unknown) => {
+    return Promise.resolve({
+      data: userIdsFromClerkListArgs(args).map((userId) => {
+        return {
+          id: userId,
+          emailAddresses: [
+            { id: `email_${userId}`, emailAddress: `${userId}@example.com` },
+          ],
+          primaryEmailAddressId: `email_${userId}`,
+        };
+      }),
+    });
+  });
+}
 
 async function postRawSlackConnect(body: string): Promise<{
   readonly status: number;
@@ -191,6 +224,8 @@ describe("POST /api/zero/integrations/slack/connect", () => {
       ok: true,
       message_ts: "mock.ephemeral.ts",
     });
+    context.mocks.slack.views.publish.mockResolvedValue({ ok: true });
+    mockClerkUsersById();
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -325,6 +360,59 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     expect(response.body.role).toBe("admin");
   });
 
+  it("creates artifact storage with an initial empty version after connect", async () => {
+    const fixture = await track(
+      store.set(seedSlackConnectOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroSlackConnectContract);
+    await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          workspaceId: fixture.slackWorkspaceId,
+          slackUserId: fixture.slackUserId,
+        },
+      }),
+      [200],
+    );
+    await clearAllDetached();
+
+    const artifactStorage = await store.set(
+      findArtifactStorage$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+
+    expect(artifactStorage).toMatchObject({
+      s3Prefix: `${fixture.orgId}/artifact/artifact`,
+      headVersionId: expect.any(String),
+      versionId: expect.any(String),
+    });
+    expect(artifactStorage?.versionS3Key).toBe(
+      `${fixture.orgId}/artifact/artifact/${artifactStorage?.versionId}`,
+    );
+    expect(context.mocks.s3.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          Bucket: "test-user-storages",
+          Key: `${artifactStorage?.versionS3Key}/manifest.json`,
+          ContentType: "application/json",
+        }),
+      }),
+    );
+    expect(context.mocks.s3.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          Bucket: "test-user-storages",
+          Key: `${artifactStorage?.versionS3Key}/archive.tar.gz`,
+          ContentType: "application/gzip",
+        }),
+      }),
+    );
+  });
+
   it("sends an ephemeral Slack confirmation when channel context is provided", async () => {
     const fixture = await track(
       store.set(seedSlackConnectOrg$, {}, context.signal),
@@ -356,6 +444,22 @@ describe("POST /api/zero/integrations/slack/connect", () => {
       }),
     );
     expect(context.mocks.slack.chat.postMessage).not.toHaveBeenCalled();
+    expect(context.mocks.slack.views.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: fixture.slackUserId,
+        view: expect.objectContaining({
+          type: "home",
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              type: "section",
+              text: expect.objectContaining({
+                text: expect.stringContaining("*Connected to Zero*"),
+              }),
+            }),
+          ]),
+        }),
+      }),
+    );
 
     const connection = await store.set(
       findSlackOrgConnection$,

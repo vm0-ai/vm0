@@ -4,13 +4,17 @@ import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-preference";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, eq, isNull } from "drizzle-orm";
 
 import {
+  buildAppHomeView,
   buildSuccessMessage,
   buildWelcomeMessage,
 } from "../../lib/slack-connect-blocks";
+import { env } from "../../lib/env";
+import { clerk$ } from "../external/clerk";
 import { publishUserSignal } from "../external/realtime";
 import {
   createSlackClient,
@@ -19,9 +23,11 @@ import {
 } from "../external/slack-message-client";
 import { nowDate } from "../external/time";
 import { db$, writeDb$, type Db } from "../external/db";
+import { ensureUserArtifactStorage } from "./agent-run-storage.service";
 import { decryptSecretValue } from "./crypto.utils";
 
 type SlackInstallation = typeof slackOrgInstallations.$inferSelect;
+type SlackClient = ReturnType<typeof createSlackClient>;
 
 type ConnectResult =
   | { readonly kind: "not_found"; readonly message: string }
@@ -82,6 +88,171 @@ async function upsertSlackConnection(
   }
 
   return existing.id;
+}
+
+async function resolveDefaultComposeId(
+  db: Db,
+  orgId: string,
+): Promise<string | null> {
+  const [metadata] = await db
+    .select({ defaultAgentId: orgMetadata.defaultAgentId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  return metadata?.defaultAgentId ?? null;
+}
+
+async function getUserAgentPreference(
+  db: Db,
+  vm0UserId: string,
+  orgId: string,
+): Promise<string | null> {
+  const [preference] = await db
+    .select({ selectedComposeId: slackUserAgentPreferences.selectedComposeId })
+    .from(slackUserAgentPreferences)
+    .where(
+      and(
+        eq(slackUserAgentPreferences.vm0UserId, vm0UserId),
+        eq(slackUserAgentPreferences.orgId, orgId),
+      ),
+    )
+    .limit(1);
+  return preference?.selectedComposeId ?? null;
+}
+
+async function resolveEffectiveComposeId(
+  db: Db,
+  vm0UserId: string,
+  orgId: string,
+): Promise<string | null> {
+  const override = await getUserAgentPreference(db, vm0UserId, orgId);
+  if (override) {
+    const [agent] = await db
+      .select({ id: zeroAgents.id })
+      .from(zeroAgents)
+      .where(and(eq(zeroAgents.id, override), eq(zeroAgents.orgId, orgId)))
+      .limit(1);
+    if (agent?.id) {
+      return override;
+    }
+  }
+  return resolveDefaultComposeId(db, orgId);
+}
+
+async function getWorkspaceAgentName(
+  db: Db,
+  composeId: string,
+): Promise<string | undefined> {
+  const [agent] = await db
+    .select({ name: zeroAgents.name, displayName: zeroAgents.displayName })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, composeId))
+    .limit(1);
+  return agent?.displayName ?? agent?.name;
+}
+
+async function getPrimaryUserEmail(
+  clerkClient: ReturnType<typeof clerk$.read>,
+  userId: string,
+): Promise<string | undefined> {
+  const users = await clerkClient.users.getUserList({ userId: [userId] });
+  const user = users.data.find((candidate) => {
+    return candidate.id === userId;
+  });
+  const primaryEmailAddressId = user?.primaryEmailAddressId;
+  const email = user?.emailAddresses.find((candidate) => {
+    return candidate.id === primaryEmailAddressId;
+  });
+  return email?.emailAddress;
+}
+
+function buildSlackConnectUrl(
+  workspaceId: string,
+  slackUserId: string,
+): string {
+  const params = new URLSearchParams({ w: workspaceId, u: slackUserId });
+  return `${env("VM0_WEB_URL")}/settings/slack?${params.toString()}`;
+}
+
+async function refreshSlackAppHome(args: {
+  readonly db: Db;
+  readonly clerkClient: ReturnType<typeof clerk$.read>;
+  readonly client: SlackClient;
+  readonly installation: SlackInstallation;
+  readonly slackUserId: string;
+}): Promise<void> {
+  const [connection] = await args.db
+    .select()
+    .from(slackOrgConnections)
+    .where(
+      and(
+        eq(slackOrgConnections.slackUserId, args.slackUserId),
+        eq(
+          slackOrgConnections.slackWorkspaceId,
+          args.installation.slackWorkspaceId,
+        ),
+      ),
+    )
+    .limit(1);
+
+  if (!connection) {
+    await args.client.views.publish({
+      user_id: args.slackUserId,
+      view: buildAppHomeView({
+        appUrl: env("VM0_WEB_URL"),
+        isLinked: false,
+        loginUrl: buildSlackConnectUrl(
+          args.installation.slackWorkspaceId,
+          args.slackUserId,
+        ),
+      }),
+    });
+    return;
+  }
+
+  let agentName: string | undefined;
+  let isOverrideActive = false;
+  let canSwitch = false;
+  if (args.installation.orgId) {
+    const [effectiveComposeId, overrideComposeId, defaultComposeId] =
+      await Promise.all([
+        resolveEffectiveComposeId(
+          args.db,
+          connection.vm0UserId,
+          args.installation.orgId,
+        ),
+        getUserAgentPreference(
+          args.db,
+          connection.vm0UserId,
+          args.installation.orgId,
+        ),
+        resolveDefaultComposeId(args.db, args.installation.orgId),
+      ]);
+
+    if (effectiveComposeId) {
+      agentName = await getWorkspaceAgentName(args.db, effectiveComposeId);
+    }
+    isOverrideActive = Boolean(
+      overrideComposeId && overrideComposeId !== defaultComposeId,
+    );
+    canSwitch = Boolean(defaultComposeId);
+  }
+
+  await args.client.views.publish({
+    user_id: args.slackUserId,
+    view: buildAppHomeView({
+      appUrl: env("VM0_WEB_URL"),
+      isLinked: true,
+      vm0UserId: connection.vm0UserId,
+      userEmail: await getPrimaryUserEmail(
+        args.clerkClient,
+        connection.vm0UserId,
+      ),
+      agentName,
+      isOverrideActive,
+      canSwitch,
+    }),
+  });
 }
 
 export function zeroSlackConnectStatus(args: {
@@ -150,7 +321,7 @@ export function zeroSlackConnectStatus(args: {
 
 export const connectSlackWorkspace$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly userId: string;
       readonly orgId: string;
@@ -220,6 +391,16 @@ export const connectSlackWorkspace$ = command(
       });
       signal.throwIfAborted();
 
+      await ensureUserArtifactStorage({
+        get,
+        db: writeDb,
+        orgId: args.orgId,
+        userId: args.userId,
+        name: "artifact",
+        bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
+      });
+      signal.throwIfAborted();
+
       return {
         kind: "ok",
         connectionId,
@@ -239,6 +420,16 @@ export const connectSlackWorkspace$ = command(
       slackUserId: args.slackUserId,
       slackWorkspaceId: args.workspaceId,
       vm0UserId: args.userId,
+    });
+    signal.throwIfAborted();
+
+    await ensureUserArtifactStorage({
+      get,
+      db: writeDb,
+      orgId: args.orgId,
+      userId: args.userId,
+      name: "artifact",
+      bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
     });
     signal.throwIfAborted();
 
@@ -289,10 +480,11 @@ export const publishSlackAdminSignal$ = command(
 
 export const notifySlackConnect$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly installation: SlackInstallation;
       readonly slackUserId: string;
+      readonly orgId: string;
       readonly channelId?: string;
       readonly threadTs?: string;
       readonly pendingPrompt?: string;
@@ -303,6 +495,13 @@ export const notifySlackConnect$ = command(
     const client = createSlackClient(
       decryptSecretValue(args.installation.encryptedBotToken),
     );
+    const defaultComposeId = await resolveDefaultComposeId(writeDb, args.orgId);
+    signal.throwIfAborted();
+    const agentName = defaultComposeId
+      ? await getWorkspaceAgentName(writeDb, defaultComposeId)
+      : undefined;
+    signal.throwIfAborted();
+
     const blocks = buildSuccessMessage(
       "You're connected! :tada:\nMention `@Zero` in any channel or send a DM to start chatting with your agent.",
     );
@@ -322,50 +521,55 @@ export const notifySlackConnect$ = command(
       sentEphemeral = result.kind === "ok";
     }
 
-    if (sentEphemeral) {
-      return;
-    }
-
-    const connectMessage = await postMessage(
-      client,
-      args.slackUserId,
-      "You're connected!",
-      { blocks },
-    );
-    signal.throwIfAborted();
-    if (connectMessage.kind !== "ok") {
-      return;
-    }
-
-    await postMessage(client, args.slackUserId, "Hi! I'm Zero.", {
-      threadTs: connectMessage.ts,
-      blocks: buildWelcomeMessage(),
-    });
-    signal.throwIfAborted();
-
-    if (args.pendingPrompt) {
-      const safePrompt = `\`\`\`${args.pendingPrompt.replaceAll("`", "'")}\`\`\``;
-      await postMessage(
+    if (!sentEphemeral) {
+      const connectMessage = await postMessage(
         client,
         args.slackUserId,
-        `By the way, would you like me to run this for you?\n\n${safePrompt}\n\nJust paste it in a message and I'll get started!`,
-        { threadTs: connectMessage.ts },
+        "You're connected!",
+        { blocks },
       );
       signal.throwIfAborted();
+      if (connectMessage.kind === "ok") {
+        await postMessage(client, args.slackUserId, "Hi! I'm Zero.", {
+          threadTs: connectMessage.ts,
+          blocks: buildWelcomeMessage(agentName),
+        });
+        signal.throwIfAborted();
+
+        if (args.pendingPrompt) {
+          const safePrompt = `\`\`\`${args.pendingPrompt.replaceAll("`", "'")}\`\`\``;
+          await postMessage(
+            client,
+            args.slackUserId,
+            `By the way, would you like me to run this for you?\n\n${safePrompt}\n\nJust paste it in a message and I'll get started!`,
+            { threadTs: connectMessage.ts },
+          );
+          signal.throwIfAborted();
+        }
+
+        await writeDb
+          .update(slackOrgConnections)
+          .set({ dmWelcomeSent: true })
+          .where(
+            and(
+              eq(slackOrgConnections.slackUserId, args.slackUserId),
+              eq(
+                slackOrgConnections.slackWorkspaceId,
+                args.installation.slackWorkspaceId,
+              ),
+            ),
+          );
+        signal.throwIfAborted();
+      }
     }
 
-    await writeDb
-      .update(slackOrgConnections)
-      .set({ dmWelcomeSent: true })
-      .where(
-        and(
-          eq(slackOrgConnections.slackUserId, args.slackUserId),
-          eq(
-            slackOrgConnections.slackWorkspaceId,
-            args.installation.slackWorkspaceId,
-          ),
-        ),
-      );
+    await refreshSlackAppHome({
+      db: writeDb,
+      clerkClient: get(clerk$),
+      client,
+      installation: args.installation,
+      slackUserId: args.slackUserId,
+    });
     signal.throwIfAborted();
   },
 );

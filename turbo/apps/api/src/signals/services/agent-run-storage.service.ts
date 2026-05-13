@@ -327,6 +327,17 @@ async function ensureArtifactStorage(args: {
   });
 }
 
+export async function ensureUserArtifactStorage(args: {
+  readonly get: Getter;
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly name: string;
+  readonly bucket: string;
+}): Promise<void> {
+  await ensureArtifactStorage(args);
+}
+
 async function resolveLatestVersion(
   db: Db,
   lookup: StorageLookup,
