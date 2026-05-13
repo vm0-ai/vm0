@@ -256,8 +256,8 @@ async fn extract_tar_entry(
     .map_err(|e| RunnerError::Internal(format!("extract task failed: {e}")))?
 }
 
-/// Verify SHA256, set permissions, atomically rename to target.
-/// If rename fails but target already exists, assumes another process installed it.
+/// Verify SHA256, set permissions, and atomically rename to target.
+/// A failed rename only counts as a concurrent install if the target verifies.
 async fn verify_and_install(
     sha_hex: &str,
     expected_sha: &str,
@@ -273,14 +273,17 @@ async fn verify_and_install(
 
     match atomic_rename(tmp_path, target, mode).await {
         Ok(()) => Ok(()),
-        Err(e) => {
-            if tokio::fs::try_exists(target).await.unwrap_or(false) {
-                tracing::info!("[OK] {label} installed by another process");
+        Err(e) => match ensure_artifact_installed(target, expected_sha, mode).await {
+            Ok(true) => {
+                tracing::info!("[OK] {label} verified after another install attempt");
                 Ok(())
-            } else {
-                Err(e)
             }
-        }
+            Ok(false) => Err(e),
+            Err(validate_err) => Err(RunnerError::Internal(format!(
+                "{e}; failed to validate existing {}: {validate_err}",
+                target.display()
+            ))),
+        },
     }
 }
 
@@ -353,22 +356,59 @@ async fn file_sha256(path: &Path) -> RunnerResult<String> {
     .map_err(|e| RunnerError::Internal(format!("sha256 task failed: {e}")))?
 }
 
-/// Check if an artifact is already installed with the expected SHA256.
-async fn is_already_installed(path: &Path, expected_sha: &str) -> bool {
-    if !tokio::fs::try_exists(path).await.unwrap_or(false) {
-        return false;
-    }
-    let Ok(sha) = file_sha256(path).await else {
-        return false;
+/// Ensure an existing setup artifact matches its pinned SHA and usable mode.
+async fn ensure_artifact_installed(
+    path: &Path,
+    expected_sha: &str,
+    mode: Option<u32>,
+) -> RunnerResult<bool> {
+    let metadata = match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) => metadata,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "stat {}: {e}",
+                path.display()
+            )));
+        }
     };
-    sha == expected_sha
+
+    if !metadata.is_file() {
+        return Ok(false);
+    }
+
+    if file_sha256(path).await? != expected_sha {
+        return Ok(false);
+    }
+
+    let Some(mode) = mode else {
+        return Ok(true);
+    };
+
+    if (metadata.permissions().mode() & 0o7777) == mode {
+        return Ok(true);
+    }
+
+    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+        .await
+        .map_err(|e| RunnerError::Internal(format!("chmod {}: {e}", path.display())))?;
+
+    let metadata = tokio::fs::symlink_metadata(path)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("stat {}: {e}", path.display())))?;
+
+    if !metadata.is_file() || (metadata.permissions().mode() & 0o7777) != mode {
+        return Ok(false);
+    }
+
+    Ok(file_sha256(path).await? == expected_sha)
 }
 
 async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
     let bin_path = paths.firecracker_bin(FIRECRACKER_VERSION);
     let expected_sha = select_sha(arch, FIRECRACKER_SHA256_X86_64, FIRECRACKER_SHA256_AARCH64);
 
-    if is_already_installed(&bin_path, expected_sha).await {
+    if ensure_artifact_installed(&bin_path, expected_sha, Some(0o755)).await? {
         tracing::info!(
             "[OK] firecracker {FIRECRACKER_VERSION} already installed, skipping download"
         );
@@ -401,7 +441,7 @@ async fn download_kernel(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
     let kernel_path = paths.kernel_bin(FIRECRACKER_VERSION, KERNEL_VERSION);
     let expected_sha = select_sha(arch, KERNEL_SHA256_X86_64, KERNEL_SHA256_AARCH64);
 
-    if is_already_installed(&kernel_path, expected_sha).await {
+    if ensure_artifact_installed(&kernel_path, expected_sha, None).await? {
         tracing::info!("[OK] kernel vmlinux-{KERNEL_VERSION} already installed, skipping download");
         return Ok(());
     }
@@ -429,7 +469,7 @@ async fn download_mitmdump(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
     let bin_path = paths.mitmdump_bin(MITMPROXY_VERSION);
     let expected_sha = select_sha(arch, MITMDUMP_SHA256_X86_64, MITMDUMP_SHA256_AARCH64);
 
-    if is_already_installed(&bin_path, expected_sha).await {
+    if ensure_artifact_installed(&bin_path, expected_sha, Some(0o755)).await? {
         tracing::info!("[OK] mitmdump {MITMPROXY_VERSION} already installed, skipping download");
         return Ok(());
     }
@@ -575,27 +615,125 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn is_already_installed_returns_false_for_missing() {
+    async fn ensure_artifact_installed_returns_false_for_missing() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("nonexistent");
-        assert!(!is_already_installed(&path, "anything").await);
+        assert!(
+            !ensure_artifact_installed(&path, "anything", None)
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
-    async fn is_already_installed_returns_false_for_wrong_sha() {
+    async fn ensure_artifact_installed_returns_false_for_wrong_sha() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("file.bin");
         std::fs::write(&path, b"content").unwrap();
-        assert!(!is_already_installed(&path, "wrong_sha").await);
+        assert!(
+            !ensure_artifact_installed(&path, "wrong_sha", None)
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
-    async fn is_already_installed_returns_true_for_matching_sha() {
+    async fn ensure_artifact_installed_returns_true_for_matching_sha_without_mode() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("file.bin");
         std::fs::write(&path, b"content").unwrap();
         let sha = file_sha256(&path).await.unwrap();
-        assert!(is_already_installed(&path, &sha).await);
+        assert!(ensure_artifact_installed(&path, &sha, None).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn ensure_artifact_installed_returns_true_for_matching_sha_and_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file.bin");
+        std::fs::write(&path, b"content").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let sha = file_sha256(&path).await.unwrap();
+
+        assert!(
+            ensure_artifact_installed(&path, &sha, Some(0o755))
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_artifact_installed_repairs_matching_file_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file.bin");
+        std::fs::write(&path, b"content").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let sha = file_sha256(&path).await.unwrap();
+
+        assert!(
+            ensure_artifact_installed(&path, &sha, Some(0o755))
+                .await
+                .unwrap()
+        );
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o755);
+    }
+
+    #[tokio::test]
+    async fn ensure_artifact_installed_returns_false_for_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file.bin");
+        std::fs::create_dir(&path).unwrap();
+
+        assert!(
+            !ensure_artifact_installed(&path, "anything", Some(0o755))
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_and_install_errors_when_rename_fails_with_invalid_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp_path = dir.path().join("tmp.bin");
+        let target = dir.path().join("target.bin");
+        std::fs::write(&tmp_path, b"content").unwrap();
+        std::fs::create_dir(&target).unwrap();
+        let sha = file_sha256(&tmp_path).await.unwrap();
+
+        let result = verify_and_install(&sha, &sha, "test", &tmp_path, &target, None).await;
+
+        assert!(result.is_err());
+        assert!(target.is_dir());
+        assert!(!tmp_path.exists(), "failed install should clean temp file");
+    }
+
+    #[tokio::test]
+    async fn verify_and_install_replaces_wrong_sha_regular_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp_path = dir.path().join("tmp.bin");
+        let target = dir.path().join("target.bin");
+        std::fs::write(&tmp_path, b"new content").unwrap();
+        std::fs::write(&target, b"old content").unwrap();
+        let sha = file_sha256(&tmp_path).await.unwrap();
+
+        verify_and_install(&sha, &sha, "test", &tmp_path, &target, None)
+            .await
+            .unwrap();
+
+        assert_eq!(std::fs::read(&target).unwrap(), b"new content");
+    }
+
+    #[tokio::test]
+    async fn verify_and_install_accepts_verified_target_after_install_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp_path = dir.path().join("missing-tmp.bin");
+        let target = dir.path().join("target.bin");
+        std::fs::write(&target, b"content").unwrap();
+        let sha = file_sha256(&target).await.unwrap();
+
+        verify_and_install(&sha, &sha, "test", &tmp_path, &target, None)
+            .await
+            .unwrap();
     }
 
     #[test]
