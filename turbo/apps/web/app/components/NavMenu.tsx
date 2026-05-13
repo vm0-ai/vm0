@@ -135,7 +135,6 @@ function NavMenuRow({ item, onSelect }: NavMenuRowProps) {
         target="_blank"
         rel="noopener noreferrer"
         className="nav-popover-item"
-        onPointerDown={onSelect}
         onClick={onSelect}
       >
         {body}
@@ -147,7 +146,6 @@ function NavMenuRow({ item, onSelect }: NavMenuRowProps) {
     <Link
       href={item.href}
       className="nav-popover-item"
-      onPointerDown={onSelect}
       onClick={onSelect}
     >
       {body}

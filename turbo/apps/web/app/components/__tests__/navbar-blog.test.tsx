@@ -274,7 +274,7 @@ describe("Navbar dropdown interactions", () => {
     }
   });
 
-  it("closes the open menu when a dropdown item is selected", () => {
+  it("closes the open menu when a dropdown item is clicked", () => {
     renderNavbarClient();
 
     const resources = getDesktopNavTrigger("resources");
@@ -284,7 +284,7 @@ describe("Navbar dropdown interactions", () => {
     const firstItem =
       document.querySelector<HTMLAnchorElement>(".nav-popover-item");
     expect(firstItem).not.toBeNull();
-    fireEvent.pointerDown(firstItem!);
+    fireEvent.click(firstItem!);
 
     expect(resources).not.toHaveClass("nav-trigger-active");
   });
