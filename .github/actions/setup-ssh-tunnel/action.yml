@@ -55,19 +55,7 @@ runs:
           > "$HOME/.ssh/cf-access.env"
         chmod 600 "$HOME/.ssh/cf-access.env"
 
-        # Proxy script that converts host to tunnel hostname.
-        # Must match parse_host() naming in scripts/cloudflared-ssh.sh:
-        #   subdomain dots -> hyphens, append -ssh
-        #   e.g. dev-1.aws.vm3.ai -> dev-1-aws-ssh.vm3.ai
-        printf '%s\n' \
-          '#!/bin/bash' \
-          "source $HOME/.ssh/cf-access.env" \
-          'HOST="$1"; DOMAIN="vm3.ai"' \
-          'SUB="${HOST%.${DOMAIN}}"' \
-          'TUNNEL_HOST="${SUB//./-}-ssh.${DOMAIN}"' \
-          'exec cloudflared access ssh --hostname "$TUNNEL_HOST" --id "$CF_ACCESS_CLIENT_ID" --secret "$CF_ACCESS_CLIENT_SECRET"' \
-          > "$HOME/.ssh/cf-proxy.sh"
-        chmod 755 "$HOME/.ssh/cf-proxy.sh"
+        install -m 755 "$GITHUB_WORKSPACE/.github/scripts/cloudflare-ssh-proxy.sh" "$HOME/.ssh/cf-proxy.sh"
 
         SSH_CONFIG="$(printf '%s\n' \
           "Host *.vm3.ai" \
