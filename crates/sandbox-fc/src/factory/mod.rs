@@ -28,7 +28,7 @@ pub(crate) use cow_cleanup::cow_destroy_retry_policy;
 pub(crate) use invariant::InvariantConfig;
 pub use invariant::{PREWARM_SCRIPT, config_hash};
 
-pub struct FirecrackerFactory {
+pub(crate) struct FirecrackerFactory {
     config: FirecrackerConfig,
     factory_paths: FactoryPaths,
     runtime_paths: RuntimePaths,
@@ -93,11 +93,6 @@ impl FirecrackerFactory {
             cleanup_group: FactoryCleanupGroup::new(),
             leak_cleaner: None,
         })
-    }
-
-    /// Whether this factory uses snapshot restore (vs fresh boot).
-    pub fn has_snapshot(&self) -> bool {
-        self.config.snapshot.is_some()
     }
 
     /// # Panics
