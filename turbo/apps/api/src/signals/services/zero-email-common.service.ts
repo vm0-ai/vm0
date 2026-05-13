@@ -339,11 +339,31 @@ export function buildUnsubscribeHeaders(url: string): Record<string, string> {
 }
 
 function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+  let escaped = "";
+  for (const char of value) {
+    switch (char) {
+      case "&": {
+        escaped += "&amp;";
+        break;
+      }
+      case "<": {
+        escaped += "&lt;";
+        break;
+      }
+      case ">": {
+        escaped += "&gt;";
+        break;
+      }
+      case '"': {
+        escaped += "&quot;";
+        break;
+      }
+      default: {
+        escaped += char;
+      }
+    }
+  }
+  return escaped;
 }
 
 function htmlParagraphs(value: string): string {
