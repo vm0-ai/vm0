@@ -116,7 +116,7 @@ where
             }
         }
 
-        if attempt < max_retries {
+        if attempt < max_retries && !retry_delay.is_zero() {
             tokio::time::sleep(retry_delay).await;
         }
     }

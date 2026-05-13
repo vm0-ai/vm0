@@ -43,7 +43,7 @@ macro_rules! http_client {
     };
 }
 
-const TEST_HTTP_RETRY_DELAY: Duration = Duration::from_millis(10);
+const TEST_HTTP_RETRY_DELAY: Duration = Duration::ZERO;
 const TEST_HEARTBEAT_INTERVAL: Duration = Duration::from_millis(20);
 const MOCK_CALL_TIMEOUT: Duration = Duration::from_secs(10);
 
