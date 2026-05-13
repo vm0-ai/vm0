@@ -166,7 +166,6 @@ struct CowPool {
     pending: JoinSet<SlotCreationOutcome>,
     waiters: VecDeque<AcquireWaiter>,
     warmup_waiters: Vec<oneshot::Sender<()>>,
-    pipeline_slots: usize,
     buffer_size: usize,
     max_concurrent_creations: usize,
     max_slots: usize,
@@ -343,7 +342,6 @@ impl CowPool {
             pending: JoinSet::new(),
             waiters: VecDeque::new(),
             warmup_waiters: Vec::new(),
-            pipeline_slots: 0,
             buffer_size,
             max_concurrent_creations,
             max_slots,
@@ -391,7 +389,7 @@ impl CowPool {
         while !self.waiters.is_empty()
             && self.ready.is_empty()
             && self.pending.is_empty()
-            && self.pipeline_slots >= self.max_slots
+            && self.pipeline_slots() >= self.max_slots
         {
             let _ = self.fail_one_waiter(CowPoolError::SlotLimitReached {
                 max: self.max_slots,
@@ -399,7 +397,7 @@ impl CowPool {
         }
 
         let desired_pipeline = self.desired_pipeline_slots();
-        if desired_pipeline <= self.pipeline_slots {
+        if desired_pipeline <= self.pipeline_slots() {
             return;
         }
         if self.waiters.is_empty() && self.warm_retry_at.is_some() {
@@ -412,8 +410,8 @@ impl CowPool {
             CreationPurpose::Demand
         };
 
-        while self.pipeline_slots < desired_pipeline
-            && self.pipeline_slots < self.max_slots
+        while self.pipeline_slots() < desired_pipeline
+            && self.pipeline_slots() < self.max_slots
             && self.pending.len() < self.max_concurrent_creations
         {
             if !self.spawn_slot_creation(purpose) {
@@ -427,20 +425,19 @@ impl CowPool {
         desired.min(self.max_slots)
     }
 
+    fn pipeline_slots(&self) -> usize {
+        self.ready.len() + self.pending.len()
+    }
+
     fn prune_closed_waiters(&mut self) {
         self.waiters.retain(|waiter| !waiter.respond_to.is_closed());
     }
 
     fn assign_ready_slots(&mut self) {
         while let Some(slot) = self.ready.pop_front() {
-            match self.assign_slot_to_waiter(slot) {
-                AssignOutcome::Assigned => {
-                    self.pipeline_slots = self.pipeline_slots.saturating_sub(1);
-                }
-                AssignOutcome::NoWaiter(slot) => {
-                    self.ready.push_front(slot);
-                    break;
-                }
+            if let AssignOutcome::NoWaiter(slot) = self.assign_slot_to_waiter(slot) {
+                self.ready.push_front(slot);
+                break;
             }
         }
     }
@@ -491,12 +488,11 @@ impl CowPool {
     fn spawn_slot_creation(&mut self, purpose: CreationPurpose) -> bool {
         if !self.active
             || self.pending.len() >= self.max_concurrent_creations
-            || self.pipeline_slots >= self.max_slots
+            || self.pipeline_slots() >= self.max_slots
         {
             return false;
         }
 
-        self.pipeline_slots += 1;
         let config = self.config.clone();
         let spawner = Arc::clone(&self.slot_spawner);
         self.pending.spawn(async move {
@@ -545,13 +541,12 @@ impl CowPool {
                     ready = self.ready.len(),
                     pending = self.pending.len(),
                     waiters = self.waiters.len(),
-                    pipeline_slots = self.pipeline_slots,
+                    pipeline_slots = self.pipeline_slots(),
                     "COW slot created"
                 );
                 if self.active {
                     self.ready.push_back(slot);
                 } else {
-                    self.pipeline_slots = self.pipeline_slots.saturating_sub(1);
                     drop(slot);
                 }
             }
@@ -563,7 +558,7 @@ impl CowPool {
                     ready = self.ready.len(),
                     pending = self.pending.len(),
                     waiters = self.waiters.len(),
-                    pipeline_slots = self.pipeline_slots,
+                    pipeline_slots = self.pipeline_slots(),
                     "COW slot creation failed"
                 );
                 self.handle_creation_failure(e);
@@ -572,7 +567,6 @@ impl CowPool {
     }
 
     fn handle_creation_failure(&mut self, error: CowPoolError) {
-        self.pipeline_slots = self.pipeline_slots.saturating_sub(1);
         if !self.active {
             return;
         }
@@ -630,7 +624,6 @@ impl CowPool {
         self.finish_warmup_waiters();
 
         while let Some(slot) = self.ready.pop_front() {
-            self.pipeline_slots = self.pipeline_slots.saturating_sub(1);
             destroy_slot(slot);
         }
 
@@ -638,12 +631,12 @@ impl CowPool {
             self.handle_cleanup_completion(completion);
         }
 
-        if self.pipeline_slots != 0 {
+        let pipeline_slots = self.pipeline_slots();
+        if pipeline_slots != 0 {
             warn!(
-                pipeline_slots = self.pipeline_slots,
+                pipeline_slots,
                 "COW pool cleanup finished with nonzero pipeline accounting"
             );
-            self.pipeline_slots = 0;
         }
 
         info!(
@@ -670,7 +663,6 @@ impl CowPool {
         &mut self,
         completion: Result<SlotCreationOutcome, tokio::task::JoinError>,
     ) {
-        self.pipeline_slots = self.pipeline_slots.saturating_sub(1);
         match completion {
             Ok(SlotCreationOutcome {
                 result: Ok(slot),
@@ -707,7 +699,7 @@ impl CowPool {
             ready: self.ready.len(),
             pending: self.pending.len(),
             waiters: self.waiters.len(),
-            pipeline_slots: self.pipeline_slots,
+            pipeline_slots: self.pipeline_slots(),
             warm_retry_scheduled: self.warm_retry_at.is_some(),
         }
     }
@@ -726,7 +718,7 @@ impl Drop for CowPool {
                 ready = self.ready.len(),
                 pending = self.pending.len(),
                 waiters = self.waiters.len(),
-                pipeline_slots = self.pipeline_slots,
+                pipeline_slots = self.pipeline_slots(),
                 "CowPool dropped without cleanup"
             );
         }
