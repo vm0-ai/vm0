@@ -124,19 +124,29 @@ fn write_abandoned_result_marker(
         return None;
     }
 
+    let tmp_path = result_dir.join(format!("{run_id}.{}.result.tmp", RunId::new_v4()));
     let mut file = match std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(result_path)
+        .open(&tmp_path)
     {
         Ok(file) => file,
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => return None,
         Err(_) => return None,
     };
     if std::io::Write::write_all(&mut file, &json).is_err() {
-        let _ = remove_file_if_exists(result_path);
+        let _ = remove_file_if_exists(&tmp_path);
         return None;
     }
+    drop(file);
+
+    // Publish with a no-clobber hard link so a runner result that wins the
+    // race is never overwritten, and crashes before publish cannot leave a
+    // partial terminal marker at the final result path.
+    if std::fs::hard_link(&tmp_path, result_path).is_err() {
+        let _ = remove_file_if_exists(&tmp_path);
+        return None;
+    }
+    let _ = remove_file_if_exists(&tmp_path);
     Some(json)
 }
 
@@ -408,6 +418,26 @@ mod tests {
         std::fs::write(&path, b"{\"exit_code\":0}").unwrap();
         let result = try_read_result(&path).unwrap();
         assert_eq!(result, b"{\"exit_code\":0}");
+    }
+
+    #[test]
+    fn abandoned_marker_write_publishes_without_tmp_residue() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let result_path = local_queue::result_path(group_dir, job_id);
+
+        let marker =
+            write_abandoned_result_marker(&result_path, job_id, "local submit abandoned").unwrap();
+
+        assert_eq!(std::fs::read(&result_path).unwrap(), marker);
+        let result_dir = local_queue::results_dir(group_dir);
+        let tmp_files: Vec<_> = std::fs::read_dir(result_dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("tmp"))
+            .collect();
+        assert!(tmp_files.is_empty(), "tmp files left behind: {tmp_files:?}");
     }
 
     async fn wait_for_job_and_write_success(
