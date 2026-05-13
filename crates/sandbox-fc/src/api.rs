@@ -600,7 +600,7 @@ mod tests {
             Self::new(
                 400,
                 "Bad Request",
-                format!(r#"{{"fault_message":"{message}"}}"#),
+                serde_json::json!({ "fault_message": message }).to_string(),
             )
         }
 
@@ -770,7 +770,12 @@ mod tests {
             }
         }
 
-        let header_end = header_end(&buf).unwrap_or(buf.len());
+        let header_end = header_end(&buf).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "request missing HTTP header terminator",
+            )
+        })?;
         let headers = String::from_utf8_lossy(&buf[..header_end.saturating_sub(4)]).to_string();
         let content_length = headers
             .lines()
