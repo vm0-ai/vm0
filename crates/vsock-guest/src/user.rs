@@ -3,12 +3,14 @@ use std::io;
 use std::path::PathBuf;
 use std::process::Command;
 #[cfg(not(any(debug_assertions, feature = "test-support")))]
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 #[cfg(not(any(debug_assertions, feature = "test-support")))]
 const SANDBOX_USER: &str = "user";
 #[cfg(not(any(debug_assertions, feature = "test-support")))]
 static SANDBOX_USER_CREDENTIALS: OnceLock<UserCredentials> = OnceLock::new();
+#[cfg(not(any(debug_assertions, feature = "test-support")))]
+static SANDBOX_USER_CREDENTIALS_INIT: Mutex<()> = Mutex::new(());
 
 #[cfg(any(test, not(any(debug_assertions, feature = "test-support"))))]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -134,6 +136,13 @@ fn system_user_credentials(username: &str) -> io::Result<UserCredentials> {
 
 #[cfg(not(any(debug_assertions, feature = "test-support")))]
 fn cached_system_user_credentials() -> io::Result<&'static UserCredentials> {
+    if let Some(credentials) = SANDBOX_USER_CREDENTIALS.get() {
+        return Ok(credentials);
+    }
+
+    let _guard = SANDBOX_USER_CREDENTIALS_INIT
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     if let Some(credentials) = SANDBOX_USER_CREDENTIALS.get() {
         return Ok(credentials);
     }
