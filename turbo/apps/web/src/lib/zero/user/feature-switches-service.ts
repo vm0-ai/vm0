@@ -1,6 +1,12 @@
 import { eq, and } from "drizzle-orm";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
+import { initServices } from "../../init-services";
+
+function getDb() {
+  initServices();
+  return globalThis.services.db;
+}
 
 /**
  * Get user feature switch overrides for the given org + user.
@@ -10,7 +16,7 @@ export async function getUserFeatureSwitches(
   orgId: string,
   userId: string,
 ): Promise<Record<string, boolean>> {
-  const db = globalThis.services.db;
+  const db = getDb();
 
   const [row] = await db
     .select({ switches: userFeatureSwitches.switches })
@@ -50,7 +56,7 @@ export async function deleteUserFeatureSwitches(
   orgId: string,
   userId: string,
 ): Promise<void> {
-  const db = globalThis.services.db;
+  const db = getDb();
 
   await db
     .delete(userFeatureSwitches)
@@ -71,7 +77,7 @@ export async function updateUserFeatureSwitches(
   userId: string,
   switches: Record<string, boolean>,
 ): Promise<Record<string, boolean>> {
-  const db = globalThis.services.db;
+  const db = getDb();
 
   const existing = await getUserFeatureSwitches(orgId, userId);
   const merged = { ...existing, ...switches };
