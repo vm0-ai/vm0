@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.2](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.13.1...vsock-host-v0.13.2) (2026-05-13)
+
+
+### Refactoring
+
+* extract vsock host command core ([#13106](https://github.com/vm0-ai/vm0/issues/13106)) ([5890b1a](https://github.com/vm0-ai/vm0/commit/5890b1a45ce9e972ea5841b2d6a77c5c8666533d))
+
 ## [0.13.1](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.13.0...vsock-host-v0.13.1) (2026-05-13)
 
 

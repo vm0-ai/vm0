@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.14](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.13...guest-download-v0.20.14) (2026-05-13)
+
+
+### Bug Fixes
+
+* **guest-download:** stop logging archive urls ([#13107](https://github.com/vm0-ai/vm0/issues/13107)) ([c6a3f0c](https://github.com/vm0-ai/vm0/commit/c6a3f0ce1044bfd207bad337e7705ef1582fc262))
+
 ## [0.20.13](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.12...guest-download-v0.20.13) (2026-05-13)
 
 

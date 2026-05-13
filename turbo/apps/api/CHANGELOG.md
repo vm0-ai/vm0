@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.39.0](https://github.com/vm0-ai/vm0/compare/api-v1.38.0...api-v1.39.0) (2026-05-13)
+
+
+### Features
+
+* add agentphone app ui ([#13080](https://github.com/vm0-ai/vm0/issues/13080)) ([ee19fc5](https://github.com/vm0-ai/vm0/commit/ee19fc53fc786fd8890d8a0bc3a6209d86f41889))
+* **api:** port slack connect side effects ([#13117](https://github.com/vm0-ai/vm0/issues/13117)) ([bae9fc9](https://github.com/vm0-ai/vm0/commit/bae9fc913b5e5947553ca8437080e56795300bf2))
+
+
+### Bug Fixes
+
+* **api:** align chat message env validation ([#13116](https://github.com/vm0-ai/vm0/issues/13116)) ([bcc1457](https://github.com/vm0-ai/vm0/commit/bcc145719f53cca232e0c496291e58cd49bebb56))
+
+
+### Refactoring
+
+* **api:** migrate chat callback ([#13111](https://github.com/vm0-ai/vm0/issues/13111)) ([4ff6f43](https://github.com/vm0-ai/vm0/commit/4ff6f4375712738a10f0495d26e7576ed660da29))
+* **api:** migrate slack org callback ([#13099](https://github.com/vm0-ai/vm0/issues/13099)) ([cd9abe1](https://github.com/vm0-ai/vm0/commit/cd9abe1a7c7b27b561cecd0f845a4ca213a16b41))
+* **api:** migrate voice-chat callback ([#13105](https://github.com/vm0-ai/vm0/issues/13105)) ([bdc1367](https://github.com/vm0-ai/vm0/commit/bdc1367cf833a912f4e320c21c05af2a5893c71a))
+* **api:** migrate zero runs create route ([#13076](https://github.com/vm0-ai/vm0/issues/13076)) ([2b64ac7](https://github.com/vm0-ai/vm0/commit/2b64ac71d8ac51509b1953d40fe140b707a2d444))
+* make zero model-first only ([#13017](https://github.com/vm0-ai/vm0/issues/13017)) ([9bcb323](https://github.com/vm0-ai/vm0/commit/9bcb323d6e2c32dfdd2d1bf9fa63d0d2bf9e1ef1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.16.0
+    * @vm0/connectors bumped to 1.8.0
+    * @vm0/core bumped to 8.272.0
+    * @vm0/db bumped to 1.8.0
+
 ## [1.38.0](https://github.com/vm0-ai/vm0/compare/api-v1.37.1...api-v1.38.0) (2026-05-13)
 
 

@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.348.0](https://github.com/vm0-ai/vm0/compare/app-v0.347.1...app-v0.348.0) (2026-05-13)
+
+
+### Features
+
+* add agentphone app ui ([#13080](https://github.com/vm0-ai/vm0/issues/13080)) ([ee19fc5](https://github.com/vm0-ai/vm0/commit/ee19fc53fc786fd8890d8a0bc3a6209d86f41889))
+
+
+### Bug Fixes
+
+* hide model policy oauth provider label ([#13114](https://github.com/vm0-ai/vm0/issues/13114)) ([8429d21](https://github.com/vm0-ai/vm0/commit/8429d216eb84326230d0bb0bbc068920908ccd89))
+* warn sms and mms agentphone users ([#13109](https://github.com/vm0-ai/vm0/issues/13109)) ([172593e](https://github.com/vm0-ai/vm0/commit/172593e949ae9e84ef7858b38f3c9b0f568450db))
+
+
+### Refactoring
+
+* make zero model-first only ([#13017](https://github.com/vm0-ai/vm0/issues/13017)) ([9bcb323](https://github.com/vm0-ai/vm0/commit/9bcb323d6e2c32dfdd2d1bf9fa63d0d2bf9e1ef1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.16.0
+    * @vm0/connectors bumped to 1.8.0
+    * @vm0/core bumped to 8.272.0
+
 ## [0.347.1](https://github.com/vm0-ai/vm0/compare/app-v0.347.0...app-v0.347.1) (2026-05-13)
 
 

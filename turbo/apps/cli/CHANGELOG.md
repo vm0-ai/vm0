@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.148.1](https://github.com/vm0-ai/vm0/compare/cli-v9.148.0...cli-v9.148.1) (2026-05-13)
+
+
+### Refactoring
+
+* make zero model-first only ([#13017](https://github.com/vm0-ai/vm0/issues/13017)) ([9bcb323](https://github.com/vm0-ai/vm0/commit/9bcb323d6e2c32dfdd2d1bf9fa63d0d2bf9e1ef1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.16.0
+    * @vm0/connectors bumped to 1.8.0
+    * @vm0/core bumped to 8.272.0
+
 ## [9.148.0](https://github.com/vm0-ai/vm0/compare/cli-v9.147.2...cli-v9.148.0) (2026-05-13)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.29.7](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.29.6...sandbox-fc-v0.29.7) (2026-05-13)
+
+
+### Documentation
+
+* **sandbox-fc:** document path helpers ([#13110](https://github.com/vm0-ai/vm0/issues/13110)) ([b94343f](https://github.com/vm0-ai/vm0/commit/b94343f19ae249c459b2dd52087f46472fbacb70))
+
+
+### Refactoring
+
+* **sandbox-fc:** keep netns pool internals private ([#13119](https://github.com/vm0-ai/vm0/issues/13119)) ([15b09ec](https://github.com/vm0-ai/vm0/commit/15b09ec0bb44695613dc2de0013da6b0851c09e8))
+
 ## [0.29.6](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.29.5...sandbox-fc-v0.29.6) (2026-05-13)
 
 

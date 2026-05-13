@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.272.0](https://github.com/vm0-ai/vm0/compare/core-v8.271.2...core-v8.272.0) (2026-05-13)
+
+
+### Features
+
+* add agentphone app ui ([#13080](https://github.com/vm0-ai/vm0/issues/13080)) ([ee19fc5](https://github.com/vm0-ai/vm0/commit/ee19fc53fc786fd8890d8a0bc3a6209d86f41889))
+
+
+### Refactoring
+
+* make zero model-first only ([#13017](https://github.com/vm0-ai/vm0/issues/13017)) ([9bcb323](https://github.com/vm0-ai/vm0/commit/9bcb323d6e2c32dfdd2d1bf9fa63d0d2bf9e1ef1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.16.0
+    * @vm0/connectors bumped to 1.8.0
+
 ## [8.271.2](https://github.com/vm0-ai/vm0/compare/core-v8.271.1...core-v8.271.2) (2026-05-13)
 
 

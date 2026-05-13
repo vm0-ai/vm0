@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.32](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.31...runner-rs-v0.100.32) (2026-05-13)
+
+
+### Performance Improvements
+
+* preserve axiom batch capacity ([#13094](https://github.com/vm0-ai/vm0/issues/13094)) ([72bb92e](https://github.com/vm0-ai/vm0/commit/72bb92ebb56c365907c536fb289e1c3873a1b680))
+
 ## [0.100.31](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.30...runner-rs-v0.100.31) (2026-05-13)
 
 

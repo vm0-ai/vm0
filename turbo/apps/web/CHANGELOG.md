@@ -1,5 +1,34 @@
 # Changelog
 
+## [12.358.0](https://github.com/vm0-ai/vm0/compare/web-v12.357.0...web-v12.358.0) (2026-05-13)
+
+
+### Features
+
+* add agentphone app ui ([#13080](https://github.com/vm0-ai/vm0/issues/13080)) ([ee19fc5](https://github.com/vm0-ai/vm0/commit/ee19fc53fc786fd8890d8a0bc3a6209d86f41889))
+
+
+### Bug Fixes
+
+* clear provider ids from builtin model routes ([#13113](https://github.com/vm0-ai/vm0/issues/13113)) ([0d5ed2e](https://github.com/vm0-ai/vm0/commit/0d5ed2e79657161fe72e1a826c137a1c69ea9422))
+* stabilize navbar dropdown hover ([#13081](https://github.com/vm0-ai/vm0/issues/13081)) ([f8c8eaf](https://github.com/vm0-ai/vm0/commit/f8c8eaf01e6905b220def96a8519c87bf0d6a2df))
+* warn sms and mms agentphone users ([#13109](https://github.com/vm0-ai/vm0/issues/13109)) ([172593e](https://github.com/vm0-ai/vm0/commit/172593e949ae9e84ef7858b38f3c9b0f568450db))
+
+
+### Refactoring
+
+* make zero model-first only ([#13017](https://github.com/vm0-ai/vm0/issues/13017)) ([9bcb323](https://github.com/vm0-ai/vm0/commit/9bcb323d6e2c32dfdd2d1bf9fa63d0d2bf9e1ef1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.16.0
+    * @vm0/connectors bumped to 1.8.0
+    * @vm0/core bumped to 8.272.0
+    * @vm0/db bumped to 1.8.0
+
 ## [12.357.0](https://github.com/vm0-ai/vm0/compare/web-v12.356.0...web-v12.357.0) (2026-05-13)
 
 
