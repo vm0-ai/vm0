@@ -137,19 +137,26 @@ impl LocalProvider {
             // Lock contended — skip this scan, retry next poll iteration.
             return;
         };
+        let mut missing_token_ids = Vec::new();
         for run_id in &cancel_ids {
             if let Some(token) = tokens.get(run_id) {
                 info!(run_id = %run_id, "local: cancel file detected, cancelling job");
                 token.cancel();
                 // Only delete after successful trigger — crash-safe.
                 let _ = std::fs::remove_file(local_queue::cancel_path(&self.group_dir, *run_id));
+            } else {
+                missing_token_ids.push(*run_id);
             }
+        }
+        drop(tokens);
+
+        for run_id in missing_token_ids {
             // No token yet: keep the request if another local runner may own it
             // or if the job still exists and may be claimed later. Otherwise the
             // cancel is stale, commonly from a cancel/complete race after claim
             // resolution, and can be removed to avoid unbounded queue litter.
-            else if !self.cancel_has_pending_target(*run_id) {
-                let _ = std::fs::remove_file(local_queue::cancel_path(&self.group_dir, *run_id));
+            if !self.cancel_has_pending_target(run_id) {
+                let _ = std::fs::remove_file(local_queue::cancel_path(&self.group_dir, run_id));
             }
         }
     }

@@ -160,9 +160,6 @@ fn cleanup_abandoned_files(
     claim_path: &std::path::Path,
     marker: Option<&[u8]>,
 ) {
-    if !result_path.exists() {
-        return;
-    }
     if remove_file_if_exists(job_path) && !claim_path.exists() {
         let _ = remove_file_if_exists(cancel_path);
         remove_marker_if_unchanged(result_path, marker);
@@ -684,6 +681,42 @@ mod tests {
         );
         assert!(!cancel_path.exists());
         assert!(!claim_path.exists());
+    }
+
+    #[test]
+    fn abandoned_cleanup_removes_unclaimed_job_when_marker_cannot_be_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let job_path =
+            local_queue::job_path(group_dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap();
+        let result_dir = local_queue::results_dir(group_dir);
+        let result_path = local_queue::result_path(group_dir, job_id);
+        let cancel_path = local_queue::cancel_path(group_dir, job_id);
+        let claim_path = local_queue::claim_path(group_dir, job_id);
+        std::fs::create_dir_all(job_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+
+        std::fs::write(&job_path, b"{}").unwrap();
+        std::fs::write(&cancel_path, b"").unwrap();
+        std::fs::write(&result_dir, b"not a directory").unwrap();
+
+        abandon_job(
+            &job_path,
+            &result_path,
+            &cancel_path,
+            &claim_path,
+            job_id,
+            "timed out",
+        );
+
+        assert!(
+            !job_path.exists(),
+            "timed-out unclaimed job should not remain executable after marker write failure"
+        );
+        assert!(!cancel_path.exists());
+        assert!(!claim_path.exists());
+        assert!(result_dir.is_file());
     }
 
     #[test]
