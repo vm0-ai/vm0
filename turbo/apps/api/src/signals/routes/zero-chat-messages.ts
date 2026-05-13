@@ -5,6 +5,7 @@ import {
   chatMessagesContract,
   type AttachFile,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -100,8 +101,31 @@ interface AgentForChatSend {
 interface ThreadModelPin {
   readonly modelProviderId: string | null;
   readonly modelProviderType: string | null;
+  readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
+  readonly selectedModel: string | null;
+}
+
+function parseModelProviderCredentialScope(
+  value: string | null,
+): ModelProviderCredentialScope | null {
+  if (value === null || value === "org" || value === "member") {
+    return value;
+  }
+  throw new Error(`Unknown model provider credential scope "${value}"`);
+}
+
+function threadModelPinFromRow(row: {
+  readonly modelProviderId: string | null;
+  readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: string | null;
   readonly selectedModel: string | null;
+}): ThreadModelPin {
+  return {
+    ...row,
+    modelProviderCredentialScope: parseModelProviderCredentialScope(
+      row.modelProviderCredentialScope,
+    ),
+  };
 }
 
 interface ResolvedThread {
@@ -751,7 +775,9 @@ async function defaultModelFirstPin(
   return {
     modelProviderId: policy.modelProviderId ?? null,
     modelProviderType: policy.defaultProviderType,
-    modelProviderCredentialScope: policy.credentialScope,
+    modelProviderCredentialScope: parseModelProviderCredentialScope(
+      policy.credentialScope,
+    ),
     selectedModel: policy.model,
   };
 }
@@ -773,7 +799,7 @@ async function getStoredThreadModelPin(
   if (!thread?.selectedModel) {
     return null;
   }
-  return thread;
+  return threadModelPinFromRow(thread);
 }
 
 async function modelProviderPinAvailable(params: {
@@ -825,7 +851,7 @@ async function getFirstRunModelPin(
   if (!run?.selectedModel) {
     return null;
   }
-  return run;
+  return threadModelPinFromRow(run);
 }
 
 async function existingModelFirstThreadPin(
@@ -898,7 +924,9 @@ async function resolveModelSelectionPin(params: {
   return {
     modelProviderId: policy.modelProviderId ?? null,
     modelProviderType: policy.defaultProviderType,
-    modelProviderCredentialScope: policy.credentialScope,
+    modelProviderCredentialScope: parseModelProviderCredentialScope(
+      policy.credentialScope,
+    ),
     selectedModel: policy.model,
   };
 }
@@ -960,7 +988,9 @@ async function persistThreadPinIfUnset(
       modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
       selectedModel: chatThreads.selectedModel,
     });
-  return updated ?? (await getStoredThreadModelPin(db, threadId)) ?? pin;
+  return updated
+    ? threadModelPinFromRow(updated)
+    : ((await getStoredThreadModelPin(db, threadId)) ?? pin);
 }
 
 async function resolveRunModelPin(params: {
@@ -1904,6 +1934,12 @@ const createNormalChatRun$ = command(
         apiStartTime: args.apiStartTime,
         chatThreadId: prepared.thread.threadId,
         includeZeroTokenSecret: true,
+        modelProviderId: modelPin.modelProviderId ?? undefined,
+        modelProviderCredentialScope:
+          modelPin.modelProviderCredentialScope ?? undefined,
+        modelProviderType:
+          providerAdmission.effectiveModelProvider ?? undefined,
+        selectedModelOverride: modelPin.selectedModel ?? undefined,
         validateEnvironmentReferences: false,
         callbacks: [
           {

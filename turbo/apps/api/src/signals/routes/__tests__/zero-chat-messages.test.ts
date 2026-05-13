@@ -17,6 +17,7 @@ import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets } from "@vm0/db/schema/secret";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
+import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
@@ -44,6 +45,7 @@ import { encryptSecretForTests } from "./helpers/encrypt-secret";
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const ORG_SENTINEL_USER_ID = "__org__";
 
 interface ChatMessageFixture {
   readonly userId: string;
@@ -192,6 +194,7 @@ async function deleteFixture(fixture: ChatMessageFixture): Promise<void> {
     .delete(modelProviders)
     .where(eq(modelProviders.orgId, fixture.orgId));
   await writeDb.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
+  await writeDb.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, fixture.agentId));
   await writeDb.delete(zeroAgents).where(eq(zeroAgents.id, fixture.agentId));
   await writeDb
     .delete(agentComposeVersions)
@@ -261,19 +264,27 @@ async function seedModelProvider(
   options: {
     readonly type?: string;
     readonly userId?: string;
+    readonly isDefault?: boolean;
+    readonly secretValue?: string;
   } = {},
 ): Promise<string> {
   const writeDb = store.set(writeDb$);
   const providerType = options.type ?? "anthropic-api-key";
   const providerUserId = options.userId ?? fixture.userId;
+  const secretName =
+    providerType === "deepseek-api-key"
+      ? "DEEPSEEK_API_KEY"
+      : "ANTHROPIC_API_KEY";
   const [secret] =
     providerType === "vm0"
       ? [undefined]
       : await writeDb
           .insert(secrets)
           .values({
-            name: "ANTHROPIC_API_KEY",
-            encryptedValue: encryptSecretForTests("test-provider-key"),
+            name: secretName,
+            encryptedValue: encryptSecretForTests(
+              options.secretValue ?? "test-provider-key",
+            ),
             type: "model-provider",
             userId: providerUserId,
             orgId: fixture.orgId,
@@ -284,13 +295,51 @@ async function seedModelProvider(
     .values({
       type: providerType,
       secretId: secret?.id ?? null,
-      isDefault: true,
+      isDefault: options.isDefault ?? true,
       selectedModel,
       userId: providerUserId,
       orgId: fixture.orgId,
     })
     .returning({ id: modelProviders.id });
   return provider!.id;
+}
+
+async function seedVm0ApiKey(
+  fixture: ChatMessageFixture,
+  model: string,
+): Promise<void> {
+  await store
+    .set(writeDb$)
+    .insert(vm0ApiKeys)
+    .values({
+      vendor: "anthropic",
+      model,
+      apiKey: `vm0-key-${model}`,
+      label: fixture.agentId,
+    });
+}
+
+async function removeComposeFrameworkApiKey(
+  fixture: ChatMessageFixture,
+): Promise<void> {
+  await store
+    .set(writeDb$)
+    .update(agentComposeVersions)
+    .set({
+      content: {
+        version: "1.0",
+        agents: {
+          zero: {
+            framework: "claude-code",
+            environment: {
+              ZERO_AGENT_ID: vm0Template("{{ vars.ZERO_AGENT_ID }}"),
+              ZERO_TOKEN: vm0Template("{{ secrets.ZERO_TOKEN }}"),
+            },
+          },
+        },
+      },
+    })
+    .where(eq(agentComposeVersions.id, fixture.versionId));
 }
 
 async function seedVm0Credits(
@@ -916,6 +965,12 @@ describe("POST /api/zero/chat/messages", () => {
     const fixture = await track(seedFixture());
     const writeDb = store.set(writeDb$);
     await seedVm0Credits(fixture, 1000);
+    await seedModelProvider(fixture, "claude-opus-4-7", {
+      type: "vm0",
+      userId: ORG_SENTINEL_USER_ID,
+    });
+    await seedVm0ApiKey(fixture, "claude-opus-4-7");
+    await seedVm0ApiKey(fixture, "claude-sonnet-4-6");
     await writeDb.insert(orgModelPolicies).values([
       {
         orgId: fixture.orgId,
@@ -975,6 +1030,116 @@ describe("POST /api/zero/chat/messages", () => {
     expect(run?.selectedModel).toBe("claude-sonnet-4-6");
     expect(run?.appendSystemPrompt).toContain("# Prior Chat Thread Context");
     expect(run?.appendSystemPrompt).toContain("User: first on opus");
+  });
+
+  it("passes explicit provider selection into the runner job context", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    await removeComposeFrameworkApiKey(fixture);
+    await seedModelProvider(fixture, "claude-sonnet-4-6", {
+      type: "anthropic-api-key",
+      isDefault: true,
+      secretValue: "default-anthropic-key",
+    });
+    const deepseekProviderId = await seedModelProvider(
+      fixture,
+      "deepseek-v4-flash",
+      {
+        type: "deepseek-api-key",
+        isDefault: false,
+        secretValue: "selected-deepseek-key",
+      },
+    );
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "run with selected deepseek provider",
+      modelSelection: {
+        modelProviderId: deepseekProviderId,
+        selectedModel: "deepseek-v4-pro",
+      },
+    });
+    await clearAllDetached();
+
+    const [job] = await writeDb
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId!))
+      .limit(1);
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+    };
+    expect(executionContext.environment).toMatchObject({
+      ANTHROPIC_AUTH_TOKEN: "selected-deepseek-key",
+      ANTHROPIC_BASE_URL: "https://api.deepseek.com/anthropic",
+      ANTHROPIC_MODEL: "deepseek-v4-pro",
+    });
+    expect(executionContext.environment.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+      DEEPSEEK_API_KEY: "selected-deepseek-key",
+    });
+  });
+
+  it("honors org-scoped model-first route credentials during run creation", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    await removeComposeFrameworkApiKey(fixture);
+    await seedModelProvider(fixture, "deepseek-v4-flash", {
+      type: "deepseek-api-key",
+      userId: fixture.userId,
+      isDefault: true,
+      secretValue: "member-deepseek-key",
+    });
+    const orgProviderId = await seedModelProvider(
+      fixture,
+      "deepseek-v4-flash",
+      {
+        type: "deepseek-api-key",
+        userId: ORG_SENTINEL_USER_ID,
+        isDefault: true,
+        secretValue: "org-deepseek-key",
+      },
+    );
+    await writeDb.insert(orgModelPolicies).values({
+      orgId: fixture.orgId,
+      model: "deepseek-v4-pro",
+      isDefault: true,
+      defaultProviderType: "deepseek-api-key",
+      credentialScope: "org",
+      modelProviderId: orgProviderId,
+      createdByUserId: fixture.userId,
+      updatedByUserId: fixture.userId,
+    });
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "run with org policy deepseek provider",
+      modelSelection: {
+        modelProviderId: "00000000-0000-4000-8000-000000000000",
+        selectedModel: "deepseek-v4-pro",
+      },
+    });
+    await clearAllDetached();
+
+    const [job] = await writeDb
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId!))
+      .limit(1);
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+    };
+    expect(executionContext.environment.ANTHROPIC_AUTH_TOKEN).toBe(
+      "org-deepseek-key",
+    );
+    expect(executionContext.environment.ANTHROPIC_MODEL).toBe(
+      "deepseek-v4-pro",
+    );
+    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+      DEEPSEEK_API_KEY: "org-deepseek-key",
+    });
   });
 
   it("returns 402 when VM0 model-first admission has no spendable credits", async () => {
