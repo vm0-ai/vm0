@@ -111,6 +111,7 @@ impl LocalRunnerRegistry {
         let tmp_path = runners_dir.join(format!("{runner_id}.{pid}.tmp"));
         let record_path = self.record_path(runner_id, pid);
         std::fs::write(&tmp_path, json).map_err(|e| {
+            let _ = std::fs::remove_file(&tmp_path);
             RunnerError::Internal(format!(
                 "write local runner registry temp file {}: {e}",
                 tmp_path.display()

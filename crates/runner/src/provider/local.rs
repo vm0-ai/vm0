@@ -340,14 +340,19 @@ impl JobProvider for LocalProvider {
             }
         };
 
-        // Atomic write: tmp then rename, so submit never reads a partial file.
-        let tmp_file = self.group_dir.join(format!("{run_id}.result.tmp"));
+        // Atomic write: unique tmp then rename, so submit never reads a
+        // partial file and concurrent poison-job retries do not share a tmp.
+        let tmp_file = self
+            .group_dir
+            .join(format!("{run_id}.{}.result.tmp", RunId::new_v4()));
         let result_file = self.group_dir.join(format!("{run_id}.result"));
         if let Err(e) = std::fs::write(&tmp_file, &json) {
+            let _ = std::fs::remove_file(&tmp_file);
             warn!(run_id = %run_id, error = %e, "local: failed to write result file");
             return;
         }
         if let Err(e) = std::fs::rename(&tmp_file, &result_file) {
+            let _ = std::fs::remove_file(&tmp_file);
             warn!(run_id = %run_id, error = %e, "local: failed to rename result file");
         }
         // Best-effort cleanup of cancel file (may have been written after the
@@ -700,6 +705,21 @@ mod tests {
             !cancel_path.exists(),
             "complete() should clean up cancel file"
         );
+    }
+
+    #[tokio::test]
+    async fn complete_does_not_depend_on_fixed_result_tmp_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = make_provider(dir.path(), cancel, empty_cancel_tokens());
+
+        let run_id = RunId::new_v4();
+        std::fs::create_dir(dir.path().join(format!("{run_id}.result.tmp"))).unwrap();
+
+        provider.complete(run_id, 0, None, None, None).await;
+
+        let resp = read_result(dir.path(), run_id);
+        assert_eq!(resp.exit_code, 0);
     }
 
     /// Cancel file written before token is inserted (race between submit

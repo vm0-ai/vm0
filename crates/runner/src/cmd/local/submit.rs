@@ -161,10 +161,14 @@ pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
     // Write atomically: tmp file then rename.
     let tmp_path = group_dir.join(format!("{job_id}.job.tmp"));
     let job_path = group_dir.join(format!("{job_id}.job"));
-    std::fs::write(&tmp_path, &json)
-        .map_err(|e| RunnerError::Internal(format!("write job file: {e}")))?;
-    std::fs::rename(&tmp_path, &job_path)
-        .map_err(|e| RunnerError::Internal(format!("rename job file: {e}")))?;
+    std::fs::write(&tmp_path, &json).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        RunnerError::Internal(format!("write job file: {e}"))
+    })?;
+    std::fs::rename(&tmp_path, &job_path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        RunnerError::Internal(format!("rename job file: {e}"))
+    })?;
 
     // Poll for result, listening for Ctrl+C to cancel.
     let result_path = group_dir.join(format!("{job_id}.result"));
