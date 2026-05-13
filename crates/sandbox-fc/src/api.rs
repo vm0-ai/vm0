@@ -568,6 +568,9 @@ mod tests {
     use tokio::sync::mpsc;
     use tokio::task::JoinHandle;
 
+    const MOCK_REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(1);
+    const MAX_MOCK_REQUEST_BODY_BYTES: usize = 1024 * 1024;
+
     #[derive(Debug)]
     struct MockRequest {
         raw: String,
@@ -738,11 +741,21 @@ mod tests {
                 break;
             };
 
-            let request = match read_mock_request(&mut stream).await {
-                Ok(request) => request,
-                Err(error) => {
+            let request = match tokio::time::timeout(
+                MOCK_REQUEST_READ_TIMEOUT,
+                read_mock_request(&mut stream),
+            )
+            .await
+            {
+                Ok(Ok(request)) => request,
+                Ok(Err(error)) => {
                     let response =
                         MockResponse::internal_error_raw(format!("read request: {error}"));
+                    let _ = stream.write_all(response.to_http().as_bytes()).await;
+                    continue;
+                }
+                Err(_) => {
+                    let response = MockResponse::internal_error_raw("read request timed out");
                     let _ = stream.write_all(response.to_http().as_bytes()).await;
                     continue;
                 }
@@ -788,6 +801,12 @@ mod tests {
                 }
             })
             .unwrap_or(0);
+        if content_length > MAX_MOCK_REQUEST_BODY_BYTES {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("request body too large: {content_length} bytes"),
+            ));
+        }
 
         let already_read = buf.len().saturating_sub(header_end);
         if already_read < content_length {
