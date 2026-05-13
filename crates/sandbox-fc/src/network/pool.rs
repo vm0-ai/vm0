@@ -124,14 +124,17 @@ impl NetnsInfo {
         }
     }
 
+    /// Returns the host network namespace name.
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Returns the host-side veth device name for this namespace.
     pub fn host_device(&self) -> &str {
         &self.host_device
     }
 
+    /// Returns the namespace-side veth IP used to identify the VM behind NAT.
     pub fn peer_ip(&self) -> &str {
         &self.peer_ip
     }
@@ -166,14 +169,17 @@ impl NetnsLease {
         )
     }
 
+    /// Returns cloneable metadata for the checked-out namespace.
     pub fn info(&self) -> &NetnsInfo {
         &self.info
     }
 
+    /// Returns the checked-out namespace name.
     pub fn name(&self) -> &str {
         self.info.name()
     }
 
+    /// Returns the checked-out namespace peer IP.
     pub fn peer_ip(&self) -> &str {
         self.info.peer_ip()
     }
@@ -365,7 +371,7 @@ impl CreationNotifier {
 }
 
 #[derive(Clone)]
-pub struct NetnsPoolHandle {
+pub(crate) struct NetnsPoolHandle {
     inner: Arc<tokio::sync::Mutex<NetnsPool>>,
 }
 

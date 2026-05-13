@@ -53,7 +53,7 @@ impl FirecrackerFactory {
     ///
     /// When `netns_pool` is provided, the factory shares it instead of
     /// creating a new one in `startup()` (used for multi-profile runners).
-    pub async fn new(
+    pub(crate) async fn new(
         config: FirecrackerConfig,
         netns_pool: Option<NetnsPoolHandle>,
         device_pool: nbd_cow::pool::DevicePoolHandle,
