@@ -10,18 +10,23 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+import { secrets } from "@vm0/db/schema/secret";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
 import { and, eq, inArray, isNull } from "drizzle-orm";
+import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { server } from "../../../mocks/server";
+import { generateZeroToken, verifyZeroToken } from "../../auth/tokens";
 import {
   decryptSecretValue,
   decryptSecretsMap,
@@ -33,6 +38,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { encryptSecretForTests } from "./helpers/encrypt-secret";
 
 const context = testContext();
 const store = createStore();
@@ -180,6 +186,10 @@ async function deleteFixture(fixture: ChatMessageFixture): Promise<void> {
   await writeDb
     .delete(orgModelPolicies)
     .where(eq(orgModelPolicies.orgId, fixture.orgId));
+  await writeDb
+    .delete(modelProviders)
+    .where(eq(modelProviders.orgId, fixture.orgId));
+  await writeDb.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
   await writeDb.delete(zeroAgents).where(eq(zeroAgents.id, fixture.agentId));
   await writeDb
     .delete(agentComposeVersions)
@@ -210,6 +220,7 @@ async function firstUserMessage(threadId: string) {
       interruptsRunId: chatMessages.interruptsRunId,
       goalRemainingTurns: chatMessages.goalRemainingTurns,
       goalOriginMessageId: chatMessages.goalOriginMessageId,
+      attachFiles: chatMessages.attachFiles,
     })
     .from(chatMessages)
     .where(eq(chatMessages.chatThreadId, threadId))
@@ -218,12 +229,57 @@ async function firstUserMessage(threadId: string) {
   return message;
 }
 
-async function setRunStatus(runId: string, status: string): Promise<void> {
+async function setRunStatus(
+  runId: string,
+  status: string,
+  result?: unknown,
+): Promise<void> {
   await store
     .set(writeDb$)
     .update(agentRuns)
-    .set({ status, completedAt: nowDate() })
+    .set({ status, completedAt: nowDate(), ...(result ? { result } : {}) })
     .where(eq(agentRuns.id, runId));
+}
+
+async function runExecutionSecrets(runId: string) {
+  const [job] = await store
+    .set(writeDb$)
+    .select({ executionContext: runnerJobQueue.executionContext })
+    .from(runnerJobQueue)
+    .where(eq(runnerJobQueue.runId, runId))
+    .limit(1);
+  return decryptSecretsMap(
+    encryptedSecretsFromExecutionContext(job?.executionContext),
+  );
+}
+
+async function seedModelProvider(
+  fixture: ChatMessageFixture,
+  selectedModel: string,
+): Promise<string> {
+  const writeDb = store.set(writeDb$);
+  const [secret] = await writeDb
+    .insert(secrets)
+    .values({
+      name: "ANTHROPIC_API_KEY",
+      encryptedValue: encryptSecretForTests("test-provider-key"),
+      type: "model-provider",
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+    })
+    .returning({ id: secrets.id });
+  const [provider] = await writeDb
+    .insert(modelProviders)
+    .values({
+      type: "anthropic-api-key",
+      secretId: secret!.id,
+      isDefault: true,
+      selectedModel,
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+    })
+    .returning({ id: modelProviders.id });
+  return provider!.id;
 }
 
 describe("POST /api/zero/chat/messages", () => {
@@ -241,6 +297,60 @@ describe("POST /api/zero/chat/messages", () => {
     );
 
     expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns 403 for a zero token without agent-run:write", async () => {
+    const token = generateZeroToken(
+      `user_${randomUUID()}`,
+      randomUUID(),
+      `org_${randomUUID()}`,
+    );
+
+    const response = await accept(
+      client().send({
+        headers: { authorization: `Bearer ${token}` },
+        body: { agentId: randomUUID(), prompt: "hello" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.code).toBe("FORBIDDEN");
+    expect(response.body.error.message).toContain("agent-run:write");
+  });
+
+  it("returns 404 when the agent is missing", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: { agentId: randomUUID(), prompt: "hello" },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
+    expect(fixture.agentId).toStrictEqual(expect.any(String));
+  });
+
+  it("returns 403 when a non-owner runs a private agent", async () => {
+    const fixture = await track(seedFixture());
+    await store
+      .set(writeDb$)
+      .update(zeroAgents)
+      .set({ visibility: "private" })
+      .where(eq(zeroAgents.id, fixture.agentId));
+    mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId);
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: { agentId: fixture.agentId, prompt: "hello" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.code).toBe("FORBIDDEN");
   });
 
   it("creates a thread, run, callback, ZERO_TOKEN secret, and user message", async () => {
@@ -302,15 +412,11 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
     });
 
-    const [job] = await writeDb
-      .select({ executionContext: runnerJobQueue.executionContext })
-      .from(runnerJobQueue)
-      .where(eq(runnerJobQueue.runId, response.body.runId!))
-      .limit(1);
-    const secrets = decryptSecretsMap(
-      encryptedSecretsFromExecutionContext(job?.executionContext),
-    );
+    const secrets = await runExecutionSecrets(response.body.runId!);
     expect(secrets?.ZERO_TOKEN).toMatch(/^vm0_sandbox_/);
+    expect(verifyZeroToken(secrets!.ZERO_TOKEN!)?.capabilities).not.toContain(
+      "agent-run:write",
+    );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadMessageCreated:${response.body.threadId}`,
       null,
@@ -319,6 +425,122 @@ describe("POST /api/zero/chat/messages", () => {
       `chatThreadRunCreated:${response.body.threadId}`,
       null,
     );
+  });
+
+  it("preserves clientThreadId for new thread creation", async () => {
+    const fixture = await track(seedFixture());
+    const clientThreadId = randomUUID();
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "client thread",
+      clientThreadId,
+    });
+    await clearAllDetached();
+
+    expect(response.body.threadId).toBe(clientThreadId);
+    const [thread] = await store
+      .set(writeDb$)
+      .select({
+        id: chatThreads.id,
+        agentComposeId: chatThreads.agentComposeId,
+        userId: chatThreads.userId,
+      })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, clientThreadId))
+      .limit(1);
+    expect(thread).toStrictEqual({
+      id: clientThreadId,
+      agentComposeId: fixture.agentId,
+      userId: fixture.userId,
+    });
+  });
+
+  it("passes user feature switch overrides into generated ZERO_TOKEN capabilities", async () => {
+    const fixture = await track(seedFixture());
+    await store
+      .set(writeDb$)
+      .insert(userFeatureSwitches)
+      .values({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        switches: { computerUse: true },
+        updatedAt: nowDate(),
+      });
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "open remote browser",
+    });
+    await clearAllDetached();
+
+    const secrets = await runExecutionSecrets(response.body.runId!);
+    const zeroAuth = verifyZeroToken(secrets!.ZERO_TOKEN!);
+    expect(zeroAuth?.capabilities).toContain("computer-use:write");
+  });
+
+  it("persists attachments on the user message and injects them into the run prompt", async () => {
+    const fixture = await track(seedFixture());
+    const fileId = randomUUID();
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "read this file",
+      attachFiles: [
+        {
+          id: fileId,
+          filename: "notes.txt",
+          contentType: "text/plain",
+          size: 42,
+        },
+      ],
+    });
+    await clearAllDetached();
+
+    const [run] = await store
+      .set(writeDb$)
+      .select({ prompt: agentRuns.prompt })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId!))
+      .limit(1);
+    expect(run?.prompt).toContain("[Web file] notes.txt (text/plain)");
+    expect(run?.prompt).toContain(`[ID] ${fileId}`);
+
+    const message = await firstUserMessage(response.body.threadId);
+    expect(message?.content).toBe("read this file");
+    expect(message?.attachFiles).toStrictEqual([fileId]);
+  });
+
+  it("generates a chat thread title when the lightweight model is configured", async () => {
+    const fixture = await track(seedFixture());
+    mockOptionalEnv("OPENROUTER_API_KEY", "title-api-key");
+    let upstreamAuthorization: string | null = null;
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        ({ request }) => {
+          upstreamAuthorization = request.headers.get("authorization");
+          return HttpResponse.json({
+            choices: [{ message: { content: "**Migration Plan**" } }],
+          });
+        },
+      ),
+    );
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "plan the API migration",
+    });
+    await clearAllDetached();
+
+    expect(upstreamAuthorization).toBe("Bearer title-api-key");
+    const [thread] = await store
+      .set(writeDb$)
+      .select({ title: chatThreads.title })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, response.body.threadId))
+      .limit(1);
+    expect(thread?.title).toBe("Migration Plan");
   });
 
   it("queues an unassociated user message when the thread has an active run", async () => {
@@ -352,6 +574,45 @@ describe("POST /api/zero/chat/messages", () => {
       content: "queued",
       runId: null,
       revokesMessageId: null,
+    });
+  });
+
+  it("creates a follow-up run on an existing thread and continues the last session", async () => {
+    const fixture = await track(seedFixture());
+    const first = await send({ agentId: fixture.agentId, prompt: "first" });
+    await clearAllDetached();
+
+    const [firstRun] = await store
+      .set(writeDb$)
+      .select({ sessionId: agentRuns.sessionId })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, first.body.runId!))
+      .limit(1);
+    await setRunStatus(first.body.runId!, "completed", {
+      agentSessionId: firstRun!.sessionId,
+    });
+
+    const second = await send({
+      agentId: fixture.agentId,
+      prompt: "follow up",
+      threadId: first.body.threadId,
+    });
+    await clearAllDetached();
+
+    expect(second.body.runId).toStrictEqual(expect.any(String));
+    expect(second.body.runId).not.toBe(first.body.runId);
+    const [secondRun] = await store
+      .set(writeDb$)
+      .select({
+        sessionId: agentRuns.sessionId,
+        continuedFromSessionId: agentRuns.continuedFromSessionId,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, second.body.runId!))
+      .limit(1);
+    expect(secondRun).toStrictEqual({
+      sessionId: firstRun!.sessionId,
+      continuedFromSessionId: firstRun!.sessionId,
     });
   });
 
@@ -404,6 +665,22 @@ describe("POST /api/zero/chat/messages", () => {
       content: null,
       revokesMessageId: queued!.id,
     });
+
+    const associated = await firstUserMessage(first.body.threadId);
+    const rejected = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          threadId: first.body.threadId,
+          revokesMessageId: associated!.id,
+          clientMessageId: randomUUID(),
+        },
+      }),
+      [400],
+    );
+    expect(rejected.body.error.code).toBe("BAD_REQUEST");
+    expect(rejected.body.error.message).toContain("queued user messages");
   });
 
   it("interrupts and cancels an active chat run", async () => {
@@ -468,6 +745,64 @@ describe("POST /api/zero/chat/messages", () => {
     expect(run?.appendSystemPrompt).toContain("# Incomplete Rounds Context");
     expect(run?.appendSystemPrompt).toContain("RUN_STATUS: cancelled");
     expect(run?.appendSystemPrompt).toContain("User: cancel me");
+  });
+
+  it("truncates old incomplete round content in chronological order", async () => {
+    const fixture = await track(seedFixture());
+    const first = await send({
+      agentId: fixture.agentId,
+      prompt: "first incomplete",
+    });
+    await clearAllDetached();
+    await setRunStatus(first.body.runId!, "failed");
+
+    const secondPrompt = `second ${"x".repeat(4100)}`;
+    const second = await send({
+      agentId: fixture.agentId,
+      prompt: secondPrompt,
+      threadId: first.body.threadId,
+    });
+    await clearAllDetached();
+    await setRunStatus(second.body.runId!, "timeout");
+
+    const third = await send({
+      agentId: fixture.agentId,
+      prompt: "retry after two failures",
+      threadId: first.body.threadId,
+    });
+    await clearAllDetached();
+
+    const [run] = await store
+      .set(writeDb$)
+      .select({ appendSystemPrompt: agentRuns.appendSystemPrompt })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, third.body.runId!))
+      .limit(1);
+    const prompt = run!.appendSystemPrompt!;
+    expect(prompt.indexOf("RUN_STATUS: failed")).toBeLessThan(
+      prompt.indexOf("RUN_STATUS: timeout"),
+    );
+    expect(prompt).toContain("User: first incomplete");
+    expect(prompt).toContain("...[truncated]");
+    expect(prompt).not.toContain("retry after two failures");
+  });
+
+  it("returns 403 for goal sends when the feature is disabled", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "finish the migration",
+          goal: true,
+        },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.code).toBe("FORBIDDEN");
   });
 
   it("persists goal columns for goal sends when the feature is enabled", async () => {
@@ -562,5 +897,113 @@ describe("POST /api/zero/chat/messages", () => {
     expect(run?.selectedModel).toBe("claude-sonnet-4-6");
     expect(run?.appendSystemPrompt).toContain("# Prior Chat Thread Context");
     expect(run?.appendSystemPrompt).toContain("User: first on opus");
+  });
+
+  it("locks an existing provider-first thread to its first model selection", async () => {
+    const fixture = await track(seedFixture());
+    const providerId = await seedModelProvider(fixture, "claude-sonnet-4-6");
+
+    const first = await send({
+      agentId: fixture.agentId,
+      prompt: "first model",
+      modelSelection: {
+        modelProviderId: providerId,
+        selectedModel: "claude-sonnet-4-6",
+      },
+    });
+    await clearAllDetached();
+    await setRunStatus(first.body.runId!, "completed");
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "switch model",
+          threadId: first.body.threadId,
+          modelSelection: {
+            modelProviderId: providerId,
+            selectedModel: "claude-opus-4-7",
+          },
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain(
+      "Cannot change model on an existing thread",
+    );
+  });
+
+  it("returns 422 when a provider-first thread pin points at a deleted provider", async () => {
+    const fixture = await track(seedFixture());
+    const providerId = await seedModelProvider(fixture, "claude-sonnet-4-6");
+
+    const first = await send({
+      agentId: fixture.agentId,
+      prompt: "first model",
+      modelSelection: {
+        modelProviderId: providerId,
+        selectedModel: "claude-sonnet-4-6",
+      },
+    });
+    await clearAllDetached();
+    await setRunStatus(first.body.runId!, "completed");
+    await store
+      .set(writeDb$)
+      .delete(modelProviders)
+      .where(eq(modelProviders.id, providerId));
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "follow up",
+          threadId: first.body.threadId,
+        },
+      }),
+      [422],
+    );
+
+    expect(response.body.error.code).toBe("PROVIDER_DELETED");
+  });
+
+  it("derives the runner framework from the compose content", async () => {
+    const fixture = await track(seedFixture());
+    await store
+      .set(writeDb$)
+      .update(agentComposeVersions)
+      .set({
+        content: {
+          version: "1.0",
+          agents: {
+            codex: {
+              framework: "codex",
+              environment: {
+                OPENAI_API_KEY: "test-key",
+                ZERO_AGENT_ID: vm0Template("{{ vars.ZERO_AGENT_ID }}"),
+                ZERO_TOKEN: vm0Template("{{ secrets.ZERO_TOKEN }}"),
+              },
+            },
+          },
+        },
+      })
+      .where(eq(agentComposeVersions.id, fixture.versionId));
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "run codex",
+    });
+    await clearAllDetached();
+
+    const [job] = await store
+      .set(writeDb$)
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId!))
+      .limit(1);
+    expect(job?.executionContext).toMatchObject({ cliAgentType: "codex" });
   });
 });

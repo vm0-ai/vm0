@@ -57,6 +57,7 @@ import {
   encryptSecretsMap,
 } from "./crypto.utils";
 import { prepareAgentRunStorageManifest } from "./agent-run-storage.service";
+import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = "memory";
@@ -1041,10 +1042,18 @@ async function dispatchRun(
   }
 
   const profile = runnerProfile(args.resolved.content);
+  const featureSwitchOverrides = args.includeZeroTokenSecret
+    ? await get(userFeatureSwitchOverrides(args.orgId, args.userId))
+    : undefined;
   const body = args.includeZeroTokenSecret
     ? withZeroTokenSecret(
         args.body,
-        generateZeroToken(args.userId, args.run.id, args.orgId),
+        generateZeroToken(
+          args.userId,
+          args.run.id,
+          args.orgId,
+          featureSwitchOverrides,
+        ),
       )
     : args.body;
   const storageManifest = await prepareAgentRunStorageManifest({

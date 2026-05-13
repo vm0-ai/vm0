@@ -23,6 +23,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  or,
   sql,
 } from "drizzle-orm";
 import type { z } from "zod";
@@ -37,7 +38,7 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { now, nowDate } from "../external/time";
-import { badRequestMessage, notFound } from "../../lib/error";
+import { badRequestMessage, notFound, providerDeleted } from "../../lib/error";
 import { env } from "../../lib/env";
 import { createAgentRun$ } from "../services/agent-run-create.service";
 import {
@@ -46,6 +47,10 @@ import {
   type CancelRunResult,
 } from "../services/zero-run-cancel.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import {
+  generateAndPersistChatThreadTitle,
+  isChatTitleGenerationConfigured,
+} from "../services/zero-chat-title.service";
 import { visibleChatMessageCondition } from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route";
 
@@ -174,6 +179,7 @@ interface PreparedNormalSend {
 
 type NormalSendFailure =
   | ReturnType<typeof notFound>
+  | ReturnType<typeof providerDeleted>
   | ReturnType<typeof forbidden>
   | ReturnType<typeof badRequestMessage>;
 
@@ -784,6 +790,29 @@ async function getStoredThreadModelPin(
   return thread;
 }
 
+async function modelProviderPinAvailable(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly modelProviderId: string;
+}): Promise<boolean> {
+  const [provider] = await params.db
+    .select({ id: modelProviders.id })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.id, params.modelProviderId),
+        eq(modelProviders.orgId, params.orgId),
+        or(
+          eq(modelProviders.userId, params.userId),
+          eq(modelProviders.userId, "__org__"),
+        ),
+      ),
+    )
+    .limit(1);
+  return provider !== undefined;
+}
+
 async function getFirstRunModelPin(
   db: Db,
   threadId: string,
@@ -889,7 +918,7 @@ async function resolveRunModelPin(params: {
   readonly modelFirst: boolean;
   readonly modelSelection: IncomingModelSelection;
   readonly forceNewSession: boolean;
-}): Promise<ThreadModelPin> {
+}): Promise<ThreadModelPin | ReturnType<typeof providerDeleted>> {
   if (params.modelFirst) {
     const existing = params.forceNewSession
       ? null
@@ -923,6 +952,17 @@ async function resolveRunModelPin(params: {
 
   const stored = await getStoredThreadModelPin(params.db, params.threadId);
   if (stored) {
+    if (
+      stored.modelProviderId &&
+      !(await modelProviderPinAvailable({
+        db: params.db,
+        orgId: params.orgId,
+        userId: params.userId,
+        modelProviderId: stored.modelProviderId,
+      }))
+    ) {
+      return providerDeleted();
+    }
     return stored;
   }
   return {
@@ -1688,6 +1728,65 @@ async function queueUnassociatedNormalMessage(params: {
   };
 }
 
+function scheduleChatTitleGeneration(params: {
+  readonly db: Db;
+  readonly body: NormalSendBody;
+  readonly thread: ResolvedThread;
+  readonly userId: string;
+}): void {
+  if (
+    params.body.hasTextContent === false ||
+    !isChatTitleGenerationConfigured()
+  ) {
+    return;
+  }
+
+  waitUntil(
+    generateAndPersistChatThreadTitle({
+      db: params.db,
+      threadId: params.thread.threadId,
+      userId: params.userId,
+      prompt: params.body.prompt,
+      includePriorRounds: !params.thread.isNewThread,
+    }),
+  );
+}
+
+function scheduleAssociatedUserMessage(params: {
+  readonly db: Db;
+  readonly body: NormalSendBody;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly runId: string;
+  readonly goalOrigin: GoalOriginRow | null;
+}): void {
+  waitUntil(
+    (async () => {
+      await appendAssociatedUserMessage({
+        db: params.db,
+        threadId: params.threadId,
+        userId: params.userId,
+        prompt: params.body.prompt,
+        runId: params.runId,
+        attachFiles: params.body.attachFiles,
+        clientMessageId: params.goalOrigin
+          ? undefined
+          : params.body.clientMessageId,
+        goalOrigin: params.goalOrigin,
+      });
+      await publishUserSignal(
+        [params.userId],
+        `chatThreadMessageCreated:${params.threadId}`,
+      );
+      await publishUserSignal(
+        [params.userId],
+        `chatThreadRunCreated:${params.threadId}`,
+      );
+      await publishThreadListChanged(params.userId);
+    })(),
+  );
+}
+
 const createNormalChatRun$ = command(
   async (
     { set },
@@ -1709,6 +1808,9 @@ const createNormalChatRun$ = command(
       forceNewSession: prepared.forceNewSession,
     });
     signal.throwIfAborted();
+    if ("status" in modelPin) {
+      return modelPin;
+    }
 
     const fullPrompt = buildFullPrompt(args.body.prompt, args.body.attachFiles);
     const requestedModelProvider =
@@ -1768,31 +1870,20 @@ const createNormalChatRun$ = command(
       .where(eq(zeroRuns.id, runResult.body.runId));
     signal.throwIfAborted();
 
-    waitUntil(
-      (async () => {
-        await appendAssociatedUserMessage({
-          db: prepared.db,
-          threadId: prepared.thread.threadId,
-          userId: args.userId,
-          prompt: args.body.prompt,
-          runId: runResult.body.runId,
-          attachFiles: args.body.attachFiles,
-          clientMessageId: prepared.goalSetup.goalOriginRow
-            ? undefined
-            : args.body.clientMessageId,
-          goalOrigin: prepared.goalSetup.goalOriginRow,
-        });
-        await publishUserSignal(
-          [args.userId],
-          `chatThreadMessageCreated:${prepared.thread.threadId}`,
-        );
-        await publishUserSignal(
-          [args.userId],
-          `chatThreadRunCreated:${prepared.thread.threadId}`,
-        );
-        await publishThreadListChanged(args.userId);
-      })(),
-    );
+    scheduleChatTitleGeneration({
+      db: prepared.db,
+      body: args.body,
+      thread: prepared.thread,
+      userId: args.userId,
+    });
+    scheduleAssociatedUserMessage({
+      db: prepared.db,
+      body: args.body,
+      threadId: prepared.thread.threadId,
+      userId: args.userId,
+      runId: runResult.body.runId,
+      goalOrigin: prepared.goalSetup.goalOriginRow,
+    });
 
     if (prepared.persistedExplicitSelection && modelPin.selectedModel) {
       await updateUserModelPreference(

@@ -30,6 +30,14 @@ export function providerUnavailable(message: string) {
   return httpError(503, "PROVIDER_UNAVAILABLE", message);
 }
 
+export function providerDeleted() {
+  return httpError(
+    422,
+    "PROVIDER_DELETED",
+    "The selected model provider is no longer available",
+  );
+}
+
 export function badRequestMessage(message: string) {
   return httpError(400, "BAD_REQUEST", message);
 }
