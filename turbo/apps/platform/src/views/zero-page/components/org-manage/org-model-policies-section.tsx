@@ -106,6 +106,24 @@ function getOAuthProviderTypes(model: SupportedRunModel): ModelProviderType[] {
   });
 }
 
+function getOAuthRouteCopy(oauthTypes: ModelProviderType[]): {
+  title: string;
+  description: string;
+} {
+  if (oauthTypes.includes("codex-oauth-token")) {
+    return {
+      title: "BYOK: Codex Subscription",
+      description:
+        "Lets members use their own Codex Pro/Team subscription. Each member opens their Preferences, switches to Personal Models, and connects ChatGPT (Codex). The token only launches the Codex CLI inside a secure sandbox and is sent directly to OpenAI.",
+    };
+  }
+  return {
+    title: "BYOK: Claude Subscription",
+    description:
+      "Lets members use their own Claude Pro/Max/Team subscription. Each member opens their Preferences, switches to Personal Models, and sets a Claude Code OAuth Token. The token only launches the Claude Code CLI inside a secure sandbox and is sent directly to Anthropic.",
+  };
+}
+
 function findProviderByType(
   providers: ModelProviderResponse[],
   type: ModelProviderType | null,
@@ -903,8 +921,8 @@ function ModelPolicyRouteDialog({
               <RouteChoiceButton
                 active={dialog.routeKind === "oauth"}
                 icon={<IconUsers size={18} stroke={1.6} />}
-                title="BYOK: member OAuth"
-                description="Admins enable the OAuth route for this model. Each member uses their own credentials configured outside this dialog."
+                title={getOAuthRouteCopy(oauthTypes).title}
+                description={getOAuthRouteCopy(oauthTypes).description}
                 onClick={() => {
                   chooseRoute("oauth");
                 }}

@@ -360,7 +360,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
       "org-model-policy-row-claude-opus-4-7",
     );
     const dialog = await openModelPolicyDialog(row);
-    clickRouteChoice(dialog, "BYOK: member OAuth");
+    clickRouteChoice(dialog, "BYOK: Claude Subscription");
     expect(
       within(dialog).queryByText("OAuth provider"),
     ).not.toBeInTheDocument();
@@ -394,7 +394,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
 
     const row = await screen.findByTestId("org-model-policy-row-gpt-5.5");
     const dialog = await openModelPolicyDialog(row);
-    clickRouteChoice(dialog, "BYOK: member OAuth");
+    clickRouteChoice(dialog, "BYOK: Codex Subscription");
     expect(
       within(dialog).queryByText("OAuth provider"),
     ).not.toBeInTheDocument();
