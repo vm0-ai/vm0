@@ -730,7 +730,7 @@ mod tests {
         }
 
         async fn next_request(&mut self) -> MockRequest {
-            tokio::time::timeout(Duration::from_secs(1), self.requests.recv())
+            tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, self.requests.recv())
                 .await
                 .expect("timed out waiting for Firecracker API request")
                 .expect("mock Firecracker API server stopped before capturing request")
