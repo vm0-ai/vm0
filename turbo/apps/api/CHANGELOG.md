@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.42.0](https://github.com/vm0-ai/vm0/compare/api-v1.41.0...api-v1.42.0) (2026-05-13)
+
+
+### Features
+
+* add vercel sandbox smoke path ([#13163](https://github.com/vm0-ai/vm0/issues/13163)) ([fb961ed](https://github.com/vm0-ai/vm0/commit/fb961ed7e229d1917589bcc79cbd84c6172a17be))
+
 ## [1.41.0](https://github.com/vm0-ai/vm0/compare/api-v1.40.0...api-v1.41.0) (2026-05-13)
 
 

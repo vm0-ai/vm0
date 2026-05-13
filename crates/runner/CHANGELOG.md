@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.35](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.34...runner-rs-v0.100.35) (2026-05-13)
+
+
+### Bug Fixes
+
+* **runner:** partition local queue by profile ([#13143](https://github.com/vm0-ai/vm0/issues/13143)) ([c0f8835](https://github.com/vm0-ai/vm0/commit/c0f8835ba5779664d58ce7ab06e0fe8d4ec18ba7))
+
 ## [0.100.34](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.33...runner-rs-v0.100.34) (2026-05-13)
 
 
