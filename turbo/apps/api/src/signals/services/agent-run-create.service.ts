@@ -166,6 +166,7 @@ interface AdditionalVolume {
 
 interface ZeroRunMetadata {
   readonly triggerAgentId?: string;
+  readonly scheduleId?: string;
 }
 
 interface AgentConfig {
@@ -1908,6 +1909,7 @@ async function insertZeroRunRecord(
   await tx.insert(zeroRuns).values({
     id: args.runId,
     triggerSource: args.body.triggerSource ?? "cli",
+    scheduleId: args.zeroRunMetadata?.scheduleId ?? null,
     triggerAgentId: args.zeroRunMetadata?.triggerAgentId ?? null,
     modelProvider: args.modelProvider?.type ?? null,
     modelProviderId: args.modelProvider?.id ?? null,

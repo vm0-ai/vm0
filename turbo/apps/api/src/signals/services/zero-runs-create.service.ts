@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import {
   connectorTypeSchema,
   type ConnectorType,
@@ -99,6 +100,17 @@ interface AdditionalVolume {
   readonly version?: string;
   readonly mountPath: string;
   readonly system?: boolean;
+}
+
+interface RunCallback {
+  readonly url: string;
+  readonly secret: string;
+  readonly payload: unknown;
+}
+
+interface ZeroRunMetadata {
+  readonly triggerAgentId?: string;
+  readonly scheduleId?: string;
 }
 
 function forbidden(message: string) {
@@ -418,7 +430,13 @@ function createRunBody(args: {
     | ReturnType<typeof resolveFirewallPolicies>
     | undefined;
   readonly triggerAgentId: string | undefined;
+  readonly triggerSource: TriggerSource | undefined;
+  readonly appendSystemPrompt: string | undefined;
 }) {
+  const baseAppendSystemPrompt = buildAppendSystemPrompt({
+    agent: args.agent,
+    userInfo: args.userInfo,
+  });
   return {
     prompt: args.body.prompt,
     agentComposeId: args.agent.id,
@@ -434,11 +452,12 @@ function createRunBody(args: {
     settings: args.body.settings,
     permissionPolicies:
       args.body.permissionPolicies ?? args.permissionPolicies ?? undefined,
-    triggerSource: args.triggerAgentId ? ("agent" as const) : ("web" as const),
-    appendSystemPrompt: buildAppendSystemPrompt({
-      agent: args.agent,
-      userInfo: args.userInfo,
-    }),
+    triggerSource:
+      args.triggerSource ??
+      (args.triggerAgentId ? ("agent" as const) : ("web" as const)),
+    appendSystemPrompt: args.appendSystemPrompt
+      ? `${baseAppendSystemPrompt}\n\n${args.appendSystemPrompt}`
+      : baseAppendSystemPrompt,
     disallowedTools: [...DISALLOWED_TOOLS],
     vars: { ZERO_AGENT_ID: args.agent.id },
   };
@@ -463,6 +482,10 @@ export const createZeroRun$ = command(
       readonly auth: AuthContext & { readonly orgId: string };
       readonly body: ZeroRunCreateBody;
       readonly apiStartTime: number;
+      readonly triggerSource?: TriggerSource;
+      readonly appendSystemPrompt?: string;
+      readonly callbacks?: readonly RunCallback[];
+      readonly zeroRunMetadata?: ZeroRunMetadata;
     },
     signal: AbortSignal,
   ) => {
@@ -546,13 +569,15 @@ export const createZeroRun$ = command(
           userInfo,
           permissionPolicies: agentPermissionPolicies,
           triggerAgentId,
+          triggerSource: args.triggerSource,
+          appendSystemPrompt: args.appendSystemPrompt,
         }),
         apiStartTime: args.apiStartTime,
         modelProviderId: agent.modelProviderId ?? undefined,
         modelProviderType: args.body.modelProvider,
         selectedModelOverride: agent.selectedModel ?? undefined,
         extraEnvironment: { ZERO_AGENT_ID: agent.id },
-        callbacks: callbacksForTriggerAgent(triggerAgentId),
+        callbacks: args.callbacks ?? callbacksForTriggerAgent(triggerAgentId),
         includeZeroTokenSecret: true,
         enforceVm0Credits: true,
         queueOnConcurrencyLimit: true,
@@ -560,7 +585,10 @@ export const createZeroRun$ = command(
         allowedConnectorTypes,
         allowedCustomConnectorIds,
         validateEnvironmentReferences: false,
-        zeroRunMetadata: { triggerAgentId },
+        zeroRunMetadata: {
+          ...args.zeroRunMetadata,
+          triggerAgentId,
+        },
       },
       signal,
     );
