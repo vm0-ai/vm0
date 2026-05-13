@@ -442,22 +442,12 @@ export async function fetchAgentPhoneContext(params: {
     );
   });
 
-  const lastProcessedIndex = params.lastProcessedMessageId
-    ? chronological.findIndex((message) => {
-        return message.messageId === params.lastProcessedMessageId;
-      })
-    : -1;
-  const executionMessages =
-    lastProcessedIndex >= 0
-      ? chronological.slice(lastProcessedIndex + 1)
-      : chronological;
-
-  if (executionMessages.length === 0) {
+  if (chronological.length === 0) {
     return { executionContext: "" };
   }
 
-  const total = executionMessages.length;
-  const formatted = executionMessages.map((message, index) => {
+  const total = chronological.length;
+  const formatted = chronological.map((message, index) => {
     const sender = message.isBot ? "BOT" : phoneHandle;
     const parts = [
       "---",

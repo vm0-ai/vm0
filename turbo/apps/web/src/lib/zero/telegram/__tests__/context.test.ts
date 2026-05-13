@@ -57,7 +57,7 @@ describe("fetchTelegramContext", () => {
     expect(firstIdx).toBeLessThan(secondIdx);
   });
 
-  it("should filter execution context by lastProcessedMessageId", async () => {
+  it("should include resumed chat context regardless of lastProcessedMessageId", async () => {
     const chatId = uniqueId("chat");
 
     await insertTelegramMessage({
@@ -81,8 +81,7 @@ describe("fetchTelegramContext", () => {
 
     const result = await fetchTelegramContext(installationId, chatId, "10");
 
-    // Execution context only includes messages after ID 10
-    expect(result.executionContext).not.toContain("Old message");
+    expect(result.executionContext).toContain("Old message");
     expect(result.executionContext).toContain("New message");
   });
 
@@ -105,7 +104,7 @@ describe("fetchTelegramContext", () => {
     );
   });
 
-  it("should return empty execution context when no new messages after lastProcessedMessageId", async () => {
+  it("should keep prior messages when resuming after the latest message", async () => {
     const chatId = uniqueId("chat");
 
     await insertTelegramMessage({
@@ -120,7 +119,41 @@ describe("fetchTelegramContext", () => {
 
     const result = await fetchTelegramContext(installationId, chatId, "5");
 
-    expect(result.executionContext).toBe("");
+    expect(result.executionContext).toContain("Only message");
+  });
+
+  it("should exclude current message while keeping resumed chat history", async () => {
+    const chatId = uniqueId("chat");
+
+    await insertTelegramMessage({
+      installationId,
+      chatId,
+      messageId: "10",
+      fromUserId: "111",
+      fromUsername: "alice",
+      text: "Earlier resumed context",
+      createdAt: new Date(Date.now() - 60_000),
+    });
+    await insertTelegramMessage({
+      installationId,
+      chatId,
+      messageId: "20",
+      fromUserId: "222",
+      fromUsername: "bob",
+      text: "Current prompt message",
+      createdAt: new Date(Date.now() - 30_000),
+    });
+
+    const result = await fetchTelegramContext(
+      installationId,
+      chatId,
+      "10",
+      undefined,
+      "20",
+    );
+
+    expect(result.executionContext).toContain("Earlier resumed context");
+    expect(result.executionContext).not.toContain("Current prompt message");
   });
 
   it("should only return messages for the specified chat", async () => {

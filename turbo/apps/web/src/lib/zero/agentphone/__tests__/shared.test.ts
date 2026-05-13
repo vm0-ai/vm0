@@ -53,6 +53,89 @@ describe("AgentPhone file context", () => {
     );
   });
 
+  it("includes resumed conversation context regardless of lastProcessedMessageId", async () => {
+    const phoneHandle = uniquePhone();
+    const userLink = await insertTestAgentPhoneUserLink({
+      phoneHandle,
+      vm0UserId: uniqueId("user"),
+      orgId: uniqueId("org"),
+    });
+
+    await insertTestAgentPhoneMessage({
+      agentphoneMessageId: "apmsg-old",
+      agentphoneUserLinkId: userLink.id,
+      phoneHandle,
+      fromNumber: phoneHandle,
+      toNumber: "+19039853128",
+      direction: "inbound",
+      body: "Old AgentPhone message",
+      createdAt: new Date(Date.now() - 60_000),
+    });
+    await insertTestAgentPhoneMessage({
+      agentphoneMessageId: "apmsg-new",
+      agentphoneUserLinkId: userLink.id,
+      phoneHandle,
+      fromNumber: phoneHandle,
+      toNumber: "+19039853128",
+      direction: "inbound",
+      body: "New AgentPhone message",
+      createdAt: new Date(Date.now() - 30_000),
+    });
+
+    const contextResult = await fetchAgentPhoneContext({
+      userLinkId: userLink.id,
+      phoneHandle,
+      lastProcessedMessageId: "apmsg-old",
+    });
+
+    expect(contextResult.executionContext).toContain("Old AgentPhone message");
+    expect(contextResult.executionContext).toContain("New AgentPhone message");
+  });
+
+  it("excludes current message while keeping resumed conversation history", async () => {
+    const phoneHandle = uniquePhone();
+    const userLink = await insertTestAgentPhoneUserLink({
+      phoneHandle,
+      vm0UserId: uniqueId("user"),
+      orgId: uniqueId("org"),
+    });
+
+    await insertTestAgentPhoneMessage({
+      agentphoneMessageId: "apmsg-history",
+      agentphoneUserLinkId: userLink.id,
+      phoneHandle,
+      fromNumber: phoneHandle,
+      toNumber: "+19039853128",
+      direction: "inbound",
+      body: "Earlier AgentPhone context",
+      createdAt: new Date(Date.now() - 60_000),
+    });
+    await insertTestAgentPhoneMessage({
+      agentphoneMessageId: "apmsg-current",
+      agentphoneUserLinkId: userLink.id,
+      phoneHandle,
+      fromNumber: phoneHandle,
+      toNumber: "+19039853128",
+      direction: "inbound",
+      body: "Current AgentPhone prompt",
+      createdAt: new Date(Date.now() - 30_000),
+    });
+
+    const contextResult = await fetchAgentPhoneContext({
+      userLinkId: userLink.id,
+      phoneHandle,
+      lastProcessedMessageId: "apmsg-history",
+      currentMessageId: "apmsg-current",
+    });
+
+    expect(contextResult.executionContext).toContain(
+      "Earlier AgentPhone context",
+    );
+    expect(contextResult.executionContext).not.toContain(
+      "Current AgentPhone prompt",
+    );
+  });
+
   it("enriches the current prompt with a file reference", () => {
     const result = enrichAgentPhonePrompt(
       "please inspect this",
