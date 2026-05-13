@@ -216,7 +216,8 @@ jobs:
               exit 1
             fi
           else
-            IMAGE_JOB_REF="staging-${HEAD_SHA:0:12}"
+            SHORT_SHA=$(printf '%s' "$HEAD_SHA" | cut -c1-12)
+            IMAGE_JOB_REF="staging-${SHORT_SHA}"
             JOB_REF="staging-test"
           fi
 
@@ -226,7 +227,7 @@ jobs:
             echo "No metal hosts configured, skipping host selection"
             exit 0
           fi
-          HASH=$(echo -n "$JOB_REF" | md5sum | cut -c1-8)
+          HASH=$(printf '%s' "$JOB_REF" | md5sum | cut -c1-8)
           HOST_INDEX=$(( 0x$HASH % NUM_HOSTS ))
           HOST=$(echo "$HOSTS" | sed -n "$((HOST_INDEX + 1))p")
           {
