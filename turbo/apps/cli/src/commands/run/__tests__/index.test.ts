@@ -2075,6 +2075,49 @@ describe("run command", () => {
       );
     });
 
+    it("should flush standalone Codex error before failed run lifecycle output", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "thread.started",
+                eventData: {
+                  type: "thread.started",
+                  thread_id: "thread-x",
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+              {
+                sequenceNumber: 1,
+                eventType: "error",
+                eventData: {
+                  type: "error",
+                  message: "API connection failed",
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 1,
+            run: { status: "failed", error: "Agent crashed" },
+            framework: "codex",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Run failed"),
+      );
+    });
+
     it("should not drain additional pages after failed status without watermark", async () => {
       let pollCount = 0;
       server.use(
