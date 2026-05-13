@@ -55,8 +55,8 @@ async fn run_cancel_with_home(args: CancelArgs, home: HomePaths) -> RunnerResult
     Ok(ExitCode::SUCCESS)
 }
 
-/// Resolve a (possibly prefix) run ID against `.claim` files in the group
-/// directory.  Returns an error if the prefix is ambiguous or matches nothing.
+/// Resolve a (possibly prefix) run ID against group-wide `.claim` files.
+/// Returns an error if the prefix is ambiguous or matches nothing.
 fn resolve_run_id(group_dir: &std::path::Path, prefix: &str) -> RunnerResult<RunId> {
     // Try exact UUID parse first.
     if let Ok(id) = prefix.parse::<RunId>() {
