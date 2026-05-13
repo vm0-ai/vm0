@@ -262,8 +262,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Replace the sidebar's per-thread trash button with a kebab/pin menu that exposes Pin/Unpin and Delete. Pinned threads sort to the top of the agent's chat list. Mobile shows the menu trigger always; desktop shows it on hover.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatThreadRename]: {
     maintainer: "ethan@vm0.ai",
