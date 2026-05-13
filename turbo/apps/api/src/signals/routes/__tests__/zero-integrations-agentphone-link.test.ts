@@ -281,6 +281,82 @@ describe("/api/integrations/agentphone/link", () => {
     expect(sendMessage.calls).toHaveLength(1);
   });
 
+  it("logs provider details when verification text sending is rejected", async () => {
+    const user = await setupEnabledUser();
+    const phone = uniquePhone();
+    await trackAgentPhoneVerificationCooldowns({
+      ...user,
+      phoneHandles: [phone],
+    });
+    server.use(
+      http.post("https://api.agentphone.to/v1/messages", () => {
+        return HttpResponse.text("provider quota exceeded", { status: 429 });
+      }),
+    );
+    const client = setupApp({ context })(zeroIntegrationsAgentPhoneContract);
+
+    const response = await accept(
+      client.startLink({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { phoneHandle: phone },
+      }),
+      [503],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "AgentPhone verification text could not be sent",
+        code: "PROVIDER_UNAVAILABLE",
+      },
+    });
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "AgentPhone verification text provider rejected send",
+      expect.objectContaining({
+        agentphoneAgentId: "agt-test-agentphone",
+        phoneHandle: `***${phone.slice(-4)}`,
+        status: 429,
+        statusText: "Too Many Requests",
+        body: "provider quota exceeded",
+        context: "api:agentphone:link",
+      }),
+    );
+  });
+
+  it("logs fetch failures when verification text sending fails before response", async () => {
+    const user = await setupEnabledUser();
+    const phone = uniquePhone();
+    await trackAgentPhoneVerificationCooldowns({
+      ...user,
+      phoneHandles: [phone],
+    });
+    server.use(
+      http.post("https://api.agentphone.to/v1/messages", () => {
+        return HttpResponse.error();
+      }),
+    );
+    const client = setupApp({ context })(zeroIntegrationsAgentPhoneContract);
+
+    await accept(
+      client.startLink({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { phoneHandle: phone },
+      }),
+      [503],
+    );
+
+    expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
+      "AgentPhone verification text send failed",
+      expect.objectContaining({
+        agentphoneAgentId: "agt-test-agentphone",
+        phoneHandle: `***${phone.slice(-4)}`,
+        context: "api:agentphone:link",
+        error: expect.objectContaining({
+          message: expect.any(String),
+        }),
+      }),
+    );
+  });
+
   it("rejects empty normalized phone input", async () => {
     await setupEnabledUser();
     const client = setupApp({ context })(zeroIntegrationsAgentPhoneContract);

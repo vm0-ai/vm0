@@ -10,6 +10,7 @@ import { and, eq } from "drizzle-orm";
 
 import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import { logger } from "../../lib/log";
 import { now } from "../../lib/time";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -38,6 +39,7 @@ const agentPhoneAuthOptions = {
 } as const;
 
 const VERIFICATION_SEND_COOLDOWN_MS = 60_000;
+const log = logger("api:agentphone:link");
 
 const startLinkBody$ = bodyResultOf(
   zeroIntegrationsAgentPhoneContract.startLink,
@@ -147,6 +149,24 @@ function isValidPhoneHandle(value: string): boolean {
   return /^\+[1-9]\d{7,14}$/u.test(value);
 }
 
+function maskPhoneHandle(value: string): string {
+  const normalized = normalizePhoneHandle(value);
+  if (normalized.length <= 4) {
+    return "[redacted]";
+  }
+  return `***${normalized.slice(-4)}`;
+}
+
+async function safeResponseText(response: Response): Promise<string> {
+  return response.text().catch(() => {
+    return "[unavailable]";
+  });
+}
+
+function truncateForLog(value: string): string {
+  return value.length > 500 ? `${value.slice(0, 500)}...` : value;
+}
+
 function signAgentPhoneConnectParams(params: {
   readonly phoneHandle: string;
   readonly agentphoneAgentId: string;
@@ -203,7 +223,18 @@ async function sendAgentPhoneMessage(params: {
     signal: params.signal,
   });
 
-  return response.ok;
+  if (!response.ok) {
+    log.warn("AgentPhone verification text provider rejected send", {
+      agentphoneAgentId: params.config.agentphoneAgentId,
+      phoneHandle: maskPhoneHandle(params.toNumber),
+      status: response.status,
+      statusText: response.statusText,
+      body: truncateForLog(await safeResponseText(response)),
+    });
+    return false;
+  }
+
+  return true;
 }
 
 const requireAgentPhoneUi$ = computed(async (get) => {
@@ -316,7 +347,12 @@ const sendAgentPhoneVerificationText$ = command(
         toNumber: params.phoneHandle,
         body: `Confirm this phone number for VM0: ${params.connectUrl}`,
         signal,
-      }).catch(() => {
+      }).catch((error: unknown) => {
+        log.error("AgentPhone verification text send failed", {
+          agentphoneAgentId: params.config.agentphoneAgentId,
+          phoneHandle: maskPhoneHandle(params.phoneHandle),
+          error,
+        });
         return false;
       });
       signal.throwIfAborted();
