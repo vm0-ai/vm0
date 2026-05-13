@@ -1,9 +1,13 @@
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use crate::error::{ActiveJobsError, RunnerError, RunnerResult};
 use crate::ids::RunId;
+use crate::local_runner_registry::LocalRunnerRegistry;
 use crate::paths::HomePaths;
 use clap::{Args, Subcommand};
+use tokio::time::Instant;
 use tracing::{info, warn};
 
 #[derive(Args)]
@@ -125,6 +129,8 @@ pub async fn run_service(args: ServiceArgs) -> RunnerResult<()> {
 // ---------------------------------------------------------------------------
 
 const UNIT_PREFIX: &str = "vm0-runner-";
+const LOCAL_SERVICE_READY_TIMEOUT: Duration = Duration::from_secs(30);
+const LOCAL_SERVICE_READY_POLL: Duration = Duration::from_millis(100);
 
 /// Build the full systemd unit name from the user-supplied suffix.
 ///
@@ -254,6 +260,73 @@ fn validate_env_vars(vars: &[String]) -> RunnerResult<()> {
         }
     }
     Ok(())
+}
+
+fn missing_local_profiles(
+    live_profiles: &BTreeSet<String>,
+    required_profiles: &BTreeSet<String>,
+) -> Vec<String> {
+    required_profiles
+        .difference(live_profiles)
+        .cloned()
+        .collect()
+}
+
+fn format_profile_set(profiles: &BTreeSet<String>) -> String {
+    if profiles.is_empty() {
+        "none".to_string()
+    } else {
+        profiles.iter().cloned().collect::<Vec<_>>().join(", ")
+    }
+}
+
+async fn wait_for_local_service_ready(
+    unit: &str,
+    config: &crate::config::RunnerConfig,
+    home: &HomePaths,
+) -> RunnerResult<()> {
+    let required_profiles: BTreeSet<String> = config.profiles.keys().cloned().collect();
+    let registry = LocalRunnerRegistry::new(home.groups_dir().join(&config.group));
+    let deadline = Instant::now() + LOCAL_SERVICE_READY_TIMEOUT;
+
+    loop {
+        let live_profiles = registry.live_profiles_for_runner(&config.name)?;
+        let missing = missing_local_profiles(&live_profiles, &required_profiles);
+        if missing.is_empty() {
+            info!(
+                unit,
+                group = %config.group,
+                runner_name = %config.name,
+                profiles = %format_profile_set(&required_profiles),
+                "local service ready"
+            );
+            return Ok(());
+        }
+
+        if Instant::now() >= deadline {
+            return Err(RunnerError::Internal(format!(
+                "local service {unit} did not become ready within {LOCAL_SERVICE_READY_TIMEOUT:?}; \
+                 group {}; runner {}; required profiles: {}; live profiles: {}; missing profiles: {}",
+                config.group,
+                config.name,
+                format_profile_set(&required_profiles),
+                format_profile_set(&live_profiles),
+                missing.join(", ")
+            )));
+        }
+
+        tokio::time::sleep(LOCAL_SERVICE_READY_POLL).await;
+    }
+}
+
+async fn stop_transient_after_start_failure(unit: &str) {
+    let svc = format!("{unit}.service");
+    if let Err(e) = run_systemctl(&["stop", &svc]).await {
+        warn!(unit, error = %e, "failed to stop service after local readiness failure");
+    }
+    if let Err(e) = run_systemctl(&["reset-failed", &svc]).await {
+        warn!(unit, error = %e, "failed to reset service failure state after local readiness failure");
+    }
 }
 
 /// Run `systemctl <args>` and check exit status.
@@ -639,6 +712,11 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
     }
 
     let config_path = resolve_config_path(&args.config)?;
+    let local_ready_config = if args.local {
+        Some(crate::config::load(&config_path).await?)
+    } else {
+        None
+    };
     let exe_path =
         std::env::current_exe().map_err(|e| RunnerError::Internal(format!("current_exe: {e}")))?;
 
@@ -678,6 +756,15 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
             "systemd-run failed: {status}"
         )));
     }
+
+    if let Some(config) = &local_ready_config {
+        let home = HomePaths::new()?;
+        if let Err(e) = wait_for_local_service_ready(&unit, config, &home).await {
+            stop_transient_after_start_failure(&unit).await;
+            return Err(e);
+        }
+    }
+
     info!(unit = %unit, "transient service started");
     Ok(())
 }
@@ -718,6 +805,11 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
     let unit = unit_name(&args.name)?;
     validate_env_vars(&args.env)?;
     let config_path = resolve_config_path(&args.config)?;
+    let local_ready_config = if args.local {
+        Some(crate::config::load(&config_path).await?)
+    } else {
+        None
+    };
     let exe_path =
         std::env::current_exe().map_err(|e| RunnerError::Internal(format!("current_exe: {e}")))?;
 
@@ -729,6 +821,20 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
     run_systemctl(&["daemon-reload"]).await?;
     let svc = format!("{unit}.service");
     run_systemctl(&["enable", "--now", &svc]).await?;
+
+    if let Some(config) = &local_ready_config {
+        let home = HomePaths::new()?;
+        if let Err(e) = wait_for_local_service_ready(&unit, config, &home).await {
+            if let Err(cleanup_err) = uninstall_service(&args.name).await {
+                warn!(
+                    unit = %unit,
+                    error = %cleanup_err,
+                    "failed to uninstall service after local readiness failure"
+                );
+            }
+            return Err(e);
+        }
+    }
 
     info!(unit = %unit, "service installed and started");
     Ok(())

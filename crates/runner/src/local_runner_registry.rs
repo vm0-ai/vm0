@@ -62,6 +62,15 @@ impl LocalRunnerRegistry {
             .collect())
     }
 
+    pub(crate) fn live_profiles_for_runner(&self, name: &str) -> RunnerResult<BTreeSet<String>> {
+        Ok(self
+            .live_records_at(now_ms(), RUNNER_REGISTRY_TTL)?
+            .into_iter()
+            .filter(|record| record.name == name)
+            .flat_map(|record| record.profiles)
+            .collect())
+    }
+
     pub(crate) fn write_record(
         &self,
         runner_id: &str,
@@ -164,6 +173,12 @@ impl LocalRunnerRegistry {
                 let _ = std::fs::remove_file(&path);
                 continue;
             }
+            if let Some(pid) = record.pid
+                && !process_is_running(pid)
+            {
+                let _ = std::fs::remove_file(&path);
+                continue;
+            }
             records.push(record);
         }
         Ok(records)
@@ -205,6 +220,35 @@ fn now_ms() -> u64 {
 
 fn duration_millis_u64(duration: Duration) -> u64 {
     duration.as_millis().try_into().unwrap_or(u64::MAX)
+}
+
+#[cfg(target_os = "linux")]
+fn process_is_running(pid: u32) -> bool {
+    let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
+        return false;
+    };
+    let Some((_, after_comm)) = stat.rsplit_once(") ") else {
+        return false;
+    };
+    !after_comm.starts_with('Z')
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn process_is_running(pid: u32) -> bool {
+    let Ok(raw_pid) = i32::try_from(pid) else {
+        return false;
+    };
+    let pid = nix::unistd::Pid::from_raw(raw_pid);
+    match nix::sys::signal::kill(pid, None) {
+        Ok(()) => true,
+        Err(nix::errno::Errno::ESRCH) => false,
+        Err(_) => true,
+    }
+}
+
+#[cfg(not(unix))]
+fn process_is_running(_pid: u32) -> bool {
+    false
 }
 
 #[cfg(test)]
@@ -259,6 +303,23 @@ mod tests {
     }
 
     #[test]
+    fn filters_profiles_by_runner_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = registry(dir.path());
+
+        registry
+            .write_record("runner-a", "local-a", vec!["vm0/default".into()])
+            .unwrap();
+        registry
+            .write_record("runner-b", "local-b", vec!["vm0/large".into()])
+            .unwrap();
+
+        let profiles = registry.live_profiles_for_runner("local-a").unwrap();
+        assert!(profiles.contains("vm0/default"));
+        assert!(!profiles.contains("vm0/large"));
+    }
+
+    #[test]
     fn ignores_and_removes_stale_runner_records() {
         let dir = tempfile::tempdir().unwrap();
         let registry = registry(dir.path());
@@ -290,6 +351,35 @@ mod tests {
             .live_records_at(1_000, Duration::from_secs(30))
             .unwrap();
         assert!(records.is_empty());
+    }
+
+    #[test]
+    fn ignores_and_removes_dead_runner_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = registry(dir.path());
+        let runners_dir = registry.runners_dir();
+        std::fs::create_dir_all(&runners_dir).unwrap();
+        let dead_pid = u32::MAX;
+        let path = registry.record_path("runner-1", dead_pid);
+
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&serde_json::json!({
+                "runner_id": "runner-1",
+                "name": "local-a",
+                "profiles": ["vm0/default"],
+                "updated_at_ms": 1_000,
+                "pid": dead_pid,
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let records = registry
+            .live_records_at(1_000, Duration::from_secs(30))
+            .unwrap();
+        assert!(records.is_empty());
+        assert!(!path.exists());
     }
 
     #[test]
