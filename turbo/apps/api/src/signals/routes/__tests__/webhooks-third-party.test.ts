@@ -16,6 +16,7 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { users } from "@vm0/db/schema/user";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { storages } from "@vm0/db/schema/storage";
 import { command, createStore } from "ccstate";
 import { and, eq, inArray } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
@@ -274,6 +275,7 @@ const deleteClerkFixture$ = command(
     _signal: AbortSignal,
   ): Promise<void> => {
     const db = set(writeDb$);
+    await db.delete(storages).where(eq(storages.userId, fixture.userId));
     await db.delete(userCache).where(eq(userCache.userId, fixture.userId));
     await db.delete(users).where(eq(users.id, fixture.userId));
   },
@@ -560,5 +562,49 @@ describe("POST /api/webhooks/clerk", () => {
       .where(eq(users.id, fixture.userId));
     expect(cacheRows).toHaveLength(0);
     expect(userRows).toHaveLength(0);
+  });
+
+  it("continues user deletion cleanup when user S3 cleanup fails", async () => {
+    const fixture = await trackClerk(
+      store.set(seedClerkFixture$, undefined, context.signal),
+    );
+    const db = store.set(writeDb$);
+    await db.insert(storages).values({
+      userId: fixture.userId,
+      orgId: `org_${randomUUID()}`,
+      name: "memory",
+      type: "memory",
+      s3Prefix: `users/${fixture.userId}/memory`,
+    });
+    context.mocks.clerk.verifyWebhook.mockResolvedValue({
+      type: "user.deleted",
+      data: { id: fixture.userId },
+    });
+    context.mocks.s3.send.mockRejectedValueOnce(new Error("R2 unavailable"));
+
+    const response = await postRaw({
+      path: "/api/webhooks/clerk",
+      body: "{}",
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+
+    const cacheRows = await db
+      .select({ userId: userCache.userId })
+      .from(userCache)
+      .where(eq(userCache.userId, fixture.userId));
+    const userRows = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, fixture.userId));
+    const storageRows = await db
+      .select({ id: storages.id })
+      .from(storages)
+      .where(eq(storages.userId, fixture.userId));
+    expect(cacheRows).toHaveLength(0);
+    expect(userRows).toHaveLength(0);
+    expect(storageRows).toHaveLength(0);
   });
 });

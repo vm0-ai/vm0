@@ -40,6 +40,7 @@ import { nowDate } from "../external/time";
 import { publishCancelToRunnerGroup } from "../external/realtime";
 import { deleteWebhook } from "../external/telegram-client";
 import { getStripeClient } from "../external/stripe-client";
+import { safeAsync } from "../utils";
 import { decryptSecretValue } from "./crypto.utils";
 import { deleteZeroConnectorLocalState$ } from "./zero-connector-data.service";
 
@@ -331,6 +332,49 @@ async function deleteObjectsForPrefixes(args: {
   }
 }
 
+async function deleteUserObjectsForPrefixesBestEffort(args: {
+  readonly get: Getter;
+  readonly bucket: string;
+  readonly prefixes: readonly string[];
+  readonly userId: string;
+}): Promise<void> {
+  for (const prefix of args.prefixes) {
+    const objectsResult = await safeAsync(() => {
+      return args.get(listS3Objects(args.bucket, prefix));
+    });
+    if ("error" in objectsResult) {
+      L.warn("failed to list user storage objects", {
+        userId: args.userId,
+        prefix,
+        error: objectsResult.error,
+      });
+      continue;
+    }
+
+    if (objectsResult.ok.length === 0) {
+      continue;
+    }
+
+    const deleteResult = await safeAsync(() => {
+      return args.get(
+        deleteS3Objects(
+          args.bucket,
+          objectsResult.ok.map((object) => {
+            return object.key;
+          }),
+        ),
+      );
+    });
+    if ("error" in deleteResult) {
+      L.warn("failed to delete user storage objects", {
+        userId: args.userId,
+        prefix,
+        error: deleteResult.error,
+      });
+    }
+  }
+}
+
 async function deleteOrgS3Data(args: {
   readonly get: Getter;
   readonly db: Db;
@@ -369,9 +413,10 @@ async function deleteUserS3Data(args: {
     .select({ s3Prefix: storages.s3Prefix })
     .from(storages)
     .where(eq(storages.userId, args.userId));
-  await deleteObjectsForPrefixes({
+  await deleteUserObjectsForPrefixesBestEffort({
     get: args.get,
     bucket,
+    userId: args.userId,
     prefixes: storageRows.map((row) => {
       return row.s3Prefix;
     }),
@@ -386,7 +431,16 @@ async function deleteUserS3Data(args: {
   const exportKeys = exportRows.flatMap((row) => {
     return row.s3Key ? [row.s3Key] : [];
   });
-  await args.get(deleteS3Objects(bucket, exportKeys));
+  const deleteExportsResult = await safeAsync(() => {
+    return args.get(deleteS3Objects(bucket, exportKeys));
+  });
+  if ("error" in deleteExportsResult) {
+    L.warn("failed to delete user export objects", {
+      userId: args.userId,
+      count: exportKeys.length,
+      error: deleteExportsResult.error,
+    });
+  }
 }
 
 async function deleteOrgData(db: Db, orgId: string): Promise<void> {
