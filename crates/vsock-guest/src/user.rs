@@ -26,6 +26,25 @@ enum TargetIdentity {
     User(UserCredentials),
 }
 
+#[cfg(not(any(debug_assertions, feature = "test-support")))]
+pub(crate) fn sandbox_user_name() -> &'static str {
+    SANDBOX_USER
+}
+
+pub(crate) fn sandbox_user_gid() -> io::Result<libc::gid_t> {
+    #[cfg(any(debug_assertions, feature = "test-support"))]
+    {
+        Err(io::Error::other(
+            "sandbox user gid is unavailable in debug/test-support builds",
+        ))
+    }
+
+    #[cfg(not(any(debug_assertions, feature = "test-support")))]
+    {
+        cached_system_user_credentials().map(|credentials| credentials.gid as libc::gid_t)
+    }
+}
+
 pub(crate) fn apply_write_file_identity(command: &mut Command, sudo: bool) -> io::Result<()> {
     #[cfg(any(debug_assertions, feature = "test-support"))]
     let _ = command;
@@ -239,6 +258,16 @@ mod tests {
         assert_eq!(credentials.gid, 1000);
         assert_eq!(credentials.home, PathBuf::from("/home/user"));
         assert_eq!(credentials.groups, vec![27, 113, 1000]);
+    }
+
+    #[test]
+    fn parse_user_credentials_uses_passwd_primary_gid_without_group_entry() {
+        let passwd = "user:x:1000:2000::/home/user:/bin/bash\n";
+
+        let credentials = parse_user_credentials(passwd, "", "user").unwrap();
+
+        assert_eq!(credentials.gid, 2000);
+        assert_eq!(credentials.groups, vec![2000]);
     }
 
     #[test]
