@@ -5,7 +5,7 @@
 //! winning runner executes the job and writes a `{job_id}.result` file that
 //! `submit` polls for.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -61,6 +61,7 @@ pub(crate) struct JobResponse {
 /// corresponding cancellation token from the shared `cancel_tokens` map.
 pub struct LocalProvider {
     group_dir: PathBuf,
+    supported_profiles: BTreeSet<String>,
     cancel: CancellationToken,
     cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
 }
@@ -69,12 +70,14 @@ impl LocalProvider {
     /// Create a new file-queue provider for the given group directory.
     pub fn new(
         group_dir: PathBuf,
+        supported_profiles: impl IntoIterator<Item = String>,
         cancel: CancellationToken,
         cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
     ) -> Arc<Self> {
         info!(path = %group_dir.display(), "local provider watching");
         Arc::new(Self {
             group_dir,
+            supported_profiles: supported_profiles.into_iter().collect(),
             cancel,
             cancel_tokens,
         })
@@ -156,14 +159,22 @@ impl LocalProvider {
             };
             let claim_path = self.group_dir.join(format!("{job_id}.claim"));
             if !claim_path.exists() {
-                // Silent fallback to default profile — claim() is the single
-                // source of truth for logging and poison handling, so errors
-                // here are intentionally swallowed to avoid duplicate warns.
-                let profile = std::fs::read(&path)
+                // claim() is the single source of truth for logging and poison
+                // handling. If discovery cannot parse the job, still return it
+                // using any supported profile so claim() can mark the poisoned
+                // job failed instead of leaving it behind forever.
+                let profile = match std::fs::read(&path)
                     .ok()
                     .and_then(|buf| serde_json::from_slice::<JobRequest>(&buf).ok())
-                    .and_then(|req| req.profile)
-                    .unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
+                {
+                    Some(req) => req
+                        .profile
+                        .unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned()),
+                    None => self.supported_profiles.iter().next()?.clone(),
+                };
+                if !self.supported_profiles.contains(&profile) {
+                    continue;
+                }
                 return Some((job_id, profile));
             }
         }
@@ -335,6 +346,28 @@ mod tests {
         Arc::new(tokio::sync::Mutex::new(HashMap::new()))
     }
 
+    fn make_provider(
+        dir: &std::path::Path,
+        cancel: CancellationToken,
+        cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    ) -> Arc<LocalProvider> {
+        provider_with_profiles(
+            dir,
+            [crate::profile::DEFAULT_PROFILE.to_owned()],
+            cancel,
+            cancel_tokens,
+        )
+    }
+
+    fn provider_with_profiles(
+        dir: &std::path::Path,
+        profiles: impl IntoIterator<Item = String>,
+        cancel: CancellationToken,
+        cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    ) -> Arc<LocalProvider> {
+        LocalProvider::new(dir.to_path_buf(), profiles, cancel, cancel_tokens)
+    }
+
     /// Write a job file into the group directory.
     fn write_job(dir: &std::path::Path, job_id: RunId, prompt: &str) {
         write_job_with_profile(dir, job_id, prompt, None);
@@ -374,7 +407,7 @@ mod tests {
     async fn discover_claim_complete() {
         let dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
-        let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, empty_cancel_tokens());
+        let provider = make_provider(dir.path(), cancel, empty_cancel_tokens());
 
         let job_id = RunId::new_v4();
         write_job(dir.path(), job_id, "hello world");
@@ -398,11 +431,7 @@ mod tests {
     async fn shutdown_returns_none() {
         let dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
-        let provider = LocalProvider::new(
-            dir.path().to_path_buf(),
-            cancel.clone(),
-            empty_cancel_tokens(),
-        );
+        let provider = make_provider(dir.path(), cancel.clone(), empty_cancel_tokens());
 
         cancel.cancel();
         assert!(provider.discover().await.is_none());
@@ -412,7 +441,7 @@ mod tests {
     async fn skips_already_claimed_jobs() {
         let dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
-        let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, empty_cancel_tokens());
+        let provider = make_provider(dir.path(), cancel, empty_cancel_tokens());
 
         // Write two jobs, pre-claim the first
         let job1 = RunId::new_v4();
@@ -429,7 +458,7 @@ mod tests {
     async fn concurrent_jobs() {
         let dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
-        let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, empty_cancel_tokens());
+        let provider = make_provider(dir.path(), cancel, empty_cancel_tokens());
 
         let job1 = RunId::new_v4();
         let job2 = RunId::new_v4();
@@ -466,12 +495,8 @@ mod tests {
         let cancel = CancellationToken::new();
 
         let tokens = empty_cancel_tokens();
-        let provider_a = LocalProvider::new(
-            dir.path().to_path_buf(),
-            cancel.clone(),
-            Arc::clone(&tokens),
-        );
-        let provider_b = LocalProvider::new(dir.path().to_path_buf(), cancel, tokens);
+        let provider_a = make_provider(dir.path(), cancel.clone(), Arc::clone(&tokens));
+        let provider_b = make_provider(dir.path(), cancel, tokens);
 
         let job_id = RunId::new_v4();
         write_job(dir.path(), job_id, "shared");
@@ -494,7 +519,7 @@ mod tests {
     async fn discover_returns_profile_from_job() {
         let dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
-        let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, empty_cancel_tokens());
+        let provider = make_provider(dir.path(), cancel, empty_cancel_tokens());
 
         let job_id = RunId::new_v4();
         write_job_with_profile(dir.path(), job_id, "profiled job", Some("vm0/default"));
@@ -511,7 +536,7 @@ mod tests {
     async fn discover_defaults_profile_when_missing() {
         let dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
-        let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, empty_cancel_tokens());
+        let provider = make_provider(dir.path(), cancel, empty_cancel_tokens());
 
         let job_id = RunId::new_v4();
         write_job(dir.path(), job_id, "default job");
@@ -519,6 +544,47 @@ mod tests {
         let (run_id, profile) = provider.discover().await.unwrap();
         assert_eq!(run_id, job_id);
         assert_eq!(profile, crate::profile::DEFAULT_PROFILE);
+    }
+
+    #[test]
+    fn discover_skips_unsupported_profile_and_continues_scanning() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = make_provider(dir.path(), cancel, empty_cancel_tokens());
+
+        let unsupported = RunId::nil();
+        let supported = RunId::new_v4();
+        write_job_with_profile(dir.path(), unsupported, "large job", Some("vm0/large"));
+
+        assert!(provider.find_unclaimed_job().is_none());
+        assert!(!dir.path().join(format!("{unsupported}.claim")).exists());
+        assert!(!dir.path().join(format!("{unsupported}.result")).exists());
+        assert!(dir.path().join(format!("{unsupported}.job")).exists());
+
+        write_job_with_profile(dir.path(), supported, "default job", Some("vm0/default"));
+
+        let (run_id, profile) = provider.find_unclaimed_job().unwrap();
+        assert_eq!(run_id, supported);
+        assert_eq!(profile, "vm0/default");
+    }
+
+    #[tokio::test]
+    async fn discover_returns_supported_non_default_profile() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = provider_with_profiles(
+            dir.path(),
+            ["vm0/large".to_owned()],
+            cancel,
+            empty_cancel_tokens(),
+        );
+
+        let job_id = RunId::new_v4();
+        write_job_with_profile(dir.path(), job_id, "large job", Some("vm0/large"));
+
+        let (run_id, profile) = provider.discover().await.unwrap();
+        assert_eq!(run_id, job_id);
+        assert_eq!(profile, "vm0/large");
     }
 
     #[tokio::test]
@@ -531,7 +597,7 @@ mod tests {
         let job_token = CancellationToken::new();
         tokens.lock().await.insert(run_id, job_token.clone());
 
-        let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, tokens);
+        let provider = make_provider(dir.path(), cancel, tokens);
 
         // Write a .cancel file and a dummy .job so discover returns.
         std::fs::write(dir.path().join(format!("{run_id}.cancel")), b"").unwrap();
@@ -555,7 +621,7 @@ mod tests {
         let job_token = CancellationToken::new();
         tokens.lock().await.insert(run_id, job_token);
 
-        let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, tokens);
+        let provider = make_provider(dir.path(), cancel, tokens);
 
         let cancel_path = dir.path().join(format!("{run_id}.cancel"));
         std::fs::write(&cancel_path, b"").unwrap();
@@ -576,7 +642,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
         let tokens = empty_cancel_tokens();
-        let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, tokens);
+        let provider = make_provider(dir.path(), cancel, tokens);
 
         // Write cancel file for a run_id that has no token.
         let unknown_id = RunId::new_v4();
@@ -599,7 +665,7 @@ mod tests {
     async fn complete_cleans_up_cancel_file() {
         let dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
-        let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, empty_cancel_tokens());
+        let provider = make_provider(dir.path(), cancel, empty_cancel_tokens());
 
         let run_id = RunId::new_v4();
         let cancel_path = dir.path().join(format!("{run_id}.cancel"));
@@ -621,7 +687,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
         let tokens = empty_cancel_tokens();
-        let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, Arc::clone(&tokens));
+        let provider = make_provider(dir.path(), cancel, Arc::clone(&tokens));
 
         let run_id = RunId::new_v4();
         let cancel_path = dir.path().join(format!("{run_id}.cancel"));
@@ -667,7 +733,7 @@ mod tests {
     async fn claim_cleans_up_on_missing_job_file() {
         let dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
-        let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, empty_cancel_tokens());
+        let provider = make_provider(dir.path(), cancel, empty_cancel_tokens());
 
         let run_id = RunId::new_v4();
         let claim_path = dir.path().join(format!("{run_id}.claim"));
@@ -688,7 +754,7 @@ mod tests {
     async fn claim_handles_poison_job_json() {
         let dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
-        let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, empty_cancel_tokens());
+        let provider = make_provider(dir.path(), cancel, empty_cancel_tokens());
 
         let run_id = RunId::new_v4();
         let claim_path = dir.path().join(format!("{run_id}.claim"));
@@ -719,5 +785,36 @@ mod tests {
 
         // Next discover() scan must not re-surface the job.
         assert!(provider.find_unclaimed_job().is_none());
+    }
+
+    #[tokio::test]
+    async fn poison_job_json_is_discovered_even_without_default_profile_support() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = provider_with_profiles(
+            dir.path(),
+            ["vm0/large".to_owned()],
+            cancel,
+            empty_cancel_tokens(),
+        );
+
+        let run_id = RunId::new_v4();
+        let job_path = dir.path().join(format!("{run_id}.job"));
+        std::fs::write(&job_path, b"not json").unwrap();
+
+        let (discovered, profile) = provider.find_unclaimed_job().unwrap();
+        assert_eq!(discovered, run_id);
+        assert_eq!(profile, "vm0/large");
+
+        assert!(provider.claim(run_id).await.is_none());
+        let resp = read_result(dir.path(), run_id);
+        assert_ne!(resp.exit_code, 0);
+        assert!(
+            resp.error
+                .as_deref()
+                .is_some_and(|e| e.contains("invalid job JSON")),
+            "error must mention invalid JSON, got: {:?}",
+            resp.error
+        );
     }
 }

@@ -13,6 +13,7 @@ mod idle_pool;
 mod ids;
 mod image_hash;
 mod kmsg_log;
+mod local_runner_registry;
 mod lock;
 mod network_log_drain;
 mod network_log_manager;

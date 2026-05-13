@@ -196,6 +196,7 @@ fn build_mock_run_config_with_runtime(
         mitm,
         mitm_crash_rx,
         provider,
+        local_registration: None,
         cancel_tokens: Arc::clone(&cancel_tokens),
         cancel: cancel.clone(),
         exec_config: Arc::new(executor::ExecutorConfig {

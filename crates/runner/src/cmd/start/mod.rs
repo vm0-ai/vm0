@@ -49,6 +49,7 @@ use crate::host;
 use crate::http::HttpClient;
 use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkingGate};
 use crate::kmsg_log;
+use crate::local_runner_registry::{LocalRunnerRegistration, LocalRunnerRegistry};
 use crate::lock;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogManager;
@@ -402,12 +403,25 @@ pub async fn run_start(
     let cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
         Arc::new(tokio::sync::Mutex::new(HashMap::new()));
 
+    let mut local_registration = None;
     let (provider, group_name): (Arc<dyn JobProvider>, String) = if args.local {
         let group_dir = home.groups_dir().join(&group);
         std::fs::create_dir_all(&group_dir).map_err(|e| {
             RunnerError::Config(format!("create group dir {}: {e}", group_dir.display()))
         })?;
-        let provider = LocalProvider::new(group_dir, cancel.clone(), Arc::clone(&cancel_tokens));
+        let local_profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
+        local_registration = Some(LocalRunnerRegistration::new(
+            LocalRunnerRegistry::new(group_dir.clone()),
+            runner_id.clone(),
+            name.clone(),
+            local_profiles.clone(),
+        ));
+        let provider = LocalProvider::new(
+            group_dir,
+            local_profiles,
+            cancel.clone(),
+            Arc::clone(&cancel_tokens),
+        );
         (provider, group)
     } else {
         let group_name = group.clone();
@@ -449,6 +463,7 @@ pub async fn run_start(
         mitm,
         mitm_crash_rx,
         provider,
+        local_registration,
         cancel_tokens,
         cancel,
         exec_config,
@@ -483,6 +498,7 @@ struct RunConfig {
     mitm: proxy::MitmProxy,
     mitm_crash_rx: tokio::sync::mpsc::Receiver<()>,
     provider: Arc<dyn JobProvider>,
+    local_registration: Option<LocalRunnerRegistration>,
     /// Per-job cancel tokens shared with the provider for cancel events
     /// (Ably for ApiProvider, `.cancel` files for LocalProvider).
     cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
@@ -772,6 +788,24 @@ fn maybe_panic_outer_job(
     }
 }
 
+fn set_local_registration_active(
+    registration: Option<&LocalRunnerRegistration>,
+    active: bool,
+    mode: RunnerMode,
+) {
+    let Some(registration) = registration else {
+        return;
+    };
+    let result = if active {
+        registration.refresh()
+    } else {
+        registration.remove()
+    };
+    if let Err(e) = result {
+        warn!(error = %e, ?mode, active, "local: runner registry update failed");
+    }
+}
+
 async fn run(config: RunConfig) -> RunnerResult<()> {
     let RunConfig {
         id: runner_id,
@@ -787,6 +821,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         mut mitm,
         mut mitm_crash_rx,
         provider,
+        local_registration,
         cancel_tokens,
         cancel,
         exec_config,
@@ -902,6 +937,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let mut discover_fut = Box::pin(provider.discover());
 
     let mut current_mode = RunnerMode::Running;
+    set_local_registration_active(local_registration.as_ref(), true, current_mode);
     let spawn_ctx = SpawnContext {
         provider: Arc::clone(&provider),
         exec_config: Arc::clone(&exec_config),
@@ -922,6 +958,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         if mode != current_mode {
             current_mode = mode;
             status.set_mode(mode).await;
+            set_local_registration_active(
+                local_registration.as_ref(),
+                matches!(mode, RunnerMode::Running),
+                mode,
+            );
         }
         match mode {
             // Stopped should not normally reach here — teardown sets it and
@@ -1081,6 +1122,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             // Heartbeat: report runner state to the server
             _ = heartbeat_tick.tick() => {
                 send_heartbeat(&hb_ctx, current_mode).await;
+                set_local_registration_active(
+                    local_registration.as_ref(),
+                    matches!(current_mode, RunnerMode::Running),
+                    current_mode,
+                );
             }
             // Immediate heartbeat after a VM is parked — eliminates the
             // up-to-10s blind spot for session affinity routing.
@@ -1102,6 +1148,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // the historical shutdown-deadlock regression covered by mock providers.
     drop(discover_fut);
     teardown.event("drop_discover_fut");
+    set_local_registration_active(local_registration.as_ref(), false, RunnerMode::Stopping);
 
     // Drain idle pool first — these VMs hold budget reservations. This
     // also clears `idle_vms` in status.json so the final snapshot is

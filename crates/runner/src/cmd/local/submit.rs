@@ -10,6 +10,7 @@ use clap::Args;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
+use crate::local_runner_registry::LocalRunnerRegistry;
 use crate::paths::HomePaths;
 use crate::provider::{JobRequest, JobResponse};
 
@@ -83,6 +84,26 @@ fn cleanup_files(
     let _ = std::fs::remove_file(group_dir.join(format!("{job_id}.claim")));
 }
 
+fn ensure_live_runner_supports_profile(
+    group_dir: &std::path::Path,
+    group: &str,
+    profile: &str,
+) -> RunnerResult<()> {
+    let live_profiles = LocalRunnerRegistry::new(group_dir.to_path_buf()).live_profiles()?;
+    if live_profiles.contains(profile) {
+        return Ok(());
+    }
+
+    let available = if live_profiles.is_empty() {
+        "none".to_string()
+    } else {
+        live_profiles.into_iter().collect::<Vec<_>>().join(", ")
+    };
+    Err(RunnerError::Config(format!(
+        "no live local runner in group {group} supports profile {profile}; live profiles: {available}; start a local runner with this profile or choose a supported profile"
+    )))
+}
+
 pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
     crate::group::validate_or_err(&args.group)?;
 
@@ -110,10 +131,15 @@ pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
 
     let home = HomePaths::new()?;
     let group_dir = home.groups_dir().join(&args.group);
+    let requested_profile = args
+        .profile
+        .clone()
+        .unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
 
     std::fs::create_dir_all(&group_dir).map_err(|e| {
         RunnerError::Config(format!("create group dir {}: {e}", group_dir.display()))
     })?;
+    ensure_live_runner_supports_profile(&group_dir, &args.group, &requested_profile)?;
 
     let job_id = RunId::new_v4();
     let request = JobRequest {
@@ -287,6 +313,77 @@ mod tests {
 
         // Second cleanup (idempotent — no panic on missing files)
         cleanup_files(&job_path, &result_path, &cancel_path, group_dir, job_id);
+    }
+
+    #[test]
+    fn preflight_rejects_profile_without_live_runner() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let err = ensure_live_runner_supports_profile(dir.path(), "test/group", "vm0/default")
+            .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("no live local runner in group test/group supports profile vm0/default"),
+            "got: {err}"
+        );
+        assert!(
+            !dir.path().read_dir().unwrap().any(|entry| entry
+                .unwrap()
+                .path()
+                .extension()
+                .and_then(|ext| ext.to_str())
+                == Some("job")),
+            "preflight must not create job files"
+        );
+    }
+
+    #[test]
+    fn preflight_accepts_profile_from_live_runner() {
+        let dir = tempfile::tempdir().unwrap();
+        LocalRunnerRegistry::new(dir.path().to_path_buf())
+            .write_record("runner-1", "local", vec!["vm0/default".into()])
+            .unwrap();
+
+        ensure_live_runner_supports_profile(dir.path(), "test/group", "vm0/default").unwrap();
+    }
+
+    #[test]
+    fn preflight_accepts_profile_from_any_live_runner() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = LocalRunnerRegistry::new(dir.path().to_path_buf());
+        registry
+            .write_record("runner-1", "local-a", vec!["vm0/default".into()])
+            .unwrap();
+        registry
+            .write_record("runner-2", "local-b", vec!["vm0/large".into()])
+            .unwrap();
+
+        ensure_live_runner_supports_profile(dir.path(), "test/group", "vm0/large").unwrap();
+    }
+
+    #[test]
+    fn preflight_ignores_stale_runner_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let runners_dir = dir.path().join(".runners");
+        std::fs::create_dir_all(&runners_dir).unwrap();
+        let record = crate::local_runner_registry::LocalRunnerRecord {
+            runner_id: "runner-1".into(),
+            name: "local".into(),
+            profiles: vec!["vm0/default".into()],
+            updated_at_ms: 1,
+            pid: Some(std::process::id()),
+        };
+        let json = serde_json::to_vec(&record).unwrap();
+        std::fs::write(runners_dir.join("runner-1.json"), json).unwrap();
+
+        let err = ensure_live_runner_supports_profile(dir.path(), "test/group", "vm0/default")
+            .unwrap_err();
+
+        assert!(
+            err.to_string().contains("live profiles: none"),
+            "got: {err}"
+        );
     }
 
     #[tokio::test]
