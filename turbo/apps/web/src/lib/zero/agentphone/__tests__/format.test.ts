@@ -35,9 +35,9 @@ describe("markdownToImessagePlain", () => {
   });
 
   it("strips fenced code block markers but keeps content", () => {
-    expect(
-      markdownToImessagePlain("```js\nconsole.log(1)\n```"),
-    ).toBe("console.log(1)");
+    expect(markdownToImessagePlain("```js\nconsole.log(1)\n```")).toBe(
+      "console.log(1)",
+    );
   });
 
   it("strips strikethrough markers", () => {
@@ -80,9 +80,9 @@ describe("markdownToImessagePlain", () => {
   });
 
   it("handles images like links with an alt fallback", () => {
-    expect(
-      markdownToImessagePlain("![chart](https://example.com/c.png)"),
-    ).toBe("chart\nhttps://example.com/c.png");
+    expect(markdownToImessagePlain("![chart](https://example.com/c.png)")).toBe(
+      "chart\nhttps://example.com/c.png",
+    );
     expect(markdownToImessagePlain("![](https://example.com/c.png)")).toBe(
       "https://example.com/c.png",
     );
