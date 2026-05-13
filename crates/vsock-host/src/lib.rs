@@ -20,6 +20,7 @@
 
 mod command;
 mod file;
+mod process;
 
 use std::collections::HashMap;
 use std::io;
@@ -30,7 +31,7 @@ use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::{Notify, mpsc, oneshot};
+use tokio::sync::{Notify, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::{self, Instant};
 
@@ -41,8 +42,8 @@ use vsock_proto::{
 };
 use vsock_proto::{
     Decoder, MSG_COMMAND_OUTPUT, MSG_COMMAND_RESULT, MSG_ERROR, MSG_PING, MSG_PONG,
-    MSG_PROCESS_EXIT, MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH,
-    MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK, RawMessage,
+    MSG_PROCESS_EXIT, MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH_RESULT,
+    MSG_STDOUT_CHUNK, RawMessage,
 };
 
 pub use command::{
@@ -50,6 +51,7 @@ pub use command::{
     CommandOutputEvent, CommandOwnedCapturedOutput, CommandStreamRequest,
 };
 pub use file::{CopyFileOptions, CopyFileResult};
+pub use process::ProcessExitEvent;
 
 const READ_BUF_SIZE: usize = 64 * 1024;
 
@@ -63,22 +65,13 @@ pub struct ExecResult {
     pub stderr_truncated: bool,
 }
 
-/// Event emitted when a spawned process exits.
-#[derive(Debug, Clone)]
-pub struct ProcessExitEvent {
-    pub pid: u32,
-    pub exit_code: i32,
-    pub stdout: Vec<u8>,
-    pub stderr: Vec<u8>,
-}
-
 /// Connection lifecycle, expressed as data rather than a separate atomic flag.
 ///
-/// The three registration tables (`pending`, `pending_stdout`, `stdout_senders`)
-/// live inside the `Connected` variant so they are structurally unreachable
-/// once the reader task has exited. `exits` lives in BOTH variants because it
-/// is an observation log — a cached exit event remains a valid answer to
-/// `wait_for_exit` after the connection closes.
+/// Pending requests, active command operations, and connected process state
+/// live inside the `Connected` variant so registrations are structurally
+/// unreachable once the reader task has exited. Process cached exits live in
+/// BOTH variants because they are an observation log — a cached exit event
+/// remains a valid answer to `wait_for_exit` after the connection closes.
 ///
 /// The invariant "connection is closed ⇔ registrations are impossible" is
 /// enforced by the type: every code path that cares about liveness must
@@ -88,25 +81,14 @@ enum ConnectionState {
     Connected {
         /// Pending request responses: seq → oneshot sender.
         pending: HashMap<u32, oneshot::Sender<RawMessage>>,
-        /// Pre-registered stdout senders: request seq → channel sender.
-        /// `spawn_watch` inserts here BEFORE sending the request so that
-        /// `reader_loop` can move the sender to `stdout_senders` atomically
-        /// when it processes the `spawn_watch_result` — before any
-        /// `stdout_chunk` for that pid is processed.
-        pending_stdout: HashMap<u32, mpsc::UnboundedSender<Vec<u8>>>,
-        /// Stdout chunk senders: pid → channel sender.
-        /// Populated by `reader_loop` when it processes `spawn_watch_result`,
-        /// fed by `reader_loop` when it processes `stdout_chunk`.
-        stdout_senders: HashMap<u32, mpsc::UnboundedSender<Vec<u8>>>,
         /// Active command-operation state owned by the command module.
         operations: command::Operations,
-        /// Cached process exit events (unsolicited, seq=0).
-        exits: HashMap<u32, ProcessExitEvent>,
+        /// Legacy process lifecycle state owned by the process module.
+        process: process::ConnectedProcessState,
     },
     Closed {
-        /// Preserved across the close transition: callers of `wait_for_exit`
-        /// can still retrieve an exit event that was cached before close.
-        exits: HashMap<u32, ProcessExitEvent>,
+        /// Preserves cached process exits after connection close.
+        process: process::ClosedProcessState,
     },
 }
 
@@ -123,7 +105,7 @@ struct Shared {
     /// Single source of truth for connection liveness plus all per-connection
     /// registration tables. See [`ConnectionState`].
     state: std::sync::Mutex<ConnectionState>,
-    /// Notified when a new exit event lands in `exits` or when the connection
+    /// Notified when a new process exit event is cached or when the connection
     /// closes. Pure signalling — all state is in `state`.
     exit_notify: Notify,
 }
@@ -163,23 +145,6 @@ impl Drop for PendingRequestGuard {
     }
 }
 
-struct PendingStdoutGuard {
-    shared: Arc<Shared>,
-    seq: u32,
-}
-
-impl PendingStdoutGuard {
-    fn new(shared: Arc<Shared>, seq: u32) -> Self {
-        Self { shared, seq }
-    }
-}
-
-impl Drop for PendingStdoutGuard {
-    fn drop(&mut self) {
-        self.shared.remove_pending_stdout(self.seq);
-    }
-}
-
 impl Shared {
     /// Get next sequence number, skipping 0 (reserved for unsolicited messages).
     fn next_seq(&self) -> u32 {
@@ -192,18 +157,18 @@ impl Shared {
         }
     }
 
-    /// Transition `Connected → Closed`, preserving the cached `exits` map and
-    /// dropping the three registration tables outside the state lock so that
-    /// oneshot/mpsc sender drops (which wake their receivers) run without the
-    /// lock held. Idempotent: a second call preserves whatever `exits` the
-    /// first call cached and performs no further work.
+    /// Transition `Connected → Closed`, preserving the process exit cache and
+    /// dropping registration maps outside the state lock so sender drops (which
+    /// wake their receivers) run without the lock held. Idempotent: a second
+    /// call preserves whatever exits the first call cached and performs no
+    /// further work.
     ///
-    /// `mem::replace` writes a placeholder `Closed { exits: HashMap::new() }`
-    /// so the old variant can be moved out for destructuring. The `Connected`
-    /// arm rebuilds `Closed` with the cached `exits`; the already-`Closed`
-    /// arm uses an `@` binding to write the whole variant back unchanged, so
-    /// "cached `exits` survive a double-close" is enforced by the match
-    /// binding rather than by convention.
+    /// `mem::replace` writes a placeholder `Closed` state so the old variant
+    /// can be moved out for destructuring. The `Connected` arm rebuilds
+    /// `Closed` with the cached exits; the already-`Closed` arm uses an `@`
+    /// binding to write the whole variant back unchanged, so "cached exits
+    /// survive a double-close" is enforced by the match binding rather than by
+    /// convention.
     fn close(&self) {
         self.close_with_reason("connection closed");
     }
@@ -214,38 +179,32 @@ impl Shared {
             match std::mem::replace(
                 &mut *guard,
                 ConnectionState::Closed {
-                    exits: HashMap::new(),
+                    process: process::ClosedProcessState::empty(),
                 },
             ) {
                 ConnectionState::Connected {
                     pending,
-                    pending_stdout,
-                    stdout_senders,
                     operations,
-                    exits,
+                    process,
                 } => {
                     let command_snapshot = operations.close_snapshot();
-                    *guard = ConnectionState::Closed { exits };
-                    Some((
-                        pending,
-                        pending_stdout,
-                        stdout_senders,
-                        operations,
-                        command_snapshot,
-                    ))
+                    let (closed_process, process_maps) = process.close();
+                    *guard = ConnectionState::Closed {
+                        process: closed_process,
+                    };
+                    Some((pending, process_maps, operations, command_snapshot))
                 }
                 closed @ ConnectionState::Closed { .. } => {
-                    // Reassign the whole variant; cached `exits` preserved
+                    // Reassign the whole variant; cached exits preserved
                     // by binding, not manually reconstructed.
                     *guard = closed;
                     None
                 }
             }
         };
-        if let Some((pending, pending_stdout, stdout_senders, operations, command_snapshot)) =
-            maps_to_drop
-        {
-            let maps = (pending, pending_stdout, stdout_senders, operations);
+        if let Some((pending, process_maps, operations, command_snapshot)) = maps_to_drop {
+            let process_maps = process_maps.into_inner();
+            let maps = (pending, process_maps, operations);
             drop(maps);
             self.exit_notify.notify_waiters();
             command::log_operations_closed(reason, &command_snapshot);
@@ -261,13 +220,6 @@ impl Shared {
         let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if let ConnectionState::Connected { pending, .. } = &mut *guard {
             pending.remove(&seq);
-        }
-    }
-
-    fn remove_pending_stdout(&self, seq: u32) {
-        let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if let ConnectionState::Connected { pending_stdout, .. } = &mut *guard {
-            pending_stdout.remove(&seq);
         }
     }
 
@@ -365,51 +317,9 @@ async fn reader_loop(
                     return;
                 }
             } else if msg.msg_type == MSG_STDOUT_CHUNK && msg.seq == 0 {
-                if let Ok((pid, data)) = vsock_proto::decode_stdout_chunk(&msg.payload) {
-                    let sender = {
-                        let guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-                        match &*guard {
-                            ConnectionState::Connected { stdout_senders, .. } => {
-                                stdout_senders.get(&pid).cloned()
-                            }
-                            ConnectionState::Closed { .. } => None,
-                        }
-                    };
-                    if let Some(tx) = sender {
-                        // Best-effort: if receiver is dropped, remove sender.
-                        if tx.send(data.to_vec()).is_err() {
-                            let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-                            if let ConnectionState::Connected { stdout_senders, .. } = &mut *guard {
-                                stdout_senders.remove(&pid);
-                            }
-                        }
-                    }
-                }
+                process::dispatch_stdout_chunk(&shared, &msg.payload);
             } else if msg.msg_type == MSG_PROCESS_EXIT && msg.seq == 0 {
-                if let Ok((pid, exit_code, stdout, stderr)) =
-                    vsock_proto::decode_process_exit(&msg.payload)
-                {
-                    let event = ProcessExitEvent {
-                        pid,
-                        exit_code,
-                        stdout: stdout.to_vec(),
-                        stderr: stderr.to_vec(),
-                    };
-                    {
-                        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-                        if let ConnectionState::Connected {
-                            stdout_senders,
-                            exits,
-                            ..
-                        } = &mut *guard
-                        {
-                            // Close stdout channel for this pid (if any).
-                            stdout_senders.remove(&pid);
-                            exits.insert(pid, event);
-                        }
-                    }
-                    shared.exit_notify.notify_waiters();
-                }
+                process::dispatch_process_exit(&shared, &msg.payload);
             } else {
                 // For spawn_watch_result: move the pre-registered stdout sender
                 // from pending_stdout to stdout_senders BEFORE dispatching the
@@ -419,17 +329,14 @@ async fn reader_loop(
                     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
                     match &mut *guard {
                         ConnectionState::Connected {
-                            pending,
-                            pending_stdout,
-                            stdout_senders,
-                            ..
+                            pending, process, ..
                         } => {
-                            if msg.msg_type == MSG_SPAWN_WATCH_RESULT
-                                && let Ok(pid) =
-                                    vsock_proto::decode_spawn_watch_result(&msg.payload)
-                                && let Some(tx) = pending_stdout.remove(&msg.seq)
-                            {
-                                stdout_senders.insert(pid, tx);
+                            if msg.msg_type == MSG_SPAWN_WATCH_RESULT {
+                                process::move_stdout_registration_to_pid_before_response_dispatch(
+                                    process,
+                                    msg.seq,
+                                    &msg.payload,
+                                );
                             }
                             pending.remove(&msg.seq)
                         }
@@ -573,10 +480,8 @@ impl VsockHost {
             seq: AtomicU32::new(2),
             state: std::sync::Mutex::new(ConnectionState::Connected {
                 pending: HashMap::new(),
-                pending_stdout: HashMap::new(),
-                stdout_senders: HashMap::new(),
                 operations: command::Operations::new(),
-                exits: HashMap::new(),
+                process: process::ConnectedProcessState::new(),
             }),
             exit_notify: Notify::new(),
         });
@@ -659,20 +564,6 @@ impl VsockHost {
         timeout: Duration,
     ) -> io::Result<RawMessage> {
         request_on_shared(&self.shared, msg_type, payload, timeout).await
-    }
-
-    /// Send a request with a pre-allocated sequence number.
-    ///
-    /// Used by [`spawn_watch`](Self::spawn_watch) which needs the seq to
-    /// pre-register the stdout channel before sending the request.
-    async fn request_raw(
-        &self,
-        msg_type: u8,
-        seq: u32,
-        payload: &[u8],
-        timeout: Duration,
-    ) -> io::Result<RawMessage> {
-        request_raw_on_shared(&self.shared, msg_type, seq, payload, timeout).await
     }
 
     /// Start a request-scoped command operation using the unified command protocol.
@@ -762,128 +653,23 @@ impl VsockHost {
         stream_stdout: bool,
         stdout_log_path: Option<&str>,
     ) -> io::Result<(u32, tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>)> {
-        let payload = vsock_proto::encode_spawn_watch(
-            timeout_ms,
+        process::spawn_watch_on_shared(
+            &self.shared,
             command,
+            timeout_ms,
             env,
             sudo,
             stream_stdout,
             stdout_log_path,
         )
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
-
-        // Pre-create the stdout channel. In streaming mode, register it by seq
-        // number BEFORE sending the request. reader_loop will atomically move
-        // it from pending_stdout[seq] to stdout_senders[pid] when it processes
-        // the spawn_watch_result — before any stdout_chunk for that pid.
-        let (stdout_tx, stdout_rx) = mpsc::unbounded_channel();
-        let seq = self.shared.next_seq();
-        {
-            let mut guard = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
-            match &mut *guard {
-                ConnectionState::Closed { .. } => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::ConnectionReset,
-                        "connection closed",
-                    ));
-                }
-                ConnectionState::Connected { pending_stdout, .. } if stream_stdout => {
-                    pending_stdout.insert(seq, stdout_tx);
-                }
-                ConnectionState::Connected { .. } => {}
-            }
-        }
-        let _pending_stdout_guard =
-            stream_stdout.then(|| PendingStdoutGuard::new(Arc::clone(&self.shared), seq));
-
-        let resp = match self
-            .request_raw(MSG_SPAWN_WATCH, seq, &payload, Duration::from_secs(30))
-            .await
-        {
-            Ok(resp) => resp,
-            Err(e) => {
-                return Err(e);
-            }
-        };
-
-        if resp.msg_type == MSG_ERROR {
-            // No pid assigned — clean up pending stdout sender.
-            let msg = vsock_proto::decode_error(&resp.payload)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-            return Err(io::Error::other(msg));
-        }
-
-        if resp.msg_type != MSG_SPAWN_WATCH_RESULT {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("unexpected response type: 0x{:02X}", resp.msg_type),
-            ));
-        }
-
-        // If `decode_spawn_watch_result` fails here, reader's identical
-        // decode also failed: reader's `&&` chain short-circuited and did
-        // NOT move `pending_stdout[seq]` to `stdout_senders[pid]`, so our
-        // entry is still in `pending_stdout` and must be cleaned up before
-        // returning.
-        let pid = match vsock_proto::decode_spawn_watch_result(&resp.payload) {
-            Ok(pid) => pid,
-            Err(e) => {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, e.to_string()));
-            }
-        };
-
-        // Channel already moved from pending_stdout to stdout_senders by reader_loop.
-        Ok((pid, stdout_rx))
+        .await
     }
 
     /// Wait for a spawned process to exit.
     ///
     /// Returns immediately if the exit event was already cached.
     pub async fn wait_for_exit(&self, pid: u32, timeout: Duration) -> io::Result<ProcessExitEvent> {
-        let deadline = Instant::now() + timeout;
-        loop {
-            // Register interest BEFORE checking the cache so a `notify_waiters`
-            // firing between the cache check and `select!` still wakes us.
-            let exit_notified = self.shared.exit_notify.notified();
-            tokio::pin!(exit_notified);
-            exit_notified.as_mut().enable();
-
-            // `match state` covers both the cache check and the closed signal
-            // under one lock. The two arms are exhaustive siblings — the
-            // Closed arm's cache re-check cannot be forgotten by a reviewer
-            // because there is no sequential "check is_closed → maybe retry"
-            // dance to get wrong.
-            {
-                let mut guard = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
-                match &mut *guard {
-                    ConnectionState::Connected { exits, .. } => {
-                        if let Some(event) = exits.remove(&pid) {
-                            return Ok(event);
-                        }
-                    }
-                    ConnectionState::Closed { exits } => {
-                        if let Some(event) = exits.remove(&pid) {
-                            return Ok(event);
-                        }
-                        return Err(io::Error::new(
-                            io::ErrorKind::ConnectionReset,
-                            "connection closed",
-                        ));
-                    }
-                }
-            }
-
-            tokio::select! {
-                biased;
-                _ = exit_notified => {
-                    // Either a new exit event, or `close()` fired its
-                    // `exit_notify.notify_waiters()` — re-check on next iter.
-                }
-                _ = tokio::time::sleep_until(deadline) => {
-                    return Err(io::Error::new(io::ErrorKind::TimedOut, "wait timeout"));
-                }
-            }
-        }
+        process::wait_for_exit_on_shared(&self.shared, pid, timeout).await
     }
 
     /// Request graceful shutdown from guest.
@@ -964,19 +750,6 @@ mod tests {
     async fn host_from_stream(stream: UnixStream) -> io::Result<VsockHost> {
         let deadline = Instant::now() + Duration::from_secs(5);
         VsockHost::from_stream(stream, deadline).await
-    }
-
-    fn registration_counts(host: &VsockHost) -> (usize, usize, usize) {
-        let guard = host.shared.state.lock().unwrap_or_else(|e| e.into_inner());
-        match &*guard {
-            ConnectionState::Connected {
-                pending,
-                pending_stdout,
-                stdout_senders,
-                ..
-            } => (pending.len(), pending_stdout.len(), stdout_senders.len()),
-            ConnectionState::Closed { .. } => (0, 0, 0),
-        }
     }
 
     fn operation_count(host: &VsockHost) -> usize {
@@ -3989,248 +3762,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_spawn_watch_and_wait() {
-        let (host_stream, mut guest) = make_pair();
-
-        tokio::spawn(async move {
-            let mut decoder = Decoder::new();
-            mock_handshake(&mut guest, &mut decoder).await;
-
-            let mut buf = [0u8; 4096];
-            let n = guest.read(&mut buf).await.unwrap();
-            let msgs = decoder.decode(&buf[..n]).unwrap();
-            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
-
-            // Send spawn_watch_result with pid=42
-            let payload = vsock_proto::encode_spawn_watch_result(42);
-            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload).unwrap();
-            guest.write_all(&resp).await.unwrap();
-
-            // Send process_exit (unsolicited, seq=0)
-            let exit_payload = vsock_proto::encode_process_exit(42, 0, b"done", b"");
-            let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
-            guest.write_all(&exit_msg).await.unwrap();
-
-            // Keep connection alive until host drops
-            let mut discard = [0u8; 1];
-            let _ = guest.read(&mut discard).await;
-        });
-
-        let host = host_from_stream(host_stream).await.unwrap();
-        let (pid, mut stdout_rx) = host
-            .spawn_watch("sleep 1", 0, &[], false, false, None)
-            .await
-            .unwrap();
-        assert_eq!(pid, 42);
-        assert!(
-            stdout_rx.recv().await.is_none(),
-            "buffered spawn_watch must not keep a stdout stream registered",
-        );
-
-        let event = host
-            .wait_for_exit(42, Duration::from_secs(5))
-            .await
-            .unwrap();
-        assert_eq!(event.pid, 42);
-        assert_eq!(event.exit_code, 0);
-        assert_eq!(event.stdout, b"done");
-    }
-
-    #[tokio::test]
-    async fn test_cached_exit_event() {
-        let (host_stream, mut guest) = make_pair();
-
-        tokio::spawn(async move {
-            let mut decoder = Decoder::new();
-            mock_handshake(&mut guest, &mut decoder).await;
-
-            let mut buf = [0u8; 4096];
-            let n = guest.read(&mut buf).await.unwrap();
-            let msgs = decoder.decode(&buf[..n]).unwrap();
-            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
-
-            // Send spawn_watch_result followed immediately by process_exit
-            // in the same write, so they arrive together before wait_for_exit
-            let payload = vsock_proto::encode_spawn_watch_result(99);
-            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload).unwrap();
-            let exit_payload = vsock_proto::encode_process_exit(99, 1, b"", b"error");
-            let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
-
-            // Write both together
-            let mut combined = resp;
-            combined.extend_from_slice(&exit_msg);
-            guest.write_all(&combined).await.unwrap();
-
-            // Keep connection alive until host drops
-            let mut discard = [0u8; 1];
-            let _ = guest.read(&mut discard).await;
-        });
-
-        let host = host_from_stream(host_stream).await.unwrap();
-        let (pid, _stdout_rx) = host
-            .spawn_watch("false", 0, &[], false, false, None)
-            .await
-            .unwrap();
-        assert_eq!(pid, 99);
-
-        let event = host
-            .wait_for_exit(99, Duration::from_secs(5))
-            .await
-            .unwrap();
-        assert_eq!(event.exit_code, 1);
-        assert_eq!(event.stderr, b"error");
-    }
-
-    /// When a `spawn_watch` request is answered with `MSG_ERROR`, the
-    /// pre-registered `pending_stdout` entry must be removed by the
-    /// registration guard. Assert the error surfaces with the
-    /// guest-provided message AND that a follow-up successful `spawn_watch`
-    /// can still run — proving no stale state lingers.
-    #[tokio::test]
-    async fn test_spawn_watch_error_response_cleans_up() {
-        let (host_stream, mut guest) = make_pair();
-
-        tokio::spawn(async move {
-            let mut decoder = Decoder::new();
-            mock_handshake(&mut guest, &mut decoder).await;
-
-            // First spawn_watch: reply with MSG_ERROR.
-            let mut buf = [0u8; 4096];
-            let n = guest.read(&mut buf).await.unwrap();
-            let msgs = decoder.decode(&buf[..n]).unwrap();
-            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
-            let err_payload = vsock_proto::encode_error("no such command");
-            let err_resp = vsock_proto::encode(MSG_ERROR, msgs[0].seq, &err_payload).unwrap();
-            guest.write_all(&err_resp).await.unwrap();
-
-            // Second spawn_watch: happy path with pid=222.
-            let n = guest.read(&mut buf).await.unwrap();
-            let msgs = decoder.decode(&buf[..n]).unwrap();
-            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
-            let ok_payload = vsock_proto::encode_spawn_watch_result(222);
-            let ok_resp =
-                vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &ok_payload).unwrap();
-            guest.write_all(&ok_resp).await.unwrap();
-
-            let mut discard = [0u8; 1];
-            let _ = guest.read(&mut discard).await;
-        });
-
-        let host = host_from_stream(host_stream).await.unwrap();
-
-        let err = host
-            .spawn_watch("bad-cmd", 0, &[], false, false, None)
-            .await
-            .unwrap_err();
-        assert!(err.to_string().contains("no such command"));
-
-        let (pid, _stdout_rx) = host
-            .spawn_watch("good-cmd", 0, &[], false, false, None)
-            .await
-            .unwrap();
-        assert_eq!(pid, 222);
-    }
-
-    /// The guest replies with `MSG_SPAWN_WATCH_RESULT` but its payload is
-    /// malformed (not a valid u32). Host's `decode_spawn_watch_result` fails
-    /// AFTER the msg_type check has passed; reader's identical decode also
-    /// failed and did NOT move `pending_stdout[seq]` to `stdout_senders`, so
-    /// the entry is still there and must be cleaned up. A follow-up
-    /// `spawn_watch` succeeding on the same connection proves the cleanup
-    /// worked.
-    #[tokio::test]
-    async fn test_spawn_watch_malformed_result_cleans_up() {
-        let (host_stream, mut guest) = make_pair();
-
-        tokio::spawn(async move {
-            let mut decoder = Decoder::new();
-            mock_handshake(&mut guest, &mut decoder).await;
-
-            // First spawn_watch: reply with correct msg_type but truncated
-            // payload (3 bytes, not the required 4 for a u32 pid).
-            let mut buf = [0u8; 4096];
-            let n = guest.read(&mut buf).await.unwrap();
-            let msgs = decoder.decode(&buf[..n]).unwrap();
-            let bad_payload = b"\x00\x01\x02";
-            let bad_resp =
-                vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, bad_payload).unwrap();
-            guest.write_all(&bad_resp).await.unwrap();
-
-            // Second spawn_watch: well-formed response with pid=333.
-            let n = guest.read(&mut buf).await.unwrap();
-            let msgs = decoder.decode(&buf[..n]).unwrap();
-            let ok_payload = vsock_proto::encode_spawn_watch_result(333);
-            let ok_resp =
-                vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &ok_payload).unwrap();
-            guest.write_all(&ok_resp).await.unwrap();
-
-            let mut discard = [0u8; 1];
-            let _ = guest.read(&mut discard).await;
-        });
-
-        let host = host_from_stream(host_stream).await.unwrap();
-
-        let err = host
-            .spawn_watch("bad-payload-cmd", 0, &[], false, false, None)
-            .await
-            .unwrap_err();
-        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-
-        let (pid, _stdout_rx) = host
-            .spawn_watch("good-cmd", 0, &[], false, false, None)
-            .await
-            .unwrap();
-        assert_eq!(pid, 333);
-    }
-
-    #[tokio::test]
-    async fn test_spawn_watch_cancel_cleans_up_registrations() {
-        let (host_stream, mut guest) = make_pair();
-        let request_seen = std::sync::Arc::new(Notify::new());
-        let release_guest = std::sync::Arc::new(Notify::new());
-
-        {
-            let request_seen = std::sync::Arc::clone(&request_seen);
-            let release_guest = std::sync::Arc::clone(&release_guest);
-            tokio::spawn(async move {
-                let mut decoder = Decoder::new();
-                mock_handshake(&mut guest, &mut decoder).await;
-
-                let mut buf = [0u8; 4096];
-                let n = guest.read(&mut buf).await.unwrap();
-                let msgs = decoder.decode(&buf[..n]).unwrap();
-                assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
-                request_seen.notify_one();
-
-                release_guest.notified().await;
-            });
-        }
-
-        let host = std::sync::Arc::new(host_from_stream(host_stream).await.unwrap());
-        let task_host = std::sync::Arc::clone(&host);
-        let task = tokio::spawn(async move {
-            task_host
-                .spawn_watch("long-running", 0, &[], false, true, None)
-                .await
-        });
-
-        tokio::time::timeout(Duration::from_secs(5), request_seen.notified())
-            .await
-            .expect("guest should receive spawn_watch request");
-        assert_eq!(registration_counts(&host), (1, 1, 0));
-
-        task.abort();
-        let _ = task.await;
-        assert_eq!(
-            registration_counts(&host),
-            (0, 0, 0),
-            "aborted spawn_watch future must clean pending registrations",
-        );
-
-        release_guest.notify_one();
-    }
-
-    #[tokio::test]
     async fn test_shutdown() {
         let (host_stream, mut guest) = make_pair();
 
@@ -4306,49 +3837,6 @@ mod tests {
         assert!(
             start.elapsed() < Duration::from_secs(1),
             "request should fail immediately, took {:?}",
-            start.elapsed()
-        );
-    }
-
-    /// `spawn_watch` has its own `Closed` short-circuit at the `pending_stdout`
-    /// insert point, separate from `request_raw`. Exercise it: after the
-    /// connection has closed, a subsequent `spawn_watch` must fail fast with
-    /// a connection error and must not leak the stdout channel it would have
-    /// pre-registered.
-    #[tokio::test]
-    async fn test_spawn_watch_after_close_returns_immediately() {
-        let (host_stream, mut guest) = make_pair();
-
-        tokio::spawn(async move {
-            let mut decoder = Decoder::new();
-            mock_handshake(&mut guest, &mut decoder).await;
-            drop(guest);
-        });
-
-        let host = host_from_stream(host_stream).await.unwrap();
-
-        // Deterministically wait for reader to observe EOF and transition
-        // state to Closed — driven by `exit_notify`, no wall-clock sleep.
-        host.wait_until_closed(Duration::from_secs(5))
-            .await
-            .unwrap();
-
-        let start = Instant::now();
-        let err = host
-            .spawn_watch("long-running", 0, &[], false, false, None)
-            .await
-            .unwrap_err();
-        assert!(
-            matches!(
-                err.kind(),
-                io::ErrorKind::ConnectionReset | io::ErrorKind::BrokenPipe
-            ),
-            "expected ConnectionReset or BrokenPipe, got {:?}",
-            err.kind()
-        );
-        assert!(
-            start.elapsed() < Duration::from_secs(1),
-            "spawn_watch should fail immediately, took {:?}",
             start.elapsed()
         );
     }
@@ -4444,198 +3932,6 @@ mod tests {
         assert_eq!(result.exit_code, 0);
     }
 
-    /// Exit event arrives between wait_for_exit registration and select! —
-    /// the enable() pattern ensures the notification is not lost.
-    #[tokio::test]
-    async fn test_wait_for_exit_no_lost_notification() {
-        let (host_stream, mut guest) = make_pair();
-
-        tokio::spawn(async move {
-            let mut decoder = Decoder::new();
-            mock_handshake(&mut guest, &mut decoder).await;
-
-            // Read spawn_watch request
-            let mut buf = [0u8; 4096];
-            let n = guest.read(&mut buf).await.unwrap();
-            let msgs = decoder.decode(&buf[..n]).unwrap();
-            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
-
-            // Reply with pid=88
-            let payload = vsock_proto::encode_spawn_watch_result(88);
-            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload).unwrap();
-            guest.write_all(&resp).await.unwrap();
-
-            // Immediately send exit event — this races with host calling wait_for_exit
-            let exit_payload = vsock_proto::encode_process_exit(88, 7, b"quick", b"");
-            let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
-            guest.write_all(&exit_msg).await.unwrap();
-
-            // Keep alive
-            let mut discard = [0u8; 1];
-            let _ = guest.read(&mut discard).await;
-        });
-
-        let host = host_from_stream(host_stream).await.unwrap();
-        let (pid, _stdout_rx) = host
-            .spawn_watch("quick-exit", 0, &[], false, false, None)
-            .await
-            .unwrap();
-        assert_eq!(pid, 88);
-
-        // The exit event may already be cached OR still in-flight. Either way
-        // wait_for_exit must succeed (not hang or lose the notification).
-        let event = host
-            .wait_for_exit(88, Duration::from_secs(5))
-            .await
-            .unwrap();
-        assert_eq!(event.pid, 88);
-        assert_eq!(event.exit_code, 7);
-        assert_eq!(event.stdout, b"quick");
-    }
-
-    /// wait_for_exit returns an error when the connection drops.
-    #[tokio::test]
-    async fn test_wait_for_exit_connection_closed() {
-        let (host_stream, mut guest) = make_pair();
-        let (close_tx, close_rx) = oneshot::channel();
-
-        tokio::spawn(async move {
-            let mut decoder = Decoder::new();
-            mock_handshake(&mut guest, &mut decoder).await;
-
-            // Read spawn_watch request
-            let mut buf = [0u8; 4096];
-            let n = guest.read(&mut buf).await.unwrap();
-            let msgs = decoder.decode(&buf[..n]).unwrap();
-            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
-
-            // Reply with pid=77
-            let payload = vsock_proto::encode_spawn_watch_result(77);
-            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload).unwrap();
-            guest.write_all(&resp).await.unwrap();
-
-            let _ = close_rx.await;
-            drop(guest);
-        });
-
-        let host = Arc::new(host_from_stream(host_stream).await.unwrap());
-        let (pid, _stdout_rx) = host
-            .spawn_watch("long-running", 0, &[], false, false, None)
-            .await
-            .unwrap();
-        assert_eq!(pid, 77);
-
-        let host_for_wait = Arc::clone(&host);
-        let wait_task = tokio::spawn(async move {
-            host_for_wait
-                .wait_for_exit(77, Duration::from_secs(5))
-                .await
-        });
-        close_tx.send(()).unwrap();
-
-        let err = wait_task.await.unwrap().unwrap_err();
-        assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
-    }
-
-    /// An exit event cached in `ConnectionState::Connected { exits, .. }` must
-    /// survive the `Connected → Closed` transition in `close()` and remain
-    /// retrievable by a `wait_for_exit` call made AFTER the connection has
-    /// closed. Regression guard: if a future refactor replaces the `exits`
-    /// field in `Closed { exits }` with an empty map, this test fails.
-    #[tokio::test]
-    async fn test_wait_for_exit_returns_cached_event_after_close() {
-        let (host_stream, mut guest) = make_pair();
-
-        tokio::spawn(async move {
-            let mut decoder = Decoder::new();
-            mock_handshake(&mut guest, &mut decoder).await;
-
-            let mut buf = [0u8; 4096];
-            let n = guest.read(&mut buf).await.unwrap();
-            let msgs = decoder.decode(&buf[..n]).unwrap();
-            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
-
-            // Send SPAWN_WATCH_RESULT + PROCESS_EXIT together, then close the
-            // socket. The reader processes both messages synchronously in one
-            // for-loop iteration, then sees EOF on the next read and calls
-            // close() which transitions state to `Closed { exits }` while
-            // preserving the cached exit event.
-            let result_payload = vsock_proto::encode_spawn_watch_result(111);
-            let result =
-                vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &result_payload).unwrap();
-            let exit_payload = vsock_proto::encode_process_exit(111, 3, b"cached-output", b"err");
-            let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
-
-            let mut combined = result;
-            combined.extend_from_slice(&exit_msg);
-            guest.write_all(&combined).await.unwrap();
-            drop(guest);
-        });
-
-        let host = host_from_stream(host_stream).await.unwrap();
-        let (pid, _stdout_rx) = host
-            .spawn_watch("quick-exit", 0, &[], false, false, None)
-            .await
-            .unwrap();
-        assert_eq!(pid, 111);
-
-        // Deterministically wait for reader to observe EOF and run `close()`
-        // so the subsequent `wait_for_exit` definitely hits the `Closed` arm
-        // rather than the `Connected` arm — driven by `exit_notify`.
-        host.wait_until_closed(Duration::from_secs(5))
-            .await
-            .unwrap();
-
-        let event = host
-            .wait_for_exit(pid, Duration::from_secs(5))
-            .await
-            .expect("cached exit event must survive the Connected → Closed transition");
-        assert_eq!(event.pid, 111);
-        assert_eq!(event.exit_code, 3);
-        assert_eq!(event.stdout, b"cached-output");
-        assert_eq!(event.stderr, b"err");
-    }
-
-    /// Host-side deadline fires when the guest never sends process_exit.
-    ///
-    /// This exercises the `tokio::time::sleep_until(deadline)` arm of the
-    /// `select!` loop in `wait_for_exit` — the only exit path that was
-    /// previously untested (see issue #9611).
-    #[tokio::test]
-    async fn test_wait_for_exit_timeout() {
-        let (host_stream, mut guest) = make_pair();
-
-        tokio::spawn(async move {
-            let mut decoder = Decoder::new();
-            mock_handshake(&mut guest, &mut decoder).await;
-
-            // Read spawn_watch, reply with pid — but never send process_exit.
-            let mut buf = [0u8; 4096];
-            let n = guest.read(&mut buf).await.unwrap();
-            let msgs = decoder.decode(&buf[..n]).unwrap();
-            let payload = vsock_proto::encode_spawn_watch_result(55);
-            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload).unwrap();
-            guest.write_all(&resp).await.unwrap();
-
-            // Keep connection alive so the timeout, not the close path, fires.
-            let mut discard = [0u8; 1];
-            let _ = guest.read(&mut discard).await;
-        });
-
-        let host = host_from_stream(host_stream).await.unwrap();
-        let (pid, _stdout_rx) = host
-            .spawn_watch("long-running", 0, &[], false, false, None)
-            .await
-            .unwrap();
-        assert_eq!(pid, 55);
-
-        let err = host
-            .wait_for_exit(pid, Duration::from_millis(100))
-            .await
-            .unwrap_err();
-        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
-    }
-
     /// Regression for #10076: the guest writes the exec response and then
     /// immediately closes the socket. The reader dispatches the response,
     /// then observes EOF and transitions state to `Closed`. Before the fix,
@@ -4681,82 +3977,5 @@ mod tests {
         let result = result.expect("response delivered before close must not be lost");
         assert_eq!(result.exit_code, 0);
         assert_eq!(result.stdout, b"race-survived");
-    }
-
-    /// Prove the core requirement: wait_for_exit and exec can run concurrently.
-    #[tokio::test]
-    async fn test_concurrent_exec_and_wait_exit() {
-        let (host_stream, mut guest) = make_pair();
-        let (send_exit, exit_after_exec) = oneshot::channel();
-
-        tokio::spawn(async move {
-            let mut decoder = Decoder::new();
-            mock_handshake(&mut guest, &mut decoder).await;
-
-            // Read spawn_watch request
-            let mut buf = [0u8; 4096];
-            let n = guest.read(&mut buf).await.unwrap();
-            let msgs = decoder.decode(&buf[..n]).unwrap();
-            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
-            let spawn_seq = msgs[0].seq;
-
-            // Reply with pid=50
-            let payload = vsock_proto::encode_spawn_watch_result(50);
-            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &payload).unwrap();
-            guest.write_all(&resp).await.unwrap();
-
-            // Now read the exec request (sent concurrently with wait_for_exit)
-            let n = guest.read(&mut buf).await.unwrap();
-            let msgs = decoder.decode(&buf[..n]).unwrap();
-            assert_eq!(msgs[0].msg_type, MSG_COMMAND_START);
-            let exec_seq = msgs[0].seq;
-
-            // Reply to exec first
-            send_command_result(
-                &mut guest,
-                exec_seq,
-                CommandTermination::Exited { exit_code: 0 },
-                b"concurrent",
-                b"",
-            )
-            .await;
-
-            let _ = exit_after_exec.await;
-            let exit_payload = vsock_proto::encode_process_exit(50, 42, b"exited", b"");
-            let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
-            guest.write_all(&exit_msg).await.unwrap();
-
-            // Keep alive
-            let mut discard = [0u8; 1];
-            let _ = guest.read(&mut discard).await;
-        });
-
-        let host = Arc::new(host_from_stream(host_stream).await.unwrap());
-        let (pid, _stdout_rx) = host
-            .spawn_watch("long-running", 0, &[], false, false, None)
-            .await
-            .unwrap();
-        assert_eq!(pid, 50);
-
-        // Start wait_for_exit in background
-        let host2 = Arc::clone(&host);
-        let wait_task =
-            tokio::spawn(async move { host2.wait_for_exit(50, Duration::from_secs(5)).await });
-
-        // Concurrently call exec — this should NOT block on wait_for_exit
-        let exec_result = host
-            .exec("echo concurrent", 5000, &[], false)
-            .await
-            .unwrap();
-        assert_eq!(exec_result.exit_code, 0);
-        assert_eq!(exec_result.stdout, b"concurrent");
-
-        send_exit.send(()).unwrap();
-
-        // wait_for_exit should also resolve
-        let exit_event = wait_task.await.unwrap().unwrap();
-        assert_eq!(exit_event.pid, 50);
-        assert_eq!(exit_event.exit_code, 42);
-        assert_eq!(exit_event.stdout, b"exited");
     }
 }
