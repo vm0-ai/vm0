@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.30.3...guest-agent-v0.30.4) (2026-05-13)
+
+
+### Bug Fixes
+
+* log Codex JSONL failure diagnostics ([#13118](https://github.com/vm0-ai/vm0/issues/13118)) ([94686f0](https://github.com/vm0-ai/vm0/commit/94686f000b644c7c178dc1eb62976318cdfe006d))
+
 ## [0.30.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.30.2...guest-agent-v0.30.3) (2026-05-12)
 
 

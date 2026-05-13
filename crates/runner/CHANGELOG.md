@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.100.33](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.32...runner-rs-v0.100.33) (2026-05-13)
+
 ## [0.100.32](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.31...runner-rs-v0.100.32) (2026-05-13)
 
 

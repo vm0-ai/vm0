@@ -1,5 +1,25 @@
 # Changelog
 
+## [9.149.0](https://github.com/vm0-ai/vm0/compare/cli-v9.148.2...cli-v9.149.0) (2026-05-13)
+
+
+### Features
+
+* add fal video generation ([#13121](https://github.com/vm0-ai/vm0/issues/13121)) ([152b289](https://github.com/vm0-ai/vm0/commit/152b28990211cb7ea3756218adab2e0152c41947))
+
+
+### Bug Fixes
+
+* align agent tool and connector guidance ([#13152](https://github.com/vm0-ai/vm0/issues/13152)) ([cd8cf5e](https://github.com/vm0-ai/vm0/commit/cd8cf5e700a66773206d33713ca9e9917924548e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.17.0
+    * @vm0/core bumped to 8.272.2
+
 ## [9.148.2](https://github.com/vm0-ai/vm0/compare/cli-v9.148.1...cli-v9.148.2) (2026-05-13)
 
 

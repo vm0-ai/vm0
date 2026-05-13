@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.3](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.13.2...vsock-host-v0.13.3) (2026-05-13)
+
+
+### Refactoring
+
+* split vsock host process helpers ([#13146](https://github.com/vm0-ai/vm0/issues/13146)) ([bc1ef7c](https://github.com/vm0-ai/vm0/commit/bc1ef7cb2e3c7740b4cc05c9509066c802ee3456))
+
 ## [0.13.2](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.13.1...vsock-host-v0.13.2) (2026-05-13)
 
 

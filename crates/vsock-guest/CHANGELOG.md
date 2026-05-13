@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.2](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.14.1...vsock-guest-v0.14.2) (2026-05-13)
+
+
+### Refactoring
+
+* **vsock-guest:** consolidate sandbox user lookup ([#13136](https://github.com/vm0-ai/vm0/issues/13136)) ([79359f9](https://github.com/vm0-ai/vm0/commit/79359f94601fb71d73276712326c345083ca2ad9))
+
 ## [0.14.1](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.14.0...vsock-guest-v0.14.1) (2026-05-13)
 
 

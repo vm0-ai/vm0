@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.40.0](https://github.com/vm0-ai/vm0/compare/api-v1.39.1...api-v1.40.0) (2026-05-13)
+
+
+### Features
+
+* add fal video generation ([#13121](https://github.com/vm0-ai/vm0/issues/13121)) ([152b289](https://github.com/vm0-ai/vm0/commit/152b28990211cb7ea3756218adab2e0152c41947))
+* **api:** migrate zero agents create route ([#13159](https://github.com/vm0-ai/vm0/issues/13159)) ([d9b751e](https://github.com/vm0-ai/vm0/commit/d9b751eea5c4ba187bfb2b4d5a35d4809f6fd02b))
+* **api:** migrate zero schedules deploy and run routes ([#13137](https://github.com/vm0-ai/vm0/issues/13137)) ([5affefa](https://github.com/vm0-ai/vm0/commit/5affefa7531aa2f658c8d924fb1e17e676774e9b))
+
+
+### Bug Fixes
+
+* **api:** preserve chat model provider selection ([#13156](https://github.com/vm0-ai/vm0/issues/13156)) ([241cfb8](https://github.com/vm0-ai/vm0/commit/241cfb8ce13d190b33abca4096ff829b5c8f62f0))
+
+
+### Refactoring
+
+* **api:** migrate slack webhooks ([#13145](https://github.com/vm0-ai/vm0/issues/13145)) ([280d359](https://github.com/vm0-ai/vm0/commit/280d359fc085cbd309ee80788296ad61d2d60ee9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.17.0
+    * @vm0/core bumped to 8.272.2
+    * @vm0/db bumped to 1.9.0
+
 ## [1.39.1](https://github.com/vm0-ai/vm0/compare/api-v1.39.0...api-v1.39.1) (2026-05-13)
 
 
