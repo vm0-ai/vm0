@@ -804,6 +804,20 @@ impl Sandbox for MockSandbox {
                 timeout: options.timeout,
                 missing_ok: options.missing_ok,
             });
+        if options.max_bytes == 0 {
+            return Err(SandboxError::Operation {
+                operation: SandboxOperation::Exec,
+                reason: SandboxOperationReason::Other,
+                message: "mock copy_file max_bytes must be positive".into(),
+            });
+        }
+        if options.timeout.is_zero() {
+            return Err(SandboxError::Operation {
+                operation: SandboxOperation::Exec,
+                reason: SandboxOperationReason::Other,
+                message: "mock copy_file timeout must be positive".into(),
+            });
+        }
 
         let queued = self.copy_file_results.lock_ignoring_poison().pop_front();
         let bytes = match queued {
@@ -1425,6 +1439,45 @@ mod tests {
             .unwrap_err();
 
         assert!(err.to_string().contains("exceeded 3 bytes"));
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn sandbox_copy_file_rejects_invalid_options() {
+        let sandbox = MockSandbox::new("test-1");
+        let path = std::env::temp_dir().join(format!(
+            "sandbox-mock-copy-invalid-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+
+        let err = sandbox
+            .copy_file(
+                "/tmp/system.log",
+                &path,
+                CopyFileOptions {
+                    max_bytes: 0,
+                    timeout: Duration::from_secs(5),
+                    missing_ok: true,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("max_bytes must be positive"));
+        assert!(!path.exists());
+
+        let err = sandbox
+            .copy_file(
+                "/tmp/system.log",
+                &path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout: Duration::ZERO,
+                    missing_ok: true,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("timeout must be positive"));
         assert!(!path.exists());
     }
 
