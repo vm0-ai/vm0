@@ -177,13 +177,13 @@ impl LocalRunnerRegistry {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub(crate) struct LocalRunnerRecord {
-    pub(crate) runner_id: String,
-    pub(crate) name: String,
-    pub(crate) profiles: Vec<String>,
-    pub(crate) updated_at_ms: u64,
+struct LocalRunnerRecord {
+    runner_id: String,
+    name: String,
+    profiles: Vec<String>,
+    updated_at_ms: u64,
     #[serde(default)]
-    pub(crate) pid: Option<u32>,
+    pid: Option<u32>,
 }
 
 fn normalize_profiles(profiles: impl IntoIterator<Item = String>) -> Vec<String> {

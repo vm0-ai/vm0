@@ -367,14 +367,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let runners_dir = dir.path().join(".runners");
         std::fs::create_dir_all(&runners_dir).unwrap();
-        let record = crate::local_runner_registry::LocalRunnerRecord {
-            runner_id: "runner-1".into(),
-            name: "local".into(),
-            profiles: vec!["vm0/default".into()],
-            updated_at_ms: 1,
-            pid: Some(std::process::id()),
-        };
-        let json = serde_json::to_vec(&record).unwrap();
+        let json = serde_json::to_vec(&serde_json::json!({
+            "runner_id": "runner-1",
+            "name": "local",
+            "profiles": ["vm0/default"],
+            "updated_at_ms": 1,
+            "pid": std::process::id(),
+        }))
+        .unwrap();
         std::fs::write(runners_dir.join("runner-1.json"), json).unwrap();
 
         let err = ensure_live_runner_supports_profile(dir.path(), "test/group", "vm0/default")
