@@ -11,11 +11,13 @@ from logging_utils import log_proxy_entry
 # HTTP 2xx success range (RFC 9110).  Also defined in
 # ``usage.providers.connectors.x`` for local response-phase classification.
 _HTTP_STATUS_OK_MIN = 200
+_HTTP_STATUS_SWITCHING_PROTOCOLS = 101
 _HTTP_STATUS_REDIRECT_MIN = 300
 
 _MODEL_JSON_USAGE_FINISH = "model_json_usage_finish"
 _MODEL_JSON_USAGE_FINALIZED = "_model_json_usage_finalized"
 _MODEL_SSE_USAGE_FINISH = "model_sse_usage_finish"
+_MODEL_WEBSOCKET_USAGE_ENABLED = "model_websocket_usage_enabled"
 _RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
 _X_JSON_RESPONSE_FINISH = "x_json_response_finish"
 
@@ -83,7 +85,14 @@ def configure_response_stream(flow: http.HTTPFlow) -> None:
         stream_path = urllib.parse.urlparse(flow.metadata.get("original_url", "")).path
         is_x_stream = usage.x.is_stream_path(stream_path)
 
-    if is_billable_model_provider:
+    if (
+        is_billable_model_provider
+        and flow.response.status_code == _HTTP_STATUS_SWITCHING_PROTOCOLS
+        and uses_openai_responses_usage_protocol(flow)
+    ):
+        flow.metadata["model_provider_usage"] = {}
+        flow.metadata[_MODEL_WEBSOCKET_USAGE_ENABLED] = True
+    elif is_billable_model_provider:
         content_type = flow.response.headers.get("content-type", "").lower()
         if "text/event-stream" in content_type:
             if uses_openai_responses_usage_protocol(flow):
@@ -178,6 +187,20 @@ def finalize_model_sse_usage(flow: http.HTTPFlow) -> None:
     finish = flow.metadata.pop(_MODEL_SSE_USAGE_FINISH, None)
     if finish is not None:
         finish()
+
+
+def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> None:
+    if not flow.metadata.get(_MODEL_WEBSOCKET_USAGE_ENABLED, False):
+        return
+    body = content.encode() if isinstance(content, str) else content
+    usage_result = usage.extract_openai_responses_usage_from_event_json(body)
+    if not usage_result:
+        return
+    usage_target = flow.metadata.get("model_provider_usage")
+    if not isinstance(usage_target, dict):
+        usage_target = {}
+        flow.metadata["model_provider_usage"] = usage_target
+    usage_target.update(usage_result)
 
 
 def finalize_x_json_state(flow: http.HTTPFlow) -> None:

@@ -660,7 +660,7 @@ describe("POST /api/zero/runs", () => {
         type: "codex-oauth-token",
         isDefault: true,
         authMethod: "auth_json",
-        selectedModel: "gpt-5.3-codex",
+        selectedModel: "gpt-5.4",
       },
       context.signal,
     );
@@ -732,7 +732,7 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.environment).toMatchObject({
       CHATGPT_ACCESS_TOKEN: "chatgpt-access",
       CHATGPT_ACCOUNT_ID: "workspace-id",
-      OPENAI_MODEL: "gpt-5.3-codex",
+      OPENAI_MODEL: "gpt-5.4",
     });
     const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
     expect(decrypted).toMatchObject({
@@ -768,7 +768,7 @@ describe("POST /api/zero/runs", () => {
       .where(eq(zeroRuns.id, response.body.runId));
     expect(zeroRun).toStrictEqual({
       modelProvider: "codex-oauth-token",
-      selectedModel: "gpt-5.3-codex",
+      selectedModel: "gpt-5.4",
     });
   });
 

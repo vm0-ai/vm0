@@ -297,6 +297,19 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     response_streaming.configure_response_stream(flow)
 
 
+def websocket_message(flow: http.HTTPFlow) -> None:
+    """Feed server-side WebSocket frames into model-provider usage parsers."""
+    if not flow.websocket or not flow.websocket.messages:
+        return
+    if not flow.metadata.get("vm_run_id", ""):
+        return
+
+    message = flow.websocket.messages[-1]
+    if getattr(message, "from_client", False):
+        return
+    response_streaming.feed_model_websocket_usage(flow, message.content)
+
+
 def _track_usage_flow(fn):
     """Decorator ensuring decrement_flows runs after response/error handlers.
 
@@ -314,6 +327,14 @@ def _track_usage_flow(fn):
             _release_tracked_usage_flow(flow)
 
     return wrapper
+
+
+@_track_usage_flow
+def websocket_end(flow: http.HTTPFlow) -> None:
+    """Report model-provider usage extracted from a WebSocket-upgraded response."""
+    run_id = flow.metadata.get("vm_run_id", "")
+    if run_id:
+        _report_model_provider_usage_once(flow, run_id)
 
 
 @_track_usage_flow
@@ -615,6 +636,8 @@ addons = [
     tls_clienthello,
     request,
     responseheaders,
+    websocket_message,
+    websocket_end,
     response,
     error,
     tcp_start,

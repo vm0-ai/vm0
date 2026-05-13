@@ -8,6 +8,7 @@ import time
 import urllib.error
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -2753,6 +2754,114 @@ class TestResponseUsageReporting:
             "tokens.cache_read": 10,
         }
 
+    def test_full_pipeline_model_websocket_reports_usage(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        """Codex Responses WebSocket frames should bill like SSE events."""
+        flow = real_flow(with_response=False, host="api.openai.com")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
+        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["cli_agent_type"] = "codex"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.response = tutils.tresp(
+            status_code=101,
+            headers=http.Headers(upgrade="websocket"),
+        )
+
+        mitm_addon.responseheaders(flow)
+        flow.websocket = SimpleNamespace(
+            messages=[
+                SimpleNamespace(
+                    from_client=False,
+                    content=json.dumps(
+                        {
+                            "type": "response.completed",
+                            "response": {
+                                "id": "resp_ws_1",
+                                "model": "gpt-5.5",
+                                "usage": {
+                                    "input_tokens": 50,
+                                    "output_tokens": 20,
+                                    "input_tokens_details": {"cached_tokens": 10},
+                                },
+                            },
+                        }
+                    ).encode(),
+                )
+            ]
+        )
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.websocket_message(flow)
+            mitm_addon.websocket_end(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        by_category = {event["category"]: event["quantity"] for event in events}
+        assert flow.metadata["model_provider_usage"]["message_id"] == "resp_ws_1"
+        assert by_category == {
+            "tokens.input": 40,
+            "tokens.output": 20,
+            "tokens.cache_read": 10,
+        }
+
+    def test_model_websocket_ignores_client_messages(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        flow = real_flow(with_response=False, host="api.openai.com")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
+        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["cli_agent_type"] = "codex"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.response = tutils.tresp(
+            status_code=101,
+            headers=http.Headers(upgrade="websocket"),
+        )
+
+        mitm_addon.responseheaders(flow)
+        flow.websocket = SimpleNamespace(
+            messages=[
+                SimpleNamespace(
+                    from_client=True,
+                    content=json.dumps(
+                        {
+                            "type": "response.completed",
+                            "response": {
+                                "id": "resp_ws_1",
+                                "model": "gpt-5.5",
+                                "usage": {"input_tokens": 50, "output_tokens": 20},
+                            },
+                        }
+                    ).encode(),
+                )
+            ]
+        )
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mitm_addon.websocket_message(flow)
+            mitm_addon.websocket_end(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+        assert flow.metadata["model_provider_usage"] == {}
+
     def test_response_then_error_does_not_enqueue_model_usage_twice(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
     ):
@@ -4896,6 +5005,9 @@ class TestReportConnectorUsage:
         flow = self._make_x_flow(real_flow, tmp_path)
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         assert self._call_and_get_billing(flow) == []
+        proxy_log = tmp_path / "proxy.jsonl"
+        if proxy_log.exists():
+            assert "no registered handler" not in proxy_log.read_text()
 
     def test_skips_for_non_x_billable_firewall(self, tmp_path, real_flow):
         """Billable non-x connectors (hypothetical future additions to

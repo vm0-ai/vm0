@@ -28,6 +28,7 @@ from .counters import decrement_flows, increment_flows, set_pending_path
 from .openai_responses import (
     create_openai_responses_json_usage_extractor,
     create_openai_responses_sse_usage_extractor,
+    extract_openai_responses_usage_from_event_json,
     extract_openai_responses_usage_from_json,
 )
 from .providers.connectors import report_connector_usage, x
@@ -40,6 +41,7 @@ __all__ = [
     "create_openai_responses_sse_usage_extractor",
     "decrement_flows",
     "extract_anthropic_messages_usage_from_json",
+    "extract_openai_responses_usage_from_event_json",
     "extract_openai_responses_usage_from_json",
     "increment_flows",
     "report_connector_usage",

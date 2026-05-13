@@ -61,8 +61,6 @@ export const SUPPORTED_RUN_MODELS = [
   "gpt-5.5",
   "gpt-5.4",
   "gpt-5.4-mini",
-  "gpt-5.3-codex",
-  "gpt-5.2",
 ] as const;
 
 export type SupportedRunModel = (typeof SUPPORTED_RUN_MODELS)[number];
@@ -107,8 +105,6 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "gpt-5.5": "GPT-5.5",
   "gpt-5.4": "GPT-5.4",
   "gpt-5.4-mini": "GPT-5.4 Mini",
-  "gpt-5.3-codex": "GPT-5.3 Codex",
-  "gpt-5.2": "GPT-5.2",
 };
 
 const SUPPORTED_RUN_MODEL_SET: ReadonlySet<string> = new Set(
@@ -208,14 +204,6 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     vendor: "openai",
   },
   "gpt-5.4-mini": {
-    concreteType: "openai-api-key",
-    vendor: "openai",
-  },
-  "gpt-5.3-codex": {
-    concreteType: "openai-api-key",
-    vendor: "openai",
-  },
-  "gpt-5.2": {
     concreteType: "openai-api-key",
     vendor: "openai",
   },
@@ -518,13 +506,7 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_API_KEY: "$secret",
       OPENAI_MODEL: "$model",
     } as Record<string, string>,
-    models: [
-      "gpt-5.5",
-      "gpt-5.4",
-      "gpt-5.4-mini",
-      "gpt-5.3-codex",
-      "gpt-5.2",
-    ] as string[],
+    models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"] as string[],
     defaultModel: "gpt-5.5",
   },
   "codex-oauth-token": {
@@ -622,13 +604,7 @@ export const MODEL_PROVIDER_TYPES = {
       CHATGPT_ACCOUNT_ID: "$secrets.CHATGPT_ACCOUNT_ID",
       OPENAI_MODEL: "$model",
     } as Record<string, string>,
-    models: [
-      "gpt-5.5",
-      "gpt-5.4",
-      "gpt-5.4-mini",
-      "gpt-5.3-codex",
-      "gpt-5.2",
-    ] as string[],
+    models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"] as string[],
     defaultModel: "gpt-5.5",
   },
   "azure-foundry": {
@@ -769,8 +745,6 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
   "gpt-5.5": ["vm0", "openai-api-key", "codex-oauth-token"],
   "gpt-5.4": ["vm0", "openai-api-key", "codex-oauth-token"],
   "gpt-5.4-mini": ["vm0", "openai-api-key", "codex-oauth-token"],
-  "gpt-5.3-codex": ["vm0", "openai-api-key", "codex-oauth-token"],
-  "gpt-5.2": ["vm0", "openai-api-key", "codex-oauth-token"],
   "deepseek-v4-pro": ["vm0", "deepseek-api-key", "openrouter-api-key"],
   "deepseek-v4-flash": ["vm0", "deepseek-api-key", "openrouter-api-key"],
   "kimi-k2.6": [

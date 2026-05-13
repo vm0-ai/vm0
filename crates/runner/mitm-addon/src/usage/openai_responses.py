@@ -193,3 +193,31 @@ def extract_openai_responses_usage_from_json(body: bytes, headers) -> dict | Non
     extractor.feed(body)
     usage, _error = extractor.finish()
     return usage
+
+
+def extract_openai_responses_usage_from_event_json(body: bytes) -> dict | None:
+    """Extract usage from a complete Responses event JSON object.
+
+    Codex can receive Responses API events over a WebSocket upgrade.  In that
+    path each server frame is already one JSON event rather than an SSE
+    ``event:`` / ``data:`` envelope, so reuse the SSE field map and event gate
+    directly.
+    """
+    extractor = JsonSelectiveExtractor(scalar_fields=_RESPONSES_SSE_SCALAR_FIELDS)
+    extractor.feed(body)
+    result = extractor.finish()
+    if not result.complete:
+        return None
+
+    usage: dict = {}
+    _store_sse_result_values(result.values, usage, event_name=None)
+    if not any(
+        category in usage
+        for category in (
+            MODEL_USAGE_CATEGORY_INPUT,
+            MODEL_USAGE_CATEGORY_OUTPUT,
+            MODEL_USAGE_CATEGORY_CACHE_READ,
+        )
+    ):
+        return None
+    return usage

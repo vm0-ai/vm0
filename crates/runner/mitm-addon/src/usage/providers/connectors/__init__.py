@@ -58,6 +58,8 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
     if not flow.metadata.get("firewall_billable", False):
         return
     firewall_name = flow.metadata.get("firewall_name", "")
+    if firewall_name.startswith("model-provider:"):
+        return
     handler = _HANDLERS.get(firewall_name)
     if handler is None:
         if firewall_name and firewall_name not in _unregistered_handler_warned:
