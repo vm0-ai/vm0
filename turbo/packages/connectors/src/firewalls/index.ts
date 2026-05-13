@@ -204,6 +204,12 @@ import { zendeskFirewall } from "./zendesk.generated";
 import { zepFirewall } from "./zep.generated";
 import { zeptomailFirewall } from "./zeptomail.generated";
 import { zoomFirewall } from "./zoom.generated";
+import { altium365Firewall } from "./altium-365.generated";
+import { browserstackFirewall } from "./browserstack.generated";
+import { sendgridFirewall } from "./sendgrid.generated";
+import { servicenowFirewall } from "./servicenow.generated";
+import { testrailFirewall } from "./testrail.generated";
+import { twilioFirewall } from "./twilio.generated";
 
 export * from "../firewall-types";
 
@@ -397,6 +403,12 @@ const CONNECTOR_FIREWALLS = {
   zep: zepFirewall,
   zeptomail: zeptomailFirewall,
   zoom: zoomFirewall,
+  "altium-365": altium365Firewall,
+  browserstack: browserstackFirewall,
+  sendgrid: sendgridFirewall,
+  servicenow: servicenowFirewall,
+  testrail: testrailFirewall,
+  twilio: twilioFirewall,
 } as const satisfies Partial<Record<ConnectorType, FirewallConfig>>;
 
 /**

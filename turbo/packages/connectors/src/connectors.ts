@@ -180,6 +180,12 @@ import { gumroad } from "./connectors/gumroad";
 import { langfuse } from "./connectors/langfuse";
 import { n8n } from "./connectors/n8n";
 import { wandb } from "./connectors/wandb";
+import { altium365 } from "./connectors/altium-365";
+import { browserstack } from "./connectors/browserstack";
+import { sendgrid } from "./connectors/sendgrid";
+import { servicenow } from "./connectors/servicenow";
+import { testrail } from "./connectors/testrail";
+import { twilio } from "./connectors/twilio";
 
 /**
  * Secret field configuration for connector auth methods
@@ -551,6 +557,12 @@ const CONNECTOR_TYPES_DEF = {
   ...langfuse,
   ...n8n,
   ...wandb,
+  ...altium365,
+  ...browserstack,
+  ...sendgrid,
+  ...servicenow,
+  ...testrail,
+  ...twilio,
 } as const satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;

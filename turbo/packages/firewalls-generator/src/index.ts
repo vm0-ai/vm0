@@ -174,6 +174,12 @@ import { generate as generateZeptomail } from "./zeptomail";
 import { generate as generateWandb } from "./wandb";
 import { generate as generateZoom } from "./zoom";
 import { generate as generateGoogleAds } from "./google-ads";
+import { generate as generateAltium365 } from "./altium-365";
+import { generate as generateBrowserstack } from "./browserstack";
+import { generate as generateSendgrid } from "./sendgrid";
+import { generate as generateServicenow } from "./servicenow";
+import { generate as generateTestrail } from "./testrail";
+import { generate as generateTwilio } from "./twilio";
 import { createGoogleGenerator, googleServiceNames } from "./google";
 
 const GENERATORS: Record<string, () => Promise<void>> = {
@@ -345,6 +351,12 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   zeptomail: generateZeptomail,
   wandb: generateWandb,
   zoom: generateZoom,
+  "altium-365": generateAltium365,
+  browserstack: generateBrowserstack,
+  sendgrid: generateSendgrid,
+  servicenow: generateServicenow,
+  testrail: generateTestrail,
+  twilio: generateTwilio,
   ...Object.fromEntries(
     googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),
   ),
