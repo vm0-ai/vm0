@@ -517,7 +517,7 @@ describe("Telegram bot commands", () => {
       expect(text).toContain("/model claude-sonnet-4-6");
       expect(text).toContain("/model deepseek-v4-pro");
       expect(text).toContain("DeepSeek V4 Pro");
-      expect(text).not.toContain("/model gpt-5.5");
+      expect(text).toContain("/model gpt-5.5");
     });
 
     it("should persist a matched model argument", async () => {

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
@@ -195,6 +195,7 @@ async function runSummary(runId: string): Promise<string | null> {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   clearMockNow();
   context.mocks.axiom.query.mockReset();
 });
@@ -319,7 +320,10 @@ describe("POST /api/internal/callbacks/schedule/*", () => {
   });
 
   it("advances cron callbacks and persists completed-run summaries", async () => {
-    mockNow(new Date("2026-05-13T04:00:00.000Z"));
+    const completedAt = new Date("2026-05-13T04:00:00.000Z");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(completedAt);
+    mockNow(completedAt);
     const fixture = await track(seedFixture());
     const scheduleId = await seedSchedule(fixture, {
       kind: "cron",
