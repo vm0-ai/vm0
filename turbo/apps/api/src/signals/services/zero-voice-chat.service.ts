@@ -35,11 +35,16 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
-import { notFound } from "../../lib/error";
-import { db$, writeDb$ } from "../external/db";
+import { isBadRequestResponse, notFound } from "../../lib/error";
+import { db$, writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { safeAsync, safeJsonParse } from "../utils";
 import { createAgentRun$ } from "./agent-run-create.service";
+import {
+  cancelRun$,
+  dispatchCancelSideEffects$,
+  type CancelRunResult,
+} from "./zero-run-cancel.service";
 
 const ACTIVE_TASK_STATUSES = ["pending", "queued", "running"] as const;
 const FINISHED_TASK_STATUSES = ["done", "failed"] as const;
@@ -111,6 +116,31 @@ const logToken = logger("api:zero:voice-chat:token");
 type SessionRow = typeof voiceChatSessions.$inferSelect;
 type ItemRow = typeof voiceChatItems.$inferSelect;
 type TaskRow = typeof voiceChatTasks.$inferSelect;
+type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+interface CompleteVoiceChatTaskArgs {
+  readonly taskId: string;
+  readonly result: string | null;
+  readonly error: string | null;
+  readonly agentId: string;
+}
+
+interface CompleteVoiceChatTaskOutcome {
+  readonly item: ItemRow;
+  readonly task: TaskRow;
+  readonly mismatch: boolean;
+  readonly session: {
+    readonly id: string;
+    readonly orgId: string;
+    readonly userId: string;
+  };
+}
+
+interface CompleteVoiceChatTaskResult {
+  readonly item: ItemRow;
+  readonly task: TaskRow;
+  readonly session: { readonly id: string; readonly userId: string };
+}
 
 type ErrorResponse<Status extends number, Code extends string> = {
   readonly status: Status;
@@ -682,6 +712,257 @@ export const appendVoiceChatTaskAssistantResult$ = command(
       return null;
     }
     return { sessionId: row.sessionId, userId: session.userId };
+  },
+);
+
+function isCancelRunResult(value: unknown): value is CancelRunResult {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "alreadyCancelled" in value &&
+    "runId" in value
+  );
+}
+
+function isRunNotCancellableResult(value: unknown): boolean {
+  if (!isBadRequestResponse(value)) {
+    return false;
+  }
+  const body = value.body;
+  if (typeof body !== "object" || body === null || !("error" in body)) {
+    return false;
+  }
+  const error = body.error;
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "RUN_NOT_CANCELLABLE"
+  );
+}
+
+function formatTaskResult(params: {
+  readonly result: string | null;
+  readonly error: string | null;
+}): string {
+  if (params.error) {
+    return `[task failed] ${params.error}`;
+  }
+  return params.result ?? "[task returned empty result]";
+}
+
+async function completeMismatchedVoiceChatTask(
+  tx: WriteTx,
+  taskRow: TaskRow,
+  sessionRow: SessionRow,
+  finishedAt: Date,
+): Promise<CompleteVoiceChatTaskOutcome> {
+  const [failedTask] = await tx
+    .update(voiceChatTasks)
+    .set({
+      status: "failed",
+      error: "agent mismatch",
+      finishedAt,
+    })
+    .where(eq(voiceChatTasks.id, taskRow.id))
+    .returning();
+
+  const [noteItem] = await tx
+    .insert(voiceChatItems)
+    .values({
+      sessionId: taskRow.sessionId,
+      role: "system_note",
+      content: "agent mismatch — task failed",
+      taskId: taskRow.id,
+      realtimeItemId: null,
+    })
+    .returning();
+
+  if (!noteItem) {
+    throw new Error("Failed to insert voice-chat mismatch note");
+  }
+
+  return {
+    task: failedTask ?? taskRow,
+    item: noteItem,
+    mismatch: true,
+    session: {
+      id: sessionRow.id,
+      orgId: sessionRow.orgId,
+      userId: sessionRow.userId,
+    },
+  };
+}
+
+async function completeMatchedVoiceChatTask(
+  tx: WriteTx,
+  taskRow: TaskRow,
+  sessionRow: SessionRow,
+  args: CompleteVoiceChatTaskArgs,
+  finishedAt: Date,
+): Promise<CompleteVoiceChatTaskOutcome> {
+  const finalEntries: VoiceChatTaskResultEntry[] = args.result
+    ? [
+        {
+          type: "assistant",
+          content: args.result,
+          at: finishedAt.toISOString(),
+        },
+      ]
+    : [];
+  const consolidatedResult = [
+    flattenTaskResult(taskRow.assistantMessages) ?? "",
+    args.result ?? "",
+  ]
+    .filter((content) => {
+      return content.length > 0;
+    })
+    .join("\n");
+  const [completedTask] = await tx
+    .update(voiceChatTasks)
+    .set({
+      status: args.error ? "failed" : "done",
+      assistantMessages: sql`${voiceChatTasks.assistantMessages} || ${JSON.stringify(finalEntries)}::jsonb`,
+      result: consolidatedResult.length > 0 ? consolidatedResult : null,
+      resultUpdatedAt: consolidatedResult.length > 0 ? finishedAt : null,
+      error: args.error,
+      finishedAt,
+    })
+    .where(eq(voiceChatTasks.id, taskRow.id))
+    .returning();
+
+  const [resultItem] = await tx
+    .insert(voiceChatItems)
+    .values({
+      sessionId: taskRow.sessionId,
+      role: "task_result",
+      content: formatTaskResult({
+        result: args.result,
+        error: args.error,
+      }),
+      taskId: taskRow.id,
+      realtimeItemId: null,
+    })
+    .returning();
+
+  if (!resultItem) {
+    throw new Error("Failed to insert voice-chat task result");
+  }
+
+  return {
+    task: completedTask ?? taskRow,
+    item: resultItem,
+    mismatch: false,
+    session: {
+      id: sessionRow.id,
+      orgId: sessionRow.orgId,
+      userId: sessionRow.userId,
+    },
+  };
+}
+
+async function completeVoiceChatTaskMutation(
+  writeDb: Db,
+  args: CompleteVoiceChatTaskArgs,
+): Promise<CompleteVoiceChatTaskOutcome | null> {
+  return await writeDb.transaction(async (tx) => {
+    const [taskRow] = await tx
+      .select()
+      .from(voiceChatTasks)
+      .where(eq(voiceChatTasks.id, args.taskId))
+      .for("update")
+      .limit(1);
+    if (!taskRow) {
+      return null;
+    }
+
+    const [sessionRow] = await tx
+      .select()
+      .from(voiceChatSessions)
+      .where(eq(voiceChatSessions.id, taskRow.sessionId))
+      .limit(1);
+    if (!sessionRow) {
+      return null;
+    }
+
+    const finishedAt = nowDate();
+    return sessionRow.agentId !== args.agentId
+      ? await completeMismatchedVoiceChatTask(
+          tx,
+          taskRow,
+          sessionRow,
+          finishedAt,
+        )
+      : await completeMatchedVoiceChatTask(
+          tx,
+          taskRow,
+          sessionRow,
+          args,
+          finishedAt,
+        );
+  });
+}
+
+export const completeVoiceChatTask$ = command(
+  async (
+    { set },
+    args: CompleteVoiceChatTaskArgs,
+    signal: AbortSignal,
+  ): Promise<CompleteVoiceChatTaskResult | null> => {
+    const writeDb = set(writeDb$);
+    const outcome = await completeVoiceChatTaskMutation(writeDb, args);
+    signal.throwIfAborted();
+
+    if (!outcome) {
+      return null;
+    }
+
+    if (outcome.mismatch) {
+      const pending = await writeDb
+        .select()
+        .from(voiceChatTasks)
+        .where(
+          and(
+            eq(voiceChatTasks.sessionId, outcome.session.id),
+            inArray(voiceChatTasks.status, ["pending", "queued"]),
+          ),
+        );
+      signal.throwIfAborted();
+
+      for (const task of pending) {
+        if (!task.runId) {
+          continue;
+        }
+        const cancelled = await set(
+          cancelRun$,
+          {
+            runId: task.runId,
+            userId: outcome.session.userId,
+            orgId: outcome.session.orgId,
+          },
+          signal,
+        );
+        signal.throwIfAborted();
+        if (isCancelRunResult(cancelled)) {
+          await set(dispatchCancelSideEffects$, cancelled, signal);
+          signal.throwIfAborted();
+          continue;
+        }
+        if (isRunNotCancellableResult(cancelled)) {
+          logTask.warn(
+            `cancelRun for task ${task.id} (runId=${task.runId}) skipped - run is no longer cancellable`,
+          );
+          continue;
+        }
+        throw new Error(`Failed to cancel voice-chat task run ${task.runId}`);
+      }
+    }
+
+    return {
+      task: outcome.task,
+      item: outcome.item,
+      session: { id: outcome.session.id, userId: outcome.session.userId },
+    };
   },
 );
 

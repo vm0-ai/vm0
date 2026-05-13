@@ -184,6 +184,12 @@ export {
   type SlackOrgCallbackPayload,
 } from "./internal-callbacks-slack-org";
 export {
+  internalCallbacksVoiceChatContract,
+  voiceChatCallbackPayloadSchema,
+  type InternalCallbacksVoiceChatContract,
+  type VoiceChatCallbackPayload,
+} from "./internal-callbacks-voice-chat";
+export {
   sandboxReuseResultSchema,
   webhookEventsContract,
   webhookCompleteContract,
