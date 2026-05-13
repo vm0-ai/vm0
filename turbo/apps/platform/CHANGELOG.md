@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.353.0](https://github.com/vm0-ai/vm0/compare/app-v0.352.0...app-v0.353.0) (2026-05-13)
+
+
+### Features
+
+* **feature-switch:** enable ChatThreadPin globally ([#13196](https://github.com/vm0-ai/vm0/issues/13196)) ([0cc8de6](https://github.com/vm0-ai/vm0/commit/0cc8de62971f84eae231270f601740be951237cb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.275.0
+
 ## [0.352.0](https://github.com/vm0-ai/vm0/compare/app-v0.351.0...app-v0.352.0) (2026-05-13)
 
 

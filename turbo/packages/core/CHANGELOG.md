@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.275.0](https://github.com/vm0-ai/vm0/compare/core-v8.274.2...core-v8.275.0) (2026-05-13)
+
+
+### Features
+
+* **feature-switch:** enable ChatThreadPin globally ([#13196](https://github.com/vm0-ai/vm0/issues/13196)) ([0cc8de6](https://github.com/vm0-ai/vm0/commit/0cc8de62971f84eae231270f601740be951237cb))
+
 ## [8.274.2](https://github.com/vm0-ai/vm0/compare/core-v8.274.1...core-v8.274.2) (2026-05-13)
 
 
