@@ -37,9 +37,9 @@ fn shell_escape_value(val: &str) -> String {
 /// When `sudo` is true the command runs as root, bypassing `su - user` and
 /// the PAM overhead that comes with it.
 ///
-/// In release builds the guest-init process is already root, so `sh -c`
-/// suffices. In debug builds the process is a normal user, so `sudo sh -c`
-/// is needed to elevate.
+/// In production-style builds, non-sudo commands run through `su - user`.
+/// In debug/test-support builds, local tests run as the current user unless
+/// `sudo` explicitly requests elevation through `sudo sh -c`.
 pub(crate) fn build_exec_command(command: &str, sudo: bool) -> Command {
     match get_exec_user() {
         Some(user) => {
