@@ -1257,7 +1257,7 @@ mod tests {
         let (request_tx, request_rx) = oneshot::channel();
         let (header_written_tx, header_written_rx) = oneshot::channel();
         let (write_body_tx, write_body_rx) = oneshot::channel();
-        let server = tokio::spawn(async move {
+        let mut server = tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             let request = read_mock_request(&mut stream).await.unwrap();
             request_tx.send(request).unwrap();
@@ -1271,12 +1271,16 @@ mod tests {
         });
 
         let client_sock_path = sock_path.clone();
-        let client_task = tokio::spawn(async move {
+        let mut client_task = tokio::spawn(async move {
             let client = ApiClient::new(&client_sock_path);
             client.get_balloon_statistics().await
         });
 
-        header_written_rx.await.unwrap();
+        tokio::select! {
+            result = header_written_rx => result.unwrap(),
+            result = &mut client_task => panic!("client completed before split response header: {result:?}"),
+            result = &mut server => panic!("mock server exited before split response header: {result:?}"),
+        }
         write_body_tx.send(()).unwrap();
 
         let stats = client_task.await.unwrap().unwrap();
