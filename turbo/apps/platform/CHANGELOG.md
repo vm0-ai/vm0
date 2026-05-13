@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.348.2](https://github.com/vm0-ai/vm0/compare/app-v0.348.1...app-v0.348.2) (2026-05-13)
+
+
+### Bug Fixes
+
+* keep agentphone controls on works page ([#13139](https://github.com/vm0-ai/vm0/issues/13139)) ([88f28ff](https://github.com/vm0-ai/vm0/commit/88f28ff9fc0b5d4e9d26d86a49efb9a7875f88fa))
+
 ## [0.348.1](https://github.com/vm0-ai/vm0/compare/app-v0.348.0...app-v0.348.1) (2026-05-13)
 
 
