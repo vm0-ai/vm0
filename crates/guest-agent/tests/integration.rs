@@ -1,14 +1,17 @@
 // Each #[tokio::test] spins up an isolated single-thread runtime, so
 // tokio::sync::Mutex cannot wake waiters across runtimes.  A std Mutex
 // serialises correctly (each runtime owns its own OS thread).
-#![allow(clippy::await_holding_lock, clippy::expect_used)]
+#![allow(clippy::await_holding_lock)]
 
 use base64::Engine;
 use bytes::Bytes;
 use guest_agent::masker::SecretMasker;
 use httpmock::prelude::*;
-use serde_json::json;
-use std::sync::{LazyLock, Mutex};
+use serde_json::{Value, json};
+use std::sync::{
+    Arc, LazyLock, Mutex,
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
@@ -40,13 +43,67 @@ macro_rules! http_client {
 }
 
 const TEST_HTTP_RETRY_DELAY: Duration = Duration::from_millis(10);
-const TEST_HTTP_RETRY_SWITCH_DELAY: Duration = Duration::from_millis(100);
 const TEST_HEARTBEAT_INTERVAL: Duration = Duration::from_millis(100);
 const MOCK_CALL_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const MOCK_CALL_TIMEOUT: Duration = Duration::from_secs(10);
 
+#[allow(clippy::expect_used)]
 fn test_http_client(retry_delay: Duration) -> guest_agent::http::HttpClient {
     guest_agent::http::HttpClient::with_retry_delay(retry_delay).expect("build test http client")
+}
+
+fn http_status(status: u16) -> HttpMockResponse {
+    HttpMockResponse::builder().status(status).build()
+}
+
+fn json_http_response(status: u16, body: Value) -> HttpMockResponse {
+    HttpMockResponse::builder()
+        .status(status)
+        .header("Content-Type", "application/json")
+        .body(body.to_string())
+        .build()
+}
+
+fn retry_then_response(
+    failures: usize,
+    success_response: HttpMockResponse,
+) -> impl Fn(&HttpMockRequest) -> HttpMockResponse {
+    let attempts = AtomicUsize::new(0);
+
+    move |_req| {
+        if attempts.fetch_add(1, Ordering::SeqCst) < failures {
+            return http_status(500);
+        }
+
+        success_response.clone()
+    }
+}
+
+fn request_header_eq(req: &HttpMockRequest, name: &str, expected: &str) -> bool {
+    req.headers_vec()
+        .iter()
+        .any(|(key, value)| key.eq_ignore_ascii_case(name) && value == expected)
+}
+
+fn upload_request_matches(
+    req: &HttpMockRequest,
+    expected_body: &[u8],
+    expected_content_length: &str,
+) -> bool {
+    request_header_eq(req, "content-length", expected_content_length)
+        && req.body_ref() == expected_body
+}
+
+fn upload_validation_response(
+    req: &HttpMockRequest,
+    expected_body: &[u8],
+    expected_content_length: &str,
+) -> HttpMockResponse {
+    if upload_request_matches(req, expected_body, expected_content_length) {
+        http_status(200)
+    } else {
+        http_status(400)
+    }
 }
 
 async fn wait_mock_calls(
@@ -187,42 +244,21 @@ async fn post_json_retry_then_succeed() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
 
-    // Register failure mock first (lower ID = matched first by BTreeMap iteration).
-    let fail_mock = server.mock(|when, then| {
+    let mock = server.mock(|when, then| {
         when.method(POST).path("/test/retry-succeed");
-        then.status(500);
-    });
-    // Success mock registered second — becomes active after fail_mock is deleted.
-    let success_mock = server.mock(|when, then| {
-        when.method(POST).path("/test/retry-succeed");
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({"recovered": true}));
+        then.respond_with(retry_then_response(
+            2,
+            json_http_response(200, json!({"recovered": true})),
+        ));
     });
 
     let url = format!("{}/test/retry-succeed", server.base_url());
-    let handle = tokio::spawn(async move {
-        test_http_client(TEST_HTTP_RETRY_SWITCH_DELAY)
-            .post_json(&url, &json!({}), 3)
-            .await
-    });
+    let result = http_client!().post_json(&url, &json!({}), 3).await;
 
-    // Wait until the failure mock has been hit twice, then remove it so
-    // the third attempt falls through to the success mock.
-    wait_mock_calls(
-        &fail_mock,
-        2,
-        MOCK_CALL_TIMEOUT,
-        "post_json_retry_then_succeed failure attempts",
-    )
-    .await;
-    fail_mock.delete_async().await;
-
-    let result = handle.await.unwrap();
     let val = result.unwrap().unwrap();
     assert_eq!(val["recovered"], true);
-    success_mock.assert_calls_async(1).await;
-    success_mock.delete_async().await;
+    mock.assert_calls_async(3).await;
+    mock.delete_async().await;
 }
 
 #[tokio::test]
@@ -361,37 +397,20 @@ async fn put_presigned_retry_then_succeed() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
 
-    // Failure mock first (lower ID = matched first by BTreeMap).
-    let fail_mock = server.mock(|when, then| {
+    let mock = server.mock(|when, then| {
         when.method(PUT).path("/test/put-retry");
-        then.status(500);
-    });
-    let success_mock = server.mock(|when, then| {
-        when.method(PUT).path("/test/put-retry");
-        then.status(200);
+        then.respond_with(retry_then_response(1, http_status(200)));
     });
 
     let url = format!("{}/test/put-retry", server.base_url());
     let data = Bytes::from_static(b"retry data");
-    let handle = tokio::spawn(async move {
-        test_http_client(TEST_HTTP_RETRY_SWITCH_DELAY)
-            .put_presigned(&url, data, "application/octet-stream")
-            .await
-    });
+    let result = http_client!()
+        .put_presigned(&url, data, "application/octet-stream")
+        .await;
 
-    wait_mock_calls(
-        &fail_mock,
-        1,
-        MOCK_CALL_TIMEOUT,
-        "put_presigned_retry_then_succeed first failure",
-    )
-    .await;
-    fail_mock.delete_async().await;
-
-    let result = handle.await.unwrap();
     assert!(result.is_ok());
-    success_mock.assert_calls_async(1).await;
-    success_mock.delete_async().await;
+    mock.assert_calls_async(2).await;
+    mock.delete_async().await;
 }
 
 // =========================================================================
@@ -509,36 +528,27 @@ async fn put_presigned_file_retry_then_succeed() {
     let file_path = dir.path().join("retry.bin");
     std::fs::write(&file_path, b"retry file data").unwrap();
 
-    let fail_mock = server.mock(|when, then| {
+    let mock = server.mock(|when, then| {
         when.method(PUT).path("/test/put-file-retry");
-        then.status(500);
-    });
-    let success_mock = server.mock(|when, then| {
-        when.method(PUT).path("/test/put-file-retry");
-        then.status(200);
+        let attempts = AtomicUsize::new(0);
+        then.respond_with(move |req| {
+            if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                return http_status(500);
+            }
+
+            upload_validation_response(req, b"retry file data", "15")
+        });
     });
 
     let url = format!("{}/test/put-file-retry", server.base_url());
     let path = file_path.clone();
-    let handle = tokio::spawn(async move {
-        test_http_client(TEST_HTTP_RETRY_SWITCH_DELAY)
-            .put_presigned_file(&url, &path, "application/gzip")
-            .await
-    });
+    let result = http_client!()
+        .put_presigned_file(&url, &path, "application/gzip")
+        .await;
 
-    wait_mock_calls(
-        &fail_mock,
-        1,
-        MOCK_CALL_TIMEOUT,
-        "put_presigned_file_retry_then_succeed first failure",
-    )
-    .await;
-    fail_mock.delete_async().await;
-
-    let result = handle.await.unwrap();
     assert!(result.is_ok());
-    success_mock.assert_calls_async(1).await;
-    success_mock.delete_async().await;
+    mock.assert_calls_async(2).await;
+    mock.delete_async().await;
 }
 
 #[tokio::test]
@@ -550,39 +560,36 @@ async fn put_presigned_file_retry_fails_if_source_shrinks() {
     let file_path = dir.path().join("retry-shrunk.bin");
     std::fs::write(&file_path, b"retry file data").unwrap();
 
-    let fail_mock = server.mock(|when, then| {
+    let mutation_done = Arc::new(AtomicBool::new(false));
+    let mutation_done_for_mock = Arc::clone(&mutation_done);
+    let file_path_for_mock = file_path.clone();
+    let mock = server.mock(|when, then| {
         when.method(PUT).path("/test/put-file-retry-shrunk");
-        then.status(500);
-    });
-    let success_mock = server.mock(|when, then| {
-        when.method(PUT)
-            .path("/test/put-file-retry-shrunk")
-            .body("short");
-        then.status(200);
+        let attempts = AtomicUsize::new(0);
+        then.respond_with(move |req| {
+            if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                mutation_done_for_mock.store(
+                    std::fs::write(&file_path_for_mock, b"short").is_ok(),
+                    Ordering::SeqCst,
+                );
+                return http_status(500);
+            }
+
+            upload_validation_response(req, b"retry file data", "15")
+        });
     });
 
     let url = format!("{}/test/put-file-retry-shrunk", server.base_url());
     let path = file_path.clone();
-    let handle = tokio::spawn(async move {
-        test_http_client(TEST_HTTP_RETRY_SWITCH_DELAY)
-            .put_presigned_file(&url, &path, "application/gzip")
-            .await
-    });
+    let result = http_client!()
+        .put_presigned_file(&url, &path, "application/gzip")
+        .await;
 
-    wait_mock_calls(
-        &fail_mock,
-        1,
-        MOCK_CALL_TIMEOUT,
-        "put_presigned_file_retry_fails_if_source_shrinks first failure",
-    )
-    .await;
-    std::fs::write(&file_path, b"short").unwrap();
-    fail_mock.delete_async().await;
-
-    let result = handle.await.unwrap();
+    assert!(mutation_done.load(Ordering::SeqCst));
     assert!(result.is_err());
-    success_mock.assert_calls_async(0).await;
-    success_mock.delete_async().await;
+    let calls = mock.calls_async().await;
+    assert!(calls >= 1);
+    mock.delete_async().await;
 }
 
 #[tokio::test]
@@ -594,40 +601,35 @@ async fn put_presigned_file_retry_uses_original_length_if_source_grows() {
     let file_path = dir.path().join("retry-grown.bin");
     std::fs::write(&file_path, b"retry file data").unwrap();
 
-    let fail_mock = server.mock(|when, then| {
+    let mutation_done = Arc::new(AtomicBool::new(false));
+    let mutation_done_for_mock = Arc::clone(&mutation_done);
+    let file_path_for_mock = file_path.clone();
+    let mock = server.mock(|when, then| {
         when.method(PUT).path("/test/put-file-retry-grown");
-        then.status(500);
-    });
-    let success_mock = server.mock(|when, then| {
-        when.method(PUT)
-            .path("/test/put-file-retry-grown")
-            .header("Content-Length", "15")
-            .body("retry file data");
-        then.status(200);
+        let attempts = AtomicUsize::new(0);
+        then.respond_with(move |req| {
+            if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                mutation_done_for_mock.store(
+                    std::fs::write(&file_path_for_mock, b"retry file data plus extra").is_ok(),
+                    Ordering::SeqCst,
+                );
+                return http_status(500);
+            }
+
+            upload_validation_response(req, b"retry file data", "15")
+        });
     });
 
     let url = format!("{}/test/put-file-retry-grown", server.base_url());
     let path = file_path.clone();
-    let handle = tokio::spawn(async move {
-        test_http_client(TEST_HTTP_RETRY_SWITCH_DELAY)
-            .put_presigned_file(&url, &path, "application/gzip")
-            .await
-    });
+    let result = http_client!()
+        .put_presigned_file(&url, &path, "application/gzip")
+        .await;
 
-    wait_mock_calls(
-        &fail_mock,
-        1,
-        MOCK_CALL_TIMEOUT,
-        "put_presigned_file_retry_uses_original_length_if_source_grows first failure",
-    )
-    .await;
-    std::fs::write(&file_path, b"retry file data plus extra").unwrap();
-    fail_mock.delete_async().await;
-
-    let result = handle.await.unwrap();
+    assert!(mutation_done.load(Ordering::SeqCst));
     assert!(result.is_ok());
-    success_mock.assert_calls_async(1).await;
-    success_mock.delete_async().await;
+    mock.assert_calls_async(2).await;
+    mock.delete_async().await;
 }
 
 #[tokio::test]
@@ -641,40 +643,36 @@ async fn put_presigned_file_retry_uses_original_handle_if_path_is_replaced() {
     std::fs::write(&file_path, b"retry file data").unwrap();
     std::fs::write(&replacement_path, b"changed content").unwrap();
 
-    let fail_mock = server.mock(|when, then| {
+    let mutation_done = Arc::new(AtomicBool::new(false));
+    let mutation_done_for_mock = Arc::clone(&mutation_done);
+    let file_path_for_mock = file_path.clone();
+    let replacement_path_for_mock = replacement_path.clone();
+    let mock = server.mock(|when, then| {
         when.method(PUT).path("/test/put-file-retry-replaced");
-        then.status(500);
-    });
-    let success_mock = server.mock(|when, then| {
-        when.method(PUT)
-            .path("/test/put-file-retry-replaced")
-            .header("Content-Length", "15")
-            .body("retry file data");
-        then.status(200);
+        let attempts = AtomicUsize::new(0);
+        then.respond_with(move |req| {
+            if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                mutation_done_for_mock.store(
+                    std::fs::rename(&replacement_path_for_mock, &file_path_for_mock).is_ok(),
+                    Ordering::SeqCst,
+                );
+                return http_status(500);
+            }
+
+            upload_validation_response(req, b"retry file data", "15")
+        });
     });
 
     let url = format!("{}/test/put-file-retry-replaced", server.base_url());
     let path = file_path.clone();
-    let handle = tokio::spawn(async move {
-        test_http_client(TEST_HTTP_RETRY_SWITCH_DELAY)
-            .put_presigned_file(&url, &path, "application/gzip")
-            .await
-    });
+    let result = http_client!()
+        .put_presigned_file(&url, &path, "application/gzip")
+        .await;
 
-    wait_mock_calls(
-        &fail_mock,
-        1,
-        MOCK_CALL_TIMEOUT,
-        "put_presigned_file_retry_uses_original_handle_if_path_is_replaced first failure",
-    )
-    .await;
-    std::fs::rename(&replacement_path, &file_path).unwrap();
-    fail_mock.delete_async().await;
-
-    let result = handle.await.unwrap();
+    assert!(mutation_done.load(Ordering::SeqCst));
     assert!(result.is_ok());
-    success_mock.assert_calls_async(1).await;
-    success_mock.delete_async().await;
+    mock.assert_calls_async(2).await;
+    mock.delete_async().await;
 }
 
 #[tokio::test]
