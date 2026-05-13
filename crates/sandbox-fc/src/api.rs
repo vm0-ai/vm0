@@ -565,7 +565,7 @@ mod tests {
     use std::collections::VecDeque;
     use std::path::PathBuf;
     use tokio::net::{UnixListener, UnixStream};
-    use tokio::sync::mpsc;
+    use tokio::sync::{mpsc, oneshot};
     use tokio::task::JoinHandle;
 
     const MOCK_REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(5);
@@ -679,18 +679,29 @@ mod tests {
             )
         }
 
-        fn delayed_repeating(delay: Duration, response: MockResponse) -> Self {
+        fn deferred_repeating(response: MockResponse) -> (Self, oneshot::Sender<()>) {
             let dir = tempfile::tempdir().unwrap();
-            let sock_path = dir.path().join("delayed.sock");
+            let sock_path = dir.path().join("deferred.sock");
             let bind_path = sock_path.clone();
-            Self::spawn(
-                dir,
-                sock_path,
-                async move {
-                    tokio::time::sleep(delay).await;
-                    UnixListener::bind(&bind_path).unwrap()
+            let (bind_tx, bind_rx) = oneshot::channel();
+            let (tx, requests) = mpsc::unbounded_channel();
+            let server = tokio::spawn(async move {
+                if bind_rx.await.is_err() {
+                    return;
+                }
+
+                let listener = UnixListener::bind(&bind_path).unwrap();
+                serve_mock_api(listener, MockResponseMode::Repeat(response), tx).await;
+            });
+
+            (
+                Self {
+                    _dir: dir,
+                    sock_path,
+                    requests,
+                    server,
                 },
-                MockResponseMode::Repeat(response),
+                bind_tx,
             )
         }
 
@@ -969,12 +980,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn wait_for_ready_detects_delayed_socket_via_inotify() {
-        let mut api =
-            MockFirecrackerApi::delayed_repeating(Duration::from_millis(50), MockResponse::ok());
+    async fn wait_for_ready_detects_deferred_socket() {
+        let (mut api, bind_socket) = MockFirecrackerApi::deferred_repeating(MockResponse::ok());
         let sock_path = api.socket_path().to_path_buf();
-        let client = ApiClient::new(&sock_path);
-        let result = client.wait_for_ready(Duration::from_secs(2)).await;
+        let waiter = tokio::spawn(async move {
+            let client = ApiClient::new(&sock_path);
+            client.wait_for_ready(Duration::from_secs(2)).await
+        });
+
+        bind_socket.send(()).unwrap();
+        let result = waiter.await.unwrap();
         assert!(result.is_ok());
 
         let request = api.next_request().await;
