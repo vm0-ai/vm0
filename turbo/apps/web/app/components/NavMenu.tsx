@@ -143,11 +143,7 @@ function NavMenuRow({ item, onSelect }: NavMenuRowProps) {
   }
 
   return (
-    <Link
-      href={item.href}
-      className="nav-popover-item"
-      onClick={onSelect}
-    >
+    <Link href={item.href} className="nav-popover-item" onClick={onSelect}>
       {body}
     </Link>
   );

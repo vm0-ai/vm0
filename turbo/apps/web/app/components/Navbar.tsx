@@ -125,11 +125,17 @@ export function Navbar({
       }
 
       const top =
-        Math.min(...triggerRects.map((entry) => entry.rect.top)) -
-        NAV_MENU_TRIGGER_HOTZONE_Y;
+        Math.min(
+          ...triggerRects.map((entry) => {
+            return entry.rect.top;
+          }),
+        ) - NAV_MENU_TRIGGER_HOTZONE_Y;
       const bottom =
-        Math.max(...triggerRects.map((entry) => entry.rect.bottom)) +
-        NAV_MENU_TRIGGER_HOTZONE_Y;
+        Math.max(
+          ...triggerRects.map((entry) => {
+            return entry.rect.bottom;
+          }),
+        ) + NAV_MENU_TRIGGER_HOTZONE_Y;
       if (clientY < top || clientY > bottom) {
         return null;
       }
