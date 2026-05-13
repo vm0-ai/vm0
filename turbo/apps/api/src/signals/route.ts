@@ -49,6 +49,7 @@ import { zeroBillingPortalRoutes } from "./routes/zero-billing-portal";
 import { zeroBillingRedeemRoutes } from "./routes/zero-billing-redeem";
 import { zeroBillingStatusRoutes } from "./routes/zero-billing-status";
 import { zeroChatThreadRoutes } from "./routes/zero-chat-threads";
+import { zeroChatMessagesRoutes } from "./routes/zero-chat-messages";
 import { zeroComposesRoutes } from "./routes/zero-composes";
 import { zeroComputerUseRoutes } from "./routes/zero-computer-use";
 import { zeroConnectorsRoutes } from "./routes/zero-connectors";
@@ -182,6 +183,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroBillingRedeemRoutes,
   ...zeroBillingStatusRoutes,
   ...zeroChatThreadRoutes,
+  ...zeroChatMessagesRoutes,
   ...zeroComposesRoutes,
   ...zeroComputerUseRoutes,
   ...zeroConnectorsRoutes,
