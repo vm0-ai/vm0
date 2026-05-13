@@ -16,7 +16,7 @@ use super::support::{
 };
 use crate::{
     CommandCaptureRequest, CommandOperationHandle, CommandOperationRequest,
-    CommandOwnedCapturedOutput, CommandStreamRequest, command,
+    CommandOwnedCapturedOutput, CommandStreamRequest, command as command_impl,
 };
 
 async fn start_capture_operation(host: &crate::VsockHost, command: &str) -> CommandOperationHandle {
@@ -461,7 +461,7 @@ async fn command_stream_rejects_oversized_capacity_without_sending_frame() {
                 chunk_limit_bytes: 16,
             },
             stderr: CommandOutputPolicy::Discard,
-            stream_queue_capacity: Some(command::test_support::MAX_STREAM_CAPACITY + 1),
+            stream_queue_capacity: Some(command_impl::test_support::MAX_STREAM_CAPACITY + 1),
         })
         .await
     {
@@ -1724,7 +1724,7 @@ async fn command_cancel_result_timeout_poisons_connection() {
 #[tokio::test]
 async fn command_frame_write_guard_started_drop_poisons_connection() {
     let (host, _guest, _decoder) = setup_host_and_guest().await;
-    command::test_support::drop_started_frame_write_guard(Arc::clone(&host.shared));
+    command_impl::test_support::drop_started_frame_write_guard(Arc::clone(&host.shared));
     host.wait_until_closed(Duration::from_secs(5))
         .await
         .unwrap();

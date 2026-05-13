@@ -16,7 +16,7 @@ use super::support::{
     send_raw_command_result, send_stream_command_result, setup_host_and_guest,
 };
 use crate::CopyFileOptions;
-use crate::file;
+use crate::file as file_impl;
 
 #[tokio::test]
 async fn copy_file_rejects_max_bytes_above_stream_budget() {
@@ -26,7 +26,7 @@ async fn copy_file_rejects_max_bytes_above_stream_budget() {
             "/tmp/large.log",
             Path::new("/tmp/large.log"),
             CopyFileOptions {
-                max_bytes: file::test_support::COPY_FILE_STREAM_MAX_BYTES + 1,
+                max_bytes: file_impl::test_support::COPY_FILE_STREAM_MAX_BYTES + 1,
                 timeout_ms: 5000,
                 missing_ok: false,
             },
@@ -662,7 +662,7 @@ async fn test_write_file_chunked() {
     let (host_stream, mut guest) = make_pair();
 
     // Content just over the chunk limit → 2 write messages + 1 exec (mv)
-    let chunk_limit = file::test_support::WRITE_FILE_CHUNK_LIMIT;
+    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
     let content = vec![0xABu8; chunk_limit + 100];
     let content_clone = content.clone();
 
@@ -741,7 +741,7 @@ async fn test_write_file_chunked() {
 async fn test_write_file_at_chunk_limit_uses_single_message() {
     let (host_stream, mut guest) = make_pair();
 
-    let chunk_limit = file::test_support::WRITE_FILE_CHUNK_LIMIT;
+    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
     let content = vec![0xABu8; chunk_limit];
     let content_clone = content.clone();
 
@@ -780,7 +780,7 @@ async fn test_write_file_at_chunk_limit_uses_single_message() {
 async fn test_write_file_chunked_cleans_up_on_chunk_failure() {
     let (host_stream, mut guest) = make_pair();
 
-    let chunk_limit = file::test_support::WRITE_FILE_CHUNK_LIMIT;
+    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
     let content = vec![0xABu8; chunk_limit + 100];
 
     tokio::spawn(async move {
@@ -849,7 +849,7 @@ async fn test_write_file_chunked_cleans_up_on_chunk_failure() {
 async fn test_write_file_chunked_cleans_up_on_mv_failure() {
     let (host_stream, mut guest) = make_pair();
 
-    let chunk_limit = file::test_support::WRITE_FILE_CHUNK_LIMIT;
+    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
     let content = vec![0xABu8; chunk_limit + 100];
 
     tokio::spawn(async move {
@@ -928,7 +928,7 @@ async fn test_write_file_chunked_cleans_up_on_mv_failure() {
 async fn test_write_file_chunked_cleans_up_when_cancelled() {
     let (host_stream, mut guest) = make_pair();
 
-    let chunk_limit = file::test_support::WRITE_FILE_CHUNK_LIMIT;
+    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
     let content = vec![0xABu8; chunk_limit + 100];
     let (first_chunk_tx, first_chunk_rx) = oneshot::channel::<()>();
     let (cleanup_tx, cleanup_rx) = oneshot::channel::<String>();
