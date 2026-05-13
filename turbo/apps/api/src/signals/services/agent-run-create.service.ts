@@ -205,7 +205,7 @@ interface RunRecord {
   readonly status: "pending" | "queued";
 }
 
-export interface RunCallback {
+interface RunCallback {
   readonly url: string;
   readonly secret: string;
   readonly payload: unknown;

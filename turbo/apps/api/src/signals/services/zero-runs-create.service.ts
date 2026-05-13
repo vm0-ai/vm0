@@ -38,7 +38,7 @@ import { env } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
 import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
-import { createAgentRun$, type RunCallback } from "./agent-run-create.service";
+import { createAgentRun$ } from "./agent-run-create.service";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 
