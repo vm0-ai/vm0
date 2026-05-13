@@ -326,7 +326,7 @@ pub(crate) async fn wait_for_exit_on_shared(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{host_from_stream, make_pair, mock_handshake, send_command_result};
+    use crate::tests::support::{host_from_stream, make_pair, mock_handshake, send_command_result};
     use crate::{ConnectionState, VsockHost};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::sync::{Notify, oneshot};

@@ -8,7 +8,7 @@ use vsock_proto::{
     MSG_COMMAND_CANCEL, MSG_COMMAND_OUTPUT, MSG_COMMAND_RESULT, MSG_COMMAND_START, MSG_ERROR,
 };
 
-use crate::test_support::{
+use super::support::{
     assert_connection_accepts_command_exec, host_from_stream, is_connected, make_pair,
     mock_handshake, operation_count, read_guest_message, read_guest_messages, send_command_output,
     send_command_result, send_discarded_command_result, send_raw_command_result,

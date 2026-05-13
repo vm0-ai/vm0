@@ -10,13 +10,13 @@ use vsock_proto::{
     MSG_COMMAND_CANCEL, MSG_COMMAND_START, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
 };
 
-use crate::CopyFileOptions;
-use crate::file;
-use crate::test_support::{
+use super::support::{
     assert_connection_accepts_command_exec, host_from_stream, make_pair, mock_handshake,
     operation_count, read_guest_message, send_command_output, send_command_result,
     send_raw_command_result, send_stream_command_result, setup_host_and_guest,
 };
+use crate::CopyFileOptions;
+use crate::file;
 
 #[tokio::test]
 async fn copy_file_rejects_max_bytes_above_stream_budget() {
