@@ -9,10 +9,7 @@ import {
   click,
 } from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import {
-  onboardingSetupContract,
-  onboardingStatusContract,
-} from "@vm0/api-contracts/contracts/onboarding";
+import { onboardingStatusContract } from "@vm0/api-contracts/contracts/onboarding";
 import { pathname$ } from "../../../signals/route.ts";
 
 const context = testContext();
@@ -28,13 +25,6 @@ function mockOnboardingNeeded() {
         hasDefaultAgent: false,
         defaultAgentId: null,
         defaultAgentMetadata: null,
-      });
-    }),
-    // Step 1 Next eagerly provisions the workspace — every test that walks
-    // past step 1 needs this mock available.
-    mockApi(onboardingSetupContract.setup, ({ respond }) => {
-      return respond(200, {
-        agentId: "d0000000-0000-4000-a000-000000000001",
       });
     }),
   );
@@ -497,8 +487,8 @@ describe("connector polling status shows (AGENT-D-059)", () => {
 // AGENT-D-068: Back button returns to previous step
 // ---------------------------------------------------------------------------
 
-describe("back button hidden after eager init (AGENT-D-068)", () => {
-  it("step 1 Next eagerly provisions the workspace; no Back button on step 2", async () => {
+describe("back button returns to previous step (AGENT-D-068)", () => {
+  it("back button returns to step 1 from step 2", async () => {
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
@@ -513,9 +503,14 @@ describe("back button hidden after eager init (AGENT-D-068)", () => {
       ).toBeInTheDocument();
     });
 
-    // The workspace + default agent have already been created — going back
-    // to rename the workspace would be misleading, so Back is hidden.
-    expect(screen.queryByText("Back")).not.toBeInTheDocument();
+    // Click Back
+    click(screen.getByText("Back"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("onboarding-step-workspace-name"),
+      ).toBeInTheDocument();
+    });
   });
 });
 
@@ -585,7 +580,7 @@ describe("connectors via URL skip step 2", () => {
     });
   });
 
-  it("admin: no Back button on step 3 when connectors via URL (eager init done)", async () => {
+  it("admin: back from step 3 returns to step 1 when connectors via URL", async () => {
     mockOnboardingNeeded();
     detachedSetupPage({ context, path: "/onboarding?connector=slack" });
 
@@ -598,8 +593,14 @@ describe("connectors via URL skip step 2", () => {
       expect(screen.getByTestId("onboarding-step-connect")).toBeInTheDocument();
     });
 
-    // Workspace provisioned at step 1; Back is hidden.
-    expect(screen.queryByText("Back")).not.toBeInTheDocument();
+    click(screen.getByText("Back"));
+
+    // Should go back to step 1 (skipping step 2)
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("onboarding-step-workspace-name"),
+      ).toBeInTheDocument();
+    });
   });
 
   it("falls back to normal flow when no valid URL connectors", async () => {

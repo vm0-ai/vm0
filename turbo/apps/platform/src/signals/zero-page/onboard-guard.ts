@@ -2,7 +2,6 @@ import { command } from "ccstate";
 import { clerk$, resolveWebOrigin } from "../auth.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import {
-  onboardingEagerInitialized$,
   zeroOnboardingStatus$,
   zeroNeedsOnboarding$,
   zeroNeedsMemberOnboarding$,
@@ -21,14 +20,6 @@ const FORWARDED_ONBOARDING_PARAMS = ["prompt", "connector"] as const;
  */
 export const onboardGuard$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
-    // Admin has already provisioned the workspace via eager init this
-    // session; the server may not have surfaced the new state in the cached
-    // status yet, but locally we know onboarding is done. Don't redirect
-    // back to /onboarding when they navigate elsewhere (e.g. continue-in-web).
-    if (get(onboardingEagerInitialized$)) {
-      return false;
-    }
-
     const needsOnboarding = await get(zeroNeedsOnboarding$);
     signal.throwIfAborted();
     const needsMemberOnboarding = await get(zeroNeedsMemberOnboarding$);

@@ -111,35 +111,6 @@ export const setOnboardingPromptDraft$ = command(({ set }, value: string) => {
   set(internalPromptDraft$, value);
 });
 
-/**
- * True once an admin has clicked Next on step 1 and the workspace + default
- * agent have been provisioned. The dialog stays visible while the user
- * finishes picking/connecting connectors, and the Back button is hidden —
- * going back would be misleading now that the workspace exists.
- *
- * We also remember the agentId returned by the eager setup so the later
- * "Continue in web" / "Try It" step can navigate without re-reading the
- * onboarding status (which `zeroOnboardingStatus$` may still have cached
- * from before eager init).
- */
-const internalEagerInitialized$ = state(false);
-const internalEagerInitializedAgentId$ = state<string | null>(null);
-
-export const onboardingEagerInitialized$ = computed((get) => {
-  return get(internalEagerInitialized$);
-});
-
-export const onboardingEagerInitializedAgentId$ = computed((get) => {
-  return get(internalEagerInitializedAgentId$);
-});
-
-export const markEagerInitialized$ = command(
-  ({ set }, agentId: string | null) => {
-    set(internalEagerInitialized$, true);
-    set(internalEagerInitializedAgentId$, agentId);
-  },
-);
-
 export const zeroOnboardingStep$ = computed(async (get) => {
   const userStep = get(userStep$);
   if (userStep !== null) {
@@ -211,8 +182,6 @@ export const resetOnboardingStep$ = command(({ set }) => {
   set(internalConnectorsFromUrl$, false);
   set(internalUseCaseMode$, false);
   set(internalPromptDraft$, "");
-  set(internalEagerInitialized$, false);
-  set(internalEagerInitializedAgentId$, null);
 });
 
 /**
