@@ -76,9 +76,9 @@ function scheduleResponse(
     consecutiveFailures: schedule.consecutiveFailures,
     createdAt: schedule.createdAt.toISOString(),
     updatedAt: schedule.updatedAt.toISOString(),
-    modelProviderId: schedule.modelProviderId ?? null,
-    selectedModel: schedule.selectedModel ?? null,
-    preferPersonalProvider: schedule.preferPersonalProvider ?? false,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
   };
 }
 

@@ -62,6 +62,9 @@ describe("GET /api/zero/schedules", () => {
               name: "list-test-1",
               cronExpression: "0 9 * * *",
               prompt: "First",
+              modelProviderId: null,
+              selectedModel: "claude-sonnet-4-6",
+              preferPersonalProvider: true,
             },
             {
               name: "list-test-2",
@@ -99,6 +102,9 @@ describe("GET /api/zero/schedules", () => {
       timezone: "UTC",
       prompt: "First",
       enabled: true,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
     });
     expect(byName.get("list-test-2")).toMatchObject({
       agentId: fixture.composeId,

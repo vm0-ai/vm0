@@ -14,11 +14,6 @@ import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import {
-  deleteOrgModelProviders$,
-  seedOrgModelProvider$,
-  type OrgModelProviderFixture,
-} from "./helpers/zero-model-providers";
-import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
@@ -73,11 +68,6 @@ describe("PUT /api/zero/agents/:id", () => {
   const track = createFixtureTracker<SkillsFixture>((fixture) => {
     return store.set(deleteSkillsForFixture$, fixture, context.signal);
   });
-  const trackModelProviders = createFixtureTracker<OrgModelProviderFixture>(
-    (fixture) => {
-      return store.set(deleteOrgModelProviders$, fixture, context.signal);
-    },
-  );
 
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await accept(
@@ -127,21 +117,12 @@ describe("PUT /api/zero/agents/:id", () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),
     );
-    await trackModelProviders(Promise.resolve({ orgId: fixture.orgId }));
     await store.set(
       seedSkill$,
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
         name: "research-notes",
-      },
-      context.signal,
-    );
-    const provider = await store.set(
-      seedOrgModelProvider$,
-      {
-        orgId: fixture.orgId,
-        type: "anthropic-api-key",
       },
       context.signal,
     );
@@ -153,6 +134,9 @@ describe("PUT /api/zero/agents/:id", () => {
         displayName: "Old Agent",
         sound: "calm",
         customSkills: ["old-skill"],
+        modelProviderId: null,
+        selectedModel: "claude-sonnet-4-6",
+        preferPersonalProvider: true,
       },
       context.signal,
     );
@@ -165,9 +149,6 @@ describe("PUT /api/zero/agents/:id", () => {
         body: {
           displayName: "Updated Agent",
           customSkills: ["research-notes"],
-          modelProviderId: provider.id,
-          selectedModel: "claude-sonnet-4-6",
-          preferPersonalProvider: true,
         },
       }),
       [200],
@@ -179,9 +160,9 @@ describe("PUT /api/zero/agents/:id", () => {
       displayName: "Updated Agent",
       sound: "calm",
       customSkills: ["research-notes"],
-      modelProviderId: provider.id,
-      selectedModel: "claude-sonnet-4-6",
-      preferPersonalProvider: true,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
       visibility: "public",
     });
 
@@ -253,7 +234,7 @@ describe("PUT /api/zero/agents/:id", () => {
     });
   });
 
-  it("returns 400 when modelProviderId is outside the organization", async () => {
+  it("clears stale model fields on PUT", async () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),
     );
@@ -262,26 +243,27 @@ describe("PUT /api/zero/agents/:id", () => {
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
+        modelProviderId: null,
+        selectedModel: "claude-sonnet-4-6",
+        preferPersonalProvider: true,
       },
       context.signal,
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    const modelProviderId = randomUUID();
 
     const response = await accept(
       agentsClient().update({
         params: { id: agent.agentId },
         headers: authHeaders(),
-        body: { modelProviderId, selectedModel: "claude-sonnet-4-6" },
+        body: { displayName: "Cleared Agent" },
       }),
-      [400],
+      [200],
     );
 
-    expect(response.body).toStrictEqual({
-      error: {
-        message: `Model provider "${modelProviderId}" not found in this org`,
-        code: "BAD_REQUEST",
-      },
+    expect(response.body).toMatchObject({
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
     });
   });
 
@@ -374,11 +356,6 @@ describe("PATCH /api/zero/agents/:id", () => {
   const track = createFixtureTracker<SkillsFixture>((fixture) => {
     return store.set(deleteSkillsForFixture$, fixture, context.signal);
   });
-  const trackModelProviders = createFixtureTracker<OrgModelProviderFixture>(
-    (fixture) => {
-      return store.set(deleteOrgModelProviders$, fixture, context.signal);
-    },
-  );
 
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await accept(
@@ -451,7 +428,6 @@ describe("PATCH /api/zero/agents/:id", () => {
           displayName: "Updated Agent",
           description: "Updated description",
           avatarUrl: null,
-          preferPersonalProvider: true,
         },
       }),
       [200],
@@ -465,7 +441,7 @@ describe("PATCH /api/zero/agents/:id", () => {
       sound: "calm",
       avatarUrl: null,
       customSkills: ["existing-skill"],
-      preferPersonalProvider: true,
+      preferPersonalProvider: false,
     });
 
     const [compose] = await store
@@ -669,7 +645,7 @@ describe("PATCH /api/zero/agents/:id", () => {
     });
   });
 
-  it("returns 400 when modelProviderId is outside the organization", async () => {
+  it("clears stale model fields on PATCH", async () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),
     );
@@ -678,47 +654,42 @@ describe("PATCH /api/zero/agents/:id", () => {
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
+        modelProviderId: null,
+        selectedModel: "claude-sonnet-4-6",
+        preferPersonalProvider: true,
       },
       context.signal,
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    const modelProviderId = randomUUID();
 
     const response = await accept(
       agentsClient().updateMetadata({
         params: { id: agent.agentId },
         headers: authHeaders(),
-        body: { modelProviderId, selectedModel: "claude-sonnet-4-6" },
+        body: { displayName: "Cleared Agent" },
       }),
-      [400],
+      [200],
     );
 
-    expect(response.body).toStrictEqual({
-      error: {
-        message: `Model provider "${modelProviderId}" not found in this org`,
-        code: "BAD_REQUEST",
-      },
+    expect(response.body).toMatchObject({
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
     });
   });
 
-  it("returns 400 when the selected model is not available for the provider", async () => {
+  it("clears stale agent model fields on PATCH", async () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    await trackModelProviders(Promise.resolve({ orgId: fixture.orgId }));
-    const provider = await store.set(
-      seedOrgModelProvider$,
-      {
-        orgId: fixture.orgId,
-        type: "anthropic-api-key",
-      },
-      context.signal,
     );
     const agent = await store.set(
       seedAgentForInstructions$,
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
+        modelProviderId: null,
+        selectedModel: "claude-sonnet-4-6",
+        preferPersonalProvider: true,
       },
       context.signal,
     );
@@ -729,58 +700,16 @@ describe("PATCH /api/zero/agents/:id", () => {
         params: { id: agent.agentId },
         headers: authHeaders(),
         body: {
-          modelProviderId: provider.id,
-          selectedModel: "gpt-4-not-a-claude-model",
-        },
-      }),
-      [400],
-    );
-
-    expect(response.body.error.code).toBe("BAD_REQUEST");
-    expect(response.body.error.message).toContain("gpt-4-not-a-claude-model");
-    expect(response.body.error.message).toContain("not available");
-  });
-
-  it("updates model selection and preferPersonalProvider", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    await trackModelProviders(Promise.resolve({ orgId: fixture.orgId }));
-    const provider = await store.set(
-      seedOrgModelProvider$,
-      {
-        orgId: fixture.orgId,
-        type: "anthropic-api-key",
-      },
-      context.signal,
-    );
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      agentsClient().updateMetadata({
-        params: { id: agent.agentId },
-        headers: authHeaders(),
-        body: {
-          modelProviderId: provider.id,
-          selectedModel: "claude-sonnet-4-6",
-          preferPersonalProvider: true,
+          displayName: "Still no model",
         },
       }),
       [200],
     );
 
     expect(response.body).toMatchObject({
-      modelProviderId: provider.id,
-      selectedModel: "claude-sonnet-4-6",
-      preferPersonalProvider: true,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
     });
 
     const [row] = await store
@@ -793,9 +722,9 @@ describe("PATCH /api/zero/agents/:id", () => {
       .from(zeroAgents)
       .where(eq(zeroAgents.id, agent.agentId));
     expect(row).toStrictEqual({
-      modelProviderId: provider.id,
-      selectedModel: "claude-sonnet-4-6",
-      preferPersonalProvider: true,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
     });
   });
 });

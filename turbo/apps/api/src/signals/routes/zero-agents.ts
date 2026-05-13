@@ -1,10 +1,5 @@
 import { command, computed, type Computed } from "ccstate";
 import { and, count, eq, inArray } from "drizzle-orm";
-import {
-  allowsCustomModel,
-  getModels,
-  modelProviderTypeSchema,
-} from "@vm0/api-contracts/contracts/model-providers";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroAgentsByIdContract,
@@ -16,7 +11,6 @@ import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
@@ -28,7 +22,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import { conflict, notFound } from "../../lib/error";
 import {
   requireAdminPermission,
   requireAgentPermission,
@@ -59,9 +53,6 @@ interface AgentUpdateBody {
   readonly sound?: string;
   readonly avatarUrl?: string | null;
   readonly customSkills?: readonly string[];
-  readonly modelProviderId?: string | null;
-  readonly selectedModel?: string | null;
-  readonly preferPersonalProvider?: boolean;
   readonly visibility?: ZeroAgentVisibility;
 }
 
@@ -120,15 +111,9 @@ function buildAgentUpsertConflictSet(body: AgentUpdateBody, updatedAt: Date) {
     ...(body.customSkills !== undefined && {
       customSkills: [...body.customSkills],
     }),
-    ...(body.modelProviderId !== undefined && {
-      modelProviderId: body.modelProviderId,
-    }),
-    ...(body.selectedModel !== undefined && {
-      selectedModel: body.selectedModel,
-    }),
-    ...(body.preferPersonalProvider !== undefined && {
-      preferPersonalProvider: body.preferPersonalProvider,
-    }),
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
     ...(body.visibility !== undefined && { visibility: body.visibility }),
   };
 }
@@ -173,54 +158,6 @@ async function validateCustomSkills(
         `Custom skill '${missing}' not found in this organization. Create it with 'zero skill create' first.`,
       )
     : null;
-}
-
-async function validateModelSelection(
-  writeDb: Db,
-  orgId: string,
-  modelProviderId: string | null | undefined,
-  selectedModel: string | null | undefined,
-) {
-  if (!modelProviderId) {
-    return null;
-  }
-
-  const [provider] = await writeDb
-    .select({ type: modelProviders.type })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.id, modelProviderId),
-        eq(modelProviders.orgId, orgId),
-      ),
-    )
-    .limit(1);
-
-  if (!provider) {
-    return badRequestMessage(
-      `Model provider "${modelProviderId}" not found in this org`,
-    );
-  }
-
-  if (!selectedModel) {
-    return null;
-  }
-
-  const parsed = modelProviderTypeSchema.safeParse(provider.type);
-  if (!parsed.success) {
-    return badRequestMessage(`Unknown model provider type "${provider.type}"`);
-  }
-
-  if (allowsCustomModel(parsed.data)) {
-    return null;
-  }
-
-  const available = getModels(parsed.data) ?? [];
-  return available.includes(selectedModel)
-    ? null
-    : badRequestMessage(
-        `Model "${selectedModel}" is not available for provider type "${parsed.data}". Available: ${available.join(", ")}`,
-      );
 }
 
 function findAgentForUpdate(
@@ -429,9 +366,9 @@ function upsertZeroAgentAfterCompose(
       sound: args.body.sound ?? null,
       avatarUrl: args.body.avatarUrl ?? null,
       customSkills: [...args.customSkills],
-      modelProviderId: args.body.modelProviderId ?? null,
-      selectedModel: args.body.selectedModel ?? null,
-      preferPersonalProvider: args.body.preferPersonalProvider ?? false,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
       visibility: args.visibility,
     })
     .onConflictDoUpdate({
@@ -579,17 +516,6 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return visibilityError;
   }
 
-  const modelError = await validateModelSelection(
-    writeDb,
-    auth.orgId,
-    body.data.modelProviderId,
-    body.data.selectedModel,
-  );
-  signal.throwIfAborted();
-  if (modelError) {
-    return modelError;
-  }
-
   const customSkills = body.data.customSkills ?? existing.customSkills ?? [];
   const customSkillsError = await validateCustomSkillsForUpdate({
     writeDb,
@@ -686,17 +612,6 @@ const updateAgentMetadataInner$ = command(
       if (visibilityError) {
         return visibilityError;
       }
-    }
-
-    const modelError = await validateModelSelection(
-      writeDb,
-      auth.orgId,
-      body.data.modelProviderId,
-      body.data.selectedModel,
-    );
-    signal.throwIfAborted();
-    if (modelError) {
-      return modelError;
     }
 
     await writeDb

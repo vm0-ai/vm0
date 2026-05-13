@@ -17,6 +17,9 @@ interface ScheduleSeed {
   readonly enabled?: boolean;
   readonly retryStartedAt?: Date | null;
   readonly consecutiveFailures?: number;
+  readonly modelProviderId?: string | null;
+  readonly selectedModel?: string | null;
+  readonly preferPersonalProvider?: boolean;
 }
 
 interface SchedulesScenarioValues {
@@ -94,6 +97,15 @@ export const seedSchedulesScenario$ = command(
         }),
         ...(seed.consecutiveFailures !== undefined && {
           consecutiveFailures: seed.consecutiveFailures,
+        }),
+        ...(seed.modelProviderId !== undefined && {
+          modelProviderId: seed.modelProviderId,
+        }),
+        ...(seed.selectedModel !== undefined && {
+          selectedModel: seed.selectedModel,
+        }),
+        ...(seed.preferPersonalProvider !== undefined && {
+          preferPersonalProvider: seed.preferPersonalProvider,
         }),
       });
       signal.throwIfAborted();

@@ -23,13 +23,14 @@ describe("AgentPhone file context", () => {
 
   it("renders media as downloadable AgentPhone file blocks", async () => {
     const phoneHandle = uniquePhone();
+    const agentphoneMessageId = uniqueId("apmsg-media");
     const userLink = await insertTestAgentPhoneUserLink({
       phoneHandle,
       vm0UserId: uniqueId("user"),
       orgId: uniqueId("org"),
     });
     await insertTestAgentPhoneMessage({
-      agentphoneMessageId: "apmsg-media-1",
+      agentphoneMessageId,
       agentphoneUserLinkId: userLink.id,
       phoneHandle,
       fromNumber: phoneHandle,
@@ -47,7 +48,9 @@ describe("AgentPhone file context", () => {
     expect(contextResult.executionContext).toContain(
       "[AgentPhone file] photo.jpg (image/jpeg)",
     );
-    expect(contextResult.executionContext).toContain("[ID] apmsg-media-1");
+    expect(contextResult.executionContext).toContain(
+      `[ID] ${agentphoneMessageId}`,
+    );
     expect(contextResult.executionContext).not.toContain(
       "https://cdn.agentphone.test/files/photo.jpg",
     );
