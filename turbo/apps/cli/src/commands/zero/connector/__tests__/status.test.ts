@@ -107,7 +107,26 @@ describe("zero connector status command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("not connected");
+      expect(logCalls).toContain("[Connect github](");
+      expect(logCalls).toContain("/connectors/github/connect");
       expect(logCalls).not.toContain("Authorized:");
+      expect(logCalls).not.toContain("Diagnose it with");
+      expect(logCalls).not.toContain("zero doctor check-connector");
+    });
+
+    it("shows reconnect guidance when connector needs reconnect", async () => {
+      server.use(stubConnector({ ...connectedGithub, needsReconnect: true }));
+
+      await statusCommand.parseAsync(["node", "cli", "github"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("reconnect needed");
+      expect(logCalls).toContain(
+        "The github connector is connected but needs to be reconnected.",
+      );
+      expect(logCalls).toContain("[Reconnect github](");
+      expect(logCalls).toContain("/connectors");
+      expect(logCalls).not.toContain("zero doctor check-connector");
     });
   });
 
@@ -162,6 +181,7 @@ describe("zero connector status command", () => {
       );
       expect(logCalls).not.toContain("is not connected");
       expect(logCalls).not.toContain("[Connect github]");
+      expect(logCalls).not.toContain("zero doctor check-connector");
     });
 
     it("shows connect link when connector is not connected", async () => {
@@ -186,14 +206,15 @@ describe("zero connector status command", () => {
       expect(logCalls).toContain(
         `The github connector is not connected. Once connected, it will be authorized for agent maya (${AGENT_UUID}).`,
       );
-      expect(logCalls).toContain("[Connect github](");
+      expect(logCalls).toContain("Connect and authorize it at:");
       expect(logCalls).toContain(
         `/connectors/github/connect?agentId=${AGENT_UUID}`,
       );
       expect(logCalls).not.toContain("[Authorize github]");
+      expect(logCalls).not.toContain("zero doctor check-connector");
     });
 
-    it("shows connect and doctor guidance when connector is authorized but not connected", async () => {
+    it("shows connect guidance when connector is authorized but not connected", async () => {
       server.use(
         stubConnector(
           { error: { message: "Not found", code: "NOT_FOUND" } },
@@ -220,10 +241,34 @@ describe("zero connector status command", () => {
       expect(logCalls).toContain(
         `/connectors/github/connect?agentId=${AGENT_UUID}`,
       );
-      expect(logCalls).toContain(
-        "zero doctor check-connector --env-name GH_TOKEN",
-      );
       expect(logCalls).not.toContain("[Authorize github]");
+      expect(logCalls).not.toContain("zero doctor check-connector");
+    });
+
+    it("shows reconnect guidance when connector needs reconnect", async () => {
+      server.use(
+        stubConnector({ ...connectedGithub, needsReconnect: true }),
+        stubAgent(AGENT_UUID, "maya"),
+        stubUserConnectors(AGENT_UUID, ["github"]),
+      );
+
+      await statusCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--agent",
+        AGENT_UUID,
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("reconnect needed");
+      expect(logCalls).toContain(
+        `The github connector is connected but needs to be reconnected before agent maya (${AGENT_UUID}) can use it.`,
+      );
+      expect(logCalls).toContain("[Reconnect github](");
+      expect(logCalls).toContain("/connectors");
+      expect(logCalls).not.toContain("[Authorize github]");
+      expect(logCalls).not.toContain("zero doctor check-connector");
     });
 
     it("uses $ZERO_AGENT_ID when --agent flag is not provided", async () => {
