@@ -785,10 +785,16 @@ async fn heartbeat_consecutive_failures_fatal() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
 
-    // First heartbeat succeeds.
-    let success_mock = server.mock(|when, then| {
+    let mock = server.mock(|when, then| {
         when.method(POST).path("/api/webhooks/agent/heartbeat");
-        then.status(200);
+        let attempts = AtomicUsize::new(0);
+        then.respond_with(move |_req| {
+            if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                return http_status(200);
+            }
+
+            json_http_response(401, json!({"error": {"message": "Run expired"}}))
+        });
     });
 
     let shutdown = CancellationToken::new();
@@ -800,23 +806,6 @@ async fn heartbeat_consecutive_failures_fatal() {
             TEST_HEARTBEAT_INTERVAL,
         )
         .await
-    });
-
-    // Wait for first successful heartbeat.
-    wait_mock_calls(
-        &success_mock,
-        1,
-        MOCK_CALL_TIMEOUT,
-        "heartbeat_consecutive_failures_fatal initial heartbeat",
-    )
-    .await;
-
-    // Switch to 401 responses — simulates server invalidating the runId.
-    success_mock.delete_async().await;
-    let fail_mock = server.mock(|when, then| {
-        when.method(POST).path("/api/webhooks/agent/heartbeat");
-        then.status(401)
-            .json_body(json!({"error": {"message": "Run expired"}}));
     });
 
     // heartbeat_loop should exit after MAX_CONSECUTIVE_HEARTBEAT_FAILURES.
@@ -826,8 +815,8 @@ async fn heartbeat_consecutive_failures_fatal() {
         .expect("task should not panic");
 
     // Clean up mocks before assertions to avoid leaks on panic.
-    let fail_calls = fail_mock.calls_async().await;
-    fail_mock.delete_async().await;
+    let heartbeat_calls = mock.calls_async().await;
+    mock.delete_async().await;
     shutdown.cancel();
 
     assert!(result.is_err());
@@ -837,9 +826,9 @@ async fn heartbeat_consecutive_failures_fatal() {
         "error should mention consecutive failures: {err}"
     );
 
-    // 401 is a 4xx error → post_json returns immediately (no internal retries),
-    // so fail_mock should be called exactly MAX_CONSECUTIVE_HEARTBEAT_FAILURES times.
-    assert_eq!(fail_calls, 3);
+    // 401 is a 4xx error -> post_json returns immediately (no internal retries),
+    // so the sequence is one success followed by the fatal failure window.
+    assert_eq!(heartbeat_calls, 4);
 }
 
 #[tokio::test]
@@ -847,12 +836,13 @@ async fn heartbeat_recovery_resets_counter() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
 
-    // Sequence: success → 2 failures → success (reset)
-    // The loop should NOT exit because failures never reach 3 consecutive.
-
     let mock = server.mock(|when, then| {
         when.method(POST).path("/api/webhooks/agent/heartbeat");
-        then.status(200);
+        let attempts = AtomicUsize::new(0);
+        then.respond_with(move |_req| match attempts.fetch_add(1, Ordering::SeqCst) {
+            1 | 2 | 4 | 5 => json_http_response(401, json!({"error": {"message": "Run expired"}})),
+            _ => http_status(200),
+        });
     });
 
     let shutdown = CancellationToken::new();
@@ -866,53 +856,20 @@ async fn heartbeat_recovery_resets_counter() {
         .await
     });
 
-    // Wait for first successful heartbeat.
+    // Sequence: success -> 2 failures -> success -> 2 failures -> success.
+    // Without recovery resetting the failure counter, the second failure pair
+    // would reach the fatal threshold before call 7.
     wait_mock_calls(
         &mock,
-        1,
+        7,
         MOCK_CALL_TIMEOUT,
-        "heartbeat_recovery_resets_counter initial heartbeat",
-    )
-    .await;
-
-    // Switch to failures (2 consecutive — below threshold).
-    mock.delete_async().await;
-    let fail_mock = server.mock(|when, then| {
-        when.method(POST).path("/api/webhooks/agent/heartbeat");
-        then.status(401)
-            .json_body(json!({"error": {"message": "Run expired"}}));
-    });
-
-    // Wait for 2 failed heartbeats.
-    wait_mock_calls(
-        &fail_mock,
-        2,
-        MOCK_CALL_TIMEOUT,
-        "heartbeat_recovery_resets_counter failed heartbeats",
-    )
-    .await;
-
-    // Capture fail count before deleting (can't query after delete).
-    let fail_total = fail_mock.calls_async().await;
-
-    // Recover — switch back to success.  This should reset the counter.
-    fail_mock.delete_async().await;
-    let recovery_mock = server.mock(|when, then| {
-        when.method(POST).path("/api/webhooks/agent/heartbeat");
-        then.status(200);
-    });
-
-    // Wait for a successful heartbeat after recovery.
-    wait_mock_calls(
-        &recovery_mock,
-        1,
-        MOCK_CALL_TIMEOUT,
-        "heartbeat_recovery_resets_counter recovery heartbeat",
+        "heartbeat_recovery_resets_counter full sequence",
     )
     .await;
 
     // Clean up mocks before assertions.
-    recovery_mock.delete_async().await;
+    let heartbeat_calls = mock.calls_async().await;
+    mock.delete_async().await;
 
     // The loop should still be running — shut it down gracefully.
     shutdown.cancel();
@@ -925,8 +882,7 @@ async fn heartbeat_recovery_resets_counter() {
         result.is_ok(),
         "heartbeat_loop should exit Ok after shutdown, not Err"
     );
-    // Exactly 2 failures before recovery (401 = no internal retry).
-    assert_eq!(fail_total, 2);
+    assert!(heartbeat_calls >= 7);
 }
 
 // =========================================================================
