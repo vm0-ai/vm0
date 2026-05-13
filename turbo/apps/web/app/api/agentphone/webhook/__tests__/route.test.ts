@@ -412,6 +412,41 @@ describe("POST /api/agentphone/webhook", () => {
     expect(runs).toHaveLength(0);
   });
 
+  it("does not send iMessage typing for slash commands", async () => {
+    const phone = uniquePhone();
+    const user = await context.setupUser();
+    await insertTestAgentPhoneUserLink({
+      phoneHandle: phone,
+      vm0UserId: user.userId,
+      orgId: user.orgId,
+    });
+    const sendMessage = agentPhoneSendMessage();
+    const typing = agentPhoneTypingIndicator();
+    server.use(sendMessage.handler, typing.handler);
+
+    const response = await POST(
+      createWebhookRequest(
+        createWebhookPayload({
+          channel: "imessage",
+          from: phone,
+          message: "/help",
+          messageId: uniqueId("msg-help-imessage"),
+        }),
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    await context.mocks.flushAfter();
+
+    expect(sendMessage.calls[0]?.body).toContain("/connect");
+    expect(typing.mocked).not.toHaveBeenCalled();
+    const runs = await findTestRunsByUserAndPromptContaining(
+      user.userId,
+      "/help",
+    );
+    expect(runs).toHaveLength(0);
+  });
+
   it("handles /model by updating the user's model preference", async () => {
     const phone = uniquePhone();
     const user = await context.setupUser();

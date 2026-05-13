@@ -279,6 +279,8 @@ export async function handleAgentPhoneMessage(
     return;
   }
 
+  await refreshTypingIfSupported(event);
+
   const session = await lookupAgentPhoneThreadSession(userLink.id);
   let existingSessionId = session.existingSessionId;
   let lastProcessedMessageId = session.lastProcessedMessageId;
@@ -323,8 +325,6 @@ export async function handleAgentPhoneMessage(
     event.messageId,
     event.mediaUrl,
   );
-
-  await refreshTypingIfSupported(event);
 
   const { status, response, runId } = await runAgentForAgentPhone({
     agentId: agent.agentId,
