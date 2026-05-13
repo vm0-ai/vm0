@@ -956,7 +956,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("missing.sock");
         let client = ApiClient::new(&path);
-        let result = client.wait_for_ready(Duration::from_millis(50)).await;
+        let result = client.wait_for_ready(Duration::ZERO).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("timed out"), "got: {err}");
