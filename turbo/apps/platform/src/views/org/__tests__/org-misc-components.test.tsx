@@ -32,6 +32,7 @@ import {
 import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { orgOpenAddDialog$ } from "../../../signals/zero-page/settings/org-model-providers.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -341,24 +342,7 @@ async function openSetupPrompt() {
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
-  await waitFor(() => {
-    expect(
-      screen.getAllByRole("button").find((el) => {
-        return /add provider/i.test(el.textContent ?? "");
-      }),
-    ).toBeInTheDocument();
-  });
-  click(
-    screen.getAllByRole("button").find((el) => {
-      return /add provider/i.test(el.textContent ?? "");
-    })!,
-  );
-  await waitFor(() => {
-    expect(
-      screen.getByTestId("org-provider-card-claude-code-oauth-token"),
-    ).toBeInTheDocument();
-  });
-  click(screen.getByTestId("org-provider-card-claude-code-oauth-token"));
+  context.store.set(orgOpenAddDialog$, "claude-code-oauth-token");
   await waitFor(() => {
     expect(screen.getByText("claude setup-token")).toBeInTheDocument();
   });

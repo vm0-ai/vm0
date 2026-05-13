@@ -168,9 +168,9 @@ function buildAgentResponse(
       agent.unknownPermissionPolicies,
     ),
     customSkills: agent.customSkills,
-    modelProviderId: agent.modelProviderId,
-    selectedModel: agent.selectedModel,
-    preferPersonalProvider: agent.preferPersonalProvider,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
     visibility: agent.visibility,
   };
 }

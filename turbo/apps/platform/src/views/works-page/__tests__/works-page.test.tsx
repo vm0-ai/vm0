@@ -70,7 +70,9 @@ describe("zero works page - slack card connected state", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(screen.getByText("Connected")).toBeInTheDocument();
+      expect(screen.getByTestId("slack-connected-indicator")).toHaveTextContent(
+        "Connected (Test Workspace)",
+      );
     });
   });
 
@@ -127,7 +129,9 @@ describe("zero works page - slack card connected state", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(screen.getByText("Connected")).toBeInTheDocument();
+      expect(screen.getByTestId("slack-connected-indicator")).toHaveTextContent(
+        "Connected (Test Workspace)",
+      );
     });
 
     expect(screen.queryByText("Install to Slack")).not.toBeInTheDocument();

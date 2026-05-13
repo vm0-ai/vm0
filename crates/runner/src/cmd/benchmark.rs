@@ -3,7 +3,10 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use clap::Args;
-use sandbox::{ExecRequest, ExecResult, RuntimeProvider, SandboxConfig, SandboxFactory, SandboxId};
+use sandbox::{
+    EXEC_OUTPUT_LIMIT_7_MIB, ExecRequest, ExecResult, RuntimeProvider, SandboxConfig,
+    SandboxFactory, SandboxId,
+};
 use tracing::{info, warn};
 
 use crate::config;
@@ -286,6 +289,7 @@ async fn run_in_sandbox(
             timeout: Duration::from_secs(args.timeout_secs),
             env: &env_refs,
             sudo: args.sudo,
+            output_limits: EXEC_OUTPUT_LIMIT_7_MIB,
         })
         .await
         .map_err(Into::into);

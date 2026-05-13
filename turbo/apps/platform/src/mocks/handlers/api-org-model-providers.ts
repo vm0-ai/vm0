@@ -1,6 +1,5 @@
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import {
-  zeroModelProvidersDefaultContract,
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
 } from "@vm0/api-contracts/contracts/zero-model-providers";
@@ -46,9 +45,8 @@ export const apiOrgModelProvidersHandlers = [
           : "ANTHROPIC_API_KEY",
       authMethod: body.authMethod ?? null,
       secretNames: body.secrets ? Object.keys(body.secrets) : null,
-      isDefault:
-        mockOrgModelProviders.length === 0 || existing?.isDefault || false,
-      selectedModel: body.selectedModel ?? null,
+      isDefault: existing?.isDefault ?? false,
+      selectedModel: existing?.selectedModel ?? null,
       needsReconnect: existing?.needsReconnect ?? false,
       lastRefreshErrorCode: existing?.lastRefreshErrorCode ?? null,
       createdAt: existing?.createdAt ?? now,
@@ -65,31 +63,6 @@ export const apiOrgModelProvidersHandlers = [
 
     return respond(created ? 201 : 200, { provider, created });
   }),
-
-  // POST /api/zero/model-providers/:type/default - Set default provider
-  mockApi(
-    zeroModelProvidersDefaultContract.setDefault,
-    ({ params, respond }) => {
-      const existing = mockOrgModelProviders.find((p) => {
-        return p.type === params.type;
-      });
-
-      if (!existing) {
-        return respond(404, {
-          error: { message: "Model provider not found", code: "NOT_FOUND" },
-        });
-      }
-
-      mockOrgModelProviders = mockOrgModelProviders.map((p) => {
-        return {
-          ...p,
-          isDefault: p.type === params.type,
-        };
-      });
-
-      return respond(200, { ...existing, isDefault: true });
-    },
-  ),
 
   // DELETE /api/zero/model-providers/:type - Delete org model provider
   mockApi(zeroModelProvidersByTypeContract.delete, ({ params, respond }) => {

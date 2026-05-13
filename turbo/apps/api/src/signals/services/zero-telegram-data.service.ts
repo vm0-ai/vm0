@@ -34,16 +34,19 @@ import { userSecrets, userVariables } from "./zero-user-data.service";
 
 type TelegramBotListItem = TelegramBot;
 type TelegramInstallationRow = typeof telegramInstallations.$inferSelect;
+type TelegramConnectedUser = NonNullable<TelegramBot["connectedUser"]>;
 
 function officialUserLink(args: {
   readonly orgId: string;
   readonly userId: string;
-}): Computed<Promise<{ readonly telegramUserId: string } | null>> {
+}): Computed<Promise<TelegramConnectedUser | null>> {
   return computed(async (get) => {
     const db = get(db$);
     const [row] = await db
       .select({
         telegramUserId: telegramOfficialUserLinks.telegramUserId,
+        telegramUsername: telegramOfficialUserLinks.telegramUsername,
+        telegramDisplayName: telegramOfficialUserLinks.telegramDisplayName,
       })
       .from(telegramOfficialUserLinks)
       .where(
@@ -178,6 +181,7 @@ function buildOfficialTelegramBot(args: {
         : null,
       isOwner: false,
       isConnected: userLink !== null,
+      connectedUser: userLink,
       tokenStatus: config.botToken ? "valid" : "unknown",
       official: {
         configured: config.configured,
@@ -206,9 +210,15 @@ export function zeroTelegramBots(args: {
 
     const customBots: TelegramBotListItem[] = await Promise.all(
       installations.map(async (installation) => {
-        const tokenStatus = await resolveTokenStatus(
-          installation.encryptedBotToken,
-        );
+        const [tokenStatus, userLink] = await Promise.all([
+          resolveTokenStatus(installation.encryptedBotToken),
+          get(
+            telegramUserLink({
+              botId: installation.telegramBotId,
+              userId: args.userId,
+            }),
+          ),
+        ]);
 
         let agent: { id: string; name: string } | null = null;
         const [agentRow] = await db
@@ -228,6 +238,7 @@ export function zeroTelegramBots(args: {
           agent,
           isOwner: installation.ownerUserId === args.userId,
           isConnected: tokenStatus === "valid",
+          connectedUser: userLink,
           tokenStatus,
         };
       }),
@@ -241,11 +252,15 @@ export function zeroTelegramBots(args: {
 function telegramUserLink(args: {
   readonly botId: string;
   readonly userId: string;
-}): Computed<Promise<{ readonly telegramUserId: string } | null>> {
+}): Computed<Promise<TelegramConnectedUser | null>> {
   return computed(async (get) => {
     const db = get(db$);
     const [row] = await db
-      .select({ telegramUserId: telegramUserLinks.telegramUserId })
+      .select({
+        telegramUserId: telegramUserLinks.telegramUserId,
+        telegramUsername: telegramUserLinks.telegramUsername,
+        telegramDisplayName: telegramUserLinks.telegramDisplayName,
+      })
       .from(telegramUserLinks)
       .where(
         and(
@@ -349,6 +364,7 @@ function customTelegramBot(args: {
       agent: compose ? { id: compose.id, name: compose.name } : null,
       isOwner: args.installation.ownerUserId === args.userId,
       isConnected: userLink !== null,
+      connectedUser: userLink,
       tokenStatus,
     };
   });

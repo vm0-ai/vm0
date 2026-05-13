@@ -1,5 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { describe, it, expect, beforeEach } from "vitest";
 import { GET, POST } from "../route";
 import { DELETE } from "../[type]/route";
 import {
@@ -14,18 +13,6 @@ import {
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-
-vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@vm0/core/feature-switch")>();
-  return {
-    ...actual,
-    isFeatureEnabled: vi.fn().mockReturnValue(true),
-  };
-});
-
-const { isFeatureEnabled } = await import("@vm0/core/feature-switch");
-const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
 
 const context = testContext();
 
@@ -90,9 +77,6 @@ describe("Model-first personal OAuth model provider routes", () => {
     context.setupMocks();
     user = await context.setupUser();
     void user;
-    mockIsFeatureEnabled.mockImplementation(() => {
-      return true;
-    });
   });
 
   describe("no active organization", () => {
@@ -116,33 +100,7 @@ describe("Model-first personal OAuth model provider routes", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Feature switch gate — list/upsert return 404 when off
-  // ---------------------------------------------------------------------------
-
-  describe("feature switch off → gated endpoints 404", () => {
-    beforeEach(() => {
-      mockIsFeatureEnabled.mockImplementation((key) => {
-        return key !== FeatureSwitchKey.ModelFirstModelProvider;
-      });
-    });
-
-    it("GET returns 404 when model-first providers are off", async () => {
-      const response = await GET(createTestRequest(listUrl()));
-      expect(response.status).toBe(404);
-    });
-
-    it("POST upsert returns 404 when model-first providers are off", async () => {
-      const response = await createProvider("claude-code-oauth-token", "k");
-      expect(response.status).toBe(404);
-    });
-  });
-
-  it("allows OAuth personal providers when model-first is on", async () => {
-    mockIsFeatureEnabled.mockImplementation((key) => {
-      return key === FeatureSwitchKey.ModelFirstModelProvider;
-    });
-
+  it("allows supported model-first personal provider types", async () => {
     const listResponse = await GET(createTestRequest(listUrl()));
     expect(listResponse.status).toBe(200);
 
@@ -194,7 +152,7 @@ describe("Model-first personal OAuth model provider routes", () => {
       const data = await response.json();
       expect(data.provider.type).toBe("claude-code-oauth-token");
       expect(data.provider.framework).toBe("claude-code");
-      expect(data.provider.isDefault).toBe(true);
+      expect(data.provider.isDefault).toBe(false);
       expect(data.created).toBe(true);
     });
 
@@ -284,19 +242,6 @@ describe("Model-first personal OAuth model provider routes", () => {
       });
       const response = await DELETE(request);
       expect(response.status).toBe(404);
-    });
-
-    it("does not require personal provider feature switches", async () => {
-      await createProvider("claude-code-oauth-token", "sk-ant-test");
-      mockIsFeatureEnabled.mockImplementation((key) => {
-        return key !== FeatureSwitchKey.ModelFirstModelProvider;
-      });
-
-      const request = createTestRequest(deleteUrl("claude-code-oauth-token"), {
-        method: "DELETE",
-      });
-      const response = await DELETE(request);
-      expect(response.status).toBe(204);
     });
   });
 
@@ -425,14 +370,6 @@ describe("Model-first personal OAuth model provider routes", () => {
       const data = await response.json();
       expect(data.error.code).toBe("BAD_REQUEST");
     });
-
-    it("returns 404 when CodexOauthProvider feature switch is off", async () => {
-      mockIsFeatureEnabled.mockImplementation((key: FeatureSwitchKey) => {
-        return key !== FeatureSwitchKey.CodexOauthProvider;
-      });
-      const response = await pasteAuthJson(makeAuthJson());
-      expect(response.status).toBe(404);
-    });
   });
 });
 
@@ -446,9 +383,6 @@ describe("Model-first personal OAuth model provider routes", () => {
 describe("Model-first personal OAuth routes — cross-user privacy invariant", () => {
   beforeEach(() => {
     context.setupMocks();
-    mockIsFeatureEnabled.mockImplementation(() => {
-      return true;
-    });
   });
 
   async function setupTwoUserOrg(): Promise<{

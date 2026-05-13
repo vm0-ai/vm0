@@ -30,6 +30,9 @@ const API_READY_TIMEOUT: Duration = Duration::from_secs(5);
 /// Timeout for waiting for the guest to connect via vsock after start.
 const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Pre-warm should be quiet; keep diagnostics bounded and explicit.
+const PREWARM_EXEC_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
+
 pub const SNAPSHOT_COMPLETE_MARKER_CONTENT: &[u8] = b"snapshot-complete-v1\n";
 
 fn cow_destroy_retry_policy() -> DestroyRetryPolicy {
@@ -1996,7 +1999,16 @@ async fn run_with_firecracker(
     //      are fast. The snapshot captures memory + disk state, so caches
     //      populated here persist across restores.
     let prewarm_result = guest
-        .exec(inv.prewarm_script, 30_000, &[], false)
+        .exec_capture(vsock_host::CommandCaptureRequest {
+            command: inv.prewarm_script,
+            timeout_ms: 30_000,
+            env: &[],
+            sudo: false,
+            label: "snapshot-prewarm",
+            stdout_limit_bytes: PREWARM_EXEC_CAPTURE_LIMIT_BYTES,
+            stderr_limit_bytes: PREWARM_EXEC_CAPTURE_LIMIT_BYTES,
+            wait_timeout: Duration::from_millis(35_000),
+        })
         .await
         .map_err(|e| SnapshotError::Setup(format!("pre-warm exec: {e}")))?;
     if prewarm_result.exit_code != 0 {

@@ -94,9 +94,9 @@ const router = tsr.router(zeroAgentsMainContract, {
       sound: body.sound ?? null,
       avatarUrl: body.avatarUrl ?? null,
       customSkills,
-      modelProviderId: body.modelProviderId ?? null,
-      selectedModel: body.selectedModel ?? null,
-      preferPersonalProvider: body.preferPersonalProvider ?? false,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
       visibility,
     };
 
@@ -182,9 +182,6 @@ const router = tsr.router(zeroAgentsMainContract, {
         permissionPolicies: zeroAgents.permissionPolicies,
         unknownPermissionPolicies: zeroAgents.unknownPermissionPolicies,
         customSkills: zeroAgents.customSkills,
-        modelProviderId: zeroAgents.modelProviderId,
-        selectedModel: zeroAgents.selectedModel,
-        preferPersonalProvider: zeroAgents.preferPersonalProvider,
         visibility: zeroAgents.visibility,
       })
       .from(zeroAgents)
@@ -208,9 +205,9 @@ const router = tsr.router(zeroAgentsMainContract, {
             row.permissionPolicies,
             row.unknownPermissionPolicies,
           ),
-          modelProviderId: row.modelProviderId ?? null,
-          selectedModel: row.selectedModel ?? null,
-          preferPersonalProvider: row.preferPersonalProvider ?? false,
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
           visibility: row.visibility,
           customSkills: row.customSkills,
         };

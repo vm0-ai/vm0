@@ -1,5 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
+import type { ReactNode } from "react";
 import {
   useGet,
   useSet,
@@ -9,6 +10,7 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import slackIcon from "./components/settings/icons/slack.svg";
 import telegramIcon from "./components/settings/icons/telegram.svg";
+import imessageIcon from "./components/settings/icons/imessage.svg";
 import { getAvatarPresets } from "./zero-avatars.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import zeroAnimatedSrc from "./assets/zero-animated.webp";
@@ -27,10 +29,15 @@ import {
   toggleZeroConnector$,
   connectorSearch$,
   setConnectorSearch$,
+  onboardingIsUseCase$,
+  onboardingPromptDraft$,
+  setOnboardingPromptDraft$,
 } from "../../signals/zero-page/zero-onboarding.ts";
 import {
   onboardingDisplayName$,
   onboardingAddToSlack$,
+  onboardingBackendWillAuthorizeConnectors$,
+  onboardingContinueAgentPhone$,
   onboardingContinueWeb$,
   onboardingContinueTelegram$,
   onboardingEffectiveStep$,
@@ -41,9 +48,11 @@ import {
   onboardingShowBack$,
   onboardingShowNext$,
   onboardingNextDisabled$,
+  onboardingNextLabel$,
   onboardingStepBack$,
   onboardingStepNext$,
   onboardingIsAdmin$,
+  onboardingShowAgentPhone$,
   onboardingShowTelegram$,
 } from "../../signals/zero-page/zero-onboarding-actions.ts";
 import {
@@ -354,7 +363,43 @@ function ConnectStepContent() {
           })}
         </div>
       )}
+      <UseCasePromptComposer />
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Use case "Try It" composer — only renders when onboarding arrived via the
+// `?prompt=...&connector=...` deep link. A plain editable textarea so the
+// user can tweak the suggested prompt before clicking the footer "Try It".
+// No internal send button — the footer button is the single CTA.
+// ---------------------------------------------------------------------------
+
+function UseCasePromptComposer() {
+  const isUseCase = useGet(onboardingIsUseCase$);
+  const draft = useGet(onboardingPromptDraft$);
+  const setDraft = useSet(setOnboardingPromptDraft$);
+
+  if (!isUseCase) {
+    return null;
+  }
+
+  return (
+    <div data-testid="onboarding-prompt-composer" className="w-full mt-6">
+      <p className="text-xs font-medium text-muted-foreground mb-2">
+        Your first prompt
+      </p>
+      <textarea
+        data-testid="onboarding-prompt-input"
+        value={draft}
+        onChange={(e) => {
+          setDraft(e.target.value);
+        }}
+        autoFocus
+        rows={4}
+        className="w-full resize-none rounded-xl zero-border bg-background px-4 py-3 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      />
+    </div>
   );
 }
 
@@ -362,30 +407,81 @@ function ConnectStepContent() {
 // Where to work step content
 // ---------------------------------------------------------------------------
 
+interface WhereToWorkLoadable {
+  readonly state: string;
+  readonly error?: unknown;
+}
+
+function getWhereToWorkError(
+  loadables: readonly WhereToWorkLoadable[],
+): string | null {
+  const failed = loadables.find((loadable) => {
+    return loadable.state === "hasError";
+  });
+  return failed ? String(failed.error) : null;
+}
+
+function WhereToWorkOption({
+  icon,
+  title,
+  description,
+  disabled,
+  testId,
+  onClick,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  disabled: boolean;
+  testId?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      onClick={onClick}
+      disabled={disabled}
+      className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
+    >
+      {icon}
+      <div className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-foreground">
+          {title}
+        </span>
+        <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
+          {description}
+        </p>
+      </div>
+    </button>
+  );
+}
+
 function WhereToWorkContent() {
   const name = useLastResolved(onboardingDisplayName$) ?? "Zero";
   const showTelegram = useLastResolved(onboardingShowTelegram$) ?? false;
+  const showAgentPhone = useLastResolved(onboardingShowAgentPhone$) ?? false;
 
   const [slackLoadable, addToSlack] = useLoadableSet(onboardingAddToSlack$);
   const [webLoadable, continueWeb] = useLoadableSet(onboardingContinueWeb$);
   const [telegramLoadable, continueTelegram] = useLoadableSet(
     onboardingContinueTelegram$,
   );
+  const [agentPhoneLoadable, continueAgentPhone] = useLoadableSet(
+    onboardingContinueAgentPhone$,
+  );
 
   const pageSignal = useGet(pageSignal$);
-
-  const saving =
-    slackLoadable.state === "loading" ||
-    webLoadable.state === "loading" ||
-    telegramLoadable.state === "loading";
-  const error =
-    slackLoadable.state === "hasError"
-      ? String(slackLoadable.error)
-      : webLoadable.state === "hasError"
-        ? String(webLoadable.error)
-        : telegramLoadable.state === "hasError"
-          ? String(telegramLoadable.error)
-          : null;
+  const loadables = [
+    slackLoadable,
+    webLoadable,
+    telegramLoadable,
+    agentPhoneLoadable,
+  ];
+  const saving = loadables.some((loadable) => {
+    return loadable.state === "loading";
+  });
+  const error = getWhereToWorkError(loadables);
 
   return (
     <>
@@ -404,75 +500,67 @@ function WhereToWorkContent() {
         </div>
       )}
       <div className="flex flex-col gap-5 w-full">
-        <button
-          type="button"
+        <WhereToWorkOption
+          icon={
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted/40 overflow-hidden">
+              <img src={slackIcon} alt="" className="h-6 w-6 scale-[2.2]" />
+            </span>
+          }
+          title={`Add ${name || "Zero"} to Slack`}
+          description={`Work with ${name || "Zero"} in Slack where your team already collaborates.`}
+          disabled={saving}
           onClick={() => {
             detach(addToSlack(pageSignal), Reason.DomCallback);
           }}
-          disabled={saving}
-          className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
-        >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted/40 overflow-hidden">
-            <img src={slackIcon} alt="" className="h-6 w-6 scale-[2.2]" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold text-foreground">
-              Add {name || "Zero"} to Slack
-            </span>
-            <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
-              Work with {name || "Zero"} in Slack where your team already
-              collaborates.
-            </p>
-          </div>
-        </button>
+        />
         {showTelegram && (
-          <button
-            type="button"
+          <WhereToWorkOption
+            icon={
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden">
+                <img src={telegramIcon} alt="" className="h-7 w-7" />
+              </span>
+            }
+            title={`Add ${name || "Zero"} to Telegram`}
+            description={`Work with ${name || "Zero"} in Telegram where your team already collaborates.`}
+            disabled={saving}
             onClick={() => {
               detach(continueTelegram(pageSignal), Reason.DomCallback);
             }}
-            disabled={saving}
-            className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
-          >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden">
-              <img src={telegramIcon} alt="" className="h-7 w-7" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold text-foreground">
-                Add {name || "Zero"} to Telegram
-              </span>
-              <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
-                Work with {name || "Zero"} in Telegram where your team already
-                collaborates.
-              </p>
-            </div>
-          </button>
+          />
         )}
-        <button
-          type="button"
+        {showAgentPhone && (
+          <WhereToWorkOption
+            icon={
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden">
+                <img src={imessageIcon} alt="" className="h-7 w-7" />
+              </span>
+            }
+            title={`Add ${name || "Zero"} to AgentPhone`}
+            description={`Work with ${name || "Zero"} through text messages from your phone.`}
+            disabled={saving}
+            testId="onboarding-agentphone-option"
+            onClick={() => {
+              detach(continueAgentPhone(pageSignal), Reason.DomCallback);
+            }}
+          />
+        )}
+        <WhereToWorkOption
+          icon={
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden">
+              <AvatarSvgPreview
+                config={getAvatarPresets()[0]}
+                size={40}
+                className="rounded-lg"
+              />
+            </span>
+          }
+          title="Continue in web"
+          description={`Chat with ${name || "Zero"} in your browser with full access to workflows and settings.`}
+          disabled={saving}
           onClick={() => {
             detach(continueWeb(pageSignal), Reason.DomCallback);
           }}
-          disabled={saving}
-          className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
-        >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden">
-            <AvatarSvgPreview
-              config={getAvatarPresets()[0]}
-              size={40}
-              className="rounded-lg"
-            />
-          </span>
-          <div className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold text-foreground">
-              Continue in web
-            </span>
-            <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
-              Chat with {name || "Zero"} in your browser with full access to
-              workflows and settings.
-            </p>
-          </div>
-        </button>
+        />
       </div>
     </>
   );
@@ -737,6 +825,11 @@ function OrbitIllustration() {
 function OnboardingProgressBar() {
   const currentStep = useLastResolved(onboardingCurrentStepIndex$) ?? 0;
   const visibleSteps = useLastResolved(onboardingVisibleSteps$) ?? [];
+  // A single-step flow has nothing to track — hide the bar to avoid the
+  // visual "always 100%" stripe (use-case revisit by an onboarded user).
+  if (visibleSteps.length <= 1) {
+    return null;
+  }
   return (
     <ProgressBar totalSteps={visibleSteps.length} currentStep={currentStep} />
   );
@@ -746,6 +839,7 @@ function OnboardingFooterNav() {
   const showBack = useLastResolved(onboardingShowBack$) ?? false;
   const showNext = useLastResolved(onboardingShowNext$) ?? false;
   const nextDisabled = useLastResolved(onboardingNextDisabled$) ?? false;
+  const nextLabel = useLastResolved(onboardingNextLabel$) ?? "Next";
   const stepBack = useSet(onboardingStepBack$);
   const stepNext = useSet(onboardingStepNext$);
   const pageSignal = useGet(pageSignal$);
@@ -773,7 +867,7 @@ function OnboardingFooterNav() {
             className="rounded-lg min-w-[100px]"
             disabled={nextDisabled}
           >
-            Next
+            {nextLabel}
           </Button>
         )}
       </div>
@@ -1026,6 +1120,12 @@ export function ZeroOnboarding() {
   const selectedConnectorType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
   const clearPermissionDialog = useSet(setPermissionDialogType$);
+  // We suppress the post-connect permission dialog only when the backend will
+  // bulk-authorize selected connectors at the end of onboarding. Already-
+  // onboarded users entering via a use-case deep link need the dialog so each
+  // new connector is authorized to their existing default agent.
+  const suppressPermissionDialog =
+    useLastResolved(onboardingBackendWillAuthorizeConnectors$) ?? true;
 
   if (!effectiveStep) {
     return null;
@@ -1043,9 +1143,9 @@ export function ZeroOnboarding() {
             return setSelected(null);
           }}
           onSuccess={() => {
-            // During onboarding the backend authorizes connectors for the
-            // default agent at step 4, so suppress the permission dialog.
-            clearPermissionDialog(null);
+            if (suppressPermissionDialog) {
+              clearPermissionDialog(null);
+            }
           }}
         />
       )}

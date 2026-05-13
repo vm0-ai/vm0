@@ -638,6 +638,28 @@ export async function setTestRunSelectedModel(
 }
 
 /**
+ * Set model routing metadata on a zero_runs record.
+ *
+ * @why-db-direct These fields are stamped by dispatch/context building; route
+ * tests need to model legacy persisted metadata without invoking a runner.
+ */
+export async function setTestRunModelProviderMetadata(
+  runId: string,
+  metadata: {
+    modelProvider?: string | null;
+    modelProviderId?: string | null;
+    modelProviderCredentialScope?: string | null;
+    selectedModel?: string | null;
+  },
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(zeroRuns)
+    .set(metadata)
+    .where(eq(zeroRuns.id, runId));
+}
+
+/**
  * Set the sandbox-reuse-result outcome on an existing run.
  *
  * @why-db-direct Runner reports this field via the agent-complete webhook

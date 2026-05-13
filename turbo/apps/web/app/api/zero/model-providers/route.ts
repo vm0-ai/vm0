@@ -2,8 +2,6 @@ import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { hasAuthMethods } from "@vm0/api-contracts/contracts/model-providers";
 import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -20,7 +18,6 @@ import {
   handleCodexAuthJsonPaste,
   serializeUpsertedProvider,
 } from "../../../../src/lib/zero/model-provider/codex-auth-json-paste-handler";
-import { loadFeatureSwitchOverrides } from "../../../../src/lib/zero/user/feature-switches-service";
 import { logger } from "../../../../src/lib/shared/logger";
 import { isBadRequest } from "@vm0/api-services/errors";
 
@@ -82,36 +79,9 @@ const router = tsr.router(zeroModelProvidersMainContract, {
       );
     }
 
-    const { type, secret, authMethod, secrets, selectedModel } = body;
-
-    if (type === "openai-api-key") {
-      const overrides = await loadFeatureSwitchOverrides(
-        org.orgId,
-        authCtx.userId,
-      );
-      const codexBetaEnabled = isFeatureEnabled(FeatureSwitchKey.CodexBeta, {
-        userId: authCtx.userId,
-        orgId: org.orgId,
-        overrides,
-      });
-      if (!codexBetaEnabled) {
-        return createErrorResponse("NOT_FOUND", `Provider "${type}" not found`);
-      }
-    }
+    const { type, secret, authMethod, secrets } = body;
 
     if (type === "codex-oauth-token" && authMethod === "auth_json") {
-      const overrides = await loadFeatureSwitchOverrides(
-        org.orgId,
-        authCtx.userId,
-      );
-      const eligible = isFeatureEnabled(FeatureSwitchKey.CodexOauthProvider, {
-        orgId: org.orgId,
-        userId: authCtx.userId,
-        overrides,
-      });
-      if (!eligible) {
-        return createErrorResponse("NOT_FOUND", `Provider "${type}" not found`);
-      }
       const raw = secrets?.CODEX_AUTH_JSON;
       if (!raw) {
         return createErrorResponse(
@@ -123,19 +93,14 @@ const router = tsr.router(zeroModelProvidersMainContract, {
         scope: "org",
         orgId: org.orgId,
         rawAuthJson: raw,
-        selectedModel,
-        upsert: ({
-          authMethod: pasteAuthMethod,
-          secretValues,
-          selectedModel: model,
-          metadata,
-        }) => {
+        selectedModel: undefined,
+        upsert: ({ authMethod: pasteAuthMethod, secretValues, metadata }) => {
           return upsertOrgMultiAuthModelProvider(
             org.orgId,
             "codex-oauth-token",
             pasteAuthMethod,
             secretValues,
-            model,
+            undefined,
             metadata,
           );
         },
@@ -145,7 +110,6 @@ const router = tsr.router(zeroModelProvidersMainContract, {
     log.debug("upserting org model provider", {
       orgId: org.orgId,
       type,
-      selectedModel,
     });
 
     try {
@@ -156,7 +120,7 @@ const router = tsr.router(zeroModelProvidersMainContract, {
         const result = await upsertOrgNoSecretModelProvider(
           org.orgId,
           type,
-          selectedModel,
+          undefined,
         );
         provider = result.provider;
         created = result.created;
@@ -172,7 +136,7 @@ const router = tsr.router(zeroModelProvidersMainContract, {
           type,
           authMethod,
           secrets,
-          selectedModel,
+          undefined,
         );
         provider = result.provider;
         created = result.created;
@@ -187,7 +151,7 @@ const router = tsr.router(zeroModelProvidersMainContract, {
           org.orgId,
           type,
           secret,
-          selectedModel,
+          undefined,
         );
         provider = result.provider;
         created = result.created;

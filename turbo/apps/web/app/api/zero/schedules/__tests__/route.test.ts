@@ -160,7 +160,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
     expect(data.schedule.preferPersonalProvider).toBe(false);
   });
 
-  it("should round-trip preferPersonalProvider=true on deploy", async () => {
+  it("should ignore stale preferPersonalProvider=true on deploy", async () => {
     const response = await POST(
       createTestRequest(`http://localhost:3000/api/zero/schedules`, {
         method: "POST",
@@ -178,10 +178,10 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
     const data = await response.json();
 
     expect(response.status).toBe(201);
-    expect(data.schedule.preferPersonalProvider).toBe(true);
+    expect(data.schedule.preferPersonalProvider).toBe(false);
   });
 
-  it("should preserve preferPersonalProvider on update without field", async () => {
+  it("should clear stale preferPersonalProvider on update", async () => {
     await POST(
       createTestRequest(`http://localhost:3000/api/zero/schedules`, {
         method: "POST",
@@ -197,8 +197,6 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
       }),
     );
 
-    // Re-deploy without the field — partial-update semantics preserve the
-    // previously persisted value (mirrors agent PUT/PATCH behaviour).
     const response = await POST(
       createTestRequest(`http://localhost:3000/api/zero/schedules`, {
         method: "POST",
@@ -215,7 +213,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.schedule.preferPersonalProvider).toBe(true);
+    expect(data.schedule.preferPersonalProvider).toBe(false);
   });
 
   it("should clear preferPersonalProvider when explicitly set to false", async () => {

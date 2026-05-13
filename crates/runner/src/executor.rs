@@ -19,7 +19,10 @@ use std::panic::AssertUnwindSafe;
 use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
-use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory, SandboxId, SpawnOutputMode};
+use sandbox::{
+    CopyFileOptions, EXEC_OUTPUT_LIMIT_1_MIB, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox,
+    SandboxConfig, SandboxFactory, SandboxId, SpawnOutputMode, SpawnWatchRequest,
+};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -33,6 +36,8 @@ const EXIT_SIGKILL: i32 = 137;
 const EXIT_SIGNAL_KILL: i32 = 9;
 /// Default timeout for guest commands (5 minutes).
 const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
+const SMALL_GUEST_FILE_MAX_BYTES: u64 = 64 * 1024;
+const GUEST_LOG_COPY_MAX_BYTES: u64 = 64 * 1024 * 1024;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
@@ -551,17 +556,15 @@ async fn run_in_sandbox(
     // (host-side watchdog) so neither side outlives the other.
     let t = Instant::now();
     let handle = sandbox
-        .spawn_watch(
-            &ExecRequest {
-                cmd: &agent_cmd,
-                timeout: JOB_TIMEOUT,
-                env: &env_refs,
-                sudo: false,
-            },
-            SpawnOutputMode::Stream {
+        .spawn_watch(&SpawnWatchRequest {
+            cmd: &agent_cmd,
+            timeout: JOB_TIMEOUT,
+            env: &env_refs,
+            sudo: false,
+            output: SpawnOutputMode::Stream {
                 guest_log_path: None,
             },
-        )
+        })
         .await;
 
     let mut handle = match handle {
@@ -651,6 +654,7 @@ async fn run_in_sandbox(
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: true,
+            output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         };
         match sandbox.exec(&dmesg_req).await {
             Ok(dmesg) if dmesg_indicates_oom(&String::from_utf8_lossy(&dmesg.stdout)) => {
@@ -698,18 +702,12 @@ async fn run_in_sandbox(
 async fn read_guest_error_file(sandbox: &dyn Sandbox, run_id: RunId) -> Option<String> {
     // Mirror of guest-agent paths::checkpoint_error_file()
     let error_path = format!("/tmp/vm0-checkpoint-error-{run_id}");
-    let cat_cmd = format!("cat {error_path} 2>/dev/null");
     match sandbox
-        .exec(&ExecRequest {
-            cmd: &cat_cmd,
-            timeout: Duration::from_secs(5),
-            env: &[],
-            sudo: false,
-        })
+        .read_file(&error_path, SMALL_GUEST_FILE_MAX_BYTES)
         .await
     {
-        Ok(result) if result.exit_code == 0 && !result.stdout.is_empty() => {
-            let msg = String::from_utf8_lossy(&result.stdout).trim().to_string();
+        Ok(Some(bytes)) if !bytes.is_empty() => {
+            let msg = String::from_utf8_lossy(&bytes).trim().to_string();
             Some(msg).filter(|s| !s.is_empty())
         }
         _ => None,
@@ -726,18 +724,9 @@ async fn read_guest_error_file(sandbox: &dyn Sandbox, run_id: RunId) -> Option<S
 async fn read_guest_session_id(sandbox: &dyn Sandbox, run_id: RunId) -> Option<String> {
     // Mirror of guest-agent paths::session_id_file()
     let path = format!("/tmp/vm0-session-{run_id}.txt");
-    let cmd = format!("cat {path} 2>/dev/null");
-    match sandbox
-        .exec(&ExecRequest {
-            cmd: &cmd,
-            timeout: Duration::from_secs(5),
-            env: &[],
-            sudo: false,
-        })
-        .await
-    {
-        Ok(result) if result.exit_code == 0 && !result.stdout.is_empty() => {
-            let id = String::from_utf8_lossy(&result.stdout).trim().to_string();
+    match sandbox.read_file(&path, SMALL_GUEST_FILE_MAX_BYTES).await {
+        Ok(Some(bytes)) if !bytes.is_empty() => {
+            let id = String::from_utf8_lossy(&bytes).trim().to_string();
             Some(id).filter(|s| !s.is_empty())
         }
         _ => None,
@@ -860,27 +849,19 @@ async fn copy_guest_logs(sandbox: &dyn Sandbox, context: &ExecutionContext, log_
     ];
 
     for (guest_path, host_path) in &files {
-        let cat_cmd = format!("cat '{guest_path}'");
-        let result = sandbox
-            .exec(&ExecRequest {
-                cmd: &cat_cmd,
-                timeout: DEFAULT_EXEC_TIMEOUT,
-                env: &[],
-                sudo: false,
-            })
-            .await;
-
-        let output = match result {
-            Ok(r) if r.exit_code == 0 => r.stdout,
-            Ok(_) => continue,
-            Err(e) => {
-                warn!(run_id = %run_id, error = %e, path = %guest_path, "failed to read guest log");
-                continue;
-            }
-        };
-
-        if let Err(e) = tokio::fs::write(host_path, &output).await {
-            warn!(run_id = %run_id, error = %e, path = %host_path.display(), "failed to write guest log to host");
+        if let Err(e) = sandbox
+            .copy_file(
+                guest_path,
+                host_path,
+                CopyFileOptions {
+                    max_bytes: GUEST_LOG_COPY_MAX_BYTES,
+                    timeout: DEFAULT_EXEC_TIMEOUT,
+                    missing_ok: true,
+                },
+            )
+            .await
+        {
+            warn!(run_id = %run_id, error = %e, guest_path = %guest_path, host_path = %host_path.display(), "failed to copy guest log");
         }
     }
 }
@@ -903,6 +884,7 @@ pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
             sudo: true,
+            output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         })
         .await?;
     Ok(())
@@ -933,6 +915,7 @@ pub(crate) async fn reseed_guest_entropy(sandbox: &dyn Sandbox) -> RunnerResult<
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
             sudo: true,
+            output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         })
         .await?;
 
@@ -985,6 +968,7 @@ async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) 
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
             sudo: true,
+            output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         })
         .await
     {
@@ -1127,6 +1111,7 @@ async fn download_storages(
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &download_env,
             sudo: false,
+            output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         })
         .await?;
 
@@ -2492,11 +2477,11 @@ mod tests {
     async fn reseed_guest_entropy_fails_on_nonzero_exit() {
         let sandbox = MockSandbox::new("test");
         // guest-reseed exits with code 1 (e.g., ioctl failed).
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 1,
-            stdout: Vec::new(),
-            stderr: b"RNDADDENTROPY failed: Operation not permitted".to_vec(),
-        }));
+        sandbox.push_exec_result(Ok(ExecResult::new(
+            1,
+            Vec::new(),
+            b"RNDADDENTROPY failed: Operation not permitted".to_vec(),
+        )));
         let result = reseed_guest_entropy(&sandbox).await;
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
@@ -2544,11 +2529,7 @@ mod tests {
     #[tokio::test]
     async fn read_guest_error_file_returns_content() {
         let sandbox = MockSandbox::new("test");
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 0,
-            stdout: b"checkpoint error: disk full".to_vec(),
-            stderr: Vec::new(),
-        }));
+        sandbox.push_read_file_result(Ok(Some(b"checkpoint error: disk full".to_vec())));
         let msg = read_guest_error_file(&sandbox, RunId::nil()).await;
         assert_eq!(msg.as_deref(), Some("checkpoint error: disk full"));
     }
@@ -2556,11 +2537,7 @@ mod tests {
     #[tokio::test]
     async fn read_guest_error_file_returns_none_on_missing_file() {
         let sandbox = MockSandbox::new("test");
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 1, // cat fails — file not found
-            stdout: Vec::new(),
-            stderr: b"No such file".to_vec(),
-        }));
+        sandbox.push_read_file_result(Ok(None));
         let msg = read_guest_error_file(&sandbox, RunId::nil()).await;
         assert!(msg.is_none());
     }
@@ -2568,11 +2545,7 @@ mod tests {
     #[tokio::test]
     async fn read_guest_error_file_returns_none_on_empty_content() {
         let sandbox = MockSandbox::new("test");
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 0,
-            stdout: b"   \n  ".to_vec(), // whitespace-only
-            stderr: Vec::new(),
-        }));
+        sandbox.push_read_file_result(Ok(Some(b"   \n  ".to_vec())));
         let msg = read_guest_error_file(&sandbox, RunId::nil()).await;
         assert!(msg.is_none());
     }
@@ -2580,7 +2553,7 @@ mod tests {
     #[tokio::test]
     async fn read_guest_error_file_returns_none_on_exec_error() {
         let sandbox = MockSandbox::new("test");
-        sandbox.push_exec_result(Err(sandbox_exec_error("vsock timeout")));
+        sandbox.push_read_file_result(Err(sandbox_exec_error("vsock timeout")));
         let msg = read_guest_error_file(&sandbox, RunId::nil()).await;
         assert!(msg.is_none());
     }
@@ -2630,11 +2603,11 @@ mod tests {
     async fn download_storages_nonzero_exit_code() {
         let sandbox = MockSandbox::new("test");
         // write_file succeeds, but exec returns non-zero.
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 1,
-            stdout: Vec::new(),
-            stderr: b"download failed".to_vec(),
-        }));
+        sandbox.push_exec_result(Ok(ExecResult::new(
+            1,
+            Vec::new(),
+            b"download failed".to_vec(),
+        )));
         let ctx = minimal_context();
         let manifest = GuestDownloadManifest {
             storages: vec![],
@@ -2778,17 +2751,9 @@ mod tests {
         .await
         .unwrap();
 
-        // Queue two exec results: system log + metrics log
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 0,
-            stdout: b"system log line 1\nsystem log line 2\n".to_vec(),
-            stderr: Vec::new(),
-        }));
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 0,
-            stdout: b"{\"cpu\":0.5}\n".to_vec(),
-            stderr: Vec::new(),
-        }));
+        // Queue two guest-copy results: system log + metrics log.
+        sandbox.push_copy_file_result(Ok(b"system log line 1\nsystem log line 2\n".to_vec()));
+        sandbox.push_copy_file_result(Ok(b"{\"cpu\":0.5}\n".to_vec()));
 
         copy_guest_logs(&sandbox, &ctx, &log_paths).await;
 
@@ -2811,17 +2776,9 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let ctx = minimal_context();
 
-        // cat fails (file doesn't exist in guest)
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 1,
-            stdout: Vec::new(),
-            stderr: b"No such file".to_vec(),
-        }));
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 1,
-            stdout: Vec::new(),
-            stderr: Vec::new(),
-        }));
+        // Copy fails (file doesn't exist in guest).
+        sandbox.push_copy_file_result(Err(sandbox_exec_error("No such file")));
+        sandbox.push_copy_file_result(Err(sandbox_exec_error("No such file")));
 
         copy_guest_logs(&sandbox, &ctx, &log_paths).await;
 
@@ -2837,8 +2794,8 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let ctx = minimal_context();
 
-        sandbox.push_exec_result(Err(sandbox_exec_error("vsock down")));
-        sandbox.push_exec_result(Err(sandbox_exec_error("vsock down")));
+        sandbox.push_copy_file_result(Err(sandbox_exec_error("vsock down")));
+        sandbox.push_copy_file_result(Err(sandbox_exec_error("vsock down")));
 
         copy_guest_logs(&sandbox, &ctx, &log_paths).await;
 
@@ -3473,11 +3430,7 @@ mod tests {
 
         // First exec (fix_guest_clock) succeeds, second (reseed_guest_entropy) fails
         let sandbox = MockSandbox::new("reuse-reseed-fail");
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 0,
-            stdout: Vec::new(),
-            stderr: Vec::new(),
-        }));
+        sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
         sandbox.push_exec_result(Err(sandbox_exec_error("reseed timeout")));
 
         let cancel = tokio_util::sync::CancellationToken::new();

@@ -38,7 +38,6 @@ import {
   billingSubPage$,
   type OrgManageTab,
 } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
-import { modelFirstModelProviderEnabled$ } from "../../../../signals/external/feature-switch.ts";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -53,9 +52,9 @@ const TAB_META = {
     description: "Manage your workspace profile and settings.",
   },
   providers: {
-    title: "Model Providers",
+    title: "Models Configuration",
     description:
-      "Configure model providers for running tasks. You can also bring your own API key to use a custom provider.",
+      "Manage workspace models, set the default model, and choose how each model is routed.",
   },
   members: {
     title: "Members",
@@ -94,13 +93,13 @@ const BILLING_GROUP = {
   ],
 } as const satisfies SidebarGroup;
 
-function getConfigurationGroup(modelFirstEnabled: boolean): SidebarGroup {
+function getConfigurationGroup(): SidebarGroup {
   return {
     label: "Configuration",
     items: [
       {
         id: "providers",
-        label: modelFirstEnabled ? "Models" : "Model Providers",
+        label: "Models",
         icon: IconCpu as NavIcon,
       },
       {
@@ -158,23 +157,15 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
-  const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
 
   const sidebarGroups = [
     ...BASE_SIDEBAR_GROUPS.slice(0, 1),
-    ...(isAdmin ? [getConfigurationGroup(modelFirstEnabled)] : []),
+    ...(isAdmin ? [getConfigurationGroup()] : []),
     ...BASE_SIDEBAR_GROUPS.slice(1),
     ...(isAdmin ? [BILLING_GROUP] : []),
   ];
 
-  const meta =
-    activeTab === "providers" && modelFirstEnabled
-      ? {
-          title: "Models Configuration",
-          description:
-            "Manage workspace models, set the default model, and choose how each model is routed.",
-        }
-      : TAB_META[activeTab];
+  const meta = TAB_META[activeTab];
   const isBillingSubPage = useGet(billingSubPage$);
   const hideHeader = activeTab === "billing" && isBillingSubPage;
 

@@ -55,6 +55,9 @@ OPENAI_API_KEY=op://Development/openai/OPENAI_API_KEY
 # Optional: LLM API (OpenRouter)
 OPENROUTER_API_KEY=op://Development/openrouter/OPENROUTER_API_KEY
 
+# Optional: fal media generation
+FAL_KEY=op://Development/fal/FAL_KEY
+
 # Optional: Airtable OAuth Connector
 AIRTABLE_OAUTH_CLIENT_ID=op://Development/airtable/AIRTABLE_OAUTH_CLIENT_ID
 AIRTABLE_OAUTH_CLIENT_SECRET=op://Development/airtable/AIRTABLE_OAUTH_CLIENT_SECRET
@@ -165,6 +168,7 @@ ZERO_ONE_TIME_CAMPAIGN=op://Development/stripe/ZERO_ONE_TIME_CAMPAIGN
 # Optional: AgentPhone (Phone/iMessage Channel)
 AGENTPHONE_API_KEY=op://Development/agentphone/AGENTPHONE_API_KEY
 AGENTPHONE_API_BASE_URL=https://api.agentphone.to
+AGENTPHONE_AGENT_ID=op://Development/agentphone/AGENTPHONE_AGENT_ID
 AGENTPHONE_PHONE_NUMBER=op://Development/agentphone/AGENTPHONE_PHONE_NUMBER
 AGENTPHONE_WEBHOOK_SECRET=op://Development/agentphone/AGENTPHONE_WEBHOOK_SECRET
 

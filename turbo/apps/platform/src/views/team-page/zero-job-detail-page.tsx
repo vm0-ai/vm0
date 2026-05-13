@@ -825,9 +825,6 @@ function AgentTabContent({
   resolvedSound,
   isDefaultAgent,
   ownerId,
-  modelProviderId,
-  selectedModel,
-  preferPersonalProvider,
   visibility,
   canEditVisibility,
 }: {
@@ -839,9 +836,6 @@ function AgentTabContent({
   resolvedSound: Tone;
   isDefaultAgent: boolean;
   ownerId: string;
-  modelProviderId: string | null;
-  selectedModel: string | null;
-  preferPersonalProvider: boolean;
   visibility: "public" | "private";
   canEditVisibility: boolean;
 }) {
@@ -870,14 +864,11 @@ function AgentTabContent({
     case "profile": {
       return (
         <ZeroSettingsTab
-          key={`${displayName}\0${description}\0${resolvedSound}\0${avatarUrl}\0${modelProviderId ?? ""}\0${selectedModel ?? ""}\0${preferPersonalProvider ? "1" : "0"}\0${visibility}`}
+          key={`${displayName}\0${description}\0${resolvedSound}\0${avatarUrl}\0${visibility}`}
           displayName={displayName}
           description={description}
           sound={resolvedSound}
           avatarUrl={avatarUrl}
-          modelProviderId={modelProviderId}
-          selectedModel={selectedModel}
-          preferPersonalProvider={preferPersonalProvider}
           visibility={visibility}
           canEditVisibility={canEditVisibility}
           updateSettings$={updateAgentSettings$}
@@ -910,9 +901,6 @@ function useAgentFields() {
       avatarUrl: null,
       resolvedSound: resolveSound("professional"),
       ownerId: "",
-      modelProviderId: null,
-      selectedModel: null,
-      preferPersonalProvider: false,
       visibility: "public" as const,
     };
   }
@@ -924,9 +912,6 @@ function useAgentFields() {
     avatarUrl: source.avatarUrl,
     resolvedSound: resolveSound(source.sound ?? "professional"),
     ownerId: source.ownerId,
-    modelProviderId: source.modelProviderId,
-    selectedModel: source.selectedModel,
-    preferPersonalProvider: source.preferPersonalProvider,
     visibility: source.visibility ?? "public",
   };
 }
@@ -1000,9 +985,6 @@ export function ZeroJobDetailPage() {
           resolvedSound={fields.resolvedSound}
           isDefaultAgent={isDefaultAgent}
           ownerId={fields.ownerId}
-          modelProviderId={fields.modelProviderId}
-          selectedModel={fields.selectedModel}
-          preferPersonalProvider={fields.preferPersonalProvider}
           visibility={fields.visibility}
           canEditVisibility={isOwner}
         />

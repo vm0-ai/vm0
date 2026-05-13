@@ -54,6 +54,8 @@ pub enum ExecResponse {
         exit_code: i32,
         stdout: String,
         stderr: String,
+        stdout_truncated: bool,
+        stderr_truncated: bool,
     },
     Error {
         error: String,
@@ -66,6 +68,7 @@ pub enum ExecResponse {
 
 /// Maximum frame size: 64 MiB (generous for large stdout/stderr).
 const MAX_FRAME_SIZE: u32 = 64 * 1024 * 1024;
+const RUNNER_EXEC_CAPTURE_LIMIT_BYTES: u32 = 7 * 1024 * 1024;
 const CONTROL_SERVER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 const CONTROL_HANDLER_SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
 
@@ -416,13 +419,24 @@ async fn execute(
     let env: &[(&str, &str)] = &[];
 
     match vsock
-        .exec(&request.command, timeout_ms, env, request.sudo)
+        .exec_capture(vsock_host::CommandCaptureRequest {
+            command: &request.command,
+            timeout_ms,
+            env,
+            sudo: request.sudo,
+            label: "runner-exec",
+            stdout_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
+            stderr_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
+            wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
+        })
         .await
     {
         Ok(result) => ExecResponse::Success {
             exit_code: result.exit_code,
             stdout: BASE64.encode(&result.stdout),
             stderr: BASE64.encode(&result.stderr),
+            stdout_truncated: result.stdout_truncated,
+            stderr_truncated: result.stderr_truncated,
         },
         Err(e) => ExecResponse::Error {
             error: format!("exec failed: {e}"),
@@ -509,6 +523,8 @@ impl SandboxControl for FirecrackerControl {
                 exit_code,
                 stdout,
                 stderr,
+                stdout_truncated,
+                stderr_truncated,
             } => {
                 let stdout_bytes = BASE64
                     .decode(&stdout)
@@ -520,6 +536,8 @@ impl SandboxControl for FirecrackerControl {
                     exit_code,
                     stdout: stdout_bytes,
                     stderr: stderr_bytes,
+                    stdout_truncated,
+                    stderr_truncated,
                 })
             }
             ExecResponse::Error { error } => Err(SandboxControlError::Remote(error)),
@@ -586,7 +604,7 @@ fn resolve_control_socket_in(
 mod tests {
     use super::*;
     use tokio::sync::oneshot;
-    use vsock_proto::{Decoder, MSG_EXEC, MSG_PING, MSG_PONG, MSG_READY, RawMessage};
+    use vsock_proto::{Decoder, MSG_COMMAND_START, MSG_PING, MSG_PONG, MSG_READY, RawMessage};
 
     #[tokio::test]
     async fn exec_remote_empty_id() {
@@ -651,6 +669,8 @@ mod tests {
             exit_code: 0,
             stdout: BASE64.encode(b"hello\n"),
             stderr: BASE64.encode(b""),
+            stdout_truncated: false,
+            stderr_truncated: false,
         };
         let response_json = serde_json::to_vec(&response).unwrap();
         let decoded: ExecResponse = serde_json::from_slice(&response_json).unwrap();
@@ -659,10 +679,14 @@ mod tests {
                 exit_code,
                 stdout,
                 stderr,
+                stdout_truncated,
+                stderr_truncated,
             } => {
                 assert_eq!(exit_code, 0);
                 assert_eq!(BASE64.decode(stdout).unwrap(), b"hello\n");
                 assert_eq!(BASE64.decode(stderr).unwrap(), b"");
+                assert!(!stdout_truncated);
+                assert!(!stderr_truncated);
             }
             ExecResponse::Error { .. } => panic!("expected success"),
         }
@@ -950,7 +974,7 @@ mod tests {
             }
             let messages = decoder.decode(&buf[..n]).unwrap();
             for message in messages {
-                if message.msg_type == MSG_EXEC {
+                if message.msg_type == MSG_COMMAND_START {
                     if let Some(tx) = exec_seen.take() {
                         let _ = tx.send(());
                     }
@@ -986,6 +1010,8 @@ mod tests {
             exit_code: 0,
             stdout: BASE64.encode(b"output\n"),
             stderr: BASE64.encode(b""),
+            stdout_truncated: false,
+            stderr_truncated: false,
         };
         let json = serde_json::to_value(&resp).unwrap();
         // Untagged enum: no "type" field, just the fields directly

@@ -67,8 +67,8 @@ export const orgModelPolicies = pgTable(
         sql`credential_scope <> 'member' OR model_provider_id IS NULL`,
       ),
       check(
-        "chk_org_model_policies_org_scope_provider_id",
-        sql`credential_scope <> 'org' OR default_provider_type = 'vm0' OR model_provider_id IS NOT NULL`,
+        "chk_org_model_policies_builtin_route_no_provider_id",
+        sql`default_provider_type <> 'vm0' OR model_provider_id IS NULL`,
       ),
       check(
         "chk_org_model_policies_member_scope_oauth_provider",

@@ -19,8 +19,6 @@ interface RunAgentParams {
   threadContext: string;
   userInfoExtras?: UserInfoOptions;
   userId: string;
-  modelProviderId: string | null;
-  selectedModel: string | null;
   botUserId: string;
   channelId?: string;
   channelType?: "channel" | "dm" | "group_dm";
@@ -56,8 +54,8 @@ export async function runAgentForSlackOrg(
   const logContext: LogContext = { composeId, agentName, userId };
 
   try {
-    const result = await createZeroRun({
-      ...adaptSlackTrigger({
+    const result = await createZeroRun(
+      adaptSlackTrigger({
         userId: params.userId,
         agentId: params.agentId,
         sessionId: params.sessionId,
@@ -71,9 +69,7 @@ export async function runAgentForSlackOrg(
         callbackContext: params.callbackContext,
         apiStartTime: params.apiStartTime,
       }),
-      modelProviderId: params.modelProviderId ?? undefined,
-      selectedModelOverride: params.selectedModel ?? undefined,
-    });
+    );
 
     const status = result.status === "queued" ? "queued" : "accepted";
     log.debug(`Run ${result.runId} ${status} for Slack org agent ${agentName}`);

@@ -407,7 +407,13 @@ pub async fn run_start(
         std::fs::create_dir_all(&group_dir).map_err(|e| {
             RunnerError::Config(format!("create group dir {}: {e}", group_dir.display()))
         })?;
-        let provider = LocalProvider::new(group_dir, cancel.clone(), Arc::clone(&cancel_tokens));
+        let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
+        let provider = LocalProvider::new(
+            group_dir,
+            profiles,
+            cancel.clone(),
+            Arc::clone(&cancel_tokens),
+        );
         (provider, group)
     } else {
         let group_name = group.clone();
@@ -1004,11 +1010,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             // The future is pinned outside the loop so heartbeat/cleanup
             // ticks don't cancel and restart its internal poll timer. See #8747.
             discovered = &mut discover_fut, if can_discover => {
-                let Some((run_id, profile_name)) = discovered else { break };
+                let Some(candidate) = discovered else { break };
                 // Future completed — create a new one for the next discovery.
                 discover_fut = Box::pin(provider.discover());
                 handle_discovered_job(
-                    DiscoveredJob { run_id, profile_name },
+                    DiscoveredJob { candidate },
                     DiscoveredJobContext {
                         profiles: &profiles,
                         factories: &factories,

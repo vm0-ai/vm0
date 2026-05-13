@@ -28,7 +28,6 @@ import {
 } from "../../../mocks/handlers/api-org-model-providers.ts";
 import { resetMockOrgModelPolicies } from "../../../mocks/handlers/api-org-model-policies.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -92,106 +91,9 @@ describe("model-provider-picker - display with null value", () => {
     resetMockOrgModelPolicies();
   });
 
-  // MPKR-D-001: When value is null and default provider has a selectedModel,
-  // the trigger must show that model's display name, not blank or placeholder.
-  it("shows default provider selectedModel display name when value is null (MPKR-D-001)", async () => {
+  it("does not render the legacy agent provider picker", async () => {
     setupMockAgent();
     setMockFeatureSwitches({});
-    setMockOrgModelProviders([
-      {
-        id: "00000000-0000-4000-a000-000000000001",
-        type: "anthropic-api-key",
-        framework: "claude-code",
-        secretName: "ANTHROPIC_API_KEY",
-        authMethod: null,
-        secretNames: null,
-        isDefault: true,
-        selectedModel: "claude-opus-4-6",
-        needsReconnect: false,
-        lastRefreshErrorCode: null,
-        createdAt: "2024-01-01T00:00:00Z",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-    ]);
-
-    await openProfileTab();
-
-    await waitFor(() => {
-      // The trigger aria-label should reflect the default model, not the placeholder
-      expect(
-        screen.getByRole("combobox", { name: "Claude Opus 4.6" }),
-      ).toBeInTheDocument();
-    });
-  });
-
-  // MPKR-D-002: When value is null and default provider has selectedModel=null,
-  // fall back to getDefaultModel for the provider type (claude-sonnet-4-6 for anthropic-api-key).
-  it("falls back to provider type default model when selectedModel is null (MPKR-D-002)", async () => {
-    setupMockAgent();
-    setMockFeatureSwitches({});
-    setMockOrgModelProviders([
-      {
-        id: "00000000-0000-4000-a000-000000000002",
-        type: "anthropic-api-key",
-        framework: "claude-code",
-        secretName: "ANTHROPIC_API_KEY",
-        authMethod: null,
-        secretNames: null,
-        isDefault: true,
-        selectedModel: null,
-        needsReconnect: false,
-        lastRefreshErrorCode: null,
-        createdAt: "2024-01-01T00:00:00Z",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-    ]);
-
-    await openProfileTab();
-
-    await waitFor(() => {
-      // anthropic-api-key defaultModel is "claude-sonnet-4-6" → "Claude Sonnet 4.6"
-      expect(
-        screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
-      ).toBeInTheDocument();
-    });
-  });
-
-  // MPKR-D-003: When value is null and no provider is marked as default,
-  // the trigger must show the placeholder text.
-  it("shows placeholder when no default provider exists (MPKR-D-003)", async () => {
-    setupMockAgent();
-    setMockFeatureSwitches({});
-    setMockOrgModelProviders([
-      {
-        id: "00000000-0000-4000-a000-000000000003",
-        type: "anthropic-api-key",
-        framework: "claude-code",
-        secretName: "ANTHROPIC_API_KEY",
-        authMethod: null,
-        secretNames: null,
-        isDefault: false,
-        selectedModel: "claude-opus-4-6",
-        needsReconnect: false,
-        lastRefreshErrorCode: null,
-        createdAt: "2024-01-01T00:00:00Z",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-    ]);
-
-    await openProfileTab();
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("combobox", { name: "Inherit from org default" }),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("does not render the agent model picker when model-first is enabled", async () => {
-    setupMockAgent();
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
     setMockOrgModelProviders([]);
 
     await openProfileTab();

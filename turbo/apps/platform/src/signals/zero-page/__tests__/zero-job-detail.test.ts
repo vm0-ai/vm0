@@ -692,16 +692,12 @@ describe("zero-job-detail signals", () => {
     });
   });
 
-  describe("agentDetail$ model provider fields", () => {
-    it("should expose modelProviderId and selectedModel from the agent response", async () => {
+  describe("agentDetail$ retired model provider fields", () => {
+    it("should expose retired model fields as null from the agent response", async () => {
       setMockSchedules([]);
       server.use(
         mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
-          return respond(200, {
-            ...mockAgentResponse(),
-            modelProviderId: "a1111111-1111-4111-a111-111111111111",
-            selectedModel: "claude-opus-4-7",
-          });
+          return respond(200, mockAgentResponse());
         }),
         mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
           return respond(200, mockInstructions());
@@ -712,13 +708,8 @@ describe("zero-job-detail signals", () => {
       context.store.set(setActiveAgent$, "my-agent");
       const detail = await context.store.get(agentDetail$);
 
-      // Regression: the AgentDetail type must preserve these fields so the
-      // profile tab can render the saved selection instead of "from org
-      // default" after a page refresh.
-      expect(detail?.modelProviderId).toBe(
-        "a1111111-1111-4111-a111-111111111111",
-      );
-      expect(detail?.selectedModel).toBe("claude-opus-4-7");
+      expect(detail?.modelProviderId).toBeNull();
+      expect(detail?.selectedModel).toBeNull();
     });
   });
 

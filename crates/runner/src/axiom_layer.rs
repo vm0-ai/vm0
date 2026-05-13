@@ -243,7 +243,7 @@ async fn flush(client: &Client, ingest_url: &str, token: &str, batch: &mut Vec<V
     if batch.is_empty() {
         return;
     }
-    let drained: Vec<Value> = std::mem::take(batch);
+    let drained = std::mem::replace(batch, Vec::with_capacity(BATCH_SIZE));
     match client
         .post(ingest_url)
         .bearer_auth(token)

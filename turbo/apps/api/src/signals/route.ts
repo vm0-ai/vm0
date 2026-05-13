@@ -29,6 +29,13 @@ import { generateImageRoutes } from "./routes/generate-image";
 import { apiHealth$ } from "./routes/health";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
+import { internalCallbacksAgentRoutes } from "./routes/internal-callbacks-agent";
+import { internalCallbacksChatRoutes } from "./routes/internal-callbacks-chat";
+import { internalCallbacksGithubIssuesRoutes } from "./routes/internal-callbacks-github-issues";
+import { internalCallbacksScheduleRoutes } from "./routes/internal-callbacks-schedule";
+import { internalCallbacksSlackOrgRoutes } from "./routes/internal-callbacks-slack-org";
+import { internalCallbacksTelegramRoutes } from "./routes/internal-callbacks-telegram";
+import { internalCallbacksVoiceChatRoutes } from "./routes/internal-callbacks-voice-chat";
 import { internalEventConsumerAxiomRoutes } from "./routes/internal-event-consumers-axiom";
 import { internalEventConsumerChatAssistantRoutes } from "./routes/internal-event-consumers-chat-assistant";
 import { internalEventConsumerTelegramTypingRoutes } from "./routes/internal-event-consumers-telegram-typing";
@@ -38,6 +45,10 @@ import { modelStatsRoutes } from "./routes/model-stats";
 import { runnersRoutes } from "./routes/runners";
 import { usageRoutes } from "./routes/usage";
 import { userExportRoutes } from "./routes/user-export";
+import { vercelSandboxSmokeRoutes } from "./routes/vercel-sandbox-smoke";
+import { webhooksClerkRoutes } from "./routes/webhooks-clerk";
+import { webhooksGithubRoutes } from "./routes/webhooks-github";
+import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
 import { zeroAgentsRoutes } from "./routes/zero-agents";
 import { zeroApiKeysRoutes } from "./routes/zero-api-keys";
@@ -49,14 +60,18 @@ import { zeroBillingPortalRoutes } from "./routes/zero-billing-portal";
 import { zeroBillingRedeemRoutes } from "./routes/zero-billing-redeem";
 import { zeroBillingStatusRoutes } from "./routes/zero-billing-status";
 import { zeroChatThreadRoutes } from "./routes/zero-chat-threads";
+import { zeroChatMessagesRoutes } from "./routes/zero-chat-messages";
 import { zeroComposesRoutes } from "./routes/zero-composes";
 import { zeroComputerUseRoutes } from "./routes/zero-computer-use";
 import { zeroConnectorsRoutes } from "./routes/zero-connectors";
 import { zeroCustomConnectorsRoutes } from "./routes/zero-custom-connectors";
 import { zeroDefaultAgentRoutes } from "./routes/zero-default-agent";
 import { zeroDeveloperSupportRoutes } from "./routes/zero-developer-support";
+import { zeroEmailCallbackRoutes } from "./routes/zero-email-callbacks";
+import { zeroEmailInboundRoutes } from "./routes/zero-email-inbound";
 import { zeroFeatureSwitchesRoutes } from "./routes/zero-feature-switches";
 import { zeroInsightsRoutes } from "./routes/zero-insights";
+import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
 import { zeroLogsRoutes } from "./routes/zero-logs";
 import { zeroMemberCreditCapRoutes } from "./routes/zero-member-credit-cap";
 import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
@@ -89,6 +104,7 @@ import { zeroSecretsRoutes } from "./routes/zero-secrets";
 import { zeroSkillsRoutes } from "./routes/zero-skills";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
 import { zeroIntegrationsChatMessageRoutes } from "./routes/zero-integrations-chat-message";
+import { zeroIntegrationsAgentPhoneRoutes } from "./routes/zero-integrations-agentphone";
 import { zeroIntegrationsSlackRoutes } from "./routes/zero-integrations-slack";
 import { zeroIntegrationsSlackMessageRoutes } from "./routes/zero-integrations-slack-message";
 import { zeroIntegrationsSlackUploadCompleteRoutes } from "./routes/zero-integrations-slack-upload-complete";
@@ -99,7 +115,10 @@ import { zeroIntegrationsTelegramUploadCompleteRoutes } from "./routes/zero-inte
 import { zeroIntegrationsTelegramUploadInitRoutes } from "./routes/zero-integrations-telegram-upload-init";
 import { zeroSlackChannelsRoutes } from "./routes/zero-slack-channels";
 import { zeroSlackBrowserConnectRoutes } from "./routes/zero-slack-browser-connect";
+import { zeroSlackCommandsRoutes } from "./routes/zero-slack-commands";
 import { zeroSlackConnectRoutes } from "./routes/zero-slack-connect";
+import { zeroSlackEventsRoutes } from "./routes/zero-slack-events";
+import { zeroSlackInteractiveRoutes } from "./routes/zero-slack-interactive";
 import { zeroSlackOauthRoutes } from "./routes/zero-slack-oauth";
 import { zeroTeamRoutes } from "./routes/zero-team";
 import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
@@ -114,6 +133,7 @@ import { zeroVoiceIoQuotaRoutes } from "./routes/zero-voice-io-quota";
 import { zeroVoiceIoSpeechRoutes } from "./routes/zero-voice-io-speech";
 import { zeroVoiceIoSttRoutes } from "./routes/zero-voice-io-stt";
 import { zeroVoiceIoTtsRoutes } from "./routes/zero-voice-io-tts";
+import { zeroVideoIoGenerateRoutes } from "./routes/zero-video-io-generate";
 import { zeroWebDownloadRoutes } from "./routes/zero-web-download";
 import { storagesCommitRoutes } from "./routes/storages-commit";
 import { storagesDownloadRoutes } from "./routes/storages-download";
@@ -145,6 +165,13 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cliAuthTestRoutes,
   ...healthAuthProbeRoutes,
   ...githubOauthRoutes,
+  ...internalCallbacksAgentRoutes,
+  ...internalCallbacksChatRoutes,
+  ...internalCallbacksGithubIssuesRoutes,
+  ...internalCallbacksScheduleRoutes,
+  ...internalCallbacksSlackOrgRoutes,
+  ...internalCallbacksTelegramRoutes,
+  ...internalCallbacksVoiceChatRoutes,
   ...internalEventConsumerAxiomRoutes,
   ...internalEventConsumerChatAssistantRoutes,
   ...internalEventConsumerTelegramTypingRoutes,
@@ -152,6 +179,10 @@ export const ROUTES: readonly RouteEntry[] = [
   ...logsSearchRoutes,
   ...usageRoutes,
   ...userExportRoutes,
+  ...vercelSandboxSmokeRoutes,
+  ...webhooksClerkRoutes,
+  ...webhooksGithubRoutes,
+  ...webhooksStripeRoutes,
   ...agentCheckpointsRoutes,
   ...agentComposesReadRoutes,
   ...agentComposesByIdRoutes,
@@ -182,14 +213,19 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroBillingRedeemRoutes,
   ...zeroBillingStatusRoutes,
   ...zeroChatThreadRoutes,
+  ...zeroChatMessagesRoutes,
   ...zeroComposesRoutes,
   ...zeroComputerUseRoutes,
   ...zeroConnectorsRoutes,
   ...zeroCustomConnectorsRoutes,
   ...zeroDefaultAgentRoutes,
   ...zeroDeveloperSupportRoutes,
+  ...zeroEmailCallbackRoutes,
+  ...zeroEmailInboundRoutes,
   ...zeroFeatureSwitchesRoutes,
   ...zeroInsightsRoutes,
+  ...zeroImageIoGenerateRoutes,
+  ...zeroVideoIoGenerateRoutes,
   ...zeroLogsRoutes,
   ...zeroMemberCreditCapRoutes,
   ...zeroModelPoliciesRoutes,
@@ -232,6 +268,10 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroSlackBrowserConnectRoutes,
   ...zeroSlackConnectRoutes,
   ...zeroSlackOauthRoutes,
+  ...zeroSlackCommandsRoutes,
+  ...zeroSlackEventsRoutes,
+  ...zeroSlackInteractiveRoutes,
+  ...zeroIntegrationsAgentPhoneRoutes,
   ...zeroIntegrationsChatMessageRoutes,
   ...zeroIntegrationsSlackRoutes,
   ...zeroIntegrationsSlackMessageRoutes,

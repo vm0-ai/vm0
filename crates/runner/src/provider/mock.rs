@@ -22,7 +22,7 @@ use async_trait::async_trait;
 use tokio::sync::{Mutex, Notify, mpsc};
 use tokio_util::sync::CancellationToken;
 
-use super::JobProvider;
+use super::{JobCandidate, JobProvider};
 use crate::ids::RunId;
 use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
 use sandbox::SandboxId;
@@ -46,7 +46,7 @@ pub struct MockJobProvider {
     /// Held by `discover()` for its entire lifetime and acquired by
     /// `shutdown()`. Reproduces the historical API-provider shutdown deadlock
     /// shape used by main-loop regression tests.
-    discovery: Mutex<mpsc::UnboundedReceiver<(RunId, String)>>,
+    discovery: Mutex<mpsc::UnboundedReceiver<JobCandidate>>,
     /// Optional delay before checking the channel, simulating the API provider's
     /// internal poll timer. If the future is cancelled and recreated (not
     /// pinned), this delay restarts from scratch — jobs pushed during the
@@ -82,7 +82,7 @@ pub struct MockJobProvider {
 
 /// Test-side handle for driving the mock provider.
 pub struct MockProviderHandle {
-    pub discover_tx: mpsc::UnboundedSender<(RunId, String)>,
+    pub discover_tx: mpsc::UnboundedSender<JobCandidate>,
     pub completions: Arc<StdMutex<Vec<Completion>>>,
     pub heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
     /// See [`MockJobProvider::discover_entered`].
@@ -243,7 +243,7 @@ impl JobProvider for MockJobProvider {
     ///   recreate this future, restarting the delay from scratch.
     /// - If the caller fails to drop this future before `shutdown()` (#8898),
     ///   the Mutex deadlocks — exactly reproducing the production bug.
-    async fn discover(&self) -> Option<(RunId, String)> {
+    async fn discover(&self) -> Option<JobCandidate> {
         let mut rx = self.discovery.lock().await;
         self.discover_poll_started.notify_one();
         if let Some(delay) = self.poll_delay {
@@ -260,7 +260,8 @@ impl JobProvider for MockJobProvider {
         }
     }
 
-    async fn claim(&self, run_id: RunId) -> Option<ExecutionContext> {
+    async fn claim(&self, candidate: JobCandidate) -> Option<ExecutionContext> {
+        let run_id = candidate.run_id();
         self.claim_results
             .lock()
             .unwrap_or_else(|e| e.into_inner())

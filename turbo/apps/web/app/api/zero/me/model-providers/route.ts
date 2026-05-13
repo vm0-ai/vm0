@@ -5,8 +5,6 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -22,17 +20,10 @@ import {
   handleCodexAuthJsonPaste,
   serializeUpsertedProvider,
 } from "../../../../../src/lib/zero/model-provider/codex-auth-json-paste-handler";
-import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
 import { logger } from "../../../../../src/lib/shared/logger";
 import { isBadRequest } from "@vm0/api-services/errors";
 
 const log = logger("api:zero-me-model-providers");
-
-function isModelFirstPersonalProviderApiEnabled(
-  params: Parameters<typeof isFeatureEnabled>[1],
-): boolean {
-  return isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, params);
-}
 
 function isModelFirstPersonalProviderType(type: ModelProviderType): boolean {
   return type === "claude-code-oauth-token" || type === "codex-oauth-token";
@@ -49,19 +40,6 @@ const router = tsr.router(zeroPersonalModelProvidersMainContract, {
     }
 
     const { org } = await resolveOrg(authCtx);
-
-    const overrides = await loadFeatureSwitchOverrides(
-      org.orgId,
-      authCtx.userId,
-    );
-    const personalEnabled = isModelFirstPersonalProviderApiEnabled({
-      userId: authCtx.userId,
-      orgId: org.orgId,
-      overrides,
-    });
-    if (!personalEnabled) {
-      return createErrorResponse("NOT_FOUND", "Not found");
-    }
 
     const providers = await listUserModelProviders(org.orgId, authCtx.userId);
     const visibleProviders = providers.filter((provider) => {
@@ -104,33 +82,12 @@ const router = tsr.router(zeroPersonalModelProvidersMainContract, {
 
     const { org } = await resolveOrg(authCtx);
 
-    const overrides = await loadFeatureSwitchOverrides(
-      org.orgId,
-      authCtx.userId,
-    );
-    const personalEnabled = isModelFirstPersonalProviderApiEnabled({
-      userId: authCtx.userId,
-      orgId: org.orgId,
-      overrides,
-    });
-    if (!personalEnabled) {
-      return createErrorResponse("NOT_FOUND", "Not found");
-    }
-
     const { type, secret, authMethod, secrets, selectedModel } = body;
     if (!isModelFirstPersonalProviderType(type)) {
       return createErrorResponse("NOT_FOUND", `Provider "${type}" not found`);
     }
 
     if (type === "codex-oauth-token" && authMethod === "auth_json") {
-      const eligible = isFeatureEnabled(FeatureSwitchKey.CodexOauthProvider, {
-        orgId: org.orgId,
-        userId: authCtx.userId,
-        overrides,
-      });
-      if (!eligible) {
-        return createErrorResponse("NOT_FOUND", `Provider "${type}" not found`);
-      }
       const raw = secrets?.CODEX_AUTH_JSON;
       if (!raw) {
         return createErrorResponse(

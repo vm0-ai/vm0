@@ -1,15 +1,11 @@
 import { command, computed } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   hasAuthMethods,
   type ModelProviderResponse,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   zeroModelProvidersByTypeContract,
-  zeroModelProvidersDefaultContract,
   zeroModelProvidersMainContract,
-  zeroModelProvidersUpdateModelContract,
 } from "@vm0/api-contracts/contracts/zero-model-providers";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -17,11 +13,8 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { badRequestMessage, isNotFoundResponse } from "../../lib/error";
 import { handleCodexAuthJsonPaste } from "../services/codex-auth-json-paste-handler";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   deleteOrgModelProvider$,
-  setOrgModelProviderDefault$,
-  updateOrgModelProviderModel$,
   upsertOrgModelProvider$,
   upsertOrgMultiAuthModelProvider$,
   upsertOrgNoSecretModelProvider$,
@@ -45,18 +38,6 @@ const listModelProvidersInner$ = computed(async (get) => {
   const result = await get(zeroModelProviders(auth.orgId));
   return { status: 200 as const, body: result };
 });
-
-function providerNotFound(type: string) {
-  return {
-    status: 404 as const,
-    body: {
-      error: {
-        message: `Provider "${type}" not found`,
-        code: "NOT_FOUND" as const,
-      },
-    },
-  };
-}
 
 function toModelProviderResponse(
   provider: ModelProviderInfo,
@@ -101,32 +82,9 @@ const upsertModelProviderInner$ = command(
       return bodyResult.response;
     }
 
-    const { type, secret, authMethod, secrets, selectedModel } =
-      bodyResult.data;
-
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    const featureContext = {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      overrides,
-    };
-
-    if (
-      type === "openai-api-key" &&
-      !isFeatureEnabled(FeatureSwitchKey.CodexBeta, featureContext)
-    ) {
-      return providerNotFound(type);
-    }
+    const { type, secret, authMethod, secrets } = bodyResult.data;
 
     if (type === "codex-oauth-token" && authMethod === "auth_json") {
-      if (
-        !isFeatureEnabled(FeatureSwitchKey.CodexOauthProvider, featureContext)
-      ) {
-        return providerNotFound(type);
-      }
       const raw = secrets?.CODEX_AUTH_JSON;
       if (!raw) {
         return badRequestMessage("Missing CODEX_AUTH_JSON secret");
@@ -135,7 +93,7 @@ const upsertModelProviderInner$ = command(
         scope: "org",
         orgId: auth.orgId,
         rawAuthJson: raw,
-        selectedModel,
+        selectedModel: undefined,
         upsert: async (pasteArgs) => {
           const result = await set(
             upsertOrgMultiAuthModelProvider$,
@@ -144,7 +102,6 @@ const upsertModelProviderInner$ = command(
               type: "codex-oauth-token",
               authMethod: pasteArgs.authMethod,
               secretValues: pasteArgs.secretValues,
-              selectedModel: pasteArgs.selectedModel,
               metadata: pasteArgs.metadata,
             },
             signal,
@@ -162,7 +119,7 @@ const upsertModelProviderInner$ = command(
     if (type === "vm0") {
       const result = await set(
         upsertOrgNoSecretModelProvider$,
-        { orgId: auth.orgId, type, selectedModel },
+        { orgId: auth.orgId, type },
         signal,
       );
       signal.throwIfAborted();
@@ -185,7 +142,6 @@ const upsertModelProviderInner$ = command(
           type,
           authMethod,
           secretValues: secrets,
-          selectedModel,
         },
         signal,
       );
@@ -201,7 +157,7 @@ const upsertModelProviderInner$ = command(
     }
     const result = await set(
       upsertOrgModelProvider$,
-      { orgId: auth.orgId, type, secret, selectedModel },
+      { orgId: auth.orgId, type, secret },
       signal,
     );
     signal.throwIfAborted();
@@ -209,70 +165,6 @@ const upsertModelProviderInner$ = command(
       return result;
     }
     return shapeUpsertResult(result.provider, result.created);
-  },
-);
-
-const setDefaultModelProviderInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    if (auth.orgRole !== "admin") {
-      return adminRequired;
-    }
-
-    const params = await get(
-      pathParamsOf(zeroModelProvidersDefaultContract.setDefault),
-    );
-    signal.throwIfAborted();
-
-    const result = await set(
-      setOrgModelProviderDefault$,
-      { orgId: auth.orgId, type: params.type },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (isNotFoundResponse(result)) {
-      return result;
-    }
-    return { status: 200 as const, body: toModelProviderResponse(result) };
-  },
-);
-
-const updateModelProviderModelInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    if (auth.orgRole !== "admin") {
-      return adminRequired;
-    }
-
-    const params = await get(
-      pathParamsOf(zeroModelProvidersUpdateModelContract.updateModel),
-    );
-    signal.throwIfAborted();
-
-    const bodyResult = await get(
-      bodyResultOf(zeroModelProvidersUpdateModelContract.updateModel),
-    );
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return bodyResult.response;
-    }
-
-    const result = await set(
-      updateOrgModelProviderModel$,
-      {
-        orgId: auth.orgId,
-        type: params.type,
-        selectedModel: bodyResult.data.selectedModel,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (isNotFoundResponse(result)) {
-      return result;
-    }
-    return { status: 200 as const, body: toModelProviderResponse(result) };
   },
 );
 
@@ -315,20 +207,6 @@ export const zeroModelProvidersRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       upsertModelProviderInner$,
-    ),
-  },
-  {
-    route: zeroModelProvidersDefaultContract.setDefault,
-    handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      setDefaultModelProviderInner$,
-    ),
-  },
-  {
-    route: zeroModelProvidersUpdateModelContract.updateModel,
-    handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      updateModelProviderModelInner$,
     ),
   },
   {

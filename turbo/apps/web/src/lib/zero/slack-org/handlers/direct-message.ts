@@ -140,8 +140,6 @@ export async function handleOrgDirectMessage(
     userId: connection.vm0UserId,
     orgId,
     agentComposeId: composeId,
-    modelProviderId: agent.modelProviderId,
-    selectedModel: agent.selectedModel,
   });
 
   // 7. Fetch conversation context
@@ -173,8 +171,6 @@ export async function handleOrgDirectMessage(
     threadContext: executionContext,
     userInfoExtras,
     userId: connection.vm0UserId,
-    modelProviderId: agent.modelProviderId,
-    selectedModel: agent.selectedModel,
     botUserId,
     channelId: context.channelId,
     channelType: "dm",

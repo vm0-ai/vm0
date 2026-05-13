@@ -9,9 +9,7 @@
 //! The main entry points are:
 //!
 //! - [`FirecrackerRuntime`], which manages shared host resources and creates
-//!   [`FirecrackerFactory`] instances.
-//! - [`FirecrackerFactory`], which creates and destroys [`FirecrackerSandbox`]
-//!   instances for a configured rootfs, kernel, and profile.
+//!   sandbox factories for configured rootfs, kernel, and profile settings.
 //! - [`FirecrackerSandbox`], the running microVM implementation of the
 //!   `sandbox::Sandbox` trait.
 //! - [`FirecrackerControl`], which exposes control-plane operations for a
@@ -44,7 +42,7 @@ mod snapshot;
 pub use api::{ApiClient, ApiError, BalloonStatistics};
 pub use config::{FirecrackerConfig, SnapshotConfig};
 pub use control::FirecrackerControl;
-pub use factory::{FirecrackerFactory, PREWARM_SCRIPT, config_hash};
+pub use factory::{PREWARM_SCRIPT, config_hash};
 pub use network::{NetnsInfo, NetnsLease, NetnsPool, NetnsPoolConfig};
 pub use paths::{
     FactoryPaths, LockPaths, RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths,

@@ -24,6 +24,8 @@ export enum FeatureSwitchKey {
   GoogleAdsConnector = "googleAdsConnector",
   MetaAdsConnector = "metaAdsConnector",
   StripeConnector = "stripeConnector",
+  CliAuth = "cliAuth",
+  StripeCliAuth = "stripeCliAuth",
   PosthogConnector = "posthogConnector",
   PwaOfflineCache = "pwaOfflineCache",
   MailchimpConnector = "mailchimpConnector",
@@ -39,6 +41,7 @@ export enum FeatureSwitchKey {
   AutoSkill = "autoSkill",
   TestOauthConnector = "testOauthConnector",
   ChatHeaderNewButton = "chatHeaderNewButton",
+  AgentPhoneAppUi = "agentPhoneAppUi",
 
   ChatMessageStartButton = "chatMessageStartButton",
   Goal = "goal",
@@ -56,9 +59,6 @@ export enum FeatureSwitchKey {
 
   Trinity = "trinity",
   ZapierConnector = "zapierConnector",
-  CodexBeta = "codexBeta",
-  CodexOauthProvider = "codexOauthProvider",
-  ModelFirstModelProvider = "modelFirstModelProvider",
   VoiceChatRealtimeBilling = "voiceChatRealtimeBilling",
   PrivateAgents = "privateAgents",
 }

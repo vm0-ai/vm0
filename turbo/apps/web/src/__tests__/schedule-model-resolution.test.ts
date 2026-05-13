@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { POST as sendChatMessageRoute } from "../../app/api/zero/chat/messages/route";
 import { POST as deployScheduleRoute } from "../../app/api/zero/schedules/route";
 import { adaptScheduleTrigger } from "../lib/zero/schedule/adapt-schedule-trigger";
 import {
@@ -6,9 +7,11 @@ import {
   createTestCompose,
   createTestOrgModelProvider,
   createTestOrg,
-  setTestZeroAgentModelProvider,
+  insertOrgDefaultModelProvider,
+  setOrgCredits,
 } from "./api-test-helpers";
 import { mockClerk } from "./clerk-mock";
+import { getTestChatThreadModelOverride } from "./db-test-assertions/org";
 import { testContext, uniqueId } from "./test-helpers";
 
 const context = testContext();
@@ -22,7 +25,7 @@ async function setupOrgWithProviders(
   mockClerk({ userId, orgRole: "org:admin" });
   const { id: orgId } = await createTestOrg(slug);
 
-  // Create the org default model provider if needed
+  // Create the org-scoped provider row if needed.
   mockClerk({ userId, orgId, orgRole: "org:admin" });
   await createTestOrgModelProvider(
     orgDefaultType,
@@ -39,7 +42,7 @@ describe("Schedule model resolution", () => {
   });
 
   describe("POST /api/zero/schedules (deploy)", () => {
-    it("stores schedule with explicit model override values", async () => {
+    it("ignores stale explicit model override values", async () => {
       const userId = uniqueId("sched-api-ovrd");
       const { orgId } = await setupOrgWithProviders(
         userId,
@@ -50,14 +53,6 @@ describe("Schedule model resolution", () => {
       mockClerk({ userId, orgId, orgRole: "org:admin" });
       const agentName = uniqueId("agent");
       const { agentId } = await createTestCompose(agentName);
-
-      // Create model provider for the agent's model
-      mockClerk({ userId, orgId, orgRole: "org:admin" });
-      const provider = await createTestOrgModelProvider(
-        "moonshot-api-key",
-        "test-moonshot-key",
-        "kimi-k2.6",
-      );
 
       mockClerk({ userId, orgId, orgRole: "org:admin" });
       const scheduleName = uniqueId("sched");
@@ -71,7 +66,7 @@ describe("Schedule model resolution", () => {
             timezone: "UTC",
             prompt: "Test schedule with explicit model override",
             cronExpression: "0 0 * * *",
-            modelProviderId: provider.id,
+            modelProviderId: "00000000-0000-4000-a000-000000000999",
             selectedModel: "kimi-k2.6",
           }),
         }),
@@ -79,12 +74,13 @@ describe("Schedule model resolution", () => {
 
       expect(response.status).toBe(201);
       const data = await response.json();
-      expect(data.schedule.modelProviderId).toBe(provider.id);
-      expect(data.schedule.selectedModel).toBe("kimi-k2.6");
+      expect(data.schedule.modelProviderId).toBeNull();
+      expect(data.schedule.selectedModel).toBeNull();
+      expect(data.schedule.preferPersonalProvider).toBe(false);
     });
 
-    it("returns 400 when modelProviderId references a provider not in the org", async () => {
-      const userId = uniqueId("sched-api-400");
+    it("does not validate stale schedule model fields", async () => {
+      const userId = uniqueId("sched-api-stale");
       const { orgId } = await setupOrgWithProviders(
         userId,
         "anthropic-api-key",
@@ -112,10 +108,13 @@ describe("Schedule model resolution", () => {
         }),
       );
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.schedule.modelProviderId).toBeNull();
+      expect(data.schedule.selectedModel).toBeNull();
     });
 
-    it("stores schedule with null model when agent has custom model but schedule uses agent default", async () => {
+    it("stores schedule with null model when the schedule inherits the default", async () => {
       const userId = uniqueId("sched-api-agent");
       const { orgId } = await setupOrgWithProviders(
         userId,
@@ -123,24 +122,10 @@ describe("Schedule model resolution", () => {
         "claude-sonnet-4-6",
       );
 
-      // Create a moonshot provider that will be the agent's custom model
-      mockClerk({ userId, orgId, orgRole: "org:admin" });
-      const agentProvider = await createTestOrgModelProvider(
-        "moonshot-api-key",
-        "test-moonshot-key",
-        "kimi-k2.6",
-      );
-
-      // Create agent with a specific model (different from org default)
       mockClerk({ userId, orgId, orgRole: "org:admin" });
       const { agentId } = await createTestCompose(uniqueId("agent"));
-      await setTestZeroAgentModelProvider(
-        agentId,
-        agentProvider.id,
-        "kimi-k2.6",
-      );
 
-      // Create schedule with "agent default" (null model fields)
+      // Create schedule with inherited default (null model fields)
       mockClerk({ userId, orgId, orgRole: "org:admin" });
       const scheduleName = uniqueId("sched");
       const response = await deployScheduleRoute(
@@ -151,7 +136,7 @@ describe("Schedule model resolution", () => {
             name: scheduleName,
             agentId,
             timezone: "UTC",
-            prompt: "Schedule using agent default model",
+            prompt: "Schedule using inherited model",
             cronExpression: "0 0 * * *",
             modelProviderId: null,
             selectedModel: null,
@@ -162,14 +147,14 @@ describe("Schedule model resolution", () => {
       expect(response.status).toBe(201);
       const data = await response.json();
 
-      // The schedule stores null for both model fields when agent default is selected
+      // The schedule stores null for both model fields when inherited default is selected.
       expect(data.schedule.modelProviderId).toBeNull();
       expect(data.schedule.selectedModel).toBeNull();
     });
   });
 
   describe("adaptScheduleTrigger model passthrough", () => {
-    it("converts null modelProviderId to undefined so runtime fallback kicks in", () => {
+    it("does not include schedule model overrides so runtime fallback kicks in", () => {
       const result = adaptScheduleTrigger({
         userId: "test-user",
         agentId: "test-agent",
@@ -179,51 +164,51 @@ describe("Schedule model resolution", () => {
         triggerType: "cron",
         cronExpression: "0 0 * * *",
         timezone: "UTC",
-        modelProviderId: null,
-        selectedModel: null,
         apiStartTime: Date.now(),
       });
 
-      // null → undefined so resolveEffectiveModel's ?? chain falls through to agent model
       expect(result.modelProviderId).toBeUndefined();
       expect(result.selectedModelOverride).toBeUndefined();
     });
+  });
 
-    it("passes through explicit model values", () => {
-      const result = adaptScheduleTrigger({
-        userId: "test-user",
-        agentId: "test-agent",
-        scheduleId: "test-schedule",
-        prompt: "test",
-        appendSystemPrompt: undefined,
-        triggerType: "cron",
-        cronExpression: "0 0 * * *",
-        timezone: "UTC",
-        modelProviderId: "provider-123",
+  describe("legacy built-in model route normalization", () => {
+    it("clears stale provider IDs through chat route model selection", async () => {
+      const userId = uniqueId("sched-legacy-route");
+      const slug = uniqueId("schedlegacy");
+      mockClerk({ userId, orgRole: "org:admin" });
+      const { id: orgId } = await createTestOrg(slug);
+
+      mockClerk({ userId, orgId, orgRole: "org:admin" });
+      const { agentId } = await createTestCompose(uniqueId("agent"));
+      await setOrgCredits(orgId, 10_000);
+      const providerId = await insertOrgDefaultModelProvider(
+        orgId,
+        "vm0",
+        "claude-opus-4-7",
+      );
+
+      const response = await sendChatMessageRoute(
+        createTestRequest("http://localhost:3000/api/zero/chat/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "chat with legacy built-in provider pin",
+            modelSelection: {
+              modelProviderId: providerId,
+              selectedModel: "claude-opus-4-7",
+            },
+          }),
+        }),
+      );
+
+      expect(response.status).toBe(201);
+      const { threadId } = await response.json();
+      await expect(getTestChatThreadModelOverride(threadId)).resolves.toEqual({
         selectedModel: "claude-opus-4-7",
-        apiStartTime: Date.now(),
+        modelProviderId: null,
       });
-
-      expect(result.modelProviderId).toBe("provider-123");
-      expect(result.selectedModelOverride).toBe("claude-opus-4-7");
-    });
-
-    it("converts undefined modelProviderId to undefined", () => {
-      const result = adaptScheduleTrigger({
-        userId: "test-user",
-        agentId: "test-agent",
-        scheduleId: "test-schedule",
-        prompt: "test",
-        appendSystemPrompt: undefined,
-        triggerType: "loop",
-        cronExpression: undefined,
-        timezone: "UTC",
-        apiStartTime: Date.now(),
-        // modelProviderId and selectedModel omitted entirely
-      });
-
-      expect(result.modelProviderId).toBeUndefined();
-      expect(result.selectedModelOverride).toBeUndefined();
     });
   });
 });

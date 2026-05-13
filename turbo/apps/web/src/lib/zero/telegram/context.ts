@@ -75,17 +75,17 @@ function normalizeTelegramContextScope(scope: TelegramMessageScope):
 /**
  * Fetch recent Telegram messages for a chat and build execution context.
  *
- * @param installationId - Telegram installation ID
+ * @param scope - Telegram installation ID or official bot scope
  * @param chatId - Telegram chat ID
- * @param lastProcessedMessageId - Only include messages after this ID for execution context
+ * @param _lastProcessedMessageId - Preserved for call-site compatibility; context uses the full recent window
  * @param client - Telegram client (needed to download images for execution context)
  * @param currentMessageId - The message being processed; excluded from context to avoid duplication with prompt
- * @returns executionContext (only new messages, with file references)
+ * @returns executionContext (recent messages, with file references)
  */
 export async function fetchTelegramContext(
   scope: TelegramMessageScope,
   chatId: string,
-  lastProcessedMessageId?: string,
+  _lastProcessedMessageId?: string,
   _client?: TelegramClient,
   currentMessageId?: string,
 ): Promise<{ executionContext: string }> {
@@ -131,17 +131,10 @@ export async function fetchTelegramContext(
     count: chronological.length,
   });
 
-  // For execution context, only include messages after lastProcessedMessageId
-  const executionMessages = lastProcessedMessageId
-    ? chronological.filter((m) => {
-        return Number(m.messageId) > Number(lastProcessedMessageId);
-      })
-    : chronological;
-
   // Execution context: include image references for on-demand CLI download.
   const executionContext =
-    executionMessages.length > 0
-      ? formatContextForAgent(executionMessages, normalizedScope.botId)
+    chronological.length > 0
+      ? formatContextForAgent(chronological, normalizedScope.botId)
       : "";
 
   return { executionContext };

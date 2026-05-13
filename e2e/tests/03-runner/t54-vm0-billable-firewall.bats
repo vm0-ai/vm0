@@ -2,13 +2,12 @@
 
 # Verify firewall_billable propagation through the full stack.
 #
-# Uses `zero run --model-provider` for per-run provider selection — the test
-# never changes the shared e2e org's default, so no race with other chunks.
+# Uses explicit model-first pins for provider selection. The test never changes
+# the shared e2e org's workspace default, so no race with other chunks.
 #
-# t54-0: no override; resolver uses bootstrap claude-code-oauth-token default.
-#   Mock token 401s upstream but the firewall tag is stamped; "$" marker absent.
-# t54-1: --model-provider vm0 → concrete anthropic-api-key (fake pool key →
-#   401), billableFirewalls covers the firewall → "$" marker present.
+# t54-0: run pinned to org BYOK anthropic-api-key; "$" marker absent.
+# t54-1: run uses the model policy's vm0 route; billableFirewalls covers
+#   the concrete anthropic firewall → "$" marker present.
 
 load '../../helpers/setup'
 
@@ -18,14 +17,13 @@ setup_file() {
     fi
 
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
+    export THREAD_IDS=""
 
-    # Ensure vm0 provider coexists with bootstrap claude-code-oauth-token.
-    # CLI non-interactive mode requires --secret; the API route detects
-    # type === "vm0" and routes to the no-secret upsert, ignoring it.
     $ZERO_CLI org model-provider setup \
-        --type vm0 \
-        --secret unused-vm0-is-no-secret \
-        --model claude-sonnet-4-6 >/dev/null
+        --type anthropic-api-key \
+        --secret "$ANTHROPIC_API_KEY" >/dev/null
+    export ANTHROPIC_PROVIDER_ID
+    ANTHROPIC_PROVIDER_ID=$(zero_model_provider_id_by_type "anthropic-api-key")
 
     # Create a fresh zero agent for this file
     local create_out
@@ -38,36 +36,49 @@ setup_file() {
 }
 
 teardown_file() {
+    for thread_id in $THREAD_IDS; do
+        zero_curl "/api/zero/chat-threads/$thread_id" -X DELETE >/dev/null 2>&1 || true
+    done
     [ -n "$AGENT_ID" ] && $ZERO_CLI agent delete "$AGENT_ID" 2>/dev/null || true
-    $ZERO_CLI org model-provider remove vm0 2>/dev/null || true
 }
 
-@test "t54-0: bootstrap provider — firewall not billable" {
-    run $ZERO_CLI run "$AGENT_ID" \
-        --debug-no-mock-claude \
-        "Reply with exactly: DONE"
+@test "t54-0: BYOK provider — firewall not billable" {
+    zero_chat_run_with_model_selection \
+        "$AGENT_ID" \
+        "Reply with exactly: DONE" \
+        "$ANTHROPIC_PROVIDER_ID" \
+        "claude-sonnet-4-6" \
+        true \
+        false
+    THREAD_IDS="$THREAD_IDS $LAST_THREAD_ID"
+    export THREAD_IDS
 
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    RUN_ID="$LAST_RUN_ID"
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
         return 1
     }
 
-    wait_for_log "$RUN_ID" --network -- "[model-provider:claude-code-oauth-token]"
-    refute_output --partial '[model-provider:claude-code-oauth-token $]'
+    WAIT_FOR_LOG_TIMEOUT=60 wait_for_log "$RUN_ID" --network -- "[model-provider:anthropic-api-key]"
+    refute_output --partial '[model-provider:anthropic-api-key $]'
 }
 
 @test "t54-1: vm0 meta-provider — firewall billable" {
-    run $ZERO_CLI run "$AGENT_ID" \
-        --model-provider vm0 \
-        --debug-no-mock-claude \
-        "Reply with exactly: DONE"
+    zero_chat_run_with_model_selection \
+        "$AGENT_ID" \
+        "Reply with exactly: DONE" \
+        "$(zero_model_first_selection_provider_id)" \
+        "claude-sonnet-4-6" \
+        true \
+        false
+    THREAD_IDS="$THREAD_IDS $LAST_THREAD_ID"
+    export THREAD_IDS
 
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    RUN_ID="$LAST_RUN_ID"
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
         return 1
     }
 
-    wait_for_log "$RUN_ID" --network -- '[model-provider:anthropic-api-key $]'
+    WAIT_FOR_LOG_TIMEOUT=60 wait_for_log "$RUN_ID" --network -- '[model-provider:anthropic-api-key $]'
 }

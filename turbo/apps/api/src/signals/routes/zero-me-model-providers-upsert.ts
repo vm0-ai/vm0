@@ -1,6 +1,4 @@
 import { command } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   hasAuthMethods,
   type ModelProviderResponse,
@@ -13,20 +11,12 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { badRequestMessage } from "../../lib/error";
 import { handleCodexAuthJsonPaste } from "../services/codex-auth-json-paste-handler";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   upsertUserModelProvider$,
   upsertUserMultiAuthModelProvider$,
   type ModelProviderInfo,
 } from "../services/zero-model-provider.service";
 import type { RouteEntry } from "../route";
-
-const featureDisabled = Object.freeze({
-  status: 404 as const,
-  body: Object.freeze({
-    error: Object.freeze({ message: "Not found", code: "NOT_FOUND" }),
-  }),
-});
 
 function providerNotFound(type: string) {
   return {
@@ -42,12 +32,6 @@ function providerNotFound(type: string) {
 
 function isModelFirstPersonalProviderType(type: ModelProviderType): boolean {
   return type === "claude-code-oauth-token" || type === "codex-oauth-token";
-}
-
-function isModelFirstPersonalProviderApiEnabled(
-  params: Parameters<typeof isFeatureEnabled>[1],
-): boolean {
-  return isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, params);
 }
 
 function toModelProviderResponse(
@@ -91,20 +75,6 @@ function shapeUpsertResult(
 
 const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-
-  // Gate 1: ModelFirstModelProvider
-  const featureCtx = {
-    orgId: auth.orgId,
-    userId: auth.userId,
-    overrides,
-  };
-  if (!isModelFirstPersonalProviderApiEnabled(featureCtx)) {
-    return featureDisabled;
-  }
 
   // Body parse
   const bodyResult = await get(
@@ -123,10 +93,6 @@ const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   // Branch 1: codex-oauth-token + auth_json paste flow
   if (type === "codex-oauth-token" && authMethod === "auth_json") {
-    // Gate 4: CodexOauthProvider
-    if (!isFeatureEnabled(FeatureSwitchKey.CodexOauthProvider, featureCtx)) {
-      return providerNotFound(type);
-    }
     const raw = secrets?.CODEX_AUTH_JSON;
     if (!raw) {
       return badRequestMessage("Missing CODEX_AUTH_JSON secret");

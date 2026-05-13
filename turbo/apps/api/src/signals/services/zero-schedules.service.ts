@@ -1,20 +1,37 @@
-import { createDecipheriv } from "node:crypto";
+import { createDecipheriv, randomBytes } from "node:crypto";
 
 import { command, computed, type Computed } from "ccstate";
-import type {
+import {
+  zeroScheduleRunContract,
+  zeroSchedulesMainContract,
+  type DeployScheduleResponse,
   ScheduleListResponse,
   ScheduleResponse,
 } from "@vm0/api-contracts/contracts/zero-schedules";
+import type {
+  ScheduleCronCallbackPayload,
+  ScheduleLoopCallbackPayload,
+} from "@vm0/api-contracts/contracts/internal-callbacks-schedule";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { Cron } from "croner";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
-import { env } from "../../lib/env";
+import { env, optionalEnv } from "../../lib/env";
+import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
+import { isValidTimeZone, safeAsync } from "../utils";
+import { visibleJoinedZeroAgentCondition } from "./zero-agent-data.service";
+import { createZeroRun$ } from "./zero-runs-create.service";
+
+const log = logger("api:zero:schedules");
+const OPENROUTER_CHAT_COMPLETIONS_URL =
+  "https://openrouter.ai/api/v1/chat/completions";
+const LIGHTWEIGHT_MODEL = "google/gemini-3.1-flash-lite-preview";
 
 const secretsMapSchema = z.record(z.string(), z.string());
 
@@ -76,17 +93,223 @@ function scheduleResponse(
     consecutiveFailures: schedule.consecutiveFailures,
     createdAt: schedule.createdAt.toISOString(),
     updatedAt: schedule.updatedAt.toISOString(),
-    modelProviderId: schedule.modelProviderId ?? null,
-    selectedModel: schedule.selectedModel ?? null,
-    preferPersonalProvider: schedule.preferPersonalProvider ?? false,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
   };
 }
 
-function calculateNextRun(
+export function calculateNextRun(
   cronExpression: string,
   timezone: string,
+  fromDate: Date,
 ): Date | null {
-  return new Cron(cronExpression, { timezone }).nextRun();
+  return new Cron(cronExpression, { timezone }).nextRun(fromDate);
+}
+
+type DeployScheduleBody = z.infer<
+  (typeof zeroSchedulesMainContract.deploy)["body"]
+>;
+type RunScheduleBody = z.infer<(typeof zeroScheduleRunContract.run)["body"]>;
+
+type DeployScheduleResult =
+  | {
+      readonly kind: "ok";
+      readonly status: 200 | 201;
+      readonly response: DeployScheduleResponse;
+    }
+  | { readonly kind: "not_found"; readonly message: string }
+  | { readonly kind: "bad_request"; readonly message: string }
+  | { readonly kind: "schedule_past"; readonly message: string };
+
+type RunCreationErrorResponse = {
+  readonly status: 400 | 402 | 403 | 404 | 429 | 503;
+  readonly body: {
+    readonly error: {
+      readonly message: string;
+      readonly code: string;
+    };
+  };
+};
+
+type RunScheduleNowResult =
+  | { readonly kind: "ok"; readonly runId: string }
+  | { readonly kind: "not_found"; readonly message: string }
+  | { readonly kind: "conflict"; readonly message: string }
+  | {
+      readonly kind: "run_error";
+      readonly response: RunCreationErrorResponse;
+    };
+
+interface ChatMessage {
+  readonly role: "system" | "user" | "assistant";
+  readonly content: string;
+}
+
+interface OpenRouterResponse {
+  readonly choices: readonly {
+    readonly message: {
+      readonly content: string;
+    };
+  }[];
+}
+
+interface AgentScheduleTarget {
+  readonly id: string;
+  readonly name: string;
+  readonly displayName: string | null;
+}
+
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/(\*{1,3}|_{1,3})(.+?)\1/g, "$2")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^[-*_]{3,}\s*$/gm, "")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^["'](.+)["']$/, "$1")
+    .trim();
+}
+
+async function generateText(
+  messages: readonly ChatMessage[],
+  maxTokens: number,
+): Promise<string | null> {
+  const apiKey = optionalEnv("OPENROUTER_API_KEY");
+  if (!apiKey) {
+    return null;
+  }
+
+  const response = await fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: LIGHTWEIGHT_MODEL,
+      messages,
+      max_tokens: maxTokens,
+      temperature: 0.3,
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => {
+      return "unknown error";
+    });
+    throw new Error(`OpenRouter request failed: ${response.status} ${text}`);
+  }
+
+  const data = (await response.json()) as OpenRouterResponse;
+  const content = data.choices[0]?.message.content.trim();
+  if (!content) {
+    throw new Error("OpenRouter returned empty content");
+  }
+  return stripMarkdown(content);
+}
+
+function buildTemplateDescription(
+  request: DeployScheduleBody,
+  agentName: string,
+): string {
+  const triggerLabel = request.cronExpression
+    ? "recurring"
+    : request.atTime
+      ? "one-time"
+      : "loop";
+  return `${agentName} ${triggerLabel} task: ${request.prompt.slice(0, 100)}`;
+}
+
+function triggerSummary(request: DeployScheduleBody): string {
+  if (request.cronExpression) {
+    return `cron: ${request.cronExpression}`;
+  }
+  if (request.atTime) {
+    return `once at ${request.atTime}`;
+  }
+  if (request.intervalSeconds !== undefined) {
+    return `loop every ${request.intervalSeconds}s`;
+  }
+  return "unknown trigger";
+}
+
+async function generateScheduleDescription(
+  request: DeployScheduleBody,
+  agentName: string,
+): Promise<string> {
+  const result = await safeAsync(() => {
+    return generateText(
+      [
+        {
+          role: "system",
+          content:
+            "Write a one-sentence summary (max 120 chars) for a scheduled task as plain text -- no markdown, no quotes, no special formatting. Return only the summary.",
+        },
+        {
+          role: "user",
+          content: `Agent: ${agentName}\nSchedule: ${request.name}\nTrigger: ${triggerSummary(request)}\nPrompt: ${request.prompt.slice(0, 200)}`,
+        },
+      ],
+      30,
+    );
+  });
+
+  if ("error" in result) {
+    log.warn("Schedule description generation failed, using fallback", {
+      error:
+        result.error instanceof Error
+          ? result.error.message
+          : String(result.error),
+      scheduleName: request.name,
+    });
+    return buildTemplateDescription(request, agentName);
+  }
+
+  return result.ok ?? buildTemplateDescription(request, agentName);
+}
+
+function resolveTrigger(
+  request: DeployScheduleBody,
+  currentTime: Date,
+): {
+  readonly triggerType: "cron" | "once" | "loop";
+  readonly nextRunAt: Date | null;
+} {
+  if (request.cronExpression) {
+    return {
+      triggerType: "cron",
+      nextRunAt: calculateNextRun(
+        request.cronExpression,
+        request.timezone,
+        currentTime,
+      ),
+    };
+  }
+  if (request.atTime) {
+    return { triggerType: "once", nextRunAt: new Date(request.atTime) };
+  }
+  return {
+    triggerType: "loop",
+    nextRunAt: request.enabled ? currentTime : null,
+  };
+}
+
+function validateAtTimeNotPast(
+  request: DeployScheduleBody,
+  currentTime: Date,
+): DeployScheduleResult | null {
+  if (!request.atTime || !request.enabled) {
+    return null;
+  }
+  const atDate = new Date(request.atTime);
+  if (atDate > currentTime) {
+    return null;
+  }
+  return {
+    kind: "schedule_past",
+    message: `Cannot create enabled schedule: scheduled time ${atDate.toISOString()} has already passed`,
+  };
 }
 
 type OwnershipResult =
@@ -155,6 +378,235 @@ interface ScheduleMutationArgs {
   readonly agentId: string;
   readonly name: string;
 }
+
+async function loadAgentForDeploy(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly agentId: string;
+  },
+): Promise<AgentScheduleTarget | null> {
+  const [agent] = await db
+    .select({
+      id: agentComposes.id,
+      name: agentComposes.name,
+      displayName: zeroAgents.displayName,
+    })
+    .from(agentComposes)
+    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+    .where(
+      and(
+        eq(agentComposes.orgId, args.orgId),
+        eq(agentComposes.id, args.agentId),
+        visibleJoinedZeroAgentCondition(args.userId),
+      ),
+    )
+    .limit(1);
+
+  return agent ?? null;
+}
+
+async function findExistingSchedule(
+  db: Db,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly agentId: string;
+    readonly name: string;
+  },
+): Promise<typeof zeroAgentSchedules.$inferSelect | null> {
+  const [existing] = await db
+    .select()
+    .from(zeroAgentSchedules)
+    .where(
+      and(
+        eq(zeroAgentSchedules.agentId, args.agentId),
+        eq(zeroAgentSchedules.name, args.name),
+        eq(zeroAgentSchedules.orgId, args.orgId),
+        eq(zeroAgentSchedules.userId, args.userId),
+      ),
+    )
+    .limit(1);
+  return existing ?? null;
+}
+
+async function updateExistingSchedule(
+  db: Db,
+  args: {
+    readonly existingId: string;
+    readonly request: DeployScheduleBody;
+    readonly triggerType: "cron" | "once" | "loop";
+    readonly nextRunAt: Date | null;
+    readonly currentTime: Date;
+  },
+): Promise<typeof zeroAgentSchedules.$inferSelect> {
+  const [updated] = await db
+    .update(zeroAgentSchedules)
+    .set({
+      triggerType: args.triggerType,
+      cronExpression: args.request.cronExpression ?? null,
+      atTime: args.request.atTime ? new Date(args.request.atTime) : null,
+      intervalSeconds: args.request.intervalSeconds ?? null,
+      timezone: args.request.timezone,
+      prompt: args.request.prompt,
+      description: args.request.description ?? null,
+      appendSystemPrompt: args.request.appendSystemPrompt ?? null,
+      vars: null,
+      encryptedSecrets: null,
+      volumeVersions: args.request.volumeVersions ?? null,
+      nextRunAt: args.nextRunAt,
+      consecutiveFailures: 0,
+      updatedAt: args.currentTime,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
+    })
+    .where(eq(zeroAgentSchedules.id, args.existingId))
+    .returning();
+
+  if (!updated) {
+    throw new Error(`Failed to update schedule ${args.request.name}`);
+  }
+  return updated;
+}
+
+async function insertNewSchedule(
+  db: Db,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly request: DeployScheduleBody;
+    readonly triggerType: "cron" | "once" | "loop";
+    readonly nextRunAt: Date | null;
+    readonly currentTime: Date;
+  },
+): Promise<typeof zeroAgentSchedules.$inferSelect> {
+  const [created] = await db
+    .insert(zeroAgentSchedules)
+    .values({
+      agentId: args.request.agentId,
+      userId: args.userId,
+      orgId: args.orgId,
+      name: args.request.name,
+      triggerType: args.triggerType,
+      cronExpression: args.request.cronExpression ?? null,
+      atTime: args.request.atTime ? new Date(args.request.atTime) : null,
+      intervalSeconds: args.request.intervalSeconds ?? null,
+      timezone: args.request.timezone,
+      prompt: args.request.prompt,
+      description: args.request.description ?? null,
+      appendSystemPrompt: args.request.appendSystemPrompt ?? null,
+      vars: null,
+      encryptedSecrets: null,
+      volumeVersions: args.request.volumeVersions ?? null,
+      enabled: args.request.enabled ?? false,
+      nextRunAt: args.nextRunAt,
+      consecutiveFailures: 0,
+      createdAt: args.currentTime,
+      updatedAt: args.currentTime,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
+    })
+    .returning();
+
+  if (!created) {
+    throw new Error(`Failed to create schedule ${args.request.name}`);
+  }
+  return created;
+}
+
+export const deploySchedule$ = command(
+  async (
+    { set },
+    args: {
+      readonly userId: string;
+      readonly orgId: string;
+      readonly body: DeployScheduleBody;
+    },
+    signal: AbortSignal,
+  ): Promise<DeployScheduleResult> => {
+    const db = set(writeDb$);
+    const agent = await loadAgentForDeploy(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      agentId: args.body.agentId,
+    });
+    signal.throwIfAborted();
+    if (!agent) {
+      return { kind: "not_found", message: "Agent not found" };
+    }
+
+    if (!isValidTimeZone(args.body.timezone)) {
+      return {
+        kind: "bad_request",
+        message: `Invalid timezone: ${args.body.timezone}`,
+      };
+    }
+
+    const currentTime = nowDate();
+    const schedulePast = validateAtTimeNotPast(args.body, currentTime);
+    if (schedulePast) {
+      return schedulePast;
+    }
+
+    const existing = await findExistingSchedule(db, {
+      userId: args.userId,
+      orgId: args.orgId,
+      agentId: args.body.agentId,
+      name: args.body.name,
+    });
+    signal.throwIfAborted();
+
+    const effectiveBody =
+      existing && args.body.enabled === undefined
+        ? { ...args.body, enabled: existing.enabled }
+        : args.body;
+    const bodyWithDescription =
+      effectiveBody.description === undefined
+        ? {
+            ...effectiveBody,
+            description: await generateScheduleDescription(
+              effectiveBody,
+              agent.name,
+            ),
+          }
+        : effectiveBody;
+    signal.throwIfAborted();
+
+    const { triggerType, nextRunAt } = resolveTrigger(
+      bodyWithDescription,
+      currentTime,
+    );
+    const schedule = existing
+      ? await updateExistingSchedule(db, {
+          existingId: existing.id,
+          request: bodyWithDescription,
+          triggerType,
+          nextRunAt,
+          currentTime,
+        })
+      : await insertNewSchedule(db, {
+          userId: args.userId,
+          orgId: args.orgId,
+          request: bodyWithDescription,
+          triggerType,
+          nextRunAt,
+          currentTime,
+        });
+    signal.throwIfAborted();
+
+    return {
+      kind: "ok",
+      status: existing ? 200 : 201,
+      response: {
+        schedule: scheduleResponse(schedule, agent.displayName),
+        created: !existing,
+      },
+    };
+  },
+);
 
 export const disableSchedule$ = command(
   async (
@@ -253,7 +705,11 @@ export const enableSchedule$ = command(
     if (schedule.triggerType === "loop") {
       nextRunAt = now;
     } else if (schedule.cronExpression) {
-      nextRunAt = calculateNextRun(schedule.cronExpression, schedule.timezone);
+      nextRunAt = calculateNextRun(
+        schedule.cronExpression,
+        schedule.timezone,
+        now,
+      );
     } else if (schedule.atTime) {
       if (schedule.atTime > now) {
         nextRunAt = schedule.atTime;
@@ -282,6 +738,149 @@ export const enableSchedule$ = command(
       kind: "ok",
       response: scheduleResponse(updated, displayName),
     };
+  },
+);
+
+function buildSchedulePrompt(triggerType: string): string {
+  return [
+    "# Current Integration",
+    "You are currently running inside: Schedule",
+    `Trigger type: ${triggerType}`,
+  ].join("\n");
+}
+
+function apiUrl(): string {
+  return env("VM0_API_URL");
+}
+
+function generateCallbackSecret(): string {
+  return randomBytes(32).toString("hex");
+}
+
+function buildScheduleCallbacks(
+  schedule: typeof zeroAgentSchedules.$inferSelect,
+) {
+  if (schedule.triggerType === "loop") {
+    const payload: ScheduleLoopCallbackPayload = { scheduleId: schedule.id };
+    return [
+      {
+        url: `${apiUrl()}/api/internal/callbacks/schedule/loop`,
+        secret: generateCallbackSecret(),
+        payload,
+      },
+    ];
+  }
+
+  if (schedule.triggerType === "cron" || schedule.triggerType === "once") {
+    const payload: ScheduleCronCallbackPayload = {
+      scheduleId: schedule.id,
+      ...(schedule.cronExpression && {
+        cronExpression: schedule.cronExpression,
+      }),
+      timezone: schedule.timezone,
+    };
+    return [
+      {
+        url: `${apiUrl()}/api/internal/callbacks/schedule/cron`,
+        secret: generateCallbackSecret(),
+        payload,
+      },
+    ];
+  }
+
+  return [];
+}
+
+function buildScheduleAppendSystemPrompt(
+  schedule: typeof zeroAgentSchedules.$inferSelect,
+): string {
+  const integrationContext = buildSchedulePrompt(schedule.triggerType);
+  const baseAppendPrompt = schedule.appendSystemPrompt ?? undefined;
+  return baseAppendPrompt
+    ? `${integrationContext}\n\n${baseAppendPrompt}`
+    : integrationContext;
+}
+
+export const runScheduleNow$ = command(
+  async (
+    { set },
+    args: {
+      readonly body: RunScheduleBody;
+      readonly orgId: string;
+      readonly apiStartTime: number;
+    },
+    signal: AbortSignal,
+  ): Promise<RunScheduleNowResult> => {
+    const db = set(writeDb$);
+    const [schedule] = await db
+      .select()
+      .from(zeroAgentSchedules)
+      .where(
+        and(
+          eq(zeroAgentSchedules.id, args.body.scheduleId),
+          eq(zeroAgentSchedules.orgId, args.orgId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!schedule) {
+      return { kind: "not_found", message: "Schedule not found" };
+    }
+
+    if (schedule.lastRunId) {
+      const [lastRun] = await db
+        .select({ status: agentRuns.status })
+        .from(agentRuns)
+        .where(eq(agentRuns.id, schedule.lastRunId))
+        .limit(1);
+      signal.throwIfAborted();
+
+      if (
+        lastRun &&
+        (lastRun.status === "pending" || lastRun.status === "running")
+      ) {
+        return {
+          kind: "conflict",
+          message: "Previous run is still active",
+        };
+      }
+    }
+
+    const result = await set(
+      createZeroRun$,
+      {
+        auth: {
+          orgId: schedule.orgId,
+          orgRole: "member",
+          userId: schedule.userId,
+          tokenType: "session",
+        },
+        body: {
+          prompt: schedule.prompt,
+          agentId: schedule.agentId,
+        },
+        apiStartTime: args.apiStartTime,
+        triggerSource: "schedule",
+        appendSystemPrompt: buildScheduleAppendSystemPrompt(schedule),
+        callbacks: buildScheduleCallbacks(schedule),
+        zeroRunMetadata: { scheduleId: schedule.id },
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status !== 201) {
+      return { kind: "run_error", response: result };
+    }
+
+    await db
+      .update(zeroAgentSchedules)
+      .set({ lastRunId: result.body.runId })
+      .where(eq(zeroAgentSchedules.id, schedule.id));
+    signal.throwIfAborted();
+
+    return { kind: "ok", runId: result.body.runId };
   },
 );
 

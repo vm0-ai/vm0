@@ -1,5 +1,92 @@
 # Changelog
 
+## [9.149.1](https://github.com/vm0-ai/vm0/compare/cli-v9.149.0...cli-v9.149.1) (2026-05-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.18.0
+    * @vm0/core bumped to 8.273.0
+
+## [9.149.0](https://github.com/vm0-ai/vm0/compare/cli-v9.148.2...cli-v9.149.0) (2026-05-13)
+
+
+### Features
+
+* add fal video generation ([#13121](https://github.com/vm0-ai/vm0/issues/13121)) ([152b289](https://github.com/vm0-ai/vm0/commit/152b28990211cb7ea3756218adab2e0152c41947))
+
+
+### Bug Fixes
+
+* align agent tool and connector guidance ([#13152](https://github.com/vm0-ai/vm0/issues/13152)) ([cd8cf5e](https://github.com/vm0-ai/vm0/commit/cd8cf5e700a66773206d33713ca9e9917924548e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.17.0
+    * @vm0/core bumped to 8.272.2
+
+## [9.148.2](https://github.com/vm0-ai/vm0/compare/cli-v9.148.1...cli-v9.148.2) (2026-05-13)
+
+
+### Bug Fixes
+
+* **cli:** collapse duplicate codex failure results ([#13125](https://github.com/vm0-ai/vm0/issues/13125)) ([a3b961c](https://github.com/vm0-ai/vm0/commit/a3b961ce69da1d937926986177164180218c0d92))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.16.1
+    * @vm0/connectors bumped to 1.8.1
+    * @vm0/core bumped to 8.272.1
+
+## [9.148.1](https://github.com/vm0-ai/vm0/compare/cli-v9.148.0...cli-v9.148.1) (2026-05-13)
+
+
+### Refactoring
+
+* make zero model-first only ([#13017](https://github.com/vm0-ai/vm0/issues/13017)) ([9bcb323](https://github.com/vm0-ai/vm0/commit/9bcb323d6e2c32dfdd2d1bf9fa63d0d2bf9e1ef1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.16.0
+    * @vm0/connectors bumped to 1.8.0
+    * @vm0/core bumped to 8.272.0
+
+## [9.148.0](https://github.com/vm0-ai/vm0/compare/cli-v9.147.2...cli-v9.148.0) (2026-05-13)
+
+
+### Features
+
+* add agentphone phone tools ([#13028](https://github.com/vm0-ai/vm0/issues/13028)) ([5bdad6f](https://github.com/vm0-ai/vm0/commit/5bdad6ff42ac79a9532c4307895b58eee20b6515))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.15.0
+    * @vm0/core bumped to 8.271.2
+
+## [9.147.2](https://github.com/vm0-ai/vm0/compare/cli-v9.147.1...cli-v9.147.2) (2026-05-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.14.0
+    * @vm0/core bumped to 8.271.1
+
 ## [9.147.1](https://github.com/vm0-ai/vm0/compare/cli-v9.147.0...cli-v9.147.1) (2026-05-12)
 
 

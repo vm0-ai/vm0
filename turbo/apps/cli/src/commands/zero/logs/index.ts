@@ -2,7 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { getZeroRunAgentEvents, type RunEvent } from "../../../lib/api";
 import { parseTime } from "../../../lib/utils/time-parser";
-import { parseEvent } from "../../../lib/events/event-parser-factory";
+import { EventStreamNormalizer } from "../../../lib/events/event-stream-normalizer";
 import { EventRenderer } from "../../../lib/events/event-renderer";
 import { paginate } from "../../../lib/utils/paginate";
 import { withErrorHandler } from "../../../lib/command";
@@ -15,12 +15,15 @@ const PAGE_LIMIT = 100;
 function renderAgentEvent(
   event: RunEvent,
   renderer: EventRenderer,
+  normalizer: EventStreamNormalizer,
   framework: string,
 ): void {
-  const eventData = event.eventData as Record<string, unknown>;
-  const parsed = parseEvent(eventData, framework);
-  if (parsed) {
-    parsed.timestamp = new Date(event.createdAt);
+  const parsedEvents = normalizer.process(
+    event.eventData,
+    framework,
+    new Date(event.createdAt),
+  );
+  for (const parsed of parsedEvents) {
     renderer.render(parsed);
   }
 }
@@ -97,10 +100,14 @@ async function showAgentEvents(
     showTimestamp: true,
     verbose: true,
   });
+  const normalizer = new EventStreamNormalizer();
   const framework = firstResponse.framework;
 
   for (const event of events) {
-    renderAgentEvent(event, renderer, framework);
+    renderAgentEvent(event, renderer, normalizer, framework);
+  }
+  for (const parsed of normalizer.flush()) {
+    renderer.render(parsed);
   }
 }
 

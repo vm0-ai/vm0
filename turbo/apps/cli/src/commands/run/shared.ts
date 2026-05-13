@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import { config as dotenvConfig } from "dotenv";
 import { getEvents } from "../../lib/api";
 import type { GetEventsResponse } from "../../lib/api/core/types";
-import { parseEvent } from "../../lib/events/event-parser-factory";
+import { EventStreamNormalizer } from "../../lib/events/event-stream-normalizer";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
 import {
@@ -484,6 +484,7 @@ export async function pollEvents(
   options?: EventRenderingOptions,
 ): Promise<PollResult> {
   const renderer = new EventRenderer({ verbose: options?.verbose });
+  const normalizer = new EventStreamNormalizer();
 
   let nextSequence = -1;
   const terminalDrain: TerminalDrainState = {
@@ -491,6 +492,11 @@ export async function pollEvents(
     lastProgressAt: 0,
   };
   let seenResultEvent = false;
+  const flushPendingEvents = (): void => {
+    for (const parsed of normalizer.flush()) {
+      renderer.render(parsed);
+    }
+  };
 
   for (;;) {
     const previousSequence = nextSequence;
@@ -504,10 +510,11 @@ export async function pollEvents(
     // Render agent events (use appropriate renderer based on framework from API)
     if (madeSequenceProgress) {
       for (const event of response.events) {
-        const eventData = event.eventData as Record<string, unknown>;
-
-        const parsed = parseEvent(eventData, response.framework);
-        if (parsed) {
+        const parsedEvents = normalizer.process(
+          event.eventData,
+          response.framework,
+        );
+        for (const parsed of parsedEvents) {
           renderer.render(parsed);
           if (parsed.type === "result") {
             pageHasResultEvent = true;
@@ -535,6 +542,7 @@ export async function pollEvents(
       terminalDrain.runState &&
       hasReachedTerminalWatermark(terminalDrain.runState, nextSequence)
     ) {
+      flushPendingEvents();
       return renderTerminalRunResult(runId, terminalDrain.runState);
     }
 
@@ -549,6 +557,7 @@ export async function pollEvents(
         seenResultEvent,
       )
     ) {
+      flushPendingEvents();
       return renderTerminalRunResult(runId, terminalRunState);
     }
 

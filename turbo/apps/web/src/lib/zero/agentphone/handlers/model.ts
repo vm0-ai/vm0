@@ -9,6 +9,7 @@ import {
 } from "../../model-policy/model-preference-picker";
 import { updateUserModelPreference } from "../../model-policy/user-model-preference-service";
 import { sendAgentPhoneMessage } from "../client";
+import { appendAgentPhoneSlashCommandRiskWarning } from "../shared";
 
 function commandArgument(text: string): string {
   const trimmed = text.trim();
@@ -122,6 +123,7 @@ export async function handleAgentPhoneModelCommand(params: {
   text: string;
   agentphoneAgentId: string;
   phoneHandle: string;
+  channel?: string | null;
   orgId: string;
   userId: string;
 }): Promise<void> {
@@ -134,7 +136,10 @@ export async function handleAgentPhoneModelCommand(params: {
     await sendAgentPhoneMessage({
       agentphoneAgentId: params.agentphoneAgentId,
       toNumber: params.phoneHandle,
-      body: "Error: Model switching is not available for this workspace.",
+      body: appendAgentPhoneSlashCommandRiskWarning(
+        "Error: Model switching is not available for this workspace.",
+        params.channel,
+      ),
     });
     return;
   }
@@ -143,7 +148,10 @@ export async function handleAgentPhoneModelCommand(params: {
     await sendAgentPhoneMessage({
       agentphoneAgentId: params.agentphoneAgentId,
       toNumber: params.phoneHandle,
-      body: "Error: No models are configured for this workspace.",
+      body: appendAgentPhoneSlashCommandRiskWarning(
+        "Error: No models are configured for this workspace.",
+        params.channel,
+      ),
     });
     return;
   }
@@ -153,7 +161,10 @@ export async function handleAgentPhoneModelCommand(params: {
     await sendAgentPhoneMessage({
       agentphoneAgentId: params.agentphoneAgentId,
       toNumber: params.phoneHandle,
-      body: formatAgentPhoneModelOptionsMessage(picker),
+      body: appendAgentPhoneSlashCommandRiskWarning(
+        formatAgentPhoneModelOptionsMessage(picker),
+        params.channel,
+      ),
     });
     return;
   }
@@ -163,7 +174,10 @@ export async function handleAgentPhoneModelCommand(params: {
     await sendAgentPhoneMessage({
       agentphoneAgentId: params.agentphoneAgentId,
       toNumber: params.phoneHandle,
-      body: formatUnknownModelMessage(input, picker),
+      body: appendAgentPhoneSlashCommandRiskWarning(
+        formatUnknownModelMessage(input, picker),
+        params.channel,
+      ),
     });
     return;
   }
@@ -172,6 +186,9 @@ export async function handleAgentPhoneModelCommand(params: {
   await sendAgentPhoneMessage({
     agentphoneAgentId: params.agentphoneAgentId,
     toNumber: params.phoneHandle,
-    body: `Switched to ${option.label}.`,
+    body: appendAgentPhoneSlashCommandRiskWarning(
+      `Switched to ${option.label}.`,
+      params.channel,
+    ),
   });
 }

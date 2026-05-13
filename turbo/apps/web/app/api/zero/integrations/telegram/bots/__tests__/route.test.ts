@@ -6,7 +6,10 @@ import {
   createTestRequest,
   insertOrgMembersCacheEntry,
 } from "../../../../../../../src/__tests__/api-test-helpers";
-import { createTestTelegramInstallation } from "../../../../../../../src/__tests__/db-test-seeders/telegram";
+import {
+  createTestTelegramInstallation,
+  insertTestTelegramUserLink,
+} from "../../../../../../../src/__tests__/db-test-seeders/telegram";
 import {
   testContext,
   uniqueNumericId,
@@ -84,8 +87,14 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
     const botId = await createTestTelegramInstallation({
       telegramBotId: ownerBotId,
       ownerUserId: user.userId,
-      vm0UserId: user.userId,
       orgId: user.orgId,
+    });
+    await insertTestTelegramUserLink({
+      installationId: botId,
+      telegramUserId: "tg-owner",
+      telegramUsername: "owner_tg",
+      telegramDisplayName: "Owner Telegram",
+      vm0UserId: user.userId,
     });
     await createTestTelegramInstallation({
       telegramBotId: orgBotId,
@@ -124,6 +133,11 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
           username: `bot_${ownerBotId}`,
           isOwner: true,
           isConnected: true,
+          connectedUser: {
+            telegramUserId: "tg-owner",
+            telegramUsername: "owner_tg",
+            telegramDisplayName: "Owner Telegram",
+          },
           tokenStatus: "valid",
           agent: expect.objectContaining({ id: expect.any(String) }),
         }),

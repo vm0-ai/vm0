@@ -7,7 +7,6 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
-  enableModelFirstModelProviderForUser,
   insertOrgModelPolicy,
   insertUserModelPreference,
   updateOrgDefaultAgent,
@@ -412,7 +411,6 @@ describe("POST /api/zero/slack/commands", () => {
         slackWorkspaceId: workspaceId,
         vm0UserId: user.userId,
       });
-      await enableModelFirstModelProviderForUser(user.orgId, user.userId);
       await insertOrgModelPolicy({
         orgId: user.orgId,
         model: "claude-sonnet-4-6",
@@ -478,14 +476,14 @@ describe("POST /api/zero/slack/commands", () => {
       expect(values).not.toContain("__workspace_default__");
       expect(values).toContain("claude-sonnet-4-6");
       expect(values).toContain("deepseek-v4-pro");
-      expect(values).not.toContain("gpt-5.5");
+      expect(values).toContain("gpt-5.5");
       expect(labels).toContain("Claude Sonnet 4.6 (workspace default)");
       expect(inputBlock?.element?.initial_option?.value).toBe(
         "deepseek-v4-pro",
       );
     });
 
-    it("returns an error when model-first is not enabled", async () => {
+    it("opens the model picker modal without a model-first feature switch", async () => {
       const workspaceId = uniqueId("T-ws");
       const slackUserId = uniqueId("U-slack");
       await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
@@ -504,13 +502,10 @@ describe("POST /api/zero/slack/commands", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.response_type).toBe("ephemeral");
-      expect(JSON.stringify(data.blocks)).toContain("not available");
 
       const { WebClient } = await import("@slack/web-api");
       const mockClient = new WebClient();
-      expect(mockClient.views.open).not.toHaveBeenCalled();
+      expect(mockClient.views.open).toHaveBeenCalledOnce();
     });
 
     it("help output advertises model only for connected model-first users", async () => {
@@ -522,7 +517,6 @@ describe("POST /api/zero/slack/commands", () => {
         slackWorkspaceId: workspaceId,
         vm0UserId: user.userId,
       });
-      await enableModelFirstModelProviderForUser(user.orgId, user.userId);
 
       const body = buildCommandBody({
         team_id: workspaceId,

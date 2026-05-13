@@ -134,6 +134,20 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Stripe payment connector integration",
     enabled: false,
   },
+  [FeatureSwitchKey.CliAuth]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Gate CLI-based connector auth UI and API surfaces. Rollout control only; credential routes still require normal auth and ownership checks.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.StripeCliAuth]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Gate Stripe-specific CLI auth UI and API surfaces. Stripe CLI auth consumers should also require CliAuth.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the PostHog analytics connector",
@@ -217,6 +231,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.AgentPhoneAppUi]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Show first-class AgentPhone app surfaces: Works card and onboarding entry points.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatMessageStartButton]: {
     maintainer: "linghan@vm0.ai",
     description:
@@ -235,8 +256,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "linghan@vm0.ai",
     description:
       "Allow keyboard sends during an active chat thread run to append the draft to that thread's pending message queue.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatThreadPin]: {
     maintainer: "ethan@vm0.ai",
@@ -322,38 +342,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
-  },
-  [FeatureSwitchKey.CodexBeta]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Gate the codex framework via BYOK OpenAI provider in zero web. " +
-      "When off, the openai-api-key tile is hidden in the add-provider " +
-      "dialog and POST /api/zero/model-providers with type=openai-api-key " +
-      "returns 404. Staff-only during rollout; per-user toggle via Lab.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.CodexOauthProvider]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Gate the ChatGPT-OAuth model provider in zero web (Epic #11872). " +
-      "When off, the 'Connect ChatGPT' tile is hidden in the add-provider " +
-      "dialog, server routes that initiate the OAuth dance return 404, and " +
-      "stale-provider UX is bypassed. Staff-only during rollout; per-user " +
-      "toggle via Lab.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ModelFirstModelProvider]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Gate the model-first model provider selection foundation. When off, " +
-      "all provider-first resolver, UI, CLI, and legacy model provider " +
-      "defaults remain unchanged. When on, follow-up work can use org model " +
-      "policies, canonical models, and member-scoped OAuth credentials. " +
-      "Staff-only during rollout; per-user toggle via Lab.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.VoiceChatRealtimeBilling]: {
     maintainer: "lancy@vm0.ai",

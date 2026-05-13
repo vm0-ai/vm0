@@ -12,6 +12,10 @@ pub struct RemoteExecResult {
     pub stdout: Vec<u8>,
     /// Raw stderr bytes.
     pub stderr: Vec<u8>,
+    /// True when stdout exceeded the remote capture budget.
+    pub stdout_truncated: bool,
+    /// True when stderr exceeded the remote capture budget.
+    pub stderr_truncated: bool,
 }
 
 /// Errors from sandbox control operations.

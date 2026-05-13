@@ -26,7 +26,7 @@ import {
   getWorkspaceAgent,
   resolveDefaultComposeId,
 } from "../../../../../../src/lib/zero/slack-org/handlers/shared";
-import { getOrgDefaultModelProvider } from "../../../../../../src/lib/zero/model-provider/model-provider-service";
+import { ensureOrgModelPolicies } from "../../../../../../src/lib/zero/model-policy/org-model-policy-service";
 import { env } from "../../../../../../src/env";
 import type { SlackOrgCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
 import { saveRunSummary } from "../../../../../../src/lib/zero/run-summary";
@@ -138,16 +138,21 @@ async function resolveRespondedByLabel(
 
 /**
  * Return the model display name for the footer. Always resolves to a label
- * so the footer always shows which model responded. Falls back to the org's
- * default `claude-code` model when the run has no explicit `selectedModel`.
+ * so the footer always shows which model responded. Falls back to the
+ * workspace default model when the run has no explicit `selectedModel`.
  */
 async function resolveModel(
   orgId: string,
   selectedModel: string | undefined,
 ): Promise<string | undefined> {
+  const policies = selectedModel
+    ? undefined
+    : await ensureOrgModelPolicies(orgId);
   const model =
     selectedModel ??
-    (await getOrgDefaultModelProvider(orgId, "claude-code"))?.selectedModel;
+    policies?.find((policy) => {
+      return policy.isDefault;
+    })?.model;
   return model ? getModelDisplayName(model) : undefined;
 }
 

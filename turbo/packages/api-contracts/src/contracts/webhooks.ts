@@ -11,6 +11,63 @@ import {
 
 const c = initContract();
 
+const thirdPartyWebhookErrorSchema = z.object({ error: z.string() });
+const thirdPartyWebhookOkSchema = z.union([
+  z.string(),
+  z.object({ message: z.literal("pong") }),
+]);
+
+/**
+ * Clerk third-party webhook contract for /api/webhooks/clerk.
+ */
+export const webhookClerkContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/clerk",
+    body: c.type<string>(),
+    responses: {
+      200: thirdPartyWebhookOkSchema,
+      401: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle Clerk organization and user webhooks",
+  },
+});
+
+/**
+ * GitHub App third-party webhook contract for /api/webhooks/github.
+ */
+export const webhookGithubContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/github",
+    body: c.type<string>(),
+    responses: {
+      200: thirdPartyWebhookOkSchema,
+      400: thirdPartyWebhookErrorSchema,
+      401: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle GitHub App webhooks",
+  },
+});
+
+/**
+ * Stripe third-party webhook contract for /api/webhooks/stripe.
+ */
+export const webhookStripeContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/stripe",
+    body: c.type<string>(),
+    responses: {
+      200: thirdPartyWebhookOkSchema,
+      401: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle Stripe billing webhooks",
+  },
+});
+
 /**
  * Sandbox reuse outcome. One enum value per code branch in the runner's
  * reuse-decision block. `reused` means the sandbox was unparked from the idle
@@ -472,6 +529,9 @@ export const webhookStoragesCommitContract = c.router({
 });
 
 export type WebhookEventsContract = typeof webhookEventsContract;
+export type WebhookClerkContract = typeof webhookClerkContract;
+export type WebhookGithubContract = typeof webhookGithubContract;
+export type WebhookStripeContract = typeof webhookStripeContract;
 export type WebhookCompleteContract = typeof webhookCompleteContract;
 export type WebhookCheckpointsContract = typeof webhookCheckpointsContract;
 export type WebhookCheckpointsPrepareHistoryContract =

@@ -1,12 +1,9 @@
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import {
   getCanonicalModelDisplayName,
   getVm0VisibleModels,
   isSupportedRunModel,
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { loadFeatureSwitchOverrides } from "../user/feature-switches-service";
 import { ensureOrgModelPolicies } from "./org-model-policy-service";
 import { resolveModelFirstRouteDescriptor } from "./model-first-route-service";
 import { getUserModelPreferenceModel } from "./user-model-preference-service";
@@ -46,27 +43,7 @@ export async function getModelPreferencePickerState(params: {
   orgId: string;
   userId: string;
 }): Promise<ModelPreferencePickerState> {
-  const overrides = await loadFeatureSwitchOverrides(
-    params.orgId,
-    params.userId,
-  );
-  const featureStates = getAllFeatureStates({
-    orgId: params.orgId,
-    userId: params.userId,
-    overrides,
-  });
-
-  if (!featureStates[FeatureSwitchKey.ModelFirstModelProvider]) {
-    return {
-      enabled: false,
-      options: [],
-      currentSelectedModel: null,
-      workspaceDefaultModel: null,
-      workspaceDefaultName: null,
-    };
-  }
-
-  const visibleModels = new Set(getVm0VisibleModels(featureStates));
+  const visibleModels = new Set(getVm0VisibleModels());
   const policies = await ensureOrgModelPolicies(params.orgId, params.userId);
   const currentSelectedModel = await getUserModelPreferenceModel(
     params.orgId,

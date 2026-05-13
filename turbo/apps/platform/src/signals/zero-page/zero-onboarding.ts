@@ -84,6 +84,62 @@ export const markConnectorsFromUrl$ = command(({ set }) => {
   set(internalConnectorsFromUrl$, true);
 });
 
+/**
+ * True when the user arrived via a "use case" deep link carrying both
+ * `?connector=` and `?prompt=`. In this mode the onboarding is condensed —
+ * step 4 ("Where would you like to work?") is skipped and step 3 grows an
+ * editable composer so the user can tweak the prompt before continuing
+ * straight into the web chat with their default agent.
+ */
+const internalUseCaseMode$ = state(false);
+const internalPromptDraft$ = state("");
+
+export const onboardingIsUseCase$ = computed((get) => {
+  return get(internalUseCaseMode$);
+});
+
+export const onboardingPromptDraft$ = computed((get) => {
+  return get(internalPromptDraft$);
+});
+
+export const markUseCaseMode$ = command(({ set }, prompt: string) => {
+  set(internalUseCaseMode$, true);
+  set(internalPromptDraft$, prompt);
+});
+
+export const setOnboardingPromptDraft$ = command(({ set }, value: string) => {
+  set(internalPromptDraft$, value);
+});
+
+/**
+ * True once an admin has clicked Next on step 1 and the workspace + default
+ * agent have been provisioned. The dialog stays visible while the user
+ * finishes picking/connecting connectors, and the Back button is hidden —
+ * going back would be misleading now that the workspace exists.
+ *
+ * We also remember the agentId returned by the eager setup so the later
+ * "Continue in web" / "Try It" step can navigate without re-reading the
+ * onboarding status (which `zeroOnboardingStatus$` may still have cached
+ * from before eager init).
+ */
+const internalEagerInitialized$ = state(false);
+const internalEagerInitializedAgentId$ = state<string | null>(null);
+
+export const onboardingEagerInitialized$ = computed((get) => {
+  return get(internalEagerInitialized$);
+});
+
+export const onboardingEagerInitializedAgentId$ = computed((get) => {
+  return get(internalEagerInitializedAgentId$);
+});
+
+export const markEagerInitialized$ = command(
+  ({ set }, agentId: string | null) => {
+    set(internalEagerInitialized$, true);
+    set(internalEagerInitializedAgentId$, agentId);
+  },
+);
+
 export const zeroOnboardingStep$ = computed(async (get) => {
   const userStep = get(userStep$);
   if (userStep !== null) {
@@ -153,6 +209,10 @@ export const toggleZeroConnector$ = command(
 export const resetOnboardingStep$ = command(({ set }) => {
   set(userStep$, null);
   set(internalConnectorsFromUrl$, false);
+  set(internalUseCaseMode$, false);
+  set(internalPromptDraft$, "");
+  set(internalEagerInitialized$, false);
+  set(internalEagerInitializedAgentId$, null);
 });
 
 /**

@@ -200,7 +200,7 @@ describe("POST /api/telegram/register", () => {
         },
         {
           command: "model",
-          description: "Choose your personal default model",
+          description: "Choose your model",
         },
       ]),
     );

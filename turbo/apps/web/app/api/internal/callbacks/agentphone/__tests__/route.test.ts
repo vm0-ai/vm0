@@ -17,11 +17,13 @@ import {
   findTestAgentPhoneThreadSession,
   findTestRunRecord,
   insertTestAgentPhoneUserLink,
+  seedUserFeatureSwitches,
   setTestRunSelectedModel,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { http } from "../../../../../../src/__tests__/msw";
 import { server } from "../../../../../../src/mocks/server";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 
@@ -41,6 +43,7 @@ interface AgentPhoneSendMessageBody {
 interface AgentPhoneTestPayload {
   messageId: string;
   conversationId: string | null;
+  channel?: string;
   phoneHandle: string;
   fromNumber: string;
   toNumber: string;
@@ -69,9 +72,26 @@ function agentPhoneSendMessage() {
   return { ...handler, calls };
 }
 
+function agentPhoneTypingIndicator() {
+  const calls: Array<{ conversationId: string }> = [];
+  const handler = http.post(
+    "https://api.agentphone.to/v1/conversations/:conversationId/typing",
+    ({ params }) => {
+      calls.push({ conversationId: String(params.conversationId) });
+      return HttpResponse.json({
+        conversationId: params.conversationId,
+        channel: "imessage",
+        status: "sent",
+      });
+    },
+  );
+  return { ...handler, calls };
+}
+
 async function setupAgentPhoneCallback(): Promise<{
   composeId: string;
   userId: string;
+  orgId: string;
   userLinkId: string;
   runId: string;
   payload: AgentPhoneTestPayload;
@@ -110,6 +130,7 @@ async function setupAgentPhoneCallback(): Promise<{
   return {
     composeId,
     userId: user.userId,
+    orgId: user.orgId,
     userLinkId: link.id,
     runId,
     payload,
@@ -153,6 +174,29 @@ describe("POST /api/internal/callbacks/agentphone", () => {
     expect(sendMessage.calls).toHaveLength(0);
   });
 
+  it("refreshes iMessage typing on progress callbacks", async () => {
+    const { runId, payload, secret } = await setupAgentPhoneCallback();
+    const typing = agentPhoneTypingIndicator();
+    server.use(typing.handler);
+
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/agentphone",
+      {
+        runId,
+        status: "progress",
+        payload: { ...payload, channel: "imessage" },
+      },
+      secret,
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(typing.mocked).toHaveBeenCalledTimes(1);
+    expect(typing.calls[0]).toEqual({
+      conversationId: payload.conversationId,
+    });
+  });
+
   it("sends completed run output through AgentPhone and stores the session", async () => {
     const { runId, payload, secret, userId, composeId, userLinkId } =
       await setupAgentPhoneCallback();
@@ -175,7 +219,7 @@ describe("POST /api/internal/callbacks/agentphone", () => {
       expect.objectContaining({
         agent_id: AGENTPHONE_AGENT_ID,
         to_number: payload.phoneHandle,
-        body: "Done from AgentPhone.",
+        body: "Done from AgentPhone.\n\nClaude Sonnet 4.6",
       }),
     ]);
 
@@ -188,6 +232,59 @@ describe("POST /api/internal/callbacks/agentphone", () => {
         lastProcessedMessageId: "msg-callback-1",
       }),
     );
+  });
+
+  it("does not warn SMS callback recipients on normal replies", async () => {
+    const { runId, payload, secret } = await setupAgentPhoneCallback();
+    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+      { eventData: { result: "Done from SMS AgentPhone." } },
+    ]);
+    const sendMessage = agentPhoneSendMessage();
+    server.use(sendMessage.handler);
+
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/agentphone",
+      {
+        runId,
+        status: "completed",
+        payload: { ...payload, channel: "sms" },
+      },
+      secret,
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(sendMessage.calls[0]?.body).toContain("Done from SMS AgentPhone.");
+    expect(sendMessage.calls[0]?.body).not.toContain(
+      "SMS and MMS replies may not be delivered reliably",
+    );
+  });
+
+  it("uses the audit label for AgentPhone run links", async () => {
+    const { runId, payload, secret, orgId, userId } =
+      await setupAgentPhoneCallback();
+    await seedUserFeatureSwitches(orgId, userId, {
+      [FeatureSwitchKey.AuditLink]: true,
+    });
+    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+      { eventData: { result: "Done from AgentPhone." } },
+    ]);
+    const sendMessage = agentPhoneSendMessage();
+    server.use(sendMessage.handler);
+
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/agentphone",
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(sendMessage.calls[0]?.body).toContain("Audit: ");
+    expect(sendMessage.calls[0]?.body).toContain(
+      `/activities/${encodeURIComponent(runId)}`,
+    );
+    expect(sendMessage.calls[0]?.body).not.toContain("View run");
   });
 
   it("skips completed callbacks after the phone link is disconnected", async () => {

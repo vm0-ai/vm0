@@ -3,12 +3,14 @@ use std::io;
 use std::path::PathBuf;
 use std::process::Command;
 #[cfg(not(any(debug_assertions, feature = "test-support")))]
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 #[cfg(not(any(debug_assertions, feature = "test-support")))]
 const SANDBOX_USER: &str = "user";
 #[cfg(not(any(debug_assertions, feature = "test-support")))]
 static SANDBOX_USER_CREDENTIALS: OnceLock<UserCredentials> = OnceLock::new();
+#[cfg(not(any(debug_assertions, feature = "test-support")))]
+static SANDBOX_USER_CREDENTIALS_INIT: Mutex<()> = Mutex::new(());
 
 #[cfg(any(test, not(any(debug_assertions, feature = "test-support"))))]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -24,6 +26,25 @@ enum TargetIdentity {
     Current,
     #[cfg(not(any(debug_assertions, feature = "test-support")))]
     User(UserCredentials),
+}
+
+#[cfg(not(any(debug_assertions, feature = "test-support")))]
+pub(crate) fn sandbox_user_name() -> &'static str {
+    SANDBOX_USER
+}
+
+pub(crate) fn sandbox_user_gid() -> io::Result<libc::gid_t> {
+    #[cfg(any(debug_assertions, feature = "test-support"))]
+    {
+        Err(io::Error::other(
+            "sandbox user gid is unavailable in debug/test-support builds",
+        ))
+    }
+
+    #[cfg(not(any(debug_assertions, feature = "test-support")))]
+    {
+        cached_system_user_credentials().map(|credentials| credentials.gid as libc::gid_t)
+    }
 }
 
 pub(crate) fn apply_write_file_identity(command: &mut Command, sudo: bool) -> io::Result<()> {
@@ -115,6 +136,13 @@ fn system_user_credentials(username: &str) -> io::Result<UserCredentials> {
 
 #[cfg(not(any(debug_assertions, feature = "test-support")))]
 fn cached_system_user_credentials() -> io::Result<&'static UserCredentials> {
+    if let Some(credentials) = SANDBOX_USER_CREDENTIALS.get() {
+        return Ok(credentials);
+    }
+
+    let _guard = SANDBOX_USER_CREDENTIALS_INIT
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     if let Some(credentials) = SANDBOX_USER_CREDENTIALS.get() {
         return Ok(credentials);
     }
@@ -242,6 +270,25 @@ mod tests {
     }
 
     #[test]
+    fn parse_user_credentials_uses_passwd_primary_gid_without_group_entry() {
+        let passwd = "user:x:1000:2000::/home/user:/bin/bash\n";
+
+        let credentials = parse_user_credentials(passwd, "", "user").unwrap();
+
+        assert_eq!(credentials.gid, 2000);
+        assert_eq!(credentials.groups, vec![2000]);
+    }
+
+    #[cfg(any(debug_assertions, feature = "test-support"))]
+    #[test]
+    fn sandbox_user_gid_is_unavailable_in_local_builds() {
+        let err = sandbox_user_gid().unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::Other);
+        assert!(err.to_string().contains("sandbox user gid is unavailable"));
+    }
+
+    #[test]
     fn parse_user_credentials_fails_when_user_missing() {
         let err =
             parse_user_credentials("root:x:0:0:root:/root:/bin/bash\n", "", "user").unwrap_err();
@@ -253,6 +300,15 @@ mod tests {
     fn parse_user_credentials_fails_on_invalid_uid() {
         let err =
             parse_user_credentials("user:x:not-a-uid:1000::/home/user:/bin/bash\n", "", "user")
+                .unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn parse_user_credentials_fails_on_invalid_gid() {
+        let err =
+            parse_user_credentials("user:x:1000:not-a-gid::/home/user:/bin/bash\n", "", "user")
                 .unwrap_err();
 
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);

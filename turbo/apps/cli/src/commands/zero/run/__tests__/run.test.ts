@@ -7,7 +7,7 @@
  * - Real (internal): All CLI code, formatters, validators
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 import { mainRunCommand } from "../run";
@@ -17,7 +17,7 @@ describe("zero run command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
-  vi.spyOn(console, "log").mockImplementation(() => {});
+  const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")
     .mockImplementation(() => {});
@@ -50,6 +50,10 @@ describe("zero run command", () => {
     framework: "claude-code",
   };
 
+  function countOccurrences(text: string, pattern: string): number {
+    return text.split(pattern).length - 1;
+  }
+
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
@@ -69,6 +73,12 @@ describe("zero run command", () => {
         },
       ),
     );
+  });
+
+  afterEach(() => {
+    mockExit.mockClear();
+    mockConsoleLog.mockClear();
+    mockConsoleError.mockClear();
   });
 
   describe("agent ID validation", () => {
@@ -297,6 +307,72 @@ describe("zero run command", () => {
       );
       expect(mockConsoleError).not.toHaveBeenCalledWith(
         expect.stringContaining("Run timed out"),
+      );
+    });
+
+    it("should collapse paired Codex error and turn.failed before failed run output", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 0,
+                  eventType: "thread.started",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-zero-1",
+                  },
+                  createdAt: "2025-01-01T00:00:00Z",
+                },
+                {
+                  sequenceNumber: 1,
+                  eventType: "error",
+                  eventData: {
+                    type: "error",
+                    message: "API connection failed",
+                  },
+                  createdAt: "2025-01-01T00:00:01Z",
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "turn.failed",
+                  eventData: {
+                    type: "turn.failed",
+                    error: "Rate limit exceeded",
+                  },
+                  createdAt: "2025-01-01T00:00:02Z",
+                },
+              ],
+              hasMore: false,
+              framework: "codex",
+            });
+          },
+        ),
+        http.get("http://localhost:3000/api/zero/runs/:id", () => {
+          return HttpResponse.json({
+            ...defaultGetRunResponse,
+            status: "failed",
+            error: "Agent crashed",
+            result: undefined,
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await mainRunCommand.parseAsync([
+          "node",
+          "cli",
+          testAgentId,
+          "test prompt",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Run failed"),
       );
     });
 

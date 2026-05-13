@@ -12,7 +12,7 @@ import {
  * - "oauth": OAuth token flow (e.g. claude-code-oauth-token)
  * - "multi-auth": Multiple auth methods with secret fields (e.g. aws-bedrock)
  * - "no-secret": No credentials needed (e.g. vm0 managed provider)
- * - "api-key": Single API key input (default for legacy providers)
+ * - "api-key": Single API key input
  */
 type ProviderShape = "oauth" | "api-key" | "multi-auth" | "no-secret";
 
@@ -233,16 +233,4 @@ const VM0_MODEL_CREDIT_MULTIPLIER = Object.freeze<Record<string, number>>({
 
 export function getVm0ModelMultiplier(model: string): number | undefined {
   return VM0_MODEL_CREDIT_MULTIPLIER[model];
-}
-
-// The VM0 model dropdown shows the full list (10+ entries) which is too long
-// for the chat composer. Collapse to these flagship/budget picks by default;
-// the "Show all models" toggle reveals the rest.
-export function isVm0PrimaryModel(model: string): boolean {
-  return (
-    model === "claude-opus-4-7" ||
-    model === "claude-opus-4-6" ||
-    model === "claude-sonnet-4-6" ||
-    model === "deepseek-v4-pro"
-  );
 }

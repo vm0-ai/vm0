@@ -18,7 +18,9 @@ interface RunAgentParams {
   userInfoExtras?: UserInfoOptions;
   phoneHandle: string;
   conversationId: string | null;
+  channel: string;
   messageId: string;
+  agentphoneAgentId: string;
   userId: string;
   callbackContext: AgentPhoneCallbackPayload;
   apiStartTime: number;

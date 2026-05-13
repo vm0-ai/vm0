@@ -73,8 +73,8 @@ describe("VM0 managed model provider", () => {
       const data = await response.json();
       expect(data.provider.type).toBe("vm0");
       expect(data.provider.framework).toBe("claude-code");
-      expect(data.provider.selectedModel).toBe("claude-sonnet-4-6");
-      expect(data.provider.isDefault).toBe(true);
+      expect(data.provider.selectedModel).toBeNull();
+      expect(data.provider.isDefault).toBe(false);
       expect(data.created).toBe(true);
     });
 
@@ -96,7 +96,7 @@ describe("VM0 managed model provider", () => {
 
       const data = await response.json();
       expect(data.provider.type).toBe("vm0");
-      expect(data.provider.selectedModel).toBe("claude-opus-4-6");
+      expect(data.provider.selectedModel).toBeNull();
       expect(data.created).toBe(true);
     });
   });

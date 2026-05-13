@@ -174,6 +174,77 @@ export const recomposeAgentIfStale$ = command(
   },
 );
 
+export const createServerSideZeroAgentCompose$ = command(
+  async (
+    { set },
+    args: {
+      readonly userId: string;
+      readonly orgId: string;
+      readonly agentName: string;
+      readonly instructions?: string;
+    },
+    signal: AbortSignal,
+  ): Promise<{
+    readonly composeId: string;
+    readonly composeName: string;
+    readonly versionId: string;
+  }> => {
+    const content = buildZeroAgentComposeContent(args.agentName);
+
+    if (args.instructions !== undefined) {
+      await set(
+        uploadVolumeServerSide$,
+        {
+          orgId: args.orgId,
+          storageName: getInstructionsStorageName(args.agentName.toLowerCase()),
+          files: instructionFilesForFramework({
+            content: args.instructions,
+            framework: "claude-code",
+          }),
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+    }
+
+    const versionId = computeComposeVersionId(content);
+    const writeDb = set(writeDb$);
+    const [compose] = await writeDb
+      .insert(agentComposes)
+      .values({
+        userId: args.userId,
+        orgId: args.orgId,
+        name: args.agentName,
+      })
+      .returning({ id: agentComposes.id });
+    signal.throwIfAborted();
+
+    if (!compose) {
+      throw new Error("Failed to create zero agent compose");
+    }
+
+    await writeDb.insert(agentComposeVersions).values({
+      id: versionId,
+      composeId: compose.id,
+      content,
+      createdBy: args.userId,
+    });
+    signal.throwIfAborted();
+
+    await writeDb
+      .update(agentComposes)
+      .set({ headVersionId: versionId, updatedAt: nowDate() })
+      .where(eq(agentComposes.id, compose.id));
+    signal.throwIfAborted();
+
+    return {
+      composeId: compose.id,
+      composeName: args.agentName,
+      versionId,
+    };
+  },
+);
+
 export const serverSideZeroAgentCompose$ = command(
   async (
     { set },

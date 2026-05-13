@@ -1,10 +1,7 @@
+import { randomUUID } from "node:crypto";
+
 import { command, computed, type Computed } from "ccstate";
 import { and, count, eq, inArray } from "drizzle-orm";
-import {
-  allowsCustomModel,
-  getModels,
-  modelProviderTypeSchema,
-} from "@vm0/api-contracts/contracts/model-providers";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroAgentsByIdContract,
@@ -16,7 +13,6 @@ import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
@@ -28,12 +24,13 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import { conflict, notFound } from "../../lib/error";
 import {
   requireAdminPermission,
   requireAgentPermission,
 } from "../../lib/require-agent-permission";
 import {
+  createServerSideZeroAgentCompose$,
   recomposeAgentIfStale$,
   serverSideZeroAgentCompose$,
 } from "../services/agent-compose.service";
@@ -59,9 +56,6 @@ interface AgentUpdateBody {
   readonly sound?: string;
   readonly avatarUrl?: string | null;
   readonly customSkills?: readonly string[];
-  readonly modelProviderId?: string | null;
-  readonly selectedModel?: string | null;
-  readonly preferPersonalProvider?: boolean;
   readonly visibility?: ZeroAgentVisibility;
 }
 
@@ -110,6 +104,12 @@ function publicAgentLimitError() {
   );
 }
 
+function publicAgentCreateLimitError() {
+  return conflict(
+    "This organization has reached the maximum number of agents (7). Delete an existing agent before creating a new one.",
+  );
+}
+
 function buildAgentUpsertConflictSet(body: AgentUpdateBody, updatedAt: Date) {
   return {
     updatedAt,
@@ -120,15 +120,9 @@ function buildAgentUpsertConflictSet(body: AgentUpdateBody, updatedAt: Date) {
     ...(body.customSkills !== undefined && {
       customSkills: [...body.customSkills],
     }),
-    ...(body.modelProviderId !== undefined && {
-      modelProviderId: body.modelProviderId,
-    }),
-    ...(body.selectedModel !== undefined && {
-      selectedModel: body.selectedModel,
-    }),
-    ...(body.preferPersonalProvider !== undefined && {
-      preferPersonalProvider: body.preferPersonalProvider,
-    }),
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
     ...(body.visibility !== undefined && { visibility: body.visibility }),
   };
 }
@@ -173,54 +167,6 @@ async function validateCustomSkills(
         `Custom skill '${missing}' not found in this organization. Create it with 'zero skill create' first.`,
       )
     : null;
-}
-
-async function validateModelSelection(
-  writeDb: Db,
-  orgId: string,
-  modelProviderId: string | null | undefined,
-  selectedModel: string | null | undefined,
-) {
-  if (!modelProviderId) {
-    return null;
-  }
-
-  const [provider] = await writeDb
-    .select({ type: modelProviders.type })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.id, modelProviderId),
-        eq(modelProviders.orgId, orgId),
-      ),
-    )
-    .limit(1);
-
-  if (!provider) {
-    return badRequestMessage(
-      `Model provider "${modelProviderId}" not found in this org`,
-    );
-  }
-
-  if (!selectedModel) {
-    return null;
-  }
-
-  const parsed = modelProviderTypeSchema.safeParse(provider.type);
-  if (!parsed.success) {
-    return badRequestMessage(`Unknown model provider type "${provider.type}"`);
-  }
-
-  if (allowsCustomModel(parsed.data)) {
-    return null;
-  }
-
-  const available = getModels(parsed.data) ?? [];
-  return available.includes(selectedModel)
-    ? null
-    : badRequestMessage(
-        `Model "${selectedModel}" is not available for provider type "${parsed.data}". Available: ${available.join(", ")}`,
-      );
 }
 
 function findAgentForUpdate(
@@ -429,9 +375,9 @@ function upsertZeroAgentAfterCompose(
       sound: args.body.sound ?? null,
       avatarUrl: args.body.avatarUrl ?? null,
       customSkills: [...args.customSkills],
-      modelProviderId: args.body.modelProviderId ?? null,
-      selectedModel: args.body.selectedModel ?? null,
-      preferPersonalProvider: args.body.preferPersonalProvider ?? false,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
       visibility: args.visibility,
     })
     .onConflictDoUpdate({
@@ -464,6 +410,130 @@ function readAgentForResponse(writeDb: Db, orgId: string, agentId: string) {
       return rows[0] ?? null;
     });
 }
+
+const createAgentBody$ = bodyResultOf(zeroAgentsMainContract.create);
+
+const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const body = await get(createAgentBody$);
+  signal.throwIfAborted();
+  if (!body.ok) {
+    return body.response;
+  }
+
+  const writeDb = set(writeDb$);
+  const customSkills = body.data.customSkills ?? [];
+  const visibility = body.data.visibility ?? "public";
+  const visibilityError = await privateVisibilityError({
+    get,
+    orgId: auth.orgId,
+    userId: auth.userId,
+    nextVisibility: visibility,
+    signal,
+  });
+  if (visibilityError) {
+    return visibilityError;
+  }
+
+  const customSkillsError = await validateCustomSkills(
+    writeDb,
+    auth.orgId,
+    customSkills,
+  );
+  signal.throwIfAborted();
+  if (customSkillsError) {
+    return customSkillsError;
+  }
+
+  const agentName = randomUUID();
+  const compose = await set(
+    createServerSideZeroAgentCompose$,
+    {
+      userId: auth.userId,
+      orgId: auth.orgId,
+      agentName,
+      instructions: "",
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  const metadata = {
+    displayName: body.data.displayName ?? null,
+    description: body.data.description ?? null,
+    sound: body.data.sound ?? null,
+    avatarUrl: body.data.avatarUrl ?? null,
+    customSkills: [...customSkills],
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
+    visibility,
+  };
+
+  const result = await writeDb.transaction(async (tx) => {
+    await tx
+      .select({ id: zeroAgents.id })
+      .from(zeroAgents)
+      .where(eq(zeroAgents.orgId, auth.orgId))
+      .for("update");
+    signal.throwIfAborted();
+
+    if (visibility === "public") {
+      const [publicAgentCount] = await tx
+        .select({ value: count() })
+        .from(zeroAgents)
+        .where(
+          and(
+            eq(zeroAgents.orgId, auth.orgId),
+            eq(zeroAgents.visibility, "public"),
+          ),
+        );
+      signal.throwIfAborted();
+
+      if ((publicAgentCount?.value ?? 0) >= PUBLIC_AGENT_LIMIT) {
+        return { blocked: true as const };
+      }
+    }
+
+    await tx
+      .insert(zeroAgents)
+      .values({
+        id: compose.composeId,
+        orgId: auth.orgId,
+        name: compose.composeName,
+        owner: auth.userId,
+        ...metadata,
+      })
+      .onConflictDoUpdate({
+        target: [zeroAgents.orgId, zeroAgents.name],
+        set: {
+          ...metadata,
+          updatedAt: nowDate(),
+        },
+      });
+    signal.throwIfAborted();
+
+    return { blocked: false as const };
+  });
+  signal.throwIfAborted();
+
+  if (result.blocked) {
+    return publicAgentCreateLimitError();
+  }
+
+  const agent = await readAgentForResponse(
+    writeDb,
+    auth.orgId,
+    compose.composeId,
+  );
+  signal.throwIfAborted();
+
+  if (!agent) {
+    throw new Error(`Created zero agent not found: ${compose.composeId}`);
+  }
+
+  return { status: 201 as const, body: agentResponse(agent) };
+});
 
 const listAgentsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -579,17 +649,6 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return visibilityError;
   }
 
-  const modelError = await validateModelSelection(
-    writeDb,
-    auth.orgId,
-    body.data.modelProviderId,
-    body.data.selectedModel,
-  );
-  signal.throwIfAborted();
-  if (modelError) {
-    return modelError;
-  }
-
   const customSkills = body.data.customSkills ?? existing.customSkills ?? [];
   const customSkillsError = await validateCustomSkillsForUpdate({
     writeDb,
@@ -686,17 +745,6 @@ const updateAgentMetadataInner$ = command(
       if (visibilityError) {
         return visibilityError;
       }
-    }
-
-    const modelError = await validateModelSelection(
-      writeDb,
-      auth.orgId,
-      body.data.modelProviderId,
-      body.data.selectedModel,
-    );
-    signal.throwIfAborted();
-    if (modelError) {
-      return modelError;
     }
 
     await writeDb
@@ -969,6 +1017,10 @@ const agentDeleteAuth = {
 } as const;
 
 export const zeroAgentsRoutes: readonly RouteEntry[] = [
+  {
+    route: zeroAgentsMainContract.create,
+    handler: authRoute(agentWriteAuth, createAgentInner$),
+  },
   {
     route: zeroAgentsMainContract.list,
     handler: authRoute(agentReadAuth, listAgentsInner$),

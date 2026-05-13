@@ -61,9 +61,6 @@ const zeroDeployScheduleRequestSchema = z
     volumeVersions: z.record(z.string(), z.string()).optional(),
     agentId: z.string().uuid("Invalid agent ID"),
     enabled: z.boolean().optional(),
-    modelProviderId: z.string().uuid().nullable().optional(),
-    selectedModel: z.string().nullable().optional(),
-    preferPersonalProvider: z.boolean().optional(),
   })
   .refine(
     (data) => {
@@ -198,8 +195,12 @@ export const zeroScheduleRunContract = c.router({
       201: z.object({ runId: z.string() }),
       400: apiErrorSchema,
       401: apiErrorSchema,
+      402: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
       409: apiErrorSchema,
+      429: apiErrorSchema,
+      503: apiErrorSchema,
     },
     summary: "Execute a schedule immediately (run now)",
   },

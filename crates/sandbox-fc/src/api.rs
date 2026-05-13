@@ -562,8 +562,392 @@ fn drain_inotify_fd(fd: std::os::fd::BorrowedFd<'_>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::VecDeque;
     use std::path::PathBuf;
-    use tokio::net::UnixListener;
+    use tokio::net::{UnixListener, UnixStream};
+    use tokio::sync::{mpsc, oneshot};
+    use tokio::task::JoinHandle;
+
+    const MOCK_REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(5);
+    const MAX_MOCK_REQUEST_HEADER_BYTES: usize = 16 * 1024;
+    const MAX_MOCK_REQUEST_BODY_BYTES: usize = 1024 * 1024;
+
+    #[derive(Debug)]
+    struct MockRequest {
+        raw: String,
+        method: String,
+        path: String,
+        body: String,
+    }
+
+    #[derive(Clone, Debug)]
+    struct MockResponse {
+        status: u16,
+        reason: &'static str,
+        body: String,
+    }
+
+    impl MockResponse {
+        fn ok() -> Self {
+            Self::new(200, "OK", "")
+        }
+
+        fn ok_body(body: impl Into<String>) -> Self {
+            Self::new(200, "OK", body)
+        }
+
+        fn no_content() -> Self {
+            Self::new(204, "No Content", "")
+        }
+
+        fn bad_request_fault(message: &str) -> Self {
+            Self::new(
+                400,
+                "Bad Request",
+                serde_json::json!({ "fault_message": message }).to_string(),
+            )
+        }
+
+        fn internal_error_raw(body: impl Into<String>) -> Self {
+            Self::new(500, "Internal Server Error", body)
+        }
+
+        fn new(status: u16, reason: &'static str, body: impl Into<String>) -> Self {
+            Self {
+                status,
+                reason,
+                body: body.into(),
+            }
+        }
+
+        fn to_http(&self) -> String {
+            format!(
+                "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n\r\n{}",
+                self.status,
+                self.reason,
+                self.body.len(),
+                self.body
+            )
+        }
+    }
+
+    enum MockResponseMode {
+        Queue(VecDeque<MockResponse>),
+        Repeat(MockResponse),
+    }
+
+    impl MockResponseMode {
+        fn next_response(&mut self) -> MockResponse {
+            match self {
+                Self::Queue(responses) => responses.pop_front().unwrap_or_else(|| {
+                    MockResponse::internal_error_raw("unexpected extra Firecracker API request")
+                }),
+                Self::Repeat(response) => response.clone(),
+            }
+        }
+    }
+
+    struct MockFirecrackerApi {
+        _dir: tempfile::TempDir,
+        sock_path: PathBuf,
+        requests: mpsc::UnboundedReceiver<MockRequest>,
+        server: JoinHandle<()>,
+    }
+
+    impl MockFirecrackerApi {
+        fn with_responses(responses: impl IntoIterator<Item = MockResponse>) -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let sock_path = dir.path().join("fc.sock");
+            let listener = UnixListener::bind(&sock_path).unwrap();
+            Self::spawn(
+                dir,
+                sock_path,
+                async move { listener },
+                MockResponseMode::Queue(responses.into_iter().collect()),
+            )
+        }
+
+        fn repeating(response: MockResponse) -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let sock_path = dir.path().join("fc.sock");
+            let listener = UnixListener::bind(&sock_path).unwrap();
+            Self::spawn(
+                dir,
+                sock_path,
+                async move { listener },
+                MockResponseMode::Repeat(response),
+            )
+        }
+
+        fn deferred_repeating(response: MockResponse) -> (Self, oneshot::Sender<()>) {
+            let dir = tempfile::tempdir().unwrap();
+            let sock_path = dir.path().join("deferred.sock");
+            let bind_path = sock_path.clone();
+            let (bind_tx, bind_rx) = oneshot::channel();
+            let (tx, requests) = mpsc::unbounded_channel();
+            let server = tokio::spawn(async move {
+                if bind_rx.await.is_err() {
+                    return;
+                }
+
+                let listener = UnixListener::bind(&bind_path).unwrap();
+                serve_mock_api(listener, MockResponseMode::Repeat(response), tx).await;
+            });
+
+            (
+                Self {
+                    _dir: dir,
+                    sock_path,
+                    requests,
+                    server,
+                },
+                bind_tx,
+            )
+        }
+
+        fn spawn(
+            dir: tempfile::TempDir,
+            sock_path: PathBuf,
+            bind: impl std::future::Future<Output = UnixListener> + Send + 'static,
+            responses: MockResponseMode,
+        ) -> Self {
+            let (tx, requests) = mpsc::unbounded_channel();
+            let server = tokio::spawn(async move {
+                let listener = bind.await;
+                serve_mock_api(listener, responses, tx).await;
+            });
+
+            Self {
+                _dir: dir,
+                sock_path,
+                requests,
+                server,
+            }
+        }
+
+        fn socket_path(&self) -> &std::path::Path {
+            &self.sock_path
+        }
+
+        async fn next_request(&mut self) -> MockRequest {
+            tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, self.requests.recv())
+                .await
+                .expect("timed out waiting for Firecracker API request")
+                .expect("mock Firecracker API server stopped before capturing request")
+        }
+    }
+
+    impl Drop for MockFirecrackerApi {
+        fn drop(&mut self) {
+            self.server.abort();
+        }
+    }
+
+    async fn serve_mock_api(
+        listener: UnixListener,
+        mut responses: MockResponseMode,
+        tx: mpsc::UnboundedSender<MockRequest>,
+    ) {
+        loop {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                break;
+            };
+
+            let request = match tokio::time::timeout(
+                MOCK_REQUEST_READ_TIMEOUT,
+                read_mock_request(&mut stream),
+            )
+            .await
+            {
+                Ok(Ok(request)) => request,
+                Ok(Err(error)) => {
+                    let response =
+                        MockResponse::internal_error_raw(format!("read request: {error}"));
+                    let _ = stream.write_all(response.to_http().as_bytes()).await;
+                    continue;
+                }
+                Err(_) => {
+                    let response = MockResponse::internal_error_raw("read request timed out");
+                    let _ = stream.write_all(response.to_http().as_bytes()).await;
+                    continue;
+                }
+            };
+
+            if tx.send(request).is_err() {
+                break;
+            }
+
+            let response = responses.next_response();
+            let _ = stream.write_all(response.to_http().as_bytes()).await;
+        }
+    }
+
+    async fn read_mock_request(stream: &mut UnixStream) -> std::io::Result<MockRequest> {
+        let mut buf = Vec::with_capacity(4096);
+        loop {
+            if header_end(&buf).is_some() {
+                break;
+            }
+            if buf.len() > MAX_MOCK_REQUEST_HEADER_BYTES {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("request headers too large: {} bytes", buf.len()),
+                ));
+            }
+
+            let read = stream.read_buf(&mut buf).await?;
+            if read == 0 {
+                break;
+            }
+        }
+
+        let header_end = header_end(&buf).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "request missing HTTP header terminator",
+            )
+        })?;
+        if header_end > MAX_MOCK_REQUEST_HEADER_BYTES {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("request headers too large: {header_end} bytes"),
+            ));
+        }
+        let headers = String::from_utf8_lossy(&buf[..header_end.saturating_sub(4)]).to_string();
+        let content_length = headers
+            .lines()
+            .find_map(|line| {
+                let (key, value) = line.split_once(':')?;
+                if key.trim().eq_ignore_ascii_case("content-length") {
+                    value.trim().parse::<usize>().ok()
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        if content_length > MAX_MOCK_REQUEST_BODY_BYTES {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("request body too large: {content_length} bytes"),
+            ));
+        }
+
+        let already_read = buf.len().saturating_sub(header_end);
+        if already_read < content_length {
+            let mut tail = vec![0u8; content_length - already_read];
+            stream.read_exact(&mut tail).await?;
+            buf.extend_from_slice(&tail);
+        }
+
+        let body_end = header_end.saturating_add(content_length);
+        let body =
+            String::from_utf8_lossy(buf.get(header_end..body_end).unwrap_or_default()).to_string();
+        let raw = String::from_utf8_lossy(&buf).to_string();
+        let first_line = headers.lines().next().unwrap_or_default();
+        let mut request_line = first_line.split_whitespace();
+        let method = request_line.next().unwrap_or_default().to_string();
+        let path = request_line.next().unwrap_or_default().to_string();
+
+        Ok(MockRequest {
+            raw,
+            method,
+            path,
+            body,
+        })
+    }
+
+    fn header_end(buf: &[u8]) -> Option<usize> {
+        buf.windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .map(|index| index + 4)
+    }
+
+    fn assert_request(request: &MockRequest, method: &str, path: &str) {
+        assert_eq!(request.method, method, "raw request: {}", request.raw);
+        assert_eq!(request.path, path, "raw request: {}", request.raw);
+    }
+
+    fn request_body_json(request: &MockRequest) -> serde_json::Value {
+        serde_json::from_str(&request.body).unwrap_or_else(|error| {
+            panic!("invalid JSON body: {error}; raw request: {}", request.raw)
+        })
+    }
+
+    async fn run_with_split_response<T, Fut>(
+        response: MockResponse,
+        call: impl FnOnce(PathBuf) -> Fut,
+    ) -> (T, MockRequest)
+    where
+        Fut: std::future::Future<Output = T>,
+    {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let (request_tx, request_rx) = oneshot::channel();
+        let (header_written_tx, header_written_rx) = oneshot::channel();
+        let (write_body_tx, write_body_rx) = oneshot::channel();
+        let server = async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let request = read_mock_request(&mut stream).await.unwrap();
+            request_tx.send(request).unwrap();
+
+            let header = format!(
+                "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n\r\n",
+                response.status,
+                response.reason,
+                response.body.len()
+            );
+            stream.write_all(header.as_bytes()).await.unwrap();
+            header_written_tx.send(()).unwrap();
+
+            write_body_rx.await.unwrap();
+            stream.write_all(response.body.as_bytes()).await.unwrap();
+        };
+        tokio::pin!(server);
+
+        let client = call(sock_path);
+        tokio::pin!(client);
+
+        tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, async {
+            tokio::select! {
+                result = header_written_rx => result.unwrap(),
+                _ = &mut client => panic!("client completed before split response header"),
+                result = &mut server => panic!("mock server exited before split response header: {result:?}"),
+            }
+        })
+        .await
+        .expect("timed out waiting for split response header");
+        write_body_tx.send(()).unwrap();
+
+        let (output, ()) = tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, async {
+            tokio::join!(&mut client, &mut server)
+        })
+        .await
+        .expect("timed out waiting for split response completion");
+        let request = request_rx.await.unwrap();
+        (output, request)
+    }
+
+    #[tokio::test]
+    async fn mock_firecracker_api_reads_split_request_body() {
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let mut stream = UnixStream::connect(api.socket_path()).await.unwrap();
+
+        stream
+            .write_all(
+                b"PUT /split HTTP/1.1\r\n\
+                  Host: localhost\r\n\
+                  Content-Length: 14\r\n\
+                  \r\n",
+            )
+            .await
+            .unwrap();
+        stream.write_all(br#"{"split":true}"#).await.unwrap();
+
+        let request = api.next_request().await;
+        assert_request(&request, "PUT", "/split");
+        assert_eq!(request.body, r#"{"split":true}"#);
+    }
 
     #[test]
     fn api_error_is_retryable_connection_refused() {
@@ -612,36 +996,22 @@ mod tests {
 
     #[tokio::test]
     async fn wait_for_ready_succeeds_on_200() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("fc.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        // Spawn a mock server that returns 200.
-        let path = sock_path.clone();
-        tokio::spawn(async move {
-            let _ = &path; // keep path alive
-            loop {
-                let Ok((mut stream, _)) = listener.accept().await else {
-                    break;
-                };
-                let mut buf = vec![0u8; 4096];
-                let _ = stream.read(&mut buf).await;
-                let response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
-                let _ = stream.write_all(response.as_bytes()).await;
-            }
-        });
-
+        let mut api = MockFirecrackerApi::repeating(MockResponse::ok());
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let result = client.wait_for_ready(Duration::from_secs(2)).await;
         assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "GET", "/");
     }
 
     #[tokio::test]
     async fn wait_for_ready_times_out_on_missing_socket() {
-        let path = PathBuf::from("/tmp/nonexistent-test-socket.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing.sock");
         let client = ApiClient::new(&path);
-        let result = client.wait_for_ready(Duration::from_millis(50)).await;
+        let result = client.wait_for_ready(Duration::ZERO).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("timed out"), "got: {err}");
@@ -649,112 +1019,63 @@ mod tests {
 
     #[tokio::test]
     async fn load_snapshot_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("fc.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        tokio::spawn(async move {
-            let Ok((mut stream, _)) = listener.accept().await else {
-                return;
-            };
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await;
-
-            let req = String::from_utf8_lossy(&buf);
-            // Verify it's a PUT to /snapshot/load with expected JSON body.
-            assert!(req.starts_with("PUT /snapshot/load"), "got: {req}");
-            assert!(req.contains("resume_vm"), "missing resume_vm in: {req}");
-
-            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
-            let _ = stream.write_all(response.as_bytes()).await;
-        });
-
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let result = client.load_snapshot("/snap/state", "/snap/memory").await;
         assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "PUT", "/snapshot/load");
+        let body = request_body_json(&request);
+        assert_eq!(body["snapshot_path"], "/snap/state");
+        assert_eq!(body["mem_backend"]["backend_type"], "File");
+        assert_eq!(body["mem_backend"]["backend_path"], "/snap/memory");
+        assert_eq!(body["resume_vm"], true);
     }
 
     #[tokio::test]
-    async fn wait_for_ready_detects_delayed_socket_via_inotify() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("delayed.sock");
-
-        // Socket doesn't exist yet — spawn a task that creates it after 50ms.
-        let delayed_path = sock_path.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(50)).await;
-            let listener = UnixListener::bind(&delayed_path).unwrap();
-            loop {
-                let Ok((mut stream, _)) = listener.accept().await else {
-                    break;
-                };
-                let mut buf = vec![0u8; 4096];
-                let _ = stream.read(&mut buf).await;
-                let response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
-                let _ = stream.write_all(response.as_bytes()).await;
-            }
+    async fn wait_for_ready_detects_deferred_socket() {
+        let (mut api, bind_socket) = MockFirecrackerApi::deferred_repeating(MockResponse::ok());
+        let sock_path = api.socket_path().to_path_buf();
+        let waiter = tokio::spawn(async move {
+            let client = ApiClient::new(&sock_path);
+            client.wait_for_ready(Duration::from_secs(2)).await
         });
 
-        let client = ApiClient::new(&sock_path);
-        let result = client.wait_for_ready(Duration::from_secs(2)).await;
+        bind_socket.send(()).unwrap();
+        let result = waiter.await.unwrap();
         assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "GET", "/");
     }
 
     #[tokio::test]
     async fn wait_for_ready_retries_until_success() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("fc.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        // First 3 requests return 500, then 200.
-        tokio::spawn(async move {
-            let mut count = 0u32;
-            loop {
-                let Ok((mut stream, _)) = listener.accept().await else {
-                    break;
-                };
-                let mut buf = vec![0u8; 4096];
-                let _ = stream.read(&mut buf).await;
-                let response = if count < 3 {
-                    "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n"
-                } else {
-                    "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
-                };
-                let _ = stream.write_all(response.as_bytes()).await;
-                count += 1;
-            }
-        });
-
+        let mut api = MockFirecrackerApi::with_responses([
+            MockResponse::internal_error_raw(""),
+            MockResponse::internal_error_raw(""),
+            MockResponse::internal_error_raw(""),
+            MockResponse::ok(),
+        ]);
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let result = client.wait_for_ready(Duration::from_secs(2)).await;
         assert!(result.is_ok());
+
+        for _ in 0..4 {
+            let request = api.next_request().await;
+            assert_request(&request, "GET", "/");
+        }
     }
 
     #[tokio::test]
     async fn load_snapshot_error_falls_back_to_raw_body() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("fc.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        // Return non-JSON error body.
-        tokio::spawn(async move {
-            let Ok((mut stream, _)) = listener.accept().await else {
-                return;
-            };
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await;
-
-            let body = "plain text error";
-            let response = format!(
-                "HTTP/1.1 500 Internal Server Error\r\nContent-Length: {}\r\n\r\n{body}",
-                body.len()
-            );
-            let _ = stream.write_all(response.as_bytes()).await;
-        });
-
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::internal_error_raw(
+            "plain text error",
+        )]);
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let result = client.load_snapshot("/snap/state", "/snap/memory").await;
         let ApiError::Http { status, body } = result.unwrap_err() else {
@@ -762,30 +1083,17 @@ mod tests {
         };
         assert_eq!(status, 500);
         assert_eq!(body, "plain text error");
+
+        let request = api.next_request().await;
+        assert_request(&request, "PUT", "/snapshot/load");
     }
 
     #[tokio::test]
     async fn load_snapshot_returns_error_on_non_204() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("fc.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        tokio::spawn(async move {
-            let Ok((mut stream, _)) = listener.accept().await else {
-                return;
-            };
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await;
-
-            let body = r#"{"fault_message":"bad snapshot"}"#;
-            let response = format!(
-                "HTTP/1.1 400 Bad Request\r\nContent-Length: {}\r\n\r\n{body}",
-                body.len()
-            );
-            let _ = stream.write_all(response.as_bytes()).await;
-        });
-
+        let fault_message = r#"bad "snapshot" \ path"#;
+        let mut api =
+            MockFirecrackerApi::with_responses([MockResponse::bad_request_fault(fault_message)]);
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let result = client.load_snapshot("/snap/state", "/snap/memory").await;
         let ApiError::Http { status, body } = result.unwrap_err() else {
@@ -793,346 +1101,189 @@ mod tests {
         };
         assert_eq!(status, 400);
         // fault_message is extracted from JSON response (matches TS behavior).
-        assert_eq!(body, "bad snapshot");
+        assert_eq!(body, fault_message);
+
+        let request = api.next_request().await;
+        assert_request(&request, "PUT", "/snapshot/load");
     }
 
     #[tokio::test]
     async fn pause_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("fc.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        tokio::spawn(async move {
-            let Ok((mut stream, _)) = listener.accept().await else {
-                return;
-            };
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await;
-
-            let req = String::from_utf8_lossy(&buf);
-            assert!(req.starts_with("PATCH /vm"), "got: {req}");
-            assert!(
-                req.contains(r#""state":"Paused""#),
-                "missing Paused in: {req}"
-            );
-
-            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
-            let _ = stream.write_all(response.as_bytes()).await;
-        });
-
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let result = client.pause().await;
         assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "PATCH", "/vm");
+        let body = request_body_json(&request);
+        assert_eq!(body["state"], "Paused");
+    }
+
+    #[tokio::test]
+    async fn resume_succeeds_on_204() {
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let sock_path = api.socket_path().to_path_buf();
+        let client = ApiClient::new(&sock_path);
+        let result = client.resume().await;
+        assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "PATCH", "/vm");
+        let body = request_body_json(&request);
+        assert_eq!(body["state"], "Resumed");
     }
 
     #[tokio::test]
     async fn create_snapshot_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("fc.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        tokio::spawn(async move {
-            let Ok((mut stream, _)) = listener.accept().await else {
-                return;
-            };
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await;
-
-            let req = String::from_utf8_lossy(&buf);
-            assert!(req.starts_with("PUT /snapshot/create"), "got: {req}");
-            assert!(
-                req.contains("snapshot_type"),
-                "missing snapshot_type in: {req}"
-            );
-            assert!(
-                req.contains("mem_file_path"),
-                "missing mem_file_path in: {req}"
-            );
-
-            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
-            let _ = stream.write_all(response.as_bytes()).await;
-        });
-
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let result = client.create_snapshot("/snap/state", "/snap/memory").await;
         assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "PUT", "/snapshot/create");
+        let body = request_body_json(&request);
+        assert_eq!(body["snapshot_type"], "Full");
+        assert_eq!(body["snapshot_path"], "/snap/state");
+        assert_eq!(body["mem_file_path"], "/snap/memory");
     }
 
     #[tokio::test]
     async fn pause_returns_error_on_failure() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("fc.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        tokio::spawn(async move {
-            let Ok((mut stream, _)) = listener.accept().await else {
-                return;
-            };
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await;
-
-            let body = r#"{"fault_message":"cannot pause"}"#;
-            let response = format!(
-                "HTTP/1.1 400 Bad Request\r\nContent-Length: {}\r\n\r\n{body}",
-                body.len()
-            );
-            let _ = stream.write_all(response.as_bytes()).await;
-        });
-
+        let mut api =
+            MockFirecrackerApi::with_responses([MockResponse::bad_request_fault("cannot pause")]);
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let ApiError::Http { status, body } = client.pause().await.unwrap_err() else {
             panic!("expected Http error");
         };
         assert_eq!(status, 400);
         assert_eq!(body, "cannot pause");
+
+        let request = api.next_request().await;
+        assert_request(&request, "PATCH", "/vm");
     }
 
     #[tokio::test]
     async fn configure_machine_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("fc.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        tokio::spawn(async move {
-            let Ok((mut stream, _)) = listener.accept().await else {
-                return;
-            };
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await;
-
-            let req = String::from_utf8_lossy(&buf);
-            assert!(req.starts_with("PUT /machine-config"), "got: {req}");
-            assert!(req.contains("vcpu_count"), "missing vcpu_count in: {req}");
-            assert!(
-                req.contains("mem_size_mib"),
-                "missing mem_size_mib in: {req}"
-            );
-
-            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
-            let _ = stream.write_all(response.as_bytes()).await;
-        });
-
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let result = client.configure_machine(2, 256).await;
         assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "PUT", "/machine-config");
+        let body = request_body_json(&request);
+        assert_eq!(body["vcpu_count"], 2);
+        assert_eq!(body["mem_size_mib"], 256);
     }
 
     #[tokio::test]
     async fn configure_boot_source_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("fc.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        tokio::spawn(async move {
-            let Ok((mut stream, _)) = listener.accept().await else {
-                return;
-            };
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await;
-
-            let req = String::from_utf8_lossy(&buf);
-            assert!(req.starts_with("PUT /boot-source"), "got: {req}");
-            assert!(
-                req.contains("kernel_image_path"),
-                "missing kernel_image_path in: {req}"
-            );
-            assert!(req.contains("boot_args"), "missing boot_args in: {req}");
-
-            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
-            let _ = stream.write_all(response.as_bytes()).await;
-        });
-
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let result = client
             .configure_boot_source("/path/to/kernel", "console=ttyS0")
             .await;
         assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "PUT", "/boot-source");
+        let body = request_body_json(&request);
+        assert_eq!(body["kernel_image_path"], "/path/to/kernel");
+        assert_eq!(body["boot_args"], "console=ttyS0");
     }
 
     #[tokio::test]
     async fn configure_drive_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("fc.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        tokio::spawn(async move {
-            let Ok((mut stream, _)) = listener.accept().await else {
-                return;
-            };
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await;
-
-            let req = String::from_utf8_lossy(&buf);
-            assert!(req.starts_with("PUT /drives/rootfs"), "got: {req}");
-            assert!(req.contains("drive_id"), "missing drive_id in: {req}");
-            assert!(
-                req.contains("path_on_host"),
-                "missing path_on_host in: {req}"
-            );
-
-            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
-            let _ = stream.write_all(response.as_bytes()).await;
-        });
-
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let result = client
             .configure_drive("rootfs", "/path/to/rootfs", true, true)
             .await;
         assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "PUT", "/drives/rootfs");
+        let body = request_body_json(&request);
+        assert_eq!(body["drive_id"], "rootfs");
+        assert_eq!(body["path_on_host"], "/path/to/rootfs");
+        assert_eq!(body["is_root_device"], true);
+        assert_eq!(body["is_read_only"], true);
     }
 
     #[tokio::test]
     async fn configure_network_interface_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("fc.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        tokio::spawn(async move {
-            let Ok((mut stream, _)) = listener.accept().await else {
-                return;
-            };
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await;
-
-            let req = String::from_utf8_lossy(&buf);
-            assert!(
-                req.starts_with("PUT /network-interfaces/eth0"),
-                "got: {req}"
-            );
-            assert!(req.contains("guest_mac"), "missing guest_mac in: {req}");
-            assert!(
-                req.contains("host_dev_name"),
-                "missing host_dev_name in: {req}"
-            );
-
-            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
-            let _ = stream.write_all(response.as_bytes()).await;
-        });
-
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let result = client
             .configure_network_interface("eth0", "02:00:00:00:00:01", "vm0-tap")
             .await;
         assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "PUT", "/network-interfaces/eth0");
+        let body = request_body_json(&request);
+        assert_eq!(body["iface_id"], "eth0");
+        assert_eq!(body["guest_mac"], "02:00:00:00:00:01");
+        assert_eq!(body["host_dev_name"], "vm0-tap");
     }
 
     #[tokio::test]
     async fn configure_vsock_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("fc.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        tokio::spawn(async move {
-            let Ok((mut stream, _)) = listener.accept().await else {
-                return;
-            };
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await;
-
-            let req = String::from_utf8_lossy(&buf);
-            assert!(req.starts_with("PUT /vsock"), "got: {req}");
-            assert!(req.contains("guest_cid"), "missing guest_cid in: {req}");
-            assert!(req.contains("uds_path"), "missing uds_path in: {req}");
-
-            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
-            let _ = stream.write_all(response.as_bytes()).await;
-        });
-
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let result = client.configure_vsock(3, "/tmp/vsock.sock").await;
         assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "PUT", "/vsock");
+        let body = request_body_json(&request);
+        assert_eq!(body["guest_cid"], 3);
+        assert_eq!(body["uds_path"], "/tmp/vsock.sock");
     }
 
     #[tokio::test]
     async fn start_instance_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("fc.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        tokio::spawn(async move {
-            let Ok((mut stream, _)) = listener.accept().await else {
-                return;
-            };
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await;
-
-            let req = String::from_utf8_lossy(&buf);
-            assert!(req.starts_with("PUT /actions"), "got: {req}");
-            assert!(
-                req.contains("InstanceStart"),
-                "missing InstanceStart in: {req}"
-            );
-
-            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
-            let _ = stream.write_all(response.as_bytes()).await;
-        });
-
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let result = client.start_instance().await;
         assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "PUT", "/actions");
+        let body = request_body_json(&request);
+        assert_eq!(body["action_type"], "InstanceStart");
     }
 
     #[tokio::test]
     async fn patch_balloon_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("fc.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        tokio::spawn(async move {
-            let Ok((mut stream, _)) = listener.accept().await else {
-                return;
-            };
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await;
-
-            let req = String::from_utf8_lossy(&buf);
-            assert!(req.starts_with("PATCH /balloon"), "got: {req}");
-            assert!(req.contains("amount_mib"), "missing amount_mib in: {req}");
-
-            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
-            let _ = stream.write_all(response.as_bytes()).await;
-        });
-
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let result = client.patch_balloon(512).await;
         assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "PATCH", "/balloon");
+        let body = request_body_json(&request);
+        assert_eq!(body["amount_mib"], 512);
     }
 
     #[tokio::test]
     async fn get_balloon_statistics_parses_response() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("fc.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        tokio::spawn(async move {
-            let Ok((mut stream, _)) = listener.accept().await else {
-                return;
-            };
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await;
-
-            let req = String::from_utf8_lossy(&buf);
-            assert!(req.starts_with("GET /balloon/statistics"), "got: {req}");
-
-            let body = r#"{"target_mib":512,"actual_mib":256,"target_pages":131072,"actual_pages":65536,"free_memory":1073741824,"available_memory":1610612736,"total_memory":2147483648}"#;
-            let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{body}",
-                body.len()
-            );
-            let _ = stream.write_all(response.as_bytes()).await;
-        });
-
+        let body = r#"{"target_mib":512,"actual_mib":256,"target_pages":131072,"actual_pages":65536,"free_memory":1073741824,"available_memory":1610612736,"total_memory":2147483648}"#;
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::ok_body(body)]);
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let stats = client.get_balloon_statistics().await.unwrap();
         assert_eq!(stats.target_mib, 512);
@@ -1145,72 +1296,98 @@ mod tests {
         // Optional fields not in response should be None.
         assert_eq!(stats.swap_in, None);
         assert_eq!(stats.major_faults, None);
+
+        let request = api.next_request().await;
+        assert_request(&request, "GET", "/balloon/statistics");
+    }
+
+    #[tokio::test]
+    async fn get_balloon_statistics_reads_split_response_body() {
+        let body =
+            r#"{"target_mib":768,"actual_mib":384,"target_pages":196608,"actual_pages":98304}"#;
+        let (result, request) =
+            run_with_split_response(MockResponse::ok_body(body), |sock_path| async move {
+                let client = ApiClient::new(&sock_path);
+                client.get_balloon_statistics().await
+            })
+            .await;
+
+        let stats = result.unwrap();
+        assert_eq!(stats.target_mib, 768);
+        assert_eq!(stats.actual_mib, 384);
+        assert_eq!(stats.target_pages, 196_608);
+        assert_eq!(stats.actual_pages, 98_304);
+
+        assert_request(&request, "GET", "/balloon/statistics");
+    }
+
+    #[tokio::test]
+    async fn load_snapshot_error_reads_split_response_body() {
+        let fault_message = "snapshot body arrived after headers";
+        let (result, request) = run_with_split_response(
+            MockResponse::bad_request_fault(fault_message),
+            |sock_path| async move {
+                let client = ApiClient::new(&sock_path);
+                client.load_snapshot("/snap/state", "/snap/memory").await
+            },
+        )
+        .await;
+
+        let ApiError::Http { status, body } = result.unwrap_err() else {
+            panic!("expected Http error");
+        };
+        assert_eq!(status, 400);
+        assert_eq!(body, fault_message);
+        assert_request(&request, "PUT", "/snapshot/load");
     }
 
     #[tokio::test]
     async fn get_balloon_statistics_handles_minimal_response() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("fc.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        tokio::spawn(async move {
-            let Ok((mut stream, _)) = listener.accept().await else {
-                return;
-            };
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await;
-
-            // Minimal response with only required fields.
-            let body = r#"{"target_mib":0,"actual_mib":0,"target_pages":0,"actual_pages":0}"#;
-            let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{body}",
-                body.len()
-            );
-            let _ = stream.write_all(response.as_bytes()).await;
-        });
-
+        let body = r#"{"target_mib":0,"actual_mib":0,"target_pages":0,"actual_pages":0}"#;
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::ok_body(body)]);
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let stats = client.get_balloon_statistics().await.unwrap();
         assert_eq!(stats.target_mib, 0);
         assert_eq!(stats.actual_mib, 0);
         assert_eq!(stats.free_memory, None);
         assert_eq!(stats.available_memory, None);
+
+        let request = api.next_request().await;
+        assert_request(&request, "GET", "/balloon/statistics");
+    }
+
+    #[tokio::test]
+    async fn get_balloon_statistics_returns_error_on_malformed_response() {
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::ok_body("{not json")]);
+        let sock_path = api.socket_path().to_path_buf();
+        let client = ApiClient::new(&sock_path);
+        let ApiError::Other(message) = client.get_balloon_statistics().await.unwrap_err() else {
+            panic!("expected parse error");
+        };
+        assert!(
+            message.contains("parse balloon statistics"),
+            "got: {message}"
+        );
+
+        let request = api.next_request().await;
+        assert_request(&request, "GET", "/balloon/statistics");
     }
 
     #[tokio::test]
     async fn configure_balloon_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("fc.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        tokio::spawn(async move {
-            let Ok((mut stream, _)) = listener.accept().await else {
-                return;
-            };
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await;
-
-            let req = String::from_utf8_lossy(&buf);
-            assert!(req.starts_with("PUT /balloon"), "got: {req}");
-            assert!(req.contains("amount_mib"), "missing amount_mib in: {req}");
-            assert!(
-                req.contains("deflate_on_oom"),
-                "missing deflate_on_oom in: {req}"
-            );
-            assert!(
-                req.contains("stats_polling_interval_s"),
-                "missing stats_polling_interval_s in: {req}"
-            );
-
-            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
-            let _ = stream.write_all(response.as_bytes()).await;
-        });
-
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let result = client.configure_balloon(0, true, 0).await;
         assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "PUT", "/balloon");
+        let body = request_body_json(&request);
+        assert_eq!(body["amount_mib"], 0);
+        assert_eq!(body["deflate_on_oom"], true);
+        assert_eq!(body["stats_polling_interval_s"], 0);
     }
 
     #[tokio::test]

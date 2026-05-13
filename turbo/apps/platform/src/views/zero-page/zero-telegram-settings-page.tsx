@@ -229,6 +229,25 @@ function TelegramBotCount({ count }: { count: number }) {
   );
 }
 
+function telegramConnectedUserLabel(bot: TelegramBot): string | null {
+  const connectedUser = bot.connectedUser;
+  if (!connectedUser) {
+    return null;
+  }
+
+  const username = connectedUser.telegramUsername?.trim().replace(/^@+/, "");
+  if (username) {
+    return `@${username}`;
+  }
+
+  const displayName = connectedUser.telegramDisplayName?.trim();
+  if (displayName) {
+    return displayName;
+  }
+
+  return connectedUser.telegramUserId;
+}
+
 function TelegramStatusBadge({ bot }: { bot: TelegramBot }) {
   if (bot.tokenStatus === "invalid") {
     return (
@@ -241,10 +260,19 @@ function TelegramStatusBadge({ bot }: { bot: TelegramBot }) {
 
   const connected = bot.isConnected;
   if (connected) {
+    const connectedUserLabel = telegramConnectedUserLabel(bot);
+    const connectedLabel = connectedUserLabel
+      ? `Connected (${connectedUserLabel})`
+      : "Connected";
     return (
       <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-secondary-foreground">
         <IconCircleCheck className="h-3.5 w-3.5 text-green-600" />
-        Connected
+        <span
+          className="min-w-0 truncate"
+          title={connectedUserLabel ?? undefined}
+        >
+          {connectedLabel}
+        </span>
       </span>
     );
   }

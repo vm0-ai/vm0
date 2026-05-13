@@ -19,13 +19,13 @@ use super::job_spawn::{JobProfile, SpawnContext, spawn_job};
 use crate::config::ProfileConfig;
 use crate::idle_pool::{IdlePoolSnapshot, IdleUnparkResult, ReusableIdleSandbox};
 use crate::ids::RunId;
+use crate::provider::JobCandidate;
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::status::{RunnerMode, StatusTracker};
 use crate::types::{ExecutionContext, SandboxReuseResult};
 
 pub(super) struct DiscoveredJob {
-    pub(super) run_id: RunId,
-    pub(super) profile_name: String,
+    pub(super) candidate: JobCandidate,
 }
 
 pub(super) struct DiscoveredJobContext<'a> {
@@ -42,10 +42,9 @@ pub(super) struct DiscoveredJobContext<'a> {
 }
 
 pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: DiscoveredJobContext<'_>) {
-    let DiscoveredJob {
-        run_id,
-        profile_name,
-    } = job;
+    let DiscoveredJob { candidate } = job;
+    let run_id = candidate.run_id();
+    let profile_name = candidate.profile_name().to_owned();
     // Look up profile config for resource requirements.
     let Some(profile_config) = ctx.profiles.get(&profile_name) else {
         warn!(run_id = %run_id, profile = %profile_name, "unknown profile, skipping");
@@ -85,7 +84,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
     }
     // claim() runs in the branch handler: non-interruptible, so a successful
     // claim is always paired with complete().
-    let Some(context) = ctx.spawn_ctx.provider.claim(run_id).await else {
+    let Some(context) = ctx.spawn_ctx.provider.claim(candidate).await else {
         // None means the job won't run here: either lost the race to another
         // runner, or the provider rejected the job. Release the reservation and
         // cancel token so the runner can continue.

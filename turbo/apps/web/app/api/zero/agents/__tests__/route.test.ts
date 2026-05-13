@@ -27,6 +27,7 @@ import {
   setDefaultAgentByComposeId,
   clearOrgMembersCacheEntry,
   insertOrgMembersCacheEntry,
+  insertOrgModelPolicy,
   seedUserFeatureSwitches,
   createTestTarFile,
   createTestZeroSkill,
@@ -51,6 +52,21 @@ const context = testContext();
 
 let user: UserContext;
 let testCliToken: string;
+
+async function createAnthropicModelPolicy(orgId: string): Promise<void> {
+  const provider = await createTestOrgModelProvider(
+    "anthropic-api-key",
+    "test-key",
+  );
+  await insertOrgModelPolicy({
+    orgId,
+    model: "claude-sonnet-4-6",
+    isDefault: true,
+    defaultProviderType: "anthropic-api-key",
+    credentialScope: "org",
+    modelProviderId: provider.id,
+  });
+}
 
 function postAgent(body: Record<string, unknown>, token: string) {
   return POST(
@@ -887,7 +903,7 @@ describe("Zero Agents API", () => {
       const created = await createResponse.json();
 
       // When — create a run for this agent, then generate a sandbox token
-      await createTestOrgModelProvider("anthropic-api-key", "test-key");
+      await createAnthropicModelPolicy(user.orgId);
       const { runId } = await createTestRun(created.agentId, "test prompt");
 
       // Reset Clerk so sandbox token is the only auth path
@@ -1873,145 +1889,16 @@ describe("Zero Agents API", () => {
     });
   });
 
-  describe("model selection validation", () => {
-    it("should reject PUT with modelProviderId from a different org", async () => {
+  describe("retired agent model fields", () => {
+    it("should ignore modelProviderId and selectedModel on PUT", async () => {
       const created = await (await postAgent({}, testCliToken)).json();
 
       const response = await putAgent(
         created.agentId,
         {
           modelProviderId: "00000000-0000-4000-8000-000000000001",
-        },
-        testCliToken,
-      );
-
-      expect(response.status).toBe(400);
-      const data = await response.json();
-      expect(data.error.message).toContain("not found in this org");
-    });
-
-    it("should reject PATCH with modelProviderId from a different org", async () => {
-      const created = await (await postAgent({}, testCliToken)).json();
-
-      const response = await patchAgent(
-        created.agentId,
-        {
-          modelProviderId: "00000000-0000-4000-8000-000000000001",
-        },
-        testCliToken,
-      );
-
-      expect(response.status).toBe(400);
-      const data = await response.json();
-      expect(data.error.message).toContain("not found in this org");
-    });
-
-    it("should reject PUT with model not in provider allowlist", async () => {
-      const provider = await createTestOrgModelProvider(
-        "anthropic-api-key",
-        "test-key",
-      );
-      const created = await (await postAgent({}, testCliToken)).json();
-
-      const response = await putAgent(
-        created.agentId,
-        {
-          modelProviderId: provider.id,
-          selectedModel: "gpt-4-not-a-claude-model",
-        },
-        testCliToken,
-      );
-
-      expect(response.status).toBe(400);
-      const data = await response.json();
-      expect(data.error.message).toContain("gpt-4-not-a-claude-model");
-      expect(data.error.message).toContain("not available");
-    });
-
-    it("should reject PATCH with model not in provider allowlist", async () => {
-      const provider = await createTestOrgModelProvider(
-        "anthropic-api-key",
-        "test-key",
-      );
-      const created = await (await postAgent({}, testCliToken)).json();
-
-      const response = await patchAgent(
-        created.agentId,
-        {
-          modelProviderId: provider.id,
-          selectedModel: "gpt-4-not-a-claude-model",
-        },
-        testCliToken,
-      );
-
-      expect(response.status).toBe(400);
-      const data = await response.json();
-      expect(data.error.message).toContain("gpt-4-not-a-claude-model");
-      expect(data.error.message).toContain("not available");
-    });
-
-    it("should accept PUT with valid modelProviderId and model", async () => {
-      const provider = await createTestOrgModelProvider(
-        "anthropic-api-key",
-        "test-key",
-      );
-      const created = await (await postAgent({}, testCliToken)).json();
-
-      const response = await putAgent(
-        created.agentId,
-        {
-          modelProviderId: provider.id,
           selectedModel: "claude-sonnet-4-6",
         },
-        testCliToken,
-      );
-
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.modelProviderId).toBe(provider.id);
-      expect(data.selectedModel).toBe("claude-sonnet-4-6");
-    });
-
-    it("should accept PATCH with valid modelProviderId and model", async () => {
-      const provider = await createTestOrgModelProvider(
-        "anthropic-api-key",
-        "test-key",
-      );
-      const created = await (await postAgent({}, testCliToken)).json();
-
-      const response = await patchAgent(
-        created.agentId,
-        {
-          modelProviderId: provider.id,
-          selectedModel: "claude-sonnet-4-6",
-        },
-        testCliToken,
-      );
-
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.modelProviderId).toBe(provider.id);
-      expect(data.selectedModel).toBe("claude-sonnet-4-6");
-    });
-
-    it("should accept PUT with null modelProviderId to clear override", async () => {
-      const provider = await createTestOrgModelProvider(
-        "anthropic-api-key",
-        "test-key",
-      );
-      const created = await (await postAgent({}, testCliToken)).json();
-
-      // Set provider first
-      await putAgent(
-        created.agentId,
-        { modelProviderId: provider.id, selectedModel: "claude-sonnet-4-6" },
-        testCliToken,
-      );
-
-      // Clear it
-      const response = await putAgent(
-        created.agentId,
-        { modelProviderId: null, selectedModel: null },
         testCliToken,
       );
 
@@ -2020,10 +1907,26 @@ describe("Zero Agents API", () => {
       expect(data.modelProviderId).toBeNull();
       expect(data.selectedModel).toBeNull();
     });
-  });
 
-  describe("preferPersonalProvider", () => {
-    it("should default to false when omitted on POST", async () => {
+    it("should ignore modelProviderId and selectedModel on PATCH", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await patchAgent(
+        created.agentId,
+        {
+          modelProviderId: "00000000-0000-4000-8000-000000000001",
+          selectedModel: "claude-sonnet-4-6",
+        },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.modelProviderId).toBeNull();
+      expect(data.selectedModel).toBeNull();
+    });
+
+    it("should default preferPersonalProvider to false when omitted on POST", async () => {
       const response = await postAgent(
         { displayName: "default-prefer" },
         testCliToken,
@@ -2033,27 +1936,19 @@ describe("Zero Agents API", () => {
       expect(data.preferPersonalProvider).toBe(false);
     });
 
-    it("should round-trip true and false on PUT", async () => {
+    it("should ignore preferPersonalProvider on PUT", async () => {
       const created = await (await postAgent({}, testCliToken)).json();
 
-      let response = await putAgent(
+      const response = await putAgent(
         created.agentId,
         { preferPersonalProvider: true },
-        testCliToken,
-      );
-      expect(response.status).toBe(200);
-      expect((await response.json()).preferPersonalProvider).toBe(true);
-
-      response = await putAgent(
-        created.agentId,
-        { preferPersonalProvider: false },
         testCliToken,
       );
       expect(response.status).toBe(200);
       expect((await response.json()).preferPersonalProvider).toBe(false);
     });
 
-    it("should round-trip via PATCH updateMetadata and persist on GET", async () => {
+    it("should ignore preferPersonalProvider on PATCH and GET", async () => {
       const created = await (await postAgent({}, testCliToken)).json();
 
       const patchResponse = await patchAgent(
@@ -2062,10 +1957,10 @@ describe("Zero Agents API", () => {
         testCliToken,
       );
       expect(patchResponse.status).toBe(200);
-      expect((await patchResponse.json()).preferPersonalProvider).toBe(true);
+      expect((await patchResponse.json()).preferPersonalProvider).toBe(false);
 
       const got = await (await getAgent(created.agentId, testCliToken)).json();
-      expect(got.preferPersonalProvider).toBe(true);
+      expect(got.preferPersonalProvider).toBe(false);
     });
   });
 
@@ -2074,7 +1969,7 @@ describe("Zero Agents API", () => {
       // Regression: serverSideCompose was called without instructions param,
       // so agent-instructions storage was never created. Schedule runs then
       // failed with "Storage agent-instructions@<id> not found".
-      await createTestOrgModelProvider("anthropic-api-key", "test-key");
+      await createAnthropicModelPolicy(user.orgId);
 
       // 1. Create agent via POST /api/zero/agents
       const createResponse = await postAgent(

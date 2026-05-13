@@ -137,8 +137,6 @@ export async function handleOrgMention(
     userId: connection.vm0UserId,
     orgId,
     agentComposeId: composeId,
-    modelProviderId: agent.modelProviderId,
-    selectedModel: agent.selectedModel,
   });
 
   // 7. Fetch conversation context
@@ -170,8 +168,6 @@ export async function handleOrgMention(
     threadContext: executionContext,
     userInfoExtras,
     userId: connection.vm0UserId,
-    modelProviderId: agent.modelProviderId,
-    selectedModel: agent.selectedModel,
     botUserId,
     channelId: context.channelId,
     channelType:

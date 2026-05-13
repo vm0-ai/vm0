@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { command } from "ccstate";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { and, eq } from "drizzle-orm";
+import { storageVersions, storages } from "@vm0/db/schema/storage";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { writeDb$ } from "../../../external/db";
 import { encryptSecretForTests } from "./encrypt-secret";
@@ -108,6 +109,49 @@ export const findSlackOrgInstallation$ = command(
   },
 );
 
+export const findArtifactStorage$ = command(
+  async (
+    { set },
+    values: {
+      readonly orgId: string;
+      readonly userId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<
+    | {
+        readonly id: string;
+        readonly headVersionId: string | null;
+        readonly s3Prefix: string;
+        readonly versionId: string | null;
+        readonly versionS3Key: string | null;
+      }
+    | undefined
+  > => {
+    const writeDb = set(writeDb$);
+    const [storage] = await writeDb
+      .select({
+        id: storages.id,
+        headVersionId: storages.headVersionId,
+        s3Prefix: storages.s3Prefix,
+        versionId: storageVersions.id,
+        versionS3Key: storageVersions.s3Key,
+      })
+      .from(storages)
+      .leftJoin(storageVersions, eq(storages.headVersionId, storageVersions.id))
+      .where(
+        and(
+          eq(storages.orgId, values.orgId),
+          eq(storages.userId, values.userId),
+          eq(storages.name, "artifact"),
+          eq(storages.type, "artifact"),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    return storage;
+  },
+);
+
 export const deleteSlackConnectOrg$ = command(
   async (
     { set },
@@ -115,6 +159,33 @@ export const deleteSlackConnectOrg$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const writeDb = set(writeDb$);
+    const storageRows = await writeDb
+      .select({ id: storages.id })
+      .from(storages)
+      .where(
+        and(
+          eq(storages.orgId, fixture.orgId),
+          eq(storages.userId, fixture.userId),
+        ),
+      );
+    signal.throwIfAborted();
+    const storageIds = storageRows.map((storage) => {
+      return storage.id;
+    });
+    if (storageIds.length > 0) {
+      await writeDb
+        .update(storages)
+        .set({ headVersionId: null })
+        .where(inArray(storages.id, storageIds));
+      signal.throwIfAborted();
+      await writeDb
+        .delete(storageVersions)
+        .where(inArray(storageVersions.storageId, storageIds));
+      signal.throwIfAborted();
+      await writeDb.delete(storages).where(inArray(storages.id, storageIds));
+      signal.throwIfAborted();
+    }
+
     await writeDb
       .delete(slackOrgConnections)
       .where(

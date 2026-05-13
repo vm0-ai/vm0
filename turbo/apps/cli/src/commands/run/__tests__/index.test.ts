@@ -20,6 +20,10 @@ vi.mock("child_process", async (importOriginal) => {
 import { spawn } from "child_process";
 const mockSpawn = vi.mocked(spawn);
 
+function countOccurrences(text: string, pattern: string): number {
+  return text.split(pattern).length - 1;
+}
+
 describe("run command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -1951,6 +1955,167 @@ describe("run command", () => {
         expect.stringContaining("Run failed"),
       );
       expect(pollCount).toBe(1);
+    });
+
+    it("should collapse paired Codex error and turn.failed before failed run lifecycle output", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "thread.started",
+                eventData: {
+                  type: "thread.started",
+                  thread_id: "thread-x",
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+              {
+                sequenceNumber: 1,
+                eventType: "error",
+                eventData: {
+                  type: "error",
+                  message: "API connection failed",
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+              {
+                sequenceNumber: 2,
+                eventType: "turn.failed",
+                eventData: {
+                  type: "turn.failed",
+                  error: "Rate limit exceeded",
+                },
+                createdAt: "2025-01-01T00:00:02Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 2,
+            run: { status: "failed", error: "Agent crashed" },
+            framework: "codex",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Run failed"),
+      );
+    });
+
+    it("should collapse paired Codex error and turn.failed across event pages", async () => {
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          if (pollCount === 1) {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 0,
+                  eventType: "thread.started",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                  createdAt: "2025-01-01T00:00:00Z",
+                },
+                {
+                  sequenceNumber: 1,
+                  eventType: "error",
+                  eventData: {
+                    type: "error",
+                    message: "API connection failed",
+                  },
+                  createdAt: "2025-01-01T00:00:01Z",
+                },
+              ],
+              hasMore: true,
+              nextSequence: 1,
+              run: { status: "running" },
+              framework: "codex",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 2,
+                eventType: "turn.failed",
+                eventData: {
+                  type: "turn.failed",
+                  error: "Rate limit exceeded",
+                },
+                createdAt: "2025-01-01T00:00:02Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 2,
+            run: { status: "failed", error: "Agent crashed" },
+            framework: "codex",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(pollCount).toBe(2);
+      expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Run failed"),
+      );
+    });
+
+    it("should flush standalone Codex error before failed run lifecycle output", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "thread.started",
+                eventData: {
+                  type: "thread.started",
+                  thread_id: "thread-x",
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+              {
+                sequenceNumber: 1,
+                eventType: "error",
+                eventData: {
+                  type: "error",
+                  message: "API connection failed",
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 1,
+            run: { status: "failed", error: "Agent crashed" },
+            framework: "codex",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Run failed"),
+      );
     });
 
     it("should not drain additional pages after failed status without watermark", async () => {

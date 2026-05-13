@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ExpandedFirewallConfig } from "@vm0/connectors/firewall-types";
 
 /**
@@ -47,12 +46,6 @@ export const VM0_ORG_SLUG = "vm0";
 
 /**
  * Canonical model-first catalog.
- *
- * This is intentionally separate from the legacy per-provider `models` arrays:
- * provider-first selection keeps using those arrays while the
- * `modelFirstModelProvider` feature switch is off. Follow-up work can use this
- * flat list for org model policies and model-first pickers without changing the
- * current provider-first UI/runtime behavior.
  */
 export const SUPPORTED_RUN_MODELS = [
   "claude-opus-4-7",
@@ -159,7 +152,6 @@ interface Vm0ModelConfig {
   // different identifier than what we show to users (e.g. OpenRouter uses
   // "z-ai/glm-5.1" while our UI shows "glm-5.1").
   apiModel?: string;
-  featureFlag?: FeatureSwitchKey;
 }
 
 // Key order is load-bearing: `Object.keys()` preserves insertion order and
@@ -210,27 +202,22 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
   "gpt-5.5": {
     concreteType: "openai-api-key",
     vendor: "openai",
-    featureFlag: FeatureSwitchKey.CodexBeta,
   },
   "gpt-5.4": {
     concreteType: "openai-api-key",
     vendor: "openai",
-    featureFlag: FeatureSwitchKey.CodexBeta,
   },
   "gpt-5.4-mini": {
     concreteType: "openai-api-key",
     vendor: "openai",
-    featureFlag: FeatureSwitchKey.CodexBeta,
   },
   "gpt-5.3-codex": {
     concreteType: "openai-api-key",
     vendor: "openai",
-    featureFlag: FeatureSwitchKey.CodexBeta,
   },
   "gpt-5.2": {
     concreteType: "openai-api-key",
     vendor: "openai",
-    featureFlag: FeatureSwitchKey.CodexBeta,
   },
 };
 
@@ -319,21 +306,10 @@ export function modelSupportsImageInput(
 }
 
 /**
- * Return the VM0 managed models visible to the caller, filtered by feature
- * switches. Models without a featureFlag are always visible; models with a
- * flag require the flag to be enabled in the supplied feature map.
+ * Return the VM0 managed models visible to callers.
  */
-export function getVm0VisibleModels(
-  features?: Partial<Record<FeatureSwitchKey, boolean>>,
-): string[] {
-  return Object.entries(VM0_MODEL_TO_PROVIDER)
-    .filter(([, { featureFlag }]) => {
-      if (!featureFlag) return true;
-      return features?.[featureFlag] === true;
-    })
-    .map(([model]) => {
-      return model;
-    });
+export function getVm0VisibleModels(): string[] {
+  return Object.keys(VM0_MODEL_TO_PROVIDER);
 }
 
 /**
@@ -1447,15 +1423,6 @@ export const upsertModelProviderResponseSchema = z.object({
 export type UpsertModelProviderResponse = z.infer<
   typeof upsertModelProviderResponseSchema
 >;
-
-/**
- * Update model request schema
- */
-export const updateModelRequestSchema = z.object({
-  selectedModel: z.string().optional(),
-});
-
-export type UpdateModelRequest = z.infer<typeof updateModelRequestSchema>;
 
 export const orgModelPolicyRouteStatusSchema = z.enum([
   "valid",

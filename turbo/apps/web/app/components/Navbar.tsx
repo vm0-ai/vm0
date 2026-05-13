@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import Image from "next/image";
 import NextLink from "next/link";
 import { Link } from "../../navigation";
@@ -26,6 +33,268 @@ interface NavbarProps {
 const GITHUB_URL = "https://github.com/vm0-ai/vm0";
 const STATUS_URL = "https://status.vm0.ai";
 const DEMO_URL = "https://calendar.app.google/csdygPrHHyNgxpTPA";
+const NAV_MENU_CLOSE_DELAY_MS = 250;
+const NAV_MENU_TRIGGER_HOTZONE_Y = 18;
+const NAV_MENU_TRIGGER_HOTZONE_X = 12;
+const NAV_MENU_POPOVER_HOTZONE = 8;
+const NAV_MENU_SELECT_REOPEN_BLOCK_MS = 350;
+const DESKTOP_NAV_MENU_IDS = ["resources", "trust-and-tech"] as const;
+
+type DesktopNavMenuId = (typeof DESKTOP_NAV_MENU_IDS)[number];
+
+function isDesktopNavMenuId(id: string | undefined): id is DesktopNavMenuId {
+  return DESKTOP_NAV_MENU_IDS.includes(id as DesktopNavMenuId);
+}
+
+function containsPoint(
+  rect: DOMRect,
+  clientX: number,
+  clientY: number,
+  margin = 0,
+): boolean {
+  return (
+    clientX >= rect.left - margin &&
+    clientX <= rect.right + margin &&
+    clientY >= rect.top - margin &&
+    clientY <= rect.bottom + margin
+  );
+}
+
+function useDesktopNavMenus(desktopNavRef: RefObject<HTMLDivElement | null>) {
+  const [openMenuId, setOpenMenuId] = useState<DesktopNavMenuId | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blockOpenUntilRef = useRef(0);
+
+  const cancelClose = useCallback(() => {
+    if (closeTimerRef.current === null) {
+      return;
+    }
+    clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  }, []);
+
+  const openMenu = useCallback(
+    (id: DesktopNavMenuId) => {
+      if (Date.now() < blockOpenUntilRef.current) {
+        return;
+      }
+      cancelClose();
+      setOpenMenuId(id);
+    },
+    [cancelClose],
+  );
+
+  const closeMenu = useCallback(() => {
+    cancelClose();
+    setOpenMenuId(null);
+  }, [cancelClose]);
+
+  const selectMenuItem = useCallback(() => {
+    blockOpenUntilRef.current = Date.now() + NAV_MENU_SELECT_REOPEN_BLOCK_MS;
+    closeMenu();
+  }, [closeMenu]);
+
+  const scheduleClose = useCallback(() => {
+    cancelClose();
+    closeTimerRef.current = setTimeout(() => {
+      setOpenMenuId(null);
+      closeTimerRef.current = null;
+    }, NAV_MENU_CLOSE_DELAY_MS);
+  }, [cancelClose]);
+
+  const getMenuIdFromTriggerHotzone = useCallback(
+    (clientX: number, clientY: number): DesktopNavMenuId | null => {
+      const root = desktopNavRef.current;
+      if (!root) {
+        return null;
+      }
+
+      const triggerRects = Array.from(
+        root.querySelectorAll<HTMLButtonElement>("[data-nav-menu-id]"),
+      )
+        .map((trigger) => {
+          return {
+            id: trigger.dataset.navMenuId ?? "",
+            rect: trigger.getBoundingClientRect(),
+          };
+        })
+        .filter((entry): entry is { id: DesktopNavMenuId; rect: DOMRect } => {
+          return isDesktopNavMenuId(entry.id);
+        })
+        .sort((a, b) => {
+          return a.rect.left - b.rect.left;
+        });
+
+      if (triggerRects.length === 0) {
+        return null;
+      }
+
+      const firstTrigger = triggerRects[0];
+      const lastTrigger = triggerRects[triggerRects.length - 1];
+      if (!firstTrigger || !lastTrigger) {
+        return null;
+      }
+
+      const top =
+        Math.min(
+          ...triggerRects.map((entry) => {
+            return entry.rect.top;
+          }),
+        ) - NAV_MENU_TRIGGER_HOTZONE_Y;
+      const bottom =
+        Math.max(
+          ...triggerRects.map((entry) => {
+            return entry.rect.bottom;
+          }),
+        ) + NAV_MENU_TRIGGER_HOTZONE_Y;
+      if (clientY < top || clientY > bottom) {
+        return null;
+      }
+
+      const left = firstTrigger.rect.left - NAV_MENU_TRIGGER_HOTZONE_X;
+      const right = lastTrigger.rect.right + NAV_MENU_TRIGGER_HOTZONE_X;
+      if (clientX < left || clientX > right) {
+        return null;
+      }
+
+      return triggerRects.reduce((nearest, current) => {
+        const currentCenter = current.rect.left + current.rect.width / 2;
+        const nearestCenter = nearest.rect.left + nearest.rect.width / 2;
+        return Math.abs(currentCenter - clientX) <
+          Math.abs(nearestCenter - clientX)
+          ? current
+          : nearest;
+      }).id;
+    },
+    [desktopNavRef],
+  );
+
+  const getOpenMenuElements = useCallback(() => {
+    if (openMenuId === null) {
+      return null;
+    }
+
+    const root = desktopNavRef.current;
+    if (!root) {
+      return null;
+    }
+
+    const trigger = Array.from(
+      root.querySelectorAll<HTMLButtonElement>("[data-nav-menu-id]"),
+    ).find((element) => {
+      return element.dataset.navMenuId === openMenuId;
+    });
+    const popover = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-nav-popover-id]"),
+    ).find((element) => {
+      return element.dataset.navPopoverId === openMenuId;
+    });
+    if (!trigger || !popover) {
+      return null;
+    }
+
+    return { trigger, popover };
+  }, [desktopNavRef, openMenuId]);
+
+  const isPointerInOpenMenuHotzone = useCallback(
+    (clientX: number, clientY: number): boolean => {
+      const elements = getOpenMenuElements();
+      if (!elements) {
+        return false;
+      }
+
+      const triggerRect = elements.trigger.getBoundingClientRect();
+      const popoverRect = elements.popover.getBoundingClientRect();
+      if (
+        containsPoint(popoverRect, clientX, clientY, NAV_MENU_POPOVER_HOTZONE)
+      ) {
+        return true;
+      }
+
+      const left =
+        Math.min(triggerRect.left, popoverRect.left) - NAV_MENU_POPOVER_HOTZONE;
+      const right =
+        Math.max(triggerRect.right, popoverRect.right) +
+        NAV_MENU_POPOVER_HOTZONE;
+      const top =
+        Math.min(triggerRect.bottom, popoverRect.top) -
+        NAV_MENU_POPOVER_HOTZONE;
+      const bottom =
+        Math.max(triggerRect.bottom, popoverRect.top) +
+        NAV_MENU_POPOVER_HOTZONE;
+
+      return (
+        clientX >= left &&
+        clientX <= right &&
+        clientY >= top &&
+        clientY <= bottom
+      );
+    },
+    [getOpenMenuElements],
+  );
+
+  const syncMenuForPointer = useCallback(
+    (clientX: number, clientY: number) => {
+      const menuId = getMenuIdFromTriggerHotzone(clientX, clientY);
+      if (menuId) {
+        openMenu(menuId);
+        return;
+      }
+
+      if (isPointerInOpenMenuHotzone(clientX, clientY)) {
+        cancelClose();
+        return;
+      }
+
+      closeMenu();
+    },
+    [
+      cancelClose,
+      closeMenu,
+      getMenuIdFromTriggerHotzone,
+      isPointerInOpenMenuHotzone,
+      openMenu,
+    ],
+  );
+
+  const handlePointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      syncMenuForPointer(event.clientX, event.clientY);
+    },
+    [syncMenuForPointer],
+  );
+
+  useEffect(() => {
+    return () => {
+      cancelClose();
+    };
+  }, [cancelClose]);
+
+  useEffect(() => {
+    if (openMenuId === null) {
+      return undefined;
+    }
+
+    const handleDocumentPointerMove = (event: PointerEvent) => {
+      syncMenuForPointer(event.clientX, event.clientY);
+    };
+
+    document.addEventListener("pointermove", handleDocumentPointerMove);
+    return () => {
+      document.removeEventListener("pointermove", handleDocumentPointerMove);
+    };
+  }, [openMenuId, syncMenuForPointer]);
+
+  return {
+    openMenuId,
+    openMenu,
+    closeMenu,
+    selectMenuItem,
+    cancelClose,
+    scheduleClose,
+    handlePointerMove,
+  };
+}
 
 export function Navbar({
   initialIsSignedIn = false,
@@ -37,7 +306,22 @@ export function Navbar({
   const isSignedIn = isLoaded ? clerkIsSignedIn : initialIsSignedIn;
   const { signOut } = useClerk();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const desktopNavRef = useRef<HTMLDivElement | null>(null);
+  const {
+    openMenuId,
+    openMenu,
+    closeMenu,
+    selectMenuItem,
+    cancelClose,
+    scheduleClose,
+    handlePointerMove,
+  } = useDesktopNavMenus(desktopNavRef);
+  const openResourcesMenu = useCallback(() => {
+    openMenu("resources");
+  }, [openMenu]);
+  const openTrustMenu = useCallback(() => {
+    openMenu("trust-and-tech");
+  }, [openMenu]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -155,7 +439,12 @@ export function Navbar({
             </Link>
           </div>
 
-          <div className="nav-center nav-desktop">
+          <div
+            ref={desktopNavRef}
+            className="nav-center nav-desktop"
+            onPointerMove={handlePointerMove}
+            onPointerLeave={scheduleClose}
+          >
             <Link href="/use-cases" className="nav-link">
               {t("useCases")}
             </Link>
@@ -164,16 +453,24 @@ export function Navbar({
               label={t("resources")}
               items={resourcesItems}
               alignOffset={-40}
-              openId={openMenuId}
-              onOpenChange={setOpenMenuId}
+              open={openMenuId === "resources"}
+              onOpen={openResourcesMenu}
+              onClose={closeMenu}
+              onSelect={selectMenuItem}
+              onCancelClose={cancelClose}
+              onScheduleClose={scheduleClose}
             />
             <NavMenu
               id="trust-and-tech"
               label={t("trustAndTech")}
               items={trustItems}
               alignOffset={40}
-              openId={openMenuId}
-              onOpenChange={setOpenMenuId}
+              open={openMenuId === "trust-and-tech"}
+              onOpen={openTrustMenu}
+              onClose={closeMenu}
+              onSelect={selectMenuItem}
+              onCancelClose={cancelClose}
+              onScheduleClose={scheduleClose}
             />
             <Link href="/pricing" className="nav-link">
               {t("pricing")}

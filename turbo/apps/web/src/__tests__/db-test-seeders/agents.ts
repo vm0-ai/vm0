@@ -247,12 +247,11 @@ export async function deleteTestCompose(composeId: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * Pin a zero_agents row to a specific model provider + selected-model pair.
- * Used by tests that need an agent whose default provider is explicitly set,
- * so chat-thread eager-pin paths can be exercised.
+ * Seed retired zero_agents model fields directly. Used by tests that verify
+ * model-first routing ignores legacy agent-level model settings.
  *
- * @why-db-direct The agent provider pin is normally set by compose creation /
- * agent edit API routes; tests need a direct setter for isolated setup.
+ * @why-db-direct These fields no longer have a public write path; tests need a
+ * direct setter to cover stale persisted data.
  */
 export async function setTestZeroAgentModelProvider(
   agentId: string,
@@ -465,6 +464,28 @@ export async function setTestChatThreadRenamedAt(
   await globalThis.services.db
     .update(chatThreads)
     .set({ renamedAt })
+    .where(eq(chatThreads.id, threadId));
+}
+
+/**
+ * Set the model-first pin columns on a chat thread.
+ *
+ * @why-db-direct Model pins are persisted by the chat send route. Tests need to
+ * model legacy threads that predate those columns being populated.
+ */
+export async function setTestChatThreadModelPin(
+  threadId: string,
+  pin: {
+    modelProviderId?: string | null;
+    modelProviderType?: string | null;
+    modelProviderCredentialScope?: string | null;
+    selectedModel?: string | null;
+  },
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(chatThreads)
+    .set(pin)
     .where(eq(chatThreads.id, threadId));
 }
 

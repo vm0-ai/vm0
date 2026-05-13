@@ -13,7 +13,6 @@ import { conversations } from "@vm0/db/schema/conversation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { resolveRuntimeFramework } from "../../infra/run/utils/resolve-runtime-framework";
 import { logger } from "../../shared/logger";
-import { isModelFirstModelProviderEnabled } from "../model-policy/model-first-route-service";
 import { resolveModelRoute } from "./resolve-model-provider";
 
 const log = logger("zero:session-model-compatibility");
@@ -129,12 +128,7 @@ async function getCurrentRunModelSignature(params: {
   });
   if (!framework) return undefined;
 
-  const modelFirstEnabled = await isModelFirstModelProviderEnabled(
-    params.orgId,
-    params.userId,
-  );
-  const useExplicitModel =
-    !modelFirstEnabled || params.explicitModelFirstModelSelection === true;
+  const useExplicitModel = params.explicitModelFirstModelSelection === true;
   const route = await resolveModelRoute({
     orgId: params.orgId,
     userId: params.userId,

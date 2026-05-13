@@ -350,6 +350,8 @@ describe("sandbox-token", () => {
         "schedule:read",
         "schedule:write",
         "slack:write",
+        "phone:read",
+        "phone:write",
         "telegram:read",
         "telegram:write",
         "chat-message:write",
@@ -378,6 +380,8 @@ describe("sandbox-token", () => {
         "schedule:read",
         "schedule:write",
         "slack:write",
+        "phone:read",
+        "phone:write",
         "telegram:read",
         "telegram:write",
         "chat-message:write",
@@ -407,6 +411,16 @@ describe("sandbox-token", () => {
 
       expect(auth?.capabilities).toContain("telegram:read");
       expect(auth?.capabilities).toContain("telegram:write");
+    });
+
+    it("should include phone read and write capabilities by default", async () => {
+      mockIsFeatureEnabled.mockReturnValue(false);
+
+      const token = await generateZeroToken("user-123", "run-456", "org-789");
+      const auth = verifyZeroToken(token);
+
+      expect(auth?.capabilities).toContain("phone:read");
+      expect(auth?.capabilities).toContain("phone:write");
     });
 
     it("should exclude agent-excluded capabilities from zero tokens", async () => {

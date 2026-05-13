@@ -9,7 +9,6 @@ import {
   type UpdateOrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
@@ -145,24 +144,24 @@ const track = createFixtureTracker<ModelPolicyFixture>((fixture) => {
 });
 
 describe("GET/PUT /api/zero/model-policies", () => {
-  it("hides model policy controls while the feature switch is off", async () => {
+  it("lists model policy controls without a feature switch", async () => {
     const fixture = await seedFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const response = await apiClient().list({
-      headers: { authorization: "Bearer clerk-session" },
-    });
+    const response = await accept(
+      apiClient().list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
 
-    expect(response.status).toBe(404);
-    expect(response.body).toMatchObject({
-      error: { code: "NOT_FOUND" },
-    });
+    expect(response.body.workspaceDefaultModel).toBe(
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+    );
   });
 
   it("lists seeded curated models and the explicit default when enabled", async () => {
-    const fixture = await seedFixture({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+    const fixture = await seedFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -194,9 +193,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("allows members to read policy controls", async () => {
-    const fixture = await seedFixture({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+    const fixture = await seedFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const response = await accept(
@@ -217,9 +214,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("requires admins for policy writes", async () => {
-    const fixture = await seedFixture({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+    const fixture = await seedFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const response = await apiClient().update({
@@ -231,9 +226,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("updates the explicit workspace default", async () => {
-    const fixture = await seedFixture({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+    const fixture = await seedFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const client = apiClient();
     const listResponse = await accept(
@@ -271,9 +264,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("allows adding a supported model that was not seeded by default", async () => {
-    const fixture = await seedFixture({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+    const fixture = await seedFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const client = apiClient();
     const listResponse = await accept(
@@ -307,9 +298,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("allows compatible org provider routes", async () => {
-    const fixture = await seedFixture({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+    const fixture = await seedFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const providerId = await store.set(
       insertOrgProvider$,
@@ -352,9 +341,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("allows compatible member OAuth provider routes", async () => {
-    const fixture = await seedFixture({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+    const fixture = await seedFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const client = apiClient();
     const listResponse = await accept(
@@ -393,9 +380,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects workspace-scoped OAuth provider routes", async () => {
-    const fixture = await seedFixture({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+    const fixture = await seedFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const providerId = await store.set(
       insertOrgProvider$,
@@ -431,9 +416,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects incompatible provider routes", async () => {
-    const fixture = await seedFixture({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+    const fixture = await seedFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const providerId = await store.set(
       insertOrgProvider$,
@@ -469,9 +452,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects incomplete update payloads", async () => {
-    const fixture = await seedFixture({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+    const fixture = await seedFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await apiClient().update({

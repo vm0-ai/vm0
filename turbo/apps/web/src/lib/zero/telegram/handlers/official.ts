@@ -74,8 +74,6 @@ async function resolveOfficialAgent(userLink: OfficialUserLink): Promise<
       composeId: string;
       agentId: string;
       agentName: string;
-      modelProviderId: string | null;
-      selectedModel: string | null;
     }
   | undefined
 > {
@@ -92,8 +90,6 @@ async function resolveOfficialAgent(userLink: OfficialUserLink): Promise<
     composeId,
     agentId: agent.agentId,
     agentName: getAgentDisplayLabel(agent),
-    modelProviderId: agent.modelProviderId,
-    selectedModel: agent.selectedModel,
   };
 }
 
@@ -241,8 +237,6 @@ export async function handleOfficialTelegramDirectMessage(
       userId: userLink.vm0UserId,
       orgId: userLink.orgId,
       agentComposeId: agent.composeId,
-      modelProviderId: agent.modelProviderId,
-      selectedModel: agent.selectedModel,
     });
     if (!canReuseSession) {
       log.debug("Model changed, starting new official session", {
@@ -386,8 +380,6 @@ export async function handleOfficialTelegramMention(
       chatId,
       userLink,
       agent.composeId,
-      agent.modelProviderId,
-      agent.selectedModel,
       runtime.botUsername,
     );
 
@@ -455,8 +447,6 @@ async function resolveOfficialThreadSession(
   chatId: string,
   userLink: OfficialUserLink,
   composeId: string,
-  modelProviderId: string | null,
-  selectedModel: string | null,
   botUsername: string | null,
 ): Promise<{
   rootMessageId: string | undefined;
@@ -497,8 +487,6 @@ async function resolveOfficialThreadSession(
       userId: userLink.vm0UserId,
       orgId: userLink.orgId,
       agentComposeId: composeId,
-      modelProviderId,
-      selectedModel,
     });
     if (!canReuseSession) {
       log.debug("Model changed, starting new official session", {

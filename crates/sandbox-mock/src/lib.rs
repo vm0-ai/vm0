@@ -17,7 +17,7 @@
 //! ```
 
 use std::collections::VecDeque;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -61,6 +61,21 @@ pub struct SpawnWatchCall {
 pub struct WriteFileCall {
     pub path: String,
     pub content: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReadFileCall {
+    pub path: String,
+    pub max_bytes: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CopyFileCall {
+    pub path: String,
+    pub host_path: PathBuf,
+    pub max_bytes: u64,
+    pub timeout: Duration,
+    pub missing_ok: bool,
 }
 
 enum LifecycleBehavior {
@@ -524,6 +539,10 @@ pub struct MockSandbox {
     id: String,
     source_ip: String,
     exec_results: Mutex<VecDeque<Result<ExecResult>>>,
+    read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
+    read_file_calls: Mutex<Vec<ReadFileCall>>,
+    copy_file_results: Mutex<VecDeque<Result<Vec<u8>>>>,
+    copy_file_calls: Mutex<Vec<CopyFileCall>>,
     write_file_results: Mutex<VecDeque<Result<()>>>,
     write_file_calls: Mutex<Vec<WriteFileCall>>,
     overrides: Option<Arc<MockSandboxOverrides>>,
@@ -539,6 +558,10 @@ impl MockSandbox {
             id: id.into(),
             source_ip: "10.0.0.1".into(),
             exec_results: Mutex::new(VecDeque::new()),
+            read_file_results: Mutex::new(VecDeque::new()),
+            read_file_calls: Mutex::new(Vec::new()),
+            copy_file_results: Mutex::new(VecDeque::new()),
+            copy_file_calls: Mutex::new(Vec::new()),
             write_file_results: Mutex::new(VecDeque::new()),
             write_file_calls: Mutex::new(Vec::new()),
             overrides: None,
@@ -551,6 +574,10 @@ impl MockSandbox {
             id: id.into(),
             source_ip: "10.0.0.1".into(),
             exec_results: Mutex::new(VecDeque::new()),
+            read_file_results: Mutex::new(VecDeque::new()),
+            read_file_calls: Mutex::new(Vec::new()),
+            copy_file_results: Mutex::new(VecDeque::new()),
+            copy_file_calls: Mutex::new(Vec::new()),
             write_file_results: Mutex::new(VecDeque::new()),
             write_file_calls: Mutex::new(Vec::new()),
             overrides: Some(overrides),
@@ -566,6 +593,29 @@ impl MockSandbox {
     /// Queue an exec result. Results are consumed in FIFO order.
     pub fn push_exec_result(&self, result: Result<ExecResult>) {
         self.exec_results.lock_ignoring_poison().push_back(result);
+    }
+
+    /// Queue a small file read result. Results are consumed in FIFO order.
+    pub fn push_read_file_result(&self, result: Result<Option<Vec<u8>>>) {
+        self.read_file_results
+            .lock_ignoring_poison()
+            .push_back(result);
+    }
+
+    pub fn read_file_calls(&self) -> Vec<ReadFileCall> {
+        self.read_file_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Queue bytes for a guest-to-host copy. The mock writes the bytes to the
+    /// requested host path and returns the copied byte count.
+    pub fn push_copy_file_result(&self, result: Result<Vec<u8>>) {
+        self.copy_file_results
+            .lock_ignoring_poison()
+            .push_back(result);
+    }
+
+    pub fn copy_file_calls(&self) -> Vec<CopyFileCall> {
+        self.copy_file_calls.lock_ignoring_poison().clone()
     }
 
     /// Queue a write_file result. Results are consumed in FIFO order.
@@ -586,7 +636,21 @@ fn default_exec_result() -> ExecResult {
         exit_code: 0,
         stdout: Vec::new(),
         stderr: Vec::new(),
+        stdout_truncated: false,
+        stderr_truncated: false,
     }
+}
+
+fn apply_exec_output_limits(mut result: ExecResult, limits: ExecOutputLimits) -> ExecResult {
+    if result.stdout.len() > limits.stdout_limit_bytes as usize {
+        result.stdout.truncate(limits.stdout_limit_bytes as usize);
+        result.stdout_truncated = true;
+    }
+    if result.stderr.len() > limits.stderr_limit_bytes as usize {
+        result.stderr.truncate(limits.stderr_limit_bytes as usize);
+        result.stderr_truncated = true;
+    }
+    result
 }
 
 #[async_trait]
@@ -664,24 +728,121 @@ impl Sandbox for MockSandbox {
 
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult> {
         // Check pattern matchers before the FIFO queue.
-        if let Some(overrides) = &self.overrides {
+        let result = if let Some(overrides) = &self.overrides {
             let mut matchers = overrides.exec_matchers.lock_ignoring_poison();
             if let Some(idx) = matchers
                 .iter()
                 .position(|m| request.cmd.contains(&m.pattern))
             {
                 let m = matchers.remove(idx);
-                return Ok(ExecResult {
+                Ok(ExecResult {
                     exit_code: m.exit_code,
                     stdout: m.stdout,
                     stderr: m.stderr,
-                });
+                    stdout_truncated: false,
+                    stderr_truncated: false,
+                })
+            } else {
+                self.exec_results
+                    .lock_ignoring_poison()
+                    .pop_front()
+                    .unwrap_or_else(|| Ok(default_exec_result()))
             }
+        } else {
+            self.exec_results
+                .lock_ignoring_poison()
+                .pop_front()
+                .unwrap_or_else(|| Ok(default_exec_result()))
+        }?;
+        Ok(apply_exec_output_limits(result, request.output_limits))
+    }
+
+    async fn read_file(&self, path: &str, max_bytes: u64) -> Result<Option<Vec<u8>>> {
+        self.read_file_calls
+            .lock_ignoring_poison()
+            .push(ReadFileCall {
+                path: path.to_string(),
+                max_bytes,
+            });
+        if max_bytes == 0 {
+            return Err(SandboxError::Operation {
+                operation: SandboxOperation::Exec,
+                reason: SandboxOperationReason::Other,
+                message: "mock read_file max_bytes must be positive".into(),
+            });
         }
-        self.exec_results
+
+        let result = self
+            .read_file_results
             .lock_ignoring_poison()
             .pop_front()
-            .unwrap_or_else(|| Ok(default_exec_result()))
+            .unwrap_or(Ok(None))?;
+        if let Some(bytes) = &result
+            && bytes.len() as u64 > max_bytes
+        {
+            return Err(SandboxError::Operation {
+                operation: SandboxOperation::Exec,
+                reason: SandboxOperationReason::Other,
+                message: format!("mock read_file exceeded {max_bytes} bytes"),
+            });
+        }
+        Ok(result)
+    }
+
+    async fn copy_file(
+        &self,
+        path: &str,
+        host_path: &Path,
+        options: CopyFileOptions,
+    ) -> Result<CopyFileResult> {
+        self.copy_file_calls
+            .lock_ignoring_poison()
+            .push(CopyFileCall {
+                path: path.to_string(),
+                host_path: host_path.to_path_buf(),
+                max_bytes: options.max_bytes,
+                timeout: options.timeout,
+                missing_ok: options.missing_ok,
+            });
+        if options.max_bytes == 0 {
+            return Err(SandboxError::Operation {
+                operation: SandboxOperation::Exec,
+                reason: SandboxOperationReason::Other,
+                message: "mock copy_file max_bytes must be positive".into(),
+            });
+        }
+        if options.timeout.is_zero() {
+            return Err(SandboxError::Operation {
+                operation: SandboxOperation::Exec,
+                reason: SandboxOperationReason::Other,
+                message: "mock copy_file timeout must be positive".into(),
+            });
+        }
+
+        let queued = self.copy_file_results.lock_ignoring_poison().pop_front();
+        let bytes = match queued {
+            Some(result) => result?,
+            None if options.missing_ok => {
+                return Ok(CopyFileResult { bytes_copied: 0 });
+            }
+            None => Vec::new(),
+        };
+        if bytes.len() as u64 > options.max_bytes {
+            return Err(SandboxError::Operation {
+                operation: SandboxOperation::Exec,
+                reason: SandboxOperationReason::Other,
+                message: format!("mock copy_file exceeded {} bytes", options.max_bytes),
+            });
+        }
+        if let Some(parent) = host_path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(host_path, &bytes)?;
+        Ok(CopyFileResult {
+            bytes_copied: bytes.len() as u64,
+        })
     }
 
     async fn write_file(&self, path: &str, content: &[u8]) -> Result<()> {
@@ -697,18 +858,14 @@ impl Sandbox for MockSandbox {
             .unwrap_or(Ok(()))
     }
 
-    async fn spawn_watch(
-        &self,
-        _request: &ExecRequest<'_>,
-        output: sandbox::SpawnOutputMode<'_>,
-    ) -> Result<SpawnHandle> {
+    async fn spawn_watch(&self, request: &SpawnWatchRequest<'_>) -> Result<SpawnHandle> {
         if let Some(overrides) = &self.overrides {
             overrides
                 .spawn_watch_calls
                 .lock_ignoring_poison()
                 .push(SpawnWatchCall {
-                    streams_stdout: output.streams_stdout(),
-                    guest_log_path: output.guest_log_path().map(str::to_owned),
+                    streams_stdout: request.output.streams_stdout(),
+                    guest_log_path: request.output.guest_log_path().map(str::to_owned),
                 });
         }
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
@@ -723,7 +880,7 @@ impl Sandbox for MockSandbox {
         }
         Ok(SpawnHandle {
             pid: 1,
-            stdout_rx: output.streams_stdout().then_some(rx),
+            stdout_rx: request.output.streams_stdout().then_some(rx),
         })
     }
 
@@ -1008,6 +1165,8 @@ impl SandboxControl for MockSandboxControl {
                     exit_code: 0,
                     stdout: Vec::new(),
                     stderr: Vec::new(),
+                    stdout_truncated: false,
+                    stderr_truncated: false,
                 })
             })
     }
@@ -1091,6 +1250,7 @@ mod tests {
                 timeout: Duration::from_secs(5),
                 env: &[],
                 sudo: false,
+                output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
             })
             .await;
         let exec = result.unwrap();
@@ -1200,6 +1360,8 @@ mod tests {
             exit_code: 42,
             stdout: b"out".to_vec(),
             stderr: b"err".to_vec(),
+            stdout_truncated: false,
+            stderr_truncated: false,
         }));
         sandbox.push_exec_result(Err(SandboxError::Operation {
             operation: SandboxOperation::Exec,
@@ -1212,6 +1374,7 @@ mod tests {
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
+            output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         };
 
         // First call returns queued result.
@@ -1226,6 +1389,169 @@ mod tests {
         // Third call falls back to default (exit 0).
         let r3 = sandbox.exec(&req).await.unwrap();
         assert_eq!(r3.exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn sandbox_copy_file_missing_ok_default_does_not_write_host_file() {
+        let sandbox = MockSandbox::new("test-1");
+        let path = std::env::temp_dir().join(format!(
+            "sandbox-mock-copy-missing-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+
+        let result = sandbox
+            .copy_file(
+                "/tmp/missing.log",
+                &path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout: Duration::from_secs(5),
+                    missing_ok: true,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.bytes_copied, 0);
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn sandbox_copy_file_rejects_queued_bytes_over_max() {
+        let sandbox = MockSandbox::new("test-1");
+        sandbox.push_copy_file_result(Ok(b"too long".to_vec()));
+        let path = std::env::temp_dir().join(format!(
+            "sandbox-mock-copy-over-max-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+
+        let err = sandbox
+            .copy_file(
+                "/tmp/system.log",
+                &path,
+                CopyFileOptions {
+                    max_bytes: 3,
+                    timeout: Duration::from_secs(5),
+                    missing_ok: false,
+                },
+            )
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("exceeded 3 bytes"));
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn sandbox_copy_file_rejects_invalid_options() {
+        let sandbox = MockSandbox::new("test-1");
+        let path = std::env::temp_dir().join(format!(
+            "sandbox-mock-copy-invalid-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+
+        let err = sandbox
+            .copy_file(
+                "/tmp/system.log",
+                &path,
+                CopyFileOptions {
+                    max_bytes: 0,
+                    timeout: Duration::from_secs(5),
+                    missing_ok: true,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("max_bytes must be positive"));
+        assert!(!path.exists());
+
+        let err = sandbox
+            .copy_file(
+                "/tmp/system.log",
+                &path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout: Duration::ZERO,
+                    missing_ok: true,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("timeout must be positive"));
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn sandbox_copy_file_allows_relative_host_path_without_parent() {
+        let sandbox = MockSandbox::new("test-1");
+        sandbox.push_copy_file_result(Ok(b"log line\n".to_vec()));
+        let file_name = format!(
+            "sandbox-mock-copy-relative-{}",
+            uuid::Uuid::new_v4().simple()
+        );
+        let path = Path::new(&file_name);
+
+        let result = sandbox
+            .copy_file(
+                "/tmp/system.log",
+                path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout: Duration::from_secs(5),
+                    missing_ok: false,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.bytes_copied, 9);
+        assert_eq!(std::fs::read(path).unwrap(), b"log line\n");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn sandbox_read_file_applies_mock_max_bytes() {
+        let sandbox = MockSandbox::new("test-1");
+        sandbox.push_read_file_result(Ok(Some(b"too long".to_vec())));
+
+        let err = sandbox.read_file("/tmp/system.log", 3).await.unwrap_err();
+
+        assert!(err.to_string().contains("exceeded 3 bytes"));
+    }
+
+    #[tokio::test]
+    async fn sandbox_read_file_rejects_zero_max_bytes() {
+        let sandbox = MockSandbox::new("test-1");
+
+        let err = sandbox.read_file("/tmp/system.log", 0).await.unwrap_err();
+
+        assert!(err.to_string().contains("max_bytes must be positive"));
+    }
+
+    #[tokio::test]
+    async fn sandbox_exec_applies_mock_capture_budget() {
+        let sandbox = MockSandbox::new("test-1");
+        sandbox.push_exec_result(Ok(ExecResult::new(
+            0,
+            b"stdout".to_vec(),
+            b"stderr".to_vec(),
+        )));
+
+        let result = sandbox
+            .exec(&ExecRequest {
+                cmd: "test",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output_limits: ExecOutputLimits::separate(3, 4),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.stdout, b"std");
+        assert!(result.stdout_truncated);
+        assert_eq!(result.stderr, b"stde");
+        assert!(result.stderr_truncated);
     }
 
     #[tokio::test]
@@ -1832,37 +2158,42 @@ mod tests {
         let mut factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
         factory.startup().await.unwrap();
         let sandbox = factory.create(test_sandbox_config()).await.unwrap();
-        let request = ExecRequest {
-            cmd: "agent",
-            timeout: Duration::from_secs(5),
-            env: &[],
-            sudo: false,
-        };
-
         let buffered = sandbox
-            .spawn_watch(&request, SpawnOutputMode::Buffered)
+            .spawn_watch(&SpawnWatchRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: SpawnOutputMode::Buffered,
+            })
             .await
             .unwrap();
         assert!(buffered.stdout_rx.is_none());
 
         let streamed = sandbox
-            .spawn_watch(
-                &request,
-                SpawnOutputMode::Stream {
+            .spawn_watch(&SpawnWatchRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: SpawnOutputMode::Stream {
                     guest_log_path: None,
                 },
-            )
+            })
             .await
             .unwrap();
         assert!(streamed.stdout_rx.is_some());
 
         let tee = sandbox
-            .spawn_watch(
-                &request,
-                SpawnOutputMode::Stream {
+            .spawn_watch(&SpawnWatchRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: SpawnOutputMode::Stream {
                     guest_log_path: Some("/tmp/guest.log"),
                 },
-            )
+            })
             .await
             .unwrap();
         assert!(tee.stdout_rx.is_some());

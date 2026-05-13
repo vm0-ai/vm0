@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.15.2](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.15.1...vsock-proto-v0.15.2) (2026-05-13)
+
+
+### Refactoring
+
+* split vsock-proto frame infrastructure ([#13169](https://github.com/vm0-ai/vm0/issues/13169)) ([df3e8e3](https://github.com/vm0-ai/vm0/commit/df3e8e3a439250225073c18ba5dedebc902d1369))
+
+## [0.15.1](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.15.0...vsock-proto-v0.15.1) (2026-05-13)
+
+
+### Refactoring
+
+* compact vsock message types ([#13079](https://github.com/vm0-ai/vm0/issues/13079)) ([09ef60c](https://github.com/vm0-ai/vm0/commit/09ef60c6348d31adf94ab8e04a959a38f5b83ec9))
+* remove legacy vsock exec protocol ([#13064](https://github.com/vm0-ai/vm0/issues/13064)) ([318c177](https://github.com/vm0-ai/vm0/commit/318c177b451a8f2f700fca02f6ee41f98beb751f))
+
 ## [0.15.0](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.14.0...vsock-proto-v0.15.0) (2026-05-12)
 
 

@@ -87,8 +87,6 @@ export {
   listZeroOrgModelProviders,
   upsertZeroOrgModelProvider,
   deleteZeroOrgModelProvider,
-  setZeroOrgModelProviderDefault,
-  updateZeroOrgModelProviderModel,
 } from "./domains/zero-org-model-providers";
 
 // Domain modules - Zero Agents
@@ -135,6 +133,14 @@ export {
   initTelegramFileUpload,
   completeTelegramFileUpload,
 } from "./domains/integrations-telegram";
+
+// Domain modules - Integrations Phone
+export {
+  sendPhoneMessage,
+  downloadPhoneFile,
+  initPhoneFileUpload,
+  completePhoneFileUpload,
+} from "./domains/integrations-phone";
 
 // Domain modules - Integrations Chat
 export { sendChatMessage } from "./domains/integrations-chat";
@@ -208,4 +214,5 @@ export {
   uploadWebFile,
   generateWebVoice,
   generateWebImage,
+  generateWebVideo,
 } from "./domains/web";

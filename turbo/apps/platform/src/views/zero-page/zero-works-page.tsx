@@ -1,4 +1,10 @@
-import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLastLoadable,
+  useLastResolved,
+  useLoadable,
+} from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -8,6 +14,7 @@ import {
   IconDownload,
   IconSettings,
 } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Button } from "@vm0/ui";
 import {
   Popover,
@@ -31,9 +38,11 @@ import {
   setShowUninstallDialog$,
 } from "../../signals/zero-page/zero-slack.ts";
 import { telegramBots$ } from "../../signals/zero-page/zero-telegram.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
+import { AgentPhoneCard } from "./agentphone-card.tsx";
 import slackIconImg from "./components/settings/icons/slack.svg";
 import telegramIconImg from "./components/settings/icons/telegram.svg";
 
@@ -55,6 +64,7 @@ function SlackCardActions({
   isAdmin,
   installUrl,
   connectUrl,
+  connectedDetail,
   onDisconnect,
   onUninstall,
   disconnecting,
@@ -64,6 +74,7 @@ function SlackCardActions({
   isAdmin: boolean;
   installUrl: string | null | undefined;
   connectUrl: string | null | undefined;
+  connectedDetail?: string | null;
   onDisconnect: () => void;
   onUninstall: () => void;
   disconnecting: boolean;
@@ -73,10 +84,12 @@ function SlackCardActions({
       {isConnected ? (
         <span
           data-testid="slack-connected-indicator"
-          className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
+          className="inline-flex min-w-0 max-w-52 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
         >
           <IconCircleCheck className="h-3 w-3 text-green-600" />
-          Connected
+          <span className="min-w-0 truncate" title={connectedDetail ?? ""}>
+            {connectedDetail ? `Connected (${connectedDetail})` : "Connected"}
+          </span>
         </span>
       ) : null}
       {!isInstalled && isAdmin && installUrl && (
@@ -190,6 +203,7 @@ function SlackCard({ displayName }: { displayName: string }) {
             isAdmin={isAdmin}
             installUrl={slackData?.installUrl}
             connectUrl={slackData?.connectUrl}
+            connectedDetail={slackData?.workspaceName}
             disconnecting={disconnecting}
             onDisconnect={() => {
               return detach(disconnect(pageSignal), Reason.DomCallback);
@@ -312,6 +326,8 @@ function TelegramCard() {
 
 export function ZeroWorksPage() {
   const displayNameLoadable = useLoadable(currentChatAgentDisplayName$);
+  const features = useLastResolved(featureSwitch$);
+  const showAgentPhone = features?.[FeatureSwitchKey.AgentPhoneAppUi] ?? false;
   const displayName =
     displayNameLoadable.state === "hasData"
       ? (displayNameLoadable.data ?? "Zero")
@@ -334,6 +350,7 @@ export function ZeroWorksPage() {
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
           <SlackCard displayName={displayName} />
           <TelegramCard />
+          {showAgentPhone ? <AgentPhoneCard /> : null}
         </div>
       </main>
     </div>

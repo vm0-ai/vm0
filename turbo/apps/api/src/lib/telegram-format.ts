@@ -1,3 +1,6 @@
+/** Maximum message length allowed by Telegram */
+const MAX_MESSAGE_LENGTH = 4096;
+
 /**
  * Escape HTML special characters for Telegram HTML parse mode.
  */
@@ -112,4 +115,91 @@ export function buildTelegramResponse(
   }
 
   return `${content}\n\n${footers.join("\n")}`;
+}
+
+/**
+ * Build a structured error response for Telegram.
+ */
+export function buildTelegramErrorResponse(
+  errorDetail: string,
+  logsUrl?: string,
+  footerText?: string,
+): string {
+  const header = `❌ <b>Agent Execution Error</b>`;
+  const content = markdownToTelegramHtml(errorDetail);
+  const footers: string[] = [];
+
+  if (logsUrl) {
+    footers.push(
+      mutedTelegramFooter(`<a href="${escapeHtml(logsUrl)}">📋 Audit</a>`),
+    );
+  }
+  if (footerText) {
+    footers.push(mutedTelegramFooter(footerText));
+  }
+
+  if (footers.length === 0) {
+    return `${header}\n\n${content}`;
+  }
+
+  return `${header}\n\n${content}\n\n${footers.join("\n")}`;
+}
+
+/**
+ * Split a message into chunks that fit within Telegram's message length limit.
+ */
+export function splitMessage(
+  text: string,
+  maxLength: number = MAX_MESSAGE_LENGTH,
+): string[] {
+  if (text.length <= maxLength) {
+    return [text];
+  }
+
+  const chunks: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLength) {
+      chunks.push(remaining);
+      break;
+    }
+
+    const window = remaining.slice(0, maxLength);
+    const codeBlockOpens = (window.match(/```/g) ?? []).length;
+    if (codeBlockOpens % 2 !== 0) {
+      const lastOpenIndex = window.lastIndexOf("```");
+      if (lastOpenIndex > 0) {
+        chunks.push(remaining.slice(0, lastOpenIndex).trimEnd());
+        remaining = remaining.slice(lastOpenIndex);
+        continue;
+      }
+      const closingIndex = remaining.indexOf("```", 3);
+      if (closingIndex !== -1) {
+        const endIndex = closingIndex + 3;
+        chunks.push(remaining.slice(0, endIndex));
+        remaining = remaining.slice(endIndex).replace(/^\n/, "");
+        continue;
+      }
+    }
+
+    const lastParagraph = window.lastIndexOf("\n\n");
+    if (lastParagraph > maxLength / 4) {
+      chunks.push(remaining.slice(0, lastParagraph).trimEnd());
+      remaining = remaining.slice(lastParagraph + 2);
+      continue;
+    }
+
+    const lastNewline = window.lastIndexOf("\n");
+    if (lastNewline > maxLength / 4) {
+      chunks.push(remaining.slice(0, lastNewline).trimEnd());
+      remaining = remaining.slice(lastNewline + 1);
+      continue;
+    }
+
+    chunks.push(remaining.slice(0, maxLength));
+    remaining = remaining.slice(maxLength);
+  }
+
+  return chunks;
 }

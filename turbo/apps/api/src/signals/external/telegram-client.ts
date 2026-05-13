@@ -177,7 +177,35 @@ export async function sendChatAction(
   }
 }
 
-type SendTelegramMessageResult =
+/**
+ * Delete a Telegram message.
+ *
+ * Response failures throw; callers that want best-effort cleanup should use
+ * safeAsync around this function.
+ */
+export async function deleteMessage(
+  token: string,
+  chatId: string,
+  messageId: number,
+): Promise<void> {
+  const url = `https://api.telegram.org/bot${token}/deleteMessage`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Telegram API error: ${response.status} ${response.statusText}`,
+    );
+  }
+  const data: unknown = await response.json();
+  if (isTelegramApiErrorPayload(data)) {
+    throw new Error(`Telegram API error: ${data.description}`);
+  }
+}
+
+export type SendTelegramMessageResult =
   | {
       readonly kind: "ok";
       readonly messageId: number;

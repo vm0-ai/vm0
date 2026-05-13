@@ -160,9 +160,9 @@ function defaultAgentContent(name: string) {
       [name]: {
         framework: "claude-code",
         // Explicit model-provider env var so validateComposeRequirements
-        // skips the org-default provider lookup (e2e previews don't have
-        // one configured). Value is a placeholder — USE_MOCK_CLAUDE on
-        // preview short-circuits actual Claude calls anyway.
+        // skips model policy materialization (e2e previews don't have one
+        // configured). Value is a placeholder — USE_MOCK_CLAUDE on preview
+        // short-circuits actual Claude calls anyway.
         environment: {
           ANTHROPIC_API_KEY: "fake-e2e-anthropic-key",
         },

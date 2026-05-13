@@ -1735,9 +1735,9 @@ describe("POST /api/internal/callbacks/chat", () => {
 
   describe("Auto-send queued user message", () => {
     beforeEach(async () => {
-      // The auto-send path goes through createZeroRun, which requires the
-      // org to have a default model provider configured. Other describes
-      // in this file never reach run creation, so they skip this seed.
+      // The auto-send path goes through createZeroRun, which requires a
+      // workspace model policy route. Other describes in this file never reach
+      // run creation, so they skip this seed.
       await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
     });
 

@@ -9,6 +9,7 @@ import { getAppUrl } from "../url";
 import { resolveDefaultAgentId } from "../resolve-default-agent";
 import { signAgentPhoneConnectParams } from "./connect-token";
 import { AGENTPHONE_ROOT_MESSAGE_ID } from "./constants";
+import { formatAgentPhoneFileForContext } from "./media";
 import type { UserInfoOptions } from "../integration-prompt";
 
 export type AgentPhoneUserLink = typeof agentphoneUserLinks.$inferSelect;
@@ -37,6 +38,31 @@ export interface AgentPhoneMessageEvent {
   body: string;
   mediaUrl: string | null;
   receivedAt: Date | null;
+}
+
+const AGENTPHONE_SMS_MMS_SLASH_COMMAND_RISK_MESSAGE =
+  "Note: SMS and MMS replies may not be delivered reliably. For the most reliable experience, use iMessage with this AgentPhone number.";
+
+function isUnreliableAgentPhoneReplyChannel(
+  channel: string | null | undefined,
+): boolean {
+  const normalized = channel?.trim().toLowerCase();
+  return normalized === "sms" || normalized === "mms";
+}
+
+export function appendAgentPhoneSlashCommandRiskWarning(
+  body: string,
+  channel: string | null | undefined,
+): string {
+  if (!isUnreliableAgentPhoneReplyChannel(channel)) {
+    return body;
+  }
+
+  if (body.includes(AGENTPHONE_SMS_MMS_SLASH_COMMAND_RISK_MESSAGE)) {
+    return body;
+  }
+
+  return [body, AGENTPHONE_SMS_MMS_SLASH_COMMAND_RISK_MESSAGE].join("\n\n");
 }
 
 export function normalizePhoneHandle(handle: string): string {
@@ -146,6 +172,53 @@ export async function resolveAgentPhoneUserLink(
   return touchAgentPhoneUserLink(userLink, normalized);
 }
 
+export async function resolveAgentPhoneUserLinkForOwner(params: {
+  phoneHandle: string;
+  vm0UserId: string;
+  orgId: string;
+}): Promise<AgentPhoneUserLink | null> {
+  const normalized = normalizePhoneHandle(params.phoneHandle);
+  const [userLink] = await globalThis.services.db
+    .select()
+    .from(agentphoneUserLinks)
+    .where(
+      and(
+        eq(agentphoneUserLinks.phoneHandle, normalized),
+        eq(agentphoneUserLinks.vm0UserId, params.vm0UserId),
+        eq(agentphoneUserLinks.orgId, params.orgId),
+      ),
+    )
+    .limit(1);
+
+  if (!userLink) return null;
+  return touchAgentPhoneUserLink(userLink, normalized);
+}
+
+export async function resolveAgentPhoneAgentIdForUserLink(params: {
+  userLinkId: string;
+  phoneHandle: string;
+  agentphoneAgentId?: string | null;
+}): Promise<string | null> {
+  if (params.agentphoneAgentId) return params.agentphoneAgentId;
+
+  const [message] = await globalThis.services.db
+    .select({ agentphoneAgentId: agentphoneMessages.agentphoneAgentId })
+    .from(agentphoneMessages)
+    .where(
+      and(
+        eq(agentphoneMessages.agentphoneUserLinkId, params.userLinkId),
+        eq(
+          agentphoneMessages.phoneHandle,
+          normalizePhoneHandle(params.phoneHandle),
+        ),
+      ),
+    )
+    .orderBy(desc(agentphoneMessages.createdAt))
+    .limit(1);
+
+  return message?.agentphoneAgentId ?? null;
+}
+
 export async function ensureAgentPhoneOrgAndArtifact(
   vm0UserId: string,
   orgId: string,
@@ -157,6 +230,7 @@ export function buildAgentPhoneConnectUrl(params: {
   phoneHandle: string;
   agentphoneAgentId: string;
   secret: string;
+  channel?: string | null;
 }): string {
   const ts = Math.floor(Date.now() / 1000);
   const phoneHandle = normalizePhoneHandle(params.phoneHandle);
@@ -172,6 +246,9 @@ export function buildAgentPhoneConnectUrl(params: {
     ts: String(ts),
     sig,
   });
+  if (params.channel) {
+    query.set("channel", params.channel);
+  }
   return `${getAppUrl()}/agentphone/connect?${query.toString()}`;
 }
 
@@ -342,6 +419,7 @@ export async function storeOutboundAgentPhoneMessage(params: {
   toNumber: string;
   body: string | undefined;
   channel: string | null;
+  mediaUrl?: string | null;
 }): Promise<void> {
   await globalThis.services.db
     .insert(agentphoneMessages)
@@ -356,6 +434,7 @@ export async function storeOutboundAgentPhoneMessage(params: {
       direction: "outbound",
       channel: params.channel ?? "unknown",
       body: params.body ?? null,
+      mediaUrl: params.mediaUrl ?? null,
       isBot: true,
     })
     .onConflictDoNothing();
@@ -392,22 +471,12 @@ export async function fetchAgentPhoneContext(params: {
     );
   });
 
-  const lastProcessedIndex = params.lastProcessedMessageId
-    ? chronological.findIndex((message) => {
-        return message.messageId === params.lastProcessedMessageId;
-      })
-    : -1;
-  const executionMessages =
-    lastProcessedIndex >= 0
-      ? chronological.slice(lastProcessedIndex + 1)
-      : chronological;
-
-  if (executionMessages.length === 0) {
+  if (chronological.length === 0) {
     return { executionContext: "" };
   }
 
-  const total = executionMessages.length;
-  const formatted = executionMessages.map((message, index) => {
+  const total = chronological.length;
+  const formatted = chronological.map((message, index) => {
     const sender = message.isBot ? "BOT" : phoneHandle;
     const parts = [
       "---",
@@ -420,7 +489,13 @@ export async function fetchAgentPhoneContext(params: {
       message.body ?? "",
     ];
     if (message.mediaUrl) {
-      parts.push("", `[AgentPhone media] ${message.mediaUrl}`);
+      parts.push(
+        "",
+        formatAgentPhoneFileForContext({
+          messageId: message.messageId,
+          mediaUrl: message.mediaUrl,
+        }),
+      );
     }
     return parts.join("\n");
   });
@@ -441,12 +516,13 @@ export async function fetchAgentPhoneContext(params: {
 export function enrichAgentPhonePrompt(
   prompt: string,
   phoneHandle: string,
+  messageId: string,
   mediaUrl: string | null,
 ): { prompt: string; userInfoExtras: UserInfoOptions } {
   const normalized = normalizePhoneHandle(phoneHandle);
   const parts = [prompt.trim()];
   if (mediaUrl) {
-    parts.push(`[AgentPhone media] ${mediaUrl}`);
+    parts.push(formatAgentPhoneFileForContext({ messageId, mediaUrl }));
   }
   return {
     prompt: parts.filter(Boolean).join("\n\n"),

@@ -23,6 +23,7 @@ function buildCommands(): Command[] {
     new Command("secret"),
     new Command("slack"),
     new Command("telegram"),
+    new Command("phone"),
     new Command("variable"),
     new Command("whoami"),
     new Command("built-in"),
@@ -147,6 +148,7 @@ describe("registerZeroCommands", () => {
       "secret",
       "slack",
       "telegram",
+      "phone",
       "variable",
       "built-in",
       "remote-agent",
@@ -224,6 +226,32 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
+  it("should show phone when phone:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["phone:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("phone");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should show phone when phone:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["phone:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("phone");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
   it("should hide telegram when only file:read capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
@@ -234,6 +262,7 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("telegram");
+    expect(hiddenCommandNames(prog)).toContain("phone");
   });
 
   it("should hide telegram when only file:write capability is present", () => {
@@ -246,6 +275,7 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("telegram");
+    expect(hiddenCommandNames(prog)).toContain("phone");
   });
 
   it("should show built-in when file:write capability is present", () => {
@@ -271,6 +301,7 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("telegram");
+    expect(hiddenCommandNames(prog)).toContain("phone");
   });
 
   it("should show run when agent-run:write capability is present", () => {

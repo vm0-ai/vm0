@@ -3,12 +3,17 @@ import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { and, count, eq, gt, or, sql } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
 import { now, nowDate } from "../external/time";
-import { publishOrgSignal } from "../external/realtime";
+import {
+  publishOrgSignal,
+  publishRunnerJobNotification,
+} from "../external/realtime";
 import { logger } from "../../lib/log";
+import { decryptQueuedRunnerJobPayload } from "./agent-run-queue-payload.service";
 
 const L = logger("ZeroRunQueue");
 
@@ -31,13 +36,11 @@ function tierLimit(tier: OrgTier | null | undefined): number {
 /**
  * Drain the org's queued runs after a concurrency slot frees up.
  *
- * Scope: SQL-only port of web's `drainOrgQueue` minus the dispatch
- * callback (`dispatchQueuedZeroRun`). Web's dispatch callback hands off
- * to the run-execution path (compose loading, sandbox provisioning,
- * etc.) which is part of the Stage 4 run-creation migration. The api
- * side here performs the SQL transition (queued → pending) and
- * publishes `queue:changed`. Runners pick up pending runs on their
- * existing poll loop.
+ * Scope: API-created queue entries carry a prepared runner job payload
+ * in `agent_run_queue.encrypted_params`. Draining promotes one queued run
+ * to pending and inserts the matching `runner_job_queue` row so the runner
+ * can claim it. Legacy or fixture entries without that payload still get
+ * the SQL-only queued → pending transition for compatibility.
  *
  * Acquires `pg_advisory_xact_lock(hashtext(orgId))` — same hash key as
  * web's `drainOrgQueue` so the two backends serialize correctly on the
@@ -85,11 +88,14 @@ export const drainOrgQueue$ = command(
         );
       const activeCount = Number(activeRow?.count ?? 0);
       if (activeCount >= limit) {
-        return 0;
+        return { promoted: 0, runnerNotification: null };
       }
 
       const queueRows = await tx
-        .select({ runId: agentRunQueue.runId })
+        .select({
+          runId: agentRunQueue.runId,
+          encryptedParams: agentRunQueue.encryptedParams,
+        })
         .from(agentRunQueue)
         .where(eq(agentRunQueue.orgId, args.orgId))
         .orderBy(agentRunQueue.createdAt);
@@ -114,14 +120,38 @@ export const drainOrgQueue$ = command(
           });
           continue;
         }
+        const payload = decryptQueuedRunnerJobPayload(row.encryptedParams);
+        if (payload) {
+          await tx.insert(runnerJobQueue).values({
+            runId: row.runId,
+            runnerGroup: payload.runnerGroup,
+            profile: payload.profile,
+            sessionId: payload.sessionId,
+            executionContext: payload.executionContext,
+            expiresAt: new Date(now() + 2 * 60 * 60 * 1000),
+          });
+          await tx
+            .update(agentRuns)
+            .set({ runnerGroup: payload.runnerGroup })
+            .where(eq(agentRuns.id, row.runId));
+        }
         promoted = 1;
         // Web's `dequeueNextAtomic` returns after the first successful
         // transition (one slot freed = one dispatch). Match that to
         // avoid over-dequeuing.
-        break;
+        return payload
+          ? {
+              promoted,
+              runnerNotification: {
+                runId: row.runId,
+                runnerGroup: payload.runnerGroup,
+                profile: payload.profile,
+              },
+            }
+          : { promoted, runnerNotification: null };
       }
 
-      return promoted;
+      return { promoted, runnerNotification: null };
     });
     signal.throwIfAborted();
 
@@ -131,6 +161,15 @@ export const drainOrgQueue$ = command(
     await publishOrgSignal(args.orgId, "queue:changed");
     signal.throwIfAborted();
 
-    return transitioned;
+    if (transitioned.runnerNotification) {
+      await publishRunnerJobNotification(
+        transitioned.runnerNotification.runnerGroup,
+        transitioned.runnerNotification.runId,
+        transitioned.runnerNotification.profile,
+      );
+      signal.throwIfAborted();
+    }
+
+    return transitioned.promoted;
   },
 );

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.2](https://github.com/vm0-ai/vm0/compare/sandbox-v0.14.1...sandbox-v0.14.2) (2026-05-13)
+
+
+### Refactoring
+
+* route sandbox exec through command operations ([#13018](https://github.com/vm0-ai/vm0/issues/13018)) ([0e5f862](https://github.com/vm0-ai/vm0/commit/0e5f862ee8e2182e23a88df6187f194171004b1f))
+
 ## [0.14.1](https://github.com/vm0-ai/vm0/compare/sandbox-v0.14.0...sandbox-v0.14.1) (2026-05-10)
 
 

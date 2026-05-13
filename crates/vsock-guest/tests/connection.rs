@@ -5,7 +5,7 @@
     clippy::indexing_slicing
 )]
 
-use std::io::{Read, Write};
+use std::io::Write;
 use std::thread;
 use std::time::Duration;
 
@@ -13,8 +13,8 @@ use vsock_guest::{handle_connection, run};
 use vsock_proto::{
     self, CommandCapturedOutput, CommandOutputPolicy, CommandOutputStream, CommandTermination,
     MSG_COMMAND_CANCEL, MSG_COMMAND_OUTPUT, MSG_COMMAND_RESULT, MSG_COMMAND_START, MSG_ERROR,
-    MSG_EXEC, MSG_EXEC_RESULT, MSG_PROCESS_EXIT, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH,
-    MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK,
+    MSG_PROCESS_EXIT, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT,
+    MSG_STDOUT_CHUNK,
 };
 
 const EXIT_CODE_TIMEOUT: i32 = 124;
@@ -122,314 +122,6 @@ impl Drop for OrphanProcessGuard {
 
 fn orphan_sleep_command(marker: &str, pid_path: &str) -> String {
     format!("sleep 30 & echo $! > {pid_path}; echo {marker}")
-}
-
-/// Helper: send a MSG_EXEC via the writer half, read MSG_EXEC_RESULT from the
-/// reader half, and return `(exit_code, stdout, stderr)`.
-fn send_exec_and_read_result(
-    writer: &mut impl std::io::Write,
-    reader: &mut impl std::io::Read,
-    seq: u32,
-    command: &str,
-    timeout_ms: u32,
-) -> (i32, Vec<u8>, Vec<u8>) {
-    send_exec_and_read_result_with_env(writer, reader, seq, command, timeout_ms, &[])
-}
-
-fn send_exec_and_read_result_with_env(
-    writer: &mut impl std::io::Write,
-    reader: &mut impl std::io::Read,
-    seq: u32,
-    command: &str,
-    timeout_ms: u32,
-    env: &[(&str, &str)],
-) -> (i32, Vec<u8>, Vec<u8>) {
-    let payload = vsock_proto::encode_exec(timeout_ms, command, env, false);
-    let msg = vsock_proto::encode(MSG_EXEC, seq, &payload).unwrap();
-    writer.write_all(&msg).unwrap();
-
-    // Read response — first 4 bytes are length header
-    let mut hdr = [0u8; 4];
-    reader.read_exact(&mut hdr).unwrap();
-    let body_len = u32::from_be_bytes(hdr) as usize;
-    let mut body = vec![0u8; body_len];
-    reader.read_exact(&mut body).unwrap();
-
-    // Decode
-    let mut full = Vec::with_capacity(4 + body_len);
-    full.extend_from_slice(&hdr);
-    full.extend_from_slice(&body);
-    let mut decoder = vsock_proto::Decoder::new();
-    let msgs = decoder.decode(&full).unwrap();
-    assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].msg_type, MSG_EXEC_RESULT);
-    assert_eq!(msgs[0].seq, seq);
-    vsock_proto::decode_exec_result(&msgs[0].payload)
-        .map(|(code, out, err)| (code, out.to_vec(), err.to_vec()))
-        .unwrap()
-}
-
-/// Verify that a slow exec does not block a fast exec that arrives later.
-/// This is the core regression test for the non-blocking exec fix.
-#[test]
-fn slow_exec_does_not_block_fast_exec() {
-    use std::os::unix::net::UnixStream as StdUnixStream;
-
-    let slow_pid_path = unique_pid_path("slow-exec");
-    let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
-
-    // Run handle_connection in a background thread (it blocks on read)
-    let handle = thread::spawn(move || {
-        let _ = handle_connection(guest_stream);
-    });
-
-    // Read and discard the MSG_READY sent by handle_connection
-    let mut hdr = [0u8; 4];
-    host_stream.read_exact(&mut hdr).unwrap();
-    let body_len = u32::from_be_bytes(hdr) as usize;
-    let mut body = vec![0u8; body_len];
-    host_stream.read_exact(&mut body).unwrap();
-
-    // Send a slow exec and wait until its child shell has actually started.
-    // This keeps the ordering deterministic without a fixed timing delay.
-    let slow_command = format!("echo $$ > '{}'; sleep 5", slow_pid_path.as_str());
-    let slow_payload = vsock_proto::encode_exec(5000, &slow_command, &[], false);
-    let slow_msg = vsock_proto::encode(MSG_EXEC, 1, &slow_payload).unwrap();
-    host_stream.write_all(&slow_msg).unwrap();
-
-    let slow_pid = read_pid_file(slow_pid_path.as_str());
-    assert!(
-        pid_alive(slow_pid),
-        "slow exec should still be running before fast exec"
-    );
-
-    // Send a fast exec — this should return quickly despite the slow one
-    let fast_payload = vsock_proto::encode_exec(5000, "echo ok", &[], false);
-    let fast_msg = vsock_proto::encode(MSG_EXEC, 2, &fast_payload).unwrap();
-    host_stream.write_all(&fast_msg).unwrap();
-
-    // Read responses — we need to find seq=2 (the fast one) within 3 seconds.
-    // Before the fix, this would block on the slow exec.
-    host_stream
-        .set_read_timeout(Some(Duration::from_secs(3)))
-        .unwrap();
-
-    let mut decoder = vsock_proto::Decoder::new();
-    let mut found_fast = false;
-    let deadline = std::time::Instant::now() + Duration::from_secs(3);
-
-    while std::time::Instant::now() < deadline {
-        let mut buf = [0u8; 4096];
-        match host_stream.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
-                    if msg.seq == 2 && msg.msg_type == MSG_EXEC_RESULT {
-                        let (code, stdout, _) =
-                            vsock_proto::decode_exec_result(&msg.payload).unwrap();
-                        assert_eq!(code, 0);
-                        assert_eq!(String::from_utf8_lossy(stdout).trim(), "ok");
-                        found_fast = true;
-                    }
-                }
-                if found_fast {
-                    break;
-                }
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-            Err(e) => panic!("read error: {e}"),
-        }
-    }
-
-    assert!(
-        found_fast,
-        "fast exec (seq=2) should complete while slow exec is still running"
-    );
-
-    // Shut down: drop the stream so handle_connection sees EOF
-    drop(host_stream);
-    let _ = handle.join();
-}
-
-/// Verify that a normal exec still returns correct results.
-#[test]
-fn exec_returns_correct_result() {
-    use std::os::unix::net::UnixStream as StdUnixStream;
-
-    let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
-    let mut host_writer = host_stream.try_clone().unwrap();
-    let mut host_reader = host_stream;
-
-    let handle = thread::spawn(move || {
-        let _ = handle_connection(guest_stream);
-    });
-
-    // Discard MSG_READY
-    let mut hdr = [0u8; 4];
-    host_reader.read_exact(&mut hdr).unwrap();
-    let body_len = u32::from_be_bytes(hdr) as usize;
-    let mut body = vec![0u8; body_len];
-    host_reader.read_exact(&mut body).unwrap();
-
-    host_reader
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
-
-    let (code, stdout, _stderr) =
-        send_exec_and_read_result(&mut host_writer, &mut host_reader, 1, "echo hello", 5000);
-    assert_eq!(code, 0);
-    assert_eq!(String::from_utf8_lossy(&stdout).trim(), "hello");
-
-    drop(host_writer);
-    drop(host_reader);
-    let _ = handle.join();
-}
-
-#[test]
-fn exec_large_env_payload_succeeds() {
-    use std::os::unix::net::UnixStream as StdUnixStream;
-
-    let values = large_env_values();
-    let env = large_env_entries(&values);
-
-    let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
-    let mut host_writer = host_stream.try_clone().unwrap();
-    let mut host_reader = host_stream;
-
-    let handle = thread::spawn(move || {
-        let _ = handle_connection(guest_stream);
-    });
-    read_and_discard_message(&mut host_reader); // MSG_READY
-    host_reader
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
-
-    let (code, stdout, stderr) = send_exec_and_read_result_with_env(
-        &mut host_writer,
-        &mut host_reader,
-        1,
-        LARGE_ENV_COMMAND,
-        5000,
-        &env,
-    );
-
-    assert_eq!(code, 0, "stderr: {}", String::from_utf8_lossy(&stderr));
-    assert_large_env_stdout(&stdout);
-
-    drop(host_writer);
-    drop(host_reader);
-    let _ = handle.join();
-}
-
-#[test]
-fn exec_invalid_env_payload_returns_error_without_leaking_value() {
-    use std::os::unix::net::UnixStream as StdUnixStream;
-
-    let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
-    let mut host_writer = host_stream.try_clone().unwrap();
-    let mut host_reader = host_stream;
-
-    let handle = thread::spawn(move || {
-        let _ = handle_connection(guest_stream);
-    });
-    read_and_discard_message(&mut host_reader); // MSG_READY
-    host_reader
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
-
-    let secret = "do-not-print-this-secret";
-    let (code, stdout, stderr) = send_exec_and_read_result_with_env(
-        &mut host_writer,
-        &mut host_reader,
-        1,
-        "echo should-not-run",
-        5000,
-        &[("BAD;KEY", secret)],
-    );
-    let stderr = String::from_utf8_lossy(&stderr);
-
-    assert_eq!(code, 1);
-    assert!(stdout.is_empty());
-    assert!(stderr.contains("invalid environment variable name"));
-    assert!(!stderr.contains(secret));
-
-    drop(host_writer);
-    drop(host_reader);
-    let _ = handle.join();
-}
-
-/// Buffered exec killed by timeout returns exit code 124.
-#[test]
-fn exec_timeout_returns_124() {
-    use std::os::unix::net::UnixStream as StdUnixStream;
-
-    let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
-    let mut host_writer = host_stream.try_clone().unwrap();
-    let mut host_reader = host_stream;
-
-    let handle = thread::spawn(move || {
-        let _ = handle_connection(guest_stream);
-    });
-
-    // Discard MSG_READY
-    let mut hdr = [0u8; 4];
-    host_reader.read_exact(&mut hdr).unwrap();
-    let body_len = u32::from_be_bytes(hdr) as usize;
-    let mut body = vec![0u8; body_len];
-    host_reader.read_exact(&mut body).unwrap();
-
-    host_reader
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
-
-    // sleep 60 with a 500ms timeout → killed by timeout
-    let (code, _stdout, stderr) =
-        send_exec_and_read_result(&mut host_writer, &mut host_reader, 1, "sleep 60", 500);
-    assert_eq!(code, EXIT_CODE_TIMEOUT);
-    assert_eq!(String::from_utf8_lossy(&stderr), "Timeout");
-
-    drop(host_writer);
-    drop(host_reader);
-    let _ = handle.join();
-}
-
-/// Regression for #9701: `timeout_ms == 0` must mean "no timeout", not
-/// "kill immediately". Before the fix, `wait_with_timeout` built a
-/// `Duration::ZERO` and the killer thread fired on the first tick,
-/// returning exit 124 ("Timeout") for any command.
-#[test]
-fn exec_timeout_zero_means_no_timeout() {
-    use std::os::unix::net::UnixStream as StdUnixStream;
-
-    let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
-    let mut host_writer = host_stream.try_clone().unwrap();
-    let mut host_reader = host_stream;
-
-    let handle = thread::spawn(move || {
-        let _ = handle_connection(guest_stream);
-    });
-
-    // Discard MSG_READY
-    let mut hdr = [0u8; 4];
-    host_reader.read_exact(&mut hdr).unwrap();
-    let body_len = u32::from_be_bytes(hdr) as usize;
-    let mut body = vec![0u8; body_len];
-    host_reader.read_exact(&mut body).unwrap();
-
-    host_reader
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
-
-    let (code, stdout, stderr) =
-        send_exec_and_read_result(&mut host_writer, &mut host_reader, 1, "echo hello", 0);
-    assert_eq!(code, 0);
-    assert_eq!(String::from_utf8_lossy(&stdout), "hello\n");
-    assert_eq!(stderr, b"");
-
-    drop(host_writer);
-    drop(host_reader);
-    let _ = handle.join();
 }
 
 #[test]
@@ -734,6 +426,35 @@ fn command_capture_only_stdout_stderr_success() {
     assert!(!result.stdout_truncated);
     assert!(!result.stderr_truncated);
     assert!(result.diagnostic.is_empty());
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn command_large_env_payload_succeeds() {
+    let values = large_env_values();
+    let env = large_env_entries(&values);
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_command_start_with_env(
+        &mut host_stream,
+        124,
+        LARGE_ENV_COMMAND,
+        5000,
+        &env,
+        CommandOutputPolicy::Capture { limit_bytes: 128 },
+        CommandOutputPolicy::Capture { limit_bytes: 1024 },
+    );
+    let (_chunks, result) = read_command_result(&mut host_stream, 124);
+
+    assert_eq!(
+        result.termination,
+        CommandTermination::Exited { exit_code: 0 },
+        "diagnostic: {} stderr: {:?}",
+        result.diagnostic,
+        result.stderr,
+    );
+    assert_large_env_stdout(&result.stdout.unwrap_or_default());
 
     finish_guest_connection(handle, host_stream);
 }
@@ -1933,91 +1654,84 @@ fn wait_for_pid_exit(pid: u32, context: &str) {
     }
 }
 
-/// Regression for #11077 (`MSG_EXEC` side): with `timeout_ms = 0`, a
-/// backgrounded grandchild that inherits the stdout fd must NOT keep
-/// `MSG_EXEC_RESULT` from arriving after the foreground shell exits.
-/// Pre-fix, `wait_with_output` blocked on stdout EOF and waited the full
-/// ~30 s for the orphaned `sleep` to release the fd. Post-fix, the
-/// drain thread cancels at the deadline (well below 30 s) and we return.
+/// Regression for #11077: with `timeout_ms = 0`, a backgrounded grandchild
+/// that inherits the stdout fd must not keep the command result from arriving
+/// after the foreground shell exits. Pre-fix, buffered output collection
+/// waited the full ~30 s for the orphaned `sleep` to release the fd. Post-fix,
+/// the drain thread cancels at the deadline (well below 30 s) and we return.
 #[test]
-fn exec_returns_when_orphaned_grandchild_holds_stdout() {
-    use std::os::unix::net::UnixStream as StdUnixStream;
+fn command_returns_when_orphaned_grandchild_holds_stdout() {
     use std::time::Instant;
 
-    let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
-    let mut host_writer = host_stream.try_clone().unwrap();
-    let mut host_reader = host_stream;
-
-    let handle = thread::spawn(move || {
-        let _ = handle_connection(guest_stream);
-    });
-
-    read_and_discard_message(&mut host_reader); // MSG_READY
-
-    host_reader
+    let (handle, mut host_stream) = start_guest_connection();
+    host_stream
         .set_read_timeout(Some(Duration::from_secs(15)))
         .unwrap();
-
-    let orphan = OrphanProcessGuard::new("orphan-exec-sleep");
-    let command = orphan_sleep_command("orphan-exec", orphan.pid_path());
+    let orphan = OrphanProcessGuard::new("orphan-command-sleep");
+    let command = orphan_sleep_command("orphan-command", orphan.pid_path());
     let start = Instant::now();
-    let (code, stdout, _stderr) =
-        send_exec_and_read_result(&mut host_writer, &mut host_reader, 1, &command, 0);
+    send_command_start(
+        &mut host_stream,
+        122,
+        &command,
+        0,
+        CommandOutputPolicy::Capture { limit_bytes: 1024 },
+        CommandOutputPolicy::Capture { limit_bytes: 1024 },
+    );
+    let (_chunks, result) = read_command_result(&mut host_stream, 122);
     let elapsed = start.elapsed();
 
-    assert_eq!(code, 0);
+    assert_eq!(
+        result.termination,
+        CommandTermination::Exited { exit_code: 0 }
+    );
+    let stdout = result.stdout.unwrap_or_default();
     assert!(
-        String::from_utf8_lossy(&stdout).contains("orphan-exec"),
-        "expected stdout to contain 'orphan-exec', got: {:?}",
+        String::from_utf8_lossy(&stdout).contains("orphan-command"),
+        "expected stdout to contain 'orphan-command', got: {:?}",
         String::from_utf8_lossy(&stdout),
     );
     assert!(
         elapsed < Duration::from_secs(DRAIN_DEADLINE_SECS + 5),
-        "MSG_EXEC_RESULT should arrive within drain deadline, took {elapsed:?}",
+        "command result should arrive within drain deadline, took {elapsed:?}",
     );
 
-    drop(host_writer);
-    drop(host_reader);
-    let _ = handle.join();
+    finish_guest_connection(handle, host_stream);
 }
 
 /// Output written by an inherited-fd grandchild within the drain deadline must
 /// still be included after the foreground shell exits.
 #[test]
-fn exec_captures_grandchild_output_before_drain_deadline() {
-    use std::os::unix::net::UnixStream as StdUnixStream;
+fn command_captures_grandchild_output_before_drain_deadline() {
     use std::time::Instant;
 
-    let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
-    let mut host_writer = host_stream.try_clone().unwrap();
-    let mut host_reader = host_stream;
-
-    let handle = thread::spawn(move || {
-        let _ = handle_connection(guest_stream);
-    });
-
-    read_and_discard_message(&mut host_reader); // MSG_READY
-    host_reader
+    let (handle, mut host_stream) = start_guest_connection();
+    host_stream
         .set_read_timeout(Some(Duration::from_secs(8)))
         .unwrap();
 
     let start = Instant::now();
-    let (code, stdout, stderr) = send_exec_and_read_result(
-        &mut host_writer,
-        &mut host_reader,
-        1,
+    send_command_start(
+        &mut host_stream,
+        123,
         "echo stdout-early; echo stderr-early >&2; { sleep 1; echo stdout-late; echo stderr-late >&2; } &",
         0,
+        CommandOutputPolicy::Capture { limit_bytes: 1024 },
+        CommandOutputPolicy::Capture { limit_bytes: 1024 },
     );
+    let (_chunks, result) = read_command_result(&mut host_stream, 123);
     let elapsed = start.elapsed();
 
-    assert_eq!(code, 0);
     assert_eq!(
-        String::from_utf8_lossy(&stdout),
+        result.termination,
+        CommandTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&result.stdout.unwrap_or_default()),
         "stdout-early\nstdout-late\n"
     );
     assert_eq!(
-        String::from_utf8_lossy(&stderr),
+        String::from_utf8_lossy(&result.stderr.unwrap_or_default()),
         "stderr-early\nstderr-late\n"
     );
     assert!(
@@ -2025,9 +1739,7 @@ fn exec_captures_grandchild_output_before_drain_deadline() {
         "late output should be captured before drain deadline, took {elapsed:?}",
     );
 
-    drop(host_writer);
-    drop(host_reader);
-    let _ = handle.join();
+    finish_guest_connection(handle, host_stream);
 }
 
 /// Returns true iff `pid` is still a live (or zombie-but-unreaped) process
@@ -2038,38 +1750,6 @@ fn exec_captures_grandchild_output_before_drain_deadline() {
 fn pid_alive(pid: u32) -> bool {
     // SAFETY: `kill` with sig=0 is a no-op existence check.
     unsafe { libc::kill(pid as i32, 0) == 0 }
-}
-
-#[test]
-fn exec_timeout_zero_silent_child_is_cancelled_on_host_disconnect() {
-    use std::os::unix::net::UnixStream as StdUnixStream;
-
-    let pid_path = unique_pid_path("exec-cancel");
-
-    let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
-    let handle = thread::spawn(move || {
-        let _ = handle_connection(guest_stream);
-    });
-    read_and_discard_message(&mut host_stream); // MSG_READY
-
-    let payload = vsock_proto::encode_exec(
-        0,
-        &format!("echo $$ > '{}'; sleep 60", pid_path.as_str()),
-        &[],
-        false,
-    );
-    let msg = vsock_proto::encode(MSG_EXEC, 1, &payload).unwrap();
-    host_stream.write_all(&msg).unwrap();
-
-    let pid = read_pid_file(pid_path.as_str());
-    assert!(
-        pid_alive(pid),
-        "child should still be running before disconnect",
-    );
-
-    drop(host_stream);
-    let _ = handle.join();
-    wait_for_pid_exit(pid, "exec host disconnect");
 }
 
 #[test]
@@ -2241,9 +1921,8 @@ fn streaming_terminates_child_on_vsock_disconnect() {
 /// the second pipe would fill, the child would block on its next write,
 /// and the test would hit the read timeout.
 ///
-/// Pins down the concurrent-drain invariant shared by `MSG_EXEC` and buffered
-/// `MSG_SPAWN_WATCH`. The streaming path in `spawn_streaming_monitor` follows
-/// the same
+/// Pins down the concurrent-drain invariant for buffered `MSG_SPAWN_WATCH`.
+/// The streaming path in `spawn_streaming_monitor` follows the same
 /// stderr-thread-before-stdout-thread structure for the same reason.
 #[test]
 fn buffered_spawn_watch_concurrent_large_stdout_stderr() {

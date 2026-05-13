@@ -65,20 +65,13 @@ import {
   type ModelPolicyDialogMode,
   type ModelPolicyRouteKind,
 } from "../../../../signals/zero-page/settings/org-model-policy-dialog.ts";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   getUILabel,
   getVm0ModelMultiplier,
 } from "../settings/provider-ui-config.ts";
 import { ProviderIcon } from "../settings/provider-icons.tsx";
-
-interface ModelPolicyFeatureGates {
-  codexBetaEnabled: boolean;
-  codexOauthEnabled: boolean;
-}
 
 function isOAuthMemberType(type: ModelProviderType): boolean {
   return type === "claude-code-oauth-token" || type === "codex-oauth-token";
@@ -86,36 +79,6 @@ function isOAuthMemberType(type: ModelProviderType): boolean {
 
 function isByokProviderType(type: ModelProviderType): boolean {
   return type !== "vm0" && !isOAuthMemberType(type);
-}
-
-function isRouteProviderVisible(
-  type: ModelProviderType,
-  gates: ModelPolicyFeatureGates,
-): boolean {
-  if (type === "openai-api-key") {
-    return gates.codexBetaEnabled;
-  }
-  if (type === "codex-oauth-token") {
-    return gates.codexOauthEnabled;
-  }
-  return true;
-}
-
-function isRunModelVisible(
-  model: SupportedRunModel,
-  gates: ModelPolicyFeatureGates,
-): boolean {
-  if (model.startsWith("gpt-")) {
-    return gates.codexBetaEnabled;
-  }
-  return true;
-}
-
-function isModelPolicyVisible(
-  policy: OrgModelPolicy,
-  gates: ModelPolicyFeatureGates,
-): boolean {
-  return isRunModelVisible(policy.model, gates);
 }
 
 function getModelIconType(model: SupportedRunModel): ModelProviderType | null {
@@ -131,21 +94,15 @@ function getModelIconType(model: SupportedRunModel): ModelProviderType | null {
   );
 }
 
-function getApiProviderTypes(
-  model: SupportedRunModel,
-  gates: ModelPolicyFeatureGates,
-): ModelProviderType[] {
+function getApiProviderTypes(model: SupportedRunModel): ModelProviderType[] {
   return getProvidersForModel(model).filter((type) => {
-    return isRouteProviderVisible(type, gates) && isByokProviderType(type);
+    return isByokProviderType(type);
   });
 }
 
-function getOAuthProviderTypes(
-  model: SupportedRunModel,
-  gates: ModelPolicyFeatureGates,
-): ModelProviderType[] {
+function getOAuthProviderTypes(model: SupportedRunModel): ModelProviderType[] {
   return getProvidersForModel(model).filter((type) => {
-    return isRouteProviderVisible(type, gates) && isOAuthMemberType(type);
+    return isOAuthMemberType(type);
   });
 }
 
@@ -649,19 +606,6 @@ function ProviderTypeSelect({
   );
 }
 
-function ProviderTypeStatic({ type }: { type: ModelProviderType | null }) {
-  if (!type) {
-    return null;
-  }
-
-  return (
-    <div className="flex h-10 items-center gap-2 text-sm text-foreground">
-      <ProviderIcon type={type} size={16} />
-      <span>{getUILabel(type)}</span>
-    </div>
-  );
-}
-
 function buildPolicyUpdate(params: {
   policies: OrgModelPolicy[];
   model: SupportedRunModel;
@@ -775,14 +719,12 @@ function ModelPolicyRouteDialog({
   policies,
   addableModels,
   providers,
-  gates,
   saving,
   onSubmit,
 }: {
   policies: OrgModelPolicy[];
   addableModels: SupportedRunModel[];
   providers: ModelProviderResponse[];
-  gates: ModelPolicyFeatureGates;
   saving: boolean;
   onSubmit: (next: UpdateOrgModelPolicy[]) => void;
 }) {
@@ -793,12 +735,8 @@ function ModelPolicyRouteDialog({
   const openAddProvider = useSet(orgOpenAddDialogForModelPolicyRoute$);
   const openEditProvider = useSet(orgOpenEditDialog$);
   const selectedModel = dialog.model ?? addableModels[0] ?? null;
-  const apiTypes = selectedModel
-    ? getApiProviderTypes(selectedModel, gates)
-    : [];
-  const oauthTypes = selectedModel
-    ? getOAuthProviderTypes(selectedModel, gates)
-    : [];
+  const apiTypes = selectedModel ? getApiProviderTypes(selectedModel) : [];
+  const oauthTypes = selectedModel ? getOAuthProviderTypes(selectedModel) : [];
   const selectedProviderType = getSelectedProviderType({
     routeKind: dialog.routeKind,
     providerType: dialog.providerType,
@@ -998,15 +936,6 @@ function ModelPolicyRouteDialog({
             </div>
           )}
 
-          {dialog.routeKind === "oauth" && (
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium text-foreground">
-                OAuth provider
-              </label>
-              <ProviderTypeStatic type={selectedProviderType} />
-            </div>
-          )}
-
           {routeProvider && dialog.routeKind === "api-key" && (
             <Button
               type="button"
@@ -1038,7 +967,6 @@ export function OrgModelPoliciesSection() {
   const lastPolicies = useLastResolved(orgModelPolicies$);
   const providersLoadable = useLoadable(orgConfiguredProviders$);
   const lastProviders = useLastResolved(orgConfiguredProviders$);
-  const features = useLastResolved(featureSwitch$);
   const pageSignal = useGet(pageSignal$);
   const openAddModelDialog = useSet(openAddModelPolicyDialog$);
   const openEditModelDialog = useSet(openEditModelPolicyDialog$);
@@ -1055,10 +983,6 @@ export function OrgModelPoliciesSection() {
       : (lastProviders ?? []);
   const providersReady =
     providersLoadable.state === "hasData" || lastProviders !== undefined;
-  const gates = {
-    codexBetaEnabled: features?.[FeatureSwitchKey.CodexBeta] ?? false,
-    codexOauthEnabled: features?.[FeatureSwitchKey.CodexOauthProvider] ?? false,
-  };
 
   if (
     (!data && policiesLoadable.state === "loading") ||
@@ -1073,7 +997,7 @@ export function OrgModelPoliciesSection() {
 
   const policies = data.policies;
   const visiblePolicies = policies.filter((policy) => {
-    return isModelPolicyVisible(policy, gates);
+    return SUPPORTED_RUN_MODELS.includes(policy.model);
   });
   const configuredModels = new Set(
     policies.map((policy) => {
@@ -1081,7 +1005,7 @@ export function OrgModelPoliciesSection() {
     }),
   );
   const addableModels = SUPPORTED_RUN_MODELS.filter((model) => {
-    return !configuredModels.has(model) && isRunModelVisible(model, gates);
+    return !configuredModels.has(model);
   });
 
   const submit = (next: UpdateOrgModelPolicy[]) => {
@@ -1154,7 +1078,6 @@ export function OrgModelPoliciesSection() {
         policies={policies}
         addableModels={addableModels}
         providers={providers}
-        gates={gates}
         saving={saving}
         onSubmit={submit}
       />

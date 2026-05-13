@@ -403,8 +403,6 @@ export function ZeroScheduleCard({
               values.freq === "every_week" ? values.dayOfWeek : undefined,
             dayOfMonth:
               values.freq === "every_month" ? values.dayOfMonth : undefined,
-            modelProviderId: values.modelProviderId,
-            selectedModel: values.selectedModel,
           });
           await setAddScheduleOpen(false, signal);
         })(),
@@ -453,8 +451,6 @@ export function ZeroScheduleCard({
             dayOfMonth:
               values.freq === "every_month" ? values.dayOfMonth : undefined,
             editName: editingEntry?.name,
-            modelProviderId: values.modelProviderId,
-            selectedModel: values.selectedModel,
           });
           await setEditingScheduleId(null, signal);
         })(),

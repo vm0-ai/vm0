@@ -1,11 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import {
-  useGet,
-  useSet,
-  useLastLoadable,
-  useLastResolved,
-} from "ccstate-react";
+import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -98,16 +93,8 @@ import {
   incrementDiscardNonce$,
   syncSettingsFormEntry$,
   syncInstructionDraftEntry$,
-  scheduleAgentModelDefault$,
   type ScheduleSettingsSnapshot,
 } from "../../signals/schedule-page/schedule-form.ts";
-import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
-import { modelFirstModelProviderEnabled$ } from "../../signals/external/feature-switch.ts";
-import {
-  MODEL_FIRST_SELECTION_PROVIDER_ID,
-  ModelProviderPicker,
-  type ModelProviderSelection,
-} from "./components/model-provider-picker.tsx";
 
 const SCHEDULE_DETAIL_TAB_TRIGGER_CLASS =
   "gap-1.5 text-sm data-[state=active]:bg-background px-3";
@@ -267,9 +254,9 @@ function buildSettingsSnapshot(
     description: entry.description ?? "",
     dayOfWeek: parsed.dayOfWeek ?? "1",
     dayOfMonth: parsed.dayOfMonth ?? "1",
-    modelProviderId: entry.modelProviderId,
-    selectedModel: entry.selectedModel,
-    preferPersonalProvider: entry.preferPersonalProvider,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
   };
 }
 
@@ -321,17 +308,8 @@ function ScheduleSettingsForm({
   const showDeleteConfirmVal = useGet(showDeleteConfirm$);
   const setShowDeleteConfirmVal = useSet(setShowDeleteConfirm$);
 
-  const orgProviders = useLastResolved(orgModelProviders$);
-
-  const agentModelDefault = useLastResolved(scheduleAgentModelDefault$) ?? null;
-
-  const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
-  const normalizedInitial = modelFirstEnabled
-    ? { ...initial, modelProviderId: null, selectedModel: null }
-    : initial;
-
   // Reset form when entry changes (component is keyed by entry.id)
-  useSet(syncSettingsFormEntry$)(entry.id, entry.prompt, normalizedInitial);
+  useSet(syncSettingsFormEntry$)(entry.id, entry.prompt, initial);
 
   const current: ScheduleSettingsSnapshot = {
     freq: form.freq,
@@ -344,9 +322,9 @@ function ScheduleSettingsForm({
     description: form.description,
     dayOfWeek: form.dayOfWeek,
     dayOfMonth: form.dayOfMonth,
-    modelProviderId: modelFirstEnabled ? null : form.modelProviderId,
-    selectedModel: modelFirstEnabled ? null : form.selectedModel,
-    preferPersonalProvider: form.preferPersonalProvider,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
   };
   const isDirty = savedState ? isSettingsChanged(current, savedState) : false;
 
@@ -363,9 +341,9 @@ function ScheduleSettingsForm({
       loopMinutes: savedState.loopMinutes,
       agentId: savedState.agentId,
       description: savedState.description,
-      modelProviderId: savedState.modelProviderId,
-      selectedModel: savedState.selectedModel,
-      preferPersonalProvider: savedState.preferPersonalProvider,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
     });
   };
 
@@ -384,9 +362,6 @@ function ScheduleSettingsForm({
       intervalSeconds: form.loopMinutes * 60,
       editName: entry.name,
       agentId: form.agentId,
-      modelProviderId: modelFirstEnabled ? null : form.modelProviderId,
-      selectedModel: modelFirstEnabled ? null : form.selectedModel,
-      preferPersonalProvider: form.preferPersonalProvider,
       ...(form.freq === "every_week" ? { dayOfWeek: form.dayOfWeek } : {}),
       ...(form.freq === "every_month" ? { dayOfMonth: form.dayOfMonth } : {}),
     });
@@ -492,42 +467,6 @@ function ScheduleSettingsForm({
               ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} this schedule`}
             />
           </InlineSettingsRow>
-
-          {orgProviders &&
-            !modelFirstEnabled &&
-            orgProviders.modelProviders.length > 0 && (
-              <InlineSettingsRow
-                label="Model"
-                description="Override the agent's default model for this schedule."
-              >
-                <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
-                  <ModelProviderPicker
-                    providers={orgProviders.modelProviders}
-                    value={
-                      form.selectedModel &&
-                      (modelFirstEnabled || form.modelProviderId)
-                        ? {
-                            modelProviderId:
-                              form.modelProviderId ??
-                              MODEL_FIRST_SELECTION_PROVIDER_ID,
-                            selectedModel: form.selectedModel,
-                          }
-                        : null
-                    }
-                    onChange={(sel: ModelProviderSelection | null) => {
-                      updateForm({
-                        modelProviderId: modelFirstEnabled
-                          ? null
-                          : (sel?.modelProviderId ?? null),
-                        selectedModel: sel?.selectedModel ?? null,
-                      });
-                    }}
-                    agentDefault={agentModelDefault}
-                    inheritLabel="agent"
-                  />
-                </div>
-              </InlineSettingsRow>
-            )}
         </CardContent>
       </Card>
 

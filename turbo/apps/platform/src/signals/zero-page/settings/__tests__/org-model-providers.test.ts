@@ -14,7 +14,6 @@ import {
 import { getProviderShape } from "../../../../views/zero-page/components/settings/provider-ui-config.ts";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { createMockApi } from "../../../../mocks/msw-contract.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { detachedSetupPage } from "../../../../__tests__/page-helper.ts";
 
 const context = testContext();
@@ -69,7 +68,7 @@ describe("org-model-providers vm0 provider", () => {
     expect(capturedBody!.type).toBe("vm0");
   });
 
-  it("should include selectedModel when user accepts the pre-selected default without changing it", async () => {
+  it("should omit selectedModel when user accepts the pre-selected default without changing it", async () => {
     const { store, signal } = context;
     let capturedBody: Record<string, unknown> | null = null;
 
@@ -106,12 +105,13 @@ describe("org-model-providers vm0 provider", () => {
     // Submit WITHOUT changing the model selector (user accepted the default)
     await store.set(orgSubmitDialog$, signal);
 
-    // The selectedModel should be included in the request
+    // Provider creation is model-first: selectedModel belongs to policies, not
+    // provider rows.
     expect(capturedBody).not.toBeNull();
-    expect(capturedBody!.selectedModel).toBe("claude-sonnet-4-6");
+    expect(capturedBody).not.toHaveProperty("selectedModel");
   });
 
-  it("should include selectedModel when user explicitly changes the model", async () => {
+  it("should omit selectedModel when user explicitly changes the model", async () => {
     const { store, signal } = context;
     let capturedBody: Record<string, unknown> | null = null;
 
@@ -147,9 +147,10 @@ describe("org-model-providers vm0 provider", () => {
     // Submit
     await store.set(orgSubmitDialog$, signal);
 
-    // The selectedModel should be included in the request
+    // Provider creation is model-first: selectedModel belongs to policies, not
+    // provider rows.
     expect(capturedBody).not.toBeNull();
-    expect(capturedBody!.selectedModel).toBe("claude-opus-4");
+    expect(capturedBody).not.toHaveProperty("selectedModel");
   });
 
   it("should omit selectedModel when model-first provider policies are enabled", async () => {
@@ -159,7 +160,6 @@ describe("org-model-providers vm0 provider", () => {
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.ModelFirstModelProvider]: true },
       withoutRender: true,
     });
 

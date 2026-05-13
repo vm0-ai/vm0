@@ -29,6 +29,7 @@ import type { AppendQueuedMessageArgs } from "./chat-thread-data-source.ts";
 import { createPendingChatThread } from "./pending-chat-thread.ts";
 import {
   ATTACH_ONLY_PLACEHOLDER,
+  isVisualAttachment,
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
@@ -47,16 +48,8 @@ import {
   type PendingChatThread,
 } from "./optimistic-chat-thread-state.ts";
 import { toVoid } from "../utils.ts";
-import { agentById } from "../agent.ts";
-import { composerModelProviders$ } from "../zero-page/composer-model-providers.ts";
-import {
-  resolveEffectiveAgentDefaultSelection,
-  resolveModelFirstUserDefaultSelection,
-} from "../zero-page/model-provider-default.ts";
-import {
-  goalEnabled$,
-  modelFirstModelProviderEnabled$,
-} from "../external/feature-switch.ts";
+import { resolveModelFirstUserDefaultSelection } from "../zero-page/model-default-selection.ts";
+import { goalEnabled$ } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { logger } from "../log.ts";
@@ -477,29 +470,20 @@ const sendNewThreadMessage$ = command(
     signal: AbortSignal,
   ): Promise<SendNewThreadMessagePending | null> => {
     const draft = get(talkDraft$);
+    const hasVisualAttachments = get(draft.attachments$).some((attachment) => {
+      return isVisualAttachment(attachment);
+    });
     let effectiveSelectedModel = modelSelection?.selectedModel;
-    if (!effectiveSelectedModel) {
-      if (get(modelFirstModelProviderEnabled$)) {
-        const policies = await get(orgModelPolicies$);
-        signal.throwIfAborted();
-        const userPreference = await get(userModelPreference$);
-        signal.throwIfAborted();
-        effectiveSelectedModel =
-          resolveModelFirstUserDefaultSelection({
-            userPreference,
-            policies,
-          })?.selectedModel ?? undefined;
-      } else {
-        const agent = await get(agentById(agentId));
-        signal.throwIfAborted();
-        const composerProviders = await get(composerModelProviders$);
-        signal.throwIfAborted();
-        effectiveSelectedModel =
-          resolveEffectiveAgentDefaultSelection({
-            agent,
-            providers: composerProviders.providers,
-          })?.selectedModel ?? undefined;
-      }
+    if (!effectiveSelectedModel && hasVisualAttachments) {
+      const policies = await get(orgModelPolicies$);
+      signal.throwIfAborted();
+      const userPreference = await get(userModelPreference$);
+      signal.throwIfAborted();
+      effectiveSelectedModel =
+        resolveModelFirstUserDefaultSelection({
+          userPreference,
+          policies,
+        })?.selectedModel ?? undefined;
     }
     const prepared = await set(
       prepareUserMessageFromDraft$,

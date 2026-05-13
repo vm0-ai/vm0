@@ -4,9 +4,9 @@
 #
 # Validates the chain added by epic #11520:
 #   feature-switch on  →  zero org model-provider setup --type openai-api-key
-#   →  vm0 compose  →  POST /api/zero/chat/messages (the same unified
-#   create-thread + run endpoint the web composer uses) → thread inherits
-#   provider via #11528 eager-pin  →  real codex CLI runs with
+#   →  model policy routes gpt-5.5 to that BYOK provider  →  vm0 compose  →
+#   POST /api/zero/chat/messages (the same unified create-thread + run endpoint
+#   the web composer uses) → thread pins the selected model  →  real codex CLI runs with
 #   $OPENAI_API_KEY  →  response contains the expected sentinel.
 #
 # OPENAI_API_KEY is mandatory — CI injects it via secrets.OPENAI_API_KEY and
@@ -30,20 +30,20 @@ setup_file() {
     # 1. Feature switch on (also fails the file early if not yet wired)
     enable_codex_beta
 
-    # 2. Org-level openai-api-key provider — passed explicitly to chat/messages
-    # via the `modelProvider` body field (see send_chat_run_message). After
-    # #11743's single-default constraint, `setup` only marks the new row as
-    # default when the workspace has none, and we cannot promote it here
-    # because the e2e workspace is shared with other tests that depend on
-    # their own seeded default.
+    # 2. Org-level openai-api-key provider. The selected model is explicitly
+    # pinned to this provider on the chat message, without provider defaults or
+    # shared org policy mutation.
     $ZERO_CLI org model-provider setup --type "openai-api-key" --secret "$OPENAI_API_KEY" >/dev/null
+    export OPENAI_PROVIDER_ID
+    OPENAI_PROVIDER_ID=$(zero_model_provider_id_by_type "openai-api-key")
+    export CODEX_ZERO_SELECTED_MODEL="gpt-5.5"
+    export CODEX_ZERO_MODEL_PROVIDER_ID="$OPENAI_PROVIDER_ID"
 
     # 3. Compose declares framework: codex explicitly. The framework is
-    # matched at admission (zero-run-policy.ts:213-238 calls
-    # getOrgDefaultModelProvider(orgId, composeFramework)). At secret
-    # resolution the provider's declared framework wins (Epic #11520) and
-    # is propagated downstream via build-zero-context.ts's
-    # resolvedFramework, with no compose-vs-provider equality check.
+    # resolved from the explicit model-first provider pin. At secret resolution
+    # the provider's declared framework wins (Epic #11520) and is propagated
+    # downstream via build-zero-context.ts's resolvedFramework, with no
+    # compose-vs-provider equality check.
     cat > "$TEST_DIR/vm0-basic.yaml" <<EOF
 version: "1.0"
 agents:

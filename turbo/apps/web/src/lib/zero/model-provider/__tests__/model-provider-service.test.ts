@@ -48,7 +48,7 @@ describe("model-provider-service — user-tier", () => {
       expect(provider.type).toBe("anthropic-api-key");
       expect(provider.framework).toBe("claude-code");
       expect(provider.secretName).toBe("ANTHROPIC_API_KEY");
-      expect(provider.isDefault).toBe(true);
+      expect(provider.isDefault).toBe(false);
     });
 
     it("does not affect vm0 org-tier upsert (no behavior change)", async () => {
@@ -57,7 +57,7 @@ describe("model-provider-service — user-tier", () => {
       const { provider } = await upsertOrgNoSecretModelProvider(orgId, "vm0");
 
       expect(provider.type).toBe("vm0");
-      expect(provider.isDefault).toBe(true);
+      expect(provider.isDefault).toBe(false);
     });
   });
 
@@ -80,7 +80,7 @@ describe("model-provider-service — user-tier", () => {
       expect(provider.type).toBe("aws-bedrock");
       expect(provider.authMethod).toBe("access-keys");
       expect(provider.secretNames).toContain("AWS_ACCESS_KEY_ID");
-      expect(provider.isDefault).toBe(true);
+      expect(provider.isDefault).toBe(false);
     });
   });
 
@@ -140,11 +140,11 @@ describe("model-provider-service — user-tier", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Delete + default promotion
+  // Delete without default promotion
   // ---------------------------------------------------------------------------
 
   describe("deleteUserModelProvider", () => {
-    it("promotes the earliest remaining personal provider when default is deleted", async () => {
+    it("does not promote the earliest remaining personal provider when one is deleted", async () => {
       const { orgId, userId } = await context.setupUser();
 
       // Two personal providers — anthropic created first becomes default
@@ -166,7 +166,7 @@ describe("model-provider-service — user-tier", () => {
       const remaining = await listUserModelProviders(orgId, userId);
       expect(remaining).toHaveLength(1);
       expect(remaining[0]!.type).toBe("openai-api-key");
-      expect(remaining[0]!.isDefault).toBe(true);
+      expect(remaining[0]!.isDefault).toBe(false);
     });
 
     it("does not affect org default when user default is deleted", async () => {
@@ -190,7 +190,7 @@ describe("model-provider-service — user-tier", () => {
         ORG_SENTINEL_USER_ID,
         orgProvider.id,
       );
-      expect(orgRow?.isDefault).toBe(true);
+      expect(orgRow?.isDefault).toBe(false);
     });
   });
 });

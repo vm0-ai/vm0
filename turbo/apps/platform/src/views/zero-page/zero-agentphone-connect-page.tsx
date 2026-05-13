@@ -6,15 +6,19 @@ import {
   IconArrowLeft,
   IconCircleCheck,
   IconLoader2,
-  IconMessageCircle,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { searchParams$ } from "../../signals/route.ts";
 import { connectAgentPhoneAccount$ } from "../../signals/zero-page/agentphone-connect-signals.ts";
-import { parseAgentPhoneConnectParams } from "../../signals/zero-page/agentphone-connect-params.ts";
+import {
+  AGENTPHONE_SMS_MMS_CONNECT_RISK_MESSAGE,
+  isUnreliableAgentPhoneConnectChannel,
+  parseAgentPhoneConnectParams,
+} from "../../signals/zero-page/agentphone-connect-params.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
+import imessageIconImg from "./components/settings/icons/imessage.svg";
 
 function BackLink() {
   return (
@@ -60,8 +64,13 @@ function MessageMark({
   }
 
   return (
-    <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-      <IconMessageCircle size={28} />
+    <span className="shrink-0 inline-flex h-10 w-10 items-center justify-center overflow-hidden">
+      <img
+        src={imessageIconImg}
+        alt=""
+        className="h-10 w-10"
+        data-testid="agentphone-connect-icon"
+      />
     </span>
   );
 }
@@ -82,6 +91,18 @@ function InvalidState({ title, message }: { title: string; message: string }) {
       <CenterText title={title} body={message} />
       <BackLink />
     </PageShell>
+  );
+}
+
+function SmsMmsRiskNotice({ channel }: { channel: string | null }) {
+  if (!isUnreliableAgentPhoneConnectChannel(channel)) {
+    return null;
+  }
+
+  return (
+    <div className="w-full rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+      {AGENTPHONE_SMS_MMS_CONNECT_RISK_MESSAGE}
+    </div>
   );
 }
 
@@ -125,6 +146,7 @@ export function ZeroAgentPhoneConnectPage(): JSX.Element {
             </>
           }
         />
+        <SmsMmsRiskNotice channel={parsed.channel} />
         <BackLink />
       </PageShell>
     );
@@ -137,6 +159,7 @@ export function ZeroAgentPhoneConnectPage(): JSX.Element {
         title="Connect phone number"
         body="Link this phone number to your VM0 account so you can interact with Zero from text messages."
       />
+      <SmsMmsRiskNotice channel={parsed.channel} />
       {error ? (
         <div
           className="w-full rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"

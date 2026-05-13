@@ -4,6 +4,8 @@ import {
   ZERO_CAPABILITIES,
   ZeroCapability,
 } from "@vm0/api-contracts/contracts/composes";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
@@ -19,6 +21,16 @@ import { singleton } from "../../lib/singleton";
 
 const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
 const PAT_TOKEN_PREFIX = "vm0_pat_";
+
+const CONDITIONAL_CAPABILITIES = [
+  ["computer-use:write", FeatureSwitchKey.ComputerUse],
+] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
+
+const AGENT_EXCLUDED_CAPABILITIES = [
+  "schedule:delete",
+  "agent-run:write",
+  "agent:delete",
+] as const satisfies readonly ZeroCapability[];
 
 const jwtBaseSchema = z.object({
   userId: z.string().min(1),
@@ -225,6 +237,47 @@ export function generateSandboxToken(
     userId,
     runId,
     orgId,
+    iat: nowSeconds,
+    exp: nowSeconds + 2 * 60 * 60,
+  };
+
+  return SANDBOX_TOKEN_PREFIX + signJwt(payload);
+}
+
+export function generateZeroToken(
+  userId: string,
+  runId: string,
+  orgId: string,
+  overrides?: Partial<Record<FeatureSwitchKey, boolean>>,
+): string {
+  const nowSeconds = Math.floor(now() / 1000);
+  const capabilities: ZeroCapability[] = [];
+  for (const capability of ZERO_CAPABILITIES) {
+    if (
+      AGENT_EXCLUDED_CAPABILITIES.some((excludedCapability) => {
+        return excludedCapability === capability;
+      })
+    ) {
+      continue;
+    }
+    const conditionalCapability = CONDITIONAL_CAPABILITIES.find((entry) => {
+      return entry[0] === capability;
+    });
+    const flag = conditionalCapability?.[1];
+    if (
+      flag === undefined ||
+      isFeatureEnabled(flag, { userId, orgId, overrides })
+    ) {
+      capabilities.push(capability);
+    }
+  }
+
+  const payload: z.infer<typeof zeroTokenPayloadSchema> = {
+    scope: "zero",
+    userId,
+    runId,
+    orgId,
+    capabilities,
     iat: nowSeconds,
     exp: nowSeconds + 2 * 60 * 60,
   };

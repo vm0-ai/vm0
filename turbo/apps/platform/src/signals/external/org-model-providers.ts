@@ -2,7 +2,6 @@ import { command, computed, state } from "ccstate";
 import {
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
-  zeroModelProvidersDefaultContract,
 } from "@vm0/api-contracts/contracts/zero-model-providers";
 import type {
   UpsertModelProviderRequest,
@@ -52,27 +51,6 @@ export const createOrgModelProvider$ = command(
     });
 
     return result.body;
-  },
-);
-
-/**
- * Set an org model provider as the default (admin only).
- */
-export const setDefaultOrgModelProvider$ = command(
-  async ({ get, set }, type: ModelProviderType, _signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroModelProvidersDefaultContract);
-    await accept(
-      client.setDefault({
-        params: { type },
-        fetchOptions: { signal: _signal },
-      }),
-      [200],
-    );
-
-    set(internalReloadOrgModelProviders$, (x) => {
-      return x + 1;
-    });
   },
 );
 

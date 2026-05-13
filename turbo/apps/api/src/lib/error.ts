@@ -30,6 +30,22 @@ export function providerUnavailable(message: string) {
   return httpError(503, "PROVIDER_UNAVAILABLE", message);
 }
 
+export function providerDeleted() {
+  return httpError(
+    422,
+    "PROVIDER_DELETED",
+    "The selected model provider is no longer available",
+  );
+}
+
+export function insufficientCredits() {
+  return httpError(
+    402,
+    "INSUFFICIENT_CREDITS",
+    "Insufficient credits. Add credits or configure your own API key to continue.",
+  );
+}
+
 export function badRequestMessage(message: string) {
   return httpError(400, "BAD_REQUEST", message);
 }

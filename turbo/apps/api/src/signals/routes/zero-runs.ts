@@ -1,5 +1,6 @@
-import { computed } from "ccstate";
+import { command, computed } from "ccstate";
 import {
+  zeroRunsMainContract,
   zeroRunRunnerContract,
   zeroRunsByIdContract,
   zeroRunsQueueContract,
@@ -7,7 +8,8 @@ import {
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { pathParamsOf } from "../context/request";
+import { bodyResultOf, pathParamsOf } from "../context/request";
+import { now } from "../external/time";
 import { notFound } from "../../lib/error";
 import {
   zeroOrgTier,
@@ -15,7 +17,10 @@ import {
   zeroRunQueueStatus,
   zeroRunRunner,
 } from "../services/zero-runs.service";
+import { createZeroRun$ } from "../services/zero-runs-create.service";
 import type { RouteEntry } from "../route";
+
+const createRunBody$ = bodyResultOf(zeroRunsMainContract.create);
 
 const runReadAuth = {
   requireOrganization: true,
@@ -66,7 +71,34 @@ const getRunQueueInner$ = computed(async (get) => {
   return { status: 200 as const, body: queue };
 });
 
+const createRunInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const apiStartTime = now();
+  const body = await get(createRunBody$);
+  signal.throwIfAborted();
+  if (!body.ok) {
+    return body.response;
+  }
+
+  const auth = get(organizationAuthContext$);
+  return await set(
+    createZeroRun$,
+    { auth, body: body.data, apiStartTime },
+    signal,
+  );
+});
+
 export const zeroRunsRoutes: readonly RouteEntry[] = [
+  {
+    route: zeroRunsMainContract.create,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "agent-run:write",
+      },
+      createRunInner$,
+    ),
+  },
   {
     route: zeroRunsQueueContract.getQueue,
     handler: authRoute(runReadAuth, getRunQueueInner$),

@@ -8,6 +8,14 @@ import {
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { mockApi } from "../msw-contract.ts";
 
+type TelegramConnectedUser = NonNullable<TelegramBot["connectedUser"]>;
+
+const defaultTelegramConnectedUser: TelegramConnectedUser = {
+  telegramUserId: "99002",
+  telegramUsername: "test_user",
+  telegramDisplayName: "Test User",
+};
+
 const defaultTelegramBots: TelegramBot[] = [
   {
     id: "bot_123",
@@ -16,6 +24,7 @@ const defaultTelegramBots: TelegramBot[] = [
     agent: { id: "compose_1", name: "default-agent" },
     isOwner: true,
     isConnected: true,
+    connectedUser: defaultTelegramConnectedUser,
     tokenStatus: "valid",
   },
 ];
@@ -50,6 +59,20 @@ let mockTelegramSetupStatus: TelegramSetupStatus = {
 // override this handler via server.use(mockApi(zeroIntegrationsTelegramContract.getLinkStatus, ...)).
 let mockLinkStatus: TelegramLinkStatusResponse = { linked: false };
 
+function formatTelegramAuthDisplayName(
+  auth: { first_name?: string; last_name?: string } | undefined,
+): string | null {
+  if (!auth) {
+    return null;
+  }
+  const displayName = [auth.first_name, auth.last_name]
+    .filter((value): value is string => {
+      return Boolean(value?.trim());
+    })
+    .join(" ");
+  return displayName || null;
+}
+
 function statusToBot(status: TelegramBotStatus): TelegramBot {
   return {
     id: status.id,
@@ -59,6 +82,7 @@ function statusToBot(status: TelegramBotStatus): TelegramBot {
     agent: status.agent,
     isOwner: status.isOwner,
     isConnected: status.isConnected,
+    connectedUser: status.connectedUser,
     tokenStatus: status.tokenStatus,
     official: status.official,
   };
@@ -77,14 +101,27 @@ function setMockTelegramStatuses(statuses: TelegramBotStatus[]): void {
   };
 }
 
-function updateMockBotConnection(botId: string, connected: boolean): void {
+function updateMockBotConnection(
+  botId: string,
+  connected: boolean,
+  connectedUser?: TelegramConnectedUser,
+): void {
   const status = mockTelegramStatuses[botId];
   if (!status) {
     return;
   }
-  mockTelegramStatuses[botId] = { ...status, isConnected: connected };
+  const nextConnectedUser = connected
+    ? (connectedUser ?? status.connectedUser ?? defaultTelegramConnectedUser)
+    : null;
+  mockTelegramStatuses[botId] = {
+    ...status,
+    isConnected: connected,
+    connectedUser: nextConnectedUser,
+  };
   mockTelegramList.bots = mockTelegramList.bots.map((bot) => {
-    return bot.id === botId ? { ...bot, isConnected: connected } : bot;
+    return bot.id === botId
+      ? { ...bot, isConnected: connected, connectedUser: nextConnectedUser }
+      : bot;
   });
 }
 
@@ -227,7 +264,17 @@ export const apiIntegrationsTelegramHandlers = [
     }
     const telegramUserId =
       body.connectSignature?.telegramUserId ?? String(body.telegramAuth?.id);
-    updateMockBotConnection(body.telegramBotId, true);
+    const connectedUser: TelegramConnectedUser = {
+      telegramUserId,
+      telegramUsername:
+        body.connectSignature?.telegramUsername ??
+        body.telegramAuth?.username ??
+        null,
+      telegramDisplayName:
+        body.connectSignature?.telegramDisplayName ??
+        formatTelegramAuthDisplayName(body.telegramAuth),
+    };
+    updateMockBotConnection(body.telegramBotId, true, connectedUser);
     mockLinkStatus = { linked: true, telegramUserId };
     return respond(200, {
       botUsername: status.username ?? "telegram_bot",

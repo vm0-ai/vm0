@@ -154,8 +154,6 @@ export async function handleTelegramMention(
       userLink.vm0UserId,
       installation.orgId,
       composeId,
-      defaultAgent.modelProviderId,
-      defaultAgent.selectedModel,
       installation.botUsername,
     );
 
@@ -231,8 +229,6 @@ async function resolveThreadSession(
   vm0UserId: string,
   orgId: string,
   composeId: string,
-  modelProviderId: string | null,
-  selectedModel: string | null,
   botUsername: string | null,
 ): Promise<{
   rootMessageId: string | undefined;
@@ -278,8 +274,6 @@ async function resolveThreadSession(
       userId: vm0UserId,
       orgId,
       agentComposeId: composeId,
-      modelProviderId,
-      selectedModel,
     });
     if (!canReuseSession) {
       log.debug("Model changed, starting new session", {

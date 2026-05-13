@@ -1,5 +1,11 @@
 use super::super::*;
-use super::support::*;
+use super::support::{
+    TestParkCandidateSpec, context_with_session, minimal_context, mock_run_config,
+    mock_run_config_with_overrides, push_job, seed_idle_pool, seed_idle_pool_expired,
+    seed_idle_pool_with_timing, shutdown, status_idle_sessions, test_profiles, two_profiles,
+    wait_budget_count, wait_cancel_token, wait_discover_entered,
+    wait_idle_cleanup_processed_with_expired_entries,
+};
 
 // -----------------------------------------------------------------------
 // Test 11: Budget full → job skipped (not claimed) → budget freed → next job succeeds

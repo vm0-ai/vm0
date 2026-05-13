@@ -7,6 +7,7 @@ import { mockStripeClient } from "../signals/external/stripe-client";
 type AsyncMock = Mock<(...args: unknown[]) => Promise<unknown>>;
 type BooleanMock = Mock<(...args: unknown[]) => boolean>;
 type SyncMock = Mock<(...args: unknown[]) => void>;
+type UnknownMock = Mock<(...args: unknown[]) => unknown>;
 
 export interface ApiTestMocks {
   readonly axiom: {
@@ -27,6 +28,7 @@ export interface ApiTestMocks {
   };
   readonly clerk: {
     readonly authenticateRequest: AsyncMock;
+    readonly verifyWebhook: AsyncMock;
     readonly organizations: {
       readonly createOrganizationDomain: AsyncMock;
       readonly deleteOrganizationDomain: AsyncMock;
@@ -58,7 +60,18 @@ export interface ApiTestMocks {
     readonly getSignedUrl: AsyncMock;
     readonly clientConfig: SyncMock;
   };
+  readonly resend: {
+    readonly send: AsyncMock;
+    readonly get: AsyncMock;
+    readonly receivingGet: AsyncMock;
+    readonly attachmentsList: AsyncMock;
+  };
   readonly slack: {
+    readonly assistant: {
+      readonly threads: {
+        readonly setStatus: AsyncMock;
+      };
+    };
     readonly chat: {
       readonly postMessage: AsyncMock;
       readonly postEphemeral: AsyncMock;
@@ -66,6 +79,8 @@ export interface ApiTestMocks {
     readonly conversations: {
       readonly list: AsyncMock;
       readonly open: AsyncMock;
+      readonly history: AsyncMock;
+      readonly replies: AsyncMock;
     };
     readonly files: {
       readonly info: AsyncMock;
@@ -79,6 +94,10 @@ export interface ApiTestMocks {
     };
     readonly views: {
       readonly publish: AsyncMock;
+      readonly open: AsyncMock;
+    };
+    readonly users: {
+      readonly info: AsyncMock;
     };
     readonly fetchFile: AsyncMock;
   };
@@ -99,6 +118,10 @@ export interface ApiTestMocks {
     readonly subscriptions: {
       readonly retrieve: AsyncMock;
       readonly update: AsyncMock;
+      readonly cancel: AsyncMock;
+    };
+    readonly webhooks: {
+      readonly constructEvent: UnknownMock;
     };
     readonly checkout: {
       readonly sessions: {
@@ -148,6 +171,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
 
   const clerk = {
     authenticateRequest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    verifyWebhook: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     organizations: {
       createOrganizationDomain:
         vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -183,6 +207,11 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   };
 
   const slack = {
+    assistant: {
+      threads: {
+        setStatus: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      },
+    },
     chat: {
       postMessage: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       postEphemeral: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -190,6 +219,8 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     conversations: {
       list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       open: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      history: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      replies: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     files: {
       info: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -203,6 +234,10 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
     views: {
       publish: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      open: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
+    users: {
+      info: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     fetchFile: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   };
@@ -224,6 +259,10 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     subscriptions: {
       retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       update: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      cancel: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
+    webhooks: {
+      constructEvent: vi.fn<(...args: unknown[]) => unknown>(),
     },
     checkout: {
       sessions: {
@@ -276,6 +315,12 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       send: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       getSignedUrl: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       clientConfig: vi.fn<(...args: unknown[]) => void>(),
+    },
+    resend: {
+      send: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      get: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      receivingGet: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      attachmentsList: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     slack,
     stripe,
@@ -378,6 +423,14 @@ vi.mock("@clerk/backend", () => {
   };
 });
 
+vi.mock("@clerk/backend/webhooks", () => {
+  return {
+    verifyWebhook: (...args: unknown[]): Promise<unknown> => {
+      return apiTestMocks.clerk.verifyWebhook(...args);
+    },
+  };
+});
+
 vi.mock("@google/genai", () => {
   class GoogleGenAI {
     readonly models = {
@@ -397,6 +450,23 @@ vi.mock("@vercel/oidc", () => {
     getVercelOidcToken: (): Promise<unknown> => {
       return apiTestMocks.vercelOidc.getToken();
     },
+  };
+});
+
+vi.mock("resend", () => {
+  return {
+    Resend: vi.fn(function (): unknown {
+      return {
+        emails: {
+          send: apiTestMocks.resend.send,
+          get: apiTestMocks.resend.get,
+          receiving: {
+            get: apiTestMocks.resend.receivingGet,
+            attachments: { list: apiTestMocks.resend.attachmentsList },
+          },
+        },
+      };
+    }),
   };
 });
 
@@ -448,6 +518,10 @@ vi.mock("stripe", async (importOriginal) => {
         subscriptions: {
           retrieve: apiTestMocks.stripe.subscriptions.retrieve,
           update: apiTestMocks.stripe.subscriptions.update,
+          cancel: apiTestMocks.stripe.subscriptions.cancel,
+        },
+        webhooks: {
+          constructEvent: apiTestMocks.stripe.webhooks.constructEvent,
         },
         checkout: {
           sessions: {
@@ -478,6 +552,11 @@ vi.mock("@slack/web-api", () => {
   return {
     WebClient: vi.fn(function (): unknown {
       return {
+        assistant: {
+          threads: {
+            setStatus: apiTestMocks.slack.assistant.threads.setStatus,
+          },
+        },
         chat: {
           postMessage: apiTestMocks.slack.chat.postMessage,
           postEphemeral: apiTestMocks.slack.chat.postEphemeral,
@@ -485,6 +564,8 @@ vi.mock("@slack/web-api", () => {
         conversations: {
           list: apiTestMocks.slack.conversations.list,
           open: apiTestMocks.slack.conversations.open,
+          history: apiTestMocks.slack.conversations.history,
+          replies: apiTestMocks.slack.conversations.replies,
         },
         files: {
           info: apiTestMocks.slack.files.info,
@@ -499,6 +580,10 @@ vi.mock("@slack/web-api", () => {
         },
         views: {
           publish: apiTestMocks.slack.views.publish,
+          open: apiTestMocks.slack.views.open,
+        },
+        users: {
+          info: apiTestMocks.slack.users.info,
         },
       };
     }),
@@ -602,6 +687,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.axiomLogging.error.mockReset();
   apiTestMocks.axiomLogging.flush.mockReset();
   apiTestMocks.clerk.authenticateRequest.mockReset();
+  apiTestMocks.clerk.verifyWebhook.mockReset();
   apiTestMocks.clerk.organizations.createOrganizationDomain.mockReset();
   apiTestMocks.clerk.organizations.deleteOrganizationDomain.mockReset();
   apiTestMocks.clerk.organizations.createOrganizationInvitation.mockReset();
@@ -625,15 +711,24 @@ export function resetApiTestMocks(): void {
     "https://r2.example.com/upload?sig=test",
   );
   apiTestMocks.s3.clientConfig.mockReset();
+  apiTestMocks.resend.send.mockReset();
+  apiTestMocks.resend.get.mockReset();
+  apiTestMocks.resend.receivingGet.mockReset();
+  apiTestMocks.resend.attachmentsList.mockReset();
+  apiTestMocks.slack.assistant.threads.setStatus.mockReset();
   apiTestMocks.slack.chat.postMessage.mockReset();
   apiTestMocks.slack.chat.postEphemeral.mockReset();
   apiTestMocks.slack.conversations.list.mockReset();
   apiTestMocks.slack.conversations.open.mockReset();
+  apiTestMocks.slack.conversations.history.mockReset();
+  apiTestMocks.slack.conversations.replies.mockReset();
   apiTestMocks.slack.files.info.mockReset();
   apiTestMocks.slack.files.getUploadURLExternal.mockReset();
   apiTestMocks.slack.files.completeUploadExternal.mockReset();
   apiTestMocks.slack.oauth.v2.access.mockReset();
   apiTestMocks.slack.views.publish.mockReset();
+  apiTestMocks.slack.views.open.mockReset();
+  apiTestMocks.slack.users.info.mockReset();
   apiTestMocks.slack.fetchFile.mockReset();
   apiTestMocks.stripe.invoices.list.mockReset();
   apiTestMocks.stripe.invoices.create.mockReset();
@@ -644,6 +739,8 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.customers.create.mockReset();
   apiTestMocks.stripe.subscriptions.retrieve.mockReset();
   apiTestMocks.stripe.subscriptions.update.mockReset();
+  apiTestMocks.stripe.subscriptions.cancel.mockReset();
+  apiTestMocks.stripe.webhooks.constructEvent.mockReset();
   apiTestMocks.stripe.checkout.sessions.create.mockReset();
   apiTestMocks.stripe.checkout.sessions.retrieve.mockReset();
   apiTestMocks.stripe.checkout.sessions.expire.mockReset();

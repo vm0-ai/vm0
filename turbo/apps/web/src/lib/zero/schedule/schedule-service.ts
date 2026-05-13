@@ -17,7 +17,6 @@ import { createZeroRun } from "../zero-run-service";
 import { buildSchedulePrompt } from "../integration-prompt";
 import { generateScheduleDescription } from "../ai/lightweight-model";
 import { adaptScheduleTrigger } from "./adapt-schedule-trigger";
-import { validateModelSelection } from "../model-provider/validate-model-selection";
 import { visibleJoinedZeroAgentCondition } from "../agent-visibility";
 
 const log = logger("service:schedule");
@@ -85,9 +84,6 @@ interface DeployScheduleRequest {
   enabled?: boolean;
   // vars and secrets removed - now managed via server-side tables
   volumeVersions?: Record<string, string>;
-  modelProviderId?: string | null;
-  selectedModel?: string | null;
-  preferPersonalProvider?: boolean;
 }
 
 /**
@@ -158,9 +154,9 @@ function toResponse(
     consecutiveFailures: schedule.consecutiveFailures,
     createdAt: schedule.createdAt.toISOString(),
     updatedAt: schedule.updatedAt.toISOString(),
-    modelProviderId: schedule.modelProviderId ?? null,
-    selectedModel: schedule.selectedModel ?? null,
-    preferPersonalProvider: schedule.preferPersonalProvider ?? false,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
   };
 }
 
@@ -256,12 +252,6 @@ async function updateExistingSchedule(
   triggerType: "cron" | "once" | "loop",
   nextRunAt: Date | null,
 ): Promise<typeof zeroAgentSchedules.$inferSelect> {
-  // `preferPersonalProvider` follows partial-update semantics (mirrors the
-  // agent PUT/PATCH route): omitting the field preserves the persisted value
-  // rather than resetting to false. This avoids a footgun where a client
-  // PATCHing only `name` would silently flip the flag back. Other fields
-  // (modelProviderId / selectedModel) keep the existing reset-on-omit
-  // semantics for backward compatibility.
   const [updated] = await globalThis.services.db
     .update(zeroAgentSchedules)
     .set({
@@ -279,11 +269,9 @@ async function updateExistingSchedule(
       nextRunAt,
       consecutiveFailures: 0,
       updatedAt: new Date(),
-      modelProviderId: request.modelProviderId ?? null,
-      selectedModel: request.selectedModel ?? null,
-      ...(request.preferPersonalProvider !== undefined && {
-        preferPersonalProvider: request.preferPersonalProvider,
-      }),
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
     })
     .where(eq(zeroAgentSchedules.id, existingId))
     .returning();
@@ -329,9 +317,9 @@ async function insertNewSchedule(
       consecutiveFailures: 0,
       createdAt: now,
       updatedAt: now,
-      modelProviderId: request.modelProviderId ?? null,
-      selectedModel: request.selectedModel ?? null,
-      preferPersonalProvider: request.preferPersonalProvider ?? false,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
     })
     .returning();
 
@@ -428,13 +416,6 @@ export async function deploySchedule(
 
   // Reject one-time schedules with past atTime when enabled
   validateAtTimeNotPast(request);
-
-  // Validate model provider + model pair against org + provider type
-  await validateModelSelection({
-    orgId,
-    modelProviderId: request.modelProviderId,
-    selectedModel: request.selectedModel,
-  });
 
   // Auto-generate description if not provided (undefined/null means not provided;
   // empty string means the user explicitly cleared it — skip auto-generation)
@@ -955,8 +936,6 @@ export async function executeSchedule(
       triggerType: schedule.triggerType,
       cronExpression: schedule.cronExpression ?? undefined,
       timezone: schedule.timezone,
-      modelProviderId: schedule.modelProviderId,
-      selectedModel: schedule.selectedModel,
       apiStartTime,
     }),
   );

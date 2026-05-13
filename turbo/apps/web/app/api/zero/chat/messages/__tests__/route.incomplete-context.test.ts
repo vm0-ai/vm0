@@ -92,6 +92,7 @@ describe("POST /api/zero/chat/messages — incomplete rounds context", () => {
 
     const run = await getTestRun(second.runId);
     expect(run.appendSystemPrompt).toContain("# Incomplete Rounds Context");
+    expect(run.appendSystemPrompt).not.toContain("# Web Chat Context");
     expect(run.appendSystemPrompt).toContain("RUN_STATUS: cancelled");
     expect(run.appendSystemPrompt).toContain("User: please cancel me");
     expect(run.appendSystemPrompt).toContain(

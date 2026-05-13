@@ -11,10 +11,14 @@
  * `response.done` and `transcription.completed` usage to these
  * Vercel-served endpoints; apps/api would not be a viable home today.
  *
- * Intentional exception: remote-agent is implemented in apps/api, but local CLI
- * commands use the same VM0_API_URL prefix as `vm0 auth login`
- * (`http://localhost:3000`). The web catch-all route is a thin proxy to
- * VM0_API_BACKEND_URL so local and production CLI URL resolution stays aligned.
+ * Intentional exception: remote-agent routes are implemented in apps/api, but
+ * CLI and platform callers use the same VM0_API_URL prefix as `vm0 auth login`
+ * (`http://localhost:3000`). The web routes are thin proxies to
+ * VM0_API_BACKEND_URL so local and production URL resolution stays aligned.
+ *
+ * Intentional exception: model policy and user model preference routes live in
+ * apps/web while the rest of Zero's bearer-token web API still authenticates
+ * through requireAuth/resolveOrg in the Next.js runtime.
  *
  * Intentional exception: official shared AgentPhone messaging uses the same
  * in-process callback/run machinery as Telegram. Keep the webhook, connect
@@ -88,6 +92,7 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/internal/callbacks/telegram/route.ts",
   "app/api/internal/callbacks/voice-chat/route.ts",
   "app/api/internal/event-consumers/axiom/route.ts",
+  "app/api/internal/event-consumers/agentphone-typing/route.ts",
   "app/api/internal/event-consumers/chat-assistant/route.ts",
   "app/api/internal/event-consumers/telegram-typing/route.ts",
   "app/api/internal/event-consumers/voice-chat/route.ts",
@@ -198,12 +203,17 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/integrations/slack/route.ts",
   "app/api/zero/integrations/slack/upload-file/complete/route.ts",
   "app/api/zero/integrations/slack/upload-file/init/route.ts",
+  "app/api/zero/integrations/phone/download-file/route.ts",
+  "app/api/zero/integrations/phone/message/route.ts",
+  "app/api/zero/integrations/phone/upload-file/complete/route.ts",
+  "app/api/zero/integrations/phone/upload-file/init/route.ts",
   "app/api/zero/integrations/telegram/bots/route.ts",
   "app/api/zero/integrations/telegram/download-file/route.ts",
   "app/api/zero/integrations/telegram/message/route.ts",
   "app/api/zero/integrations/telegram/upload-file/complete/route.ts",
   "app/api/zero/integrations/telegram/upload-file/init/route.ts",
   "app/api/zero/image-io/generate/route.ts",
+  "app/api/zero/video-io/generate/route.ts",
   "app/api/zero/logs/[id]/route.ts",
   "app/api/zero/logs/route.ts",
   "app/api/zero/logs/search/route.ts",
@@ -211,8 +221,8 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/me/model-providers/codex-oauth-token/oauth/authorize/route.ts",
   "app/api/zero/me/model-providers/codex-oauth-token/oauth/callback/route.ts",
   "app/api/zero/me/model-providers/route.ts",
-  "app/api/zero/model-providers/[type]/default/route.ts",
-  "app/api/zero/model-providers/[type]/model/route.ts",
+  "app/api/zero/model-policies/route.ts",
+  "app/api/zero/user-model-preference/route.ts",
   "app/api/zero/model-providers/[type]/route.ts",
   "app/api/zero/model-providers/route.ts",
   "app/api/zero/onboarding/complete/route.ts",

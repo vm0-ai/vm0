@@ -39,6 +39,7 @@ export {
   setTestChatMessageContent,
   setTestChatThreadLastReadAt,
   setTestChatThreadLastReadMessageId,
+  setTestChatThreadModelPin,
   setTestChatThreadPinnedAt,
   setTestChatThreadRenamedAt,
   setTestChatThreadDraft,

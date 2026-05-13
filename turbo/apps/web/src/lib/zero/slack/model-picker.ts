@@ -1,12 +1,9 @@
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   getCanonicalModelDisplayName,
   getVm0VisibleModels,
   isSupportedRunModel,
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { getAllFeatureStates } from "@vm0/core/feature-switch";
-import { loadFeatureSwitchOverrides } from "../user/feature-switches-service";
 import { ensureOrgModelPolicies } from "../model-policy/org-model-policy-service";
 import { resolveModelFirstRouteDescriptor } from "../model-policy/model-first-route-service";
 import { getUserModelPreferenceModel } from "../model-policy/user-model-preference-service";
@@ -44,25 +41,7 @@ export async function getSlackModelPickerState(params: {
   orgId: string;
   userId: string;
 }): Promise<SlackModelPickerState> {
-  const overrides = await loadFeatureSwitchOverrides(
-    params.orgId,
-    params.userId,
-  );
-  const featureStates = getAllFeatureStates({
-    orgId: params.orgId,
-    userId: params.userId,
-    overrides,
-  });
-
-  if (!featureStates[FeatureSwitchKey.ModelFirstModelProvider]) {
-    return {
-      enabled: false,
-      options: [],
-      currentSelectedModel: null,
-    };
-  }
-
-  const visibleModels = new Set(getVm0VisibleModels(featureStates));
+  const visibleModels = new Set(getVm0VisibleModels());
   const policies = await ensureOrgModelPolicies(params.orgId, params.userId);
   const currentSelectedModel = await getUserModelPreferenceModel(
     params.orgId,

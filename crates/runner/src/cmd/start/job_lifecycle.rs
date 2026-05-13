@@ -192,7 +192,7 @@ mod tests {
     use sandbox::SandboxId;
 
     use crate::ids::RunId;
-    use crate::provider::JobProvider;
+    use crate::provider::{JobCandidate, JobProvider};
     use crate::resource_budget::{BudgetLease, ResourceBudget};
     use crate::status::StatusTracker;
     use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
@@ -239,11 +239,11 @@ mod tests {
 
     #[async_trait]
     impl JobProvider for CompletionOrderProvider {
-        async fn discover(&self) -> Option<(RunId, String)> {
+        async fn discover(&self) -> Option<JobCandidate> {
             None
         }
 
-        async fn claim(&self, _run_id: RunId) -> Option<ExecutionContext> {
+        async fn claim(&self, _candidate: JobCandidate) -> Option<ExecutionContext> {
             None
         }
 

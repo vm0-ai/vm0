@@ -1,6 +1,4 @@
 import { and, eq } from "drizzle-orm";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   MODEL_PROVIDER_TYPES,
   getSecretNameForType,
@@ -19,7 +17,6 @@ import {
 } from "@vm0/api-services/errors";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { modelProviders } from "@vm0/db/schema/model-provider";
-import { loadFeatureSwitchOverrides } from "../user/feature-switches-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { ensureOrgModelPolicies } from "./org-model-policy-service";
 import { getUserModelPreferenceModel } from "./user-model-preference-service";
@@ -44,20 +41,6 @@ interface ResolveRouteParams {
   providerType?: string | null;
   credentialScope?: string | null;
   modelProviderId?: string | null;
-}
-
-export async function isModelFirstModelProviderEnabled(
-  orgId: string,
-  userId: string,
-  overrides?: Partial<Record<FeatureSwitchKey, boolean>>,
-): Promise<boolean> {
-  const resolvedOverrides =
-    overrides ?? (await loadFeatureSwitchOverrides(orgId, userId));
-  return isFeatureEnabled(FeatureSwitchKey.ModelFirstModelProvider, {
-    orgId,
-    userId,
-    overrides: resolvedOverrides,
-  });
 }
 
 function parseProviderType(type: string): ModelProviderType {
@@ -86,12 +69,22 @@ function routeShapeFromPolicy(
   const providerType = parseProviderType(policy.defaultProviderType);
   const credentialScope = parseCredentialScope(policy.credentialScope);
 
-  return {
+  return normalizeModelFirstRouteDescriptor({
     selectedModel,
     providerType,
     credentialScope,
     modelProviderId: policy.modelProviderId ?? null,
-  };
+  });
+}
+
+function normalizeModelFirstRouteDescriptor(
+  route: ModelFirstRouteDescriptor,
+): ModelFirstRouteDescriptor {
+  if (route.providerType === "vm0" && route.modelProviderId) {
+    return { ...route, modelProviderId: null };
+  }
+
+  return route;
 }
 
 function validateRouteShape(route: ModelFirstRouteDescriptor): void {
@@ -121,12 +114,6 @@ function validateRouteShape(route: ModelFirstRouteDescriptor): void {
       throw badRequest("Built-in model routes cannot store provider IDs");
     }
     return;
-  }
-
-  if (!route.modelProviderId) {
-    throw badRequest(
-      `Org-scoped provider "${route.providerType}" requires a model provider ID`,
-    );
   }
 }
 
@@ -179,8 +166,11 @@ async function validateOrgProviderRoute(
   if (route.credentialScope !== "org" || route.providerType === "vm0") {
     return true;
   }
+  if (!route.modelProviderId) {
+    return false;
+  }
 
-  const provider = await getOrgProviderById(orgId, route.modelProviderId!);
+  const provider = await getOrgProviderById(orgId, route.modelProviderId);
   if (!provider || provider.type !== route.providerType) {
     return false;
   }
@@ -313,6 +303,15 @@ export async function resolveModelFirstRouteDescriptor(
           : "org"),
       modelProviderId: params.modelProviderId ?? null,
     };
+    if (
+      route.credentialScope === "org" &&
+      route.providerType !== "vm0" &&
+      !route.modelProviderId
+    ) {
+      throw badRequest(
+        `Org-scoped provider "${route.providerType}" requires a model provider ID`,
+      );
+    }
   } else if (params.modelProviderId) {
     route = await deriveRouteFromPinnedProvider(
       params.orgId,
@@ -330,6 +329,7 @@ export async function resolveModelFirstRouteDescriptor(
     return resolveRouteFromPolicy(params.orgId, policy);
   }
 
+  route = normalizeModelFirstRouteDescriptor(route);
   if (!(await validateOrgProviderRoute(params.orgId, route))) {
     throw providerDeleted();
   }

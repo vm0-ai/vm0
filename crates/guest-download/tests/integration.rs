@@ -168,6 +168,15 @@ fn run_guest_download(manifest_path: &str) -> bool {
     guest_download::run(manifest_path)
 }
 
+fn assert_does_not_contain_any(haystack_name: &str, haystack: &str, forbidden: &[&str]) {
+    for needle in forbidden {
+        assert!(
+            !haystack.contains(needle),
+            "{haystack_name} should not contain {needle:?}: {haystack}"
+        );
+    }
+}
+
 fn unique_run_id(test_name: &str) -> String {
     format!(
         "guest-download-{test_name}-{}-{}",
@@ -451,6 +460,161 @@ fn binary_panics_with_empty_run_id_for_default_system_log() {
         stderr.contains("VM0_RUN_ID is required for guest system logging"),
         "unexpected stderr: {stderr}"
     );
+}
+
+#[test]
+fn binary_does_not_log_http_archive_url_on_success() {
+    let server = MockServer::start();
+    let tar_gz = create_tar_gz(&[("secret.txt", b"downloaded")]).unwrap();
+
+    let mock = server.mock(|when, then| {
+        when.method(GET).path("/storage-object-key/archive.tar.gz");
+        then.status(200)
+            .header("content-type", "application/gzip")
+            .body(&tar_gz);
+    });
+
+    let dir = tempfile::tempdir().unwrap();
+    let mount = dir.path().join("mount");
+    let url = server.url(
+        "/storage-object-key/archive.tar.gz?X-Amz-Signature=super-secret-token&X-Amz-Credential=credential-secret",
+    );
+    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
+    let run_id = unique_run_id("secret-url-success");
+    let system_log = format!("/tmp/vm0-system-{run_id}.log");
+    let ops_log = format!("/tmp/vm0-sandbox-ops-{run_id}.jsonl");
+    let _cleanup = RunFileCleanup::new(vec![system_log.clone(), ops_log.clone()]);
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg(&manifest)
+        .env("VM0_RUN_ID", &run_id)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        std::fs::read_to_string(mount.join("secret.txt")).unwrap(),
+        "downloaded"
+    );
+    mock.assert_calls(1);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let system_log_content = std::fs::read_to_string(&system_log).unwrap();
+    let ops_log_content = std::fs::read_to_string(&ops_log).unwrap();
+    let forbidden = [
+        url.as_str(),
+        "storage-object-key",
+        "X-Amz-Signature",
+        "super-secret-token",
+        "X-Amz-Credential",
+        "credential-secret",
+    ];
+    assert_does_not_contain_any("stderr", &stderr, &forbidden);
+    assert_does_not_contain_any("system log", &system_log_content, &forbidden);
+    assert_does_not_contain_any("sandbox ops log", &ops_log_content, &forbidden);
+}
+
+#[test]
+fn binary_does_not_log_http_archive_url_on_fatal_status() {
+    let server = MockServer::start();
+
+    let mock = server.mock(|when, then| {
+        when.method(GET)
+            .path("/failing-storage-object/archive.tar.gz");
+        then.status(404);
+    });
+
+    let dir = tempfile::tempdir().unwrap();
+    let mount = dir.path().join("mount");
+    let url = server.url(
+        "/failing-storage-object/archive.tar.gz?X-Amz-Signature=fatal-secret-token&X-Amz-Credential=fatal-credential",
+    );
+    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
+    let run_id = unique_run_id("secret-url-fatal");
+    let system_log = format!("/tmp/vm0-system-{run_id}.log");
+    let ops_log = format!("/tmp/vm0-sandbox-ops-{run_id}.jsonl");
+    let _cleanup = RunFileCleanup::new(vec![system_log.clone(), ops_log.clone()]);
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg(&manifest)
+        .env("VM0_RUN_ID", &run_id)
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    mock.assert_calls(1);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let system_log_content = std::fs::read_to_string(&system_log).unwrap();
+    let ops_log_content = std::fs::read_to_string(&ops_log).unwrap();
+    let forbidden = [
+        url.as_str(),
+        "failing-storage-object",
+        "X-Amz-Signature",
+        "fatal-secret-token",
+        "X-Amz-Credential",
+        "fatal-credential",
+    ];
+    assert_does_not_contain_any("stderr", &stderr, &forbidden);
+    assert_does_not_contain_any("system log", &system_log_content, &forbidden);
+    assert_does_not_contain_any("sandbox ops log", &ops_log_content, &forbidden);
+    assert!(
+        stderr.contains("HTTP status 404"),
+        "unexpected stderr: {stderr}"
+    );
+
+    let ops: Vec<serde_json::Value> = ops_log_content
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert!(
+        ops.iter()
+            .any(|entry| entry["action_type"] == "storage_download"
+                && entry["success"] == false
+                && entry["error"] == "HTTP status 404"),
+        "missing failed storage_download entry: {ops_log_content}"
+    );
+    assert!(
+        ops.iter()
+            .any(|entry| entry["action_type"] == "download_total" && entry["success"] == false),
+        "missing failed download_total entry: {ops_log_content}"
+    );
+}
+
+#[test]
+fn binary_does_not_log_file_archive_path_on_missing_local_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let missing = dir.path().join("secret-staged-archive.tar.gz");
+    assert!(!missing.exists());
+
+    let mount = dir.path().join("mount");
+    let url = format!("file://{}", missing.display());
+    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
+    let run_id = unique_run_id("secret-file-path");
+    let system_log = format!("/tmp/vm0-system-{run_id}.log");
+    let ops_log = format!("/tmp/vm0-sandbox-ops-{run_id}.jsonl");
+    let _cleanup = RunFileCleanup::new(vec![system_log.clone(), ops_log.clone()]);
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg(&manifest)
+        .env("VM0_RUN_ID", &run_id)
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let system_log_content = std::fs::read_to_string(&system_log).unwrap();
+    let ops_log_content = std::fs::read_to_string(&ops_log).unwrap();
+    let missing_path = missing.to_string_lossy();
+    let forbidden = [url.as_str(), missing_path.as_ref(), "secret-staged-archive"];
+    assert_does_not_contain_any("stderr", &stderr, &forbidden);
+    assert_does_not_contain_any("system log", &system_log_content, &forbidden);
+    assert_does_not_contain_any("sandbox ops log", &ops_log_content, &forbidden);
 }
 
 // ---------------------------------------------------------------------------

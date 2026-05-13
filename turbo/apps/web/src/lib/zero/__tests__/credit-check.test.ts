@@ -11,14 +11,13 @@ import {
   markRunningRunsAsCompleted,
   setOrgCredits,
   insertOrgDefaultModelProvider,
-  insertOrgNonDefaultModelProvider,
   insertOrgMembersEntry,
   insertTestZeroRun,
   deleteOrgRow,
   insertCreditExpiresRecord,
+  insertOrgModelPolicy,
 } from "../../../__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
-import { getTestModelProviderIdByType } from "../../../__tests__/db-test-assertions/org";
 import { reloadEnv } from "../../../env";
 import type { CreateRunParams } from "../../infra/run/run-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
@@ -98,18 +97,19 @@ describe("credit check (infra queue path)", () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
       reloadEnv();
 
-      await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
-      await insertOrgNonDefaultModelProvider(user.orgId, "vm0");
-      const vm0ProviderId = await getTestModelProviderIdByType(
-        user.orgId,
-        "vm0",
-      );
+      await insertOrgModelPolicy({
+        orgId: user.orgId,
+        model: "claude-opus-4-7",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      });
 
       await seedTestRun(user.userId, composeId, { prompt: "Running" });
       const queued = await enqueueRun(
         queueBaseParams({
-          prompt: "Queued VM0 by provider id",
-          modelProviderId: vm0ProviderId,
+          prompt: "Queued VM0 by model",
+          modelProvider: "vm0",
           selectedModelOverride: "claude-opus-4-7",
         }),
       );
@@ -327,7 +327,7 @@ describe("model provider check (queue dispatch path)", () => {
     reloadEnv();
   });
 
-  it("should fail queued zero run when no model provider configured at dispatch time", async () => {
+  it("should fail queued zero run when built-in default has no credits", async () => {
     vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
     reloadEnv();
 
@@ -337,8 +337,6 @@ describe("model provider check (queue dispatch path)", () => {
       skipDefaultApiKey: true,
     });
     const agentId = await getTestZeroAgentId(user.orgId, agentName);
-
-    // No org-level model provider configured — checkModelProviderConfigured will throw
 
     // Create a running run to force the next one into the queue
     await seedTestRun(user.userId, compose.composeId, {
@@ -360,13 +358,13 @@ describe("model provider check (queue dispatch path)", () => {
     // Mark running run as completed
     await markRunningRunsAsCompleted(user.userId);
 
-    // Drain queue — dispatchQueuedZeroRun should fail with noModelProvider
+    // Drain queue — model-first default routes to vm0, so the run fails at
+    // the credit gate when the org has no spendable credits.
     await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
 
-    // Run should be marked as failed with model provider error
     const run = await findTestRunRecord(queued.runId);
     expect(run!.status).toBe("failed");
-    expect(run!.error).toContain("No model provider configured");
+    expect(run!.error).toContain("Insufficient credits");
   });
 });
 
@@ -512,7 +510,7 @@ describe("checkOrgCreditsForRunAdmission (resolved provider LLM wrapper)", () =>
     ).resolves.toBeUndefined();
   });
 
-  it("returns OK when default provider is vm0 and credits are available", async () => {
+  it("returns OK when model policy routes to vm0 and credits are available", async () => {
     await insertOrgDefaultModelProvider(user.orgId, "vm0");
     await setOrgCredits(user.orgId, 10000);
     const admission = await resolveRunAdmissionContext({
@@ -537,7 +535,7 @@ describe("checkOrgCreditsForRunAdmission (resolved provider LLM wrapper)", () =>
     expect(admission.providerFramework).toBe("codex");
   });
 
-  it("throws when default provider is vm0 and member creditEnabled is false", async () => {
+  it("throws when model policy routes to vm0 and member creditEnabled is false", async () => {
     await insertOrgDefaultModelProvider(user.orgId, "vm0");
     await setOrgCredits(user.orgId, 10000);
     await insertOrgMembersEntry({
@@ -555,7 +553,7 @@ describe("checkOrgCreditsForRunAdmission (resolved provider LLM wrapper)", () =>
     });
   });
 
-  it("throws when default provider is vm0 and spendable balance (credits − unsettledExpired) is zero", async () => {
+  it("throws when model policy routes to vm0 and spendable balance is zero", async () => {
     await insertOrgDefaultModelProvider(user.orgId, "vm0");
     await setOrgCredits(user.orgId, 5000);
     await insertCreditExpiresRecord({
@@ -575,7 +573,7 @@ describe("checkOrgCreditsForRunAdmission (resolved provider LLM wrapper)", () =>
     });
   });
 
-  it("returns OK when default provider is non-vm0 even when credits are depleted", async () => {
+  it("returns OK when model policy routes to BYOK even when credits are depleted", async () => {
     await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
     await setOrgCredits(user.orgId, 0);
     const admission = await resolveRunAdmissionContext({

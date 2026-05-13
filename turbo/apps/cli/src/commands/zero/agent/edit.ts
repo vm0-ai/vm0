@@ -8,7 +8,6 @@ import {
   updateZeroAgentInstructions,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
-import { parseModelFlag } from "../../../lib/domain/model-provider/shared";
 import { type AvatarOptions, resolveAvatarUrl } from "./avatar";
 
 interface AgentEditOptions extends AvatarOptions {
@@ -19,8 +18,6 @@ interface AgentEditOptions extends AvatarOptions {
   addSkill?: string;
   removeSkill?: string;
   instructionsFile?: string;
-  modelProvider?: string;
-  model?: string;
 }
 
 function hasAvatarUpdate(options: AvatarOptions): boolean {
@@ -43,9 +40,7 @@ function hasAgentFieldUpdate(options: AgentEditOptions): boolean {
     hasAvatarUpdate(options) ||
     options.skills !== undefined ||
     options.addSkill !== undefined ||
-    options.removeSkill !== undefined ||
-    options.modelProvider !== undefined ||
-    options.model !== undefined
+    options.removeSkill !== undefined
   );
 }
 
@@ -58,15 +53,6 @@ async function applyAgentUpdate(
 
   const current = await getZeroAgent(agentId);
   const customSkills = resolveCustomSkills(options, current.customSkills ?? []);
-
-  const modelProviderId =
-    options.modelProvider !== undefined
-      ? parseModelFlag(options.modelProvider)
-      : current.modelProviderId;
-  const selectedModel =
-    options.model !== undefined
-      ? parseModelFlag(options.model)
-      : current.selectedModel;
 
   const avatarUrl = hasAvatar
     ? resolvedAvatarUrl
@@ -87,8 +73,6 @@ async function applyAgentUpdate(
         : (current.sound ?? undefined),
     avatarUrl,
     customSkills,
-    modelProviderId,
-    selectedModel,
   });
 }
 
@@ -179,14 +163,6 @@ export const editCommand = new Command()
   .option("--add-skill <name>", "Add a custom skill to the agent")
   .option("--remove-skill <name>", "Remove a custom skill from the agent")
   .option("--instructions-file <path>", "Path to new instructions file")
-  .option(
-    "--model-provider <id>",
-    "Model provider UUID, or 'default' to inherit org default",
-  )
-  .option(
-    "--model <name>",
-    "Model name (e.g. claude-sonnet-4-6, MiniMax-M2.7), or 'default' to inherit provider default",
-  )
   .addHelpText(
     "after",
     `
@@ -217,8 +193,6 @@ Examples:
   Add a skill:             zero agent edit <agent-id> --add-skill my-skill
   Remove a skill:          zero agent edit <agent-id> --remove-skill my-skill
   Update instructions:     zero agent edit <agent-id> --instructions-file ./instructions.md
-  Set model:               zero agent edit <agent-id> --model-provider <provider-id> --model MiniMax-M2.7
-  Reset model:             zero agent edit <agent-id> --model-provider default --model default
   Update yourself:         zero agent edit $ZERO_AGENT_ID --description "new role"
 
 Notes:
@@ -226,7 +200,6 @@ Notes:
   - Unspecified fields are preserved (not cleared)
   - --skills replaces the entire skill list; --add-skill/--remove-skill modify incrementally
   - --skills cannot be combined with --add-skill or --remove-skill
-  - Use 'zero org model-provider list' to see available providers and models
   - To create or edit skill content, use: zero skill --help`,
   )
   .action(
@@ -235,7 +208,7 @@ Notes:
 
       if (!hasAgentUpdate && !options.instructionsFile) {
         throw new Error(
-          "At least one option is required (--display-name, --description, --sound, --avatar, --avatar-*, --skills, --add-skill, --remove-skill, --model-provider, --model, --instructions-file)",
+          "At least one option is required (--display-name, --description, --sound, --avatar, --avatar-*, --skills, --add-skill, --remove-skill, --instructions-file)",
         );
       }
 

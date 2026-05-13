@@ -1,4 +1,4 @@
-import { eq, and, ne, or, inArray, sql, notExists } from "drizzle-orm";
+import { eq, and, or, inArray } from "drizzle-orm";
 import {
   MODEL_PROVIDER_TYPES,
   getFrameworkForType,
@@ -53,8 +53,7 @@ export interface ModelProviderInfo {
  * Shared SELECT projection for reading model_providers rows joined with secrets.
  *
  * Centralized to prevent column drift across read paths
- * (`listModelProviders`, `getDefaultModelProvider`, `getAnyDefaultModelProvider`,
- * `getOrgModelProviderByType`, `getModelProviderById`, `getUserModelProviderByType`).
+ * (`listModelProviders`, `getModelProviderById`, `getUserModelProviderByType`).
  */
 function selectProviderRow(): {
   id: typeof modelProviders.id;
@@ -153,48 +152,6 @@ function toModelProviderInfo(params: {
     createdAt: params.createdAt,
     updatedAt: params.updatedAt,
   };
-}
-
-/**
- * Atomically assign isDefault=true to a provider, but only if no other provider
- * already has isDefault=true for the same (orgId, userId) scope.
- *
- * Uses a single UPDATE with NOT EXISTS subquery to prevent the race condition
- * where two concurrent inserts both set isDefault=true.
- *
- * Workspace-scoped (per orgId + userId), regardless of framework — paired with
- * the partial unique index `idx_model_providers_one_default_per_user`.
- *
- * @returns true if isDefault was set, false if another default already exists
- */
-async function assignDefaultIfFirst(
-  orgId: string,
-  userId: string,
-  providerId: string,
-): Promise<boolean> {
-  const result = await globalThis.services.db
-    .update(modelProviders)
-    .set({ isDefault: true })
-    .where(
-      and(
-        eq(modelProviders.id, providerId),
-        notExists(
-          globalThis.services.db
-            .select({ id: sql`1` })
-            .from(modelProviders)
-            .where(
-              and(
-                eq(modelProviders.orgId, orgId),
-                eq(modelProviders.userId, userId),
-                eq(modelProviders.isDefault, true),
-                ne(modelProviders.id, providerId),
-              ),
-            ),
-        ),
-      ),
-    );
-
-  return (result.rowCount ?? 0) > 0;
 }
 
 /**
@@ -330,19 +287,10 @@ async function upsertModelProvider(
 
   const wasCreated = !existingProvider;
 
-  // Assign default if no other default exists for the workspace (on create or update)
-  if (!provider!.isDefault) {
-    const isDefault = await assignDefaultIfFirst(orgId, userId, provider!.id);
-    if (isDefault) {
-      provider!.isDefault = true;
-    }
-  }
-
   log.debug(wasCreated ? "model provider created" : "model provider updated", {
     providerId: provider!.id,
     type,
     selectedModel,
-    isDefault: provider!.isDefault,
   });
 
   return {
@@ -642,14 +590,6 @@ async function upsertMultiAuthModelProvider(
 
   const wasCreated = !existingProvider;
 
-  // Assign default if no other default exists for the workspace (on create or update)
-  if (!provider!.isDefault) {
-    const isDefault = await assignDefaultIfFirst(orgId, userId, provider!.id);
-    if (isDefault) {
-      provider!.isDefault = true;
-    }
-  }
-
   log.debug(
     wasCreated
       ? "multi-auth model provider created"
@@ -659,7 +599,6 @@ async function upsertMultiAuthModelProvider(
       type,
       authMethod,
       selectedModel,
-      isDefault: provider!.isDefault,
     },
   );
 
@@ -740,14 +679,6 @@ async function upsertNoSecretModelProvider(
 
   const wasCreated = !existingProvider;
 
-  // Assign default if no other default exists for the workspace
-  if (!provider!.isDefault) {
-    const isDefault = await assignDefaultIfFirst(orgId, userId, provider!.id);
-    if (isDefault) {
-      provider!.isDefault = true;
-    }
-  }
-
   log.debug(
     wasCreated
       ? "no-secret model provider created"
@@ -756,7 +687,6 @@ async function upsertNoSecretModelProvider(
       providerId: provider!.id,
       type,
       selectedModel,
-      isDefault: provider!.isDefault,
     },
   );
 
@@ -804,10 +734,9 @@ async function deleteModelProvider(
     throw notFound(`Model provider "${type}" not found`);
   }
 
-  const wasDefault = provider.isDefault;
   const secretId = provider.secretId;
 
-  // Delete secret (cascades to model_provider) - only for legacy providers
+  // Single-secret providers cascade through their model_provider row.
   if (secretId) {
     await globalThis.services.db
       .delete(secrets)
@@ -843,274 +772,6 @@ async function deleteModelProvider(
   }
 
   log.debug("model provider deleted", { orgId, type });
-
-  // If it was the workspace default, promote the earliest remaining provider
-  // (regardless of framework — workspace has at most one default).
-  if (wasDefault) {
-    const [nextDefault] = await globalThis.services.db
-      .select({ id: modelProviders.id, type: modelProviders.type })
-      .from(modelProviders)
-      .where(
-        and(eq(modelProviders.orgId, orgId), eq(modelProviders.userId, userId)),
-      )
-      .orderBy(modelProviders.createdAt)
-      .limit(1);
-
-    if (nextDefault) {
-      await globalThis.services.db
-        .update(modelProviders)
-        .set({ isDefault: true, updatedAt: new Date() })
-        .where(eq(modelProviders.id, nextDefault.id));
-
-      log.debug("new default assigned", {
-        newDefaultType: nextDefault.type,
-      });
-    }
-  }
-}
-
-/**
- * Set a model provider as the workspace default. Workspace-scoped — clears any
- * existing default for the (orgId, userId) regardless of framework, paired with
- * the partial unique index `idx_model_providers_one_default_per_user`.
- */
-async function setModelProviderDefault(
-  orgId: string,
-  userId: string,
-  type: ModelProviderType,
-): Promise<ModelProviderInfo> {
-  // For multi-auth providers, secretName will be null in response
-  const secretName = getSecretNameForType(type) ?? null;
-
-  // Find the target provider
-  const [target] = await globalThis.services.db
-    .select()
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, userId),
-        eq(modelProviders.type, type),
-      ),
-    )
-    .limit(1);
-
-  if (!target) {
-    throw notFound(`Model provider "${type}" not found`);
-  }
-
-  if (target.isDefault) {
-    return toModelProviderInfo({
-      id: target.id,
-      userId,
-      type,
-      secretName,
-      authMethod: target.authMethod,
-      isDefault: true,
-      selectedModel: target.selectedModel,
-      tokenExpiresAt: target.tokenExpiresAt,
-      needsReconnect: target.needsReconnect,
-      lastRefreshErrorCode: target.lastRefreshErrorCode,
-      workspaceName: target.workspaceName,
-      planType: target.planType,
-      createdAt: target.createdAt,
-      updatedAt: target.updatedAt,
-    });
-  }
-
-  // Clear the existing default (if any) and set the new one in a single tx so
-  // the partial unique index never sees a dual-default state.
-  await globalThis.services.db.transaction(async (tx) => {
-    await tx
-      .update(modelProviders)
-      .set({ isDefault: false, updatedAt: new Date() })
-      .where(
-        and(
-          eq(modelProviders.orgId, orgId),
-          eq(modelProviders.userId, userId),
-          eq(modelProviders.isDefault, true),
-          ne(modelProviders.id, target.id),
-        ),
-      );
-
-    await tx
-      .update(modelProviders)
-      .set({ isDefault: true, updatedAt: new Date() })
-      .where(eq(modelProviders.id, target.id));
-  });
-
-  log.debug("model provider set as default", { type });
-
-  return toModelProviderInfo({
-    id: target.id,
-    userId,
-    type,
-    secretName,
-    authMethod: target.authMethod,
-    isDefault: true,
-    selectedModel: target.selectedModel,
-    tokenExpiresAt: target.tokenExpiresAt,
-    needsReconnect: target.needsReconnect,
-    lastRefreshErrorCode: target.lastRefreshErrorCode,
-    workspaceName: target.workspaceName,
-    planType: target.planType,
-    createdAt: target.createdAt,
-    updatedAt: new Date(),
-  });
-}
-
-/**
- * Update model selection for an existing provider (keeps secret unchanged)
- */
-async function updateModelProviderModel(
-  orgId: string,
-  userId: string,
-  type: ModelProviderType,
-  selectedModel?: string,
-): Promise<ModelProviderInfo> {
-  // For multi-auth providers, secretName will be null in response
-  const secretName = getSecretNameForType(type) ?? null;
-
-  // Find the model provider
-  const [provider] = await globalThis.services.db
-    .select()
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, userId),
-        eq(modelProviders.type, type),
-      ),
-    )
-    .limit(1);
-
-  if (!provider) {
-    throw notFound(`Model provider "${type}" not found`);
-  }
-
-  // Update only the model selection
-  await globalThis.services.db
-    .update(modelProviders)
-    .set({
-      selectedModel: selectedModel ?? null,
-      updatedAt: new Date(),
-    })
-    .where(eq(modelProviders.id, provider.id));
-
-  log.debug("model provider model updated", {
-    providerId: provider.id,
-    type,
-    selectedModel,
-  });
-
-  return toModelProviderInfo({
-    id: provider.id,
-    userId,
-    type,
-    secretName,
-    authMethod: provider.authMethod,
-    isDefault: provider.isDefault,
-    selectedModel: selectedModel ?? null,
-    tokenExpiresAt: provider.tokenExpiresAt,
-    needsReconnect: provider.needsReconnect,
-    lastRefreshErrorCode: provider.lastRefreshErrorCode,
-    workspaceName: provider.workspaceName,
-    planType: provider.planType,
-    createdAt: provider.createdAt,
-    updatedAt: new Date(),
-  });
-}
-
-/**
- * Get the default model provider for a framework
- * Supports both legacy single-secret and multi-auth providers
- */
-async function getDefaultModelProvider(
-  orgId: string,
-  userId: string,
-  framework: string,
-): Promise<ModelProviderInfo | null> {
-  // Use leftJoin to include multi-auth providers that don't have secretId
-  const allProviders = await globalThis.services.db
-    .select(selectProviderRow())
-    .from(modelProviders)
-    .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
-    .where(
-      and(eq(modelProviders.orgId, orgId), eq(modelProviders.userId, userId)),
-    );
-
-  const defaultProvider = allProviders.find((p) => {
-    return (
-      p.isDefault &&
-      p.type in MODEL_PROVIDER_TYPES &&
-      getFrameworkForType(p.type as ModelProviderType) === framework
-    );
-  });
-
-  if (!defaultProvider) {
-    return null;
-  }
-
-  return toModelProviderInfo({
-    id: defaultProvider.id,
-    userId: defaultProvider.userId,
-    type: defaultProvider.type as ModelProviderType,
-    secretName: defaultProvider.secretName,
-    authMethod: defaultProvider.authMethod,
-    isDefault: defaultProvider.isDefault,
-    selectedModel: defaultProvider.selectedModel,
-    tokenExpiresAt: defaultProvider.tokenExpiresAt,
-    needsReconnect: defaultProvider.needsReconnect,
-    lastRefreshErrorCode: defaultProvider.lastRefreshErrorCode,
-    workspaceName: defaultProvider.workspaceName,
-    planType: defaultProvider.planType,
-    createdAt: defaultProvider.createdAt,
-    updatedAt: defaultProvider.updatedAt,
-  });
-}
-
-/**
- * Get the default model provider regardless of framework. Returns the first
- * `isDefault: true` provider for the (orgId, userId) scope. Used as the
- * cross-framework fallback in admission (see Epic #11520 — provider's
- * framework wins over compose's once admission resolves a provider).
- */
-async function getAnyDefaultModelProvider(
-  orgId: string,
-  userId: string,
-): Promise<ModelProviderInfo | null> {
-  const allProviders = await globalThis.services.db
-    .select(selectProviderRow())
-    .from(modelProviders)
-    .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
-    .where(
-      and(eq(modelProviders.orgId, orgId), eq(modelProviders.userId, userId)),
-    );
-
-  const defaultProvider = allProviders.find((p) => {
-    return p.isDefault && p.type in MODEL_PROVIDER_TYPES;
-  });
-
-  if (!defaultProvider) {
-    return null;
-  }
-
-  return toModelProviderInfo({
-    id: defaultProvider.id,
-    userId: defaultProvider.userId,
-    type: defaultProvider.type as ModelProviderType,
-    secretName: defaultProvider.secretName,
-    authMethod: defaultProvider.authMethod,
-    isDefault: defaultProvider.isDefault,
-    selectedModel: defaultProvider.selectedModel,
-    tokenExpiresAt: defaultProvider.tokenExpiresAt,
-    needsReconnect: defaultProvider.needsReconnect,
-    lastRefreshErrorCode: defaultProvider.lastRefreshErrorCode,
-    workspaceName: defaultProvider.workspaceName,
-    planType: defaultProvider.planType,
-    createdAt: defaultProvider.createdAt,
-    updatedAt: defaultProvider.updatedAt,
-  });
 }
 
 // ============================================================================
@@ -1204,114 +865,6 @@ export function deleteOrgModelProvider(
   type: ModelProviderType,
 ): Promise<void> {
   return deleteModelProvider(orgId, ORG_SENTINEL_USER_ID, type);
-}
-
-/**
- * Set an org-level model provider as the workspace default
- */
-export function setOrgModelProviderDefault(
-  orgId: string,
-  type: ModelProviderType,
-): Promise<ModelProviderInfo> {
-  return setModelProviderDefault(orgId, ORG_SENTINEL_USER_ID, type);
-}
-
-/**
- * Update model selection for an org-level provider
- */
-export function updateOrgModelProviderModel(
-  orgId: string,
-  type: ModelProviderType,
-  selectedModel?: string,
-): Promise<ModelProviderInfo> {
-  return updateModelProviderModel(
-    orgId,
-    ORG_SENTINEL_USER_ID,
-    type,
-    selectedModel,
-  );
-}
-
-/**
- * Get the org-level default model provider for a framework.
- *
- * `framework` accepts any string so non-claude-code frameworks (e.g. codex)
- * can resolve their own default without widening the registry's enum.
- * Unknown frameworks naturally return null because no registry type matches.
- */
-export function getOrgDefaultModelProvider(
-  orgId: string,
-  framework: string,
-): Promise<ModelProviderInfo | null> {
-  return getDefaultModelProvider(orgId, ORG_SENTINEL_USER_ID, framework);
-}
-
-/**
- * Get the org-level default model provider regardless of framework.
- *
- * Used as the cross-framework fallback by admission (Stage B) when
- * `getOrgDefaultModelProvider(orgId, composeFramework)` returns null. Per
- * Epic #11520, the provider's framework wins; admission accepts any default
- * and downstream stages route via the execution context framework.
- *
- * Returns null only when the org has no `isDefault: true` provider for any
- * framework. Telegram / Slack / chat-title callers keep using the strict
- * framework-scoped variant — they want the claude-code default specifically.
- */
-export function getOrgAnyDefaultModelProvider(
-  orgId: string,
-): Promise<ModelProviderInfo | null> {
-  return getAnyDefaultModelProvider(orgId, ORG_SENTINEL_USER_ID);
-}
-
-/**
- * Get the org-level model provider row for a specific type.
- *
- * Used by `resolveModelProviderSecrets` when the request explicitly overrides
- * `modelProvider` with a type that differs from the workspace default — we
- * need the explicit provider's `selectedModel` / `authMethod` rather than
- * borrowing them from the unrelated default.
- *
- * Returns null when the org has no row of that type, in which case downstream
- * resolution falls back to `getDefaultModel(providerType)` for the model and
- * skips multi-auth resolution (consistent with no-secret-set behavior).
- */
-export async function getOrgModelProviderByType(
-  orgId: string,
-  type: ModelProviderType,
-): Promise<ModelProviderInfo | null> {
-  const [row] = await globalThis.services.db
-    .select(selectProviderRow())
-    .from(modelProviders)
-    .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        eq(modelProviders.type, type),
-      ),
-    )
-    .limit(1);
-
-  if (!row) return null;
-  if (!(row.type in MODEL_PROVIDER_TYPES)) return null;
-
-  return toModelProviderInfo({
-    id: row.id,
-    userId: row.userId,
-    type: row.type as ModelProviderType,
-    secretName: row.secretName,
-    authMethod: row.authMethod,
-    isDefault: row.isDefault,
-    selectedModel: row.selectedModel,
-    tokenExpiresAt: row.tokenExpiresAt,
-    needsReconnect: row.needsReconnect,
-    lastRefreshErrorCode: row.lastRefreshErrorCode,
-    workspaceName: row.workspaceName,
-    planType: row.planType,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  });
 }
 
 /**
@@ -1446,8 +999,7 @@ export function deleteUserModelProvider(
 /**
  * Get the user-level model provider row for a specific type.
  *
- * Mirrors `getOrgModelProviderByType` but scoped to (orgId, userId). Returns
- * null when the user has no row of that type.
+ * Returns null when the user has no row of that type.
  */
 export async function getUserModelProviderByType(
   orgId: string,

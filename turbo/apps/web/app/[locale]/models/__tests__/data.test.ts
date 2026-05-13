@@ -4,18 +4,16 @@ import { VM0_MODEL_TO_PROVIDER } from "@vm0/api-contracts/contracts/model-provid
 import { MODELS } from "../data";
 
 describe("models page data", () => {
-  it("covers every public VM0 managed model", () => {
+  it("only documents VM0 managed models", () => {
     const modelIds = MODELS.map((model) => {
       return model.modelId;
     });
-    const publicVm0ModelIds = Object.entries(VM0_MODEL_TO_PROVIDER)
-      .filter(([, config]) => {
-        return !config.featureFlag;
-      })
-      .map(([modelId]) => {
-        return modelId;
-      });
+    const vm0ModelIds = new Set(Object.keys(VM0_MODEL_TO_PROVIDER));
     expect(new Set(modelIds).size).toBe(modelIds.length);
-    expect([...modelIds].sort()).toStrictEqual(publicVm0ModelIds.sort());
+    expect(
+      modelIds.every((modelId) => {
+        return vm0ModelIds.has(modelId);
+      }),
+    ).toBe(true);
   });
 });

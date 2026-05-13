@@ -438,7 +438,8 @@ describe("POST /api/agent/runs", () => {
     const executionContext = job?.executionContext as {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
-      readonly modelUsageProvider: string;
+      readonly billableFirewalls: readonly string[];
+      readonly modelUsageProvider: string | undefined;
     };
     expect(executionContext.environment).toMatchObject({
       ANTHROPIC_API_KEY: "test-secret-value",
@@ -447,7 +448,8 @@ describe("POST /api/agent/runs", () => {
     expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
       ANTHROPIC_API_KEY: "test-secret-value",
     });
-    expect(executionContext.modelUsageProvider).toBe("claude-sonnet-4-6");
+    expect(executionContext.billableFirewalls).toStrictEqual([]);
+    expect(executionContext.modelUsageProvider).toBeUndefined();
   });
 
   it("persists requested artifacts plus memory on the new session", async () => {

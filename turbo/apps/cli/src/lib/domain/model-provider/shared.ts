@@ -2,11 +2,6 @@ import chalk from "chalk";
 import prompts from "prompts";
 import {
   MODEL_PROVIDER_TYPES,
-  getModels,
-  getDefaultModel,
-  hasModelSelection,
-  allowsCustomModel,
-  getCustomModelPlaceholder,
   hasAuthMethods,
   getAuthMethodsForType,
   getDefaultAuthMethod,
@@ -20,7 +15,6 @@ export interface SetupInput {
   // Multi-auth support
   authMethod?: string;
   secrets?: Record<string, string>;
-  selectedModel?: string;
   keepExistingSecret?: boolean;
   isInteractiveMode?: boolean;
 }
@@ -33,25 +27,6 @@ function validateProviderType(typeStr: string): ModelProviderType {
     });
   }
   return typeStr as ModelProviderType;
-}
-
-function validateModel(
-  type: ModelProviderType,
-  modelStr: string,
-): string | never {
-  const models = getModels(type);
-
-  // Allow any model if provider supports custom models
-  if (allowsCustomModel(type)) {
-    return modelStr;
-  }
-
-  if (models && !models.includes(modelStr)) {
-    throw new Error(`Invalid model "${modelStr}"`, {
-      cause: new Error(`Valid models: ${models.join(", ")}`),
-    });
-  }
-  return modelStr;
 }
 
 function validateAuthMethod(
@@ -165,21 +140,10 @@ export function handleNonInteractiveMode(options: {
   type: string;
   secret: string[];
   authMethod?: string;
-  model?: string;
   commandPrefix?: string;
 }): SetupInput {
   const type = validateProviderType(options.type);
   const cmdPrefix = options.commandPrefix ?? "zero org model-provider setup";
-
-  let selectedModel: string | undefined;
-
-  if (options.model) {
-    selectedModel = validateModel(type, options.model);
-  } else if (hasModelSelection(type)) {
-    const defaultModel = getDefaultModel(type);
-    // Empty defaultModel means "auto" mode - don't set selectedModel
-    selectedModel = defaultModel || undefined;
-  }
 
   // Handle multi-auth providers
   if (hasAuthMethods(type)) {
@@ -218,7 +182,6 @@ export function handleNonInteractiveMode(options: {
       type,
       authMethod,
       secrets,
-      selectedModel,
       isInteractiveMode: false,
     };
   }
@@ -242,85 +205,8 @@ export function handleNonInteractiveMode(options: {
   return {
     type,
     secret,
-    selectedModel,
     isInteractiveMode: false,
   };
-}
-
-export async function promptForModelSelection(
-  type: ModelProviderType,
-): Promise<string | undefined> {
-  if (!hasModelSelection(type)) {
-    return undefined;
-  }
-
-  const models = getModels(type) ?? [];
-  const defaultModel = getDefaultModel(type);
-  const supportsCustomModel = allowsCustomModel(type);
-
-  // Build choices
-  const modelChoices: { title: string; value: string }[] = [];
-
-  // Add auto option if defaultModel is empty string
-  if (defaultModel === "") {
-    modelChoices.push({ title: "auto (Recommended)", value: "" });
-  }
-
-  // Add predefined models
-  for (const model of models) {
-    modelChoices.push({
-      title: model === defaultModel ? `${model} (Recommended)` : model,
-      value: model,
-    });
-  }
-
-  // Add custom model option if supported
-  if (supportsCustomModel) {
-    modelChoices.push({ title: "Custom model ID", value: "__custom__" });
-  }
-
-  const modelResponse = await prompts(
-    {
-      type: "select",
-      name: "model",
-      message: "Select model:",
-      choices: modelChoices,
-    },
-    {
-      onCancel: () => {
-        return process.exit(0);
-      },
-    },
-  );
-
-  const selected = modelResponse.model as string;
-
-  // Handle custom model input
-  if (selected === "__custom__") {
-    const placeholder = getCustomModelPlaceholder(type);
-    if (placeholder) {
-      console.log(chalk.dim(`Example: ${placeholder}`));
-    }
-    const customResponse = await prompts(
-      {
-        type: "text",
-        name: "customModel",
-        message: "Enter model ID:",
-        validate: (value: string) => {
-          return value.length > 0 || "Model ID is required";
-        },
-      },
-      {
-        onCancel: () => {
-          return process.exit(0);
-        },
-      },
-    );
-    return customResponse.customModel as string;
-  }
-
-  // Return undefined for auto mode (empty string)
-  return selected === "" ? undefined : selected;
 }
 
 /**
@@ -442,20 +328,4 @@ export async function promptForSecrets(
  */
 export function collectSecrets(value: string, previous: string[]): string[] {
   return previous.concat([value]);
-}
-
-/**
- * Parse a CLI model/model-provider flag value.
- *
- * Returns:
- *   - `undefined` when the flag was not provided (preserve existing value)
- *   - `null` when the user passed "default" (clear the override, inherit from org)
- *   - the string value otherwise (set the specific model/provider)
- */
-export function parseModelFlag(
-  value: string | undefined,
-): string | null | undefined {
-  if (value === undefined) return undefined;
-  if (value === "default") return null;
-  return value;
 }

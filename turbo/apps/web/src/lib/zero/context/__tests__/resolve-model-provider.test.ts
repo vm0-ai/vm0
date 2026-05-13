@@ -6,7 +6,6 @@ import {
 import {
   isBadRequest,
   isModelProviderConnectRequired,
-  isNoModelProvider,
   isProviderDeleted,
   isStaleProvider,
 } from "@vm0/api-services/errors";
@@ -15,10 +14,7 @@ import {
   createTestOrg,
   insertOrgDefaultModelProvider,
   insertOrgNonDefaultModelProvider,
-  insertOrgMultiAuthModelProvider,
   insertUserMultiAuthModelProvider,
-  insertUserNonDefaultModelProvider,
-  enableModelFirstModelProviderForUser,
   insertOrgModelPolicy,
   insertUserModelPreference,
   insertVm0ApiKeys,
@@ -92,14 +88,15 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
 
   it("falls through to provider resolution for non-claude-code framework when no explicit config", async () => {
     // Pre-#11526 behavior: returned silently with framework gate. Post-#11526:
-    // resolver runs to provider lookup, finds no codex provider, throws.
+    // resolver runs to model-first default materialization. With no VM0 key
+    // seeded for the default Anthropic model, that materialization fails.
     const userId = uniqueId("codex-noprov");
     const orgId = await setupOrg(userId);
 
     await expect(
       resolveModelProviderSecrets(orgId, userId, "codex", false),
     ).rejects.toSatisfy((err: unknown) => {
-      return isNoModelProvider(err);
+      return isBadRequest(err);
     });
   });
 
@@ -132,10 +129,21 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
     // started overriding modelProvider in the request body.
     const userId = uniqueId("cross-type-default");
     const orgId = await setupOrg(userId);
-    await insertOrgDefaultModelProvider(
+    await insertOrgModelPolicy({
       orgId,
-      "claude-code-oauth-token",
-      "claude-sonnet-4-5",
+      model: "claude-sonnet-4-6",
+      isDefault: true,
+      defaultProviderType: "claude-code-oauth-token",
+      credentialScope: "member",
+    });
+    await insertOrgNonDefaultModelProvider(orgId, "openai-api-key", "gpt-5.5");
+    await insertOrgModelPolicy({
+      orgId,
+      model: "gpt-5.5",
+    });
+    const providerId = await getTestModelProviderIdByType(
+      orgId,
+      "openai-api-key",
     );
 
     const result = await resolveModelProviderSecrets(
@@ -144,37 +152,38 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
       "codex",
       false,
       "openai-api-key",
+      providerId,
+      "gpt-5.5",
     );
 
     expect(result.resolvedModelProvider).toBe("openai-api-key");
     expect(result.framework).toBe("codex");
-    // The leak that #11743 surfaced: prior to the fix `selectedModel` would
-    // be `claude-sonnet-4-5` (borrowed from the unrelated workspace default).
-    // Post-fix it must be undefined so resolveEnvironmentMapping falls back
-    // to getDefaultModel("openai-api-key") = "gpt-5.5".
-    expect(result.selectedModel).toBeUndefined();
+    expect(result.selectedModel).toBe("gpt-5.5");
   });
 
-  it("uses explicit provider's stored selectedModel when its type differs from workspace default (#11743)", async () => {
-    // Companion to the leak test above: when the workspace default is one
-    // type but the explicit override has its own non-default row in the same
-    // org, the resolver MUST surface that row's selectedModel — otherwise
-    // vm0 (which throws without selectedModel) and explicit BYOK overrides
-    // lose their per-provider model pin. Regression observed in t54-1
-    // (vm0 meta-provider — firewall billable) after the workspace-scoping
-    // change.
+  it("uses the explicit model-first route when its provider differs from workspace default (#11743)", async () => {
     const userId = uniqueId("explicit-row-lookup");
     const orgId = await setupOrg(userId);
-    await insertOrgDefaultModelProvider(
+    await insertOrgModelPolicy({
       orgId,
-      "claude-code-oauth-token",
-      "claude-sonnet-4-6",
-    );
+      model: "claude-sonnet-4-6",
+      isDefault: true,
+      defaultProviderType: "claude-code-oauth-token",
+      credentialScope: "member",
+    });
     await insertOrgNonDefaultModelProvider(
       orgId,
       "openai-api-key",
       "gpt-5.4-mini",
     );
+    await insertOrgModelPolicy({
+      orgId,
+      model: "gpt-5.4-mini",
+    });
+    const providerId = await getTestModelProviderIdByType(
+      orgId,
+      "openai-api-key",
+    );
 
     const result = await resolveModelProviderSecrets(
       orgId,
@@ -182,6 +191,8 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
       "codex",
       false,
       "openai-api-key",
+      providerId,
+      "gpt-5.4-mini",
     );
 
     expect(result.resolvedModelProvider).toBe("openai-api-key");
@@ -197,8 +208,9 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
     // the result.secrets map before it flows into the runner job context.
     const userId = uniqueId("codex-oauth-leak");
     const orgId = await setupOrg(userId);
-    await insertOrgMultiAuthModelProvider(
+    await insertUserMultiAuthModelProvider(
       orgId,
+      userId,
       "codex-oauth-token",
       "auth_json",
     );
@@ -208,8 +220,15 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
       ["CHATGPT_ACCOUNT_ID", "ws_real_account"],
       ["CHATGPT_ID_TOKEN", "real-id-server-only"],
     ] as const) {
-      await insertTestOrgModelProviderSecret({ orgId, name, value });
+      await insertTestUserModelProviderSecret({ orgId, userId, name, value });
     }
+    await insertOrgModelPolicy({
+      orgId,
+      model: "gpt-5.5",
+      isDefault: true,
+      defaultProviderType: "codex-oauth-token",
+      credentialScope: "member",
+    });
 
     const result = await resolveModelProviderSecrets(
       orgId,
@@ -283,35 +302,36 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
   });
 });
 
-describe("resolveModelProviderSecrets — user-tier pin", () => {
+describe("resolveModelProviderSecrets — member-tier route", () => {
   beforeEach(() => {
     context.setupMocks();
   });
 
-  it("modelProviderId pin to user-tier row routes secret lookup to that user", async () => {
-    // When the request pins a specific user-tier providerId,
-    // `getModelProviderById` returns it (user-aware), and `secretUserId`
-    // must derive from the row's owner so the secret is fetched from the
-    // user's secrets, not the org sentinel's.
-    const userId = uniqueId("personal-pin");
+  it("modelProviderId pin to user-tier OAuth row routes secret lookup to that user", async () => {
+    const userId = uniqueId("personal-oauth-pin");
     const orgId = await setupOrg(userId);
-    const providerId = await insertUserNonDefaultModelProvider(
+    const providerId = await insertUserMultiAuthModelProvider(
       orgId,
       userId,
-      "openai-api-key",
+      "codex-oauth-token",
+      "auth_json",
       "gpt-5.4",
     );
-    await insertTestUserModelProviderSecret({
+    for (const [name, value] of [
+      ["CHATGPT_ACCESS_TOKEN", "personal-access"],
+      ["CHATGPT_REFRESH_TOKEN", "personal-refresh"],
+      ["CHATGPT_ACCOUNT_ID", "personal-account"],
+      ["CHATGPT_ID_TOKEN", "personal-id"],
+    ] as const) {
+      await insertTestUserModelProviderSecret({ orgId, userId, name, value });
+    }
+    await insertOrgModelPolicy({
       orgId,
-      userId,
-      name: "OPENAI_API_KEY",
-      value: "personal-pin-key",
+      model: "gpt-5.4",
+      isDefault: true,
+      defaultProviderType: "codex-oauth-token",
+      credentialScope: "member",
     });
-    await insertOrgDefaultModelProvider(
-      orgId,
-      "anthropic-api-key",
-      "claude-sonnet-4-6",
-    );
 
     const result = await resolveModelProviderSecrets(
       orgId,
@@ -320,12 +340,15 @@ describe("resolveModelProviderSecrets — user-tier pin", () => {
       false,
       undefined,
       providerId,
-      undefined,
+      "gpt-5.4",
     );
 
-    expect(result.resolvedModelProvider).toBe("openai-api-key");
+    expect(result.resolvedModelProvider).toBe("codex-oauth-token");
     expect(result.framework).toBe("codex");
-    expect(result.secrets?.OPENAI_API_KEY).toBe("personal-pin-key");
+    expect(result.secrets).toEqual({
+      CHATGPT_ACCESS_TOKEN: "personal-access",
+      CHATGPT_ACCOUNT_ID: "personal-account",
+    });
   });
 });
 
@@ -337,8 +360,9 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
   it("emits CHATGPT_ACCESS_TOKEN → 'codex-oauth' for codex-oauth-token", async () => {
     const userId = uniqueId("scm-chatgpt");
     const orgId = await setupOrg(userId);
-    await insertOrgMultiAuthModelProvider(
+    await insertUserMultiAuthModelProvider(
       orgId,
+      userId,
       "codex-oauth-token",
       "auth_json",
     );
@@ -348,8 +372,15 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
       ["CHATGPT_ACCOUNT_ID", "ws_acc"],
       ["CHATGPT_ID_TOKEN", "id-1"],
     ] as const) {
-      await insertTestOrgModelProviderSecret({ orgId, name, value });
+      await insertTestUserModelProviderSecret({ orgId, userId, name, value });
     }
+    await insertOrgModelPolicy({
+      orgId,
+      model: "gpt-5.5",
+      isDefault: true,
+      defaultProviderType: "codex-oauth-token",
+      credentialScope: "member",
+    });
 
     const result = await resolveModelProviderSecrets(
       orgId,
@@ -364,7 +395,7 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
     expect(result.secretConnectorMetadataMap).toEqual({
       CHATGPT_ACCESS_TOKEN: {
         sourceType: "model-provider",
-        sourceUserId: ORG_SENTINEL_USER_ID,
+        sourceUserId: userId,
         metadataKey: "codex-oauth-token",
       },
     });
@@ -385,30 +416,39 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
     expect(result.secretConnectorMap).toBeUndefined();
   });
 
-  it("does not emit secretConnectorMap when codex-oauth-token is missing required secrets", async () => {
+  it("throws connect-required when member codex-oauth-token is missing required secrets", async () => {
     const userId = uniqueId("scm-chatgpt-incomplete");
     const orgId = await setupOrg(userId);
-    await insertOrgMultiAuthModelProvider(
+    await insertUserMultiAuthModelProvider(
       orgId,
+      userId,
       "codex-oauth-token",
       "auth_json",
     );
+    await insertOrgModelPolicy({
+      orgId,
+      model: "gpt-5.5",
+      isDefault: true,
+      defaultProviderType: "codex-oauth-token",
+      credentialScope: "member",
+    });
     // Only seed access token; refresh/account/id missing → resolver returns
     // the no-secrets fallback path; no secretConnectorMap.
-    await insertTestOrgModelProviderSecret({
+    await insertTestUserModelProviderSecret({
       orgId,
+      userId,
       name: "CHATGPT_ACCESS_TOKEN",
       value: "at-1",
     });
 
-    const result = await resolveModelProviderSecrets(
-      orgId,
-      userId,
-      "codex",
-      false,
-    );
-
-    expect(result.secretConnectorMap).toBeUndefined();
+    await expect(
+      resolveModelProviderSecrets(orgId, userId, "codex", false),
+    ).rejects.toSatisfy((err: unknown) => {
+      return (
+        isModelProviderConnectRequired(err) &&
+        err.providerType === "codex-oauth-token"
+      );
+    });
   });
 });
 
@@ -420,8 +460,9 @@ describe("resolveModelProviderSecrets — stale-provider gate (#11932)", () => {
   it("throws staleProvider when matching provider has needsReconnect=true", async () => {
     const userId = uniqueId("stale-chatgpt");
     const orgId = await setupOrg(userId);
-    await insertOrgMultiAuthModelProvider(
+    await insertUserMultiAuthModelProvider(
       orgId,
+      userId,
       "codex-oauth-token",
       "auth_json",
     );
@@ -431,15 +472,22 @@ describe("resolveModelProviderSecrets — stale-provider gate (#11932)", () => {
       ["CHATGPT_ACCOUNT_ID", "acct"],
       ["CHATGPT_ID_TOKEN", "idt"],
     ] as const) {
-      await insertTestOrgModelProviderSecret({ orgId, name, value });
+      await insertTestUserModelProviderSecret({ orgId, userId, name, value });
     }
     await setTestModelProviderNeedsReconnect(
       orgId,
-      ORG_SENTINEL_USER_ID,
+      userId,
       "codex-oauth-token",
       true,
       "refresh_token_expired",
     );
+    await insertOrgModelPolicy({
+      orgId,
+      model: "gpt-5.5",
+      isDefault: true,
+      defaultProviderType: "codex-oauth-token",
+      credentialScope: "member",
+    });
 
     await expect(
       resolveModelProviderSecrets(orgId, userId, "codex", false),
@@ -455,8 +503,9 @@ describe("resolveModelProviderSecrets — stale-provider gate (#11932)", () => {
   it("does not throw when needsReconnect=false (healthy provider)", async () => {
     const userId = uniqueId("healthy-chatgpt");
     const orgId = await setupOrg(userId);
-    await insertOrgMultiAuthModelProvider(
+    await insertUserMultiAuthModelProvider(
       orgId,
+      userId,
       "codex-oauth-token",
       "auth_json",
     );
@@ -466,8 +515,15 @@ describe("resolveModelProviderSecrets — stale-provider gate (#11932)", () => {
       ["CHATGPT_ACCOUNT_ID", "acct"],
       ["CHATGPT_ID_TOKEN", "idt"],
     ] as const) {
-      await insertTestOrgModelProviderSecret({ orgId, name, value });
+      await insertTestUserModelProviderSecret({ orgId, userId, name, value });
     }
+    await insertOrgModelPolicy({
+      orgId,
+      model: "gpt-5.5",
+      isDefault: true,
+      defaultProviderType: "codex-oauth-token",
+      credentialScope: "member",
+    });
 
     const result = await resolveModelProviderSecrets(
       orgId,
@@ -487,7 +543,6 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
   it("uses the org model policy default field for workspace default when switch is on", async () => {
     const userId = uniqueId("mf-default");
     const orgId = await setupOrg(userId);
-    await enableModelFirstModelProviderForUser(orgId, userId);
     await insertVm0ApiKeys([
       {
         vendor: "anthropic",
@@ -521,7 +576,6 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
   it("uses the current user's model preference before the workspace default", async () => {
     const userId = uniqueId("mf-user-model");
     const orgId = await setupOrg(userId);
-    await enableModelFirstModelProviderForUser(orgId, userId);
     await insertVm0ApiKeys([
       {
         vendor: "anthropic",
@@ -565,7 +619,6 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
   it("uses org-scoped API-key routes without member credentials and injects runtime model aliases", async () => {
     const userId = uniqueId("mf-org-api-key");
     const orgId = await setupOrg(userId);
-    await enableModelFirstModelProviderForUser(orgId, userId);
     await insertOrgNonDefaultModelProvider(orgId, "openrouter-api-key");
     const providerId = await getTestModelProviderIdByType(
       orgId,
@@ -604,7 +657,6 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
   it("resolves model-first org API-key routes into route framework/model/credential", async () => {
     const userId = uniqueId("mf-route-org");
     const orgId = await setupOrg(userId);
-    await enableModelFirstModelProviderForUser(orgId, userId);
     await insertOrgNonDefaultModelProvider(orgId, "openrouter-api-key");
     const providerId = await getTestModelProviderIdByType(
       orgId,
@@ -643,7 +695,6 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
   it("uses the current member's OAuth credential for member-scoped routes", async () => {
     const userId = uniqueId("mf-member-oauth");
     const orgId = await setupOrg(userId);
-    await enableModelFirstModelProviderForUser(orgId, userId);
     await insertUserMultiAuthModelProvider(
       orgId,
       userId,
@@ -688,7 +739,6 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
   it("resolves model-first member OAuth routes into member-owned Codex routes", async () => {
     const userId = uniqueId("mf-route-member");
     const orgId = await setupOrg(userId);
-    await enableModelFirstModelProviderForUser(orgId, userId);
     await insertUserMultiAuthModelProvider(
       orgId,
       userId,
@@ -723,7 +773,6 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
   it("throws connect-required for missing member OAuth and does not fallback", async () => {
     const userId = uniqueId("mf-missing-oauth");
     const orgId = await setupOrg(userId);
-    await enableModelFirstModelProviderForUser(orgId, userId);
     await insertOrgModelPolicy({
       orgId,
       model: "gpt-5.5",
@@ -755,7 +804,6 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
   it("throws stale-provider for stale member OAuth routes", async () => {
     const userId = uniqueId("mf-stale-oauth");
     const orgId = await setupOrg(userId);
-    await enableModelFirstModelProviderForUser(orgId, userId);
     await insertUserMultiAuthModelProvider(
       orgId,
       userId,
@@ -798,7 +846,6 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
   it("rejects unconfigured model selections", async () => {
     const userId = uniqueId("mf-unconfigured");
     const orgId = await setupOrg(userId);
-    await enableModelFirstModelProviderForUser(orgId, userId);
 
     await expect(
       resolveModelProviderSecrets(
@@ -818,7 +865,6 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
   it("throws providerDeleted for pinned org API-key routes whose provider row is gone", async () => {
     const userId = uniqueId("mf-deleted-provider");
     const orgId = await setupOrg(userId);
-    await enableModelFirstModelProviderForUser(orgId, userId);
     await insertOrgModelPolicy({
       orgId,
       model: "gpt-5.5",
@@ -843,7 +889,6 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
   it("rejects vm0 model routes during materialization when no key is available", async () => {
     const userId = uniqueId("mf-vm0-missing-key");
     const orgId = await setupOrg(userId);
-    await enableModelFirstModelProviderForUser(orgId, userId);
     await insertOrgModelPolicy({
       orgId,
       model: "gpt-5.5",
@@ -867,18 +912,31 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     });
   });
 
-  it("ignores model policies when the switch is off", async () => {
-    const userId = uniqueId("mf-switch-off");
+  it("uses model policies unconditionally", async () => {
+    const userId = uniqueId("mf-always-on");
     const orgId = await setupOrg(userId);
+    await insertVm0ApiKeys([
+      {
+        vendor: "openai",
+        model: "gpt-5.5",
+        apiKey: "vm0-openai-key",
+      },
+    ]);
     await insertOrgModelPolicy({
       orgId,
       model: "gpt-5.5",
+      isDefault: true,
     });
 
-    await expect(
-      resolveModelProviderSecrets(orgId, userId, "codex", false),
-    ).rejects.toSatisfy((err: unknown) => {
-      return isNoModelProvider(err);
-    });
+    const result = await resolveModelProviderSecrets(
+      orgId,
+      userId,
+      "codex",
+      false,
+    );
+
+    expect(result.resolvedModelProvider).toBe("vm0");
+    expect(result.selectedModel).toBe("gpt-5.5");
+    expect(result.secrets?.OPENAI_API_KEY).toBe("vm0-openai-key");
   });
 });

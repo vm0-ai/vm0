@@ -637,8 +637,6 @@ export async function getWorkspaceAgent(composeId: string): Promise<
       name: string;
       displayName: string | null;
       agentId: string;
-      modelProviderId: string | null;
-      selectedModel: string | null;
     }
   | undefined
 > {
@@ -662,8 +660,6 @@ export async function getWorkspaceAgent(composeId: string): Promise<
     .select({
       name: zeroAgents.name,
       displayName: zeroAgents.displayName,
-      modelProviderId: zeroAgents.modelProviderId,
-      selectedModel: zeroAgents.selectedModel,
     })
     .from(zeroAgents)
     .where(eq(zeroAgents.id, agentId))
@@ -674,8 +670,6 @@ export async function getWorkspaceAgent(composeId: string): Promise<
     name: agent?.name ?? compose.name,
     displayName: agent?.displayName ?? null,
     agentId,
-    modelProviderId: agent?.modelProviderId ?? null,
-    selectedModel: agent?.selectedModel ?? null,
   };
 }
 
@@ -788,7 +782,7 @@ export function formatTelegramHelpMessage(
     "<b>Commands</b>",
     `• <code>/connect</code> - Connect to ${label}`,
     "• <code>/new_session</code> - Start a new conversation",
-    "• <code>/model</code> - Choose your personal default model",
+    "• <code>/model</code> - Choose your model",
     `• <code>/disconnect</code> - Disconnect from ${label}`,
     "",
     "<b>Usage</b>",

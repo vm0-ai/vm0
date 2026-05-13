@@ -11,6 +11,7 @@ import {
   normalizePhoneHandle,
 } from "../../../../src/lib/zero/agentphone/shared";
 import { verifyAgentPhoneConnectSignature } from "../../../../src/lib/zero/agentphone/connect-token";
+import { publishUserSignal } from "../../../../src/lib/infra/realtime/client";
 import { logger } from "../../../../src/lib/shared/logger";
 
 const log = logger("agentphone:connect");
@@ -87,6 +88,20 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   await ensureAgentPhoneOrgAndArtifact(authCtx.userId, org.orgId);
+
+  try {
+    await publishUserSignal([authCtx.userId], "agentphone:changed");
+  } catch (error) {
+    log.warn(
+      "Connected AgentPhone user but failed to publish realtime signal",
+      {
+        phoneHandle,
+        vm0UserId: authCtx.userId,
+        orgId: org.orgId,
+        error,
+      },
+    );
+  }
 
   try {
     await sendAgentPhoneMessage({

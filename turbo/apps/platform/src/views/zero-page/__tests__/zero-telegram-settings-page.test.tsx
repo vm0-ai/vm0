@@ -96,6 +96,11 @@ describe("telegram settings page", () => {
           username: "alpha_bot",
           avatarUrl: alphaAvatarPath,
           isConnected: true,
+          connectedUser: {
+            telegramUserId: "tg_alpha",
+            telegramUsername: "alpha_user",
+            telegramDisplayName: "Alpha User",
+          },
         }),
         telegramStatus("beta", {
           username: "beta_bot",
@@ -108,6 +113,7 @@ describe("telegram settings page", () => {
     await waitFor(() => {
       expect(screen.queryByTestId("telegram-beta-badge")).toBeNull();
       expect(screen.getByText("@alpha_bot")).toBeInTheDocument();
+      expect(screen.getByText("Connected (@alpha_user)")).toBeInTheDocument();
       expect(screen.getByText("@beta_bot")).toBeInTheDocument();
       expect(
         screen.getByTestId("telegram-bot-avatar-fallback-beta"),
@@ -147,13 +153,18 @@ describe("telegram settings page", () => {
         telegramStatus("alpha", {
           username: "alpha_bot",
           isConnected: true,
+          connectedUser: {
+            telegramUserId: "tg_alpha",
+            telegramUsername: "alpha_user",
+            telegramDisplayName: "Alpha User",
+          },
         }),
       ],
     });
     triggerAblyEvent("telegram:changed");
 
     await waitFor(() => {
-      expect(screen.getByText("Connected")).toBeInTheDocument();
+      expect(screen.getByText("Connected (@alpha_user)")).toBeInTheDocument();
     });
   });
 

@@ -1,6 +1,6 @@
 {
   "name": "api",
-  "version": "1.37.0",
+  "version": "1.42.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -31,6 +31,7 @@
     "@vercel/functions": "^3.4.4",
     "@vercel/oidc": "^3.2.1",
     "@vercel/otel": "^2.1.2",
+    "@vercel/sandbox": "^1.10.2",
     "@vm0/api-contracts": "workspace:*",
     "@vm0/connectors": "workspace:*",
     "@vm0/core": "workspace:*",
@@ -43,11 +44,15 @@
     "google-auth-library": "^10.6.2",
     "gpt-tokenizer": "^3.4.0",
     "hono": "^4.12.18",
+    "html-to-text": "^9.0.5",
     "pg": "^8.20.0",
+    "resend": "^6.9.4",
     "signal-timers": "^1.0.4",
     "stripe": "^20.4.1",
+    "svix": "^1.89.0",
     "tar": "^7.5.11",
     "undici": "^6.24.1",
+    "web-push": "^3.6.7",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -55,8 +60,10 @@
     "@ts-rest/core": "3.53.0-rc.1",
     "@types/adm-zip": "^0.5.8",
     "@types/archiver": "^7.0.0",
+    "@types/html-to-text": "^9.0.4",
     "@types/node": "^24.3.0",
     "@types/pg": "^8.20.0",
+    "@types/web-push": "^3.6.4",
     "@typescript-eslint/rule-tester": "^8.59.2",
     "@typescript-eslint/utils": "^8.59.2",
     "@vm0/eslint-config": "workspace:*",

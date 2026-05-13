@@ -47,10 +47,7 @@ export const apiPersonalModelProvidersHandlers = [
             : "ANTHROPIC_API_KEY",
         authMethod: body.authMethod ?? null,
         secretNames: body.secrets ? Object.keys(body.secrets) : null,
-        isDefault:
-          mockPersonalModelProviders.length === 0 ||
-          existing?.isDefault ||
-          false,
+        isDefault: existing?.isDefault ?? false,
         selectedModel: body.selectedModel ?? null,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,

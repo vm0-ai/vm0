@@ -1,5 +1,137 @@
 # Changelog
 
+## [12.360.0](https://github.com/vm0-ai/vm0/compare/web-v12.359.0...web-v12.360.0) (2026-05-13)
+
+
+### Features
+
+* add web chat context prompt ([#13168](https://github.com/vm0-ai/vm0/issues/13168)) ([5122b36](https://github.com/vm0-ai/vm0/commit/5122b36463b009abe1763b722722f1f9526c7624))
+
+
+### Bug Fixes
+
+* normalize legacy built-in model routes ([#13166](https://github.com/vm0-ai/vm0/issues/13166)) ([e660acf](https://github.com/vm0-ai/vm0/commit/e660acf7fcde89d06e63674cf42341074d4d507a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.18.0
+    * @vm0/core bumped to 8.273.0
+    * @vm0/db bumped to 1.9.1
+
+## [12.359.0](https://github.com/vm0-ai/vm0/compare/web-v12.358.1...web-v12.359.0) (2026-05-13)
+
+
+### Features
+
+* add fal video generation ([#13121](https://github.com/vm0-ai/vm0/issues/13121)) ([152b289](https://github.com/vm0-ai/vm0/commit/152b28990211cb7ea3756218adab2e0152c41947))
+
+
+### Bug Fixes
+
+* align agent tool and connector guidance ([#13152](https://github.com/vm0-ai/vm0/issues/13152)) ([cd8cf5e](https://github.com/vm0-ai/vm0/commit/cd8cf5e700a66773206d33713ca9e9917924548e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.17.0
+    * @vm0/core bumped to 8.272.2
+    * @vm0/db bumped to 1.9.0
+
+## [12.358.1](https://github.com/vm0-ai/vm0/compare/web-v12.358.0...web-v12.358.1) (2026-05-13)
+
+
+### Bug Fixes
+
+* align agentphone audit link label ([#13141](https://github.com/vm0-ai/vm0/issues/13141)) ([0e9b75b](https://github.com/vm0-ai/vm0/commit/0e9b75b9a6ab61f90c97d9ba1971160545352291))
+* restore website docs and nav behavior ([#13123](https://github.com/vm0-ai/vm0/issues/13123)) ([6d2f45f](https://github.com/vm0-ai/vm0/commit/6d2f45f4870150fd9ac72773099721a68acbc1ac))
+
+
+### Refactoring
+
+* make codex providers feature-switch free ([#13126](https://github.com/vm0-ai/vm0/issues/13126)) ([6a3e7b3](https://github.com/vm0-ai/vm0/commit/6a3e7b37ff6fb0cd473bd72f61ff80e6ca74195f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.16.1
+    * @vm0/connectors bumped to 1.8.1
+    * @vm0/core bumped to 8.272.1
+    * @vm0/db bumped to 1.8.1
+
+## [12.358.0](https://github.com/vm0-ai/vm0/compare/web-v12.357.0...web-v12.358.0) (2026-05-13)
+
+
+### Features
+
+* add agentphone app ui ([#13080](https://github.com/vm0-ai/vm0/issues/13080)) ([ee19fc5](https://github.com/vm0-ai/vm0/commit/ee19fc53fc786fd8890d8a0bc3a6209d86f41889))
+
+
+### Bug Fixes
+
+* clear provider ids from builtin model routes ([#13113](https://github.com/vm0-ai/vm0/issues/13113)) ([0d5ed2e](https://github.com/vm0-ai/vm0/commit/0d5ed2e79657161fe72e1a826c137a1c69ea9422))
+* stabilize navbar dropdown hover ([#13081](https://github.com/vm0-ai/vm0/issues/13081)) ([f8c8eaf](https://github.com/vm0-ai/vm0/commit/f8c8eaf01e6905b220def96a8519c87bf0d6a2df))
+* warn sms and mms agentphone users ([#13109](https://github.com/vm0-ai/vm0/issues/13109)) ([172593e](https://github.com/vm0-ai/vm0/commit/172593e949ae9e84ef7858b38f3c9b0f568450db))
+
+
+### Refactoring
+
+* make zero model-first only ([#13017](https://github.com/vm0-ai/vm0/issues/13017)) ([9bcb323](https://github.com/vm0-ai/vm0/commit/9bcb323d6e2c32dfdd2d1bf9fa63d0d2bf9e1ef1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.16.0
+    * @vm0/connectors bumped to 1.8.0
+    * @vm0/core bumped to 8.272.0
+    * @vm0/db bumped to 1.8.0
+
+## [12.357.0](https://github.com/vm0-ai/vm0/compare/web-v12.356.0...web-v12.357.0) (2026-05-13)
+
+
+### Features
+
+* add agentphone phone tools ([#13028](https://github.com/vm0-ai/vm0/issues/13028)) ([5bdad6f](https://github.com/vm0-ai/vm0/commit/5bdad6ff42ac79a9532c4307895b58eee20b6515))
+
+
+### Bug Fixes
+
+* keep resumed telegram context window ([#13073](https://github.com/vm0-ai/vm0/issues/13073)) ([53681ab](https://github.com/vm0-ai/vm0/commit/53681abc20717da096fb4cd323eff8a517df3f65))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.15.0
+    * @vm0/core bumped to 8.271.2
+    * @vm0/db bumped to 1.7.2
+
+## [12.356.0](https://github.com/vm0-ai/vm0/compare/web-v12.355.1...web-v12.356.0) (2026-05-12)
+
+
+### Features
+
+* force a fresh CLI session when the user switches models mid-thread ([#13047](https://github.com/vm0-ai/vm0/issues/13047)) ([0b54497](https://github.com/vm0-ai/vm0/commit/0b54497433c6e114f323cea7a52342afbcb30fca))
+* **platform:** condense onboarding into a "try it" flow for use-case deep links ([#13051](https://github.com/vm0-ai/vm0/issues/13051)) ([d233ed4](https://github.com/vm0-ai/vm0/commit/d233ed4ed36ab03ff76b64dc8723b8829443bcaa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.14.0
+    * @vm0/core bumped to 8.271.1
+    * @vm0/db bumped to 1.7.1
+
 ## [12.355.1](https://github.com/vm0-ai/vm0/compare/web-v12.355.0...web-v12.355.1) (2026-05-12)
 
 

@@ -201,15 +201,6 @@ function buildScheduleBody(
     prompt: params.prompt.trim(),
     ...(params.description && { description: params.description.trim() }),
     enabled: true,
-    ...(params.modelProviderId !== undefined && {
-      modelProviderId: params.modelProviderId,
-    }),
-    ...(params.selectedModel !== undefined && {
-      selectedModel: params.selectedModel,
-    }),
-    ...(params.preferPersonalProvider !== undefined && {
-      preferPersonalProvider: params.preferPersonalProvider,
-    }),
   };
 
   if (params.freq === "every_n_minutes") {
@@ -265,9 +256,6 @@ export interface ZeroScheduleSaveParams {
   dayOfMonth?: string;
   /** Schedule name when editing an existing schedule */
   editName?: string;
-  modelProviderId?: string | null;
-  selectedModel?: string | null;
-  preferPersonalProvider?: boolean;
 }
 
 export const saveZeroSchedule$ = command(

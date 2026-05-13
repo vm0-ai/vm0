@@ -28,7 +28,6 @@ import {
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   featureSwitch$,
-  modelFirstModelProviderEnabled$,
   trinityEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
@@ -50,9 +49,8 @@ import {
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { AttachmentLightbox } from "./zero-attachment-chips.tsx";
-import { composerModelProviders$ } from "../../signals/zero-page/composer-model-providers.ts";
 import {
-  chatPageAgentModelDefault$,
+  chatPageDefaultModelSelection$,
   chatPageInput$,
   chatPageModelSelection$,
   setChatPageInput$,
@@ -476,23 +474,19 @@ function SuggestedPromptsGrid({
 }
 
 function useAgentChatComposerModel(pageSignal: AbortSignal) {
-  const composerProvidersLoadable = useLoadable(composerModelProviders$);
   const modelSelectionLoadable = useLoadable(chatPageModelSelection$);
-  const agentModelDefaultLoadable = useLoadable(chatPageAgentModelDefault$);
-  const composerProviders =
-    composerProvidersLoadable.state === "hasData"
-      ? composerProvidersLoadable.data
-      : undefined;
+  const defaultModelSelectionLoadable = useLoadable(
+    chatPageDefaultModelSelection$,
+  );
   const modelSelection =
     modelSelectionLoadable.state === "hasData"
       ? modelSelectionLoadable.data
       : null;
   const setModelSelection = useSet(setChatPageModelSelection$);
   const updateUserModelPreference = useSet(updateUserModelPreference$);
-  const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
-  const agentModelDefault =
-    agentModelDefaultLoadable.state === "hasData"
-      ? agentModelDefaultLoadable.data
+  const defaultModelSelection =
+    defaultModelSelectionLoadable.state === "hasData"
+      ? defaultModelSelectionLoadable.data
       : null;
   const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
   const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
@@ -501,40 +495,28 @@ function useAgentChatComposerModel(pageSignal: AbortSignal) {
     selection: typeof modelSelection,
   ): void => {
     setModelSelection(selection);
-    if (modelFirstEnabled && isSupportedRunModel(selection?.selectedModel)) {
+    const selectedModel = selection?.selectedModel;
+    if (isSupportedRunModel(selectedModel)) {
       detach(
-        updateUserModelPreference(
-          { selectedModel: selection.selectedModel },
-          pageSignal,
-        ),
+        updateUserModelPreference({ selectedModel }, pageSignal),
         Reason.DomCallback,
       );
     }
   };
 
-  const modelPicker =
-    composerProviders &&
-    (modelFirstEnabled || composerProviders.providers.length > 0)
-      ? {
-          providers: composerProviders.providers,
-          value: modelSelection,
-          onChange: handleModelSelectionChange,
-          // No prior session exists on the landing page.
-          sessionProviderType: null,
-          agentDefault: agentModelDefault,
-          showUseDefault: !modelFirstEnabled,
-        }
-      : undefined;
+  const modelPicker = {
+    value: modelSelection,
+    onChange: handleModelSelectionChange,
+    defaultSelection: defaultModelSelection,
+  };
   const submitBlockerProps = resolveChatComposerSubmitBlocker({
     state: modelFirstOauthState,
     modelSelection,
-    agentModelDefault,
     onAction: openPersonalOauthConfiguration,
   });
   const modelPickerLoading =
-    composerProvidersLoadable.state === "loading" ||
     modelSelectionLoadable.state === "loading" ||
-    agentModelDefaultLoadable.state === "loading";
+    defaultModelSelectionLoadable.state === "loading";
 
   return {
     modelSelection,

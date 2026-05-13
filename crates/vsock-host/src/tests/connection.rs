@@ -1,0 +1,261 @@
+use std::io;
+use std::sync::Arc;
+use std::time::Duration;
+
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::time::Instant;
+use vsock_proto::{CommandTermination, Decoder, MSG_COMMAND_START, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK};
+
+use super::support::{host_from_stream, make_pair, mock_handshake, send_command_result};
+use crate::VsockHost;
+
+#[tokio::test]
+async fn wait_for_connection_removes_listener_socket_on_abort() {
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let base =
+        std::env::temp_dir().join(format!("vsock-host-abort-{}-{unique}", std::process::id()));
+    let listener =
+        std::path::PathBuf::from(format!("{}_{}", base.display(), vsock_proto::VSOCK_PORT));
+    let base = base.display().to_string();
+
+    let handle = tokio::spawn(async move {
+        VsockHost::wait_for_connection(&base, Duration::from_secs(30)).await
+    });
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while !listener.exists() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+
+    handle.abort();
+    let _ = handle.await;
+
+    assert!(
+        !listener.exists(),
+        "aborted listener should remove its socket path"
+    );
+}
+
+#[tokio::test]
+async fn test_shutdown() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let mut buf = [0u8; 4096];
+        let n = guest.read(&mut buf).await.unwrap();
+        let msgs = decoder.decode(&buf[..n]).unwrap();
+        assert_eq!(msgs[0].msg_type, MSG_SHUTDOWN);
+
+        let resp = vsock_proto::encode(MSG_SHUTDOWN_ACK, msgs[0].seq, &[]).unwrap();
+        guest.write_all(&resp).await.unwrap();
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    assert!(host.shutdown(Duration::from_secs(2)).await);
+}
+
+#[tokio::test]
+async fn test_connection_closed_returns_error() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        // Read the exec request then close the connection.
+        let mut buf = [0u8; 4096];
+        let _ = guest.read(&mut buf).await.unwrap();
+        drop(guest);
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let err = host.exec("echo hi", 5000, &[], false).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+}
+
+/// Request made after connection is already closed returns ConnectionReset
+/// immediately (not after timeout).
+#[tokio::test]
+async fn test_request_after_close_returns_immediately() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+        // Close immediately after handshake.
+        drop(guest);
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+
+    // Deterministically wait for reader to detect EOF and transition state
+    // to Closed — no wall-clock sleep, driven by `exit_notify`.
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+
+    // This should fail quickly (via write error or Closed short-circuit),
+    // NOT wait for the 5s exec timeout.
+    let start = Instant::now();
+    let err = host.exec("echo hi", 5000, &[], false).await.unwrap_err();
+    assert!(
+        matches!(
+            err.kind(),
+            io::ErrorKind::ConnectionReset | io::ErrorKind::BrokenPipe
+        ),
+        "expected ConnectionReset or BrokenPipe, got {:?}",
+        err.kind()
+    );
+    assert!(
+        start.elapsed() < Duration::from_secs(1),
+        "request should fail immediately, took {:?}",
+        start.elapsed()
+    );
+}
+
+/// Two concurrent exec calls get the correct response matched by seq.
+#[tokio::test]
+async fn test_concurrent_execs() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        // Read both exec requests (may arrive in one or two reads).
+        let mut all_msgs = Vec::new();
+        let mut buf = [0u8; 4096];
+        while all_msgs.len() < 2 {
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            all_msgs.extend(msgs);
+        }
+        assert_eq!(all_msgs.len(), 2);
+        assert!(all_msgs.iter().all(|m| m.msg_type == MSG_COMMAND_START));
+
+        // Reply in reverse order to exercise seq-based dispatching.
+        for msg in all_msgs.iter().rev() {
+            let d = vsock_proto::decode_command_start(&msg.payload).unwrap();
+            let out = format!("reply:{}", d.command);
+            send_command_result(
+                &mut guest,
+                msg.seq,
+                CommandTermination::Exited { exit_code: 0 },
+                out.as_bytes(),
+                b"",
+            )
+            .await;
+        }
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = Arc::new(host_from_stream(host_stream).await.unwrap());
+
+    let h1 = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.exec("cmd-a", 5000, &[], false).await })
+    };
+    let h2 = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.exec("cmd-b", 5000, &[], false).await })
+    };
+
+    let r1 = h1.await.unwrap().unwrap();
+    let r2 = h2.await.unwrap().unwrap();
+
+    // Each response matches its own command, regardless of reply order.
+    let out1 = String::from_utf8_lossy(&r1.stdout);
+    let out2 = String::from_utf8_lossy(&r2.stdout);
+    assert_eq!(out1, "reply:cmd-a");
+    assert_eq!(out2, "reply:cmd-b");
+}
+
+/// Verify that post-handshake request seq starts at 2 (seq=1 is used by handshake ping).
+#[tokio::test]
+async fn test_seq_starts_at_2() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        // Read the first exec request and verify its seq.
+        let mut buf = [0u8; 4096];
+        let n = guest.read(&mut buf).await.unwrap();
+        let msgs = decoder.decode(&buf[..n]).unwrap();
+        assert_eq!(msgs[0].msg_type, MSG_COMMAND_START);
+        // Handshake used seq=1, so first request must be seq=2.
+        assert_eq!(msgs[0].seq, 2, "first post-handshake seq should be 2");
+
+        send_command_result(
+            &mut guest,
+            msgs[0].seq,
+            CommandTermination::Exited { exit_code: 0 },
+            b"ok",
+            b"",
+        )
+        .await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let result = host.exec("test", 5000, &[], false).await.unwrap();
+    assert_eq!(result.exit_code, 0);
+}
+
+/// Regression for #10076: the guest writes the exec response and then
+/// immediately closes the socket. The reader dispatches the response,
+/// then observes EOF and transitions state to `Closed`. Before the fix,
+/// `request_raw` would observe `is_closed=true` after `write_all` and
+/// return `ConnectionReset`, discarding the already-delivered response
+/// sitting in `rx`. Under the new `ConnectionState` refactor the
+/// `is_closed` early-exit no longer exists — the response must be
+/// returned via the biased `rx` arm of `select!`.
+#[tokio::test]
+async fn test_response_then_close_returns_ok() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        // Read the exec request.
+        let mut buf = [0u8; 4096];
+        let n = guest.read(&mut buf).await.unwrap();
+        let msgs = decoder.decode(&buf[..n]).unwrap();
+        assert_eq!(msgs[0].msg_type, MSG_COMMAND_START);
+
+        // Write the response and close the socket. The response must
+        // race with EOF such that reader_loop processes both before the
+        // host's `request_raw` returns from its select!.
+        send_command_result(
+            &mut guest,
+            msgs[0].seq,
+            CommandTermination::Exited { exit_code: 0 },
+            b"race-survived",
+            b"",
+        )
+        .await;
+        drop(guest);
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let result = host.exec("echo race", 5000, &[], false).await;
+
+    // The response was delivered before close; the refactor guarantees
+    // it is returned via `rx` rather than being shadowed by a close
+    // observation.
+    let result = result.expect("response delivered before close must not be lost");
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(result.stdout, b"race-survived");
+}

@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProvidersMainContract,
@@ -72,25 +71,9 @@ async function openModelConfiguration() {
   click(screen.getByText("Personal Models"));
 }
 
-describe("personal-providers-tab — feature switch gating", () => {
-  it("hides the Personal Models tab when modelFirstModelProvider is off", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: false,
-    });
-    mockPreferences();
-    detachedSetupPage({ context, path: "/settings" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Time Zone")).toBeInTheDocument();
-    });
-
-    expect(screen.queryByText("Personal Models")).not.toBeInTheDocument();
-  });
-
-  it("shows the Personal Models tab when modelFirstModelProvider is on", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-    });
+describe("personal-providers-tab — settings navigation", () => {
+  it("shows the Personal Models tab", async () => {
+    setMockFeatureSwitches({});
     mockPreferences();
     detachedSetupPage({ context, path: "/settings" });
 
@@ -102,10 +85,7 @@ describe("personal-providers-tab — feature switch gating", () => {
 
 describe("personal-providers-tab — OAuth-only configuration", () => {
   it("opens directly from the model-configuration tab search param", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-      [FeatureSwitchKey.CodexOauthProvider]: true,
-    });
+    setMockFeatureSwitches({});
     mockPreferences();
     setMockPersonalModelProviders([]);
     detachedSetupPage({ context, path: "/settings?tab=model-configuration" });
@@ -121,10 +101,7 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
   });
 
   it("renders fixed OAuth actions without default or add-provider UI", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-      [FeatureSwitchKey.CodexOauthProvider]: true,
-    });
+    setMockFeatureSwitches({});
     mockPreferences();
     setMockPersonalModelProviders([]);
     detachedSetupPage({ context, path: "/settings" });
@@ -162,36 +139,8 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("hides ChatGPT OAuth when the Codex OAuth provider switch is off", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-      [FeatureSwitchKey.CodexOauthProvider]: false,
-    });
-    mockPreferences();
-    setMockPersonalModelProviders([makeProvider("codex-oauth-token")]);
-    detachedSetupPage({ context, path: "/settings" });
-
-    await openModelConfiguration();
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("oauth-card-claude-code-oauth-token"),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.queryByTestId("oauth-card-codex-oauth-token"),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("ChatGPT (Codex)")).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(/ChatGPT authorization/i),
-    ).not.toBeInTheDocument();
-  });
-
   it("opens the Claude Code OAuth write dialog without a model selector", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-      [FeatureSwitchKey.CodexOauthProvider]: true,
-    });
+    setMockFeatureSwitches({});
     mockPreferences();
     setMockPersonalModelProviders([]);
     detachedSetupPage({ context, path: "/settings" });
@@ -209,10 +158,7 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
   });
 
   it("shows saved OAuth state on the fixed cards", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-      [FeatureSwitchKey.CodexOauthProvider]: true,
-    });
+    setMockFeatureSwitches({});
     mockPreferences();
     setMockPersonalModelProviders([
       makeProvider("claude-code-oauth-token"),
@@ -254,10 +200,7 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
   });
 
   it("disconnects ChatGPT (Codex) auth.json from the fixed card", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-      [FeatureSwitchKey.CodexOauthProvider]: true,
-    });
+    setMockFeatureSwitches({});
     mockPreferences();
     setMockPersonalModelProviders([
       makeProvider("codex-oauth-token", { workspaceName: "Personal Acme" }),
@@ -281,10 +224,7 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
   });
 
   it("keeps OAuth cards visible while the provider list refreshes", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-      [FeatureSwitchKey.CodexOauthProvider]: true,
-    });
+    setMockFeatureSwitches({});
     mockPreferences();
     const provider = makeProvider("codex-oauth-token", {
       workspaceName: "Personal Acme",
@@ -330,10 +270,7 @@ describe("personal-providers-tab — ChatGPT (Codex) auth.json flow", () => {
     const openSpy = vi
       .spyOn(window, "open")
       .mockReturnValue({ closed: true } as Window);
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-      [FeatureSwitchKey.CodexOauthProvider]: true,
-    });
+    setMockFeatureSwitches({});
     mockPreferences();
     setMockPersonalModelProviders([]);
     detachedSetupPage({ context, path: "/settings" });
@@ -349,10 +286,7 @@ describe("personal-providers-tab — ChatGPT (Codex) auth.json flow", () => {
   });
 
   it("opens the auth.json reconnect dialog for stale ChatGPT (Codex)", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelFirstModelProvider]: true,
-      [FeatureSwitchKey.CodexOauthProvider]: true,
-    });
+    setMockFeatureSwitches({});
     mockPreferences();
     setMockPersonalModelProviders([
       makeProvider("codex-oauth-token", {

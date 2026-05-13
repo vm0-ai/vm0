@@ -1,5 +1,5 @@
 /**
- * Regression test: composer model picker display matches outgoing send body.
+ * Regression test: inherited model-first composer sends inherit intent.
  *
  * Bug history: when the thread had no per-run override
  * (chat_threads.selected_model = NULL) and the user did not touch the
@@ -10,9 +10,8 @@
  * (= claude-opus-4-7 on the Zero agent), NOT to the org default. Result:
  * user saw Sonnet, run executed on Opus.
  *
- * Fix: `chat-page` model-selection signals seed from the org default when
- * the user has not explicitly picked, so the picker's displayed model and
- * the request body's `modelSelection` always agree.
+ * Model-first uses `modelSelection: null` to mean "inherit"; the backend
+ * resolves that against the thread/agent/user/org model policy chain.
  *
  * Entry point: /chats/:id thread page
  * Mock (external): Web API via MSW (feature switch + org providers + thread
@@ -48,8 +47,9 @@ describe("chat composer — model picker display vs. send body", () => {
     resetMockOrgModelProviders();
   });
 
-  // CHAT-MSEL-001: picker display and send body agree on org default
-  it("sends the org default model in request body when user has not touched the picker", async () => {
+  // CHAT-MSEL-001: picker display uses inherited org default while the send
+  // body preserves inherit semantics.
+  it("sends null modelSelection when user has not touched the model-first picker", async () => {
     const user = userEvent.setup();
 
     const PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
@@ -120,11 +120,6 @@ describe("chat composer — model picker display vs. send body", () => {
       expect(capturedBody).toBeDefined();
     });
 
-    // The request carries the very model the picker was advertising, so the
-    // backend persists it on chat_threads and the run executes on Sonnet.
-    expect(capturedBody?.modelSelection).toStrictEqual({
-      modelProviderId: PROVIDER_ID,
-      selectedModel: DEFAULT_MODEL,
-    });
+    expect(capturedBody?.modelSelection).toBeNull();
   });
 });

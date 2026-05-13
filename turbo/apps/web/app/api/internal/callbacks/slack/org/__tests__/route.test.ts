@@ -603,7 +603,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     expect(blocksStr).toContain("Audit");
   });
 
-  it("includes model name when selectedModel is set and org has no default provider", async () => {
+  it("includes model name when selectedModel is set without a provider row default", async () => {
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
     const { runId } = await seedTestRun(user.userId, composeId, {
@@ -645,7 +645,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     expect(blocksStr).toContain("Claude Opus 4.7");
   });
 
-  it("omits footer entirely when default agent, no selectedModel, and one thread mentioner", async () => {
+  it("omits non-model footer metadata when default agent and one thread mentioner", async () => {
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
     // Mark this compose as the org default so `Responded by` is suppressed.
@@ -685,7 +685,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     const call = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>).mock
       .calls[0]![0] as { blocks: unknown[] };
     const blocksStr = JSON.stringify(call.blocks);
-    expect(blocksStr).not.toContain("Claude");
+    expect(blocksStr).toContain("Claude Sonnet 4.6");
     expect(blocksStr).not.toContain("Reply to");
     expect(blocksStr).not.toContain("Responded by");
   });

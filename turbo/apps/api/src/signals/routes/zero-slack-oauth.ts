@@ -226,26 +226,30 @@ const connectOauth$ = command(async ({ get }, signal: AbortSignal) => {
   return noStoreRedirect(authUrl.toString());
 });
 
-function notifyAfterConnect(
-  set: <T, TArgs extends unknown[]>(
-    command: import("ccstate").Command<T, TArgs>,
-    ...args: TArgs
-  ) => T,
-  installation: SlackInstallation,
-  slackUserId: string,
-  pendingPrompt: string | null,
-  signal: AbortSignal,
-): void {
+type CommandSetter = <T, TArgs extends unknown[]>(
+  command: import("ccstate").Command<T, TArgs>,
+  ...args: TArgs
+) => T;
+
+function notifyAfterConnect(args: {
+  readonly set: CommandSetter;
+  readonly installation: SlackInstallation;
+  readonly slackUserId: string;
+  readonly orgId: string;
+  readonly pendingPrompt: string | null;
+  readonly signal: AbortSignal;
+}): void {
   waitUntil(
     Promise.resolve(
-      set(
+      args.set(
         notifySlackConnect$,
         {
-          installation,
-          slackUserId,
-          ...(pendingPrompt ? { pendingPrompt } : {}),
+          installation: args.installation,
+          slackUserId: args.slackUserId,
+          orgId: args.orgId,
+          ...(args.pendingPrompt ? { pendingPrompt: args.pendingPrompt } : {}),
         },
-        signal,
+        args.signal,
       ),
     ).catch((error: unknown) => {
       L.warn("Failed to notify connect success", { error });
@@ -302,13 +306,14 @@ async function handlePlatformInstall(args: {
     .onConflictDoNothing();
   args.signal.throwIfAborted();
 
-  await notifyAfterConnect(
-    args.set,
-    args.installation,
-    args.authedUserId,
-    args.state.prompt,
-    args.signal,
-  );
+  notifyAfterConnect({
+    set: args.set,
+    installation: args.installation,
+    slackUserId: args.authedUserId,
+    orgId: args.state.orgId,
+    pendingPrompt: args.state.prompt,
+    signal: args.signal,
+  });
 
   if (args.isReinstall && args.state.reinstall) {
     return redirectResponse(appUrl("/?tab=works&updated=1"));
@@ -529,13 +534,14 @@ async function handleConnectCallback(args: {
   );
   args.signal.throwIfAborted();
 
-  await notifyAfterConnect(
-    args.set,
+  notifyAfterConnect({
+    set: args.set,
     installation,
-    exchange.ok.authedUserId,
-    args.state.prompt,
-    args.signal,
-  );
+    slackUserId: exchange.ok.authedUserId,
+    orgId: args.state.orgId,
+    pendingPrompt: args.state.prompt,
+    signal: args.signal,
+  });
 
   return redirectResponse(
     appUrl(

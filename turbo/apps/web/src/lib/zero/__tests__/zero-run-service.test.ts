@@ -17,13 +17,14 @@ import {
   getTestUserPreferencesAll,
   updateTestUserPreferencesAll,
   createTestOrgModelProvider,
+  insertOrgModelPolicy,
+  insertUserModelPreference,
 } from "../../../__tests__/api-test-helpers";
 import {
   clearComposeHeadVersion,
   createTestZeroAgent,
   deleteTestCompose,
 } from "../../../__tests__/db-test-seeders/agents";
-import { seedUserFeatureSwitches } from "../../../__tests__/db-test-seeders/feature-switches";
 import { bindCustomSkillToAgent } from "../../../__tests__/db-test-seeders/skills";
 import { createTestUserConnector } from "../../../__tests__/db-test-seeders/connectors";
 import {
@@ -391,10 +392,18 @@ describe("createZeroRun() — service-only parameters", () => {
         agentName,
       );
       await bindCustomSkillToAgent(providerCodexAgentId, "my-skill");
-      await seedUserFeatureSwitches(user.orgId, user.userId, {
-        codexBeta: true,
+      const provider = await createTestOrgModelProvider(
+        "openai-api-key",
+        "org-openai-key",
+      );
+      await insertOrgModelPolicy({
+        orgId: user.orgId,
+        model: "gpt-5.5",
+        isDefault: true,
+        defaultProviderType: "openai-api-key",
+        credentialScope: "org",
+        modelProviderId: provider.id,
       });
-      await createTestOrgModelProvider("openai-api-key", "org-openai-key");
 
       const result = await createZeroRun(
         baseParams({ agentId: providerCodexAgentId }),
@@ -641,13 +650,30 @@ describe("createZeroRun() — service-only parameters", () => {
     });
   });
 
-  describe("agent model fallback (resolveEffectiveModel)", () => {
-    it("should use agent defaults when callers do not provide model overrides", async () => {
+  describe("model-first fallback (resolveEffectiveModel)", () => {
+    it("should ignore retired agent model fields when callers do not provide model overrides", async () => {
       const agentName = uniqueId("model-agent");
       await createTestCompose(agentName);
+      const provider = await createTestOrgModelProvider(
+        "anthropic-api-key",
+        "user-preference-provider-key",
+      );
+      await insertOrgModelPolicy({
+        orgId: user.orgId,
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: provider.id,
+      });
+      await insertUserModelPreference({
+        orgId: user.orgId,
+        userId: user.userId,
+        model: "claude-sonnet-4-6",
+      });
       await createTestZeroAgent(user.orgId, agentName, {
         displayName: "ModelBot",
-        selectedModel: "test-model-from-agent",
+        selectedModel: "glm-5.1",
       });
       const modelAgentId = await getTestZeroAgentId(user.orgId, agentName);
 
@@ -663,10 +689,11 @@ describe("createZeroRun() — service-only parameters", () => {
 
       const zeroRun = await findTestZeroRun(result.runId);
       expect(zeroRun).toBeDefined();
-      expect(zeroRun!.selectedModel).toBe("test-model-from-agent");
+      expect(zeroRun!.modelProviderId).toBeNull();
+      expect(zeroRun!.selectedModel).toBeNull();
     });
 
-    it("should let caller overrides take priority over agent defaults", async () => {
+    it("should let caller overrides take priority over user defaults", async () => {
       const agentName = uniqueId("over-model-agent");
       await createTestCompose(agentName);
       await createTestZeroAgent(user.orgId, agentName, {

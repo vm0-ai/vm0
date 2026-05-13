@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use crate::drain::drain_into_vec_cancellable;
 use crate::process::{extract_exit_code, kill_and_reap_child, kill_process_tree};
-use crate::threading::{SystemThreadSpawner, ThreadSpawner, spawn_scoped_named};
+use crate::threading::{ThreadSpawner, spawn_scoped_named};
 
 /// Exit code returned when command times out (same as bash/Python)
 pub(crate) const EXIT_CODE_TIMEOUT: i32 = 124;
@@ -241,19 +241,6 @@ fn kill_child(child_id: u32, reason: KillReason) -> WatchdogKill {
 /// which drops the read end of the pipe. The orphan's next write then sees
 /// EPIPE / SIGPIPE, so neither kernel pipe buffers nor our heap accumulate
 /// further bytes.
-pub(crate) fn wait_with_drain_and_timeout_or_cancelled(
-    child: Child,
-    timeout_ms: u32,
-    external_cancel: &AtomicBool,
-) -> (WaitOutcome, Vec<u8>, Vec<u8>) {
-    wait_with_drain_and_timeout_or_cancelled_with_spawner(
-        child,
-        timeout_ms,
-        external_cancel,
-        SystemThreadSpawner,
-    )
-}
-
 pub(crate) fn wait_with_drain_and_timeout_or_cancelled_with_spawner<S>(
     mut child: Child,
     timeout_ms: u32,

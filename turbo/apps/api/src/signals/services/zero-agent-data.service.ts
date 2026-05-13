@@ -39,9 +39,9 @@ export function agentResponse(row: {
       row.unknownPermissionPolicies,
     ),
     customSkills: [...row.customSkills],
-    modelProviderId: row.modelProviderId,
-    selectedModel: row.selectedModel,
-    preferPersonalProvider: row.preferPersonalProvider,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
     visibility: row.visibility,
   };
 }

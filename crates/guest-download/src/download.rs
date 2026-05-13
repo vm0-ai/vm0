@@ -218,13 +218,7 @@ fn panic_message(payload: &(dyn Any + Send)) -> String {
 
 fn run_download_task(task: DownloadTask) -> bool {
     let start = Instant::now();
-    log_info!(
-        LOG_TAG,
-        "Downloading {} from {} to {}",
-        task.label,
-        task.url,
-        task.mount_path
-    );
+    log_info!(LOG_TAG, "Downloading {} to {}", task.label, task.mount_path);
 
     match download_with_retry(&task.url, &task.mount_path) {
         Ok(()) => {

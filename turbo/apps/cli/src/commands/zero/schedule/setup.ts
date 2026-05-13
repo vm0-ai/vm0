@@ -26,7 +26,6 @@ import {
   ApiRequestError,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
-import { parseModelFlag } from "../../../lib/domain/model-provider/shared";
 
 const FREQUENCY_CHOICES = [
   { title: "Daily", value: "daily" as const, description: "Run every day" },
@@ -138,8 +137,6 @@ interface SetupOptions {
   prompt?: string;
   promptFile?: string;
   enable?: boolean;
-  modelProvider?: string;
-  model?: string;
 }
 
 interface ExistingScheduleDefaults {
@@ -501,8 +498,6 @@ async function buildAndDeploy(params: {
   timezone: string;
   prompt: string;
   existingEnabled: boolean | undefined;
-  modelProviderId: string | null | undefined;
-  selectedModel: string | null | undefined;
 }): Promise<DeployResult> {
   let cronExpression: string | undefined;
   let atTimeISO: string | undefined;
@@ -536,12 +531,6 @@ async function buildAndDeploy(params: {
     prompt: params.prompt,
     ...(params.existingEnabled !== undefined && {
       enabled: params.existingEnabled,
-    }),
-    ...(params.modelProviderId !== undefined && {
-      modelProviderId: params.modelProviderId,
-    }),
-    ...(params.selectedModel !== undefined && {
-      selectedModel: params.selectedModel,
     }),
   });
 
@@ -665,14 +654,6 @@ export const setupCommand = new Command()
     "Read prompt from file (cannot be used with --prompt)",
   )
   .option("-e, --enable", "Enable schedule immediately after creation")
-  .option(
-    "--model-provider <id>",
-    "Model provider UUID, or 'default' to inherit from agent/org",
-  )
-  .option(
-    "--model <name>",
-    "Model name (e.g. claude-sonnet-4-6, MiniMax-M2.7), or 'default' to inherit",
-  )
   .addHelpText(
     "after",
     `
@@ -684,14 +665,10 @@ Examples:
   Loop every 5 minutes:  zero schedule setup <agent-id> -f loop -i 300 -p "poll for updates"
   Prompt from file:      zero schedule setup <agent-id> -f daily -t 09:00 --prompt-file ./prompt.md
   Create and enable:     zero schedule setup <agent-id> -f daily -t 09:00 -p "run report" --enable
-  Override model:        zero schedule setup <agent-id> -f daily -t 09:00 -p "..." --model-provider <id> --model MiniMax-M2.7
-  Reset model override:  zero schedule setup <agent-id> -f daily -t 09:00 -p "..." --model-provider default --model default
 
 Notes:
   - Re-running setup with the same agent updates the existing "default" schedule
   - Use -n to manage multiple named schedules for the same agent
-  - --model-provider and --model default to inheriting the agent's configuration
-  - Use 'zero org model-provider list' to see available providers and models
   - All flags are required in non-interactive mode; interactive mode prompts for missing values
   - If the user wants to be notified when a schedule completes, ask them where they want to receive the notification: web chat or Slack, then include it in the prompt`,
   )
@@ -774,8 +751,6 @@ Notes:
         timezone,
         prompt: promptText_,
         existingEnabled: existingSchedule?.enabled,
-        modelProviderId: parseModelFlag(options.modelProvider),
-        selectedModel: parseModelFlag(options.model),
       });
 
       // 8. Display deployment result

@@ -51,30 +51,16 @@ import {
   resetSettingsForm$,
   markSettingsSaved$,
   deleteAgent$,
-  settingsModelSelection$,
-  setSettingsModelSelection$,
-  settingsPreferPersonalProvider$,
   settingsVisibility$,
   setSettingsVisibility$,
 } from "../../signals/zero-page/settings/settings-tab.ts";
-import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
-import {
-  featureSwitch$,
-  modelFirstModelProviderEnabled$,
-} from "../../signals/external/feature-switch.ts";
-import {
-  ModelProviderPicker,
-  type ModelProviderSelection,
-} from "./components/model-provider-picker.tsx";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 interface ZeroSettingsTabProps {
   displayName: string;
   description: string;
   sound: Tone;
   avatarUrl: string | null;
-  modelProviderId?: string | null;
-  selectedModel?: string | null;
-  preferPersonalProvider?: boolean;
   visibility?: "public" | "private";
   canEditVisibility?: boolean;
   updateSettings$: Command<
@@ -85,9 +71,6 @@ interface ZeroSettingsTabProps {
         sound: string;
         description: string;
         avatarUrl?: string | null;
-        modelProviderId?: string | null;
-        selectedModel?: string | null;
-        preferPersonalProvider?: boolean;
         visibility?: "public" | "private";
       },
       AbortSignal,
@@ -98,13 +81,6 @@ interface ZeroSettingsTabProps {
   isDefaultAgent?: boolean;
   /** Callback to delete the agent. */
   onDelete?: () => Promise<void>;
-}
-
-function modelProviderIdForSave(
-  modelFirstEnabled: boolean,
-  modelSelection: ModelProviderSelection | null,
-) {
-  return modelFirstEnabled ? null : (modelSelection?.modelProviderId ?? null);
 }
 
 function visibilityForSave(
@@ -126,9 +102,6 @@ export function ZeroSettingsTab({
   description: initialDescription,
   sound: initialSound,
   avatarUrl: initialAvatarUrl,
-  modelProviderId: initialModelProviderId,
-  selectedModel: initialSelectedModel,
-  preferPersonalProvider: initialPreferPersonalProvider = false,
   visibility: initialVisibility = "public",
   canEditVisibility = true,
   updateSettings$,
@@ -136,25 +109,15 @@ export function ZeroSettingsTab({
   isDefaultAgent = false,
   onDelete,
 }: ZeroSettingsTabProps) {
-  const modelFirstEnabled = useGet(modelFirstModelProviderEnabled$);
   const features = useLastResolved(featureSwitch$);
   const privateAgentsEnabled =
     features?.[FeatureSwitchKey.PrivateAgents] ?? false;
-  const initialModelSelection: ModelProviderSelection | null =
-    !modelFirstEnabled && initialSelectedModel && initialModelProviderId
-      ? {
-          modelProviderId: initialModelProviderId,
-          selectedModel: initialSelectedModel,
-        }
-      : null;
 
   useSet(initSettingsForm$)({
     name: resolvedAgentName,
     description: initialDescription,
     tone: initialSound,
     avatarUrl: initialAvatarUrl,
-    modelSelection: initialModelSelection,
-    preferPersonalProvider: initialPreferPersonalProvider,
     visibility: initialVisibility,
   });
 
@@ -166,16 +129,11 @@ export function ZeroSettingsTab({
   const setTone = useSet(setSettingsTone$);
   const avatarUrl = useGet(settingsAvatarUrl$);
   const setAvatarUrl = useSet(setSettingsAvatarUrl$);
-  const modelSelection = useGet(settingsModelSelection$);
-  const setModelSelection = useSet(setSettingsModelSelection$);
-  const preferPersonalProvider = useGet(settingsPreferPersonalProvider$);
   const visibility = useGet(settingsVisibility$);
   const setVisibility = useSet(setSettingsVisibility$);
   const isSettingsDirty = useGet(settingsDirty$);
   const resetForm = useSet(resetSettingsForm$);
   const markSaved = useSet(markSettingsSaved$);
-
-  const orgProviders = useLastResolved(orgModelProviders$);
 
   const [deleteLoadable, deleteAgentFn] = useLoadableSet(deleteAgent$);
   const deleting = deleteLoadable.state === "loading";
@@ -199,14 +157,6 @@ export function ZeroSettingsTab({
             description: desc,
             sound: tone,
             avatarUrl,
-            modelProviderId: modelProviderIdForSave(
-              modelFirstEnabled,
-              modelSelection,
-            ),
-            selectedModel: modelFirstEnabled
-              ? null
-              : (modelSelection?.selectedModel ?? null),
-            preferPersonalProvider,
             ...visibilityForSave(privateAgentsEnabled, visibility),
           },
           pageSignal,
@@ -261,12 +211,6 @@ export function ZeroSettingsTab({
                           description: desc,
                           sound: tone,
                           avatarUrl: newAvatarUrl,
-                          modelProviderId: modelProviderIdForSave(
-                            modelFirstEnabled,
-                            modelSelection,
-                          ),
-                          selectedModel: modelSelection?.selectedModel ?? null,
-                          preferPersonalProvider,
                           ...visibilityForSave(
                             privateAgentsEnabled,
                             visibility,
@@ -380,20 +324,6 @@ export function ZeroSettingsTab({
                 </div>
               </div>
             </InlineSettingsRow>
-            {!modelFirstEnabled &&
-              orgProviders &&
-              orgProviders.modelProviders.length > 0 && (
-                <InlineSettingsRow
-                  label="Model"
-                  description="The model used by this agent. Defaults to the workspace setting."
-                >
-                  <ModelProviderPicker
-                    providers={orgProviders.modelProviders}
-                    value={modelSelection}
-                    onChange={setModelSelection}
-                  />
-                </InlineSettingsRow>
-              )}
             {canShowVisibilitySwitch(
               privateAgentsEnabled,
               canEditVisibility,

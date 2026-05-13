@@ -19,7 +19,6 @@ import {
   getLatestRunProviderTypeForThread,
   publishThreadListChanged,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
-import { isModelFirstModelProviderEnabled } from "../../../../../src/lib/zero/model-policy/model-first-route-service";
 import { isNotFound } from "@vm0/api-services/errors";
 
 const chatThreadIdParamSchema = z.string().uuid();
@@ -45,13 +44,8 @@ type ModelFirstRunPin = Awaited<
 async function getModelFirstRunPinForThreadDetail(
   thread: ChatThreadRecord,
   threadId: string,
-  userId: string,
 ): Promise<ModelFirstRunPin> {
   if (!thread.orgId || thread.selectedModel !== null) {
-    return null;
-  }
-  const enabled = await isModelFirstModelProviderEnabled(thread.orgId, userId);
-  if (!enabled) {
     return null;
   }
   return getFirstRunModelPinForThread(threadId);
@@ -121,7 +115,7 @@ const router = tsr.router(chatThreadByIdContract, {
         getChatThreadMessages(params.id, userId),
         getActiveRunsForThread(params.id),
         getLatestRunProviderTypeForThread(params.id),
-        getModelFirstRunPinForThreadDetail(thread, params.id, userId),
+        getModelFirstRunPinForThreadDetail(thread, params.id),
       ]);
       const activeRunIds = activeRuns.map((r) => {
         return r.id;

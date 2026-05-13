@@ -125,6 +125,10 @@ impl CliFrameworkBehavior {
             }
         }
     }
+
+    fn logs_codex_failure_diagnostics(self) -> bool {
+        matches!(self.framework, env::Framework::Codex)
+    }
 }
 
 async fn tick_optional_interval(interval: &mut Option<tokio::time::Interval>) {
@@ -760,6 +764,17 @@ pub async fn execute_cli(
                             }
                             // Extract tool info BEFORE masking (masker may replace tool names).
                             behavior.track_claude_tool_events(&event, &mut stuck_tool_tracker);
+                            if behavior.logs_codex_failure_diagnostics()
+                                && let Some(diagnostic) =
+                                    events::masked_codex_failure_diagnostic(&event, masker)
+                            {
+                                log_warn!(
+                                    LOG_TAG,
+                                    "Codex JSONL failure event seq={seq} type={}: {}",
+                                    diagnostic.event_type,
+                                    diagnostic.message
+                                );
+                            }
                             // Prepare event (fast: mask secrets, add seq) and enqueue
                             // for background sending.  Never blocks the reading loop.
                             if let Some(payload) = events::prepare_event(&mut event, seq, masker)

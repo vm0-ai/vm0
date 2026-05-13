@@ -38,7 +38,7 @@ describe("zero org model-provider setup command", () => {
                 id: "1",
                 type: "anthropic-api-key",
                 framework: "claude-code",
-                isDefault: true,
+                isDefault: false,
                 selectedModel: null,
                 createdAt: "2025-01-01T00:00:00Z",
                 updatedAt: "2025-01-01T00:00:00Z",
@@ -67,25 +67,30 @@ describe("zero org model-provider setup command", () => {
       expect(mockExit).not.toHaveBeenCalled();
     });
 
-    it("should create provider with model selection", async () => {
+    it("should create provider without provider-level model selection", async () => {
+      let capturedBody: Record<string, unknown> | null = null;
       server.use(
-        http.post("http://localhost:3000/api/zero/model-providers", () => {
-          return HttpResponse.json(
-            {
-              provider: {
-                id: "1",
-                type: "moonshot-api-key",
-                framework: "claude-code",
-                isDefault: true,
-                selectedModel: "kimi-k2.5",
-                createdAt: "2025-01-01T00:00:00Z",
-                updatedAt: "2025-01-01T00:00:00Z",
+        http.post(
+          "http://localhost:3000/api/zero/model-providers",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(
+              {
+                provider: {
+                  id: "1",
+                  type: "moonshot-api-key",
+                  framework: "claude-code",
+                  isDefault: false,
+                  selectedModel: null,
+                  createdAt: "2025-01-01T00:00:00Z",
+                  updatedAt: "2025-01-01T00:00:00Z",
+                },
+                created: true,
               },
-              created: true,
-            },
-            { status: 201 },
-          );
-        }),
+              { status: 201 },
+            );
+          },
+        ),
       );
 
       await setupCommand.parseAsync([
@@ -95,17 +100,13 @@ describe("zero org model-provider setup command", () => {
         "moonshot-api-key",
         "--secret",
         "sk-test",
-        "--model",
-        "kimi-k2.5",
       ]);
 
+      expect(capturedBody).not.toHaveProperty("selectedModel");
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining(
           'Org model provider "moonshot-api-key" created',
         ),
-      );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("kimi-k2.5"),
       );
       expect(mockExit).not.toHaveBeenCalled();
     });

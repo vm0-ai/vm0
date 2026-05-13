@@ -49,12 +49,16 @@ interface SeedOfficialUserLinkValues {
   readonly orgId: string;
   readonly userId: string;
   readonly telegramUserId: string;
+  readonly telegramUsername?: string | null;
+  readonly telegramDisplayName?: string | null;
 }
 
 interface SeedTelegramUserLinkValues {
   readonly installationId: string;
   readonly telegramUserId: string;
   readonly vm0UserId: string;
+  readonly telegramUsername?: string | null;
+  readonly telegramDisplayName?: string | null;
 }
 
 interface SeedUserAgentPreferenceValues {
@@ -159,6 +163,8 @@ export const seedOfficialUserLink$ = command(
       orgId: values.orgId,
       vm0UserId: values.userId,
       telegramUserId: values.telegramUserId,
+      telegramUsername: values.telegramUsername ?? null,
+      telegramDisplayName: values.telegramDisplayName ?? null,
     });
     signal.throwIfAborted();
   },
@@ -175,6 +181,8 @@ export const seedTelegramUserLink$ = command(
       installationId: values.installationId,
       telegramUserId: values.telegramUserId,
       vm0UserId: values.vm0UserId,
+      telegramUsername: values.telegramUsername ?? null,
+      telegramDisplayName: values.telegramDisplayName ?? null,
     });
     signal.throwIfAborted();
   },

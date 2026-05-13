@@ -46,9 +46,6 @@ export const zeroAgentRequestSchema = z.object({
   sound: z.string().optional(),
   avatarUrl: z.string().optional(),
   customSkills: z.array(zeroAgentCustomSkillNameSchema).optional(),
-  modelProviderId: z.string().uuid().nullable().optional(),
-  selectedModel: z.string().nullable().optional(),
-  preferPersonalProvider: z.boolean().optional(),
   visibility: zeroAgentVisibilitySchema.optional(),
 });
 
@@ -60,9 +57,6 @@ export const zeroAgentMetadataRequestSchema = z.object({
   description: z.string().optional(),
   sound: z.string().optional(),
   avatarUrl: z.string().nullable().optional(),
-  modelProviderId: z.string().uuid().nullable().optional(),
-  selectedModel: z.string().nullable().optional(),
-  preferPersonalProvider: z.boolean().optional(),
   visibility: zeroAgentVisibilitySchema.optional(),
 });
 

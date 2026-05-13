@@ -12,7 +12,6 @@ import {
   createTestAgentSession,
   createAgentPhoneThreadSession,
   countTestAgentPhoneMessages,
-  enableModelFirstModelProviderForUser,
   findTestAgentPhoneUserLink,
   getOrgMembersEntry,
   agentphoneThreadSessionExists,
@@ -135,6 +134,22 @@ function agentPhoneSendMessage() {
   return { ...handler, calls };
 }
 
+function agentPhoneTypingIndicator() {
+  const calls: Array<{ conversationId: string }> = [];
+  const handler = http.post(
+    "https://api.agentphone.to/v1/conversations/:conversationId/typing",
+    ({ params }) => {
+      calls.push({ conversationId: String(params.conversationId) });
+      return HttpResponse.json({
+        conversationId: params.conversationId,
+        channel: "imessage",
+        status: "sent",
+      });
+    },
+  );
+  return { ...handler, calls };
+}
+
 describe("POST /api/agentphone/webhook", () => {
   beforeEach(() => {
     context.setupMocks();
@@ -193,6 +208,10 @@ describe("POST /api/agentphone/webhook", () => {
       }),
     );
     expect(sendMessage.calls[0]?.body).toContain("/agentphone/connect");
+    expect(sendMessage.calls[0]?.body).toContain("channel=sms");
+    expect(sendMessage.calls[0]?.body).not.toContain(
+      "SMS and MMS replies may not be delivered reliably",
+    );
     expect(await countTestAgentPhoneMessages(phone)).toBe(1);
   });
 
@@ -217,6 +236,10 @@ describe("POST /api/agentphone/webhook", () => {
 
     expect(sendMessage.calls).toHaveLength(1);
     expect(sendMessage.calls[0]?.body).toContain("/agentphone/connect");
+    expect(sendMessage.calls[0]?.body).toContain("channel=mms");
+    expect(sendMessage.calls[0]?.body).not.toContain(
+      "SMS and MMS replies may not be delivered reliably",
+    );
     expect(await countTestAgentPhoneMessages(phone)).toBe(1);
   });
 
@@ -240,10 +263,13 @@ describe("POST /api/agentphone/webhook", () => {
       direction: "inbound",
       body: "previous owner secret",
     });
+    const typing = agentPhoneTypingIndicator();
+    server.use(typing.handler);
 
     const response = await POST(
       createWebhookRequest(
         createWebhookPayload({
+          channel: "imessage",
           from: phone,
           message: "ship the AgentPhone report",
           messageId,
@@ -272,6 +298,7 @@ describe("POST /api/agentphone/webhook", () => {
     expect(callbacks[0]?.payload).toEqual(
       expect.objectContaining({
         messageId,
+        channel: "imessage",
         phoneHandle: phone,
         fromNumber: phone,
         toNumber: TEST_AGENTPHONE_NUMBER,
@@ -281,6 +308,7 @@ describe("POST /api/agentphone/webhook", () => {
         existingSessionId: null,
       }),
     );
+    expect(typing.mocked).toHaveBeenCalledTimes(1);
   });
 
   it("deduplicates duplicate webhook deliveries", async () => {
@@ -374,6 +402,9 @@ describe("POST /api/agentphone/webhook", () => {
     await context.mocks.flushAfter();
 
     expect(sendMessage.calls[0]?.body).toContain("/connect");
+    expect(sendMessage.calls[0]?.body).toContain(
+      "SMS and MMS replies may not be delivered reliably",
+    );
     const runs = await findTestRunsByUserAndPromptContaining(
       user.userId,
       "/help",
@@ -389,7 +420,6 @@ describe("POST /api/agentphone/webhook", () => {
       vm0UserId: user.userId,
       orgId: user.orgId,
     });
-    await enableModelFirstModelProviderForUser(user.orgId, user.userId);
     await insertOrgModelPolicy({
       orgId: user.orgId,
       model: "claude-sonnet-4-6",
@@ -426,7 +456,6 @@ describe("POST /api/agentphone/webhook", () => {
     await setOrgCredits(user.orgId, 100_000);
     const { composeId } = await createTestCompose(uniqueId("agentphone-agent"));
     await setDefaultAgentByComposeId(user.orgId, composeId);
-    await enableModelFirstModelProviderForUser(user.orgId, user.userId);
     await insertOrgModelPolicy({
       orgId: user.orgId,
       model: "claude-sonnet-4-6",

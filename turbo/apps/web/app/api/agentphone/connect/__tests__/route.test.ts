@@ -13,6 +13,10 @@ import {
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { http } from "../../../../../src/__tests__/msw";
 import { server } from "../../../../../src/mocks/server";
+import {
+  mockAblyChannelsGet,
+  mockAblyPublish,
+} from "../../../../../src/__tests__/ably-mock";
 import { POST } from "../route";
 
 const context = testContext();
@@ -87,6 +91,8 @@ describe("POST /api/agentphone/connect", () => {
     const user = await context.setupUser();
     const phone = uniquePhone();
     const sendMessage = agentPhoneSendMessage();
+    mockAblyChannelsGet.mockClear();
+    mockAblyPublish.mockClear();
     server.use(sendMessage.handler);
 
     const response = await POST(createConnectRequest(createConnectBody(phone)));
@@ -107,6 +113,8 @@ describe("POST /api/agentphone/connect", () => {
         to_number: phone,
       }),
     );
+    expect(mockAblyChannelsGet).toHaveBeenCalledWith(`user:${user.userId}`);
+    expect(mockAblyPublish).toHaveBeenCalledWith("agentphone:changed", null);
   });
 
   it("normalizes phone handles before linking", async () => {

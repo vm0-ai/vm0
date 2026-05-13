@@ -6,7 +6,6 @@ import {
   connectorTypeSchema,
 } from "@vm0/connectors/connectors";
 import {
-  getConnectorEnvironmentMapping,
   getScopeDiff,
   hasRequiredScopes,
 } from "@vm0/connectors/connector-utils";
@@ -18,17 +17,134 @@ import { getPlatformOrigin } from "../doctor/platform-url";
 
 const LABEL_WIDTH = 16;
 
-function getDoctorCommand(type: ConnectorType): string | null {
-  const [envName] = Object.keys(getConnectorEnvironmentMapping(type));
-  return envName ? `zero doctor check-connector --env-name ${envName}` : null;
+type Connector = NonNullable<Awaited<ReturnType<typeof getZeroConnector>>>;
+type AgentContext = NonNullable<
+  Awaited<ReturnType<typeof resolveAgentContext>>
+>;
+
+function printConnectorDetails(
+  type: ConnectorType,
+  connector: Connector | null,
+): void {
+  if (connector) {
+    console.log(
+      `${"Status:".padEnd(LABEL_WIDTH)}${
+        connector.needsReconnect
+          ? chalk.yellow("reconnect needed")
+          : chalk.green("connected")
+      }`,
+    );
+    console.log(
+      `${"Account:".padEnd(LABEL_WIDTH)}@${connector.externalUsername}`,
+    );
+    console.log(`${"Auth Method:".padEnd(LABEL_WIDTH)}${connector.authMethod}`);
+
+    if (connector.oauthScopes && connector.oauthScopes.length > 0) {
+      console.log(
+        `${"OAuth Scopes:".padEnd(LABEL_WIDTH)}${connector.oauthScopes.join(", ")}`,
+      );
+    }
+
+    if (
+      connector.authMethod === "oauth" &&
+      !hasRequiredScopes(type, connector.oauthScopes)
+    ) {
+      const diff = getScopeDiff(type, connector.oauthScopes);
+      console.log(
+        `${"Permissions:".padEnd(LABEL_WIDTH)}${chalk.yellow("update available")}`,
+      );
+      if (diff.addedScopes.length > 0) {
+        console.log(
+          `${"  Added:".padEnd(LABEL_WIDTH)}${diff.addedScopes.join(", ")}`,
+        );
+      }
+      if (diff.removedScopes.length > 0) {
+        console.log(
+          `${"  Removed:".padEnd(LABEL_WIDTH)}${diff.removedScopes.join(", ")}`,
+        );
+      }
+    }
+
+    console.log(
+      `${"Connected:".padEnd(LABEL_WIDTH)}${formatDateTime(connector.createdAt)}`,
+    );
+
+    if (connector.updatedAt !== connector.createdAt) {
+      console.log(
+        `${"Last Updated:".padEnd(LABEL_WIDTH)}${formatDateTime(connector.updatedAt)}`,
+      );
+    }
+  } else {
+    console.log(
+      `${"Status:".padEnd(LABEL_WIDTH)}${chalk.dim("not connected")}`,
+    );
+  }
 }
 
-function printDoctorHint(type: ConnectorType): void {
-  const command = getDoctorCommand(type);
-  if (command) {
-    console.log(`Diagnose it with: ${command}`);
+async function printAgentAction(
+  type: ConnectorType,
+  connector: Connector | null,
+  agentCtx: AgentContext,
+): Promise<void> {
+  const authorized = agentCtx.authorizedTypes.has(type);
+  const isConnected = connector !== null;
+  const needsReconnect = connector?.needsReconnect === true;
+  const agentLabel =
+    agentCtx.displayName === agentCtx.agentId
+      ? agentCtx.agentId
+      : `${agentCtx.displayName} (${agentCtx.agentId})`;
+
+  console.log();
+  if (needsReconnect) {
+    const origin = await getPlatformOrigin();
+    const url = `${origin}/connectors`;
+    console.log(
+      `The ${type} connector is connected but needs to be reconnected before agent ${agentLabel} can use it.`,
+    );
+    console.log(`Reconnect it at: [Reconnect ${type}](${url})`);
+  } else if (authorized && !isConnected) {
+    const origin = await getPlatformOrigin();
+    const url = `${origin}/connectors/${type}/connect?agentId=${agentCtx.agentId}`;
+    console.log(
+      `The ${type} connector is authorized for agent ${agentLabel}, but it is not connected.`,
+    );
+    console.log(`Connect it at: [Connect ${type}](${url})`);
+  } else if (authorized) {
+    console.log(`The ${type} connector is authorized for agent ${agentLabel}.`);
+  } else if (!isConnected) {
+    const origin = await getPlatformOrigin();
+    const url = `${origin}/connectors/${type}/connect?agentId=${agentCtx.agentId}`;
+    console.log(
+      `The ${type} connector is not connected. Once connected, it will be authorized for agent ${agentLabel}.`,
+    );
+    console.log(`Connect and authorize it at: [Connect ${type}](${url})`);
   } else {
-    console.log("Having trouble? Run: zero doctor --help");
+    const origin = await getPlatformOrigin();
+    const url = `${origin}/connectors/${type}/authorize?agentId=${agentCtx.agentId}`;
+    console.log(
+      `The ${type} connector is not authorized for agent ${agentLabel}.`,
+    );
+    console.log(`Authorize it at: [Authorize ${type}](${url})`);
+  }
+}
+
+async function printStandaloneAction(
+  type: ConnectorType,
+  connector: Connector | null,
+): Promise<void> {
+  if (connector && !connector.needsReconnect) return;
+
+  const origin = await getPlatformOrigin();
+  console.log();
+  if (connector?.needsReconnect) {
+    const url = `${origin}/connectors`;
+    console.log(
+      `The ${type} connector is connected but needs to be reconnected.`,
+    );
+    console.log(`Reconnect it at: [Reconnect ${type}](${url})`);
+  } else {
+    const url = `${origin}/connectors/${type}/connect`;
+    console.log(`Connect it at: [Connect ${type}](${url})`);
   }
 }
 
@@ -55,100 +171,12 @@ export const statusCommand = new Command()
       console.log(`Connector: ${chalk.cyan(type)}`);
       console.log();
 
-      if (connector) {
-        console.log(
-          `${"Status:".padEnd(LABEL_WIDTH)}${chalk.green("connected")}`,
-        );
-        console.log(
-          `${"Account:".padEnd(LABEL_WIDTH)}@${connector.externalUsername}`,
-        );
-        console.log(
-          `${"Auth Method:".padEnd(LABEL_WIDTH)}${connector.authMethod}`,
-        );
-
-        if (connector.oauthScopes && connector.oauthScopes.length > 0) {
-          console.log(
-            `${"OAuth Scopes:".padEnd(LABEL_WIDTH)}${connector.oauthScopes.join(", ")}`,
-          );
-        }
-
-        if (
-          connector.authMethod === "oauth" &&
-          !hasRequiredScopes(parseResult.data, connector.oauthScopes)
-        ) {
-          const diff = getScopeDiff(parseResult.data, connector.oauthScopes);
-          console.log(
-            `${"Permissions:".padEnd(LABEL_WIDTH)}${chalk.yellow("update available")}`,
-          );
-          if (diff.addedScopes.length > 0) {
-            console.log(
-              `${"  Added:".padEnd(LABEL_WIDTH)}${diff.addedScopes.join(", ")}`,
-            );
-          }
-          if (diff.removedScopes.length > 0) {
-            console.log(
-              `${"  Removed:".padEnd(LABEL_WIDTH)}${diff.removedScopes.join(", ")}`,
-            );
-          }
-        }
-
-        console.log(
-          `${"Connected:".padEnd(LABEL_WIDTH)}${formatDateTime(connector.createdAt)}`,
-        );
-
-        if (connector.updatedAt !== connector.createdAt) {
-          console.log(
-            `${"Last Updated:".padEnd(LABEL_WIDTH)}${formatDateTime(connector.updatedAt)}`,
-          );
-        }
-      } else {
-        console.log(
-          `${"Status:".padEnd(LABEL_WIDTH)}${chalk.dim("not connected")}`,
-        );
-      }
+      printConnectorDetails(parseResult.data, connector);
 
       if (agentCtx) {
-        const authorized = agentCtx.authorizedTypes.has(parseResult.data);
-        const isConnected = connector !== null;
-        const agentLabel =
-          agentCtx.displayName === agentCtx.agentId
-            ? agentCtx.agentId
-            : `${agentCtx.displayName} (${agentCtx.agentId})`;
-
-        console.log();
-        if (authorized && !isConnected) {
-          const origin = await getPlatformOrigin();
-          const url = `${origin}/connectors/${parseResult.data}/connect?agentId=${agentCtx.agentId}`;
-          console.log(
-            `The ${parseResult.data} connector is authorized for agent ${agentLabel}, but it is not connected.`,
-          );
-          console.log(`Connect it at: [Connect ${parseResult.data}](${url})`);
-          printDoctorHint(parseResult.data);
-        } else if (authorized) {
-          console.log(
-            `The ${parseResult.data} connector is authorized for agent ${agentLabel}.`,
-          );
-        } else if (!isConnected) {
-          const origin = await getPlatformOrigin();
-          const url = `${origin}/connectors/${parseResult.data}/connect?agentId=${agentCtx.agentId}`;
-          console.log(
-            `The ${parseResult.data} connector is not connected. Once connected, it will be authorized for agent ${agentLabel}.`,
-          );
-          console.log(`Connect it at: [Connect ${parseResult.data}](${url})`);
-          printDoctorHint(parseResult.data);
-        } else {
-          const origin = await getPlatformOrigin();
-          const url = `${origin}/connectors/${parseResult.data}/authorize?agentId=${agentCtx.agentId}`;
-          console.log(
-            `The ${parseResult.data} connector is not authorized for agent ${agentLabel}.`,
-          );
-          console.log(
-            `Authorize it at: [Authorize ${parseResult.data}](${url})`,
-          );
-        }
-      } else if (!connector) {
-        console.log();
-        printDoctorHint(parseResult.data);
+        await printAgentAction(parseResult.data, connector, agentCtx);
+      } else {
+        await printStandaloneAction(parseResult.data, connector);
       }
     }),
   );

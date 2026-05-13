@@ -22,6 +22,7 @@ export interface TelegramCallbackPayload {
 export interface AgentPhoneCallbackPayload {
   messageId: string;
   conversationId: string | null;
+  channel: string;
   phoneHandle: string;
   fromNumber: string;
   toNumber: string;

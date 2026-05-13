@@ -1,20 +1,24 @@
 import { command, computed } from "ccstate";
 import {
+  zeroScheduleRunContract,
   zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
   zeroSchedulesMainContract,
 } from "@vm0/api-contracts/contracts/zero-schedules";
 
-import { notFound } from "../../lib/error";
+import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import {
   deleteSchedule$,
+  deploySchedule$,
   disableSchedule$,
   enableSchedule$,
+  runScheduleNow$,
   zeroScheduleList,
 } from "../services/zero-schedules.service";
+import { now } from "../external/time";
 import type { RouteEntry } from "../route";
 
 const listSchedulesInner$ = computed(async (get) => {
@@ -23,6 +27,45 @@ const listSchedulesInner$ = computed(async (get) => {
     zeroScheduleList({ orgId: auth.orgId, userId: auth.userId }),
   );
   return { status: 200 as const, body: result };
+});
+
+const deployInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const bodyResult = await get(bodyResultOf(zeroSchedulesMainContract.deploy));
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+
+  const result = await set(
+    deploySchedule$,
+    {
+      userId: auth.userId,
+      orgId: auth.orgId,
+      body: bodyResult.data,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  if (result.kind === "not_found") {
+    return notFound(result.message);
+  }
+  if (result.kind === "bad_request") {
+    return badRequestMessage(result.message);
+  }
+  if (result.kind === "schedule_past") {
+    return {
+      status: 400 as const,
+      body: {
+        error: {
+          message: result.message,
+          code: "SCHEDULE_PAST",
+        },
+      },
+    };
+  }
+  return { status: result.status, body: result.response };
 });
 
 const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -117,7 +160,49 @@ const enableInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: result.response };
 });
 
+const runNowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const bodyResult = await get(bodyResultOf(zeroScheduleRunContract.run));
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+
+  const result = await set(
+    runScheduleNow$,
+    {
+      body: bodyResult.data,
+      orgId: auth.orgId,
+      apiStartTime: now(),
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  if (result.kind === "not_found") {
+    return notFound(result.message);
+  }
+  if (result.kind === "conflict") {
+    return conflict(result.message);
+  }
+  if (result.kind === "run_error") {
+    return result.response;
+  }
+  return { status: 201 as const, body: { runId: result.runId } };
+});
+
 export const zeroSchedulesRoutes: readonly RouteEntry[] = [
+  {
+    route: zeroSchedulesMainContract.deploy,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "schedule:write",
+      },
+      deployInner$,
+    ),
+  },
   {
     route: zeroSchedulesMainContract.list,
     handler: authRoute(
@@ -160,6 +245,16 @@ export const zeroSchedulesRoutes: readonly RouteEntry[] = [
         requiredCapability: "schedule:write",
       },
       enableInner$,
+    ),
+  },
+  {
+    route: zeroScheduleRunContract.run,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+      },
+      runNowInner$,
     ),
   },
 ];

@@ -7,7 +7,17 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
+import {
+  MODEL_PROVIDER_TYPES,
+  SUPPORTED_RUN_MODELS,
+  getDefaultModel,
+  getProvidersForModel,
+  isSupportedRunModel,
+  normalizeRunModelId,
+  type ModelProviderCredentialScope,
+  type ModelProviderType,
+  type SupportedRunModel,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { ORG_SENTINEL_USER_ID } from "../../lib/zero/org/org-sentinel";
 import { getTestAuthContext } from "../api-test-helpers/core";
 import { ensureOrgRow } from "../test-helpers";
@@ -196,15 +206,108 @@ export async function insertOrgMembersEntry(entry: {
     });
 }
 
+function parseSeedProviderType(type: string): ModelProviderType | null {
+  if (type in MODEL_PROVIDER_TYPES) {
+    return type as ModelProviderType;
+  }
+  return null;
+}
+
+function getPolicyCredentialScope(
+  type: ModelProviderType,
+): ModelProviderCredentialScope {
+  if (type === "claude-code-oauth-token" || type === "codex-oauth-token") {
+    return "member";
+  }
+  return "org";
+}
+
+function resolvePolicyModelForProvider(
+  type: ModelProviderType,
+  selectedModel?: string,
+): SupportedRunModel | null {
+  const normalized = selectedModel ? normalizeRunModelId(selectedModel) : null;
+  if (
+    normalized &&
+    isSupportedRunModel(normalized) &&
+    getProvidersForModel(normalized).includes(type)
+  ) {
+    return normalized;
+  }
+
+  const defaultModel = getDefaultModel(type);
+  const normalizedDefault = defaultModel
+    ? normalizeRunModelId(defaultModel)
+    : null;
+  if (
+    normalizedDefault &&
+    isSupportedRunModel(normalizedDefault) &&
+    getProvidersForModel(normalizedDefault).includes(type)
+  ) {
+    return normalizedDefault;
+  }
+
+  return (
+    SUPPORTED_RUN_MODELS.find((model) => {
+      return getProvidersForModel(model).includes(type);
+    }) ?? null
+  );
+}
+
+async function setModelFirstDefaultPolicyForProvider(params: {
+  orgId: string;
+  providerId: string | null;
+  type: string;
+  selectedModel?: string;
+}): Promise<void> {
+  const type = parseSeedProviderType(params.type);
+  if (!type) return;
+
+  const model = resolvePolicyModelForProvider(type, params.selectedModel);
+  if (!model) return;
+
+  const now = new Date();
+  const credentialScope = getPolicyCredentialScope(type);
+  const modelProviderId =
+    credentialScope === "org" && type !== "vm0" ? params.providerId : null;
+
+  await globalThis.services.db
+    .update(orgModelPolicies)
+    .set({ isDefault: false, updatedAt: now })
+    .where(
+      and(
+        eq(orgModelPolicies.orgId, params.orgId),
+        eq(orgModelPolicies.isDefault, true),
+      ),
+    );
+
+  await globalThis.services.db
+    .insert(orgModelPolicies)
+    .values({
+      orgId: params.orgId,
+      model,
+      isDefault: true,
+      defaultProviderType: type,
+      credentialScope,
+      modelProviderId,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [orgModelPolicies.orgId, orgModelPolicies.model],
+      set: {
+        isDefault: true,
+        defaultProviderType: type,
+        credentialScope,
+        modelProviderId,
+        updatedAt: now,
+      },
+    });
+}
+
 /**
- * Insert an org-level default model provider directly in the database.
- * Useful for testing credit check behavior with different provider types.
- *
- * Mirrors production `setModelProviderDefault` semantics — clears any existing
- * `isDefault=true` row for the same `(orgId, ORG_SENTINEL_USER_ID)` before
- * inserting, so the partial unique index
- * `idx_model_providers_one_default_per_user` is never violated when tests
- * stack multiple defaults during setup.
+ * Insert an org-level provider and make the matching model-first policy the
+ * workspace default. The helper name is legacy; production no longer uses
+ * provider-level defaults.
  *
  * @why-db-direct Inserts org-level provider bypassing API validation;
  * tests credit check with specific provider types
@@ -215,27 +318,23 @@ export async function insertOrgDefaultModelProvider(
   selectedModel?: string,
 ): Promise<string> {
   initServices();
-  await globalThis.services.db
-    .update(modelProviders)
-    .set({ isDefault: false, updatedAt: new Date() })
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        eq(modelProviders.isDefault, true),
-      ),
-    );
   const [row] = await globalThis.services.db
     .insert(modelProviders)
     .values({
       type,
       userId: ORG_SENTINEL_USER_ID,
       orgId,
-      isDefault: true,
+      isDefault: false,
       selectedModel: selectedModel ?? null,
     })
     .returning({ id: modelProviders.id });
   if (!row) throw new Error("insertOrgDefaultModelProvider: insert failed");
+  await setModelFirstDefaultPolicyForProvider({
+    orgId,
+    providerId: row.id,
+    type,
+    selectedModel,
+  });
   return row.id;
 }
 
@@ -259,23 +358,23 @@ export async function insertOrgMultiAuthModelProvider(
   selectedModel?: string,
 ): Promise<void> {
   initServices();
-  await globalThis.services.db
-    .update(modelProviders)
-    .set({ isDefault: false, updatedAt: new Date() })
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        eq(modelProviders.isDefault, true),
-      ),
-    );
-  await globalThis.services.db.insert(modelProviders).values({
-    type,
-    userId: ORG_SENTINEL_USER_ID,
+  const [row] = await globalThis.services.db
+    .insert(modelProviders)
+    .values({
+      type,
+      userId: ORG_SENTINEL_USER_ID,
+      orgId,
+      isDefault: false,
+      authMethod,
+      selectedModel: selectedModel ?? null,
+    })
+    .returning({ id: modelProviders.id });
+  if (!row) throw new Error("insertOrgMultiAuthModelProvider: insert failed");
+  await setModelFirstDefaultPolicyForProvider({
     orgId,
-    isDefault: true,
-    authMethod,
-    selectedModel: selectedModel ?? null,
+    providerId: row.id,
+    type,
+    selectedModel,
   });
 }
 
@@ -401,11 +500,9 @@ export async function lockOrgAndSetCredits(
 // ============================================================================
 
 /**
- * Insert a user-level (personal) default model provider directly in the
- * database. Personal default is workspace-scoped per (orgId, userId), so it
- * coexists with the org default — paired with the partial unique index
- * `idx_model_providers_one_default_per_user`. Mirrors the org seeder's
- * "clear existing default for the same scope first" semantics.
+ * Insert a user-level (personal) provider directly in the database.
+ * The helper name is legacy; provider rows are not marked default under the
+ * model-first route system.
  *
  * @why-db-direct Inserts user-tier provider bypassing API validation;
  * resolver tests need to seed personal-tier rows without secrets routing
@@ -418,23 +515,13 @@ export async function insertUserDefaultModelProvider(
   selectedModel?: string,
 ): Promise<string> {
   initServices();
-  await globalThis.services.db
-    .update(modelProviders)
-    .set({ isDefault: false, updatedAt: new Date() })
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, userId),
-        eq(modelProviders.isDefault, true),
-      ),
-    );
   const [row] = await globalThis.services.db
     .insert(modelProviders)
     .values({
       type,
       userId,
       orgId,
-      isDefault: true,
+      isDefault: false,
       selectedModel: selectedModel ?? null,
     })
     .returning({ id: modelProviders.id });
@@ -450,23 +537,13 @@ export async function insertUserMultiAuthModelProvider(
   selectedModel?: string,
 ): Promise<string> {
   initServices();
-  await globalThis.services.db
-    .update(modelProviders)
-    .set({ isDefault: false, updatedAt: new Date() })
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, userId),
-        eq(modelProviders.isDefault, true),
-      ),
-    );
   const [row] = await globalThis.services.db
     .insert(modelProviders)
     .values({
       type,
       userId,
       orgId,
-      isDefault: true,
+      isDefault: false,
       authMethod,
       selectedModel: selectedModel ?? null,
     })
@@ -505,33 +582,6 @@ export async function insertUserNonDefaultModelProvider(
   return row.id;
 }
 
-/**
- * Enable the `modelFirstModelProvider` feature switch for a specific user.
- *
- * @why-db-direct Tests need deterministic feature switch state without
- *   relying on static rollout rules.
- */
-export async function enableModelFirstModelProviderForUser(
-  orgId: string,
-  userId: string,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .insert(userFeatureSwitches)
-    .values({
-      orgId,
-      userId,
-      switches: { modelFirstModelProvider: true },
-    })
-    .onConflictDoUpdate({
-      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
-      set: {
-        switches: { modelFirstModelProvider: true },
-        updatedAt: new Date(),
-      },
-    });
-}
-
 export async function insertOrgModelPolicy(params: {
   orgId: string;
   model: string;
@@ -541,6 +591,18 @@ export async function insertOrgModelPolicy(params: {
   modelProviderId?: string | null;
 }): Promise<string> {
   initServices();
+  const now = new Date();
+  if (params.isDefault) {
+    await globalThis.services.db
+      .update(orgModelPolicies)
+      .set({ isDefault: false, updatedAt: now })
+      .where(
+        and(
+          eq(orgModelPolicies.orgId, params.orgId),
+          eq(orgModelPolicies.isDefault, true),
+        ),
+      );
+  }
   const [row] = await globalThis.services.db
     .insert(orgModelPolicies)
     .values({
@@ -550,6 +612,17 @@ export async function insertOrgModelPolicy(params: {
       defaultProviderType: params.defaultProviderType ?? "vm0",
       credentialScope: params.credentialScope ?? "org",
       modelProviderId: params.modelProviderId ?? null,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [orgModelPolicies.orgId, orgModelPolicies.model],
+      set: {
+        isDefault: params.isDefault ?? false,
+        defaultProviderType: params.defaultProviderType ?? "vm0",
+        credentialScope: params.credentialScope ?? "org",
+        modelProviderId: params.modelProviderId ?? null,
+        updatedAt: now,
+      },
     })
     .returning({ id: orgModelPolicies.id });
   if (!row) throw new Error("insertOrgModelPolicy: insert failed");

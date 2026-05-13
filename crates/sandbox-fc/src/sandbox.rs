@@ -8,9 +8,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use sandbox::{
-    ExecRequest, ExecResult, ProcessExit, Sandbox, SandboxConfig, SandboxError,
-    SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
-    SpawnHandle,
+    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, ProcessExit, Sandbox, SandboxConfig,
+    SandboxError, SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation,
+    SandboxOperationReason, SpawnHandle, SpawnWatchRequest,
 };
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::{mpsc, watch};
@@ -1340,15 +1340,75 @@ impl Sandbox for FirecrackerSandbox {
     async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
         let operation = SandboxOperation::Exec;
         let guest = self.operation_guest(operation).await?;
+        let limits = request.output_limits;
 
         tokio::select! {
-            result = guest.exec(request.cmd, request.timeout_ms(), request.env, request.sudo) => {
+            result = guest.exec_capture(
+                vsock_host::CommandCaptureRequest {
+                    command: request.cmd,
+                    timeout_ms: request.timeout_ms(),
+                    env: request.env,
+                    sudo: request.sudo,
+                    label: "sandbox-exec",
+                    stdout_limit_bytes: limits.stdout_limit_bytes,
+                    stderr_limit_bytes: limits.stderr_limit_bytes,
+                    wait_timeout: Duration::from_millis(request.timeout_ms() as u64 + 5000),
+                }
+            ) => {
                 let result = result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))?;
                 Ok(ExecResult {
                     exit_code: result.exit_code,
                     stdout: result.stdout,
                     stderr: result.stderr,
+                    stdout_truncated: result.stdout_truncated,
+                    stderr_truncated: result.stderr_truncated,
                 })
+            }
+            () = wait_for_backend_crash(self.state_tx.subscribe()) => {
+                Err(Self::backend_crashed_error(operation))
+            }
+        }
+    }
+
+    async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
+        let operation = SandboxOperation::Exec;
+        let guest = self.operation_guest(operation).await?;
+
+        tokio::select! {
+            result = guest.read_file(path, max_bytes, 5000) => {
+                result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))
+            }
+            () = wait_for_backend_crash(self.state_tx.subscribe()) => {
+                Err(Self::backend_crashed_error(operation))
+            }
+        }
+    }
+
+    async fn copy_file(
+        &self,
+        path: &str,
+        host_path: &Path,
+        options: CopyFileOptions,
+    ) -> sandbox::Result<CopyFileResult> {
+        let operation = SandboxOperation::Exec;
+        let guest = self.operation_guest(operation).await?;
+        let timeout_ms = u32::try_from(options.timeout.as_millis()).unwrap_or(u32::MAX);
+
+        tokio::select! {
+            result = guest.copy_file(
+                path,
+                host_path,
+                vsock_host::CopyFileOptions {
+                    max_bytes: options.max_bytes,
+                    timeout_ms,
+                    missing_ok: options.missing_ok,
+                },
+            ) => {
+                result
+                    .map(|result| CopyFileResult {
+                        bytes_copied: result.bytes_copied,
+                    })
+                    .map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))
             }
             () = wait_for_backend_crash(self.state_tx.subscribe()) => {
                 Err(Self::backend_crashed_error(operation))
@@ -1370,11 +1430,7 @@ impl Sandbox for FirecrackerSandbox {
         }
     }
 
-    async fn spawn_watch(
-        &self,
-        request: &ExecRequest<'_>,
-        output: sandbox::SpawnOutputMode<'_>,
-    ) -> sandbox::Result<SpawnHandle> {
+    async fn spawn_watch(&self, request: &SpawnWatchRequest<'_>) -> sandbox::Result<SpawnHandle> {
         let operation = SandboxOperation::SpawnWatch;
         let guest = self.operation_guest(operation).await?;
 
@@ -1384,13 +1440,13 @@ impl Sandbox for FirecrackerSandbox {
                 request.timeout_ms(),
                 request.env,
                 request.sudo,
-                output.streams_stdout(),
-                output.guest_log_path(),
+                request.output.streams_stdout(),
+                request.output.guest_log_path(),
             ) => {
                 let (pid, stdout_rx) = result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))?;
                 Ok(SpawnHandle {
                     pid,
-                    stdout_rx: output.streams_stdout().then_some(stdout_rx),
+                    stdout_rx: request.output.streams_stdout().then_some(stdout_rx),
                 })
             }
             () = wait_for_backend_crash(self.state_tx.subscribe()) => {

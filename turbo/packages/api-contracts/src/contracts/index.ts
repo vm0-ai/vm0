@@ -172,8 +172,44 @@ export {
   type StoragesListContract,
 } from "./storages";
 export {
+  internalCallbacksChatContract,
+  chatCallbackPayloadSchema,
+  type InternalCallbacksChatContract,
+  type ChatCallbackPayload,
+} from "./internal-callbacks-chat";
+export {
+  internalCallbacksTelegramContract,
+  telegramCallbackPayloadSchema,
+  type InternalCallbacksTelegramContract,
+  type TelegramCallbackPayload,
+} from "./internal-callbacks-telegram";
+export {
+  internalCallbacksSlackOrgContract,
+  slackOrgCallbackPayloadSchema,
+  type InternalCallbacksSlackOrgContract,
+  type SlackOrgCallbackPayload,
+} from "./internal-callbacks-slack-org";
+export {
+  internalCallbacksVoiceChatContract,
+  voiceChatCallbackPayloadSchema,
+  type InternalCallbacksVoiceChatContract,
+  type VoiceChatCallbackPayload,
+} from "./internal-callbacks-voice-chat";
+export {
+  zeroEmailInboundContract,
+  zeroEmailReplyCallbackContract,
+  zeroEmailReplyCallbackPayloadSchema,
+  zeroEmailTriggerCallbackContract,
+  zeroEmailTriggerCallbackPayloadSchema,
+  type ZeroEmailReplyCallbackPayload,
+  type ZeroEmailTriggerCallbackPayload,
+} from "./zero-email";
+export {
   sandboxReuseResultSchema,
+  webhookClerkContract,
   webhookEventsContract,
+  webhookGithubContract,
+  webhookStripeContract,
   webhookCompleteContract,
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
@@ -196,7 +232,10 @@ export {
   type WebhookStoragesPrepareContract,
   type WebhookStoragesCommitContract,
   webhookUsageEventContract,
+  type WebhookClerkContract,
   type WebhookUsageEventContract,
+  type WebhookGithubContract,
+  type WebhookStripeContract,
 } from "./webhooks";
 export {
   cliAuthDeviceContract,
@@ -361,7 +400,6 @@ export {
   modelProviderListResponseSchema,
   upsertModelProviderRequestSchema,
   upsertModelProviderResponseSchema,
-  updateModelRequestSchema,
   orgModelPolicyRouteStatusSchema,
   orgModelPolicySchema,
   updateOrgModelPolicySchema,
@@ -405,7 +443,6 @@ export {
   type ModelProviderListResponse,
   type UpsertModelProviderRequest,
   type UpsertModelProviderResponse,
-  type UpdateModelRequest,
   type OrgModelPolicyRouteStatus,
   type OrgModelPolicy,
   type UpdateOrgModelPolicy,
@@ -913,12 +950,8 @@ export {
 export {
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
-  zeroModelProvidersDefaultContract,
-  zeroModelProvidersUpdateModelContract,
   type ZeroModelProvidersMainContract,
   type ZeroModelProvidersByTypeContract,
-  type ZeroModelProvidersDefaultContract,
-  type ZeroModelProvidersUpdateModelContract,
 } from "./zero-model-providers";
 export {
   zeroPersonalModelProvidersMainContract,
@@ -991,6 +1024,10 @@ export {
   type IntegrationsTelegramMessageContract,
   type SendTelegramMessageBody,
   type SendTelegramMessageResponse,
+  integrationsPhoneMessageContract,
+  type IntegrationsPhoneMessageContract,
+  type SendPhoneMessageBody,
+  type SendPhoneMessageResponse,
   integrationsTelegramBotListContract,
   type IntegrationsTelegramBotListContract,
   type TelegramBotListItem,
@@ -1007,6 +1044,12 @@ export {
   integrationsTelegramUploadCompleteContract,
   type TelegramUploadCompleteBody,
   type TelegramUploadCompleteResponse,
+  integrationsPhoneUploadInitContract,
+  type PhoneUploadInitBody,
+  type PhoneUploadInitResponse,
+  integrationsPhoneUploadCompleteContract,
+  type PhoneUploadCompleteBody,
+  type PhoneUploadCompleteResponse,
   integrationsChatMessageContract,
   type IntegrationsChatMessageContract,
   type SendChatMessageBody,
@@ -1095,6 +1138,18 @@ export {
   zeroSlackConnectContract,
   type ZeroSlackConnectContract,
 } from "./zero-slack-connect";
+export {
+  zeroSlackCommandsContract,
+  type ZeroSlackCommandsContract,
+} from "./zero-slack-commands";
+export {
+  zeroSlackEventsContract,
+  type ZeroSlackEventsContract,
+} from "./zero-slack-events";
+export {
+  zeroSlackInteractiveContract,
+  type ZeroSlackInteractiveContract,
+} from "./zero-slack-interactive";
 export {
   zeroSlackBrowserConnectContract,
   zeroSlackBrowserConnectQuerySchema,
@@ -1206,6 +1261,49 @@ export {
   type PushSubscriptionsContract,
 } from "./push-subscriptions";
 export {
+  zeroImageIoGenerateContract,
+  zeroImageIoGenerateRequestSchema,
+  zeroImageIoGenerateResponseSchema,
+  zeroImageIoUsageSchema,
+  type ZeroImageIoGenerateContract,
+  type ZeroImageIoGenerateRequest,
+  type ZeroImageIoGenerateResponse,
+} from "./zero-image-io-generate";
+export {
+  zeroVideoIoGenerateContract,
+  zeroVideoIoGenerateRequestSchema,
+  zeroVideoIoGenerateResponseSchema,
+  type ZeroVideoIoGenerateContract,
+  type ZeroVideoIoGenerateRequest,
+  type ZeroVideoIoGenerateResponse,
+} from "./zero-video-io-generate";
+export {
+  internalCallbacksAgentContract,
+  type InternalCallbacksAgentContract,
+} from "./internal-callbacks-agent";
+export {
+  githubIssuesCallbackPayloadSchema,
+  internalCallbacksGithubIssuesContract,
+  type GitHubIssuesCallbackPayload,
+  type InternalCallbacksGithubIssuesContract,
+} from "./internal-callbacks-github-issues";
+export {
+  internalCallbacksScheduleContract,
+  scheduleCronCallbackPayloadSchema,
+  scheduleLoopCallbackPayloadSchema,
+  type InternalCallbacksScheduleContract,
+  type ScheduleCronCallbackPayload,
+  type ScheduleLoopCallbackPayload,
+} from "./internal-callbacks-schedule";
+export {
+  internalCallbackBodySchema,
+  internalCallbackErrorSchema,
+  internalCallbackHeadersSchema,
+  internalCallbackSuccessSchema,
+  internalCallbackSuccessWithSkippedSchema,
+  type InternalCallbackBody,
+} from "./internal-callbacks-shared";
+export {
   zeroVoiceIoQuotaContract,
   audioInputQuotaResponseSchema,
   type ZeroVoiceIoQuotaContract,
@@ -1273,4 +1371,6 @@ export {
   zeroIntegrationsAgentPhoneContract,
   type ZeroIntegrationsAgentPhoneContract,
   type AgentPhoneConnectResponse,
+  type AgentPhoneLinkStatusResponse,
+  type AgentPhoneStartLinkResponse,
 } from "./zero-integrations-agentphone";

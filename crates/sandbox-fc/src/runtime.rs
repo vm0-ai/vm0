@@ -15,8 +15,8 @@ use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
 
 /// Firecracker-backed sandbox runtime.
 ///
-/// Manages shared resources (`NetnsPoolHandle`, [`DevicePoolHandle`]) and creates
-/// [`FirecrackerFactory`] instances that share them.
+/// Manages shared network namespace and device pools, then creates
+/// sandbox factories that share those resources.
 pub struct FirecrackerRuntime {
     netns_pool: NetnsPoolHandle,
     device_pool: DevicePoolHandle,

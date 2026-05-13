@@ -245,8 +245,7 @@ function resolveVisiblePreferencesTab(
 export function ZeroPreferencesPage() {
   const features = useLastResolved(featureSwitch$);
   const showDebug = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
-  const showModelConfiguration =
-    features?.[FeatureSwitchKey.ModelFirstModelProvider] ?? false;
+  const showModelConfiguration = true;
   const tab = useGet(preferencesTab$);
   const activeTab = resolveVisiblePreferencesTab(tab, {
     showDebug,

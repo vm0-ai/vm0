@@ -2,10 +2,14 @@ import { and, eq } from "drizzle-orm";
 import { agentphoneThreadSessions } from "@vm0/db/schema/agentphone-thread-session";
 import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
 import { env } from "../../../../env";
-import { sendAgentPhoneMessage } from "../client";
+import {
+  sendAgentPhoneMessage,
+  sendAgentPhoneTypingIndicator,
+} from "../client";
 import { AGENTPHONE_ROOT_MESSAGE_ID } from "../constants";
 import {
   buildAgentPhoneConnectUrl,
+  appendAgentPhoneSlashCommandRiskWarning,
   enrichAgentPhonePrompt,
   fetchAgentPhoneContext,
   lookupAgentPhoneThreadSession,
@@ -20,6 +24,7 @@ import {
   resolveTelegramAuditLogsUrl,
 } from "../../telegram/handlers/shared";
 import { canReuseSessionForRunModel } from "../../context/session-model-compatibility";
+import { formatAgentPhoneAuditLink } from "../footer";
 import { handleAgentPhoneModelCommand } from "./model";
 import { runAgentForAgentPhone } from "./run-agent";
 import { logger } from "../../../shared/logger";
@@ -30,8 +35,6 @@ interface ResolvedAgentPhoneAgent {
   composeId: string;
   agentId: string;
   agentName: string;
-  modelProviderId: string | null;
-  selectedModel: string | null;
 }
 
 function parseAgentPhoneCommand(text: string): string | undefined {
@@ -54,12 +57,43 @@ async function sendAgentPhoneText(params: {
   });
 }
 
+async function sendAgentPhoneSlashCommandText(params: {
+  event: AgentPhoneMessageEvent;
+  body: string;
+}): Promise<void> {
+  await sendAgentPhoneText({
+    event: params.event,
+    body: appendAgentPhoneSlashCommandRiskWarning(
+      params.body,
+      params.event.channel,
+    ),
+  });
+}
+
+async function refreshTypingIfSupported(
+  event: AgentPhoneMessageEvent,
+): Promise<void> {
+  if (event.channel !== "imessage" || !event.conversationId) return;
+
+  try {
+    await sendAgentPhoneTypingIndicator({
+      conversationId: event.conversationId,
+    });
+  } catch (error) {
+    log.debug("Failed to send AgentPhone typing indicator", {
+      conversationId: event.conversationId,
+      error,
+    });
+  }
+}
+
 function formatConnectPrompt(event: AgentPhoneMessageEvent): string {
   const { SECRETS_ENCRYPTION_KEY } = env();
   const connectUrl = buildAgentPhoneConnectUrl({
     phoneHandle: event.fromNumber,
     agentphoneAgentId: event.agentphoneAgentId,
     secret: SECRETS_ENCRYPTION_KEY,
+    channel: event.channel,
   });
 
   return [
@@ -74,7 +108,7 @@ function formatHelpMessage(): string {
     "",
     "/connect - Connect this phone number to VM0",
     "/new_session - Start a new conversation",
-    "/model - Choose your personal default model",
+    "/model - Choose your model",
     "/disconnect - Disconnect this phone number from VM0",
     "/help - Show these commands",
     "",
@@ -82,10 +116,16 @@ function formatHelpMessage(): string {
   ].join("\n");
 }
 
-async function sendConnectPrompt(event: AgentPhoneMessageEvent): Promise<void> {
+async function sendConnectPrompt(
+  event: AgentPhoneMessageEvent,
+  options?: { readonly slashCommand: boolean },
+): Promise<void> {
+  const body = formatConnectPrompt(event);
   await sendAgentPhoneText({
     event,
-    body: formatConnectPrompt(event),
+    body: options?.slashCommand
+      ? appendAgentPhoneSlashCommandRiskWarning(body, event.channel)
+      : body,
   });
 }
 
@@ -105,8 +145,6 @@ async function resolveAgentPhoneAgent(
     composeId,
     agentId: agent.agentId,
     agentName: getAgentDisplayLabel(agent),
-    modelProviderId: agent.modelProviderId,
-    selectedModel: agent.selectedModel,
   };
 }
 
@@ -115,14 +153,14 @@ async function handleConnectCommand(params: {
   userLink: AgentPhoneUserLink | null;
 }): Promise<void> {
   if (params.userLink) {
-    await sendAgentPhoneText({
+    await sendAgentPhoneSlashCommandText({
       event: params.event,
       body: "You are already connected. Send a message here to start chatting with Zero.",
     });
     return;
   }
 
-  await sendConnectPrompt(params.event);
+  await sendConnectPrompt(params.event, { slashCommand: true });
 }
 
 async function handleDisconnectCommand(params: {
@@ -130,7 +168,7 @@ async function handleDisconnectCommand(params: {
   userLink: AgentPhoneUserLink | null;
 }): Promise<void> {
   if (!params.userLink) {
-    await sendAgentPhoneText({
+    await sendAgentPhoneSlashCommandText({
       event: params.event,
       body: "Error: This phone number is not connected.",
     });
@@ -141,7 +179,7 @@ async function handleDisconnectCommand(params: {
     .delete(agentphoneUserLinks)
     .where(eq(agentphoneUserLinks.id, params.userLink.id));
 
-  await sendAgentPhoneText({
+  await sendAgentPhoneSlashCommandText({
     event: params.event,
     body: "This phone number has been disconnected from VM0.",
   });
@@ -152,7 +190,7 @@ async function handleNewSessionCommand(params: {
   userLink: AgentPhoneUserLink | null;
 }): Promise<void> {
   if (!params.userLink) {
-    await sendConnectPrompt(params.event);
+    await sendConnectPrompt(params.event, { slashCommand: true });
     return;
   }
 
@@ -165,7 +203,7 @@ async function handleNewSessionCommand(params: {
       ),
     );
 
-  await sendAgentPhoneText({
+  await sendAgentPhoneSlashCommandText({
     event: params.event,
     body: "New session started.",
   });
@@ -193,20 +231,21 @@ async function dispatchAgentPhoneCommand(params: {
       await handleNewSessionCommand(params);
       return true;
     case "help":
-      await sendAgentPhoneText({
+      await sendAgentPhoneSlashCommandText({
         event: params.event,
         body: formatHelpMessage(),
       });
       return true;
     case "model":
       if (!params.userLink) {
-        await sendConnectPrompt(params.event);
+        await sendConnectPrompt(params.event, { slashCommand: true });
         return true;
       }
       await handleAgentPhoneModelCommand({
         text: params.event.body,
         agentphoneAgentId: params.event.agentphoneAgentId,
         phoneHandle: params.event.fromNumber,
+        channel: params.event.channel,
         orgId: params.userLink.orgId,
         userId: params.userLink.vm0UserId,
       });
@@ -261,8 +300,6 @@ export async function handleAgentPhoneMessage(
       userId: userLink.vm0UserId,
       orgId: userLink.orgId,
       agentComposeId: agent.composeId,
-      modelProviderId: agent.modelProviderId,
-      selectedModel: agent.selectedModel,
     });
     if (!canReuseSession) {
       log.debug("Model changed, starting new AgentPhone session", {
@@ -283,8 +320,11 @@ export async function handleAgentPhoneMessage(
   const { prompt, userInfoExtras } = enrichAgentPhonePrompt(
     event.body,
     event.fromNumber,
+    event.messageId,
     event.mediaUrl,
   );
+
+  await refreshTypingIfSupported(event);
 
   const { status, response, runId } = await runAgentForAgentPhone({
     agentId: agent.agentId,
@@ -295,12 +335,15 @@ export async function handleAgentPhoneMessage(
     userInfoExtras,
     phoneHandle: event.fromNumber,
     conversationId: event.conversationId,
+    channel: event.channel,
     messageId: event.messageId,
+    agentphoneAgentId: event.agentphoneAgentId,
     userId: userLink.vm0UserId,
     apiStartTime,
     callbackContext: {
       messageId: event.messageId,
       conversationId: event.conversationId,
+      channel: event.channel,
       phoneHandle: event.fromNumber,
       fromNumber: event.fromNumber,
       toNumber: event.toNumber,
@@ -329,7 +372,7 @@ export async function handleAgentPhoneMessage(
       event,
       body: [
         response ?? "An unexpected error occurred. Please try again later.",
-        logsUrl ? `View run: ${logsUrl}` : null,
+        logsUrl ? formatAgentPhoneAuditLink(logsUrl) : null,
       ]
         .filter((part): part is string => {
           return Boolean(part);
