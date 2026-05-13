@@ -615,7 +615,16 @@ mod tests {
             // SAFETY: `pollfd` points to one initialized descriptor entry.
             let result = unsafe { libc::poll(&mut pollfd, 1, timeout_ms) };
             if result > 0 {
-                return Ok(true);
+                let revents = pollfd.revents;
+                if revents & libc::POLLNVAL != 0 {
+                    return Err(std::io::Error::other("pidfd became invalid while polling"));
+                }
+                if revents & (libc::POLLIN | libc::POLLHUP) != 0 {
+                    return Ok(true);
+                }
+                return Err(std::io::Error::other(format!(
+                    "unexpected pidfd poll revents: {revents:#x}"
+                )));
             }
             if result == 0 {
                 return Ok(false);
@@ -640,6 +649,20 @@ mod tests {
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
         let guard = TempDirGuard(dir.clone());
         (dir, guard)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn kill_spawned_child(child: &mut Option<Child>) {
+        if let Some(child) = child.take() {
+            crate::process::kill_and_reap_child(child);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn kill_background_pid_and_wait(pid: libc::pid_t, pidfd: &std::os::fd::OwnedFd) {
+        // SAFETY: best-effort cleanup of a test-owned background process.
+        let _ = unsafe { libc::kill(pid, libc::SIGKILL) };
+        let _ = wait_for_pidfd_exit(pidfd, Duration::from_secs(1));
     }
 
     #[test]
@@ -1034,25 +1057,41 @@ mod tests {
 
         let mut command = build_exec_command(&script, false);
         command.stdout(Stdio::null()).stderr(Stdio::null());
-        let child = spawn_in_own_process_group(&mut command).unwrap();
-        assert!(
-            wait_for_path(&ready, Duration::from_secs(2)),
-            "background child should be started before timeout kill is tested"
-        );
-        let background_pid: libc::pid_t = std::fs::read_to_string(&background_pid)
-            .unwrap()
-            .trim()
-            .parse()
-            .unwrap();
-        let background_pidfd = open_pidfd(background_pid)
-            .unwrap_or_else(|e| panic!("failed to open pidfd for pid {background_pid}: {e}"));
+        let mut child = Some(spawn_in_own_process_group(&mut command).unwrap());
+        if !wait_for_path(&ready, Duration::from_secs(2)) {
+            kill_spawned_child(&mut child);
+            panic!("background child should be started before timeout kill is tested");
+        }
+        let background_pid_text = match std::fs::read_to_string(&background_pid) {
+            Ok(pid) => pid,
+            Err(e) => {
+                kill_spawned_child(&mut child);
+                panic!("failed to read background pid: {e}");
+            }
+        };
+        let background_pid: libc::pid_t = match background_pid_text.trim().parse() {
+            Ok(pid) => pid,
+            Err(e) => {
+                kill_spawned_child(&mut child);
+                panic!("failed to parse background pid {background_pid_text:?}: {e}");
+            }
+        };
+        let background_pidfd = match open_pidfd(background_pid) {
+            Ok(pidfd) => pidfd,
+            Err(e) => {
+                kill_spawned_child(&mut child);
+                panic!("failed to open pidfd for pid {background_pid}: {e}");
+            }
+        };
 
-        let outcome = wait_with_kill_timeout(child, 100);
-        assert!(matches!(outcome, WaitOutcome::TimedOut));
+        let outcome = wait_with_kill_timeout(child.take().unwrap(), 100);
+        if !matches!(outcome, WaitOutcome::TimedOut) {
+            kill_background_pid_and_wait(background_pid, &background_pidfd);
+            panic!("expected timeout kill to return WaitOutcome::TimedOut");
+        }
 
         if !wait_for_pidfd_exit(&background_pidfd, Duration::from_secs(2)).unwrap() {
-            // SAFETY: best-effort cleanup of the test-owned background pid.
-            let _ = unsafe { libc::kill(background_pid, libc::SIGKILL) };
+            kill_background_pid_and_wait(background_pid, &background_pidfd);
             panic!(
                 "timeout kill should terminate background pid {background_pid} in the process group"
             );
