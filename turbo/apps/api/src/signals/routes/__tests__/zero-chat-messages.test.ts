@@ -258,26 +258,35 @@ async function runExecutionSecrets(runId: string) {
 async function seedModelProvider(
   fixture: ChatMessageFixture,
   selectedModel: string,
+  options: {
+    readonly type?: string;
+    readonly userId?: string;
+  } = {},
 ): Promise<string> {
   const writeDb = store.set(writeDb$);
-  const [secret] = await writeDb
-    .insert(secrets)
-    .values({
-      name: "ANTHROPIC_API_KEY",
-      encryptedValue: encryptSecretForTests("test-provider-key"),
-      type: "model-provider",
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-    })
-    .returning({ id: secrets.id });
+  const providerType = options.type ?? "anthropic-api-key";
+  const providerUserId = options.userId ?? fixture.userId;
+  const [secret] =
+    providerType === "vm0"
+      ? [undefined]
+      : await writeDb
+          .insert(secrets)
+          .values({
+            name: "ANTHROPIC_API_KEY",
+            encryptedValue: encryptSecretForTests("test-provider-key"),
+            type: "model-provider",
+            userId: providerUserId,
+            orgId: fixture.orgId,
+          })
+          .returning({ id: secrets.id });
   const [provider] = await writeDb
     .insert(modelProviders)
     .values({
-      type: "anthropic-api-key",
-      secretId: secret!.id,
+      type: providerType,
+      secretId: secret?.id ?? null,
       isDefault: true,
       selectedModel,
-      userId: fixture.userId,
+      userId: providerUserId,
       orgId: fixture.orgId,
     })
     .returning({ id: modelProviders.id });
@@ -970,6 +979,62 @@ describe("POST /api/zero/chat/messages", () => {
       .where(eq(agentRuns.userId, fixture.userId))
       .limit(1);
     expect(run).toBeUndefined();
+  });
+
+  it("returns 402 when provider-first VM0 modelSelection has no spendable credits", async () => {
+    const fixture = await track(seedFixture());
+    await seedVm0Credits(fixture, 0);
+    const providerId = await seedModelProvider(fixture, "claude-sonnet-4-6", {
+      type: "vm0",
+    });
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "blocked by provider selection credits",
+          modelSelection: {
+            modelProviderId: providerId,
+            selectedModel: "claude-sonnet-4-6",
+          },
+        },
+      }),
+      [402],
+    );
+
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    const [run] = await store
+      .set(writeDb$)
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(eq(agentRuns.userId, fixture.userId))
+      .limit(1);
+    expect(run).toBeUndefined();
+  });
+
+  it("rejects modelSelection that belongs to another user in the same org", async () => {
+    const fixture = await track(seedFixture());
+    const providerId = await seedModelProvider(fixture, "claude-sonnet-4-6", {
+      userId: `user_${randomUUID()}`,
+    });
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "do not use another user provider",
+          modelSelection: {
+            modelProviderId: providerId,
+            selectedModel: "claude-sonnet-4-6",
+          },
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
   });
 
   it("locks an existing provider-first thread to its first model selection", async () => {

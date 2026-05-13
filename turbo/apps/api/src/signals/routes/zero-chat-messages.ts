@@ -209,6 +209,7 @@ const GOAL_DEFAULT_BUDGET = 10;
 const PRIOR_HISTORY_MESSAGE_LIMIT = 10;
 const WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP = 4000;
 const WEB_CHAT_INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
+const ORG_SENTINEL_USER_ID = "__org__";
 
 function forbidden(message: string) {
   return {
@@ -806,7 +807,7 @@ async function modelProviderPinAvailable(params: {
         eq(modelProviders.orgId, params.orgId),
         or(
           eq(modelProviders.userId, params.userId),
-          eq(modelProviders.userId, "__org__"),
+          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
         ),
       ),
     )
@@ -977,6 +978,7 @@ async function resolveRunModelPin(params: {
 async function validateModelSelection(params: {
   readonly db: Db;
   readonly orgId: string;
+  readonly userId: string;
   readonly threadId: string | undefined;
   readonly modelSelection: IncomingModelSelection;
   readonly modelFirst: boolean;
@@ -990,6 +992,10 @@ async function validateModelSelection(params: {
         and(
           eq(modelProviders.id, params.modelSelection.modelProviderId),
           eq(modelProviders.orgId, params.orgId),
+          or(
+            eq(modelProviders.userId, params.userId),
+            eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+          ),
         ),
       )
       .limit(1);
@@ -1617,6 +1623,7 @@ const prepareNormalSend$ = command(
     const modelError = await validateModelSelection({
       db,
       orgId: args.orgId,
+      userId: args.userId,
       threadId: args.body.threadId,
       modelSelection: args.body.modelSelection,
       modelFirst: useModelFirst,
@@ -1788,6 +1795,59 @@ function scheduleAssociatedUserMessage(params: {
   );
 }
 
+async function resolveEffectiveModelProviderType(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly modelPin: ThreadModelPin;
+  readonly requestedModelProvider: string | undefined;
+}): Promise<string | null | undefined> {
+  if (params.modelPin.modelProviderType) {
+    return params.modelPin.modelProviderType;
+  }
+  if (!params.modelPin.modelProviderId) {
+    return params.requestedModelProvider;
+  }
+
+  const [provider] = await params.db
+    .select({ type: modelProviders.type })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.id, params.modelPin.modelProviderId),
+        eq(modelProviders.orgId, params.orgId),
+        or(
+          eq(modelProviders.userId, params.userId),
+          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        ),
+      ),
+    )
+    .limit(1);
+
+  return provider?.type ?? params.requestedModelProvider;
+}
+
+async function resolveProviderAdmission(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly modelPin: ThreadModelPin;
+  readonly requestedModelProvider: string | undefined;
+}): Promise<{
+  readonly effectiveModelProvider: string | null | undefined;
+  readonly error: Awaited<ReturnType<typeof checkOrgCreditsForRunAdmission>>;
+}> {
+  const effectiveModelProvider =
+    await resolveEffectiveModelProviderType(params);
+  const error = await checkOrgCreditsForRunAdmission({
+    db: params.db,
+    orgId: params.orgId,
+    userId: params.userId,
+    modelProviderType: effectiveModelProvider,
+  });
+  return { effectiveModelProvider, error };
+}
+
 const createNormalChatRun$ = command(
   async (
     { set },
@@ -1818,17 +1878,16 @@ const createNormalChatRun$ = command(
       args.body.modelProvider && args.body.modelProvider !== "default"
         ? args.body.modelProvider
         : undefined;
-    const effectiveModelProvider =
-      modelPin.modelProviderType ?? requestedModelProvider;
-    const creditAdmission = await checkOrgCreditsForRunAdmission({
+    const providerAdmission = await resolveProviderAdmission({
       db: prepared.db,
       orgId: args.orgId,
       userId: args.userId,
-      modelProviderType: effectiveModelProvider,
+      modelPin,
+      requestedModelProvider,
     });
     signal.throwIfAborted();
-    if (creditAdmission) {
-      return creditAdmission;
+    if (providerAdmission.error) {
+      return providerAdmission.error;
     }
 
     const runResult = await set(
@@ -1876,7 +1935,7 @@ const createNormalChatRun$ = command(
     await prepared.db
       .update(zeroRuns)
       .set({
-        modelProvider: effectiveModelProvider,
+        modelProvider: providerAdmission.effectiveModelProvider,
         modelProviderId: modelPin.modelProviderId,
         modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
         selectedModel: modelPin.selectedModel,
