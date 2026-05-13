@@ -94,6 +94,33 @@ describe("isFeatureEnabled", () => {
       }),
     ).toBe(true);
   });
+
+  it("should enable CLI auth switches for staff orgs only by default", () => {
+    expect(isFeatureEnabled(FeatureSwitchKey.CliAuth, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.StripeCliAuth, {})).toBe(false);
+
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.CliAuth, {
+        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      }),
+    ).toBe(true);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.StripeCliAuth, {
+        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      }),
+    ).toBe(true);
+
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.CliAuth, {
+        orgId: "org_nonexistent",
+      }),
+    ).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.StripeCliAuth, {
+        orgId: "org_nonexistent",
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("getAllFeatureStates", () => {
@@ -190,6 +217,30 @@ describe("overrides", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.DropboxConnector, {
         overrides: { [FeatureSwitchKey.AhrefsConnector]: true },
+      }),
+    ).toBe(false);
+  });
+
+  it("should allow CLI auth switches to be overridden independently", () => {
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.CliAuth, {
+        overrides: { [FeatureSwitchKey.CliAuth]: true },
+      }),
+    ).toBe(true);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.StripeCliAuth, {
+        overrides: { [FeatureSwitchKey.StripeCliAuth]: true },
+      }),
+    ).toBe(true);
+
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.StripeCliAuth, {
+        overrides: { [FeatureSwitchKey.CliAuth]: true },
+      }),
+    ).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.CliAuth, {
+        overrides: { [FeatureSwitchKey.StripeCliAuth]: true },
       }),
     ).toBe(false);
   });
