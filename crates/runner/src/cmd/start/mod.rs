@@ -778,6 +778,15 @@ fn maybe_panic_outer_job(
     }
 }
 
+async fn tick_optional_interval(interval: &mut Option<tokio::time::Interval>) {
+    match interval {
+        Some(interval) => {
+            interval.tick().await;
+        }
+        None => std::future::pending::<()>().await,
+    }
+}
+
 async fn run(config: RunConfig) -> RunnerResult<()> {
     let RunConfig {
         id: runner_id,
@@ -896,6 +905,23 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         Duration::from_secs(10),
     );
     orphan_reap_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    // Provider-side control work must not be gated by job-discovery capacity.
+    // Local file queues use this to keep `.cancel` delivery live while the
+    // runner is full or draining. API providers receive those events through
+    // their background control-plane task, so they leave this disabled.
+    let mut provider_control_tick = match provider.control_poll_interval() {
+        Some(period) if period.is_zero() => {
+            warn!("provider control poll interval is zero, disabling control polling");
+            None
+        }
+        Some(period) => {
+            let mut tick = tokio::time::interval_at(tokio::time::Instant::now(), period);
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            Some(tick)
+        }
+        None => None,
+    };
 
     let hb_ctx = HeartbeatContext::new(
         &idle_pool, &runner_id, &name, &group, &profiles, &budget, &*provider,
@@ -1028,6 +1054,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         jobs: &mut jobs,
                     },
                 ).await;
+            }
+            _ = tick_optional_interval(&mut provider_control_tick) => {
+                provider.poll_control().await;
             }
             // Mode changes (signals)
             _ = mode_rx.changed() => {}

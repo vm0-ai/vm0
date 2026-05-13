@@ -15,6 +15,7 @@
 //!   the Mutex when `provider.shutdown()` is called.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
@@ -78,6 +79,9 @@ pub struct MockJobProvider {
     /// `wait_heartbeat_past` uses the same subscribe-then-check pattern as
     /// `wait_completion` so a heartbeat that lands mid-check is still observed.
     heartbeat_notify: Arc<Notify>,
+    control_interval: Option<Duration>,
+    control_polls: Arc<AtomicUsize>,
+    control_notify: Arc<Notify>,
 }
 
 /// Test-side handle for driving the mock provider.
@@ -93,6 +97,10 @@ pub struct MockProviderHandle {
     discover_poll_started: Arc<Notify>,
     /// See [`MockJobProvider::heartbeat_notify`].
     heartbeat_notify: Arc<Notify>,
+    /// See [`MockJobProvider::control_polls`].
+    control_polls: Arc<AtomicUsize>,
+    /// See [`MockJobProvider::control_notify`].
+    control_notify: Arc<Notify>,
 }
 
 impl MockJobProvider {
@@ -114,6 +122,21 @@ impl MockJobProvider {
         cancel: CancellationToken,
         poll_delay: Option<Duration>,
     ) -> (Arc<Self>, MockProviderHandle) {
+        Self::with_options(cancel, poll_delay, None)
+    }
+
+    pub fn with_control_poll_interval(
+        cancel: CancellationToken,
+        control_interval: Duration,
+    ) -> (Arc<Self>, MockProviderHandle) {
+        Self::with_options(cancel, None, Some(control_interval))
+    }
+
+    fn with_options(
+        cancel: CancellationToken,
+        poll_delay: Option<Duration>,
+        control_interval: Option<Duration>,
+    ) -> (Arc<Self>, MockProviderHandle) {
         let (tx, rx) = mpsc::unbounded_channel();
         let completions = Arc::new(StdMutex::new(Vec::new()));
         let heartbeats = Arc::new(StdMutex::new(Vec::new()));
@@ -121,6 +144,8 @@ impl MockJobProvider {
         let completion_notify = Arc::new(Notify::new());
         let discover_poll_started = Arc::new(Notify::new());
         let heartbeat_notify = Arc::new(Notify::new());
+        let control_polls = Arc::new(AtomicUsize::new(0));
+        let control_notify = Arc::new(Notify::new());
         let provider = Arc::new(Self {
             discovery: Mutex::new(rx),
             poll_delay,
@@ -132,6 +157,9 @@ impl MockJobProvider {
             completion_notify: Arc::clone(&completion_notify),
             discover_poll_started: Arc::clone(&discover_poll_started),
             heartbeat_notify: Arc::clone(&heartbeat_notify),
+            control_interval,
+            control_polls: Arc::clone(&control_polls),
+            control_notify: Arc::clone(&control_notify),
         });
         let handle = MockProviderHandle {
             discover_tx: tx,
@@ -141,6 +169,8 @@ impl MockJobProvider {
             completion_notify,
             discover_poll_started,
             heartbeat_notify,
+            control_polls,
+            control_notify,
         };
         (provider, handle)
     }
@@ -229,6 +259,31 @@ impl MockProviderHandle {
             }
         }
     }
+
+    pub fn control_poll_count(&self) -> usize {
+        self.control_polls.load(Ordering::SeqCst)
+    }
+
+    pub async fn wait_control_poll_past(&self, baseline: usize, timeout: Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let notified = self.control_notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+
+            if self.control_poll_count() > baseline {
+                return true;
+            }
+
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            if tokio::time::timeout(remaining, notified).await.is_err() {
+                return false;
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -258,6 +313,15 @@ impl JobProvider for MockJobProvider {
             result = rx.recv() => result,
             () = self.cancel.cancelled() => None,
         }
+    }
+
+    fn control_poll_interval(&self) -> Option<Duration> {
+        self.control_interval
+    }
+
+    async fn poll_control(&self) {
+        self.control_polls.fetch_add(1, Ordering::SeqCst);
+        self.control_notify.notify_waiters();
     }
 
     async fn claim(&self, candidate: JobCandidate) -> Option<ExecutionContext> {

@@ -1,7 +1,8 @@
 use super::super::*;
 use super::support::{
     context_with_session, minimal_context, mock_run_config, mock_run_config_with_api_url,
-    mock_run_config_with_delay, mock_run_config_with_overrides, push_job, shutdown, test_profiles,
+    mock_run_config_with_control_poll, mock_run_config_with_delay, mock_run_config_with_overrides,
+    mock_run_config_with_overrides_and_control_poll, push_job, shutdown, test_profiles,
     wait_budget_count, wait_budget_exhausted_reactor, wait_cancel_token, wait_cancel_token_removed,
     wait_discover_entered, wait_parking_state, wait_status_mode,
 };
@@ -497,6 +498,64 @@ async fn heartbeat_fires_while_budget_exhausted() {
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
         .await;
+    shutdown(&env, run_handle).await;
+}
+
+/// Provider-side control work must keep running even when job discovery is
+/// disabled by capacity. Local file queues rely on this path for `.cancel`
+/// delivery while all runner slots are occupied.
+#[tokio::test(start_paused = true)]
+async fn provider_control_poll_fires_while_budget_exhausted() {
+    let gate = Arc::new(tokio::sync::Notify::new());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+        Arc::clone(&gate),
+    ));
+    let (config, env) = mock_run_config_with_overrides_and_control_poll(
+        test_profiles(),
+        2,
+        4096,
+        1,
+        overrides,
+        Duration::from_millis(100),
+    );
+    let budget = Arc::clone(&config.budget);
+    let run_handle = tokio::spawn(run(config));
+
+    let run_id = RunId::new_v4();
+    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+    wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
+    wait_budget_exhausted_reactor(&env, Duration::from_secs(5)).await;
+    let before = env.handle.control_poll_count();
+
+    tokio::time::advance(Duration::from_millis(100)).await;
+    assert!(
+        env.handle
+            .wait_control_poll_past(before, Duration::from_secs(5))
+            .await,
+        "provider control poll must fire while discovery is budget-gated",
+    );
+
+    gate.notify_one();
+    let _ = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await;
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn zero_provider_control_poll_interval_is_disabled() {
+    let (config, env) =
+        mock_run_config_with_control_poll(test_profiles(), 8, 32768, 4, Duration::ZERO);
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+    assert_eq!(
+        env.handle.control_poll_count(),
+        0,
+        "zero interval should disable provider control polling",
+    );
+
     shutdown(&env, run_handle).await;
 }
 

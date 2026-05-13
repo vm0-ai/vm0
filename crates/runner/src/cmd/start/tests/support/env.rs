@@ -91,6 +91,22 @@ pub(in super::super) fn mock_run_config_with_delay(
     )
 }
 
+pub(in super::super) fn mock_run_config_with_control_poll(
+    profiles: BTreeMap<String, config::ProfileConfig>,
+    budget_vcpu: u32,
+    budget_memory_mb: u32,
+    max_concurrent: usize,
+    control_interval: Duration,
+) -> (RunConfig, MockRunEnv) {
+    build_mock_run_config(
+        profiles,
+        budget_vcpu,
+        budget_memory_mb,
+        max_concurrent,
+        |cancel| MockJobProvider::with_control_poll_interval(cancel, control_interval),
+    )
+}
+
 fn build_mock_run_config(
     profiles: BTreeMap<String, config::ProfileConfig>,
     budget_vcpu: u32,
@@ -287,6 +303,25 @@ pub(in super::super) fn mock_run_config_with_overrides(
         budget_memory_mb,
         max_concurrent,
         MockJobProvider::new,
+        Box::new(MockSandboxRuntime::with_overrides(overrides)),
+        "http://localhost:0",
+    )
+}
+
+pub(in super::super) fn mock_run_config_with_overrides_and_control_poll(
+    profiles: BTreeMap<String, config::ProfileConfig>,
+    budget_vcpu: u32,
+    budget_memory_mb: u32,
+    max_concurrent: usize,
+    overrides: Arc<sandbox_mock::MockSandboxOverrides>,
+    control_interval: Duration,
+) -> (RunConfig, MockRunEnv) {
+    build_mock_run_config_with_runtime(
+        profiles,
+        budget_vcpu,
+        budget_memory_mb,
+        max_concurrent,
+        |cancel| MockJobProvider::with_control_poll_interval(cancel, control_interval),
         Box::new(MockSandboxRuntime::with_overrides(overrides)),
         "http://localhost:0",
     )

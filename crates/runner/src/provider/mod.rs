@@ -17,6 +17,7 @@ pub(crate) use local::{JobRequest, JobResponse};
 
 use sandbox::SandboxId;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use crate::ids::RunId;
 use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
@@ -82,6 +83,22 @@ pub trait JobProvider: Send + Sync {
     /// This method has **no server-side side effects** and can be safely
     /// dropped (cancelled) at any `.await` point.
     async fn discover(&self) -> Option<JobCandidate>;
+
+    /// Optional provider-side control polling that must continue even when
+    /// job discovery is gated by capacity or drain mode.
+    ///
+    /// API-backed providers usually receive control events from background
+    /// tasks. Local file-queue providers use this to scan `.cancel` markers
+    /// for already-running jobs while the runner has no capacity to discover
+    /// more work. Returning zero disables control polling.
+    fn control_poll_interval(&self) -> Option<Duration> {
+        None
+    }
+
+    /// Poll provider-side control events. Called only when
+    /// [`control_poll_interval()`](JobProvider::control_poll_interval) returns
+    /// an interval.
+    async fn poll_control(&self) {}
 
     /// Claim a discovered job. Returns `None` if the job was already claimed
     /// by another runner or an error occurred.
