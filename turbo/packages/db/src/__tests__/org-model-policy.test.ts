@@ -50,6 +50,7 @@ describe("orgModelPolicies schema", () => {
       expect.arrayContaining([
         "chk_org_model_policies_credential_scope",
         "chk_org_model_policies_member_scope_no_provider_id",
+        "chk_org_model_policies_builtin_route_no_provider_id",
         "chk_org_model_policies_member_scope_oauth_provider",
         "chk_org_model_policies_oauth_provider_member_scope",
       ]),
