@@ -81,17 +81,27 @@ function isByokProviderType(type: ModelProviderType): boolean {
   return type !== "vm0" && !isOAuthMemberType(type);
 }
 
-function getModelIconType(model: SupportedRunModel): ModelProviderType | null {
-  const compatibleTypes = getProvidersForModel(model);
-  return (
-    compatibleTypes.find((type) => {
-      return type !== "vm0" && !isOAuthMemberType(type);
-    }) ??
-    compatibleTypes.find((type) => {
-      return type !== "vm0";
-    }) ??
-    null
-  );
+const MODEL_BRAND_ICON: Readonly<Record<SupportedRunModel, ModelProviderType>> =
+  {
+    "claude-opus-4-7": "anthropic-api-key",
+    "claude-opus-4-6": "anthropic-api-key",
+    "claude-sonnet-4-6": "anthropic-api-key",
+    "claude-haiku-4-5": "anthropic-api-key",
+    "deepseek-v4-pro": "deepseek-api-key",
+    "deepseek-v4-flash": "deepseek-api-key",
+    "kimi-k2.6": "moonshot-api-key",
+    "kimi-k2.5": "moonshot-api-key",
+    "MiniMax-M2.7": "minimax-api-key",
+    "glm-5.1": "zai-api-key",
+    "gpt-5.5": "openai-api-key",
+    "gpt-5.4": "openai-api-key",
+    "gpt-5.4-mini": "openai-api-key",
+    "gpt-5.3-codex": "openai-api-key",
+    "gpt-5.2": "openai-api-key",
+  };
+
+function getModelIconType(model: SupportedRunModel): ModelProviderType {
+  return MODEL_BRAND_ICON[model];
 }
 
 function getApiProviderTypes(model: SupportedRunModel): ModelProviderType[] {
@@ -112,13 +122,13 @@ function getOAuthRouteCopy(oauthTypes: ModelProviderType[]): {
 } {
   if (oauthTypes.includes("codex-oauth-token")) {
     return {
-      title: "BYOK: Codex Subscription",
+      title: "Codex Subscription",
       description:
         "Lets members use their own Codex Pro/Team subscription. Each member opens their Preferences, switches to Personal Models, and connects ChatGPT (Codex). The token only launches the Codex CLI inside a secure sandbox and is sent directly to OpenAI.",
     };
   }
   return {
-    title: "BYOK: Claude Subscription",
+    title: "Claude Subscription",
     description:
       "Lets members use their own Claude Pro/Max/Team subscription. Each member opens their Preferences, switches to Personal Models, and sets a Claude Code OAuth Token. The token only launches the Claude Code CLI inside a secure sandbox and is sent directly to Anthropic.",
   };
@@ -902,7 +912,7 @@ function ModelPolicyRouteDialog({
               active={dialog.routeKind === "built-in"}
               icon={<ProviderIcon type="vm0" size={18} />}
               title="Built-in"
-              description="Uses VM0 managed keys and workspace credits. No setup is required for members."
+              description="Use workspace credits to access the model."
               onClick={() => {
                 chooseRoute("built-in");
               }}
@@ -911,8 +921,8 @@ function ModelPolicyRouteDialog({
               active={dialog.routeKind === "api-key"}
               disabled={apiTypes.length === 0}
               icon={<IconKey size={18} stroke={1.6} />}
-              title="BYOK: workspace API key"
-              description="An admin adds one provider API key for the workspace. Every member can use this route without adding personal credentials."
+              title="API Key"
+              description="Use an API key to access the model. API key routes are shared workspace credentials. They are best when the team should run through one billing account."
               onClick={() => {
                 chooseRoute("api-key");
               }}
@@ -933,7 +943,7 @@ function ModelPolicyRouteDialog({
           {dialog.routeKind === "api-key" && (
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium text-foreground">
-                Workspace API provider
+                API Provider
               </label>
               <ProviderTypeSelect
                 value={selectedProviderType}
@@ -946,11 +956,6 @@ function ModelPolicyRouteDialog({
                   setRoute({ routeKind: "api-key", providerType });
                 }}
               />
-              <p className="text-xs leading-5 text-muted-foreground">
-                API key routes are shared workspace credentials. They are best
-                when the team should run through one billing account or one
-                centrally managed key.
-              </p>
             </div>
           )}
 

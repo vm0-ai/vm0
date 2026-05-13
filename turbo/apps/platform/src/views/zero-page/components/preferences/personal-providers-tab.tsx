@@ -60,10 +60,16 @@ function OAuthCredentialsSection() {
 
   return (
     <section className="flex flex-col gap-3">
-      <p className="text-sm text-muted-foreground">
-        Personal Claude Code and ChatGPT credentials, used only in your own
-        runs.
-      </p>
+      <div className="space-y-1 text-sm text-muted-foreground">
+        <p>
+          Personal Claude Code and ChatGPT subscription, used only in your own
+          runs.
+        </p>
+        <p>
+          Organization admins can add more models from the Models page in
+          organization management.
+        </p>
+      </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {isLoading ? (
           <>

@@ -259,7 +259,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
 
     click(await screen.findByText("Add model"));
     const dialog = getModelPolicyDialog();
-    clickRouteChoice(dialog, "BYOK: workspace API key");
+    clickRouteChoice(dialog, "API Key");
     click(within(dialog).getByText("Edit API key"));
 
     const providerDialog = getOrgProviderDialog();
@@ -286,7 +286,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
 
     click(await screen.findByText("Add model"));
     const dialog = getModelPolicyDialog();
-    clickRouteChoice(dialog, "BYOK: workspace API key");
+    clickRouteChoice(dialog, "API Key");
     clickDialogButton(dialog, "Add Anthropic API key");
 
     const providerDialog = getOrgProviderDialog();
@@ -313,7 +313,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
 
     click(await screen.findByText("Add model"));
     const dialog = getModelPolicyDialog();
-    clickRouteChoice(dialog, "BYOK: workspace API key");
+    clickRouteChoice(dialog, "API Key");
     clickDialogButton(dialog, "Add Anthropic API key");
 
     const providerDialog = getOrgProviderDialog();
@@ -360,7 +360,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
       "org-model-policy-row-claude-opus-4-7",
     );
     const dialog = await openModelPolicyDialog(row);
-    clickRouteChoice(dialog, "BYOK: Claude Subscription");
+    clickRouteChoice(dialog, "Claude Subscription");
     expect(
       within(dialog).queryByText("OAuth provider"),
     ).not.toBeInTheDocument();
@@ -394,7 +394,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
 
     const row = await screen.findByTestId("org-model-policy-row-gpt-5.5");
     const dialog = await openModelPolicyDialog(row);
-    clickRouteChoice(dialog, "BYOK: Codex Subscription");
+    clickRouteChoice(dialog, "Codex Subscription");
     expect(
       within(dialog).queryByText("OAuth provider"),
     ).not.toBeInTheDocument();
