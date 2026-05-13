@@ -95,7 +95,7 @@ describe("POST /api/zero/chat/messages — forceNewSession (model-first)", () =>
     expect(secondRun?.selectedModel).toBe("claude-sonnet-4-6");
   });
 
-  it("injects prior chat messages into appendSystemPrompt when forcing a new session", async () => {
+  it("retains recent chat messages in appendSystemPrompt when forcing a new session", async () => {
     await insertUserModelPreference({
       orgId: user.orgId,
       userId: user.userId,
@@ -124,7 +124,7 @@ describe("POST /api/zero/chat/messages — forceNewSession (model-first)", () =>
 
     const run = await getTestRun(secondRunId);
     const prompt = run.appendSystemPrompt ?? "";
-    expect(prompt).toContain("# Prior Chat Thread Context");
+    expect(prompt).toContain("# Web Chat Context");
     expect(prompt).toContain("User: hello on opus");
     expect(prompt).toContain("RELATIVE_INDEX: 0");
   });
@@ -159,10 +159,10 @@ describe("POST /api/zero/chat/messages — forceNewSession (model-first)", () =>
     const run = await getTestRun(secondRunId);
     const prompt = run.appendSystemPrompt ?? "";
     expect(prompt).not.toContain("# Incomplete Rounds Context");
-    // The cancelled round's user text still surfaces via the prior-messages
-    // block — replaying it as an incomplete round under a different model
-    // would be misleading, but the agent still needs to see what was said.
-    expect(prompt).toContain("# Prior Chat Thread Context");
+    // The cancelled round's user text still surfaces via the recent-message
+    // block. Replaying it as an incomplete round under a different model would
+    // be misleading, but the agent still needs to see what was said.
+    expect(prompt).toContain("# Web Chat Context");
     expect(prompt).toContain("User: round A");
   });
 

@@ -60,7 +60,7 @@ interface ModelProviderPickerProps {
   open?: boolean;
   /** Callback when the open state changes. */
   onOpenChange?: (open: boolean) => void;
-  // When true, picker is read-only (e.g. existing chat thread).
+  // When true, picker is read-only for the current caller state.
   disabled?: boolean;
 }
 
@@ -366,6 +366,7 @@ function ModelFirstModelPicker({
   const resolved = resolveModelFirstDefault(value, userPreference, policies);
   const selectedModel = resolved?.selectedModel ?? null;
   const explicitSelectedModel = value?.selectedModel ?? null;
+  const selectValue = value?.selectedModel ?? selectedModel ?? INHERIT_SENTINEL;
   const triggerAriaLabel = selectedModel
     ? getCanonicalModelDisplayName(selectedModel)
     : placeholder;
@@ -386,7 +387,7 @@ function ModelFirstModelPicker({
 
   return (
     <Select
-      value={value ? value.selectedModel : INHERIT_SENTINEL}
+      value={selectValue}
       onValueChange={(raw) => {
         onChange(modelFirstSelectionFromRaw(raw));
       }}
@@ -406,7 +407,7 @@ function ModelFirstModelPicker({
         </SelectValue>
       </SelectTrigger>
       <SelectContent className="max-h-[280px] min-w-[260px]">
-        {value === null && (
+        {selectValue === INHERIT_SENTINEL && (
           <SelectItem
             value={INHERIT_SENTINEL}
             className={MEASURABLE_HIDDEN_SELECT_ITEM_CLASS}

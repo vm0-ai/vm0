@@ -1962,7 +1962,6 @@ function useChatComposerQueue(
 function useChatComposerModel(
   thread: ChatThreadSignals,
   pageSignal: AbortSignal,
-  hasUserMessage: boolean,
 ) {
   // Per-thread composer state lives in ccstate signals on the factory so the
   // initial value seeds from threadData once it resolves (a React useState
@@ -2003,7 +2002,7 @@ function useChatComposerModel(
   const modelPicker = resolveChatComposerModelPicker({
     modelSelection,
     setModelSelection: handleModelSelectionChange,
-    disabled: hasUserMessage,
+    disabled: false,
     defaultSelection: defaultModelSelection,
   });
   const modelPickerLoading =
@@ -2035,9 +2034,6 @@ function ChatThreadComposer({
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
   const hasMessages = groups.length > 0;
   const messagesResolved = groupsLoadable.state === "hasData";
-  const hasUserMessage = groups.some((group) => {
-    return group.role === "user" && group.messages.length > 0;
-  });
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   const allFinishedLoadable = useLastLoadable(thread.allFinished$);
   const allFinishedResolved = allFinishedLoadable.state === "hasData";
@@ -2062,7 +2058,7 @@ function ChatThreadComposer({
     modelPickerLoading,
     submitBlockerProps,
     modelSelection,
-  } = useChatComposerModel(thread, pageSignal, hasUserMessage);
+  } = useChatComposerModel(thread, pageSignal);
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const queueWhileSending = canQueueMessage({
     sending,

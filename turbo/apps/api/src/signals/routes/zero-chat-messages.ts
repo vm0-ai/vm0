@@ -203,7 +203,9 @@ type AppendMessageResult =
 
 const sendBody$ = bodyResultOf(chatMessagesContract.send);
 const GOAL_DEFAULT_BUDGET = 10;
-const PRIOR_HISTORY_MESSAGE_LIMIT = 10;
+// Existing web chat threads always carry a small recent-message window in the
+// system prompt. Session compatibility is handled separately by forceNewSession.
+const RECENT_CHAT_MESSAGE_LIMIT = 10;
 const WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP = 4000;
 const WEB_CHAT_INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
 const ORG_SENTINEL_USER_ID = "__org__";
@@ -375,13 +377,13 @@ function buildWebChatPriorMessagesContext(
     return lines.join("\n");
   });
   return [
-    "# Prior Chat Thread Context",
+    "# Web Chat Context",
     "",
-    "The messages below are completed rounds earlier in this chat thread. The",
-    "CLI session history has been reset for this run (the user switched models",
-    "mid-thread, so the previous session is not safe to resume), so the prior",
-    "conversation is shown here verbatim. RELATIVE_INDEX 0 is the most recent.",
-    "Treat them as part of the conversation you are continuing.",
+    "The messages below are from a web chat conversation. When responding:",
+    "- Messages closer to RELATIVE_INDEX 0 are more recent -- prioritize them.",
+    "- Match the tone of the conversation -- casual messages deserve casual replies.",
+    "- Only provide technical analysis when explicitly asked a technical question.",
+    "- Keep responses proportional to the message length and complexity.",
     "",
     blocks.join("\n\n"),
     "",
@@ -1189,15 +1191,23 @@ async function resolveThread(params: {
   };
 }
 
-async function prepareForceNewSessionContext(
+async function prepareRecentChatContext(
   db: Db,
   threadId: string,
-  forceNewSession: boolean,
   isNewThread: boolean,
 ): Promise<string> {
-  if (!forceNewSession || isNewThread) {
+  if (isNewThread) {
     return "";
   }
+  return buildWebChatPriorMessagesContext(
+    await getLatestMessagesByThreadId(db, threadId, RECENT_CHAT_MESSAGE_LIMIT),
+  );
+}
+
+async function resetThreadModelPinForNewSession(
+  db: Db,
+  threadId: string,
+): Promise<void> {
   await db
     .update(chatThreads)
     .set({
@@ -1208,13 +1218,6 @@ async function prepareForceNewSessionContext(
       updatedAt: nowDate(),
     })
     .where(eq(chatThreads.id, threadId));
-  return buildWebChatPriorMessagesContext(
-    await getLatestMessagesByThreadId(
-      db,
-      threadId,
-      PRIOR_HISTORY_MESSAGE_LIMIT,
-    ),
-  );
 }
 
 function appendUnassociatedUserMessage(params: {
@@ -1685,12 +1688,15 @@ const prepareNormalSend$ = command(
       return thread;
     }
 
-    const priorContext = await prepareForceNewSessionContext(
+    const priorContext = await prepareRecentChatContext(
       db,
       thread.threadId,
-      forceNewSession,
       thread.isNewThread,
     );
+    signal.throwIfAborted();
+    if (forceNewSession && !thread.isNewThread) {
+      await resetThreadModelPinForNewSession(db, thread.threadId);
+    }
     signal.throwIfAborted();
 
     const persistedExplicitSelection =

@@ -198,7 +198,7 @@ interface ZeroChatComposerProps {
   modelPicker?: {
     value: ModelProviderSelection | null;
     onChange: (value: ModelProviderSelection | null) => void;
-    // When true, picker is read-only (e.g. existing chat thread).
+    // When true, picker is read-only for the current composer state.
     disabled?: boolean;
     /** Effective default model from user preference, then workspace default. */
     defaultSelection?: ModelProviderSelection | null;

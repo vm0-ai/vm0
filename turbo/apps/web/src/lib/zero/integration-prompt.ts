@@ -292,12 +292,12 @@ export interface WebChatPriorMessage {
 }
 
 const WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP = 4000;
-const WEB_CHAT_PRIOR_PREAMBLE = [
-  "The messages below are completed rounds earlier in this chat thread. The",
-  "CLI session history has been reset for this run (the user switched models",
-  "mid-thread, so the previous session is not safe to resume), so the prior",
-  "conversation is shown here verbatim. RELATIVE_INDEX 0 is the most recent.",
-  "Treat them as part of the conversation you are continuing.",
+const WEB_CHAT_CONTEXT_PREAMBLE = [
+  "The messages below are from a web chat conversation. When responding:",
+  "- Messages closer to RELATIVE_INDEX 0 are more recent — prioritize them.",
+  "- Match the tone of the conversation — casual messages deserve casual replies.",
+  "- Only provide technical analysis when explicitly asked a technical question.",
+  "- Keep responses proportional to the message length and complexity.",
 ].join("\n");
 
 function truncateForPriorContext(value: string): string {
@@ -315,11 +315,9 @@ function formatPriorAttachFiles(ids: string[] | null | undefined): string {
 }
 
 /**
- * Build a transcript block describing successfully completed rounds earlier
- * in the thread. Used when the web chat send forces a new CLI session (the
- * user switched models mid-thread), so the agent still sees the prior
- * conversation that would otherwise have lived only in the discarded CLI
- * session history.
+ * Build a transcript block describing the most recent messages earlier in the
+ * thread. Web runs normally continue the same CLI session, but this gives the
+ * agent the same short, explicit channel context that Slack and Telegram get.
  *
  * Empty input returns `""` so the caller can `filter(Boolean).join()`.
  */
@@ -347,9 +345,9 @@ export function buildWebChatPriorMessagesContext(
   });
 
   return [
-    "# Prior Chat Thread Context",
+    "# Web Chat Context",
     "",
-    WEB_CHAT_PRIOR_PREAMBLE,
+    WEB_CHAT_CONTEXT_PREAMBLE,
     "",
     blocks.join("\n\n"),
     "",

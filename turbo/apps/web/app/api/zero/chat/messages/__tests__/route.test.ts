@@ -556,6 +556,45 @@ describe("POST /api/zero/chat/messages", () => {
       expect(run.appendSystemPrompt).toContain("web chat UI");
     });
 
+    it("should include recent web chat messages in appendSystemPrompt on follow-up", async () => {
+      const first = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "first web context",
+          }),
+        }),
+      );
+      expect(first.status).toBe(201);
+      const { threadId, runId } = await first.json();
+      await context.mocks.flushAfter();
+      await completeTestRun(user.userId, runId);
+
+      const second = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            threadId,
+            prompt: "follow-up web context",
+          }),
+        }),
+      );
+      expect(second.status).toBe(201);
+      const { runId: secondRunId } = await second.json();
+      await context.mocks.flushAfter();
+
+      const run = await getTestRun(secondRunId);
+      const prompt = run.appendSystemPrompt ?? "";
+      expect(prompt).toContain("# Web Chat Context");
+      expect(prompt).toContain("User: first web context");
+      expect(prompt).toContain("RELATIVE_INDEX: 0");
+      expect(prompt).not.toContain("follow-up web context");
+    });
+
     it("should skip title generation when hasTextContent is false (image-only message)", async () => {
       vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
       reloadEnv();

@@ -138,20 +138,15 @@ function buildAppendSystemPrompt(
     .join("\n\n");
 }
 
-/**
- * Number of prior chat messages to embed in the system prompt when
- * `forceNewSession` is set. Matches `PREVIOUS_CONTEXT_MESSAGES` (used by
- * the title generator) — large enough to anchor the agent on the most
- * recent exchange, small enough to stay well under any model context cap.
- */
-const PRIOR_HISTORY_MESSAGE_LIMIT = 10;
+/** Number of recent prior messages to embed for existing web chat threads. */
+const RECENT_CHAT_MESSAGE_LIMIT = 10;
 
-async function loadPriorMessagesForNewSession(
+async function loadRecentMessagesForSystemPrompt(
   threadId: string,
 ): Promise<WebChatPriorMessage[]> {
   const rows = await getLatestMessagesByThreadId(
     threadId,
-    PRIOR_HISTORY_MESSAGE_LIMIT,
+    RECENT_CHAT_MESSAGE_LIMIT,
   );
   return rows.map((row) => {
     return {
@@ -162,20 +157,19 @@ async function loadPriorMessagesForNewSession(
   });
 }
 
-/**
- * When the user switches models mid-thread (`forceNewSession`), the existing
- * CLI session cannot be resumed under a different provider/model. Drop the
- * thread's model pin so `resolveRunModelOverride` writes the new selection
- * freshly, and build a prior-messages block to keep the agent's conversation
- * context across the model switch. Returns "" for new threads / non-forced
- * sends so the caller can `filter(Boolean).join()`.
- */
-async function prepareForceNewSessionContext(
+async function prepareRecentChatContext(
   threadId: string,
-  forceNewSession: boolean,
   isNewThread: boolean,
 ): Promise<string> {
-  if (!forceNewSession || isNewThread) return "";
+  if (isNewThread) return "";
+  return buildWebChatPriorMessagesContext(
+    await loadRecentMessagesForSystemPrompt(threadId),
+  );
+}
+
+async function resetThreadModelPinForNewSession(
+  threadId: string,
+): Promise<void> {
   await globalThis.services.db
     .update(chatThreads)
     .set({
@@ -186,9 +180,6 @@ async function prepareForceNewSessionContext(
       updatedAt: new Date(),
     })
     .where(eq(chatThreads.id, threadId));
-  return buildWebChatPriorMessagesContext(
-    await loadPriorMessagesForNewSession(threadId),
-  );
 }
 
 interface GoalOriginRow {
@@ -783,8 +774,8 @@ async function resolveRunModelOverride(
 
 /**
  * Once a thread has stored modelProviderId + selectedModel, those values are
- * immutable. The picker is disabled on existing threads, so this guard
- * rejects out-of-band/manual API callers that try to change or clear them.
+ * immutable unless the composer explicitly requests `forceNewSession`, so this
+ * guard rejects out-of-band/manual API callers that try to change or clear them.
  */
 async function rejectIfThreadModelLocked(
   threadId: string,
@@ -1240,10 +1231,9 @@ const router = tsr.router(chatMessagesContract, {
     });
 
     // forceNewSession is set by the web composer when the user picked a
-    // different model than the thread's persisted pin. The thread-pin lock,
-    // session-id reuse, and incomplete-rounds context are all bypassed for
-    // this run, and prior chat messages are injected into the system prompt
-    // so the agent still has conversation context across the model switch.
+    // different model than the thread's persisted pin. It bypasses the
+    // thread-pin lock, old session-id reuse, and incomplete-rounds context.
+    // Recent chat context is handled uniformly for all existing web threads.
     const forceNewSession = body.forceNewSession === true;
 
     const modelSelectionError = await validateSendModelSelection({
@@ -1267,11 +1257,13 @@ const router = tsr.router(chatMessagesContract, {
           dims,
         );
 
-      const priorContext = await prepareForceNewSessionContext(
+      const priorContext = await prepareRecentChatContext(
         threadId,
-        forceNewSession,
         isNewThread,
       );
+      if (forceNewSession && !isNewThread) {
+        await resetThreadModelPinForNewSession(threadId);
+      }
 
       const persistedExplicitModelFirstSelection =
         await persistExplicitModelFirstSelection({

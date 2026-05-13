@@ -14,7 +14,7 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { server } from "../../../mocks/server.ts";
@@ -153,8 +153,12 @@ describe("model-provider-picker - user/workspace default source", () => {
     await openPickerOnAgentChat(user, "Claude Sonnet 4.6");
 
     expect(screen.queryByLabelText("Use workspace default model")).toBeNull();
-    expect(screen.getByText("Models")).toBeInTheDocument();
-    expect(screen.getAllByText("Claude Sonnet 4.6").length).toBeGreaterThan(0);
+    const listbox = screen.getByRole("listbox");
+    expect(within(listbox).queryByText("Default")).toBeNull();
+    expect(within(listbox).getByText("Models")).toBeInTheDocument();
+    expect(
+      within(listbox).getByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    ).toHaveAttribute("aria-selected", "true");
   });
 
   // MPKR-AD-005: Agent model fields no longer affect the picker.
@@ -199,7 +203,11 @@ describe("model-provider-picker - user/workspace default source", () => {
       expect(screen.getByRole("listbox")).toBeInTheDocument();
     });
     expect(screen.queryByLabelText("Use personal default model")).toBeNull();
-    expect(screen.getByText("Models")).toBeInTheDocument();
-    expect(screen.getAllByText("Claude Opus 4.7").length).toBeGreaterThan(0);
+    const listbox = screen.getByRole("listbox");
+    expect(within(listbox).queryByText("Default")).toBeNull();
+    expect(within(listbox).getByText("Models")).toBeInTheDocument();
+    expect(
+      within(listbox).getByRole("option", { name: /Claude Opus 4\.7/ }),
+    ).toHaveAttribute("aria-selected", "true");
   });
 });

@@ -806,6 +806,35 @@ describe("POST /api/zero/chat/messages", () => {
     });
   });
 
+  it("injects recent web chat messages into a follow-up run prompt", async () => {
+    const fixture = await track(seedFixture());
+    const first = await send({
+      agentId: fixture.agentId,
+      prompt: "first web context",
+    });
+    await clearAllDetached();
+    await setRunStatus(first.body.runId!, "completed");
+
+    const second = await send({
+      agentId: fixture.agentId,
+      prompt: "follow-up web context",
+      threadId: first.body.threadId,
+    });
+    await clearAllDetached();
+
+    const [run] = await store
+      .set(writeDb$)
+      .select({ appendSystemPrompt: agentRuns.appendSystemPrompt })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, second.body.runId!))
+      .limit(1);
+    const prompt = run!.appendSystemPrompt!;
+    expect(prompt).toContain("# Web Chat Context");
+    expect(prompt).toContain("User: first web context");
+    expect(prompt).toContain("RELATIVE_INDEX: 0");
+    expect(prompt).not.toContain("follow-up web context");
+  });
+
   it("injects incomplete cancelled rounds into the next run prompt", async () => {
     const fixture = await track(seedFixture());
     const first = await send({ agentId: fixture.agentId, prompt: "cancel me" });
@@ -912,7 +941,7 @@ describe("POST /api/zero/chat/messages", () => {
     expect(message?.goalOriginMessageId).toBe(message?.id);
   });
 
-  it("forceNewSession rewrites the model pin and injects prior chat context", async () => {
+  it("forceNewSession rewrites the model pin while retaining web chat context", async () => {
     const fixture = await track(seedFixture());
     const writeDb = store.set(writeDb$);
     await seedVm0Credits(fixture, 1000);
@@ -973,7 +1002,7 @@ describe("POST /api/zero/chat/messages", () => {
       .where(eq(zeroRuns.id, second.body.runId!))
       .limit(1);
     expect(run?.selectedModel).toBe("claude-sonnet-4-6");
-    expect(run?.appendSystemPrompt).toContain("# Prior Chat Thread Context");
+    expect(run?.appendSystemPrompt).toContain("# Web Chat Context");
     expect(run?.appendSystemPrompt).toContain("User: first on opus");
   });
 

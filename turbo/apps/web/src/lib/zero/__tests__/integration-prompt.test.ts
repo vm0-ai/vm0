@@ -7,6 +7,7 @@ import {
   buildAgentPhonePrompt,
   buildGitHubPrompt,
   buildWebChatPrompt,
+  buildWebChatPriorMessagesContext,
 } from "../integration-prompt";
 
 describe("buildIntegrationPrompt", () => {
@@ -181,5 +182,32 @@ describe("buildWebChatPrompt", () => {
 
     expect(result).toContain("web chat UI");
     expect(result).toContain("You are communicating with the user");
+  });
+});
+
+describe("buildWebChatPriorMessagesContext", () => {
+  it("should format recent web messages like other chat integrations", () => {
+    const result = buildWebChatPriorMessagesContext([
+      {
+        role: "user",
+        content: "older question",
+        attachFiles: null,
+      },
+      {
+        role: "assistant",
+        content: "latest answer",
+        attachFiles: ["file-1"],
+      },
+    ]);
+
+    expect(result).toContain("# Web Chat Context");
+    expect(result).toContain(
+      "The messages below are from a web chat conversation",
+    );
+    expect(result).toContain("RELATIVE_INDEX: -1");
+    expect(result).toContain("RELATIVE_INDEX: 0");
+    expect(result).toContain("User: older question");
+    expect(result).toContain("Assistant: latest answer");
+    expect(result).toContain("[Web file]");
   });
 });
