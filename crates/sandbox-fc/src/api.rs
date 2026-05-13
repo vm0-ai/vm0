@@ -904,7 +904,8 @@ mod tests {
 
     #[tokio::test]
     async fn wait_for_ready_times_out_on_missing_socket() {
-        let path = PathBuf::from("/tmp/nonexistent-test-socket.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing.sock");
         let client = ApiClient::new(&path);
         let result = client.wait_for_ready(Duration::from_millis(50)).await;
         assert!(result.is_err());
@@ -1011,6 +1012,23 @@ mod tests {
         assert!(
             request.body.contains(r#""state":"Paused""#),
             "missing Paused in: {}",
+            request.raw
+        );
+    }
+
+    #[tokio::test]
+    async fn resume_succeeds_on_204() {
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let sock_path = api.socket_path().to_path_buf();
+        let client = ApiClient::new(&sock_path);
+        let result = client.resume().await;
+        assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "PATCH", "/vm");
+        assert!(
+            request.body.contains(r#""state":"Resumed""#),
+            "missing Resumed in: {}",
             request.raw
         );
     }
