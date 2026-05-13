@@ -25,7 +25,6 @@ import {
 } from "../../../__tests__/db-test-seeders/agents";
 import { setOrgCredits } from "../../../__tests__/db-test-seeders/org";
 import { setTestCheckpointArtifactSnapshots } from "../../../__tests__/db-test-seeders/runs";
-import { seedUserFeatureSwitches } from "../../../__tests__/db-test-seeders/feature-switches";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { createZeroRun } from "../zero-run-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
@@ -580,9 +579,6 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
         skipDefaultApiKey: true,
       });
       const codexAgentId = await getTestZeroAgentId(user.orgId, agentName);
-      await seedUserFeatureSwitches(user.orgId, user.userId, {
-        codexBeta: true,
-      });
       const provider = await createTestOrgModelProvider(
         "openai-api-key",
         "org-openai-key",

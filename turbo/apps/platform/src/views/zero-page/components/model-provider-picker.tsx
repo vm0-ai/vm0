@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { useLastResolved, useLoadable } from "ccstate-react";
 import { IconCpu } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Select,
   SelectContent,
@@ -24,7 +23,6 @@ import {
   type ModelProviderType,
   type OrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { featureSwitch$ } from "../../../signals/external/feature-switch";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies";
 import { userModelPreference$ } from "../../../signals/external/user-model-preference";
 import { getVm0ModelMultiplier } from "./settings/provider-ui-config";
@@ -142,16 +140,6 @@ function stripInteractiveClasses(cls: string | undefined): string | undefined {
       );
     })
     .join(" ");
-}
-
-function isModelFirstPolicyVisible(
-  policy: OrgModelPolicy,
-  features: Partial<Record<FeatureSwitchKey, boolean>> | undefined,
-): boolean {
-  if (policy.model.startsWith("gpt-")) {
-    return features?.[FeatureSwitchKey.CodexBeta] ?? false;
-  }
-  return true;
 }
 
 function getModelFirstIconType(model: string): ModelProviderType | undefined {
@@ -372,13 +360,9 @@ function ModelFirstModelPicker({
   const policiesLoadable = useLoadable(orgModelPolicies$);
   const lastPolicies = useLastResolved(orgModelPolicies$);
   const userPreference = useLastResolved(userModelPreference$);
-  const features = useLastResolved(featureSwitch$);
   const policyResponse =
     policiesLoadable.state === "hasData" ? policiesLoadable.data : lastPolicies;
-  const policies =
-    policyResponse?.policies.filter((policy) => {
-      return isModelFirstPolicyVisible(policy, features);
-    }) ?? [];
+  const policies = policyResponse?.policies ?? [];
   const resolved = resolveModelFirstDefault(value, userPreference, policies);
   const selectedModel = resolved?.selectedModel ?? null;
   const explicitSelectedModel = value?.selectedModel ?? null;

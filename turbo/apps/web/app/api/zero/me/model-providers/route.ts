@@ -5,8 +5,6 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -22,7 +20,6 @@ import {
   handleCodexAuthJsonPaste,
   serializeUpsertedProvider,
 } from "../../../../../src/lib/zero/model-provider/codex-auth-json-paste-handler";
-import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
 import { logger } from "../../../../../src/lib/shared/logger";
 import { isBadRequest } from "@vm0/api-services/errors";
 
@@ -91,18 +88,6 @@ const router = tsr.router(zeroPersonalModelProvidersMainContract, {
     }
 
     if (type === "codex-oauth-token" && authMethod === "auth_json") {
-      const overrides = await loadFeatureSwitchOverrides(
-        org.orgId,
-        authCtx.userId,
-      );
-      const eligible = isFeatureEnabled(FeatureSwitchKey.CodexOauthProvider, {
-        orgId: org.orgId,
-        userId: authCtx.userId,
-        overrides,
-      });
-      if (!eligible) {
-        return createErrorResponse("NOT_FOUND", `Provider "${type}" not found`);
-      }
       const raw = secrets?.CODEX_AUTH_JSON;
       if (!raw) {
         return createErrorResponse(

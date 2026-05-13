@@ -1,5 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { describe, it, expect, beforeEach } from "vitest";
 import { GET, POST } from "../route";
 import { DELETE } from "../[type]/route";
 import {
@@ -17,18 +16,6 @@ import {
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
-
-vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@vm0/core/feature-switch")>();
-  return {
-    ...actual,
-    isFeatureEnabled: vi.fn().mockReturnValue(true),
-  };
-});
-
-const { isFeatureEnabled } = await import("@vm0/core/feature-switch");
-const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
 
 const context = testContext();
 
@@ -314,22 +301,8 @@ describe("Org-level model provider routes", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // codex-beta gate on POST /api/zero/model-providers
-  // ---------------------------------------------------------------------------
-
-  describe("openai-api-key codex-beta gate", () => {
-    beforeEach(() => {
-      mockIsFeatureEnabled.mockImplementation(() => {
-        return true;
-      });
-    });
-
-    it("creates openai-api-key provider when codex-beta is enabled", async () => {
-      mockIsFeatureEnabled.mockImplementation((key) => {
-        return key === FeatureSwitchKey.CodexBeta;
-      });
-
+  describe("openai-api-key provider", () => {
+    it("creates openai-api-key provider by default", async () => {
       const response = await createProvider(
         "openai-api-key",
         "sk-proj-test",
@@ -340,28 +313,6 @@ describe("Org-level model provider routes", () => {
       expect(data.provider.type).toBe("openai-api-key");
       expect(data.provider.framework).toBe("codex");
     });
-
-    it("returns 404 when codex-beta is disabled", async () => {
-      mockIsFeatureEnabled.mockImplementation((key) => {
-        return key !== FeatureSwitchKey.CodexBeta;
-      });
-
-      const response = await createProvider(
-        "openai-api-key",
-        "sk-proj-test",
-        "gpt-5.5",
-      );
-      expect(response.status).toBe(404);
-    });
-
-    it("does not gate other provider types when codex-beta is disabled", async () => {
-      mockIsFeatureEnabled.mockImplementation((key) => {
-        return key !== FeatureSwitchKey.CodexBeta;
-      });
-
-      const response = await createProvider("anthropic-api-key", "sk-ant-test");
-      expect(response.status).toBe(201);
-    });
   });
 
   // ---------------------------------------------------------------------------
@@ -369,12 +320,6 @@ describe("Org-level model provider routes", () => {
   // ---------------------------------------------------------------------------
 
   describe("cross-framework providers", () => {
-    beforeEach(() => {
-      mockIsFeatureEnabled.mockImplementation(() => {
-        return true;
-      });
-    });
-
     it("does not mark any cross-framework provider as default", async () => {
       await createProvider("anthropic-api-key", "ant-key");
       await createProvider("openai-api-key", "sk-proj-test", "gpt-5.5");
@@ -416,8 +361,6 @@ describe("Org-level model provider routes", () => {
     let user: UserContext;
 
     beforeEach(async () => {
-      vi.clearAllMocks();
-      mockIsFeatureEnabled.mockReturnValue(true);
       context.setupMocks();
       user = await context.setupUser();
     });
@@ -711,20 +654,6 @@ describe("Org-level model provider routes", () => {
         "model-provider",
       );
       expect(refresh).toBe("rt_fresh");
-    });
-
-    it("returns 404 when codexOauthProvider feature switch is disabled", async () => {
-      // Default mock returns true; flip to false for this single call only.
-      mockIsFeatureEnabled.mockImplementationOnce(
-        (key: { name?: string } | string) => {
-          const keyName = typeof key === "string" ? key : key.name;
-          return keyName !== "codexOauthProvider";
-        },
-      );
-      const response = await pasteAuthJson(makeAuthJson());
-      expect(response.status).toBe(404);
-      const data = await response.json();
-      expect(data.error.code).toBe("NOT_FOUND");
     });
   });
 });

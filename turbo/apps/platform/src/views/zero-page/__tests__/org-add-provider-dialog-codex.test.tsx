@@ -2,15 +2,13 @@
  * Tests for the Connect Codex entry on the model-providers settings tab.
  *
  * Covers:
- * - Card hidden when CodexOauthProvider feature switch is off (DoD: gate-off)
- * - Card visible when feature switch is on (DoD: gate-on)
+ * - Card visible by default
  * - Click on the card opens the codex auth.json paste dialog
  *   (replaces the broken cross-origin OAuth redirect; #11980)
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setOrgAddProviderDialogOpen$ } from "../../../signals/zero-page/settings/org-model-providers.ts";
@@ -26,30 +24,13 @@ async function openProvidersPage() {
   });
 }
 
-describe("connect ChatGPT card — feature switch gating", () => {
+describe("connect ChatGPT card", () => {
   beforeEach(() => {
     setMockFeatureSwitches({});
     resetMockOrgModelProviders();
   });
 
-  it("hides the ChatGPT card when the feature switch is off", async () => {
-    await openProvidersPage();
-    context.store.set(setOrgAddProviderDialogOpen$, true);
-
-    await waitFor(() => {
-      expect(screen.getAllByRole("dialog").length).toBeGreaterThan(0);
-    });
-
-    expect(
-      screen.queryByTestId("org-provider-card-codex-oauth-token"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("shows the ChatGPT card when the feature switch is on", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.CodexOauthProvider]: true,
-    });
-
+  it("shows the ChatGPT card by default", async () => {
     await openProvidersPage();
     context.store.set(setOrgAddProviderDialogOpen$, true);
 
@@ -63,9 +44,7 @@ describe("connect ChatGPT card — feature switch gating", () => {
 
 describe("connect Codex card — click handler", () => {
   beforeEach(() => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.CodexOauthProvider]: true,
-    });
+    setMockFeatureSwitches({});
     resetMockOrgModelProviders();
   });
 

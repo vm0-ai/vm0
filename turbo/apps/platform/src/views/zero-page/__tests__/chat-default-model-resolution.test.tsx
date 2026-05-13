@@ -37,7 +37,6 @@ import type {
   ModelProviderResponse,
   OrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
@@ -440,10 +439,7 @@ describe("chat composer — default model resolution", () => {
       .spyOn(window, "open")
       .mockReturnValue({ closed: true } as Window);
     let sendRequests = 0;
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.CodexBeta]: true,
-      [FeatureSwitchKey.CodexOauthProvider]: true,
-    });
+    setMockFeatureSwitches({});
     setMockOrgModelPolicies([
       buildMemberOauthPolicy({
         model: "gpt-5.5",
@@ -518,10 +514,7 @@ describe("chat composer — default model resolution", () => {
       .spyOn(window, "open")
       .mockReturnValue({ closed: true } as Window);
     let sendRequests = 0;
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.CodexBeta]: true,
-      [FeatureSwitchKey.CodexOauthProvider]: true,
-    });
+    setMockFeatureSwitches({});
     setMockOrgModelPolicies([
       buildMemberOauthPolicy({
         model: "gpt-5.5",

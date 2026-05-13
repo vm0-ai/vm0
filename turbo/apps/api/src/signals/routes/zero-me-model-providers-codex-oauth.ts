@@ -1,7 +1,5 @@
 import { command } from "ccstate";
 import { zeroPersonalModelProvidersCodexOauthContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { requiredAuthContext$ } from "../auth/auth-context";
 import { queryOf } from "../context/request";
@@ -12,7 +10,6 @@ import {
   exchangeChatgptCode,
   getChatgptOAuthClientId,
 } from "../services/codex-oauth-browser.service";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { upsertUserMultiAuthModelProvider$ } from "../services/zero-model-provider.service";
 import { safeAsync } from "../utils";
 import type { RouteEntry } from "../route";
@@ -112,10 +109,6 @@ function redirectWithError(
   return response;
 }
 
-function featureDisabledResponse(): Response {
-  return jsonResponse({ error: "Not found" }, 404);
-}
-
 function missingOrganizationResponse(): Response {
   return jsonResponse(
     {
@@ -126,12 +119,6 @@ function missingOrganizationResponse(): Response {
     },
     400,
   );
-}
-
-function isModelProviderOAuthEnabled(
-  params: Parameters<typeof isFeatureEnabled>[1],
-): boolean {
-  return isFeatureEnabled(FeatureSwitchKey.CodexOauthProvider, params);
 }
 
 function errorMessage(error: unknown): string {
@@ -163,20 +150,6 @@ const authorizeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   if (!auth.orgId) {
     return missingOrganizationResponse();
-  }
-
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-  if (
-    !isModelProviderOAuthEnabled({
-      orgId: auth.orgId,
-      userId: auth.userId,
-      overrides,
-    })
-  ) {
-    return featureDisabledResponse();
   }
 
   const state = generateState();
@@ -250,20 +223,6 @@ const callbackInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const result = await safeAsync(async () => {
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    if (
-      !isModelProviderOAuthEnabled({
-        orgId: auth.orgId,
-        userId: auth.userId,
-        overrides,
-      })
-    ) {
-      return redirectWithError(origin, "OpenAI OAuth is not available", true);
-    }
-
     const exchangeResult = await exchangeChatgptCode({
       clientId: getChatgptOAuthClientId(),
       code: authorizationCode,

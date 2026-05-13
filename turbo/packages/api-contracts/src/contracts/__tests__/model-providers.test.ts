@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   getProviderBaseUrl,
   areProvidersCompatible,
@@ -27,7 +26,6 @@ import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   SUPPORTED_RUN_MODELS,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
-  VM0_MODEL_TO_PROVIDER,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   MODEL_PROVIDER_TYPES,
   modelProviderTypeSchema,
@@ -288,37 +286,15 @@ describe("model selection for Anthropic-native providers", () => {
 });
 
 describe("getVm0VisibleModels", () => {
-  it("returns all models when no features are provided", () => {
+  it("returns all VM0 managed models", () => {
     const models = getVm0VisibleModels();
     expect(models).toContain("kimi-k2.5");
     expect(models).toContain("MiniMax-M2.7");
     expect(models).toContain("glm-5.1");
     expect(models).toContain("deepseek-v4-pro");
     expect(models).toContain("deepseek-v4-flash");
-    // All feature-flagged models must be hidden when no features are provided
-    const featureFlaggedModels = Object.entries(VM0_MODEL_TO_PROVIDER)
-      .filter(([, config]) => {
-        return config.featureFlag !== undefined;
-      })
-      .map(([model]) => {
-        return model;
-      });
-    for (const model of featureFlaggedModels) {
-      expect(models).not.toContain(model);
-    }
-  });
-
-  it("DeepSeek V4 models and compatibility aliases are not feature gated", () => {
-    const models = getVm0VisibleModels({});
-    expect(models).toContain("deepseek-v4-pro");
-    expect(models).toContain("deepseek-v4-flash");
-  });
-
-  it("shows GPT models only when Codex beta is enabled", () => {
-    expect(getVm0VisibleModels({})).not.toContain("gpt-5.5");
-    expect(
-      getVm0VisibleModels({ [FeatureSwitchKey.CodexBeta]: true }),
-    ).toContain("gpt-5.5");
+    expect(models).toContain("gpt-5.5");
+    expect(models).toContain("gpt-5.3-codex");
   });
 });
 

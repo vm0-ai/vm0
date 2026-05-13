@@ -323,27 +323,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
   },
-  [FeatureSwitchKey.CodexBeta]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Gate the codex framework via BYOK OpenAI provider in zero web. " +
-      "When off, the openai-api-key tile is hidden in the add-provider " +
-      "dialog and POST /api/zero/model-providers with type=openai-api-key " +
-      "returns 404. Staff-only during rollout; per-user toggle via Lab.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.CodexOauthProvider]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Gate the ChatGPT-OAuth model provider in zero web (Epic #11872). " +
-      "When off, the 'Connect ChatGPT' tile is hidden in the add-provider " +
-      "dialog, server routes that initiate the OAuth dance return 404, and " +
-      "stale-provider UX is bypassed. Staff-only during rollout; per-user " +
-      "toggle via Lab.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.VoiceChatRealtimeBilling]: {
     maintainer: "lancy@vm0.ai",
     description:

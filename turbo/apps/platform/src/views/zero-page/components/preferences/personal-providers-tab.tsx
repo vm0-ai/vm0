@@ -1,10 +1,4 @@
-import {
-  useGet,
-  useLastLoadable,
-  useLastResolved,
-  useLoadable,
-  useSet,
-} from "ccstate-react";
+import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { IconDotsVertical, IconPlus } from "@tabler/icons-react";
 import {
   Button,
@@ -17,7 +11,6 @@ import type {
   ModelProviderResponse,
   ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   disconnectPersonalOAuthCredential$,
   personalActionPromise$,
@@ -25,7 +18,6 @@ import {
   personalOpenOAuthCredentialDialog$,
   setCodexPasteDialogStatePersonal$,
 } from "../../../../signals/zero-page/settings/personal-model-providers.ts";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ProviderIcon } from "../settings/provider-icons.tsx";
@@ -46,7 +38,6 @@ export function PersonalProvidersTab() {
 
 function OAuthCredentialsSection() {
   const providersLoadable = useLastLoadable(personalConfiguredProviders$);
-  const features = useLastResolved(featureSwitch$);
   const openCredentialDialog = useSet(personalOpenOAuthCredentialDialog$);
   const openCodexPasteDialog = useSet(setCodexPasteDialogStatePersonal$);
   const disconnectCredential = useSet(disconnectPersonalOAuthCredential$);
@@ -56,8 +47,6 @@ function OAuthCredentialsSection() {
   const isLoading = providersLoadable.state === "loading";
   const providers =
     providersLoadable.state === "hasData" ? providersLoadable.data : [];
-  const codexOauthEnabled =
-    features?.[FeatureSwitchKey.CodexOauthProvider] ?? false;
   const claudeCode = findProvider(providers, "claude-code-oauth-token");
   const openAI = findProvider(providers, "codex-oauth-token");
   const openAIStatus = getOpenAIStatus(openAI);
@@ -72,14 +61,14 @@ function OAuthCredentialsSection() {
   return (
     <section className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Personal Claude Code{codexOauthEnabled ? " and ChatGPT" : ""}{" "}
-        credentials, used only in your own runs.
+        Personal Claude Code and ChatGPT credentials, used only in your own
+        runs.
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {isLoading ? (
           <>
             <OAuthCardSkeleton />
-            {codexOauthEnabled && <OAuthCardSkeleton />}
+            <OAuthCardSkeleton />
           </>
         ) : (
           <>
@@ -118,39 +107,37 @@ function OAuthCredentialsSection() {
               }}
               testId="oauth-card-claude-code-oauth-token"
             />
-            {codexOauthEnabled && (
-              <OAuthCredentialCard
-                type="codex-oauth-token"
-                title="ChatGPT (Codex)"
-                description="Paste Codex auth.json for Codex-backed model routes."
-                status={openAIStatus}
-                menuItems={
-                  openAI
-                    ? [
-                        {
-                          label: "Replace",
-                          onSelect: connectOpenAI,
+            <OAuthCredentialCard
+              type="codex-oauth-token"
+              title="ChatGPT (Codex)"
+              description="Paste Codex auth.json for Codex-backed model routes."
+              status={openAIStatus}
+              menuItems={
+                openAI
+                  ? [
+                      {
+                        label: "Replace",
+                        onSelect: connectOpenAI,
+                      },
+                      {
+                        label: "Disconnect",
+                        disabled: disconnecting,
+                        onSelect: () => {
+                          detach(
+                            disconnectCredential(
+                              "codex-oauth-token",
+                              pageSignal,
+                            ),
+                            Reason.DomCallback,
+                          );
                         },
-                        {
-                          label: "Disconnect",
-                          disabled: disconnecting,
-                          onSelect: () => {
-                            detach(
-                              disconnectCredential(
-                                "codex-oauth-token",
-                                pageSignal,
-                              ),
-                              Reason.DomCallback,
-                            );
-                          },
-                        },
-                      ]
-                    : []
-                }
-                onAction={connectOpenAI}
-                testId="oauth-card-codex-oauth-token"
-              />
-            )}
+                      },
+                    ]
+                  : []
+              }
+              onAction={connectOpenAI}
+              testId="oauth-card-codex-oauth-token"
+            />
           </>
         )}
       </div>

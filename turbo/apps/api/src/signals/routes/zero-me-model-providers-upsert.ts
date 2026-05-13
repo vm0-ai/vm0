@@ -1,6 +1,4 @@
 import { command } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   hasAuthMethods,
   type ModelProviderResponse,
@@ -13,7 +11,6 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { badRequestMessage } from "../../lib/error";
 import { handleCodexAuthJsonPaste } from "../services/codex-auth-json-paste-handler";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   upsertUserModelProvider$,
   upsertUserMultiAuthModelProvider$,
@@ -96,20 +93,6 @@ const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   // Branch 1: codex-oauth-token + auth_json paste flow
   if (type === "codex-oauth-token" && authMethod === "auth_json") {
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    // Gate 4: CodexOauthProvider
-    if (
-      !isFeatureEnabled(FeatureSwitchKey.CodexOauthProvider, {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        overrides,
-      })
-    ) {
-      return providerNotFound(type);
-    }
     const raw = secrets?.CODEX_AUTH_JSON;
     if (!raw) {
       return badRequestMessage("Missing CODEX_AUTH_JSON secret");

@@ -25,7 +25,6 @@ import {
   createTestZeroAgent,
   deleteTestCompose,
 } from "../../../__tests__/db-test-seeders/agents";
-import { seedUserFeatureSwitches } from "../../../__tests__/db-test-seeders/feature-switches";
 import { bindCustomSkillToAgent } from "../../../__tests__/db-test-seeders/skills";
 import { createTestUserConnector } from "../../../__tests__/db-test-seeders/connectors";
 import {
@@ -393,9 +392,6 @@ describe("createZeroRun() — service-only parameters", () => {
         agentName,
       );
       await bindCustomSkillToAgent(providerCodexAgentId, "my-skill");
-      await seedUserFeatureSwitches(user.orgId, user.userId, {
-        codexBeta: true,
-      });
       const provider = await createTestOrgModelProvider(
         "openai-api-key",
         "org-openai-key",

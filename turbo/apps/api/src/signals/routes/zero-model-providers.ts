@@ -1,6 +1,4 @@
 import { command, computed } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   hasAuthMethods,
   type ModelProviderResponse,
@@ -15,7 +13,6 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { badRequestMessage, isNotFoundResponse } from "../../lib/error";
 import { handleCodexAuthJsonPaste } from "../services/codex-auth-json-paste-handler";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   deleteOrgModelProvider$,
   upsertOrgModelProvider$,
@@ -41,18 +38,6 @@ const listModelProvidersInner$ = computed(async (get) => {
   const result = await get(zeroModelProviders(auth.orgId));
   return { status: 200 as const, body: result };
 });
-
-function providerNotFound(type: string) {
-  return {
-    status: 404 as const,
-    body: {
-      error: {
-        message: `Provider "${type}" not found`,
-        code: "NOT_FOUND" as const,
-      },
-    },
-  };
-}
 
 function toModelProviderResponse(
   provider: ModelProviderInfo,
@@ -99,29 +84,7 @@ const upsertModelProviderInner$ = command(
 
     const { type, secret, authMethod, secrets } = bodyResult.data;
 
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    const featureContext = {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      overrides,
-    };
-
-    if (
-      type === "openai-api-key" &&
-      !isFeatureEnabled(FeatureSwitchKey.CodexBeta, featureContext)
-    ) {
-      return providerNotFound(type);
-    }
-
     if (type === "codex-oauth-token" && authMethod === "auth_json") {
-      if (
-        !isFeatureEnabled(FeatureSwitchKey.CodexOauthProvider, featureContext)
-      ) {
-        return providerNotFound(type);
-      }
       const raw = secrets?.CODEX_AUTH_JSON;
       if (!raw) {
         return badRequestMessage("Missing CODEX_AUTH_JSON secret");

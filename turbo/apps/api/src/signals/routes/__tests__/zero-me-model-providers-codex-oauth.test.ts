@@ -1,18 +1,14 @@
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 
 import { createApp } from "../../../app-factory";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { writeDb$ } from "../../external/db";
 import {
   deleteUserModelProviders$,
   type UserModelProviderFixture,
@@ -49,44 +45,6 @@ function uniqueOrgUser(prefix: string): UserModelProviderFixture {
   };
 }
 
-async function setPersonalSwitches(
-  orgId: string,
-  userId: string,
-  switches: Partial<Record<FeatureSwitchKey, boolean>>,
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .insert(userFeatureSwitches)
-    .values({ orgId, userId, switches })
-    .onConflictDoUpdate({
-      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
-      set: { switches },
-    });
-}
-
-async function enableAllPersonalSwitches(
-  orgId: string,
-  userId: string,
-): Promise<void> {
-  await setPersonalSwitches(orgId, userId, {
-    [FeatureSwitchKey.CodexOauthProvider]: true,
-  });
-}
-
-async function deletePersonalSwitches(
-  fixture: UserModelProviderFixture,
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .delete(userFeatureSwitches)
-    .where(
-      and(
-        eq(userFeatureSwitches.orgId, fixture.orgId),
-        eq(userFeatureSwitches.userId, fixture.userId),
-      ),
-    );
-}
-
 function base64Url(value: string): string {
   return Buffer.from(value)
     .toString("base64")
@@ -107,7 +65,6 @@ describe("GET /api/zero/me/model-providers/codex-oauth-token/oauth", () => {
   const track = createFixtureTracker<UserModelProviderFixture>(
     async (fixture) => {
       await store.set(deleteUserModelProviders$, fixture, context.signal);
-      await deletePersonalSwitches(fixture);
     },
   );
 
@@ -124,32 +81,10 @@ describe("GET /api/zero/me/model-providers/codex-oauth-token/oauth", () => {
     expect(url.searchParams.get("redirect_url")).toBe(authorizeUrl());
   });
 
-  it("returns 404 from authorize when Codex OAuth is disabled", async () => {
-    const fixture = await track(
-      Promise.resolve(uniqueOrgUser("codex-oauth-authz-off")),
-    );
-    await setPersonalSwitches(fixture.orgId, fixture.userId, {
-      [FeatureSwitchKey.CodexOauthProvider]: false,
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const app = createApp({ signal: context.signal });
-
-    const response = await app.request(authorizeUrl(), {
-      method: "GET",
-      headers: sessionHeaders(),
-    });
-
-    expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: "Not found",
-    });
-  });
-
   it("redirects authorize to OpenAI OAuth with state and PKCE cookies", async () => {
     const fixture = await track(
       Promise.resolve(uniqueOrgUser("codex-oauth-authz")),
     );
-    await enableAllPersonalSwitches(fixture.orgId, fixture.userId);
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const app = createApp({ signal: context.signal });
 
@@ -227,7 +162,6 @@ describe("GET /api/zero/me/model-providers/codex-oauth-token/oauth", () => {
     const fixture = await track(
       Promise.resolve(uniqueOrgUser("codex-oauth-callback")),
     );
-    await enableAllPersonalSwitches(fixture.orgId, fixture.userId);
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const accessToken = createJwt({ exp: 1_900_000_000 });
     const idToken = createJwt({
@@ -308,36 +242,6 @@ describe("GET /api/zero/me/model-providers/codex-oauth-token/oauth", () => {
           needsReconnect: false,
         }),
       ]),
-    );
-  });
-
-  it("redirects callback with an error when Codex OAuth is disabled", async () => {
-    const fixture = await track(
-      Promise.resolve(uniqueOrgUser("codex-oauth-callback-off")),
-    );
-    await setPersonalSwitches(fixture.orgId, fixture.userId, {
-      [FeatureSwitchKey.CodexOauthProvider]: false,
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const app = createApp({ signal: context.signal });
-
-    const response = await app.request(
-      callbackUrl("code=code-1&state=state-1"),
-      {
-        method: "GET",
-        headers: sessionHeaders(
-          "__session=opaque; model_provider_oauth_state=state-1; model_provider_oauth_pkce=verifier-1",
-        ),
-      },
-    );
-
-    expect(response.status).toBe(307);
-    const location = response.headers.get("location");
-    expect(location).not.toBeNull();
-    const url = new URL(location!);
-    expect(url.pathname).toBe("/connector/error");
-    expect(url.searchParams.get("message")).toBe(
-      "OpenAI OAuth is not available",
     );
   });
 });

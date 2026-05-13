@@ -2,14 +2,12 @@ import { randomUUID } from "node:crypto";
 
 import { and, eq } from "drizzle-orm";
 import { createStore } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   zeroModelProvidersByTypeContract,
   zeroModelProvidersMainContract,
 } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
@@ -39,21 +37,6 @@ function uniqueOrgUser(prefix: string): {
     orgId: `org_${prefix}_${randomUUID().slice(0, 8)}`,
     userId: `user_${prefix}_${randomUUID().slice(0, 8)}`,
   };
-}
-
-async function setSwitches(
-  orgId: string,
-  userId: string,
-  switches: Partial<Record<FeatureSwitchKey, boolean>>,
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .insert(userFeatureSwitches)
-    .values({ orgId, userId, switches })
-    .onConflictDoUpdate({
-      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
-      set: { switches },
-    });
 }
 
 function base64UrlEncode(input: string): string {
@@ -538,18 +521,13 @@ describe("POST /api/zero/model-providers", () => {
     expect(response.body.error.code).toBe("BAD_REQUEST");
   });
 
-  it("gates openai-api-key with CodexBeta only", async () => {
-    const enabled = uniqueOrgUser("zmp-openai-enabled");
-    const disabled = uniqueOrgUser("zmp-openai-disabled");
-    await track(Promise.resolve({ orgId: enabled.orgId }));
-    await track(Promise.resolve({ orgId: disabled.orgId }));
+  it("creates an openai-api-key provider by default", async () => {
+    const fixture = uniqueOrgUser("zmp-openai");
+    await track(Promise.resolve({ orgId: fixture.orgId }));
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
-    await setSwitches(enabled.orgId, enabled.userId, {
-      [FeatureSwitchKey.CodexBeta]: true,
-    });
-    mocks.clerk.session(enabled.userId, enabled.orgId, "org:admin");
-    const ok = await accept(
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const response = await accept(
       client.upsert({
         headers: { authorization: "Bearer clerk-session" },
         body: {
@@ -559,25 +537,8 @@ describe("POST /api/zero/model-providers", () => {
       }),
       [201],
     );
-    expect(ok.body.provider.framework).toBe("codex");
-
-    await setSwitches(disabled.orgId, disabled.userId, {
-      [FeatureSwitchKey.CodexBeta]: false,
-    });
-    mocks.clerk.session(disabled.userId, disabled.orgId, "org:admin");
-    const notFound = await accept(
-      client.upsert({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          type: "openai-api-key",
-          secret: "sk-proj-test",
-        },
-      }),
-      [404],
-    );
-    expect(notFound.body.error.message).toBe(
-      'Provider "openai-api-key" not found',
-    );
+    expect(response.body.provider.framework).toBe("codex");
+    expect(response.body.provider.type).toBe("openai-api-key");
 
     const other = await accept(
       client.upsert({
@@ -592,9 +553,6 @@ describe("POST /api/zero/model-providers", () => {
   it("does not mark provider rows as defaults across frameworks", async () => {
     const fixture = uniqueOrgUser("zmp-cross-framework");
     await track(Promise.resolve({ orgId: fixture.orgId }));
-    await setSwitches(fixture.orgId, fixture.userId, {
-      [FeatureSwitchKey.CodexBeta]: true,
-    });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -660,9 +618,6 @@ describe("POST /api/zero/model-providers", () => {
   it("handles codex auth_json paste and never stores the raw blob", async () => {
     const fixture = uniqueOrgUser("zmp-codex-paste");
     await track(Promise.resolve({ orgId: fixture.orgId }));
-    await setSwitches(fixture.orgId, fixture.userId, {
-      [FeatureSwitchKey.CodexOauthProvider]: true,
-    });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -704,9 +659,6 @@ describe("POST /api/zero/model-providers", () => {
   it("returns typed codex auth_json validation errors", async () => {
     const fixture = uniqueOrgUser("zmp-codex-invalid");
     await track(Promise.resolve({ orgId: fixture.orgId }));
-    await setSwitches(fixture.orgId, fixture.userId, {
-      [FeatureSwitchKey.CodexOauthProvider]: true,
-    });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -750,12 +702,9 @@ describe("POST /api/zero/model-providers", () => {
     expect(missing.body.error.code).toBe("BAD_REQUEST");
   });
 
-  it("re-paste clears codex reconnect state and respects the feature gate", async () => {
+  it("re-paste clears codex reconnect state", async () => {
     const fixture = uniqueOrgUser("zmp-codex-repaste");
     await track(Promise.resolve({ orgId: fixture.orgId }));
-    await setSwitches(fixture.orgId, fixture.userId, {
-      [FeatureSwitchKey.CodexOauthProvider]: true,
-    });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -801,24 +750,6 @@ describe("POST /api/zero/model-providers", () => {
     await expect(
       findOrgModelProviderSecret(fixture.orgId, "CHATGPT_REFRESH_TOKEN"),
     ).resolves.toBe("rt_fresh_org");
-
-    await setSwitches(fixture.orgId, fixture.userId, {
-      [FeatureSwitchKey.CodexOauthProvider]: false,
-    });
-    const blocked = await accept(
-      client.upsert({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          type: "codex-oauth-token",
-          authMethod: "auth_json",
-          secrets: { CODEX_AUTH_JSON: makeAuthJson() },
-        },
-      }),
-      [404],
-    );
-    expect(blocked.body.error.message).toBe(
-      'Provider "codex-oauth-token" not found',
-    );
   });
 });
 

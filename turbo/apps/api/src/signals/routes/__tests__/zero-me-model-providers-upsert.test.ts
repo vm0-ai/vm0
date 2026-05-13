@@ -4,9 +4,7 @@ import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { secrets } from "@vm0/db/schema/secret";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
@@ -30,27 +28,6 @@ function uniqueOrgUser(prefix: string): UserModelProviderFixture {
     orgId: `org_${prefix}_${randomUUID().slice(0, 8)}`,
     userId: `user_${prefix}_${randomUUID().slice(0, 8)}`,
   };
-}
-
-async function setPersonalSwitches(
-  orgId: string,
-  userId: string,
-  switches: Partial<Record<FeatureSwitchKey, boolean>>,
-) {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .insert(userFeatureSwitches)
-    .values({ orgId, userId, switches })
-    .onConflictDoUpdate({
-      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
-      set: { switches },
-    });
-}
-
-async function enableAllPersonalSwitches(orgId: string, userId: string) {
-  await setPersonalSwitches(orgId, userId, {
-    [FeatureSwitchKey.CodexOauthProvider]: true,
-  });
 }
 
 // ===========================================================================
@@ -144,7 +121,6 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
   it("creates a single-secret personal provider", async () => {
     const fixture = uniqueOrgUser("zmmp-single-create");
     await track(Promise.resolve(fixture));
-    await enableAllPersonalSwitches(fixture.orgId, fixture.userId);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(
@@ -184,7 +160,6 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
   it("updates an existing personal provider with 200", async () => {
     const fixture = uniqueOrgUser("zmmp-single-update");
     await track(Promise.resolve(fixture));
-    await enableAllPersonalSwitches(fixture.orgId, fixture.userId);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(
@@ -210,7 +185,6 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
   it("returns 400 when single-secret provider is missing the secret", async () => {
     const fixture = uniqueOrgUser("zmmp-missing-secret");
     await track(Promise.resolve(fixture));
-    await enableAllPersonalSwitches(fixture.orgId, fixture.userId);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(
@@ -229,7 +203,6 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
   it("returns 404 when posting vm0 with a secret", async () => {
     const fixture = uniqueOrgUser("zmmp-vm0-with-secret");
     await track(Promise.resolve(fixture));
-    await enableAllPersonalSwitches(fixture.orgId, fixture.userId);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(
@@ -248,7 +221,6 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
   it("returns 404 when posting vm0 with no secret", async () => {
     const fixture = uniqueOrgUser("zmmp-vm0-no-secret");
     await track(Promise.resolve(fixture));
-    await enableAllPersonalSwitches(fixture.orgId, fixture.userId);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(
@@ -267,7 +239,6 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
   it("returns 404 for openai-api-key", async () => {
     const fixture = uniqueOrgUser("zmmp-openai-rejected");
     await track(Promise.resolve(fixture));
-    await enableAllPersonalSwitches(fixture.orgId, fixture.userId);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(
@@ -295,7 +266,6 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
   it("paste valid auth.json persists derived secrets + metadata", async () => {
     const fixture = uniqueOrgUser("zmmp-codex-happy");
     await track(Promise.resolve(fixture));
-    await enableAllPersonalSwitches(fixture.orgId, fixture.userId);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(
@@ -349,7 +319,6 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
   it("returns 400 CODEX_AUTH_JSON_SHAPE_INVALID on malformed JSON", async () => {
     const fixture = uniqueOrgUser("zmmp-codex-malformed");
     await track(Promise.resolve(fixture));
-    await enableAllPersonalSwitches(fixture.orgId, fixture.userId);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(
@@ -374,7 +343,6 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
   it("returns 400 CODEX_AUTH_JSON_SHAPE_INVALID when tokens.refresh_token missing", async () => {
     const fixture = uniqueOrgUser("zmmp-codex-missing-rt");
     await track(Promise.resolve(fixture));
-    await enableAllPersonalSwitches(fixture.orgId, fixture.userId);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const incomplete = JSON.stringify({
@@ -408,7 +376,6 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
   it("returns 400 CODEX_FREE_PLAN_REJECTED for free-plan accounts", async () => {
     const fixture = uniqueOrgUser("zmmp-codex-free");
     await track(Promise.resolve(fixture));
-    await enableAllPersonalSwitches(fixture.orgId, fixture.userId);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(
@@ -433,7 +400,6 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
   it("returns 400 BAD_REQUEST when CODEX_AUTH_JSON is missing from secrets", async () => {
     const fixture = uniqueOrgUser("zmmp-codex-no-blob");
     await track(Promise.resolve(fixture));
-    await enableAllPersonalSwitches(fixture.orgId, fixture.userId);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(
@@ -454,39 +420,4 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       error: { code: "BAD_REQUEST" },
     });
   });
-
-  it("returns 404 when CodexOauthProvider feature switch is off", async () => {
-    const fixture = uniqueOrgUser("zmmp-codex-gate-off");
-    await track(Promise.resolve(fixture));
-    await setPersonalSwitches(fixture.orgId, fixture.userId, {
-      [FeatureSwitchKey.CodexOauthProvider]: false,
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
-    const response = await accept(
-      client.upsert({
-        body: {
-          type: "codex-oauth-token",
-          authMethod: "auth_json",
-          secrets: { CODEX_AUTH_JSON: makeAuthJson() },
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-    expect(response.body).toMatchObject({
-      error: {
-        code: "NOT_FOUND",
-        message: 'Provider "codex-oauth-token" not found',
-      },
-    });
-  });
 });
-
-// Cleanup the userFeatureSwitches rows created by this suite — the sibling
-// `deleteUserModelProviders$` helper only cleans `model_providers` + `secrets`.
-// Without this the userFeatureSwitches table grows unboundedly across runs.
-// (Same pattern as the delete sibling test.)
