@@ -8,11 +8,13 @@ import {
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { conversations } from "@vm0/db/schema/conversation";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
 import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-preference";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -20,6 +22,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../../../external/db";
+import { nowDate } from "../../../external/time";
 import { encryptSecretForTests } from "./encrypt-secret";
 
 export interface SlackWebhookFixture {
@@ -239,6 +242,133 @@ export const findUserSelectedModel$ = command(
       .limit(1);
     signal.throwIfAborted();
     return row?.selectedModel;
+  },
+);
+
+export const setSlackWebhookUserSelectedModel$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly selectedModel: string | null;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const db = set(writeDb$);
+    await db
+      .update(orgMembersMetadata)
+      .set({ selectedModel: args.selectedModel })
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, args.orgId),
+          eq(orgMembersMetadata.userId, args.userId),
+        ),
+      );
+    signal.throwIfAborted();
+  },
+);
+
+export const seedSlackThreadSession$ = command(
+  async (
+    { set },
+    args: {
+      readonly fixture: SlackWebhookFixture;
+      readonly channelId: string;
+      readonly threadTs: string;
+      readonly selectedModel: string;
+    },
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const db = set(writeDb$);
+    if (!args.fixture.defaultAgentId) {
+      throw new Error("fixture default agent is required");
+    }
+
+    const [connection] = await db
+      .select({ id: slackOrgConnections.id })
+      .from(slackOrgConnections)
+      .where(
+        and(
+          eq(
+            slackOrgConnections.slackWorkspaceId,
+            args.fixture.slackWorkspaceId,
+          ),
+          eq(slackOrgConnections.slackUserId, args.fixture.slackUserId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    if (!connection) {
+      throw new Error("fixture Slack connection is required");
+    }
+
+    const [session] = await db
+      .insert(agentSessions)
+      .values({
+        userId: args.fixture.userId,
+        orgId: args.fixture.orgId,
+        agentComposeId: args.fixture.defaultAgentId,
+      })
+      .returning({ id: agentSessions.id });
+    signal.throwIfAborted();
+    if (!session) {
+      throw new Error("Slack session insert returned no row");
+    }
+
+    const [run] = await db
+      .insert(agentRuns)
+      .values({
+        userId: args.fixture.userId,
+        orgId: args.fixture.orgId,
+        sessionId: session.id,
+        status: "completed",
+        prompt: "previous Slack session",
+        completedAt: nowDate(),
+      })
+      .returning({ id: agentRuns.id });
+    signal.throwIfAborted();
+    if (!run) {
+      throw new Error("Slack run insert returned no row");
+    }
+
+    await db.insert(zeroRuns).values({
+      id: run.id,
+      triggerSource: "slack",
+      modelProvider: "vm0",
+      selectedModel: args.selectedModel,
+    });
+    signal.throwIfAborted();
+
+    const [conversation] = await db
+      .insert(conversations)
+      .values({
+        runId: run.id,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `slack-test-${randomUUID()}`,
+        cliAgentSessionHistory: "[]",
+      })
+      .returning({ id: conversations.id });
+    signal.throwIfAborted();
+    if (!conversation) {
+      throw new Error("Slack conversation insert returned no row");
+    }
+
+    await db
+      .update(agentSessions)
+      .set({ conversationId: conversation.id })
+      .where(eq(agentSessions.id, session.id));
+    signal.throwIfAborted();
+
+    await db.insert(slackOrgThreadSessions).values({
+      connectionId: connection.id,
+      slackChannelId: args.channelId,
+      slackThreadTs: args.threadTs,
+      agentSessionId: session.id,
+    });
+    signal.throwIfAborted();
+
+    return session.id;
   },
 );
 

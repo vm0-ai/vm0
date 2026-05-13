@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 
 import { createStore } from "ccstate";
 
@@ -17,7 +17,7 @@ import {
 
 const context = testContext();
 const store = createStore();
-const SIGNING_SECRET = "test-slack-signing-secret";
+const SIGNING_SECRET = randomBytes(32).toString("hex");
 const COMMAND_PATH = "/api/zero/slack/commands";
 
 function configureSlackWebhookTest(): void {

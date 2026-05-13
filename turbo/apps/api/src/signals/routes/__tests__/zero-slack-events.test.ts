@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -16,12 +16,14 @@ import {
   countSlackWebhookConnections$,
   deleteSlackWebhookFixture$,
   seedSlackWebhookFixture$,
+  seedSlackThreadSession$,
+  setSlackWebhookUserSelectedModel$,
   type SlackWebhookFixture,
 } from "./helpers/zero-slack-webhooks";
 
 const context = testContext();
 const store = createStore();
-const SIGNING_SECRET = "test-slack-signing-secret";
+const SIGNING_SECRET = randomBytes(32).toString("hex");
 const EVENTS_PATH = "/api/zero/slack/events";
 
 function configureSlackWebhookTest(): void {
@@ -63,8 +65,10 @@ function configureSlackWebhookTest(): void {
   context.mocks.slack.views.publish.mockResolvedValue({ ok: true });
 }
 
-function signedHeaders(body: string): Record<string, string> {
-  const timestamp = Math.floor(now() / 1000).toString();
+function signedHeaders(
+  body: string,
+  timestamp = Math.floor(now() / 1000).toString(),
+): Record<string, string> {
   const signature = `v0=${createHmac("sha256", SIGNING_SECRET)
     .update(`v0:${timestamp}:${body}`)
     .digest("hex")}`;
@@ -152,6 +156,11 @@ describe("POST /api/zero/slack/events", () => {
     });
     expect(invalid.status).toBe(401);
     expect(invalid.body).toStrictEqual({ error: "Invalid signature" });
+
+    const staleTimestamp = (Math.floor(now() / 1000) - 301).toString();
+    const stale = await postRawEvent(body, signedHeaders(body, staleTimestamp));
+    expect(stale.status).toBe(401);
+    expect(stale.body).toStrictEqual({ error: "Invalid signature" });
   });
 
   it("suppresses Slack retries before scheduling side effects", async () => {
@@ -344,5 +353,68 @@ describe("POST /api/zero/slack/events", () => {
       .where(eq(zeroRuns.id, run?.id ?? "00000000-0000-0000-0000-000000000000"))
       .limit(1);
     expect(zeroRun?.triggerSource).toBe("slack");
+  });
+
+  it("starts a new Slack session when the selected model changed", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        { withConnection: true, withDefaultAgent: true },
+        context.signal,
+      ),
+    );
+    expect(fixture.defaultAgentId).toBeTruthy();
+
+    const channelId = "D-model";
+    const threadTs = "2400.001";
+    const previousSessionId = await store.set(
+      seedSlackThreadSession$,
+      {
+        fixture,
+        channelId,
+        threadTs,
+        selectedModel: "claude-sonnet-4-6",
+      },
+      context.signal,
+    );
+    await store.set(
+      setSlackWebhookUserSelectedModel$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        selectedModel: "claude-opus-4-7",
+      },
+      context.signal,
+    );
+
+    const prompt = "model changed in Slack thread";
+    const response = await postEvent({
+      type: "event_callback",
+      team_id: fixture.slackWorkspaceId,
+      event: {
+        type: "message",
+        channel_type: "im",
+        user: fixture.slackUserId,
+        text: prompt,
+        ts: "2400.002",
+        thread_ts: threadTs,
+        channel: channelId,
+      },
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    const db = store.set(writeDb$);
+    const [run] = await db
+      .select({
+        id: agentRuns.id,
+        sessionId: agentRuns.sessionId,
+        continuedFromSessionId: agentRuns.continuedFromSessionId,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.prompt, prompt))
+      .limit(1);
+    expect(run?.continuedFromSessionId).toBeNull();
+    expect(run?.sessionId).not.toBe(previousSessionId);
   });
 });

@@ -3,10 +3,7 @@ import { randomBytes } from "node:crypto";
 import { command, type Getter, type Setter } from "ccstate";
 import type { Block, KnownBlock } from "@slack/web-api";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  getAllFeatureStates,
-  isFeatureEnabled,
-} from "@vm0/core/feature-switch";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   getVm0VisibleModels,
   isSupportedRunModel,
@@ -15,6 +12,7 @@ import {
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import { slackOrgCallbackPayloadSchema } from "@vm0/api-contracts/contracts/internal-callbacks-slack-org";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { conversations } from "@vm0/db/schema/conversation";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
@@ -22,6 +20,7 @@ import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session"
 import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-preference";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
 
@@ -571,9 +570,7 @@ async function slackModelPickerState(
   }[];
   readonly currentSelectedModel: string | null;
 }> {
-  const overrides = await get(userFeatureSwitchOverrides(orgId, userId));
-  const featureStates = getAllFeatureStates({ orgId, userId, overrides });
-  const visibleModels = new Set(getVm0VisibleModels(featureStates));
+  const visibleModels = new Set(getVm0VisibleModels());
   const [policies, preference] = await Promise.all([
     set(listOrgModelPolicies$, { orgId, userId }, signal),
     get(userModelPreference({ orgId, userId })),
@@ -1023,9 +1020,12 @@ async function resolveCompatibleThreadSession(args: {
   readonly connectionId: string;
   readonly userId: string;
   readonly agentComposeId: string;
+  readonly selectedModelOverride?: string;
 }): Promise<string | undefined> {
   const [session] = await args.db
-    .select({ agentSessionId: slackOrgThreadSessions.agentSessionId })
+    .select({
+      agentSessionId: slackOrgThreadSessions.agentSessionId,
+    })
     .from(slackOrgThreadSessions)
     .where(
       and(
@@ -1039,7 +1039,10 @@ async function resolveCompatibleThreadSession(args: {
     return undefined;
   }
   const [agentSession] = await args.db
-    .select({ agentComposeId: agentSessions.agentComposeId })
+    .select({
+      agentComposeId: agentSessions.agentComposeId,
+      conversationId: agentSessions.conversationId,
+    })
     .from(agentSessions)
     .where(
       and(
@@ -1048,9 +1051,26 @@ async function resolveCompatibleThreadSession(args: {
       ),
     )
     .limit(1);
-  return agentSession?.agentComposeId === args.agentComposeId
-    ? session.agentSessionId
-    : undefined;
+  if (agentSession?.agentComposeId !== args.agentComposeId) {
+    return undefined;
+  }
+
+  if (args.selectedModelOverride && agentSession.conversationId) {
+    const [previousRun] = await args.db
+      .select({ selectedModel: zeroRuns.selectedModel })
+      .from(conversations)
+      .innerJoin(zeroRuns, eq(zeroRuns.id, conversations.runId))
+      .where(eq(conversations.id, agentSession.conversationId))
+      .limit(1);
+    if (
+      previousRun?.selectedModel &&
+      previousRun.selectedModel !== args.selectedModelOverride
+    ) {
+      return undefined;
+    }
+  }
+
+  return session.agentSessionId;
 }
 
 async function postPreDispatchErrorReply(args: {
@@ -1214,20 +1234,6 @@ async function buildRunAgentParams(
     client: resolved.client,
     userId: args.slackUserId,
   });
-  const existingSessionId = await resolveCompatibleThreadSession({
-    db: args.db,
-    channelId: args.channelId,
-    threadTs: resolved.threadTs,
-    connectionId: resolved.connection.id,
-    userId: resolved.connection.vm0UserId,
-    agentComposeId: resolved.composeId,
-  });
-  const { executionContext } = await fetchConversationContexts(
-    resolved.client,
-    args.channelId,
-    args.threadTs,
-    args.messageTs,
-  );
   const selectedModelOverride = (
     await args.get(
       userModelPreference({
@@ -1236,6 +1242,21 @@ async function buildRunAgentParams(
       }),
     )
   ).selectedModel;
+  const existingSessionId = await resolveCompatibleThreadSession({
+    db: args.db,
+    channelId: args.channelId,
+    threadTs: resolved.threadTs,
+    connectionId: resolved.connection.id,
+    userId: resolved.connection.vm0UserId,
+    agentComposeId: resolved.composeId,
+    selectedModelOverride: selectedModelOverride ?? undefined,
+  });
+  const { executionContext } = await fetchConversationContexts(
+    resolved.client,
+    args.channelId,
+    args.threadTs,
+    args.messageTs,
+  );
   const callbackContext: SlackCallbackPayload = {
     workspaceId: args.workspaceId,
     channelId: args.channelId,
