@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.360.1](https://github.com/vm0-ai/vm0/compare/web-v12.360.0...web-v12.360.1) (2026-05-13)
+
+
+### Bug Fixes
+
+* start AgentPhone typing earlier ([#13185](https://github.com/vm0-ai/vm0/issues/13185)) ([6cab150](https://github.com/vm0-ai/vm0/commit/6cab1502205bb391b445ef0d1bd9134e35f3eec3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.274.0
+
 ## [12.360.0](https://github.com/vm0-ai/vm0/compare/web-v12.359.0...web-v12.360.0) (2026-05-13)
 
 

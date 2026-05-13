@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.42.1](https://github.com/vm0-ai/vm0/compare/api-v1.42.0...api-v1.42.1) (2026-05-13)
+
+
+### Bug Fixes
+
+* log AgentPhone verification send failures ([#13184](https://github.com/vm0-ai/vm0/issues/13184)) ([00dee4a](https://github.com/vm0-ai/vm0/commit/00dee4a0aa4509bf90cf5c02cd13f5f27ccfc300))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.274.0
+
 ## [1.42.0](https://github.com/vm0-ai/vm0/compare/api-v1.41.0...api-v1.42.0) (2026-05-13)
 
 
