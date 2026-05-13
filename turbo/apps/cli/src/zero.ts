@@ -26,6 +26,7 @@ import { zeroBuiltInCommand } from "./commands/zero/built-in";
 import { zeroWebCommand } from "./commands/zero/web";
 import { zeroRemoteAgentCommand } from "./commands/zero/remote-agent";
 import { zeroLocalBrowserCommand } from "./commands/zero/local-browser";
+import { zeroHostCommand } from "./commands/zero/host";
 import {
   decodeZeroTokenPayload,
   type ZeroTokenPayload,
@@ -59,6 +60,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   "computer-use": "computer-use:write",
   "built-in": "file:write",
   web: null,
+  host: "host:write",
   "remote-agent": ["remote-agent:read", "remote-agent:write"],
   "local-browser": "local-browser:read",
 };
@@ -85,6 +87,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroComputerUseCommand,
   zeroBuiltInCommand,
   zeroWebCommand,
+  zeroHostCommand,
   zeroRemoteAgentCommand,
   zeroLocalBrowserCommand,
 ];
@@ -155,6 +158,7 @@ Examples:
   Generate image?        zero built-in generate image --help
   Generate voice?        zero built-in generate voice --help
   Read browser context?  zero local-browser --help
+  Host a static site?    zero host ./dist --site my-site --spa
   Check your identity?   zero whoami`,
   );
 

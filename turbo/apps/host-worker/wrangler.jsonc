@@ -1,0 +1,21 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  "name": "zero-host-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-13",
+  "routes": [
+    {
+      "pattern": "*.sites.vm0.ai/*",
+      "zone_name": "vm0.ai",
+    },
+  ],
+  "vars": {
+    "HOST_DOMAIN": "sites.vm0.ai",
+  },
+  "r2_buckets": [
+    {
+      "binding": "HOSTED_SITES_BUCKET",
+      "bucket_name": "vm0-hosted-sites",
+    },
+  ],
+}

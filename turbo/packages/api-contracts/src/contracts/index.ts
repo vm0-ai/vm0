@@ -1472,6 +1472,18 @@ export {
   type UploadPrepareResponse,
 } from "./zero-uploads";
 export {
+  zeroHostContract,
+  hostedSiteFileSchema,
+  hostedSitePrepareRequestSchema,
+  hostedSitePrepareResponseSchema,
+  hostedSiteCompleteResponseSchema,
+  hostedSiteSlugSchema,
+  type HostedSitePrepareRequest,
+  type HostedSitePrepareResponse,
+  type HostedSiteCompleteResponse,
+  type ZeroHostContract,
+} from "./zero-host";
+export {
   zeroIntegrationsTelegramContract,
   type ZeroIntegrationsTelegramContract,
   type TelegramBot,

@@ -223,3 +223,6 @@ export {
   generateWebVideo,
   generateWebPresentation,
 } from "./domains/web";
+
+// Domain modules - Zero Host
+export { prepareHostedSite, completeHostedSite } from "./domains/zero-host";

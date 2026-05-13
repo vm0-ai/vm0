@@ -49,6 +49,8 @@ export const ZERO_CAPABILITIES = [
   "computer-use:write",
   "file:read",
   "file:write",
+  "host:read",
+  "host:write",
 ] as const;
 
 /** Inferred union type of all zero capability strings. */
@@ -122,6 +124,8 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     },
     "file:read": { group: "Files", label: "Download uploaded files" },
     "file:write": { group: "Files", label: "Upload files" },
+    "host:read": { group: "Hosting", label: "View hosted sites" },
+    "host:write": { group: "Hosting", label: "Publish hosted sites" },
   };
 
 /**

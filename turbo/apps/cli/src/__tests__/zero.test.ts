@@ -34,6 +34,7 @@ describe("zero CLI program", () => {
       "computer-use",
       "built-in",
       "web",
+      "host",
       "remote-agent",
       "local-browser",
     ];
