@@ -104,6 +104,12 @@ fn write_abandoned_result_marker(
     if try_read_result(result_path).is_some() {
         return None;
     }
+    if std::fs::metadata(result_path)
+        .map(|metadata| metadata.is_file() && metadata.len() == 0)
+        .unwrap_or(false)
+    {
+        let _ = remove_file_if_exists(result_path);
+    }
 
     let response = JobResponse {
         run_id,
@@ -642,6 +648,42 @@ mod tests {
             !claim_path.exists(),
             "abandoned cleanup should not create a temporary claim"
         );
+    }
+
+    #[test]
+    fn abandoned_cleanup_replaces_empty_result_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let job_path =
+            local_queue::job_path(group_dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap();
+        let result_path = local_queue::result_path(group_dir, job_id);
+        let cancel_path = local_queue::cancel_path(group_dir, job_id);
+        let claim_path = local_queue::claim_path(group_dir, job_id);
+        std::fs::create_dir_all(job_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+
+        std::fs::write(&job_path, b"{}").unwrap();
+        std::fs::write(&result_path, b"").unwrap();
+        std::fs::write(&cancel_path, b"").unwrap();
+
+        abandon_job(
+            &job_path,
+            &result_path,
+            &cancel_path,
+            &claim_path,
+            job_id,
+            "timed out",
+        );
+
+        assert!(!job_path.exists());
+        assert!(
+            !result_path.exists(),
+            "empty stale result should not strand an unclaimed abandoned job"
+        );
+        assert!(!cancel_path.exists());
+        assert!(!claim_path.exists());
     }
 
     #[test]

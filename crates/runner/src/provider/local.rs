@@ -274,14 +274,20 @@ impl LocalProvider {
                 if claim_path.exists() {
                     continue;
                 }
-                let result_path = local_queue::result_path(&self.group_dir, job_id);
-                if result_path.exists() {
+                if self.result_file_has_content(job_id) {
                     continue;
                 }
                 return Some(JobCandidate::local(job_id, profile.clone(), path));
             }
         }
         None
+    }
+
+    fn result_file_has_content(&self, run_id: RunId) -> bool {
+        let result_path = local_queue::result_path(&self.group_dir, run_id);
+        std::fs::metadata(result_path)
+            .map(|metadata| metadata.is_file() && metadata.len() > 0)
+            .unwrap_or(false)
     }
 
     fn write_result(&self, run_id: RunId, exit_code: i32, error: Option<&str>) -> bool {
@@ -381,7 +387,7 @@ impl JobProvider for LocalProvider {
         {
             return None;
         }
-        if local_queue::result_path(&self.group_dir, run_id).exists() {
+        if self.result_file_has_content(run_id) {
             info!(run_id = %run_id, "local: job already has result, skipping claim");
             let _ = std::fs::remove_file(&claim_file);
             return None;
@@ -390,9 +396,20 @@ impl JobProvider for LocalProvider {
         // Read the job request.
         let buf = match std::fs::read(&job_file) {
             Ok(b) => b,
-            Err(e) => {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 warn!(run_id = %run_id, error = %e, "local: failed to read job file");
                 let _ = std::fs::remove_file(&claim_file);
+                return None;
+            }
+            Err(e) => {
+                warn!(run_id = %run_id, error = %e, "local: unreadable job file, marking job as failed");
+                self.fail_claimed_job(
+                    run_id,
+                    &claim_file,
+                    &job_file,
+                    format!("failed to read job file: {e}"),
+                )
+                .await;
                 return None;
             }
         };
@@ -669,6 +686,28 @@ mod tests {
             provider.find_unclaimed_job().is_none(),
             "a durable result should prevent a completed job from being rediscovered"
         );
+    }
+
+    #[tokio::test]
+    async fn empty_result_does_not_hide_retryable_job() {
+        let dir = tempfile::tempdir().unwrap();
+        let provider =
+            default_provider(dir.path(), CancellationToken::new(), empty_cancel_tokens());
+
+        let job_id = RunId::new_v4();
+        write_job(dir.path(), job_id, "retry me");
+        let result_path = local_queue::result_path(dir.path(), job_id);
+        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
+        std::fs::write(&result_path, b"").unwrap();
+
+        let candidate = provider.discover().await.unwrap();
+        assert_eq!(candidate.run_id(), job_id);
+        let ctx = provider.claim(candidate).await.unwrap();
+        assert_eq!(ctx.prompt, "retry me");
+
+        provider.complete(job_id, 0, None, None, None).await;
+        let resp = read_result(dir.path(), job_id);
+        assert_eq!(resp.exit_code, 0);
     }
 
     #[tokio::test]
@@ -1068,6 +1107,45 @@ mod tests {
         assert!(
             !claim_path.exists(),
             "claim file must be removed when job read fails"
+        );
+    }
+
+    #[tokio::test]
+    async fn claim_marks_unreadable_job_path_failed() {
+        let dir = tempfile::tempdir().unwrap();
+        let provider =
+            default_provider(dir.path(), CancellationToken::new(), empty_cancel_tokens());
+
+        let run_id = RunId::new_v4();
+        let claim_path = local_queue::claim_path(dir.path(), run_id);
+        let job_path =
+            local_queue::job_path(dir.path(), crate::profile::DEFAULT_PROFILE, run_id).unwrap();
+        let result_path = local_queue::result_path(dir.path(), run_id);
+        std::fs::create_dir_all(&job_path).unwrap();
+        let candidate = JobCandidate::local(
+            run_id,
+            crate::profile::DEFAULT_PROFILE.to_owned(),
+            job_path.clone(),
+        );
+
+        assert!(provider.claim(candidate).await.is_none());
+
+        assert!(!claim_path.exists(), "claim file must be removed");
+        assert!(
+            result_path.exists(),
+            "unreadable job path should produce a terminal result"
+        );
+        let result = read_result(dir.path(), run_id);
+        assert_ne!(result.exit_code, 0);
+        assert!(
+            result
+                .error
+                .as_deref()
+                .is_some_and(|e| e.contains("failed to read job file"))
+        );
+        assert!(
+            provider.find_unclaimed_job().is_none(),
+            "terminal result should stop rediscovery of the unreadable path"
         );
     }
 
