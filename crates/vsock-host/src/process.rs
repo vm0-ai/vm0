@@ -326,37 +326,14 @@ pub(crate) async fn wait_for_exit_on_shared(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{host_from_stream, make_pair, mock_handshake, send_command_result};
     use crate::{ConnectionState, VsockHost};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::UnixStream;
     use tokio::sync::{Notify, oneshot};
     use vsock_proto::{
-        CommandCapturedOutput, CommandTermination, Decoder, MSG_COMMAND_RESULT, MSG_COMMAND_START,
-        MSG_ERROR, MSG_PING, MSG_PONG, MSG_PROCESS_EXIT, MSG_READY, MSG_SPAWN_WATCH,
-        MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK,
+        CommandTermination, Decoder, MSG_COMMAND_START, MSG_ERROR, MSG_PROCESS_EXIT,
+        MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK,
     };
-
-    fn make_pair() -> (UnixStream, UnixStream) {
-        UnixStream::pair().unwrap()
-    }
-
-    async fn mock_handshake(stream: &mut UnixStream, decoder: &mut Decoder) {
-        let ready = vsock_proto::encode(MSG_READY, 0, &[]).unwrap();
-        stream.write_all(&ready).await.unwrap();
-
-        let mut buf = [0u8; 1024];
-        let n = stream.read(&mut buf).await.unwrap();
-        let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_PING);
-
-        let pong = vsock_proto::encode(MSG_PONG, msgs[0].seq, &[]).unwrap();
-        stream.write_all(&pong).await.unwrap();
-    }
-
-    async fn host_from_stream(stream: UnixStream) -> io::Result<VsockHost> {
-        let deadline = Instant::now() + Duration::from_secs(5);
-        VsockHost::from_stream(stream, deadline).await
-    }
 
     fn registration_counts(host: &VsockHost) -> (usize, usize, usize) {
         let guard = host.shared.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -369,39 +346,6 @@ mod tests {
             }
             ConnectionState::Closed { .. } => (0, 0, 0),
         }
-    }
-
-    fn command_result_payload(
-        termination: CommandTermination,
-        stdout: &[u8],
-        stderr: &[u8],
-    ) -> Vec<u8> {
-        vsock_proto::encode_command_result(
-            termination,
-            12,
-            CommandCapturedOutput::Captured {
-                bytes: stdout,
-                truncated: false,
-            },
-            CommandCapturedOutput::Captured {
-                bytes: stderr,
-                truncated: false,
-            },
-            "",
-        )
-        .unwrap()
-    }
-
-    async fn send_command_result(
-        stream: &mut UnixStream,
-        seq: u32,
-        termination: CommandTermination,
-        stdout: &[u8],
-        stderr: &[u8],
-    ) {
-        let payload = command_result_payload(termination, stdout, stderr);
-        let frame = vsock_proto::encode(MSG_COMMAND_RESULT, seq, &payload).unwrap();
-        stream.write_all(&frame).await.unwrap();
     }
 
     #[tokio::test]
