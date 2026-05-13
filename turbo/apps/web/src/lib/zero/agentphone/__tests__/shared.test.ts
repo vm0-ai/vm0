@@ -8,10 +8,7 @@ import {
   insertTestAgentPhoneMessage,
   insertTestAgentPhoneUserLink,
 } from "../../../../__tests__/api-test-helpers";
-import {
-  fetchAgentPhoneContext,
-  enrichAgentPhonePrompt,
-} from "../shared";
+import { fetchAgentPhoneContext, enrichAgentPhonePrompt } from "../shared";
 
 const context = testContext();
 
