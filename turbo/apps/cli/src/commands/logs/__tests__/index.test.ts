@@ -1081,6 +1081,54 @@ describe("logs command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
     });
+
+    it("should collapse paired Codex error and turn.failed when default tail order is descending", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 3,
+                  eventType: "turn.failed",
+                  createdAt: "2024-01-15T10:30:02Z",
+                  eventData: {
+                    type: "turn.failed",
+                    error: "Rate limit exceeded",
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "error",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "error",
+                    message: "API connection failed",
+                  },
+                },
+                {
+                  sequenceNumber: 1,
+                  eventType: "thread.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
+    });
   });
 
   describe("system log", () => {
