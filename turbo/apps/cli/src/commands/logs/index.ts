@@ -12,7 +12,7 @@ import {
 import { getApiUrl } from "../../lib/api/config";
 import { parseTime } from "../../lib/utils/time-parser";
 import { formatBytes } from "../../lib/utils/file-utils";
-import { parseEvent } from "../../lib/events/event-parser-factory";
+import { EventStreamNormalizer } from "../../lib/events/event-stream-normalizer";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import { paginate } from "../../lib/utils/paginate";
 import { searchCommand } from "./search";
@@ -243,12 +243,15 @@ function createLogRenderer(verbose: boolean): EventRenderer {
 function renderAgentEvent(
   event: RunEvent,
   renderer: EventRenderer,
+  normalizer: EventStreamNormalizer,
   framework: string,
 ): void {
-  const eventData = event.eventData as Record<string, unknown>;
-  const parsed = parseEvent(eventData, framework);
-  if (parsed) {
-    parsed.timestamp = new Date(event.createdAt);
+  const parsedEvents = normalizer.process(
+    event.eventData,
+    framework,
+    new Date(event.createdAt),
+  );
+  for (const parsed of parsedEvents) {
     renderer.render(parsed);
   }
 }
@@ -464,10 +467,14 @@ async function showAgentEvents(
 
   // Create renderer for log viewing (with timestamps, always verbose)
   const renderer = createLogRenderer(true);
+  const normalizer = new EventStreamNormalizer();
   const framework = firstResponse.framework;
 
   for (const event of events) {
-    renderAgentEvent(event, renderer, framework);
+    renderAgentEvent(event, renderer, normalizer, framework);
+  }
+  for (const parsed of normalizer.flush()) {
+    renderer.render(parsed);
   }
 
   console.log(chalk.dim(`View on platform: ${platformUrl}`));
