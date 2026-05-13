@@ -64,11 +64,11 @@ function MessageMark({
   }
 
   return (
-    <span className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden">
+    <span className="shrink-0 inline-flex h-10 w-10 items-center justify-center overflow-hidden">
       <img
         src={imessageIconImg}
         alt=""
-        className="h-7 w-7"
+        className="h-10 w-10"
         data-testid="agentphone-connect-icon"
       />
     </span>

@@ -111,8 +111,8 @@ describe("zero agentphone connect page", () => {
       imessageIconImg,
     );
     expect(screen.getByTestId("agentphone-connect-icon")).toHaveClass(
-      "h-7",
-      "w-7",
+      "h-10",
+      "w-10",
     );
     expect(
       screen.getByText(
