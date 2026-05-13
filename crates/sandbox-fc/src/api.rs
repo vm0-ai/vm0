@@ -1354,6 +1354,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_balloon_statistics_returns_error_on_malformed_response() {
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::ok_body("{not json")]);
+        let sock_path = api.socket_path().to_path_buf();
+        let client = ApiClient::new(&sock_path);
+        let ApiError::Other(message) = client.get_balloon_statistics().await.unwrap_err() else {
+            panic!("expected parse error");
+        };
+        assert!(
+            message.contains("parse balloon statistics"),
+            "got: {message}"
+        );
+
+        let request = api.next_request().await;
+        assert_request(&request, "GET", "/balloon/statistics");
+    }
+
+    #[tokio::test]
     async fn configure_balloon_succeeds_on_204() {
         let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
         let sock_path = api.socket_path().to_path_buf();
