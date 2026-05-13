@@ -34,6 +34,14 @@
   --color-credit-plan-team: #6b8de3;
 }
 
+/* Safe area insets as CSS custom properties — more reliable than direct env() in inline
+   styles across WebKit versions, including iOS 26+ standalone PWA mode.
+   Use var(--sat) / var(--sab) in components instead of env() directly. */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+}
+
 /* Landing tagline carousel: smooth vertical fade-in */
 @keyframes zero-tagline-in {
   from {
