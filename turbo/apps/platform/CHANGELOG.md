@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.351.0](https://github.com/vm0-ai/vm0/compare/app-v0.350.0...app-v0.351.0) (2026-05-13)
+
+
+### Features
+
+* **zero:** expose gpt-image-2 generation options ([#13190](https://github.com/vm0-ai/vm0/issues/13190)) ([b2df33d](https://github.com/vm0-ai/vm0/commit/b2df33d007203bd298c28fcc52d41bbaa5161c24))
+
+
+### Bug Fixes
+
+* use CSS custom properties for safe-area insets in PWA (iOS 26 compat) ([#13102](https://github.com/vm0-ai/vm0/issues/13102)) ([e9120c7](https://github.com/vm0-ai/vm0/commit/e9120c728f0689ff7d48ddf93f7b9e46185d4158))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.19.0
+    * @vm0/core bumped to 8.274.1
+
 ## [0.350.0](https://github.com/vm0-ai/vm0/compare/app-v0.349.0...app-v0.350.0) (2026-05-13)
 
 

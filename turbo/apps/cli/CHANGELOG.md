@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.150.0](https://github.com/vm0-ai/vm0/compare/cli-v9.149.2...cli-v9.150.0) (2026-05-13)
+
+
+### Features
+
+* **zero:** expose gpt-image-2 generation options ([#13190](https://github.com/vm0-ai/vm0/issues/13190)) ([b2df33d](https://github.com/vm0-ai/vm0/commit/b2df33d007203bd298c28fcc52d41bbaa5161c24))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.19.0
+    * @vm0/core bumped to 8.274.1
+
 ## [9.149.2](https://github.com/vm0-ai/vm0/compare/cli-v9.149.1...cli-v9.149.2) (2026-05-13)
 
 
