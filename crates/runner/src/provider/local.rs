@@ -371,14 +371,6 @@ impl JobProvider for LocalProvider {
         }
     }
 
-    fn control_poll_interval(&self) -> Option<Duration> {
-        Some(POLL_INTERVAL)
-    }
-
-    async fn poll_control(&self) {
-        self.scan_cancel_files();
-    }
-
     async fn claim(&self, candidate: JobCandidate) -> Option<ExecutionContext> {
         let run_id = candidate.run_id();
         let partition_profile = candidate.profile_name().to_owned();
@@ -936,30 +928,6 @@ mod tests {
         assert!(
             !cancel_path.exists(),
             "cancel file should be deleted after triggering token"
-        );
-    }
-
-    #[tokio::test]
-    async fn poll_control_triggers_cancel_without_job_discovery() {
-        let dir = tempfile::tempdir().unwrap();
-        let cancel = CancellationToken::new();
-        let tokens = empty_cancel_tokens();
-
-        let run_id = RunId::new_v4();
-        let job_token = CancellationToken::new();
-        tokens.lock().await.insert(run_id, job_token.clone());
-
-        let provider = default_provider(dir.path(), cancel, tokens);
-        let cancel_path = local_queue::cancel_path(dir.path(), run_id);
-        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
-        std::fs::write(&cancel_path, b"").unwrap();
-
-        provider.poll_control().await;
-
-        assert!(job_token.is_cancelled(), "cancel token should be triggered");
-        assert!(
-            !cancel_path.exists(),
-            "cancel file should be deleted after control polling"
         );
     }
 

@@ -5,9 +5,8 @@ mod status;
 mod wait;
 
 pub(super) use self::env::{
-    MockRunEnv, mock_run_config, mock_run_config_with_api_url, mock_run_config_with_control_poll,
-    mock_run_config_with_delay, mock_run_config_with_overrides,
-    mock_run_config_with_overrides_and_control_poll, test_profiles, two_profiles,
+    MockRunEnv, mock_run_config, mock_run_config_with_api_url, mock_run_config_with_delay,
+    mock_run_config_with_overrides, test_profiles, two_profiles,
 };
 pub(super) use self::idle_pool::{
     TestParkCandidateSpec, seed_idle_pool, seed_idle_pool_expired, seed_idle_pool_with_overrides,
