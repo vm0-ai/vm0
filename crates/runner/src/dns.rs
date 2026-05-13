@@ -54,7 +54,11 @@ impl DnsProxy {
         self.port
     }
 
-    pub fn drain_producer(&self) -> NetworkLogDrainProducer {
+    /// Return a clone of the DNS network-log drain producer.
+    ///
+    /// `NetworkLogDrainCoordinator` uses this to ask the dnsmasq stderr reader
+    /// task to drain complete log rows already visible to that task.
+    pub(crate) fn drain_producer(&self) -> NetworkLogDrainProducer {
         self.drain.clone()
     }
 

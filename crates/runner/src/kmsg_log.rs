@@ -69,7 +69,11 @@ impl KmsgHandle {
         }
     }
 
-    pub fn drain_producer(&self) -> NetworkLogDrainProducer {
+    /// Return a clone of the kmsg network-log drain producer.
+    ///
+    /// `NetworkLogDrainCoordinator` uses this to ask the `dmesg -w` reader
+    /// task to drain complete log rows already visible to that task.
+    pub(crate) fn drain_producer(&self) -> NetworkLogDrainProducer {
         self.drain.clone()
     }
 }
