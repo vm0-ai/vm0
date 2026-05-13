@@ -569,6 +569,7 @@ mod tests {
     use tokio::task::JoinHandle;
 
     const MOCK_REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(5);
+    const MAX_MOCK_REQUEST_HEADER_BYTES: usize = 16 * 1024;
     const MAX_MOCK_REQUEST_BODY_BYTES: usize = 1024 * 1024;
 
     #[derive(Debug)]
@@ -776,6 +777,12 @@ mod tests {
             if header_end(&buf).is_some() {
                 break;
             }
+            if buf.len() > MAX_MOCK_REQUEST_HEADER_BYTES {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("request headers too large: {} bytes", buf.len()),
+                ));
+            }
 
             let read = stream.read_buf(&mut buf).await?;
             if read == 0 {
@@ -789,6 +796,12 @@ mod tests {
                 "request missing HTTP header terminator",
             )
         })?;
+        if header_end > MAX_MOCK_REQUEST_HEADER_BYTES {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("request headers too large: {header_end} bytes"),
+            ));
+        }
         let headers = String::from_utf8_lossy(&buf[..header_end.saturating_sub(4)]).to_string();
         let content_length = headers
             .lines()
