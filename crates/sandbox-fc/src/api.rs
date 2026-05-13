@@ -908,11 +908,15 @@ mod tests {
         let client = call(sock_path);
         tokio::pin!(client);
 
-        tokio::select! {
-            result = header_written_rx => result.unwrap(),
-            _ = &mut client => panic!("client completed before split response header"),
-            result = &mut server => panic!("mock server exited before split response header: {result:?}"),
-        }
+        tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, async {
+            tokio::select! {
+                result = header_written_rx => result.unwrap(),
+                _ = &mut client => panic!("client completed before split response header"),
+                result = &mut server => panic!("mock server exited before split response header: {result:?}"),
+            }
+        })
+        .await
+        .expect("timed out waiting for split response header");
         write_body_tx.send(()).unwrap();
 
         let (output, ()) = tokio::join!(&mut client, &mut server);
