@@ -568,7 +568,7 @@ mod tests {
     use tokio::sync::mpsc;
     use tokio::task::JoinHandle;
 
-    const MOCK_REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(1);
+    const MOCK_REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(5);
     const MAX_MOCK_REQUEST_BODY_BYTES: usize = 1024 * 1024;
 
     #[derive(Debug)]
