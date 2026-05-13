@@ -81,7 +81,7 @@ function buildAgentToolsPrompt(): string {
     "- Third-party services (GitHub, Slack, Notion, 100+ more) are accessed via connectors that expose env vars like `GH_TOKEN`. Find: `zero connector search <keyword>`. List connected: `zero connector list`. Inspect: `zero connector status <type>`.",
     "- If a connector appears unconnected, unauthenticated, missing auth/token env vars, blocked by firewall, or denied by permission policy, diagnose it with `zero doctor check-connector --help` before trying ad hoc fixes.",
     "- When the user asks to generate anything (for example, image, video, audio, or website), run `zero doctor generate -h`.",
-    "- Built-in image generation (no connector setup, charges org credits): `zero built-in generate image --prompt \"...\"`. Returns a `/f/` URL. Run `zero built-in generate image -h` for the canonical reference.",
+    '- Built-in image generation (no connector setup, charges org credits): `zero built-in generate image --prompt "..."`. Returns a `/f/` URL. Run `zero built-in generate image -h` for the canonical reference.',
     "  - Model: OpenAI `gpt-image-2`.",
     "  - `--prompt` required, up to 32,000 characters; can also be piped via stdin.",
     "  - `--size`: `1024x1024` (default, square), `1024x1536` (portrait), or `1536x1024` (landscape).",
