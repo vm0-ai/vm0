@@ -38,6 +38,14 @@ export function providerDeleted() {
   );
 }
 
+export function insufficientCredits() {
+  return httpError(
+    402,
+    "INSUFFICIENT_CREDITS",
+    "Insufficient credits. Add credits or configure your own API key to continue.",
+  );
+}
+
 export function badRequestMessage(message: string) {
   return httpError(400, "BAD_REQUEST", message);
 }

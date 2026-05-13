@@ -51,6 +51,7 @@ import {
   generateAndPersistChatThreadTitle,
   isChatTitleGenerationConfigured,
 } from "../services/zero-chat-title.service";
+import { checkOrgCreditsForRunAdmission } from "../services/zero-run-admission.service";
 import { visibleChatMessageCondition } from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route";
 
@@ -1817,6 +1818,19 @@ const createNormalChatRun$ = command(
       args.body.modelProvider && args.body.modelProvider !== "default"
         ? args.body.modelProvider
         : undefined;
+    const effectiveModelProvider =
+      modelPin.modelProviderType ?? requestedModelProvider;
+    const creditAdmission = await checkOrgCreditsForRunAdmission({
+      db: prepared.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      modelProviderType: effectiveModelProvider,
+    });
+    signal.throwIfAborted();
+    if (creditAdmission) {
+      return creditAdmission;
+    }
+
     const runResult = await set(
       createAgentRun$,
       {
@@ -1862,7 +1876,7 @@ const createNormalChatRun$ = command(
     await prepared.db
       .update(zeroRuns)
       .set({
-        modelProvider: modelPin.modelProviderType ?? requestedModelProvider,
+        modelProvider: effectiveModelProvider,
         modelProviderId: modelPin.modelProviderId,
         modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
         selectedModel: modelPin.selectedModel,

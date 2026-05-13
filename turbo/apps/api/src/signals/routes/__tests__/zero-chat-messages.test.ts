@@ -12,6 +12,7 @@ import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets } from "@vm0/db/schema/secret";
@@ -183,6 +184,7 @@ async function deleteFixture(fixture: ChatMessageFixture): Promise<void> {
         eq(orgMembersMetadata.userId, fixture.userId),
       ),
     );
+  await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
   await writeDb
     .delete(orgModelPolicies)
     .where(eq(orgModelPolicies.orgId, fixture.orgId));
@@ -280,6 +282,36 @@ async function seedModelProvider(
     })
     .returning({ id: modelProviders.id });
   return provider!.id;
+}
+
+async function seedVm0Credits(
+  fixture: ChatMessageFixture,
+  credits: number,
+  creditEnabled = true,
+): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb
+    .insert(orgMetadata)
+    .values({
+      orgId: fixture.orgId,
+      credits,
+      tier: "free",
+    })
+    .onConflictDoUpdate({
+      target: orgMetadata.orgId,
+      set: { credits, tier: "free", updatedAt: nowDate() },
+    });
+  await writeDb
+    .insert(orgMembersMetadata)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      creditEnabled,
+    })
+    .onConflictDoUpdate({
+      target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
+      set: { creditEnabled, updatedAt: nowDate() },
+    });
 }
 
 describe("POST /api/zero/chat/messages", () => {
@@ -832,6 +864,7 @@ describe("POST /api/zero/chat/messages", () => {
   it("forceNewSession rewrites the model pin and injects prior chat context", async () => {
     const fixture = await track(seedFixture());
     const writeDb = store.set(writeDb$);
+    await seedVm0Credits(fixture, 1000);
     await writeDb.insert(userFeatureSwitches).values({
       orgId: fixture.orgId,
       userId: fixture.userId,
@@ -897,6 +930,46 @@ describe("POST /api/zero/chat/messages", () => {
     expect(run?.selectedModel).toBe("claude-sonnet-4-6");
     expect(run?.appendSystemPrompt).toContain("# Prior Chat Thread Context");
     expect(run?.appendSystemPrompt).toContain("User: first on opus");
+  });
+
+  it("returns 402 when VM0 model-first admission has no spendable credits", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    await seedVm0Credits(fixture, 0);
+    await writeDb.insert(userFeatureSwitches).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      switches: { modelFirstModelProvider: true },
+      updatedAt: nowDate(),
+    });
+    await writeDb.insert(orgModelPolicies).values({
+      orgId: fixture.orgId,
+      model: "claude-sonnet-4-6",
+      isDefault: true,
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+      createdByUserId: fixture.userId,
+      updatedByUserId: fixture.userId,
+    });
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "blocked by credits",
+        },
+      }),
+      [402],
+    );
+
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    const [run] = await writeDb
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(eq(agentRuns.userId, fixture.userId))
+      .limit(1);
+    expect(run).toBeUndefined();
   });
 
   it("locks an existing provider-first thread to its first model selection", async () => {
