@@ -85,7 +85,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
     }
     // claim() runs in the branch handler: non-interruptible, so a successful
     // claim is always paired with complete().
-    let Some(context) = ctx.spawn_ctx.provider.claim(run_id).await else {
+    let Some(context) = ctx.spawn_ctx.provider.claim(run_id, &profile_name).await else {
         // None means the job won't run here: either lost the race to another
         // runner, or the provider rejected the job. Release the reservation and
         // cancel token so the runner can continue.

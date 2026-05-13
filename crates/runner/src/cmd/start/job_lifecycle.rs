@@ -243,7 +243,7 @@ mod tests {
             None
         }
 
-        async fn claim(&self, _run_id: RunId) -> Option<ExecutionContext> {
+        async fn claim(&self, _run_id: RunId, _expected_profile: &str) -> Option<ExecutionContext> {
             None
         }
 

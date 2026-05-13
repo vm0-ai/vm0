@@ -202,7 +202,7 @@ impl JobProvider for LocalProvider {
         }
     }
 
-    async fn claim(&self, run_id: RunId) -> Option<ExecutionContext> {
+    async fn claim(&self, run_id: RunId, expected_profile: &str) -> Option<ExecutionContext> {
         // Atomic claim via O_EXCL — only the first runner to create the file wins.
         let claim_file = self.group_dir.join(format!("{run_id}.claim"));
         if std::fs::OpenOptions::new()
@@ -261,6 +261,16 @@ impl JobProvider for LocalProvider {
             .profile
             .as_deref()
             .unwrap_or(crate::profile::DEFAULT_PROFILE);
+        if requested_profile != expected_profile {
+            warn!(
+                run_id = %run_id,
+                expected_profile,
+                actual_profile = requested_profile,
+                "local: claimed job profile changed after discovery"
+            );
+            let _ = std::fs::remove_file(&claim_file);
+            return None;
+        }
         if !self.supported_profiles.contains(requested_profile) {
             warn!(
                 run_id = %run_id,
@@ -429,7 +439,7 @@ mod tests {
         assert_eq!(run_id, job_id);
         assert_eq!(profile, crate::profile::DEFAULT_PROFILE);
 
-        let ctx = provider.claim(run_id).await.unwrap();
+        let ctx = provider.claim(run_id, &profile).await.unwrap();
         assert_eq!(ctx.run_id, run_id);
         assert_eq!(ctx.prompt, "hello world");
 
@@ -477,14 +487,14 @@ mod tests {
         let job2 = RunId::new_v4();
         write_job(dir.path(), job1, "job1");
 
-        let (run_id1, _) = provider.discover().await.unwrap();
-        let ctx1 = provider.claim(run_id1).await.unwrap();
+        let (run_id1, profile1) = provider.discover().await.unwrap();
+        let ctx1 = provider.claim(run_id1, &profile1).await.unwrap();
         assert_eq!(ctx1.prompt, "job1");
 
         write_job(dir.path(), job2, "job2");
 
-        let (run_id2, _) = provider.discover().await.unwrap();
-        let ctx2 = provider.claim(run_id2).await.unwrap();
+        let (run_id2, profile2) = provider.discover().await.unwrap();
+        let ctx2 = provider.claim(run_id2, &profile2).await.unwrap();
         assert_eq!(ctx2.prompt, "job2");
         assert_ne!(run_id1, run_id2);
 
@@ -514,13 +524,13 @@ mod tests {
         let job_id = RunId::new_v4();
         write_job(dir.path(), job_id, "shared");
 
-        let (id_a, _) = provider_a.discover().await.unwrap();
-        let (id_b, _) = provider_b.discover().await.unwrap();
+        let (id_a, profile_a) = provider_a.discover().await.unwrap();
+        let (id_b, profile_b) = provider_b.discover().await.unwrap();
         assert_eq!(id_a, job_id);
         assert_eq!(id_b, job_id);
 
-        let claim_a = provider_a.claim(id_a).await;
-        let claim_b = provider_b.claim(id_b).await;
+        let claim_a = provider_a.claim(id_a, &profile_a).await;
+        let claim_b = provider_b.claim(id_b, &profile_b).await;
 
         assert!(
             claim_a.is_some() ^ claim_b.is_some(),
@@ -541,7 +551,7 @@ mod tests {
         assert_eq!(run_id, job_id);
         assert_eq!(profile, "vm0/default");
 
-        let ctx = provider.claim(run_id).await.unwrap();
+        let ctx = provider.claim(run_id, &profile).await.unwrap();
         assert_eq!(ctx.experimental_profile.as_deref(), Some("vm0/default"));
     }
 
@@ -723,7 +733,10 @@ mod tests {
 
         // Claim the job so it's no longer discoverable, then write another
         // job to let discover() return.
-        provider.claim(run_id).await.unwrap();
+        provider
+            .claim(run_id, crate::profile::DEFAULT_PROFILE)
+            .await
+            .unwrap();
         let other_job = RunId::new_v4();
         write_job(dir.path(), other_job, "next job");
 
@@ -752,7 +765,12 @@ mod tests {
         let claim_path = dir.path().join(format!("{run_id}.claim"));
 
         // No .job file — claim() should fail at the read step.
-        assert!(provider.claim(run_id).await.is_none());
+        assert!(
+            provider
+                .claim(run_id, crate::profile::DEFAULT_PROFILE)
+                .await
+                .is_none()
+        );
         assert!(
             !claim_path.exists(),
             "claim file must be removed when job read fails"
@@ -775,7 +793,12 @@ mod tests {
         let result_path = dir.path().join(format!("{run_id}.result"));
         std::fs::write(&job_path, b"not json").unwrap();
 
-        assert!(provider.claim(run_id).await.is_none());
+        assert!(
+            provider
+                .claim(run_id, crate::profile::DEFAULT_PROFILE)
+                .await
+                .is_none()
+        );
 
         assert!(!claim_path.exists(), "claim file must be removed");
         assert!(!job_path.exists(), "poison job file must be removed");
@@ -819,7 +842,7 @@ mod tests {
         assert_eq!(discovered, run_id);
         assert_eq!(profile, "vm0/large");
 
-        assert!(provider.claim(run_id).await.is_none());
+        assert!(provider.claim(run_id, &profile).await.is_none());
         let resp = read_result(dir.path(), run_id);
         assert_ne!(resp.exit_code, 0);
         assert!(
@@ -846,7 +869,33 @@ mod tests {
 
         write_job_with_profile(dir.path(), run_id, "large job", Some("vm0/large"));
 
-        assert!(provider.claim(run_id).await.is_none());
+        assert!(provider.claim(run_id, "vm0/default").await.is_none());
+        assert!(dir.path().join(format!("{run_id}.job")).exists());
+        assert!(!dir.path().join(format!("{run_id}.claim")).exists());
+        assert!(!dir.path().join(format!("{run_id}.result")).exists());
+    }
+
+    #[tokio::test]
+    async fn claim_rejects_supported_profile_change_after_discovery_race() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = provider_with_profiles(
+            dir.path(),
+            ["vm0/default".to_owned(), "vm0/large".to_owned()],
+            cancel,
+            empty_cancel_tokens(),
+        );
+
+        let run_id = RunId::new_v4();
+        write_job_with_profile(dir.path(), run_id, "default job", Some("vm0/default"));
+
+        let (discovered, profile) = provider.find_unclaimed_job().unwrap();
+        assert_eq!(discovered, run_id);
+        assert_eq!(profile, "vm0/default");
+
+        write_job_with_profile(dir.path(), run_id, "large job", Some("vm0/large"));
+
+        assert!(provider.claim(run_id, &profile).await.is_none());
         assert!(dir.path().join(format!("{run_id}.job")).exists());
         assert!(!dir.path().join(format!("{run_id}.claim")).exists());
         assert!(!dir.path().join(format!("{run_id}.result")).exists());

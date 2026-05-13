@@ -43,13 +43,14 @@ pub trait JobProvider: Send + Sync {
     /// dropped (cancelled) at any `.await` point.
     async fn discover(&self) -> Option<(RunId, String)>;
 
-    /// Claim a discovered job. Returns `None` if the job was already claimed
-    /// by another runner or an error occurred.
+    /// Claim a discovered job for the profile returned by `discover()`.
+    /// Returns `None` if the job was already claimed by another runner, the
+    /// profile no longer matches, or an error occurred.
     ///
     /// Callers **must** invoke this from a non-cancellable context (e.g.
     /// inside a `select!` branch handler) to guarantee that a successful
     /// claim is always paired with a later [`complete()`](JobProvider::complete).
-    async fn claim(&self, run_id: RunId) -> Option<ExecutionContext>;
+    async fn claim(&self, run_id: RunId, expected_profile: &str) -> Option<ExecutionContext>;
 
     /// Report job completion. Called concurrently from spawned executor tasks.
     ///

@@ -156,7 +156,7 @@ impl JobProvider for ApiProvider {
         }
     }
 
-    async fn claim(&self, run_id: RunId) -> Option<ExecutionContext> {
+    async fn claim(&self, run_id: RunId, _expected_profile: &str) -> Option<ExecutionContext> {
         match self.api.claim(run_id).await {
             Ok(ctx) => {
                 info!(run_id = %run_id, "job claimed");

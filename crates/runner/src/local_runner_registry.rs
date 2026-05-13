@@ -72,7 +72,7 @@ impl LocalRunnerRegistry {
     }
 
     pub(crate) fn remove_record(&self, runner_id: &str) -> RunnerResult<()> {
-        let path = self.record_path(runner_id);
+        let path = self.record_path(runner_id, std::process::id());
         match std::fs::remove_file(&path) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -107,8 +107,9 @@ impl LocalRunnerRegistry {
         };
         let json = serde_json::to_vec(&record)
             .map_err(|e| RunnerError::Internal(format!("serialize local runner registry: {e}")))?;
-        let tmp_path = runners_dir.join(format!("{runner_id}.{}.tmp", std::process::id()));
-        let record_path = self.record_path(runner_id);
+        let pid = std::process::id();
+        let tmp_path = runners_dir.join(format!("{runner_id}.{pid}.tmp"));
+        let record_path = self.record_path(runner_id, pid);
         std::fs::write(&tmp_path, json).map_err(|e| {
             RunnerError::Internal(format!(
                 "write local runner registry temp file {}: {e}",
@@ -171,8 +172,8 @@ impl LocalRunnerRegistry {
         self.group_dir.join(RUNNERS_DIR)
     }
 
-    fn record_path(&self, runner_id: &str) -> PathBuf {
-        self.runners_dir().join(format!("{runner_id}.json"))
+    fn record_path(&self, runner_id: &str, pid: u32) -> PathBuf {
+        self.runners_dir().join(format!("{runner_id}-{pid}.json"))
     }
 }
 
@@ -269,7 +270,11 @@ mod tests {
             .live_records_at(32_000, Duration::from_secs(30))
             .unwrap();
         assert!(records.is_empty());
-        assert!(!registry.record_path("runner-1").exists());
+        assert!(
+            !registry
+                .record_path("runner-1", std::process::id())
+                .exists()
+        );
     }
 
     #[test]
@@ -321,7 +326,11 @@ mod tests {
         registry.remove_record("runner-1").unwrap();
         registry.remove_record("runner-1").unwrap();
 
-        assert!(!registry.record_path("runner-1").exists());
+        assert!(
+            !registry
+                .record_path("runner-1", std::process::id())
+                .exists()
+        );
     }
 
     #[test]
@@ -341,5 +350,38 @@ mod tests {
 
         registration.remove().unwrap();
         assert!(registry.live_profiles().unwrap().is_empty());
+    }
+
+    #[test]
+    fn remove_record_preserves_other_process_record_for_same_runner_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = registry(dir.path());
+
+        registry
+            .write_record_at("runner-1", "local-a", vec!["vm0/default".into()], 1_000)
+            .unwrap();
+        let other_pid = std::process::id().wrapping_add(1);
+        let other_path = registry.record_path("runner-1", other_pid);
+        std::fs::write(
+            &other_path,
+            serde_json::to_vec(&serde_json::json!({
+                "runner_id": "runner-1",
+                "name": "local-b",
+                "profiles": ["vm0/large"],
+                "updated_at_ms": 1_000,
+                "pid": other_pid,
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        registry.remove_record("runner-1").unwrap();
+
+        assert!(
+            !registry
+                .record_path("runner-1", std::process::id())
+                .exists()
+        );
+        assert!(other_path.exists());
     }
 }

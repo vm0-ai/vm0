@@ -260,7 +260,7 @@ impl JobProvider for MockJobProvider {
         }
     }
 
-    async fn claim(&self, run_id: RunId) -> Option<ExecutionContext> {
+    async fn claim(&self, run_id: RunId, _expected_profile: &str) -> Option<ExecutionContext> {
         self.claim_results
             .lock()
             .unwrap_or_else(|e| e.into_inner())
