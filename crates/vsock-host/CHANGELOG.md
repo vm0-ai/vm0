@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.14.0](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.13.3...vsock-host-v0.14.0) (2026-05-13)
+
+
+### Features
+
+* add bounded exec output policies ([#12292](https://github.com/vm0-ai/vm0/issues/12292)) ([71f6ad9](https://github.com/vm0-ai/vm0/commit/71f6ad9aaadaa9bf6589a5915c51ab4c092547eb))
+* add host-initiated vsock control handshake ([#12543](https://github.com/vm0-ai/vm0/issues/12543)) ([de17089](https://github.com/vm0-ai/vm0/commit/de17089191b001b3ed6f33487b62a3360bf81174))
+* **vsock-host:** add command operation router ([#12782](https://github.com/vm0-ai/vm0/issues/12782)) ([e1ad973](https://github.com/vm0-ai/vm0/commit/e1ad97343e41c441d3539de961f44c91bbad9309))
+
+
+### Bug Fixes
+
+* **vsock-host:** poison interrupted frame writes ([#12247](https://github.com/vm0-ai/vm0/issues/12247)) ([1860100](https://github.com/vm0-ai/vm0/commit/1860100ba26eecb7db2cd10fa2d63974e2016a76))
+
+
+### Documentation
+
+* document bounded exec preference ([#12599](https://github.com/vm0-ai/vm0/issues/12599)) ([70aa4eb](https://github.com/vm0-ai/vm0/commit/70aa4eb5444809dc49132cc003278eb2bd504a39))
+
+
+### Refactoring
+
+* extract vsock host command core ([#13106](https://github.com/vm0-ai/vm0/issues/13106)) ([5890b1a](https://github.com/vm0-ai/vm0/commit/5890b1a45ce9e972ea5841b2d6a77c5c8666533d))
+* route sandbox exec through command operations ([#13018](https://github.com/vm0-ai/vm0/issues/13018)) ([0e5f862](https://github.com/vm0-ai/vm0/commit/0e5f862ee8e2182e23a88df6187f194171004b1f))
+* **runner:** migrate internal execs to bounded exec ([#12322](https://github.com/vm0-ai/vm0/issues/12322)) ([f0b84b4](https://github.com/vm0-ai/vm0/commit/f0b84b4f09bad9abc16074af3f0190944bba3d04))
+* **runner:** stream exec over bounded exec ([#12518](https://github.com/vm0-ai/vm0/issues/12518)) ([ee551da](https://github.com/vm0-ai/vm0/commit/ee551dabe2c464564a576580a9d8811453ffd08d))
+* split vsock host file helpers ([#13122](https://github.com/vm0-ai/vm0/issues/13122)) ([587863c](https://github.com/vm0-ai/vm0/commit/587863cbc41e623b074fb7b1952c649c526cb0fa))
+* split vsock host process helpers ([#13146](https://github.com/vm0-ai/vm0/issues/13146)) ([bc1ef7c](https://github.com/vm0-ai/vm0/commit/bc1ef7cb2e3c7740b4cc05c9509066c802ee3456))
+
+
+### Performance Improvements
+
+* **vsock-host:** cap bounded exec stream forwarding ([#12267](https://github.com/vm0-ai/vm0/issues/12267)) ([9a8063a](https://github.com/vm0-ai/vm0/commit/9a8063af272ea95005ce8f2d5c37eba2d64105e5))
+
 ## [0.13.3](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.13.2...vsock-host-v0.13.3) (2026-05-13)
 
 

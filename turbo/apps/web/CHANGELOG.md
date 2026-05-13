@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.360.0](https://github.com/vm0-ai/vm0/compare/web-v12.359.0...web-v12.360.0) (2026-05-13)
+
+
+### Features
+
+* add web chat context prompt ([#13168](https://github.com/vm0-ai/vm0/issues/13168)) ([5122b36](https://github.com/vm0-ai/vm0/commit/5122b36463b009abe1763b722722f1f9526c7624))
+
+
+### Bug Fixes
+
+* normalize legacy built-in model routes ([#13166](https://github.com/vm0-ai/vm0/issues/13166)) ([e660acf](https://github.com/vm0-ai/vm0/commit/e660acf7fcde89d06e63674cf42341074d4d507a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.18.0
+    * @vm0/core bumped to 8.273.0
+    * @vm0/db bumped to 1.9.1
+
 ## [12.359.0](https://github.com/vm0-ai/vm0/compare/web-v12.358.1...web-v12.359.0) (2026-05-13)
 
 

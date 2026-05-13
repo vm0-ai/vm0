@@ -1,5 +1,47 @@
 # Changelog
 
+## [8.273.0](https://github.com/vm0-ai/vm0/compare/core-v8.272.2...core-v8.273.0) (2026-05-13)
+
+
+### Features
+
+* add agentphone app ui ([#13080](https://github.com/vm0-ai/vm0/issues/13080)) ([ee19fc5](https://github.com/vm0-ai/vm0/commit/ee19fc53fc786fd8890d8a0bc3a6209d86f41889))
+* add AgentPhone iMessage transport ([#12964](https://github.com/vm0-ai/vm0/issues/12964)) ([abd2e25](https://github.com/vm0-ai/vm0/commit/abd2e2539582926c940949e010e0656dab4fd2c0))
+* add cli auth feature flags ([#13142](https://github.com/vm0-ai/vm0/issues/13142)) ([a753902](https://github.com/vm0-ai/vm0/commit/a753902d30e947160afe78c2e85014691f67af07))
+* add private agents ([#12655](https://github.com/vm0-ai/vm0/issues/12655)) ([e37c8e5](https://github.com/vm0-ai/vm0/commit/e37c8e535da8ce48e011066b7c99e8ebffd8f076))
+* add remote-agent cli execution flow ([#12671](https://github.com/vm0-ai/vm0/issues/12671)) ([4f68949](https://github.com/vm0-ai/vm0/commit/4f68949d869868851ef281911160bf2b138a75ec))
+* add strapi docs site route ([#12330](https://github.com/vm0-ai/vm0/issues/12330)) ([f5100df](https://github.com/vm0-ai/vm0/commit/f5100dfa9452cfd69dcdc790ff73a213e3702ba2))
+* enable chat ux feature switches at org level for staff ([#12504](https://github.com/vm0-ai/vm0/issues/12504)) ([be55abf](https://github.com/vm0-ai/vm0/commit/be55abf671c588a36ac650e15ee4a9ae3283a226))
+* enable model-first for staff ([#12328](https://github.com/vm0-ai/vm0/issues/12328)) ([057ce1c](https://github.com/vm0-ai/vm0/commit/057ce1c11cd7d3ce6c7e0a24de7ac52e2bd41ea3))
+* **platform:** add api-backend-mutations feature switch + client routing ([#12507](https://github.com/vm0-ai/vm0/issues/12507)) ([48f4662](https://github.com/vm0-ai/vm0/commit/48f466249435008cc6f569eb952b0dfd8a5edefb))
+* **web-chat:** goal mode with self-replicating user message chain ([#12508](https://github.com/vm0-ai/vm0/issues/12508)) ([dc0d610](https://github.com/vm0-ai/vm0/commit/dc0d61038ecef81b5fefa4269249c8d2f99c1b18))
+
+
+### Bug Fixes
+
+* add missing model display names for GPT and MiniMax OpenRouter models ([#12216](https://github.com/vm0-ai/vm0/issues/12216)) ([3b5abd0](https://github.com/vm0-ai/vm0/commit/3b5abd03b9aa8166570fdc4c317926aea7df87b4))
+* migrate voice chat to Realtime GA API ([#12658](https://github.com/vm0-ai/vm0/issues/12658)) ([ebfa606](https://github.com/vm0-ai/vm0/commit/ebfa606955833ccfebc2191689843bd898fc2c39))
+
+
+### Refactoring
+
+* **api:** migrate telegram mock route ([#12995](https://github.com/vm0-ai/vm0/issues/12995)) ([7c7d409](https://github.com/vm0-ai/vm0/commit/7c7d4095ef24e9dc2343b83853da58e32081156f))
+* **api:** migrate zero onboarding setup route ([#12975](https://github.com/vm0-ai/vm0/issues/12975)) ([a99038b](https://github.com/vm0-ai/vm0/commit/a99038ba5394dccfeeb2428171eaa9ff4ed20301))
+* **api:** migrate zero skills create route ([#12952](https://github.com/vm0-ai/vm0/issues/12952)) ([a9f063c](https://github.com/vm0-ai/vm0/commit/a9f063c85e9c217f5ee89b7ad46ad46efca5ac28))
+* **api:** migrate zero slack oauth routes ([#12958](https://github.com/vm0-ai/vm0/issues/12958)) ([7e76cde](https://github.com/vm0-ai/vm0/commit/7e76cde7a3ee7ee8358b7cdd5b060d265f41f9fc))
+* make codex providers feature-switch free ([#13126](https://github.com/vm0-ai/vm0/issues/13126)) ([6a3e7b3](https://github.com/vm0-ai/vm0/commit/6a3e7b37ff6fb0cd473bd72f61ff80e6ca74195f))
+* make zero model-first only ([#13017](https://github.com/vm0-ai/vm0/issues/13017)) ([9bcb323](https://github.com/vm0-ai/vm0/commit/9bcb323d6e2c32dfdd2d1bf9fa63d0d2bf9e1ef1))
+* migrate user export status to api ([#12949](https://github.com/vm0-ai/vm0/issues/12949)) ([0286e19](https://github.com/vm0-ai/vm0/commit/0286e19438623b2a84f2b898e93655c3fdb270d2))
+* remove fully-enabled OfficialTelegramBot and ChatManualHistory feature switches ([#12349](https://github.com/vm0-ai/vm0/issues/12349)) ([ed51160](https://github.com/vm0-ai/vm0/commit/ed511603a19ec14a0003fccba66250560c290165))
+* remove personal model provider switch ([#12361](https://github.com/vm0-ai/vm0/issues/12361)) ([6953d00](https://github.com/vm0-ai/vm0/commit/6953d0046a8c160e394ae079b0d3f5037b9f7c08))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.18.0
+
 ## [8.272.2](https://github.com/vm0-ai/vm0/compare/core-v8.272.1...core-v8.272.2) (2026-05-13)
 
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.349.0](https://github.com/vm0-ai/vm0/compare/app-v0.348.3...app-v0.349.0) (2026-05-13)
+
+
+### Features
+
+* add web chat context prompt ([#13168](https://github.com/vm0-ai/vm0/issues/13168)) ([5122b36](https://github.com/vm0-ai/vm0/commit/5122b36463b009abe1763b722722f1f9526c7624))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.18.0
+    * @vm0/core bumped to 8.273.0
+
 ## [0.348.3](https://github.com/vm0-ai/vm0/compare/app-v0.348.2...app-v0.348.3) (2026-05-13)
 
 

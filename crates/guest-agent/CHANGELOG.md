@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.31.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.30.4...guest-agent-v0.31.0) (2026-05-13)
+
+
+### Features
+
+* enable Codex memory mounting ([#12651](https://github.com/vm0-ai/vm0/issues/12651)) ([3646b72](https://github.com/vm0-ai/vm0/commit/3646b72ccafa675ff53895f797a99a1e754fd82e))
+* **guest-agent:** record last event to cli exit metric ([#12272](https://github.com/vm0-ai/vm0/issues/12272)) ([dce7e82](https://github.com/vm0-ai/vm0/commit/dce7e82908b8bf8f5aff511a7995c0f8e20e66a5))
+
+
+### Bug Fixes
+
+* **guest-agent:** bound cli stderr diagnostics ([#12937](https://github.com/vm0-ai/vm0/issues/12937)) ([f640407](https://github.com/vm0-ai/vm0/commit/f64040738b75cc29b141bfa18960200fb30727f3))
+* **guest-agent:** gate claude code event handling ([#12327](https://github.com/vm0-ai/vm0/issues/12327)) ([94a7634](https://github.com/vm0-ai/vm0/commit/94a7634254d9445f04bb3456d5c28e67bd15e189))
+* log Codex JSONL failure diagnostics ([#13118](https://github.com/vm0-ai/vm0/issues/13118)) ([94686f0](https://github.com/vm0-ai/vm0/commit/94686f000b644c7c178dc1eb62976318cdfe006d))
+* log masked cli stderr on failure ([#12786](https://github.com/vm0-ai/vm0/issues/12786)) ([0b7c456](https://github.com/vm0-ai/vm0/commit/0b7c456c731f194e7cb9165db91d4afcf7a7249a))
+
+
+### Refactoring
+
+* split guest artifact snapshot modules ([#13014](https://github.com/vm0-ai/vm0/issues/13014)) ([69d4ebc](https://github.com/vm0-ai/vm0/commit/69d4ebc10f4d72f485401640a66063e2243c115d))
+
 ## [0.30.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.30.3...guest-agent-v0.30.4) (2026-05-13)
 
 

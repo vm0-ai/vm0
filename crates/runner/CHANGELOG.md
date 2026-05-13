@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.100.34](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.33...runner-rs-v0.100.34) (2026-05-13)
+
+
+### Bug Fixes
+
+* normalize instructions filename by runtime framework ([#12245](https://github.com/vm0-ai/vm0/issues/12245)) ([55b4846](https://github.com/vm0-ai/vm0/commit/55b484668ed1b559e2bf16f74ad3fcc4b4559c1f))
+* **runner:** validate setup artifacts before reporting installed ([#13075](https://github.com/vm0-ai/vm0/issues/13075)) ([cd68236](https://github.com/vm0-ai/vm0/commit/cd68236acea7bf7002be282cabe68b96c533fe10))
+
+
+### Documentation
+
+* clarify status run replacement semantics ([#12287](https://github.com/vm0-ai/vm0/issues/12287)) ([09c4eb2](https://github.com/vm0-ai/vm0/commit/09c4eb255c566fcd03f14c79c3328eeeae95a2a4))
+* document runner path layout ([#12289](https://github.com/vm0-ai/vm0/issues/12289)) ([e37c3b9](https://github.com/vm0-ai/vm0/commit/e37c3b908114949c320ab72c379c80ee15909624))
+* **runner:** document network log drain producers ([#13058](https://github.com/vm0-ai/vm0/issues/13058)) ([9325b1a](https://github.com/vm0-ai/vm0/commit/9325b1ac1988c78fc4018e39d3620873dab48adb))
+
+
+### Refactoring
+
+* route sandbox exec through command operations ([#13018](https://github.com/vm0-ai/vm0/issues/13018)) ([0e5f862](https://github.com/vm0-ai/vm0/commit/0e5f862ee8e2182e23a88df6187f194171004b1f))
+* **runner:** include bounded exec diagnostics ([#12368](https://github.com/vm0-ai/vm0/issues/12368)) ([41d5d12](https://github.com/vm0-ai/vm0/commit/41d5d12ced60e34731d78bea2ef172eed5fbdc77))
+* **runner:** migrate internal execs to bounded exec ([#12322](https://github.com/vm0-ai/vm0/issues/12322)) ([f0b84b4](https://github.com/vm0-ai/vm0/commit/f0b84b4f09bad9abc16074af3f0190944bba3d04))
+* **runner:** stream exec over bounded exec ([#12518](https://github.com/vm0-ai/vm0/issues/12518)) ([ee551da](https://github.com/vm0-ai/vm0/commit/ee551dabe2c464564a576580a9d8811453ffd08d))
+* split start test support modules ([#13078](https://github.com/vm0-ai/vm0/issues/13078)) ([53c010a](https://github.com/vm0-ai/vm0/commit/53c010aa730b8ad4d5c3f285b18e81c30f317b6f))
+
+
+### Performance Improvements
+
+* avoid downloading warmed runner templates ([#12731](https://github.com/vm0-ai/vm0/issues/12731)) ([eb5df7a](https://github.com/vm0-ai/vm0/commit/eb5df7aa28493373ce5ec734924e80d34fd372b4))
+* preserve axiom batch capacity ([#13094](https://github.com/vm0-ai/vm0/issues/13094)) ([72bb92e](https://github.com/vm0-ai/vm0/commit/72bb92ebb56c365907c536fb289e1c3873a1b680))
+* **runner:** stream guest log copies ([#12418](https://github.com/vm0-ai/vm0/issues/12418)) ([a842925](https://github.com/vm0-ai/vm0/commit/a8429251f3554335ace57e1a78c105cf881c193b))
+
 ## [0.100.33](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.32...runner-rs-v0.100.33) (2026-05-13)
 
 ## [0.100.32](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.31...runner-rs-v0.100.32) (2026-05-13)

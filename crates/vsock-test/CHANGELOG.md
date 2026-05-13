@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.31](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.30...vsock-test-v0.9.31) (2026-05-13)
+
+
+### Refactoring
+
+* remove legacy vsock exec protocol ([#13064](https://github.com/vm0-ai/vm0/issues/13064)) ([318c177](https://github.com/vm0-ai/vm0/commit/318c177b451a8f2f700fca02f6ee41f98beb751f))
+
 ## [0.9.30](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.29...vsock-test-v0.9.30) (2026-05-13)
 
 ## [0.9.29](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.28...vsock-test-v0.9.29) (2026-05-13)

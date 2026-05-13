@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.15.0](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.14.2...vsock-guest-v0.15.0) (2026-05-13)
+
+
+### Features
+
+* add bounded exec output policies ([#12292](https://github.com/vm0-ai/vm0/issues/12292)) ([71f6ad9](https://github.com/vm0-ai/vm0/commit/71f6ad9aaadaa9bf6589a5915c51ab4c092547eb))
+* **vsock-guest:** add command operation worker ([#12738](https://github.com/vm0-ai/vm0/issues/12738)) ([80accba](https://github.com/vm0-ai/vm0/commit/80accba2f1767f1cce0964ce76608155d7375158))
+* **vsock-host:** add command operation router ([#12782](https://github.com/vm0-ai/vm0/issues/12782)) ([e1ad973](https://github.com/vm0-ai/vm0/commit/e1ad97343e41c441d3539de961f44c91bbad9309))
+
+
+### Documentation
+
+* document bounded exec preference ([#12599](https://github.com/vm0-ai/vm0/issues/12599)) ([70aa4eb](https://github.com/vm0-ai/vm0/commit/70aa4eb5444809dc49132cc003278eb2bd504a39))
+
+
+### Refactoring
+
+* compact vsock message types ([#13079](https://github.com/vm0-ai/vm0/issues/13079)) ([09ef60c](https://github.com/vm0-ai/vm0/commit/09ef60c6348d31adf94ab8e04a959a38f5b83ec9))
+* remove legacy vsock exec protocol ([#13064](https://github.com/vm0-ai/vm0/issues/13064)) ([318c177](https://github.com/vm0-ai/vm0/commit/318c177b451a8f2f700fca02f6ee41f98beb751f))
+* remove redundant monitor spawner wrappers ([#12291](https://github.com/vm0-ai/vm0/issues/12291)) ([961f9c7](https://github.com/vm0-ai/vm0/commit/961f9c72eb0503bd847cfe21bfeb8c6735310fef))
+* **runner:** stream exec over bounded exec ([#12518](https://github.com/vm0-ai/vm0/issues/12518)) ([ee551da](https://github.com/vm0-ai/vm0/commit/ee551dabe2c464564a576580a9d8811453ffd08d))
+* **vsock-guest:** consolidate sandbox user lookup ([#13136](https://github.com/vm0-ai/vm0/issues/13136)) ([79359f9](https://github.com/vm0-ai/vm0/commit/79359f94601fb71d73276712326c345083ca2ad9))
+
 ## [0.14.2](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.14.1...vsock-guest-v0.14.2) (2026-05-13)
 
 

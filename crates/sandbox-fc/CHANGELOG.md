@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.30.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.29.8...sandbox-fc-v0.30.0) (2026-05-13)
+
+
+### Features
+
+* add bounded exec output policies ([#12292](https://github.com/vm0-ai/vm0/issues/12292)) ([71f6ad9](https://github.com/vm0-ai/vm0/commit/71f6ad9aaadaa9bf6589a5915c51ab4c092547eb))
+
+
+### Bug Fixes
+
+* avoid blocking concurrent COW slot acquisition ([#13036](https://github.com/vm0-ai/vm0/issues/13036)) ([79143ac](https://github.com/vm0-ai/vm0/commit/79143ac7edd164b026a2c894b3681ccb89f8ec50))
+
+
+### Documentation
+
+* document bounded exec preference ([#12599](https://github.com/vm0-ai/vm0/issues/12599)) ([70aa4eb](https://github.com/vm0-ai/vm0/commit/70aa4eb5444809dc49132cc003278eb2bd504a39))
+* **sandbox-fc:** document path helpers ([#13110](https://github.com/vm0-ai/vm0/issues/13110)) ([b94343f](https://github.com/vm0-ai/vm0/commit/b94343f19ae249c459b2dd52087f46472fbacb70))
+
+
+### Refactoring
+
+* derive cow pool pipeline slot accounting ([#13057](https://github.com/vm0-ai/vm0/issues/13057)) ([467d3b8](https://github.com/vm0-ai/vm0/commit/467d3b88a768857f7158703e214834930ff56fbc))
+* route sandbox exec through command operations ([#13018](https://github.com/vm0-ai/vm0/issues/13018)) ([0e5f862](https://github.com/vm0-ai/vm0/commit/0e5f862ee8e2182e23a88df6187f194171004b1f))
+* **runner:** migrate internal execs to bounded exec ([#12322](https://github.com/vm0-ai/vm0/issues/12322)) ([f0b84b4](https://github.com/vm0-ai/vm0/commit/f0b84b4f09bad9abc16074af3f0190944bba3d04))
+* **runner:** stream exec over bounded exec ([#12518](https://github.com/vm0-ai/vm0/issues/12518)) ([ee551da](https://github.com/vm0-ai/vm0/commit/ee551dabe2c464564a576580a9d8811453ffd08d))
+* **sandbox-fc:** keep netns pool internals private ([#13119](https://github.com/vm0-ai/vm0/issues/13119)) ([15b09ec](https://github.com/vm0-ai/vm0/commit/15b09ec0bb44695613dc2de0013da6b0851c09e8))
+* split Firecracker factory modules ([#13037](https://github.com/vm0-ai/vm0/issues/13037)) ([bc13e7c](https://github.com/vm0-ai/vm0/commit/bc13e7c5833ecc5ecf23216f5c8f808a5d97d752))
+
 ## [0.29.8](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.29.7...sandbox-fc-v0.29.8) (2026-05-13)
 
 ## [0.29.7](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.29.6...sandbox-fc-v0.29.7) (2026-05-13)
