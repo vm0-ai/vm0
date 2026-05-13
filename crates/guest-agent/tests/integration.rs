@@ -867,16 +867,16 @@ async fn heartbeat_recovery_resets_counter() {
     )
     .await;
 
-    // Clean up mocks before assertions.
     let heartbeat_calls = mock.calls_async().await;
-    mock.delete_async().await;
 
-    // The loop should still be running — shut it down gracefully.
+    // The loop should still be running. Stop it before deleting the mock so no
+    // background heartbeat can race with mock teardown.
     shutdown.cancel();
     let result = tokio::time::timeout(Duration::from_secs(30), handle)
         .await
         .expect("heartbeat_loop should exit within timeout")
         .expect("task should not panic");
+    mock.delete_async().await;
 
     assert!(
         result.is_ok(),
