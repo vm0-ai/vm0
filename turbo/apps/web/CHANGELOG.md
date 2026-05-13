@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.361.0](https://github.com/vm0-ai/vm0/compare/web-v12.360.1...web-v12.361.0) (2026-05-13)
+
+
+### Features
+
+* format agentphone replies as imessage-friendly plain text ([#13188](https://github.com/vm0-ai/vm0/issues/13188)) ([d5d55c8](https://github.com/vm0-ai/vm0/commit/d5d55c8c1accb40d3c9e995c2c14c688cece8f7d))
+* **zero:** document built-in image generation in agent prompt ([#13052](https://github.com/vm0-ai/vm0/issues/13052)) ([77bedf2](https://github.com/vm0-ai/vm0/commit/77bedf208e71a15cdeeac2bf71ba4455a071b79f))
+* **zero:** expose gpt-image-2 generation options ([#13190](https://github.com/vm0-ai/vm0/issues/13190)) ([b2df33d](https://github.com/vm0-ai/vm0/commit/b2df33d007203bd298c28fcc52d41bbaa5161c24))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.19.0
+    * @vm0/core bumped to 8.274.1
+    * @vm0/db bumped to 1.9.2
+
 ## [12.360.1](https://github.com/vm0-ai/vm0/compare/web-v12.360.0...web-v12.360.1) (2026-05-13)
 
 
