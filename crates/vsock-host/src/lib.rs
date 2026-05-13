@@ -19,13 +19,13 @@
 //! keyed by sequence number.
 
 mod command;
+mod file;
 
 use std::collections::HashMap;
 use std::io;
 use std::os::unix::io::RawFd;
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -35,27 +35,23 @@ use tokio::task::JoinHandle;
 use tokio::time::{self, Instant};
 
 #[cfg(test)]
-use vsock_proto::{CommandCapturedOutput, MSG_COMMAND_CANCEL, MSG_COMMAND_START};
 use vsock_proto::{
-    CommandOutputPolicy, CommandOutputStream, CommandTermination, Decoder, MSG_COMMAND_OUTPUT,
-    MSG_COMMAND_RESULT, MSG_ERROR, MSG_PING, MSG_PONG, MSG_PROCESS_EXIT, MSG_READY, MSG_SHUTDOWN,
-    MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK, MSG_WRITE_FILE,
-    MSG_WRITE_FILE_RESULT, RawMessage,
+    CommandCapturedOutput, CommandOutputPolicy, CommandOutputStream, CommandTermination,
+    MSG_COMMAND_CANCEL, MSG_COMMAND_START, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
+};
+use vsock_proto::{
+    Decoder, MSG_COMMAND_OUTPUT, MSG_COMMAND_RESULT, MSG_ERROR, MSG_PING, MSG_PONG,
+    MSG_PROCESS_EXIT, MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH,
+    MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK, RawMessage,
 };
 
 pub use command::{
     CommandCaptureRequest, CommandOperationHandle, CommandOperationRequest, CommandOperationResult,
     CommandOutputEvent, CommandOwnedCapturedOutput, CommandStreamRequest,
 };
+pub use file::{CopyFileOptions, CopyFileResult};
 
 const READ_BUF_SIZE: usize = 64 * 1024;
-const COPY_TEMP_CREATE_ATTEMPTS: usize = 16;
-const COPY_FILE_STREAM_CHUNK_LIMIT: u32 = 64 * 1024;
-const COPY_FILE_STREAM_MAX_BYTES: u64 = 64 * 1024 * 1024;
-// Copying is the one built-in streaming consumer that must tolerate the host
-// reader briefly outrunning the temp-file writer without failing the command.
-const COPY_FILE_STREAM_QUEUE_CAPACITY: usize = command::MAX_COMMAND_STREAM_CAPACITY;
-static COPY_TEMP_NONCE: AtomicU64 = AtomicU64::new(1);
 
 /// Result of executing a command on the guest.
 #[derive(Debug, Clone)]
@@ -74,30 +70,6 @@ pub struct ProcessExitEvent {
     pub exit_code: i32,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
-}
-
-/// Request parameters for copying a guest file to a host path through command
-/// operation streaming.
-#[derive(Debug, Clone, Copy)]
-pub struct CopyFileOptions {
-    pub max_bytes: u64,
-    pub timeout_ms: u32,
-    pub missing_ok: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CopyFileResult {
-    pub bytes_copied: u64,
-}
-
-enum CopyFileCommandStatus {
-    Present,
-    Missing,
-}
-
-enum CopyFileOutcome {
-    Copied { bytes_copied: u64 },
-    Missing,
 }
 
 /// Connection lifecycle, expressed as data rather than a separate atomic flag.
@@ -205,97 +177,6 @@ impl PendingStdoutGuard {
 impl Drop for PendingStdoutGuard {
     fn drop(&mut self) {
         self.shared.remove_pending_stdout(self.seq);
-    }
-}
-
-struct ChunkedWriteCleanupGuard {
-    shared: Option<Arc<Shared>>,
-    command: String,
-    sudo: bool,
-}
-
-impl ChunkedWriteCleanupGuard {
-    fn new(shared: Arc<Shared>, command: String, sudo: bool) -> Self {
-        Self {
-            shared: Some(shared),
-            command,
-            sudo,
-        }
-    }
-
-    fn disarm(&mut self) {
-        self.shared = None;
-    }
-
-    async fn cleanup_now(&mut self) {
-        if let Some(shared) = self.shared.as_ref() {
-            let _ = command::exec_cleanup_on_shared(
-                shared,
-                &self.command,
-                VsockHost::CLEANUP_EXEC_TIMEOUT_MS,
-                &[],
-                self.sudo,
-            )
-            .await;
-        }
-        self.disarm();
-    }
-}
-
-impl Drop for ChunkedWriteCleanupGuard {
-    fn drop(&mut self) {
-        let Some(shared) = self.shared.take() else {
-            return;
-        };
-
-        let command = std::mem::take(&mut self.command);
-        let sudo = self.sudo;
-        if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            handle.spawn(async move {
-                let _ = command::exec_cleanup_on_shared(
-                    &shared,
-                    &command,
-                    VsockHost::CLEANUP_EXEC_TIMEOUT_MS,
-                    &[],
-                    sudo,
-                )
-                .await;
-            });
-        }
-    }
-}
-
-struct HostTempFileGuard {
-    path: PathBuf,
-    active: bool,
-}
-
-impl HostTempFileGuard {
-    fn new(path: PathBuf) -> Self {
-        Self { path, active: true }
-    }
-
-    fn path(&self) -> &Path {
-        &self.path
-    }
-
-    async fn remove_now(&mut self) {
-        if self.active {
-            self.active = false;
-            remove_temp_file(&self.path).await;
-        }
-    }
-
-    fn disarm(&mut self) {
-        self.active = false;
-    }
-}
-
-impl Drop for HostTempFileGuard {
-    fn drop(&mut self) {
-        if self.active {
-            let _ = std::fs::remove_file(&self.path);
-        }
     }
 }
 
@@ -632,144 +513,6 @@ async fn request_raw_on_shared(
     }
 }
 
-fn shell_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
-}
-
-fn copy_temp_path(host_path: &Path, process_id: u32, seq: u32, nonce: u64) -> PathBuf {
-    let file_name = host_path
-        .file_name()
-        .map(|name| name.to_string_lossy())
-        .unwrap_or_else(|| "copy".into());
-    host_path.with_file_name(format!(".{file_name}.vm0tmp-{process_id}-{seq}-{nonce}"))
-}
-
-async fn remove_temp_file(path: &Path) {
-    match tokio::fs::remove_file(path).await {
-        Ok(()) => {}
-        Err(err) if err.kind() == io::ErrorKind::NotFound => {}
-        Err(_) => {}
-    }
-}
-
-async fn create_copy_temp_file(
-    host_path: &Path,
-    seq: u32,
-) -> io::Result<(PathBuf, tokio::fs::File)> {
-    for _ in 0..COPY_TEMP_CREATE_ATTEMPTS {
-        let nonce = COPY_TEMP_NONCE.fetch_add(1, Ordering::Relaxed);
-        let temp_path = copy_temp_path(host_path, std::process::id(), seq, nonce);
-        match tokio::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temp_path)
-            .await
-        {
-            Ok(file) => return Ok((temp_path, file)),
-            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(err) => return Err(err),
-        }
-    }
-
-    Err(io::Error::new(
-        io::ErrorKind::AlreadyExists,
-        format!(
-            "copy_file could not create a unique temp file after {COPY_TEMP_CREATE_ATTEMPTS} attempts"
-        ),
-    ))
-}
-
-async fn write_copy_stream_event(
-    temp_file: &mut tokio::fs::File,
-    bytes_copied: &mut u64,
-    max_bytes: u64,
-    event: CommandOutputEvent,
-) -> io::Result<()> {
-    if event.stream != CommandOutputStream::Stdout {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "copy_file received stderr stream event",
-        ));
-    }
-    if event.truncated {
-        return Err(io::Error::other("copy_file stdout stream was truncated"));
-    }
-    *bytes_copied = bytes_copied
-        .checked_add(event.chunk.len() as u64)
-        .ok_or_else(|| io::Error::other("copy_file byte count overflow"))?;
-    if *bytes_copied > max_bytes {
-        return Err(io::Error::other(format!(
-            "copy_file exceeded {max_bytes} bytes"
-        )));
-    }
-    temp_file.write_all(&event.chunk).await
-}
-
-fn copy_command_stderr(result: &CommandOperationResult) -> io::Result<(Vec<u8>, bool)> {
-    match &result.stderr {
-        CommandOwnedCapturedOutput::Captured { bytes, truncated } => {
-            Ok((bytes.clone(), *truncated))
-        }
-        CommandOwnedCapturedOutput::Discarded => Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "copy_file command discarded stderr capture",
-        )),
-    }
-}
-
-fn validate_copy_command_result(
-    path: &str,
-    result: CommandOperationResult,
-    missing_ok: bool,
-) -> io::Result<CopyFileCommandStatus> {
-    if result.stream_overflowed {
-        return Err(io::Error::other(
-            "copy_file stream queue overflowed before all chunks were written",
-        ));
-    }
-    if !matches!(&result.stdout, CommandOwnedCapturedOutput::Discarded) {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "copy_file command unexpectedly captured stdout",
-        ));
-    }
-    let (mut stderr, stderr_truncated) = copy_command_stderr(&result)?;
-    if stderr_truncated {
-        command::append_diagnostic(&mut stderr, "stderr truncated");
-    }
-    match result.termination {
-        CommandTermination::Exited { exit_code: 0 } if !stderr_truncated => {
-            Ok(CopyFileCommandStatus::Present)
-        }
-        CommandTermination::Exited { exit_code: 0 } => Err(io::Error::other(format!(
-            "copy_file stderr exceeded diagnostic limit for {path}: {}",
-            String::from_utf8_lossy(&stderr)
-        ))),
-        CommandTermination::Exited { exit_code: 66 } if missing_ok => {
-            Ok(CopyFileCommandStatus::Missing)
-        }
-        CommandTermination::Exited { exit_code: 66 } => Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("guest file not found: {path}"),
-        )),
-        CommandTermination::Exited { exit_code } => Err(io::Error::other(format!(
-            "copy_file failed for {path} with exit code {exit_code}: {}",
-            String::from_utf8_lossy(&stderr)
-        ))),
-        CommandTermination::TimedOut => Err(io::Error::new(
-            io::ErrorKind::TimedOut,
-            format!("copy_file timed out for {path}"),
-        )),
-        CommandTermination::Cancelled => Err(io::Error::other(format!(
-            "copy_file was cancelled for {path}: {}",
-            result.diagnostic
-        ))),
-        CommandTermination::StartFailed | CommandTermination::WaitFailed => Err(io::Error::other(
-            format!("copy_file command failed for {path}: {}", result.diagnostic),
-        )),
-    }
-}
-
 impl VsockHost {
     /// Wait for a guest to connect on the vsock UDS path.
     ///
@@ -1000,348 +743,6 @@ impl VsockHost {
         command::exec_capture_on_shared(&self.shared, request).await
     }
 
-    /// Read a small file from the guest through command capture.
-    ///
-    /// Missing files return `Ok(None)`. Files larger than `max_bytes` return
-    /// an error instead of silently returning truncated bytes.
-    pub async fn read_file(
-        &self,
-        path: &str,
-        max_bytes: u64,
-        timeout_ms: u32,
-    ) -> io::Result<Option<Vec<u8>>> {
-        let stdout_limit_bytes = u32::try_from(max_bytes).map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "read_file max_bytes exceeds command capture limit",
-            )
-        })?;
-        if stdout_limit_bytes == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "read_file max_bytes must be positive",
-            ));
-        }
-
-        const MISSING_FILE_EXIT_CODE: i32 = 66;
-        let command = format!(
-            "if test -f {path}; then cat -- {path}; else exit {MISSING_FILE_EXIT_CODE}; fi",
-            path = shell_quote(path)
-        );
-        let result = self
-            .exec_capture(CommandCaptureRequest {
-                timeout_ms,
-                command: &command,
-                env: &[],
-                sudo: false,
-                label: "read-file",
-                stdout_limit_bytes,
-                stderr_limit_bytes: command::SMALL_COMMAND_CAPTURE_LIMIT_BYTES,
-                wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
-            })
-            .await?;
-        if result.exit_code == MISSING_FILE_EXIT_CODE {
-            return Ok(None);
-        }
-        if result.exit_code != 0 {
-            return Err(io::Error::other(format!(
-                "failed to read file {path}: {}",
-                String::from_utf8_lossy(&result.stderr)
-            )));
-        }
-        if result.stdout_truncated {
-            return Err(io::Error::other(format!(
-                "file {path} exceeded {max_bytes} bytes"
-            )));
-        }
-        if result.stderr_truncated {
-            return Err(io::Error::other(format!(
-                "stderr while reading file {path} exceeded diagnostic limit"
-            )));
-        }
-        Ok(Some(result.stdout))
-    }
-
-    /// Stream a guest file to a host path and atomically rename it into place
-    /// after the command exits successfully.
-    pub async fn copy_file(
-        &self,
-        path: &str,
-        host_path: &Path,
-        options: CopyFileOptions,
-    ) -> io::Result<CopyFileResult> {
-        if options.max_bytes == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "copy_file max_bytes must be positive",
-            ));
-        }
-        if options.max_bytes > COPY_FILE_STREAM_MAX_BYTES {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("copy_file max_bytes must be at most {COPY_FILE_STREAM_MAX_BYTES}"),
-            ));
-        }
-        let stream_limit_bytes = u32::try_from(options.max_bytes).map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "copy_file max_bytes exceeds command stream limit",
-            )
-        })?;
-        if options.timeout_ms == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "copy_file timeout must be positive",
-            ));
-        }
-
-        if let Some(parent) = host_path.parent()
-            && !parent.as_os_str().is_empty()
-        {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-
-        let (temp_path, temp_file) =
-            create_copy_temp_file(host_path, self.shared.next_seq()).await?;
-        let mut temp_guard = HostTempFileGuard::new(temp_path);
-        let copy_result = self
-            .copy_file_to_temp(
-                path,
-                temp_file,
-                stream_limit_bytes,
-                options.timeout_ms,
-                options.missing_ok,
-            )
-            .await;
-        match copy_result {
-            Ok(CopyFileOutcome::Copied { bytes_copied }) => {
-                match tokio::fs::rename(temp_guard.path(), host_path).await {
-                    Ok(()) => {
-                        temp_guard.disarm();
-                        Ok(CopyFileResult { bytes_copied })
-                    }
-                    Err(err) => {
-                        temp_guard.remove_now().await;
-                        Err(err)
-                    }
-                }
-            }
-            Ok(CopyFileOutcome::Missing) => {
-                temp_guard.remove_now().await;
-                Ok(CopyFileResult { bytes_copied: 0 })
-            }
-            Err(err) => {
-                temp_guard.remove_now().await;
-                Err(err)
-            }
-        }
-    }
-
-    async fn copy_file_to_temp(
-        &self,
-        path: &str,
-        mut temp_file: tokio::fs::File,
-        stream_limit_bytes: u32,
-        timeout_ms: u32,
-        missing_ok: bool,
-    ) -> io::Result<CopyFileOutcome> {
-        const MISSING_FILE_EXIT_CODE: i32 = 66;
-        let command = format!(
-            "if test -f {path}; then cat -- {path}; else exit {MISSING_FILE_EXIT_CODE}; fi",
-            path = shell_quote(path)
-        );
-        let mut handle = self
-            .command_stream(CommandStreamRequest {
-                timeout_ms,
-                command: &command,
-                env: &[],
-                sudo: false,
-                label: "copy-file",
-                stdout: CommandOutputPolicy::Stream {
-                    limit_bytes: stream_limit_bytes,
-                    chunk_limit_bytes: COPY_FILE_STREAM_CHUNK_LIMIT,
-                },
-                stderr: CommandOutputPolicy::Capture {
-                    limit_bytes: command::SMALL_COMMAND_CAPTURE_LIMIT_BYTES,
-                },
-                stream_queue_capacity: Some(COPY_FILE_STREAM_QUEUE_CAPACITY),
-            })
-            .await?;
-        let mut cancel_on_drop = command::CommandCancelOnDropGuard::new(&handle);
-        let mut stream_rx = handle.take_stream_receiver().ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "copy_file command did not create a stream receiver",
-            )
-        })?;
-        let wait_timeout = Duration::from_millis(timeout_ms as u64 + 5000);
-        let mut bytes_copied = 0u64;
-
-        let drain_result = tokio::time::timeout(wait_timeout, async {
-            while let Some(event) = stream_rx.recv().await {
-                write_copy_stream_event(
-                    &mut temp_file,
-                    &mut bytes_copied,
-                    stream_limit_bytes as u64,
-                    event,
-                )
-                .await?;
-            }
-            io::Result::Ok(())
-        })
-        .await;
-        match drain_result {
-            Ok(Ok(())) => {}
-            Ok(Err(err)) => {
-                let _ = handle.cancel_and_wait(Duration::from_secs(1)).await;
-                if let Some(cancel_on_drop) = &mut cancel_on_drop {
-                    cancel_on_drop.disarm();
-                }
-                return Err(err);
-            }
-            Err(_) => {
-                let _ = handle.cancel_and_wait(Duration::from_secs(1)).await;
-                if let Some(cancel_on_drop) = &mut cancel_on_drop {
-                    cancel_on_drop.disarm();
-                }
-                return Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    format!("copy_file stream drain timed out for {path}"),
-                ));
-            }
-        };
-
-        let result = handle.wait(Duration::from_secs(5)).await?;
-        if let Some(cancel_on_drop) = &mut cancel_on_drop {
-            cancel_on_drop.disarm();
-        }
-        match validate_copy_command_result(path, result, missing_ok)? {
-            CopyFileCommandStatus::Present => {}
-            CopyFileCommandStatus::Missing => return Ok(CopyFileOutcome::Missing),
-        }
-        temp_file.flush().await?;
-
-        Ok(CopyFileOutcome::Copied { bytes_copied })
-    }
-
-    /// Maximum content per write_file message.  Leaves headroom below
-    /// [`vsock_proto::MAX_MESSAGE_SIZE`] for the path and frame overhead.
-    const WRITE_FILE_CHUNK_LIMIT: usize = 15 * 1024 * 1024;
-
-    /// Timeout (ms) for short helper commands (mv, rm) used during chunked writes.
-    const HELPER_EXEC_TIMEOUT_MS: u32 = 5000;
-
-    /// Shorter timeout (ms) for best-effort cleanup when the connection may
-    /// already be broken.  Avoids blocking for a full 5 s on a dead socket.
-    const CLEANUP_EXEC_TIMEOUT_MS: u32 = 1000;
-
-    /// Write a file on the guest.
-    ///
-    /// Content larger than 15 MB is automatically split into multiple
-    /// messages using the `WRITE_FILE_FLAG_APPEND` protocol flag. Chunks are written
-    /// to a temporary file and atomically renamed to the target path after
-    /// the last chunk succeeds, so a partial transfer never leaves a
-    /// truncated file at the destination.
-    ///
-    /// Non-sudo writes create missing parent directories on the guest.
-    pub async fn write_file(&self, path: &str, content: &[u8], sudo: bool) -> io::Result<()> {
-        if content.len() <= Self::WRITE_FILE_CHUNK_LIMIT {
-            return self.write_file_chunk(path, content, sudo, false).await;
-        }
-
-        // Write chunks to a per-call temp file, then atomic rename. The
-        // suffix prevents concurrent large writes to the same destination
-        // from appending to or cleaning up each other's staging file.
-        let tmp = format!("{path}.vm0tmp-{}", self.shared.next_seq());
-        let quoted_tmp = shell_quote(&tmp);
-        let rm_tmp = format!("rm -f -- {quoted_tmp}");
-        let mut cleanup_guard =
-            ChunkedWriteCleanupGuard::new(Arc::clone(&self.shared), rm_tmp, sudo);
-
-        let result = async {
-            for (i, chunk) in content.chunks(Self::WRITE_FILE_CHUNK_LIMIT).enumerate() {
-                self.write_file_chunk(&tmp, chunk, sudo, i > 0).await?;
-            }
-            io::Result::Ok(())
-        }
-        .await;
-
-        if result.is_err() {
-            // Best-effort cleanup of the temp file.
-            cleanup_guard.cleanup_now().await;
-            return result;
-        }
-
-        // Atomic rename temp → target.
-        let mv_cmd = format!("mv -f -- {quoted_tmp} {}", shell_quote(path));
-        match self
-            .exec_capture(CommandCaptureRequest {
-                command: &mv_cmd,
-                timeout_ms: Self::HELPER_EXEC_TIMEOUT_MS,
-                env: &[],
-                sudo,
-                label: "write-file-rename",
-                stdout_limit_bytes: command::SMALL_COMMAND_CAPTURE_LIMIT_BYTES,
-                stderr_limit_bytes: command::SMALL_COMMAND_CAPTURE_LIMIT_BYTES,
-                wait_timeout: Duration::from_millis(Self::HELPER_EXEC_TIMEOUT_MS as u64 + 5000),
-            })
-            .await
-        {
-            Ok(r) if r.exit_code == 0 => {
-                cleanup_guard.disarm();
-                Ok(())
-            }
-            Ok(r) => {
-                cleanup_guard.cleanup_now().await;
-                Err(io::Error::other(format!(
-                    "failed to rename temp file to {path}: {}",
-                    String::from_utf8_lossy(&r.stderr),
-                )))
-            }
-            Err(e) => {
-                // Connection likely broken — short timeout to avoid blocking.
-                cleanup_guard.cleanup_now().await;
-                Err(e)
-            }
-        }
-    }
-
-    /// Send a single write_file message and validate the response.
-    async fn write_file_chunk(
-        &self,
-        path: &str,
-        content: &[u8],
-        sudo: bool,
-        append: bool,
-    ) -> io::Result<()> {
-        let payload = vsock_proto::encode_write_file(path, content, sudo, append)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
-        let timeout = Duration::from_secs(300);
-        let resp = self.request(MSG_WRITE_FILE, &payload, timeout).await?;
-
-        if resp.msg_type == MSG_ERROR {
-            let msg = vsock_proto::decode_error(&resp.payload)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-            return Err(io::Error::other(msg));
-        }
-
-        if resp.msg_type != MSG_WRITE_FILE_RESULT {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("unexpected response type: 0x{:02X}", resp.msg_type),
-            ));
-        }
-
-        let (success, error) = vsock_proto::decode_write_file_result(&resp.payload)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-
-        if !success {
-            return Err(io::Error::other(error));
-        }
-
-        Ok(())
-    }
-
     /// Spawn a process on the guest and monitor for exit.
     ///
     /// Returns immediately with `(pid, stdout_rx)`. Use [`wait_for_exit`](Self::wait_for_exit)
@@ -1536,6 +937,7 @@ impl VsockHost {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     fn make_pair() -> (UnixStream, UnixStream) {
@@ -1767,78 +1169,6 @@ mod tests {
         assert_eq!(exec_result.stdout, b"ok");
     }
 
-    #[test]
-    fn copy_temp_path_distinguishes_process_seq_and_nonce() {
-        let host_path = PathBuf::from("/tmp/system.log");
-
-        let base = copy_temp_path(&host_path, 101, 7, 1);
-        assert_ne!(base, copy_temp_path(&host_path, 102, 7, 1));
-        assert_ne!(base, copy_temp_path(&host_path, 101, 8, 1));
-        assert_ne!(base, copy_temp_path(&host_path, 101, 7, 2));
-        assert_eq!(
-            base.file_name().and_then(|name| name.to_str()),
-            Some(".system.log.vm0tmp-101-7-1")
-        );
-    }
-
-    #[tokio::test]
-    async fn create_copy_temp_file_uses_unique_paths_for_same_seq() {
-        let unique = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!(
-            "vsock-host-copy-temp-{}-{unique}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let host_path = dir.join("system.log");
-
-        let (first_path, first_file) = create_copy_temp_file(&host_path, 7).await.unwrap();
-        let (second_path, second_file) = create_copy_temp_file(&host_path, 7).await.unwrap();
-
-        assert_ne!(first_path, second_path);
-        assert!(first_path.exists());
-        assert!(second_path.exists());
-        drop(first_file);
-        drop(second_file);
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn host_temp_file_guard_removes_temp_on_drop() {
-        let unique = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!(
-            "vsock-host-temp-guard-{}-{unique}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join(".system.log.vm0tmp-guard");
-        std::fs::write(&path, b"partial").unwrap();
-
-        {
-            let _guard = HostTempFileGuard::new(path.clone());
-        }
-
-        assert!(!path.exists());
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn copy_file_stream_settings_cover_max_copy_without_queue_overflow() {
-        assert_eq!(
-            COPY_FILE_STREAM_MAX_BYTES,
-            COPY_FILE_STREAM_CHUNK_LIMIT as u64 * 1024
-        );
-        assert_eq!(
-            COPY_FILE_STREAM_QUEUE_CAPACITY,
-            command::test_support::MAX_STREAM_CAPACITY
-        );
-    }
-
     #[tokio::test]
     async fn copy_file_rejects_max_bytes_above_stream_budget() {
         let (host, _guest, _decoder) = setup_host_and_guest().await;
@@ -1847,7 +1177,7 @@ mod tests {
                 "/tmp/large.log",
                 Path::new("/tmp/large.log"),
                 CopyFileOptions {
-                    max_bytes: COPY_FILE_STREAM_MAX_BYTES + 1,
+                    max_bytes: file::test_support::COPY_FILE_STREAM_MAX_BYTES + 1,
                     timeout_ms: 5000,
                     missing_ok: false,
                 },
@@ -4291,7 +3621,7 @@ mod tests {
         let (host_stream, mut guest) = make_pair();
 
         // Content just over the chunk limit → 2 write messages + 1 exec (mv)
-        let chunk_limit = VsockHost::WRITE_FILE_CHUNK_LIMIT;
+        let chunk_limit = file::test_support::WRITE_FILE_CHUNK_LIMIT;
         let content = vec![0xABu8; chunk_limit + 100];
         let content_clone = content.clone();
 
@@ -4370,7 +3700,7 @@ mod tests {
     async fn test_write_file_at_chunk_limit_uses_single_message() {
         let (host_stream, mut guest) = make_pair();
 
-        let chunk_limit = VsockHost::WRITE_FILE_CHUNK_LIMIT;
+        let chunk_limit = file::test_support::WRITE_FILE_CHUNK_LIMIT;
         let content = vec![0xABu8; chunk_limit];
         let content_clone = content.clone();
 
@@ -4409,7 +3739,7 @@ mod tests {
     async fn test_write_file_chunked_cleans_up_on_chunk_failure() {
         let (host_stream, mut guest) = make_pair();
 
-        let chunk_limit = VsockHost::WRITE_FILE_CHUNK_LIMIT;
+        let chunk_limit = file::test_support::WRITE_FILE_CHUNK_LIMIT;
         let content = vec![0xABu8; chunk_limit + 100];
 
         tokio::spawn(async move {
@@ -4478,7 +3808,7 @@ mod tests {
     async fn test_write_file_chunked_cleans_up_on_mv_failure() {
         let (host_stream, mut guest) = make_pair();
 
-        let chunk_limit = VsockHost::WRITE_FILE_CHUNK_LIMIT;
+        let chunk_limit = file::test_support::WRITE_FILE_CHUNK_LIMIT;
         let content = vec![0xABu8; chunk_limit + 100];
 
         tokio::spawn(async move {
@@ -4557,7 +3887,7 @@ mod tests {
     async fn test_write_file_chunked_cleans_up_when_cancelled() {
         let (host_stream, mut guest) = make_pair();
 
-        let chunk_limit = VsockHost::WRITE_FILE_CHUNK_LIMIT;
+        let chunk_limit = file::test_support::WRITE_FILE_CHUNK_LIMIT;
         let content = vec![0xABu8; chunk_limit + 100];
         let (first_chunk_tx, first_chunk_rx) = oneshot::channel::<()>();
         let (cleanup_tx, cleanup_rx) = oneshot::channel::<String>();
