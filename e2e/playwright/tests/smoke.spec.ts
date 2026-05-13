@@ -44,24 +44,42 @@ test("sign in and complete onboarding to chat page", async ({ page }) => {
 });
 
 async function completeOnboarding(page: import("@playwright/test").Page) {
+  // NOTE: Playwright's locator.isVisible() returns the *current* visibility
+  // synchronously — the `timeout` option only controls element resolution,
+  // not visibility polling. waitFor({ state: "visible" }) does the real wait
+  // and is what we need here, because step 1 → step 2 transition now runs
+  // an async eager-init API call before the next step renders.
+  const tryAwaitVisible = async (
+    locator: ReturnType<typeof page.locator>,
+    timeout: number,
+  ): Promise<boolean> => {
+    return await locator
+      .waitFor({ state: "visible", timeout })
+      .then(() => true)
+      .catch(() => false);
+  };
+
   const workspaceInput = page.getByPlaceholder("e.g. Acme Corp");
-  if (await workspaceInput.isVisible({ timeout: 3_000 }).catch(() => false)) {
+  if (await tryAwaitVisible(workspaceInput, 5_000)) {
     await workspaceInput.fill("E2E Test Workspace");
     await page.getByRole("button", { name: "Next" }).click();
   }
 
+  // step 1 → step 2 transition runs the eager-init API; allow plenty of time.
   const chooseTools = page.getByTestId("onboarding-step-select-connectors");
-  if (await chooseTools.isVisible({ timeout: 3_000 }).catch(() => false)) {
+  if (await tryAwaitVisible(chooseTools, 15_000)) {
     await page.getByRole("button", { name: "Next" }).click();
   }
 
+  // step 3 (connect-your-apps) is skipped when no connectors are selected,
+  // so it usually never appears — short timeout to avoid wasting test budget.
   const connectApps = page.getByTestId("onboarding-step-connect");
-  if (await connectApps.isVisible({ timeout: 3_000 }).catch(() => false)) {
+  if (await tryAwaitVisible(connectApps, 1_500)) {
     await page.getByRole("button", { name: "Next" }).click();
   }
 
   const whereToWork = page.getByTestId("onboarding-step-where-to-work");
-  if (await whereToWork.isVisible({ timeout: 3_000 }).catch(() => false)) {
+  if (await tryAwaitVisible(whereToWork, 10_000)) {
     await page.getByRole("button", { name: "Continue in web" }).click();
   }
 }
