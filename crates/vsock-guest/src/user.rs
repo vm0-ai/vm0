@@ -304,4 +304,13 @@ mod tests {
 
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     }
+
+    #[test]
+    fn parse_user_credentials_fails_on_invalid_gid() {
+        let err =
+            parse_user_credentials("user:x:1000:not-a-gid::/home/user:/bin/bash\n", "", "user")
+                .unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
 }
