@@ -9,9 +9,15 @@ import {
   initSlackOrg$,
   pollSlackConnection$,
 } from "../zero-page/zero-slack.ts";
+import {
+  resetAgentPhoneConnectUi$,
+  setAgentPhoneConnectDialogOpen$,
+} from "../zero-page/zero-agentphone.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
+  set(resetAgentPhoneConnectUi$);
+  set(setAgentPhoneConnectDialogOpen$, false);
   set(updatePage$, createElement(ZeroWorksPage), "sidebar");
   set(updateDocumentTitle$, "Works");
   set(initSlackOrg$);

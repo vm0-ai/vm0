@@ -313,7 +313,7 @@ describe("onboarding set up Telegram → settings page", () => {
   });
 });
 
-describe("onboarding set up AgentPhone → settings page", () => {
+describe("onboarding set up AgentPhone → works page", () => {
   it("shows AgentPhone only when enabled and navigates after saving the agent", async () => {
     mockAdminOnboarding();
 
@@ -335,7 +335,7 @@ describe("onboarding set up AgentPhone → settings page", () => {
     click(screen.getByTestId("onboarding-agentphone-option"));
 
     await waitFor(() => {
-      expect(pathname()).toBe("/settings/agentphone");
+      expect(pathname()).toBe("/works");
     });
   });
 });

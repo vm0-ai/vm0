@@ -38,12 +38,11 @@ import {
   setShowUninstallDialog$,
 } from "../../signals/zero-page/zero-slack.ts";
 import { telegramBots$ } from "../../signals/zero-page/zero-telegram.ts";
-import { agentPhoneLinkStatus$ } from "../../signals/zero-page/zero-agentphone.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
-import imessageIconImg from "./components/settings/icons/imessage.svg";
+import { AgentPhoneCard } from "./agentphone-card.tsx";
 import slackIconImg from "./components/settings/icons/slack.svg";
 import telegramIconImg from "./components/settings/icons/telegram.svg";
 
@@ -316,56 +315,6 @@ function TelegramCard() {
             {summary}
           </div>
         </div>
-        <span className="shrink-0 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-secondary-foreground">
-          <IconSettings size={14} stroke={1.5} />
-          Manage
-        </span>
-      </div>
-    </Link>
-  );
-}
-
-function AgentPhoneCard() {
-  const statusLoadable = useLastLoadable(agentPhoneLinkStatus$);
-  const status =
-    statusLoadable.state === "hasData" ? statusLoadable.data : null;
-  const isConnected = status?.linked ?? false;
-  const connectedPhone = status?.linked ? status.phoneHandle : null;
-  const summary = status?.agentPhoneNumber
-    ? `Text Zero at ${status.agentPhoneNumber}`
-    : "Text-message access to Zero";
-
-  return (
-    <Link
-      pathname={ROUTES.settingsAgentPhone}
-      className="zero-card flex flex-col text-inherit no-underline transition-colors hover:bg-muted/30"
-      aria-label="Open AgentPhone settings"
-    >
-      <div className="flex items-center gap-4 p-4">
-        <div className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden">
-          <img src={imessageIconImg} alt="" className="h-7 w-7" />
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="truncate text-sm font-medium text-foreground">
-              AgentPhone
-            </div>
-          </div>
-          <div className="truncate text-sm text-muted-foreground">
-            {summary}
-          </div>
-        </div>
-        {isConnected ? (
-          <span
-            data-testid="agentphone-connected-indicator"
-            className="inline-flex min-w-0 max-w-52 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
-          >
-            <IconCircleCheck className="h-3 w-3 text-green-600" />
-            <span className="min-w-0 truncate" title={connectedPhone ?? ""}>
-              {connectedPhone ? `Connected (${connectedPhone})` : "Connected"}
-            </span>
-          </span>
-        ) : null}
         <span className="shrink-0 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-secondary-foreground">
           <IconSettings size={14} stroke={1.5} />
           Manage

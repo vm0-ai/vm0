@@ -21,7 +21,6 @@ export const ROUTES = {
   settings: "/settings",
   settingsSlack: "/settings/slack",
   settingsTelegram: "/settings/telegram",
-  settingsAgentPhone: "/settings/agentphone",
   telegramConnect: "/telegram/connect",
   agentphoneConnect: "/agentphone/connect",
   settingsApiKeys: "/settings/api-keys",

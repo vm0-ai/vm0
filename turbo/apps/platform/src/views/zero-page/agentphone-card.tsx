@@ -7,13 +7,16 @@ import {
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
-  IconArrowLeft,
   IconCircleCheck,
+  IconDotsVertical,
   IconLoader2,
-  IconMessageCircle,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Button } from "@vm0/ui";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@vm0/ui/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -24,7 +27,6 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 import { Input } from "@vm0/ui/components/ui/input";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   agentPhoneLinkStatus$,
   agentPhoneConnectDialogOpen$,
@@ -42,9 +44,7 @@ import {
   startAgentPhoneLink$,
   waitForAgentPhoneConnection$,
 } from "../../signals/zero-page/zero-agentphone.ts";
-import { ROUTES } from "../../signals/route-paths.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { Link } from "../router/link.tsx";
 import imessageIconImg from "./components/settings/icons/imessage.svg";
 
 function AgentPhoneVerificationStatus({
@@ -240,7 +240,7 @@ function AgentPhoneConnectDialog() {
   );
 }
 
-function AgentPhoneSettingsCard() {
+export function AgentPhoneCard() {
   const statusLoadable = useLastLoadable(agentPhoneLinkStatus$);
   const status =
     statusLoadable.state === "hasData" ? statusLoadable.data : null;
@@ -258,112 +258,78 @@ function AgentPhoneSettingsCard() {
 
   return (
     <>
-      <div className="zero-card overflow-hidden">
-        <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:p-5">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <div className="shrink-0 inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-background">
-              <img src={imessageIconImg} alt="" className="h-8 w-8" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <div className="truncate text-sm font-medium text-foreground">
-                  AgentPhone
-                </div>
-                {isConnected ? (
-                  <span
-                    data-testid="agentphone-connected-indicator"
-                    className="inline-flex min-w-0 max-w-52 items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
-                  >
-                    <IconCircleCheck className="h-3 w-3 text-green-600" />
-                    <span
-                      className="min-w-0 truncate"
-                      title={connectedPhone ?? ""}
-                    >
-                      {connectedPhone
-                        ? `Connected (${connectedPhone})`
-                        : "Connected"}
-                    </span>
-                  </span>
-                ) : null}
-              </div>
-              <div className="mt-1 truncate text-sm text-muted-foreground">
-                {summary}
+      <div className="zero-card flex flex-col">
+        <div className="flex items-center gap-4 p-4">
+          <div className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden">
+            <img src={imessageIconImg} alt="" className="h-7 w-7" />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="truncate text-sm font-medium text-foreground">
+                AgentPhone
               </div>
             </div>
+            <div className="truncate text-sm text-muted-foreground">
+              {summary}
+            </div>
           </div>
-          <div className="flex shrink-0 items-center justify-end gap-2">
-            {status !== null && !isConnected ? (
-              <Button
-                type="button"
-                className="gap-1.5"
-                aria-label="Connect AgentPhone"
-                onClick={() => {
-                  setConnectOpen(true);
-                }}
+          {isConnected ? (
+            <span
+              data-testid="agentphone-connected-indicator"
+              className="inline-flex min-w-0 max-w-52 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
+            >
+              <IconCircleCheck className="h-3 w-3 text-green-600" />
+              <span className="min-w-0 truncate" title={connectedPhone ?? ""}>
+                {connectedPhone ? `Connected (${connectedPhone})` : "Connected"}
+              </span>
+            </span>
+          ) : null}
+          {status !== null && !isConnected ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0 gap-1.5 rounded-lg"
+              aria-label="Connect AgentPhone"
+              onClick={() => {
+                setConnectOpen(true);
+              }}
+            >
+              Connect
+            </Button>
+          ) : null}
+          {isConnected ? (
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  aria-label="AgentPhone options"
+                >
+                  <IconDotsVertical size={16} stroke={1.5} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="end"
+                className="flex flex-col gap-0.5 w-40 p-2"
               >
-                <IconMessageCircle size={14} stroke={1.5} />
-                Connect
-              </Button>
-            ) : null}
-            {isConnected ? (
-              <Button
-                type="button"
-                variant="outline"
-                disabled={disconnecting}
-                aria-label="Disconnect AgentPhone"
-                onClick={() => {
-                  return detach(disconnect(pageSignal), Reason.DomCallback);
-                }}
-              >
-                {disconnecting ? "Disconnecting..." : "Disconnect"}
-              </Button>
-            ) : null}
-          </div>
+                <button
+                  type="button"
+                  aria-label="Disconnect AgentPhone"
+                  disabled={disconnecting}
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                  onClick={() => {
+                    return detach(disconnect(pageSignal), Reason.DomCallback);
+                  }}
+                >
+                  {disconnecting ? "Disconnecting..." : "Disconnect"}
+                </button>
+              </PopoverContent>
+            </Popover>
+          ) : null}
         </div>
       </div>
       <AgentPhoneConnectDialog />
     </>
-  );
-}
-
-export function ZeroAgentPhoneSettingsPage() {
-  const features = useLastResolved(featureSwitch$);
-  const enabled = features?.[FeatureSwitchKey.AgentPhoneAppUi];
-
-  return (
-    <div className="flex flex-1 flex-col min-h-0">
-      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
-        <div className="mx-auto max-w-[900px]">
-          <Link
-            pathname={ROUTES.works}
-            className="mb-3 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <IconArrowLeft size={14} stroke={1.5} />
-            Channels
-          </Link>
-          <h1 className="text-lg font-semibold tracking-tight text-foreground">
-            AgentPhone
-          </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Manage text-message access to Zero.
-          </p>
-        </div>
-      </header>
-      <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
-        <div className="mx-auto max-w-[900px]">
-          {enabled === true ? (
-            <AgentPhoneSettingsCard />
-          ) : enabled === false ? (
-            <div className="zero-card p-5 text-sm text-muted-foreground">
-              AgentPhone is not enabled for this workspace.
-            </div>
-          ) : (
-            <div className="zero-card p-5 text-sm text-muted-foreground">
-              Loading AgentPhone...
-            </div>
-          )}
-        </div>
-      </main>
-    </div>
   );
 }
