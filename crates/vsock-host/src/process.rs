@@ -333,7 +333,7 @@ mod tests {
     use vsock_proto::{
         CommandCapturedOutput, CommandTermination, Decoder, MSG_COMMAND_RESULT, MSG_COMMAND_START,
         MSG_ERROR, MSG_PING, MSG_PONG, MSG_PROCESS_EXIT, MSG_READY, MSG_SPAWN_WATCH,
-        MSG_SPAWN_WATCH_RESULT,
+        MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK,
     };
 
     fn make_pair() -> (UnixStream, UnixStream) {
@@ -521,10 +521,15 @@ mod tests {
         let host = host_from_stream(host_stream).await.unwrap();
 
         let err = host
-            .spawn_watch("bad-cmd", 0, &[], false, false, None)
+            .spawn_watch("bad-cmd", 0, &[], false, true, None)
             .await
             .unwrap_err();
         assert!(err.to_string().contains("no such command"));
+        assert_eq!(
+            registration_counts(&host),
+            (0, 0, 0),
+            "streaming spawn_watch error must clean pending stdout registration",
+        );
 
         let (pid, _stdout_rx) = host
             .spawn_watch("good-cmd", 0, &[], false, false, None)
@@ -563,16 +568,135 @@ mod tests {
         let host = host_from_stream(host_stream).await.unwrap();
 
         let err = host
-            .spawn_watch("bad-payload-cmd", 0, &[], false, false, None)
+            .spawn_watch("bad-payload-cmd", 0, &[], false, true, None)
             .await
             .unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(
+            registration_counts(&host),
+            (0, 0, 0),
+            "malformed streaming spawn_watch result must clean pending stdout registration",
+        );
 
         let (pid, _stdout_rx) = host
             .spawn_watch("good-cmd", 0, &[], false, false, None)
             .await
             .unwrap();
         assert_eq!(pid, 333);
+    }
+
+    #[tokio::test]
+    async fn test_malformed_unsolicited_process_frames_are_ignored() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let bad_stdout = vsock_proto::encode(MSG_STDOUT_CHUNK, 0, b"\x00\x01").unwrap();
+            let bad_exit = vsock_proto::encode(MSG_PROCESS_EXIT, 0, b"\x00\x01").unwrap();
+            let mut combined = bad_stdout;
+            combined.extend_from_slice(&bad_exit);
+            guest.write_all(&combined).await.unwrap();
+
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+
+            let payload = vsock_proto::encode_spawn_watch_result(444);
+            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload).unwrap();
+            guest.write_all(&resp).await.unwrap();
+
+            let exit_payload = vsock_proto::encode_process_exit(444, 0, b"after-malformed", b"");
+            let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
+            guest.write_all(&exit_msg).await.unwrap();
+
+            let mut discard = [0u8; 1];
+            let _ = guest.read(&mut discard).await;
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let (pid, _stdout_rx) = host
+            .spawn_watch("after-malformed", 0, &[], false, false, None)
+            .await
+            .unwrap();
+        assert_eq!(pid, 444);
+
+        let event = host
+            .wait_for_exit(pid, Duration::from_secs(5))
+            .await
+            .unwrap();
+        assert_eq!(event.exit_code, 0);
+        assert_eq!(event.stdout, b"after-malformed");
+    }
+
+    #[tokio::test]
+    async fn test_dropped_stdout_receiver_removes_stream_registration() {
+        let (host_stream, mut guest) = make_pair();
+        let send_chunk = Arc::new(Notify::new());
+        let send_exit = Arc::new(Notify::new());
+
+        {
+            let send_chunk = Arc::clone(&send_chunk);
+            let send_exit = Arc::clone(&send_exit);
+            tokio::spawn(async move {
+                let mut decoder = Decoder::new();
+                mock_handshake(&mut guest, &mut decoder).await;
+
+                let mut buf = [0u8; 4096];
+                let n = guest.read(&mut buf).await.unwrap();
+                let msgs = decoder.decode(&buf[..n]).unwrap();
+                assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+
+                let payload = vsock_proto::encode_spawn_watch_result(555);
+                let resp =
+                    vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload).unwrap();
+                guest.write_all(&resp).await.unwrap();
+
+                send_chunk.notified().await;
+                let chunk_payload = vsock_proto::encode_stdout_chunk(555, b"orphaned chunk");
+                let chunk = vsock_proto::encode(MSG_STDOUT_CHUNK, 0, &chunk_payload).unwrap();
+                guest.write_all(&chunk).await.unwrap();
+
+                send_exit.notified().await;
+                let exit_payload = vsock_proto::encode_process_exit(555, 0, b"", b"");
+                let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
+                guest.write_all(&exit_msg).await.unwrap();
+
+                let mut discard = [0u8; 1];
+                let _ = guest.read(&mut discard).await;
+            });
+        }
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let (pid, stdout_rx) = host
+            .spawn_watch("streaming", 0, &[], false, true, None)
+            .await
+            .unwrap();
+        assert_eq!(pid, 555);
+        assert_eq!(registration_counts(&host), (0, 0, 1));
+
+        drop(stdout_rx);
+        send_chunk.notify_one();
+
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if registration_counts(&host) == (0, 0, 0) {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("dropped stdout receiver should remove stream registration");
+
+        send_exit.notify_one();
+        let event = host
+            .wait_for_exit(pid, Duration::from_secs(5))
+            .await
+            .unwrap();
+        assert_eq!(event.exit_code, 0);
     }
 
     #[tokio::test]
