@@ -22,7 +22,7 @@ const CANCEL_GRACE: Duration = Duration::from_secs(10);
 
 #[derive(Args)]
 pub struct SubmitArgs {
-    /// Runner group name (writes job to /var/lib/vm0-runner/groups/{group}/)
+    /// Runner group name (writes job to the group's local queue)
     #[arg(long)]
     group: String,
     /// Job prompt
@@ -75,16 +75,30 @@ fn cleanup_completed_files(
     job_path: &std::path::Path,
     result_path: &std::path::Path,
     cancel_path: &std::path::Path,
+    claim_path: &std::path::Path,
 ) {
     let _ = std::fs::remove_file(job_path);
     let _ = std::fs::remove_file(result_path);
     let _ = std::fs::remove_file(cancel_path);
+    let _ = std::fs::remove_file(claim_path);
 }
 
 fn remove_unclaimed_job(job_path: &std::path::Path, claim_path: &std::path::Path) {
-    if !claim_path.exists() {
-        let _ = std::fs::remove_file(job_path);
+    let Some(claim_dir) = claim_path.parent() else {
+        return;
+    };
+    if std::fs::create_dir_all(claim_dir).is_err() {
+        return;
     }
+    let Ok(_claim) = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(claim_path)
+    else {
+        return;
+    };
+    let _ = std::fs::remove_file(job_path);
+    let _ = std::fs::remove_file(claim_path);
 }
 
 /// Clean up submit-owned queue files after timing out while waiting for a result.
@@ -222,7 +236,7 @@ async fn run_submit_with_home(args: SubmitArgs, home: HomePaths) -> RunnerResult
         .map_err(|e| RunnerError::Internal(format!("parse result: {e}")))?;
 
     // Clean up queue files.
-    cleanup_completed_files(&job_path, &result_path, &cancel_path);
+    cleanup_completed_files(&job_path, &result_path, &cancel_path, &claim_path);
 
     use std::io::Write;
     std::io::stdout().write_all(&buf).ok();
@@ -416,21 +430,21 @@ mod tests {
         std::fs::write(&claim_path, b"").unwrap();
 
         // First cleanup
-        cleanup_completed_files(&job_path, &result_path, &cancel_path);
+        cleanup_completed_files(&job_path, &result_path, &cancel_path, &claim_path);
         assert!(!job_path.exists());
         assert!(!result_path.exists());
         assert!(!cancel_path.exists());
         assert!(
-            claim_path.exists(),
-            "submit cleanup must not delete runner-owned claims"
+            !claim_path.exists(),
+            "completed-result cleanup should remove stale claims left after result write"
         );
 
         // Second cleanup (idempotent — no panic on missing files)
-        cleanup_completed_files(&job_path, &result_path, &cancel_path);
+        cleanup_completed_files(&job_path, &result_path, &cancel_path, &claim_path);
     }
 
     #[test]
-    fn timeout_cleanup_preserves_claimed_job() {
+    fn timeout_cleanup_preserves_claimed_job_and_claim() {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
         let job_id = RunId::new_v4();
@@ -458,6 +472,35 @@ mod tests {
         assert!(!result_path.exists());
         assert!(!cancel_path.exists());
         assert!(claim_path.exists());
+    }
+
+    #[test]
+    fn timeout_cleanup_atomically_removes_unclaimed_job() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let job_path =
+            local_queue::job_path(group_dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap();
+        let result_path = local_queue::result_path(group_dir, job_id);
+        let cancel_path = local_queue::cancel_path(group_dir, job_id);
+        let claim_path = local_queue::claim_path(group_dir, job_id);
+        std::fs::create_dir_all(job_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+
+        std::fs::write(&job_path, b"{}").unwrap();
+        std::fs::write(&result_path, b"{}").unwrap();
+        std::fs::write(&cancel_path, b"").unwrap();
+
+        cleanup_timed_out_files(&job_path, &result_path, &cancel_path, &claim_path);
+
+        assert!(!job_path.exists());
+        assert!(!result_path.exists());
+        assert!(!cancel_path.exists());
+        assert!(
+            !claim_path.exists(),
+            "cleanup's temporary claim must not be left behind"
+        );
     }
 
     #[tokio::test]
