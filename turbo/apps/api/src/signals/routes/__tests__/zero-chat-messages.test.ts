@@ -468,6 +468,48 @@ describe("POST /api/zero/chat/messages", () => {
     );
   });
 
+  it("does not require unconfigured connector environment refs before creating a chat run", async () => {
+    const fixture = await track(seedFixture());
+    await store
+      .set(writeDb$)
+      .update(agentComposeVersions)
+      .set({
+        content: {
+          version: "1.0",
+          agents: {
+            default: {
+              framework: "claude-code",
+              environment: {
+                ANTHROPIC_API_KEY: "test-key",
+                ZERO_AGENT_ID: vm0Template("{{ vars.ZERO_AGENT_ID }}"),
+                ZERO_TOKEN: vm0Template("{{ secrets.ZERO_TOKEN }}"),
+                JIRA_EMAIL: vm0Template("{{ vars.JIRA_EMAIL }}"),
+                GITLAB_HOST: vm0Template("{{ vars.GITLAB_HOST }}"),
+                GH_TOKEN: vm0Template("{{ secrets.GH_TOKEN }}"),
+                SLACK_TOKEN: vm0Template("{{ secrets.SLACK_TOKEN }}"),
+              },
+            },
+          },
+        },
+      })
+      .where(eq(agentComposeVersions.id, fixture.versionId));
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "use the default zero agent",
+    });
+    await clearAllDetached();
+
+    expect(response.body.status).toBe("pending");
+    const [run] = await store
+      .set(writeDb$)
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId!))
+      .limit(1);
+    expect(run?.id).toBe(response.body.runId);
+  });
+
   it("preserves clientThreadId for new thread creation", async () => {
     const fixture = await track(seedFixture());
     const clientThreadId = randomUUID();
