@@ -71,6 +71,8 @@ export interface ApiTestMocks {
     readonly conversations: {
       readonly list: AsyncMock;
       readonly open: AsyncMock;
+      readonly history: AsyncMock;
+      readonly replies: AsyncMock;
     };
     readonly files: {
       readonly info: AsyncMock;
@@ -84,6 +86,10 @@ export interface ApiTestMocks {
     };
     readonly views: {
       readonly publish: AsyncMock;
+      readonly open: AsyncMock;
+    };
+    readonly users: {
+      readonly info: AsyncMock;
     };
     readonly fetchFile: AsyncMock;
   };
@@ -200,6 +206,8 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     conversations: {
       list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       open: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      history: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      replies: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     files: {
       info: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -213,6 +221,10 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
     views: {
       publish: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      open: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
+    users: {
+      info: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     fetchFile: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   };
@@ -500,6 +512,8 @@ vi.mock("@slack/web-api", () => {
         conversations: {
           list: apiTestMocks.slack.conversations.list,
           open: apiTestMocks.slack.conversations.open,
+          history: apiTestMocks.slack.conversations.history,
+          replies: apiTestMocks.slack.conversations.replies,
         },
         files: {
           info: apiTestMocks.slack.files.info,
@@ -514,6 +528,10 @@ vi.mock("@slack/web-api", () => {
         },
         views: {
           publish: apiTestMocks.slack.views.publish,
+          open: apiTestMocks.slack.views.open,
+        },
+        users: {
+          info: apiTestMocks.slack.users.info,
         },
       };
     }),
@@ -645,11 +663,15 @@ export function resetApiTestMocks(): void {
   apiTestMocks.slack.chat.postEphemeral.mockReset();
   apiTestMocks.slack.conversations.list.mockReset();
   apiTestMocks.slack.conversations.open.mockReset();
+  apiTestMocks.slack.conversations.history.mockReset();
+  apiTestMocks.slack.conversations.replies.mockReset();
   apiTestMocks.slack.files.info.mockReset();
   apiTestMocks.slack.files.getUploadURLExternal.mockReset();
   apiTestMocks.slack.files.completeUploadExternal.mockReset();
   apiTestMocks.slack.oauth.v2.access.mockReset();
   apiTestMocks.slack.views.publish.mockReset();
+  apiTestMocks.slack.views.open.mockReset();
+  apiTestMocks.slack.users.info.mockReset();
   apiTestMocks.slack.fetchFile.mockReset();
   apiTestMocks.stripe.invoices.list.mockReset();
   apiTestMocks.stripe.invoices.create.mockReset();

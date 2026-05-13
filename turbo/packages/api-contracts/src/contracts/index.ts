@@ -1124,6 +1124,18 @@ export {
   type ZeroSlackConnectContract,
 } from "./zero-slack-connect";
 export {
+  zeroSlackCommandsContract,
+  type ZeroSlackCommandsContract,
+} from "./zero-slack-commands";
+export {
+  zeroSlackEventsContract,
+  type ZeroSlackEventsContract,
+} from "./zero-slack-events";
+export {
+  zeroSlackInteractiveContract,
+  type ZeroSlackInteractiveContract,
+} from "./zero-slack-interactive";
+export {
   zeroSlackBrowserConnectContract,
   zeroSlackBrowserConnectQuerySchema,
   type ZeroSlackBrowserConnectContract,

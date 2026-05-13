@@ -84,6 +84,8 @@ interface UserInfo {
   readonly name: string | null;
   readonly email: string | null;
   readonly timezone: string | null;
+  readonly slackDisplayName?: string;
+  readonly slackUserId?: string;
 }
 
 interface ZeroAgentConfig {
@@ -242,6 +244,12 @@ function buildCurrentUserPrompt(userInfo: UserInfo): string {
     lines.push(`Email: ${userInfo.email}`);
   }
   lines.push(`Timezone: ${userInfo.timezone ?? "UTC"}`);
+  if (userInfo.slackDisplayName) {
+    lines.push(`Slack display name: ${userInfo.slackDisplayName}`);
+  }
+  if (userInfo.slackUserId) {
+    lines.push(`Slack user ID: ${userInfo.slackUserId}`);
+  }
   return lines.join("\n");
 }
 
@@ -455,9 +463,11 @@ function createRunBody(args: {
     triggerSource:
       args.triggerSource ??
       (args.triggerAgentId ? ("agent" as const) : ("web" as const)),
-    appendSystemPrompt: args.appendSystemPrompt
-      ? `${baseAppendSystemPrompt}\n\n${args.appendSystemPrompt}`
-      : baseAppendSystemPrompt,
+    appendSystemPrompt: [baseAppendSystemPrompt, args.appendSystemPrompt]
+      .filter((part): part is string => {
+        return Boolean(part);
+      })
+      .join("\n\n"),
     disallowedTools: [...DISALLOWED_TOOLS],
     vars: { ZERO_AGENT_ID: args.agent.id },
   };
@@ -484,7 +494,12 @@ export const createZeroRun$ = command(
       readonly apiStartTime: number;
       readonly triggerSource?: TriggerSource;
       readonly appendSystemPrompt?: string;
+      readonly userInfoExtras?: Pick<
+        UserInfo,
+        "slackDisplayName" | "slackUserId"
+      >;
       readonly callbacks?: readonly RunCallback[];
+      readonly selectedModelOverride?: string;
       readonly zeroRunMetadata?: ZeroRunMetadata;
     },
     signal: AbortSignal,
@@ -566,7 +581,7 @@ export const createZeroRun$ = command(
         body: createRunBody({
           body: args.body,
           agent,
-          userInfo,
+          userInfo: { ...userInfo, ...args.userInfoExtras },
           permissionPolicies: agentPermissionPolicies,
           triggerAgentId,
           triggerSource: args.triggerSource,
@@ -575,7 +590,8 @@ export const createZeroRun$ = command(
         apiStartTime: args.apiStartTime,
         modelProviderId: agent.modelProviderId ?? undefined,
         modelProviderType: args.body.modelProvider,
-        selectedModelOverride: agent.selectedModel ?? undefined,
+        selectedModelOverride:
+          args.selectedModelOverride ?? agent.selectedModel ?? undefined,
         extraEnvironment: { ZERO_AGENT_ID: agent.id },
         callbacks: args.callbacks ?? callbacksForTriggerAgent(triggerAgentId),
         includeZeroTokenSecret: true,

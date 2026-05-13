@@ -1,4 +1,9 @@
-import { WebClient, type Block, type KnownBlock } from "@slack/web-api";
+import {
+  WebClient,
+  type Block,
+  type KnownBlock,
+  type View,
+} from "@slack/web-api";
 
 import { safeAsync } from "../utils";
 
@@ -95,6 +100,23 @@ export async function setThreadStatus(
   });
 }
 
+export async function publishAppHome(
+  client: WebClient,
+  userId: string,
+  view: View,
+): Promise<void> {
+  await client.views.publish({ user_id: userId, view });
+}
+
+export async function openView(
+  client: WebClient,
+  triggerId: string,
+  view: View,
+): Promise<{ readonly viewId: string | undefined }> {
+  const result = await client.views.open({ trigger_id: triggerId, view });
+  return { viewId: result.view?.id };
+}
+
 export async function postEphemeral(
   client: WebClient,
   options: {
@@ -121,6 +143,77 @@ export async function postEphemeral(
     throw result.error;
   }
   return { kind: "ok", ts: result.ok.message_ts };
+}
+
+export interface SlackUserInfo {
+  readonly id: string;
+  readonly name?: string;
+  readonly email?: string;
+  readonly timezone?: string;
+}
+
+export function formatSenderBlock(info: SlackUserInfo): string {
+  const parts = [`id: ${info.id}`];
+  if (info.name) {
+    parts.push(`name: ${info.name}`);
+  }
+  if (info.email) {
+    parts.push(`email: ${info.email}`);
+  }
+  if (info.timezone) {
+    parts.push(`timezone: ${info.timezone}`);
+  }
+  return `- SENDER: {${parts.join(", ")}}`;
+}
+
+async function fetchSlackUserInfo(
+  client: WebClient,
+  userId: string,
+): Promise<SlackUserInfo | undefined> {
+  const result = await client.users.info({ user: userId });
+  if (!result.ok || !result.user) {
+    return undefined;
+  }
+
+  const user = result.user;
+  const name =
+    user.profile?.display_name ||
+    user.profile?.real_name ||
+    user.real_name ||
+    user.name;
+  const email = user.profile?.email;
+  const timezone = user.tz_label || user.tz;
+
+  return {
+    id: userId,
+    name: name || undefined,
+    email: email || undefined,
+    timezone: timezone || undefined,
+  };
+}
+
+export async function fetchSlackUserInfoMap(
+  client: WebClient,
+  userIds: readonly string[],
+): Promise<Map<string, SlackUserInfo>> {
+  const map = new Map<string, SlackUserInfo>();
+  const uniqueIds = [...new Set(userIds)];
+  const results = await Promise.allSettled(
+    uniqueIds.map(async (id) => {
+      const info = await fetchSlackUserInfo(client, id);
+      if (info) {
+        map.set(id, info);
+      }
+    }),
+  );
+
+  for (const result of results) {
+    if (result.status === "rejected") {
+      continue;
+    }
+  }
+
+  return map;
 }
 
 type GetUploadUrlResult =
