@@ -369,8 +369,13 @@ describe("zero sidebar - delete thread button shows confirmation (SIDEBAR-D-018)
       expect(screen.getByText("First chat")).toBeInTheDocument();
     });
 
-    const deleteButtons = screen.getAllByLabelText("Delete chat");
-    click(deleteButtons[0]);
+    // ChatThreadPin enabled by default — open the kebab menu, then click Delete.
+    const menuTriggers = screen.getAllByLabelText("Open chat menu");
+    click(menuTriggers[0]);
+    const deleteItem = await waitFor(() => {
+      return screen.getByRole("menuitem", { name: /Delete chat/i });
+    });
+    click(deleteItem);
 
     await waitFor(() => {
       const dialog = screen.getByRole("dialog");
@@ -422,8 +427,13 @@ describe("zero sidebar - confirm delete removes thread (SIDEBAR-D-019)", () => {
       expect(screen.getByText("First chat")).toBeInTheDocument();
     });
 
-    const deleteButtons = screen.getAllByLabelText("Delete chat");
-    click(deleteButtons[0]);
+    // ChatThreadPin enabled by default — open the kebab menu, then click Delete.
+    const menuTriggers = screen.getAllByLabelText("Open chat menu");
+    click(menuTriggers[0]);
+    const deleteItem = await waitFor(() => {
+      return screen.getByRole("menuitem", { name: /Delete chat/i });
+    });
+    click(deleteItem);
 
     const dialog = await waitFor(() => {
       return screen.getByRole("dialog");

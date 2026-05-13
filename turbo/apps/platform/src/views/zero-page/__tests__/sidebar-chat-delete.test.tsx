@@ -120,13 +120,20 @@ function mockAPIs() {
 }
 
 async function deleteThread(nthButton: number) {
-  const deleteButtons = await waitFor(() => {
-    const btns = screen.getAllByLabelText("Delete chat");
+  // With ChatThreadPin enabled the per-thread delete is reached through the
+  // kebab menu trigger; open it first then click the "Delete chat" item.
+  const menuTriggers = await waitFor(() => {
+    const btns = screen.getAllByLabelText("Open chat menu");
     expect(btns.length).toBeGreaterThanOrEqual(nthButton);
     return btns;
   });
 
-  click(deleteButtons[nthButton - 1]);
+  click(menuTriggers[nthButton - 1]);
+
+  const deleteItem = await waitFor(() => {
+    return screen.getByRole("menuitem", { name: /Delete chat/i });
+  });
+  click(deleteItem);
 
   const dialog = await waitFor(() => {
     return screen.getByRole("dialog");
