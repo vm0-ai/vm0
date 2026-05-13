@@ -13,6 +13,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use std::time::Duration;
+use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 /// Shared mock server — env vars are set once before any `LazyLock` in the
@@ -43,8 +44,7 @@ macro_rules! http_client {
 }
 
 const TEST_HTTP_RETRY_DELAY: Duration = Duration::from_millis(10);
-const TEST_HEARTBEAT_INTERVAL: Duration = Duration::from_millis(100);
-const MOCK_CALL_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const TEST_HEARTBEAT_INTERVAL: Duration = Duration::from_millis(20);
 const MOCK_CALL_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[allow(clippy::expect_used)]
@@ -106,30 +106,41 @@ fn upload_validation_response(
     }
 }
 
-async fn wait_mock_calls(
-    mock_: &httpmock::Mock<'_>,
-    expected: usize,
-    timeout: Duration,
-    context: &str,
-) {
-    let mut observed = 0;
+#[derive(Clone, Default)]
+struct MockCallObserver {
+    calls: Arc<AtomicUsize>,
+    notify: Arc<Notify>,
+}
 
-    let result = tokio::time::timeout(timeout, async {
-        loop {
-            observed = mock_.calls_async().await;
-            if observed >= expected {
-                return;
+impl MockCallObserver {
+    fn record(&self) -> usize {
+        let calls = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+        self.notify.notify_one();
+        calls
+    }
+
+    fn calls(&self) -> usize {
+        self.calls.load(Ordering::SeqCst)
+    }
+
+    async fn wait_for(&self, expected: usize, timeout: Duration, context: &str) {
+        let result = tokio::time::timeout(timeout, async {
+            loop {
+                if self.calls() >= expected {
+                    return;
+                }
+
+                self.notify.notified().await;
             }
+        })
+        .await;
 
-            tokio::time::sleep(MOCK_CALL_POLL_INTERVAL).await;
-        }
-    })
-    .await;
-
-    assert!(
-        result.is_ok(),
-        "timed out waiting for {context}: expected at least {expected} mock calls, observed {observed} after {timeout:?}",
-    );
+        assert!(
+            result.is_ok(),
+            "timed out waiting for {context}: expected at least {expected} mock calls, observed {} after {timeout:?}",
+            self.calls(),
+        );
+    }
 }
 
 struct SystemLogOverrideGuard;
@@ -735,10 +746,15 @@ async fn put_presigned_file_4xx_no_retry() {
 async fn heartbeat_first_success() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
+    let observer = MockCallObserver::default();
+    let observer_for_mock = observer.clone();
 
     let mock = server.mock(|when, then| {
         when.method(POST).path("/api/webhooks/agent/heartbeat");
-        then.status(200);
+        then.respond_with(move |_req| {
+            observer_for_mock.record();
+            http_status(200)
+        });
     });
 
     let shutdown = CancellationToken::new();
@@ -748,13 +764,13 @@ async fn heartbeat_first_success() {
     });
 
     // Wait for the first heartbeat to land, then shut down.
-    wait_mock_calls(
-        &mock,
-        1,
-        MOCK_CALL_TIMEOUT,
-        "heartbeat_first_success initial heartbeat",
-    )
-    .await;
+    observer
+        .wait_for(
+            1,
+            MOCK_CALL_TIMEOUT,
+            "heartbeat_first_success initial heartbeat",
+        )
+        .await;
     shutdown.cancel();
 
     let result = handle.await.unwrap();
@@ -784,12 +800,13 @@ async fn heartbeat_first_failure_fatal() {
 async fn heartbeat_consecutive_failures_fatal() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
+    let observer = MockCallObserver::default();
+    let observer_for_mock = observer.clone();
 
     let mock = server.mock(|when, then| {
         when.method(POST).path("/api/webhooks/agent/heartbeat");
-        let attempts = AtomicUsize::new(0);
         then.respond_with(move |_req| {
-            if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+            if observer_for_mock.record() == 1 {
                 return http_status(200);
             }
 
@@ -815,7 +832,7 @@ async fn heartbeat_consecutive_failures_fatal() {
         .expect("task should not panic");
 
     // Clean up mocks before assertions to avoid leaks on panic.
-    let heartbeat_calls = mock.calls_async().await;
+    let heartbeat_calls = observer.calls();
     mock.delete_async().await;
     shutdown.cancel();
 
@@ -835,12 +852,13 @@ async fn heartbeat_consecutive_failures_fatal() {
 async fn heartbeat_recovery_resets_counter() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
+    let observer = MockCallObserver::default();
+    let observer_for_mock = observer.clone();
 
     let mock = server.mock(|when, then| {
         when.method(POST).path("/api/webhooks/agent/heartbeat");
-        let attempts = AtomicUsize::new(0);
-        then.respond_with(move |_req| match attempts.fetch_add(1, Ordering::SeqCst) {
-            1 | 2 | 4 | 5 => json_http_response(401, json!({"error": {"message": "Run expired"}})),
+        then.respond_with(move |_req| match observer_for_mock.record() {
+            2 | 3 | 5 | 6 => json_http_response(401, json!({"error": {"message": "Run expired"}})),
             _ => http_status(200),
         });
     });
@@ -859,15 +877,15 @@ async fn heartbeat_recovery_resets_counter() {
     // Sequence: success -> 2 failures -> success -> 2 failures -> success.
     // Without recovery resetting the failure counter, the second failure pair
     // would reach the fatal threshold before call 7.
-    wait_mock_calls(
-        &mock,
-        7,
-        MOCK_CALL_TIMEOUT,
-        "heartbeat_recovery_resets_counter full sequence",
-    )
-    .await;
+    observer
+        .wait_for(
+            7,
+            MOCK_CALL_TIMEOUT,
+            "heartbeat_recovery_resets_counter full sequence",
+        )
+        .await;
 
-    let heartbeat_calls = mock.calls_async().await;
+    let heartbeat_calls = observer.calls();
 
     // The loop should still be running. Stop it before deleting the mock so no
     // background heartbeat can race with mock teardown.
