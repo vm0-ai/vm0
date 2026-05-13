@@ -6,6 +6,10 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { ensureOrgModelPolicies } from "../model-policy/org-model-policy-service";
 import { resolveDefaultAgentId } from "../resolve-default-agent";
 
+export function formatAgentPhoneAuditLink(logsUrl: string): string {
+  return `Audit: ${logsUrl}`;
+}
+
 function plainLabel(value: string | null | undefined): string | undefined {
   const label = value?.trim().replace(/\s+/gu, " ");
   return label ? label : undefined;

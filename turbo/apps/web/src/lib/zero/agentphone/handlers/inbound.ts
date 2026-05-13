@@ -24,6 +24,7 @@ import {
   resolveTelegramAuditLogsUrl,
 } from "../../telegram/handlers/shared";
 import { canReuseSessionForRunModel } from "../../context/session-model-compatibility";
+import { formatAgentPhoneAuditLink } from "../footer";
 import { handleAgentPhoneModelCommand } from "./model";
 import { runAgentForAgentPhone } from "./run-agent";
 import { logger } from "../../../shared/logger";
@@ -371,7 +372,7 @@ export async function handleAgentPhoneMessage(
       event,
       body: [
         response ?? "An unexpected error occurred. Please try again later.",
-        logsUrl ? `View run: ${logsUrl}` : null,
+        logsUrl ? formatAgentPhoneAuditLink(logsUrl) : null,
       ]
         .filter((part): part is string => {
           return Boolean(part);

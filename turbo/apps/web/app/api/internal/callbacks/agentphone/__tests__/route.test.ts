@@ -17,11 +17,13 @@ import {
   findTestAgentPhoneThreadSession,
   findTestRunRecord,
   insertTestAgentPhoneUserLink,
+  seedUserFeatureSwitches,
   setTestRunSelectedModel,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { http } from "../../../../../../src/__tests__/msw";
 import { server } from "../../../../../../src/mocks/server";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 
@@ -89,6 +91,7 @@ function agentPhoneTypingIndicator() {
 async function setupAgentPhoneCallback(): Promise<{
   composeId: string;
   userId: string;
+  orgId: string;
   userLinkId: string;
   runId: string;
   payload: AgentPhoneTestPayload;
@@ -127,6 +130,7 @@ async function setupAgentPhoneCallback(): Promise<{
   return {
     composeId,
     userId: user.userId,
+    orgId: user.orgId,
     userLinkId: link.id,
     runId,
     payload,
@@ -254,6 +258,33 @@ describe("POST /api/internal/callbacks/agentphone", () => {
     expect(sendMessage.calls[0]?.body).not.toContain(
       "SMS and MMS replies may not be delivered reliably",
     );
+  });
+
+  it("uses the audit label for AgentPhone run links", async () => {
+    const { runId, payload, secret, orgId, userId } =
+      await setupAgentPhoneCallback();
+    await seedUserFeatureSwitches(orgId, userId, {
+      [FeatureSwitchKey.AuditLink]: true,
+    });
+    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+      { eventData: { result: "Done from AgentPhone." } },
+    ]);
+    const sendMessage = agentPhoneSendMessage();
+    server.use(sendMessage.handler);
+
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/agentphone",
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(sendMessage.calls[0]?.body).toContain("Audit: ");
+    expect(sendMessage.calls[0]?.body).toContain(
+      `/activities/${encodeURIComponent(runId)}`,
+    );
+    expect(sendMessage.calls[0]?.body).not.toContain("View run");
   });
 
   it("skips completed callbacks after the phone link is disconnected", async () => {

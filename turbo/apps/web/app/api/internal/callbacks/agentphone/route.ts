@@ -8,7 +8,10 @@ import {
   sendAgentPhoneMessage,
   sendAgentPhoneTypingIndicator,
 } from "../../../../../src/lib/zero/agentphone/client";
-import { resolveAgentPhoneReplyFooterText } from "../../../../../src/lib/zero/agentphone/footer";
+import {
+  formatAgentPhoneAuditLink,
+  resolveAgentPhoneReplyFooterText,
+} from "../../../../../src/lib/zero/agentphone/footer";
 import {
   resolveAgentPhoneUserLink,
   saveAgentPhoneThreadSession,
@@ -87,7 +90,7 @@ function buildAgentPhoneCompletionText(params: {
 
   return [
     main,
-    params.logsUrl ? `View run: ${params.logsUrl}` : null,
+    params.logsUrl ? formatAgentPhoneAuditLink(params.logsUrl) : null,
     params.footerText,
   ]
     .filter((part): part is string => {
