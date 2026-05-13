@@ -157,7 +157,7 @@ function maskPhoneHandle(value: string): string {
   return `***${normalized.slice(-4)}`;
 }
 
-async function safeResponseText(response: Response): Promise<string> {
+function safeResponseText(response: Response): Promise<string> {
   return response.text().catch(() => {
     return "[unavailable]";
   });
