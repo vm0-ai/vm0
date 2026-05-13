@@ -878,8 +878,7 @@ mod tests {
         call: impl FnOnce(PathBuf) -> Fut,
     ) -> (T, MockRequest)
     where
-        T: Send + 'static,
-        Fut: std::future::Future<Output = T> + Send + 'static,
+        Fut: std::future::Future<Output = T>,
     {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("fc.sock");
@@ -887,7 +886,7 @@ mod tests {
         let (request_tx, request_rx) = oneshot::channel();
         let (header_written_tx, header_written_rx) = oneshot::channel();
         let (write_body_tx, write_body_rx) = oneshot::channel();
-        let mut server = tokio::spawn(async move {
+        let server = async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             let request = read_mock_request(&mut stream).await.unwrap();
             request_tx.send(request).unwrap();
@@ -903,20 +902,21 @@ mod tests {
 
             write_body_rx.await.unwrap();
             stream.write_all(response.body.as_bytes()).await.unwrap();
-        });
+        };
+        tokio::pin!(server);
 
-        let mut client_task = tokio::spawn(call(sock_path));
+        let client = call(sock_path);
+        tokio::pin!(client);
 
         tokio::select! {
             result = header_written_rx => result.unwrap(),
-            _ = &mut client_task => panic!("client completed before split response header"),
+            _ = &mut client => panic!("client completed before split response header"),
             result = &mut server => panic!("mock server exited before split response header: {result:?}"),
         }
         write_body_tx.send(()).unwrap();
 
-        let output = client_task.await.unwrap();
+        let (output, ()) = tokio::join!(&mut client, &mut server);
         let request = request_rx.await.unwrap();
-        server.await.unwrap();
         (output, request)
     }
 
