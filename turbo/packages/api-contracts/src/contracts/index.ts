@@ -196,6 +196,15 @@ export {
   type VoiceChatCallbackPayload,
 } from "./internal-callbacks-voice-chat";
 export {
+  zeroEmailInboundContract,
+  zeroEmailReplyCallbackContract,
+  zeroEmailReplyCallbackPayloadSchema,
+  zeroEmailTriggerCallbackContract,
+  zeroEmailTriggerCallbackPayloadSchema,
+  type ZeroEmailReplyCallbackPayload,
+  type ZeroEmailTriggerCallbackPayload,
+} from "./zero-email";
+export {
   sandboxReuseResultSchema,
   webhookEventsContract,
   webhookCompleteContract,

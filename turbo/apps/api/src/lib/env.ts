@@ -19,6 +19,8 @@ const SCHEMA = {
   VM0_API_URL: z.url(),
   VM0_WEB_URL: z.url(),
   APP_URL: z.url(),
+  RESEND_API_KEY: z.string().min(1).optional(),
+  RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
   RESEND_FROM_DOMAIN: z.string().min(1).optional(),
   CRON_SECRET: z.string().min(1),
   R2_ACCESS_KEY_ID: z.string().min(1),

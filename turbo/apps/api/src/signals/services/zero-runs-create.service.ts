@@ -593,7 +593,10 @@ export const createZeroRun$ = command(
         selectedModelOverride:
           args.selectedModelOverride ?? agent.selectedModel ?? undefined,
         extraEnvironment: { ZERO_AGENT_ID: agent.id },
-        callbacks: args.callbacks ?? callbacksForTriggerAgent(triggerAgentId),
+        callbacks: [
+          ...(callbacksForTriggerAgent(triggerAgentId) ?? []),
+          ...(args.callbacks ?? []),
+        ],
         includeZeroTokenSecret: true,
         enforceVm0Credits: true,
         queueOnConcurrencyLimit: true,

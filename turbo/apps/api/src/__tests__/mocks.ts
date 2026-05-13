@@ -58,6 +58,12 @@ export interface ApiTestMocks {
     readonly getSignedUrl: AsyncMock;
     readonly clientConfig: SyncMock;
   };
+  readonly resend: {
+    readonly send: AsyncMock;
+    readonly get: AsyncMock;
+    readonly receivingGet: AsyncMock;
+    readonly attachmentsList: AsyncMock;
+  };
   readonly slack: {
     readonly assistant: {
       readonly threads: {
@@ -299,6 +305,12 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       getSignedUrl: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       clientConfig: vi.fn<(...args: unknown[]) => void>(),
     },
+    resend: {
+      send: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      get: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      receivingGet: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      attachmentsList: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
     slack,
     stripe,
     vercelOidc: {
@@ -419,6 +431,23 @@ vi.mock("@vercel/oidc", () => {
     getVercelOidcToken: (): Promise<unknown> => {
       return apiTestMocks.vercelOidc.getToken();
     },
+  };
+});
+
+vi.mock("resend", () => {
+  return {
+    Resend: vi.fn(function (): unknown {
+      return {
+        emails: {
+          send: apiTestMocks.resend.send,
+          get: apiTestMocks.resend.get,
+          receiving: {
+            get: apiTestMocks.resend.receivingGet,
+            attachments: { list: apiTestMocks.resend.attachmentsList },
+          },
+        },
+      };
+    }),
   };
 });
 
@@ -658,6 +687,10 @@ export function resetApiTestMocks(): void {
     "https://r2.example.com/upload?sig=test",
   );
   apiTestMocks.s3.clientConfig.mockReset();
+  apiTestMocks.resend.send.mockReset();
+  apiTestMocks.resend.get.mockReset();
+  apiTestMocks.resend.receivingGet.mockReset();
+  apiTestMocks.resend.attachmentsList.mockReset();
   apiTestMocks.slack.assistant.threads.setStatus.mockReset();
   apiTestMocks.slack.chat.postMessage.mockReset();
   apiTestMocks.slack.chat.postEphemeral.mockReset();
