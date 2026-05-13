@@ -18,20 +18,18 @@
 //! | 0x00 | G→H       | ready             | (empty) |
 //! | 0x01 | H→G       | ping              | (empty) |
 //! | 0x02 | G→H       | pong              | (empty) |
-//! | 0x03 | —         | retired           | legacy exec, do not reuse |
-//! | 0x04 | —         | retired           | legacy exec_result, do not reuse |
-//! | 0x05 | H→G       | write_file        | `[2B path_len][path][1B flags][4B content_len][content]` (flags: `SUDO=0x01`, `APPEND=0x02`) |
-//! | 0x06 | G→H       | write_file_result | `[1B success][2B error_len][error]` |
-//! | 0x07 | H→G       | spawn_watch       | `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)([2B log_path_len][log_path])` (flags: `SUDO=0x01`, `STREAM_STDOUT=0x02`) |
-//! | 0x08 | G→H       | spawn_watch_result| `[4B pid]` |
-//! | 0x09 | G→H       | process_exit      | `[4B pid][4B exit_code][4B stdout_len][stdout][4B stderr_len][stderr]` |
-//! | 0x0A | H→G       | shutdown          | (empty) |
-//! | 0x0B | G→H       | shutdown_ack      | (empty) |
-//! | 0x0C | G→H       | stdout_chunk      | `[4B pid][data]` |
-//! | 0x0D | H→G       | command_start     | `[4B timeout_ms][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy]` |
-//! | 0x0E | G→H       | command_output    | `[1B stream][4B output_seq][1B flags][4B chunk_len][chunk]` |
-//! | 0x0F | G→H       | command_result    | `[1B termination]...[4B duration_ms][stdout][stderr][2B diagnostic_len][diagnostic]` |
-//! | 0x10 | H→G       | command_cancel    | (empty) |
+//! | 0x03 | H→G       | write_file        | `[2B path_len][path][1B flags][4B content_len][content]` (flags: `SUDO=0x01`, `APPEND=0x02`) |
+//! | 0x04 | G→H       | write_file_result | `[1B success][2B error_len][error]` |
+//! | 0x05 | H→G       | spawn_watch       | `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)([2B log_path_len][log_path])` (flags: `SUDO=0x01`, `STREAM_STDOUT=0x02`) |
+//! | 0x06 | G→H       | spawn_watch_result| `[4B pid]` |
+//! | 0x07 | G→H       | process_exit      | `[4B pid][4B exit_code][4B stdout_len][stdout][4B stderr_len][stderr]` |
+//! | 0x08 | H→G       | shutdown          | (empty) |
+//! | 0x09 | G→H       | shutdown_ack      | (empty) |
+//! | 0x0A | G→H       | stdout_chunk      | `[4B pid][data]` |
+//! | 0x0B | H→G       | command_start     | `[4B timeout_ms][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy]` |
+//! | 0x0C | G→H       | command_output    | `[1B stream][4B output_seq][1B flags][4B chunk_len][chunk]` |
+//! | 0x0D | G→H       | command_result    | `[1B termination]...[4B duration_ms][stdout][stderr][2B diagnostic_len][diagnostic]` |
+//! | 0x0E | H→G       | command_cancel    | (empty) |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
 //! Command operation messages are request-scoped; host/guest dispatch layers
@@ -52,18 +50,18 @@ pub const MIN_BODY_SIZE: usize = 5;
 pub const MSG_READY: u8 = 0x00;
 pub const MSG_PING: u8 = 0x01;
 pub const MSG_PONG: u8 = 0x02;
-pub const MSG_WRITE_FILE: u8 = 0x05;
-pub const MSG_WRITE_FILE_RESULT: u8 = 0x06;
-pub const MSG_SPAWN_WATCH: u8 = 0x07;
-pub const MSG_SPAWN_WATCH_RESULT: u8 = 0x08;
-pub const MSG_PROCESS_EXIT: u8 = 0x09;
-pub const MSG_SHUTDOWN: u8 = 0x0A;
-pub const MSG_SHUTDOWN_ACK: u8 = 0x0B;
-pub const MSG_STDOUT_CHUNK: u8 = 0x0C;
-pub const MSG_COMMAND_START: u8 = 0x0D;
-pub const MSG_COMMAND_OUTPUT: u8 = 0x0E;
-pub const MSG_COMMAND_RESULT: u8 = 0x0F;
-pub const MSG_COMMAND_CANCEL: u8 = 0x10;
+pub const MSG_WRITE_FILE: u8 = 0x03;
+pub const MSG_WRITE_FILE_RESULT: u8 = 0x04;
+pub const MSG_SPAWN_WATCH: u8 = 0x05;
+pub const MSG_SPAWN_WATCH_RESULT: u8 = 0x06;
+pub const MSG_PROCESS_EXIT: u8 = 0x07;
+pub const MSG_SHUTDOWN: u8 = 0x08;
+pub const MSG_SHUTDOWN_ACK: u8 = 0x09;
+pub const MSG_STDOUT_CHUNK: u8 = 0x0A;
+pub const MSG_COMMAND_START: u8 = 0x0B;
+pub const MSG_COMMAND_OUTPUT: u8 = 0x0C;
+pub const MSG_COMMAND_RESULT: u8 = 0x0D;
+pub const MSG_COMMAND_CANCEL: u8 = 0x0E;
 pub const MSG_ERROR: u8 = 0xFF;
 
 /// Default vsock port for host-guest communication.
