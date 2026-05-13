@@ -22,6 +22,7 @@ interface NavMenuProps {
   openId: string | null;
   onOpen: (id: string) => void;
   onClose: () => void;
+  onSelect: () => void;
   onCancelClose: () => void;
   onScheduleClose: () => void;
 }
@@ -34,6 +35,7 @@ export function NavMenu({
   openId,
   onOpen,
   onClose,
+  onSelect,
   onCancelClose,
   onScheduleClose,
 }: NavMenuProps) {
@@ -74,7 +76,7 @@ export function NavMenu({
 
   const handleSelect = () => {
     suppressNextFocusOpen.current = true;
-    onClose();
+    onSelect();
     clearSuppressedFocus();
   };
 

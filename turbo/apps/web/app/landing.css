@@ -451,6 +451,10 @@ body {
   animation: nav-popover-in 0.15s ease-out;
 }
 
+.nav-popover[data-state="closed"] {
+  display: none;
+}
+
 @keyframes nav-popover-in {
   from {
     opacity: 0;

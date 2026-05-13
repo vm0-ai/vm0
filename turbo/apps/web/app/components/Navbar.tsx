@@ -36,6 +36,7 @@ const NAV_MENU_CLOSE_DELAY_MS = 250;
 const NAV_MENU_TRIGGER_HOTZONE_Y = 18;
 const NAV_MENU_TRIGGER_HOTZONE_X = 12;
 const NAV_MENU_POPOVER_HOTZONE = 8;
+const NAV_MENU_SELECT_REOPEN_BLOCK_MS = 350;
 
 function containsPoint(
   rect: DOMRect,
@@ -64,6 +65,7 @@ export function Navbar({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const desktopNavRef = useRef<HTMLDivElement | null>(null);
   const closeMenuTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blockMenuOpenUntil = useRef(0);
 
   const cancelMenuClose = useCallback(() => {
     if (closeMenuTimer.current !== null) {
@@ -74,6 +76,9 @@ export function Navbar({
 
   const openNavMenu = useCallback(
     (id: string) => {
+      if (Date.now() < blockMenuOpenUntil.current) {
+        return;
+      }
       cancelMenuClose();
       setOpenMenuId(id);
     },
@@ -84,6 +89,11 @@ export function Navbar({
     cancelMenuClose();
     setOpenMenuId(null);
   }, [cancelMenuClose]);
+
+  const selectNavMenuItem = useCallback(() => {
+    blockMenuOpenUntil.current = Date.now() + NAV_MENU_SELECT_REOPEN_BLOCK_MS;
+    closeNavMenu();
+  }, [closeNavMenu]);
 
   const scheduleNavMenuClose = useCallback(() => {
     cancelMenuClose();
@@ -415,6 +425,7 @@ export function Navbar({
               openId={openMenuId}
               onOpen={openNavMenu}
               onClose={closeNavMenu}
+              onSelect={selectNavMenuItem}
               onCancelClose={cancelMenuClose}
               onScheduleClose={scheduleNavMenuClose}
             />
@@ -426,6 +437,7 @@ export function Navbar({
               openId={openMenuId}
               onOpen={openNavMenu}
               onClose={closeNavMenu}
+              onSelect={selectNavMenuItem}
               onCancelClose={cancelMenuClose}
               onScheduleClose={scheduleNavMenuClose}
             />

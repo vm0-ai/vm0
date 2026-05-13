@@ -307,10 +307,40 @@ describe("Navbar dropdown interactions", () => {
       expect(resources).not.toHaveClass("nav-trigger-active");
 
       act(() => {
-        vi.runOnlyPendingTimers();
+        vi.advanceTimersByTime(400);
       });
 
       fireEvent.focus(resources);
+      expect(resources).toHaveClass("nav-trigger-active");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores immediate hover reopen after a dropdown item is selected", () => {
+    vi.useFakeTimers();
+    try {
+      renderNavbarClient();
+
+      const resources = getDesktopNavTrigger("resources");
+      fireEvent.pointerEnter(resources);
+      expect(resources).toHaveClass("nav-trigger-active");
+
+      const firstItem =
+        document.querySelector<HTMLAnchorElement>(".nav-popover-item");
+      expect(firstItem).not.toBeNull();
+      fireEvent.click(firstItem!);
+
+      expect(resources).not.toHaveClass("nav-trigger-active");
+
+      fireEvent.pointerEnter(resources);
+      expect(resources).not.toHaveClass("nav-trigger-active");
+
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      fireEvent.pointerEnter(resources);
       expect(resources).toHaveClass("nav-trigger-active");
     } finally {
       vi.useRealTimers();
