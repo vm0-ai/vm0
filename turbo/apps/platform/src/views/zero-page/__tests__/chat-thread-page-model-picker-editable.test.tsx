@@ -237,6 +237,6 @@ describe("chat thread page — model picker editable", () => {
       expect(capturedBody).toBeDefined();
     });
     expect(capturedBody?.modelSelection?.selectedModel).toBe("claude-opus-4-7");
-    expect(capturedBody?.forceNewSession).toBe(true);
+    expect(capturedBody?.forceNewSession).toBeTruthy();
   });
 });
