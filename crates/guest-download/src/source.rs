@@ -28,20 +28,23 @@ static HTTP_AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| {
 /// were pushed into the guest over vsock.
 pub(crate) fn open_archive(url: &str) -> Result<Box<dyn Read>, DownloadError> {
     if let Some(path) = url.strip_prefix("file://") {
-        log_info!(LOG_TAG, "Reading local archive from {path}");
-        let file = std::fs::File::open(path).map_err(|e| {
-            DownloadError::fatal(format!("Failed to open local archive {path}: {e}"))
-        })?;
+        log_info!(LOG_TAG, "Reading local archive");
+        let file = std::fs::File::open(path)
+            .map_err(|e| DownloadError::fatal(format!("Failed to open local archive: {e}")))?;
         return Ok(Box::new(file));
     }
 
     let response = HTTP_AGENT.get(url).call().map_err(|e| {
-        let (retriable, status_code) = match &e {
+        let (retriable, status_code, message) = match &e {
             // Retry on server errors (5xx) and rate limiting (429)
-            ureq::Error::StatusCode(code) => (*code >= 500 || *code == 429, Some(*code)),
-            _ => (true, None), // network/timeout errors are retriable
+            ureq::Error::StatusCode(code) => (
+                *code >= 500 || *code == 429,
+                Some(*code),
+                format!("HTTP status {code}"),
+            ),
+            _ => (true, None, "HTTP transport error".to_string()), // network/timeout errors are retriable
         };
-        DownloadError::transport(format!("HTTP {e} url={url}"), retriable, status_code)
+        DownloadError::transport(message, retriable, status_code)
     })?;
     Ok(Box::new(response.into_body().into_reader()))
 }
