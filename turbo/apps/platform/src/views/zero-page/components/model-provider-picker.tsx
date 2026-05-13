@@ -70,6 +70,11 @@ interface ModelProviderPickerProps {
 // SelectItem uses it, so use a sentinel to represent the inherit option.
 const INHERIT_SENTINEL = "__inherit_default__";
 
+// Radix Select uses the selected item's offsetHeight as the scroll-button
+// step. Keep hidden selected items measurable so native hover scrolling works.
+const MEASURABLE_HIDDEN_SELECT_ITEM_CLASS =
+  "absolute left-0 top-0 h-8 w-px overflow-hidden opacity-0 pointer-events-none";
+
 function formatMultiplier(multiplier: number): string {
   return `×${multiplier}`;
 }
@@ -322,7 +327,12 @@ function ModelFirstPolicyItems({
         <SelectSeparator className="my-0" />
       )}
       {!hasExplicitSelectedPolicy && explicitSelectedModel && (
-        <SelectItem value={explicitSelectedModel} className="hidden absolute">
+        <SelectItem
+          value={explicitSelectedModel}
+          className={MEASURABLE_HIDDEN_SELECT_ITEM_CLASS}
+          disabled
+          aria-hidden="true"
+        >
           {getCanonicalModelDisplayName(explicitSelectedModel)}
         </SelectItem>
       )}
@@ -413,7 +423,12 @@ function ModelFirstModelPicker({
       </SelectTrigger>
       <SelectContent className="max-h-[280px] min-w-[260px]">
         {value === null && (
-          <SelectItem value={INHERIT_SENTINEL} className="hidden absolute">
+          <SelectItem
+            value={INHERIT_SENTINEL}
+            className={MEASURABLE_HIDDEN_SELECT_ITEM_CLASS}
+            disabled
+            aria-hidden="true"
+          >
             {placeholder}
           </SelectItem>
         )}
