@@ -14,6 +14,8 @@ const mockApi = createMockApi(context);
 const VALID_PATH =
   "/agentphone/connect?handle=%2B17022452623&agent=agt-phone&ts=1777200000&sig=" +
   "a".repeat(64);
+const VALID_SMS_PATH = `${VALID_PATH}&channel=sms`;
+const VALID_IMESSAGE_PATH = `${VALID_PATH}&channel=imessage`;
 
 function buttonWithText(text: string): HTMLButtonElement {
   const button = screen.getAllByRole("button").find((element) => {
@@ -123,6 +125,51 @@ describe("zero agentphone connect page", () => {
       screen.findByText("Phone number connected"),
     ).resolves.toBeInTheDocument();
     expect(screen.getByText("+17022452623")).toBeInTheDocument();
+  });
+
+  it("warns SMS users that replies may be unreliable", async () => {
+    server.use(
+      mockApi(
+        zeroIntegrationsAgentPhoneContract.connectAgentPhone,
+        ({ respond }) => {
+          return respond(200, { phoneHandle: "+17022452623" });
+        },
+      ),
+    );
+
+    detachedSetupPage({
+      context,
+      path: VALID_SMS_PATH,
+      session: { token: "clerk-token" },
+    });
+
+    await expect(
+      screen.findByText(/SMS and MMS replies may not be delivered reliably/u),
+    ).resolves.toBeInTheDocument();
+
+    click(buttonWithText("Connect"));
+
+    await expect(
+      screen.findByText("Phone number connected"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(/use iMessage with this AgentPhone number/u),
+    ).toBeInTheDocument();
+  });
+
+  it("does not warn iMessage users about SMS and MMS reliability", async () => {
+    detachedSetupPage({
+      context,
+      path: VALID_IMESSAGE_PATH,
+      session: { token: "clerk-token" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Connect phone number")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText(/SMS and MMS replies may not be delivered reliably/u),
+    ).not.toBeInTheDocument();
   });
 
   it("surfaces invalid or expired signature errors from the backend", async () => {

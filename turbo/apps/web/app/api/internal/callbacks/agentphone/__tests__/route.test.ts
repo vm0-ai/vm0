@@ -230,6 +230,32 @@ describe("POST /api/internal/callbacks/agentphone", () => {
     );
   });
 
+  it("does not warn SMS callback recipients on normal replies", async () => {
+    const { runId, payload, secret } = await setupAgentPhoneCallback();
+    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+      { eventData: { result: "Done from SMS AgentPhone." } },
+    ]);
+    const sendMessage = agentPhoneSendMessage();
+    server.use(sendMessage.handler);
+
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/agentphone",
+      {
+        runId,
+        status: "completed",
+        payload: { ...payload, channel: "sms" },
+      },
+      secret,
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(sendMessage.calls[0]?.body).toContain("Done from SMS AgentPhone.");
+    expect(sendMessage.calls[0]?.body).not.toContain(
+      "SMS and MMS replies may not be delivered reliably",
+    );
+  });
+
   it("skips completed callbacks after the phone link is disconnected", async () => {
     const { runId, payload, secret, userLinkId } =
       await setupAgentPhoneCallback();

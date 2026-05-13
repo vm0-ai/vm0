@@ -40,6 +40,31 @@ export interface AgentPhoneMessageEvent {
   receivedAt: Date | null;
 }
 
+const AGENTPHONE_SMS_MMS_SLASH_COMMAND_RISK_MESSAGE =
+  "Note: SMS and MMS replies may not be delivered reliably. For the most reliable experience, use iMessage with this AgentPhone number.";
+
+function isUnreliableAgentPhoneReplyChannel(
+  channel: string | null | undefined,
+): boolean {
+  const normalized = channel?.trim().toLowerCase();
+  return normalized === "sms" || normalized === "mms";
+}
+
+export function appendAgentPhoneSlashCommandRiskWarning(
+  body: string,
+  channel: string | null | undefined,
+): string {
+  if (!isUnreliableAgentPhoneReplyChannel(channel)) {
+    return body;
+  }
+
+  if (body.includes(AGENTPHONE_SMS_MMS_SLASH_COMMAND_RISK_MESSAGE)) {
+    return body;
+  }
+
+  return [body, AGENTPHONE_SMS_MMS_SLASH_COMMAND_RISK_MESSAGE].join("\n\n");
+}
+
 export function normalizePhoneHandle(handle: string): string {
   return handle.trim().replace(/[^\d+]/gu, "");
 }
@@ -205,6 +230,7 @@ export function buildAgentPhoneConnectUrl(params: {
   phoneHandle: string;
   agentphoneAgentId: string;
   secret: string;
+  channel?: string | null;
 }): string {
   const ts = Math.floor(Date.now() / 1000);
   const phoneHandle = normalizePhoneHandle(params.phoneHandle);
@@ -220,6 +246,9 @@ export function buildAgentPhoneConnectUrl(params: {
     ts: String(ts),
     sig,
   });
+  if (params.channel) {
+    query.set("channel", params.channel);
+  }
   return `${getAppUrl()}/agentphone/connect?${query.toString()}`;
 }
 

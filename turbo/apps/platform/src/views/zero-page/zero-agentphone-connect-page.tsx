@@ -12,7 +12,11 @@ import { Button } from "@vm0/ui";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { searchParams$ } from "../../signals/route.ts";
 import { connectAgentPhoneAccount$ } from "../../signals/zero-page/agentphone-connect-signals.ts";
-import { parseAgentPhoneConnectParams } from "../../signals/zero-page/agentphone-connect-params.ts";
+import {
+  AGENTPHONE_SMS_MMS_CONNECT_RISK_MESSAGE,
+  isUnreliableAgentPhoneConnectChannel,
+  parseAgentPhoneConnectParams,
+} from "../../signals/zero-page/agentphone-connect-params.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 
@@ -85,6 +89,18 @@ function InvalidState({ title, message }: { title: string; message: string }) {
   );
 }
 
+function SmsMmsRiskNotice({ channel }: { channel: string | null }) {
+  if (!isUnreliableAgentPhoneConnectChannel(channel)) {
+    return null;
+  }
+
+  return (
+    <div className="w-full rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+      {AGENTPHONE_SMS_MMS_CONNECT_RISK_MESSAGE}
+    </div>
+  );
+}
+
 function getAgentPhoneConnectErrorMessage(error: unknown): string {
   return error instanceof Error
     ? error.message
@@ -125,6 +141,7 @@ export function ZeroAgentPhoneConnectPage(): JSX.Element {
             </>
           }
         />
+        <SmsMmsRiskNotice channel={parsed.channel} />
         <BackLink />
       </PageShell>
     );
@@ -137,6 +154,7 @@ export function ZeroAgentPhoneConnectPage(): JSX.Element {
         title="Connect phone number"
         body="Link this phone number to your VM0 account so you can interact with Zero from text messages."
       />
+      <SmsMmsRiskNotice channel={parsed.channel} />
       {error ? (
         <div
           className="w-full rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"

@@ -5,6 +5,9 @@ interface AgentPhoneConnectParams {
   signature: string;
 }
 
+export const AGENTPHONE_SMS_MMS_CONNECT_RISK_MESSAGE =
+  "SMS and MMS replies may not be delivered reliably. For the most reliable experience, use iMessage with this AgentPhone number.";
+
 interface AgentPhoneConnectParamError {
   title: string;
   message: string;
@@ -14,7 +17,12 @@ type SearchParamValue = string | string[] | undefined;
 type SearchParams = URLSearchParams | Record<string, SearchParamValue>;
 
 type ParsedAgentPhoneConnectParams =
-  | { ok: true; params: AgentPhoneConnectParams; returnPath: string }
+  | {
+      ok: true;
+      params: AgentPhoneConnectParams;
+      channel: string | null;
+      returnPath: string;
+    }
   | { ok: false; error: AgentPhoneConnectParamError; returnPath: string };
 
 function firstParam(
@@ -28,13 +36,26 @@ function firstParam(
   return Array.isArray(value) ? value[0] : value;
 }
 
-function encodeReturnPath(params: AgentPhoneConnectParams): string {
+export function isUnreliableAgentPhoneConnectChannel(
+  channel: string | null | undefined,
+): boolean {
+  const normalized = channel?.trim().toLowerCase();
+  return normalized === "sms" || normalized === "mms";
+}
+
+function encodeReturnPath(
+  params: AgentPhoneConnectParams,
+  channel: string | null,
+): string {
   const search = new URLSearchParams({
     handle: params.phoneHandle,
     agent: params.agentphoneAgentId,
     ts: String(params.timestamp),
     sig: params.signature,
   });
+  if (channel) {
+    search.set("channel", channel);
+  }
   return `/agentphone/connect?${search.toString()}`;
 }
 
@@ -56,6 +77,7 @@ export function parseAgentPhoneConnectParams(
   const agentphoneAgentId = firstParam(searchParams, "agent")?.trim();
   const tsRaw = firstParam(searchParams, "ts")?.trim();
   const signature = firstParam(searchParams, "sig")?.trim();
+  const channel = firstParam(searchParams, "channel")?.trim().toLowerCase();
 
   if (!phoneHandle || !agentphoneAgentId || !tsRaw || !signature) {
     return {
@@ -91,6 +113,7 @@ export function parseAgentPhoneConnectParams(
   return {
     ok: true,
     params,
-    returnPath: encodeReturnPath(params),
+    channel: channel || null,
+    returnPath: encodeReturnPath(params, channel || null),
   };
 }

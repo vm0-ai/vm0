@@ -209,6 +209,10 @@ describe("POST /api/agentphone/webhook", () => {
       }),
     );
     expect(sendMessage.calls[0]?.body).toContain("/agentphone/connect");
+    expect(sendMessage.calls[0]?.body).toContain("channel=sms");
+    expect(sendMessage.calls[0]?.body).not.toContain(
+      "SMS and MMS replies may not be delivered reliably",
+    );
     expect(await countTestAgentPhoneMessages(phone)).toBe(1);
   });
 
@@ -233,6 +237,10 @@ describe("POST /api/agentphone/webhook", () => {
 
     expect(sendMessage.calls).toHaveLength(1);
     expect(sendMessage.calls[0]?.body).toContain("/agentphone/connect");
+    expect(sendMessage.calls[0]?.body).toContain("channel=mms");
+    expect(sendMessage.calls[0]?.body).not.toContain(
+      "SMS and MMS replies may not be delivered reliably",
+    );
     expect(await countTestAgentPhoneMessages(phone)).toBe(1);
   });
 
@@ -395,6 +403,9 @@ describe("POST /api/agentphone/webhook", () => {
     await context.mocks.flushAfter();
 
     expect(sendMessage.calls[0]?.body).toContain("/connect");
+    expect(sendMessage.calls[0]?.body).toContain(
+      "SMS and MMS replies may not be delivered reliably",
+    );
     const runs = await findTestRunsByUserAndPromptContaining(
       user.userId,
       "/help",

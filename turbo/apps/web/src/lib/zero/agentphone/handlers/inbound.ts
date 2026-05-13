@@ -9,6 +9,7 @@ import {
 import { AGENTPHONE_ROOT_MESSAGE_ID } from "../constants";
 import {
   buildAgentPhoneConnectUrl,
+  appendAgentPhoneSlashCommandRiskWarning,
   enrichAgentPhonePrompt,
   fetchAgentPhoneContext,
   lookupAgentPhoneThreadSession,
@@ -57,6 +58,19 @@ async function sendAgentPhoneText(params: {
   });
 }
 
+async function sendAgentPhoneSlashCommandText(params: {
+  event: AgentPhoneMessageEvent;
+  body: string;
+}): Promise<void> {
+  await sendAgentPhoneText({
+    event: params.event,
+    body: appendAgentPhoneSlashCommandRiskWarning(
+      params.body,
+      params.event.channel,
+    ),
+  });
+}
+
 async function refreshTypingIfSupported(
   event: AgentPhoneMessageEvent,
 ): Promise<void> {
@@ -80,6 +94,7 @@ function formatConnectPrompt(event: AgentPhoneMessageEvent): string {
     phoneHandle: event.fromNumber,
     agentphoneAgentId: event.agentphoneAgentId,
     secret: SECRETS_ENCRYPTION_KEY,
+    channel: event.channel,
   });
 
   return [
@@ -102,10 +117,16 @@ function formatHelpMessage(): string {
   ].join("\n");
 }
 
-async function sendConnectPrompt(event: AgentPhoneMessageEvent): Promise<void> {
+async function sendConnectPrompt(
+  event: AgentPhoneMessageEvent,
+  options?: { readonly slashCommand: boolean },
+): Promise<void> {
+  const body = formatConnectPrompt(event);
   await sendAgentPhoneText({
     event,
-    body: formatConnectPrompt(event),
+    body: options?.slashCommand
+      ? appendAgentPhoneSlashCommandRiskWarning(body, event.channel)
+      : body,
   });
 }
 
@@ -135,14 +156,14 @@ async function handleConnectCommand(params: {
   userLink: AgentPhoneUserLink | null;
 }): Promise<void> {
   if (params.userLink) {
-    await sendAgentPhoneText({
+    await sendAgentPhoneSlashCommandText({
       event: params.event,
       body: "You are already connected. Send a message here to start chatting with Zero.",
     });
     return;
   }
 
-  await sendConnectPrompt(params.event);
+  await sendConnectPrompt(params.event, { slashCommand: true });
 }
 
 async function handleDisconnectCommand(params: {
@@ -150,7 +171,7 @@ async function handleDisconnectCommand(params: {
   userLink: AgentPhoneUserLink | null;
 }): Promise<void> {
   if (!params.userLink) {
-    await sendAgentPhoneText({
+    await sendAgentPhoneSlashCommandText({
       event: params.event,
       body: "Error: This phone number is not connected.",
     });
@@ -161,7 +182,7 @@ async function handleDisconnectCommand(params: {
     .delete(agentphoneUserLinks)
     .where(eq(agentphoneUserLinks.id, params.userLink.id));
 
-  await sendAgentPhoneText({
+  await sendAgentPhoneSlashCommandText({
     event: params.event,
     body: "This phone number has been disconnected from VM0.",
   });
@@ -172,7 +193,7 @@ async function handleNewSessionCommand(params: {
   userLink: AgentPhoneUserLink | null;
 }): Promise<void> {
   if (!params.userLink) {
-    await sendConnectPrompt(params.event);
+    await sendConnectPrompt(params.event, { slashCommand: true });
     return;
   }
 
@@ -185,7 +206,7 @@ async function handleNewSessionCommand(params: {
       ),
     );
 
-  await sendAgentPhoneText({
+  await sendAgentPhoneSlashCommandText({
     event: params.event,
     body: "New session started.",
   });
@@ -213,20 +234,21 @@ async function dispatchAgentPhoneCommand(params: {
       await handleNewSessionCommand(params);
       return true;
     case "help":
-      await sendAgentPhoneText({
+      await sendAgentPhoneSlashCommandText({
         event: params.event,
         body: formatHelpMessage(),
       });
       return true;
     case "model":
       if (!params.userLink) {
-        await sendConnectPrompt(params.event);
+        await sendConnectPrompt(params.event, { slashCommand: true });
         return true;
       }
       await handleAgentPhoneModelCommand({
         text: params.event.body,
         agentphoneAgentId: params.event.agentphoneAgentId,
         phoneHandle: params.event.fromNumber,
+        channel: params.event.channel,
         orgId: params.userLink.orgId,
         userId: params.userLink.vm0UserId,
       });
