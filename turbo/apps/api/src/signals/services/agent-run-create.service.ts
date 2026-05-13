@@ -2471,8 +2471,7 @@ async function resolveRunModelProvider(
   const hasFrameworkKey = hasExplicitFrameworkApiKey(content, framework);
   const hasProviderOverride =
     args.modelProviderId !== undefined ||
-    args.modelProviderCredentialScope !== undefined ||
-    args.modelProviderType !== undefined;
+    args.modelProviderCredentialScope !== undefined;
   const shouldResolveModelProvider =
     hasProviderOverride || !hasFrameworkKey || args.modelProviderType === "vm0";
   const modelProvider = shouldResolveModelProvider
