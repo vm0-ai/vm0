@@ -44,6 +44,7 @@ impl HttpClient {
     ///
     /// Production callers should use [`HttpClient::new`]. Integration tests use
     /// this to cover real retry behavior without paying production backoff time.
+    #[doc(hidden)]
     pub fn with_retry_delay(retry_delay: Duration) -> Result<Self, AgentError> {
         let inner = Client::builder()
             .connect_timeout(Duration::from_secs(constants::HTTP_CONNECT_TIMEOUT_SECS))

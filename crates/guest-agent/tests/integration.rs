@@ -599,7 +599,7 @@ async fn put_presigned_file_retry_fails_if_source_shrinks() {
     assert!(mutation_done.load(Ordering::SeqCst));
     assert!(result.is_err());
     let calls = mock.calls_async().await;
-    assert!(calls >= 1);
+    assert_eq!(calls, 1);
     mock.delete_async().await;
 }
 
