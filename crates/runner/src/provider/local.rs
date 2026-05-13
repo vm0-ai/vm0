@@ -165,6 +165,9 @@ impl LocalProvider {
         if local_queue::claim_path(&self.group_dir, run_id).exists() {
             return true;
         }
+        if self.result_file_has_content(run_id) {
+            return false;
+        }
         self.job_file_exists(run_id).unwrap_or(true)
     }
 
@@ -979,6 +982,33 @@ mod tests {
         assert!(
             cancel_path.exists(),
             "cancel file should be kept when another runner may own the claim"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancel_file_with_terminal_result_and_leftover_job_is_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let tokens = empty_cancel_tokens();
+        let provider = default_provider(dir.path(), cancel, tokens);
+
+        let run_id = RunId::new_v4();
+        let cancel_path = local_queue::cancel_path(dir.path(), run_id);
+        let result_path = local_queue::result_path(dir.path(), run_id);
+        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
+        std::fs::write(&cancel_path, b"").unwrap();
+        std::fs::write(&result_path, b"terminal").unwrap();
+        write_job(dir.path(), run_id, "leftover job");
+
+        let job_id = RunId::new_v4();
+        write_job(dir.path(), job_id, "still works");
+
+        let candidate = provider.discover().await.unwrap();
+        assert_eq!(candidate.run_id(), job_id);
+        assert!(
+            !cancel_path.exists(),
+            "cancel file should be deleted when the result is already terminal"
         );
     }
 
