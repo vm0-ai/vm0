@@ -504,7 +504,12 @@ export const onboardingContinueWeb$ = command(
           : await set(completeOnboarding$, signal);
 
         if (!agentId) {
-          return;
+          // Surfacing via throw lets `useLoadableSet` consumers (WhereToWorkContent)
+          // render the error UI instead of silently leaving the user stuck on the
+          // onboarding skeleton.
+          throw new Error(
+            "Onboarding could not resolve a default agent. Please retry.",
+          );
         }
 
         const prompt = get(onboardingResolvedPrompt$);

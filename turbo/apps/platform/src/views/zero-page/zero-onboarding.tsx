@@ -841,35 +841,57 @@ function OnboardingFooterNav() {
   const nextDisabled = useLastResolved(onboardingNextDisabled$) ?? false;
   const nextLabel = useLastResolved(onboardingNextLabel$) ?? "Next";
   const stepBack = useSet(onboardingStepBack$);
-  const stepNext = useSet(onboardingStepNext$);
+  // Step 1's Next triggers eager-init (a backend setup call); the loadable
+  // state lets us disable the button + show a spinner so users can't double
+  // submit and so e2e drivers can see the in-flight state.
+  const [nextLoadable, stepNext] = useLoadableSet(onboardingStepNext$);
   const pageSignal = useGet(pageSignal$);
+  const nextLoading = nextLoadable.state === "loading";
+  const nextError =
+    nextLoadable.state === "hasError" ? String(nextLoadable.error) : null;
   return (
-    <div className="shrink-0 border-t border-border/40 flex items-center justify-between px-5 sm:px-10 py-5">
-      <div>
-        {showBack && (
-          <Button
-            variant="ghost"
-            className="rounded-lg text-muted-foreground"
-            onClick={() => {
-              detach(stepBack(pageSignal), Reason.DomCallback);
-            }}
-          >
-            Back
-          </Button>
-        )}
-      </div>
-      <div>
-        {showNext && (
-          <Button
-            onClick={() => {
-              detach(stepNext(pageSignal), Reason.DomCallback);
-            }}
-            className="rounded-lg min-w-[100px]"
-            disabled={nextDisabled}
-          >
-            {nextLabel}
-          </Button>
-        )}
+    <div className="shrink-0 border-t border-border/40 flex flex-col gap-2 px-5 sm:px-10 py-5">
+      {nextError && (
+        <div
+          role="alert"
+          className="w-full rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-2 text-sm text-destructive"
+        >
+          {nextError}
+        </div>
+      )}
+      <div className="flex items-center justify-between">
+        <div>
+          {showBack && (
+            <Button
+              variant="ghost"
+              className="rounded-lg text-muted-foreground"
+              onClick={() => {
+                detach(stepBack(pageSignal), Reason.DomCallback);
+              }}
+            >
+              Back
+            </Button>
+          )}
+        </div>
+        <div>
+          {showNext && (
+            <Button
+              onClick={() => {
+                detach(stepNext(pageSignal), Reason.DomCallback);
+              }}
+              className="rounded-lg min-w-[100px]"
+              disabled={nextDisabled || nextLoading}
+              aria-busy={nextLoading}
+              data-testid="onboarding-next-button"
+            >
+              {nextLoading ? (
+                <IconLoader size={16} className="animate-spin" />
+              ) : (
+                nextLabel
+              )}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );
