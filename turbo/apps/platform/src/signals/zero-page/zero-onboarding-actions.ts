@@ -12,8 +12,11 @@ import {
   completeZeroOnboarding$,
   completeMemberOnboarding$,
   connectorsFromUrl$,
+  onboardingEagerInitialized$,
+  onboardingEagerInitializedAgentId$,
   onboardingIsUseCase$,
   onboardingPromptDraft$,
+  markEagerInitialized$,
 } from "./zero-onboarding.ts";
 import { currentChatAgentDisplayName$ } from "../agent-chat.ts";
 import {
@@ -42,7 +45,19 @@ const L = logger("OnboardingAddToSlack");
 // Admin flag
 // ---------------------------------------------------------------------------
 
-export const onboardingIsAdmin$ = zeroNeedsOnboarding$;
+/**
+ * Whether the current user should be treated as the org admin throughout the
+ * onboarding session. Sticky: once we've eagerly provisioned the workspace
+ * at step 1, `zeroNeedsOnboarding$` flips false on the server, but the user
+ * is still the admin completing the rest of the steps — keep the flag true
+ * so view-layer step decisions stay consistent.
+ */
+export const onboardingIsAdmin$ = computed(async (get) => {
+  if (get(onboardingEagerInitialized$)) {
+    return true;
+  }
+  return await get(zeroNeedsOnboarding$);
+});
 
 // ---------------------------------------------------------------------------
 // Step resolution (moved from TSX)
@@ -75,7 +90,7 @@ export const onboardingEffectiveStep$ = computed(async (get) => {
   if (!step || step === "done") {
     return undefined;
   }
-  const isAdmin = await get(zeroNeedsOnboarding$);
+  const isAdmin = await get(onboardingIsAdmin$);
   const fromUrl = get(connectorsFromUrl$);
   if (!isAdmin && step === "1") {
     return fromUrl ? "3" : "2";
@@ -102,7 +117,7 @@ export const onboardingEffectiveStep$ = computed(async (get) => {
  * step 3 goes straight to web chat.
  */
 export const onboardingVisibleSteps$ = computed(async (get) => {
-  const isAdmin = await get(zeroNeedsOnboarding$);
+  const isAdmin = await get(onboardingIsAdmin$);
   const needsMember = await get(zeroNeedsMemberOnboarding$);
   const selected = get(zeroSelectedConnectors$);
   const hasSelected = selected.length > 0;
@@ -169,22 +184,40 @@ export const onboardingStepKey$ = computed(async (get) => {
 // ---------------------------------------------------------------------------
 
 /**
- * True when the running flow will run the onboarding "complete/setup" backend
- * call at finish, which bulk-authorizes selected connectors to the default
- * agent. The post-connect permission dialog can be suppressed in that case;
- * already-onboarded users (use-case revisit) must run the dialog so each new
- * connector is authorized individually.
+ * True when the backend already has (or will run) bulk-authorize for the
+ * connectors the user is about to Connect — i.e. when the post-connect
+ * permission dialog is redundant and should be suppressed.
+ *
+ * - Eager-init admin in use-case mode: the URL connectors were bulk-authorized
+ *   at step 1, and step 2 doesn't let the user pick anything new — suppress.
+ * - Eager-init admin in the regular flow: step 2 picker can add connectors
+ *   the eager-init call didn't cover; let the dialog run per connector.
+ * - Pre-eager admins / fresh members: setup or complete will bulk-authorize
+ *   at finish — suppress until then.
+ * - Already-onboarded users (use-case revisit): no bulk-authorize is coming;
+ *   let the dialog run.
  */
 export const onboardingBackendWillAuthorizeConnectors$ = computed(
   async (get) => {
+    if (get(onboardingEagerInitialized$)) {
+      return get(onboardingIsUseCase$);
+    }
     const needsOnboarding = await get(zeroNeedsOnboarding$);
     const needsMember = await get(zeroNeedsMemberOnboarding$);
     return needsOnboarding || needsMember;
   },
 );
 
-/** Show the back button on every step except the first visible one. */
+/**
+ * Show the back button on every step except the first visible one. Hidden
+ * entirely once the workspace has been eagerly provisioned at step 1 — going
+ * back to rename it would be misleading since the org + default agent
+ * already exist server-side.
+ */
 export const onboardingShowBack$ = computed(async (get) => {
+  if (get(onboardingEagerInitialized$)) {
+    return false;
+  }
   const step = await get(onboardingEffectiveStep$);
   if (!step) {
     return false;
@@ -255,6 +288,19 @@ export const onboardingStepNext$ = command(
     const isUseCase = get(onboardingIsUseCase$);
     switch (step) {
       case "1": {
+        // Eagerly provision the workspace + default agent so the user can
+        // never roll back past it. selectedConnectors (URL deep link or
+        // explicit picker selection) are bulk-authorized to the new agent
+        // in the same call.
+        if (!get(onboardingEagerInitialized$)) {
+          const agentId = await set(completeZeroOnboarding$, signal);
+          signal.throwIfAborted();
+          set(markEagerInitialized$, agentId ?? null);
+          set(reloadBillingStatus$);
+          set(reloadAgents$);
+          set(reloadAgentById$);
+          set(reloadPinnedAgents$);
+        }
         if (isUseCase) {
           set(setZeroStep$, "3");
           break;
@@ -268,8 +314,10 @@ export const onboardingStepNext$ = command(
       }
       case "3": {
         if (isUseCase) {
-          // Try It: create org + default agent, authorize selected connectors,
-          // navigate to the new agent's web chat with the edited prompt.
+          // Try It: navigate to the new agent's web chat with the edited
+          // prompt. The workspace + agent + initial connector authorization
+          // were already created at step 1 (eager init) — no setup API
+          // call here.
           await set(onboardingContinueWeb$, signal);
           break;
         }
@@ -285,12 +333,14 @@ export const onboardingStepNext$ = command(
 // ---------------------------------------------------------------------------
 
 export const onboardingShowDialog$ = computed(async (get) => {
-  const needsOnboarding = await get(zeroNeedsOnboarding$);
+  const isAdmin = await get(onboardingIsAdmin$);
   const needsMember = await get(zeroNeedsMemberOnboarding$);
   // Already-onboarded users still see the dialog when they arrive via a
   // use-case deep link, so they can review connectors + edit the prompt.
+  // Admins whose setup just ran (eager-init) also keep the dialog open
+  // through the sticky onboardingIsAdmin$ flag.
   const isUseCase = get(onboardingIsUseCase$);
-  return needsOnboarding || needsMember || isUseCase;
+  return isAdmin || needsMember || isUseCase;
 });
 
 // ---------------------------------------------------------------------------
@@ -302,7 +352,7 @@ export const onboardingShowDialog$ = computed(async (get) => {
  * Admin sees the name they typed; member sees the default agent's display name.
  */
 export const onboardingDisplayName$ = computed(async (get) => {
-  const isAdmin = await get(zeroNeedsOnboarding$);
+  const isAdmin = await get(onboardingIsAdmin$);
   if (isAdmin) {
     return get(zeroAgentName$);
   }
@@ -322,6 +372,24 @@ export const completeOnboarding$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(reloadBillingStatus$);
 
+    // Admin already ran setup at step 1 (eager init). Don't re-call it —
+    // calling completeZeroOnboarding$ twice would error on the existing
+    // workspace. The agentId returned by the eager setup was captured at
+    // that moment; prefer that over a status round-trip (`zeroOnboardingStatus$`
+    // may still be cached from before eager init in some flows).
+    if (get(onboardingEagerInitialized$)) {
+      const captured = get(onboardingEagerInitializedAgentId$);
+      if (captured) {
+        return captured;
+      }
+      const status = await get(zeroOnboardingStatus$);
+      signal.throwIfAborted();
+      return status.defaultAgentId ?? undefined;
+    }
+
+    // Members joining an existing org still run the complete API at the end
+    // (authorizes selected connectors). Admins who did NOT go through eager
+    // init (legacy callers) fall through to the original setup call.
     const isAdmin = await get(zeroNeedsOnboarding$);
     signal.throwIfAborted();
     const agentId = isAdmin
