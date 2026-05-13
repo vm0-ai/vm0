@@ -48,6 +48,7 @@
     "stripe": "^20.4.1",
     "tar": "^7.5.11",
     "undici": "^6.24.1",
+    "web-push": "^3.6.7",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -57,6 +58,7 @@
     "@types/archiver": "^7.0.0",
     "@types/node": "^24.3.0",
     "@types/pg": "^8.20.0",
+    "@types/web-push": "^3.6.4",
     "@typescript-eslint/rule-tester": "^8.59.2",
     "@typescript-eslint/utils": "^8.59.2",
     "@vm0/eslint-config": "workspace:*",

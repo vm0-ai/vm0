@@ -1,7 +1,7 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -24,6 +24,7 @@ interface TitleContextMessage {
 
 interface ChatTitleInput {
   readonly currentUserMessage: string;
+  readonly currentAssistantReply?: string;
   readonly priorRounds?: readonly TitleContextMessage[];
 }
 
@@ -112,6 +113,11 @@ function generateChatTitle(input: ChatTitleInput): Promise<string | null> {
   sections.push(
     `Most recent user message:\n${input.currentUserMessage.slice(0, TITLE_CONTEXT_CHAR_CAP)}`,
   );
+  if (input.currentAssistantReply) {
+    sections.push(
+      `Most recent assistant reply:\n${input.currentAssistantReply.slice(0, TITLE_CONTEXT_CHAR_CAP)}`,
+    );
+  }
 
   return generateText([
     {
@@ -129,7 +135,22 @@ function generateChatTitle(input: ChatTitleInput): Promise<string | null> {
 async function getLatestTitleContextMessages(
   db: Db,
   threadId: string,
+  options?: { readonly excludeRunId?: string },
 ): Promise<TitleContextMessage[]> {
+  const filters = [
+    eq(chatMessages.chatThreadId, threadId),
+    isNotNull(chatMessages.content),
+    inArray(chatMessages.role, ["user", "assistant"]),
+    visibleChatMessageCondition(),
+  ];
+  if (options?.excludeRunId !== undefined) {
+    filters.push(
+      // Keep prior context free of the current exchange. User rows have the run
+      // id too, so this excludes both sides of the just-completed round.
+      sql`(${chatMessages.runId} IS NULL OR ${chatMessages.runId} != ${options.excludeRunId})`,
+    );
+  }
+
   const rows = await db
     .select({
       role: chatMessages.role,
@@ -139,14 +160,7 @@ async function getLatestTitleContextMessages(
     })
     .from(chatMessages)
     .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, threadId),
-        isNotNull(chatMessages.content),
-        inArray(chatMessages.role, ["user", "assistant"]),
-        visibleChatMessageCondition(),
-      ),
-    )
+    .where(and(...filters))
     .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
     .limit(TITLE_PRIOR_MESSAGE_CAP);
 
@@ -209,4 +223,55 @@ export async function generateAndPersistChatThreadTitle(args: {
       err: result.error,
     });
   }
+}
+
+export async function generateAndPersistChatThreadTitleFromCallback(args: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly runId: string;
+  readonly prompt: string;
+  readonly currentAssistantReply: string | undefined;
+}): Promise<void> {
+  const result = await safeAsync(async () => {
+    const priorRounds = await getLatestTitleContextMessages(
+      args.db,
+      args.threadId,
+      { excludeRunId: args.runId },
+    );
+    const title = await generateChatTitle({
+      currentUserMessage: args.prompt,
+      currentAssistantReply: args.currentAssistantReply,
+      priorRounds: priorRounds.length > 0 ? priorRounds : undefined,
+    });
+    if (title) {
+      await updateChatThreadTitle(args.db, args.threadId, args.userId, title);
+    }
+  });
+  if ("error" in result) {
+    log.warn("Chat title generation failed", {
+      threadId: args.threadId,
+      err: result.error,
+    });
+  }
+}
+
+export function generateChatNotificationSummary(
+  prompt: string,
+  resultText: string,
+): Promise<string | null> {
+  return generateText(
+    [
+      {
+        role: "system",
+        content:
+          "Summarize this completed task in one short notification sentence, max 90 chars. Plain text only.",
+      },
+      {
+        role: "user",
+        content: `User request:\n${prompt.slice(0, TITLE_CONTEXT_CHAR_CAP)}\n\nAssistant reply:\n${resultText.slice(0, TITLE_CONTEXT_CHAR_CAP)}`,
+      },
+    ],
+    35,
+  );
 }

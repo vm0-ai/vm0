@@ -172,6 +172,12 @@ export {
   type StoragesListContract,
 } from "./storages";
 export {
+  internalCallbacksChatContract,
+  chatCallbackPayloadSchema,
+  type InternalCallbacksChatContract,
+  type ChatCallbackPayload,
+} from "./internal-callbacks-chat";
+export {
   internalCallbacksTelegramContract,
   telegramCallbackPayloadSchema,
   type InternalCallbacksTelegramContract,
