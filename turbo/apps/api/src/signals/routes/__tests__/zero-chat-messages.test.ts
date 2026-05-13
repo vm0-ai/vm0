@@ -855,6 +855,7 @@ describe("POST /api/zero/chat/messages", () => {
       .where(eq(agentRuns.id, second.body.runId!))
       .limit(1);
     expect(run?.appendSystemPrompt).toContain("# Incomplete Rounds Context");
+    expect(run?.appendSystemPrompt).not.toContain("# Web Chat Context");
     expect(run?.appendSystemPrompt).toContain("RUN_STATUS: cancelled");
     expect(run?.appendSystemPrompt).toContain("User: cancel me");
   });

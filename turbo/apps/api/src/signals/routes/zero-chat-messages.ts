@@ -1195,8 +1195,12 @@ async function prepareRecentChatContext(
   db: Db,
   threadId: string,
   isNewThread: boolean,
+  incompleteContext: string,
 ): Promise<string> {
   if (isNewThread) {
+    return "";
+  }
+  if (incompleteContext.length > 0) {
     return "";
   }
   return buildWebChatPriorMessagesContext(
@@ -1218,6 +1222,18 @@ async function resetThreadModelPinForNewSession(
       updatedAt: nowDate(),
     })
     .where(eq(chatThreads.id, threadId));
+}
+
+async function maybeResetThreadModelPinForNewSession(params: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly forceNewSession: boolean;
+  readonly isNewThread: boolean;
+}): Promise<void> {
+  if (!params.forceNewSession || params.isNewThread) {
+    return;
+  }
+  await resetThreadModelPinForNewSession(params.db, params.threadId);
 }
 
 function appendUnassociatedUserMessage(params: {
@@ -1692,11 +1708,15 @@ const prepareNormalSend$ = command(
       db,
       thread.threadId,
       thread.isNewThread,
+      thread.incompleteContext,
     );
     signal.throwIfAborted();
-    if (forceNewSession && !thread.isNewThread) {
-      await resetThreadModelPinForNewSession(db, thread.threadId);
-    }
+    await maybeResetThreadModelPinForNewSession({
+      db,
+      threadId: thread.threadId,
+      forceNewSession,
+      isNewThread: thread.isNewThread,
+    });
     signal.throwIfAborted();
 
     const persistedExplicitSelection =

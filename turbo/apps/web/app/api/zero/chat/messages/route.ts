@@ -160,8 +160,9 @@ async function loadRecentMessagesForSystemPrompt(
 async function prepareRecentChatContext(
   threadId: string,
   isNewThread: boolean,
+  incompleteContext: string,
 ): Promise<string> {
-  if (isNewThread) return "";
+  if (isNewThread || incompleteContext.length > 0) return "";
   return buildWebChatPriorMessagesContext(
     await loadRecentMessagesForSystemPrompt(threadId),
   );
@@ -180,6 +181,15 @@ async function resetThreadModelPinForNewSession(
       updatedAt: new Date(),
     })
     .where(eq(chatThreads.id, threadId));
+}
+
+async function maybeResetThreadModelPinForNewSession(
+  threadId: string,
+  forceNewSession: boolean,
+  isNewThread: boolean,
+): Promise<void> {
+  if (!forceNewSession || isNewThread) return;
+  await resetThreadModelPinForNewSession(threadId);
 }
 
 interface GoalOriginRow {
@@ -1260,10 +1270,13 @@ const router = tsr.router(chatMessagesContract, {
       const priorContext = await prepareRecentChatContext(
         threadId,
         isNewThread,
+        incompleteContext,
       );
-      if (forceNewSession && !isNewThread) {
-        await resetThreadModelPinForNewSession(threadId);
-      }
+      await maybeResetThreadModelPinForNewSession(
+        threadId,
+        forceNewSession,
+        isNewThread,
+      );
 
       const persistedExplicitModelFirstSelection =
         await persistExplicitModelFirstSelection({
