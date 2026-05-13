@@ -824,6 +824,12 @@ mod tests {
         assert_eq!(request.path, path, "raw request: {}", request.raw);
     }
 
+    fn request_body_json(request: &MockRequest) -> serde_json::Value {
+        serde_json::from_str(&request.body).unwrap_or_else(|error| {
+            panic!("invalid JSON body: {error}; raw request: {}", request.raw)
+        })
+    }
+
     #[tokio::test]
     async fn mock_firecracker_api_reads_split_request_body() {
         let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
@@ -923,11 +929,11 @@ mod tests {
 
         let request = api.next_request().await;
         assert_request(&request, "PUT", "/snapshot/load");
-        assert!(
-            request.body.contains("resume_vm"),
-            "missing resume_vm in: {}",
-            request.raw
-        );
+        let body = request_body_json(&request);
+        assert_eq!(body["snapshot_path"], "/snap/state");
+        assert_eq!(body["mem_backend"]["backend_type"], "File");
+        assert_eq!(body["mem_backend"]["backend_path"], "/snap/memory");
+        assert_eq!(body["resume_vm"], true);
     }
 
     #[tokio::test]
@@ -1009,11 +1015,8 @@ mod tests {
 
         let request = api.next_request().await;
         assert_request(&request, "PATCH", "/vm");
-        assert!(
-            request.body.contains(r#""state":"Paused""#),
-            "missing Paused in: {}",
-            request.raw
-        );
+        let body = request_body_json(&request);
+        assert_eq!(body["state"], "Paused");
     }
 
     #[tokio::test]
@@ -1026,11 +1029,8 @@ mod tests {
 
         let request = api.next_request().await;
         assert_request(&request, "PATCH", "/vm");
-        assert!(
-            request.body.contains(r#""state":"Resumed""#),
-            "missing Resumed in: {}",
-            request.raw
-        );
+        let body = request_body_json(&request);
+        assert_eq!(body["state"], "Resumed");
     }
 
     #[tokio::test]
@@ -1043,16 +1043,10 @@ mod tests {
 
         let request = api.next_request().await;
         assert_request(&request, "PUT", "/snapshot/create");
-        assert!(
-            request.body.contains("snapshot_type"),
-            "missing snapshot_type in: {}",
-            request.raw
-        );
-        assert!(
-            request.body.contains("mem_file_path"),
-            "missing mem_file_path in: {}",
-            request.raw
-        );
+        let body = request_body_json(&request);
+        assert_eq!(body["snapshot_type"], "Full");
+        assert_eq!(body["snapshot_path"], "/snap/state");
+        assert_eq!(body["mem_file_path"], "/snap/memory");
     }
 
     #[tokio::test]
@@ -1081,16 +1075,9 @@ mod tests {
 
         let request = api.next_request().await;
         assert_request(&request, "PUT", "/machine-config");
-        assert!(
-            request.body.contains("vcpu_count"),
-            "missing vcpu_count in: {}",
-            request.raw
-        );
-        assert!(
-            request.body.contains("mem_size_mib"),
-            "missing mem_size_mib in: {}",
-            request.raw
-        );
+        let body = request_body_json(&request);
+        assert_eq!(body["vcpu_count"], 2);
+        assert_eq!(body["mem_size_mib"], 256);
     }
 
     #[tokio::test]
@@ -1105,16 +1092,9 @@ mod tests {
 
         let request = api.next_request().await;
         assert_request(&request, "PUT", "/boot-source");
-        assert!(
-            request.body.contains("kernel_image_path"),
-            "missing kernel_image_path in: {}",
-            request.raw
-        );
-        assert!(
-            request.body.contains("boot_args"),
-            "missing boot_args in: {}",
-            request.raw
-        );
+        let body = request_body_json(&request);
+        assert_eq!(body["kernel_image_path"], "/path/to/kernel");
+        assert_eq!(body["boot_args"], "console=ttyS0");
     }
 
     #[tokio::test]
@@ -1129,16 +1109,11 @@ mod tests {
 
         let request = api.next_request().await;
         assert_request(&request, "PUT", "/drives/rootfs");
-        assert!(
-            request.body.contains("drive_id"),
-            "missing drive_id in: {}",
-            request.raw
-        );
-        assert!(
-            request.body.contains("path_on_host"),
-            "missing path_on_host in: {}",
-            request.raw
-        );
+        let body = request_body_json(&request);
+        assert_eq!(body["drive_id"], "rootfs");
+        assert_eq!(body["path_on_host"], "/path/to/rootfs");
+        assert_eq!(body["is_root_device"], true);
+        assert_eq!(body["is_read_only"], true);
     }
 
     #[tokio::test]
@@ -1153,16 +1128,10 @@ mod tests {
 
         let request = api.next_request().await;
         assert_request(&request, "PUT", "/network-interfaces/eth0");
-        assert!(
-            request.body.contains("guest_mac"),
-            "missing guest_mac in: {}",
-            request.raw
-        );
-        assert!(
-            request.body.contains("host_dev_name"),
-            "missing host_dev_name in: {}",
-            request.raw
-        );
+        let body = request_body_json(&request);
+        assert_eq!(body["iface_id"], "eth0");
+        assert_eq!(body["guest_mac"], "02:00:00:00:00:01");
+        assert_eq!(body["host_dev_name"], "vm0-tap");
     }
 
     #[tokio::test]
@@ -1175,16 +1144,9 @@ mod tests {
 
         let request = api.next_request().await;
         assert_request(&request, "PUT", "/vsock");
-        assert!(
-            request.body.contains("guest_cid"),
-            "missing guest_cid in: {}",
-            request.raw
-        );
-        assert!(
-            request.body.contains("uds_path"),
-            "missing uds_path in: {}",
-            request.raw
-        );
+        let body = request_body_json(&request);
+        assert_eq!(body["guest_cid"], 3);
+        assert_eq!(body["uds_path"], "/tmp/vsock.sock");
     }
 
     #[tokio::test]
@@ -1197,11 +1159,8 @@ mod tests {
 
         let request = api.next_request().await;
         assert_request(&request, "PUT", "/actions");
-        assert!(
-            request.body.contains("InstanceStart"),
-            "missing InstanceStart in: {}",
-            request.raw
-        );
+        let body = request_body_json(&request);
+        assert_eq!(body["action_type"], "InstanceStart");
     }
 
     #[tokio::test]
@@ -1214,11 +1173,8 @@ mod tests {
 
         let request = api.next_request().await;
         assert_request(&request, "PATCH", "/balloon");
-        assert!(
-            request.body.contains("amount_mib"),
-            "missing amount_mib in: {}",
-            request.raw
-        );
+        let body = request_body_json(&request);
+        assert_eq!(body["amount_mib"], 512);
     }
 
     #[tokio::test]
@@ -1269,21 +1225,10 @@ mod tests {
 
         let request = api.next_request().await;
         assert_request(&request, "PUT", "/balloon");
-        assert!(
-            request.body.contains("amount_mib"),
-            "missing amount_mib in: {}",
-            request.raw
-        );
-        assert!(
-            request.body.contains("deflate_on_oom"),
-            "missing deflate_on_oom in: {}",
-            request.raw
-        );
-        assert!(
-            request.body.contains("stats_polling_interval_s"),
-            "missing stats_polling_interval_s in: {}",
-            request.raw
-        );
+        let body = request_body_json(&request);
+        assert_eq!(body["amount_mib"], 0);
+        assert_eq!(body["deflate_on_oom"], true);
+        assert_eq!(body["stats_polling_interval_s"], 0);
     }
 
     #[tokio::test]
