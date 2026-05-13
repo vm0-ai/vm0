@@ -15,6 +15,13 @@ use guest_common::{log_error, log_info};
 use serde_json::{Value, json};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
+const CODEX_FAILURE_DIAGNOSTIC_MAX_BYTES: usize = 4096;
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct CodexFailureDiagnostic {
+    pub event_type: &'static str,
+    pub message: String,
+}
 
 /// Send a single event to the webhook, masking secrets first.
 ///
@@ -60,6 +67,124 @@ pub fn prepare_event(event: &mut Value, seq: u32, masker: &SecretMasker) -> Opti
         "runId": env::run_id(),
         "events": [event],
     }))
+}
+
+/// Extract a secret-masked Codex failure diagnostic from stdout JSONL.
+///
+/// Codex reports terminal failures on stdout JSONL (`type=error` or
+/// `type=turn.failed`), while the guest-agent process failure summary is built
+/// from stderr. Logging these events into the system log preserves the real
+/// failure reason when stderr only contains side-channel background-task noise.
+pub(crate) fn masked_codex_failure_diagnostic(
+    event: &Value,
+    masker: &SecretMasker,
+) -> Option<CodexFailureDiagnostic> {
+    if !is_codex_failure_event_type(event) {
+        return None;
+    }
+
+    let mut masked_event = event.clone();
+    masker.mask_value(&mut masked_event);
+    extract_codex_failure_diagnostic(&masked_event)
+}
+
+fn is_codex_failure_event_type(event: &Value) -> bool {
+    match event.get("type").and_then(Value::as_str) {
+        Some("error" | "turn.failed") => true,
+        Some("turn.completed") => codex_turn_completed_failure_status(event).is_some(),
+        _ => false,
+    }
+}
+
+fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnostic> {
+    match event.get("type").and_then(Value::as_str)? {
+        "error" => Some(CodexFailureDiagnostic {
+            event_type: "error",
+            message: message_from_field(event.get("message"))
+                .or_else(|| codex_error_message(event.get("error")))
+                .unwrap_or_else(|| "error".into()),
+        }),
+        "turn.failed" => Some(CodexFailureDiagnostic {
+            event_type: "turn.failed",
+            message: codex_error_message(event.get("error"))
+                .unwrap_or_else(|| "turn failed".into()),
+        }),
+        "turn.completed" => {
+            let status = codex_turn_completed_failure_status(event)?;
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.completed",
+                message: codex_error_message(
+                    event.pointer("/turn/error").or_else(|| event.get("error")),
+                )
+                .unwrap_or_else(|| format!("turn {status}")),
+            })
+        }
+        _ => None,
+    }
+}
+
+fn codex_turn_completed_failure_status(event: &Value) -> Option<&'static str> {
+    let status = event
+        .pointer("/turn/status")
+        .or_else(|| event.get("status"))
+        .and_then(Value::as_str)?;
+    match status {
+        "failed" | "Failed" => Some("failed"),
+        "interrupted" | "Interrupted" => Some("interrupted"),
+        _ => None,
+    }
+}
+
+fn codex_error_message(error: Option<&Value>) -> Option<String> {
+    let error = error?;
+    if let Some(message) = message_from_field(Some(error)) {
+        return Some(message);
+    }
+
+    let message = error.get("message").and_then(Value::as_str);
+    let details = error.get("additional_details").and_then(Value::as_str);
+    combined_message_and_details(message, details)
+}
+
+fn message_from_field(value: Option<&Value>) -> Option<String> {
+    value
+        .and_then(Value::as_str)
+        .and_then(normalized_diagnostic_message)
+}
+
+fn combined_message_and_details(message: Option<&str>, details: Option<&str>) -> Option<String> {
+    match (
+        message.and_then(normalized_diagnostic_message),
+        details.and_then(normalized_diagnostic_message),
+    ) {
+        (Some(message), Some(details)) => Some(truncate_diagnostic_message(&format!(
+            "{message} ({details})"
+        ))),
+        (Some(message), None) => Some(message),
+        (None, Some(details)) => Some(details),
+        (None, None) => None,
+    }
+}
+
+fn normalized_diagnostic_message(message: &str) -> Option<String> {
+    let message = message.trim();
+    if message.is_empty() {
+        return None;
+    }
+
+    Some(truncate_diagnostic_message(message))
+}
+
+fn truncate_diagnostic_message(message: &str) -> String {
+    if message.len() <= CODEX_FAILURE_DIAGNOSTIC_MAX_BYTES {
+        return message.to_string();
+    }
+
+    let mut end = CODEX_FAILURE_DIAGNOSTIC_MAX_BYTES;
+    while !message.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...[truncated]", &message[..end])
 }
 
 /// POST a prepared event payload to the webhook endpoint.
@@ -347,6 +472,154 @@ mod tests {
             "message": {"content": []}
         });
         assert!(extract_claude_tool_info(&event).is_empty());
+    }
+
+    #[test]
+    fn codex_error_event_yields_failure_diagnostic() {
+        let event = serde_json::json!({
+            "type": "error",
+            "message": "server rejected request"
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "server rejected request".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_turn_failed_event_yields_failure_diagnostic() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {"message": "turn failed from server"}
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "turn failed from server".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_turn_failed_appends_additional_details() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {
+                "message": "turn failed from server",
+                "additional_details": "rate limit exceeded"
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "turn failed from server (rate limit exceeded)".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_turn_failed_legacy_string_error_yields_failure_diagnostic() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": "legacy turn failure"
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "legacy turn failure".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_turn_failed_unknown_object_uses_generic_message() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {"code": "internal", "context": "not a public error message"}
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "turn failed".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_event_accepts_nested_error_shape() {
+        let event = serde_json::json!({
+            "type": "error",
+            "error": {
+                "message": "server rejected request",
+                "additional_details": "policy denied"
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "server rejected request (policy denied)".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_failed_turn_completed_event_yields_failure_diagnostic() {
+        let event = serde_json::json!({
+            "type": "turn.completed",
+            "turn": {
+                "status": "failed",
+                "error": {"message": "failed TurnCompleted reason"}
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.completed",
+                message: "failed TurnCompleted reason".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_failure_diagnostic_masks_secrets() {
+        let event = serde_json::json!({
+            "type": "error",
+            "message": "request failed with token supersecret"
+        });
+        let masker = SecretMasker::from_raw("c3VwZXJzZWNyZXQ=");
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &masker),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "request failed with token ***".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn non_failure_codex_event_has_no_failure_diagnostic() {
+        let event = serde_json::json!({"type": "turn.completed", "usage": {}});
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            None
+        );
     }
 
     // Note: end-to-end coverage of `extract_session_id` (including both
