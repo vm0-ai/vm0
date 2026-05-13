@@ -1254,7 +1254,7 @@ mod tests {
         let body =
             r#"{"target_mib":768,"actual_mib":384,"target_pages":196608,"actual_pages":98304}"#
                 .to_string();
-        let (request_tx, mut requests) = mpsc::unbounded_channel();
+        let (request_tx, request_rx) = oneshot::channel();
         let (header_written_tx, header_written_rx) = oneshot::channel();
         let (write_body_tx, write_body_rx) = oneshot::channel();
         let server = tokio::spawn(async move {
@@ -1285,7 +1285,7 @@ mod tests {
         assert_eq!(stats.target_pages, 196_608);
         assert_eq!(stats.actual_pages, 98_304);
 
-        let request = requests.recv().await.unwrap();
+        let request = request_rx.await.unwrap();
         assert_request(&request, "GET", "/balloon/statistics");
         server.await.unwrap();
     }
