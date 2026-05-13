@@ -124,6 +124,7 @@ import { zeroVoiceIoQuotaRoutes } from "./routes/zero-voice-io-quota";
 import { zeroVoiceIoSpeechRoutes } from "./routes/zero-voice-io-speech";
 import { zeroVoiceIoSttRoutes } from "./routes/zero-voice-io-stt";
 import { zeroVoiceIoTtsRoutes } from "./routes/zero-voice-io-tts";
+import { zeroVideoIoGenerateRoutes } from "./routes/zero-video-io-generate";
 import { zeroWebDownloadRoutes } from "./routes/zero-web-download";
 import { storagesCommitRoutes } from "./routes/storages-commit";
 import { storagesDownloadRoutes } from "./routes/storages-download";
@@ -209,6 +210,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroFeatureSwitchesRoutes,
   ...zeroInsightsRoutes,
   ...zeroImageIoGenerateRoutes,
+  ...zeroVideoIoGenerateRoutes,
   ...zeroLogsRoutes,
   ...zeroMemberCreditCapRoutes,
   ...zeroModelPoliciesRoutes,

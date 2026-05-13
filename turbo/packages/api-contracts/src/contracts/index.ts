@@ -1243,6 +1243,14 @@ export {
   type ZeroImageIoGenerateResponse,
 } from "./zero-image-io-generate";
 export {
+  zeroVideoIoGenerateContract,
+  zeroVideoIoGenerateRequestSchema,
+  zeroVideoIoGenerateResponseSchema,
+  type ZeroVideoIoGenerateContract,
+  type ZeroVideoIoGenerateRequest,
+  type ZeroVideoIoGenerateResponse,
+} from "./zero-video-io-generate";
+export {
   internalCallbacksAgentContract,
   type InternalCallbacksAgentContract,
 } from "./internal-callbacks-agent";

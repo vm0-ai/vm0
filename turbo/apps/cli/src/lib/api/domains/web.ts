@@ -230,6 +230,36 @@ interface GenerateWebImageResult {
   };
 }
 
+interface GenerateWebVideoOptions {
+  prompt: string;
+  model?: string;
+  aspectRatio?: string;
+  duration?: string;
+  resolution?: string;
+  generateAudio?: boolean;
+  negativePrompt?: string;
+  seed?: number;
+  autoFix?: boolean;
+  safetyTolerance?: string;
+}
+
+interface GenerateWebVideoResult {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  url: string;
+  durationSeconds: number;
+  creditsCharged: number;
+  model: string;
+  aspectRatio: string;
+  duration: string;
+  resolution: string;
+  generateAudio: boolean;
+  sourceUrl: string;
+  requestId?: string;
+}
+
 interface PrepareUploadResponse {
   id: string;
   filename: string;
@@ -462,4 +492,64 @@ export async function generateWebImage(
   }
 
   return (await response.json()) as GenerateWebImageResult;
+}
+
+/**
+ * Generate a billed video from a prompt and receive the permanent /f URL.
+ * Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI PAT /
+ * Clerk session.
+ */
+export async function generateWebVideo(
+  options: GenerateWebVideoOptions,
+): Promise<GenerateWebVideoResult> {
+  const baseUrl = await getBaseUrl();
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (bypassSecret) {
+    headers["x-vercel-protection-bypass"] = bypassSecret;
+  }
+
+  const response = await fetch(
+    new URL("/api/zero/video-io/generate", baseUrl),
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        prompt: options.prompt,
+        ...(options.model ? { model: options.model } : {}),
+        ...(options.aspectRatio ? { aspectRatio: options.aspectRatio } : {}),
+        ...(options.duration ? { duration: options.duration } : {}),
+        ...(options.resolution ? { resolution: options.resolution } : {}),
+        ...(options.generateAudio !== undefined
+          ? { generateAudio: options.generateAudio }
+          : {}),
+        ...(options.negativePrompt
+          ? { negativePrompt: options.negativePrompt }
+          : {}),
+        ...(options.seed !== undefined ? { seed: options.seed } : {}),
+        ...(options.autoFix !== undefined ? { autoFix: options.autoFix } : {}),
+        ...(options.safetyTolerance
+          ? { safetyTolerance: options.safetyTolerance }
+          : {}),
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(
+      response,
+      "Failed to generate video",
+    );
+    throw new ApiRequestError(message, code, response.status);
+  }
+
+  return (await response.json()) as GenerateWebVideoResult;
 }

@@ -12,7 +12,7 @@ import { listZeroConnectors } from "../../../lib/api/domains/zero-connectors";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "./platform-url";
 
-type BuiltInGenerationType = "image" | "voice";
+type BuiltInGenerationType = "image" | "video" | "voice";
 type DoctorGenerationType = ConnectorGenerationType | BuiltInGenerationType;
 
 interface BuiltInGenerationProvider {
@@ -23,20 +23,62 @@ interface BuiltInGenerationProvider {
 }
 
 const BUILT_IN_GENERATION_PROVIDERS: Partial<
-  Record<DoctorGenerationType, BuiltInGenerationProvider>
+  Record<DoctorGenerationType, readonly BuiltInGenerationProvider[]>
 > = {
-  image: {
-    label: "Built-in",
-    model: "gpt-image-2",
-    command: "zero built-in generate image -h",
-    reason: "available without connector setup",
-  },
-  voice: {
-    label: "Built-in",
-    model: "gpt-4o-mini-tts",
-    command: "zero built-in generate voice -h",
-    reason: "available without connector setup",
-  },
+  image: [
+    {
+      label: "Built-in",
+      model: "gpt-image-2",
+      command: "zero built-in generate image -h",
+      reason: "available without connector setup",
+    },
+  ],
+  video: [
+    {
+      label: "Built-in",
+      model: "fal-ai/veo3.1/fast",
+      command: "zero built-in generate video --model veo3.1-fast -h",
+      reason: "available without connector setup",
+    },
+    {
+      label: "Built-in",
+      model: "fal-ai/veo3.1",
+      command: "zero built-in generate video --model veo3.1 -h",
+      reason: "available without connector setup",
+    },
+    {
+      label: "Built-in",
+      model: "fal-ai/kling-video/o3/standard/text-to-video",
+      command: "zero built-in generate video --model kling-o3-standard -h",
+      reason: "available without connector setup",
+    },
+    {
+      label: "Built-in",
+      model: "fal-ai/kling-video/v3/4k/text-to-video",
+      command: "zero built-in generate video --model kling-v3-4k -h",
+      reason: "available without connector setup",
+    },
+    {
+      label: "Built-in",
+      model: "bytedance/seedance-2.0/text-to-video",
+      command: "zero built-in generate video --model seedance2.0 -h",
+      reason: "available without connector setup",
+    },
+    {
+      label: "Built-in",
+      model: "bytedance/seedance-2.0/fast/text-to-video",
+      command: "zero built-in generate video --model seedance2.0-fast -h",
+      reason: "available without connector setup",
+    },
+  ],
+  voice: [
+    {
+      label: "Built-in",
+      model: "gpt-4o-mini-tts",
+      command: "zero built-in generate voice -h",
+      reason: "available without connector setup",
+    },
+  ],
 };
 
 const GENERATION_TYPE_ORDER: readonly DoctorGenerationType[] = [
@@ -98,6 +140,12 @@ function getConnectorGenerationType(
   return generationType;
 }
 
+function getBuiltInProviders(
+  generationType: DoctorGenerationType,
+): readonly BuiltInGenerationProvider[] {
+  return BUILT_IN_GENERATION_PROVIDERS[generationType] ?? [];
+}
+
 function getAvailableGenerationTypes(): DoctorGenerationType[] {
   const available = new Set<ConnectorGenerationType>();
   for (const config of Object.values(CONNECTOR_TYPES)) {
@@ -108,7 +156,7 @@ function getAvailableGenerationTypes(): DoctorGenerationType[] {
 
   return GENERATION_TYPE_ORDER.filter((type) => {
     return (
-      type in BUILT_IN_GENERATION_PROVIDERS ||
+      getBuiltInProviders(type).length > 0 ||
       available.has(getConnectorGenerationType(type))
     );
   });
@@ -281,13 +329,17 @@ function renderActions(candidates: GenerationCandidate[]): void {
 }
 
 function renderBuiltInProvider(generationType: DoctorGenerationType): void {
-  const provider = BUILT_IN_GENERATION_PROVIDERS[generationType];
-  if (!provider) return;
+  const providers = getBuiltInProviders(generationType);
+  if (providers.length === 0) return;
 
   console.log("");
-  console.log("Built-in provider:");
-  console.log(`  vm0  ${provider.label}  Model: ${provider.model}`);
-  console.log(`  Use: ${provider.command}`);
+  console.log(
+    providers.length === 1 ? "Built-in provider:" : "Built-in providers:",
+  );
+  for (const provider of providers) {
+    console.log(`  vm0  ${provider.label}  Model: ${provider.model}`);
+    console.log(`  Use: ${provider.command}`);
+  }
 }
 
 function renderText(params: {
@@ -381,6 +433,7 @@ export const generateCommand = new Command()
       const other = candidates.filter((candidate) => {
         return candidate.status !== "ready";
       });
+      const builtInProviders = getBuiltInProviders(generationType);
 
       if (options.json) {
         console.log(
@@ -392,8 +445,8 @@ export const generateCommand = new Command()
               agentId: agentId ?? null,
               choices: ready,
               otherCandidates: other,
-              builtInProvider:
-                BUILT_IN_GENERATION_PROVIDERS[generationType] ?? null,
+              builtInProvider: builtInProviders[0] ?? null,
+              builtInProviders,
             },
             null,
             2,

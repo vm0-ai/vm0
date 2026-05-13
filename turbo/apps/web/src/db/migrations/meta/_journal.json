@@ -2605,6 +2605,13 @@
       "when": 1778665486616,
       "tag": "0371_clear_legacy_chat_thread_builtin_provider_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 372,
+      "version": "7",
+      "when": 1778668299570,
+      "tag": "0372_add_fal_video_usage_pricing",
+      "breakpoints": true
     }
   ]
 }

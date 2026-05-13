@@ -55,6 +55,9 @@ OPENAI_API_KEY=op://Development/openai/OPENAI_API_KEY
 # Optional: LLM API (OpenRouter)
 OPENROUTER_API_KEY=op://Development/openrouter/OPENROUTER_API_KEY
 
+# Optional: fal media generation
+FAL_KEY=op://Development/fal/FAL_KEY
+
 # Optional: Airtable OAuth Connector
 AIRTABLE_OAUTH_CLIENT_ID=op://Development/airtable/AIRTABLE_OAUTH_CLIENT_ID
 AIRTABLE_OAUTH_CLIENT_SECRET=op://Development/airtable/AIRTABLE_OAUTH_CLIENT_SECRET

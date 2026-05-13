@@ -17,6 +17,7 @@ vi.stubEnv(
   "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
 );
 vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+vi.stubEnv("FAL_KEY", "test-fal-key");
 vi.stubEnv("CRON_SECRET", "test-cron-secret");
 vi.stubEnv("R2_ACCESS_KEY_ID", "test-access-key");
 vi.stubEnv("R2_ACCOUNT_ID", "test-account");

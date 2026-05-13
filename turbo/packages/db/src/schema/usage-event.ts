@@ -28,6 +28,8 @@ import { agentRuns } from "./agent-run";
  *   image     gemini-2.5-flash-image       output_tokens
  *   image     gemini-2.5-flash-image       input_tokens
  *   image     gpt-image-2                  tokens.output.image
+ *   video     fal-ai/veo3.1/fast           output_video_seconds.audio
+ *   video     bytedance/seedance-2.0       output_video_tokens
  *
  * Charging is applied by the billing processor, which looks up the
  * `(kind, provider, category)` triple in a pricing table and writes

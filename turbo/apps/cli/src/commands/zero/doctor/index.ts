@@ -18,6 +18,7 @@ Examples:
   Check a connector?     zero doctor check-connector --env-name GITHUB_TOKEN
   Check a URL?           zero doctor check-connector --url https://api.github.com/repos/owner/repo
   Generate with image?   zero doctor generate image
+  Generate with video?   zero doctor generate video
   Check with permission? zero doctor check-connector --env-name SLACK_TOKEN --check-permission chat:write
   Permission denied?     zero doctor permission-deny github --method GET --path /repos/owner/repo
   Change a permission?   zero doctor permission-change github --permission contents:read --enable

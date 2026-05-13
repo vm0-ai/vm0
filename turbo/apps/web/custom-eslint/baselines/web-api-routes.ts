@@ -213,6 +213,7 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/integrations/telegram/upload-file/complete/route.ts",
   "app/api/zero/integrations/telegram/upload-file/init/route.ts",
   "app/api/zero/image-io/generate/route.ts",
+  "app/api/zero/video-io/generate/route.ts",
   "app/api/zero/logs/[id]/route.ts",
   "app/api/zero/logs/route.ts",
   "app/api/zero/logs/search/route.ts",

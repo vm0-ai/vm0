@@ -10,5 +10,6 @@ export const zeroBuiltInCommand = new Command()
     `
 Examples:
   Generate image:   zero built-in generate image --prompt "A watercolor fox"
+  Generate video:   zero built-in generate video --prompt "A cinematic city shot"
   Generate speech:  zero built-in generate voice --text "Hello"`,
   );

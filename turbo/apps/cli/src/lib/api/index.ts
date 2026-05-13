@@ -214,4 +214,5 @@ export {
   uploadWebFile,
   generateWebVoice,
   generateWebImage,
+  generateWebVideo,
 } from "./domains/web";

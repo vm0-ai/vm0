@@ -193,6 +193,50 @@ describe("zero doctor generate command", () => {
     });
   });
 
+  it("suggests the built-in video command when no video connector is ready", async () => {
+    server.use(
+      stubConnectorsWithConfiguredTypes([], ["fal", "luma-ai", "runway"]),
+      stubUserConnectors([]),
+    );
+
+    await generateCommand.parseAsync(["node", "cli", "video"]);
+
+    const text = output();
+    expect(text).toContain("Video generation choices for current agent");
+    expect(text).toContain("Connectors:");
+    expect(text).toContain("No ready video generation connectors found.");
+    expect(text).toContain("Built-in providers:");
+    expect(text).toContain("Model: fal-ai/veo3.1/fast");
+    expect(text).toContain(
+      "Use: zero built-in generate video --model veo3.1-fast -h",
+    );
+    expect(text).toContain("Model: fal-ai/veo3.1");
+    expect(text).toContain(
+      "Use: zero built-in generate video --model veo3.1 -h",
+    );
+    expect(text).toContain(
+      "Model: fal-ai/kling-video/o3/standard/text-to-video",
+    );
+    expect(text).toContain(
+      "Use: zero built-in generate video --model kling-o3-standard -h",
+    );
+    expect(text).toContain("Model: fal-ai/kling-video/v3/4k/text-to-video");
+    expect(text).toContain(
+      "Use: zero built-in generate video --model kling-v3-4k -h",
+    );
+    expect(text).toContain("Model: bytedance/seedance-2.0/text-to-video");
+    expect(text).toContain(
+      "Use: zero built-in generate video --model seedance2.0 -h",
+    );
+    expect(text).toContain("Model: bytedance/seedance-2.0/fast/text-to-video");
+    expect(text).toContain(
+      "Use: zero built-in generate video --model seedance2.0-fast -h",
+    );
+    expect(text).not.toContain("Fallback option:");
+    expect(text).not.toContain("Official provider:");
+    expect(text).not.toContain("Next actions:");
+  });
+
   it("suggests the built-in voice command when no voice connector is ready", async () => {
     server.use(
       stubConnectorsWithConfiguredTypes(
