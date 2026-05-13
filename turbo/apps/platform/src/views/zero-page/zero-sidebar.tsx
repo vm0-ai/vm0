@@ -425,7 +425,7 @@ function SidebarNavContent() {
         {/* Organization switcher */}
         <div
           className="shrink-0 px-2 pb-0"
-          style={{ paddingTop: "calc(0.375rem + env(safe-area-inset-top))" }}
+          style={{ paddingTop: "calc(0.375rem + var(--sat))" }}
         >
           <div className="flex items-center justify-between gap-2 rounded-lg py-0.5">
             <div className="min-w-0 flex-1">
