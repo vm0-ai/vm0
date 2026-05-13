@@ -86,7 +86,7 @@ function zeroToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
-  readonly capabilities?: readonly ["file:write"];
+  readonly capabilities?: readonly "file:write"[];
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
@@ -346,6 +346,30 @@ describe("POST /api/zero/image-io/generate", () => {
     });
   });
 
+  it("returns 403 when a zero token lacks file write capability", async () => {
+    const token = zeroToken({
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      runId: randomUUID(),
+      capabilities: [],
+    });
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/image-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({ prompt: "a cat" }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Missing required capability: file:write",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
   it("rejects empty prompts before OpenAI", async () => {
     const fixture = await track(seedImageFixture({ withPricing: true }));
     mocks.clerk.session(fixture.userId, fixture.orgId);
@@ -367,6 +391,38 @@ describe("POST /api/zero/image-io/generate", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toStrictEqual({
       error: { message: "prompt is required", code: "BAD_REQUEST" },
+    });
+    expect(calledOpenAi).toBeFalsy();
+  });
+
+  it("rejects transparent JPEG requests before OpenAI", async () => {
+    const fixture = await track(seedImageFixture({}));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let calledOpenAi = false;
+    server.use(
+      http.post(OPENAI_IMAGE_GENERATION_URL, () => {
+        calledOpenAi = true;
+        return HttpResponse.json({});
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "a transparent badge",
+        background: "transparent",
+        outputFormat: "jpeg",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "transparent background requires png or webp output",
+        code: "BAD_REQUEST",
+      },
     });
     expect(calledOpenAi).toBeFalsy();
   });
