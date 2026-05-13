@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.100.31](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.30...runner-rs-v0.100.31) (2026-05-13)
+
+
+### Bug Fixes
+
+* **runner:** validate setup artifacts before reporting installed ([#13075](https://github.com/vm0-ai/vm0/issues/13075)) ([cd68236](https://github.com/vm0-ai/vm0/commit/cd68236acea7bf7002be282cabe68b96c533fe10))
+
+
+### Documentation
+
+* **runner:** document network log drain producers ([#13058](https://github.com/vm0-ai/vm0/issues/13058)) ([9325b1a](https://github.com/vm0-ai/vm0/commit/9325b1ac1988c78fc4018e39d3620873dab48adb))
+
+
+### Refactoring
+
+* route sandbox exec through command operations ([#13018](https://github.com/vm0-ai/vm0/issues/13018)) ([0e5f862](https://github.com/vm0-ai/vm0/commit/0e5f862ee8e2182e23a88df6187f194171004b1f))
+* split start test support modules ([#13078](https://github.com/vm0-ai/vm0/issues/13078)) ([53c010a](https://github.com/vm0-ai/vm0/commit/53c010aa730b8ad4d5c3f285b18e81c30f317b6f))
+
 ## [0.100.30](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.29...runner-rs-v0.100.30) (2026-05-12)
 
 ## [0.100.29](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.28...runner-rs-v0.100.29) (2026-05-12)

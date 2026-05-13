@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.38.0](https://github.com/vm0-ai/vm0/compare/api-v1.37.1...api-v1.38.0) (2026-05-13)
+
+
+### Features
+
+* **api:** migrate zero chat messages route ([#13060](https://github.com/vm0-ai/vm0/issues/13060)) ([3047e83](https://github.com/vm0-ai/vm0/commit/3047e8393e2d24e6075ef3bb8643b989f08411f3))
+
+
+### Refactoring
+
+* **api:** migrate github issues callback ([#13085](https://github.com/vm0-ai/vm0/issues/13085)) ([5d627c1](https://github.com/vm0-ai/vm0/commit/5d627c1ef7bf243003e5192f9adeaf3447699a34))
+* **api:** migrate internal agent callback ([#13077](https://github.com/vm0-ai/vm0/issues/13077)) ([b40a430](https://github.com/vm0-ai/vm0/commit/b40a4301b30c5abee3d544fa282bad636b21c975))
+* **api:** migrate internal schedule callbacks ([#13084](https://github.com/vm0-ai/vm0/issues/13084)) ([f11641a](https://github.com/vm0-ai/vm0/commit/f11641a748d784f518d19043b32893bfa40b61b5))
+* **api:** migrate zero image io generate route ([#13061](https://github.com/vm0-ai/vm0/issues/13061)) ([8976c68](https://github.com/vm0-ai/vm0/commit/8976c68a6a2a277cc75982810b2a9331e5a1d77f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.15.0
+    * @vm0/core bumped to 8.271.2
+    * @vm0/db bumped to 1.7.2
+
 ## [1.37.1](https://github.com/vm0-ai/vm0/compare/api-v1.37.0...api-v1.37.1) (2026-05-12)
 
 

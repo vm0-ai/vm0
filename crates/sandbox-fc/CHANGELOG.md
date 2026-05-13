@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.29.6](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.29.5...sandbox-fc-v0.29.6) (2026-05-13)
+
+
+### Bug Fixes
+
+* avoid blocking concurrent COW slot acquisition ([#13036](https://github.com/vm0-ai/vm0/issues/13036)) ([79143ac](https://github.com/vm0-ai/vm0/commit/79143ac7edd164b026a2c894b3681ccb89f8ec50))
+
+
+### Refactoring
+
+* derive cow pool pipeline slot accounting ([#13057](https://github.com/vm0-ai/vm0/issues/13057)) ([467d3b8](https://github.com/vm0-ai/vm0/commit/467d3b88a768857f7158703e214834930ff56fbc))
+* route sandbox exec through command operations ([#13018](https://github.com/vm0-ai/vm0/issues/13018)) ([0e5f862](https://github.com/vm0-ai/vm0/commit/0e5f862ee8e2182e23a88df6187f194171004b1f))
+
 ## [0.29.5](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.29.4...sandbox-fc-v0.29.5) (2026-05-12)
 
 

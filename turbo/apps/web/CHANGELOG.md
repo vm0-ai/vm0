@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.357.0](https://github.com/vm0-ai/vm0/compare/web-v12.356.0...web-v12.357.0) (2026-05-13)
+
+
+### Features
+
+* add agentphone phone tools ([#13028](https://github.com/vm0-ai/vm0/issues/13028)) ([5bdad6f](https://github.com/vm0-ai/vm0/commit/5bdad6ff42ac79a9532c4307895b58eee20b6515))
+
+
+### Bug Fixes
+
+* keep resumed telegram context window ([#13073](https://github.com/vm0-ai/vm0/issues/13073)) ([53681ab](https://github.com/vm0-ai/vm0/commit/53681abc20717da096fb4cd323eff8a517df3f65))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.15.0
+    * @vm0/core bumped to 8.271.2
+    * @vm0/db bumped to 1.7.2
+
 ## [12.356.0](https://github.com/vm0-ai/vm0/compare/web-v12.355.1...web-v12.356.0) (2026-05-12)
 
 

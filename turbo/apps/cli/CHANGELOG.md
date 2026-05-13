@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.148.0](https://github.com/vm0-ai/vm0/compare/cli-v9.147.2...cli-v9.148.0) (2026-05-13)
+
+
+### Features
+
+* add agentphone phone tools ([#13028](https://github.com/vm0-ai/vm0/issues/13028)) ([5bdad6f](https://github.com/vm0-ai/vm0/commit/5bdad6ff42ac79a9532c4307895b58eee20b6515))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.15.0
+    * @vm0/core bumped to 8.271.2
+
 ## [9.147.2](https://github.com/vm0-ai/vm0/compare/cli-v9.147.1...cli-v9.147.2) (2026-05-12)
 
 
