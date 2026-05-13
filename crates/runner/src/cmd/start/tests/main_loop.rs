@@ -1028,7 +1028,10 @@ async fn duplicate_discovery_deduplicated() {
     // the duplicate is rejected and budget is released.
     env.handle
         .discover_tx
-        .send((run_id, "vm0/default".into()))
+        .send(crate::provider::JobCandidate::new(
+            run_id,
+            "vm0/default".into(),
+        ))
         .unwrap();
     wait_discover_entered(&env, Duration::from_secs(5)).await;
 

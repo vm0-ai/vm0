@@ -7,6 +7,7 @@
 mod api;
 mod api_ably_supervisor;
 mod local;
+pub(crate) mod local_queue;
 #[cfg(test)]
 pub mod mock;
 
@@ -15,9 +16,48 @@ pub use local::LocalProvider;
 pub(crate) use local::{JobRequest, JobResponse};
 
 use sandbox::SandboxId;
+use std::path::{Path, PathBuf};
 
 use crate::ids::RunId;
 use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
+
+/// Discovered work item ready for the non-cancellable claim phase.
+#[derive(Clone, Debug)]
+pub struct JobCandidate {
+    run_id: RunId,
+    profile_name: String,
+    local_job_path: Option<PathBuf>,
+}
+
+impl JobCandidate {
+    pub fn new(run_id: RunId, profile_name: String) -> Self {
+        Self {
+            run_id,
+            profile_name,
+            local_job_path: None,
+        }
+    }
+
+    pub(crate) fn local(run_id: RunId, profile_name: String, job_path: PathBuf) -> Self {
+        Self {
+            run_id,
+            profile_name,
+            local_job_path: Some(job_path),
+        }
+    }
+
+    pub fn run_id(&self) -> RunId {
+        self.run_id
+    }
+
+    pub fn profile_name(&self) -> &str {
+        &self.profile_name
+    }
+
+    pub(crate) fn local_job_path(&self) -> Option<&Path> {
+        self.local_job_path.as_deref()
+    }
+}
 
 /// Abstraction over job lifecycle — discovery, claiming, and completion reporting.
 ///
@@ -35,13 +75,13 @@ pub trait JobProvider: Send + Sync {
     /// Wait for the next job candidate. Returns `None` on shutdown signal.
     ///
     /// Implementations handle discovery (push/poll) internally. The returned
-    /// tuple contains the candidate `run_id` and the profile name (e.g.
-    /// `"vm0/default"`) for resource-budget pre-checking before
+    /// candidate contains the `run_id` and profile name (e.g. `"vm0/default"`)
+    /// for resource-budget pre-checking before
     /// [`claim()`](JobProvider::claim).
     ///
     /// This method has **no server-side side effects** and can be safely
     /// dropped (cancelled) at any `.await` point.
-    async fn discover(&self) -> Option<(RunId, String)>;
+    async fn discover(&self) -> Option<JobCandidate>;
 
     /// Claim a discovered job. Returns `None` if the job was already claimed
     /// by another runner or an error occurred.
@@ -49,7 +89,7 @@ pub trait JobProvider: Send + Sync {
     /// Callers **must** invoke this from a non-cancellable context (e.g.
     /// inside a `select!` branch handler) to guarantee that a successful
     /// claim is always paired with a later [`complete()`](JobProvider::complete).
-    async fn claim(&self, run_id: RunId) -> Option<ExecutionContext>;
+    async fn claim(&self, candidate: JobCandidate) -> Option<ExecutionContext>;
 
     /// Report job completion. Called concurrently from spawned executor tasks.
     ///

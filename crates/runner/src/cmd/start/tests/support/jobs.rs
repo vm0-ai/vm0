@@ -1,5 +1,6 @@
 use super::super::super::*;
 use super::env::MockRunEnv;
+use crate::provider::JobCandidate;
 
 pub(in super::super) fn minimal_context(run_id: RunId) -> crate::types::ExecutionContext {
     crate::types::ExecutionContext {
@@ -46,7 +47,7 @@ pub(in super::super) fn push_job(
     env.provider.set_claim_result(run_id, ctx);
     env.handle
         .discover_tx
-        .send((run_id, profile.into()))
+        .send(JobCandidate::new(run_id, profile.into()))
         .unwrap();
 }
 

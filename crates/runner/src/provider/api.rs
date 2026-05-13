@@ -11,8 +11,8 @@ use api_contracts::generated::routes;
 use reqwest::{RequestBuilder, Response, StatusCode};
 use serde::de::DeserializeOwned;
 
-use super::JobProvider;
 use super::api_ably_supervisor::{AblySupervisor, PollOutcome, PollWakeups};
+use super::{JobCandidate, JobProvider};
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::ids::RunId;
@@ -99,7 +99,7 @@ impl ApiProvider {
 
 #[async_trait::async_trait]
 impl JobProvider for ApiProvider {
-    async fn discover(&self) -> Option<(RunId, String)> {
+    async fn discover(&self) -> Option<JobCandidate> {
         loop {
             let due = self
                 .poll_wakeups
@@ -139,7 +139,7 @@ impl JobProvider for ApiProvider {
                         .experimental_profile
                         .unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
                     info!(run_id = %job.run_id, %profile, poll_reason = ?reason, "poll: job found");
-                    return Some((job.run_id, profile));
+                    return Some(JobCandidate::new(job.run_id, profile));
                 }
                 Ok(None) => {
                     self.poll_wakeups
@@ -156,7 +156,8 @@ impl JobProvider for ApiProvider {
         }
     }
 
-    async fn claim(&self, run_id: RunId) -> Option<ExecutionContext> {
+    async fn claim(&self, candidate: JobCandidate) -> Option<ExecutionContext> {
+        let run_id = candidate.run_id();
         match self.api.claim(run_id).await {
             Ok(ctx) => {
                 info!(run_id = %run_id, "job claimed");
@@ -535,7 +536,8 @@ mod tests {
             .expect("discover should poll after wakeup")
             .unwrap();
 
-        assert_eq!(discovered, (run_id, "vm0/default".to_string()));
+        assert_eq!(discovered.run_id(), run_id);
+        assert_eq!(discovered.profile_name(), "vm0/default");
         mock.assert_async().await;
     }
 
@@ -582,7 +584,8 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(discovered, (second_run_id, "vm0/default".to_string()));
+        assert_eq!(discovered.run_id(), second_run_id);
+        assert_eq!(discovered.profile_name(), "vm0/default");
         server_task.await.unwrap();
     }
 
