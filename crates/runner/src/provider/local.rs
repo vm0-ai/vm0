@@ -445,6 +445,14 @@ impl JobProvider for LocalProvider {
             }
         };
 
+        if req.job_id != run_id {
+            let error = format!("job id mismatch: request={}, filename={run_id}", req.job_id);
+            warn!(run_id = %run_id, error = %error, "local: invalid job id");
+            self.fail_claimed_job(run_id, &claim_file, &job_file, error)
+                .await;
+            return None;
+        }
+
         let request_profile = match req.profile.clone() {
             Some(profile) => profile,
             None if partition_profile == crate::profile::DEFAULT_PROFILE => {
@@ -1278,6 +1286,54 @@ mod tests {
 
         // Next discover() scan must not re-surface the job.
         assert!(provider.find_unclaimed_job().is_none());
+    }
+
+    #[tokio::test]
+    async fn claim_rejects_job_id_mismatch() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = default_provider(dir.path(), cancel, empty_cancel_tokens());
+
+        let filename_id = RunId::new_v4();
+        let request_id = RunId::new_v4();
+        write_job_in_partition(
+            dir.path(),
+            crate::profile::DEFAULT_PROFILE,
+            request_id,
+            "mismatch",
+            Some(crate::profile::DEFAULT_PROFILE),
+        );
+        let request_path =
+            local_queue::job_path(dir.path(), crate::profile::DEFAULT_PROFILE, request_id).unwrap();
+        let job_path =
+            local_queue::job_path(dir.path(), crate::profile::DEFAULT_PROFILE, filename_id)
+                .unwrap();
+        std::fs::rename(&request_path, &job_path).unwrap();
+
+        let candidate = provider.discover().await.unwrap();
+        assert_eq!(candidate.run_id(), filename_id);
+        assert!(provider.claim(candidate).await.is_none());
+
+        assert!(
+            !local_queue::claim_path(dir.path(), filename_id).exists(),
+            "claim file must be removed after rejecting mismatched job"
+        );
+        assert!(
+            !job_path.exists(),
+            "mismatched job file must be removed after terminal result"
+        );
+        let result = read_result(dir.path(), filename_id);
+        assert_ne!(result.exit_code, 0);
+        assert!(
+            result
+                .error
+                .as_deref()
+                .is_some_and(|e| e.contains("job id mismatch"))
+        );
+        assert!(
+            !local_queue::result_path(dir.path(), request_id).exists(),
+            "the embedded request id must not receive the result"
+        );
     }
 
     #[tokio::test]
