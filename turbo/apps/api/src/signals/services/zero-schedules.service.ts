@@ -279,7 +279,11 @@ function resolveTrigger(
   if (request.cronExpression) {
     return {
       triggerType: "cron",
-      nextRunAt: calculateNextRun(request.cronExpression, request.timezone),
+      nextRunAt: calculateNextRun(
+        request.cronExpression,
+        request.timezone,
+        currentTime,
+      ),
     };
   }
   if (request.atTime) {

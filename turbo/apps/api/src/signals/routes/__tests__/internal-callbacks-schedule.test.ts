@@ -363,7 +363,7 @@ describe("POST /api/internal/callbacks/schedule/*", () => {
     expect(updated?.consecutiveFailures).toBe(0);
     expect(updated?.enabled).toBeTruthy();
     expect(updated?.nextRunAt?.toISOString()).toBe(
-      calculateNextRun("0 9 * * *", "UTC")?.toISOString(),
+      calculateNextRun("0 9 * * *", "UTC", completedAt)?.toISOString(),
     );
     await expect(runSummary(runId)).resolves.toBe(
       "Schedule produced a report.",
