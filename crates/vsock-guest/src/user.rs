@@ -270,6 +270,15 @@ mod tests {
         assert_eq!(credentials.groups, vec![2000]);
     }
 
+    #[cfg(any(debug_assertions, feature = "test-support"))]
+    #[test]
+    fn sandbox_user_gid_is_unavailable_in_local_builds() {
+        let err = sandbox_user_gid().unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::Other);
+        assert!(err.to_string().contains("sandbox user gid is unavailable"));
+    }
+
     #[test]
     fn parse_user_credentials_fails_when_user_missing() {
         let err =
