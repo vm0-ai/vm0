@@ -1,4 +1,10 @@
-import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLastLoadable,
+  useLastResolved,
+  useLoadable,
+} from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -6,8 +12,10 @@ import {
   IconCircleCheck,
   IconDotsVertical,
   IconDownload,
+  IconMessageCircle,
   IconSettings,
 } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Button } from "@vm0/ui";
 import {
   Popover,
@@ -31,6 +39,8 @@ import {
   setShowUninstallDialog$,
 } from "../../signals/zero-page/zero-slack.ts";
 import { telegramBots$ } from "../../signals/zero-page/zero-telegram.ts";
+import { agentPhoneLinkStatus$ } from "../../signals/zero-page/zero-agentphone.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
@@ -310,8 +320,53 @@ function TelegramCard() {
   );
 }
 
+function AgentPhoneCard() {
+  const statusLoadable = useLastLoadable(agentPhoneLinkStatus$);
+  const status =
+    statusLoadable.state === "hasData" ? statusLoadable.data : null;
+  const summary = status?.linked
+    ? `${status.phoneHandle} connected`
+    : "Text-message access to Zero";
+
+  return (
+    <Link
+      pathname={ROUTES.settingsAgentPhone}
+      className="zero-card flex flex-col text-inherit no-underline transition-colors hover:bg-muted/30"
+      aria-label="Open AgentPhone settings"
+    >
+      <div className="flex items-center gap-4 p-4">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <IconMessageCircle size={18} stroke={1.7} />
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="truncate text-sm font-medium text-foreground">
+              AgentPhone
+            </div>
+            {status?.linked ? (
+              <span className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-border bg-background px-1.5 py-0.5 text-xs font-medium text-secondary-foreground">
+                <IconCircleCheck className="h-3 w-3 text-green-600" />
+                Connected
+              </span>
+            ) : null}
+          </div>
+          <div className="truncate text-sm text-muted-foreground">
+            {summary}
+          </div>
+        </div>
+        <span className="shrink-0 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-secondary-foreground">
+          <IconSettings size={14} stroke={1.5} />
+          Manage
+        </span>
+      </div>
+    </Link>
+  );
+}
+
 export function ZeroWorksPage() {
   const displayNameLoadable = useLoadable(currentChatAgentDisplayName$);
+  const features = useLastResolved(featureSwitch$);
+  const showAgentPhone = features?.[FeatureSwitchKey.AgentPhoneAppUi] ?? false;
   const displayName =
     displayNameLoadable.state === "hasData"
       ? (displayNameLoadable.data ?? "Zero")
@@ -334,6 +389,7 @@ export function ZeroWorksPage() {
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
           <SlackCard displayName={displayName} />
           <TelegramCard />
+          {showAgentPhone ? <AgentPhoneCard /> : null}
         </div>
       </main>
     </div>

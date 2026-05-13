@@ -1,5 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
+import type { ReactNode } from "react";
 import {
   useGet,
   useSet,
@@ -35,6 +36,7 @@ import {
   onboardingDisplayName$,
   onboardingAddToSlack$,
   onboardingBackendWillAuthorizeConnectors$,
+  onboardingContinueAgentPhone$,
   onboardingContinueWeb$,
   onboardingContinueTelegram$,
   onboardingEffectiveStep$,
@@ -49,6 +51,7 @@ import {
   onboardingStepBack$,
   onboardingStepNext$,
   onboardingIsAdmin$,
+  onboardingShowAgentPhone$,
   onboardingShowTelegram$,
 } from "../../signals/zero-page/zero-onboarding-actions.ts";
 import {
@@ -66,6 +69,7 @@ import {
   IconCircleCheck,
   IconCircleCheckFilled,
   IconLoader,
+  IconMessageCircle,
   IconSearch,
 } from "@tabler/icons-react";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -403,30 +407,81 @@ function UseCasePromptComposer() {
 // Where to work step content
 // ---------------------------------------------------------------------------
 
+interface WhereToWorkLoadable {
+  readonly state: string;
+  readonly error?: unknown;
+}
+
+function getWhereToWorkError(
+  loadables: readonly WhereToWorkLoadable[],
+): string | null {
+  const failed = loadables.find((loadable) => {
+    return loadable.state === "hasError";
+  });
+  return failed ? String(failed.error) : null;
+}
+
+function WhereToWorkOption({
+  icon,
+  title,
+  description,
+  disabled,
+  testId,
+  onClick,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  disabled: boolean;
+  testId?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      onClick={onClick}
+      disabled={disabled}
+      className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
+    >
+      {icon}
+      <div className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-foreground">
+          {title}
+        </span>
+        <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
+          {description}
+        </p>
+      </div>
+    </button>
+  );
+}
+
 function WhereToWorkContent() {
   const name = useLastResolved(onboardingDisplayName$) ?? "Zero";
   const showTelegram = useLastResolved(onboardingShowTelegram$) ?? false;
+  const showAgentPhone = useLastResolved(onboardingShowAgentPhone$) ?? false;
 
   const [slackLoadable, addToSlack] = useLoadableSet(onboardingAddToSlack$);
   const [webLoadable, continueWeb] = useLoadableSet(onboardingContinueWeb$);
   const [telegramLoadable, continueTelegram] = useLoadableSet(
     onboardingContinueTelegram$,
   );
+  const [agentPhoneLoadable, continueAgentPhone] = useLoadableSet(
+    onboardingContinueAgentPhone$,
+  );
 
   const pageSignal = useGet(pageSignal$);
-
-  const saving =
-    slackLoadable.state === "loading" ||
-    webLoadable.state === "loading" ||
-    telegramLoadable.state === "loading";
-  const error =
-    slackLoadable.state === "hasError"
-      ? String(slackLoadable.error)
-      : webLoadable.state === "hasError"
-        ? String(webLoadable.error)
-        : telegramLoadable.state === "hasError"
-          ? String(telegramLoadable.error)
-          : null;
+  const loadables = [
+    slackLoadable,
+    webLoadable,
+    telegramLoadable,
+    agentPhoneLoadable,
+  ];
+  const saving = loadables.some((loadable) => {
+    return loadable.state === "loading";
+  });
+  const error = getWhereToWorkError(loadables);
 
   return (
     <>
@@ -445,75 +500,67 @@ function WhereToWorkContent() {
         </div>
       )}
       <div className="flex flex-col gap-5 w-full">
-        <button
-          type="button"
+        <WhereToWorkOption
+          icon={
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted/40 overflow-hidden">
+              <img src={slackIcon} alt="" className="h-6 w-6 scale-[2.2]" />
+            </span>
+          }
+          title={`Add ${name || "Zero"} to Slack`}
+          description={`Work with ${name || "Zero"} in Slack where your team already collaborates.`}
+          disabled={saving}
           onClick={() => {
             detach(addToSlack(pageSignal), Reason.DomCallback);
           }}
-          disabled={saving}
-          className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
-        >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted/40 overflow-hidden">
-            <img src={slackIcon} alt="" className="h-6 w-6 scale-[2.2]" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold text-foreground">
-              Add {name || "Zero"} to Slack
-            </span>
-            <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
-              Work with {name || "Zero"} in Slack where your team already
-              collaborates.
-            </p>
-          </div>
-        </button>
+        />
         {showTelegram && (
-          <button
-            type="button"
+          <WhereToWorkOption
+            icon={
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden">
+                <img src={telegramIcon} alt="" className="h-7 w-7" />
+              </span>
+            }
+            title={`Add ${name || "Zero"} to Telegram`}
+            description={`Work with ${name || "Zero"} in Telegram where your team already collaborates.`}
+            disabled={saving}
             onClick={() => {
               detach(continueTelegram(pageSignal), Reason.DomCallback);
             }}
-            disabled={saving}
-            className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
-          >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden">
-              <img src={telegramIcon} alt="" className="h-7 w-7" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold text-foreground">
-                Add {name || "Zero"} to Telegram
-              </span>
-              <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
-                Work with {name || "Zero"} in Telegram where your team already
-                collaborates.
-              </p>
-            </div>
-          </button>
+          />
         )}
-        <button
-          type="button"
+        {showAgentPhone && (
+          <WhereToWorkOption
+            icon={
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <IconMessageCircle size={22} stroke={1.8} />
+              </span>
+            }
+            title={`Add ${name || "Zero"} to AgentPhone`}
+            description={`Work with ${name || "Zero"} through text messages from your phone.`}
+            disabled={saving}
+            testId="onboarding-agentphone-option"
+            onClick={() => {
+              detach(continueAgentPhone(pageSignal), Reason.DomCallback);
+            }}
+          />
+        )}
+        <WhereToWorkOption
+          icon={
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden">
+              <AvatarSvgPreview
+                config={getAvatarPresets()[0]}
+                size={40}
+                className="rounded-lg"
+              />
+            </span>
+          }
+          title="Continue in web"
+          description={`Chat with ${name || "Zero"} in your browser with full access to workflows and settings.`}
+          disabled={saving}
           onClick={() => {
             detach(continueWeb(pageSignal), Reason.DomCallback);
           }}
-          disabled={saving}
-          className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
-        >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden">
-            <AvatarSvgPreview
-              config={getAvatarPresets()[0]}
-              size={40}
-              className="rounded-lg"
-            />
-          </span>
-          <div className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold text-foreground">
-              Continue in web
-            </span>
-            <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
-              Chat with {name || "Zero"} in your browser with full access to
-              workflows and settings.
-            </p>
-          </div>
-        </button>
+        />
       </div>
     </>
   );

@@ -217,6 +217,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.AgentPhoneAppUi]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Show first-class AgentPhone app surfaces: settings, Works card, and onboarding entry points.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatMessageStartButton]: {
     maintainer: "linghan@vm0.ai",
     description:

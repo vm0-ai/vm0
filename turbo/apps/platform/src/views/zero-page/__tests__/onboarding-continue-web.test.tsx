@@ -17,6 +17,7 @@ import {
 } from "@vm0/api-contracts/contracts/onboarding";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 const context = testContext();
 const mockApi = createMockApi(context);
 
@@ -308,6 +309,33 @@ describe("onboarding set up Telegram → settings page", () => {
 
     await waitFor(() => {
       expect(pathname()).toBe("/settings/telegram");
+    });
+  });
+});
+
+describe("onboarding set up AgentPhone → settings page", () => {
+  it("shows AgentPhone only when enabled and navigates after saving the agent", async () => {
+    mockAdminOnboarding();
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding",
+      featureSwitches: { [FeatureSwitchKey.AgentPhoneAppUi]: true },
+    });
+    await walkAdminToWhereStep();
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("onboarding-agentphone-option"),
+      ).toBeInTheDocument();
+    });
+
+    switchToAdminComplete();
+
+    click(screen.getByTestId("onboarding-agentphone-option"));
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/settings/agentphone");
     });
   });
 });

@@ -1,4 +1,5 @@
 import { command, computed } from "ccstate";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   zeroNeedsOnboarding$,
   zeroNeedsMemberOnboarding$,
@@ -29,6 +30,7 @@ import { reloadAgentById$, reloadAgents$ } from "../agent.ts";
 import { reloadPinnedAgents$ } from "./zero-pinned-agents.ts";
 import { showAppSkeleton$, startSkeletonCycling$ } from "../app-skeleton.ts";
 import { sendNewThreadOptimistically$ } from "../chat-page/optimistic-chat-thread-page.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { resolveModelFirstUserDefaultSelection } from "./model-default-selection.ts";
@@ -311,6 +313,11 @@ export const onboardingShowTelegram$ = computed(() => {
   return true;
 });
 
+export const onboardingShowAgentPhone$ = computed((get) => {
+  const features = get(featureSwitch$);
+  return features[FeatureSwitchKey.AgentPhoneAppUi] ?? false;
+});
+
 export const completeOnboarding$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(reloadBillingStatus$);
@@ -502,6 +509,25 @@ export const onboardingContinueTelegram$ = command(
         }
 
         set(detachedNavigateTo$, ROUTES.settingsTelegram);
+      })(),
+    ]);
+  },
+);
+
+export const onboardingContinueAgentPhone$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    set(showAppSkeleton$);
+
+    await Promise.all([
+      set(startSkeletonCycling$, signal),
+      (async () => {
+        const agentId = await set(completeOnboarding$, signal);
+
+        if (!agentId) {
+          return;
+        }
+
+        set(detachedNavigateTo$, ROUTES.settingsAgentPhone);
       })(),
     ]);
   },

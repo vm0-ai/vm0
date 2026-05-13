@@ -18,8 +18,10 @@ import {
   zeroIntegrationsSlackContract,
   type SlackOrgStatus,
 } from "@vm0/api-contracts/contracts/zero-integrations-slack";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { pathname$ } from "../../../signals/route.ts";
+import { setMockAgentPhoneIntegration } from "../../../mocks/handlers/api-integrations-agentphone.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -117,6 +119,48 @@ describe("works page - telegram integration card", () => {
 
     await waitFor(() => {
       expect(context.store.get(pathname$)).toBe("/settings/telegram");
+    });
+  });
+});
+
+describe("works page - AgentPhone integration card", () => {
+  it("hides AgentPhone when the feature switch is off", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    detachedSetupPage({
+      context,
+      path: "/works",
+      featureSwitches: { [FeatureSwitchKey.AgentPhoneAppUi]: false },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Telegram")).toBeInTheDocument();
+      expect(screen.queryByText("AgentPhone")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows AgentPhone connection status and opens settings", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    setMockAgentPhoneIntegration({
+      linked: true,
+      phoneHandle: "+15555551212",
+      agentPhoneNumber: "+19039853128",
+      configured: true,
+    });
+    detachedSetupPage({
+      context,
+      path: "/works",
+      featureSwitches: { [FeatureSwitchKey.AgentPhoneAppUi]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("AgentPhone")).toBeInTheDocument();
+      expect(screen.getByText("+15555551212 connected")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open AgentPhone settings"));
+
+    await waitFor(() => {
+      expect(context.store.get(pathname$)).toBe("/settings/agentphone");
     });
   });
 });
