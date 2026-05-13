@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.37](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.36...runner-rs-v0.100.37) (2026-05-13)
+
+
+### Bug Fixes
+
+* enable built-in openai codex billing ([#13193](https://github.com/vm0-ai/vm0/issues/13193)) ([616ad30](https://github.com/vm0-ai/vm0/commit/616ad30f79a0e046ece9a62ea8b195d1bfe6b407))
+
 ## [0.100.36](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.35...runner-rs-v0.100.36) (2026-05-13)
 
 ## [0.100.35](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.34...runner-rs-v0.100.35) (2026-05-13)

@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.43.1](https://github.com/vm0-ai/vm0/compare/api-v1.43.0...api-v1.43.1) (2026-05-13)
+
+
+### Bug Fixes
+
+* enable built-in openai codex billing ([#13193](https://github.com/vm0-ai/vm0/issues/13193)) ([616ad30](https://github.com/vm0-ai/vm0/commit/616ad30f79a0e046ece9a62ea8b195d1bfe6b407))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.19.1
+    * @vm0/connectors bumped to 1.9.0
+    * @vm0/core bumped to 8.274.2
+    * @vm0/db bumped to 1.9.3
+
 ## [1.43.0](https://github.com/vm0-ai/vm0/compare/api-v1.42.1...api-v1.43.0) (2026-05-13)
 
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.352.0](https://github.com/vm0-ai/vm0/compare/app-v0.351.0...app-v0.352.0) (2026-05-13)
+
+
+### Features
+
+* add 6 API-token connectors (sendgrid, twilio, browserstack, testrail, servicenow, altium-365) ([#13195](https://github.com/vm0-ai/vm0/issues/13195)) ([a688fd0](https://github.com/vm0-ai/vm0/commit/a688fd0833f7a35fff9e87039dc30c7a9184d1cd))
+
+
+### Bug Fixes
+
+* enable built-in openai codex billing ([#13193](https://github.com/vm0-ai/vm0/issues/13193)) ([616ad30](https://github.com/vm0-ai/vm0/commit/616ad30f79a0e046ece9a62ea8b195d1bfe6b407))
+* **platform:** unblock e2e onboarding by fixing eager-init step race ([#13197](https://github.com/vm0-ai/vm0/issues/13197)) ([dc0d59c](https://github.com/vm0-ai/vm0/commit/dc0d59ccfe36b98a323ab115f7278c541eebacc4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.19.1
+    * @vm0/connectors bumped to 1.9.0
+    * @vm0/core bumped to 8.274.2
+
 ## [0.351.0](https://github.com/vm0-ai/vm0/compare/app-v0.350.0...app-v0.351.0) (2026-05-13)
 
 
