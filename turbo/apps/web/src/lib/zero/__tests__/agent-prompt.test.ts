@@ -30,6 +30,18 @@ describe("buildAgentPrompt", () => {
       "When the user asks to generate anything (for example, image, video, audio, or website)",
     );
     expect(prompt).toContain("run `zero doctor generate -h`");
+    expect(prompt).toContain("zero built-in generate image --prompt");
+    expect(prompt).toContain("Model: OpenAI `gpt-image-2`");
+    expect(prompt).toContain("up to 32,000 characters");
+    expect(prompt).toContain("1024x1024");
+    expect(prompt).toContain("1024x1536");
+    expect(prompt).toContain("1536x1024");
+    expect(prompt).toContain(
+      "`--quality`: `low`, `medium` (default), `high`, or `auto`",
+    );
+    expect(prompt).toContain(
+      "Transparent backgrounds require `--format png` or `webp` (not `jpeg`)",
+    );
     expect(prompt).toContain(
       "Do not present a local path as something the user can open",
     );

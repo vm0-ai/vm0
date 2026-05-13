@@ -12,6 +12,7 @@ import {
   formatAgentPhoneAuditLink,
   resolveAgentPhoneReplyFooterText,
 } from "../../../../../src/lib/zero/agentphone/footer";
+import { markdownToImessagePlain } from "../../../../../src/lib/zero/agentphone/format";
 import {
   resolveAgentPhoneUserLink,
   saveAgentPhoneThreadSession,
@@ -89,7 +90,7 @@ function buildAgentPhoneCompletionText(params: {
       : (params.error ?? "The agent encountered an error during execution.");
 
   return [
-    main,
+    markdownToImessagePlain(main),
     params.logsUrl ? formatAgentPhoneAuditLink(params.logsUrl) : null,
     params.footerText,
   ]
