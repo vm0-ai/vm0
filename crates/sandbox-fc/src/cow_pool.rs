@@ -533,9 +533,15 @@ impl CowPool {
         let elapsed_ms = outcome.elapsed.as_millis() as u64;
         match outcome.result {
             Ok(slot) => {
+                let slot_id = slot.id.clone();
                 self.warm_retry_at = None;
+                if self.active {
+                    self.ready.push_back(slot);
+                } else {
+                    drop(slot);
+                }
                 info!(
-                    id = %slot.id,
+                    id = %slot_id,
                     purpose = ?outcome.purpose,
                     elapsed_ms,
                     ready = self.ready.len(),
@@ -544,11 +550,6 @@ impl CowPool {
                     pipeline_slots = self.pipeline_slots(),
                     "COW slot created"
                 );
-                if self.active {
-                    self.ready.push_back(slot);
-                } else {
-                    drop(slot);
-                }
             }
             Err(e) => {
                 error!(
@@ -629,14 +630,6 @@ impl CowPool {
 
         while let Some(completion) = self.pending.join_next().await {
             self.handle_cleanup_completion(completion);
-        }
-
-        let pipeline_slots = self.pipeline_slots();
-        if pipeline_slots != 0 {
-            warn!(
-                pipeline_slots,
-                "COW pool cleanup finished with nonzero pipeline accounting"
-            );
         }
 
         info!(
