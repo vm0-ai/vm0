@@ -1070,10 +1070,14 @@ mod tests {
         let (dir, _guard) = temp_dir("pg");
         let ready = dir.join("ready");
         let background_pid = dir.join("background-pid");
+        let background_fifo = dir.join("background-fifo");
         let ready_arg = shell_escape_value(ready.to_str().unwrap());
         let background_pid_arg = shell_escape_value(background_pid.to_str().unwrap());
+        let background_fifo_arg = shell_escape_value(background_fifo.to_str().unwrap());
         let script = format!(
-            "trap '' HUP; sleep 60 & echo $! > {background_pid_arg}; touch {ready_arg}; wait"
+            "trap '' HUP; mkfifo {background_fifo_arg}; \
+             (read _ < {background_fifo_arg}) & echo $! > {background_pid_arg}; \
+             exec 3> {background_fifo_arg}; touch {ready_arg}; wait"
         );
 
         let mut command = build_exec_command(&script, false);
