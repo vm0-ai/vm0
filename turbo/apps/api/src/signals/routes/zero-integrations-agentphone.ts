@@ -26,6 +26,12 @@ interface AgentPhoneConfig {
   readonly configured: boolean;
 }
 
+interface ConfiguredAgentPhoneConfig extends AgentPhoneConfig {
+  readonly agentphoneAgentId: string;
+  readonly apiBaseUrl: string;
+  readonly apiKey: string;
+}
+
 const agentPhoneAuthOptions = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
@@ -258,6 +264,87 @@ const getLinkStatus$ = computed(async (get) => {
   };
 });
 
+const sendAgentPhoneVerificationText$ = command(
+  async (
+    { set },
+    params: {
+      readonly config: ConfiguredAgentPhoneConfig;
+      readonly cooldownKeys: readonly VerificationSendCooldownKey[];
+      readonly phoneHandle: string;
+      readonly connectUrl: string;
+    },
+    signal: AbortSignal,
+  ) => {
+    const sendResult = await set(writeDb$).transaction(async (tx) => {
+      const sentAt = new Date(now());
+      const cooldownCutoff = sentAt.getTime() - VERIFICATION_SEND_COOLDOWN_MS;
+
+      for (const key of params.cooldownKeys) {
+        await tx
+          .insert(agentphoneVerificationSendCooldowns)
+          .values({
+            scope: key.scope,
+            scopeKey: key.scopeKey,
+          })
+          .onConflictDoNothing();
+
+        const [cooldown] = await tx
+          .select({
+            lastSentAt: agentphoneVerificationSendCooldowns.lastSentAt,
+          })
+          .from(agentphoneVerificationSendCooldowns)
+          .where(
+            and(
+              eq(agentphoneVerificationSendCooldowns.scope, key.scope),
+              eq(agentphoneVerificationSendCooldowns.scopeKey, key.scopeKey),
+            ),
+          )
+          .for("update")
+          .limit(1);
+        signal.throwIfAborted();
+
+        if (
+          cooldown?.lastSentAt &&
+          cooldown.lastSentAt.getTime() > cooldownCutoff
+        ) {
+          return { ok: false as const, response: tooManyVerificationTexts() };
+        }
+      }
+
+      const sent = await sendAgentPhoneMessage({
+        config: params.config,
+        toNumber: params.phoneHandle,
+        body: `Confirm this phone number for VM0: ${params.connectUrl}`,
+        signal,
+      }).catch(() => {
+        return false;
+      });
+      signal.throwIfAborted();
+
+      if (!sent) {
+        return { ok: false as const, response: unavailable() };
+      }
+
+      for (const key of params.cooldownKeys) {
+        await tx
+          .update(agentphoneVerificationSendCooldowns)
+          .set({ lastSentAt: sentAt, updatedAt: sentAt })
+          .where(
+            and(
+              eq(agentphoneVerificationSendCooldowns.scope, key.scope),
+              eq(agentphoneVerificationSendCooldowns.scopeKey, key.scopeKey),
+            ),
+          );
+      }
+
+      return { ok: true as const };
+    });
+    signal.throwIfAborted();
+
+    return sendResult;
+  },
+);
+
 const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
   const gate = await get(requireAgentPhoneUi$);
   signal.throwIfAborted();
@@ -328,76 +415,21 @@ const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
     userId: gate.auth.userId,
     phoneHandle,
   });
-  const sendResult = await set(writeDb$).transaction(async (tx) => {
-    const sentAt = new Date(now());
-    const cooldownCutoff = sentAt.getTime() - VERIFICATION_SEND_COOLDOWN_MS;
-
-    for (const key of cooldownKeys) {
-      await tx
-        .insert(agentphoneVerificationSendCooldowns)
-        .values({
-          scope: key.scope,
-          scopeKey: key.scopeKey,
-        })
-        .onConflictDoNothing();
-
-      const [cooldown] = await tx
-        .select({
-          lastSentAt: agentphoneVerificationSendCooldowns.lastSentAt,
-        })
-        .from(agentphoneVerificationSendCooldowns)
-        .where(
-          and(
-            eq(agentphoneVerificationSendCooldowns.scope, key.scope),
-            eq(agentphoneVerificationSendCooldowns.scopeKey, key.scopeKey),
-          ),
-        )
-        .for("update")
-        .limit(1);
-      signal.throwIfAborted();
-
-      if (
-        cooldown?.lastSentAt &&
-        cooldown.lastSentAt.getTime() > cooldownCutoff
-      ) {
-        return { ok: false as const, response: tooManyVerificationTexts() };
-      }
-    }
-
-    const sent = await sendAgentPhoneMessage({
+  const sendResult = await set(
+    sendAgentPhoneVerificationText$,
+    {
       config: {
         ...config,
         agentphoneAgentId,
         apiBaseUrl,
         apiKey,
       },
-      toNumber: phoneHandle,
-      body: `Confirm this phone number for VM0: ${connectUrl}`,
-      signal,
-    }).catch(() => {
-      return false;
-    });
-    signal.throwIfAborted();
-
-    if (!sent) {
-      return { ok: false as const, response: unavailable() };
-    }
-
-    for (const key of cooldownKeys) {
-      await tx
-        .update(agentphoneVerificationSendCooldowns)
-        .set({ lastSentAt: sentAt, updatedAt: sentAt })
-        .where(
-          and(
-            eq(agentphoneVerificationSendCooldowns.scope, key.scope),
-            eq(agentphoneVerificationSendCooldowns.scopeKey, key.scopeKey),
-          ),
-        );
-    }
-
-    return { ok: true as const };
-  });
-  signal.throwIfAborted();
+      cooldownKeys,
+      phoneHandle,
+      connectUrl,
+    },
+    signal,
+  );
 
   if (!sendResult.ok) {
     return sendResult.response;
