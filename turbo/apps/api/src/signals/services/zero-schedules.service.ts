@@ -85,9 +85,9 @@ function scheduleResponse(
 export function calculateNextRun(
   cronExpression: string,
   timezone: string,
-  startFrom: Date = nowDate(),
+  fromDate: Date,
 ): Date | null {
-  return new Cron(cronExpression, { timezone }).nextRun(startFrom);
+  return new Cron(cronExpression, { timezone }).nextRun(fromDate);
 }
 
 type OwnershipResult =
@@ -254,7 +254,11 @@ export const enableSchedule$ = command(
     if (schedule.triggerType === "loop") {
       nextRunAt = now;
     } else if (schedule.cronExpression) {
-      nextRunAt = calculateNextRun(schedule.cronExpression, schedule.timezone);
+      nextRunAt = calculateNextRun(
+        schedule.cronExpression,
+        schedule.timezone,
+        now,
+      );
     } else if (schedule.atTime) {
       if (schedule.atTime > now) {
         nextRunAt = schedule.atTime;
