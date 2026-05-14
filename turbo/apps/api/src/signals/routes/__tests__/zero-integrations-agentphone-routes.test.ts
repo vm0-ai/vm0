@@ -600,10 +600,10 @@ describe("AgentPhone migrated API routes", () => {
       phoneHandle,
       userLinkId,
       agentphoneAgentId: "agt-agentphone",
-      mediaUrl: "https://media.agentphone.test/photo.png",
+      mediaUrl: "https://media.agentphone.test/photo%20one.png",
     });
     server.use(
-      http.get("https://media.agentphone.test/photo.png", () => {
+      http.get("https://media.agentphone.test/photo%20one.png", () => {
         return new HttpResponse("png-bytes", {
           status: 200,
           headers: {
@@ -631,7 +631,7 @@ describe("AgentPhone migrated API routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("image/png");
-    expect(response.headers.get("x-file-name")).toBe("photo.png");
+    expect(response.headers.get("x-file-name")).toBe("photo%20one.png");
     await expect(response.text()).resolves.toBe("png-bytes");
   });
 

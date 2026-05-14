@@ -38,7 +38,7 @@ import {
   sendAgentPhoneMessage,
   sendAgentPhoneTypingIndicator,
 } from "../external/agentphone-client";
-import { safeAsync, safeDecodeURIComponent, safeUrlParse } from "../utils";
+import { safeAsync, safeUrlParse } from "../utils";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
@@ -893,7 +893,50 @@ export function agentPhoneFilenameFromMediaUrl(
     return fallback;
   }
   const filename = url.pathname.split("/").filter(Boolean).pop();
-  return filename ? (safeDecodeURIComponent(filename) ?? filename) : fallback;
+  return filename ? decodePathSegment(filename) : fallback;
+}
+
+function parseHexByte(input: string): number | undefined {
+  return /^[0-9a-fA-F]{2}$/u.test(input)
+    ? Number.parseInt(input, 16)
+    : undefined;
+}
+
+function decodePathSegment(input: string): string {
+  const decoder = new TextDecoder();
+  let output = "";
+  let index = 0;
+
+  while (index < input.length) {
+    const char = input[index];
+    if (char !== "%") {
+      output += char ?? "";
+      index += 1;
+      continue;
+    }
+
+    const bytes: number[] = [];
+    let cursor = index;
+    while (cursor + 2 < input.length && input[cursor] === "%") {
+      const byte = parseHexByte(input.slice(cursor + 1, cursor + 3));
+      if (byte === undefined) {
+        break;
+      }
+      bytes.push(byte);
+      cursor += 3;
+    }
+
+    if (bytes.length === 0) {
+      output += "%";
+      index += 1;
+      continue;
+    }
+
+    output += decoder.decode(Uint8Array.from(bytes));
+    index = cursor;
+  }
+
+  return output;
 }
 
 function formatAgentPhoneFileForContext(params: {
