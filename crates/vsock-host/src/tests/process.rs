@@ -293,6 +293,66 @@ async fn test_malformed_unsolicited_process_frames_are_ignored() {
     assert_eq!(event.stdout, b"after-malformed");
 }
 
+async fn assert_lifecycle_before_result_closes(
+    msg_type: u8,
+    payload: Vec<u8>,
+    stream_stdout: bool,
+) {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let mut buf = [0u8; 4096];
+        let n = guest.read(&mut buf).await.unwrap();
+        let msgs = decoder.decode(&buf[..n]).unwrap();
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        let spawn_seq = msgs[0].seq;
+
+        let frame = vsock_proto::encode(msg_type, spawn_seq, &payload).unwrap();
+        guest.write_all(&frame).await.unwrap();
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let result = tokio::time::timeout(
+        Duration::from_secs(5),
+        host.spawn_watch("early-lifecycle", 0, &[], false, stream_stdout, None),
+    )
+    .await
+    .expect("pre-result lifecycle frame should close connection promptly");
+    let err = result.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    assert_eq!(
+        registration_counts(&host),
+        (0, 0, 0),
+        "pre-result lifecycle frame must clean all registrations",
+    );
+}
+
+#[tokio::test]
+async fn test_stdout_chunk_before_spawn_watch_result_closes_and_cleans_up() {
+    assert_lifecycle_before_result_closes(
+        MSG_STDOUT_CHUNK,
+        vsock_proto::encode_stdout_chunk(777, b"early stdout"),
+        true,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_process_exit_before_spawn_watch_result_closes_and_cleans_up() {
+    assert_lifecycle_before_result_closes(
+        MSG_PROCESS_EXIT,
+        vsock_proto::encode_process_exit(777, 0, b"early stdout", b""),
+        false,
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn test_dropped_stdout_receiver_removes_stream_sender() {
     let (host_stream, mut guest) = make_pair();

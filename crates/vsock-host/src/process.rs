@@ -89,6 +89,21 @@ fn validate_lifecycle_pid(
     Ok(())
 }
 
+fn require_recorded_lifecycle_pid(
+    frame: &'static str,
+    expected: Option<u32>,
+    actual: u32,
+) -> io::Result<u32> {
+    let expected = expected.ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{frame} arrived before spawn_watch_result for pid {actual}"),
+        )
+    })?;
+    validate_lifecycle_pid(frame, Some(expected), actual)?;
+    Ok(expected)
+}
+
 /// Process lifecycle state after the vsock connection has closed.
 pub(crate) struct ClosedProcessState;
 
@@ -232,7 +247,7 @@ pub(crate) fn dispatch_stdout_chunk(shared: &Arc<Shared>, msg: &RawMessage) -> i
         };
         let (pid, data) = vsock_proto::decode_stdout_chunk(&msg.payload)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        validate_lifecycle_pid("stdout_chunk", operation.pid, pid)?;
+        require_recorded_lifecycle_pid("stdout_chunk", operation.pid, pid)?;
         (operation.stdout_tx.clone(), data)
     };
 
@@ -262,11 +277,10 @@ pub(crate) fn dispatch_process_exit(shared: &Arc<Shared>, msg: &RawMessage) -> i
         let expected_pid = operation.pid;
         let (pid, exit_code, stdout, stderr) = vsock_proto::decode_process_exit(&msg.payload)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        validate_lifecycle_pid("process_exit", expected_pid, pid)?;
+        let pid = require_recorded_lifecycle_pid("process_exit", expected_pid, pid)?;
         let Some(operation) = process.take_operation(msg.seq) else {
             return Ok(());
         };
-        let pid = operation.pid.unwrap_or(pid);
         (operation, pid, exit_code, stdout, stderr)
     };
 
