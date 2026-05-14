@@ -1175,7 +1175,7 @@ mod tests {
                         let _ = tx.send(());
                     }
                     if hold_after_exec {
-                        tokio::time::sleep(Duration::from_secs(30)).await;
+                        std::future::pending::<()>().await;
                     }
                     return;
                 }
