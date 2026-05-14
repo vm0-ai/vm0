@@ -5,6 +5,7 @@ import {
   type StorageManifest,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
+import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import {
   getDefaultModel,
   getModelProviderFirewall,
@@ -87,6 +88,7 @@ import {
   providerUnavailable,
 } from "../../lib/error";
 import { writeDb$, type Db } from "../external/db";
+import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import {
   publishOrgSignal,
   publishRunnerJobNotification,
@@ -236,6 +238,16 @@ interface StoredExecutionSecrets {
     SecretConnectorMetadata
   > | null;
 }
+
+interface BuiltStoredExecutionContext {
+  readonly context: StoredExecutionContext;
+  readonly secretNames: readonly string[];
+  readonly secretValues: readonly string[];
+}
+
+type RunContextSnapshot = Omit<RunContextResponse, "vars"> & {
+  readonly userId: string;
+};
 
 type ApiErrorResponse<Status extends number, Code extends string> = {
   readonly status: Status;
@@ -2121,7 +2133,7 @@ function buildStoredExecutionContext(args: {
   readonly storageManifest: StorageManifest;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly extraEnvironment: Record<string, string> | undefined;
-}): StoredExecutionContext {
+}): BuiltStoredExecutionContext {
   const permissions = buildPermissionManifest({
     modelProvider: args.modelProvider,
     permissionPolicies: args.body.permissionPolicies,
@@ -2135,41 +2147,132 @@ function buildStoredExecutionContext(args: {
     bodySecrets: args.body.secrets,
     customConnectorContext: args.customConnectorContext,
   });
+  const secretNames = executionSecrets.secrets
+    ? Object.keys(executionSecrets.secrets)
+    : [];
+  const secretValues = executionSecrets.secrets
+    ? Object.values(executionSecrets.secrets)
+    : [];
 
   return {
-    workingDir: frameworkWorkingDir(args.framework),
-    storageManifest: args.storageManifest,
-    environment: {
-      ...expandEnvironment(
-        args.resolved.content,
-        args.body.vars,
-        executionSecrets.secrets,
-        args.modelProvider?.environment,
-      ),
-      ...args.extraEnvironment,
+    context: {
+      workingDir: frameworkWorkingDir(args.framework),
+      storageManifest: args.storageManifest,
+      environment: {
+        ...expandEnvironment(
+          args.resolved.content,
+          args.body.vars,
+          executionSecrets.secrets,
+          args.modelProvider?.environment,
+        ),
+        ...args.extraEnvironment,
+      },
+      resumeSession: args.resolved.resumeSession ?? null,
+      encryptedSecrets: encryptSecretsMap(executionSecrets.secrets ?? null),
+      secretConnectorMap: executionSecrets.secretConnectorMap,
+      secretConnectorMetadataMap: executionSecrets.secretConnectorMetadataMap,
+      cliAgentType: args.framework,
+      debugNoMockClaude: args.body.debugNoMockClaude || undefined,
+      debugNoMockCodex: args.body.debugNoMockCodex || undefined,
+      captureNetworkBodies: args.body.captureNetworkBodies || undefined,
+      apiStartTime: args.apiStartTime,
+      firewalls: permissions?.firewalls,
+      networkPolicies: permissions?.networkPolicies,
+      disallowedTools: args.body.disallowedTools,
+      tools: args.body.tools,
+      settings: args.body.settings,
+      experimentalProfile: runnerProfile(args.resolved.content),
+      featureFlags: {},
+      billableFirewalls: billableFirewallsForPermissions({
+        modelProvider: args.modelProvider,
+        permissions,
+      }),
+      modelUsageProvider: modelUsageProviderForContext(args.modelProvider),
     },
-    resumeSession: args.resolved.resumeSession ?? null,
-    encryptedSecrets: encryptSecretsMap(executionSecrets.secrets ?? null),
-    secretConnectorMap: executionSecrets.secretConnectorMap,
-    secretConnectorMetadataMap: executionSecrets.secretConnectorMetadataMap,
-    cliAgentType: args.framework,
-    debugNoMockClaude: args.body.debugNoMockClaude || undefined,
-    debugNoMockCodex: args.body.debugNoMockCodex || undefined,
-    captureNetworkBodies: args.body.captureNetworkBodies || undefined,
-    apiStartTime: args.apiStartTime,
-    firewalls: permissions?.firewalls,
-    networkPolicies: permissions?.networkPolicies,
-    disallowedTools: args.body.disallowedTools,
-    tools: args.body.tools,
-    settings: args.body.settings,
-    experimentalProfile: runnerProfile(args.resolved.content),
-    featureFlags: {},
-    billableFirewalls: billableFirewallsForPermissions({
-      modelProvider: args.modelProvider,
-      permissions,
-    }),
-    modelUsageProvider: modelUsageProviderForContext(args.modelProvider),
+    secretNames,
+    secretValues,
   };
+}
+
+function sanitizeEnvironment(
+  environment: Record<string, string> | null | undefined,
+  secretValues: readonly string[],
+): Record<string, string> {
+  const secrets = new Set(secretValues);
+  const sanitized: Record<string, string> = {};
+  for (const [key, value] of Object.entries(environment ?? {})) {
+    sanitized[key] = secrets.has(value) ? "***" : value;
+  }
+  return sanitized;
+}
+
+function sanitizeFirewalls(
+  firewalls: Firewalls | null | undefined,
+): RunContextResponse["firewalls"] {
+  if (!firewalls) {
+    return [];
+  }
+  return firewalls.map((firewall) => {
+    return {
+      name: firewall.name,
+      apis: firewall.apis.map((api) => {
+        return {
+          base: api.base,
+          permissions: api.permissions?.map((permission) => {
+            return {
+              name: permission.name,
+              description: permission.description,
+              rules: permission.rules,
+            };
+          }),
+        };
+      }),
+    };
+  });
+}
+
+function ingestRunContextSnapshot(args: {
+  readonly runId: string;
+  readonly userId: string;
+  readonly body: CreateRunBody;
+  readonly builtContext: BuiltStoredExecutionContext;
+}): void {
+  const storedContext = args.builtContext.context;
+  const manifest = storedContext.storageManifest;
+  const snapshot: RunContextSnapshot & { readonly _time: string } = {
+    _time: nowDate().toISOString(),
+    runId: args.runId,
+    userId: args.userId,
+    prompt: args.body.prompt,
+    appendSystemPrompt: args.body.appendSystemPrompt ?? null,
+    sessionId: storedContext.resumeSession?.sessionId ?? null,
+    secretNames: [...args.builtContext.secretNames],
+    environment: sanitizeEnvironment(
+      storedContext.environment,
+      args.builtContext.secretValues,
+    ),
+    firewalls: sanitizeFirewalls(storedContext.firewalls),
+    networkPolicies: storedContext.networkPolicies ?? null,
+    volumes: (manifest?.storages ?? []).map((storage) => {
+      return {
+        name: storage.name,
+        mountPath: storage.mountPath,
+        vasStorageName: storage.vasStorageName,
+        vasVersionId: storage.vasVersionId,
+      };
+    }),
+    artifact:
+      manifest && manifest.artifacts.length > 0
+        ? {
+            mountPath: manifest.artifacts[0]!.mountPath,
+            vasStorageName: manifest.artifacts[0]!.vasStorageName,
+            vasVersionId: manifest.artifacts[0]!.vasVersionId,
+          }
+        : null,
+    featureFlags: storedContext.featureFlags ?? null,
+  };
+
+  ingestToAxiom(getDatasetName("run-context"), [snapshot]);
 }
 
 function buildStoredExecutionSecrets(args: {
@@ -2320,12 +2423,19 @@ async function buildRunnerJobPayload(
     additionalVolumes: args.additionalVolumes,
     framework: args.framework,
   });
-  const storedContext = buildStoredExecutionContext({
+  const builtContext = buildStoredExecutionContext({
     ...args,
     body,
     runId: args.run.id,
     storageManifest,
   });
+  ingestRunContextSnapshot({
+    runId: args.run.id,
+    userId: args.userId,
+    body,
+    builtContext,
+  });
+  const storedContext = builtContext.context;
   return queuedRunnerJobPayload({
     runnerGroup: group,
     profile,

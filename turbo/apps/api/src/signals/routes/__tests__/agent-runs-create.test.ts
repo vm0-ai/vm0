@@ -182,6 +182,24 @@ function vm0Template(expression: string): string {
   return `$${expression}`;
 }
 
+function runContextSnapshot(
+  runId: string,
+): Record<string, unknown> | undefined {
+  for (const [dataset, events] of context.mocks.axiom.ingest.mock.calls) {
+    if (dataset !== "run-context") {
+      continue;
+    }
+    const snapshots = events as readonly Record<string, unknown>[];
+    const snapshot = snapshots.find((event) => {
+      return event.runId === runId;
+    });
+    if (snapshot) {
+      return snapshot;
+    }
+  }
+  return undefined;
+}
+
 async function fixture(): Promise<UsageInsightFixture> {
   const created = await track(
     store.set(seedUsageInsightFixture$, undefined, context.signal),
@@ -324,6 +342,13 @@ describe("POST /api/agent/runs", () => {
         return artifact.vasStorageName;
       }),
     ).toStrictEqual(["memory"]);
+    expect(runContextSnapshot(response.body.runId)).toMatchObject({
+      runId: response.body.runId,
+      userId: fx.userId,
+      prompt: "Create a run",
+      appendSystemPrompt: "Be concise.",
+      sessionId: null,
+    });
   });
 
   it("stores vars, secret names, additional volumes, and encrypted runner secrets", async () => {
@@ -398,6 +423,16 @@ describe("POST /api/agent/runs", () => {
     expect(executionContext.storageManifest.storages).toMatchObject([
       { name: "docs", mountPath: "/mnt/docs", vasVersionId: docsVersion },
     ]);
+    expect(runContextSnapshot(response.body.runId)).toMatchObject({
+      secretNames: ["API_KEY"],
+      environment: {
+        MY_VAR: "value",
+        API_KEY: "***",
+      },
+      volumes: [
+        { name: "docs", mountPath: "/mnt/docs", vasVersionId: docsVersion },
+      ],
+    });
   });
 
   it("injects an org model provider when the compose omits a framework API key", async () => {
@@ -872,6 +907,12 @@ describe("POST /api/agent/runs", () => {
     expect(executionContext.resumeSession.sessionId).toBe(
       `session-${first.body.runId}`,
     );
+    expect(runContextSnapshot(continued.body.runId)).toMatchObject({
+      runId: continued.body.runId,
+      userId: fx.userId,
+      prompt: "continue",
+      sessionId: `session-${first.body.runId}`,
+    });
     expect(conversationId).toBeDefined();
   });
 
