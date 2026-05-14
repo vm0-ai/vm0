@@ -62,6 +62,10 @@ const cronReconcileBillingEntitlementsResponseSchema = z.object({
   downgraded: z.number(),
 });
 
+const cronTelegramCleanupResponseSchema = z.object({
+  deleted: z.number(),
+});
+
 const cronAggregateInsightsSkippedResponseSchema = z.object({
   users: z.number(),
   skipped: z.literal(true),
@@ -117,6 +121,19 @@ export const cronReconcileBillingEntitlementsContract = c.router({
   },
 });
 
+export const cronTelegramCleanupContract = c.router({
+  cleanup: {
+    method: "GET",
+    path: "/api/cron/telegram-cleanup",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronTelegramCleanupResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Delete expired Telegram messages",
+  },
+});
+
 export const cronAggregateInsightsContract = c.router({
   aggregate: {
     method: "GET",
@@ -137,6 +154,7 @@ export type CronReconcileBillingEntitlementsContract =
   typeof cronReconcileBillingEntitlementsContract;
 export type CronAggregateInsightsContract =
   typeof cronAggregateInsightsContract;
+export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
 
 // Export schemas for reuse
 export {
@@ -145,5 +163,6 @@ export {
   cronAggregateUsageResponseSchema,
   cronProcessUsageEventsResponseSchema,
   cronReconcileBillingEntitlementsResponseSchema,
+  cronTelegramCleanupResponseSchema,
   cronAggregateInsightsResponseSchema,
 };
