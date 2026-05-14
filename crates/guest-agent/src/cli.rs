@@ -241,8 +241,8 @@ fn build_claude_command(use_mock: bool) -> Vec<String> {
 /// Build the codex argument list (testable).
 ///
 /// Resume is a positional sub-subcommand (`codex exec resume <id> <prompt>`),
-/// not a `--resume <id>` flag. No `--` separator before the prompt: codex
-/// has no variadic flags here, so `--` would propagate as a literal arg.
+/// not a `--resume <id>` flag. Use `--` before the prompt so user text that
+/// starts with `-` is not parsed as another codex option.
 fn quote_toml_basic_string(value: &str) -> String {
     let mut quoted = String::with_capacity(value.len() + 2);
     quoted.push('"');
@@ -308,9 +308,11 @@ fn build_codex_args(
         log_info!(LOG_TAG, "Resuming codex session: {resume_id}");
         args.push("resume".to_string());
         args.push(resume_id.to_string());
+        args.push("--".to_string());
         args.push(prompt.to_string());
     } else {
         log_info!(LOG_TAG, "Starting new codex session");
+        args.push("--".to_string());
         args.push(prompt.to_string());
     }
 
@@ -1241,6 +1243,7 @@ mod tests {
         let c_idx = args.iter().position(|a| a == "-C").unwrap();
         assert_eq!(args[c_idx + 1], "/workspace");
         assert!(codex_args_have_config(&args, "features.memories=true"));
+        assert_eq!(args[args.len() - 2], "--");
         assert_eq!(args.last().unwrap(), "hello");
     }
 
@@ -1262,7 +1265,8 @@ mod tests {
         let args = build_codex_args_for_test("/wd", "", "thread-abc", "follow up");
         let r_idx = args.iter().position(|a| a == "resume").unwrap();
         assert_eq!(args[r_idx + 1], "thread-abc");
-        assert_eq!(args[r_idx + 2], "follow up");
+        assert_eq!(args[r_idx + 2], "--");
+        assert_eq!(args[r_idx + 3], "follow up");
         // resume is a positional sub-subcommand, NOT a --resume flag
         assert!(!args.contains(&"--resume".to_string()));
     }
@@ -1271,23 +1275,43 @@ mod tests {
     fn build_codex_args_resume_layout_is_resume_id_prompt() {
         let args = build_codex_args_for_test("/wd", "", "id1", "p1");
         let r_idx = args.iter().position(|a| a == "resume").unwrap();
-        assert_eq!(args.len(), r_idx + 3);
+        assert_eq!(args.len(), r_idx + 4);
         assert_eq!(args[r_idx + 1], "id1");
-        assert_eq!(args[r_idx + 2], "p1");
+        assert_eq!(args[r_idx + 2], "--");
+        assert_eq!(args[r_idx + 3], "p1");
     }
 
     #[test]
-    fn build_codex_args_no_double_dash_separator() {
-        // Codex has no variadic flags here; a bare `--` separator would
-        // propagate as a literal arg to the codex CLI.
+    fn build_codex_args_separates_prompt_from_options() {
         let args = build_codex_args_for_test("/wd", "gpt-5", "id", "hello");
-        assert!(!args.contains(&"--".to_string()));
+        let r_idx = args.iter().position(|a| a == "resume").unwrap();
+        assert_eq!(args[r_idx + 2], "--");
+        assert_eq!(args[r_idx + 3], "hello");
     }
 
     #[test]
     fn build_codex_args_prompt_last_in_no_resume_path() {
         let args = build_codex_args_for_test("/wd", "gpt-5", "", "the prompt");
+        assert_eq!(args[args.len() - 2], "--");
         assert_eq!(args.last().unwrap(), "the prompt");
+    }
+
+    #[test]
+    fn build_codex_args_keeps_dash_prefixed_prompt_as_prompt() {
+        let prompt = "--input-format stream-json 是说从一个文件里读取 input 吗？";
+        let args = build_codex_args_for_test("/wd", "gpt-5", "", prompt);
+        assert_eq!(args[args.len() - 2], "--");
+        assert_eq!(args.last().unwrap(), prompt);
+    }
+
+    #[test]
+    fn build_codex_args_resume_keeps_dash_prefixed_prompt_as_prompt() {
+        let prompt = "--input-format stream-json 是说从一个文件里读取 input 吗？";
+        let args = build_codex_args_for_test("/wd", "gpt-5", "id1", prompt);
+        let r_idx = args.iter().position(|a| a == "resume").unwrap();
+        assert_eq!(args[r_idx + 1], "id1");
+        assert_eq!(args[r_idx + 2], "--");
+        assert_eq!(args[r_idx + 3], prompt);
     }
 
     #[test]
@@ -1304,6 +1328,7 @@ mod tests {
             &args,
             r#"developer_instructions="Your name is Aria.""#
         ));
+        assert_eq!(args[args.len() - 2], "--");
         assert_eq!(args.last().unwrap(), "analyze this");
     }
 
@@ -1331,8 +1356,9 @@ mod tests {
         assert!(codex_args_have_config(&args, "features.memories=true"));
         assert_eq!(args[c_idx], r#"developer_instructions="Be concise.""#);
         assert_eq!(args[r_idx + 1], "thread-abc");
-        assert_eq!(args[r_idx + 2], "next");
-        assert_eq!(args.len(), r_idx + 3);
+        assert_eq!(args[r_idx + 2], "--");
+        assert_eq!(args[r_idx + 3], "next");
+        assert_eq!(args.len(), r_idx + 4);
     }
 
     #[test]
