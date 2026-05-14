@@ -490,8 +490,10 @@ describe("401 refresh-and-retry", () => {
   });
 });
 
-describe("apiBackendMutations routing", () => {
-  function captureMutationHosts(method: "post" | "put" | "patch" | "delete") {
+describe("apiBackend routing", () => {
+  function captureItemHosts(
+    method: "get" | "post" | "put" | "patch" | "delete",
+  ) {
     const hosts: string[] = [];
     server.use(
       http[method]("*/api/zero/items", ({ request }) => {
@@ -502,23 +504,7 @@ describe("apiBackendMutations routing", () => {
     return hosts;
   }
 
-  it("routes POST to api host when apiBackendMutations is on", async () => {
-    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
-    detachedSetupPage({
-      context,
-      path: "/",
-      withoutRender: true,
-      featureSwitches: { apiBackendMutations: true },
-    });
-
-    const hosts = captureMutationHosts("post");
-    const fch = context.store.get(fetch$);
-    await fch("/api/zero/items", { method: "POST" });
-
-    expect(hosts).toStrictEqual(["api.vm0.ai"]);
-  });
-
-  it("keeps POST on www when apiBackendMutations is off", async () => {
+  it("keeps GET and POST on www when apiBackend is off", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({
       context,
@@ -526,63 +512,46 @@ describe("apiBackendMutations routing", () => {
       withoutRender: true,
     });
 
-    const hosts = captureMutationHosts("post");
-    const fch = context.store.get(fetch$);
-    await fch("/api/zero/items", { method: "POST" });
-
-    expect(hosts).toStrictEqual(["www.vm0.ai"]);
-  });
-
-  it("does not affect GET routing", async () => {
-    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
-    detachedSetupPage({
-      context,
-      path: "/",
-      withoutRender: true,
-      featureSwitches: { apiBackendMutations: true },
-    });
-
-    const hosts: string[] = [];
-    server.use(
-      http.get("*/api/zero/items", ({ request }) => {
-        hosts.push(new URL(request.url).host);
-        return new Response(null, { status: 200 });
-      }),
-    );
-
+    const getHosts = captureItemHosts("get");
+    const postHosts = captureItemHosts("post");
     const fch = context.store.get(fetch$);
     await fch("/api/zero/items");
+    await fch("/api/zero/items", { method: "POST" });
 
-    expect(hosts).toStrictEqual(["www.vm0.ai"]);
+    expect(getHosts).toStrictEqual(["www.vm0.ai"]);
+    expect(postHosts).toStrictEqual(["www.vm0.ai"]);
   });
 
-  it("apiBackend on forces mutations to api regardless of mutations flag", async () => {
+  it("routes GET and POST to api host when apiBackend is on", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { apiBackend: true, apiBackendMutations: false },
+      featureSwitches: { apiBackend: true },
     });
 
-    const hosts = captureMutationHosts("put");
+    const getHosts = captureItemHosts("get");
+    const postHosts = captureItemHosts("post");
     const fch = context.store.get(fetch$);
-    await fch("/api/zero/items", { method: "PUT" });
+    await fch("/api/zero/items");
+    await fch("/api/zero/items", { method: "POST" });
 
-    expect(hosts).toStrictEqual(["api.vm0.ai"]);
+    expect(getHosts).toStrictEqual(["api.vm0.ai"]);
+    expect(postHosts).toStrictEqual(["api.vm0.ai"]);
   });
 
-  it("routes PATCH and DELETE the same way as POST", async () => {
+  it("routes PATCH and DELETE the same way as POST when apiBackend is on", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { apiBackendMutations: true },
+      featureSwitches: { apiBackend: true },
     });
 
-    const patchHosts = captureMutationHosts("patch");
-    const deleteHosts = captureMutationHosts("delete");
+    const patchHosts = captureItemHosts("patch");
+    const deleteHosts = captureItemHosts("delete");
     const fch = context.store.get(fetch$);
 
     await fch("/api/zero/items", { method: "PATCH" });
@@ -592,16 +561,16 @@ describe("apiBackendMutations routing", () => {
     expect(deleteHosts).toStrictEqual(["api.vm0.ai"]);
   });
 
-  it("classifies methods on a Request input", async () => {
+  it("routes Request input through apiBackend", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { apiBackendMutations: true },
+      featureSwitches: { apiBackend: true },
     });
 
-    const hosts = captureMutationHosts("post");
+    const hosts = captureItemHosts("post");
     const fch = context.store.get(fetch$);
     await fch(new Request("/api/zero/items", { method: "POST" }));
 

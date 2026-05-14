@@ -296,20 +296,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ApiBackendMutations]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Route platform mutation traffic (POST/PUT/PATCH/DELETE) to the api " +
-      "backend host independent of ApiBackend. When ApiBackend is OFF and " +
-      "this is ON, GETs stay on www while mutations use api.vm0.ai; ported " +
-      "mutation routes are served there and unported routes fall through to " +
-      "web via the api app's notFound proxy. When ApiBackend is ON, mutations " +
-      "follow the host-level switch regardless of this flag. Used during " +
-      "Stage 3 of the api-backend migration to roll out mutation routes " +
-      "per-org without flipping the host-level ApiBackend flag.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ConnectorCategories]: {
     maintainer: "ethan@vm0.ai",
     description:

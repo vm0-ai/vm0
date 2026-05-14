@@ -52,7 +52,6 @@ export enum FeatureSwitchKey {
   ZoomConnector = "zoomConnector",
   ApiKeys = "apiKeys",
   ApiBackend = "apiBackend",
-  ApiBackendMutations = "apiBackendMutations",
   ConnectorCategories = "connectorCategories",
 
   Trinity = "trinity",

@@ -11,8 +11,8 @@ import type {
   InitClientReturn,
 } from "@ts-rest/core";
 import { clerk$ } from "./auth.ts";
-import { apiBase$, apiBaseForMutation$ } from "./fetch.ts";
-import { isMutationMethod, resolveApiBase } from "./api-base.ts";
+import { apiBase$ } from "./fetch.ts";
+import { resolveApiBase } from "./api-base.ts";
 import { createAuthedTsRestClient } from "./api-client-base.ts";
 
 /**
@@ -59,14 +59,11 @@ export const zeroClient$ = computed((get) => {
       getClerk: () => {
         return get(clerk$);
       },
-      resolvePath: async (path, { method }) => {
+      resolvePath: async (path) => {
         if (options?.apiBase === "api") {
           return rebaseApiPath(path, resolveApiBase(true));
         }
-        const apiBase = isMutationMethod(method)
-          ? await get(apiBaseForMutation$)
-          : await get(apiBase$);
-        return rebaseApiPath(path, apiBase);
+        return rebaseApiPath(path, await get(apiBase$));
       },
     });
   };
