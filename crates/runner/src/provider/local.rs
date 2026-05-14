@@ -164,13 +164,11 @@ impl LocalCancelScanner {
 
     /// Scan for `.cancel` files and trigger the corresponding cancel tokens.
     ///
-    /// Only deletes a `.cancel` file after triggering a token owned by this
-    /// runner. A token can exist before `claim()` succeeds, so ownership is
-    /// tracked separately to avoid stealing another runner's cancel marker.
-    /// Files whose `run_id` has no token yet (job not yet claimed) are left in
-    /// place so the next scan can retry — this avoids a race where the cancel
-    /// file arrives between `discover()` returning the job and the main loop
-    /// inserting the token.
+    /// Active markers are deleted only when this runner owns the claim. A token
+    /// can exist before `claim()` succeeds, so ownership is tracked separately
+    /// to avoid stealing another runner's cancel marker. Markers without a
+    /// token are kept while a claim/job may still exist, and are deleted only
+    /// after they no longer have a pending target.
     async fn scan_cancel_files(&self) {
         let cancel_ids = self.collect_cancel_ids();
         if cancel_ids.is_empty() {
@@ -493,10 +491,7 @@ impl LocalProvider {
     }
 
     fn result_file_has_content(&self, run_id: RunId) -> bool {
-        let result_path = local_queue::result_path(&self.group_dir, run_id);
-        std::fs::metadata(result_path)
-            .map(|metadata| metadata.is_file() && metadata.len() > 0)
-            .unwrap_or(false)
+        self.cancel_scanner.result_file_has_content(run_id)
     }
 
     fn write_result(&self, run_id: RunId, exit_code: i32, error: Option<&str>) -> bool {
