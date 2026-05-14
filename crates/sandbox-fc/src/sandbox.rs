@@ -1542,7 +1542,20 @@ impl Sandbox for FirecrackerSandbox {
                 request.output.streams_stdout(),
                 request.output.guest_log_path(),
             ) => {
-                let mut handle = result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))?;
+                let mut handle = match result {
+                    Ok(handle) => handle,
+                    Err(error) => {
+                        let backend_crashed = self.has_backend_crashed();
+                        let is_terminal = guest_error_is_terminal(&error, backend_crashed);
+                        let result = Err(Self::operation_error(operation, error, backend_crashed));
+                        if is_terminal {
+                            guest
+                                .complete()
+                                .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
+                        }
+                        return result;
+                    }
+                };
                 guest
                     .mark_in_guest()
                     .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
