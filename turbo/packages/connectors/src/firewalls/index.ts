@@ -210,6 +210,7 @@ import { sendgridFirewall } from "./sendgrid.generated";
 import { servicenowFirewall } from "./servicenow.generated";
 import { testrailFirewall } from "./testrail.generated";
 import { twilioFirewall } from "./twilio.generated";
+import { squareFirewall } from "./square.generated";
 
 export * from "../firewall-types";
 
@@ -409,6 +410,7 @@ const CONNECTOR_FIREWALLS = {
   servicenow: servicenowFirewall,
   testrail: testrailFirewall,
   twilio: twilioFirewall,
+  square: squareFirewall,
 } as const satisfies Partial<Record<ConnectorType, FirewallConfig>>;
 
 /**

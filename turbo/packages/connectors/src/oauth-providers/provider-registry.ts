@@ -191,6 +191,7 @@ import { sendgridHandler } from "./providers/sendgrid-handler";
 import { servicenowHandler } from "./providers/servicenow-handler";
 import { testrailHandler } from "./providers/testrail-handler";
 import { twilioHandler } from "./providers/twilio-handler";
+import { squareHandler } from "./providers/square-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
 export type { ProviderEnv };
@@ -385,6 +386,7 @@ export const PROVIDER_HANDLERS: Record<
   servicenow: servicenowHandler,
   testrail: testrailHandler,
   twilio: twilioHandler,
+  square: squareHandler,
 };
 
 /**

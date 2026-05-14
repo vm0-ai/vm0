@@ -180,6 +180,7 @@ import { generate as generateSendgrid } from "./sendgrid";
 import { generate as generateServicenow } from "./servicenow";
 import { generate as generateTestrail } from "./testrail";
 import { generate as generateTwilio } from "./twilio";
+import { generate as generateSquare } from "./square";
 import { createGoogleGenerator, googleServiceNames } from "./google";
 
 const GENERATORS: Record<string, () => Promise<void>> = {
@@ -357,6 +358,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   servicenow: generateServicenow,
   testrail: generateTestrail,
   twilio: generateTwilio,
+  square: generateSquare,
   ...Object.fromEntries(
     googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),
   ),
