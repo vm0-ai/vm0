@@ -1,4 +1,3 @@
-import { parse } from "smol-toml";
 import { command, type Setter } from "ccstate";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { z } from "zod";
@@ -7,7 +6,6 @@ import { nowDate } from "../../lib/time";
 import { logger } from "../../lib/log";
 import { getVercelSandboxClient } from "../external/vercel-sandbox";
 import {
-  redactSandboxMessage,
   sandboxOperation,
   type SandboxClient,
   type SandboxCommandResult,
@@ -17,10 +15,17 @@ import { connectors } from "@vm0/db/schema/connector";
 import { connectorCliAuthSessions } from "@vm0/db/schema/connector-cli-auth-session";
 import { secrets } from "@vm0/db/schema/secret";
 import { and, eq, inArray, lt, or } from "drizzle-orm";
-import { safeAsync, safeJsonParse, safeUrlParse } from "../utils";
+import { safeAsync, safeJsonParse } from "../utils";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { decryptSecretValue, encryptSecretValue } from "./crypto.utils";
+import {
+  parseStripeCliAuthConfig,
+  parseStripeCliAuthStartOutput as parseStripeCliAuthStartOutputText,
+  redactStripeCliAuthText,
+  type StripeCliAuthMode,
+  type StripeCliAuthStartOutput,
+} from "./cli-auth-stripe-parser";
 
 const CLI_AUTH_STRIPE_RUNTIME = "node24";
 const CLI_AUTH_STRIPE_VERSION = "1.40.9";
@@ -39,18 +44,13 @@ const CLI_AUTH_STRIPE_CONFIG_HOME = `${CLI_AUTH_STRIPE_ROOT}/config`;
 const CLI_AUTH_STRIPE_CONFIG_PATH = `${CLI_AUTH_STRIPE_CONFIG_HOME}/stripe/config.toml`;
 const CLI_AUTH_STRIPE_CONNECTOR_TYPE = "stripe";
 const CLI_AUTH_STRIPE_SOURCE = "stripe-cli";
+const CLI_AUTH_STRIPE_MODE: StripeCliAuthMode = "test";
 const STRIPE_TOKEN_SECRET_NAME = "STRIPE_TOKEN";
 const STRIPE_OAUTH_SECRET_NAMES = [
   "STRIPE_ACCESS_TOKEN",
   "STRIPE_REFRESH_TOKEN",
 ] as const;
 const L = logger("CliAuthStripe");
-
-const cliAuthStripeOutputSchema = z.object({
-  browser_url: z.url(),
-  verification_code: z.string().min(1),
-  next_step: z.string().min(1),
-});
 
 const cliAuthStripeSessionTokenSchema = z.object({
   version: z.literal(1),
@@ -125,12 +125,6 @@ type CliAuthStripeErrorResult = Extract<
   { readonly status: "error" }
 >;
 type ConnectorCliAuthSession = typeof connectorCliAuthSessions.$inferSelect;
-
-type ParsedCliAuthStripeStartOutput = {
-  readonly browserUrl: string;
-  readonly pollUrl: string;
-  readonly verificationCode: string;
-};
 
 type PreparedCliAuthStripeCompletion =
   | {
@@ -224,54 +218,15 @@ async function decodeProviderState(
   return decoded.ok;
 }
 
-function extractPollUrl(nextStep: string): string {
-  const quoted = /--complete\s+(['"])(?<url>https:\/\/[^'"]+)\1/.exec(nextStep);
-  const unquoted =
-    quoted ?? /--complete\s+(?<url>https:\/\/\S+)/.exec(nextStep);
-  const pollUrl = unquoted?.groups?.url;
-  if (!pollUrl) {
-    throw new Error("Stripe CLI response did not include a completion URL");
-  }
-
-  validateStripeCliUrl(pollUrl, "completion");
-
-  return pollUrl;
-}
-
-function validateStripeCliUrl(
-  url: string,
-  label: "browser" | "completion",
-): string {
-  const parsed = safeUrlParse(url);
-  if (!parsed) {
-    throw new Error(`Stripe CLI response included an invalid ${label} URL`);
-  }
-  if (
-    parsed.protocol !== "https:" ||
-    parsed.hostname !== "dashboard.stripe.com"
-  ) {
-    throw new Error(`Stripe CLI response included an unexpected ${label} URL`);
-  }
-
-  return url;
-}
-
 function commandText(result: SandboxCommandResult): string {
   return [result.stdout.text, result.stderr.text].filter(Boolean).join("\n");
-}
-
-function redactCliAuthStripeCommandText(value: string): string {
-  return redactSandboxMessage(value).replace(
-    /https:\/\/dashboard\.stripe\.com\/stripecli\/(?:auth|confirm_auth)[^\s'"]*/g,
-    "https://dashboard.stripe.com/stripecli/[redacted]",
-  );
 }
 
 function commandFailedMessage(
   phase: string,
   result: SandboxCommandResult,
 ): string {
-  const output = redactCliAuthStripeCommandText(commandText(result).trim());
+  const output = redactStripeCliAuthText(commandText(result).trim());
   const suffix = output ? `: ${output.slice(0, 500)}` : "";
   return `${phase} exited with code ${String(result.exitCode)}${suffix}`;
 }
@@ -281,29 +236,6 @@ function isPendingCompletion(result: SandboxCommandResult): boolean {
     return true;
   }
   return /exceeded max attempts/i.test(commandText(result));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function stripeApiKeyFromConfig(configToml: string): string {
-  const parsed = parse(configToml) as unknown;
-  if (!isRecord(parsed)) {
-    throw new Error("Stripe CLI config is not a TOML table");
-  }
-
-  const defaultProfile = parsed.default;
-  const profile = isRecord(defaultProfile) ? defaultProfile : parsed;
-  const apiKey = profile.test_mode_api_key;
-  if (
-    typeof apiKey !== "string" ||
-    !/^(sk|rk)_test_[A-Za-z0-9]+$/.test(apiKey)
-  ) {
-    throw new Error("Stripe CLI config did not contain a test mode API key");
-  }
-
-  return apiKey;
 }
 
 function stopSandbox(client: SandboxClient, sandbox: SandboxHandle) {
@@ -344,7 +276,7 @@ async function cleanupSandboxSafely(args: {
 }
 
 function sanitizeSessionError(message: string): string {
-  return redactCliAuthStripeCommandText(message).slice(0, 500);
+  return redactStripeCliAuthText(message).slice(0, 500);
 }
 
 async function markCliAuthStripeSessionError(args: {
@@ -465,21 +397,11 @@ async function createCliAuthStripeSandbox(args: {
 async function parseCliAuthStripeStartOutput(
   result: SandboxCommandResult,
 ): Promise<
-  | { readonly ok: true; readonly output: ParsedCliAuthStripeStartOutput }
+  | { readonly ok: true; readonly output: StripeCliAuthStartOutput }
   | { readonly ok: false; readonly message: string }
 > {
   const parsedResult = await safeSync(() => {
-    const output = cliAuthStripeOutputSchema.parse(
-      safeJsonParse(result.stdout.text),
-    );
-    const pollUrl = extractPollUrl(output.next_step);
-    const browserUrl = validateStripeCliUrl(output.browser_url, "browser");
-
-    return {
-      browserUrl,
-      pollUrl,
-      verificationCode: output.verification_code,
-    };
+    return parseStripeCliAuthStartOutputText(result.stdout.text);
   });
   if ("error" in parsedResult) {
     return {
@@ -500,7 +422,7 @@ async function runCliAuthStripeStartInSandbox(args: {
   readonly sessionId: string;
   readonly signal: AbortSignal;
 }): Promise<
-  | { readonly ok: true; readonly output: ParsedCliAuthStripeStartOutput }
+  | { readonly ok: true; readonly output: StripeCliAuthStartOutput }
   | { readonly ok: false; readonly result: CliAuthStripeStartFailureResult }
 > {
   const runResult = await sandboxOperation("run", () => {
@@ -577,7 +499,7 @@ async function runCliAuthStripeStartInSandbox(args: {
 async function markCliAuthStripeSessionAwaitingApproval(args: {
   readonly writeDb: Db;
   readonly sessionId: string;
-  readonly output: ParsedCliAuthStripeStartOutput;
+  readonly output: StripeCliAuthStartOutput;
 }) {
   await args.writeDb
     .update(connectorCliAuthSessions)
@@ -908,7 +830,10 @@ async function readCliAuthStripeApiKey(args: {
 
   const configData = configResult.value.data;
   const apiKeyResult = await safeSync(() => {
-    return stripeApiKeyFromConfig(configData.toString("utf8"));
+    return parseStripeCliAuthConfig(
+      configData.toString("utf8"),
+      CLI_AUTH_STRIPE_MODE,
+    );
   });
   if ("error" in apiKeyResult) {
     return {
