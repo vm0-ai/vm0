@@ -1,4 +1,5 @@
 import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
+import { cn } from "@vm0/ui";
 
 import anthropicIcon from "./icons/anthropic.svg";
 import azureIcon from "./icons/azure.svg";
@@ -30,6 +31,18 @@ const PROVIDER_ICONS: Readonly<Record<ModelProviderType, string>> =
     vm0: vm0Icon,
   });
 
+const DARK_INVERT_PROVIDER_ICONS: Readonly<
+  Partial<Record<ModelProviderType, true>>
+> = Object.freeze({
+  "openai-api-key": true,
+  "codex-oauth-token": true,
+  "moonshot-api-key": true,
+});
+
+function providerIconNeedsDarkInvert(type: ModelProviderType): boolean {
+  return DARK_INVERT_PROVIDER_ICONS[type] === true;
+}
+
 export function ProviderIcon({
   type,
   size = 28,
@@ -42,7 +55,16 @@ export function ProviderIcon({
     return <DefaultIcon size={size} />;
   }
   return (
-    <img src={icon} width={size} height={size} alt="" className="shrink-0" />
+    <img
+      src={icon}
+      width={size}
+      height={size}
+      alt=""
+      className={cn(
+        "shrink-0",
+        providerIconNeedsDarkInvert(type) && "zero-icon-mono",
+      )}
+    />
   );
 }
 
