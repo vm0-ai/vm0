@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroLocalBrowserConnectorContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroConnectorAuthorizeContract,
+  zeroLocalBrowserConnectorContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { connectors } from "@vm0/db/schema/connector";
 import { localBrowserHosts } from "@vm0/db/schema/local-browser";
@@ -76,6 +79,24 @@ async function deleteLocalBrowserConnectorFixture(
         ),
       ),
   ]);
+}
+
+async function countLocalBrowserConnectors(args: {
+  readonly orgId: string;
+  readonly userId: string;
+}): Promise<number> {
+  const writeDb = store.set(writeDb$);
+  const rows = await writeDb
+    .select({ id: connectors.id })
+    .from(connectors)
+    .where(
+      and(
+        eq(connectors.orgId, args.orgId),
+        eq(connectors.userId, args.userId),
+        eq(connectors.type, "local-browser"),
+      ),
+    );
+  return rows.length;
 }
 
 describe("POST /api/zero/connectors/local-browser", () => {
@@ -158,5 +179,46 @@ describe("POST /api/zero/connectors/local-browser", () => {
     );
 
     expect(response.body.error.code).toBe("CONFLICT");
+  });
+
+  it("rejects OAuth authorization without deleting the connector", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(
+      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
+    );
+    await enableLocalBrowser(orgId, userId);
+    await seedLocalBrowserHost({ orgId, userId, status: "online" });
+    mocks.clerk.session(userId, orgId);
+
+    const connectClient = setupApp({ context })(
+      zeroLocalBrowserConnectorContract,
+    );
+    await accept(
+      connectClient.create({
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const authorizeClient = setupApp({ context })(
+      zeroConnectorAuthorizeContract,
+    );
+    const response = await accept(
+      authorizeClient.authorize({
+        params: { type: "local-browser" },
+        query: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error).toBe(
+      "local-browser connector does not use OAuth",
+    );
+    await expect(countLocalBrowserConnectors({ orgId, userId })).resolves.toBe(
+      1,
+    );
   });
 });

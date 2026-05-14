@@ -15,6 +15,7 @@ import {
   zeroRemoteAgentConnectorContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
+  getConnectorAuthMethods,
   getConnectorOAuthConfig,
   getConnectorOAuthEnvKeys,
   isGoogleOAuthConnector,
@@ -586,6 +587,12 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
           error:
             "codex-oauth does not use browser OAuth authorization; use the codex auth.json paste flow",
         },
+        400,
+      );
+    }
+    if (!("oauth" in getConnectorAuthMethods(type))) {
+      return jsonResponse(
+        { error: `${type} connector does not use OAuth` },
         400,
       );
     }
