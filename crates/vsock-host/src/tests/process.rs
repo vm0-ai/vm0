@@ -584,7 +584,7 @@ async fn test_spawn_watch_exit_result_survives_close_before_wait() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_wait_timeout_drops_registration() {
+async fn test_spawn_watch_wait_future_drop_cleans_registration() {
     let (host_stream, mut guest) = make_pair();
 
     tokio::spawn(async move {
@@ -609,9 +609,8 @@ async fn test_spawn_watch_wait_timeout_drops_registration() {
         .unwrap();
     assert_eq!(handle.pid(), 55);
 
-    tokio::time::timeout(Duration::from_millis(100), handle.wait())
-        .await
-        .unwrap_err();
+    let wait = handle.wait();
+    drop(wait);
     assert_eq!(registration_counts(&host), (0, 0, 0));
 }
 

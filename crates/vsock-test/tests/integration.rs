@@ -1126,10 +1126,10 @@ async fn test_spawn_watch_stdout_streaming() {
 async fn test_spawn_watch_stdout_streaming_delivers_before_exit() {
     let h = Harness::new().await;
 
-    let release_file = h.dir.join("release-streaming-process");
+    let release_fifo = h.dir.join("release-streaming-process");
     let command = format!(
-        "printf 'before_exit\\n'; while [ ! -e {release} ]; do sleep 0.01; done",
-        release = shell_quote_path(&release_file)
+        "rm -f {release}; mkfifo {release}; printf 'before_exit\\n'; IFS= read -r _ < {release}",
+        release = shell_quote_path(&release_fifo)
     );
 
     let mut handle = h
@@ -1144,7 +1144,7 @@ async fn test_spawn_watch_stdout_streaming_delivers_before_exit() {
         .expect("stdout stream closed before first chunk");
     assert_eq!(String::from_utf8_lossy(&chunk).trim(), "before_exit");
 
-    std::fs::write(&release_file, "").expect("release streaming process");
+    std::fs::write(&release_fifo, b"\n").expect("release streaming process");
     let event = h
         .wait_spawn(handle, Duration::from_secs(5))
         .await
