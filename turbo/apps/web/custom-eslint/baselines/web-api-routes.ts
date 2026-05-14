@@ -7,11 +7,6 @@ import { createHash } from "node:crypto";
  * When a route is migrated out of apps/web, remove its entry here as part of
  * the same change. Do not add new entries without an intentional exception.
  *
- * Intentional exception: remote-agent routes are implemented in apps/api, but
- * CLI and platform callers use the same VM0_API_URL prefix as `vm0 auth login`
- * (`http://localhost:3000`). The web routes are thin proxies to
- * VM0_API_BACKEND_URL so local and production URL resolution stays aligned.
- *
  * Intentional exception: model policy and user model preference routes live in
  * apps/web while the rest of Zero's bearer-token web API still authenticates
  * through requireAuth/resolveOrg in the Next.js runtime.
@@ -222,7 +217,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/push-subscriptions/route.ts",
   "app/api/zero/queue-position/route.ts",
   "app/api/zero/realtime/token/route.ts",
-  "app/api/zero/remote-agent/[...path]/route.ts",
   "app/api/zero/report-error/route.ts",
   "app/api/zero/runs/[id]/cancel/route.ts",
   "app/api/zero/runs/[id]/context/route.ts",
@@ -272,7 +266,7 @@ export const WEB_API_ROUTE_BASELINE = [
 ] as const;
 
 export const WEB_API_ROUTE_BASELINE_HASH =
-  "4623ad682b2098d506b855e3b1a21d0c4fdc49f56921b345faf67d323a49c45f";
+  "5e8082ddcf4bbe6cf7e654efacb0a57a135c24645d3403cbe7c2c22157927e17";
 
 export function computeWebApiRouteBaselineHash(
   routes: readonly string[] = WEB_API_ROUTE_BASELINE,

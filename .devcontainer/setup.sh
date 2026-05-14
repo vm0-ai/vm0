@@ -57,7 +57,7 @@ sudo mkdir -p \
   /home/vscode/.pki \
   /home/vscode/.codex \
   /home/vscode/.codex-switch \
-  /home/vscode/.npm
+  /home/vscode/.zed_server
 sudo chown -R vscode:vscode \
   /home/vscode/.config \
   /home/vscode/.cache \
@@ -66,8 +66,8 @@ sudo chown -R vscode:vscode \
   /home/vscode/.cloudflared \
   /home/vscode/.codex \
   /home/vscode/.codex-switch \
-  /home/vscode/.npm
-echo "✓ User-local npm/Codex directories ready"
+  /home/vscode/.zed_server
+echo "✓ User-local mounted directories ready"
 
 # Create ~/.claude symlink to ~/.config/claude for Claude Code IDE integration
 # The VS Code extension uses ~/.claude/ide/ while CLI respects CLAUDE_CONFIG_DIR

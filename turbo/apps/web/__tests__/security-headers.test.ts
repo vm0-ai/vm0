@@ -141,7 +141,7 @@ describe("API backend rewrites", () => {
     vi.unstubAllEnvs();
   });
 
-  it("should proxy migrated AgentPhone routes to apps/api", async () => {
+  it("should proxy migrated API backend routes to apps/api", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
     const rewrites = await getBeforeFileRewrites();
@@ -161,6 +161,10 @@ describe("API backend rewrites", () => {
           source: "/api/internal/event-consumers/agentphone-typing",
           destination:
             "https://api.example.test/api/internal/event-consumers/agentphone-typing",
+        },
+        {
+          source: "/api/zero/remote-agent/:path*",
+          destination: "https://api.example.test/api/zero/remote-agent/:path*",
         },
         {
           source: "/api/zero/integrations/phone/:path*",

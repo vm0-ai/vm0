@@ -28,7 +28,7 @@
 //! | 0x08 | H→G       | shutdown          | (empty) |
 //! | 0x09 | G→H       | shutdown_ack      | (empty) |
 //! | 0x0A | G→H       | stdout_chunk      | `[4B pid][data]` (`spawn_watch` uses the original request seq; pid is metadata, not the routing key) |
-//! | 0x0B | H→G       | command_start     | `[4B timeout_ms][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy]` |
+//! | 0x0B | H→G       | command_start     | `[4B timeout_ms][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy][2B expected_exit_count][4B exit_code]...` |
 //! | 0x0C | G→H       | command_output    | `[1B stream][4B output_seq][1B flags][4B chunk_len][chunk]` |
 //! | 0x0D | G→H       | command_result    | `[1B termination]...[4B duration_ms][stdout][stderr][2B diagnostic_len][diagnostic]` |
 //! | 0x0E | H→G       | command_cancel    | (empty) |
@@ -38,6 +38,8 @@
 //! must use a non-zero sequence number for start/output/result/cancel.
 //! `command_output.output_seq` is per command operation and starts at 0,
 //! incrementing by 1 for each output frame across stdout and stderr.
+//! `command_start.expected_exit_count` may be zero, but the count field is
+//! always present.
 
 mod error;
 mod frame;

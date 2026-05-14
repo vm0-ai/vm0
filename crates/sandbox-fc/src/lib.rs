@@ -30,6 +30,7 @@ mod config;
 pub mod control;
 mod cow_pool;
 mod factory;
+mod guest_operations;
 mod leaked_resources;
 mod network;
 mod park_coordinator;

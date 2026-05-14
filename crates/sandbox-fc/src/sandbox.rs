@@ -1,7 +1,9 @@
 use std::ffi::OsString;
+use std::future::Future;
 use std::io;
 use std::os::unix::ffi::OsStringExt;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -26,9 +28,12 @@ use crate::balloon;
 use crate::config::FirecrackerConfig;
 use crate::control;
 use crate::factory::InvariantConfig;
+use crate::guest_operations::{
+    GuestOperation, GuestOperationGate, GuestOperationStartError, guest_error_is_terminal,
+};
 use crate::leaked_resources::LeakedResources;
 use crate::network::{NetnsInfo, NetnsLease};
-use crate::park_coordinator::ParkCoordinator;
+use crate::park_coordinator::{OperationLease, OperationTransitionError, ParkCoordinator};
 use crate::paths::{SandboxPaths, SockPaths};
 use crate::process::{kill_process_group, kill_process_group_by_pid};
 
@@ -474,9 +479,8 @@ pub struct FirecrackerSandbox {
     /// Wrapped in `Arc` so operations can clone the handle and release the
     /// mutex immediately, allowing concurrent vsock operations.
     guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
-    /// Host-side park coordinator staged for same-session idle park safety.
-    /// #13275 routes production guest operations through this gate.
-    _park_coordinator: ParkCoordinator,
+    /// Host-side park coordinator for same-session idle park safety.
+    park_coordinator: ParkCoordinator,
     /// Sender for leaked resource cleanup. When Drop fires without prior
     /// `factory.destroy()`, pool resources are sent here for async cleanup.
     leak_tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
@@ -551,7 +555,7 @@ impl FirecrackerSandbox {
             state_publish_lock: Arc::new(Mutex::new(())),
             state_tx: watch::channel(SandboxState::Created).0,
             guest: Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>)),
-            _park_coordinator: ParkCoordinator::new(),
+            park_coordinator: ParkCoordinator::new(),
             leak_tx,
             delete_workspace_on_leak_cleanup: true,
             destroyed: false,
@@ -624,6 +628,45 @@ impl FirecrackerSandbox {
         }
     }
 
+    fn operation_gate_closed_error(
+        operation: SandboxOperation,
+        state: crate::park_coordinator::CoordinatorState,
+    ) -> SandboxError {
+        SandboxError::InvalidState {
+            context: SandboxInvalidStateContext::Operation(operation),
+            state: format!("{state:?}"),
+            message: "sandbox operation gate closed".into(),
+        }
+    }
+
+    fn operation_gate_transition_error(
+        operation: SandboxOperation,
+        error: OperationTransitionError,
+    ) -> SandboxError {
+        SandboxError::Operation {
+            operation,
+            reason: SandboxOperationReason::Other,
+            message: format!("operation gate transition failed: {error:?}"),
+        }
+    }
+
+    fn operation_start_error(
+        &self,
+        operation: SandboxOperation,
+        error: GuestOperationStartError,
+    ) -> SandboxError {
+        match error {
+            GuestOperationStartError::BackendCrashed => Self::backend_crashed_error(operation),
+            GuestOperationStartError::NotRunning { state } => {
+                Self::operation_unavailable_error(operation, state)
+            }
+            GuestOperationStartError::NoGuest => self.not_running_error(operation),
+            GuestOperationStartError::GateClosed { state } => {
+                Self::operation_gate_closed_error(operation, state)
+            }
+        }
+    }
+
     fn has_backend_crashed(&self) -> bool {
         self.current_state() == SandboxState::Crashed
     }
@@ -632,20 +675,68 @@ impl FirecrackerSandbox {
         publish_process_state(&self.state, &self.state_publish_lock, &self.state_tx, state);
     }
 
-    async fn operation_guest(
+    fn guest_operations(&self) -> GuestOperationGate {
+        GuestOperationGate::new(Arc::clone(&self.guest), self.park_coordinator.clone())
+    }
+
+    async fn begin_guest_operation(
         &self,
         operation: SandboxOperation,
-    ) -> sandbox::Result<Arc<VsockHost>> {
-        if self.has_backend_crashed() {
-            return Err(Self::backend_crashed_error(operation));
+    ) -> sandbox::Result<GuestOperation> {
+        self.guest_operations()
+            .begin_sandbox_operation(|| self.current_state())
+            .await
+            .map_err(|error| self.operation_start_error(operation, error))
+    }
+
+    async fn run_bounded_guest_operation<T, Fut>(
+        &self,
+        operation: SandboxOperation,
+        call: impl FnOnce(Arc<VsockHost>) -> Fut,
+    ) -> sandbox::Result<T>
+    where
+        Fut: Future<Output = io::Result<T>>,
+    {
+        enum GuestCallOutcome<T> {
+            Returned(io::Result<T>),
+            BackendCrashed,
         }
 
-        let guest = self.guest.lock().await.as_ref().cloned();
-        if self.has_backend_crashed() {
-            return Err(Self::backend_crashed_error(operation));
-        }
+        let mut guest = self.begin_guest_operation(operation).await?;
+        guest
+            .mark_writing()
+            .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
+        let vsock = guest.guest();
 
-        guest.ok_or_else(|| self.not_running_error(operation))
+        let outcome = tokio::select! {
+            result = call(vsock) => {
+                GuestCallOutcome::Returned(result)
+            }
+            () = wait_for_backend_crash(self.state_tx.subscribe()) => {
+                GuestCallOutcome::BackendCrashed
+            }
+        };
+
+        match outcome {
+            GuestCallOutcome::Returned(Ok(value)) => {
+                guest
+                    .complete()
+                    .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
+                Ok(value)
+            }
+            GuestCallOutcome::Returned(Err(error)) => {
+                let backend_crashed = self.has_backend_crashed();
+                let is_terminal = guest_error_is_terminal(&error, backend_crashed);
+                let result = Err(Self::operation_error(operation, error, backend_crashed));
+                if is_terminal {
+                    guest
+                        .complete()
+                        .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
+                }
+                result
+            }
+            GuestCallOutcome::BackendCrashed => Err(Self::backend_crashed_error(operation)),
+        }
     }
 
     /// Atomically transition between states using CAS. Returns `true` if the
@@ -969,6 +1060,22 @@ async fn wait_for_backend_crash(mut state_rx: watch::Receiver<SandboxState>) {
     }
 }
 
+fn gated_spawn_exit_future<F>(
+    exit: F,
+    lease: OperationLease,
+) -> Pin<Box<dyn Future<Output = io::Result<ProcessExit>> + Send + 'static>>
+where
+    F: Future<Output = io::Result<ProcessExit>> + Send + 'static,
+{
+    Box::pin(async move {
+        let process_exit = exit.await?;
+        lease
+            .complete()
+            .map_err(|error| io::Error::other(format!("operation gate completion: {error:?}")))?;
+        Ok(process_exit)
+    })
+}
+
 fn state_publish_guard(state_publish_lock: &Mutex<()>) -> MutexGuard<'_, ()> {
     state_publish_lock
         .lock()
@@ -1185,7 +1292,7 @@ impl Sandbox for FirecrackerSandbox {
 
         let control_sock_path = self.sock_paths.control_sock();
         let control_server =
-            match control::bind_server(control_sock_path.clone(), Arc::clone(&self.guest)) {
+            match control::bind_server(control_sock_path.clone(), self.guest_operations()) {
                 Ok(server) => server,
                 Err(e) => {
                     self.guest.lock().await.take();
@@ -1344,50 +1451,41 @@ impl Sandbox for FirecrackerSandbox {
 
     async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
         let operation = SandboxOperation::Exec;
-        let guest = self.operation_guest(operation).await?;
         let limits = request.output_limits;
+        let timeout_ms = request.timeout_ms();
 
-        tokio::select! {
-            result = guest.exec_capture(
-                vsock_host::CommandCaptureRequest {
+        self.run_bounded_guest_operation(operation, |guest| async move {
+            guest
+                .exec_capture(vsock_host::CommandCaptureRequest {
                     command: request.cmd,
-                    timeout_ms: request.timeout_ms(),
+                    timeout_ms,
                     env: request.env,
                     sudo: request.sudo,
                     label: "sandbox-exec",
                     stdout_limit_bytes: limits.stdout_limit_bytes,
                     stderr_limit_bytes: limits.stderr_limit_bytes,
                     expected_exit_codes: &[],
-                    wait_timeout: Duration::from_millis(request.timeout_ms() as u64 + 5000),
-                }
-            ) => {
-                let result = result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))?;
-                Ok(ExecResult {
+                    wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
+                })
+                .await
+                .map(|result| ExecResult {
                     exit_code: result.exit_code,
                     stdout: result.stdout,
                     stderr: result.stderr,
                     stdout_truncated: result.stdout_truncated,
                     stderr_truncated: result.stderr_truncated,
                 })
-            }
-            () = wait_for_backend_crash(self.state_tx.subscribe()) => {
-                Err(Self::backend_crashed_error(operation))
-            }
-        }
+        })
+        .await
     }
 
     async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
         let operation = SandboxOperation::Exec;
-        let guest = self.operation_guest(operation).await?;
 
-        tokio::select! {
-            result = guest.read_file(path, max_bytes, 5000) => {
-                result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))
-            }
-            () = wait_for_backend_crash(self.state_tx.subscribe()) => {
-                Err(Self::backend_crashed_error(operation))
-            }
-        }
+        self.run_bounded_guest_operation(operation, |guest| async move {
+            guest.read_file(path, max_bytes, 5000).await
+        })
+        .await
     }
 
     async fn copy_file(
@@ -1397,51 +1495,46 @@ impl Sandbox for FirecrackerSandbox {
         options: CopyFileOptions,
     ) -> sandbox::Result<CopyFileResult> {
         let operation = SandboxOperation::Exec;
-        let guest = self.operation_guest(operation).await?;
         let timeout_ms = u32::try_from(options.timeout.as_millis()).unwrap_or(u32::MAX);
 
-        tokio::select! {
-            result = guest.copy_file(
-                path,
-                host_path,
-                vsock_host::CopyFileOptions {
-                    max_bytes: options.max_bytes,
-                    timeout_ms,
-                    missing_ok: options.missing_ok,
-                },
-            ) => {
-                result
-                    .map(|result| CopyFileResult {
-                        bytes_copied: result.bytes_copied,
-                    })
-                    .map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))
-            }
-            () = wait_for_backend_crash(self.state_tx.subscribe()) => {
-                Err(Self::backend_crashed_error(operation))
-            }
-        }
+        self.run_bounded_guest_operation(operation, |guest| async move {
+            guest
+                .copy_file(
+                    path,
+                    host_path,
+                    vsock_host::CopyFileOptions {
+                        max_bytes: options.max_bytes,
+                        timeout_ms,
+                        missing_ok: options.missing_ok,
+                    },
+                )
+                .await
+                .map(|result| CopyFileResult {
+                    bytes_copied: result.bytes_copied,
+                })
+        })
+        .await
     }
 
     async fn write_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
         let operation = SandboxOperation::WriteFile;
-        let guest = self.operation_guest(operation).await?;
 
-        tokio::select! {
-            result = guest.write_file(path, content, false) => {
-                result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))
-            }
-            () = wait_for_backend_crash(self.state_tx.subscribe()) => {
-                Err(Self::backend_crashed_error(operation))
-            }
-        }
+        self.run_bounded_guest_operation(operation, |guest| async move {
+            guest.write_file(path, content, false).await
+        })
+        .await
     }
 
     async fn spawn_watch(&self, request: &SpawnWatchRequest<'_>) -> sandbox::Result<SpawnHandle> {
         let operation = SandboxOperation::SpawnWatch;
-        let guest = self.operation_guest(operation).await?;
+        let mut guest = self.begin_guest_operation(operation).await?;
+        guest
+            .mark_writing()
+            .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
+        let vsock = guest.guest();
 
         tokio::select! {
-            result = guest.spawn_watch(
+            result = vsock.spawn_watch(
                 request.cmd,
                 request.timeout_ms(),
                 request.env,
@@ -1449,22 +1542,42 @@ impl Sandbox for FirecrackerSandbox {
                 request.output.streams_stdout(),
                 request.output.guest_log_path(),
             ) => {
-                let mut handle = result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))?;
+                let mut handle = match result {
+                    Ok(handle) => handle,
+                    Err(error) => {
+                        let backend_crashed = self.has_backend_crashed();
+                        let is_terminal = guest_error_is_terminal(&error, backend_crashed);
+                        let result = Err(Self::operation_error(operation, error, backend_crashed));
+                        if is_terminal {
+                            guest
+                                .complete()
+                                .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
+                        }
+                        return result;
+                    }
+                };
+                guest
+                    .mark_in_guest()
+                    .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
                 let pid = handle.pid();
                 let stdout_rx = request
                     .output
                     .streams_stdout()
                     .then(|| handle.take_stdout_receiver())
                     .flatten();
-                let exit = Box::pin(async move {
-                    let event = handle.wait().await?;
-                    Ok(ProcessExit {
-                        pid: event.pid,
-                        exit_code: event.exit_code,
-                        stdout: event.stdout,
-                        stderr: event.stderr,
-                    })
-                });
+                let lease = guest.into_lease();
+                let exit = gated_spawn_exit_future(
+                    async move {
+                        let event = handle.wait().await?;
+                        Ok(ProcessExit {
+                            pid: event.pid,
+                            exit_code: event.exit_code,
+                            stdout: event.stdout,
+                            stderr: event.stderr,
+                        })
+                    },
+                    lease,
+                );
                 Ok(SpawnHandle::new(pid, stdout_rx, exit))
             }
             () = wait_for_backend_crash(self.state_tx.subscribe()) => {
@@ -1764,6 +1877,7 @@ async fn unpark_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::park_coordinator::{CoordinatorState, PrepareParkError};
 
     fn monitored_cat_process() -> tokio::process::Child {
         tokio::process::Command::new("cat")
@@ -1974,6 +2088,13 @@ mod tests {
         }
     }
 
+    fn active_spawn_watch_lease(coordinator: &ParkCoordinator) -> OperationLease {
+        let mut lease = coordinator.reserve_operation().expect("reserve operation");
+        lease.mark_writing().expect("mark writing");
+        lease.mark_in_guest().expect("mark in guest");
+        lease
+    }
+
     #[test]
     fn operation_error_classifies_io_timeout() {
         let err = FirecrackerSandbox::operation_error(
@@ -2029,6 +2150,82 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn gated_spawn_exit_future_completes_lease_on_process_exit() {
+        let coordinator = ParkCoordinator::new();
+        let lease = active_spawn_watch_lease(&coordinator);
+        let exit = gated_spawn_exit_future(
+            async {
+                Ok(ProcessExit {
+                    pid: 42,
+                    exit_code: 0,
+                    stdout: Vec::new(),
+                    stderr: Vec::new(),
+                })
+            },
+            lease,
+        );
+
+        assert!(matches!(
+            coordinator.begin_prepare_park(),
+            Err(PrepareParkError::Busy)
+        ));
+
+        let result = exit.await.expect("process exit should complete");
+        assert_eq!(result.pid, 42);
+
+        let attempt = coordinator
+            .begin_prepare_park()
+            .expect("completed spawn_watch lease should allow prepare");
+        coordinator.abort_prepare_park(&attempt).unwrap();
+    }
+
+    #[test]
+    fn dropped_gated_spawn_exit_future_marks_dirty() {
+        let coordinator = ParkCoordinator::new();
+        let lease = active_spawn_watch_lease(&coordinator);
+        let exit =
+            gated_spawn_exit_future(std::future::pending::<io::Result<ProcessExit>>(), lease);
+
+        drop(exit);
+
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+        assert_eq!(
+            coordinator.active_operation_count(),
+            0,
+            "dropped spawn exit future should not leave an active operation"
+        );
+    }
+
+    #[tokio::test]
+    async fn gated_spawn_exit_future_error_marks_dirty() {
+        let coordinator = ParkCoordinator::new();
+        let lease = active_spawn_watch_lease(&coordinator);
+        let exit = gated_spawn_exit_future(
+            async { Err(io::Error::new(io::ErrorKind::ConnectionReset, "closed")) },
+            lease,
+        );
+
+        let error = match exit.await {
+            Ok(_) => panic!("expected spawn exit error"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error.kind(), io::ErrorKind::ConnectionReset);
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+        assert_eq!(
+            coordinator.active_operation_count(),
+            0,
+            "failed spawn exit future should not leave an active operation"
+        );
+    }
+
     /// Exercise the `monitor_process` crash detection flow through real child
     /// exit. A running process exit should mark the sandbox crashed and wake
     /// current subscribers.
@@ -2077,9 +2274,12 @@ mod tests {
         let (state_tx, _state_rx) = watch::channel(SandboxState::Running);
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
         let runtime_cancel = CancellationToken::new();
-        let mut control = crate::control::bind_server(sock_path.clone(), Arc::clone(&guest))
-            .unwrap()
-            .spawn(runtime_cancel.clone());
+        let mut control = crate::control::bind_server(
+            sock_path.clone(),
+            GuestOperationGate::new(Arc::clone(&guest), ParkCoordinator::new()),
+        )
+        .unwrap()
+        .spawn(runtime_cancel.clone());
         let mut child = monitored_cat_process();
         let stdin = child.stdin.take();
 
