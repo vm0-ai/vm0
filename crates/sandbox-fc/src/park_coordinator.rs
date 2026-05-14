@@ -69,9 +69,7 @@ impl ParkCoordinator {
         inner.state = CoordinatorState::ClosingForPark { attempt_id };
 
         if let Some(reason) = inner.poisoned_reason() {
-            inner.state = CoordinatorState::Dirty {
-                reason: reason.clone(),
-            };
+            inner.mark_dirty(reason.clone());
             return Err(PrepareParkError::Dirty { reason });
         }
 
@@ -154,22 +152,23 @@ impl ParkCoordinator {
     }
 
     pub(crate) fn mark_dirty(&self, reason: DirtyReason) {
-        self.inner().state = CoordinatorState::Dirty { reason };
+        self.inner().mark_dirty(reason);
     }
 
     pub(crate) fn poison_unresolved_operations(&self, reason: DirtyReason) -> bool {
         let mut inner = self.inner();
-        if inner.operations.is_empty() {
-            return false;
-        }
+        let mut poisoned = false;
 
         for entry in inner.operations.values_mut() {
             if entry.liveness != OperationLiveness::Terminal {
                 entry.liveness = OperationLiveness::Poisoned;
+                poisoned = true;
             }
         }
-        inner.state = CoordinatorState::Dirty { reason };
-        true
+        if poisoned {
+            inner.mark_dirty(reason);
+        }
+        poisoned
     }
 
     pub(crate) fn active_operation_count(&self) -> usize {
@@ -339,7 +338,7 @@ impl OperationLease {
         }
 
         entry.liveness = OperationLiveness::Poisoned;
-        inner.state = CoordinatorState::Dirty { reason };
+        inner.mark_dirty(reason);
         self.released = true;
         Ok(())
     }
@@ -386,12 +385,10 @@ impl Drop for OperationLease {
                 if let Some(entry) = inner.operations.get_mut(&self.id) {
                     entry.liveness = OperationLiveness::Poisoned;
                 }
-                inner.state = CoordinatorState::Dirty {
-                    reason: DirtyReason::new(format!(
-                        "operation {} dropped after possible guest write",
-                        self.id.0
-                    )),
-                };
+                inner.mark_dirty(DirtyReason::new(format!(
+                    "operation {} dropped after possible guest write",
+                    self.id.0
+                )));
             }
             OperationLiveness::Terminal | OperationLiveness::Poisoned => {}
         }
@@ -412,6 +409,14 @@ struct Inner {
 }
 
 impl Inner {
+    fn mark_dirty(&mut self, reason: DirtyReason) {
+        if matches!(self.state, CoordinatorState::Dirty { .. }) {
+            return;
+        }
+
+        self.state = CoordinatorState::Dirty { reason };
+    }
+
     fn has_active_operations(&self) -> bool {
         self.operations
             .values()
@@ -473,6 +478,13 @@ mod tests {
             coordinator.state(),
             CoordinatorState::Dirty { .. }
         ));
+    }
+
+    fn dirty_reason(coordinator: &ParkCoordinator) -> DirtyReason {
+        match coordinator.state() {
+            CoordinatorState::Dirty { reason } => reason,
+            state => panic!("expected dirty state, got {state:?}"),
+        }
     }
 
     #[test]
@@ -634,6 +646,26 @@ mod tests {
         assert_dirty_state(&coordinator);
         drop(lease);
         assert_dirty_state(&coordinator);
+    }
+
+    #[test]
+    fn driver_shutdown_without_unresolved_operations_does_not_dirty() {
+        let coordinator = ParkCoordinator::new();
+
+        assert!(!coordinator.poison_unresolved_operations(DirtyReason::new("driver shutdown")));
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+    }
+
+    #[test]
+    fn first_dirty_reason_is_preserved() {
+        let coordinator = ParkCoordinator::new();
+        let mut lease = coordinator.reserve_operation().expect("reserve operation");
+        assert!(lease.mark_writing().is_ok());
+
+        coordinator.mark_dirty(DirtyReason::new("first cause"));
+        drop(lease);
+
+        assert_eq!(dirty_reason(&coordinator), DirtyReason::new("first cause"));
     }
 
     #[test]
