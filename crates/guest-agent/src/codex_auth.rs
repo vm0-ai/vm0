@@ -169,9 +169,14 @@ fn prepare_codex_home(home_dir: &Path) -> Result<PathBuf, AgentError> {
     use std::os::unix::fs::PermissionsExt;
 
     let codex_home = home_dir.join(".codex");
-    std::fs::create_dir_all(&codex_home)?;
-
-    let metadata = std::fs::symlink_metadata(&codex_home)?;
+    let metadata = match std::fs::symlink_metadata(&codex_home) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            std::fs::create_dir_all(&codex_home)?;
+            std::fs::symlink_metadata(&codex_home)?
+        }
+        Err(error) => return Err(error.into()),
+    };
     if metadata.file_type().is_symlink() {
         return Err(AgentError::Execution(format!(
             "refusing to write codex auth through symlinked directory {}",
@@ -207,7 +212,16 @@ fn write_auth_json_atomic(codex_home: &Path, serialized: &str) -> Result<(), Age
         file.flush()?;
     }
 
-    temp.persist(&auth_path).map_err(|e| e.error)?;
+    temp.persist(&auth_path).map_err(|e| {
+        AgentError::Io(std::io::Error::new(
+            e.error.kind(),
+            format!(
+                "failed to replace {} atomically: {}",
+                auth_path.display(),
+                e.error
+            ),
+        ))
+    })?;
     Ok(())
 }
 
@@ -494,6 +508,52 @@ mod tests {
         assert!(
             err.to_string().contains("symlinked directory"),
             "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn setup_codex_chatgpt_inner_rejects_file_at_codex_home_path() {
+        let tmp = TempDir::new().unwrap();
+        let codex_home = tmp.path().join(".codex");
+        std::fs::write(&codex_home, b"not a directory").unwrap();
+
+        let err = setup_codex_chatgpt_inner(tmp.path(), fixed_now()).unwrap_err();
+        assert!(
+            err.to_string().contains(".codex"),
+            "unexpected error: {err}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&codex_home).unwrap(),
+            "not a directory",
+            "setup must not replace a non-directory .codex path"
+        );
+    }
+
+    #[test]
+    fn setup_codex_chatgpt_inner_preserves_auth_json_directory_on_error() {
+        let tmp = TempDir::new().unwrap();
+        let codex_home = tmp.path().join(".codex");
+        let auth_path = codex_home.join("auth.json");
+        std::fs::create_dir_all(&auth_path).unwrap();
+
+        let err = setup_codex_chatgpt_inner(tmp.path(), fixed_now()).unwrap_err();
+        assert!(
+            err.to_string().contains("auth.json"),
+            "unexpected error: {err}"
+        );
+        assert!(
+            auth_path.is_dir(),
+            "failed atomic replacement must preserve an existing auth.json directory"
+        );
+
+        let entries = std::fs::read_dir(&codex_home)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            entries,
+            vec![std::ffi::OsString::from("auth.json")],
+            "failed atomic replacement must not leave temp files behind"
         );
     }
 }
