@@ -397,6 +397,38 @@ async fn read_session_history_codex_marker_rejects_symlinked_sessions_root() {
     );
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn read_session_history_codex_marker_skips_special_files() {
+    use std::os::unix::net::UnixListener;
+
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions");
+    std::fs::create_dir_all(&sessions_dir).unwrap();
+
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    let _socket = UnixListener::bind(sessions_dir.join(format!("{thread_id}.jsonl"))).unwrap();
+
+    let path_file = tmp.path().join("path.txt");
+    let marker = format!(
+        "CODEX_SEARCH:{}:{thread_id}",
+        sessions_dir.to_string_lossy()
+    );
+    std::fs::write(&path_file, marker.as_bytes()).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("codex lookup must ignore matching non-regular files");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Codex session file not found"),
+        "expected matching special file to be ignored, got: {msg}"
+    );
+}
+
 #[tokio::test]
 async fn read_session_history_resolves_claude_literal_path() {
     // Claude path goes through the same public entry but uses a literal
