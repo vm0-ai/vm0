@@ -159,10 +159,6 @@ mod tests {
             "recording".into()
         }
 
-        async fn startup(&mut self) -> sandbox::Result<()> {
-            Ok(())
-        }
-
         async fn create(
             &self,
             _config: sandbox::SandboxConfig,

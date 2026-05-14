@@ -99,13 +99,12 @@ impl SandboxRuntime for FirecrackerRuntime {
         config: FactoryConfig,
     ) -> sandbox::Result<Box<dyn SandboxFactory>> {
         let fc_config = self.to_firecracker_config(config);
-        let mut factory = FirecrackerFactory::new(
+        let factory = FirecrackerFactory::start(
             fc_config,
             Some(self.netns_pool.clone()),
             self.device_pool.clone(),
         )
         .await?;
-        factory.startup().await?;
         Ok(Box::new(factory))
     }
 

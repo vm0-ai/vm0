@@ -195,10 +195,6 @@ mod tests {
             "panic-destroy".into()
         }
 
-        async fn startup(&mut self) -> sandbox::Result<()> {
-            Ok(())
-        }
-
         async fn create(
             &self,
             config: sandbox::SandboxConfig,
@@ -225,10 +221,6 @@ mod tests {
 
         fn config_hash(&self) -> String {
             "recording-destroy".into()
-        }
-
-        async fn startup(&mut self) -> sandbox::Result<()> {
-            Ok(())
         }
 
         async fn create(

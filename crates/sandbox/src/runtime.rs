@@ -22,8 +22,7 @@ use crate::factory::SandboxFactory;
 pub trait SandboxRuntime: Send + Sync {
     /// Create a new sandbox factory for the given profile configuration.
     ///
-    /// The returned factory is fully initialized (`startup()` has been called)
-    /// and ready to create sandboxes.
+    /// The returned factory is fully initialized and ready to create sandboxes.
     async fn create_factory(&self, config: FactoryConfig) -> Result<Box<dyn SandboxFactory>>;
 
     /// Release shared resources (network pools, device caches).

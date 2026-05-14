@@ -52,7 +52,7 @@ pub(in super::super) async fn seed_idle_pool_with_overrides(
     memory_mb: u32,
 ) -> SandboxId {
     let runtime = sandbox_mock::MockSandboxRuntime::with_overrides(Arc::clone(overrides));
-    let mut factory = runtime
+    let factory = runtime
         .create_factory(sandbox::FactoryConfig {
             profile: profile_name.into(),
             binary_path: PathBuf::new(),
@@ -63,7 +63,6 @@ pub(in super::super) async fn seed_idle_pool_with_overrides(
         })
         .await
         .expect("create factory");
-    factory.startup().await.expect("startup");
     let factory_arc: Arc<Box<dyn sandbox::SandboxFactory>> = Arc::new(factory);
     let sandbox_id = SandboxId::new_v4();
     let sandbox = factory_arc
