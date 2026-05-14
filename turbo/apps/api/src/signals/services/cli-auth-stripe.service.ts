@@ -173,7 +173,7 @@ function extractPollUrl(nextStep: string): string {
     throw new Error("Stripe CLI response did not include a completion URL");
   }
 
-  validateStripeCliUrl(pollUrl, "completion", "/stripecli/auth");
+  validateStripeCliUrl(pollUrl, "completion");
 
   return pollUrl;
 }
@@ -181,7 +181,6 @@ function extractPollUrl(nextStep: string): string {
 function validateStripeCliUrl(
   url: string,
   label: "browser" | "completion",
-  pathnamePrefix: string,
 ): string {
   const parsed = safeUrlParse(url);
   if (!parsed) {
@@ -189,8 +188,7 @@ function validateStripeCliUrl(
   }
   if (
     parsed.protocol !== "https:" ||
-    parsed.hostname !== "dashboard.stripe.com" ||
-    !parsed.pathname.startsWith(pathnamePrefix)
+    parsed.hostname !== "dashboard.stripe.com"
   ) {
     throw new Error(`Stripe CLI response included an unexpected ${label} URL`);
   }
@@ -336,11 +334,7 @@ export async function startCliAuthStripe(args: {
     return {
       ok: true as const,
       sessionToken,
-      browserUrl: validateStripeCliUrl(
-        output.browser_url,
-        "browser",
-        "/stripecli/confirm_auth",
-      ),
+      browserUrl: validateStripeCliUrl(output.browser_url, "browser"),
       verificationCode: output.verification_code,
       expiresIn: CLI_AUTH_STRIPE_SESSION_TTL_SECONDS,
       interval: CLI_AUTH_STRIPE_POLL_INTERVAL_SECONDS,
