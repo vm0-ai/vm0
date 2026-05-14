@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
@@ -140,7 +139,6 @@ describe("chat queued user messages", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
     });
 
     const textarea = await waitFor(() => {
@@ -174,7 +172,6 @@ describe("chat queued user messages", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
     });
 
     const textarea = await waitFor(() => {
@@ -238,7 +235,6 @@ describe("chat queued user messages", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
     });
 
     await startActiveRun(user);
@@ -260,7 +256,6 @@ describe("chat queued user messages", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
     });
 
     await startActiveRun(user);
@@ -296,7 +291,6 @@ describe("chat queued user messages", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
     });
 
     await startActiveRun(user);
@@ -330,7 +324,6 @@ describe("chat queued user messages", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
     });
 
     await startActiveRun(user);
@@ -378,7 +371,6 @@ describe("chat queued user messages", () => {
     detachedSetupPage({
       context,
       path: AGENT_CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
     });
 
     await startOptimisticNewThreadRun(user);
@@ -417,7 +409,6 @@ describe("chat queued user messages", () => {
     detachedSetupPage({
       context,
       path: AGENT_CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
     });
 
     await startOptimisticNewThreadRun(user);
@@ -451,7 +442,6 @@ describe("chat queued user messages", () => {
     detachedSetupPage({
       context,
       path: AGENT_CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
     });
 
     await startOptimisticNewThreadRun(user);

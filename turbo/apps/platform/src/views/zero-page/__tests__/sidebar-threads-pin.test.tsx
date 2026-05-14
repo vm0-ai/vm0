@@ -10,7 +10,6 @@ import {
   chatThreadPinContract,
   chatThreadUnpinContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -125,7 +124,7 @@ function setupMocks(initial: ThreadFixture[]) {
 }
 
 describe("sidebar chat thread pin", () => {
-  it("flag OFF: shows hover-only trash buttons, no menu trigger", async () => {
+  it("none pinned: each row shows kebab trigger with Pin + Delete items", async () => {
     setupMocks([
       makeThread("thread-1", "First chat", "2026-03-10T00:00:00Z"),
       makeThread("thread-2", "Second chat", "2026-03-09T00:00:00Z"),
@@ -134,27 +133,6 @@ describe("sidebar chat thread pin", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-1",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadPin]: false },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("First chat")).toBeInTheDocument();
-    });
-
-    expect(screen.getAllByLabelText("Delete chat")).toHaveLength(2);
-    expect(screen.queryAllByTestId("chat-thread-menu-trigger")).toHaveLength(0);
-  });
-
-  it("flag ON, none pinned: each row shows kebab trigger with Pin + Delete items", async () => {
-    setupMocks([
-      makeThread("thread-1", "First chat", "2026-03-10T00:00:00Z"),
-      makeThread("thread-2", "Second chat", "2026-03-09T00:00:00Z"),
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: "/chats/thread-1",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadPin]: true },
     });
 
     await waitFor(() => {
@@ -179,7 +157,7 @@ describe("sidebar chat thread pin", () => {
     expect(within(menu).queryByText("Unpin chat")).not.toBeInTheDocument();
   });
 
-  it("flag ON, pinned thread present: trigger shows pin icon and menu reads Unpin", async () => {
+  it("pinned thread present: trigger shows pin icon and menu reads Unpin", async () => {
     setupMocks([
       makeThread(
         "thread-pinned",
@@ -193,7 +171,6 @@ describe("sidebar chat thread pin", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-other",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadPin]: true },
     });
 
     await waitFor(() => {
@@ -215,7 +192,7 @@ describe("sidebar chat thread pin", () => {
     expect(within(menu).queryByText("Pin chat")).not.toBeInTheDocument();
   });
 
-  it("flag ON, click Pin: sends POST /pin, refetches, row floats to top", async () => {
+  it("click Pin: sends POST /pin, refetches, row floats to top", async () => {
     const { getLastPinned } = setupMocks([
       makeThread("thread-1", "First chat", "2026-03-10T00:00:00Z"),
       makeThread("thread-2", "Second chat", "2026-03-09T00:00:00Z"),
@@ -224,7 +201,6 @@ describe("sidebar chat thread pin", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-1",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadPin]: true },
     });
 
     await waitFor(() => {
@@ -253,7 +229,7 @@ describe("sidebar chat thread pin", () => {
     });
   });
 
-  it("flag ON, click Delete in menu: opens confirm dialog and deletes", async () => {
+  it("click Delete in menu: opens confirm dialog and deletes", async () => {
     const { getLastDeleted } = setupMocks([
       makeThread("thread-1", "First chat", "2026-03-10T00:00:00Z"),
       makeThread("thread-2", "Second chat", "2026-03-09T00:00:00Z"),
@@ -262,7 +238,6 @@ describe("sidebar chat thread pin", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-1",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadPin]: true },
     });
 
     await waitFor(() => {

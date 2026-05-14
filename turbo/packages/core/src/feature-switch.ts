@@ -252,18 +252,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.QueueMessage]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Allow keyboard sends during an active chat thread run to append the draft to that thread's pending message queue.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.ChatThreadPin]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Replace the sidebar's per-thread trash button with a kebab/pin menu that exposes Pin/Unpin and Delete. Pinned threads sort to the top of the agent's chat list. Mobile shows the menu trigger always; desktop shows it on hover.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ChatThreadRename]: {
     maintainer: "ethan@vm0.ai",
     description:

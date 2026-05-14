@@ -108,7 +108,7 @@ function setupMocks(initial: ThreadFixture[]) {
 }
 
 describe("sidebar chat thread rename", () => {
-  it("flag OFF: shows hover-only trash buttons, no menu trigger", async () => {
+  it("flag ON: kebab menu adds Rename chat alongside Pin and Delete", async () => {
     setupMocks([
       makeThread("thread-1", "First chat", "2026-03-10T00:00:00Z"),
       makeThread("thread-2", "Second chat", "2026-03-09T00:00:00Z"),
@@ -118,30 +118,6 @@ describe("sidebar chat thread rename", () => {
       context,
       path: "/chats/thread-1",
       featureSwitches: {
-        [FeatureSwitchKey.ChatThreadPin]: false,
-        [FeatureSwitchKey.ChatThreadRename]: false,
-      },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("First chat")).toBeInTheDocument();
-    });
-
-    expect(screen.getAllByLabelText("Delete chat")).toHaveLength(2);
-    expect(screen.queryAllByTestId("chat-thread-menu-trigger")).toHaveLength(0);
-  });
-
-  it("flag ON (rename only): kebab menu shows Rename chat and Delete chat", async () => {
-    setupMocks([
-      makeThread("thread-1", "First chat", "2026-03-10T00:00:00Z"),
-      makeThread("thread-2", "Second chat", "2026-03-09T00:00:00Z"),
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: "/chats/thread-1",
-      featureSwitches: {
-        [FeatureSwitchKey.ChatThreadPin]: false,
         [FeatureSwitchKey.ChatThreadRename]: true,
       },
     });
@@ -160,7 +136,33 @@ describe("sidebar chat thread rename", () => {
     });
     expect(within(menu).getByText("Rename chat")).toBeInTheDocument();
     expect(within(menu).getByText("Delete chat")).toBeInTheDocument();
-    expect(within(menu).queryByText("Pin chat")).not.toBeInTheDocument();
+    expect(within(menu).getByText("Pin chat")).toBeInTheDocument();
+  });
+
+  it("flag OFF: kebab menu omits Rename chat", async () => {
+    setupMocks([
+      makeThread("thread-1", "First chat", "2026-03-10T00:00:00Z"),
+      makeThread("thread-2", "Second chat", "2026-03-09T00:00:00Z"),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-1",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("First chat")).toBeInTheDocument();
+    });
+
+    const triggers = screen.getAllByTestId("chat-thread-menu-trigger");
+    click(triggers[0]);
+
+    const menu = await waitFor(() => {
+      return screen.getByRole("menu");
+    });
+    expect(within(menu).getByText("Pin chat")).toBeInTheDocument();
+    expect(within(menu).getByText("Delete chat")).toBeInTheDocument();
+    expect(within(menu).queryByText("Rename chat")).not.toBeInTheDocument();
   });
 
   it("flag ON: rename dialog opens, submits new title, closes dialog", async () => {
@@ -172,7 +174,6 @@ describe("sidebar chat thread rename", () => {
       context,
       path: "/chats/thread-1",
       featureSwitches: {
-        [FeatureSwitchKey.ChatThreadPin]: false,
         [FeatureSwitchKey.ChatThreadRename]: true,
       },
     });
@@ -222,7 +223,6 @@ describe("sidebar chat thread rename", () => {
       context,
       path: "/chats/thread-1",
       featureSwitches: {
-        [FeatureSwitchKey.ChatThreadPin]: false,
         [FeatureSwitchKey.ChatThreadRename]: true,
       },
     });

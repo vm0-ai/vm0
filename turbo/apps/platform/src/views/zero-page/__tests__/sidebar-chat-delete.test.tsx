@@ -120,8 +120,8 @@ function mockAPIs() {
 }
 
 async function deleteThread(nthButton: number) {
-  // With ChatThreadPin enabled the per-thread delete is reached through the
-  // kebab menu trigger; open it first then click the "Delete chat" item.
+  // The per-thread delete is reached through the kebab menu trigger;
+  // open it first then click the "Delete chat" item.
   const menuTriggers = await waitFor(() => {
     const btns = screen.getAllByLabelText("Open chat menu");
     expect(btns.length).toBeGreaterThanOrEqual(nthButton);

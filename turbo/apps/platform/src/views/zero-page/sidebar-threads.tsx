@@ -224,57 +224,15 @@ function handleChatThreadClick(
   closeSidebarOnSelect();
 }
 
-function ChatThreadDeleteButton({
-  threadId,
-  isHighlighted,
-}: {
-  threadId: string;
-  isHighlighted: boolean;
-}) {
-  const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
-
-  function handleDeleteClick(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    setPendingDeleteThreadId(threadId);
-  }
-
-  return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={handleDeleteClick}
-            className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
-              isHighlighted
-                ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
-                : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
-            }`}
-            aria-label="Delete chat"
-          >
-            <IconTrash size={16} stroke={2} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          <p className="text-xs">Delete chat</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
 function ChatThreadMenu({
   threadId,
   isPinned,
   isHighlighted,
-  pinEnabled,
   renameEnabled,
 }: {
   threadId: string;
   isPinned: boolean;
   isHighlighted: boolean;
-  pinEnabled: boolean;
   renameEnabled: boolean;
 }) {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
@@ -331,21 +289,19 @@ function ChatThreadMenu({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-40">
-          {pinEnabled && (
-            <DropdownMenuItem onSelect={handleTogglePin}>
-              {isPinned ? (
-                <>
-                  <IconPinnedOff size={16} stroke={2} className="mr-2" />
-                  Unpin chat
-                </>
-              ) : (
-                <>
-                  <IconPin size={16} stroke={2} className="mr-2" />
-                  Pin chat
-                </>
-              )}
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuItem onSelect={handleTogglePin}>
+            {isPinned ? (
+              <>
+                <IconPinnedOff size={16} stroke={2} className="mr-2" />
+                Unpin chat
+              </>
+            ) : (
+              <>
+                <IconPin size={16} stroke={2} className="mr-2" />
+                Pin chat
+              </>
+            )}
+          </DropdownMenuItem>
           {renameEnabled && (
             <DropdownMenuItem onSelect={openRenameDialog}>
               <IconPencil size={16} stroke={2} className="mr-2" />
@@ -371,14 +327,12 @@ function ChatThreadSideDecorator({
   threadId,
   isPinned,
   isHighlighted,
-  pinEnabled,
   renameEnabled,
   indicatorState,
 }: {
   threadId: string;
   isPinned: boolean;
   isHighlighted: boolean;
-  pinEnabled: boolean;
   renameEnabled: boolean;
   indicatorState: IndicatorState | null;
 }) {
@@ -393,25 +347,17 @@ function ChatThreadSideDecorator({
   }
   return (
     <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
-      {pinEnabled || renameEnabled ? (
-        <ChatThreadMenu
-          threadId={threadId}
-          isPinned={isPinned}
-          isHighlighted={isHighlighted}
-          pinEnabled={pinEnabled}
-          renameEnabled={renameEnabled}
-        />
-      ) : (
-        <ChatThreadDeleteButton
-          threadId={threadId}
-          isHighlighted={isHighlighted}
-        />
-      )}
+      <ChatThreadMenu
+        threadId={threadId}
+        isPinned={isPinned}
+        isHighlighted={isHighlighted}
+        renameEnabled={renameEnabled}
+      />
       {indicatorState !== null ? (
         <span className="flex items-center justify-center group-hover:hidden peer-data-[state=open]:hidden">
           <SessionStateIndicator state={indicatorState} />
         </span>
-      ) : pinEnabled && isPinned ? (
+      ) : isPinned ? (
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -453,11 +399,10 @@ function useChatThreadItemState(session: ChatThreadListItem) {
   const unloadRightThread = useSet(unloadRightThread$);
   const pageSignal = useGet(pageSignal$);
   const features = useLastResolved(featureSwitch$);
-  const pinEnabled = features?.[FeatureSwitchKey.ChatThreadPin] ?? false;
   const renameEnabled = features?.[FeatureSwitchKey.ChatThreadRename] ?? false;
 
   const isPinned =
-    pinEnabled && session.pinnedAt !== null && session.pinnedAt !== undefined;
+    session.pinnedAt !== null && session.pinnedAt !== undefined;
   const onChatPage = urlMainThreadId !== null;
   const isCurrentPage = urlMainThreadId === session.id;
   const isHighlighted = isCurrentPage || urlSidebarThreadId === session.id;
@@ -484,7 +429,6 @@ function useChatThreadItemState(session: ChatThreadListItem) {
     onChatPage,
     pageSignal,
     paneIndicator,
-    pinEnabled,
     renameEnabled,
     setSidebarExpanded,
     unloadRightThread,
@@ -550,7 +494,6 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
         threadId={session.id}
         isPinned={state.isPinned}
         isHighlighted={state.isHighlighted}
-        pinEnabled={state.pinEnabled}
         renameEnabled={state.renameEnabled}
         indicatorState={state.indicatorState}
       />
