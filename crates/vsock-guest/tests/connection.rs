@@ -299,6 +299,11 @@ fn send_empty_control(stream: &mut impl std::io::Write, msg_type: u8, seq: u32) 
     stream.write_all(&msg).unwrap();
 }
 
+fn send_control_payload(stream: &mut impl std::io::Write, msg_type: u8, seq: u32, payload: &[u8]) {
+    let msg = vsock_proto::encode(msg_type, seq, payload).unwrap();
+    stream.write_all(&msg).unwrap();
+}
+
 fn send_quiesce_operations(stream: &mut impl std::io::Write, seq: u32) {
     send_empty_control(stream, MSG_QUIESCE_OPERATIONS, seq);
 }
@@ -1291,6 +1296,125 @@ fn resume_operations_is_idempotent() {
         CommandTermination::Exited { exit_code: 0 }
     );
     assert_eq!(result.stdout, Some(b"open".to_vec()));
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn malformed_quiesce_resume_payloads_do_not_change_state() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_control_payload(&mut host_stream, MSG_QUIESCE_OPERATIONS, 223, b"unexpected");
+    let quiesce_error = read_message(&mut host_stream);
+    assert_eq!(quiesce_error.msg_type, MSG_ERROR);
+    assert_eq!(quiesce_error.seq, 223);
+    assert!(
+        vsock_proto::decode_error(&quiesce_error.payload)
+            .unwrap()
+            .contains("quiesce_operations payload must be empty")
+    );
+
+    send_command_start(
+        &mut host_stream,
+        224,
+        "printf open",
+        5000,
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+        CommandOutputPolicy::Discard,
+    );
+    let (_chunks, open_result) = read_command_result(&mut host_stream, 224);
+    assert_eq!(
+        open_result.termination,
+        CommandTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(open_result.stdout, Some(b"open".to_vec()));
+
+    send_quiesce_operations(&mut host_stream, 225);
+    let quiesced = read_message(&mut host_stream);
+    assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
+    assert_eq!(quiesced.seq, 225);
+
+    send_control_payload(&mut host_stream, MSG_RESUME_OPERATIONS, 226, b"unexpected");
+    let resume_error = read_message(&mut host_stream);
+    assert_eq!(resume_error.msg_type, MSG_ERROR);
+    assert_eq!(resume_error.seq, 226);
+    assert!(
+        vsock_proto::decode_error(&resume_error.payload)
+            .unwrap()
+            .contains("resume_operations payload must be empty")
+    );
+
+    send_command_start(
+        &mut host_stream,
+        227,
+        "printf should-not-run",
+        5000,
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+        CommandOutputPolicy::Discard,
+    );
+    let fenced = read_message(&mut host_stream);
+    assert_eq!(fenced.msg_type, MSG_ERROR);
+    assert_eq!(fenced.seq, 227);
+    assert!(
+        vsock_proto::decode_error(&fenced.payload)
+            .unwrap()
+            .contains("guest operations are quiescing")
+    );
+
+    send_resume_operations(&mut host_stream, 228);
+    let resumed = read_message(&mut host_stream);
+    assert_eq!(resumed.msg_type, MSG_OPERATIONS_RESUMED);
+    assert_eq!(resumed.seq, 228);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn resume_operations_reopens_after_busy_quiesce_with_pending_operation() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_command_start(
+        &mut host_stream,
+        241,
+        "sleep 60",
+        0,
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+        CommandOutputPolicy::Discard,
+    );
+
+    send_quiesce_operations(&mut host_stream, 242);
+    let busy = read_message(&mut host_stream);
+    assert_eq!(busy.msg_type, MSG_ERROR);
+    assert_eq!(busy.seq, 242);
+    assert!(
+        vsock_proto::decode_error(&busy.payload)
+            .unwrap()
+            .contains("guest operations still pending: 1")
+    );
+
+    send_resume_operations(&mut host_stream, 243);
+    let resumed = read_message(&mut host_stream);
+    assert_eq!(resumed.msg_type, MSG_OPERATIONS_RESUMED);
+    assert_eq!(resumed.seq, 243);
+
+    send_command_start(
+        &mut host_stream,
+        244,
+        "printf reopened",
+        5000,
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+        CommandOutputPolicy::Discard,
+    );
+    let (_chunks, reopened) = read_command_result(&mut host_stream, 244);
+    assert_eq!(
+        reopened.termination,
+        CommandTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(reopened.stdout, Some(b"reopened".to_vec()));
+
+    send_command_cancel(&mut host_stream, 241);
+    let (_chunks, cancelled) = read_command_result(&mut host_stream, 241);
+    assert_eq!(cancelled.termination, CommandTermination::Cancelled);
 
     finish_guest_connection(handle, host_stream);
 }
