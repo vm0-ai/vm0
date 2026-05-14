@@ -457,31 +457,88 @@ mod tests {
         let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
         (budget, lease)
     }
+
+    struct FinalizeTestFixture {
+        dir: tempfile::TempDir,
+        status: Arc<StatusTracker>,
+        parking_gate: ParkingGate,
+        idle_pool: SharedIdlePool,
+        network_log_manager: NetworkLogManager,
+    }
+
+    impl FinalizeTestFixture {
+        async fn new() -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let status = Arc::new(StatusTracker::new(
+                dir.path().join("status.json"),
+                4,
+                None,
+                None,
+            ));
+            status.write_initial().await;
+            let parking_gate = ParkingGate::new_open();
+            let idle_pool: SharedIdlePool =
+                Arc::new(tokio::sync::Mutex::new(IdlePool::new_with_parking_gate(
+                    IdlePoolConfig {
+                        default_timeout: Duration::from_secs(300),
+                        max_idle: 10,
+                    },
+                    parking_gate.clone(),
+                )));
+            let network_log_manager = NetworkLogManager::new();
+
+            Self {
+                dir,
+                status,
+                parking_gate,
+                idle_pool,
+                network_log_manager,
+            }
+        }
+
+        async fn network_log_session(&self) -> NetworkLogSession {
+            self.network_log_manager
+                .register_source_ip("10.0.0.1", self.dir.path().join("network.jsonl"))
+                .await
+        }
+
+        fn finalize_context(
+            &self,
+            run_id: RunId,
+            sandbox_id: SandboxId,
+            session_id: &str,
+            network_log_session: NetworkLogSession,
+            cancel: CancellationToken,
+        ) -> FinalizeContext {
+            FinalizeContext {
+                run_id,
+                sandbox_id,
+                profile_name: "vm0/default".into(),
+                session_id: Some(session_id.into()),
+                guest_session_id: None,
+                source_ip: "10.0.0.1".into(),
+                network_log_session: Some(network_log_session),
+                storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+                factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
+                idle_pool: Arc::clone(&self.idle_pool),
+                status: Arc::clone(&self.status),
+                park_notify: Arc::new(tokio::sync::Notify::new()),
+                parking_gate: self.parking_gate.clone(),
+                network_log_drain: NetworkLogDrainCoordinator::noop(),
+                exit_code: 0,
+                cancel,
+                cleanup_state: RunCleanupState::new(),
+                outer_job_panic: None,
+                test_observer: StartLoopTestObserver::default(),
+            }
+        }
+    }
+
     #[tokio::test]
     async fn finalizer_closes_network_log_session_before_parking() {
         let (_budget, lease) = test_budget_lease();
-        let dir = tempfile::tempdir().unwrap();
-        let status = Arc::new(StatusTracker::new(
-            dir.path().join("status.json"),
-            4,
-            None,
-            None,
-        ));
-        status.write_initial().await;
-        let parking_gate = ParkingGate::new_open();
-        let idle_pool: SharedIdlePool =
-            Arc::new(tokio::sync::Mutex::new(IdlePool::new_with_parking_gate(
-                IdlePoolConfig {
-                    default_timeout: Duration::from_secs(300),
-                    max_idle: 10,
-                },
-                parking_gate.clone(),
-            )));
-        let network_log_manager = NetworkLogManager::new();
-        let network_log_path = dir.path().join("network.jsonl");
-        let network_log_session = network_log_manager
-            .register_source_ip("10.0.0.1", network_log_path)
-            .await;
+        let fixture = FinalizeTestFixture::new().await;
+        let network_log_session = fixture.network_log_session().await;
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
 
@@ -489,33 +546,20 @@ mod tests {
             Some(Box::new(MockSandbox::new("network-log-park"))),
             ActiveBudgetLease::new(lease),
             CompletionPayload::new(run_id, 0, None, sandbox_id, SandboxReuseResult::PoolMiss),
-            FinalizeContext {
+            fixture.finalize_context(
                 run_id,
                 sandbox_id,
-                profile_name: "vm0/default".into(),
-                session_id: Some("sess-network-log-park".into()),
-                guest_session_id: None,
-                source_ip: "10.0.0.1".into(),
-                network_log_session: Some(network_log_session),
-                storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-                factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-                idle_pool: Arc::clone(&idle_pool),
-                status,
-                park_notify: Arc::new(tokio::sync::Notify::new()),
-                parking_gate,
-                network_log_drain: NetworkLogDrainCoordinator::noop(),
-                exit_code: 0,
-                cancel: CancellationToken::new(),
-                cleanup_state: RunCleanupState::new(),
-                outer_job_panic: None,
-                test_observer: StartLoopTestObserver::default(),
-            },
+                "sess-network-log-park",
+                network_log_session,
+                CancellationToken::new(),
+            ),
         )
         .await;
 
-        assert_eq!(idle_pool.lock().await.len(), 1);
+        assert_eq!(fixture.idle_pool.lock().await.len(), 1);
         assert!(
-            !network_log_manager
+            !fixture
+                .network_log_manager
                 .append_for_ip(
                     "10.0.0.1",
                     serde_json::json!({"type":"dns","host":"after-park.test"})
@@ -528,28 +572,8 @@ mod tests {
     #[tokio::test]
     async fn finalizer_closes_network_log_session_before_cancel_destroy() {
         let (_budget, lease) = test_budget_lease();
-        let dir = tempfile::tempdir().unwrap();
-        let status = Arc::new(StatusTracker::new(
-            dir.path().join("status.json"),
-            4,
-            None,
-            None,
-        ));
-        status.write_initial().await;
-        let parking_gate = ParkingGate::new_open();
-        let idle_pool: SharedIdlePool =
-            Arc::new(tokio::sync::Mutex::new(IdlePool::new_with_parking_gate(
-                IdlePoolConfig {
-                    default_timeout: Duration::from_secs(300),
-                    max_idle: 10,
-                },
-                parking_gate.clone(),
-            )));
-        let network_log_manager = NetworkLogManager::new();
-        let network_log_path = dir.path().join("network.jsonl");
-        let network_log_session = network_log_manager
-            .register_source_ip("10.0.0.1", network_log_path)
-            .await;
+        let fixture = FinalizeTestFixture::new().await;
+        let network_log_session = fixture.network_log_session().await;
         let cancel = CancellationToken::new();
         cancel.cancel();
         let run_id = RunId::new_v4();
@@ -559,33 +583,20 @@ mod tests {
             Some(Box::new(MockSandbox::new("network-log-cancel"))),
             ActiveBudgetLease::new(lease),
             CompletionPayload::new(run_id, 0, None, sandbox_id, SandboxReuseResult::PoolMiss),
-            FinalizeContext {
+            fixture.finalize_context(
                 run_id,
                 sandbox_id,
-                profile_name: "vm0/default".into(),
-                session_id: Some("sess-network-log-cancel".into()),
-                guest_session_id: None,
-                source_ip: "10.0.0.1".into(),
-                network_log_session: Some(network_log_session),
-                storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-                factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-                idle_pool: Arc::clone(&idle_pool),
-                status,
-                park_notify: Arc::new(tokio::sync::Notify::new()),
-                parking_gate,
-                network_log_drain: NetworkLogDrainCoordinator::noop(),
-                exit_code: 0,
+                "sess-network-log-cancel",
+                network_log_session,
                 cancel,
-                cleanup_state: RunCleanupState::new(),
-                outer_job_panic: None,
-                test_observer: StartLoopTestObserver::default(),
-            },
+            ),
         )
         .await;
 
-        assert_eq!(idle_pool.lock().await.len(), 0);
+        assert_eq!(fixture.idle_pool.lock().await.len(), 0);
         assert!(
-            !network_log_manager
+            !fixture
+                .network_log_manager
                 .append_for_ip(
                     "10.0.0.1",
                     serde_json::json!({"type":"dns","host":"after-destroy.test"})
