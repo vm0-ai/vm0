@@ -96,6 +96,31 @@ describe("sandbox utilities", () => {
     expect(truncated.data.toString()).toBe("abc");
   });
 
+  it("aborts bounded file reads without destroying streams with an error", async () => {
+    const controller = new AbortController();
+    const stream = new (class AbortableReadable extends Readable {
+      destroyedWith: Error | null | undefined;
+
+      override _read(): void {}
+
+      override _destroy(
+        error: Error | null,
+        callback: (error?: Error | null) => void,
+      ): void {
+        this.destroyedWith = error;
+        callback();
+      }
+    })();
+    const error = new Error("request aborted");
+    error.name = "AbortError";
+
+    const read = readStreamToBoundedBuffer(stream, 10, controller.signal);
+    controller.abort(error);
+
+    await expect(read).rejects.toThrow("request aborted");
+    expect(stream.destroyedWith).toBeNull();
+  });
+
   it("redacts command, env, and network policy secrets", () => {
     expect(
       redactSandboxMessage(
@@ -130,10 +155,36 @@ describe("sandbox utilities", () => {
       error: {
         phase: "stop",
         name: "AbortError",
-        message: "Vercel Sandbox cleanup timed out",
+        message: "Sandbox cleanup timed out",
       },
     });
     expect(cleanupSignal?.aborted).toBeTruthy();
+  });
+
+  it("does not start cleanup when the caller signal is already aborted", async () => {
+    const controller = new AbortController();
+    const error = new Error("request aborted");
+    error.name = "AbortError";
+    controller.abort(error);
+    let cleanupStarted = false;
+
+    const result = await sandboxCleanupOperation({
+      signal: controller.signal,
+      operation() {
+        cleanupStarted = true;
+        return Promise.resolve();
+      },
+    });
+
+    expect(result).toStrictEqual({
+      status: "failed",
+      error: {
+        phase: "stop",
+        name: "AbortError",
+        message: "request aborted",
+      },
+    });
+    expect(cleanupStarted).toBeFalsy();
   });
 });
 

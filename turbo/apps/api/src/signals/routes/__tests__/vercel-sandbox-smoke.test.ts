@@ -361,10 +361,7 @@ describe("POST /api/internal/vercel-sandbox/smoke", () => {
       stop() {
         return Promise.resolve({
           status: "failed",
-          error: sandboxError(
-            "stop",
-            abortError("Vercel Sandbox cleanup timed out"),
-          ),
+          error: sandboxError("stop", abortError("Sandbox cleanup timed out")),
         });
       },
     });
@@ -383,7 +380,7 @@ describe("POST /api/internal/vercel-sandbox/smoke", () => {
         phase: "cleanup",
         cause: {
           name: "AbortError",
-          message: "Vercel Sandbox cleanup timed out",
+          message: "Sandbox cleanup timed out",
         },
       },
       sandbox: {
@@ -401,7 +398,7 @@ describe("POST /api/internal/vercel-sandbox/smoke", () => {
         status: "failed",
         error: {
           name: "AbortError",
-          message: "Vercel Sandbox cleanup timed out",
+          message: "Sandbox cleanup timed out",
         },
       },
     });
@@ -476,6 +473,36 @@ describe("POST /api/internal/vercel-sandbox/smoke", () => {
       stdout: "",
       stderr: "unexpected\n",
     });
+    expect(response.body.cleanup).toStrictEqual({ status: "stopped" });
+    expect(calls.stop).toHaveLength(1);
+  });
+
+  it("treats a missing command exit code as a smoke failure", async () => {
+    const calls = mockSandbox({
+      runResult: commandResult({
+        exitCode: null,
+        stdout: "started\n",
+        stderr: "",
+      }),
+    });
+
+    const response = await accept(
+      client().smoke({
+        headers: { authorization: "Bearer test-cron-secret" },
+      }),
+      [503],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "Vercel Sandbox smoke check failed during command execution",
+      code: "VERCEL_SANDBOX_SMOKE_FAILED",
+      phase: "run",
+      cause: {
+        name: "Error",
+        message: "Smoke command did not produce an exit code",
+      },
+    });
+    expect(response.body.command).toBeUndefined();
     expect(response.body.cleanup).toStrictEqual({ status: "stopped" });
     expect(calls.stop).toHaveLength(1);
   });

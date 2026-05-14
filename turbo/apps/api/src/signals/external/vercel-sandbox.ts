@@ -9,8 +9,11 @@ import {
   normalizeSandboxLimitBytes,
   readStreamToBoundedBuffer,
   sandboxCleanupOperation,
+  sandboxErrorToException,
+  sandboxOperation,
   type SandboxClient,
   type SandboxCommandResult,
+  type SandboxErrorPhase,
   type SandboxFileReadResult,
   type SandboxHandle,
 } from "./sandbox";
@@ -37,106 +40,132 @@ async function getSandbox(
   return Sandbox.get({ sandboxId: handle.sandboxId, signal });
 }
 
+async function vercelSandboxOperation<T>(
+  phase: SandboxErrorPhase,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const result = await sandboxOperation(phase, operation);
+  if (result.ok) {
+    return result.value;
+  }
+
+  throw sandboxErrorToException(result.error);
+}
+
 function createRealVercelSandboxClient(): SandboxClient {
   return {
-    async create(options = {}): Promise<SandboxHandle> {
-      const Sandbox = await getVercelSandboxClass();
-      const sandbox = await Sandbox.create({
-        runtime: options.runtime,
-        timeout: options.timeoutMs,
-        resources: options.resources,
-        ports: options.ports ? [...options.ports] : undefined,
-        env: options.env ? { ...options.env } : undefined,
-        networkPolicy: options.networkPolicy as VercelNetworkPolicy | undefined,
-        signal: options.signal,
+    create(options = {}): Promise<SandboxHandle> {
+      return vercelSandboxOperation("create", async () => {
+        const Sandbox = await getVercelSandboxClass();
+        const sandbox = await Sandbox.create({
+          runtime: options.runtime,
+          timeout: options.timeoutMs,
+          resources: options.resources,
+          ports: options.ports ? [...options.ports] : undefined,
+          env: options.env ? { ...options.env } : undefined,
+          networkPolicy: options.networkPolicy as
+            | VercelNetworkPolicy
+            | undefined,
+          signal: options.signal,
+        });
+
+        return { sandboxId: sandbox.sandboxId };
       });
-
-      return { sandboxId: sandbox.sandboxId };
     },
 
-    async get(sandboxId, options = {}): Promise<SandboxHandle> {
-      const sandbox = await getSandbox({ sandboxId }, options.signal);
-      return { sandboxId: sandbox.sandboxId };
+    get(sandboxId, options = {}): Promise<SandboxHandle> {
+      return vercelSandboxOperation("get", async () => {
+        const sandbox = await getSandbox({ sandboxId }, options.signal);
+        return { sandboxId: sandbox.sandboxId };
+      });
     },
 
-    async runCommand(handle, options): Promise<SandboxCommandResult> {
-      const outputLimitBytes = normalizeSandboxLimitBytes(
-        options.outputLimitBytes,
-        DEFAULT_SANDBOX_OUTPUT_LIMIT_BYTES,
-      );
-      const sandbox = await getSandbox(handle, options.signal);
+    runCommand(handle, options): Promise<SandboxCommandResult> {
+      return vercelSandboxOperation("run", async () => {
+        const outputLimitBytes = normalizeSandboxLimitBytes(
+          options.outputLimitBytes,
+          DEFAULT_SANDBOX_OUTPUT_LIMIT_BYTES,
+        );
+        const sandbox = await getSandbox(handle, options.signal);
 
-      if (options.detached) {
+        if (options.detached) {
+          const command = await sandbox.runCommand({
+            cmd: options.cmd,
+            args: options.args ? [...options.args] : undefined,
+            cwd: options.cwd,
+            env: options.env ? { ...options.env } : undefined,
+            detached: true,
+            signal: options.signal,
+          });
+
+          return {
+            sandboxId: handle.sandboxId,
+            commandId: command.cmdId,
+            detached: true,
+            exitCode: command.exitCode,
+            stdout: emptyBoundedTextOutput(outputLimitBytes),
+            stderr: emptyBoundedTextOutput(outputLimitBytes),
+          };
+        }
+
+        const stdout = createBoundedTextCollector(outputLimitBytes);
+        const stderr = createBoundedTextCollector(outputLimitBytes);
         const command = await sandbox.runCommand({
           cmd: options.cmd,
           args: options.args ? [...options.args] : undefined,
           cwd: options.cwd,
           env: options.env ? { ...options.env } : undefined,
-          detached: true,
+          stdout: stdout.writable,
+          stderr: stderr.writable,
           signal: options.signal,
         });
 
         return {
           sandboxId: handle.sandboxId,
           commandId: command.cmdId,
-          detached: true,
+          detached: false,
           exitCode: command.exitCode,
-          stdout: emptyBoundedTextOutput(outputLimitBytes),
-          stderr: emptyBoundedTextOutput(outputLimitBytes),
+          stdout: stdout.output(),
+          stderr: stderr.output(),
         };
-      }
-
-      const stdout = createBoundedTextCollector(outputLimitBytes);
-      const stderr = createBoundedTextCollector(outputLimitBytes);
-      const command = await sandbox.runCommand({
-        cmd: options.cmd,
-        args: options.args ? [...options.args] : undefined,
-        cwd: options.cwd,
-        env: options.env ? { ...options.env } : undefined,
-        stdout: stdout.writable,
-        stderr: stderr.writable,
-        signal: options.signal,
       });
-
-      return {
-        sandboxId: handle.sandboxId,
-        commandId: command.cmdId,
-        detached: false,
-        exitCode: command.exitCode,
-        stdout: stdout.output(),
-        stderr: stderr.output(),
-      };
     },
 
-    async readFile(handle, options): Promise<SandboxFileReadResult> {
-      const limitBytes = normalizeSandboxLimitBytes(
-        options.limitBytes,
-        DEFAULT_SANDBOX_FILE_LIMIT_BYTES,
-      );
-      const sandbox = await getSandbox(handle, options.signal);
-      const stream = await sandbox.readFile(
-        { path: options.path, cwd: options.cwd },
-        { signal: options.signal },
-      );
-      if (!stream) {
-        return { status: "missing" };
-      }
+    readFile(handle, options): Promise<SandboxFileReadResult> {
+      return vercelSandboxOperation("read", async () => {
+        const limitBytes = normalizeSandboxLimitBytes(
+          options.limitBytes,
+          DEFAULT_SANDBOX_FILE_LIMIT_BYTES,
+        );
+        const sandbox = await getSandbox(handle, options.signal);
+        const stream = await sandbox.readFile(
+          { path: options.path, cwd: options.cwd },
+          { signal: options.signal },
+        );
+        if (!stream) {
+          return { status: "missing" };
+        }
 
-      return readStreamToBoundedBuffer(stream, limitBytes, options.signal);
+        return readStreamToBoundedBuffer(stream, limitBytes, options.signal);
+      });
     },
 
-    async updateNetworkPolicy(handle, options): Promise<void> {
-      const sandbox = await getSandbox(handle, options.signal);
-      await sandbox.updateNetworkPolicy(
-        options.networkPolicy as VercelNetworkPolicy,
-        { signal: options.signal },
-      );
+    updateNetworkPolicy(handle, options): Promise<void> {
+      return vercelSandboxOperation("network", async () => {
+        const sandbox = await getSandbox(handle, options.signal);
+        await sandbox.updateNetworkPolicy(
+          options.networkPolicy as VercelNetworkPolicy,
+          { signal: options.signal },
+        );
+      });
     },
 
-    async extendTimeout(handle, options): Promise<void> {
-      const sandbox = await getSandbox(handle, options.signal);
-      await sandbox.extendTimeout(options.durationMs, {
-        signal: options.signal,
+    extendTimeout(handle, options): Promise<void> {
+      return vercelSandboxOperation("extend-timeout", async () => {
+        const sandbox = await getSandbox(handle, options.signal);
+        await sandbox.extendTimeout(options.durationMs, {
+          signal: options.signal,
+        });
       });
     },
 

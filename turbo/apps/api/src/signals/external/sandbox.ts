@@ -323,17 +323,14 @@ function bufferFromStreamChunk(chunk: unknown): Buffer {
   return Buffer.from(String(chunk));
 }
 
-function stopReadableStream(
-  stream: NodeJS.ReadableStream,
-  reason?: unknown,
-): void {
+function stopReadableStream(stream: NodeJS.ReadableStream): void {
   const destroy = (
     stream as NodeJS.ReadableStream & {
       destroy?: (error?: Error) => void;
     }
   ).destroy;
   if (destroy) {
-    destroy.call(stream, reason instanceof Error ? reason : undefined);
+    destroy.call(stream);
     return;
   }
   stream.pause();
@@ -425,7 +422,7 @@ export function readStreamToBoundedBuffer(
 
     function onAbort() {
       const reason = signal?.reason ?? new Error("Sandbox file read aborted");
-      stopReadableStream(stream, reason);
+      stopReadableStream(stream);
       finish(undefined, reason);
     }
 
@@ -477,6 +474,12 @@ export function sandboxError(
   };
 }
 
+export function sandboxErrorToException(error: SandboxError): Error {
+  const exception = new Error(error.message);
+  exception.name = error.name;
+  return exception;
+}
+
 export function sandboxOperation<T>(
   phase: SandboxErrorPhase,
   fn: () => Promise<T>,
@@ -494,7 +497,7 @@ export function sandboxOperation<T>(
 }
 
 function cleanupTimeoutError(): Error {
-  const error = new Error("Vercel Sandbox cleanup timed out");
+  const error = new Error("Sandbox cleanup timed out");
   error.name = "AbortError";
   return error;
 }
@@ -508,9 +511,15 @@ export async function sandboxCleanupOperation(args: {
   const cleanupController = new AbortController();
   const timeoutController = new AbortController();
 
-  const operationResultPromise = sandboxOperation("stop", () => {
-    return args.operation(cleanupController.signal);
-  });
+  if (args.signal?.aborted) {
+    return {
+      status: "failed",
+      error: sandboxError(
+        "stop",
+        args.signal.reason ?? new Error("Sandbox cleanup aborted"),
+      ),
+    };
+  }
 
   const timeoutResultPromise = new Promise<SandboxOperationResult<void>>(
     (resolve) => {
@@ -532,12 +541,12 @@ export async function sandboxCleanupOperation(args: {
       }
       function onAbort() {
         finish(
-          args.signal?.reason ?? new Error("Vercel Sandbox cleanup aborted"),
+          args.signal?.reason ?? new Error("Sandbox cleanup aborted"),
           true,
         );
       }
       function onTimeoutCanceled() {
-        finish(new Error("Vercel Sandbox cleanup timeout canceled"), false);
+        finish(new Error("Sandbox cleanup timeout canceled"), false);
       }
 
       if (args.signal?.aborted) {
@@ -558,6 +567,10 @@ export async function sandboxCleanupOperation(args: {
       );
     },
   );
+
+  const operationResultPromise = sandboxOperation("stop", () => {
+    return args.operation(cleanupController.signal);
+  });
 
   const result = await Promise.race([
     operationResultPromise,
