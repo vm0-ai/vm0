@@ -204,4 +204,44 @@ mod tests {
         assert_eq!(runtime.factory_shutdowns.load(Ordering::SeqCst), 1);
         assert_eq!(runtime.runtime_shutdowns.load(Ordering::SeqCst), 1);
     }
+
+    #[tokio::test]
+    async fn start_factories_shuts_down_runtime_after_first_factory_create_error() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(temp.path().join("home"));
+        let base_dir = temp.path().join("base");
+        let firecracker = config::FirecrackerConfig {
+            binary: temp.path().join("firecracker"),
+            kernel: temp.path().join("vmlinux"),
+        };
+        let mut profiles = BTreeMap::new();
+        profiles.insert("vm0/first".into(), profile("rootfs-1", "snapshot-1"));
+        profiles.insert("vm0/second".into(), profile("rootfs-2", "snapshot-2"));
+        let mut runtime = RecordingRuntime::new(1);
+
+        let result = start_factories(&profiles, &firecracker, &base_dir, &home, &mut runtime).await;
+
+        assert!(result.is_err());
+        assert_eq!(runtime.create_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(runtime.factory_shutdowns.load(Ordering::SeqCst), 0);
+        assert_eq!(runtime.runtime_shutdowns.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn shutdown_factories_skips_factories_that_are_still_referenced() {
+        let mut runtime = RecordingRuntime::new(usize::MAX);
+        let factory_shutdowns = Arc::clone(&runtime.factory_shutdowns);
+        let retained_factory: SharedFactory = Arc::new(Box::new(RecordingFactory {
+            shutdowns: Arc::clone(&factory_shutdowns),
+        }));
+        let mut factories = BTreeMap::new();
+        factories.insert("vm0/first".into(), (Arc::clone(&retained_factory), false));
+
+        shutdown_factories(&mut factories, &mut runtime, None).await;
+
+        assert!(factories.is_empty());
+        assert_eq!(factory_shutdowns.load(Ordering::SeqCst), 0);
+        assert_eq!(runtime.runtime_shutdowns.load(Ordering::SeqCst), 1);
+        drop(retained_factory);
+    }
 }
