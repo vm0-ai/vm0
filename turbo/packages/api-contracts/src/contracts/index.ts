@@ -184,6 +184,10 @@ export {
   type TelegramCallbackPayload,
 } from "./internal-callbacks-telegram";
 export {
+  testTelegramDispatchProbeContract,
+  type TestTelegramDispatchProbeContract,
+} from "./test-telegram-dispatch-probe";
+export {
   internalCallbacksSlackOrgContract,
   slackOrgCallbackPayloadSchema,
   type InternalCallbacksSlackOrgContract,

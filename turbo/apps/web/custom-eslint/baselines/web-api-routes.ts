@@ -124,7 +124,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/test/slack-mock/users.info/route.ts",
   "app/api/test/slack-mock/views.publish/route.ts",
   "app/api/test/slack-state/route.ts",
-  "app/api/test/telegram-dispatch-probe/route.ts",
   "app/api/test/telegram-mock/[botToken]/[method]/route.ts",
   "app/api/test/telegram-state/route.ts",
   "app/api/usage/route.ts",

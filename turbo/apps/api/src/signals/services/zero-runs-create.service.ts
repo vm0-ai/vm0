@@ -554,6 +554,15 @@ export const createZeroIntegrationRun$ = command(
       readonly triggerSource: TriggerSource;
       readonly callbacks?: readonly RunCallback[];
       readonly apiStartTime: number;
+      readonly userInfoExtras?: Pick<
+        UserInfo,
+        | "slackDisplayName"
+        | "slackUserId"
+        | "telegramDisplayName"
+        | "telegramUsername"
+        | "telegramUserId"
+        | "telegramLanguage"
+      >;
     },
     signal: AbortSignal,
   ) => {
@@ -616,7 +625,7 @@ export const createZeroIntegrationRun$ = command(
           prompt: args.prompt,
           sessionId: args.sessionId,
           agent,
-          userInfo,
+          userInfo: { ...userInfo, ...args.userInfoExtras },
           permissionPolicies: agentPermissionPolicies,
           triggerSource: args.triggerSource,
           appendSystemPrompt: args.appendSystemPrompt,
