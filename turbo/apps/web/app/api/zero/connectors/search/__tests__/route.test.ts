@@ -1,8 +1,15 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { GET } from "../route";
-import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestRequest,
+  clearOrgMembersCacheEntry,
+} from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import {
+  generateZeroToken,
+  generateSandboxToken,
+} from "../../../../../../src/lib/auth/sandbox-token";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
@@ -10,11 +17,16 @@ import {
 
 const context = testContext();
 
-function searchConnectors(keyword?: string) {
+function searchConnectors(keyword?: string, token?: string) {
   const url = keyword
     ? `http://localhost:3000/api/zero/connectors/search?keyword=${encodeURIComponent(keyword)}`
     : "http://localhost:3000/api/zero/connectors/search";
-  return GET(createTestRequest(url));
+  return GET(
+    createTestRequest(
+      url,
+      token ? { headers: { authorization: `Bearer ${token}` } } : undefined,
+    ),
+  );
 }
 
 describe("GET /api/zero/connectors/search", () => {
@@ -183,5 +195,27 @@ describe("GET /api/zero/connectors/search", () => {
     });
     expect(zapier).toBeDefined();
     expect(zapier.authMethods).toContain("api-token");
+  });
+
+  it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {
+    const user = await context.setupUser();
+    await clearOrgMembersCacheEntry(user.orgId, user.userId);
+    const token = await generateZeroToken(user.userId, "run-1", user.orgId);
+
+    const response = await searchConnectors(undefined, token);
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.connectors).toBeInstanceOf(Array);
+    expect(data.connectors.length).toBeGreaterThan(0);
+  });
+
+  it("rejects a sandbox token lacking the connector:read capability with 403", async () => {
+    const user = await context.setupUser();
+    const token = await generateSandboxToken(user.userId, "run-1", user.orgId);
+
+    const response = await searchConnectors(undefined, token);
+    expect(response.status).toBe(403);
+    const data = await response.json();
+    expect(data.error.code).toBe("FORBIDDEN");
   });
 });

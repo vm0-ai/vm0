@@ -141,6 +141,7 @@ export const zeroConnectorsSearchContract = c.router({
     responses: {
       200: connectorSearchResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
     },
     summary: "Search available connector types",
   },

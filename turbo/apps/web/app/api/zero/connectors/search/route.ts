@@ -10,15 +10,21 @@ import {
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../../src/lib/auth/require-auth";
 import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
 
 const router = tsr.router(zeroConnectorsSearchContract, {
   search: async ({ headers, query }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization);
-    if (!authCtx) {
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "connector:read",
+    });
+    if (isAuthError(authCtx)) return authCtx;
+    if (!authCtx.orgId) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 

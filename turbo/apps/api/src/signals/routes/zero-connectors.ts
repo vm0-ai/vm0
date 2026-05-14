@@ -462,7 +462,7 @@ const getScopeDiffInner$ = computed(async (get) => {
 });
 
 const searchConnectorsInner$ = computed(async (get) => {
-  const auth = get(authContext$);
+  const auth = get(organizationAuthContext$);
   const query = get(queryOf(zeroConnectorsSearchContract.search));
   const connectors = await get(
     zeroConnectorSearch({
@@ -778,7 +778,7 @@ export const zeroConnectorsRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroConnectorsSearchContract.search,
-    handler: authRoute({}, searchConnectorsInner$),
+    handler: authRoute(connectorReadAuth, searchConnectorsInner$),
   },
   {
     route: zeroConnectorsMainContract.list,
