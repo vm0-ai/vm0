@@ -1272,8 +1272,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
         let tokens = empty_cancel_tokens();
-        let provider =
-            default_provider_with_cancel_watcher(dir.path(), cancel, Arc::clone(&tokens));
+        let provider = default_provider(dir.path(), cancel, Arc::clone(&tokens));
 
         let run_id = RunId::new_v4();
         let job_token = CancellationToken::new();
@@ -1288,11 +1287,12 @@ mod tests {
         std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
         std::fs::write(&cancel_path, b"").unwrap();
 
+        let watcher = LocalCancelWatcher::start(provider.cancel_scanner.clone());
         tokio::time::timeout(Duration::from_secs(2), job_token.cancelled())
             .await
             .expect("cancel watcher should trigger token");
 
-        provider.shutdown().await;
+        watcher.shutdown().await;
     }
 
     #[tokio::test]
