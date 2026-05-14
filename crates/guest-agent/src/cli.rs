@@ -544,10 +544,26 @@ where
     lines.into_iter().collect()
 }
 
+/// Summary of Claude Code's terminal `type=result` event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClaudeResultSummary {
+    /// Claude Code's reported turn count for the run, when present.
+    pub num_turns: Option<u64>,
+}
+
+impl ClaudeResultSummary {
+    fn from_event(event: &serde_json::Value) -> Self {
+        Self {
+            num_turns: event.get("num_turns").and_then(|v| v.as_u64()),
+        }
+    }
+}
+
 /// Result returned after the configured CLI process exits.
 ///
 /// The guest agent uses this summary to report final run status and to persist
 /// the event-drain watermark consumed by host/API clients.
+#[derive(Debug, Clone)]
 pub struct CliExecutionResult {
     /// Process exit code for the CLI.
     ///
@@ -574,6 +590,10 @@ pub struct CliExecutionResult {
     /// such as no-API mode, no emitted events, or failure before the first event
     /// was successfully posted.
     pub last_event_sequence: Option<u32>,
+
+    /// Claude Code's final result metadata, when a terminal result event was
+    /// observed. Codex uses its own event schema and leaves this unset.
+    pub claude_result: Option<ClaudeResultSummary>,
 }
 
 /// Execute the CLI process, streaming JSONL events and racing against heartbeat.
@@ -722,6 +742,7 @@ pub async fn execute_cli(
     let mut heartbeat_done = false;
     let mut last_read_event_at: Option<Instant> = None;
     let mut cli_exit_at: Option<Instant> = None;
+    let mut claude_result = None;
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
             line_result = reader.next_line(), if !stdout_eof => {
@@ -744,6 +765,7 @@ pub async fn execute_cli(
                             }
                             // Print Claude Code final result to stdout if applicable.
                             if behavior.handles_claude_result_event(&event) {
+                                claude_result = Some(ClaudeResultSummary::from_event(&event));
                                 if let Some(result) = event.get("result").and_then(|v| v.as_str())
                                 {
                                     println!("{result}");
@@ -1072,6 +1094,7 @@ pub async fn execute_cli(
         exit_code,
         stderr_lines: masked_stderr_lines,
         last_event_sequence,
+        claude_result,
     })
 }
 
@@ -1493,6 +1516,21 @@ mod tests {
         assert!(
             !CliFrameworkBehavior::new(env::Framework::ClaudeCode)
                 .handles_claude_result_event(&codex_terminal_event)
+        );
+    }
+
+    #[test]
+    fn claude_result_summary_captures_terminal_result_metadata() {
+        let event = serde_json::json!({
+            "type": "result",
+            "num_turns": 0,
+            "is_error": false,
+            "result": "done"
+        });
+
+        assert_eq!(
+            ClaudeResultSummary::from_event(&event),
+            ClaudeResultSummary { num_turns: Some(0) }
         );
     }
 

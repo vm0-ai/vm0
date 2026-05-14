@@ -692,9 +692,9 @@ async fn run_in_sandbox(
 
 /// Read a structured error file from the guest filesystem.
 ///
-/// The guest-agent writes checkpoint errors to `/tmp/vm0-checkpoint-error-{run_id}`
-/// so the runner can surface them even though stdout/stderr are redirected to the
-/// system log file.
+/// The guest-agent writes run-finalization errors to
+/// `/tmp/vm0-checkpoint-error-{run_id}` so the runner can surface them even
+/// though stdout/stderr are redirected to the system log file.
 ///
 /// NOTE: This path must match the convention in `crates/guest-agent/src/paths.rs`
 /// (`checkpoint_error_file()`). The runner and guest-agent are separate binaries

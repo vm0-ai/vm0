@@ -15,6 +15,8 @@ use guest_agent::telemetry::{Telemetry, UploadMode};
 
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
+use std::io::ErrorKind;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
@@ -179,24 +181,46 @@ async fn execute(
     log_info!(LOG_TAG, "▷ Execution");
     let cli_start = Instant::now();
     let mut last_event_sequence = None;
-    let (exit_code, error_message) =
+    let (cli_exit_code, exit_code, error_message, skip_recovery_checkpoint_for_no_history) =
         match cli::execute_cli(masker, heartbeat_handle, http.clone()).await {
             Ok(cli_result) => {
                 last_event_sequence = cli_result.last_event_sequence;
-                let code = cli_result.exit_code;
-                if code != 0 {
-                    (code, cli_failure_message(code, &cli_result.stderr_lines))
+                let cli_exit_code = cli_result.exit_code;
+                if cli_exit_code != 0 {
+                    (
+                        cli_exit_code,
+                        cli_exit_code,
+                        cli_failure_message(cli_exit_code, &cli_result.stderr_lines),
+                        false,
+                    )
+                } else if env::has_api()
+                    && is_claude_zero_turn_result(env::Framework::from_env(), &cli_result)
+                {
+                    let history_check_start = Instant::now();
+                    if claude_history_target_unavailable() {
+                        let msg = "Claude Code emitted a zero-turn result without creating session history; skipping checkpoint";
+                        record_sandbox_op(
+                            "session_history_available",
+                            history_check_start.elapsed(),
+                            false,
+                            Some(msg),
+                        );
+                        log_info!(LOG_TAG, "{msg}");
+                        let _ = std::fs::write(paths::checkpoint_error_file(), msg);
+                        (cli_exit_code, 1, msg.to_string(), true)
+                    } else {
+                        (0, 0, String::new(), false)
+                    }
                 } else {
-                    (0, String::new())
+                    (0, 0, String::new(), false)
                 }
             }
             Err(e) => {
                 let msg = e.to_string();
                 log_error!(LOG_TAG, "CLI execution failed: {msg}");
-                (1, msg)
+                (1, 1, msg, false)
             }
         };
-    let cli_exit_code = exit_code;
     let cli_elapsed = cli_start.elapsed();
     record_sandbox_op(
         "cli_execution",
@@ -214,10 +238,43 @@ async fn execute(
         exit_code,
         cli_elapsed,
         last_event_sequence,
+        skip_recovery_checkpoint_for_no_history,
         telemetry,
         &http,
     )
     .await
+}
+
+fn is_claude_zero_turn_result(
+    framework: env::Framework,
+    cli_result: &cli::CliExecutionResult,
+) -> bool {
+    matches!(framework, env::Framework::ClaudeCode)
+        && cli_result.exit_code == 0
+        && cli_result
+            .claude_result
+            .is_some_and(|result| result.num_turns == Some(0))
+}
+
+fn claude_history_target_unavailable() -> bool {
+    let raw = match std::fs::read_to_string(paths::session_history_path_file()) {
+        Ok(raw) => raw,
+        Err(e) if e.kind() == ErrorKind::NotFound => return true,
+        Err(_) => return false,
+    };
+    let target = raw.trim();
+    if target.is_empty() {
+        return true;
+    }
+    history_target_unavailable(Path::new(target))
+}
+
+fn history_target_unavailable(path: &Path) -> bool {
+    match path.metadata() {
+        Ok(metadata) => metadata.is_file() && metadata.len() == 0,
+        Err(e) if e.kind() == ErrorKind::NotFound => true,
+        Err(_) => false,
+    }
 }
 
 fn cli_failure_message(code: i32, stderr_lines: &[String]) -> String {
@@ -274,6 +331,7 @@ async fn complete_execution(
     mut exit_code: i32,
     cli_elapsed: Duration,
     last_event_sequence: Option<u32>,
+    skip_recovery_checkpoint_for_no_history: bool,
     telemetry: &Telemetry,
     http: &HttpClient,
 ) -> i32 {
@@ -297,7 +355,7 @@ async fn complete_execution(
     // final pass. Both go through the single-writer uploader, so the two
     // flushes never race the periodic tick on the pos files.
     let agent_type = env::Framework::from_env().agent_type();
-    if cli_exit_code == 0 && exit_code == 0 && env::has_api() {
+    if should_create_success_checkpoint(cli_exit_code, exit_code) && env::has_api() {
         log_info!(LOG_TAG, "{agent_type} completed successfully");
 
         log_info!(LOG_TAG, "▷ Checkpoint");
@@ -359,6 +417,11 @@ async fn complete_execution(
     } else {
         if cli_exit_code == 0 && exit_code == 0 {
             log_info!(LOG_TAG, "{agent_type} completed successfully");
+        } else if skip_recovery_checkpoint_for_no_history {
+            log_info!(
+                LOG_TAG,
+                "{agent_type} completed without resumable session history; marking run as failed"
+            );
         } else if cli_exit_code != 0 {
             log_info!(
                 LOG_TAG,
@@ -367,10 +430,17 @@ async fn complete_execution(
         }
 
         if env::has_api() {
-            log_info!(LOG_TAG, "Attempting best-effort recovery checkpoint");
-            match checkpoint::create_recovery_checkpoint(http).await {
-                Ok(()) => log_info!(LOG_TAG, "Recovery checkpoint created"),
-                Err(e) => log_warn!(LOG_TAG, "Recovery checkpoint skipped: {e}"),
+            if skip_recovery_checkpoint_for_no_history {
+                log_info!(
+                    LOG_TAG,
+                    "Skipping recovery checkpoint because no session history was created"
+                );
+            } else {
+                log_info!(LOG_TAG, "Attempting best-effort recovery checkpoint");
+                match checkpoint::create_recovery_checkpoint(http).await {
+                    Ok(()) => log_info!(LOG_TAG, "Recovery checkpoint created"),
+                    Err(e) => log_warn!(LOG_TAG, "Recovery checkpoint skipped: {e}"),
+                }
             }
         }
 
@@ -379,6 +449,10 @@ async fn complete_execution(
     }
 
     exit_code
+}
+
+fn should_create_success_checkpoint(cli_exit_code: i32, exit_code: i32) -> bool {
+    cli_exit_code == 0 && exit_code == 0
 }
 
 /// Final telemetry upload — records timing and logs on failure.
@@ -563,6 +637,65 @@ mod tests {
     }
 
     #[test]
+    fn is_claude_zero_turn_result_requires_all_guards() {
+        let zero_turn = cli::CliExecutionResult {
+            exit_code: 0,
+            stderr_lines: Vec::new(),
+            last_event_sequence: None,
+            claude_result: Some(cli::ClaudeResultSummary { num_turns: Some(0) }),
+        };
+        let one_turn = cli::CliExecutionResult {
+            claude_result: Some(cli::ClaudeResultSummary { num_turns: Some(1) }),
+            ..zero_turn.clone()
+        };
+        let failed_zero_turn = cli::CliExecutionResult {
+            exit_code: 1,
+            ..zero_turn.clone()
+        };
+
+        assert!(is_claude_zero_turn_result(
+            env::Framework::ClaudeCode,
+            &zero_turn,
+        ));
+        assert!(!is_claude_zero_turn_result(
+            env::Framework::Codex,
+            &zero_turn,
+        ));
+        assert!(!is_claude_zero_turn_result(
+            env::Framework::ClaudeCode,
+            &one_turn,
+        ));
+        assert!(!is_claude_zero_turn_result(
+            env::Framework::ClaudeCode,
+            &failed_zero_turn,
+        ));
+    }
+
+    #[test]
+    fn history_target_unavailable_detects_missing_and_empty_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let missing = tmp.path().join("missing.jsonl");
+        assert!(history_target_unavailable(&missing));
+
+        let empty = tmp.path().join("empty.jsonl");
+        std::fs::write(&empty, "").unwrap();
+        assert!(history_target_unavailable(&empty));
+
+        let non_empty = tmp.path().join("history.jsonl");
+        std::fs::write(&non_empty, r#"{"type":"system"}"#).unwrap();
+        assert!(!history_target_unavailable(&non_empty));
+
+        assert!(!history_target_unavailable(tmp.path()));
+    }
+
+    #[test]
+    fn success_checkpoint_requires_cli_and_run_success() {
+        assert!(should_create_success_checkpoint(0, 0));
+        assert!(!should_create_success_checkpoint(0, 1));
+        assert!(!should_create_success_checkpoint(1, 1));
+    }
+
+    #[test]
     fn complete_execution_creates_recovery_checkpoint_after_cli_failure() {
         let _test_state_guard = lock_test_state();
         tokio::runtime::Builder::new_current_thread()
@@ -570,6 +703,69 @@ mod tests {
             .build()
             .unwrap()
             .block_on(complete_execution_creates_recovery_checkpoint_after_cli_failure_inner());
+    }
+
+    #[test]
+    fn complete_execution_skips_recovery_checkpoint_for_no_history() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(complete_execution_skips_recovery_checkpoint_for_no_history_inner());
+    }
+
+    async fn complete_execution_skips_recovery_checkpoint_for_no_history_inner() {
+        let server = MockServer::start();
+        unsafe {
+            std::env::set_var("VM0_API_URL", server.base_url());
+            std::env::set_var("VM0_API_TOKEN", "test-token");
+            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
+            std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
+        }
+
+        let cleanup_paths = [
+            paths::checkpoint_error_file().to_string(),
+            paths::event_error_flag().to_string(),
+            paths::sandbox_ops_file().to_string(),
+            paths::telemetry_system_log_pos_file().to_string(),
+            paths::telemetry_metrics_pos_file().to_string(),
+            paths::telemetry_sandbox_ops_pos_file().to_string(),
+        ];
+        for path in &cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+
+        let prepare_mock = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/checkpoints/prepare-history");
+            then.status(500);
+        });
+        let checkpoint_mock = server.mock(|when, then| {
+            when.method(POST).path("/api/webhooks/agent/checkpoints");
+            then.status(500);
+        });
+        let _telemetry_mock = server.mock(|when, then| {
+            when.method(POST).path("/api/webhooks/agent/telemetry");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({}));
+        });
+
+        let masker = Arc::new(masker::SecretMasker::from_env());
+        let http = HttpClient::new().unwrap();
+        let telemetry = Telemetry::spawn(masker, http.clone());
+        let exit_code =
+            complete_execution(0, 1, Duration::ZERO, None, true, &telemetry, &http).await;
+        telemetry.shutdown().await;
+
+        assert_eq!(exit_code, 1);
+        assert_eq!(prepare_mock.calls_async().await, 0);
+        assert_eq!(checkpoint_mock.calls_async().await, 0);
+
+        for path in cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
     }
 
     async fn complete_execution_creates_recovery_checkpoint_after_cli_failure_inner() {
@@ -641,7 +837,8 @@ mod tests {
         let masker = Arc::new(masker::SecretMasker::from_env());
         let http = HttpClient::new().unwrap();
         let telemetry = Telemetry::spawn(masker, http.clone());
-        let exit_code = complete_execution(1, 1, Duration::ZERO, None, &telemetry, &http).await;
+        let exit_code =
+            complete_execution(1, 1, Duration::ZERO, None, false, &telemetry, &http).await;
         telemetry.shutdown().await;
 
         assert_eq!(exit_code, 1);
