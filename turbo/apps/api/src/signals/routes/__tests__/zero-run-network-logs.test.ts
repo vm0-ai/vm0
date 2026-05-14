@@ -288,7 +288,9 @@ describe("GET /api/zero/runs/:id/network", () => {
     });
     expect(response.body.networkLogs[0]?.auth_cache_hit).toBeUndefined();
     expect(response.body.networkLogs[0]?.auth_resolved_secrets).toBeUndefined();
-    expect(response.body.networkLogs[0]?.response_body_encoding).toBeUndefined();
+    expect(
+      response.body.networkLogs[0]?.response_body_encoding,
+    ).toBeUndefined();
   });
 
   it("returns empty array when no logs", async () => {
