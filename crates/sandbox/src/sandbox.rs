@@ -177,11 +177,15 @@ pub trait Sandbox: Send + Sync + Any {
 
     // -- operations --
     //
-    // Operations require the sandbox to be running (post-`start`,
-    // pre-`stop`/`kill`) and, if it was previously parked, unparked.
-    // They race the guest IPC call against a crash notifier so a dying
-    // backend process surfaces as a specific error rather than an
-    // opaque IPC timeout.
+    // Operations that start new guest work require the sandbox to be running
+    // (post-`start`, pre-`stop`/`kill`) and, if it was previously parked,
+    // unparked. They race the guest IPC call against a crash notifier so a
+    // dying backend process surfaces as a specific error rather than an opaque
+    // IPC timeout.
+    //
+    // `wait_exit` is the exception: it consumes a `SpawnHandle` returned by
+    // `spawn_watch` and observes that handle's already-started backend exit
+    // operation instead of starting new guest work.
 
     /// Run `request.cmd` in the guest, block until it exits or the
     /// request timeout expires, and return the captured output.
@@ -224,7 +228,8 @@ pub trait Sandbox: Send + Sync + Any {
     ///
     /// Consumes the handle. If `stdout_rx` was not taken before waiting, the
     /// stream is discarded instead of being buffered without a reader. Returns
-    /// an error if the sandbox is not running, if the backing process crashes,
-    /// or if the timeout elapses before the guest process exits.
+    /// an error if the backend exit operation is no longer available, if the
+    /// backing process crashes before an exit result is delivered, or if the
+    /// timeout elapses before the guest process exits.
     async fn wait_exit(&self, handle: SpawnHandle, timeout: Duration) -> Result<ProcessExit>;
 }
