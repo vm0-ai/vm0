@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.44.1](https://github.com/vm0-ai/vm0/compare/api-v1.44.0...api-v1.44.1) (2026-05-14)
+
+
+### Bug Fixes
+
+* **api:** sanitize run detail telemetry responses ([#13245](https://github.com/vm0-ai/vm0/issues/13245)) ([ac03118](https://github.com/vm0-ai/vm0/commit/ac03118d566f887eb2195cd389f734bb3af7198c))
+* attribute generated asset usage to runs ([#13239](https://github.com/vm0-ai/vm0/issues/13239)) ([eefe3cd](https://github.com/vm0-ai/vm0/commit/eefe3cd5dc5bc91bebae2eedda76e9bc3c49c50e))
+* migrate telegram dispatch probe to api ([#13237](https://github.com/vm0-ai/vm0/issues/13237)) ([b0f4206](https://github.com/vm0-ai/vm0/commit/b0f4206b9ff1dcac483c990eb0879588d5754946))
+
+
+### Refactoring
+
+* **api:** migrate agent checkpoint webhooks ([#13238](https://github.com/vm0-ai/vm0/issues/13238)) ([a9873d7](https://github.com/vm0-ai/vm0/commit/a9873d7b18d2986ad2d51da476c40fd3839314c3))
+* migrate agent event webhook to api ([#13244](https://github.com/vm0-ai/vm0/issues/13244)) ([7e8281e](https://github.com/vm0-ai/vm0/commit/7e8281e9aaf134562b1c7df864e036a1ab0476ae))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.20.1
+    * @vm0/connectors bumped to 1.10.0
+    * @vm0/core bumped to 8.275.3
+    * @vm0/db bumped to 1.9.6
+
 ## [1.44.0](https://github.com/vm0-ai/vm0/compare/api-v1.43.4...api-v1.44.0) (2026-05-14)
 
 

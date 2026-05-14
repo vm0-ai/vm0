@@ -1,5 +1,28 @@
 # Changelog
 
+## [12.363.0](https://github.com/vm0-ai/vm0/compare/web-v12.362.3...web-v12.363.0) (2026-05-14)
+
+
+### Features
+
+* add square connector ([#13235](https://github.com/vm0-ai/vm0/issues/13235)) ([e0344d7](https://github.com/vm0-ai/vm0/commit/e0344d7b204f0153544a080d5f36ce05d12d9f78))
+
+
+### Bug Fixes
+
+* attribute generated asset usage to runs ([#13239](https://github.com/vm0-ai/vm0/issues/13239)) ([eefe3cd](https://github.com/vm0-ai/vm0/commit/eefe3cd5dc5bc91bebae2eedda76e9bc3c49c50e))
+* migrate telegram dispatch probe to api ([#13237](https://github.com/vm0-ai/vm0/issues/13237)) ([b0f4206](https://github.com/vm0-ai/vm0/commit/b0f4206b9ff1dcac483c990eb0879588d5754946))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.20.1
+    * @vm0/connectors bumped to 1.10.0
+    * @vm0/core bumped to 8.275.3
+    * @vm0/db bumped to 1.9.6
+
 ## [12.362.3](https://github.com/vm0-ai/vm0/compare/web-v12.362.2...web-v12.362.3) (2026-05-14)
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.354.0](https://github.com/vm0-ai/vm0/compare/app-v0.353.2...app-v0.354.0) (2026-05-14)
+
+
+### Features
+
+* add square connector ([#13235](https://github.com/vm0-ai/vm0/issues/13235)) ([e0344d7](https://github.com/vm0-ai/vm0/commit/e0344d7b204f0153544a080d5f36ce05d12d9f78))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.20.1
+    * @vm0/connectors bumped to 1.10.0
+    * @vm0/core bumped to 8.275.3
+
 ## [0.353.2](https://github.com/vm0-ai/vm0/compare/app-v0.353.1...app-v0.353.2) (2026-05-14)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.39](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.38...runner-rs-v0.100.39) (2026-05-14)
+
+
+### Bug Fixes
+
+* **runner:** keep local cancel watcher live ([#13218](https://github.com/vm0-ai/vm0/issues/13218)) ([f0dad8c](https://github.com/vm0-ai/vm0/commit/f0dad8cd435f25d95efc35518f9bb1dcaf224940))
+
 ## [0.100.38](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.37...runner-rs-v0.100.38) (2026-05-14)
 
 ## [0.100.37](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.36...runner-rs-v0.100.37) (2026-05-13)
