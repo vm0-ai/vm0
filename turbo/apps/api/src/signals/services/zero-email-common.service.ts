@@ -13,9 +13,10 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { users } from "@vm0/db/schema/user";
 import { command, computed, type Computed } from "ccstate";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, lt, or, sql } from "drizzle-orm";
 import { convert, type FormatCallback } from "html-to-text";
 import { Resend } from "resend";
+import { delay } from "signal-timers";
 import { Webhook } from "svix";
 
 import { env } from "../../lib/env";
@@ -33,6 +34,9 @@ const ORG_CACHE_TTL_MS = 60_000;
 const USER_CACHE_TTL_MS = 900_000;
 const MAX_ATTEMPTS = 3;
 const BACKOFF_BASE_MS = 1000;
+const MAX_OUTBOX_BATCH_SIZE = 120;
+const OUTBOX_DRAIN_DELAY_MS = 500;
+const OUTBOX_TTL_MS = 15 * 60 * 1000;
 const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
 const PRESIGNED_URL_EXPIRY = 3600;
 const R2_PATH_PREFIX = "email-attachments";
@@ -596,9 +600,9 @@ async function processOutboxItem(
     to: row.to_addresses as string | readonly string[],
     subject: row.subject,
     template: row.template as EmailTemplate,
-    cc: row.cc_addresses as string | readonly string[] | undefined,
+    cc: (row.cc_addresses as string | readonly string[] | null) ?? undefined,
     replyTo: row.reply_to ?? undefined,
-    headers: row.headers as Record<string, string> | undefined,
+    headers: (row.headers as Record<string, string> | null) ?? undefined,
   });
 
   if (!result.ok) {
@@ -647,6 +651,76 @@ async function drainById(db: Db, itemId: string): Promise<boolean> {
     return row ? await processOutboxItem(tx, row) : false;
   });
 }
+
+async function drainNextOutboxItem(db: Db): Promise<boolean> {
+  return await db.transaction(async (tx) => {
+    const rows = await tx.execute<OutboxRow>(
+      sql`SELECT id, from_address, to_addresses, cc_addresses, subject,
+             reply_to, headers, template, post_send_action, attempts
+          FROM email_outbox
+          WHERE status = 'pending'
+            AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+          ORDER BY created_at ASC
+          LIMIT 1
+          FOR UPDATE SKIP LOCKED`,
+    );
+    const row = rows.rows[0];
+    return row ? await processOutboxItem(tx, row) : false;
+  });
+}
+
+export const drainEmailOutboxBatch$ = command(
+  async ({ set }, signal: AbortSignal): Promise<number> => {
+    const db = set(writeDb$);
+    let processed = 0;
+
+    for (let index = 0; index < MAX_OUTBOX_BATCH_SIZE; index++) {
+      signal.throwIfAborted();
+      const hadItem = await drainNextOutboxItem(db);
+      signal.throwIfAborted();
+      if (!hadItem) {
+        break;
+      }
+
+      processed++;
+      if (index < MAX_OUTBOX_BATCH_SIZE - 1) {
+        await delay(OUTBOX_DRAIN_DELAY_MS, { signal });
+      }
+    }
+
+    if (processed > 0) {
+      log.debug("Drained emails from outbox", { processed });
+    }
+    return processed;
+  },
+);
+
+export const cleanupExpiredEmailOutbox$ = command(
+  async ({ set }, signal: AbortSignal): Promise<number> => {
+    const db = set(writeDb$);
+    const cutoff = new Date(now() - OUTBOX_TTL_MS);
+    const deleted = await db
+      .delete(emailOutbox)
+      .where(
+        and(
+          lt(emailOutbox.createdAt, cutoff),
+          or(
+            eq(emailOutbox.status, "pending"),
+            eq(emailOutbox.status, "failed"),
+          ),
+        ),
+      )
+      .returning({ id: emailOutbox.id });
+    signal.throwIfAborted();
+
+    if (deleted.length > 0) {
+      log.debug("Cleaned up expired email outbox items", {
+        cleaned: deleted.length,
+      });
+    }
+    return deleted.length;
+  },
+);
 
 export const enqueueEmail$ = command(
   async (

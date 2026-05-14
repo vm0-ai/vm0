@@ -71,6 +71,12 @@ const cronVoiceChatCleanupResponseSchema = z.object({
   reasonerReset: z.number(),
 });
 
+const cronDrainEmailOutboxResponseSchema = z.object({
+  success: z.literal(true),
+  drained: z.number(),
+  cleaned: z.number(),
+});
+
 const cronAggregateInsightsSkippedResponseSchema = z.object({
   users: z.number(),
   skipped: z.literal(true),
@@ -152,6 +158,19 @@ export const cronVoiceChatCleanupContract = c.router({
   },
 });
 
+export const cronDrainEmailOutboxContract = c.router({
+  drain: {
+    method: "GET",
+    path: "/api/cron/drain-email-outbox",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronDrainEmailOutboxResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Drain pending email outbox messages",
+  },
+});
+
 export const cronAggregateInsightsContract = c.router({
   aggregate: {
     method: "GET",
@@ -174,6 +193,7 @@ export type CronAggregateInsightsContract =
   typeof cronAggregateInsightsContract;
 export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
 export type CronVoiceChatCleanupContract = typeof cronVoiceChatCleanupContract;
+export type CronDrainEmailOutboxContract = typeof cronDrainEmailOutboxContract;
 
 // Export schemas for reuse
 export {
@@ -184,5 +204,6 @@ export {
   cronReconcileBillingEntitlementsResponseSchema,
   cronTelegramCleanupResponseSchema,
   cronVoiceChatCleanupResponseSchema,
+  cronDrainEmailOutboxResponseSchema,
   cronAggregateInsightsResponseSchema,
 };
