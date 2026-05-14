@@ -209,6 +209,47 @@ async fn test_spawn_watch_malformed_result_cleans_up() {
 }
 
 #[tokio::test]
+async fn test_spawn_watch_connection_closed_before_result_cleans_up() {
+    let (host_stream, mut guest) = make_pair();
+    let request_seen = Arc::new(Notify::new());
+
+    {
+        let request_seen = Arc::clone(&request_seen);
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+            request_seen.notify_one();
+            drop(guest);
+        });
+    }
+
+    let host = Arc::new(host_from_stream(host_stream).await.unwrap());
+    let task_host = Arc::clone(&host);
+    let task = tokio::spawn(async move {
+        task_host
+            .spawn_watch("pending-result", 0, &[], false, true, None)
+            .await
+    });
+
+    tokio::time::timeout(Duration::from_secs(5), request_seen.notified())
+        .await
+        .expect("guest should receive spawn_watch request");
+
+    let err = task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    assert_eq!(
+        registration_counts(&host),
+        (0, 0, 0),
+        "connection close while spawn_watch is pending must clean registrations",
+    );
+}
+
+#[tokio::test]
 async fn test_malformed_unsolicited_process_frames_are_ignored() {
     let (host_stream, mut guest) = make_pair();
 
@@ -581,6 +622,48 @@ async fn test_spawn_watch_exit_result_survives_close_before_wait() {
     assert_eq!(event.exit_code, 3);
     assert_eq!(event.stdout, b"early-output");
     assert_eq!(event.stderr, b"err");
+}
+
+#[tokio::test]
+async fn test_malformed_active_process_exit_closes_and_cleans_up() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let mut buf = [0u8; 4096];
+        let n = guest.read(&mut buf).await.unwrap();
+        let msgs = decoder.decode(&buf[..n]).unwrap();
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        let spawn_seq = msgs[0].seq;
+
+        let result_payload = vsock_proto::encode_spawn_watch_result(123);
+        let result =
+            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &result_payload).unwrap();
+        let bad_exit = vsock_proto::encode(MSG_PROCESS_EXIT, spawn_seq, b"\x00").unwrap();
+        let mut combined = result;
+        combined.extend_from_slice(&bad_exit);
+        guest.write_all(&combined).await.unwrap();
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_watch("malformed-exit", 0, &[], false, false, None)
+        .await
+        .unwrap();
+    assert_eq!(handle.pid(), 123);
+
+    let err = wait_spawn(handle).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    assert_eq!(
+        registration_counts(&host),
+        (0, 0, 0),
+        "malformed active process_exit must close and clean registrations",
+    );
 }
 
 #[tokio::test]
