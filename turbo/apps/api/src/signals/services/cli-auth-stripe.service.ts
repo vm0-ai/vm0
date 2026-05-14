@@ -365,15 +365,23 @@ async function markCliAuthStripeSessionError(args: {
 
 async function markCliAuthStripeSessionExpired(args: {
   readonly writeDb: Db;
-  readonly sessionId: string;
+  readonly session: ConnectorCliAuthSession;
 }) {
-  await args.writeDb
+  const [expired] = await args.writeDb
     .update(connectorCliAuthSessions)
     .set({
       status: "expired",
       updatedAt: nowDate(),
     })
-    .where(eq(connectorCliAuthSessions.id, args.sessionId));
+    .where(
+      and(
+        eq(connectorCliAuthSessions.id, args.session.id),
+        eq(connectorCliAuthSessions.status, args.session.status),
+        eq(connectorCliAuthSessions.updatedAt, args.session.updatedAt),
+      ),
+    )
+    .returning({ id: connectorCliAuthSessions.id });
+  return Boolean(expired);
 }
 
 async function createCliAuthStripeSession(args: {
@@ -971,10 +979,13 @@ async function expireCliAuthStripeSession(args: {
   readonly session: ConnectorCliAuthSession;
   readonly signal: AbortSignal;
 }): Promise<CliAuthStripeCompleteResult> {
-  await markCliAuthStripeSessionExpired({
+  const expired = await markCliAuthStripeSessionExpired({
     writeDb: args.writeDb,
-    sessionId: args.session.id,
+    session: args.session,
   });
+  if (!expired) {
+    return { status: "pending", errorMessage: null };
+  }
   if (args.session.sandboxId) {
     await cleanupSandbox(args.client, { sandboxId: args.session.sandboxId });
   }

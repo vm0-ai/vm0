@@ -806,6 +806,47 @@ describe("CLI auth for Stripe connector routes", () => {
     expect(completingSession.status).toBe("completing");
   });
 
+  it("expires a stale completing session after the session ttl", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox();
+    const createdAt = new Date("2026-05-14T00:00:00.000Z");
+    mockNow(createdAt);
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [200],
+    );
+
+    mockNow(new Date(createdAt.getTime() + 11 * 60 * 1000));
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    await store
+      .set(writeDb$)
+      .update(connectorCliAuthSessions)
+      .set({
+        status: "completing",
+        updatedAt: new Date(createdAt.getTime() + 8 * 60 * 1000),
+      })
+      .where(eq(connectorCliAuthSessions.id, session.id));
+
+    const complete = await accept(
+      client().complete({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [400],
+    );
+
+    expect(complete.body.error.code).toBe("BAD_REQUEST");
+    expect(calls.run).toHaveLength(1);
+    expect(calls.read).toHaveLength(0);
+    expect(calls.stop).toHaveLength(1);
+
+    const expiredSession = await onlyCliAuthStripeSession(userId, orgId);
+    expect(expiredSession.status).toBe("expired");
+  });
+
   it("recovers a stale completing session and finishes import", async () => {
     const { userId, orgId } = await setupUser();
     const calls = mockStripeCliSandbox({ configApiKey: "rk_test_recovered" });
