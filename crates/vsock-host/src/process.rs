@@ -22,7 +22,7 @@ struct SpawnOperation {
     pid: Option<u32>,
     streams_stdout: bool,
     stdout_tx: Option<mpsc::UnboundedSender<Vec<u8>>>,
-    exit_tx: oneshot::Sender<io::Result<ProcessExitEvent>>,
+    exit_tx: oneshot::Sender<ProcessExitEvent>,
 }
 
 /// Process lifecycle state while the vsock connection is open.
@@ -163,7 +163,7 @@ pub struct SpawnWatchHandle {
     seq: Option<u32>,
     pid: u32,
     stdout_rx: Option<mpsc::UnboundedReceiver<Vec<u8>>>,
-    exit_rx: Option<oneshot::Receiver<io::Result<ProcessExitEvent>>>,
+    exit_rx: Option<oneshot::Receiver<ProcessExitEvent>>,
 }
 
 impl fmt::Debug for SpawnWatchHandle {
@@ -199,11 +199,11 @@ impl SpawnWatchHandle {
         // buffering streamed stdout in an unbounded channel with no reader.
         drop(self.stdout_rx.take());
 
-        let result = rx
+        let event = rx
             .await
             .map_err(|_| io::Error::new(io::ErrorKind::ConnectionReset, "connection closed"))?;
         self.seq = None;
-        result
+        Ok(event)
     }
 }
 
@@ -309,7 +309,7 @@ pub(crate) fn dispatch_process_exit(shared: &Arc<Shared>, msg: &RawMessage) -> i
         stderr: stderr.to_vec(),
     };
 
-    let _ = operation.exit_tx.send(Ok(event));
+    let _ = operation.exit_tx.send(event);
 
     Ok(())
 }
