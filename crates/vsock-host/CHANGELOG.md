@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.4](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.14.3...vsock-host-v0.14.4) (2026-05-14)
+
+
+### Refactoring
+
+* **vsock-host:** split command tests ([#13320](https://github.com/vm0-ai/vm0/issues/13320)) ([51718be](https://github.com/vm0-ai/vm0/commit/51718bef2883cff06274c89e6ea67e019fb6d8f6))
+
 ## [0.14.3](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.14.2...vsock-host-v0.14.3) (2026-05-14)
 
 

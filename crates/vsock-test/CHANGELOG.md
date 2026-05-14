@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.35](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.34...vsock-test-v0.9.35) (2026-05-14)
+
+
+### Refactoring
+
+* **vsock-test:** split integration tests by protocol area ([#13307](https://github.com/vm0-ai/vm0/issues/13307)) ([74faa7c](https://github.com/vm0-ai/vm0/commit/74faa7c38ae6dbf90c922e80e07ab1ff4c88ba5d))
+
 ## [0.9.34](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.33...vsock-test-v0.9.34) (2026-05-14)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.100.41](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.40...runner-rs-v0.100.41) (2026-05-14)
+
+
+### Bug Fixes
+
+* **runner:** copy guest sandbox ops logs ([#13309](https://github.com/vm0-ai/vm0/issues/13309)) ([39ce8f9](https://github.com/vm0-ai/vm0/commit/39ce8f98d2f5780bd8fd66b1aa10160b67691138))
+
+
+### Refactoring
+
+* type factory lifecycle resources ([#13293](https://github.com/vm0-ai/vm0/issues/13293)) ([0b533c7](https://github.com/vm0-ai/vm0/commit/0b533c76f86e651b09d662cb9c85a8c3a3d06ad5))
+
 ## [0.100.40](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.39...runner-rs-v0.100.40) (2026-05-14)
 
 

@@ -190,6 +190,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable remote desktop host registration",
     enabled: false,
   },
+  [FeatureSwitchKey.LocalBrowserUse]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable the Local Browser connector and user-authorized browser host lifecycle",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.RemoteAgent]: {
     maintainer: "lancy@vm0.ai",
     description:

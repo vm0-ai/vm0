@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "0.7.9"
+version = "0.7.10"
 dependencies = [
  "base64",
  "futures-util",
@@ -121,7 +121,7 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "api-contracts"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1247,7 +1247,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.31.1"
+version = "0.31.2"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1275,7 +1275,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "chrono",
  "serde",
@@ -1285,7 +1285,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.20.14"
+version = "0.20.15"
 dependencies = [
  "flate2",
  "guest-common",
@@ -2045,7 +2045,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.20"
+version = "0.4.21"
 dependencies = [
  "bitvec",
  "libc",
@@ -2529,7 +2529,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.100.40"
+version = "0.100.41"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2731,7 +2731,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.14.3"
+version = "0.14.4"
 dependencies = [
  "async-trait",
  "serde",
@@ -2743,7 +2743,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.30.3"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -2771,7 +2771,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "async-trait",
  "sandbox",
@@ -3648,7 +3648,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.14.3"
+version = "0.14.4"
 dependencies = [
  "nix",
  "tokio",
@@ -3662,7 +3662,7 @@ version = "0.15.5"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.34"
+version = "0.9.35"
 dependencies = [
  "guest-write-file",
  "tempfile",

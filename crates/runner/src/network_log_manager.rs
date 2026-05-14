@@ -16,6 +16,8 @@ use crate::network_log_drain::{NetworkLogDrainContext, NetworkLogDrainCoordinato
 ///
 /// Source-IP lookup and pending-write registration happen under the same lock,
 /// so `flush_path` cannot miss a row that was already accepted for that path.
+/// `NetworkLogSession::close_for_upload` first closes the source mapping, then
+/// flushes the path so upload cannot miss a newly accepted row.
 #[derive(Clone, Default)]
 pub struct NetworkLogManager {
     inner: Arc<Inner>,
@@ -26,6 +28,8 @@ struct Inner {
     state: Mutex<State>,
     #[cfg(test)]
     write_gate: Option<WriteGate>,
+    #[cfg(test)]
+    close_gate: Option<CloseGate>,
 }
 
 #[derive(Default)]
@@ -79,6 +83,13 @@ struct WriteGate {
     release: Arc<Semaphore>,
 }
 
+#[cfg(test)]
+#[derive(Clone)]
+struct CloseGate {
+    before_flush: Arc<Notify>,
+    release: Arc<Semaphore>,
+}
+
 /// Owns a source-IP network-log attribution for one runner job.
 ///
 /// Keep this value alive until the sandbox is parked or stopped, then call
@@ -99,6 +110,11 @@ impl NetworkLogSession {
     /// The barrier only covers rows observable to the runner reader tasks. It
     /// cannot prove delivery for data still buffered inside dnsmasq, `dmesg`,
     /// or the kernel before those producers emit to their monitored streams.
+    ///
+    /// Once the producer barrier completes, this closes the source mapping
+    /// before the final path flush. Rows accepted before finalization remain
+    /// tracked by the path pending count; rows racing after finalization are
+    /// rejected instead of being missed by upload.
     pub async fn close_for_upload(mut self, run_id: RunId, drain: &NetworkLogDrainCoordinator) {
         let current = self
             .manager
@@ -114,10 +130,12 @@ impl NetworkLogSession {
                 })
                 .await;
         }
-        self.manager.flush_path(&self.path).await;
         self.manager
             .finalize_session(&self.source_ip, &self.path, self.generation)
             .await;
+        #[cfg(test)]
+        self.manager.before_close_upload_flush_for_test().await;
+        self.manager.flush_path(&self.path).await;
         self.closed = true;
     }
 }
@@ -153,6 +171,24 @@ impl NetworkLogManager {
             inner: Arc::new(Inner {
                 state: Mutex::new(State::default()),
                 write_gate: Some(WriteGate { started, release }),
+                close_gate: None,
+            }),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_with_close_gate(
+        before_flush: Arc<Notify>,
+        close_release: Arc<Semaphore>,
+    ) -> Self {
+        Self {
+            inner: Arc::new(Inner {
+                state: Mutex::new(State::default()),
+                write_gate: None,
+                close_gate: Some(CloseGate {
+                    before_flush,
+                    release: close_release,
+                }),
             }),
         }
     }
@@ -193,7 +229,9 @@ impl NetworkLogManager {
     ///
     /// Returns `true` when the source IP was mapped and the write was accepted.
     /// The actual append is asynchronous; call `flush_path` before reading the
-    /// file when a complete snapshot is required.
+    /// file when a complete snapshot of already accepted writes is required.
+    /// `flush_path` does not close source acceptance; use `NetworkLogSession`
+    /// when preparing a per-run file for upload.
     pub async fn append_for_ip(&self, source_ip: &str, row: serde_json::Value) -> bool {
         let line = match serde_json::to_string(&row) {
             Ok(mut line) => {
@@ -267,6 +305,14 @@ impl NetworkLogManager {
                 path_state.notify.clone().notified_owned()
             };
             notified.await;
+        }
+    }
+
+    #[cfg(test)]
+    async fn before_close_upload_flush_for_test(&self) {
+        if let Some(gate) = self.inner.close_gate.as_ref() {
+            gate.before_flush.notify_one();
+            let _permit = gate.release.acquire().await.expect("close gate closed");
         }
     }
 
@@ -761,6 +807,46 @@ mod tests {
                 )
                 .await
         );
+    }
+
+    #[tokio::test]
+    async fn close_for_upload_closes_source_before_final_flush() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let before_flush = Arc::new(Notify::new());
+        let close_release = Arc::new(Semaphore::new(0));
+        let manager =
+            NetworkLogManager::new_with_close_gate(before_flush.clone(), close_release.clone());
+        let session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        let drain = NetworkLogDrainCoordinator::noop();
+
+        let close = tokio::spawn(async move {
+            session.close_for_upload(RunId::nil(), &drain).await;
+        });
+        // Pause at the upload-flush boundary and verify the mapping is already
+        // closed, so no row can be accepted after the final flush begins.
+        before_flush.notified().await;
+
+        let registered_before_flush = source_ip_registered(&manager, "10.200.0.2").await;
+        let accepted_after_close = manager
+            .append_for_ip(
+                "10.200.0.2",
+                json!({"type":"dns","host":"after-close-before-flush.test"}),
+            )
+            .await;
+
+        close_release.add_permits(1);
+        close.await.unwrap();
+
+        assert!(
+            !registered_before_flush,
+            "source mapping must be closed before the upload flush begins"
+        );
+        assert!(
+            !accepted_after_close,
+            "append_for_ip must reject rows once close_for_upload reaches the final flush"
+        );
+        assert!(!path.exists());
     }
 
     #[tokio::test]

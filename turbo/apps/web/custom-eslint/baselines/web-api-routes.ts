@@ -7,17 +7,6 @@ import { createHash } from "node:crypto";
  * When a route is migrated out of apps/web, remove its entry here as part of
  * the same change. Do not add new entries without an intentional exception.
  *
- * Intentional exception (Epic #12128, Plan D): the voice-chat realtime
- * billing surface lives in apps/web because the relay design is killed by
- * Vercel's lack of WebSocket-upgrade support. The browser self-reports
- * `response.done` and `transcription.completed` usage to these
- * Vercel-served endpoints; apps/api would not be a viable home today.
- *
- * Intentional exception: remote-agent routes are implemented in apps/api, but
- * CLI and platform callers use the same VM0_API_URL prefix as `vm0 auth login`
- * (`http://localhost:3000`). The web routes are thin proxies to
- * VM0_API_BACKEND_URL so local and production URL resolution stays aligned.
- *
  * Intentional exception: model policy and user model preference routes live in
  * apps/web while the rest of Zero's bearer-token web API still authenticates
  * through requireAuth/resolveOrg in the Next.js runtime.
@@ -28,9 +17,6 @@ import { createHash } from "node:crypto";
  *
  */
 export const WEB_API_ROUTE_BASELINE = [
-  "app/api/zero/voice-chat/[id]/usage/route.ts",
-  "app/api/zero/voice-chat/[id]/session-started/route.ts",
-  "app/api/zero/voice-chat/[id]/session-ended/route.ts",
   "app/api/agent/checkpoints/[id]/route.ts",
   "app/api/agent/composes/[id]/instructions/route.ts",
   "app/api/agent/composes/[id]/metadata/route.ts",
@@ -237,7 +223,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/push-subscriptions/route.ts",
   "app/api/zero/queue-position/route.ts",
   "app/api/zero/realtime/token/route.ts",
-  "app/api/zero/remote-agent/[...path]/route.ts",
   "app/api/zero/report-error/route.ts",
   "app/api/zero/runs/[id]/cancel/route.ts",
   "app/api/zero/runs/[id]/context/route.ts",
@@ -287,7 +272,7 @@ export const WEB_API_ROUTE_BASELINE = [
 ] as const;
 
 export const WEB_API_ROUTE_BASELINE_HASH =
-  "b5c21e42c4cb02c2b2a959bb98213ca0f7f4f94f122332c61859e3c845c047c5";
+  "f8b442b8cfb30bda808e98d34932bc62a57717cc9936df3657a1616cd6fbe425";
 
 export function computeWebApiRouteBaselineHash(
   routes: readonly string[] = WEB_API_ROUTE_BASELINE,

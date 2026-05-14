@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.276.0](https://github.com/vm0-ai/vm0/compare/core-v8.275.4...core-v8.276.0) (2026-05-14)
+
+
+### Features
+
+* add local-browser connector foundation ([#13241](https://github.com/vm0-ai/vm0/issues/13241)) ([74eaaaa](https://github.com/vm0-ai/vm0/commit/74eaaaa0ea6876014d08562ae284db1cc10139a5))
+* **api:** add stripe cli auth import flow ([#13273](https://github.com/vm0-ai/vm0/issues/13273)) ([25d59c5](https://github.com/vm0-ai/vm0/commit/25d59c58c08b188d56110a4874cb6d9388b2ecdc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.22.0
+    * @vm0/connectors bumped to 1.11.0
+
 ## [8.275.4](https://github.com/vm0-ai/vm0/compare/core-v8.275.3...core-v8.275.4) (2026-05-14)
 
 

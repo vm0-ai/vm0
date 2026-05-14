@@ -15,13 +15,14 @@ const MODEL_SLUG_REDIRECTS = [
   ["minimax-m2.7", "minimax-m2-7"],
 ];
 
-const AGENTPHONE_API_BACKEND_REWRITES = [
+const API_BACKEND_REWRITES = [
   ["/api/agentphone/:path*", "/api/agentphone/:path*"],
   ["/api/internal/callbacks/agentphone", "/api/internal/callbacks/agentphone"],
   [
     "/api/internal/event-consumers/agentphone-typing",
     "/api/internal/event-consumers/agentphone-typing",
   ],
+  ["/api/zero/remote-agent/:path*", "/api/zero/remote-agent/:path*"],
   [
     "/api/zero/integrations/phone/:path*",
     "/api/zero/integrations/phone/:path*",
@@ -64,15 +65,13 @@ const nextConfig = {
   },
   async rewrites() {
     return {
-      beforeFiles: AGENTPHONE_API_BACKEND_REWRITES.flatMap(
-        ([source, destinationPath]) => {
-          const destination = buildApiBackendDestination(destinationPath);
-          if (!destination) {
-            return [];
-          }
-          return [{ source, destination }];
-        },
-      ),
+      beforeFiles: API_BACKEND_REWRITES.flatMap(([source, destinationPath]) => {
+        const destination = buildApiBackendDestination(destinationPath);
+        if (!destination) {
+          return [];
+        }
+        return [{ source, destination }];
+      }),
     };
   },
   async headers() {

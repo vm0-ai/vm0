@@ -181,6 +181,8 @@ import { generate as generateServicenow } from "./servicenow";
 import { generate as generateTestrail } from "./testrail";
 import { generate as generateTwilio } from "./twilio";
 import { generate as generateSquare } from "./square";
+import { generate as generateGong } from "./gong";
+import { generate as generateIronclad } from "./ironclad";
 import { createGoogleGenerator, googleServiceNames } from "./google";
 
 const GENERATORS: Record<string, () => Promise<void>> = {
@@ -359,6 +361,8 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   testrail: generateTestrail,
   twilio: generateTwilio,
   square: generateSquare,
+  gong: generateGong,
+  ironclad: generateIronclad,
   ...Object.fromEntries(
     googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),
   ),

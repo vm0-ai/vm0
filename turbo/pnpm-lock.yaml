@@ -222,6 +222,9 @@ importers:
       undici:
         specifier: ^6.24.1
         version: 6.24.1
+      uuid:
+        specifier: ^14.0.0
+        version: 14.0.0
       web-push:
         specifier: ^3.6.7
         version: 3.6.7
@@ -708,9 +711,6 @@ importers:
       tar:
         specifier: '>=7.5.7'
         version: 7.5.13
-      uuid:
-        specifier: ^14.0.0
-        version: 14.0.0
       web-push:
         specifier: ^3.6.7
         version: 3.6.7

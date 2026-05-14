@@ -1,4 +1,5 @@
 import Ably from "ably";
+import type { LocalBrowserRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-local-browser";
 import type { RemoteAgentRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-remote-agent";
 
 import { env } from "../../lib/env";
@@ -26,9 +27,20 @@ function getRemoteAgentHostChannelName(hostId: string): string {
   return `remote-agent-host:${hostId}`;
 }
 
+function getLocalBrowserDeviceChannelName(deviceCodeId: string): string {
+  return `local-browser-device:${deviceCodeId}`;
+}
+
+function getLocalBrowserHostChannelName(hostId: string): string {
+  return `local-browser-host:${hostId}`;
+}
+
 const REMOTE_AGENT_DEVICE_APPROVED_EVENT = "approved";
 const REMOTE_AGENT_HOST_JOB_EVENT = "job";
 const REMOTE_AGENT_HOSTS_CHANGED_EVENT = "remote-agent:hosts-changed";
+const LOCAL_BROWSER_DEVICE_APPROVED_EVENT = "approved";
+const LOCAL_BROWSER_HOST_COMMAND_EVENT = "command";
+const LOCAL_BROWSER_HOSTS_CHANGED_EVENT = "local-browser:hosts-changed";
 
 export async function createPlatformUserRealtimeToken(
   userId: string,
@@ -223,4 +235,58 @@ export async function publishRemoteAgentHostsChanged(
   userId: string,
 ): Promise<void> {
   await publishUserSignal([userId], REMOTE_AGENT_HOSTS_CHANGED_EVENT);
+}
+
+export async function createLocalBrowserDeviceRealtimeSubscription(
+  deviceCodeId: string,
+): Promise<LocalBrowserRealtimeSubscription> {
+  const channelName = getLocalBrowserDeviceChannelName(deviceCodeId);
+  const tokenRequest = await ablyClient().auth.createTokenRequest({
+    capability: {
+      [channelName]: ["subscribe"],
+    },
+    ttl: 60 * 60 * 1000,
+  });
+
+  return {
+    channelName,
+    eventName: LOCAL_BROWSER_DEVICE_APPROVED_EVENT,
+    tokenRequest,
+  };
+}
+
+export async function publishLocalBrowserDeviceApproved(
+  deviceCodeId: string,
+): Promise<void> {
+  const channel = ablyClient().channels.get(
+    getLocalBrowserDeviceChannelName(deviceCodeId),
+  );
+  await channel.publish(LOCAL_BROWSER_DEVICE_APPROVED_EVENT, {
+    status: "approved",
+  });
+  L.debug(`Published local-browser device approval ${deviceCodeId}`);
+}
+
+export async function createLocalBrowserHostRealtimeSubscription(
+  hostId: string,
+): Promise<LocalBrowserRealtimeSubscription> {
+  const channelName = getLocalBrowserHostChannelName(hostId);
+  const tokenRequest = await ablyClient().auth.createTokenRequest({
+    capability: {
+      [channelName]: ["subscribe"],
+    },
+    ttl: 60 * 60 * 1000,
+  });
+
+  return {
+    channelName,
+    eventName: LOCAL_BROWSER_HOST_COMMAND_EVENT,
+    tokenRequest,
+  };
+}
+
+export async function publishLocalBrowserHostsChanged(
+  userId: string,
+): Promise<void> {
+  await publishUserSignal([userId], LOCAL_BROWSER_HOSTS_CHANGED_EVENT);
 }

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.14.4](https://github.com/vm0-ai/vm0/compare/sandbox-v0.14.3...sandbox-v0.14.4) (2026-05-14)
+
+
+### Documentation
+
+* document sandbox creation config ([#13290](https://github.com/vm0-ai/vm0/issues/13290)) ([89076cb](https://github.com/vm0-ai/vm0/commit/89076cbedd1cc61df4d410bf9d1f63a93a50c234))
+
+
+### Refactoring
+
+* type factory lifecycle resources ([#13293](https://github.com/vm0-ai/vm0/issues/13293)) ([0b533c7](https://github.com/vm0-ai/vm0/commit/0b533c76f86e651b09d662cb9c85a8c3a3d06ad5))
+
 ## [0.14.3](https://github.com/vm0-ai/vm0/compare/sandbox-v0.14.2...sandbox-v0.14.3) (2026-05-14)
 
 

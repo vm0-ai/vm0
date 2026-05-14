@@ -18,14 +18,6 @@ export const eventConsumers: EventConsumerConfig[] = [
     eventTypes: ["assistant", "item.completed"],
   },
   {
-    name: "telegram-typing",
-    path: "/api/internal/event-consumers/telegram-typing",
-  },
-  {
-    name: "agentphone-typing",
-    path: "/api/internal/event-consumers/agentphone-typing",
-  },
-  {
     name: "voice-chat",
     path: "/api/internal/event-consumers/voice-chat",
     eventTypes: ["assistant"],
