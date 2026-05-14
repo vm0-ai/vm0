@@ -208,6 +208,12 @@ export {
   sendRemoteAgentHeartbeat,
 } from "./domains/zero-remote-agent";
 
+// Domain modules - Zero Local Browser
+export {
+  createLocalBrowserReadCommand,
+  getLocalBrowserReadCommand,
+} from "./domains/zero-local-browser";
+
 // Domain modules - Web
 export {
   downloadWebFile,

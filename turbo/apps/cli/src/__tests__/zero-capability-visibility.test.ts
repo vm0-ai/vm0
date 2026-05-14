@@ -29,6 +29,7 @@ function buildCommands(): Command[] {
     new Command("built-in"),
     new Command("web"),
     new Command("remote-agent"),
+    new Command("local-browser"),
   ];
 }
 
@@ -152,6 +153,7 @@ describe("registerZeroCommands", () => {
       "variable",
       "built-in",
       "remote-agent",
+      "local-browser",
     ]);
   });
 
@@ -390,6 +392,31 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("remote-agent");
+  });
+
+  it("should show local-browser when local-browser:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["local-browser:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("local-browser");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should hide local-browser when local-browser:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["agent-run:read", "agent-run:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(hiddenCommandNames(prog)).toContain("local-browser");
   });
 
   it("should hide agent when agent:read capability is missing", () => {

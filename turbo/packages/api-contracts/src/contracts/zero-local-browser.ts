@@ -6,10 +6,32 @@ import { ablyTokenRequestSchema } from "./realtime";
 const c = initContract();
 
 export const localBrowserHostStatusSchema = z.enum(["online", "offline"]);
+export const localBrowserReadCommandKindSchema = z.enum([
+  "tabs.list",
+  "tabs.current",
+  "page.snapshot",
+  "page.screenshot",
+  "page.selection",
+  "page.metadata",
+]);
+export const localBrowserCommandStatusSchema = z.enum([
+  "queued",
+  "running",
+  "succeeded",
+  "failed",
+]);
+export const localBrowserCommandErrorCodeSchema = z.enum([
+  "no_active_tab",
+  "permission_denied",
+  "unsupported_page",
+  "timeout",
+  "unsupported_command",
+]);
 
 const hostNameSchema = z.string().trim().min(1).max(128);
 const browserSchema = z.string().trim().min(1).max(64);
 const extensionVersionSchema = z.string().trim().min(1).max(64);
+const tabIdSchema = z.string().trim().min(1).max(128);
 const supportedCapabilitiesSchema = z
   .array(z.string().trim().min(1).max(128))
   .max(50);
@@ -80,6 +102,118 @@ export const localBrowserHostStartResponseSchema = z.object({
 });
 
 export const localBrowserHostDeleteResponseSchema = z.object({
+  ok: z.literal(true),
+});
+
+const localBrowserCommandCreateBodySchema = z.object({
+  kind: localBrowserReadCommandKindSchema,
+  tabId: tabIdSchema.optional(),
+  hostId: z.string().min(1).optional(),
+  hostName: hostNameSchema.optional(),
+  timeoutMs: z.number().int().min(1_000).max(60_000).default(15_000),
+});
+
+const localBrowserCommandPayloadSchema = z.object({
+  tabId: tabIdSchema.optional(),
+});
+
+export const localBrowserTabSchema = z.object({
+  id: z.string(),
+  title: z.string().optional(),
+  url: z.string().optional(),
+  faviconUrl: z.string().optional(),
+  active: z.boolean().optional(),
+});
+
+export const localBrowserCommandResultSchema = z.union([
+  z.object({
+    tabs: z.array(localBrowserTabSchema).max(100),
+  }),
+  z.object({
+    tab: localBrowserTabSchema,
+  }),
+  z.object({
+    snapshot: z.string().max(512_000),
+    contentType: z.string().max(128).optional(),
+    truncated: z.boolean().optional(),
+  }),
+  z.object({
+    imageBase64: z.string().max(2_000_000),
+    mimeType: z.enum(["image/png", "image/jpeg", "image/webp"]),
+    width: z.number().int().positive().optional(),
+    height: z.number().int().positive().optional(),
+    truncated: z.boolean().optional(),
+  }),
+  z.object({
+    text: z.string().max(64_000),
+  }),
+  z
+    .object({
+      title: z.string().max(512).optional(),
+      url: z.string().max(2_048).optional(),
+      faviconUrl: z.string().max(2_048).optional(),
+    })
+    .refine((value) => {
+      return Object.keys(value).length > 0;
+    }, "Metadata result must include at least one field"),
+]);
+
+export const localBrowserCommandErrorSchema = z.object({
+  code: localBrowserCommandErrorCodeSchema,
+  message: z.string().min(1).max(1_024),
+});
+
+export const localBrowserCommandCreateResponseSchema = z.object({
+  commandId: z.string(),
+  status: z.literal("queued"),
+});
+
+export const localBrowserCommandResponseSchema = z.object({
+  id: z.string(),
+  kind: localBrowserReadCommandKindSchema,
+  status: localBrowserCommandStatusSchema,
+  hostId: z.string().nullable(),
+  hostName: z.string().nullable(),
+  payload: localBrowserCommandPayloadSchema,
+  result: localBrowserCommandResultSchema.optional(),
+  error: localBrowserCommandErrorSchema.optional(),
+  timeoutMs: z.number().int().positive().nullable(),
+  createdAt: z.string(),
+  claimedAt: z.string().nullable(),
+  completedAt: z.string().nullable(),
+});
+
+export const localBrowserHostCommandNextResponseSchema = z.discriminatedUnion(
+  "status",
+  [
+    z.object({ status: z.literal("idle") }),
+    z.object({
+      status: z.literal("command"),
+      command: z.object({
+        id: z.string(),
+        kind: localBrowserReadCommandKindSchema,
+        payload: localBrowserCommandPayloadSchema,
+        timeoutMs: z.number().int().positive().nullable(),
+      }),
+    }),
+  ],
+);
+
+const localBrowserHostCommandCompleteBodySchema = z.discriminatedUnion(
+  "status",
+  [
+    z.object({
+      status: z.literal("succeeded"),
+      result: localBrowserCommandResultSchema,
+    }),
+    z.object({
+      status: z.literal("failed"),
+      error: localBrowserCommandErrorSchema,
+    }),
+  ],
+);
+
+export const localBrowserHostCommandCompleteResponseSchema = z.object({
   ok: z.literal(true),
 });
 
@@ -221,10 +355,93 @@ export const zeroLocalBrowserHostSelfContract = c.router({
   },
 });
 
+export const zeroLocalBrowserCommandContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/local-browser/commands",
+    headers: authHeadersSchema,
+    body: localBrowserCommandCreateBodySchema,
+    responses: {
+      200: localBrowserCommandCreateResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Create a read-only local-browser command",
+  },
+  get: {
+    method: "GET",
+    path: "/api/zero/local-browser/commands/:commandId",
+    pathParams: z.object({
+      commandId: z.string().min(1),
+    }),
+    headers: authHeadersSchema,
+    responses: {
+      200: localBrowserCommandResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get a local-browser command result",
+  },
+});
+
+export const zeroLocalBrowserHostCommandsContract = c.router({
+  next: {
+    method: "POST",
+    path: "/api/zero/local-browser/host/commands/next",
+    headers: authHeadersSchema,
+    body: z.object({
+      supportedCapabilities: supportedCapabilitiesSchema.default([]),
+    }),
+    responses: {
+      200: localBrowserHostCommandNextResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Claim the next local-browser read command",
+  },
+  complete: {
+    method: "POST",
+    path: "/api/zero/local-browser/host/commands/:commandId/complete",
+    pathParams: z.object({
+      commandId: z.string().min(1),
+    }),
+    headers: authHeadersSchema,
+    body: localBrowserHostCommandCompleteBodySchema,
+    responses: {
+      200: localBrowserHostCommandCompleteResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Complete a local-browser read command",
+  },
+});
+
 export type LocalBrowserHostStatus = z.infer<
   typeof localBrowserHostStatusSchema
 >;
+export type LocalBrowserReadCommandKind = z.infer<
+  typeof localBrowserReadCommandKindSchema
+>;
+export type LocalBrowserCommandStatus = z.infer<
+  typeof localBrowserCommandStatusSchema
+>;
+export type LocalBrowserCommandErrorCode = z.infer<
+  typeof localBrowserCommandErrorCodeSchema
+>;
 export type LocalBrowserHost = z.infer<typeof localBrowserHostSchema>;
+export type LocalBrowserTab = z.infer<typeof localBrowserTabSchema>;
+export type LocalBrowserCommandResult = z.infer<
+  typeof localBrowserCommandResultSchema
+>;
+export type LocalBrowserCommandError = z.infer<
+  typeof localBrowserCommandErrorSchema
+>;
 export type LocalBrowserDeviceStartResponse = z.infer<
   typeof localBrowserDeviceStartResponseSchema
 >;
@@ -243,6 +460,18 @@ export type LocalBrowserHostStartResponse = z.infer<
 export type LocalBrowserHostDeleteResponse = z.infer<
   typeof localBrowserHostDeleteResponseSchema
 >;
+export type LocalBrowserCommandCreateResponse = z.infer<
+  typeof localBrowserCommandCreateResponseSchema
+>;
+export type LocalBrowserCommandResponse = z.infer<
+  typeof localBrowserCommandResponseSchema
+>;
+export type LocalBrowserHostCommandNextResponse = z.infer<
+  typeof localBrowserHostCommandNextResponseSchema
+>;
+export type LocalBrowserHostCommandCompleteResponse = z.infer<
+  typeof localBrowserHostCommandCompleteResponseSchema
+>;
 export type ZeroLocalBrowserDeviceStartContract =
   typeof zeroLocalBrowserDeviceStartContract;
 export type ZeroLocalBrowserDevicePollContract =
@@ -257,3 +486,7 @@ export type ZeroLocalBrowserHostsContract =
   typeof zeroLocalBrowserHostsContract;
 export type ZeroLocalBrowserHostSelfContract =
   typeof zeroLocalBrowserHostSelfContract;
+export type ZeroLocalBrowserCommandContract =
+  typeof zeroLocalBrowserCommandContract;
+export type ZeroLocalBrowserHostCommandsContract =
+  typeof zeroLocalBrowserHostCommandsContract;

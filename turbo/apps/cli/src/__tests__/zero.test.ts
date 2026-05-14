@@ -35,6 +35,7 @@ describe("zero CLI program", () => {
       "built-in",
       "web",
       "remote-agent",
+      "local-browser",
     ];
     for (const name of expectedCommands) {
       expect(commandNames).toContain(name);
@@ -57,7 +58,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 22 commands", () => {
-    expect(commandNames).toHaveLength(22);
+  it("should have exactly 23 commands", () => {
+    expect(commandNames).toHaveLength(23);
   });
 });

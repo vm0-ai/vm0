@@ -5,6 +5,8 @@ import {
   zeroLocalBrowserDeviceStartContract,
   zeroLocalBrowserHeartbeatContract,
   zeroLocalBrowserHostRealtimeContract,
+  zeroLocalBrowserCommandContract,
+  zeroLocalBrowserHostCommandsContract,
   zeroLocalBrowserHostsContract,
   zeroLocalBrowserHostSelfContract,
 } from "@vm0/api-contracts/contracts/zero-local-browser";
@@ -18,9 +20,13 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   claimLocalBrowserDeviceCode$,
+  claimNextLocalBrowserHostCommand$,
+  completeLocalBrowserHostCommand$,
   createLocalBrowserDeviceCode$,
+  createLocalBrowserReadCommand$,
   createLocalBrowserHostRealtimeToken$,
   deleteLocalBrowserHost$,
+  getLocalBrowserReadCommand$,
   heartbeatLocalBrowserHost$,
   listLocalBrowserHosts$,
   pollLocalBrowserDeviceCode$,
@@ -368,9 +374,219 @@ const hostSelfDeleteInner$ = command(
   },
 );
 
+const commandCreateBody$ = bodyResultOf(zeroLocalBrowserCommandContract.create);
+const commandCreateInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const overrides = await get(
+      userFeatureSwitchOverrides(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (
+      !isLocalBrowserEnabled({
+        orgId: auth.orgId,
+        userId: auth.userId,
+        overrides,
+      })
+    ) {
+      return localBrowserDisabled;
+    }
+
+    const bodyResult = await get(commandCreateBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const commandParams = {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      kind: bodyResult.data.kind,
+      timeoutMs: bodyResult.data.timeoutMs,
+      ...(auth.tokenType === "zero" ? { runId: auth.runId } : {}),
+      ...(bodyResult.data.tabId ? { tabId: bodyResult.data.tabId } : {}),
+      ...(bodyResult.data.hostId ? { hostId: bodyResult.data.hostId } : {}),
+      ...(bodyResult.data.hostName
+        ? { hostName: bodyResult.data.hostName }
+        : {}),
+    };
+    const result = await set(
+      createLocalBrowserReadCommand$,
+      commandParams,
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status === "no_connector") {
+      return conflict(
+        "Connect the local-browser connector before reading tabs",
+      );
+    }
+    if (result.status === "no_host") {
+      return notFound("No linked local-browser host found");
+    }
+    if (result.status === "host_not_found") {
+      return notFound("Local-browser host not found");
+    }
+    if (result.status === "host_ambiguous") {
+      return conflict("Multiple local-browser hosts have this name");
+    }
+    if (result.status === "host_offline") {
+      return conflict("No online local-browser host found");
+    }
+    if (result.status === "host_unsupported") {
+      return conflict("No online local-browser host supports this command");
+    }
+
+    return {
+      status: 200 as const,
+      body: {
+        commandId: result.commandId,
+        status: result.commandStatus,
+      },
+    };
+  },
+);
+
+const commandGetParams$ = pathParamsOf(zeroLocalBrowserCommandContract.get);
+const commandGetInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const overrides = await get(
+    userFeatureSwitchOverrides(auth.orgId, auth.userId),
+  );
+  signal.throwIfAborted();
+  if (
+    !isLocalBrowserEnabled({
+      orgId: auth.orgId,
+      userId: auth.userId,
+      overrides,
+    })
+  ) {
+    return localBrowserDisabled;
+  }
+
+  const params = get(commandGetParams$);
+  const result = await set(
+    getLocalBrowserReadCommand$,
+    {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      commandId: params.commandId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  if (!result) {
+    return notFound("Local-browser command not found");
+  }
+
+  return { status: 200 as const, body: result };
+});
+
+const hostCommandNextBody$ = bodyResultOf(
+  zeroLocalBrowserHostCommandsContract.next,
+);
+const hostCommandNextInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const bodyResult = await get(hostCommandNextBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const hostToken = parseBearerToken(get(authorization$));
+    if (!hostToken) {
+      return unauthorizedLocalBrowser;
+    }
+
+    const result = await set(
+      claimNextLocalBrowserHostCommand$,
+      {
+        hostToken,
+        supportedCapabilities: bodyResult.data.supportedCapabilities,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status === "invalid_token") {
+      return invalidLocalBrowserToken;
+    }
+    if (result.status === "idle") {
+      return { status: 200 as const, body: { status: "idle" as const } };
+    }
+
+    return {
+      status: 200 as const,
+      body: { status: "command" as const, command: result.command },
+    };
+  },
+);
+
+const hostCommandCompleteBody$ = bodyResultOf(
+  zeroLocalBrowserHostCommandsContract.complete,
+);
+const hostCommandCompleteParams$ = pathParamsOf(
+  zeroLocalBrowserHostCommandsContract.complete,
+);
+const hostCommandCompleteInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const bodyResult = await get(hostCommandCompleteBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const hostToken = parseBearerToken(get(authorization$));
+    if (!hostToken) {
+      return unauthorizedLocalBrowser;
+    }
+
+    const params = get(hostCommandCompleteParams$);
+    const commandResult =
+      bodyResult.data.status === "succeeded"
+        ? {
+            hostToken,
+            commandId: params.commandId,
+            status: bodyResult.data.status,
+            result: bodyResult.data.result,
+          }
+        : {
+            hostToken,
+            commandId: params.commandId,
+            status: bodyResult.data.status,
+            error: bodyResult.data.error,
+          };
+    const result = await set(
+      completeLocalBrowserHostCommand$,
+      commandResult,
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status === "invalid_token") {
+      return invalidLocalBrowserToken;
+    }
+    if (result.status === "not_found") {
+      return notFound("Local-browser command not found");
+    }
+    if (result.status === "not_running") {
+      return conflict("Local-browser command is not running");
+    }
+
+    return { status: 200 as const, body: { ok: true as const } };
+  },
+);
+
 const localBrowserAuthOptions = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
+} as const;
+
+const localBrowserReadAuthOptions = {
+  ...localBrowserAuthOptions,
+  requiredCapability: "local-browser:read",
 } as const;
 
 export const zeroLocalBrowserRoutes: readonly RouteEntry[] = [
@@ -409,5 +625,21 @@ export const zeroLocalBrowserRoutes: readonly RouteEntry[] = [
   {
     route: zeroLocalBrowserHostSelfContract.delete,
     handler: hostSelfDeleteInner$,
+  },
+  {
+    route: zeroLocalBrowserCommandContract.create,
+    handler: authRoute(localBrowserReadAuthOptions, commandCreateInner$),
+  },
+  {
+    route: zeroLocalBrowserCommandContract.get,
+    handler: authRoute(localBrowserReadAuthOptions, commandGetInner$),
+  },
+  {
+    route: zeroLocalBrowserHostCommandsContract.next,
+    handler: hostCommandNextInner$,
+  },
+  {
+    route: zeroLocalBrowserHostCommandsContract.complete,
+    handler: hostCommandCompleteInner$,
   },
 ];

@@ -285,6 +285,19 @@ export async function createLocalBrowserHostRealtimeSubscription(
   };
 }
 
+export async function publishLocalBrowserHostCommandAvailable(
+  hostId: string,
+  commandId: string,
+): Promise<void> {
+  const channel = ablyClient().channels.get(
+    getLocalBrowserHostChannelName(hostId),
+  );
+  await channel.publish(LOCAL_BROWSER_HOST_COMMAND_EVENT, {
+    commandId,
+  });
+  L.debug(`Published local-browser command ${commandId} for host ${hostId}`);
+}
+
 export async function publishLocalBrowserHostsChanged(
   userId: string,
 ): Promise<void> {

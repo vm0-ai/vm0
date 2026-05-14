@@ -362,6 +362,7 @@ describe("sandbox-token", () => {
       ]);
       expect(auth?.capabilities).not.toContain("agent-run:write");
       expect(auth?.capabilities).not.toContain("computer-use:write");
+      expect(auth?.capabilities).not.toContain("local-browser:read");
     });
 
     it("should include conditional capabilities when feature flags are enabled", async () => {
@@ -371,12 +372,14 @@ describe("sandbox-token", () => {
       const auth = verifyZeroToken(token);
 
       expect(auth?.capabilities).toContain("computer-use:write");
+      expect(auth?.capabilities).toContain("local-browser:read");
       expect(auth?.capabilities).toEqual([
         "agent:read",
         "agent:write",
         "agent-run:read",
         "remote-agent:read",
         "remote-agent:write",
+        "local-browser:read",
         "schedule:read",
         "schedule:write",
         "slack:write",

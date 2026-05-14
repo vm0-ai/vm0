@@ -27,8 +27,8 @@ describe("agentDefinitionSchema strips unknown experimental_capabilities", () =>
 });
 
 describe("ZERO_CAPABILITIES", () => {
-  it("should have exactly 21 capabilities", () => {
-    expect(ZERO_CAPABILITIES).toHaveLength(21);
+  it("should have exactly 22 capabilities", () => {
+    expect(ZERO_CAPABILITIES).toHaveLength(22);
   });
 
   it("should follow {resource}:{action} naming pattern", () => {
@@ -65,6 +65,10 @@ describe("ZERO_CAPABILITIES", () => {
   it("should include remote-agent read and write capabilities", () => {
     expect(ZERO_CAPABILITIES).toContain("remote-agent:read");
     expect(ZERO_CAPABILITIES).toContain("remote-agent:write");
+  });
+
+  it("should include local-browser read capability", () => {
+    expect(ZERO_CAPABILITIES).toContain("local-browser:read");
   });
 });
 

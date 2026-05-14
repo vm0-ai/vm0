@@ -25,6 +25,7 @@ import { zeroComputerUseCommand } from "./commands/zero/computer-use";
 import { zeroBuiltInCommand } from "./commands/zero/built-in";
 import { zeroWebCommand } from "./commands/zero/web";
 import { zeroRemoteAgentCommand } from "./commands/zero/remote-agent";
+import { zeroLocalBrowserCommand } from "./commands/zero/local-browser";
 import {
   decodeZeroTokenPayload,
   type ZeroTokenPayload,
@@ -59,6 +60,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   "built-in": "file:write",
   web: null,
   "remote-agent": ["remote-agent:read", "remote-agent:write"],
+  "local-browser": "local-browser:read",
 };
 
 const DEFAULT_COMMANDS: Command[] = [
@@ -84,6 +86,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroBuiltInCommand,
   zeroWebCommand,
   zeroRemoteAgentCommand,
+  zeroLocalBrowserCommand,
 ];
 
 function shouldHideCommand(
@@ -151,6 +154,7 @@ Examples:
   Manage custom skills?  zero skill --help
   Generate image?        zero built-in generate image --help
   Generate voice?        zero built-in generate voice --help
+  Read browser context?  zero local-browser --help
   Check your identity?   zero whoami`,
   );
 

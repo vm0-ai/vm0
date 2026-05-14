@@ -13,7 +13,10 @@ type ZeroCapability = (typeof ZERO_CAPABILITIES)[number];
  * Capabilities not listed here are always included.
  */
 const CONDITIONAL_CAPABILITIES: ReadonlyMap<ZeroCapability, FeatureSwitchKey> =
-  new Map([["computer-use:write", FeatureSwitchKey.ComputerUse]]);
+  new Map([
+    ["computer-use:write", FeatureSwitchKey.ComputerUse],
+    ["local-browser:read", FeatureSwitchKey.LocalBrowserUse],
+  ]);
 
 /**
  * Capabilities that are never included in agent run (zero) tokens.

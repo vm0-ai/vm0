@@ -1,8 +1,13 @@
 import { createHash, randomBytes, randomInt } from "crypto";
 import { command } from "ccstate";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import type { LocalBrowserHostStatus } from "@vm0/api-contracts/contracts/zero-local-browser";
+import type {
+  LocalBrowserCommandError,
+  LocalBrowserCommandResult,
+  LocalBrowserHostStatus,
+  LocalBrowserReadCommandKind,
+} from "@vm0/api-contracts/contracts/zero-local-browser";
 import { connectors } from "@vm0/db/schema/connector";
 import {
   localBrowserCommands,
@@ -15,6 +20,7 @@ import { nowDate } from "../external/time";
 import {
   createLocalBrowserDeviceRealtimeSubscription,
   createLocalBrowserHostRealtimeSubscription,
+  publishLocalBrowserHostCommandAvailable,
   publishLocalBrowserDeviceApproved,
   publishLocalBrowserHostsChanged,
   publishUserSignal,
@@ -29,6 +35,14 @@ const LOCAL_BROWSER_VERIFICATION_PATH = "/zero/connectors/local-browser";
 const L = logger("ZeroLocalBrowser");
 
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const LOCAL_BROWSER_READ_COMMANDS = [
+  "tabs.list",
+  "tabs.current",
+  "page.snapshot",
+  "page.screenshot",
+  "page.selection",
+  "page.metadata",
+] as const satisfies readonly LocalBrowserReadCommandKind[];
 
 interface CreateLocalBrowserDeviceCodeResult {
   readonly deviceCode: string;
@@ -57,6 +71,33 @@ type PollLocalBrowserDeviceCodeResult =
     }
   | { readonly status: "expired" }
   | { readonly status: "invalid" };
+
+type CreateLocalBrowserReadCommandResult =
+  | {
+      readonly status: "created";
+      readonly commandId: string;
+      readonly commandStatus: "queued";
+    }
+  | { readonly status: "no_connector" }
+  | { readonly status: "no_host" }
+  | { readonly status: "host_not_found" }
+  | { readonly status: "host_ambiguous" }
+  | { readonly status: "host_offline" }
+  | { readonly status: "host_unsupported" };
+
+type LocalBrowserCommandRow = typeof localBrowserCommands.$inferSelect;
+type LocalBrowserHostRow = typeof localBrowserHosts.$inferSelect;
+
+type ResolveLocalBrowserCommandTargetsResult =
+  | {
+      readonly status: "resolved";
+      readonly targetHostId?: string;
+      readonly notifyHosts: readonly LocalBrowserHostRow[];
+    }
+  | { readonly status: "host_not_found" }
+  | { readonly status: "host_ambiguous" }
+  | { readonly status: "host_offline" }
+  | { readonly status: "host_unsupported" };
 
 function generateCode(length = 8): string {
   let code = "";
@@ -107,6 +148,10 @@ function normalizeCapabilities(capabilities: readonly string[]): string[] {
     .slice(0, 50);
 }
 
+function commandPayload(params: { readonly tabId?: string }) {
+  return params.tabId ? { tabId: params.tabId.trim() } : {};
+}
+
 function hasExpired(expiresAt: Date, now: Date): boolean {
   return expiresAt.getTime() <= now.getTime();
 }
@@ -132,7 +177,80 @@ function localBrowserHostIsOnline(
   return localBrowserHostStatus(host, now) === "online";
 }
 
-function serializeHost(row: typeof localBrowserHosts.$inferSelect, now: Date) {
+function localBrowserHostSupportsCommand(
+  host: LocalBrowserHostRow,
+  kind: LocalBrowserReadCommandKind,
+): boolean {
+  return host.supportedCapabilities.includes(kind);
+}
+
+function resolveTargetLocalBrowserHost(
+  host: LocalBrowserHostRow,
+  params: {
+    readonly kind: LocalBrowserReadCommandKind;
+    readonly now: Date;
+  },
+): ResolveLocalBrowserCommandTargetsResult {
+  if (!localBrowserHostIsOnline(host, params.now)) {
+    return { status: "host_offline" };
+  }
+  if (!localBrowserHostSupportsCommand(host, params.kind)) {
+    return { status: "host_unsupported" };
+  }
+  return {
+    status: "resolved",
+    targetHostId: host.id,
+    notifyHosts: [host],
+  };
+}
+
+function resolveLocalBrowserCommandTargets(params: {
+  readonly hosts: readonly LocalBrowserHostRow[];
+  readonly onlineHosts: readonly LocalBrowserHostRow[];
+  readonly kind: LocalBrowserReadCommandKind;
+  readonly hostId?: string;
+  readonly hostName?: string;
+  readonly now: Date;
+}): ResolveLocalBrowserCommandTargetsResult {
+  if (params.hostId) {
+    const host = params.hosts.find((row) => {
+      return row.id === params.hostId;
+    });
+    return host
+      ? resolveTargetLocalBrowserHost(host, params)
+      : { status: "host_not_found" };
+  }
+
+  if (params.hostName) {
+    const matchingHosts = params.hosts.filter((row) => {
+      return row.displayName === params.hostName;
+    });
+    if (matchingHosts.length > 1) {
+      return { status: "host_ambiguous" };
+    }
+    const host = matchingHosts[0];
+    return host
+      ? resolveTargetLocalBrowserHost(host, params)
+      : { status: "host_not_found" };
+  }
+
+  if (params.onlineHosts.length === 0) {
+    return { status: "host_offline" };
+  }
+
+  const capableHosts = params.onlineHosts.filter((host) => {
+    return localBrowserHostSupportsCommand(host, params.kind);
+  });
+  if (capableHosts.length === 0) {
+    return { status: "host_unsupported" };
+  }
+  return {
+    status: "resolved",
+    notifyHosts: capableHosts,
+  };
+}
+
+function serializeHost(row: LocalBrowserHostRow, now: Date) {
   return {
     id: row.id,
     displayName: row.displayName,
@@ -142,6 +260,55 @@ function serializeHost(row: typeof localBrowserHosts.$inferSelect, now: Date) {
     status: localBrowserHostStatus(row, now),
     lastSeenAt: row.lastSeenAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function commandErrorFromRow(
+  row: LocalBrowserCommandRow,
+): LocalBrowserCommandError | undefined {
+  if (
+    row.result &&
+    typeof row.result.error === "object" &&
+    row.result.error !== null &&
+    "code" in row.result.error &&
+    "message" in row.result.error &&
+    typeof row.result.error.code === "string" &&
+    typeof row.result.error.message === "string"
+  ) {
+    return {
+      code: row.result.error.code as LocalBrowserCommandError["code"],
+      message: row.result.error.message,
+    };
+  }
+
+  if (row.error) {
+    return {
+      code: "unsupported_command",
+      message: row.error,
+    };
+  }
+
+  return undefined;
+}
+
+function serializeCommand(
+  row: LocalBrowserCommandRow,
+  hostName: string | null,
+) {
+  const result = row.status === "succeeded" ? row.result : null;
+  return {
+    id: row.id,
+    kind: row.kind as LocalBrowserReadCommandKind,
+    status: row.status as "queued" | "running" | "succeeded" | "failed",
+    hostId: row.hostId,
+    hostName,
+    payload: row.payload,
+    ...(result ? { result: result as LocalBrowserCommandResult } : {}),
+    ...(row.status === "failed" ? { error: commandErrorFromRow(row) } : {}),
+    timeoutMs: row.timeoutMs,
+    createdAt: row.createdAt.toISOString(),
+    claimedAt: row.claimedAt?.toISOString() ?? null,
+    completedAt: row.completedAt?.toISOString() ?? null,
   };
 }
 
@@ -202,6 +369,24 @@ async function publishConnectorAndHostsChangedSafe(
     publishConnectorChangedSafe(userId, signal),
     publishLocalBrowserHostsChangedSafe(userId, signal),
   ]);
+}
+
+async function publishLocalBrowserCommandAvailableSafe(
+  hostId: string,
+  commandId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const publishResult = await safeAsync(() => {
+    return publishLocalBrowserHostCommandAvailable(hostId, commandId);
+  });
+  signal.throwIfAborted();
+  if ("error" in publishResult) {
+    L.warn("Failed to publish local-browser command notification", {
+      hostId,
+      commandId,
+      error: publishResult.error,
+    });
+  }
 }
 
 export const createLocalBrowserDeviceCode$ = command(
@@ -815,6 +1000,344 @@ export const revokeLocalBrowserHostToken$ = command(
     }
 
     return result;
+  },
+);
+
+export const createLocalBrowserReadCommand$ = command(
+  async (
+    { set },
+    params: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly runId?: string;
+      readonly kind: LocalBrowserReadCommandKind;
+      readonly tabId?: string;
+      readonly hostId?: string;
+      readonly hostName?: string;
+      readonly timeoutMs: number;
+    },
+    signal: AbortSignal,
+  ): Promise<CreateLocalBrowserReadCommandResult> => {
+    const writeDb = set(writeDb$);
+    const now = nowDate();
+
+    if (!LOCAL_BROWSER_READ_COMMANDS.includes(params.kind)) {
+      return { status: "host_unsupported" as const };
+    }
+
+    const [connector] = await writeDb
+      .select({ id: connectors.id })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, params.orgId),
+          eq(connectors.userId, params.userId),
+          eq(connectors.type, "local-browser"),
+          eq(connectors.needsReconnect, false),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!connector) {
+      return { status: "no_connector" as const };
+    }
+
+    const hosts = await writeDb
+      .select()
+      .from(localBrowserHosts)
+      .where(
+        and(
+          eq(localBrowserHosts.orgId, params.orgId),
+          eq(localBrowserHosts.userId, params.userId),
+          isNull(localBrowserHosts.revokedAt),
+        ),
+      )
+      .orderBy(desc(localBrowserHosts.lastSeenAt));
+    signal.throwIfAborted();
+
+    if (hosts.length === 0) {
+      return { status: "no_host" as const };
+    }
+
+    const onlineHosts = hosts.filter((host) => {
+      return localBrowserHostIsOnline(host, now);
+    });
+
+    const target = resolveLocalBrowserCommandTargets({
+      hosts,
+      onlineHosts,
+      kind: params.kind,
+      hostId: params.hostId,
+      hostName: params.hostName,
+      now,
+    });
+    if (target.status !== "resolved") {
+      return target;
+    }
+
+    const values = {
+      orgId: params.orgId,
+      userId: params.userId,
+      runId: params.runId ?? null,
+      hostId: target.targetHostId ?? null,
+      kind: params.kind,
+      status: "queued",
+      payload: commandPayload({ tabId: params.tabId }),
+      timeoutMs: params.timeoutMs,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const [row] = await writeDb
+      .insert(localBrowserCommands)
+      .values(values)
+      .returning({
+        id: localBrowserCommands.id,
+        status: localBrowserCommands.status,
+      });
+    signal.throwIfAborted();
+
+    if (!row) {
+      throw new Error("Failed to create local-browser command");
+    }
+
+    await Promise.all(
+      target.notifyHosts.map((host) => {
+        return publishLocalBrowserCommandAvailableSafe(host.id, row.id, signal);
+      }),
+    );
+    signal.throwIfAborted();
+
+    return {
+      status: "created" as const,
+      commandId: row.id,
+      commandStatus: row.status as "queued",
+    };
+  },
+);
+
+export const getLocalBrowserReadCommand$ = command(
+  async (
+    { set },
+    params: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly commandId: string;
+    },
+    signal: AbortSignal,
+  ) => {
+    const writeDb = set(writeDb$);
+    const [row] = await writeDb
+      .select({
+        command: localBrowserCommands,
+        hostName: localBrowserHosts.displayName,
+      })
+      .from(localBrowserCommands)
+      .leftJoin(
+        localBrowserHosts,
+        eq(localBrowserCommands.hostId, localBrowserHosts.id),
+      )
+      .where(
+        and(
+          eq(localBrowserCommands.id, params.commandId),
+          eq(localBrowserCommands.orgId, params.orgId),
+          eq(localBrowserCommands.userId, params.userId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    return row ? serializeCommand(row.command, row.hostName) : null;
+  },
+);
+
+export const claimNextLocalBrowserHostCommand$ = command(
+  async (
+    { set },
+    params: {
+      readonly hostToken: string;
+      readonly supportedCapabilities: readonly string[];
+    },
+    signal: AbortSignal,
+  ) => {
+    const writeDb = set(writeDb$);
+    const now = nowDate();
+    const supportedCapabilities = normalizeCapabilities(
+      params.supportedCapabilities,
+    );
+    const supportedReadCommands = LOCAL_BROWSER_READ_COMMANDS.filter((kind) => {
+      return supportedCapabilities.includes(kind);
+    });
+
+    return await writeDb.transaction(async (tx) => {
+      const [host] = await tx
+        .select()
+        .from(localBrowserHosts)
+        .where(
+          and(
+            eq(localBrowserHosts.tokenHash, hashSecret(params.hostToken)),
+            isNull(localBrowserHosts.revokedAt),
+          ),
+        )
+        .limit(1);
+      signal.throwIfAborted();
+
+      if (!host) {
+        return { status: "invalid_token" as const };
+      }
+
+      await tx
+        .update(localBrowserHosts)
+        .set({
+          supportedCapabilities,
+          status: "online",
+          lastSeenAt: now,
+          updatedAt: now,
+        })
+        .where(eq(localBrowserHosts.id, host.id));
+      signal.throwIfAborted();
+
+      if (supportedReadCommands.length === 0) {
+        return { status: "idle" as const };
+      }
+
+      const rows = await tx
+        .select()
+        .from(localBrowserCommands)
+        .where(
+          and(
+            eq(localBrowserCommands.orgId, host.orgId),
+            eq(localBrowserCommands.userId, host.userId),
+            eq(localBrowserCommands.status, "queued"),
+            inArray(localBrowserCommands.kind, supportedReadCommands),
+            or(
+              isNull(localBrowserCommands.hostId),
+              eq(localBrowserCommands.hostId, host.id),
+            ),
+          ),
+        )
+        .orderBy(asc(localBrowserCommands.createdAt))
+        .for("update")
+        .limit(1);
+      signal.throwIfAborted();
+
+      const commandRow = rows[0];
+      if (!commandRow) {
+        return { status: "idle" as const };
+      }
+
+      const [claimed] = await tx
+        .update(localBrowserCommands)
+        .set({
+          hostId: host.id,
+          status: "running",
+          claimedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(localBrowserCommands.id, commandRow.id),
+            eq(localBrowserCommands.status, "queued"),
+            or(
+              isNull(localBrowserCommands.hostId),
+              eq(localBrowserCommands.hostId, host.id),
+            ),
+          ),
+        )
+        .returning({
+          id: localBrowserCommands.id,
+          kind: localBrowserCommands.kind,
+          payload: localBrowserCommands.payload,
+          timeoutMs: localBrowserCommands.timeoutMs,
+        });
+      signal.throwIfAborted();
+
+      if (!claimed) {
+        return { status: "idle" as const };
+      }
+
+      return {
+        status: "command" as const,
+        command: {
+          id: claimed.id,
+          kind: claimed.kind as LocalBrowserReadCommandKind,
+          payload: claimed.payload,
+          timeoutMs: claimed.timeoutMs,
+        },
+      };
+    });
+  },
+);
+
+export const completeLocalBrowserHostCommand$ = command(
+  async (
+    { set },
+    params: {
+      readonly hostToken: string;
+      readonly commandId: string;
+      readonly status: "succeeded" | "failed";
+      readonly result?: LocalBrowserCommandResult;
+      readonly error?: LocalBrowserCommandError;
+    },
+    signal: AbortSignal,
+  ) => {
+    const writeDb = set(writeDb$);
+    const now = nowDate();
+
+    return await writeDb.transaction(async (tx) => {
+      const [host] = await tx
+        .select()
+        .from(localBrowserHosts)
+        .where(
+          and(
+            eq(localBrowserHosts.tokenHash, hashSecret(params.hostToken)),
+            isNull(localBrowserHosts.revokedAt),
+          ),
+        )
+        .limit(1);
+      signal.throwIfAborted();
+
+      if (!host) {
+        return { status: "invalid_token" as const };
+      }
+
+      const [commandRow] = await tx
+        .select()
+        .from(localBrowserCommands)
+        .where(
+          and(
+            eq(localBrowserCommands.id, params.commandId),
+            eq(localBrowserCommands.hostId, host.id),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      signal.throwIfAborted();
+
+      if (!commandRow) {
+        return { status: "not_found" as const };
+      }
+      if (commandRow.status !== "running") {
+        return { status: "not_running" as const };
+      }
+
+      await tx
+        .update(localBrowserCommands)
+        .set({
+          status: params.status,
+          result:
+            params.status === "succeeded"
+              ? (params.result as Record<string, unknown>)
+              : { error: params.error },
+          error: params.status === "failed" ? params.error?.code : null,
+          completedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(localBrowserCommands.id, commandRow.id));
+      signal.throwIfAborted();
+
+      return { status: "completed" as const };
+    });
   },
 );
 
