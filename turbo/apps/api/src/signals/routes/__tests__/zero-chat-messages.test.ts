@@ -307,13 +307,17 @@ async function seedModelProvider(
 async function seedVm0ApiKey(
   fixture: ChatMessageFixture,
   model: string,
+  options: {
+    readonly vendor?: string;
+    readonly apiModel?: string;
+  } = {},
 ): Promise<void> {
   await store
     .set(writeDb$)
     .insert(vm0ApiKeys)
     .values({
-      vendor: "anthropic",
-      model,
+      vendor: options.vendor ?? "anthropic",
+      model: options.apiModel ?? model,
       apiKey: `vm0-key-${model}`,
       label: fixture.agentId,
     });
@@ -1169,6 +1173,57 @@ describe("POST /api/zero/chat/messages", () => {
     );
     expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
       DEEPSEEK_API_KEY: "org-deepseek-key",
+    });
+  });
+
+  it("runs VM0 GPT model-first routes with the Codex runtime framework", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    await removeComposeFrameworkApiKey(fixture);
+    await seedVm0Credits(fixture, 1000);
+    await seedModelProvider(fixture, "gpt-5.5", {
+      type: "vm0",
+      userId: ORG_SENTINEL_USER_ID,
+    });
+    await seedVm0ApiKey(fixture, "gpt-5.5", { vendor: "openai" });
+    await writeDb.insert(orgModelPolicies).values({
+      orgId: fixture.orgId,
+      model: "gpt-5.5",
+      isDefault: true,
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+      createdByUserId: fixture.userId,
+      updatedByUserId: fixture.userId,
+    });
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "run with built-in gpt",
+      modelSelection: {
+        modelProviderId: "00000000-0000-4000-8000-000000000000",
+        selectedModel: "gpt-5.5",
+      },
+    });
+    await clearAllDetached();
+
+    const [job] = await writeDb
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId!))
+      .limit(1);
+    const executionContext = job?.executionContext as {
+      readonly cliAgentType: string;
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+    };
+    expect(executionContext.cliAgentType).toBe("codex");
+    expect(executionContext.environment).toMatchObject({
+      OPENAI_API_KEY: "vm0-key-gpt-5.5",
+      OPENAI_MODEL: "gpt-5.5",
+    });
+    expect(executionContext.environment.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+      OPENAI_API_KEY: "vm0-key-gpt-5.5",
     });
   });
 

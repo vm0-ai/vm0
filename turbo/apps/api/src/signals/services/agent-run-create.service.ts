@@ -371,6 +371,73 @@ function resolveFramework(
   return framework;
 }
 
+function modelProviderFramework(
+  modelProvider: ResolvedModelProviderEnvironment,
+): SupportedFramework {
+  return getFrameworkForType(modelProvider.concreteType ?? modelProvider.type);
+}
+
+function frameworkForProviderSelection(
+  providerType: ModelProviderType,
+  selectedModel: string | null | undefined,
+): SupportedFramework | null {
+  if (providerType !== "vm0") {
+    return getFrameworkForType(providerType);
+  }
+  if (!selectedModel) {
+    return null;
+  }
+  return getFrameworkForType(getVm0ConcreteProviderType(selectedModel));
+}
+
+async function resolveRequestedRunFramework(
+  db: Db,
+  args: CreateAgentRunArgs,
+  composeFramework: SupportedFramework,
+): Promise<SupportedFramework> {
+  if (args.modelProviderType && isModelProviderType(args.modelProviderType)) {
+    return (
+      frameworkForProviderSelection(
+        args.modelProviderType,
+        args.selectedModelOverride,
+      ) ?? composeFramework
+    );
+  }
+
+  if (!args.modelProviderId) {
+    return composeFramework;
+  }
+
+  const [provider] = await db
+    .select({
+      type: modelProviders.type,
+      selectedModel: modelProviders.selectedModel,
+    })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.id, args.modelProviderId),
+        eq(modelProviders.orgId, args.orgId),
+        or(
+          eq(modelProviders.userId, args.userId),
+          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        ),
+      ),
+    )
+    .limit(1);
+
+  if (!provider || !isModelProviderType(provider.type)) {
+    return composeFramework;
+  }
+
+  return (
+    frameworkForProviderSelection(
+      provider.type,
+      args.selectedModelOverride ?? provider.selectedModel,
+    ) ?? composeFramework
+  );
+}
+
 function frameworkWorkingDir(_framework: SupportedFramework): string {
   return "/home/user/workspace";
 }
@@ -2568,16 +2635,26 @@ async function prepareRunContext(
     return validation;
   }
 
+  const requestedFramework = await resolveRequestedRunFramework(
+    db,
+    args,
+    validation.framework,
+  );
+  signal.throwIfAborted();
+
   const modelProvider = await resolveRunModelProvider(
     db,
     args,
     resolved.content,
-    validation.framework,
+    requestedFramework,
     signal,
   );
   if (isRouteError(modelProvider)) {
     return modelProvider;
   }
+  const framework = modelProvider
+    ? modelProviderFramework(modelProvider)
+    : requestedFramework;
 
   const [
     oauthConnectorContext,
@@ -2617,7 +2694,7 @@ async function prepareRunContext(
 
   const artifacts = artifactsForRun({
     resolved,
-    framework: validation.framework,
+    framework,
     bodyArtifacts: body.artifacts,
   });
   const additionalVolumes = mergeAdditionalVolumes({
@@ -2628,7 +2705,7 @@ async function prepareRunContext(
   return {
     body,
     resolved,
-    framework: validation.framework,
+    framework,
     modelProvider,
     connectorContext,
     customConnectorContext,
