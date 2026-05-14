@@ -878,10 +878,11 @@ impl Sandbox for MockSandbox {
         {
             *self.stdout_tx.lock_ignoring_poison() = Some(tx);
         }
-        Ok(SpawnHandle {
-            pid: 1,
-            stdout_rx: request.output.streams_stdout().then_some(rx),
-        })
+        Ok(SpawnHandle::new(
+            1,
+            request.output.streams_stdout().then_some(rx),
+            Box::pin(std::future::pending::<std::io::Result<ProcessExit>>()),
+        ))
     }
 
     async fn wait_exit(&self, handle: SpawnHandle, _timeout: Duration) -> Result<ProcessExit> {

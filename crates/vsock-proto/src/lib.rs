@@ -22,10 +22,10 @@
 //! | 0x04 | G→H       | write_file_result | `[1B success][2B error_len][error]` |
 //! | 0x05 | H→G       | spawn_watch       | `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)([2B log_path_len][log_path])` (flags: `SUDO=0x01`, `STREAM_STDOUT=0x02`) |
 //! | 0x06 | G→H       | spawn_watch_result| `[4B pid]` |
-//! | 0x07 | G→H       | process_exit      | `[4B pid][4B exit_code][4B stdout_len][stdout][4B stderr_len][stderr]` |
+//! | 0x07 | G→H       | process_exit      | `[4B pid][4B exit_code][4B stdout_len][stdout][4B stderr_len][stderr]` (`spawn_watch` uses the original request seq; pid is metadata, not the routing key) |
 //! | 0x08 | H→G       | shutdown          | (empty) |
 //! | 0x09 | G→H       | shutdown_ack      | (empty) |
-//! | 0x0A | G→H       | stdout_chunk      | `[4B pid][data]` |
+//! | 0x0A | G→H       | stdout_chunk      | `[4B pid][data]` (`spawn_watch` uses the original request seq; pid is metadata, not the routing key) |
 //! | 0x0B | H→G       | command_start     | `[4B timeout_ms][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy]` |
 //! | 0x0C | G→H       | command_output    | `[1B stream][4B output_seq][1B flags][4B chunk_len][chunk]` |
 //! | 0x0D | G→H       | command_result    | `[1B termination]...[4B duration_ms][stdout][stderr][2B diagnostic_len][diagnostic]` |

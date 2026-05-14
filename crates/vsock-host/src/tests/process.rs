@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use super::support::{host_from_stream, make_pair, mock_handshake, send_command_result};
-use crate::{ConnectionState, VsockHost};
+use crate::{ConnectionState, SpawnWatchHandle, VsockHost};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{Notify, oneshot};
 use tokio::time::Instant;
@@ -18,11 +18,17 @@ fn registration_counts(host: &VsockHost) -> (usize, usize, usize) {
         ConnectionState::Connected {
             pending, process, ..
         } => {
-            let (pending_stdout, stdout_senders) = process.registration_counts();
-            (pending.len(), pending_stdout, stdout_senders)
+            let (operations, stdout_senders) = process.registration_counts();
+            (pending.len(), operations, stdout_senders)
         }
         ConnectionState::Closed { .. } => (0, 0, 0),
     }
+}
+
+async fn wait_spawn(handle: SpawnWatchHandle) -> io::Result<crate::ProcessExitEvent> {
+    tokio::time::timeout(Duration::from_secs(5), handle.wait())
+        .await
+        .expect("spawn_watch exit should arrive before timeout")
 }
 
 #[tokio::test]
@@ -37,13 +43,14 @@ async fn test_spawn_watch_and_wait() {
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
         assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        let spawn_seq = msgs[0].seq;
 
         let payload = vsock_proto::encode_spawn_watch_result(42);
-        let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload).unwrap();
+        let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
         let exit_payload = vsock_proto::encode_process_exit(42, 0, b"done", b"");
-        let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
+        let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, spawn_seq, &exit_payload).unwrap();
         guest.write_all(&exit_msg).await.unwrap();
 
         let mut discard = [0u8; 1];
@@ -51,27 +58,24 @@ async fn test_spawn_watch_and_wait() {
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
-    let (pid, mut stdout_rx) = host
+    let mut handle = host
         .spawn_watch("sleep 1", 0, &[], false, false, None)
         .await
         .unwrap();
-    assert_eq!(pid, 42);
+    assert_eq!(handle.pid(), 42);
     assert!(
-        stdout_rx.recv().await.is_none(),
+        handle.take_stdout_receiver().is_none(),
         "buffered spawn_watch must not keep a stdout stream registered",
     );
 
-    let event = host
-        .wait_for_exit(42, Duration::from_secs(5))
-        .await
-        .unwrap();
+    let event = wait_spawn(handle).await.unwrap();
     assert_eq!(event.pid, 42);
     assert_eq!(event.exit_code, 0);
     assert_eq!(event.stdout, b"done");
 }
 
 #[tokio::test]
-async fn test_cached_exit_event() {
+async fn test_exit_event_before_wait() {
     let (host_stream, mut guest) = make_pair();
 
     tokio::spawn(async move {
@@ -82,11 +86,12 @@ async fn test_cached_exit_event() {
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
         assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        let spawn_seq = msgs[0].seq;
 
         let payload = vsock_proto::encode_spawn_watch_result(99);
-        let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload).unwrap();
+        let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &payload).unwrap();
         let exit_payload = vsock_proto::encode_process_exit(99, 1, b"", b"error");
-        let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
+        let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, spawn_seq, &exit_payload).unwrap();
 
         let mut combined = resp;
         combined.extend_from_slice(&exit_msg);
@@ -97,16 +102,13 @@ async fn test_cached_exit_event() {
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
-    let (pid, _stdout_rx) = host
+    let handle = host
         .spawn_watch("false", 0, &[], false, false, None)
         .await
         .unwrap();
-    assert_eq!(pid, 99);
+    assert_eq!(handle.pid(), 99);
 
-    let event = host
-        .wait_for_exit(99, Duration::from_secs(5))
-        .await
-        .unwrap();
+    let event = wait_spawn(handle).await.unwrap();
     assert_eq!(event.exit_code, 1);
     assert_eq!(event.stderr, b"error");
 }
@@ -149,14 +151,14 @@ async fn test_spawn_watch_error_response_cleans_up() {
     assert_eq!(
         registration_counts(&host),
         (0, 0, 0),
-        "streaming spawn_watch error must clean pending stdout registration",
+        "streaming spawn_watch error must clean operation registration",
     );
 
-    let (pid, _stdout_rx) = host
+    let handle = host
         .spawn_watch("good-cmd", 0, &[], false, false, None)
         .await
         .unwrap();
-    assert_eq!(pid, 222);
+    assert_eq!(handle.pid(), 222);
 }
 
 #[tokio::test]
@@ -196,14 +198,14 @@ async fn test_spawn_watch_malformed_result_cleans_up() {
     assert_eq!(
         registration_counts(&host),
         (0, 0, 0),
-        "malformed streaming spawn_watch result must clean pending stdout registration",
+        "malformed streaming spawn_watch result must clean operation registration",
     );
 
-    let (pid, _stdout_rx) = host
+    let handle = host
         .spawn_watch("good-cmd", 0, &[], false, false, None)
         .await
         .unwrap();
-    assert_eq!(pid, 333);
+    assert_eq!(handle.pid(), 333);
 }
 
 #[tokio::test]
@@ -224,13 +226,14 @@ async fn test_malformed_unsolicited_process_frames_are_ignored() {
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
         assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        let spawn_seq = msgs[0].seq;
 
         let payload = vsock_proto::encode_spawn_watch_result(444);
-        let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload).unwrap();
+        let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
         let exit_payload = vsock_proto::encode_process_exit(444, 0, b"after-malformed", b"");
-        let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
+        let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, spawn_seq, &exit_payload).unwrap();
         guest.write_all(&exit_msg).await.unwrap();
 
         let mut discard = [0u8; 1];
@@ -238,22 +241,19 @@ async fn test_malformed_unsolicited_process_frames_are_ignored() {
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
-    let (pid, _stdout_rx) = host
+    let handle = host
         .spawn_watch("after-malformed", 0, &[], false, false, None)
         .await
         .unwrap();
-    assert_eq!(pid, 444);
+    assert_eq!(handle.pid(), 444);
 
-    let event = host
-        .wait_for_exit(pid, Duration::from_secs(5))
-        .await
-        .unwrap();
+    let event = wait_spawn(handle).await.unwrap();
     assert_eq!(event.exit_code, 0);
     assert_eq!(event.stdout, b"after-malformed");
 }
 
 #[tokio::test]
-async fn test_dropped_stdout_receiver_removes_stream_registration() {
+async fn test_dropped_stdout_receiver_removes_stream_sender() {
     let (host_stream, mut guest) = make_pair();
     let send_chunk = Arc::new(Notify::new());
     let send_exit = Arc::new(Notify::new());
@@ -269,19 +269,20 @@ async fn test_dropped_stdout_receiver_removes_stream_registration() {
             let n = guest.read(&mut buf).await.unwrap();
             let msgs = decoder.decode(&buf[..n]).unwrap();
             assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+            let spawn_seq = msgs[0].seq;
 
             let payload = vsock_proto::encode_spawn_watch_result(555);
-            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload).unwrap();
+            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &payload).unwrap();
             guest.write_all(&resp).await.unwrap();
 
             send_chunk.notified().await;
             let chunk_payload = vsock_proto::encode_stdout_chunk(555, b"orphaned chunk");
-            let chunk = vsock_proto::encode(MSG_STDOUT_CHUNK, 0, &chunk_payload).unwrap();
+            let chunk = vsock_proto::encode(MSG_STDOUT_CHUNK, spawn_seq, &chunk_payload).unwrap();
             guest.write_all(&chunk).await.unwrap();
 
             send_exit.notified().await;
             let exit_payload = vsock_proto::encode_process_exit(555, 0, b"", b"");
-            let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
+            let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, spawn_seq, &exit_payload).unwrap();
             guest.write_all(&exit_msg).await.unwrap();
 
             let mut discard = [0u8; 1];
@@ -290,32 +291,29 @@ async fn test_dropped_stdout_receiver_removes_stream_registration() {
     }
 
     let host = host_from_stream(host_stream).await.unwrap();
-    let (pid, stdout_rx) = host
+    let mut handle = host
         .spawn_watch("streaming", 0, &[], false, true, None)
         .await
         .unwrap();
-    assert_eq!(pid, 555);
-    assert_eq!(registration_counts(&host), (0, 0, 1));
+    assert_eq!(handle.pid(), 555);
+    assert_eq!(registration_counts(&host), (0, 1, 1));
 
-    drop(stdout_rx);
+    drop(handle.take_stdout_receiver());
     send_chunk.notify_one();
 
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
-            if registration_counts(&host) == (0, 0, 0) {
+            if registration_counts(&host) == (0, 1, 0) {
                 break;
             }
             tokio::task::yield_now().await;
         }
     })
     .await
-    .expect("dropped stdout receiver should remove stream registration");
+    .expect("dropped stdout receiver should remove stream sender");
 
     send_exit.notify_one();
-    let event = host
-        .wait_for_exit(pid, Duration::from_secs(5))
-        .await
-        .unwrap();
+    let event = wait_spawn(handle).await.unwrap();
     assert_eq!(event.exit_code, 0);
 }
 
@@ -353,7 +351,7 @@ async fn test_spawn_watch_cancel_cleans_up_registrations() {
     tokio::time::timeout(Duration::from_secs(5), request_seen.notified())
         .await
         .expect("guest should receive spawn_watch request");
-    assert_eq!(registration_counts(&host), (1, 1, 0));
+    assert_eq!(registration_counts(&host), (1, 1, 1));
 
     task.abort();
     let _ = task.await;
@@ -403,7 +401,7 @@ async fn test_spawn_watch_after_close_returns_immediately() {
 }
 
 #[tokio::test]
-async fn test_wait_for_exit_no_lost_notification() {
+async fn test_spawn_watch_exit_before_wait() {
     let (host_stream, mut guest) = make_pair();
 
     tokio::spawn(async move {
@@ -414,13 +412,14 @@ async fn test_wait_for_exit_no_lost_notification() {
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
         assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        let spawn_seq = msgs[0].seq;
 
         let payload = vsock_proto::encode_spawn_watch_result(88);
-        let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload).unwrap();
+        let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
         let exit_payload = vsock_proto::encode_process_exit(88, 7, b"quick", b"");
-        let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
+        let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, spawn_seq, &exit_payload).unwrap();
         guest.write_all(&exit_msg).await.unwrap();
 
         let mut discard = [0u8; 1];
@@ -428,23 +427,20 @@ async fn test_wait_for_exit_no_lost_notification() {
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
-    let (pid, _stdout_rx) = host
+    let handle = host
         .spawn_watch("quick-exit", 0, &[], false, false, None)
         .await
         .unwrap();
-    assert_eq!(pid, 88);
+    assert_eq!(handle.pid(), 88);
 
-    let event = host
-        .wait_for_exit(88, Duration::from_secs(5))
-        .await
-        .unwrap();
+    let event = wait_spawn(handle).await.unwrap();
     assert_eq!(event.pid, 88);
     assert_eq!(event.exit_code, 7);
     assert_eq!(event.stdout, b"quick");
 }
 
 #[tokio::test]
-async fn test_wait_for_exit_connection_closed() {
+async fn test_spawn_watch_connection_closed_while_waiting() {
     let (host_stream, mut guest) = make_pair();
     let (close_tx, close_rx) = oneshot::channel();
 
@@ -465,19 +461,14 @@ async fn test_wait_for_exit_connection_closed() {
         drop(guest);
     });
 
-    let host = Arc::new(host_from_stream(host_stream).await.unwrap());
-    let (pid, _stdout_rx) = host
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
         .spawn_watch("long-running", 0, &[], false, false, None)
         .await
         .unwrap();
-    assert_eq!(pid, 77);
+    assert_eq!(handle.pid(), 77);
 
-    let host_for_wait = Arc::clone(&host);
-    let wait_task = tokio::spawn(async move {
-        host_for_wait
-            .wait_for_exit(77, Duration::from_secs(5))
-            .await
-    });
+    let wait_task = tokio::spawn(async move { handle.wait().await });
     close_tx.send(()).unwrap();
 
     let err = wait_task.await.unwrap().unwrap_err();
@@ -485,7 +476,7 @@ async fn test_wait_for_exit_connection_closed() {
 }
 
 #[tokio::test]
-async fn test_wait_for_exit_returns_cached_event_after_close() {
+async fn test_spawn_watch_exit_result_survives_close_before_wait() {
     let (host_stream, mut guest) = make_pair();
 
     tokio::spawn(async move {
@@ -496,12 +487,13 @@ async fn test_wait_for_exit_returns_cached_event_after_close() {
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
         assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        let spawn_seq = msgs[0].seq;
 
         let result_payload = vsock_proto::encode_spawn_watch_result(111);
         let result =
-            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &result_payload).unwrap();
-        let exit_payload = vsock_proto::encode_process_exit(111, 3, b"cached-output", b"err");
-        let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
+            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &result_payload).unwrap();
+        let exit_payload = vsock_proto::encode_process_exit(111, 3, b"early-output", b"err");
+        let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, spawn_seq, &exit_payload).unwrap();
 
         let mut combined = result;
         combined.extend_from_slice(&exit_msg);
@@ -510,28 +502,27 @@ async fn test_wait_for_exit_returns_cached_event_after_close() {
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
-    let (pid, _stdout_rx) = host
+    let handle = host
         .spawn_watch("quick-exit", 0, &[], false, false, None)
         .await
         .unwrap();
-    assert_eq!(pid, 111);
+    assert_eq!(handle.pid(), 111);
 
     host.wait_until_closed(Duration::from_secs(5))
         .await
         .unwrap();
 
-    let event = host
-        .wait_for_exit(pid, Duration::from_secs(5))
+    let event = wait_spawn(handle)
         .await
-        .expect("cached exit event must survive the Connected -> Closed transition");
+        .expect("exit result held by handle must survive connection close");
     assert_eq!(event.pid, 111);
     assert_eq!(event.exit_code, 3);
-    assert_eq!(event.stdout, b"cached-output");
+    assert_eq!(event.stdout, b"early-output");
     assert_eq!(event.stderr, b"err");
 }
 
 #[tokio::test]
-async fn test_wait_for_exit_timeout() {
+async fn test_spawn_watch_wait_timeout_drops_registration() {
     let (host_stream, mut guest) = make_pair();
 
     tokio::spawn(async move {
@@ -550,17 +541,89 @@ async fn test_wait_for_exit_timeout() {
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
-    let (pid, _stdout_rx) = host
+    let handle = host
         .spawn_watch("long-running", 0, &[], false, false, None)
         .await
         .unwrap();
-    assert_eq!(pid, 55);
+    assert_eq!(handle.pid(), 55);
 
-    let err = host
-        .wait_for_exit(pid, Duration::from_millis(100))
+    tokio::time::timeout(Duration::from_millis(100), handle.wait())
         .await
         .unwrap_err();
-    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(registration_counts(&host), (0, 0, 0));
+}
+
+#[tokio::test]
+async fn test_concurrent_spawn_watch_routes_by_seq_not_pid() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let mut buf = [0u8; 4096];
+
+        let n = guest.read(&mut buf).await.unwrap();
+        let msgs = decoder.decode(&buf[..n]).unwrap();
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        let first_seq = msgs[0].seq;
+        let payload = vsock_proto::encode_spawn_watch_result(999);
+        let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, first_seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+
+        let n = guest.read(&mut buf).await.unwrap();
+        let msgs = decoder.decode(&buf[..n]).unwrap();
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        let second_seq = msgs[0].seq;
+        let payload = vsock_proto::encode_spawn_watch_result(999);
+        let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, second_seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+
+        let second_chunk_payload = vsock_proto::encode_stdout_chunk(999, b"second");
+        let first_chunk_payload = vsock_proto::encode_stdout_chunk(999, b"first");
+        let second_exit_payload = vsock_proto::encode_process_exit(999, 22, b"", b"second err");
+        let first_exit_payload = vsock_proto::encode_process_exit(999, 11, b"", b"first err");
+
+        let mut frames =
+            vsock_proto::encode(MSG_STDOUT_CHUNK, second_seq, &second_chunk_payload).unwrap();
+        frames.extend_from_slice(
+            &vsock_proto::encode(MSG_STDOUT_CHUNK, first_seq, &first_chunk_payload).unwrap(),
+        );
+        frames.extend_from_slice(
+            &vsock_proto::encode(MSG_PROCESS_EXIT, second_seq, &second_exit_payload).unwrap(),
+        );
+        frames.extend_from_slice(
+            &vsock_proto::encode(MSG_PROCESS_EXIT, first_seq, &first_exit_payload).unwrap(),
+        );
+        guest.write_all(&frames).await.unwrap();
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let mut first = host
+        .spawn_watch("first", 0, &[], false, true, None)
+        .await
+        .unwrap();
+    let mut second = host
+        .spawn_watch("second", 0, &[], false, true, None)
+        .await
+        .unwrap();
+    assert_eq!(first.pid(), 999);
+    assert_eq!(second.pid(), 999);
+
+    let mut first_stdout = first.take_stdout_receiver().unwrap();
+    let mut second_stdout = second.take_stdout_receiver().unwrap();
+    assert_eq!(second_stdout.recv().await.unwrap(), b"second");
+    assert_eq!(first_stdout.recv().await.unwrap(), b"first");
+
+    let second_exit = wait_spawn(second).await.unwrap();
+    let first_exit = wait_spawn(first).await.unwrap();
+    assert_eq!(second_exit.exit_code, 22);
+    assert_eq!(second_exit.stderr, b"second err");
+    assert_eq!(first_exit.exit_code, 11);
+    assert_eq!(first_exit.stderr, b"first err");
 }
 
 #[tokio::test]
@@ -598,7 +661,7 @@ async fn test_concurrent_exec_and_wait_exit() {
 
         let _ = exit_after_exec.await;
         let exit_payload = vsock_proto::encode_process_exit(50, 42, b"exited", b"");
-        let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
+        let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, spawn_seq, &exit_payload).unwrap();
         guest.write_all(&exit_msg).await.unwrap();
 
         let mut discard = [0u8; 1];
@@ -606,15 +669,13 @@ async fn test_concurrent_exec_and_wait_exit() {
     });
 
     let host = Arc::new(host_from_stream(host_stream).await.unwrap());
-    let (pid, _stdout_rx) = host
+    let handle = host
         .spawn_watch("long-running", 0, &[], false, false, None)
         .await
         .unwrap();
-    assert_eq!(pid, 50);
+    assert_eq!(handle.pid(), 50);
 
-    let host2 = Arc::clone(&host);
-    let wait_task =
-        tokio::spawn(async move { host2.wait_for_exit(50, Duration::from_secs(5)).await });
+    let wait_task = tokio::spawn(async move { handle.wait().await });
 
     let exec_result = host
         .exec("echo concurrent", 5000, &[], false)

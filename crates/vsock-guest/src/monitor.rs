@@ -24,6 +24,7 @@ const THREAD_STREAM_STDERR: &str = "vsock-stream-stderr";
 const THREAD_STREAM_STDOUT: &str = "vsock-stream-stdout";
 
 struct StreamingMonitorRequest {
+    seq: u32,
     pid: u32,
     child: Child,
     timeout_ms: u32,
@@ -35,6 +36,7 @@ struct StreamingMonitorRequest {
 }
 
 struct BufferedMonitorRequest {
+    seq: u32,
     pid: u32,
     child: Child,
     timeout_ms: u32,
@@ -44,6 +46,7 @@ struct BufferedMonitorRequest {
 }
 
 struct StreamingSetupFailure {
+    seq: u32,
     pid: u32,
     child: Child,
     cancel: Arc<AtomicBool>,
@@ -72,12 +75,8 @@ pub(crate) struct SpawnWatchRequest<'a> {
 /// `MSG_STDOUT_CHUNK` messages. `stdout_log_path`, when present, additionally
 /// tees those chunks to a file path inside the VM.
 ///
-/// The result-before-monitor ordering is critical: the streaming monitor
-/// thread also writes to the same socket (via the shared `writer` mutex),
-/// and `MSG_STDOUT_CHUNK` messages must not arrive at the host before the
-/// `MSG_SPAWN_WATCH_RESULT` for this pid — the host only registers the
-/// stdout channel when it processes the result, so earlier chunks would
-/// be dropped.
+/// The result-before-monitor ordering is kept for readability, but lifecycle
+/// frames are routed by the original request sequence number.
 pub(crate) fn handle_spawn_watch(
     request: SpawnWatchRequest<'_>,
     seq: u32,
@@ -157,6 +156,7 @@ where
         let stdout_pipe = child.stdout.take();
         if let Err(e) = spawn_streaming_monitor(
             StreamingMonitorRequest {
+                seq,
                 pid,
                 child,
                 timeout_ms: request.timeout_ms,
@@ -178,6 +178,7 @@ where
         // in a single MSG_PROCESS_EXIT after wait.
         if let Err(e) = spawn_buffered_monitor(
             BufferedMonitorRequest {
+                seq,
                 pid,
                 child,
                 timeout_ms: request.timeout_ms,
@@ -218,6 +219,7 @@ where
     S: ThreadSpawner,
 {
     let StreamingMonitorRequest {
+        seq,
         pid,
         child,
         timeout_ms,
@@ -242,6 +244,7 @@ where
             };
             run_streaming_monitor(
                 StreamingMonitorRequest {
+                    seq,
                     pid,
                     child,
                     timeout_ms,
@@ -257,6 +260,7 @@ where
     );
     if let Err(e) = &result {
         send_process_exit(
+            seq,
             pid,
             1,
             &[],
@@ -272,6 +276,7 @@ where
     S: ThreadSpawner,
 {
     let StreamingMonitorRequest {
+        seq,
         pid,
         mut child,
         timeout_ms,
@@ -306,6 +311,7 @@ where
             Ok(handle) => Some(handle),
             Err(e) => {
                 finish_streaming_setup_failure(StreamingSetupFailure {
+                    seq,
                     pid,
                     child,
                     cancel,
@@ -370,7 +376,7 @@ where
                     // is itself unreachable, so retaining bytes we cannot
                     // deliver buys nothing.
                     let payload = vsock_proto::encode_stdout_chunk(pid, chunk);
-                    if let Ok(msg) = vsock_proto::encode(MSG_STDOUT_CHUNK, 0, &payload)
+                    if let Ok(msg) = vsock_proto::encode(MSG_STDOUT_CHUNK, seq, &payload)
                         && let Err(e) = stdout_writer.write_frame(&msg)
                     {
                         log(
@@ -386,6 +392,7 @@ where
             Ok(handle) => Some(handle),
             Err(e) => {
                 finish_streaming_setup_failure(StreamingSetupFailure {
+                    seq,
                     pid,
                     child,
                     cancel,
@@ -448,11 +455,12 @@ where
         ),
     );
 
-    send_process_exit(pid, exit_code, &[], &stderr, &writer);
+    send_process_exit(seq, pid, exit_code, &[], &stderr, &writer);
 }
 
 fn finish_streaming_setup_failure(failure: StreamingSetupFailure) {
     let StreamingSetupFailure {
+        seq,
         pid,
         child,
         cancel,
@@ -473,7 +481,7 @@ fn finish_streaming_setup_failure(failure: StreamingSetupFailure) {
     if let Some(handle) = stdout_handle {
         let _ = handle.join();
     }
-    send_process_exit(pid, 1, &[], error.as_bytes(), &writer);
+    send_process_exit(seq, pid, 1, &[], error.as_bytes(), &writer);
 }
 
 /// Buffered monitor: waits for process exit while concurrently draining
@@ -483,6 +491,7 @@ where
     S: ThreadSpawner,
 {
     let BufferedMonitorRequest {
+        seq,
         pid,
         child,
         timeout_ms,
@@ -523,12 +532,13 @@ where
                 ),
             );
 
-            send_process_exit(pid, exit_code, &stdout, &stderr, &writer);
+            send_process_exit(seq, pid, exit_code, &stdout, &stderr, &writer);
             drop(env_script);
         }),
     );
     if let Err(e) = &result {
         send_process_exit(
+            seq,
             pid,
             1,
             &[],
@@ -540,9 +550,16 @@ where
 }
 
 /// Send a process_exit notification over vsock (best-effort).
-fn send_process_exit(pid: u32, exit_code: i32, stdout: &[u8], stderr: &[u8], writer: &GuestWriter) {
+fn send_process_exit(
+    seq: u32,
+    pid: u32,
+    exit_code: i32,
+    stdout: &[u8],
+    stderr: &[u8],
+    writer: &GuestWriter,
+) {
     let payload = vsock_proto::encode_process_exit(pid, exit_code, stdout, stderr);
-    let exit_msg = match vsock_proto::encode(MSG_PROCESS_EXIT, 0, &payload) {
+    let exit_msg = match vsock_proto::encode(MSG_PROCESS_EXIT, seq, &payload) {
         Ok(msg) => msg,
         Err(e) => {
             log("ERROR", &format!("Failed to encode process_exit: {}", e));
@@ -614,6 +631,7 @@ mod tests {
 
         let exit = read_message(&mut host);
         assert_eq!(exit.msg_type, MSG_PROCESS_EXIT);
+        assert_eq!(exit.seq, 7);
         let (exit_pid, code, stdout, stderr) =
             vsock_proto::decode_process_exit(&exit.payload).unwrap();
         assert_eq!(exit_pid, pid);
@@ -657,6 +675,7 @@ mod tests {
 
         let exit = read_message(&mut host);
         assert_eq!(exit.msg_type, MSG_PROCESS_EXIT);
+        assert_eq!(exit.seq, 8);
         let (exit_pid, code, stdout, stderr) =
             vsock_proto::decode_process_exit(&exit.payload).unwrap();
         assert_eq!(exit_pid, pid);
@@ -700,6 +719,7 @@ mod tests {
 
         let exit = read_message(&mut host);
         assert_eq!(exit.msg_type, MSG_PROCESS_EXIT);
+        assert_eq!(exit.seq, 10);
         let (exit_pid, code, stdout, stderr) =
             vsock_proto::decode_process_exit(&exit.payload).unwrap();
         assert_eq!(exit_pid, pid);
@@ -743,6 +763,7 @@ mod tests {
 
         let exit = read_message(&mut host);
         assert_eq!(exit.msg_type, MSG_PROCESS_EXIT);
+        assert_eq!(exit.seq, 9);
         let (exit_pid, code, stdout, stderr) =
             vsock_proto::decode_process_exit(&exit.payload).unwrap();
         assert_eq!(exit_pid, pid);
@@ -786,6 +807,7 @@ mod tests {
 
         let exit = read_message(&mut host);
         assert_eq!(exit.msg_type, MSG_PROCESS_EXIT);
+        assert_eq!(exit.seq, 11);
         let (exit_pid, code, stdout, stderr) =
             vsock_proto::decode_process_exit(&exit.payload).unwrap();
         assert_eq!(exit_pid, pid);

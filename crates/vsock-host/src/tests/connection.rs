@@ -98,7 +98,7 @@ async fn test_request_after_close_returns_immediately() {
     let host = host_from_stream(host_stream).await.unwrap();
 
     // Deterministically wait for reader to detect EOF and transition state
-    // to Closed — no wall-clock sleep, driven by `exit_notify`.
+    // to Closed — no wall-clock sleep, driven by `close_notify`.
     host.wait_until_closed(Duration::from_secs(5))
         .await
         .unwrap();

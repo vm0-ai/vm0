@@ -1,3 +1,5 @@
+use std::future::Future;
+use std::pin::Pin;
 use std::time::Duration;
 
 /// Capture budgets for stdout/stderr returned by [`ExecRequest`].
@@ -125,11 +127,33 @@ pub struct CopyFileResult {
     pub bytes_copied: u64,
 }
 
+pub type SpawnExitFuture =
+    Pin<Box<dyn Future<Output = std::io::Result<ProcessExit>> + Send + 'static>>;
+
 pub struct SpawnHandle {
     pub pid: u32,
     /// Receives stdout chunks in real-time when the guest streams them.
     /// `None` when the backend does not support streaming.
     pub stdout_rx: Option<tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>>,
+    exit: Option<SpawnExitFuture>,
+}
+
+impl SpawnHandle {
+    pub fn new(
+        pid: u32,
+        stdout_rx: Option<tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>>,
+        exit: SpawnExitFuture,
+    ) -> Self {
+        Self {
+            pid,
+            stdout_rx,
+            exit: Some(exit),
+        }
+    }
+
+    pub fn take_exit_future(&mut self) -> Option<SpawnExitFuture> {
+        self.exit.take()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

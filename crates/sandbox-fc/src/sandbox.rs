@@ -1443,11 +1443,23 @@ impl Sandbox for FirecrackerSandbox {
                 request.output.streams_stdout(),
                 request.output.guest_log_path(),
             ) => {
-                let (pid, stdout_rx) = result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))?;
-                Ok(SpawnHandle {
-                    pid,
-                    stdout_rx: request.output.streams_stdout().then_some(stdout_rx),
-                })
+                let mut handle = result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))?;
+                let pid = handle.pid();
+                let stdout_rx = request
+                    .output
+                    .streams_stdout()
+                    .then(|| handle.take_stdout_receiver())
+                    .flatten();
+                let exit = Box::pin(async move {
+                    let event = handle.wait().await?;
+                    Ok(ProcessExit {
+                        pid: event.pid,
+                        exit_code: event.exit_code,
+                        stdout: event.stdout,
+                        stderr: event.stderr,
+                    })
+                });
+                Ok(SpawnHandle::new(pid, stdout_rx, exit))
             }
             () = wait_for_backend_crash(self.state_tx.subscribe()) => {
                 Err(Self::backend_crashed_error(operation))
@@ -1457,21 +1469,31 @@ impl Sandbox for FirecrackerSandbox {
 
     async fn wait_exit(
         &self,
-        handle: SpawnHandle,
+        mut handle: SpawnHandle,
         timeout: Duration,
     ) -> sandbox::Result<ProcessExit> {
         let operation = SandboxOperation::WaitExit;
-        let guest = self.operation_guest(operation).await?;
+        let mut exit = handle.take_exit_future().ok_or_else(|| {
+            Self::operation_error(
+                operation,
+                std::io::Error::new(
+                    std::io::ErrorKind::ConnectionReset,
+                    "spawn_watch handle already consumed",
+                ),
+                self.has_backend_crashed(),
+            )
+        })?;
 
         tokio::select! {
-            result = guest.wait_for_exit(handle.pid, timeout) => {
-                let event = result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))?;
-                Ok(ProcessExit {
-                    pid: event.pid,
-                    exit_code: event.exit_code,
-                    stdout: event.stdout,
-                    stderr: event.stderr,
-                })
+            result = &mut exit => {
+                result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))
+            }
+            _ = tokio::time::sleep(timeout) => {
+                Err(Self::operation_error(
+                    operation,
+                    std::io::Error::new(std::io::ErrorKind::TimedOut, "wait_exit timeout"),
+                    self.has_backend_crashed(),
+                ))
             }
             () = wait_for_backend_crash(self.state_tx.subscribe()) => {
                 Err(Self::backend_crashed_error(operation))

@@ -1,15 +1,13 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::mpsc;
-use tokio::time::Instant;
-use vsock_proto::{MSG_ERROR, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT};
+use tokio::sync::{mpsc, oneshot};
+use vsock_proto::{MSG_ERROR, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT, RawMessage};
 
 use crate::{ConnectionState, Shared, request_raw_on_shared};
-
-type StdoutSenderMap = HashMap<u32, mpsc::UnboundedSender<Vec<u8>>>;
 
 /// Event emitted when a spawned process exits.
 #[derive(Debug, Clone)]
@@ -20,171 +18,237 @@ pub struct ProcessExitEvent {
     pub stderr: Vec<u8>,
 }
 
+struct SpawnOperation {
+    pid: Option<u32>,
+    stdout_tx: Option<mpsc::UnboundedSender<Vec<u8>>>,
+    exit_tx: oneshot::Sender<io::Result<ProcessExitEvent>>,
+}
+
 /// Process lifecycle state while the vsock connection is open.
 pub(crate) struct ConnectedProcessState {
-    /// Pre-registered stdout senders: request seq -> channel sender.
-    ///
-    /// `spawn_watch` inserts here before sending the request so the reader loop
-    /// can move the sender to `stdout_senders` when it processes the
-    /// `spawn_watch_result`, before any stdout chunk for that pid is handled.
-    pending_stdout: StdoutSenderMap,
-    /// Stdout chunk senders: pid -> channel sender.
-    stdout_senders: StdoutSenderMap,
-    /// Cached process exit events (unsolicited, seq=0).
-    exits: HashMap<u32, ProcessExitEvent>,
+    /// Active spawn_watch operations keyed by request sequence number.
+    operations: HashMap<u32, SpawnOperation>,
 }
 
 impl ConnectedProcessState {
     pub(crate) fn new() -> Self {
         Self {
-            pending_stdout: HashMap::new(),
-            stdout_senders: HashMap::new(),
-            exits: HashMap::new(),
+            operations: HashMap::new(),
         }
     }
 
-    pub(crate) fn close(self) -> (ClosedProcessState, ProcessSenderMaps) {
-        let Self {
-            pending_stdout,
-            stdout_senders,
-            exits,
-        } = self;
+    pub(crate) fn close(self) -> (ClosedProcessState, ProcessOperationMap) {
         (
-            ClosedProcessState { exits },
-            ProcessSenderMaps {
-                pending_stdout,
-                stdout_senders,
+            ClosedProcessState,
+            ProcessOperationMap {
+                _operations: self.operations,
             },
         )
     }
 
-    fn insert_pending_stdout(&mut self, seq: u32, tx: mpsc::UnboundedSender<Vec<u8>>) {
-        self.pending_stdout.insert(seq, tx);
+    fn insert_operation(&mut self, seq: u32, operation: SpawnOperation) {
+        self.operations.insert(seq, operation);
     }
 
-    fn remove_pending_stdout(&mut self, seq: u32) {
-        self.pending_stdout.remove(&seq);
+    fn remove_operation(&mut self, seq: u32) {
+        self.operations.remove(&seq);
     }
 
-    fn stdout_sender(&self, pid: u32) -> Option<mpsc::UnboundedSender<Vec<u8>>> {
-        self.stdout_senders.get(&pid).cloned()
+    fn operation_mut(&mut self, seq: u32) -> Option<&mut SpawnOperation> {
+        self.operations.get_mut(&seq)
     }
 
-    fn remove_stdout_sender(&mut self, pid: u32) {
-        self.stdout_senders.remove(&pid);
+    fn contains_operation(&self, seq: u32) -> bool {
+        self.operations.contains_key(&seq)
     }
 
-    fn insert_exit(&mut self, event: ProcessExitEvent) {
-        self.stdout_senders.remove(&event.pid);
-        self.exits.insert(event.pid, event);
-    }
-
-    fn take_exit(&mut self, pid: u32) -> Option<ProcessExitEvent> {
-        self.exits.remove(&pid)
+    fn take_operation(&mut self, seq: u32) -> Option<SpawnOperation> {
+        self.operations.remove(&seq)
     }
 
     #[cfg(test)]
     pub(crate) fn registration_counts(&self) -> (usize, usize) {
-        (self.pending_stdout.len(), self.stdout_senders.len())
+        let stdout_senders = self
+            .operations
+            .values()
+            .filter(|operation| operation.stdout_tx.is_some())
+            .count();
+        (self.operations.len(), stdout_senders)
     }
 }
 
 /// Process lifecycle state after the vsock connection has closed.
-pub(crate) struct ClosedProcessState {
-    /// Preserved across the close transition: callers of `wait_for_exit` can
-    /// still retrieve an exit event that was cached before close.
-    exits: HashMap<u32, ProcessExitEvent>,
-}
+pub(crate) struct ClosedProcessState;
 
 impl ClosedProcessState {
     pub(crate) fn empty() -> Self {
+        Self
+    }
+}
+
+/// Spawn operation map moved out during close so drops happen outside
+/// `Shared.state`.
+pub(crate) struct ProcessOperationMap {
+    _operations: HashMap<u32, SpawnOperation>,
+}
+
+struct SpawnOperationRegistrationGuard {
+    shared: Arc<Shared>,
+    seq: u32,
+    disarmed: bool,
+}
+
+impl SpawnOperationRegistrationGuard {
+    fn new(shared: Arc<Shared>, seq: u32) -> Self {
         Self {
-            exits: HashMap::new(),
+            shared,
+            seq,
+            disarmed: false,
         }
     }
 
-    fn take_exit(&mut self, pid: u32) -> Option<ProcessExitEvent> {
-        self.exits.remove(&pid)
+    fn disarm(&mut self) {
+        self.disarmed = true;
     }
 }
 
-/// Sender maps moved out during close so drops happen outside `Shared.state`.
-pub(crate) struct ProcessSenderMaps {
-    pending_stdout: StdoutSenderMap,
-    stdout_senders: StdoutSenderMap,
-}
-
-impl ProcessSenderMaps {
-    pub(crate) fn into_inner(self) -> (StdoutSenderMap, StdoutSenderMap) {
-        (self.pending_stdout, self.stdout_senders)
-    }
-}
-
-struct PendingStdoutGuard {
-    shared: Arc<Shared>,
-    seq: u32,
-}
-
-impl PendingStdoutGuard {
-    fn new(shared: Arc<Shared>, seq: u32) -> Self {
-        Self { shared, seq }
-    }
-}
-
-impl Drop for PendingStdoutGuard {
+impl Drop for SpawnOperationRegistrationGuard {
     fn drop(&mut self) {
-        remove_pending_stdout(&self.shared, self.seq);
+        if !self.disarmed {
+            remove_spawn_operation(&self.shared, self.seq);
+        }
     }
 }
 
-pub(crate) fn remove_pending_stdout(shared: &Arc<Shared>, seq: u32) {
+/// Handle for a spawn_watch operation.
+///
+/// Dropping the handle removes the host-side operation registration. It does
+/// not send a guest-side cancellation request; this matches the previous
+/// host-side wait timeout/drop behavior.
+pub struct SpawnWatchHandle {
+    shared: Arc<Shared>,
+    seq: Option<u32>,
+    pid: u32,
+    stdout_rx: Option<mpsc::UnboundedReceiver<Vec<u8>>>,
+    exit_rx: Option<oneshot::Receiver<io::Result<ProcessExitEvent>>>,
+}
+
+impl fmt::Debug for SpawnWatchHandle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SpawnWatchHandle")
+            .field("seq", &self.seq)
+            .field("pid", &self.pid)
+            .field("has_stdout_receiver", &self.stdout_rx.is_some())
+            .field("has_exit_receiver", &self.exit_rx.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
+impl SpawnWatchHandle {
+    pub fn pid(&self) -> u32 {
+        self.pid
+    }
+
+    pub fn take_stdout_receiver(&mut self) -> Option<mpsc::UnboundedReceiver<Vec<u8>>> {
+        self.stdout_rx.take()
+    }
+
+    pub async fn wait(mut self) -> io::Result<ProcessExitEvent> {
+        let rx = self.exit_rx.take().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "spawn_watch operation closed",
+            )
+        })?;
+
+        let result = rx
+            .await
+            .map_err(|_| io::Error::new(io::ErrorKind::ConnectionReset, "connection closed"))?;
+        self.seq = None;
+        result
+    }
+}
+
+impl Drop for SpawnWatchHandle {
+    fn drop(&mut self) {
+        if let Some(seq) = self.seq.take() {
+            remove_spawn_operation(&self.shared, seq);
+        }
+    }
+}
+
+fn remove_spawn_operation(shared: &Arc<Shared>, seq: u32) {
     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
     if let ConnectionState::Connected { process, .. } = &mut *guard {
-        process.remove_pending_stdout(seq);
+        process.remove_operation(seq);
     }
 }
 
-pub(crate) fn move_stdout_registration_to_pid_before_response_dispatch(
+pub(crate) fn record_spawn_watch_result(
     process: &mut ConnectedProcessState,
     seq: u32,
     payload: &[u8],
 ) {
     if let Ok(pid) = vsock_proto::decode_spawn_watch_result(payload)
-        && let Some(tx) = process.pending_stdout.remove(&seq)
+        && let Some(operation) = process.operation_mut(seq)
     {
-        process.stdout_senders.insert(pid, tx);
+        operation.pid = Some(pid);
     }
 }
 
-pub(crate) fn dispatch_stdout_chunk(shared: &Arc<Shared>, payload: &[u8]) {
-    let Ok((pid, data)) = vsock_proto::decode_stdout_chunk(payload) else {
-        return;
+pub(crate) fn dispatch_stdout_chunk(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
+    let active = {
+        let guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        matches!(
+            &*guard,
+            ConnectionState::Connected { process, .. } if process.contains_operation(msg.seq)
+        )
     };
+    if !active {
+        return Ok(());
+    }
+
+    let (_pid, data) = vsock_proto::decode_stdout_chunk(&msg.payload)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
     let sender = {
-        let guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-        match &*guard {
-            ConnectionState::Connected { process, .. } => process.stdout_sender(pid),
+        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        match &mut *guard {
+            ConnectionState::Connected { process, .. } => process
+                .operation_mut(msg.seq)
+                .and_then(|operation| operation.stdout_tx.clone()),
             ConnectionState::Closed { .. } => None,
         }
     };
 
-    if let Some(tx) = sender {
-        // Best-effort: if receiver is dropped, remove sender.
-        if tx.send(data.to_vec()).is_err() {
-            let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-            if let ConnectionState::Connected { process, .. } = &mut *guard {
-                process.remove_stdout_sender(pid);
-            }
+    if let Some(tx) = sender
+        && tx.send(data.to_vec()).is_err()
+    {
+        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        if let ConnectionState::Connected { process, .. } = &mut *guard
+            && let Some(operation) = process.operation_mut(msg.seq)
+        {
+            operation.stdout_tx = None;
         }
     }
+
+    Ok(())
 }
 
-pub(crate) fn dispatch_process_exit(shared: &Arc<Shared>, payload: &[u8]) {
-    let Ok((pid, exit_code, stdout, stderr)) = vsock_proto::decode_process_exit(payload) else {
-        return;
+pub(crate) fn dispatch_process_exit(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
+    let active = {
+        let guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        matches!(
+            &*guard,
+            ConnectionState::Connected { process, .. } if process.contains_operation(msg.seq)
+        )
     };
+    if !active {
+        return Ok(());
+    }
 
+    let (pid, exit_code, stdout, stderr) = vsock_proto::decode_process_exit(&msg.payload)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
     let event = ProcessExitEvent {
         pid,
         exit_code,
@@ -192,13 +256,19 @@ pub(crate) fn dispatch_process_exit(shared: &Arc<Shared>, payload: &[u8]) {
         stderr: stderr.to_vec(),
     };
 
-    {
+    let operation = {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-        if let ConnectionState::Connected { process, .. } = &mut *guard {
-            process.insert_exit(event);
+        match &mut *guard {
+            ConnectionState::Connected { process, .. } => process.take_operation(msg.seq),
+            ConnectionState::Closed { .. } => None,
         }
+    };
+
+    if let Some(operation) = operation {
+        let _ = operation.exit_tx.send(Ok(event));
     }
-    shared.exit_notify.notify_waiters();
+
+    Ok(())
 }
 
 pub(crate) async fn spawn_watch_on_shared(
@@ -209,7 +279,7 @@ pub(crate) async fn spawn_watch_on_shared(
     sudo: bool,
     stream_stdout: bool,
     stdout_log_path: Option<&str>,
-) -> io::Result<(u32, mpsc::UnboundedReceiver<Vec<u8>>)> {
+) -> io::Result<SpawnWatchHandle> {
     let payload = vsock_proto::encode_spawn_watch(
         timeout_ms,
         command,
@@ -220,11 +290,13 @@ pub(crate) async fn spawn_watch_on_shared(
     )
     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
 
-    // Pre-create the stdout channel. In streaming mode, register it by seq
-    // number before sending the request. The reader loop will atomically move
-    // it from pending_stdout[seq] to stdout_senders[pid] when it processes the
-    // spawn_watch_result, before any stdout_chunk for that pid.
-    let (stdout_tx, stdout_rx) = mpsc::unbounded_channel();
+    let (stdout_tx, stdout_rx) = if stream_stdout {
+        let (tx, rx) = mpsc::unbounded_channel();
+        (Some(tx), Some(rx))
+    } else {
+        (None, None)
+    };
+    let (exit_tx, exit_rx) = oneshot::channel();
     let seq = shared.next_seq();
     {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -235,14 +307,19 @@ pub(crate) async fn spawn_watch_on_shared(
                     "connection closed",
                 ));
             }
-            ConnectionState::Connected { process, .. } if stream_stdout => {
-                process.insert_pending_stdout(seq, stdout_tx);
+            ConnectionState::Connected { process, .. } => {
+                process.insert_operation(
+                    seq,
+                    SpawnOperation {
+                        pid: None,
+                        stdout_tx,
+                        exit_tx,
+                    },
+                );
             }
-            ConnectionState::Connected { .. } => {}
         }
     }
-    let _pending_stdout_guard =
-        stream_stdout.then(|| PendingStdoutGuard::new(Arc::clone(shared), seq));
+    let mut registration_guard = SpawnOperationRegistrationGuard::new(Arc::clone(shared), seq);
 
     let resp = request_raw_on_shared(
         shared,
@@ -254,7 +331,6 @@ pub(crate) async fn spawn_watch_on_shared(
     .await?;
 
     if resp.msg_type == MSG_ERROR {
-        // No pid assigned — clean up pending stdout sender.
         let msg = vsock_proto::decode_error(&resp.payload)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         return Err(io::Error::other(msg));
@@ -267,58 +343,16 @@ pub(crate) async fn spawn_watch_on_shared(
         ));
     }
 
-    // If decode fails here, the reader's identical decode also failed and did
-    // not move `pending_stdout[seq]` to `stdout_senders[pid]`; the guard still
-    // owns cleanup of the pending registration.
     let pid = vsock_proto::decode_spawn_watch_result(&resp.payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
-    // Channel already moved from pending_stdout to stdout_senders by reader_loop.
-    Ok((pid, stdout_rx))
-}
+    registration_guard.disarm();
 
-pub(crate) async fn wait_for_exit_on_shared(
-    shared: &Arc<Shared>,
-    pid: u32,
-    timeout: Duration,
-) -> io::Result<ProcessExitEvent> {
-    let deadline = Instant::now() + timeout;
-    loop {
-        // Register interest BEFORE checking the cache so a `notify_waiters`
-        // firing between the cache check and `select!` still wakes us.
-        let exit_notified = shared.exit_notify.notified();
-        tokio::pin!(exit_notified);
-        exit_notified.as_mut().enable();
-
-        {
-            let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-            match &mut *guard {
-                ConnectionState::Connected { process, .. } => {
-                    if let Some(event) = process.take_exit(pid) {
-                        return Ok(event);
-                    }
-                }
-                ConnectionState::Closed { process } => {
-                    if let Some(event) = process.take_exit(pid) {
-                        return Ok(event);
-                    }
-                    return Err(io::Error::new(
-                        io::ErrorKind::ConnectionReset,
-                        "connection closed",
-                    ));
-                }
-            }
-        }
-
-        tokio::select! {
-            biased;
-            _ = exit_notified => {
-                // Either a new exit event, or `close()` fired its
-                // `exit_notify.notify_waiters()` — re-check on next iter.
-            }
-            _ = tokio::time::sleep_until(deadline) => {
-                return Err(io::Error::new(io::ErrorKind::TimedOut, "wait timeout"));
-            }
-        }
-    }
+    Ok(SpawnWatchHandle {
+        shared: Arc::clone(shared),
+        seq: Some(seq),
+        pid,
+        stdout_rx,
+        exit_rx: Some(exit_rx),
+    })
 }

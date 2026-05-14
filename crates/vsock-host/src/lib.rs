@@ -48,7 +48,7 @@ pub use command::{
     CommandOutputEvent, CommandOwnedCapturedOutput, CommandStreamRequest,
 };
 pub use file::{CopyFileOptions, CopyFileResult};
-pub use process::ProcessExitEvent;
+pub use process::{ProcessExitEvent, SpawnWatchHandle};
 
 const READ_BUF_SIZE: usize = 64 * 1024;
 
@@ -66,9 +66,7 @@ pub struct ExecResult {
 ///
 /// Pending requests, active command operations, and connected process state
 /// live inside the `Connected` variant so registrations are structurally
-/// unreachable once the reader task has exited. Process cached exits live in
-/// BOTH variants because they are an observation log — a cached exit event
-/// remains a valid answer to `wait_for_exit` after the connection closes.
+/// unreachable once the reader task has exited.
 ///
 /// The invariant "connection is closed ⇔ registrations are impossible" is
 /// enforced by the type: every code path that cares about liveness must
@@ -80,12 +78,12 @@ enum ConnectionState {
         pending: HashMap<u32, oneshot::Sender<RawMessage>>,
         /// Active command-operation state owned by the command module.
         operations: command::Operations,
-        /// Legacy process lifecycle state owned by the process module.
+        /// Active spawn_watch operation state owned by the process module.
         process: process::ConnectedProcessState,
     },
     Closed {
-        /// Preserves cached process exits after connection close.
-        process: process::ClosedProcessState,
+        /// Empty process state marker after connection close.
+        _process: process::ClosedProcessState,
     },
 }
 
@@ -102,9 +100,9 @@ struct Shared {
     /// Single source of truth for connection liveness plus all per-connection
     /// registration tables. See [`ConnectionState`].
     state: std::sync::Mutex<ConnectionState>,
-    /// Notified when a new process exit event is cached or when the connection
-    /// closes. Pure signalling — all state is in `state`.
-    exit_notify: Notify,
+    /// Notified when the connection closes. Pure signalling — all state is in
+    /// `state`.
+    close_notify: Notify,
 }
 
 struct ListenerSocketGuard {
@@ -154,18 +152,15 @@ impl Shared {
         }
     }
 
-    /// Transition `Connected → Closed`, preserving the process exit cache and
-    /// dropping registration maps outside the state lock so sender drops (which
-    /// wake their receivers) run without the lock held. Idempotent: a second
-    /// call preserves whatever exits the first call cached and performs no
-    /// further work.
+    /// Transition `Connected → Closed`, dropping registration maps outside the
+    /// state lock so sender drops (which wake their receivers) run without the
+    /// lock held. Idempotent: a second call leaves the existing closed state
+    /// untouched.
     ///
     /// `mem::replace` writes a placeholder `Closed` state so the old variant
-    /// can be moved out for destructuring. The `Connected` arm rebuilds
-    /// `Closed` with the cached exits; the already-`Closed` arm uses an `@`
-    /// binding to write the whole variant back unchanged, so "cached exits
-    /// survive a double-close" is enforced by the match binding rather than by
-    /// convention.
+    /// can be moved out for destructuring. The already-`Closed` arm uses an `@`
+    /// binding to write the whole variant back unchanged, so double-close is a
+    /// structural no-op rather than a convention.
     fn close(&self) {
         self.close_with_reason("connection closed");
     }
@@ -176,7 +171,7 @@ impl Shared {
             match std::mem::replace(
                 &mut *guard,
                 ConnectionState::Closed {
-                    process: process::ClosedProcessState::empty(),
+                    _process: process::ClosedProcessState::empty(),
                 },
             ) {
                 ConnectionState::Connected {
@@ -187,23 +182,22 @@ impl Shared {
                     let command_snapshot = operations.close_snapshot();
                     let (closed_process, process_maps) = process.close();
                     *guard = ConnectionState::Closed {
-                        process: closed_process,
+                        _process: closed_process,
                     };
                     Some((pending, process_maps, operations, command_snapshot))
                 }
                 closed @ ConnectionState::Closed { .. } => {
-                    // Reassign the whole variant; cached exits preserved
-                    // by binding, not manually reconstructed.
+                    // Reassign the whole variant by binding rather than by
+                    // convention.
                     *guard = closed;
                     None
                 }
             }
         };
         if let Some((pending, process_maps, operations, command_snapshot)) = maps_to_drop {
-            let process_maps = process_maps.into_inner();
             let maps = (pending, process_maps, operations);
             drop(maps);
-            self.exit_notify.notify_waiters();
+            self.close_notify.notify_waiters();
             command::log_operations_closed(reason, &command_snapshot);
         }
     }
@@ -268,8 +262,8 @@ impl Drop for VsockHost {
 
 /// Background reader task: owns the read half and decoder exclusively.
 ///
-/// Dispatches responses to pending requests by seq number, and caches
-/// unsolicited process_exit events for `wait_for_exit`.
+/// Dispatches responses, command operations, and spawn_watch lifecycle frames
+/// by seq number.
 async fn reader_loop(
     mut reader: tokio::net::unix::OwnedReadHalf,
     mut decoder: Decoder,
@@ -313,15 +307,19 @@ async fn reader_loop(
                     shared.poison_connection();
                     return;
                 }
-            } else if msg.msg_type == MSG_STDOUT_CHUNK && msg.seq == 0 {
-                process::dispatch_stdout_chunk(&shared, &msg.payload);
-            } else if msg.msg_type == MSG_PROCESS_EXIT && msg.seq == 0 {
-                process::dispatch_process_exit(&shared, &msg.payload);
+            } else if msg.msg_type == MSG_STDOUT_CHUNK {
+                if process::dispatch_stdout_chunk(&shared, &msg).is_err() {
+                    shared.poison_connection();
+                    return;
+                }
+            } else if msg.msg_type == MSG_PROCESS_EXIT {
+                if process::dispatch_process_exit(&shared, &msg).is_err() {
+                    shared.poison_connection();
+                    return;
+                }
             } else {
-                // For spawn_watch_result: move the pre-registered stdout sender
-                // from pending_stdout to stdout_senders BEFORE dispatching the
-                // response — under one lock so the channel is keyed by pid in
-                // stdout_senders before any subsequent MSG_STDOUT_CHUNK arrives.
+                // For spawn_watch_result: record pid metadata on the
+                // seq-owned operation before dispatching the response.
                 let response_sender = {
                     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
                     match &mut *guard {
@@ -329,11 +327,7 @@ async fn reader_loop(
                             pending, process, ..
                         } => {
                             if msg.msg_type == MSG_SPAWN_WATCH_RESULT {
-                                process::move_stdout_registration_to_pid_before_response_dispatch(
-                                    process,
-                                    msg.seq,
-                                    &msg.payload,
-                                );
+                                process::record_spawn_watch_result(process, msg.seq, &msg.payload);
                             }
                             pending.remove(&msg.seq)
                         }
@@ -348,7 +342,7 @@ async fn reader_loop(
     }
     // Connection lost — transition state to Closed. `close()` drops all
     // registration maps outside the lock (waking every pending receiver
-    // with `RecvError`) and fires `exit_notify` so `wait_for_exit` wakes.
+    // with `RecvError`) and fires `close_notify` so test helpers wake.
     shared.close();
 }
 
@@ -480,7 +474,7 @@ impl VsockHost {
                 operations: command::Operations::new(),
                 process: process::ConnectedProcessState::new(),
             }),
-            exit_notify: Notify::new(),
+            close_notify: Notify::new(),
         });
 
         let reader_shared = Arc::clone(&shared);
@@ -633,13 +627,13 @@ impl VsockHost {
 
     /// Spawn a process on the guest and monitor for exit.
     ///
-    /// Returns immediately with `(pid, stdout_rx)`. Use [`wait_for_exit`](Self::wait_for_exit)
-    /// to wait for completion.
+    /// Returns immediately with a handle. Use [`SpawnWatchHandle::wait`] to
+    /// wait for completion.
     ///
     /// When `stream_stdout` is true, stdout chunks are streamed to the host via
     /// `MSG_STDOUT_CHUNK`. `stdout_log_path`, when present, additionally asks
     /// the guest to tee those chunks into the given guest-side file.
-    /// The returned `stdout_rx` channel receives streamed chunks when enabled
+    /// The handle's `stdout_rx` channel receives streamed chunks when enabled
     /// and is closed when the process exits or the connection drops.
     pub async fn spawn_watch(
         &self,
@@ -649,7 +643,7 @@ impl VsockHost {
         sudo: bool,
         stream_stdout: bool,
         stdout_log_path: Option<&str>,
-    ) -> io::Result<(u32, tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>)> {
+    ) -> io::Result<SpawnWatchHandle> {
         process::spawn_watch_on_shared(
             &self.shared,
             command,
@@ -660,13 +654,6 @@ impl VsockHost {
             stdout_log_path,
         )
         .await
-    }
-
-    /// Wait for a spawned process to exit.
-    ///
-    /// Returns immediately if the exit event was already cached.
-    pub async fn wait_for_exit(&self, pid: u32, timeout: Duration) -> io::Result<ProcessExitEvent> {
-        process::wait_for_exit_on_shared(&self.shared, pid, timeout).await
     }
 
     /// Request graceful shutdown from guest.
@@ -682,17 +669,13 @@ impl VsockHost {
 impl VsockHost {
     /// Test-only: deterministically await the `Connected → Closed` transition
     /// without relying on a wall-clock sleep. Subscribes to the same
-    /// `exit_notify` signal that [`Shared::close`] fires on exit, and re-checks
+    /// `close_notify` signal that [`Shared::close`] fires on exit, and re-checks
     /// state under the same lock that `close` holds, so no transition is
     /// missed.
-    ///
-    /// Note that `exit_notify` also fires on `MSG_PROCESS_EXIT`; those wake
-    /// this helper early but it re-checks state and re-parks if still
-    /// `Connected`.
     async fn wait_until_closed(&self, timeout: Duration) -> io::Result<()> {
         let deadline = Instant::now() + timeout;
         loop {
-            let notified = self.shared.exit_notify.notified();
+            let notified = self.shared.close_notify.notified();
             tokio::pin!(notified);
             notified.as_mut().enable();
 

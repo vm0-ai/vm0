@@ -125,6 +125,16 @@ impl Harness {
             let _ = g.join();
         }
     }
+
+    async fn wait_spawn(
+        &self,
+        handle: vsock_host::SpawnWatchHandle,
+        timeout: Duration,
+    ) -> io::Result<vsock_host::ProcessExitEvent> {
+        tokio::time::timeout(timeout, handle.wait())
+            .await
+            .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "wait timeout"))?
+    }
 }
 
 impl Deref for Harness {
@@ -373,16 +383,17 @@ async fn test_write_file_unwritable_path_fails() {
 async fn test_spawn_watch() {
     let h = Harness::new().await;
 
-    let (pid, _stdout_rx) = h
+    let handle = h
         .spawn_watch("echo done", 5000, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
+    let pid = handle.pid();
     assert!(pid > 0);
 
     let event = h
-        .wait_for_exit(pid, Duration::from_secs(5))
+        .wait_spawn(handle, Duration::from_secs(5))
         .await
-        .expect("wait_for_exit failed");
+        .expect("spawn wait failed");
 
     assert_eq!(event.exit_code, 0);
     assert_eq!(event.stdout, b"done\n");
@@ -394,15 +405,15 @@ async fn test_spawn_watch() {
 async fn test_spawn_watch_exit_code() {
     let h = Harness::new().await;
 
-    let (pid, _stdout_rx) = h
+    let handle = h
         .spawn_watch("exit 42", 5000, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
 
     let event = h
-        .wait_for_exit(pid, Duration::from_secs(5))
+        .wait_spawn(handle, Duration::from_secs(5))
         .await
-        .expect("wait_for_exit failed");
+        .expect("spawn wait failed");
 
     assert_eq!(event.exit_code, 42);
     h.finish();
@@ -412,15 +423,15 @@ async fn test_spawn_watch_exit_code() {
 async fn test_spawn_watch_stderr() {
     let h = Harness::new().await;
 
-    let (pid, _stdout_rx) = h
+    let handle = h
         .spawn_watch("echo error >&2 && exit 1", 5000, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
 
     let event = h
-        .wait_for_exit(pid, Duration::from_secs(5))
+        .wait_spawn(handle, Duration::from_secs(5))
         .await
-        .expect("wait_for_exit failed");
+        .expect("spawn wait failed");
 
     assert_eq!(event.exit_code, 1);
     assert_eq!(event.stderr, b"error\n");
@@ -431,7 +442,7 @@ async fn test_spawn_watch_stderr() {
 async fn test_spawn_watch_both_stdout_stderr() {
     let h = Harness::new().await;
 
-    let (pid, _stdout_rx) = h
+    let handle = h
         .spawn_watch(
             "echo out && echo err >&2 && exit 2",
             5000,
@@ -444,9 +455,9 @@ async fn test_spawn_watch_both_stdout_stderr() {
         .expect("spawn_watch failed");
 
     let event = h
-        .wait_for_exit(pid, Duration::from_secs(5))
+        .wait_spawn(handle, Duration::from_secs(5))
         .await
-        .expect("wait_for_exit failed");
+        .expect("spawn wait failed");
 
     assert_eq!(event.exit_code, 2);
     assert_eq!(event.stdout, b"out\n");
@@ -458,15 +469,15 @@ async fn test_spawn_watch_both_stdout_stderr() {
 async fn test_spawn_watch_no_output() {
     let h = Harness::new().await;
 
-    let (pid, _stdout_rx) = h
+    let handle = h
         .spawn_watch("true", 5000, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
 
     let event = h
-        .wait_for_exit(pid, Duration::from_secs(5))
+        .wait_spawn(handle, Duration::from_secs(5))
         .await
-        .expect("wait_for_exit failed");
+        .expect("spawn wait failed");
 
     assert_eq!(event.exit_code, 0);
     assert!(event.stdout.is_empty());
@@ -479,26 +490,28 @@ async fn test_spawn_watch_concurrent() {
     let h = Harness::new().await;
 
     // Spawn two processes — second finishes first
-    let (pid1, _rx1) = h
+    let handle1 = h
         .spawn_watch("sleep 0.1 && echo first", 5000, &[], false, false, None)
         .await
         .expect("spawn_watch 1 failed");
-    let (pid2, _rx2) = h
+    let pid1 = handle1.pid();
+    let handle2 = h
         .spawn_watch("echo second", 5000, &[], false, false, None)
         .await
         .expect("spawn_watch 2 failed");
+    let pid2 = handle2.pid();
 
     assert_ne!(pid1, pid2);
 
-    // Wait in reverse order to exercise cached exit events
+    // Wait in reverse order to exercise out-of-order handle completion.
     let event2 = h
-        .wait_for_exit(pid2, Duration::from_secs(5))
+        .wait_spawn(handle2, Duration::from_secs(5))
         .await
-        .expect("wait_for_exit 2 failed");
+        .expect("spawn wait 2 failed");
     let event1 = h
-        .wait_for_exit(pid1, Duration::from_secs(5))
+        .wait_spawn(handle1, Duration::from_secs(5))
         .await
-        .expect("wait_for_exit 1 failed");
+        .expect("spawn wait 1 failed");
 
     assert_eq!(event1.exit_code, 0);
     assert_eq!(event1.stdout, b"first\n");
@@ -507,10 +520,10 @@ async fn test_spawn_watch_concurrent() {
     h.finish();
 }
 
-/// Core concurrency test: exec works while wait_for_exit is pending.
+/// Core concurrency test: exec works while spawn wait is pending.
 ///
 /// This is the exact production scenario that motivated the VsockHost refactor —
-/// runner calls wait_for_exit (blocks for hours) and a separate task needs to
+/// runner waits for spawn exit (blocks for hours) and a separate task needs to
 /// exec into the same VM.
 #[tokio::test]
 async fn test_exec_while_waiting_for_exit() {
@@ -518,27 +531,28 @@ async fn test_exec_while_waiting_for_exit() {
 
     // Spawn a long-running process. Use `exec` to replace the shell so the
     // PID we get is the actual sleep process (same pattern as sigterm/sigkill tests).
-    let (pid, _stdout_rx) = h
+    let handle = h
         .spawn_watch("exec sleep 60", 0, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
+    let pid = handle.pid();
 
-    // Run wait_for_exit and exec concurrently on the same task via join!.
+    // Run spawn wait and exec concurrently on the same task via join!.
     // The exec branch runs a command and then kills the long-running process,
-    // which unblocks wait_for_exit.
-    let (wait_result, _) = tokio::join!(h.wait_for_exit(pid, Duration::from_secs(10)), async {
-        // This exec must NOT block on the pending wait_for_exit.
+    // which unblocks spawn wait.
+    let (wait_result, _) = tokio::join!(h.wait_spawn(handle, Duration::from_secs(10)), async {
+        // This exec must NOT block on the pending spawn wait.
         let result = tokio::time::timeout(
             Duration::from_secs(5),
             h.exec("echo alive", 5000, &[], false),
         )
         .await
-        .expect("exec timed out — wait_for_exit is blocking")
+        .expect("exec timed out — spawn wait is blocking")
         .expect("exec failed");
         assert_eq!(result.exit_code, 0);
         assert_eq!(result.stdout, b"alive\n");
 
-        // Kill the process group so wait_for_exit resolves.
+        // Kill the process group so spawn wait resolves.
         h.exec(
             &format!("kill -15 -{pid} 2>/dev/null || kill -15 {pid}"),
             5000,
@@ -549,7 +563,7 @@ async fn test_exec_while_waiting_for_exit() {
         .expect("kill failed");
     });
 
-    let event = wait_result.expect("wait_for_exit failed");
+    let event = wait_result.expect("spawn wait failed");
     assert_eq!(event.pid, pid);
     assert_ne!(event.exit_code, 0); // killed
 
@@ -560,15 +574,15 @@ async fn test_exec_while_waiting_for_exit() {
 async fn test_spawn_watch_timeout() {
     let h = Harness::new().await;
 
-    let (pid, _stdout_rx) = h
+    let handle = h
         .spawn_watch("sleep 10", 100, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
 
     let event = h
-        .wait_for_exit(pid, Duration::from_secs(5))
+        .wait_spawn(handle, Duration::from_secs(5))
         .await
-        .expect("wait_for_exit failed");
+        .expect("spawn wait failed");
 
     assert_eq!(event.exit_code, 124);
     assert!(event.stderr.starts_with(b"Timeout"));
@@ -576,28 +590,29 @@ async fn test_spawn_watch_timeout() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_cached_exit() {
+async fn test_spawn_watch_exit_before_wait() {
     let h = Harness::new().await;
 
-    let (pid, _stdout_rx) = h
-        .spawn_watch("echo cached", 5000, &[], false, false, None)
+    let handle = h
+        .spawn_watch("echo completed", 5000, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
 
     // Use an exec round-trip as a synchronization barrier: by the time exec
-    // returns, the exit event from "echo cached" has arrived and been cached
-    // by read_and_dispatch. This tests the cache-hit path without any sleep.
+    // returns, the exit event from "echo completed" has already been delivered
+    // into the handle-owned receiver. This covers waiting after completion
+    // without any sleep.
     h.exec("true", 5000, &[], false)
         .await
         .expect("barrier exec failed");
 
     let event = h
-        .wait_for_exit(pid, Duration::from_secs(5))
+        .wait_spawn(handle, Duration::from_secs(5))
         .await
-        .expect("wait_for_exit failed");
+        .expect("spawn wait failed");
 
     assert_eq!(event.exit_code, 0);
-    assert_eq!(event.stdout, b"cached\n");
+    assert_eq!(event.stdout, b"completed\n");
     h.finish();
 }
 
@@ -605,7 +620,7 @@ async fn test_spawn_watch_cached_exit() {
 async fn test_spawn_watch_multiline() {
     let h = Harness::new().await;
 
-    let (pid, _stdout_rx) = h
+    let handle = h
         .spawn_watch(
             "printf 'line1\\nline2\\nline3\\n'",
             5000,
@@ -618,9 +633,9 @@ async fn test_spawn_watch_multiline() {
         .expect("spawn_watch failed");
 
     let event = h
-        .wait_for_exit(pid, Duration::from_secs(5))
+        .wait_spawn(handle, Duration::from_secs(5))
         .await
-        .expect("wait_for_exit failed");
+        .expect("spawn wait failed");
 
     assert_eq!(event.exit_code, 0);
     assert_eq!(event.stdout, b"line1\nline2\nline3\n");
@@ -631,7 +646,7 @@ async fn test_spawn_watch_multiline() {
 async fn test_spawn_watch_large_output() {
     let h = Harness::new().await;
 
-    let (pid, _stdout_rx) = h
+    let handle = h
         .spawn_watch(
             "dd if=/dev/zero bs=1024 count=10 2>/dev/null | base64",
             5000,
@@ -644,9 +659,9 @@ async fn test_spawn_watch_large_output() {
         .expect("spawn_watch failed");
 
     let event = h
-        .wait_for_exit(pid, Duration::from_secs(10))
+        .wait_spawn(handle, Duration::from_secs(10))
         .await
-        .expect("wait_for_exit failed");
+        .expect("spawn wait failed");
 
     assert_eq!(event.exit_code, 0);
     assert!(event.stdout.len() > 10000);
@@ -657,15 +672,15 @@ async fn test_spawn_watch_large_output() {
 async fn test_spawn_watch_delayed_output() {
     let h = Harness::new().await;
 
-    let (pid, _stdout_rx) = h
+    let handle = h
         .spawn_watch("sleep 0.2 && echo delayed", 5000, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
 
     let event = h
-        .wait_for_exit(pid, Duration::from_secs(5))
+        .wait_spawn(handle, Duration::from_secs(5))
         .await
-        .expect("wait_for_exit failed");
+        .expect("spawn wait failed");
 
     assert_eq!(event.exit_code, 0);
     assert_eq!(event.stdout, b"delayed\n");
@@ -677,10 +692,11 @@ async fn test_spawn_watch_sigterm() {
     let h = Harness::new().await;
 
     // Use `exec` to replace shell so the PID we get is the actual sleep process
-    let (pid, _stdout_rx) = h
+    let handle = h
         .spawn_watch("exec sleep 60", 0, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
+    let pid = handle.pid();
 
     // Kill process group with SIGTERM
     h.exec(
@@ -693,9 +709,9 @@ async fn test_spawn_watch_sigterm() {
     .expect("kill failed");
 
     let event = h
-        .wait_for_exit(pid, Duration::from_secs(5))
+        .wait_spawn(handle, Duration::from_secs(5))
         .await
-        .expect("wait_for_exit failed");
+        .expect("spawn wait failed");
 
     assert_eq!(event.exit_code, 143); // 128 + SIGTERM(15)
     h.finish();
@@ -705,10 +721,11 @@ async fn test_spawn_watch_sigterm() {
 async fn test_spawn_watch_sigkill() {
     let h = Harness::new().await;
 
-    let (pid, _stdout_rx) = h
+    let handle = h
         .spawn_watch("exec sleep 60", 0, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
+    let pid = handle.pid();
 
     h.exec(
         &format!("kill -9 -{pid} 2>/dev/null || kill -9 {pid}"),
@@ -720,9 +737,9 @@ async fn test_spawn_watch_sigkill() {
     .expect("kill failed");
 
     let event = h
-        .wait_for_exit(pid, Duration::from_secs(5))
+        .wait_spawn(handle, Duration::from_secs(5))
         .await
-        .expect("wait_for_exit failed");
+        .expect("spawn wait failed");
 
     assert_eq!(event.exit_code, 137); // 128 + SIGKILL(9)
     h.finish();
@@ -732,25 +749,28 @@ async fn test_spawn_watch_sigkill() {
 async fn test_spawn_watch_rapid_multiple() {
     let h = Harness::new().await;
 
-    let mut pids = Vec::new();
+    let mut handles = Vec::new();
     for i in 0..5 {
-        let (pid, _rx) = h
+        let handle = h
             .spawn_watch(&format!("echo p{i}"), 5000, &[], false, false, None)
             .await
             .expect("spawn_watch failed");
-        pids.push(pid);
+        handles.push(handle);
     }
 
     // All PIDs should be unique
-    let unique: std::collections::HashSet<_> = pids.iter().collect();
+    let unique: std::collections::HashSet<_> = handles
+        .iter()
+        .map(vsock_host::SpawnWatchHandle::pid)
+        .collect();
     assert_eq!(unique.len(), 5);
 
     // All should complete successfully with correct output
-    for (i, &pid) in pids.iter().enumerate() {
+    for (i, handle) in handles.into_iter().enumerate() {
         let event = h
-            .wait_for_exit(pid, Duration::from_secs(5))
+            .wait_spawn(handle, Duration::from_secs(5))
             .await
-            .expect("wait_for_exit failed");
+            .expect("spawn wait failed");
         assert_eq!(event.exit_code, 0);
         assert_eq!(event.stdout, format!("p{i}\n").as_bytes());
     }
@@ -761,7 +781,7 @@ async fn test_spawn_watch_rapid_multiple() {
 async fn test_spawn_watch_nonexistent_command() {
     let h = Harness::new().await;
 
-    let (pid, _stdout_rx) = h
+    let handle = h
         .spawn_watch(
             "nonexistent_command_12345 2>&1",
             5000,
@@ -774,9 +794,9 @@ async fn test_spawn_watch_nonexistent_command() {
         .expect("spawn_watch failed");
 
     let event = h
-        .wait_for_exit(pid, Duration::from_secs(5))
+        .wait_spawn(handle, Duration::from_secs(5))
         .await
-        .expect("wait_for_exit failed");
+        .expect("spawn wait failed");
 
     assert_ne!(event.exit_code, 0);
     let output = if event.stderr.is_empty() {
@@ -793,7 +813,7 @@ async fn test_spawn_watch_nonexistent_command() {
 async fn test_spawn_watch_unicode() {
     let h = Harness::new().await;
 
-    let (pid, _stdout_rx) = h
+    let handle = h
         .spawn_watch(
             "printf '你好世界\\nこんにちは\\n🎉emoji🚀'",
             5000,
@@ -806,9 +826,9 @@ async fn test_spawn_watch_unicode() {
         .expect("spawn_watch failed");
 
     let event = h
-        .wait_for_exit(pid, Duration::from_secs(5))
+        .wait_spawn(handle, Duration::from_secs(5))
         .await
-        .expect("wait_for_exit failed");
+        .expect("spawn wait failed");
 
     assert_eq!(event.exit_code, 0);
     let stdout = String::from_utf8_lossy(&event.stdout);
@@ -822,7 +842,7 @@ async fn test_spawn_watch_unicode() {
 async fn test_spawn_watch_interleaved_output() {
     let h = Harness::new().await;
 
-    let (pid, _stdout_rx) = h
+    let handle = h
         .spawn_watch(
             "echo out1 && echo err1 >&2 && echo out2 && echo err2 >&2",
             5000,
@@ -835,9 +855,9 @@ async fn test_spawn_watch_interleaved_output() {
         .expect("spawn_watch failed");
 
     let event = h
-        .wait_for_exit(pid, Duration::from_secs(5))
+        .wait_spawn(handle, Duration::from_secs(5))
         .await
-        .expect("wait_for_exit failed");
+        .expect("spawn wait failed");
 
     assert_eq!(event.exit_code, 0);
     assert!(event.stdout.windows(4).any(|w| w == b"out1"));
@@ -1039,7 +1059,7 @@ async fn test_exec_with_env_special_chars() {
 async fn test_spawn_watch_with_env() {
     let h = Harness::new().await;
 
-    let (pid, _stdout_rx) = h
+    let handle = h
         .spawn_watch(
             "echo $GREETING",
             5000,
@@ -1052,9 +1072,9 @@ async fn test_spawn_watch_with_env() {
         .expect("spawn_watch failed");
 
     let event = h
-        .wait_for_exit(pid, Duration::from_secs(5))
+        .wait_spawn(handle, Duration::from_secs(5))
         .await
-        .expect("wait_for_exit failed");
+        .expect("spawn wait failed");
 
     assert_eq!(event.exit_code, 0);
     assert_eq!(event.stdout, b"hi_from_env\n");
@@ -1072,31 +1092,20 @@ async fn test_spawn_watch_stdout_streaming() {
     let log_file = h.dir.join("stream.log");
     let log_path = log_file.to_string_lossy().to_string();
 
-    let (pid, mut stdout_rx) = h
+    let mut handle = h
         .spawn_watch("echo hello_stream", 5000, &[], false, true, Some(&log_path))
         .await
         .expect("spawn_watch failed");
+    let mut stdout_rx = handle.take_stdout_receiver().unwrap();
 
-    // Collect streamed chunks
+    let event = h
+        .wait_spawn(handle, Duration::from_secs(5))
+        .await
+        .expect("wait failed");
     let mut streamed = Vec::new();
-    let event = loop {
-        tokio::select! {
-            biased;
-            chunk = stdout_rx.recv() => {
-                match chunk {
-                    Some(data) => streamed.extend_from_slice(&data),
-                    None => break h.wait_for_exit(pid, Duration::from_secs(5)).await.expect("wait failed"),
-                }
-            }
-            event = h.wait_for_exit(pid, Duration::from_secs(5)) => {
-                // Drain any remaining chunks
-                while let Ok(data) = stdout_rx.try_recv() {
-                    streamed.extend_from_slice(&data);
-                }
-                break event.expect("wait failed");
-            }
-        }
-    };
+    while let Ok(data) = stdout_rx.try_recv() {
+        streamed.extend_from_slice(&data);
+    }
 
     assert_eq!(event.exit_code, 0);
     // In streaming mode, stdout is delivered via chunks, not process_exit.
@@ -1120,29 +1129,20 @@ async fn test_spawn_watch_stdout_stream_only() {
     let existing_guest_log = h.dir.join("stream_only_guest.log");
     std::fs::write(&existing_guest_log, "preexisting\n").unwrap();
 
-    let (pid, mut stdout_rx) = h
+    let mut handle = h
         .spawn_watch("echo stream_only", 5000, &[], false, true, None)
         .await
         .expect("spawn_watch failed");
+    let mut stdout_rx = handle.take_stdout_receiver().unwrap();
 
+    let event = h
+        .wait_spawn(handle, Duration::from_secs(5))
+        .await
+        .expect("wait failed");
     let mut streamed = Vec::new();
-    let event = loop {
-        tokio::select! {
-            biased;
-            chunk = stdout_rx.recv() => {
-                match chunk {
-                    Some(data) => streamed.extend_from_slice(&data),
-                    None => break h.wait_for_exit(pid, Duration::from_secs(5)).await.expect("wait failed"),
-                }
-            }
-            event = h.wait_for_exit(pid, Duration::from_secs(5)) => {
-                while let Ok(data) = stdout_rx.try_recv() {
-                    streamed.extend_from_slice(&data);
-                }
-                break event.expect("wait failed");
-            }
-        }
-    };
+    while let Ok(data) = stdout_rx.try_recv() {
+        streamed.extend_from_slice(&data);
+    }
 
     assert_eq!(event.exit_code, 0);
     assert!(event.stdout.is_empty());
@@ -1162,7 +1162,7 @@ async fn test_spawn_watch_stdout_streaming_large() {
     let log_path = log_file.to_string_lossy().to_string();
 
     // Generate ~20KB of output (well over the 8KB chunk size)
-    let (pid, mut stdout_rx) = h
+    let mut handle = h
         .spawn_watch(
             "dd if=/dev/zero bs=1024 count=20 2>/dev/null | base64",
             5000,
@@ -1173,25 +1173,16 @@ async fn test_spawn_watch_stdout_streaming_large() {
         )
         .await
         .expect("spawn_watch failed");
+    let mut stdout_rx = handle.take_stdout_receiver().unwrap();
 
+    let event = h
+        .wait_spawn(handle, Duration::from_secs(10))
+        .await
+        .expect("wait failed");
     let mut streamed = Vec::new();
-    let event = loop {
-        tokio::select! {
-            biased;
-            chunk = stdout_rx.recv() => {
-                match chunk {
-                    Some(data) => streamed.extend_from_slice(&data),
-                    None => break h.wait_for_exit(pid, Duration::from_secs(10)).await.expect("wait failed"),
-                }
-            }
-            event = h.wait_for_exit(pid, Duration::from_secs(10)) => {
-                while let Ok(data) = stdout_rx.try_recv() {
-                    streamed.extend_from_slice(&data);
-                }
-                break event.expect("wait failed");
-            }
-        }
-    };
+    while let Ok(data) = stdout_rx.try_recv() {
+        streamed.extend_from_slice(&data);
+    }
 
     assert_eq!(event.exit_code, 0);
     assert!(event.stdout.is_empty());
@@ -1219,13 +1210,13 @@ async fn test_spawn_watch_stdout_log_path_not_in_env() {
 
     // The child prints its own env — stdout_log_path is a protocol parameter,
     // not an env var, so it should never appear in the child's environment.
-    let (pid, _stdout_rx) = h
+    let handle = h
         .spawn_watch("env", 5000, &[], false, true, Some(&log_path))
         .await
         .expect("spawn_watch failed");
 
     let event = h
-        .wait_for_exit(pid, Duration::from_secs(5))
+        .wait_spawn(handle, Duration::from_secs(5))
         .await
         .expect("wait failed");
 
@@ -1250,7 +1241,7 @@ async fn test_spawn_watch_stdout_streaming_timeout() {
     let log_path = log_file.to_string_lossy().to_string();
 
     // Process that produces output forever — must be killed by the 100ms timeout.
-    let (pid, mut stdout_rx) = h
+    let mut handle = h
         .spawn_watch(
             "while true; do echo tick; sleep 0.01; done",
             100,
@@ -1261,26 +1252,16 @@ async fn test_spawn_watch_stdout_streaming_timeout() {
         )
         .await
         .expect("spawn_watch failed");
+    let mut stdout_rx = handle.take_stdout_receiver().unwrap();
 
-    // Drain streamed chunks until process exits
+    let event = h
+        .wait_spawn(handle, Duration::from_secs(5))
+        .await
+        .expect("wait failed");
     let mut streamed = Vec::new();
-    let event = loop {
-        tokio::select! {
-            biased;
-            chunk = stdout_rx.recv() => {
-                match chunk {
-                    Some(data) => streamed.extend_from_slice(&data),
-                    None => break h.wait_for_exit(pid, Duration::from_secs(5)).await.expect("wait failed"),
-                }
-            }
-            event = h.wait_for_exit(pid, Duration::from_secs(5)) => {
-                while let Ok(data) = stdout_rx.try_recv() {
-                    streamed.extend_from_slice(&data);
-                }
-                break event.expect("wait failed");
-            }
-        }
-    };
+    while let Ok(data) = stdout_rx.try_recv() {
+        streamed.extend_from_slice(&data);
+    }
 
     assert_eq!(event.exit_code, 124); // timeout exit code
     // Should have received some streamed output before the kill
