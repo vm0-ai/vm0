@@ -1,16 +1,15 @@
 use std::io;
 use std::ops::Deref;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::Once;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use vsock_host::VsockHost;
 
 static WRITE_FILE_HELPER: Once = Once::new();
-static TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 const WRITE_FILE_HELPER_BIN: &str = env!("CARGO_BIN_EXE_guest-write-file-test-helper");
 
 fn install_write_file_helper() {
@@ -46,20 +45,17 @@ fn retry_connect(path: &str) -> io::Result<std::os::unix::net::UnixStream> {
     unreachable!()
 }
 
-fn cleanup_guest_and_dir(dir: &Path, guest: &mut Option<JoinHandle<io::Result<()>>>) {
+fn cleanup_guest(guest: &mut Option<JoinHandle<io::Result<()>>>) {
     if let Some(g) = guest.take() {
         let _ = g.join();
     }
-    let _ = std::fs::remove_dir_all(dir);
 }
 
-fn unique_temp_dir(prefix: &str) -> PathBuf {
-    let id = TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "{prefix}-{}-{:?}-{id}",
-        std::process::id(),
-        std::thread::current().id()
-    ))
+fn create_temp_dir(prefix: &str) -> tempfile::TempDir {
+    tempfile::Builder::new()
+        .prefix(prefix)
+        .tempdir()
+        .expect("create temp dir")
 }
 
 pub(crate) fn shell_quote(value: &str) -> String {
@@ -88,6 +84,7 @@ pub(crate) async fn wait_for_path(path: &Path, timeout: Duration) {
 /// Implements `Drop` to clean up temp dirs and join guest threads even on panic.
 pub(crate) struct Harness {
     pub(crate) dir: std::path::PathBuf,
+    _dir_guard: tempfile::TempDir,
     host: Option<VsockHost>,
     guest: Option<JoinHandle<io::Result<()>>>,
 }
@@ -96,8 +93,8 @@ impl Harness {
     pub(crate) async fn new() -> Self {
         install_write_file_helper();
 
-        let dir = unique_temp_dir("vsock-test");
-        std::fs::create_dir_all(&dir).expect("failed to create temp dir");
+        let dir_guard = create_temp_dir("vsock-test");
+        let dir = dir_guard.path().to_path_buf();
         let base_path = dir.join("vsock").to_string_lossy().to_string();
         let listener_path = format!("{base_path}_1000");
 
@@ -105,13 +102,14 @@ impl Harness {
         let host = match VsockHost::wait_for_connection(&base_path, Duration::from_secs(5)).await {
             Ok(host) => host,
             Err(err) => {
-                cleanup_guest_and_dir(&dir, &mut guest);
+                cleanup_guest(&mut guest);
                 panic!("host connection failed: {err}");
             }
         };
 
         Self {
             dir,
+            _dir_guard: dir_guard,
             host: Some(host),
             guest,
         }
@@ -156,16 +154,12 @@ impl Drop for Harness {
     fn drop(&mut self) {
         // Drop host first to close the connection, then join guest thread.
         drop(self.host.take());
-        cleanup_guest_and_dir(&self.dir, &mut self.guest);
+        cleanup_guest(&mut self.guest);
     }
 }
 
 #[test]
-fn cleanup_guest_and_dir_joins_guest_and_removes_dir() {
-    let dir = unique_temp_dir("vsock-test-cleanup");
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).expect("create temp dir");
-
+fn cleanup_guest_joins_guest() {
     let guest_finished = Arc::new(AtomicBool::new(false));
     let guest_finished_for_thread = Arc::clone(&guest_finished);
     let mut guest = Some(thread::spawn(move || {
@@ -173,19 +167,18 @@ fn cleanup_guest_and_dir_joins_guest_and_removes_dir() {
         Ok(())
     }));
 
-    cleanup_guest_and_dir(&dir, &mut guest);
+    cleanup_guest(&mut guest);
 
     assert!(guest.is_none());
     assert!(guest_finished.load(Ordering::SeqCst));
-    assert!(!dir.exists());
 }
 
 #[test]
-fn unique_temp_dir_returns_distinct_direct_temp_children() {
-    let first = unique_temp_dir("vsock-test-unique");
-    let second = unique_temp_dir("vsock-test-unique");
+fn create_temp_dir_returns_distinct_direct_temp_children() {
+    let first = create_temp_dir("vsock-test-unique");
+    let second = create_temp_dir("vsock-test-unique");
 
-    assert_ne!(first, second);
-    assert_eq!(first.parent(), Some(std::env::temp_dir().as_path()));
-    assert_eq!(second.parent(), Some(std::env::temp_dir().as_path()));
+    assert_ne!(first.path(), second.path());
+    assert_eq!(first.path().parent(), Some(std::env::temp_dir().as_path()));
+    assert_eq!(second.path().parent(), Some(std::env::temp_dir().as_path()));
 }

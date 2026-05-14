@@ -3665,6 +3665,7 @@ name = "vsock-test"
 version = "0.9.34"
 dependencies = [
  "guest-write-file",
+ "tempfile",
  "tokio",
  "vsock-guest",
  "vsock-host",
