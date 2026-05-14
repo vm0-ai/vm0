@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import {
+  clearMockSandboxClient,
   emptyBoundedTextOutput,
   mockSandboxClient,
   type BoundedTextOutput,
@@ -219,6 +220,7 @@ describe("CLI auth for Stripe connector routes", () => {
 
   afterEach(async () => {
     clearMockNow();
+    clearMockSandboxClient();
     while (fixtures.length > 0) {
       const fixture = fixtures.pop();
       if (fixture) {
