@@ -1784,6 +1784,34 @@ mod tests {
     }
 
     #[test]
+    fn conn_state_keeps_default_connection_state_ttl_when_details_omit_ttl() {
+        let timing = TimingConfig::default();
+        let token = TokenDetails {
+            token: "tok".to_string(),
+            expires: unix_now_ms() + 3_600_000,
+            issued: 0,
+            capability: None,
+            client_id: None,
+        };
+        let msg = ProtocolMessage {
+            action: action::CONNECTED,
+            connection_details: Some(ConnectionDetails {
+                connection_state_ttl: None,
+                max_idle_interval: Some(10000),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let state = ConnState::from_connected(&msg, token, &timing);
+        assert_eq!(
+            state.connection_state_ttl,
+            timing.default_connection_state_ttl
+        );
+        assert_eq!(state.max_idle_interval, Some(Duration::from_millis(10000)));
+    }
+
+    #[test]
     fn conn_state_disables_idle_timeout_for_missing_or_non_positive_idle_interval() {
         let timing = TimingConfig::default();
         let token = TokenDetails {
@@ -1808,6 +1836,11 @@ mod tests {
             let state = ConnState::from_connected(&msg, token.clone(), &timing);
             assert_eq!(state.max_idle_interval, None);
         }
+    }
+
+    #[test]
+    fn idle_deadline_is_disabled_without_max_idle_interval() {
+        assert_eq!(idle_deadline(None, Duration::from_secs(10)), None);
     }
 
     #[test]
