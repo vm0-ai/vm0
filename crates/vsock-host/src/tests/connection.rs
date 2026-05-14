@@ -221,10 +221,7 @@ async fn quiesce_operations_times_out_and_late_ack_is_ignored() {
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
-    let err = host
-        .quiesce_operations(Duration::from_millis(10))
-        .await
-        .unwrap_err();
+    let err = host.quiesce_operations(Duration::ZERO).await.unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::TimedOut);
 
     send_late_ack.send(()).unwrap();
