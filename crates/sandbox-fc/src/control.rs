@@ -1050,6 +1050,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn control_exec_transport_error_marks_operation_gate_dirty() {
+        let dir = tempfile::tempdir().unwrap();
+        let vsock_base = dir.path().join("vsock");
+        let host_task = {
+            let vsock_base = vsock_base.display().to_string();
+            tokio::spawn(async move {
+                VsockHost::wait_for_connection(&vsock_base, Duration::from_secs(5)).await
+            })
+        };
+        let (exec_seen_tx, exec_seen_rx) = oneshot::channel();
+        let guest_task = tokio::spawn(mock_guest_records_exec(vsock_base, exec_seen_tx));
+        let vsock = host_task.await.unwrap().unwrap();
+
+        let sock_path = dir.path().join("control.sock");
+        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
+        let (gate, coordinator) = test_gate_with_coordinator(guest);
+        let mut handle = bind_server(sock_path.clone(), gate)
+            .unwrap()
+            .spawn(CancellationToken::new());
+
+        let request = ExecRequest {
+            command: "disconnect-after-start".into(),
+            timeout_secs: 5,
+            sudo: false,
+        };
+        let response = send_exec(&sock_path, &request, Duration::from_secs(5))
+            .await
+            .unwrap();
+
+        tokio::time::timeout(Duration::from_secs(1), exec_seen_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        match response {
+            ExecResponse::Error { error } => {
+                assert!(error.contains("exec failed"), "unexpected error: {error}");
+            }
+            ExecResponse::Success { .. } => panic!("expected transport error"),
+        }
+        assert!(
+            matches!(coordinator.state(), CoordinatorState::Dirty { .. }),
+            "transport error after command write should dirty the operation gate"
+        );
+        assert_eq!(coordinator.active_operation_count(), 0);
+
+        handle.shutdown().await;
+        guest_task.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn bind_server_reports_bind_failure() {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
