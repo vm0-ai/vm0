@@ -2786,6 +2786,11 @@ mod tests {
 
         let calls = sandbox.copy_file_calls();
         assert_eq!(calls.len(), 3);
+        assert_eq!(
+            calls[2].path,
+            format!("/tmp/vm0-sandbox-ops-{}.jsonl", ctx.run_id)
+        );
+        assert_eq!(calls[2].host_path, log_paths.sandbox_ops_log(ctx.run_id));
         assert_eq!(calls[0].max_bytes, GUEST_LOG_COPY_MAX_BYTES);
         assert_eq!(calls[1].max_bytes, GUEST_LOG_COPY_MAX_BYTES);
         assert_eq!(calls[2].max_bytes, GUEST_LOG_COPY_MAX_BYTES);
