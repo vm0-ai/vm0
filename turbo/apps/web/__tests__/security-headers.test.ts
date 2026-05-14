@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Import the nextConfig to test headers() function
 // next.config.js exports the Sentry-wrapped config, so we need to extract headers from the raw config
@@ -21,6 +21,26 @@ async function getSecurityHeaders(): Promise<
     return entry.source === "/(.*)";
   });
   return catchAllEntry?.headers ?? [];
+}
+
+interface RewriteEntry {
+  readonly source: string;
+  readonly destination: string;
+}
+
+async function getBeforeFileRewrites(): Promise<RewriteEntry[]> {
+  const configModule = await import("../next.config.js");
+  const config = configModule.default;
+
+  if (!config.rewrites) {
+    throw new Error("rewrites() function not found in Next.js config");
+  }
+
+  const rewrites = await config.rewrites();
+  if (Array.isArray(rewrites)) {
+    return rewrites;
+  }
+  return rewrites.beforeFiles ?? [];
 }
 
 function findHeader(
@@ -113,5 +133,53 @@ describe("Security Response Headers", () => {
 
       expect(csp).toContain("worker-src 'self' blob:");
     });
+  });
+});
+
+describe("API backend rewrites", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("should proxy migrated AgentPhone routes to apps/api", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+
+    expect(rewrites).toEqual(
+      expect.arrayContaining([
+        {
+          source: "/api/agentphone/:path*",
+          destination: "https://api.example.test/api/agentphone/:path*",
+        },
+        {
+          source: "/api/internal/callbacks/agentphone",
+          destination:
+            "https://api.example.test/api/internal/callbacks/agentphone",
+        },
+        {
+          source: "/api/internal/event-consumers/agentphone-typing",
+          destination:
+            "https://api.example.test/api/internal/event-consumers/agentphone-typing",
+        },
+        {
+          source: "/api/zero/integrations/phone/:path*",
+          destination:
+            "https://api.example.test/api/zero/integrations/phone/:path*",
+        },
+      ]),
+    );
+  });
+
+  it("should not add a broad /api catch-all rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+
+    expect(
+      rewrites.some((rewrite) => {
+        return rewrite.source === "/api/:path*";
+      }),
+    ).toBe(false);
   });
 });

@@ -35,6 +35,7 @@ import { apiHealth$ } from "./routes/health";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
 import { internalCallbacksAgentRoutes } from "./routes/internal-callbacks-agent";
+import { internalCallbacksAgentPhoneRoutes } from "./routes/internal-callbacks-agentphone";
 import { internalCallbacksChatRoutes } from "./routes/internal-callbacks-chat";
 import { internalCallbacksGithubIssuesRoutes } from "./routes/internal-callbacks-github-issues";
 import { internalCallbacksScheduleRoutes } from "./routes/internal-callbacks-schedule";
@@ -117,6 +118,10 @@ import { zeroSkillsRoutes } from "./routes/zero-skills";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
 import { zeroIntegrationsChatMessageRoutes } from "./routes/zero-integrations-chat-message";
 import { zeroIntegrationsAgentPhoneRoutes } from "./routes/zero-integrations-agentphone";
+import { zeroIntegrationsPhoneDownloadFileRoutes } from "./routes/zero-integrations-phone-download-file";
+import { zeroIntegrationsPhoneMessageRoutes } from "./routes/zero-integrations-phone-message";
+import { zeroIntegrationsPhoneUploadCompleteRoutes } from "./routes/zero-integrations-phone-upload-complete";
+import { zeroIntegrationsPhoneUploadInitRoutes } from "./routes/zero-integrations-phone-upload-init";
 import { zeroIntegrationsSlackRoutes } from "./routes/zero-integrations-slack";
 import { zeroIntegrationsSlackMessageRoutes } from "./routes/zero-integrations-slack-message";
 import { zeroIntegrationsSlackUploadCompleteRoutes } from "./routes/zero-integrations-slack-upload-complete";
@@ -180,6 +185,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...healthAuthProbeRoutes,
   ...githubOauthRoutes,
   ...internalCallbacksAgentRoutes,
+  ...internalCallbacksAgentPhoneRoutes,
   ...internalCallbacksChatRoutes,
   ...internalCallbacksGithubIssuesRoutes,
   ...internalCallbacksScheduleRoutes,
@@ -298,6 +304,10 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroSlackEventsRoutes,
   ...zeroSlackInteractiveRoutes,
   ...zeroIntegrationsAgentPhoneRoutes,
+  ...zeroIntegrationsPhoneDownloadFileRoutes,
+  ...zeroIntegrationsPhoneMessageRoutes,
+  ...zeroIntegrationsPhoneUploadCompleteRoutes,
+  ...zeroIntegrationsPhoneUploadInitRoutes,
   ...zeroIntegrationsChatMessageRoutes,
   ...zeroIntegrationsSlackRoutes,
   ...zeroIntegrationsSlackMessageRoutes,

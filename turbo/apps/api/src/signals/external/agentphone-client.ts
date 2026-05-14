@@ -1,29 +1,37 @@
-import { env } from "../../../env";
-import { logger } from "../../shared/logger";
+import { optionalEnv } from "../../lib/env";
+import { logger } from "../../lib/log";
 
-const log = logger("agentphone");
+const log = logger("api:agentphone");
 
 interface AgentPhoneSentMessage {
-  id: string;
-  status: string;
-  channel: string | null;
-  fromNumber: string | null;
-  toNumber: string | null;
-  mediaUrls: string[];
+  readonly id: string;
+  readonly status: string;
+  readonly channel: string | null;
+  readonly fromNumber: string | null;
+  readonly toNumber: string | null;
+  readonly mediaUrls: readonly string[];
+}
+
+interface AgentPhoneApiError extends Error {
+  readonly name: "AgentPhoneApiError";
+  readonly status: number;
+  readonly body: string;
 }
 
 function agentPhoneApiBase(): string {
-  const baseUrl = env().AGENTPHONE_API_BASE_URL;
+  const baseUrl = optionalEnv("AGENTPHONE_API_BASE_URL");
   if (!baseUrl) {
     throw new Error("AGENTPHONE_API_BASE_URL is not configured");
   }
   return baseUrl;
 }
 
-interface AgentPhoneApiError extends Error {
-  name: "AgentPhoneApiError";
-  status: number;
-  body: string;
+function agentPhoneApiKey(): string {
+  const apiKey = optionalEnv("AGENTPHONE_API_KEY");
+  if (!apiKey) {
+    throw new Error("AGENTPHONE_API_KEY is not configured");
+  }
+  return apiKey;
 }
 
 function makeAgentPhoneApiError(
@@ -47,22 +55,20 @@ export function isAgentPhoneApiError(
   );
 }
 
-export async function sendAgentPhoneMessage(opts: {
-  agentphoneAgentId: string;
-  toNumber: string;
-  body: string;
-  mediaUrl?: string | null;
-  mediaUrls?: string[] | null;
-}): Promise<AgentPhoneSentMessage> {
-  const token = env().AGENTPHONE_API_KEY;
-  if (!token) {
-    throw new Error("AGENTPHONE_API_KEY is not configured");
-  }
-
+export async function sendAgentPhoneMessage(
+  opts: {
+    readonly agentphoneAgentId: string;
+    readonly toNumber: string;
+    readonly body: string;
+    readonly mediaUrl?: string | null;
+    readonly mediaUrls?: readonly string[] | null;
+  },
+  signal?: AbortSignal,
+): Promise<AgentPhoneSentMessage> {
   const response = await fetch(`${agentPhoneApiBase()}/v1/messages`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${agentPhoneApiKey()}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -72,6 +78,7 @@ export async function sendAgentPhoneMessage(opts: {
       ...(opts.mediaUrl ? { media_url: opts.mediaUrl } : {}),
       ...(opts.mediaUrls?.length ? { media_urls: opts.mediaUrls } : {}),
     }),
+    signal,
   });
 
   if (!response.ok) {
@@ -89,6 +96,7 @@ export async function sendAgentPhoneMessage(opts: {
         return typeof item === "string";
       })
     : [];
+
   return {
     id: typeof result.id === "string" ? result.id : "unknown",
     status: typeof result.status === "string" ? result.status : "sent",
@@ -100,14 +108,10 @@ export async function sendAgentPhoneMessage(opts: {
   };
 }
 
-export async function sendAgentPhoneTypingIndicator(opts: {
-  conversationId: string;
-}): Promise<void> {
-  const token = env().AGENTPHONE_API_KEY;
-  if (!token) {
-    throw new Error("AGENTPHONE_API_KEY is not configured");
-  }
-
+export async function sendAgentPhoneTypingIndicator(
+  opts: { readonly conversationId: string },
+  signal?: AbortSignal,
+): Promise<void> {
   const response = await fetch(
     `${agentPhoneApiBase()}/v1/conversations/${encodeURIComponent(
       opts.conversationId,
@@ -115,10 +119,11 @@ export async function sendAgentPhoneTypingIndicator(opts: {
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${agentPhoneApiKey()}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({}),
+      signal,
     },
   );
 

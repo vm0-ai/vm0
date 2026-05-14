@@ -15,6 +15,38 @@ const MODEL_SLUG_REDIRECTS = [
   ["minimax-m2.7", "minimax-m2-7"],
 ];
 
+const AGENTPHONE_API_BACKEND_REWRITES = [
+  ["/api/agentphone/:path*", "/api/agentphone/:path*"],
+  ["/api/internal/callbacks/agentphone", "/api/internal/callbacks/agentphone"],
+  [
+    "/api/internal/event-consumers/agentphone-typing",
+    "/api/internal/event-consumers/agentphone-typing",
+  ],
+  [
+    "/api/zero/integrations/phone/:path*",
+    "/api/zero/integrations/phone/:path*",
+  ],
+];
+
+function resolveApiBackendUrl() {
+  return (
+    process.env.VM0_API_BACKEND_URL ??
+    (process.env.VERCEL_ENV === "production"
+      ? "https://vm0-api.vm6.ai"
+      : process.env.VERCEL_ENV === undefined
+        ? "http://localhost:3001"
+        : undefined)
+  );
+}
+
+function buildApiBackendDestination(path) {
+  const apiBackendUrl = resolveApiBackendUrl();
+  if (!apiBackendUrl) {
+    return undefined;
+  }
+  return `${apiBackendUrl.replace(/\/$/u, "")}${path}`;
+}
+
 const nextConfig = {
   async redirects() {
     return MODEL_SLUG_REDIRECTS.flatMap(([from, to]) => [
@@ -29,6 +61,19 @@ const nextConfig = {
         permanent: true,
       },
     ]);
+  },
+  async rewrites() {
+    return {
+      beforeFiles: AGENTPHONE_API_BACKEND_REWRITES.flatMap(
+        ([source, destinationPath]) => {
+          const destination = buildApiBackendDestination(destinationPath);
+          if (!destination) {
+            return [];
+          }
+          return [{ source, destination }];
+        },
+      ),
+    };
   },
   async headers() {
     return [

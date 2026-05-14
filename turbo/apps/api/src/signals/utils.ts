@@ -52,6 +52,16 @@ export function safeUrlParse(input: string): URL | undefined {
   }
 }
 
+export function safeDecodeURIComponent(input: string): string | undefined {
+  // eslint-disable-next-line no-restricted-syntax -- centralized guarded URI decoding
+  try {
+    return decodeURIComponent(input);
+  } catch (error) {
+    throwIfAbort(error);
+    return undefined;
+  }
+}
+
 export function isValidTimeZone(input: string): boolean {
   // eslint-disable-next-line no-restricted-syntax -- centralized guarded Intl timezone validation
   try {

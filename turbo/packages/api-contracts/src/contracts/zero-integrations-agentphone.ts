@@ -16,6 +16,13 @@ const agentPhoneConnectResponseSchema = z.object({
   phoneHandle: z.string(),
 });
 
+const agentPhoneWebhookHeadersSchema = z.object({
+  "x-webhook-signature": z.string().optional(),
+  "x-webhook-timestamp": z.string().optional(),
+  "x-webhook-event": z.string().optional(),
+  "x-webhook-id": z.string().optional(),
+});
+
 const agentPhoneLinkStatusResponseSchema = z.discriminatedUnion("linked", [
   z.object({
     linked: z.literal(true),
@@ -52,6 +59,19 @@ export const zeroIntegrationsAgentPhoneContract = c.router({
       409: apiErrorSchema,
     },
     summary: "Link the authenticated VM0 user to an AgentPhone phone handle",
+  },
+  webhook: {
+    method: "POST",
+    path: "/api/agentphone/webhook",
+    headers: agentPhoneWebhookHeadersSchema,
+    body: c.type<string>(),
+    responses: {
+      200: z.string(),
+      400: z.string(),
+      401: z.string(),
+      404: z.string(),
+    },
+    summary: "Handle AgentPhone inbound message webhooks",
   },
   getLinkStatus: {
     method: "GET",
