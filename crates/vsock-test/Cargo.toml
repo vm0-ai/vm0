@@ -11,5 +11,9 @@ vsock-guest = { workspace = true, features = ["test-support"] }
 vsock-host.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
 
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+
 [lints]
 workspace = true
