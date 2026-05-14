@@ -290,10 +290,10 @@ mod tests {
     /// Asserts the three independent ChatGPT-mode signals, the placeholder
     /// account_id, both JWT shapes (3 segments + HS256 header), the
     /// ChatGPT-namespace claims (account id, plan type ≠ free, user id,
-    /// fedramp flag), the far-future `exp`, the empty refresh token, and
-    /// the RFC3339 `last_refresh` — i.e. everything the private builders
-    /// previously asserted in isolation, asserted here against the
-    /// fabricated file.
+    /// fedramp flag), the far-future `exp`, the non-empty placeholder
+    /// refresh token, and the RFC3339 `last_refresh` — i.e. everything
+    /// the private builders previously asserted in isolation, asserted
+    /// here against the fabricated file.
     #[test]
     fn setup_codex_chatgpt_inner_writes_well_formed_chatgpt_auth_json() {
         let tmp = TempDir::new().unwrap();
@@ -417,7 +417,7 @@ mod tests {
         let body = std::fs::read_to_string(&auth_path).unwrap();
         assert!(
             !body.contains("STALE_CONTENT_FROM_PRIOR_RUN"),
-            "stale content must be truncated: {body}"
+            "stale content must be replaced: {body}"
         );
         // And the new content must parse as our auth.json shape.
         serde_json::from_str::<Value>(&body).unwrap();
