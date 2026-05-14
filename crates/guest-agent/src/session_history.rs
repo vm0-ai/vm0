@@ -28,7 +28,7 @@ use std::ffi::OsStr;
 use std::io;
 use std::path::{Path, PathBuf};
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 use std::{fs::File, io::Read};
 
 const CODEX_MARKER_PREFIX: &str = "CODEX_SEARCH:";
@@ -75,10 +75,13 @@ fn read_codex_session_history(
     thread_id: &str,
 ) -> Result<Option<Vec<u8>>, AgentError> {
     let id_norm = thread_id.replace('-', "");
+    if id_norm.is_empty() {
+        return Ok(None);
+    }
     read_codex_session_history_impl(sessions_dir, &id_norm)
 }
 
-#[cfg(not(unix))]
+#[cfg(not(target_os = "linux"))]
 fn read_codex_session_history_impl(
     sessions_dir: &Path,
     id_norm: &str,
@@ -96,7 +99,7 @@ fn read_codex_session_history_impl(
     read_history_bytes(&path).map(Some)
 }
 
-#[cfg(not(unix))]
+#[cfg(not(target_os = "linux"))]
 /// DFS walk of `dir`, returning the first matching real file. Symlinks
 /// are skipped because the Codex sessions tree is user-controlled
 /// filesystem state and checkpoint lookup must not follow it outside the
@@ -126,7 +129,7 @@ fn find_codex_session_file_recursive(dir: &Path, id_norm: &str) -> Option<PathBu
     None
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn read_codex_session_history_impl(
     sessions_dir: &Path,
     id_norm: &str,
@@ -137,7 +140,7 @@ fn read_codex_session_history_impl(
     find_and_read_codex_session_file_recursive(&root, sessions_dir, id_norm)
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn find_and_read_codex_session_file_recursive(
     dir: &File,
     dir_path: &Path,
@@ -191,14 +194,14 @@ fn codex_session_filename_matches(name: &OsStr, id_norm: &str) -> bool {
     name_norm.contains(id_norm)
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn read_dir_fd(dir: &File) -> io::Result<std::fs::ReadDir> {
     use std::os::fd::AsRawFd;
 
     std::fs::read_dir(PathBuf::from(format!("/proc/self/fd/{}", dir.as_raw_fd())))
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn open_codex_session_dir(path: &Path) -> io::Result<File> {
     use std::fs::OpenOptions;
     use std::os::unix::fs::OpenOptionsExt;
@@ -209,7 +212,7 @@ fn open_codex_session_dir(path: &Path) -> io::Result<File> {
         .open(path)
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn open_codex_child_dir(parent: &File, name: &OsStr) -> io::Result<File> {
     open_codex_child(
         parent,
@@ -218,7 +221,7 @@ fn open_codex_child_dir(parent: &File, name: &OsStr) -> io::Result<File> {
     )
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn open_codex_child_file(parent: &File, name: &OsStr) -> io::Result<File> {
     open_codex_child(
         parent,
@@ -227,7 +230,7 @@ fn open_codex_child_file(parent: &File, name: &OsStr) -> io::Result<File> {
     )
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn open_codex_child(parent: &File, name: &OsStr, flags: i32) -> io::Result<File> {
     use std::ffi::CString;
     use std::os::fd::{AsRawFd, FromRawFd};
@@ -242,7 +245,7 @@ fn open_codex_child(parent: &File, name: &OsStr, flags: i32) -> io::Result<File>
     Ok(unsafe { File::from_raw_fd(fd) })
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn should_skip_raced_codex_entry(err: &io::Error) -> bool {
     matches!(
         err.kind(),
@@ -256,7 +259,7 @@ fn read_history_bytes(path: &Path) -> Result<Vec<u8>, AgentError> {
     decode_history_bytes(path, raw)
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn read_history_bytes_from_file(path: &Path, mut file: File) -> Result<Vec<u8>, AgentError> {
     let mut raw = Vec::new();
     file.read_to_end(&mut raw)

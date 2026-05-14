@@ -312,6 +312,35 @@ async fn read_session_history_codex_marker_with_no_match_fails_fast() {
     );
 }
 
+#[tokio::test]
+async fn read_session_history_codex_marker_rejects_dash_only_thread_id() {
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions");
+    write_session_file(
+        &sessions_dir,
+        &["2026", "04", "27"],
+        "rollout-unrelated.jsonl",
+        b"unrelated\n",
+    )
+    .unwrap();
+
+    let path_file = tmp.path().join("path.txt");
+    let marker = format!("CODEX_SEARCH:{}:---", sessions_dir.to_string_lossy());
+    std::fs::write(&path_file, marker.as_bytes()).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("dash-only codex thread id must not match every history file");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Codex session file not found"),
+        "expected malformed thread id to fail fast, got: {msg}"
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn read_session_history_codex_marker_skips_symlinks() {
