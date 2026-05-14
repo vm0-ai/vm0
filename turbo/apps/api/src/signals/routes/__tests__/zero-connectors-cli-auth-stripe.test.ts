@@ -69,13 +69,19 @@ function commandResult(args: {
 }
 
 function startOutput(
-  nextStep = "stripe login --complete 'https://dashboard.stripe.com/stripecli/auth/poll-token'",
+  args: {
+    readonly browserUrl?: string;
+    readonly nextStep?: string;
+  } = {},
 ) {
   return JSON.stringify({
     browser_url:
+      args.browserUrl ??
       "https://dashboard.stripe.com/stripecli/confirm_auth?t=start-token",
     verification_code: "enjoy-enough-outwit-win",
-    next_step: nextStep,
+    next_step:
+      args.nextStep ??
+      "stripe login --complete 'https://dashboard.stripe.com/stripecli/auth/poll-token'",
   });
 }
 
@@ -91,6 +97,7 @@ test_mode_pub_key = "pk_test_123"
 function mockStripeCliSandbox(
   args: {
     readonly startExitCode?: number;
+    readonly startBrowserUrl?: string;
     readonly startNextStep?: string;
     readonly startStderr?: string;
     readonly completeExitCode?: number;
@@ -133,7 +140,10 @@ function mockStripeCliSandbox(
             stdout:
               args.startExitCode && args.startExitCode !== 0
                 ? ""
-                : startOutput(args.startNextStep),
+                : startOutput({
+                    browserUrl: args.startBrowserUrl,
+                    nextStep: args.startNextStep,
+                  }),
             stderr: args.startStderr,
           }),
         );
@@ -313,6 +323,28 @@ describe("CLI auth for Stripe connector routes", () => {
     expect(response.body.error.code).toBe("CLI_AUTH_STRIPE_FAILED");
     expect(response.body.error.message).toBe(
       "Stripe CLI response included an unexpected completion URL",
+    );
+    expect(calls.stop).toHaveLength(1);
+  });
+
+  it("stops the sandbox when Stripe returns an unexpected browser URL", async () => {
+    await setupUser();
+    const calls = mockStripeCliSandbox({
+      startBrowserUrl:
+        "https://example.test/stripecli/confirm_auth?t=start-token",
+    });
+
+    const response = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [503],
+    );
+
+    expect(response.body.error.code).toBe("CLI_AUTH_STRIPE_FAILED");
+    expect(response.body.error.message).toBe(
+      "Stripe CLI response included an unexpected browser URL",
     );
     expect(calls.stop).toHaveLength(1);
   });
