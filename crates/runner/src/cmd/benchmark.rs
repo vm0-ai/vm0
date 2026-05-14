@@ -341,7 +341,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use async_trait::async_trait;
-    use sandbox::{SandboxError, SandboxInitializationPhase};
+    use sandbox::{Sandbox, SandboxError, SandboxInitializationPhase};
 
     #[test]
     fn parse_env_args_accepts_key_value_pairs() {
@@ -399,6 +399,39 @@ mod tests {
         assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
     }
 
+    #[tokio::test]
+    async fn create_factory_or_shutdown_runtime_returns_factory_without_shutdown() {
+        let shutdowns = Arc::new(AtomicUsize::new(0));
+        let mut runtime = SuccessfulFactoryRuntime {
+            shutdowns: Arc::clone(&shutdowns),
+        };
+
+        let factory = create_factory_or_shutdown_runtime(&mut runtime, test_factory_config())
+            .await
+            .unwrap();
+
+        assert_eq!(factory.name(), "test");
+        assert_eq!(shutdowns.load(Ordering::SeqCst), 0);
+    }
+
+    struct SuccessfulFactoryRuntime {
+        shutdowns: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl SandboxRuntime for SuccessfulFactoryRuntime {
+        async fn create_factory(
+            &self,
+            _config: sandbox::FactoryConfig,
+        ) -> sandbox::Result<Box<dyn SandboxFactory>> {
+            Ok(Box::new(TestFactory))
+        }
+
+        async fn shutdown(&mut self) {
+            self.shutdowns.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
     struct FailingFactoryRuntime {
         shutdowns: Arc<AtomicUsize>,
     }
@@ -418,6 +451,30 @@ mod tests {
         async fn shutdown(&mut self) {
             self.shutdowns.fetch_add(1, Ordering::SeqCst);
         }
+    }
+
+    struct TestFactory;
+
+    #[async_trait]
+    impl SandboxFactory for TestFactory {
+        fn name(&self) -> &str {
+            "test"
+        }
+
+        fn config_hash(&self) -> String {
+            "test".into()
+        }
+
+        async fn create(
+            &self,
+            _config: sandbox::SandboxConfig,
+        ) -> sandbox::Result<Box<dyn Sandbox>> {
+            panic!("benchmark lifecycle tests do not create sandboxes")
+        }
+
+        async fn destroy(&self, _sandbox: Box<dyn Sandbox>) {}
+
+        async fn shutdown(&mut self) {}
     }
 
     fn test_factory_config() -> sandbox::FactoryConfig {
