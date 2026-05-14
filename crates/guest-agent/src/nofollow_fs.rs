@@ -64,14 +64,14 @@ impl Dir {
 
 #[cfg(target_os = "linux")]
 fn open_child(parent: &File, name: &OsStr, flags: i32) -> io::Result<File> {
-    if name.as_bytes().contains(&b'/') {
+    let bytes = name.as_bytes();
+    if bytes.is_empty() || bytes == b"." || bytes == b".." || bytes.contains(&b'/') {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "child name must be a single path component",
+            "child name must be a non-empty basename",
         ));
     }
-    let name = CString::new(name.as_bytes())
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+    let name = CString::new(bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
     // SAFETY: `parent.as_raw_fd()` is an open directory fd owned by `Dir`,
     // `name` is a NUL-terminated child basename produced by `CString`, and
     // the flags do not request a mode argument.
@@ -141,14 +141,18 @@ mod tests {
     }
 
     #[test]
-    fn open_child_rejects_path_separator() {
+    fn open_child_rejects_invalid_child_names() {
         let dir = tempfile::tempdir().unwrap();
         let root = Dir::open(dir.path()).unwrap();
 
-        let err = root
-            .open_child_file(OsStr::from_bytes(b"nested/file"))
-            .unwrap_err();
+        for name in [b"".as_slice(), b".", b"..", b"nested/file"] {
+            let err = root.open_child_file(OsStr::from_bytes(name)).unwrap_err();
 
-        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+            assert_eq!(
+                err.kind(),
+                io::ErrorKind::InvalidInput,
+                "name {name:?} should be rejected"
+            );
+        }
     }
 }
