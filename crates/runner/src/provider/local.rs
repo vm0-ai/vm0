@@ -256,6 +256,31 @@ impl LocalCancelScanner {
         self.owned_claims.lock().await.remove(&run_id);
     }
 
+    async fn prune_owned_claims_without_tokens(&self) {
+        let owned_ids: Vec<RunId> = {
+            let owned = self.owned_claims.lock().await;
+            if owned.is_empty() {
+                return;
+            }
+            owned.iter().copied().collect()
+        };
+        let stale_ids: Vec<RunId> = {
+            let tokens = self.cancel_tokens.lock().await;
+            owned_ids
+                .into_iter()
+                .filter(|run_id| !tokens.contains_key(run_id))
+                .collect()
+        };
+        if stale_ids.is_empty() {
+            return;
+        }
+
+        let mut owned = self.owned_claims.lock().await;
+        for run_id in stale_ids {
+            owned.remove(&run_id);
+        }
+    }
+
     fn cancel_has_pending_target(&self, run_id: RunId) -> bool {
         if self.result_file_has_content(run_id) {
             return false;
@@ -328,6 +353,7 @@ impl LocalCancelWatcher {
         let handle = match tokio::runtime::Handle::try_current() {
             Ok(handle) => Some(handle.spawn(async move {
                 loop {
+                    scanner.prune_owned_claims_without_tokens().await;
                     scanner.scan_cancel_files().await;
                     tokio::select! {
                         () = task_shutdown.cancelled() => break,
@@ -1269,6 +1295,44 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(2), provider.shutdown())
             .await
             .expect("second shutdown should complete");
+    }
+
+    #[tokio::test]
+    async fn owned_claim_without_cancel_token_is_pruned() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let tokens = empty_cancel_tokens();
+        let run_id = RunId::new_v4();
+        tokens.lock().await.insert(run_id, CancellationToken::new());
+
+        let provider = default_provider(dir.path(), cancel, Arc::clone(&tokens));
+        write_job(dir.path(), run_id, "owned");
+        let candidate = provider.discover().await.unwrap();
+        assert_eq!(candidate.run_id(), run_id);
+        provider.claim(candidate).await.unwrap();
+        assert!(
+            provider
+                .cancel_scanner
+                .snapshot_owned_claims(&[run_id])
+                .await
+                .contains(&run_id),
+            "claim should be tracked as locally owned"
+        );
+
+        tokens.lock().await.remove(&run_id);
+        provider
+            .cancel_scanner
+            .prune_owned_claims_without_tokens()
+            .await;
+
+        assert!(
+            !provider
+                .cancel_scanner
+                .snapshot_owned_claims(&[run_id])
+                .await
+                .contains(&run_id),
+            "owned claim should be pruned after token cleanup"
+        );
     }
 
     #[tokio::test]
