@@ -526,6 +526,10 @@ mod tests {
         }
     }
 
+    fn operation_registry_len(coordinator: &ParkCoordinator) -> usize {
+        coordinator.inner().operations.len()
+    }
+
     #[test]
     fn initial_state_is_open() {
         let coordinator = ParkCoordinator::new();
@@ -583,6 +587,22 @@ mod tests {
         drop(lease);
 
         assert_eq!(coordinator.active_operation_count(), 0);
+        assert_eq!(operation_registry_len(&coordinator), 0);
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+    }
+
+    #[test]
+    fn completed_operations_are_removed_from_registry() {
+        let coordinator = ParkCoordinator::new();
+        let mut lease = coordinator.reserve_operation().expect("reserve operation");
+        assert_eq!(operation_registry_len(&coordinator), 1);
+
+        assert!(lease.mark_writing().is_ok());
+        assert!(lease.mark_in_guest().is_ok());
+        assert!(lease.complete().is_ok());
+
+        assert_eq!(coordinator.active_operation_count(), 0);
+        assert_eq!(operation_registry_len(&coordinator), 0);
         assert_eq!(coordinator.state(), CoordinatorState::Open);
     }
 
@@ -820,6 +840,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn successful_prepare_releases_attempt_guard_reference() {
+        let coordinator = ParkCoordinator::new();
+        assert_eq!(std::sync::Arc::strong_count(&coordinator.inner), 1);
+
+        let result = coordinator
+            .prepare_park_with(|_| async { PrepareParkEvidence::AgentQuiesced })
+            .await;
+
+        assert!(result.is_ok());
+        assert_eq!(std::sync::Arc::strong_count(&coordinator.inner), 1);
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::ReadyForPark { .. }
+        ));
+    }
+
+    #[tokio::test]
     async fn dropped_prepare_future_reopens_gate_and_stales_attempt() {
         let coordinator = ParkCoordinator::new();
         let worker_coordinator = coordinator.clone();
@@ -847,6 +884,7 @@ mod tests {
 
         assert_eq!(coordinator.state(), CoordinatorState::Open);
         assert!(coordinator.reserve_operation().is_ok());
+        assert_eq!(std::sync::Arc::strong_count(&coordinator.inner), 1);
         assert!(matches!(
             coordinator.complete_prepare_park(&stale_attempt, PrepareParkEvidence::AgentQuiesced),
             Err(PrepareParkError::StaleAttempt {
@@ -900,5 +938,28 @@ mod tests {
 
             assert_eq!(coordinator.state(), CoordinatorState::Open);
         }
+    }
+
+    #[test]
+    fn independent_coordinators_do_not_share_state() {
+        let first = ParkCoordinator::new();
+        let second = ParkCoordinator::new();
+        let first_attempt = begin_attempt(&first);
+
+        assert!(matches!(
+            first.reserve_operation(),
+            Err(LeaseRejection::GateClosed {
+                state: CoordinatorState::ClosingForPark { .. }
+            })
+        ));
+
+        let second_lease = second
+            .reserve_operation()
+            .expect("second coordinator should stay open");
+        assert_eq!(second.state(), CoordinatorState::Open);
+        drop(second_lease);
+
+        assert!(first.abort_prepare_park(&first_attempt).is_ok());
+        assert_eq!(first.state(), CoordinatorState::Open);
     }
 }
