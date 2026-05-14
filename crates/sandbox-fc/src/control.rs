@@ -957,7 +957,7 @@ mod tests {
             })
         };
         let (exec_seen_tx, mut exec_seen_rx) = oneshot::channel();
-        let guest_task = tokio::spawn(mock_guest_holds_exec(vsock_base, exec_seen_tx));
+        let guest_task = tokio::spawn(mock_guest_records_exec(vsock_base, exec_seen_tx));
         let vsock = host_task.await.unwrap().unwrap();
 
         let sock_path = dir.path().join("control.sock");
@@ -1065,6 +1065,18 @@ mod tests {
     }
 
     async fn mock_guest_holds_exec(vsock_base: PathBuf, exec_seen: oneshot::Sender<()>) {
+        mock_guest_until_exec(vsock_base, exec_seen, true).await;
+    }
+
+    async fn mock_guest_records_exec(vsock_base: PathBuf, exec_seen: oneshot::Sender<()>) {
+        mock_guest_until_exec(vsock_base, exec_seen, false).await;
+    }
+
+    async fn mock_guest_until_exec(
+        vsock_base: PathBuf,
+        exec_seen: oneshot::Sender<()>,
+        hold_after_exec: bool,
+    ) {
         let listener_path = PathBuf::from(format!(
             "{}_{}",
             vsock_base.display(),
@@ -1089,7 +1101,9 @@ mod tests {
                     if let Some(tx) = exec_seen.take() {
                         let _ = tx.send(());
                     }
-                    tokio::time::sleep(Duration::from_secs(30)).await;
+                    if hold_after_exec {
+                        tokio::time::sleep(Duration::from_secs(30)).await;
+                    }
                     return;
                 }
             }
