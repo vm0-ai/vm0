@@ -179,3 +179,13 @@ fn cleanup_guest_and_dir_joins_guest_and_removes_dir() {
     assert!(guest_finished.load(Ordering::SeqCst));
     assert!(!dir.exists());
 }
+
+#[test]
+fn unique_temp_dir_returns_distinct_direct_temp_children() {
+    let first = unique_temp_dir("vsock-test-unique");
+    let second = unique_temp_dir("vsock-test-unique");
+
+    assert_ne!(first, second);
+    assert_eq!(first.parent(), Some(std::env::temp_dir().as_path()));
+    assert_eq!(second.parent(), Some(std::env::temp_dir().as_path()));
+}
