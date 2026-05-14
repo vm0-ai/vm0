@@ -39,7 +39,8 @@ use tokio::time::{self, Instant};
 
 use vsock_proto::{
     Decoder, MSG_COMMAND_OUTPUT, MSG_COMMAND_RESULT, MSG_ERROR, MSG_PING, MSG_PONG,
-    MSG_PROCESS_EXIT, MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_STDOUT_CHUNK, RawMessage,
+    MSG_PROCESS_EXIT, MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH_RESULT,
+    MSG_STDOUT_CHUNK, RawMessage,
 };
 
 pub use command::{
@@ -317,6 +318,12 @@ async fn reader_loop(
                     return;
                 }
             } else {
+                if msg.msg_type == MSG_SPAWN_WATCH_RESULT
+                    && process::record_spawn_watch_result(&shared, &msg).is_err()
+                {
+                    shared.poison_connection();
+                    return;
+                }
                 let response_sender = {
                     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
                     match &mut *guard {
