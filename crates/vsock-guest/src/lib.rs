@@ -15,6 +15,7 @@ mod handlers;
 mod log;
 mod monitor;
 mod process;
+mod quiesce;
 mod shutdown;
 mod threading;
 mod user;

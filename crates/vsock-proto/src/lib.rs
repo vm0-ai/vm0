@@ -32,6 +32,10 @@
 //! | 0x0C | G→H       | command_output    | `[1B stream][4B output_seq][1B flags][4B chunk_len][chunk]` |
 //! | 0x0D | G→H       | command_result    | `[1B termination]...[4B duration_ms][stdout][stderr][2B diagnostic_len][diagnostic]` |
 //! | 0x0E | H→G       | command_cancel    | (empty) |
+//! | 0x0F | H→G       | quiesce_operations  | (empty) |
+//! | 0x10 | G→H       | operations_quiesced    | (empty) |
+//! | 0x11 | H→G       | resume_operations | (empty) |
+//! | 0x12 | G→H       | operations_resumed | (empty) |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
 //! Command operation messages are request-scoped; host/guest dispatch layers
@@ -56,6 +60,7 @@ pub use payloads::command::{
     encode_command_cancel, encode_command_output, encode_command_result, encode_command_start,
     encode_command_start_with_expected_exit_codes,
 };
+pub use payloads::empty::decode_empty_payload;
 pub use payloads::error::{decode_error, encode_error};
 pub use payloads::process::{
     ProcessExit, decode_process_exit, decode_stdout_chunk, encode_process_exit, encode_stdout_chunk,
@@ -70,8 +75,10 @@ pub use payloads::write_file::{
 pub use wire::{
     COMMAND_CAPTURED_OUTPUT_FLAG_TRUNCATED, COMMAND_FLAG_SUDO, COMMAND_OUTPUT_FLAG_TRUNCATED,
     HEADER_SIZE, MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_COMMAND_CANCEL, MSG_COMMAND_OUTPUT,
-    MSG_COMMAND_RESULT, MSG_COMMAND_START, MSG_ERROR, MSG_PING, MSG_PONG, MSG_PROCESS_EXIT,
-    MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT,
-    MSG_STDOUT_CHUNK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, SPAWN_WATCH_FLAG_STREAM_STDOUT,
-    SPAWN_WATCH_FLAG_SUDO, VSOCK_PORT, WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_SUDO,
+    MSG_COMMAND_RESULT, MSG_COMMAND_START, MSG_ERROR, MSG_OPERATIONS_QUIESCED,
+    MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_PROCESS_EXIT, MSG_QUIESCE_OPERATIONS,
+    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH,
+    MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
+    SPAWN_WATCH_FLAG_STREAM_STDOUT, SPAWN_WATCH_FLAG_SUDO, VSOCK_PORT, WRITE_FILE_FLAG_APPEND,
+    WRITE_FILE_FLAG_SUDO,
 };

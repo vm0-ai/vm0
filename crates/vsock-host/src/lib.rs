@@ -38,8 +38,9 @@ use tokio::task::JoinHandle;
 use tokio::time::{self, Instant};
 
 use vsock_proto::{
-    Decoder, MSG_COMMAND_OUTPUT, MSG_COMMAND_RESULT, MSG_ERROR, MSG_PING, MSG_PONG,
-    MSG_PROCESS_EXIT, MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH_RESULT,
+    Decoder, MSG_COMMAND_OUTPUT, MSG_COMMAND_RESULT, MSG_ERROR, MSG_OPERATIONS_QUIESCED,
+    MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_PROCESS_EXIT, MSG_QUIESCE_OPERATIONS,
+    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH_RESULT,
     MSG_STDOUT_CHUNK, RawMessage,
 };
 
@@ -408,6 +409,25 @@ async fn request_raw_on_shared(
     }
 }
 
+fn protocol_invalid_data(error: impl ToString) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, error.to_string())
+}
+
+fn lifecycle_error_from_response(response: &RawMessage) -> io::Error {
+    match vsock_proto::decode_error(&response.payload) {
+        Ok(message) => io::Error::other(message.to_owned()),
+        Err(error) => protocol_invalid_data(error),
+    }
+}
+
+fn validate_empty_lifecycle_response(
+    response: &RawMessage,
+    payload_name: &'static str,
+) -> io::Result<()> {
+    vsock_proto::decode_empty_payload(payload_name, &response.payload)
+        .map_err(protocol_invalid_data)
+}
+
 impl VsockHost {
     /// Wait for a guest to connect on the vsock UDS path.
     ///
@@ -552,6 +572,52 @@ impl VsockHost {
         timeout: Duration,
     ) -> io::Result<RawMessage> {
         request_on_shared(&self.shared, msg_type, payload, timeout).await
+    }
+
+    async fn lifecycle_request(
+        &self,
+        request_type: u8,
+        expected_response_type: u8,
+        response_payload_name: &'static str,
+        timeout: Duration,
+    ) -> io::Result<()> {
+        let response = self.request(request_type, &[], timeout).await?;
+        if response.msg_type == MSG_ERROR {
+            return Err(lifecycle_error_from_response(&response));
+        }
+        if response.msg_type != expected_response_type {
+            return Err(protocol_invalid_data(format!(
+                "unexpected lifecycle response type: expected 0x{expected_response_type:02X}, got 0x{:02X}",
+                response.msg_type,
+            )));
+        }
+        validate_empty_lifecycle_response(&response, response_payload_name)
+    }
+
+    /// Fence new guest operations before a higher-level lifecycle transition.
+    ///
+    /// This is a same-connection lifecycle check: the guest either reports no
+    /// in-flight operations with `operations_quiesced`, or returns `error` and keeps
+    /// the operation fence closed until [`resume_operations`](Self::resume_operations).
+    pub async fn quiesce_operations(&self, timeout: Duration) -> io::Result<()> {
+        self.lifecycle_request(
+            MSG_QUIESCE_OPERATIONS,
+            MSG_OPERATIONS_QUIESCED,
+            "operations_quiesced payload must be empty",
+            timeout,
+        )
+        .await
+    }
+
+    /// Resume guest operations after a failed or aborted quiesce attempt.
+    pub async fn resume_operations(&self, timeout: Duration) -> io::Result<()> {
+        self.lifecycle_request(
+            MSG_RESUME_OPERATIONS,
+            MSG_OPERATIONS_RESUMED,
+            "operations_resumed payload must be empty",
+            timeout,
+        )
+        .await
     }
 
     /// Start a request-scoped command operation using the unified command protocol.

@@ -7,8 +7,7 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
 use vsock_proto::{
-    self, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
-    RawMessage,
+    self, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE_RESULT, RawMessage,
 };
 
 use crate::drain::drain_into_vec_cancellable;
@@ -31,6 +30,13 @@ static DEBUG_GUEST_WRITE_FILE_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
 pub(crate) enum MessageOutcome {
     Response(Vec<u8>),
     Shutdown(Vec<u8>),
+}
+
+pub(crate) struct DecodedWriteFileMessage<'a> {
+    path: &'a str,
+    content: &'a [u8],
+    use_sudo: bool,
+    append: bool,
 }
 
 /// Handle write_file message
@@ -215,10 +221,37 @@ pub(crate) fn set_debug_guest_write_file_path(path: PathBuf) -> Result<(), PathB
     Ok(())
 }
 
+pub(crate) fn decode_write_file_message(
+    msg: &RawMessage,
+) -> io::Result<DecodedWriteFileMessage<'_>> {
+    let (path, content, use_sudo, append) =
+        vsock_proto::decode_write_file(&msg.payload).map_err(to_io_error)?;
+    Ok(DecodedWriteFileMessage {
+        path,
+        content,
+        use_sudo,
+        append,
+    })
+}
+
+pub(crate) fn handle_decoded_write_file_message(
+    seq: u32,
+    decoded: DecodedWriteFileMessage<'_>,
+) -> io::Result<Vec<u8>> {
+    let (success, error) = handle_write_file(
+        decoded.path,
+        decoded.content,
+        decoded.use_sudo,
+        decoded.append,
+    );
+    let payload = vsock_proto::encode_write_file_result(success, &error);
+    vsock_proto::encode(MSG_WRITE_FILE_RESULT, seq, &payload).map_err(to_io_error)
+}
+
 /// Handle incoming message and return the connection-loop outcome.
 ///
-/// Command operation and `MSG_SPAWN_WATCH` are handled separately in
-/// `handle_connection` because they run in background threads.
+/// Command operation, `MSG_SPAWN_WATCH`, and guarded write-file operations are
+/// handled separately in `handle_connection`.
 pub(crate) fn handle_message(msg: &RawMessage) -> io::Result<MessageOutcome> {
     log(
         "INFO",
@@ -229,16 +262,6 @@ pub(crate) fn handle_message(msg: &RawMessage) -> io::Result<MessageOutcome> {
         MSG_PING => Ok(MessageOutcome::Response(
             vsock_proto::encode(MSG_PONG, msg.seq, &[]).map_err(to_io_error)?,
         )),
-        MSG_WRITE_FILE => {
-            let (path, content, use_sudo, append) =
-                vsock_proto::decode_write_file(&msg.payload).map_err(to_io_error)?;
-            let (success, error) = handle_write_file(path, content, use_sudo, append);
-            let payload = vsock_proto::encode_write_file_result(success, &error);
-            Ok(MessageOutcome::Response(
-                vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload)
-                    .map_err(to_io_error)?,
-            ))
-        }
         MSG_SHUTDOWN => Ok(MessageOutcome::Shutdown(handle_shutdown(msg.seq)?)),
         _ => {
             let payload =
