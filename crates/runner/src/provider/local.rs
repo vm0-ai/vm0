@@ -375,6 +375,14 @@ impl LocalCancelWatcher {
 impl Drop for LocalCancelWatcher {
     fn drop(&mut self) {
         self.shutdown.cancel();
+        let handle = self
+            .handle
+            .get_mut()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take();
+        if let Some(handle) = handle {
+            handle.abort();
+        }
     }
 }
 
