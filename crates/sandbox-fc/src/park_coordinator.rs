@@ -3,6 +3,13 @@
 //! #13274 lands the state machine before #13275 routes production guest
 //! operations through it. Keep this module internal until those call sites
 //! consume the coordinator directly.
+//!
+//! Invariants:
+//! - A `Poisoned` operation keeps the coordinator `Dirty`; dirty sandboxes are
+//!   destroy-only and cannot re-enter the park lifecycle.
+//! - `ReadyForPark` means the host gate is closed and no operation that could
+//!   write to the guest is unresolved.
+//! - Coordinator locks are never held across `.await`.
 #![cfg_attr(not(test), allow(dead_code))]
 
 use std::collections::BTreeMap;
@@ -163,7 +170,7 @@ impl ParkCoordinator {
         let mut poisoned = false;
 
         for entry in inner.operations.values_mut() {
-            if entry.liveness != OperationLiveness::Terminal {
+            if entry.liveness.blocks_park() {
                 entry.liveness = OperationLiveness::Poisoned;
                 poisoned = true;
             }
@@ -183,9 +190,7 @@ impl ParkCoordinator {
     }
 
     fn inner(&self) -> MutexGuard<'_, Inner> {
-        self.inner
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+        lock_inner(&self.inner)
     }
 }
 
@@ -488,9 +493,14 @@ fn can_transition(from: OperationLiveness, to: OperationLiveness) -> bool {
 }
 
 fn lock_inner(inner: &Mutex<Inner>) -> MutexGuard<'_, Inner> {
-    inner
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+    match inner.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            let mut guard = poisoned.into_inner();
+            guard.mark_dirty(DirtyReason::new("park coordinator mutex poisoned"));
+            guard
+        }
+    }
 }
 
 #[cfg(test)]
@@ -535,6 +545,30 @@ mod tests {
         let coordinator = ParkCoordinator::new();
 
         assert_eq!(coordinator.state(), CoordinatorState::Open);
+    }
+
+    #[test]
+    fn poisoned_mutex_marks_coordinator_dirty() {
+        let coordinator = ParkCoordinator::new();
+        let poisoned_coordinator = coordinator.clone();
+
+        let join_result = std::thread::spawn(move || {
+            let _guard = poisoned_coordinator.inner();
+            panic!("poison coordinator lock");
+        })
+        .join();
+
+        assert!(join_result.is_err());
+        assert_eq!(
+            dirty_reason(&coordinator),
+            DirtyReason::new("park coordinator mutex poisoned")
+        );
+        assert!(matches!(
+            coordinator.reserve_operation(),
+            Err(LeaseRejection::GateClosed {
+                state: CoordinatorState::Dirty { .. }
+            })
+        ));
     }
 
     #[test]
@@ -726,6 +760,26 @@ mod tests {
         assert_dirty_state(&coordinator);
         drop(lease);
         assert_dirty_state(&coordinator);
+    }
+
+    #[test]
+    fn driver_shutdown_poison_is_idempotent() {
+        let coordinator = ParkCoordinator::new();
+        let mut lease = coordinator.reserve_operation().expect("reserve operation");
+        assert!(lease.mark_writing().is_ok());
+
+        assert!(coordinator.poison_unresolved_operations(DirtyReason::new("driver shutdown")));
+        assert!(!coordinator.poison_unresolved_operations(DirtyReason::new("second shutdown")));
+
+        assert_eq!(
+            dirty_reason(&coordinator),
+            DirtyReason::new("driver shutdown")
+        );
+        drop(lease);
+        assert_eq!(
+            dirty_reason(&coordinator),
+            DirtyReason::new("driver shutdown")
+        );
     }
 
     #[test]
