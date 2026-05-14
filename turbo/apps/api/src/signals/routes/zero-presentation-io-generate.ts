@@ -7,9 +7,11 @@ import { bodyResultOf } from "../context/request";
 import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route";
 import { env } from "../../lib/env";
+import { imagePricing$ } from "../services/zero-image-io-generate.service";
 import {
   checkPresentationCredits$,
   createOpenAiPresentationRequest,
+  generatePresentationVisuals$,
   OPENAI_PRESENTATION_GENERATION_URL,
   parsePresentationGenerationResult,
   parsePresentationOptions,
@@ -55,6 +57,16 @@ const postPresentationInner$ = command(
       );
     }
 
+    const imagePricing =
+      options.imageCount > 0 ? await get(imagePricing$) : null;
+    signal.throwIfAborted();
+    if (options.imageCount > 0 && !imagePricing) {
+      return presentationServiceUnavailable(
+        "Presentation image generation pricing is not configured",
+        "NOT_CONFIGURED",
+      );
+    }
+
     const openaiResponse = await fetch(OPENAI_PRESENTATION_GENERATION_URL, {
       method: "POST",
       headers: {
@@ -92,6 +104,25 @@ const postPresentationInner$ = command(
       auth.tokenType === "zero" || auth.tokenType === "sandbox"
         ? auth.runId
         : undefined;
+    const visuals =
+      options.imageCount > 0 && imagePricing
+        ? await set(
+            generatePresentationVisuals$,
+            {
+              orgId: auth.orgId,
+              userId: auth.userId,
+              runId,
+              imagePricing,
+              generation,
+              options,
+            },
+            signal,
+          )
+        : [];
+    if ("status" in visuals) {
+      return visuals;
+    }
+
     const result = await set(
       recordGeneratedPresentation$,
       {
@@ -100,6 +131,8 @@ const postPresentationInner$ = command(
         runId,
         pricing,
         generation,
+        options,
+        visuals,
       },
       signal,
     );

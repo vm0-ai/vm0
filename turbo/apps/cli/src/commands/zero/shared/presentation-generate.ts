@@ -8,6 +8,7 @@ interface PresentationOptions {
   prompt?: string;
   style: string;
   slides: number;
+  images: number;
   theme?: string;
   audience?: string;
   title?: string;
@@ -26,6 +27,14 @@ function parseSlideCount(value: string): number {
     throw new InvalidArgumentError("slides must be an integer");
   }
   return slideCount;
+}
+
+function parseImageCount(value: string): number {
+  const imageCount = Number(value);
+  if (!Number.isInteger(imageCount)) {
+    throw new InvalidArgumentError("images must be an integer");
+  }
+  return imageCount;
 }
 
 function readPrompt(
@@ -63,6 +72,12 @@ export function createPresentationGenerateCommand(
     .option("--style <style>", "Style: editorial or swiss", "editorial")
     .option("--slides <count>", "Slide count: 4-20", parseSlideCount, 8)
     .option(
+      "--images <count>",
+      "Generated image count: 0-4",
+      parseImageCount,
+      2,
+    )
+    .option(
       "--theme <theme>",
       "Theme: editorial supports ink, coral, forest; swiss supports ikb, lemon, lime, mono",
     )
@@ -90,6 +105,7 @@ Notes:
           prompt,
           style: options.style,
           slideCount: options.slides,
+          imageCount: options.images,
           theme: options.theme,
           audience: options.audience,
           title: options.title,
@@ -104,9 +120,14 @@ Notes:
         console.log(chalk.dim(`  File: ${result.filename}`));
         console.log(chalk.dim(`  Title: ${result.title}`));
         console.log(chalk.dim(`  Slides: ${result.slideCount}`));
+        console.log(chalk.dim(`  Images: ${result.imageCount}`));
         console.log(chalk.dim(`  Style: ${result.style}`));
         console.log(chalk.dim(`  Theme: ${result.theme}`));
         console.log(chalk.dim(`  Credits charged: ${result.creditsCharged}`));
+        console.log(chalk.dim(`  Text credits: ${result.textCreditsCharged}`));
+        console.log(
+          chalk.dim(`  Image credits: ${result.imageCreditsCharged}`),
+        );
         console.log(chalk.dim(`  Model: ${result.model}`));
       }),
     );

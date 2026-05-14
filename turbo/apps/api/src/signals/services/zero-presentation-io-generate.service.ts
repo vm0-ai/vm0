@@ -10,6 +10,13 @@ import { buildFileUrl } from "../../lib/file-url";
 import { env } from "../../lib/env";
 import { db$, writeDb$ } from "../external/db";
 import { putS3Object } from "../external/s3";
+import {
+  IMAGE_IO_MODEL,
+  OPENAI_IMAGE_GENERATION_URL,
+  parseImageGenerationResult,
+  recordGeneratedImage$,
+  type ImagePricing,
+} from "./zero-image-io-generate.service";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { safeJsonParse } from "../utils";
@@ -21,6 +28,8 @@ export const PRESENTATION_IO_MODEL = "gpt-5.5";
 const PRESENTATION_IO_MAX_PROMPT_LENGTH = 32_000;
 const PRESENTATION_IO_MIN_SLIDES = 4;
 const PRESENTATION_IO_MAX_SLIDES = 20;
+const PRESENTATION_IO_DEFAULT_IMAGE_COUNT = 2;
+const PRESENTATION_IO_MAX_IMAGES = 4;
 const PRESENTATION_CONTENT_TYPE = "text/html";
 
 const USAGE_KIND = "model";
@@ -44,6 +53,15 @@ const PRESENTATION_LAYOUTS = [
   "quote",
   "closing",
 ] as const;
+
+const PRESENTATION_VISUAL_IMAGE_OPTIONS = {
+  size: "1536x864",
+  quality: "medium",
+  background: "opaque",
+  outputFormat: "webp",
+  outputCompression: undefined,
+  moderation: "auto",
+} as const;
 
 type PresentationStyle = (typeof PRESENTATION_STYLES)[number];
 type PresentationLayout = (typeof PRESENTATION_LAYOUTS)[number];
@@ -77,6 +95,7 @@ interface PresentationOptions {
   readonly prompt: string;
   readonly style: PresentationStyle;
   readonly slideCount: number;
+  readonly imageCount: number;
   readonly theme: string;
   readonly audience: string | undefined;
   readonly title: string | undefined;
@@ -102,6 +121,7 @@ interface SlideSpec {
   readonly bullets: readonly string[];
   readonly metric: string;
   readonly note: string;
+  readonly visualPrompt: string;
 }
 
 interface DeckSpec {
@@ -111,13 +131,23 @@ interface DeckSpec {
 }
 
 interface ParsedPresentationGeneration {
-  readonly htmlBytes: Buffer;
+  readonly deck: DeckSpec;
   readonly usage: PresentationUsage;
   readonly responseId: string | undefined;
   readonly title: string;
   readonly style: PresentationStyle;
   readonly theme: string;
   readonly slideCount: number;
+}
+
+interface PresentationVisual {
+  readonly slideIndex: number;
+  readonly url: string;
+  readonly alt: string;
+  readonly prompt: string;
+  readonly imageId: string;
+  readonly filename: string;
+  readonly creditsCharged: number;
 }
 
 interface RecordedPresentation {
@@ -131,6 +161,10 @@ interface RecordedPresentation {
   readonly style: PresentationStyle;
   readonly theme: string;
   readonly slideCount: number;
+  readonly imageCount: number;
+  readonly imageUrls: readonly string[];
+  readonly imageCreditsCharged: number;
+  readonly textCreditsCharged: number;
   readonly title: string;
   readonly responseId: string | undefined;
   readonly usage: PresentationUsage;
@@ -264,6 +298,7 @@ const PRESENTATION_DECK_SCHEMA = {
           "bullets",
           "metric",
           "note",
+          "visualPrompt",
         ],
         properties: {
           layout: {
@@ -298,6 +333,11 @@ const PRESENTATION_DECK_SCHEMA = {
             type: "string",
             description:
               "Optional source, caveat, or closing note; empty if none.",
+          },
+          visualPrompt: {
+            type: "string",
+            description:
+              "A concise image generation prompt for this slide. Describe a visual scene or abstract composition and avoid visible text; empty if the slide should not use an image.",
           },
         },
       },
@@ -447,6 +487,18 @@ export function parsePresentationOptions(
     );
   }
 
+  const rawImageCount =
+    readInteger(body, "imageCount") ?? readInteger(body, "images");
+  if (typeof rawImageCount === "object") {
+    return rawImageCount;
+  }
+  const imageCount = rawImageCount ?? PRESENTATION_IO_DEFAULT_IMAGE_COUNT;
+  if (imageCount < 0 || imageCount > PRESENTATION_IO_MAX_IMAGES) {
+    return badRequest(
+      `imageCount must be between 0 and ${PRESENTATION_IO_MAX_IMAGES}`,
+    );
+  }
+
   const defaultTheme = themesForStyle(style)[0] ?? "ink";
   const theme = readString(body, "theme", defaultTheme);
   if (!themesForStyle(style).includes(theme)) {
@@ -459,6 +511,7 @@ export function parsePresentationOptions(
     prompt,
     style,
     slideCount,
+    imageCount,
     theme,
     audience: readOptionalString(body, "audience", 160),
     title: readOptionalString(body, "title", 120),
@@ -563,6 +616,7 @@ function presentationInstructions(): string {
     "Return only the structured deck JSON required by the schema.",
     "Write slide content that can stand on its own in an HTML slideshow.",
     "Prefer specific claims, clear sectioning, and short bullets over long prose.",
+    "For visualPrompt, describe a clean image or abstract composition that supports the slide. Avoid visible text, UI screenshots, logos, charts with labels, or typography in the image.",
     "Do not include markdown, HTML, JavaScript, speaker notes, or external links.",
   ].join(" ");
 }
@@ -571,6 +625,7 @@ function presentationInput(options: PresentationOptions): string {
   const lines = [
     `Create exactly ${options.slideCount} slides.`,
     `Style: ${options.style}. Theme: ${options.theme}.`,
+    `Provide visual prompts for up to ${options.imageCount} image-worthy slides; use an empty visualPrompt for slides that do not need an image.`,
     "Use varied layouts. The first slide should be a cover and the last slide should be a closing or synthesis slide.",
   ];
 
@@ -737,6 +792,7 @@ function parseSlide(
   const bullets = readDeckStringArray(value, "bullets");
   const metric = readDeckString(value, "metric", 90);
   const note = readDeckString(value, "note", 180);
+  const visualPrompt = readDeckString(value, "visualPrompt", 520);
 
   if (!title && !body && bullets.length === 0) {
     return null;
@@ -750,6 +806,7 @@ function parseSlide(
     bullets,
     metric,
     note,
+    visualPrompt,
   };
 }
 
@@ -814,11 +871,27 @@ function renderBody(body: string): string {
   return body ? `<p class="body">${htmlEscape(body)}</p>` : "";
 }
 
-function renderSlideMain(slide: SlideSpec): string {
+function renderVisual(visual: PresentationVisual | undefined): string {
+  if (!visual) {
+    return "";
+  }
+
+  return `<figure class="visual-frame"><img src="${htmlEscape(
+    visual.url,
+  )}" alt="${htmlEscape(visual.alt)}"></figure>`;
+}
+
+function renderSlideMain(
+  slide: SlideSpec,
+  visual: PresentationVisual | undefined,
+): string {
+  const visualHtml = renderVisual(visual);
   if (slide.layout === "cover") {
-    return `<div class="cover-block"><h1>${htmlEscape(
+    return `<div class="cover-block"><div><h1>${htmlEscape(
       slide.title,
-    )}</h1>${renderBody(slide.body)}${renderBullets(slide.bullets)}</div>`;
+    )}</h1>${renderBody(slide.body)}${renderBullets(
+      slide.bullets,
+    )}</div>${visualHtml}</div>`;
   }
 
   if (slide.layout === "section" || slide.layout === "statement") {
@@ -826,7 +899,7 @@ function renderSlideMain(slide: SlideSpec): string {
       slide.title,
     )}</h2>${renderBody(slide.body)}${renderMetric(
       slide.metric,
-    )}${renderBullets(slide.bullets)}</div>`;
+    )}${renderBullets(slide.bullets)}${visualHtml}</div>`;
   }
 
   if (slide.layout === "two_column") {
@@ -834,7 +907,7 @@ function renderSlideMain(slide: SlideSpec): string {
       slide.title,
     )}</h2>${renderBody(slide.body)}${renderMetric(
       slide.metric,
-    )}</div><div>${renderBullets(slide.bullets)}</div></div>`;
+    )}</div><div>${visualHtml || renderBullets(slide.bullets)}</div></div>`;
   }
 
   if (slide.layout === "quote") {
@@ -849,13 +922,14 @@ function renderSlideMain(slide: SlideSpec): string {
     slide.title,
   )}</h2>${renderMetric(slide.metric)}${renderBody(slide.body)}${renderBullets(
     slide.bullets,
-  )}</div>`;
+  )}${visualHtml}</div>`;
 }
 
 function renderSlide(
   slide: SlideSpec,
   index: number,
   totalSlides: number,
+  visual: PresentationVisual | undefined,
 ): string {
   const slideNumber = String(index + 1).padStart(2, "0");
   const total = String(totalSlides).padStart(2, "0");
@@ -865,15 +939,30 @@ function renderSlide(
     slide.kicker || slide.layout.replace("_", " "),
   )}</span><span>${slideNumber} / ${total}</span></header><main>${renderSlideMain(
     slide,
+    visual,
   )}</main><footer>${renderNote(slide.note)}</footer></section>`;
 }
 
 /* oxlint-disable-next-line eslint(max-lines-per-function) -- Static single-file HTML template. */
-function renderDeckHtml(deck: DeckSpec, options: PresentationOptions): string {
+function renderDeckHtml(
+  deck: DeckSpec,
+  options: PresentationOptions,
+  visuals: readonly PresentationVisual[],
+): string {
   const theme = THEME_TOKENS[options.theme] ?? DEFAULT_THEME_TOKENS;
+  const visualBySlide = new Map(
+    visuals.map((visual) => {
+      return [visual.slideIndex, visual];
+    }),
+  );
   const slidesHtml = deck.slides
     .map((slide, index) => {
-      return renderSlide(slide, index, deck.slides.length);
+      return renderSlide(
+        slide,
+        index,
+        deck.slides.length,
+        visualBySlide.get(index),
+      );
     })
     .join("");
 
@@ -979,6 +1068,27 @@ function renderDeckHtml(deck: DeckSpec, options: PresentationOptions): string {
       color: var(--muted);
       font-size: 24px;
       line-height: 1.42;
+    }
+    .cover-block {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(360px, 0.72fr);
+      gap: 54px;
+      align-items: end;
+    }
+    .visual-frame {
+      margin: 28px 0 0;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.54);
+    }
+    .visual-frame img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
     .metric {
       display: inline-flex;
@@ -1109,6 +1219,11 @@ function renderDeckHtml(deck: DeckSpec, options: PresentationOptions): string {
         grid-template-columns: 1fr;
         gap: 28px;
       }
+      .cover-block {
+        grid-template-columns: 1fr;
+        align-items: center;
+        gap: 24px;
+      }
       .controls {
         right: 16px;
         bottom: 14px;
@@ -1202,13 +1317,8 @@ export function parsePresentationGenerationResult(
     );
   }
 
-  const htmlBytes = Buffer.from(renderDeckHtml(deck, options), "utf8");
-  if (htmlBytes.byteLength === 0) {
-    return badGateway("Model returned empty presentation", "NO_DECK_RETURNED");
-  }
-
   return {
-    htmlBytes,
+    deck,
     usage,
     responseId: readResponseId(value),
     title: deck.title,
@@ -1217,6 +1327,156 @@ export function parsePresentationGenerationResult(
     slideCount: deck.slides.length,
   };
 }
+
+function visualAltText(slide: SlideSpec): string {
+  return slide.title ? `Visual for ${slide.title}` : "Presentation visual";
+}
+
+function visualPromptForSlide(params: {
+  readonly deck: DeckSpec;
+  readonly slide: SlideSpec;
+  readonly options: PresentationOptions;
+}): string {
+  return [
+    `Create a 16:9 presentation image for "${params.deck.title}".`,
+    `Slide: ${params.slide.title}.`,
+    `Visual direction: ${params.slide.visualPrompt}.`,
+    `Style: ${params.options.style}, theme ${params.options.theme}.`,
+    "No visible words, labels, charts with text, logos, watermarks, UI screenshots, or typography.",
+  ].join(" ");
+}
+
+function selectVisualSlides(
+  deck: DeckSpec,
+  imageCount: number,
+): readonly (readonly [number, SlideSpec])[] {
+  if (imageCount <= 0) {
+    return [];
+  }
+
+  const candidates = deck.slides.flatMap((slide, index) => {
+    return slide.visualPrompt ? [[index, slide] as const] : [];
+  });
+  const preferredLayouts = new Set<PresentationLayout>([
+    "cover",
+    "section",
+    "statement",
+    "two_column",
+  ]);
+  const preferred = candidates.filter(([, slide]) => {
+    return preferredLayouts.has(slide.layout);
+  });
+  const remaining = candidates.filter((candidate) => {
+    return !preferred.includes(candidate);
+  });
+  return [...preferred, ...remaining].slice(0, imageCount);
+}
+
+function createVisualImageOptions(prompt: string) {
+  return {
+    prompt,
+    ...PRESENTATION_VISUAL_IMAGE_OPTIONS,
+  };
+}
+
+export const generatePresentationVisuals$ = command(
+  async (
+    { set },
+    params: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly runId: string | undefined;
+      readonly imagePricing: ImagePricing;
+      readonly generation: ParsedPresentationGeneration;
+      readonly options: PresentationOptions;
+    },
+    signal: AbortSignal,
+  ): Promise<readonly PresentationVisual[] | ErrorResponse> => {
+    const candidates = selectVisualSlides(
+      params.generation.deck,
+      params.options.imageCount,
+    );
+    if (candidates.length === 0) {
+      return [];
+    }
+
+    const visuals: PresentationVisual[] = [];
+    let failedAttempts = 0;
+    for (const [slideIndex, slide] of candidates) {
+      const prompt = visualPromptForSlide({
+        deck: params.generation.deck,
+        slide,
+        options: params.options,
+      });
+      const imageOptions = createVisualImageOptions(prompt);
+      const response = await fetch(OPENAI_IMAGE_GENERATION_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${env("OPENAI_API_KEY")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: IMAGE_IO_MODEL,
+          prompt: imageOptions.prompt,
+          n: 1,
+          size: imageOptions.size,
+          quality: imageOptions.quality,
+          background: imageOptions.background,
+          output_format: imageOptions.outputFormat,
+          moderation: imageOptions.moderation,
+        }),
+        signal,
+      });
+      signal.throwIfAborted();
+      if (!response.ok) {
+        failedAttempts += 1;
+        continue;
+      }
+
+      const responseBody: unknown = await response.json();
+      signal.throwIfAborted();
+      const imageGeneration = parseImageGenerationResult(
+        responseBody,
+        imageOptions,
+      );
+      if ("status" in imageGeneration) {
+        failedAttempts += 1;
+        continue;
+      }
+
+      const recordedImage = await set(
+        recordGeneratedImage$,
+        {
+          orgId: params.orgId,
+          userId: params.userId,
+          runId: params.runId,
+          pricing: params.imagePricing,
+          generation: imageGeneration,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      visuals.push({
+        slideIndex,
+        url: recordedImage.url,
+        alt: visualAltText(slide),
+        prompt,
+        imageId: recordedImage.id,
+        filename: recordedImage.filename,
+        creditsCharged: recordedImage.creditsCharged,
+      });
+    }
+
+    if (visuals.length === 0 && failedAttempts > 0) {
+      return badGateway(
+        "Presentation image generation failed",
+        "IMAGE_GENERATION_FAILED",
+      );
+    }
+
+    return visuals;
+  },
+);
 
 function estimatePresentationCredits(
   usage: PresentationUsage,
@@ -1248,6 +1508,8 @@ export const recordGeneratedPresentation$ = command(
       readonly runId: string | undefined;
       readonly pricing: PresentationPricing;
       readonly generation: ParsedPresentationGeneration;
+      readonly options: PresentationOptions;
+      readonly visuals: readonly PresentationVisual[];
     },
     signal: AbortSignal,
   ): Promise<RecordedPresentation> => {
@@ -1255,11 +1517,15 @@ export const recordGeneratedPresentation$ = command(
     const fileId = randomUUID();
     const filename = `presentation-${fileId.slice(0, 8)}.html`;
     const s3Key = `uploads/${params.userId}/${fileId}/${filename}`;
+    const htmlBytes = Buffer.from(
+      renderDeckHtml(params.generation.deck, params.options, params.visuals),
+      "utf8",
+    );
     await get(
       putS3Object(
         env("R2_USER_STORAGES_BUCKET_NAME"),
         s3Key,
-        params.generation.htmlBytes,
+        htmlBytes,
         PRESENTATION_CONTENT_TYPE,
       ),
     );
@@ -1275,7 +1541,7 @@ export const recordGeneratedPresentation$ = command(
         orgId: params.orgId,
         filename,
         contentType: PRESENTATION_CONTENT_TYPE,
-        sizeBytes: params.generation.htmlBytes.byteLength,
+        sizeBytes: htmlBytes.byteLength,
         url,
         s3Key,
         metadata: {
@@ -1284,6 +1550,13 @@ export const recordGeneratedPresentation$ = command(
           style: params.generation.style,
           theme: params.generation.theme,
           slideCount: params.generation.slideCount,
+          imageCount: params.visuals.length,
+          imageIds: params.visuals.map((visual) => {
+            return visual.imageId;
+          }),
+          imageUrls: params.visuals.map((visual) => {
+            return visual.url;
+          }),
           title: params.generation.title,
           responseId: params.generation.responseId,
         },
@@ -1324,20 +1597,31 @@ export const recordGeneratedPresentation$ = command(
     await set(processOrgUsageEvents$, params.orgId, signal);
     signal.throwIfAborted();
 
+    const textCreditsCharged = estimatePresentationCredits(
+      params.generation.usage,
+      params.pricing,
+    );
+    const imageCreditsCharged = params.visuals.reduce((total, visual) => {
+      return total + visual.creditsCharged;
+    }, 0);
+
     return {
       id: fileId,
       filename,
       contentType: PRESENTATION_CONTENT_TYPE,
-      size: params.generation.htmlBytes.byteLength,
+      size: htmlBytes.byteLength,
       url,
-      creditsCharged: estimatePresentationCredits(
-        params.generation.usage,
-        params.pricing,
-      ),
+      creditsCharged: textCreditsCharged + imageCreditsCharged,
       model: PRESENTATION_IO_MODEL,
       style: params.generation.style,
       theme: params.generation.theme,
       slideCount: params.generation.slideCount,
+      imageCount: params.visuals.length,
+      imageUrls: params.visuals.map((visual) => {
+        return visual.url;
+      }),
+      imageCreditsCharged,
+      textCreditsCharged,
       title: params.generation.title,
       responseId: params.generation.responseId,
       usage: params.generation.usage,

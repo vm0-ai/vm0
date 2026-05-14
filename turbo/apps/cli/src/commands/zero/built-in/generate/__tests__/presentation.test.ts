@@ -21,11 +21,15 @@ const PRESENTATION_RESULT = {
   contentType: "text/html",
   size: 4096,
   url: "http://localhost:3000/f/user-1/presentation-file-id/presentation-present.html",
-  creditsCharged: 24,
+  creditsCharged: 31,
   model: "gpt-5.5",
   style: "swiss",
   theme: "ikb",
   slideCount: 10,
+  imageCount: 3,
+  imageUrls: ["http://localhost:3000/f/user-1/image-file-id/image-visual.webp"],
+  imageCreditsCharged: 7,
+  textCreditsCharged: 24,
   title: "API Migration Plan",
   responseId: "resp_presentation",
   usage: {
@@ -64,6 +68,7 @@ describe("zero built-in generate presentation command", () => {
           prompt: "API migration plan",
           style: "swiss",
           slideCount: 10,
+          imageCount: 3,
           theme: "ikb",
           audience: "engineering leadership",
           title: "API Migration Plan",
@@ -84,6 +89,8 @@ describe("zero built-in generate presentation command", () => {
       "swiss",
       "--slides",
       "10",
+      "--images",
+      "3",
       "--theme",
       "ikb",
       "--audience",
@@ -99,9 +106,12 @@ describe("zero built-in generate presentation command", () => {
     expect(stdout).toContain(`File: ${PRESENTATION_RESULT.filename}`);
     expect(stdout).toContain("Title: API Migration Plan");
     expect(stdout).toContain("Slides: 10");
+    expect(stdout).toContain("Images: 3");
     expect(stdout).toContain("Style: swiss");
     expect(stdout).toContain("Theme: ikb");
-    expect(stdout).toContain("Credits charged: 24");
+    expect(stdout).toContain("Credits charged: 31");
+    expect(stdout).toContain("Text credits: 24");
+    expect(stdout).toContain("Image credits: 7");
     expect(stdout).toContain("Model: gpt-5.5");
   });
 
@@ -130,11 +140,15 @@ describe("zero built-in generate presentation command", () => {
       contentType: "text/html",
       size: PRESENTATION_RESULT.size,
       url: PRESENTATION_RESULT.url,
-      creditsCharged: 24,
+      creditsCharged: 31,
       model: "gpt-5.5",
       style: "swiss",
       theme: "ikb",
       slideCount: 10,
+      imageCount: 3,
+      imageUrls: PRESENTATION_RESULT.imageUrls,
+      imageCreditsCharged: 7,
+      textCreditsCharged: 24,
       title: "API Migration Plan",
     });
   });

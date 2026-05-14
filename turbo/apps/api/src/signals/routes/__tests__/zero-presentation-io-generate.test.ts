@@ -17,6 +17,12 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import {
+  IMAGE_IO_MODEL,
+  OPENAI_IMAGE_GENERATION_URL,
+  type ImagePricing,
+  type ImageUsage,
+} from "../../services/zero-image-io-generate.service";
+import {
   OPENAI_PRESENTATION_GENERATION_URL,
   PRESENTATION_IO_MODEL,
   type PresentationPricing,
@@ -39,18 +45,26 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const TEST_BUCKET = "test-user-storages";
+const IMAGE_BYTES = Buffer.from("fake visual image bytes");
 const PRESENTATION_PRICING_CATEGORIES = [
   "tokens.input",
   "tokens.output",
 ] as const;
+const IMAGE_PRICING_CATEGORIES = [
+  "tokens.input.text",
+  "tokens.input.image",
+  "tokens.output.image",
+] as const;
 
 type PresentationPricingCategory =
   (typeof PRESENTATION_PRICING_CATEGORIES)[number];
+type ImagePricingCategory = (typeof IMAGE_PRICING_CATEGORIES)[number];
 
 interface PresentationFixture {
   readonly orgId: string;
   readonly userId: string;
   readonly insertedPricingCategories: readonly PresentationPricingCategory[];
+  readonly insertedImagePricingCategories: readonly ImagePricingCategory[];
 }
 
 interface PricingSnapshot {
@@ -112,6 +126,12 @@ function isPresentationPricingCategory(
   });
 }
 
+function isImagePricingCategory(value: string): value is ImagePricingCategory {
+  return IMAGE_PRICING_CATEGORIES.some((category) => {
+    return category === value;
+  });
+}
+
 function expectedCredits(
   usage: PresentationUsage,
   pricing: PresentationPricing,
@@ -119,6 +139,28 @@ function expectedCredits(
   const rows: readonly (readonly [PresentationPricingCategory, number])[] = [
     ["tokens.input", usage.inputTokens],
     ["tokens.output", usage.outputTokens],
+  ];
+
+  return rows.reduce((total, [category, quantity]) => {
+    if (quantity <= 0) {
+      return total;
+    }
+    const row = pricing.get(category);
+    if (!row) {
+      return total;
+    }
+    return total + Math.ceil((quantity * row.unitPrice) / row.unitSize);
+  }, 0);
+}
+
+function expectedImageCredits(
+  usage: ImageUsage,
+  pricing: ImagePricing,
+): number {
+  const rows: readonly (readonly [ImagePricingCategory, number])[] = [
+    ["tokens.input.text", usage.textInputTokens],
+    ["tokens.input.image", usage.imageInputTokens],
+    ["tokens.output.image", usage.imageOutputTokens],
   ];
 
   return rows.reduce((total, [category, quantity]) => {
@@ -186,6 +228,85 @@ async function ensurePresentationPricing(): Promise<{
       await writeDb.insert(usagePricing).values({
         kind: "model",
         provider: PRESENTATION_IO_MODEL,
+        category,
+        unitPrice: row.unitPrice,
+        unitSize: row.unitSize,
+      });
+      pricing.set(category, row);
+      insertedCategories.push(category);
+    }
+  }
+
+  return { pricing, insertedCategories };
+}
+
+async function ensureImagePricing(): Promise<{
+  readonly pricing: ImagePricing;
+  readonly insertedCategories: readonly ImagePricingCategory[];
+}> {
+  const writeDb = store.set(writeDb$);
+  const rows = await writeDb
+    .select({
+      category: usagePricing.category,
+      unitPrice: usagePricing.unitPrice,
+      unitSize: usagePricing.unitSize,
+    })
+    .from(usagePricing)
+    .where(
+      and(
+        eq(usagePricing.kind, "image"),
+        eq(usagePricing.provider, IMAGE_IO_MODEL),
+        inArray(usagePricing.category, [...IMAGE_PRICING_CATEGORIES]),
+      ),
+    );
+
+  const pricing = new Map<
+    ImagePricingCategory,
+    { readonly unitPrice: number; readonly unitSize: number }
+  >();
+  for (const row of rows) {
+    if (isImagePricingCategory(row.category)) {
+      pricing.set(row.category, {
+        unitPrice: row.unitPrice,
+        unitSize: row.unitSize,
+      });
+    }
+  }
+
+  const defaults: Readonly<
+    Record<
+      ImagePricingCategory,
+      {
+        readonly category: ImagePricingCategory;
+        readonly unitPrice: number;
+        readonly unitSize: number;
+      }
+    >
+  > = {
+    "tokens.input.text": {
+      category: "tokens.input.text",
+      unitPrice: 6000,
+      unitSize: 1_000_000,
+    },
+    "tokens.input.image": {
+      category: "tokens.input.image",
+      unitPrice: 9600,
+      unitSize: 1_000_000,
+    },
+    "tokens.output.image": {
+      category: "tokens.output.image",
+      unitPrice: 36_000,
+      unitSize: 1_000_000,
+    },
+  };
+
+  const insertedCategories: ImagePricingCategory[] = [];
+  for (const category of IMAGE_PRICING_CATEGORIES) {
+    if (!pricing.has(category)) {
+      const row = defaults[category];
+      await writeDb.insert(usagePricing).values({
+        kind: "image",
+        provider: IMAGE_IO_MODEL,
         category,
         unitPrice: row.unitPrice,
         unitSize: row.unitSize,
@@ -281,11 +402,15 @@ async function seedPresentationFixture(options: {
   const pricing = options.withPricing
     ? await ensurePresentationPricing()
     : { insertedCategories: [] };
+  const imagePricing = options.withPricing
+    ? await ensureImagePricing()
+    : { insertedCategories: [] };
 
   return {
     orgId,
     userId,
     insertedPricingCategories: pricing.insertedCategories,
+    insertedImagePricingCategories: imagePricing.insertedCategories,
   };
 }
 
@@ -325,6 +450,19 @@ async function deletePresentationFixture(
         ),
       );
   }
+  if (fixture.insertedImagePricingCategories.length > 0) {
+    await writeDb
+      .delete(usagePricing)
+      .where(
+        and(
+          eq(usagePricing.kind, "image"),
+          eq(usagePricing.provider, IMAGE_IO_MODEL),
+          inArray(usagePricing.category, [
+            ...fixture.insertedImagePricingCategories,
+          ]),
+        ),
+      );
+  }
 }
 
 function presentationDeckJson(): string {
@@ -340,6 +478,8 @@ function presentationDeckJson(): string {
         bullets: [],
         metric: "",
         note: "",
+        visualPrompt:
+          "A confident abstract bridge made of clean blue modular blocks over a quiet production grid",
       },
       {
         layout: "bullets",
@@ -353,6 +493,8 @@ function presentationDeckJson(): string {
         ],
         metric: "3 control points",
         note: "",
+        visualPrompt:
+          "Three clean control gates arranged along a precise migration path with subtle risk markers",
       },
       {
         layout: "two_column",
@@ -366,6 +508,8 @@ function presentationDeckJson(): string {
         ],
         metric: "",
         note: "",
+        visualPrompt:
+          "Layered rollout cohorts moving through a minimal technical pipeline, no text",
       },
       {
         layout: "closing",
@@ -379,6 +523,7 @@ function presentationDeckJson(): string {
         ],
         metric: "",
         note: "Generated test deck.",
+        visualPrompt: "",
       },
     ],
   });
@@ -446,6 +591,7 @@ describe("POST /api/zero/presentation-io/generate", () => {
   it("generates HTML presentation files for run-scoped zero tokens", async () => {
     const fixture = await track(seedPresentationFixture({ withPricing: true }));
     const { pricing } = await ensurePresentationPricing();
+    const { pricing: imagePricing } = await ensureImagePricing();
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -466,9 +612,19 @@ describe("POST /api/zero/presentation-io/generate", () => {
       outputTokens: 620,
       totalTokens: 2420,
     };
-    const creditsCharged = expectedCredits(usage, pricing);
+    const imageUsage: ImageUsage = {
+      textInputTokens: 900,
+      imageInputTokens: 120,
+      imageOutputTokens: 1800,
+      totalTokens: 2820,
+    };
+    const textCreditsCharged = expectedCredits(usage, pricing);
+    const imageCreditsCharged = expectedImageCredits(imageUsage, imagePricing);
+    const creditsCharged = textCreditsCharged + imageCreditsCharged;
     let observedAuthorization: string | null = null;
     let observedBody: unknown = null;
+    let observedImageAuthorization: string | null = null;
+    let observedImageBody: unknown = null;
     server.use(
       http.post(OPENAI_PRESENTATION_GENERATION_URL, async ({ request }) => {
         observedAuthorization = request.headers.get("authorization");
@@ -493,6 +649,32 @@ describe("POST /api/zero/presentation-io/generate", () => {
           },
         });
       }),
+      http.post(OPENAI_IMAGE_GENERATION_URL, async ({ request }) => {
+        observedImageAuthorization = request.headers.get("authorization");
+        observedImageBody = await request.json();
+        return HttpResponse.json({
+          data: [
+            {
+              b64_json: IMAGE_BYTES.toString("base64"),
+              revised_prompt: "A clean modular bridge over a production grid.",
+            },
+          ],
+          output_format: "webp",
+          size: "1536x864",
+          quality: "medium",
+          background: "opaque",
+          usage: {
+            total_tokens: imageUsage.totalTokens,
+            input_tokens:
+              imageUsage.textInputTokens + imageUsage.imageInputTokens,
+            output_tokens: imageUsage.imageOutputTokens,
+            input_tokens_details: {
+              text_tokens: imageUsage.textInputTokens,
+              image_tokens: imageUsage.imageInputTokens,
+            },
+          },
+        });
+      }),
     );
 
     const token = zeroToken({
@@ -508,6 +690,7 @@ describe("POST /api/zero/presentation-io/generate", () => {
         prompt: "API migration plan",
         style: "swiss",
         slideCount: 4,
+        imageCount: 1,
         theme: "ikb",
         audience: "engineering leadership",
         title: "API Migration Plan",
@@ -519,10 +702,13 @@ describe("POST /api/zero/presentation-io/generate", () => {
     expect(body).toMatchObject({
       contentType: "text/html",
       creditsCharged,
+      textCreditsCharged,
+      imageCreditsCharged,
       model: PRESENTATION_IO_MODEL,
       style: "swiss",
       theme: "ikb",
       slideCount: 4,
+      imageCount: 1,
       title: "API Migration Plan",
       responseId: "resp_presentation_test",
       usage,
@@ -541,6 +727,19 @@ describe("POST /api/zero/presentation-io/generate", () => {
         }),
       },
     });
+    expect(observedImageAuthorization).toBe("Bearer test-openai-key");
+    expect(observedImageBody).toMatchObject({
+      model: IMAGE_IO_MODEL,
+      n: 1,
+      size: "1536x864",
+      quality: "medium",
+      background: "opaque",
+      output_format: "webp",
+      moderation: "auto",
+    });
+    expect(observedImageBody).toMatchObject({
+      prompt: expect.stringContaining("API Migration Plan"),
+    });
 
     if (
       !(
@@ -549,22 +748,45 @@ describe("POST /api/zero/presentation-io/generate", () => {
         "id" in body &&
         "filename" in body &&
         "url" in body &&
-        "size" in body
+        "size" in body &&
+        "imageUrls" in body &&
+        Array.isArray(body.imageUrls) &&
+        body.imageUrls.length === 1
       )
     ) {
-      throw new Error("Expected presentation response id, filename, url, size");
+      throw new Error(
+        "Expected presentation response id, filename, url, size, and image URL",
+      );
     }
     const fileId = String(body.id);
     const filename = String(body.filename);
     const url = String(body.url);
+    const imageUrl = String(body.imageUrls[0]);
     expect(filename).toBe(`presentation-${fileId.slice(0, 8)}.html`);
     expect(url).toBe(
       `http://localhost:3000/f/${encodeURIComponent(
         fixture.userId.replace(/^user_/, ""),
       )}/${fileId}/${filename}`,
     );
+    expect(imageUrl).toContain("/f/");
+    expect(imageUrl).toContain("/image-");
+    expect(imageUrl).toContain(".webp");
 
-    const putInput = commandInput(context.mocks.s3.send.mock.calls[0]?.[0]);
+    const putInputs = context.mocks.s3.send.mock.calls.map((call) => {
+      return commandInput(call[0]);
+    });
+    const imagePutInput = putInputs.find((input) => {
+      return input.ContentType === "image/webp";
+    });
+    const putInput = putInputs.find((input) => {
+      return input.ContentType === "text/html";
+    });
+    if (!imagePutInput || !putInput) {
+      throw new Error("Expected image and presentation S3 uploads");
+    }
+    expect(imagePutInput.Bucket).toBe(TEST_BUCKET);
+    expect(imagePutInput.ContentType).toBe("image/webp");
+    expect(imagePutInput.Body).toStrictEqual(IMAGE_BYTES);
     expect(putInput.Bucket).toBe(TEST_BUCKET);
     expect(putInput.Key).toBe(
       `uploads/${fixture.userId}/${fileId}/${filename}`,
@@ -578,6 +800,8 @@ describe("POST /api/zero/presentation-io/generate", () => {
     const html = putBody.toString("utf8");
     expect(html).toContain("<!doctype html>");
     expect(html).toContain("<title>API Migration Plan</title>");
+    expect(html).toContain("<img");
+    expect(html).toContain(imageUrl);
     expect(html).toContain("Presentation controls");
     expect(Number(body.size)).toBe(putBody.byteLength);
 
@@ -604,6 +828,9 @@ describe("POST /api/zero/presentation-io/generate", () => {
       style: "swiss",
       theme: "ikb",
       slideCount: 4,
+      imageCount: 1,
+      imageUrls: [imageUrl],
+      imageIds: [expect.any(String)],
       title: "API Migration Plan",
       responseId: "resp_presentation_test",
       s3Key: `uploads/${fixture.userId}/${fileId}/${filename}`,
@@ -643,6 +870,49 @@ describe("POST /api/zero/presentation-io/generate", () => {
     const totalCredits = usageRows.reduce((total, row) => {
       return total + (row.creditsCharged ?? 0);
     }, 0);
-    expect(totalCredits).toBe(creditsCharged);
+    expect(totalCredits).toBe(textCreditsCharged);
+
+    const imageUsageRows = await store
+      .set(writeDb$)
+      .select()
+      .from(usageEvent)
+      .where(
+        and(
+          eq(usageEvent.orgId, fixture.orgId),
+          eq(usageEvent.userId, fixture.userId),
+          eq(usageEvent.kind, "image"),
+          eq(usageEvent.provider, IMAGE_IO_MODEL),
+        ),
+      );
+    expect(imageUsageRows).toHaveLength(3);
+    expect(imageUsageRows).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId,
+          category: "tokens.input.text",
+          quantity: imageUsage.textInputTokens,
+          status: "processed",
+          billingError: null,
+        }),
+        expect.objectContaining({
+          runId,
+          category: "tokens.input.image",
+          quantity: imageUsage.imageInputTokens,
+          status: "processed",
+          billingError: null,
+        }),
+        expect.objectContaining({
+          runId,
+          category: "tokens.output.image",
+          quantity: imageUsage.imageOutputTokens,
+          status: "processed",
+          billingError: null,
+        }),
+      ]),
+    );
+    const totalImageCredits = imageUsageRows.reduce((total, row) => {
+      return total + (row.creditsCharged ?? 0);
+    }, 0);
+    expect(totalImageCredits).toBe(imageCreditsCharged);
   });
 });

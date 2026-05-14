@@ -89,7 +89,7 @@ function buildAgentToolsPrompt(): string {
     "  - Pass `--json` for machine-readable output.",
     '- Built-in presentation generation (no connector setup, charges org credits): `zero built-in generate presentation --prompt "..."`. Returns a `/f/` HTML URL. Run `zero built-in generate presentation -h` for the canonical reference.',
     "  - Model: OpenAI `gpt-5.5` through the Responses API.",
-    "  - Supports `--style editorial|swiss`, `--slides`, `--theme`, `--audience`, and `--title`.",
+    "  - Supports `--style editorial|swiss`, `--slides`, `--images`, `--theme`, `--audience`, and `--title`.",
     "  - The output is a self-contained HTML presentation file uploaded to web chat artifacts.",
     "- Troubleshoot permission denials: `zero doctor permission-deny --help` to identify which permission covers a blocked request.",
     "- Request permission changes: `zero doctor permission-change --help` to enable or disable a permission.",
