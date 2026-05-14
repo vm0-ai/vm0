@@ -33,6 +33,7 @@ import {
   voiceChatTasks,
 } from "@vm0/db/schema/voice-chat";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { v5 as uuidv5 } from "uuid";
 
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -237,59 +238,13 @@ interface VoiceChatUsageCategoryRow {
   readonly quantity: number;
 }
 
-function parseUuidBytes(value: string): Buffer {
-  const hex = value.replaceAll("-", "");
-  if (hex.length !== 32) {
-    throw new Error("Invalid UUID namespace");
-  }
-  const bytes = Buffer.alloc(16);
-  for (let index = 0; index < 16; index += 1) {
-    const octet = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16);
-    if (Number.isNaN(octet)) {
-      throw new Error("Invalid UUID namespace");
-    }
-    bytes[index] = octet;
-  }
-  return bytes;
-}
-
-const VOICE_CHAT_USAGE_NAMESPACE_BYTES = parseUuidBytes(
-  VOICE_CHAT_USAGE_NAMESPACE,
-);
-
-function formatUuid(bytes: Buffer): string {
-  const hex = bytes.toString("hex");
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    hex.slice(12, 16),
-    hex.slice(16, 20),
-    hex.slice(20),
-  ].join("-");
-}
-
-function byteAt(bytes: Buffer, index: number): number {
-  const value = bytes[index];
-  if (value === undefined) {
-    throw new Error("Invalid UUID byte index");
-  }
-  return value;
-}
-
 function buildVoiceChatUsageIdempotencyKey(parts: {
   readonly voiceChatSessionId: string;
   readonly providerEventId: string;
   readonly category: string;
 }): string {
   const name = `${parts.voiceChatSessionId}:${parts.providerEventId}:${parts.category}`;
-  const hash = createHash("sha1")
-    .update(VOICE_CHAT_USAGE_NAMESPACE_BYTES)
-    .update(name)
-    .digest();
-  const bytes = Buffer.from(hash.subarray(0, 16));
-  bytes[6] = (byteAt(bytes, 6) & 0x0f) | 0x50;
-  bytes[8] = (byteAt(bytes, 8) & 0x3f) | 0x80;
-  return formatUuid(bytes);
+  return uuidv5(name, VOICE_CHAT_USAGE_NAMESPACE);
 }
 
 function openRouterRequestSignal(signal: AbortSignal): AbortSignal {
