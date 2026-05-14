@@ -124,7 +124,7 @@ impl FirecrackerFactory {
                 {
                     warn!(
                         error = %cleanup_error,
-                        "failed to cleanup owned netns pool after factory startup failure"
+                        "failed to cleanup owned netns pool after factory initialization failure"
                     );
                 }
                 return Err(SandboxError::Initialization {
@@ -637,7 +637,10 @@ mod tests {
 
     #[tokio::test]
     async fn destroy_uses_retained_netns_pool_after_shutdown() {
-        let pool = NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test());
+        let mut raw_pool = NetnsPool::inactive_for_test();
+        let mut lease = Some(raw_pool.lease_for_test("test-ns"));
+        raw_pool.track_lease_for_test(lease.as_ref().unwrap());
+        let pool = NetnsPoolHandle::new_for_test(raw_pool);
         let mut factory = test_factory_with_resources(
             pool.clone(),
             NetnsPoolOwnership::Shared,
@@ -649,7 +652,9 @@ mod tests {
             .netns_pool_for_destroy("sandbox")
             .expect("shutdown factory should retain destroy netns pool");
 
-        assert_eq!(selected.strong_count_for_test(), 3);
+        let _ = selected.release(&mut lease).await;
+
+        assert!(lease.is_none());
     }
 
     #[tokio::test]

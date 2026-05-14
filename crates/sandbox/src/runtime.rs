@@ -45,8 +45,8 @@ pub trait RuntimeProvider: Send + Sync {
     /// backend-specific shared resources while creating the runtime.
     ///
     /// On success, the returned runtime is ready for
-    /// [`SandboxRuntime::create_factory`] calls. This does not create, start, or
-    /// initialize any factory; factory startup remains part of
+    /// [`SandboxRuntime::create_factory`] calls. This does not create or
+    /// initialize any factory; factory initialization remains part of
     /// [`SandboxRuntime::create_factory`].
     ///
     /// The caller owns the returned runtime and is responsible for eventually
