@@ -612,6 +612,13 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn destroy_without_resources_or_retained_pool_has_no_release_authority() {
+        let factory = test_factory_without_resources();
+
+        assert!(factory.netns_pool_for_destroy("sandbox").is_none());
+    }
+
+    #[tokio::test]
     async fn create_rejects_factory_after_shutdown_even_with_retained_destroy_pool() {
         let mut factory = test_factory_with_resources(
             NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test()),
@@ -633,6 +640,21 @@ mod tests {
         };
 
         assert_factory_invalid_state(err, "shutdown");
+    }
+
+    #[tokio::test]
+    async fn shutdown_is_idempotent_after_resources_are_taken() {
+        let mut factory = test_factory_with_resources(
+            NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test()),
+            NetnsPoolOwnership::Shared,
+            test_leak_cleaner(),
+        );
+
+        factory.shutdown().await;
+        factory.shutdown().await;
+
+        assert!(factory.resources.is_none());
+        assert!(factory.shutdown_netns_pool.is_some());
     }
 
     #[tokio::test]
