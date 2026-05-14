@@ -66,11 +66,11 @@ async function completeOnboarding(page: import("@playwright/test").Page) {
     await page.getByRole("button", { name: "Next" }).click();
   }
 
-  // Step 2: choose tools. This is the terminal step — "Continue in web"
+  // Step 2: choose tools. This is the terminal step — "Get Started"
   // finishes onboarding and navigates into the web chat. The step 1 → step 2
   // transition runs the eager-init API, so allow plenty of time.
   const chooseTools = page.getByTestId("onboarding-step-select-connectors");
   if (await tryAwaitVisible(chooseTools, 15_000)) {
-    await page.getByRole("button", { name: "Continue in web" }).click();
+    await page.getByRole("button", { name: "Get Started" }).click();
   }
 }
