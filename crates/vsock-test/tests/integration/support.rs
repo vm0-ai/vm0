@@ -1,15 +1,16 @@
 use std::io;
 use std::ops::Deref;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::Once;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use vsock_host::VsockHost;
 
 static WRITE_FILE_HELPER: Once = Once::new();
+static TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 const WRITE_FILE_HELPER_BIN: &str = env!("CARGO_BIN_EXE_guest-write-file-test-helper");
 
 fn install_write_file_helper() {
@@ -52,6 +53,15 @@ fn cleanup_guest_and_dir(dir: &Path, guest: &mut Option<JoinHandle<io::Result<()
     let _ = std::fs::remove_dir_all(dir);
 }
 
+fn unique_temp_dir(prefix: &str) -> PathBuf {
+    let id = TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "{prefix}-{}-{:?}-{id}",
+        std::process::id(),
+        std::thread::current().id()
+    ))
+}
+
 pub(crate) fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
@@ -86,9 +96,7 @@ impl Harness {
     pub(crate) async fn new() -> Self {
         install_write_file_helper();
 
-        let dir = std::env::temp_dir()
-            .join(format!("vsock-test-{}", std::process::id()))
-            .join(format!("{:?}", std::thread::current().id()));
+        let dir = unique_temp_dir("vsock-test");
         std::fs::create_dir_all(&dir).expect("failed to create temp dir");
         let base_path = dir.join("vsock").to_string_lossy().to_string();
         let listener_path = format!("{base_path}_1000");
@@ -154,9 +162,7 @@ impl Drop for Harness {
 
 #[test]
 fn cleanup_guest_and_dir_joins_guest_and_removes_dir() {
-    let dir = std::env::temp_dir()
-        .join(format!("vsock-test-cleanup-{}", std::process::id()))
-        .join(format!("{:?}", std::thread::current().id()));
+    let dir = unique_temp_dir("vsock-test-cleanup");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("create temp dir");
 
