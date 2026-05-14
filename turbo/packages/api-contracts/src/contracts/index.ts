@@ -875,6 +875,10 @@ export {
   type ZeroRemoteAgentConnectorContract,
 } from "./zero-connectors";
 export {
+  zeroCliAuthStripeContract,
+  type ZeroCliAuthStripeContract,
+} from "./zero-connectors-cli-auth-stripe";
+export {
   zeroOrgContract,
   zeroOrgLeaveContract,
   zeroOrgDeleteContract,

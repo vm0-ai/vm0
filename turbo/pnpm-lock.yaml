@@ -207,6 +207,9 @@ importers:
       signal-timers:
         specifier: ^1.0.4
         version: 1.0.4
+      smol-toml:
+        specifier: '>=1.6.1'
+        version: 1.6.1
       stripe:
         specifier: ^20.4.1
         version: 20.4.1(@types/node@24.3.0)

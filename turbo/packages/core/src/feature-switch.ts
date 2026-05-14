@@ -141,10 +141,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.StripeCliAuth]: {
+  [FeatureSwitchKey.CliAuthStripe]: {
     maintainer: "liangyou@vm0.ai",
     description:
-      "Gate Stripe-specific CLI auth UI and API surfaces. Stripe CLI auth consumers should also require CliAuth.",
+      "Gate Stripe-specific CLI auth UI and API surfaces. CLI auth for Stripe consumers should also require CliAuth.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

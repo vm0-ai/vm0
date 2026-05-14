@@ -65,6 +65,7 @@ import { zeroChatThreadRoutes } from "./routes/zero-chat-threads";
 import { zeroChatMessagesRoutes } from "./routes/zero-chat-messages";
 import { zeroComposesRoutes } from "./routes/zero-composes";
 import { zeroComputerUseRoutes } from "./routes/zero-computer-use";
+import { zeroCliAuthStripeRoutes } from "./routes/zero-connectors-cli-auth-stripe";
 import { zeroConnectorsRoutes } from "./routes/zero-connectors";
 import { zeroCustomConnectorsRoutes } from "./routes/zero-custom-connectors";
 import { zeroDefaultAgentRoutes } from "./routes/zero-default-agent";
@@ -220,6 +221,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroChatMessagesRoutes,
   ...zeroComposesRoutes,
   ...zeroComputerUseRoutes,
+  ...zeroCliAuthStripeRoutes,
   ...zeroConnectorsRoutes,
   ...zeroCustomConnectorsRoutes,
   ...zeroDefaultAgentRoutes,

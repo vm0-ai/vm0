@@ -70,7 +70,7 @@ describe("isFeatureEnabled", () => {
 
   it("should enable CLI auth switches for staff orgs only by default", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.CliAuth, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.StripeCliAuth, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, {})).toBe(false);
 
     expect(
       isFeatureEnabled(FeatureSwitchKey.CliAuth, {
@@ -78,7 +78,7 @@ describe("isFeatureEnabled", () => {
       }),
     ).toBe(true);
     expect(
-      isFeatureEnabled(FeatureSwitchKey.StripeCliAuth, {
+      isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, {
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
     ).toBe(true);
@@ -89,7 +89,7 @@ describe("isFeatureEnabled", () => {
       }),
     ).toBe(false);
     expect(
-      isFeatureEnabled(FeatureSwitchKey.StripeCliAuth, {
+      isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, {
         orgId: "org_nonexistent",
       }),
     ).toBe(false);
@@ -200,19 +200,19 @@ describe("overrides", () => {
       }),
     ).toBe(true);
     expect(
-      isFeatureEnabled(FeatureSwitchKey.StripeCliAuth, {
-        overrides: { [FeatureSwitchKey.StripeCliAuth]: true },
+      isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, {
+        overrides: { [FeatureSwitchKey.CliAuthStripe]: true },
       }),
     ).toBe(true);
 
     expect(
-      isFeatureEnabled(FeatureSwitchKey.StripeCliAuth, {
+      isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, {
         overrides: { [FeatureSwitchKey.CliAuth]: true },
       }),
     ).toBe(false);
     expect(
       isFeatureEnabled(FeatureSwitchKey.CliAuth, {
-        overrides: { [FeatureSwitchKey.StripeCliAuth]: true },
+        overrides: { [FeatureSwitchKey.CliAuthStripe]: true },
       }),
     ).toBe(false);
   });
