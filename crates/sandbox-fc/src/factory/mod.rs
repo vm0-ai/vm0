@@ -604,7 +604,7 @@ mod tests {
         };
 
         let err = match factory.create(config).await {
-            Ok(_) => panic!("create should fail before startup"),
+            Ok(_) => panic!("create should fail without factory resources"),
             Err(err) => err,
         };
 
