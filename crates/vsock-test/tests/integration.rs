@@ -1121,6 +1121,41 @@ async fn test_spawn_watch_stdout_streaming() {
     h.finish();
 }
 
+/// Streaming stdout must be observable before the process reaches exit.
+#[tokio::test]
+async fn test_spawn_watch_stdout_streaming_delivers_before_exit() {
+    let h = Harness::new().await;
+
+    let release_file = h.dir.join("release-streaming-process");
+    let command = format!(
+        "printf 'before_exit\\n'; while [ ! -e {release} ]; do sleep 0.01; done",
+        release = shell_quote_path(&release_file)
+    );
+
+    let mut handle = h
+        .spawn_watch(&command, 5000, &[], false, true, None)
+        .await
+        .expect("spawn_watch failed");
+    let mut stdout_rx = handle.take_stdout_receiver().unwrap();
+
+    let chunk = tokio::time::timeout(Duration::from_secs(2), stdout_rx.recv())
+        .await
+        .expect("streaming stdout was not delivered before process exit")
+        .expect("stdout stream closed before first chunk");
+    assert_eq!(String::from_utf8_lossy(&chunk).trim(), "before_exit");
+
+    std::fs::write(&release_file, "").expect("release streaming process");
+    let event = h
+        .wait_spawn(handle, Duration::from_secs(5))
+        .await
+        .expect("wait failed");
+
+    assert_eq!(event.exit_code, 0);
+    assert!(event.stdout.is_empty());
+
+    h.finish();
+}
+
 /// Streaming can be enabled without a guest-side tee file.
 #[tokio::test]
 async fn test_spawn_watch_stdout_stream_only() {

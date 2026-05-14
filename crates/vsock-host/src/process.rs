@@ -19,7 +19,6 @@ pub struct ProcessExitEvent {
 }
 
 struct SpawnOperation {
-    pid: Option<u32>,
     stdout_tx: Option<mpsc::UnboundedSender<Vec<u8>>>,
     exit_tx: oneshot::Sender<io::Result<ProcessExitEvent>>,
 }
@@ -184,18 +183,6 @@ fn remove_spawn_operation(shared: &Arc<Shared>, seq: u32) {
     }
 }
 
-pub(crate) fn record_spawn_watch_result(
-    process: &mut ConnectedProcessState,
-    seq: u32,
-    payload: &[u8],
-) {
-    if let Ok(pid) = vsock_proto::decode_spawn_watch_result(payload)
-        && let Some(operation) = process.operation_mut(seq)
-    {
-        operation.pid = Some(pid);
-    }
-}
-
 pub(crate) fn dispatch_stdout_chunk(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
     let active = {
         let guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -308,14 +295,7 @@ pub(crate) async fn spawn_watch_on_shared(
                 ));
             }
             ConnectionState::Connected { process, .. } => {
-                process.insert_operation(
-                    seq,
-                    SpawnOperation {
-                        pid: None,
-                        stdout_tx,
-                        exit_tx,
-                    },
-                );
+                process.insert_operation(seq, SpawnOperation { stdout_tx, exit_tx });
             }
         }
     }
