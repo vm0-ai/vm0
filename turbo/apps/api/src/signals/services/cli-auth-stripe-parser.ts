@@ -24,7 +24,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function stripeCliAuthPathMatches(url: URL, label: "browser" | "completion") {
   if (label === "browser") {
-    return url.pathname === "/stripecli/confirm_auth";
+    return (
+      url.pathname === "/stripecli/confirm_auth" ||
+      url.pathname.startsWith("/stripecli/confirm_auth/")
+    );
   }
   return (
     url.pathname === "/stripecli/auth" ||
@@ -52,9 +55,8 @@ function validateStripeCliAuthUrl(
 }
 
 function extractStripeCliAuthPollUrl(nextStep: string): string {
-  const quoted = /--complete\s+(['"])(?<url>https:\/\/[^'"]+)\1/.exec(nextStep);
-  const unquoted =
-    quoted ?? /--complete\s+(?<url>https:\/\/\S+)/.exec(nextStep);
+  const quoted = /--complete\s+(['"])(?<url>[^'"]+)\1/.exec(nextStep);
+  const unquoted = quoted ?? /--complete\s+(?<url>\S+)/.exec(nextStep);
   const pollUrl = unquoted?.groups?.url;
   if (!pollUrl) {
     throw new Error("Stripe CLI response did not include a completion URL");

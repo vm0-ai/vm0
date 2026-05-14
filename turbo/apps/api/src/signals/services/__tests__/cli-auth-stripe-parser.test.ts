@@ -132,7 +132,17 @@ describe("parseStripeCliAuthStartOutput", () => {
             "stripe login --complete http://dashboard.stripe.com/stripecli/auth/poll-token",
         }),
       );
-    }).toThrow("Stripe CLI response did not include a completion URL");
+    }).toThrow("Stripe CLI response included an unexpected completion URL");
+  });
+
+  it("rejects malformed completion URL arguments", () => {
+    expect(() => {
+      parseStripeCliAuthStartOutput(
+        startOutput({
+          nextStep: "stripe login --complete not-a-url",
+        }),
+      );
+    }).toThrow("Stripe CLI response included an invalid completion URL");
   });
 
   it("rejects non-Stripe completion URL hosts", () => {
@@ -173,6 +183,17 @@ describe("parseStripeCliAuthStartOutput", () => {
         startOutput({ browserUrl: "https://dashboard.stripe.com/settings" }),
       );
     }).toThrow("Stripe CLI response included an unexpected browser URL");
+  });
+
+  it("accepts Stripe dashboard browser path children", () => {
+    const browserUrl =
+      "https://dashboard.stripe.com/stripecli/confirm_auth/start-token";
+
+    expect(
+      parseStripeCliAuthStartOutput(startOutput({ browserUrl })),
+    ).toMatchObject({
+      browserUrl,
+    });
   });
 });
 
