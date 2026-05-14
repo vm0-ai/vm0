@@ -20,8 +20,6 @@
 //!   @stuck-tool-closed-stdout-deaf
 //!                             - Same, but closes stdout before hanging
 //!   @orphan-pipe              - Emit events, spawn child holding stdout, then exit
-//!   @zero-turn-no-history     - Emit successful result with num_turns=0
-//!                               without writing session history
 //!   @hang-after-result        - Emit result event, then hang the process
 //!                               (SIGTERM kills it → exits with 143; tests
 //!                               the SigtermPending→Done reap path)
@@ -146,11 +144,11 @@ fn create_session_history(session_id: &str, cwd: &str) -> Option<String> {
     build_session_history_path(session_id, cwd, &home)
 }
 
-/// Emit the init + result JSONL pair shared by post-result mock test prefixes.
-///
-/// Caller decides whether to write the session history file and which
-/// post-result behavior follows (hang / exit / ignore SIGTERM / orphan stdout).
-fn emit_result_pair(num_turns: u64, write_history: bool) {
+/// Emit the init + result JSONL pair shared by post-result mock test
+/// prefixes, flush stdout so guest-agent sees them, and write the
+/// session history checkpoint file. Caller decides which post-result
+/// behavior follows (hang / exit / ignore SIGTERM / orphan stdout).
+fn emit_post_result_pair() {
     let session_id = generate_session_id();
     let cwd = std::env::current_dir()
         .map(|p| p.to_string_lossy().into_owned())
@@ -172,15 +170,14 @@ fn emit_result_pair(num_turns: u64, write_history: bool) {
         "session_id": session_id,
         "is_error": false,
         "duration_ms": 100,
-        "num_turns": num_turns,
+        "num_turns": 1,
         "result": "Done.",
         "total_cost_usd": 0,
         "usage": {"input_tokens": 0, "output_tokens": 0}
     });
     println!("{result_event}");
 
-    if write_history
-        && let Some(path) = create_session_history(&session_id, &cwd)
+    if let Some(path) = create_session_history(&session_id, &cwd)
         && let Ok(mut file) = std::fs::File::create(&path)
     {
         let _ = writeln!(file, "{init_event}");
@@ -188,14 +185,6 @@ fn emit_result_pair(num_turns: u64, write_history: bool) {
     }
 
     let _ = std::io::stdout().flush();
-}
-
-fn emit_post_result_pair() {
-    emit_result_pair(1, true);
-}
-
-fn emit_zero_turn_no_history_pair() {
-    emit_result_pair(0, false);
 }
 
 /// Execute prompt in text mode: inherited stdio, propagate exit code.
@@ -442,15 +431,6 @@ fn main() -> ExitCode {
             // Spawn a child after flushing the completed stream. It inherits
             // stdout and keeps the pipe open after this process exits.
             let _ = Command::new("sleep").arg("3600").spawn();
-        }
-        return ExitCode::SUCCESS;
-    }
-
-    // Special test prefix: @zero-turn-no-history — emit a successful Claude
-    // result with num_turns=0 but no backing session history file.
-    if parsed.prompt.starts_with("@zero-turn-no-history") {
-        if parsed.output_format == "stream-json" {
-            emit_zero_turn_no_history_pair();
         }
         return ExitCode::SUCCESS;
     }
