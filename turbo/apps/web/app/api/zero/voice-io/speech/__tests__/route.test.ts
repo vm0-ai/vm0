@@ -369,7 +369,15 @@ describe("POST /api/zero/voice-io/speech", () => {
     expect(body.durationSeconds).toBe(10);
     expect(body.creditsCharged).toBe(4);
     expect(await getOrgCredits(orgId)).toBe(996);
-    expect(await findTestUsageEventsByRunId(runId)).toEqual([]);
+    expect(await findTestUsageEventsByRunId(runId)).toEqual([
+      expect.objectContaining({
+        kind: "audio",
+        provider: "gpt-4o-mini-tts",
+        category: "output_audio_seconds",
+        quantity: 10,
+        status: "processed",
+      }),
+    ]);
   });
 
   it("returns 500 when OpenAI speech generation fails", async () => {
