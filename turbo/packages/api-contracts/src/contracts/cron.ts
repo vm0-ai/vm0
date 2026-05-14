@@ -22,6 +22,8 @@ const cleanupResponseSchema = z.object({
   cleaned: z.number(),
   errors: z.number(),
   results: z.array(cleanupResultSchema),
+  exportJobsCleaned: z.number(),
+  exportJobsStuck: z.number(),
 });
 
 /**

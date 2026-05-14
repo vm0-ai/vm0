@@ -1,0 +1,25 @@
+import { cronCleanupSandboxesContract } from "@vm0/api-contracts/contracts/cron";
+import { command } from "ccstate";
+
+import type { RouteEntry } from "../route";
+import { cleanupSandboxes$ } from "../services/cron-cleanup-sandboxes.service";
+import { cronUnauthorized, hasValidCronSecret } from "./cron-auth";
+
+const cleanupSandboxesRoute$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    if (!hasValidCronSecret(get)) {
+      return cronUnauthorized();
+    }
+
+    const body = await set(cleanupSandboxes$, signal);
+    signal.throwIfAborted();
+    return { status: 200 as const, body };
+  },
+);
+
+export const cronCleanupSandboxesRoutes: readonly RouteEntry[] = [
+  {
+    route: cronCleanupSandboxesContract.cleanup,
+    handler: cleanupSandboxesRoute$,
+  },
+];

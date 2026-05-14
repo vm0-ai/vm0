@@ -21,6 +21,7 @@ import { connectorsTypeAuthorizeRoutes } from "./routes/connectors-type-authoriz
 import { connectorsTypeCallbackRoutes } from "./routes/connectors-type-callback";
 import { cronAggregateInsightsRoutes } from "./routes/cron-aggregate-insights";
 import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
+import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
 import { cronProcessUsageEventsRoutes } from "./routes/cron-process-usage-events";
 import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-billing-entitlements";
@@ -217,6 +218,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...connectorsTypeCallbackRoutes,
   ...cronAggregateInsightsRoutes,
   ...cronAggregateUsageRoutes,
+  ...cronCleanupSandboxesRoutes,
   ...cronDrainEmailOutboxRoutes,
   ...cronProcessUsageEventsRoutes,
   ...cronReconcileBillingEntitlementsRoutes,
