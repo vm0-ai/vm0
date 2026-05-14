@@ -269,7 +269,13 @@ describe("CLI auth for Stripe connector routes", () => {
       runtime: "node24",
       timeoutMs: 15 * 60 * 1000,
     });
-    expect(calls.run[0]?.options.args?.[1]).toContain("--non-interactive");
+    const startScript = calls.run[0]?.options.args?.[1] ?? "";
+    expect(startScript).toContain("--non-interactive");
+    expect(startScript).toContain(
+      "releases/download/v1.40.9/stripe_1.40.9_linux_x86_64.tar.gz",
+    );
+    expect(startScript).toContain("sha256sum -c");
+    expect(startScript).not.toContain("releases/latest");
     expect(calls.stop).toHaveLength(0);
   });
 

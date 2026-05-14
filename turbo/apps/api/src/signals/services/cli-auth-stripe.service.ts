@@ -20,6 +20,9 @@ import { setUserSecret$ } from "./zero-user-data.service";
 import { decryptSecretValue, encryptSecretValue } from "./crypto.utils";
 
 const CLI_AUTH_STRIPE_RUNTIME = "node24";
+const CLI_AUTH_STRIPE_VERSION = "1.40.9";
+const CLI_AUTH_STRIPE_ARCHIVE = `stripe_${CLI_AUTH_STRIPE_VERSION}_linux_x86_64.tar.gz`;
+const CLI_AUTH_STRIPE_RELEASE_URL = `https://github.com/stripe/stripe-cli/releases/download/v${CLI_AUTH_STRIPE_VERSION}`;
 const CLI_AUTH_STRIPE_TIMEOUT_MS = 15 * 60 * 1000;
 const CLI_AUTH_STRIPE_SESSION_TTL_SECONDS = 10 * 60;
 const CLI_AUTH_STRIPE_POLL_INTERVAL_SECONDS = 5;
@@ -103,30 +106,11 @@ BIN_DIR="${CLI_AUTH_STRIPE_BIN_DIR}"
 CONFIG_HOME="${CLI_AUTH_STRIPE_CONFIG_HOME}"
 mkdir -p "$BIN_DIR" "$CONFIG_HOME"
 if [ ! -x "$BIN_DIR/stripe" ]; then
-  release_url="$(node - <<'NODE'
-(async () => {
-  const response = await fetch("https://api.github.com/repos/stripe/stripe-cli/releases/latest", {
-    headers: { "user-agent": "vm0-cli-auth" },
-  });
-  if (!response.ok) {
-    throw new Error("Stripe CLI release lookup failed with HTTP " + response.status);
-  }
-  const release = await response.json();
-  const asset = release.assets.find((candidate) => {
-    return /^stripe_[^/]+_linux_x86_64\.tar\.gz$/.test(candidate.name);
-  });
-  if (!asset) {
-    throw new Error("Stripe CLI linux_x86_64 release asset was not found");
-  }
-  process.stdout.write(asset.browser_download_url);
-})().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-});
-NODE
-)"
-  curl -fsSL "$release_url" -o /tmp/stripe-cli.tar.gz
-  tar -xzf /tmp/stripe-cli.tar.gz -C "$BIN_DIR" stripe
+  curl -fsSL "${CLI_AUTH_STRIPE_RELEASE_URL}/${CLI_AUTH_STRIPE_ARCHIVE}" -o "/tmp/${CLI_AUTH_STRIPE_ARCHIVE}"
+  curl -fsSL "${CLI_AUTH_STRIPE_RELEASE_URL}/stripe-linux-checksums.txt" -o /tmp/stripe-linux-checksums.txt
+  grep " ${CLI_AUTH_STRIPE_ARCHIVE}$" /tmp/stripe-linux-checksums.txt > /tmp/stripe-cli.sha256
+  sha256sum -c /tmp/stripe-cli.sha256
+  tar -xzf "/tmp/${CLI_AUTH_STRIPE_ARCHIVE}" -C "$BIN_DIR" stripe
   chmod +x "$BIN_DIR/stripe"
 fi
 export PATH="$BIN_DIR:$PATH"
