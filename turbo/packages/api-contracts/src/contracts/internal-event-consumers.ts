@@ -61,6 +61,21 @@ export const internalEventConsumerTelegramTypingContract = c.router({
   },
 });
 
+export const internalEventConsumerAgentPhoneTypingContract = c.router({
+  refresh: {
+    method: "POST",
+    path: "/api/internal/event-consumers/agentphone-typing",
+    headers: eventConsumerHeadersSchema,
+    body: z.object({ runId: z.string() }).passthrough(),
+    responses: {
+      200: z.object({ scheduled: z.literal(true) }),
+      401: eventConsumerUnauthorizedSchema,
+    },
+    summary:
+      "Refresh AgentPhone typing indicators for all pending iMessage callbacks of a run",
+  },
+});
+
 export const internalEventConsumerAxiomContract = c.router({
   ingest: {
     method: "POST",
@@ -112,6 +127,9 @@ export type InternalEventConsumerChatAssistantContract =
 
 export type InternalEventConsumerTelegramTypingContract =
   typeof internalEventConsumerTelegramTypingContract;
+
+export type InternalEventConsumerAgentPhoneTypingContract =
+  typeof internalEventConsumerAgentPhoneTypingContract;
 
 export type InternalEventConsumerVoiceChatContract =
   typeof internalEventConsumerVoiceChatContract;

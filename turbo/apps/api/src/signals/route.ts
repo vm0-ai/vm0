@@ -36,6 +36,7 @@ import { internalCallbacksScheduleRoutes } from "./routes/internal-callbacks-sch
 import { internalCallbacksSlackOrgRoutes } from "./routes/internal-callbacks-slack-org";
 import { internalCallbacksTelegramRoutes } from "./routes/internal-callbacks-telegram";
 import { internalCallbacksVoiceChatRoutes } from "./routes/internal-callbacks-voice-chat";
+import { internalEventConsumerAgentPhoneTypingRoutes } from "./routes/internal-event-consumers-agentphone-typing";
 import { internalEventConsumerAxiomRoutes } from "./routes/internal-event-consumers-axiom";
 import { internalEventConsumerChatAssistantRoutes } from "./routes/internal-event-consumers-chat-assistant";
 import { internalEventConsumerTelegramTypingRoutes } from "./routes/internal-event-consumers-telegram-typing";
@@ -47,6 +48,7 @@ import { usageRoutes } from "./routes/usage";
 import { userExportRoutes } from "./routes/user-export";
 import { vercelSandboxSmokeRoutes } from "./routes/vercel-sandbox-smoke";
 import { webhooksAgentCheckpointsRoutes } from "./routes/webhooks-agent-checkpoints";
+import { webhooksAgentEventsRoutes } from "./routes/webhooks-agent-events";
 import { webhooksAgentHealthUsageTelemetryRoutes } from "./routes/webhooks-agent-health-usage-telemetry";
 import { webhooksAgentStorageRoutes } from "./routes/webhooks-agent-storage";
 import { webhooksClerkRoutes } from "./routes/webhooks-clerk";
@@ -177,6 +179,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...internalCallbacksSlackOrgRoutes,
   ...internalCallbacksTelegramRoutes,
   ...internalCallbacksVoiceChatRoutes,
+  ...internalEventConsumerAgentPhoneTypingRoutes,
   ...internalEventConsumerAxiomRoutes,
   ...internalEventConsumerChatAssistantRoutes,
   ...internalEventConsumerTelegramTypingRoutes,
@@ -190,6 +193,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksStripeRoutes,
   ...webhooksAgentHealthUsageTelemetryRoutes,
   ...webhooksAgentCheckpointsRoutes,
+  ...webhooksAgentEventsRoutes,
   ...webhooksAgentStorageRoutes,
   ...agentCheckpointsRoutes,
   ...agentComposesReadRoutes,
