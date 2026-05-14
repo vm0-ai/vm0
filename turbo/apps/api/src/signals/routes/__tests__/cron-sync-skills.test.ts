@@ -387,6 +387,32 @@ describe("GET /api/cron/sync-skills", () => {
     });
   });
 
+  it("excludes repository directories without a SKILL.md file", async () => {
+    const commitSha = newCommitSha();
+    const nonSkillDirectory = {
+      name: `${TEST_SKILL_PREFIX}-no-skill-md`,
+      files: [{ path: "README.md", content: "Not a skill." }],
+    };
+    setupMswHandlers(
+      commitSha,
+      createFullTarball([
+        EXTRA_SKILLS.alphaSkill,
+        EXTRA_SKILLS.betaSkill,
+        nonSkillDirectory,
+      ]),
+    );
+
+    const response = await accept(
+      apiClient().sync({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body.total).toBe(ALL_SEED_SKILL_NAMES.length + 2);
+    await expect(
+      findSkillByUrl(testSkillUrl(nonSkillDirectory.name)),
+    ).resolves.toBeNull();
+  });
+
   it("skips malformed skill frontmatter and syncs other skills", async () => {
     const commitSha = newCommitSha();
     const badSkill = {
@@ -548,5 +574,48 @@ describe("GET /api/cron/sync-skills", () => {
     await expect(
       findSkillByUrl(testSkillUrl(EXTRA_SKILLS.betaSkill.name)),
     ).resolves.toBeNull();
+  });
+
+  it("logs when seed skills are missing from the source repository", async () => {
+    mockEnv("AXIOM_TOKEN_TELEMETRY", "test-token");
+    mockEnv("AXIOM_DATASET_SUFFIX", "dev");
+    const omittedSkills = SEED_SKILLS.slice(0, 2);
+    const omittedSkillSet = new Set(omittedSkills);
+    const keptSkills = ALL_SEED_SKILL_NAMES.filter((name) => {
+      return !omittedSkillSet.has(name);
+    });
+    const commitSha = newCommitSha();
+    setupMswHandlers(
+      commitSha,
+      createMockTarball(
+        keptSkills.map((name) => {
+          return {
+            name,
+            files: [
+              {
+                path: "SKILL.md",
+                content: `---\nname: ${name}\ndescription: ${name} skill\n---\n\n# ${name}\n`,
+              },
+            ],
+          };
+        }),
+      ),
+    );
+
+    await accept(apiClient().sync({ headers: cronHeaders() }), [200]);
+
+    expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
+      expect.stringContaining("SEED_SKILLS references skills not found"),
+      expect.objectContaining({
+        context: "skills:sync",
+        missingSkills: expect.arrayContaining([
+          expect.stringContaining("vm0-ai/vm0-skills"),
+        ]),
+      }),
+    );
+
+    const restoreCommitSha = newCommitSha();
+    setupMswHandlers(restoreCommitSha, createFullTarball([]));
+    await accept(apiClient().sync({ headers: cronHeaders() }), [200]);
   });
 });
