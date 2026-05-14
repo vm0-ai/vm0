@@ -624,6 +624,27 @@ mod tests {
     }
 
     #[test]
+    fn dropping_in_guest_or_cancelling_operation_marks_dirty() {
+        for enter_cancelling in [false, true] {
+            let coordinator = ParkCoordinator::new();
+            let mut lease = coordinator
+                .reserve_operation()
+                .expect("reserve operation before possible write");
+
+            assert!(lease.mark_writing().is_ok());
+            assert!(lease.mark_in_guest().is_ok());
+            if enter_cancelling {
+                assert!(lease.mark_cancelling().is_ok());
+            }
+
+            drop(lease);
+
+            assert_dirty_state(&coordinator);
+            assert_eq!(operation_registry_len(&coordinator), 1);
+        }
+    }
+
+    #[test]
     fn active_operation_returns_busy_and_reopens_gate() {
         let coordinator = ParkCoordinator::new();
         let mut lease = coordinator.reserve_operation().expect("reserve operation");
@@ -759,6 +780,34 @@ mod tests {
     }
 
     #[test]
+    fn dirty_ready_or_parked_sandbox_cannot_continue_park_lifecycle() {
+        let ready_coordinator = ParkCoordinator::new();
+        let ready_attempt = begin_attempt(&ready_coordinator);
+        complete_attempt(&ready_coordinator, &ready_attempt);
+
+        ready_coordinator.mark_dirty(DirtyReason::new("post-prepare failure"));
+        assert_eq!(
+            ready_coordinator.mark_parked(&ready_attempt),
+            Err(PrepareParkError::Dirty {
+                reason: DirtyReason::new("post-prepare failure")
+            })
+        );
+
+        let parked_coordinator = ParkCoordinator::new();
+        let parked_attempt = begin_attempt(&parked_coordinator);
+        complete_attempt(&parked_coordinator, &parked_attempt);
+        assert!(parked_coordinator.mark_parked(&parked_attempt).is_ok());
+
+        parked_coordinator.mark_dirty(DirtyReason::new("unpark unsafe"));
+        assert_eq!(
+            parked_coordinator.reopen_after_unpark(),
+            Err(PrepareParkError::Dirty {
+                reason: DirtyReason::new("unpark unsafe")
+            })
+        );
+    }
+
+    #[test]
     fn invalid_ready_and_parked_transitions_fail() {
         let coordinator = ParkCoordinator::new();
         let attempt = ParkAttempt {
@@ -794,6 +843,31 @@ mod tests {
             coordinator.state(),
             CoordinatorState::ClosingForPark { attempt_id } if attempt_id == current.id
         ));
+    }
+
+    #[test]
+    fn dirty_during_prepare_blocks_completion_and_abort() {
+        let coordinator = ParkCoordinator::new();
+        let attempt = begin_attempt(&coordinator);
+
+        coordinator.mark_dirty(DirtyReason::new("driver shutdown"));
+
+        assert_eq!(
+            coordinator.complete_prepare_park(&attempt, PrepareParkEvidence::AgentQuiesced),
+            Err(PrepareParkError::Dirty {
+                reason: DirtyReason::new("driver shutdown")
+            })
+        );
+        assert_eq!(
+            coordinator.abort_prepare_park(&attempt),
+            Err(PrepareParkError::Dirty {
+                reason: DirtyReason::new("driver shutdown")
+            })
+        );
+        assert_eq!(
+            dirty_reason(&coordinator),
+            DirtyReason::new("driver shutdown")
+        );
     }
 
     #[test]
