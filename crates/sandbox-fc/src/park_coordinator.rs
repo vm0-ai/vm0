@@ -641,6 +641,26 @@ mod tests {
     }
 
     #[test]
+    fn failed_reserved_complete_releases_without_dirtying() {
+        let coordinator = ParkCoordinator::new();
+        let lease = coordinator.reserve_operation().expect("reserve operation");
+        assert_eq!(operation_registry_len(&coordinator), 1);
+
+        assert!(matches!(
+            lease.complete(),
+            Err(OperationTransitionError::InvalidTransition {
+                from: OperationLiveness::Reserved,
+                to: OperationLiveness::Terminal,
+                ..
+            })
+        ));
+
+        assert_eq!(coordinator.active_operation_count(), 0);
+        assert_eq!(operation_registry_len(&coordinator), 0);
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+    }
+
+    #[test]
     fn dropping_after_possible_write_marks_dirty() {
         let coordinator = ParkCoordinator::new();
         let mut lease = coordinator
