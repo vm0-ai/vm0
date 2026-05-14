@@ -1485,6 +1485,7 @@ impl Sandbox for FirecrackerSandbox {
         })?;
 
         tokio::select! {
+            biased;
             result = &mut exit => {
                 result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))
             }
