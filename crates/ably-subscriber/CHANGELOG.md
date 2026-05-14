@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.10](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.9...ably-subscriber-v0.7.10) (2026-05-14)
+
+
+### Bug Fixes
+
+* align Ably timing deadlines ([#13297](https://github.com/vm0-ai/vm0/issues/13297)) ([0629233](https://github.com/vm0-ai/vm0/commit/06292339aacf79cfe8670a689172aecfa0a56441))
+
+
+### Documentation
+
+* document ably-subscriber error variants ([#13311](https://github.com/vm0-ai/vm0/issues/13311)) ([779125d](https://github.com/vm0-ai/vm0/commit/779125dd4a7bff16df94d8110fb4e8e785d6e65d))
+
 ## [0.7.9](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.8...ably-subscriber-v0.7.9) (2026-05-07)
 
 

@@ -1,5 +1,30 @@
 # Changelog
 
+## [12.364.0](https://github.com/vm0-ai/vm0/compare/web-v12.363.1...web-v12.364.0) (2026-05-14)
+
+
+### Features
+
+* add gong and ironclad connectors ([#13310](https://github.com/vm0-ai/vm0/issues/13310)) ([80e6787](https://github.com/vm0-ai/vm0/commit/80e6787db33195cf43f431b589f99f2c67df55d4))
+* add local-browser connector foundation ([#13241](https://github.com/vm0-ai/vm0/issues/13241)) ([74eaaaa](https://github.com/vm0-ai/vm0/commit/74eaaaa0ea6876014d08562ae284db1cc10139a5))
+* **api:** add stripe cli auth import flow ([#13273](https://github.com/vm0-ai/vm0/issues/13273)) ([25d59c5](https://github.com/vm0-ai/vm0/commit/25d59c58c08b188d56110a4874cb6d9388b2ecdc))
+
+
+### Refactoring
+
+* **api:** migrate AgentPhone routes to API backend ([#13312](https://github.com/vm0-ai/vm0/issues/13312)) ([c6a6024](https://github.com/vm0-ai/vm0/commit/c6a602455197067b119e134c41feeba6bdb5d6fe))
+* **api:** migrate voice-chat billing routes ([#13316](https://github.com/vm0-ai/vm0/issues/13316)) ([bd33472](https://github.com/vm0-ai/vm0/commit/bd33472486c30ee0491df2bd61edeb835a39b3d9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.22.0
+    * @vm0/connectors bumped to 1.11.0
+    * @vm0/core bumped to 8.276.0
+    * @vm0/db bumped to 1.10.0
+
 ## [12.363.1](https://github.com/vm0-ai/vm0/compare/web-v12.363.0...web-v12.363.1) (2026-05-14)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.31.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.30.3...sandbox-fc-v0.31.0) (2026-05-14)
+
+
+### Features
+
+* add ReadyForPark coordinator skeleton ([#13294](https://github.com/vm0-ai/vm0/issues/13294)) ([eb1d67f](https://github.com/vm0-ai/vm0/commit/eb1d67f52b9af4aee976584c3b7bb931d5b35e16))
+
+
+### Refactoring
+
+* type factory lifecycle resources ([#13293](https://github.com/vm0-ai/vm0/issues/13293)) ([0b533c7](https://github.com/vm0-ai/vm0/commit/0b533c76f86e651b09d662cb9c85a8c3a3d06ad5))
+
 ## [0.30.3](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.30.2...sandbox-fc-v0.30.3) (2026-05-14)
 
 

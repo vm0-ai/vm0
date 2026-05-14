@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.45.0](https://github.com/vm0-ai/vm0/compare/api-v1.44.2...api-v1.45.0) (2026-05-14)
+
+
+### Features
+
+* add local-browser connector foundation ([#13241](https://github.com/vm0-ai/vm0/issues/13241)) ([74eaaaa](https://github.com/vm0-ai/vm0/commit/74eaaaa0ea6876014d08562ae284db1cc10139a5))
+* **api:** add stripe cli auth import flow ([#13273](https://github.com/vm0-ai/vm0/issues/13273)) ([25d59c5](https://github.com/vm0-ai/vm0/commit/25d59c58c08b188d56110a4874cb6d9388b2ecdc))
+
+
+### Refactoring
+
+* **api:** migrate AgentPhone routes to API backend ([#13312](https://github.com/vm0-ai/vm0/issues/13312)) ([c6a6024](https://github.com/vm0-ai/vm0/commit/c6a602455197067b119e134c41feeba6bdb5d6fe))
+* **api:** migrate cleanup sandboxes cron route ([#13295](https://github.com/vm0-ai/vm0/issues/13295)) ([09a3ea8](https://github.com/vm0-ai/vm0/commit/09a3ea8e8b6f908b548c5a5023d6e7d480cd50bf))
+* **api:** migrate execute schedules cron route ([#13298](https://github.com/vm0-ai/vm0/issues/13298)) ([f1ec469](https://github.com/vm0-ai/vm0/commit/f1ec469c1495f5463056c4519430daeb5c56c018))
+* **api:** migrate skills sync cron route ([#13288](https://github.com/vm0-ai/vm0/issues/13288)) ([e0c8547](https://github.com/vm0-ai/vm0/commit/e0c8547eb276d5b34b1add515c3480b39e91c7a3))
+* **api:** migrate voice-chat billing routes ([#13316](https://github.com/vm0-ai/vm0/issues/13316)) ([bd33472](https://github.com/vm0-ai/vm0/commit/bd33472486c30ee0491df2bd61edeb835a39b3d9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.22.0
+    * @vm0/connectors bumped to 1.11.0
+    * @vm0/core bumped to 8.276.0
+    * @vm0/db bumped to 1.10.0
+
 ## [1.44.2](https://github.com/vm0-ai/vm0/compare/api-v1.44.1...api-v1.44.2) (2026-05-14)
 
 

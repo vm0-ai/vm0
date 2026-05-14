@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.7](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.6...guest-common-v0.2.7) (2026-05-14)
+
+
+### Performance Improvements
+
+* **guest-common:** avoid system log newline allocation ([#13291](https://github.com/vm0-ai/vm0/issues/13291)) ([a635aec](https://github.com/vm0-ai/vm0/commit/a635aec541f0fbac923a38b08e267ec897fc147c))
+
 ## [0.2.6](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.5...guest-common-v0.2.6) (2026-05-05)
 
 
