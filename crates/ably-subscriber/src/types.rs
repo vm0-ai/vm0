@@ -270,10 +270,13 @@ pub enum Error {
     #[error("WebSocket error: {}", redact_access_token(&.0.to_string()))]
     WebSocket(Box<tungstenite::Error>),
 
-    /// HTTP failure while exchanging a [`TokenRequest`] for Ably token details.
+    /// HTTP client setup or request failure while exchanging a [`TokenRequest`]
+    /// for Ably token details.
     ///
-    /// This is produced by the Ably REST token exchange request, not by the
-    /// user-provided token request callback.
+    /// This covers the `reqwest` client used for Ably REST token exchange and
+    /// the exchange request/response itself. It is distinct from
+    /// [`Error::TokenFetch`], which represents the user-provided token request
+    /// callback.
     #[error("Token exchange HTTP error: {0}")]
     Http(#[from] reqwest::Error),
 
@@ -311,8 +314,8 @@ pub enum Error {
     #[error("Token fetch failed: {}", redact_access_token(&.0.to_string()))]
     TokenFetch(BoxError),
 
-    /// Failure while parsing a realtime or REST URL built from the subscription
-    /// configuration.
+    /// Failure while parsing a realtime WebSocket URL built from the
+    /// subscription configuration.
     #[error("URL parse error: {0}")]
     Url(#[from] url::ParseError),
 }
