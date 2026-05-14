@@ -13,9 +13,9 @@ import { closeDbPool } from "../lib/db";
 import { clearMockedEnv } from "../lib/env";
 import { clearMockListStripeInvoices } from "../signals/external/stripe-client";
 import {
-  clearMockVercelSandboxClient,
-  clearMockVercelSandboxSmokeCleanupTimeoutMs,
-} from "../signals/external/vercel-sandbox";
+  clearMockSandboxClient,
+  clearMockSandboxCleanupTimeoutMs,
+} from "../signals/external/sandbox";
 import { ROUTES, type RouteEntry } from "../signals/route";
 import { clearAllDetached } from "../signals/utils";
 import { getApiTestMocks, type ApiTestMocks } from "./mocks";
@@ -139,8 +139,8 @@ export function testContext(): TestContext {
     await clearAllDetached();
     clearMockedEnv();
     clearMockListStripeInvoices();
-    clearMockVercelSandboxClient();
-    clearMockVercelSandboxSmokeCleanupTimeoutMs();
+    clearMockSandboxClient();
+    clearMockSandboxCleanupTimeoutMs();
   });
 
   afterAll(async () => {

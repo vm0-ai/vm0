@@ -1,131 +1,161 @@
-import { singleton, testOverride } from "../../lib/singleton";
+import { singleton } from "../../lib/singleton";
+import {
+  createBoundedTextCollector,
+  DEFAULT_SANDBOX_FILE_LIMIT_BYTES,
+  DEFAULT_SANDBOX_OUTPUT_LIMIT_BYTES,
+  emptyBoundedTextOutput,
+  getMockSandboxClient,
+  getSandboxCleanupTimeoutMs,
+  normalizeSandboxLimitBytes,
+  readStreamToBoundedBuffer,
+  sandboxCleanupOperation,
+  type SandboxClient,
+  type SandboxCommandResult,
+  type SandboxFileReadResult,
+  type SandboxHandle,
+} from "./sandbox";
 
 type VercelSandboxSdk = typeof import("@vercel/sandbox");
+type VercelNetworkPolicy = import("@vercel/sandbox").NetworkPolicy;
 
 export const VERCEL_SANDBOX_SMOKE_RUNTIME = "node24";
 export const VERCEL_SANDBOX_SMOKE_TIMEOUT_MS = 60 * 1000;
-const VERCEL_SANDBOX_SMOKE_CLEANUP_TIMEOUT_MS = 15 * 1000;
-
-export interface VercelSandboxCommandOptions {
-  readonly cmd: string;
-  readonly args?: readonly string[];
-  readonly signal?: AbortSignal;
-}
-
-export interface VercelSandboxCommandResult {
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
-}
-
-export interface VercelSandboxInstance {
-  readonly id: string;
-  readonly runCommand: (
-    options: VercelSandboxCommandOptions,
-  ) => Promise<VercelSandboxCommandResult>;
-  readonly stop: (options?: { readonly signal?: AbortSignal }) => Promise<void>;
-}
-
-export interface CreateVercelSandboxOptions {
-  readonly runtime?: string;
-  readonly timeoutMs?: number;
-  readonly signal?: AbortSignal;
-}
-
-interface VercelSandboxClient {
-  readonly create: (
-    options?: CreateVercelSandboxOptions,
-  ) => Promise<VercelSandboxInstance>;
-}
 
 const getVercelSandboxClass = singleton(
   async (): Promise<VercelSandboxSdk["Sandbox"]> => {
-    // This SDK is only needed by the smoke route; keep normal API route init light.
+    // The SDK is only needed by sandbox-backed flows; keep normal API route init light.
     const sdk = await import("@vercel/sandbox");
     return sdk.Sandbox;
   },
 );
 
-function createRealVercelSandboxClient(): VercelSandboxClient {
+async function getSandbox(
+  handle: SandboxHandle,
+  signal?: AbortSignal,
+): Promise<Awaited<ReturnType<VercelSandboxSdk["Sandbox"]["get"]>>> {
+  const Sandbox = await getVercelSandboxClass();
+  return Sandbox.get({ sandboxId: handle.sandboxId, signal });
+}
+
+function createRealVercelSandboxClient(): SandboxClient {
   return {
-    async create(options = {}): Promise<VercelSandboxInstance> {
+    async create(options = {}): Promise<SandboxHandle> {
       const Sandbox = await getVercelSandboxClass();
       const sandbox = await Sandbox.create({
-        runtime: options.runtime ?? VERCEL_SANDBOX_SMOKE_RUNTIME,
-        timeout: options.timeoutMs ?? VERCEL_SANDBOX_SMOKE_TIMEOUT_MS,
+        runtime: options.runtime,
+        timeout: options.timeoutMs,
+        resources: options.resources,
+        ports: options.ports ? [...options.ports] : undefined,
+        env: options.env ? { ...options.env } : undefined,
+        networkPolicy: options.networkPolicy as VercelNetworkPolicy | undefined,
+        signal: options.signal,
+      });
+
+      return { sandboxId: sandbox.sandboxId };
+    },
+
+    async get(sandboxId, options = {}): Promise<SandboxHandle> {
+      const sandbox = await getSandbox({ sandboxId }, options.signal);
+      return { sandboxId: sandbox.sandboxId };
+    },
+
+    async runCommand(handle, options): Promise<SandboxCommandResult> {
+      const outputLimitBytes = normalizeSandboxLimitBytes(
+        options.outputLimitBytes,
+        DEFAULT_SANDBOX_OUTPUT_LIMIT_BYTES,
+      );
+      const sandbox = await getSandbox(handle, options.signal);
+
+      if (options.detached) {
+        const command = await sandbox.runCommand({
+          cmd: options.cmd,
+          args: options.args ? [...options.args] : undefined,
+          cwd: options.cwd,
+          env: options.env ? { ...options.env } : undefined,
+          detached: true,
+          signal: options.signal,
+        });
+
+        return {
+          sandboxId: handle.sandboxId,
+          commandId: command.cmdId,
+          detached: true,
+          exitCode: command.exitCode,
+          stdout: emptyBoundedTextOutput(outputLimitBytes),
+          stderr: emptyBoundedTextOutput(outputLimitBytes),
+        };
+      }
+
+      const stdout = createBoundedTextCollector(outputLimitBytes);
+      const stderr = createBoundedTextCollector(outputLimitBytes);
+      const command = await sandbox.runCommand({
+        cmd: options.cmd,
+        args: options.args ? [...options.args] : undefined,
+        cwd: options.cwd,
+        env: options.env ? { ...options.env } : undefined,
+        stdout: stdout.writable,
+        stderr: stderr.writable,
         signal: options.signal,
       });
 
       return {
-        id: sandbox.sandboxId,
-        async runCommand(
-          commandOptions: VercelSandboxCommandOptions,
-        ): Promise<VercelSandboxCommandResult> {
-          const command = await sandbox.runCommand(
-            commandOptions.cmd,
-            [...(commandOptions.args ?? [])],
-            { signal: commandOptions.signal },
-          );
-          const [stdout, stderr] = await Promise.all([
-            command.stdout({ signal: commandOptions.signal }),
-            command.stderr({ signal: commandOptions.signal }),
-          ]);
-
-          return {
-            exitCode: command.exitCode,
-            stdout,
-            stderr,
-          };
-        },
-        async stop(options = {}): Promise<void> {
-          await sandbox.stop({ blocking: true, signal: options.signal });
-        },
+        sandboxId: handle.sandboxId,
+        commandId: command.cmdId,
+        detached: false,
+        exitCode: command.exitCode,
+        stdout: stdout.output(),
+        stderr: stderr.output(),
       };
+    },
+
+    async readFile(handle, options): Promise<SandboxFileReadResult> {
+      const limitBytes = normalizeSandboxLimitBytes(
+        options.limitBytes,
+        DEFAULT_SANDBOX_FILE_LIMIT_BYTES,
+      );
+      const sandbox = await getSandbox(handle, options.signal);
+      const stream = await sandbox.readFile(
+        { path: options.path, cwd: options.cwd },
+        { signal: options.signal },
+      );
+      if (!stream) {
+        return { status: "missing" };
+      }
+
+      return readStreamToBoundedBuffer(stream, limitBytes, options.signal);
+    },
+
+    async updateNetworkPolicy(handle, options): Promise<void> {
+      const sandbox = await getSandbox(handle, options.signal);
+      await sandbox.updateNetworkPolicy(
+        options.networkPolicy as VercelNetworkPolicy,
+        { signal: options.signal },
+      );
+    },
+
+    async extendTimeout(handle, options): Promise<void> {
+      const sandbox = await getSandbox(handle, options.signal);
+      await sandbox.extendTimeout(options.durationMs, {
+        signal: options.signal,
+      });
+    },
+
+    stop(handle, options = {}) {
+      return sandboxCleanupOperation({
+        timeoutMs: options.timeoutMs ?? getSandboxCleanupTimeoutMs(),
+        signal: options.signal,
+        operation: async (signal) => {
+          const sandbox = await getSandbox(handle, signal);
+          await sandbox.stop({
+            blocking: options.blocking ?? true,
+            signal,
+          });
+        },
+      });
     },
   };
 }
 
-const {
-  get: getMockedVercelSandboxClient,
-  set: setMockedVercelSandboxClient,
-  clear: clearMockedVercelSandboxClient,
-} = testOverride<VercelSandboxClient | undefined>(() => {
-  return undefined;
-});
-
-const {
-  get: getMockedVercelSandboxCleanupTimeoutMs,
-  set: setMockedVercelSandboxCleanupTimeoutMs,
-  clear: clearMockedVercelSandboxCleanupTimeoutMs,
-} = testOverride<number | undefined>(() => {
-  return undefined;
-});
-
-export function getVercelSandboxClient(): VercelSandboxClient {
-  return getMockedVercelSandboxClient() ?? createRealVercelSandboxClient();
-}
-
-export function getVercelSandboxSmokeCleanupTimeoutMs(): number {
-  return (
-    getMockedVercelSandboxCleanupTimeoutMs() ??
-    VERCEL_SANDBOX_SMOKE_CLEANUP_TIMEOUT_MS
-  );
-}
-
-export function mockVercelSandboxClient(client: VercelSandboxClient): void {
-  setMockedVercelSandboxClient(client);
-}
-
-export function clearMockVercelSandboxClient(): void {
-  clearMockedVercelSandboxClient();
-}
-
-export function mockVercelSandboxSmokeCleanupTimeoutMs(
-  timeoutMs: number,
-): void {
-  setMockedVercelSandboxCleanupTimeoutMs(timeoutMs);
-}
-
-export function clearMockVercelSandboxSmokeCleanupTimeoutMs(): void {
-  clearMockedVercelSandboxCleanupTimeoutMs();
+export function getVercelSandboxClient(): SandboxClient {
+  return getMockSandboxClient() ?? createRealVercelSandboxClient();
 }
