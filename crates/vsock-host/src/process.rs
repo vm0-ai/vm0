@@ -222,14 +222,19 @@ fn remove_spawn_operation(shared: &Arc<Shared>, seq: u32) {
 }
 
 pub(crate) fn record_spawn_watch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
-    let Ok(pid) = vsock_proto::decode_spawn_watch_result(&msg.payload) else {
-        return Ok(());
-    };
-
     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
     if let ConnectionState::Connected { process, .. } = &mut *guard
         && let Some(operation) = process.operation_mut(msg.seq)
     {
+        let pid = match vsock_proto::decode_spawn_watch_result(&msg.payload) {
+            Ok(pid) => pid,
+            Err(e) if operation.pid.is_some() => {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, e.to_string()));
+            }
+            // Initial malformed responses are still delivered to the pending
+            // request path, which returns InvalidData and drops the operation.
+            Err(_) => return Ok(()),
+        };
         validate_lifecycle_pid("spawn_watch_result", operation.pid, pid)?;
         operation.pid = Some(pid);
     }

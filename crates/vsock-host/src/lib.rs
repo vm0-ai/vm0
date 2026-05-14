@@ -630,8 +630,9 @@ impl VsockHost {
     /// When `stream_stdout` is true, stdout chunks are streamed to the host via
     /// `MSG_STDOUT_CHUNK`. `stdout_log_path`, when present, additionally asks
     /// the guest to tee those chunks into the given guest-side file.
-    /// The handle's `stdout_rx` channel receives streamed chunks when enabled
-    /// and is closed when the process exits or the connection drops.
+    /// Use [`SpawnWatchHandle::take_stdout_receiver`] to receive streamed chunks
+    /// when enabled. The receiver is closed when the process exits or the
+    /// connection drops.
     pub async fn spawn_watch(
         &self,
         command: &str,

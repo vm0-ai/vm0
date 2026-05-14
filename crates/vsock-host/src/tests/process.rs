@@ -888,6 +888,49 @@ async fn test_duplicate_spawn_watch_result_cannot_overwrite_pid() {
 }
 
 #[tokio::test]
+async fn test_malformed_duplicate_spawn_watch_result_closes_and_cleans_up() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let mut buf = [0u8; 4096];
+        let n = guest.read(&mut buf).await.unwrap();
+        let msgs = decoder.decode(&buf[..n]).unwrap();
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        let spawn_seq = msgs[0].seq;
+
+        let result_payload = vsock_proto::encode_spawn_watch_result(123);
+        let result =
+            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &result_payload).unwrap();
+        guest.write_all(&result).await.unwrap();
+
+        let duplicate =
+            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, b"\x00\x01").unwrap();
+        guest.write_all(&duplicate).await.unwrap();
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_watch("malformed-duplicate-result", 0, &[], false, false, None)
+        .await
+        .unwrap();
+    assert_eq!(handle.pid(), 123);
+
+    let err = wait_spawn(handle).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    assert_eq!(
+        registration_counts(&host),
+        (0, 0, 0),
+        "malformed duplicate spawn_watch_result must close and clean registrations",
+    );
+}
+
+#[tokio::test]
 async fn test_spawn_watch_wait_future_drop_cleans_registration() {
     let (host_stream, mut guest) = make_pair();
 

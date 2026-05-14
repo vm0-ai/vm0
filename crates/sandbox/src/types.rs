@@ -127,9 +127,19 @@ pub struct CopyFileResult {
     pub bytes_copied: u64,
 }
 
+/// Backend-owned future that resolves when a watched process exits.
+///
+/// Sandbox implementations store this in [`SpawnHandle`] so
+/// [`Sandbox::wait_exit`](crate::Sandbox::wait_exit) can consume the exact
+/// backend operation created by [`Sandbox::spawn_watch`](crate::Sandbox::spawn_watch).
 pub type SpawnExitFuture =
     Pin<Box<dyn Future<Output = std::io::Result<ProcessExit>> + Send + 'static>>;
 
+/// Handle returned by [`Sandbox::spawn_watch`](crate::Sandbox::spawn_watch).
+///
+/// The handle owns backend-specific exit state and must be consumed by
+/// [`Sandbox::wait_exit`](crate::Sandbox::wait_exit). When stdout streaming is
+/// enabled, callers may take [`stdout_rx`](Self::stdout_rx) before waiting.
 pub struct SpawnHandle {
     pub pid: u32,
     /// Receives stdout chunks in real-time when the guest streams them.
@@ -139,6 +149,7 @@ pub struct SpawnHandle {
 }
 
 impl SpawnHandle {
+    /// Construct a spawn handle from backend-owned process state.
     pub fn new(
         pid: u32,
         stdout_rx: Option<tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>>,
@@ -151,6 +162,11 @@ impl SpawnHandle {
         }
     }
 
+    /// Consume the backend exit future.
+    ///
+    /// This is intended for sandbox backend implementations of
+    /// [`Sandbox::wait_exit`](crate::Sandbox::wait_exit); ordinary callers should
+    /// pass the handle to that trait method instead.
     pub fn take_exit_future(&mut self) -> Option<SpawnExitFuture> {
         self.exit.take()
     }
