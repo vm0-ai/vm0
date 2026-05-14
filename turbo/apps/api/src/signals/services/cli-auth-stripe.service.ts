@@ -6,17 +6,19 @@ import { z } from "zod";
 import { nowDate } from "../../lib/time";
 import { getVercelSandboxClient } from "../external/vercel-sandbox";
 import {
+  redactSandboxMessage,
   sandboxOperation,
   type SandboxClient,
   type SandboxCommandResult,
   type SandboxHandle,
 } from "../external/sandbox";
+import { connectors } from "@vm0/db/schema/connector";
+import { secrets } from "@vm0/db/schema/secret";
+import { and, eq, inArray } from "drizzle-orm";
 import { safeAsync, safeJsonParse, safeUrlParse } from "../utils";
-import {
-  deleteZeroConnectorLocalState$,
-  zeroConnectorByType,
-} from "./zero-connector-data.service";
-import { setUserSecret$ } from "./zero-user-data.service";
+import { writeDb$ } from "../external/db";
+import { publishUserSignal } from "../external/realtime";
+import { zeroConnectorByType } from "./zero-connector-data.service";
 import { decryptSecretValue, encryptSecretValue } from "./crypto.utils";
 
 const CLI_AUTH_STRIPE_RUNTIME = "node24";
@@ -34,6 +36,10 @@ const CLI_AUTH_STRIPE_BIN_DIR = `${CLI_AUTH_STRIPE_ROOT}/bin`;
 const CLI_AUTH_STRIPE_CONFIG_HOME = `${CLI_AUTH_STRIPE_ROOT}/config`;
 const CLI_AUTH_STRIPE_CONFIG_PATH = `${CLI_AUTH_STRIPE_CONFIG_HOME}/stripe/config.toml`;
 const STRIPE_TOKEN_SECRET_NAME = "STRIPE_TOKEN";
+const STRIPE_OAUTH_SECRET_NAMES = [
+  "STRIPE_ACCESS_TOKEN",
+  "STRIPE_REFRESH_TOKEN",
+] as const;
 
 const cliAuthStripeOutputSchema = z.object({
   browser_url: z.url(),
@@ -191,7 +197,7 @@ function commandFailedMessage(
   phase: string,
   result: SandboxCommandResult,
 ): string {
-  const output = commandText(result).trim();
+  const output = redactSandboxMessage(commandText(result).trim());
   const suffix = output ? `: ${output.slice(0, 500)}` : "";
   return `${phase} exited with code ${String(result.exitCode)}${suffix}`;
 }
@@ -479,30 +485,55 @@ async function importCliAuthStripeConnector(args: {
   readonly apiKey: string;
   readonly signal: AbortSignal;
 }): Promise<CliAuthStripeCompleteResult> {
-  await args.set(
-    deleteZeroConnectorLocalState$,
-    {
-      orgId: args.orgId,
-      userId: args.userId,
-      type: "stripe",
-    },
-    args.signal,
-  );
   args.signal.throwIfAborted();
 
-  await args.set(
-    setUserSecret$,
-    {
-      orgId: args.orgId,
-      userId: args.userId,
-      secret: {
+  const encryptedValue = encryptSecretValue(args.apiKey);
+  const updatedAt = nowDate();
+  const writeDb = args.set(writeDb$);
+  await writeDb.transaction(async (tx) => {
+    await tx
+      .delete(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, args.orgId),
+          eq(connectors.userId, args.userId),
+          eq(connectors.type, "stripe"),
+        ),
+      );
+
+    await tx
+      .delete(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, args.orgId),
+          eq(secrets.userId, args.userId),
+          eq(secrets.type, "connector"),
+          inArray(secrets.name, [...STRIPE_OAUTH_SECRET_NAMES]),
+        ),
+      );
+
+    await tx
+      .insert(secrets)
+      .values({
+        orgId: args.orgId,
+        userId: args.userId,
         name: STRIPE_TOKEN_SECRET_NAME,
-        value: args.apiKey,
+        encryptedValue,
         description: "Stripe CLI test mode restricted key",
-      },
-    },
-    args.signal,
-  );
+        type: "user",
+      })
+      .onConflictDoUpdate({
+        target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
+        set: {
+          encryptedValue,
+          description: "Stripe CLI test mode restricted key",
+          updatedAt,
+        },
+      });
+  });
+  args.signal.throwIfAborted();
+
+  await publishUserSignal([args.userId], "connector:changed");
   args.signal.throwIfAborted();
 
   const connector = await args.get(

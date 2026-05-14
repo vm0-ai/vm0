@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import { zeroCliAuthStripeContract } from "@vm0/api-contracts/contracts/zero-connectors-cli-auth-stripe";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -66,13 +67,14 @@ function commandResult(args: {
   };
 }
 
-function startOutput() {
+function startOutput(
+  nextStep = "stripe login --complete 'https://dashboard.stripe.com/stripecli/auth/poll-token'",
+) {
   return JSON.stringify({
     browser_url:
       "https://dashboard.stripe.com/stripecli/confirm_auth?t=start-token",
     verification_code: "enjoy-enough-outwit-win",
-    next_step:
-      "stripe login --complete 'https://dashboard.stripe.com/stripecli/auth/poll-token'",
+    next_step: nextStep,
   });
 }
 
@@ -87,6 +89,9 @@ test_mode_pub_key = "pk_test_123"
 
 function mockStripeCliSandbox(
   args: {
+    readonly startExitCode?: number;
+    readonly startNextStep?: string;
+    readonly startStderr?: string;
     readonly completeExitCode?: number;
     readonly configApiKey?: string;
   } = {},
@@ -123,8 +128,12 @@ function mockStripeCliSandbox(
         return Promise.resolve(
           commandResult({
             sandboxId: commandHandle.sandboxId,
-            exitCode: 0,
-            stdout: startOutput(),
+            exitCode: args.startExitCode ?? 0,
+            stdout:
+              args.startExitCode && args.startExitCode !== 0
+                ? ""
+                : startOutput(args.startNextStep),
+            stderr: args.startStderr,
           }),
         );
       }
@@ -189,6 +198,9 @@ async function enableCliAuthStripe(userId: string, orgId: string) {
 
 async function cleanupUser(userId: string, orgId: string) {
   const db = store.set(writeDb$);
+  await db
+    .delete(connectors)
+    .where(and(eq(connectors.userId, userId), eq(connectors.orgId, orgId)));
   await db
     .delete(secrets)
     .where(and(eq(secrets.userId, userId), eq(secrets.orgId, orgId)));
@@ -281,6 +293,49 @@ describe("CLI auth for Stripe connector routes", () => {
     expect(calls.stop).toHaveLength(0);
   });
 
+  it("stops the sandbox when Stripe returns an unexpected completion URL", async () => {
+    await setupUser();
+    const calls = mockStripeCliSandbox({
+      startNextStep:
+        "stripe login --complete 'https://example.test/stripecli/auth/poll-token'",
+    });
+
+    const response = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [503],
+    );
+
+    expect(response.body.error.code).toBe("CLI_AUTH_STRIPE_FAILED");
+    expect(response.body.error.message).toBe(
+      "Stripe CLI response included an unexpected completion URL",
+    );
+    expect(calls.stop).toHaveLength(1);
+  });
+
+  it("redacts secrets from failed Stripe CLI command output", async () => {
+    await setupUser();
+    mockStripeCliSandbox({
+      startExitCode: 1,
+      startStderr: "failed STRIPE_SECRET=sk_test_should_not_leak",
+    });
+
+    const response = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [503],
+    );
+
+    expect(response.body.error.message).toContain("STRIPE_SECRET=[redacted]");
+    expect(response.body.error.message).not.toContain(
+      "sk_test_should_not_leak",
+    );
+  });
+
   it("completes CLI auth for Stripe, stores STRIPE_TOKEN, and stops the sandbox", async () => {
     const { userId, orgId } = await setupUser();
     const calls = mockStripeCliSandbox({ configApiKey: "rk_test_imported" });
@@ -335,6 +390,133 @@ describe("CLI auth for Stripe connector routes", () => {
       type: "user",
     });
     expect(decryptSecretValue(secret!.encryptedValue)).toBe("rk_test_imported");
+  });
+
+  it("replaces existing Stripe OAuth local state while importing STRIPE_TOKEN", async () => {
+    const { userId, orgId } = await setupUser();
+    const db = store.set(writeDb$);
+    await db.insert(connectors).values({
+      orgId,
+      userId,
+      type: "stripe",
+      authMethod: "oauth",
+      externalId: "acct_existing",
+      externalUsername: null,
+      externalEmail: null,
+      oauthScopes: JSON.stringify(["read_write"]),
+    });
+    await db.insert(secrets).values([
+      {
+        orgId,
+        userId,
+        name: "STRIPE_ACCESS_TOKEN",
+        encryptedValue: "encrypted-access",
+        type: "connector",
+      },
+      {
+        orgId,
+        userId,
+        name: "STRIPE_REFRESH_TOKEN",
+        encryptedValue: "encrypted-refresh",
+        type: "connector",
+      },
+    ]);
+    mockStripeCliSandbox({ configApiKey: "sk_test_imported" });
+
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [200],
+    );
+    const complete = await accept(
+      client().complete({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [200],
+    );
+
+    expect(complete.body.status).toBe("complete");
+    const connectorRows = await db
+      .select({ id: connectors.id })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, orgId),
+          eq(connectors.userId, userId),
+          eq(connectors.type, "stripe"),
+        ),
+      );
+    const connectorSecretRows = await db
+      .select({ id: secrets.id })
+      .from(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, orgId),
+          eq(secrets.userId, userId),
+          eq(secrets.type, "connector"),
+          inArray(secrets.name, [
+            "STRIPE_ACCESS_TOKEN",
+            "STRIPE_REFRESH_TOKEN",
+          ]),
+        ),
+      );
+    const [secret] = await db
+      .select({ encryptedValue: secrets.encryptedValue })
+      .from(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, orgId),
+          eq(secrets.userId, userId),
+          eq(secrets.name, "STRIPE_TOKEN"),
+          eq(secrets.type, "user"),
+        ),
+      );
+
+    expect(connectorRows).toStrictEqual([]);
+    expect(connectorSecretRows).toStrictEqual([]);
+    expect(decryptSecretValue(secret!.encryptedValue)).toBe("sk_test_imported");
+  });
+
+  it("rejects live mode Stripe keys and stops the sandbox", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox({ configApiKey: "rk_live_imported" });
+
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [200],
+    );
+    const complete = await accept(
+      client().complete({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [503],
+    );
+
+    expect(complete.body.error.code).toBe("CLI_AUTH_STRIPE_FAILED");
+    expect(complete.body.error.message).toBe(
+      "Stripe CLI config did not contain a test mode API key",
+    );
+    expect(calls.stop).toHaveLength(1);
+
+    const secretRows = await store
+      .set(writeDb$)
+      .select({ id: secrets.id })
+      .from(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, orgId),
+          eq(secrets.userId, userId),
+          eq(secrets.name, "STRIPE_TOKEN"),
+        ),
+      );
+    expect(secretRows).toStrictEqual([]);
   });
 
   it("returns pending and keeps the sandbox alive when browser auth is not approved yet", async () => {
