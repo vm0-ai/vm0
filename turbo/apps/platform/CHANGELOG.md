@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.353.2](https://github.com/vm0-ai/vm0/compare/app-v0.353.1...app-v0.353.2) (2026-05-14)
+
+
+### Refactoring
+
+* collapse api backend switch ([#13226](https://github.com/vm0-ai/vm0/issues/13226)) ([c3fc233](https://github.com/vm0-ai/vm0/commit/c3fc23365cf5e38ff2cc40cc18696a464ede4c06))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.20.0
+    * @vm0/connectors bumped to 1.9.1
+    * @vm0/core bumped to 8.275.2
+
 ## [0.353.1](https://github.com/vm0-ai/vm0/compare/app-v0.353.0...app-v0.353.1) (2026-05-14)
 
 

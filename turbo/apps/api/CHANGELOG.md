@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.44.0](https://github.com/vm0-ai/vm0/compare/api-v1.43.4...api-v1.44.0) (2026-05-14)
+
+
+### Features
+
+* **api:** add serverless vercel sandbox abstraction ([#13225](https://github.com/vm0-ai/vm0/issues/13225)) ([4a69f93](https://github.com/vm0-ai/vm0/commit/4a69f93e503df3541f02cf6b138b0f6616e0c555))
+* **api:** migrate telegram post routes ([#13223](https://github.com/vm0-ai/vm0/issues/13223)) ([27c7b2a](https://github.com/vm0-ai/vm0/commit/27c7b2a7ab1dd9f09f1f27bcf5ea4e641a22106d))
+
+
+### Bug Fixes
+
+* align api run context session snapshots ([#13222](https://github.com/vm0-ai/vm0/issues/13222)) ([72b1f68](https://github.com/vm0-ai/vm0/commit/72b1f6893ab0c9bbb4f803fc729dd5e3f8403631))
+* resolve api model-first runtime framework ([#13221](https://github.com/vm0-ai/vm0/issues/13221)) ([d1ce254](https://github.com/vm0-ai/vm0/commit/d1ce2543579cd1ec9b832df484017656b0dcdfdf))
+
+
+### Refactoring
+
+* migrate agent storage webhooks ([#13224](https://github.com/vm0-ai/vm0/issues/13224)) ([d278077](https://github.com/vm0-ai/vm0/commit/d27807718b4c9ec7098081219af73457313f9792))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.20.0
+    * @vm0/connectors bumped to 1.9.1
+    * @vm0/core bumped to 8.275.2
+    * @vm0/db bumped to 1.9.5
+
 ## [1.43.4](https://github.com/vm0-ai/vm0/compare/api-v1.43.3...api-v1.43.4) (2026-05-14)
 
 
