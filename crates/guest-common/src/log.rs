@@ -64,13 +64,17 @@ impl SystemLogState {
     }
 }
 
-fn write_line_with_newline(file: &mut File, line: &str) -> io::Result<()> {
+fn write_line_with_newline(writer: &mut impl Write, line: &str) -> io::Result<()> {
     let mut line = line.as_bytes();
     let mut newline = b"\n".as_slice();
 
     while !line.is_empty() || !newline.is_empty() {
         let bufs = [IoSlice::new(line), IoSlice::new(newline)];
-        let written = file.write_vectored(&bufs)?;
+        let written = match writer.write_vectored(&bufs) {
+            Ok(written) => written,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
         if written == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::WriteZero,
@@ -436,6 +440,55 @@ mod tests {
         state.append_line("recovers").unwrap();
         let content = std::fs::read_to_string(path).unwrap();
         assert_eq!(content, "recovers\n");
+    }
+
+    struct InterruptedPartialWriter {
+        output: Vec<u8>,
+        interrupt_next_write: bool,
+        max_write_size: usize,
+    }
+
+    impl Write for InterruptedPartialWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.write_vectored(&[IoSlice::new(buf)])
+        }
+
+        fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
+            if self.interrupt_next_write {
+                self.interrupt_next_write = false;
+                return Err(io::ErrorKind::Interrupted.into());
+            }
+
+            let mut written = 0usize;
+            for buf in bufs {
+                if written == self.max_write_size {
+                    break;
+                }
+                let remaining = self.max_write_size - written;
+                let take = remaining.min(buf.len());
+                let chunk = buf.get(..take).ok_or_else(invalid_write_count)?;
+                self.output.extend_from_slice(chunk);
+                written += take;
+            }
+            Ok(written)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn write_line_with_newline_retries_interrupted_partial_writes() {
+        let mut writer = InterruptedPartialWriter {
+            output: Vec::new(),
+            interrupt_next_write: true,
+            max_write_size: 3,
+        };
+
+        write_line_with_newline(&mut writer, "abcdef").unwrap();
+
+        assert_eq!(writer.output, b"abcdef\n");
     }
 
     #[test]
