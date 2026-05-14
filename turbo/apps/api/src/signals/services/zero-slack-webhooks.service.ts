@@ -231,6 +231,16 @@ interface SlackAgentMessageArgs {
   readonly signal: AbortSignal;
 }
 
+interface ZeroSlackDispatchProbeInput {
+  readonly workspaceId: string;
+  readonly channelId: string;
+  readonly channelType: SlackChannelType;
+  readonly slackUserId: string;
+  readonly messageText: string;
+  readonly messageTs: string;
+  readonly apiStartTime: number;
+}
+
 interface ResolvedSlackAgentMessage {
   readonly installation: SlackInstallation & { readonly orgId: string };
   readonly connection: SlackConnection;
@@ -1360,6 +1370,28 @@ async function handleSlackAgentMessage(
   const result = await runAgentForSlackOrg(args.set, runParams, args.signal);
   await handleSlackRunResult({ message: args, resolved, result });
 }
+
+export const dispatchZeroSlackProbe$ = command(
+  async (
+    { get, set },
+    input: ZeroSlackDispatchProbeInput,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await handleSlackAgentMessage({
+      get,
+      set,
+      db: set(writeDb$),
+      workspaceId: input.workspaceId,
+      channelId: input.channelId,
+      channelType: input.channelType,
+      slackUserId: input.slackUserId,
+      messageText: input.messageText,
+      messageTs: input.messageTs,
+      apiStartTime: input.apiStartTime,
+      signal,
+    });
+  },
+);
 
 async function handleAppHomeOpened(
   db: Db,

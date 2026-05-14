@@ -144,6 +144,7 @@ import { testOAuthProviderAuthorizeRoutes } from "./routes/test-oauth-provider-a
 import { testOAuthProviderEchoRoutes } from "./routes/test-oauth-provider-echo";
 import { testOAuthProviderTokenRoutes } from "./routes/test-oauth-provider-token";
 import { testOAuthProviderUserinfoRoutes } from "./routes/test-oauth-provider-userinfo";
+import { testSlackDispatchProbeRoutes } from "./routes/test-slack-dispatch-probe";
 import { testSlackMockRoutes } from "./routes/test-slack-mock";
 import { testSlackStateRoutes } from "./routes/test-slack-state";
 import { testTelegramMockRoutes } from "./routes/test-telegram-mock";
@@ -302,6 +303,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...testOAuthProviderEchoRoutes,
   ...testOAuthProviderTokenRoutes,
   ...testOAuthProviderUserinfoRoutes,
+  ...testSlackDispatchProbeRoutes,
   ...testSlackMockRoutes,
   ...testSlackStateRoutes,
   ...testTelegramMockRoutes,

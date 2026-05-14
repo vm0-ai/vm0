@@ -299,6 +299,18 @@ export {
   type TestOAuthProviderUserinfoResponse,
 } from "./test-oauth-provider-userinfo";
 export {
+  testSlackDispatchProbeBodySchema,
+  testSlackDispatchProbeContract,
+  testSlackDispatchProbeErrorSchema,
+  testSlackDispatchProbeFailureResponseSchema,
+  testSlackDispatchProbeResponseSchema,
+  testSlackDispatchProbeSuccessResponseSchema,
+  type TestSlackDispatchProbeBody,
+  type TestSlackDispatchProbeContract,
+  type TestSlackDispatchProbeError,
+  type TestSlackDispatchProbeResponse,
+} from "./test-slack-dispatch-probe";
+export {
   testSlackStateContract,
   testSlackStateErrorSchema,
   testSlackStateResponseSchema,
