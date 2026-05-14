@@ -1,9 +1,10 @@
 import { parse } from "smol-toml";
-import { command, type Getter, type Setter } from "ccstate";
+import { command, type Setter } from "ccstate";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { z } from "zod";
 
 import { nowDate } from "../../lib/time";
+import { logger } from "../../lib/log";
 import { getVercelSandboxClient } from "../external/vercel-sandbox";
 import {
   redactSandboxMessage,
@@ -15,11 +16,10 @@ import {
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorCliAuthSessions } from "@vm0/db/schema/connector-cli-auth-session";
 import { secrets } from "@vm0/db/schema/secret";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, lt, or } from "drizzle-orm";
 import { safeAsync, safeJsonParse, safeUrlParse } from "../utils";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { zeroConnectorByType } from "./zero-connector-data.service";
 import { decryptSecretValue, encryptSecretValue } from "./crypto.utils";
 
 const CLI_AUTH_STRIPE_RUNTIME = "node24";
@@ -30,6 +30,7 @@ const CLI_AUTH_STRIPE_TIMEOUT_MS = 15 * 60 * 1000;
 const CLI_AUTH_STRIPE_SESSION_TTL_SECONDS = 10 * 60;
 const CLI_AUTH_STRIPE_POLL_INTERVAL_SECONDS = 5;
 const CLI_AUTH_STRIPE_COMPLETE_TIMEOUT_SECONDS = 15;
+const CLI_AUTH_STRIPE_COMPLETING_STALE_MS = 2 * 60 * 1000;
 const CLI_AUTH_STRIPE_OUTPUT_LIMIT_BYTES = 16 * 1024;
 const CLI_AUTH_STRIPE_CONFIG_LIMIT_BYTES = 16 * 1024;
 const CLI_AUTH_STRIPE_ROOT = "/vercel/sandbox/cli-auth/stripe";
@@ -43,6 +44,7 @@ const STRIPE_OAUTH_SECRET_NAMES = [
   "STRIPE_ACCESS_TOKEN",
   "STRIPE_REFRESH_TOKEN",
 ] as const;
+const L = logger("CliAuthStripe");
 
 const cliAuthStripeOutputSchema = z.object({
   browser_url: z.url(),
@@ -316,6 +318,31 @@ async function cleanupSandbox(client: SandboxClient, sandbox: SandboxHandle) {
   return null;
 }
 
+async function cleanupSandboxSafely(args: {
+  readonly client: SandboxClient;
+  readonly sandbox: SandboxHandle;
+  readonly reason: string;
+}) {
+  const cleanupResult = await sandboxOperation("stop", () => {
+    return cleanupSandbox(args.client, args.sandbox);
+  });
+  if (!cleanupResult.ok) {
+    L.warn("Failed to clean up CLI auth Stripe sandbox", {
+      sandboxId: args.sandbox.sandboxId,
+      reason: args.reason,
+      error: cleanupResult.error,
+    });
+    return;
+  }
+  if (cleanupResult.value) {
+    L.warn("CLI auth Stripe sandbox cleanup reported failure", {
+      sandboxId: args.sandbox.sandboxId,
+      reason: args.reason,
+      message: cleanupResult.value,
+    });
+  }
+}
+
 function sanitizeSessionError(message: string): string {
   return redactCliAuthStripeCommandText(message).slice(0, 500);
 }
@@ -543,7 +570,6 @@ async function markCliAuthStripeSessionAwaitingApproval(args: {
   readonly writeDb: Db;
   readonly sessionId: string;
   readonly output: ParsedCliAuthStripeStartOutput;
-  readonly signal: AbortSignal;
 }) {
   await args.writeDb
     .update(connectorCliAuthSessions)
@@ -560,7 +586,6 @@ async function markCliAuthStripeSessionAwaitingApproval(args: {
       updatedAt: nowDate(),
     })
     .where(eq(connectorCliAuthSessions.id, args.sessionId));
-  args.signal.throwIfAborted();
 }
 
 export async function startCliAuthStripe(args: {
@@ -598,12 +623,22 @@ export async function startCliAuthStripe(args: {
   if (!startResult.ok) {
     return startResult.result;
   }
-  await markCliAuthStripeSessionAwaitingApproval({
-    writeDb: args.writeDb,
-    sessionId: session.id,
-    output: startResult.output,
-    signal: args.signal,
+  const persistResult = await safeAsync(() => {
+    return markCliAuthStripeSessionAwaitingApproval({
+      writeDb: args.writeDb,
+      sessionId: session.id,
+      output: startResult.output,
+    });
   });
+  if ("error" in persistResult) {
+    await cleanupSandboxSafely({
+      client,
+      sandbox: sandboxResult.sandbox,
+      reason: "start session persist failed",
+    });
+    throw persistResult.error;
+  }
+  args.signal.throwIfAborted();
 
   return {
     ok: true,
@@ -615,6 +650,154 @@ export async function startCliAuthStripe(args: {
     verificationCode: startResult.output.verificationCode,
     expiresIn: CLI_AUTH_STRIPE_SESSION_TTL_SECONDS,
     interval: CLI_AUTH_STRIPE_POLL_INTERVAL_SECONDS,
+  };
+}
+
+function cliAuthStripeApiTokenConnector(): ConnectorResponse {
+  return {
+    id: null,
+    type: "stripe",
+    authMethod: "api-token",
+    externalId: null,
+    externalUsername: null,
+    externalEmail: null,
+    oauthScopes: null,
+    needsReconnect: false,
+    createdAt: "1970-01-01T00:00:00.000Z",
+    updatedAt: "1970-01-01T00:00:00.000Z",
+  };
+}
+
+async function publishCliAuthStripeConnectorChanged(userId: string) {
+  const publishResult = await safeAsync(() => {
+    return publishUserSignal([userId], "connector:changed");
+  });
+  if ("error" in publishResult) {
+    L.warn("Failed to publish CLI auth Stripe connector change", {
+      userId,
+      error: publishResult.error,
+    });
+  }
+}
+
+function claimedCliAuthStripeSessionWhere(args: {
+  readonly sessionId: string;
+  readonly claimedAt: Date;
+}) {
+  return and(
+    eq(connectorCliAuthSessions.id, args.sessionId),
+    eq(connectorCliAuthSessions.status, "completing"),
+    eq(connectorCliAuthSessions.updatedAt, args.claimedAt),
+  );
+}
+
+class CliAuthStripeClaimLostError extends Error {
+  constructor() {
+    super("CLI auth for Stripe completion claim was superseded");
+    this.name = "CliAuthStripeClaimLostError";
+  }
+}
+
+function isCliAuthStripeClaimLostError(
+  error: unknown,
+): error is CliAuthStripeClaimLostError {
+  return error instanceof CliAuthStripeClaimLostError;
+}
+
+async function markCliAuthStripeSessionImported(args: {
+  readonly tx: Db;
+  readonly sessionId: string;
+  readonly claimedAt: Date;
+  readonly updatedAt: Date;
+}) {
+  const [updated] = await args.tx
+    .update(connectorCliAuthSessions)
+    .set({
+      status: "imported",
+      errorMessage: null,
+      completedAt: args.updatedAt,
+      updatedAt: args.updatedAt,
+    })
+    .where(
+      claimedCliAuthStripeSessionWhere({
+        sessionId: args.sessionId,
+        claimedAt: args.claimedAt,
+      }),
+    )
+    .returning({ id: connectorCliAuthSessions.id });
+  if (!updated) {
+    throw new CliAuthStripeClaimLostError();
+  }
+}
+
+async function importCliAuthStripeConnector(args: {
+  readonly set: Setter;
+  readonly sessionId: string;
+  readonly claimedAt: Date;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly apiKey: string;
+  readonly signal: AbortSignal;
+}): Promise<CliAuthStripeCompleteResult> {
+  args.signal.throwIfAborted();
+
+  const encryptedValue = encryptSecretValue(args.apiKey);
+  const updatedAt = nowDate();
+  const writeDb = args.set(writeDb$);
+  await writeDb.transaction(async (tx) => {
+    await tx
+      .delete(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, args.orgId),
+          eq(connectors.userId, args.userId),
+          eq(connectors.type, "stripe"),
+        ),
+      );
+
+    await tx
+      .delete(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, args.orgId),
+          eq(secrets.userId, args.userId),
+          eq(secrets.type, "connector"),
+          inArray(secrets.name, [...STRIPE_OAUTH_SECRET_NAMES]),
+        ),
+      );
+
+    await tx
+      .insert(secrets)
+      .values({
+        orgId: args.orgId,
+        userId: args.userId,
+        name: STRIPE_TOKEN_SECRET_NAME,
+        encryptedValue,
+        description: "Stripe CLI test mode restricted key",
+        type: "user",
+      })
+      .onConflictDoUpdate({
+        target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
+        set: {
+          encryptedValue,
+          description: "Stripe CLI test mode restricted key",
+          updatedAt,
+        },
+      });
+
+    await markCliAuthStripeSessionImported({
+      tx,
+      sessionId: args.sessionId,
+      claimedAt: args.claimedAt,
+      updatedAt,
+    });
+  });
+
+  await publishCliAuthStripeConnectorChanged(args.userId);
+
+  return {
+    status: "complete",
+    connector: cliAuthStripeApiTokenConnector(),
   };
 }
 
@@ -736,115 +919,6 @@ async function readCliAuthStripeApiKey(args: {
   return { ok: true, apiKey: apiKeyResult.ok };
 }
 
-function withSandboxCleanup<T>(
-  operation: Promise<T>,
-  client: SandboxClient,
-  sandbox: SandboxHandle,
-): Promise<T> {
-  return operation.then(
-    async (result) => {
-      await cleanupSandbox(client, sandbox);
-      return result;
-    },
-    async (error: unknown) => {
-      await cleanupSandbox(client, sandbox);
-      throw error;
-    },
-  );
-}
-
-async function importCliAuthStripeConnector(args: {
-  readonly get: Getter;
-  readonly set: Setter;
-  readonly sessionId: string;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly apiKey: string;
-  readonly signal: AbortSignal;
-}): Promise<CliAuthStripeCompleteResult> {
-  args.signal.throwIfAborted();
-
-  const encryptedValue = encryptSecretValue(args.apiKey);
-  const updatedAt = nowDate();
-  const writeDb = args.set(writeDb$);
-  await writeDb.transaction(async (tx) => {
-    await tx
-      .delete(connectors)
-      .where(
-        and(
-          eq(connectors.orgId, args.orgId),
-          eq(connectors.userId, args.userId),
-          eq(connectors.type, "stripe"),
-        ),
-      );
-
-    await tx
-      .delete(secrets)
-      .where(
-        and(
-          eq(secrets.orgId, args.orgId),
-          eq(secrets.userId, args.userId),
-          eq(secrets.type, "connector"),
-          inArray(secrets.name, [...STRIPE_OAUTH_SECRET_NAMES]),
-        ),
-      );
-
-    await tx
-      .insert(secrets)
-      .values({
-        orgId: args.orgId,
-        userId: args.userId,
-        name: STRIPE_TOKEN_SECRET_NAME,
-        encryptedValue,
-        description: "Stripe CLI test mode restricted key",
-        type: "user",
-      })
-      .onConflictDoUpdate({
-        target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
-        set: {
-          encryptedValue,
-          description: "Stripe CLI test mode restricted key",
-          updatedAt,
-        },
-      });
-
-    await tx
-      .update(connectorCliAuthSessions)
-      .set({
-        status: "imported",
-        errorMessage: null,
-        completedAt: updatedAt,
-        updatedAt,
-      })
-      .where(eq(connectorCliAuthSessions.id, args.sessionId));
-  });
-  args.signal.throwIfAborted();
-
-  await publishUserSignal([args.userId], "connector:changed");
-  args.signal.throwIfAborted();
-
-  const connector = await args.get(
-    zeroConnectorByType({
-      orgId: args.orgId,
-      userId: args.userId,
-      type: "stripe",
-    }),
-  );
-  args.signal.throwIfAborted();
-  if (!connector) {
-    return {
-      status: "error",
-      code: "CLI_AUTH_STRIPE_FAILED",
-      message: "Stripe connector was not connected after importing the key",
-    };
-  }
-
-  return {
-    status: "complete",
-    connector,
-  };
-}
-
 async function loadCliAuthStripeSession(args: {
   readonly writeDb: Db;
   readonly sessionId: string;
@@ -880,6 +954,17 @@ function isActiveCliAuthStripeSession(
   );
 }
 
+function isStaleCompletingCliAuthStripeSession(
+  session: ConnectorCliAuthSession,
+  now: Date,
+): boolean {
+  return (
+    session.status === "completing" &&
+    now.getTime() - session.updatedAt.getTime() >
+      CLI_AUTH_STRIPE_COMPLETING_STALE_MS
+  );
+}
+
 async function expireCliAuthStripeSession(args: {
   readonly writeDb: Db;
   readonly client: SandboxClient;
@@ -904,6 +989,7 @@ async function expireCliAuthStripeSession(args: {
 async function claimCliAuthStripeSession(args: {
   readonly writeDb: Db;
   readonly sessionId: string;
+  readonly staleCompletingBefore: Date;
   readonly signal: AbortSignal;
 }) {
   const [claimedSession] = await args.writeDb
@@ -916,7 +1002,13 @@ async function claimCliAuthStripeSession(args: {
     .where(
       and(
         eq(connectorCliAuthSessions.id, args.sessionId),
-        eq(connectorCliAuthSessions.status, "awaiting_user_approval"),
+        or(
+          eq(connectorCliAuthSessions.status, "awaiting_user_approval"),
+          and(
+            eq(connectorCliAuthSessions.status, "completing"),
+            lt(connectorCliAuthSessions.updatedAt, args.staleCompletingBefore),
+          ),
+        ),
       ),
     )
     .returning();
@@ -997,10 +1089,19 @@ async function prepareCliAuthStripeCompletion(args: {
     return { ok: false, result };
   }
 
-  if (session.status === "initializing" || session.status === "completing") {
+  if (session.status === "initializing") {
     return { ok: false, result: { status: "pending", errorMessage: null } };
   }
-  if (session.status !== "awaiting_user_approval") {
+  if (
+    session.status === "completing" &&
+    !isStaleCompletingCliAuthStripeSession(session, args.now)
+  ) {
+    return { ok: false, result: { status: "pending", errorMessage: null } };
+  }
+  if (
+    session.status !== "awaiting_user_approval" &&
+    session.status !== "completing"
+  ) {
     return {
       ok: false,
       result: {
@@ -1014,6 +1115,9 @@ async function prepareCliAuthStripeCompletion(args: {
   const claimedSession = await claimCliAuthStripeSession({
     writeDb: args.writeDb,
     sessionId: session.id,
+    staleCompletingBefore: new Date(
+      args.now.getTime() - CLI_AUTH_STRIPE_COMPLETING_STALE_MS,
+    ),
     signal: args.signal,
   });
   if (!claimedSession) {
@@ -1045,21 +1149,54 @@ async function prepareCliAuthStripeCompletion(args: {
 async function resetCliAuthStripeSessionAwaitingApproval(args: {
   readonly writeDb: Db;
   readonly sessionId: string;
+  readonly claimedAt: Date;
   readonly signal: AbortSignal;
 }) {
-  await args.writeDb
+  const [updated] = await args.writeDb
     .update(connectorCliAuthSessions)
     .set({
       status: "awaiting_user_approval",
       errorMessage: null,
       updatedAt: nowDate(),
     })
-    .where(eq(connectorCliAuthSessions.id, args.sessionId));
+    .where(
+      claimedCliAuthStripeSessionWhere({
+        sessionId: args.sessionId,
+        claimedAt: args.claimedAt,
+      }),
+    )
+    .returning({ id: connectorCliAuthSessions.id });
   args.signal.throwIfAborted();
+  return Boolean(updated);
+}
+
+async function markClaimedCliAuthStripeSessionError(args: {
+  readonly writeDb: Db;
+  readonly sessionId: string;
+  readonly claimedAt: Date;
+  readonly message: string;
+  readonly signal: AbortSignal;
+}) {
+  const [updated] = await args.writeDb
+    .update(connectorCliAuthSessions)
+    .set({
+      status: "error",
+      errorMessage: sanitizeSessionError(args.message),
+      completedAt: null,
+      updatedAt: nowDate(),
+    })
+    .where(
+      claimedCliAuthStripeSessionWhere({
+        sessionId: args.sessionId,
+        claimedAt: args.claimedAt,
+      }),
+    )
+    .returning({ id: connectorCliAuthSessions.id });
+  args.signal.throwIfAborted();
+  return Boolean(updated);
 }
 
 async function completeClaimedCliAuthStripe(args: {
-  readonly get: Getter;
   readonly set: Setter;
   readonly writeDb: Db;
   readonly client: SandboxClient;
@@ -1070,6 +1207,7 @@ async function completeClaimedCliAuthStripe(args: {
   readonly userId: string;
   readonly signal: AbortSignal;
 }): Promise<CliAuthStripeCompleteResult> {
+  const claimedAt = args.session.updatedAt;
   const completion = await completeCliAuthStripeInSandbox({
     client: args.client,
     sandbox: args.sandbox,
@@ -1081,16 +1219,22 @@ async function completeClaimedCliAuthStripe(args: {
     await resetCliAuthStripeSessionAwaitingApproval({
       writeDb: args.writeDb,
       sessionId: args.session.id,
+      claimedAt,
       signal: args.signal,
     });
     return completion;
   }
   if (completion.status === "error") {
-    await markCliAuthStripeSessionError({
+    const claimed = await markClaimedCliAuthStripeSessionError({
       writeDb: args.writeDb,
       sessionId: args.session.id,
+      claimedAt,
       message: completion.message,
+      signal: args.signal,
     });
+    if (!claimed) {
+      return { status: "pending", errorMessage: null };
+    }
     await cleanupSandbox(args.client, args.sandbox);
     args.signal.throwIfAborted();
     return completion;
@@ -1103,43 +1247,52 @@ async function completeClaimedCliAuthStripe(args: {
   });
   args.signal.throwIfAborted();
   if (!apiKeyResult.ok) {
-    await markCliAuthStripeSessionError({
+    const claimed = await markClaimedCliAuthStripeSessionError({
       writeDb: args.writeDb,
       sessionId: args.session.id,
+      claimedAt,
       message: apiKeyResult.result.message,
+      signal: args.signal,
     });
+    if (!claimed) {
+      return { status: "pending", errorMessage: null };
+    }
     await cleanupSandbox(args.client, args.sandbox);
     args.signal.throwIfAborted();
     return apiKeyResult.result;
   }
 
   const importResult = await safeAsync(() => {
-    return withSandboxCleanup(
-      importCliAuthStripeConnector({
-        get: args.get,
-        set: args.set,
-        sessionId: args.session.id,
-        orgId: args.orgId,
-        userId: args.userId,
-        apiKey: apiKeyResult.apiKey,
-        signal: args.signal,
-      }),
-      args.client,
-      args.sandbox,
-    );
+    return importCliAuthStripeConnector({
+      set: args.set,
+      sessionId: args.session.id,
+      claimedAt,
+      orgId: args.orgId,
+      userId: args.userId,
+      apiKey: apiKeyResult.apiKey,
+      signal: args.signal,
+    });
   });
-  args.signal.throwIfAborted();
   if ("error" in importResult) {
+    if (isCliAuthStripeClaimLostError(importResult.error)) {
+      return { status: "pending", errorMessage: null };
+    }
     const message = sanitizeSessionError(
       importResult.error instanceof Error
         ? importResult.error.message
         : String(importResult.error),
     );
-    await markCliAuthStripeSessionError({
+    const claimed = await markClaimedCliAuthStripeSessionError({
       writeDb: args.writeDb,
       sessionId: args.session.id,
+      claimedAt,
       message,
+      signal: args.signal,
     });
+    if (!claimed) {
+      return { status: "pending", errorMessage: null };
+    }
+    await cleanupSandbox(args.client, args.sandbox);
     args.signal.throwIfAborted();
     return {
       status: "error",
@@ -1147,19 +1300,17 @@ async function completeClaimedCliAuthStripe(args: {
       message,
     };
   }
-  if (importResult.ok.status === "error") {
-    await markCliAuthStripeSessionError({
-      writeDb: args.writeDb,
-      sessionId: args.session.id,
-      message: importResult.ok.message,
-    });
-  }
+  await cleanupSandboxSafely({
+    client: args.client,
+    sandbox: args.sandbox,
+    reason: "import completed",
+  });
   return importResult.ok;
 }
 
 export const completeCliAuthStripe$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly orgId: string;
       readonly userId: string;
@@ -1183,7 +1334,6 @@ export const completeCliAuthStripe$ = command(
       return prepared.result;
     }
     return completeClaimedCliAuthStripe({
-      get,
       set,
       writeDb,
       client,
