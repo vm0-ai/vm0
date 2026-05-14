@@ -253,9 +253,16 @@ mod tests {
     use super::*;
 
     use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::sync::{Mutex, MutexGuard};
 
     use chrono::TimeZone;
     use tempfile::TempDir;
+
+    static SETUP_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn setup_env_lock() -> MutexGuard<'static, ()> {
+        SETUP_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
 
     fn fixed_now() -> DateTime<Utc> {
         // 2026-01-01T00:00:00Z — well after assistant knowledge cutoff
@@ -273,6 +280,7 @@ mod tests {
     /// Run `setup_codex_chatgpt_inner` against a temp dir and return the
     /// parsed `auth.json` plus the path it was written to.
     fn run_setup_and_parse(tmp: &TempDir, now: DateTime<Utc>) -> (Value, std::path::PathBuf) {
+        let _guard = setup_env_lock();
         setup_codex_chatgpt_inner(tmp.path(), now).unwrap();
         let auth_path = tmp.path().join(".codex").join("auth.json");
         let body = std::fs::read_to_string(&auth_path).unwrap();
@@ -397,15 +405,13 @@ mod tests {
         }
     }
 
-    /// CAUTION: this test mutates global env via `unsafe { set_var }`
-    /// inside `setup_codex_chatgpt_inner`. Cargo runs tests in parallel
-    /// by default; the var is single-write within this crate's tests so
-    /// the race is benign, but any future test that *reads*
-    /// `CODEX_REFRESH_TOKEN_URL_OVERRIDE` should not run alongside this
-    /// one. Same precedent as `artifact.rs:826`.
+    /// CAUTION: `setup_codex_chatgpt_inner` mutates global env via
+    /// `unsafe { set_var }`. Cargo runs tests in parallel by default, so
+    /// every test that calls it must hold `SETUP_ENV_LOCK`.
     #[test]
     fn setup_codex_chatgpt_inner_sets_refresh_url_override_env() {
         let tmp = TempDir::new().unwrap();
+        let _guard = setup_env_lock();
         setup_codex_chatgpt_inner(tmp.path(), fixed_now()).unwrap();
         assert_eq!(
             std::env::var("CODEX_REFRESH_TOKEN_URL_OVERRIDE").unwrap(),
@@ -421,6 +427,7 @@ mod tests {
         let auth_path = codex_home.join("auth.json");
         std::fs::write(&auth_path, b"STALE_CONTENT_FROM_PRIOR_RUN").unwrap();
 
+        let _guard = setup_env_lock();
         setup_codex_chatgpt_inner(tmp.path(), fixed_now()).unwrap();
 
         let body = std::fs::read_to_string(&auth_path).unwrap();
@@ -441,6 +448,7 @@ mod tests {
         std::fs::write(&auth_path, b"STALE_CONTENT_FROM_PRIOR_RUN").unwrap();
         std::fs::set_permissions(&auth_path, std::fs::Permissions::from_mode(0o644)).unwrap();
 
+        let _guard = setup_env_lock();
         setup_codex_chatgpt_inner(tmp.path(), fixed_now()).unwrap();
 
         let mode = std::fs::metadata(&auth_path).unwrap().permissions().mode();
@@ -468,6 +476,7 @@ mod tests {
         std::fs::write(&symlink_target, b"TARGET_CONTENT_MUST_SURVIVE").unwrap();
         symlink(&symlink_target, &auth_path).unwrap();
 
+        let _guard = setup_env_lock();
         setup_codex_chatgpt_inner(tmp.path(), fixed_now()).unwrap();
 
         assert_eq!(
@@ -496,6 +505,7 @@ mod tests {
         std::fs::create_dir_all(&codex_home).unwrap();
         std::fs::set_permissions(&codex_home, std::fs::Permissions::from_mode(0o755)).unwrap();
 
+        let _guard = setup_env_lock();
         setup_codex_chatgpt_inner(tmp.path(), fixed_now()).unwrap();
 
         let mode = std::fs::metadata(&codex_home).unwrap().permissions().mode();
@@ -513,6 +523,7 @@ mod tests {
         std::fs::create_dir_all(&target).unwrap();
         symlink(&target, tmp.path().join(".codex")).unwrap();
 
+        let _guard = setup_env_lock();
         let err = setup_codex_chatgpt_inner(tmp.path(), fixed_now()).unwrap_err();
         assert!(
             err.to_string().contains("symlinked directory"),
