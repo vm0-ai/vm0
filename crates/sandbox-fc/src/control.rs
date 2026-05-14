@@ -51,7 +51,8 @@ pub struct ExecRequest {
     pub timeout_secs: u32,
     /// Whether to request sudo execution inside the guest.
     ///
-    /// The guest command runner decides how sudo is applied.
+    /// When this field is omitted during JSON deserialization, it defaults to
+    /// `false`. The guest command runner decides how sudo is applied.
     #[serde(default)]
     pub sudo: bool,
 }
@@ -63,12 +64,15 @@ fn default_timeout() -> u32 {
 /// Response to a `runner exec` client.
 ///
 /// This enum is serialized without a tag. Clients should distinguish variants
-/// by shape: a success response contains command result fields, while an error
-/// response contains only an `error` string.
+/// by shape: a command result response contains command result fields, while an
+/// error response contains only an `error` string.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ExecResponse {
-    /// Command completed and produced a captured result.
+    /// Command execution produced a captured result.
+    ///
+    /// This variant does not imply a zero exit code; inspect `exit_code` for the
+    /// command's status.
     Success {
         /// Process exit code returned by the guest command runner.
         exit_code: i32,
