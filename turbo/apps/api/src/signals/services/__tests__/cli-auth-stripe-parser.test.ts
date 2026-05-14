@@ -297,9 +297,26 @@ test_mode_api_key = 123
   });
 
   it("rejects malformed TOML", () => {
-    expect(() => {
+    const parseMalformed = () => {
       parseStripeCliAuthConfig("[default", "test");
-    }).toThrow();
+    };
+
+    expect(parseMalformed).toThrow("Stripe CLI config is not valid TOML");
+  });
+
+  it("rejects malformed TOML without leaking config values", () => {
+    const parseMalformed = () => {
+      parseStripeCliAuthConfig(
+        `[default]
+test_mode_api_key = "sk_test_should_not_leak"
+bad =
+`,
+        "test",
+      );
+    };
+
+    expect(parseMalformed).toThrow("Stripe CLI config is not valid TOML");
+    expect(parseMalformed).not.toThrow(/sk_test_should_not_leak/);
   });
 });
 

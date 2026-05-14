@@ -404,12 +404,13 @@ async function parseCliAuthStripeStartOutput(
     return parseStripeCliAuthStartOutputText(result.stdout.text);
   });
   if ("error" in parsedResult) {
+    const message =
+      parsedResult.error instanceof Error
+        ? parsedResult.error.message
+        : String(parsedResult.error);
     return {
       ok: false,
-      message:
-        parsedResult.error instanceof Error
-          ? parsedResult.error.message
-          : String(parsedResult.error),
+      message: redactStripeCliAuthText(message),
     };
   }
   return { ok: true, output: parsedResult.ok };
@@ -836,15 +837,16 @@ async function readCliAuthStripeApiKey(args: {
     );
   });
   if ("error" in apiKeyResult) {
+    const message =
+      apiKeyResult.error instanceof Error
+        ? apiKeyResult.error.message
+        : String(apiKeyResult.error);
     return {
       ok: false,
       result: {
         status: "error",
         code: "CLI_AUTH_STRIPE_FAILED",
-        message:
-          apiKeyResult.error instanceof Error
-            ? apiKeyResult.error.message
-            : String(apiKeyResult.error),
+        message: redactStripeCliAuthText(message),
       },
     };
   }

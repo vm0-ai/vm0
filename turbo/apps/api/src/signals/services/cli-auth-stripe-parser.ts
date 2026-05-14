@@ -2,7 +2,7 @@ import { parse } from "smol-toml";
 import { z } from "zod";
 
 import { redactSandboxMessage } from "../external/sandbox";
-import { safeJsonParse, safeUrlParse } from "../utils";
+import { safeJsonParse, safeUrlParse, throwIfAbort } from "../utils";
 
 export type StripeCliAuthMode = "test" | "live";
 
@@ -89,11 +89,21 @@ function stripeCliAuthKeyPattern(mode: StripeCliAuthMode): RegExp {
     : /^(sk|rk)_live_[A-Za-z0-9]+$/;
 }
 
+function parseStripeCliAuthToml(configToml: string): unknown {
+  // eslint-disable-next-line no-restricted-syntax -- sanitize smol-toml parser errors because they include input excerpts that may contain Stripe keys
+  try {
+    return parse(configToml) as unknown;
+  } catch (error) {
+    throwIfAbort(error);
+    throw new Error("Stripe CLI config is not valid TOML");
+  }
+}
+
 export function parseStripeCliAuthConfig(
   configToml: string,
   mode: StripeCliAuthMode,
 ): string {
-  const parsed = parse(configToml) as unknown;
+  const parsed = parseStripeCliAuthToml(configToml);
   if (!isRecord(parsed)) {
     throw new Error("Stripe CLI config is not a TOML table");
   }
