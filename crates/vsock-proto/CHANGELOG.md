@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.6](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.15.5...vsock-proto-v0.15.6) (2026-05-14)
+
+
+### Documentation
+
+* update command start wire format ([#13332](https://github.com/vm0-ai/vm0/issues/13332)) ([559963b](https://github.com/vm0-ai/vm0/commit/559963bd3c394a59af5f655e80085c7d2dddcf6c))
+
 ## [0.15.5](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.15.4...vsock-proto-v0.15.5) (2026-05-14)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.31.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.31.2...guest-agent-v0.31.3) (2026-05-14)
+
+
+### Bug Fixes
+
+* avoid symlink traversal in codex session lookup ([#13321](https://github.com/vm0-ai/vm0/issues/13321)) ([72f85e9](https://github.com/vm0-ai/vm0/commit/72f85e9d27b2e45d5a6981de4320096a220a039b))
+
+
+### Refactoring
+
+* share guest-agent no-follow fs helpers ([#13341](https://github.com/vm0-ai/vm0/issues/13341)) ([fc259af](https://github.com/vm0-ai/vm0/commit/fc259af7bc81253453decb672bf4583fdb0d5a14))
+
 ## [0.31.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.31.1...guest-agent-v0.31.2) (2026-05-14)
 
 
