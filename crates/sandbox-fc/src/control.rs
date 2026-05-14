@@ -24,8 +24,10 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
-use vsock_host::VsockHost;
 
+use crate::guest_operations::{
+    GuestOperationGate, GuestOperationStartError, guest_error_is_terminal,
+};
 use crate::paths::{RuntimePaths, SockPaths};
 
 // -----------------------------------------------------------------------
@@ -108,7 +110,7 @@ async fn write_frame(stream: &mut UnixStream, data: &[u8]) -> io::Result<()> {
 pub(crate) struct BoundControlServer {
     sock_path: Option<SocketPathGuard>,
     listener: Option<UnixListener>,
-    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    guest_operations: GuestOperationGate,
 }
 
 impl BoundControlServer {
@@ -125,7 +127,7 @@ impl BoundControlServer {
         let task = spawn_bound_server(
             listener,
             sock_path.clone(),
-            Arc::clone(&self.guest),
+            self.guest_operations.clone(),
             shutdown.clone(),
         );
         ControlServerHandle {
@@ -251,14 +253,14 @@ impl SocketPathGuard {
 /// Bind the control socket before spawning the accept loop.
 pub(crate) fn bind_server(
     sock_path: PathBuf,
-    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    guest_operations: GuestOperationGate,
 ) -> io::Result<BoundControlServer> {
     let listener = bind_unix_listener(&sock_path)?;
     let sock_path = SocketPathGuard::new(sock_path);
     Ok(BoundControlServer {
         sock_path: Some(sock_path),
         listener: Some(listener),
-        guest,
+        guest_operations,
     })
 }
 
@@ -282,7 +284,7 @@ fn remove_socket_path(sock_path: &Path) {
 fn spawn_bound_server(
     listener: UnixListener,
     sock_path: SocketPathGuard,
-    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    guest_operations: GuestOperationGate,
     shutdown: CancellationToken,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
@@ -311,10 +313,10 @@ fn spawn_bound_server(
                         }
                     };
 
-                    let guest = Arc::clone(&guest);
+                    let guest_operations = guest_operations.clone();
                     let handler_shutdown = shutdown.clone();
                     handlers.spawn(async move {
-                        if let Err(e) = handle_connection(stream, guest, handler_shutdown).await {
+                        if let Err(e) = handle_connection(stream, guest_operations, handler_shutdown).await {
                             warn!(error = %e, "control connection handler error");
                         }
                     });
@@ -367,7 +369,7 @@ async fn shutdown_handlers(handlers: &mut JoinSet<()>) {
 /// Handle a single control socket connection.
 async fn handle_connection(
     mut stream: UnixStream,
-    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    guest_operations: GuestOperationGate,
     shutdown: CancellationToken,
 ) -> io::Result<()> {
     let frame = tokio::select! {
@@ -380,7 +382,7 @@ async fn handle_connection(
         Ok(request) => tokio::select! {
             biased;
             () = shutdown.cancelled() => return Ok(()),
-            response = execute(request, &guest) => response,
+            response = execute(request, &guest_operations) => response,
         },
         Err(e) => ExecResponse::Error {
             error: format!("invalid request: {e}"),
@@ -398,27 +400,27 @@ async fn handle_connection(
     Ok(())
 }
 
-/// Execute an [`ExecRequest`] against the sandbox's VsockHost.
-async fn execute(
-    request: ExecRequest,
-    guest: &Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
-) -> ExecResponse {
-    let vsock = {
-        let lock = guest.lock().await;
-        match lock.as_ref() {
-            Some(v) => Arc::clone(v),
-            None => {
-                return ExecResponse::Error {
-                    error: "sandbox not running".into(),
-                };
-            }
+/// Execute an [`ExecRequest`] through the sandbox operation gate.
+async fn execute(request: ExecRequest, guest_operations: &GuestOperationGate) -> ExecResponse {
+    let mut operation = match guest_operations.begin_control_operation().await {
+        Ok(operation) => operation,
+        Err(error) => {
+            return ExecResponse::Error {
+                error: control_start_error(error),
+            };
         }
     };
+    if let Err(error) = operation.mark_writing() {
+        return ExecResponse::Error {
+            error: format!("operation gate transition failed: {error:?}"),
+        };
+    }
 
+    let vsock = operation.guest();
     let timeout_ms = request.timeout_secs.saturating_mul(1000);
     let env: &[(&str, &str)] = &[];
 
-    match vsock
+    let result = vsock
         .exec_capture(vsock_host::CommandCaptureRequest {
             command: &request.command,
             timeout_ms,
@@ -430,18 +432,47 @@ async fn execute(
             expected_exit_codes: &[],
             wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
         })
-        .await
-    {
-        Ok(result) => ExecResponse::Success {
-            exit_code: result.exit_code,
-            stdout: BASE64.encode(&result.stdout),
-            stderr: BASE64.encode(&result.stderr),
-            stdout_truncated: result.stdout_truncated,
-            stderr_truncated: result.stderr_truncated,
-        },
-        Err(e) => ExecResponse::Error {
-            error: format!("exec failed: {e}"),
-        },
+        .await;
+
+    match result {
+        Ok(result) => {
+            if let Err(error) = operation.complete() {
+                return ExecResponse::Error {
+                    error: format!("operation gate completion failed: {error:?}"),
+                };
+            }
+            ExecResponse::Success {
+                exit_code: result.exit_code,
+                stdout: BASE64.encode(&result.stdout),
+                stderr: BASE64.encode(&result.stderr),
+                stdout_truncated: result.stdout_truncated,
+                stderr_truncated: result.stderr_truncated,
+            }
+        }
+        Err(e) => {
+            let message = format!("exec failed: {e}");
+            if guest_error_is_terminal(&e, false)
+                && let Err(error) = operation.complete()
+            {
+                return ExecResponse::Error {
+                    error: format!("operation gate completion failed: {error:?}"),
+                };
+            }
+            ExecResponse::Error { error: message }
+        }
+    }
+}
+
+fn control_start_error(error: GuestOperationStartError) -> String {
+    match error {
+        GuestOperationStartError::BackendCrashed => "sandbox backend crashed".into(),
+        GuestOperationStartError::NotRunning { state } => {
+            format!("sandbox not running (state={state})")
+        }
+        GuestOperationStartError::NoGuest => "sandbox not running".into(),
+        GuestOperationStartError::GateClosed { state } => {
+            format!("sandbox operation gate closed: {state:?}")
+        }
     }
 }
 
@@ -604,8 +635,24 @@ fn resolve_control_socket_in(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::park_coordinator::ParkCoordinator;
     use tokio::sync::oneshot;
+    use vsock_host::VsockHost;
     use vsock_proto::{Decoder, MSG_COMMAND_START, MSG_PING, MSG_PONG, MSG_READY, RawMessage};
+
+    fn test_gate(guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>) -> GuestOperationGate {
+        GuestOperationGate::new(guest, ParkCoordinator::new())
+    }
+
+    fn test_gate_with_coordinator(
+        guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    ) -> (GuestOperationGate, ParkCoordinator) {
+        let coordinator = ParkCoordinator::new();
+        (
+            GuestOperationGate::new(guest, coordinator.clone()),
+            coordinator,
+        )
+    }
 
     #[tokio::test]
     async fn exec_remote_empty_id() {
@@ -713,7 +760,7 @@ mod tests {
 
         // Server with no guest connected.
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
-        let mut handle = bind_server(sock_path.clone(), guest)
+        let mut handle = bind_server(sock_path.clone(), test_gate(guest))
             .unwrap()
             .spawn(CancellationToken::new());
 
@@ -743,7 +790,7 @@ mod tests {
         let sock_path = dir.path().join("control.sock");
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
 
-        let server = bind_server(sock_path.clone(), guest).unwrap();
+        let server = bind_server(sock_path.clone(), test_gate(guest)).unwrap();
         assert!(sock_path.exists());
 
         server.close();
@@ -758,7 +805,7 @@ mod tests {
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
 
         {
-            let _server = bind_server(sock_path.clone(), guest).unwrap();
+            let _server = bind_server(sock_path.clone(), test_gate(guest)).unwrap();
             assert!(sock_path.exists());
         }
 
@@ -770,7 +817,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
-        let mut handle = bind_server(sock_path.clone(), guest)
+        let mut handle = bind_server(sock_path.clone(), test_gate(guest))
             .unwrap()
             .spawn(CancellationToken::new());
 
@@ -790,7 +837,7 @@ mod tests {
         let sock_path = dir.path().join("control.sock");
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
         let shutdown = CancellationToken::new();
-        let mut handle = bind_server(sock_path.clone(), guest)
+        let mut handle = bind_server(sock_path.clone(), test_gate(guest))
             .unwrap()
             .spawn(shutdown.clone());
 
@@ -807,7 +854,7 @@ mod tests {
         let sock_path = dir.path().join("control.sock");
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
         let shutdown = CancellationToken::new();
-        let mut handle = bind_server(sock_path.clone(), guest)
+        let mut handle = bind_server(sock_path.clone(), test_gate(guest))
             .unwrap()
             .spawn(shutdown.clone());
         let mut stream = UnixStream::connect(&sock_path).await.unwrap();
@@ -827,7 +874,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
-        let mut handle = bind_server(sock_path.clone(), guest)
+        let mut handle = bind_server(sock_path.clone(), test_gate(guest))
             .unwrap()
             .spawn(CancellationToken::new());
         let mut stream = UnixStream::connect(&sock_path).await.unwrap();
@@ -856,7 +903,7 @@ mod tests {
 
         let sock_path = dir.path().join("control.sock");
         let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
-        let mut handle = bind_server(sock_path.clone(), guest)
+        let mut handle = bind_server(sock_path.clone(), test_gate(guest))
             .unwrap()
             .spawn(CancellationToken::new());
         let client = tokio::spawn({
@@ -890,13 +937,66 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn control_exec_rejects_when_operation_gate_is_closing() {
+        let dir = tempfile::tempdir().unwrap();
+        let vsock_base = dir.path().join("vsock");
+        let host_task = {
+            let vsock_base = vsock_base.display().to_string();
+            tokio::spawn(async move {
+                VsockHost::wait_for_connection(&vsock_base, Duration::from_secs(5)).await
+            })
+        };
+        let (exec_seen_tx, mut exec_seen_rx) = oneshot::channel();
+        let guest_task = tokio::spawn(mock_guest_holds_exec(vsock_base, exec_seen_tx));
+        let vsock = host_task.await.unwrap().unwrap();
+
+        let sock_path = dir.path().join("control.sock");
+        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
+        let (gate, coordinator) = test_gate_with_coordinator(guest);
+        let attempt = coordinator
+            .begin_prepare_park()
+            .expect("gate should enter closing state");
+        let mut handle = bind_server(sock_path.clone(), gate)
+            .unwrap()
+            .spawn(CancellationToken::new());
+
+        let request = ExecRequest {
+            command: "echo should-not-run".into(),
+            timeout_secs: 5,
+            sudo: false,
+        };
+        let response = send_exec(&sock_path, &request, Duration::from_secs(5))
+            .await
+            .unwrap();
+
+        match response {
+            ExecResponse::Error { error } => {
+                assert!(
+                    error.contains("operation gate closed"),
+                    "unexpected error: {error}"
+                );
+            }
+            ExecResponse::Success { .. } => panic!("expected gate-closed error"),
+        }
+        assert!(
+            exec_seen_rx.try_recv().is_err(),
+            "control exec should not send a guest command while the gate is closing"
+        );
+
+        handle.shutdown().await;
+        coordinator.abort_prepare_park(&attempt).unwrap();
+        guest_task.abort();
+        let _ = guest_task.await;
+    }
+
+    #[tokio::test]
     async fn bind_server_reports_bind_failure() {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
         let _existing = UnixListener::bind(&sock_path).unwrap();
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
 
-        let result = bind_server(sock_path.clone(), guest);
+        let result = bind_server(sock_path.clone(), test_gate(guest));
 
         let Err(err) = result else {
             panic!("binding an occupied control socket should fail");
