@@ -307,31 +307,20 @@ describe("talk navigation", () => {
     await fill(input, "Test Workspace");
     click(screen.getByText("Next"));
 
-    // Step 2: Choose your tools — select a connector so step 3 is reachable
+    // Step 2: Choose your tools — pick a connector, then continue in web.
+    // Step 2 is the terminal step of the regular admin flow.
     await waitFor(() => {
       expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
     click(screen.getByTestId("connector-card-github"));
-    click(screen.getByText("Next"));
-
-    // Step 3: Connect your apps → Next
-    await waitFor(() => {
-      expect(screen.getByText("Connect your apps")).toBeInTheDocument();
-    });
-    click(screen.getByText("Next"));
-
-    // Step 4: Where to work
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Where would you like to work with/),
-      ).toBeInTheDocument();
-    });
 
     // Click "Continue in web" which triggers:
-    // 1. completeZeroOnboarding$ (single setup API call)
+    // 1. completeZeroOnboarding$ (re-runs setup to authorize the connector)
     // 2. navigate to /agents/:id/chat
-    const continueButton = screen.getByText(/Continue in web/);
-    click(continueButton);
+    await waitFor(() => {
+      expect(screen.getByText(/Continue in web/)).toBeInTheDocument();
+    });
+    click(screen.getByText(/Continue in web/));
 
     // The final URL should be /agents/:id/chat (no auto-intro message)
     await waitFor(() => {
