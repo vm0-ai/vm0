@@ -745,6 +745,7 @@ mod tests {
         telemetry.shutdown().await;
 
         telemetry_mock.assert_calls_async(1).await;
+        telemetry_mock.delete_async().await;
         let sandbox_ops = std::fs::read_to_string(paths::sandbox_ops_file()).unwrap_or_default();
         assert!(
             !sandbox_ops.contains("final_telemetry_upload"),
