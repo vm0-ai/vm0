@@ -11,8 +11,6 @@ import { and, eq } from "drizzle-orm";
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
-import type { SandboxAuth } from "../../types/auth";
-import { isSandboxToken, verifySandboxToken } from "../auth/tokens";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
@@ -22,6 +20,10 @@ import { recordSandboxOperation } from "../external/sandbox-op-log";
 import type { RouteEntry } from "../route";
 import { dispatchProgressCallbacks$ } from "../services/agent-run-callbacks.service";
 import { safeAsync } from "../utils";
+import {
+  getSandboxAuthForRun,
+  unauthorizedRunMismatch,
+} from "./agent-webhook-auth";
 
 const SANDBOX_TELEMETRY_SYSTEM_DATASET = "sandbox-telemetry-system";
 const SANDBOX_TELEMETRY_METRICS_DATASET = "sandbox-telemetry-metrics";
@@ -29,37 +31,6 @@ const SANDBOX_TELEMETRY_NETWORK_DATASET = "sandbox-telemetry-network";
 const PG_FOREIGN_KEY_VIOLATION = "23503";
 
 const L = logger("webhooks:agent");
-
-const unauthorizedRunMismatch = Object.freeze({
-  status: 401 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Not authenticated or runId mismatch",
-      code: "UNAUTHORIZED",
-    }),
-  }),
-});
-
-function getSandboxAuthForRun(
-  expectedRunId: string,
-  authHeader: string | undefined,
-): SandboxAuth | null {
-  if (!authHeader?.startsWith("Bearer ")) {
-    return null;
-  }
-
-  const token = authHeader.substring("Bearer ".length);
-  if (!isSandboxToken(token)) {
-    return null;
-  }
-
-  const auth = verifySandboxToken(token);
-  if (!auth || auth.runId !== expectedRunId) {
-    return null;
-  }
-
-  return auth;
-}
 
 function isForeignKeyViolation(error: unknown): boolean {
   if (!(error instanceof Error)) {

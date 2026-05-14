@@ -2,11 +2,13 @@ import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
 import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
+import { storageVersionLineage } from "@vm0/db/schema/storage-version-lineage";
 import { command, type Computed } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
 import { badRequestMessage, notFound } from "../../lib/error";
 import { env } from "../../lib/env";
+import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
@@ -21,6 +23,8 @@ import {
   computeContentHashFromHashes,
   type FileEntryWithHash,
 } from "./storage-content-hash.service";
+
+const L = logger("storage-write");
 
 type StorageType = "volume" | "artifact";
 
@@ -46,6 +50,7 @@ interface CommitStorageInput {
   readonly versionId: string;
   readonly files: readonly FileEntryWithHash[];
   readonly runId?: string;
+  readonly parentVersionId?: string;
   readonly message?: string;
 }
 
@@ -611,6 +616,41 @@ async function commitNewStorageVersion(args: {
   };
 }
 
+async function recordStorageLineage(args: {
+  readonly db: Db;
+  readonly storageId: string;
+  readonly versionId: string;
+  readonly parentVersionId: string | undefined;
+  readonly runId: string | undefined;
+  readonly storageType: StorageType;
+}): Promise<void> {
+  const parentVersionId = args.parentVersionId;
+  const runId = args.runId;
+  if (!parentVersionId || !runId || args.storageType === "volume") {
+    return;
+  }
+
+  const result = await safeAsync(() => {
+    return args.db.insert(storageVersionLineage).values({
+      storageId: args.storageId,
+      versionId: args.versionId,
+      parentVersionId,
+      runId,
+      storageType: args.storageType,
+    });
+  });
+
+  if ("error" in result) {
+    L.error(
+      `Failed to record lineage for ${args.versionId}: ${
+        result.error instanceof Error
+          ? result.error.message
+          : String(result.error)
+      }`,
+    );
+  }
+}
+
 export const prepareStorageUploadForAuth$ = command(
   async (
     { get, set },
@@ -748,7 +788,7 @@ export const commitStorageUploadForAuth$ = command(
       });
     }
 
-    return await commitNewStorageVersion({
+    const response = await commitNewStorageVersion({
       get,
       db: writeDb,
       bucket,
@@ -756,5 +796,20 @@ export const commitStorageUploadForAuth$ = command(
       input: args,
       signal,
     });
+    signal.throwIfAborted();
+
+    if (response.status === 200) {
+      await recordStorageLineage({
+        db: writeDb,
+        storageId: storage.id,
+        versionId: args.versionId,
+        parentVersionId: args.parentVersionId,
+        runId: args.runId,
+        storageType: args.storageType,
+      });
+      signal.throwIfAborted();
+    }
+
+    return response;
   },
 );
