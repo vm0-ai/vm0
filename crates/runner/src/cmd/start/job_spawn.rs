@@ -440,12 +440,12 @@ mod tests {
     }
 
     struct CleanupPanickedJobFixture {
-        _dir: tempfile::TempDir,
         status_path: std::path::PathBuf,
         status: Arc<StatusTracker>,
         idle_pool: SharedIdlePool,
         tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
         orphans: OrphanedActiveRuns,
+        _dir: tempfile::TempDir,
     }
 
     impl CleanupPanickedJobFixture {
@@ -463,12 +463,12 @@ mod tests {
             let orphans = OrphanedActiveRuns::new();
 
             Self {
-                _dir: dir,
                 status_path,
                 status,
                 idle_pool,
                 tokens,
                 orphans,
+                _dir: dir,
             }
         }
 
