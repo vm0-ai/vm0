@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.353.1](https://github.com/vm0-ai/vm0/compare/app-v0.353.0...app-v0.353.1) (2026-05-14)
+
+
+### Bug Fixes
+
+* **agentphone:** preserve email Apple ID handles for inbound iMessage webhooks ([#13203](https://github.com/vm0-ai/vm0/issues/13203)) ([8a014b9](https://github.com/vm0-ai/vm0/commit/8a014b9bc50764f89c963d5bf02fa27f82ec6309))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.19.2
+    * @vm0/core bumped to 8.275.1
+
 ## [0.353.0](https://github.com/vm0-ai/vm0/compare/app-v0.352.0...app-v0.353.0) (2026-05-13)
 
 
