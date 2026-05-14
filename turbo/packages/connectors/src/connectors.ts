@@ -52,6 +52,7 @@ import { figma } from "./connectors/figma";
 import { mercury } from "./connectors/mercury";
 import { minimax } from "./connectors/minimax";
 import { reportei } from "./connectors/reportei";
+import { localBrowser } from "./connectors/local-browser";
 import { remoteAgent } from "./connectors/remote-agent";
 import { serpapi } from "./connectors/serpapi";
 import { salesforce } from "./connectors/salesforce";
@@ -429,6 +430,7 @@ const CONNECTOR_TYPES_DEF = {
   ...mercury,
   ...minimax,
   ...reportei,
+  ...localBrowser,
   ...remoteAgent,
   ...serpapi,
   ...salesforce,

@@ -61,6 +61,7 @@ const COMPUTER_CONNECTOR_SECRET_NAMES = [
   "COMPUTER_CONNECTOR_DOMAIN_ID",
   "COMPUTER_CONNECTOR_DOMAIN",
 ] as const;
+type FeatureStates = ReturnType<typeof getAllFeatureStates>;
 
 interface ExternalUserInfo {
   readonly id: string;
@@ -95,6 +96,17 @@ function storedConnectorRowToResponse(
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+function storedConnectorTypeIsVisible(
+  type: ConnectorType,
+  featureStates: FeatureStates,
+): boolean {
+  const config = CONNECTOR_TYPES[type];
+  if (!config.featureFlag || !config.strictFeatureFlag) {
+    return true;
+  }
+  return featureStates[config.featureFlag] ?? false;
 }
 
 function apiTokenConnectorTypes(args: {
@@ -146,7 +158,7 @@ export function zeroConnectorList(args: {
 }): Computed<Promise<ConnectorListResponse>> {
   return computed(async (get): Promise<ConnectorListResponse> => {
     const db = get(db$);
-    const [oauthRows, derivedTypes] = await Promise.all([
+    const [oauthRows, derivedTypes, overrides] = await Promise.all([
       db
         .select({
           id: connectors.id,
@@ -168,11 +180,20 @@ export function zeroConnectorList(args: {
           ),
         ),
       get(apiTokenConnectorTypes(args)),
+      get(userFeatureSwitchOverrides(args.orgId, args.userId)),
     ]);
+    const featureStates = getAllFeatureStates({
+      userId: args.userId,
+      orgId: args.orgId,
+      overrides,
+    });
 
     const dbConnectors: ConnectorResponse[] = oauthRows.flatMap((row) => {
       const parsed = connectorTypeSchema.safeParse(row.type);
       if (!parsed.success) {
+        return [];
+      }
+      if (!storedConnectorTypeIsVisible(parsed.data, featureStates)) {
         return [];
       }
       return [storedConnectorRowToResponse(row, parsed.data)];
@@ -344,6 +365,17 @@ export function zeroConnectorByType(args: {
   readonly type: ConnectorType;
 }): Computed<Promise<ConnectorResponse | null>> {
   return computed(async (get): Promise<ConnectorResponse | null> => {
+    const overrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    const featureStates = getAllFeatureStates({
+      userId: args.userId,
+      orgId: args.orgId,
+      overrides,
+    });
+    if (!storedConnectorTypeIsVisible(args.type, featureStates)) {
+      return null;
+    }
     const storedConnector = await get(storedConnectorByType(args));
     if (storedConnector) {
       return storedConnector;
@@ -886,8 +918,9 @@ export function zeroConnectorSearch(args: {
       const flagEnabled = !flag || featureStates[flag];
       const showOauth = flagEnabled && "oauth" in config.authMethods;
       const showApiToken = "api-token" in config.authMethods;
+      const showApi = flagEnabled && "api" in config.authMethods;
 
-      if (!showOauth && !showApiToken) {
+      if (!showOauth && !showApiToken && !showApi) {
         return [];
       }
 
@@ -897,6 +930,9 @@ export function zeroConnectorSearch(args: {
       }
       if (showApiToken) {
         authMethods.push("api-token");
+      }
+      if (showApi) {
+        authMethods.push("api");
       }
       const item = {
         id: type,

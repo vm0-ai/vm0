@@ -11,6 +11,7 @@ import {
   zeroConnectorsByTypeContract,
   zeroConnectorsMainContract,
   zeroConnectorsSearchContract,
+  zeroLocalBrowserConnectorContract,
   zeroRemoteAgentConnectorContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
@@ -49,6 +50,7 @@ import {
   zeroConnectorSearch,
 } from "../services/zero-connector-data.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import { connectLocalBrowserConnector$ } from "../services/zero-local-browser.service";
 import { connectRemoteAgentConnector$ } from "../services/zero-remote-agent.service";
 import { createComputerConnector$ } from "../services/zero-computer-connector.service";
 import type { RouteEntry } from "../route";
@@ -89,12 +91,34 @@ const remoteAgentDisabled = Object.freeze({
   }),
 });
 
+const localBrowserDisabled = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Local browser use is not enabled",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
 function isRemoteAgentEnabled(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly overrides: Record<string, boolean>;
 }): boolean {
   return isFeatureEnabled(FeatureSwitchKey.RemoteAgent, {
+    orgId: params.orgId,
+    userId: params.userId,
+    overrides: params.overrides,
+  });
+}
+
+function isLocalBrowserEnabled(params: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly overrides: Record<string, boolean>;
+}): boolean {
+  return isFeatureEnabled(FeatureSwitchKey.LocalBrowserUse, {
     orgId: params.orgId,
     userId: params.userId,
     overrides: params.overrides,
@@ -481,6 +505,38 @@ const connectRemoteAgentConnectorInner$ = command(
   },
 );
 
+const connectLocalBrowserConnectorInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const overrides = await get(
+      userFeatureSwitchOverrides(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (
+      !isLocalBrowserEnabled({
+        orgId: auth.orgId,
+        userId: auth.userId,
+        overrides,
+      })
+    ) {
+      return localBrowserDisabled;
+    }
+
+    const result = await set(
+      connectLocalBrowserConnector$,
+      { orgId: auth.orgId, userId: auth.userId },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status === "no_online_host") {
+      return conflict("Start an online local-browser host before connecting");
+    }
+
+    return { status: 200 as const, body: result.connector };
+  },
+);
+
 export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
   return command(async ({ get, set }, signal: AbortSignal) => {
     const params = get(pathParamsOf(route));
@@ -708,6 +764,10 @@ export const zeroConnectorsRoutes: readonly RouteEntry[] = [
   {
     route: zeroRemoteAgentConnectorContract.create,
     handler: authRoute(connectorWriteAuth, connectRemoteAgentConnectorInner$),
+  },
+  {
+    route: zeroLocalBrowserConnectorContract.create,
+    handler: authRoute(connectorWriteAuth, connectLocalBrowserConnectorInner$),
   },
   {
     route: zeroConnectorsSearchContract.search,

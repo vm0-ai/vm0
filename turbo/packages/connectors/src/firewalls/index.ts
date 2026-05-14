@@ -569,6 +569,7 @@ export type NonFirewallConnectorType =
   | "codex-oauth"
   // Other
   | "computer" // not an API connector
+  | "local-browser" // virtual connector backed by a user-authorized browser host
   | "remote-agent"; // virtual connector backed by vm0's remote-agent API
 
 /**

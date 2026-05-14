@@ -96,6 +96,7 @@ import { langfuseHandler } from "./providers/langfuse-handler";
 import { langsmithHandler } from "./providers/langsmith-handler";
 import { lineHandler } from "./providers/line-handler";
 import { linearHandler } from "./providers/linear-handler";
+import { localBrowserHandler } from "./providers/local-browser-handler";
 import { loopsHandler } from "./providers/loops-handler";
 import { lumaHandler } from "./providers/luma-handler";
 import { lumaAiHandler } from "./providers/luma-ai-handler";
@@ -308,6 +309,7 @@ export const PROVIDER_HANDLERS: Record<
   "outlook-calendar": outlookCalendarHandler,
   "outlook-mail": outlookMailHandler,
   reddit: redditHandler,
+  "local-browser": localBrowserHandler,
   "remote-agent": remoteAgentHandler,
   reportei: reporteiHandler,
   serpapi: serpapiHandler,

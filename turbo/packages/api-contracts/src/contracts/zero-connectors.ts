@@ -106,7 +106,7 @@ export const zeroConnectorAuthorizeContract = c.router({
   },
 });
 
-const connectorSearchAuthMethodSchema = z.enum(["oauth", "api-token"]);
+const connectorSearchAuthMethodSchema = z.enum(["oauth", "api-token", "api"]);
 
 export type ConnectorSearchAuthMethod = z.infer<
   typeof connectorSearchAuthMethodSchema
@@ -253,6 +253,27 @@ export const zeroRemoteAgentConnectorContract = c.router({
   },
 });
 
+/**
+ * Zero contract for POST /api/zero/connectors/local-browser
+ * Creates the local-browser connector once the user has at least one online host.
+ */
+export const zeroLocalBrowserConnectorContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/connectors/local-browser",
+    headers: authHeadersSchema,
+    body: z.object({}).optional(),
+    responses: {
+      200: connectorResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Connect local-browser connector",
+  },
+});
+
 export type ZeroConnectorsMainContract = typeof zeroConnectorsMainContract;
 export type ZeroConnectorsByTypeContract = typeof zeroConnectorsByTypeContract;
 export type ZeroConnectorScopeDiffContract =
@@ -268,3 +289,5 @@ export type ZeroComputerConnectorContract =
   typeof zeroComputerConnectorContract;
 export type ZeroRemoteAgentConnectorContract =
   typeof zeroRemoteAgentConnectorContract;
+export type ZeroLocalBrowserConnectorContract =
+  typeof zeroLocalBrowserConnectorContract;

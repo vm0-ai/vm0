@@ -863,6 +863,7 @@ export {
   zeroConnectorSessionsContract,
   zeroConnectorSessionByIdContract,
   zeroComputerConnectorContract,
+  zeroLocalBrowserConnectorContract,
   zeroRemoteAgentConnectorContract,
   type ConnectorSearchAuthMethod,
   type ZeroConnectorsMainContract,
@@ -872,6 +873,7 @@ export {
   type ZeroConnectorSessionsContract,
   type ZeroConnectorSessionByIdContract,
   type ZeroComputerConnectorContract,
+  type ZeroLocalBrowserConnectorContract,
   type ZeroRemoteAgentConnectorContract,
 } from "./zero-connectors";
 export {
