@@ -644,6 +644,12 @@ pub async fn execute_cli(
             // it to $HOME/.codex so the login state from setup_codex
             // is visible to exec.
             cmd.env("CODEX_HOME", format!("{}/.codex", env::home_dir()));
+            if env::is_codex_oauth_mode() {
+                cmd.env(
+                    "CODEX_REFRESH_TOKEN_URL_OVERRIDE",
+                    crate::codex_auth::REFRESH_TOKEN_NOOP_URL,
+                );
+            }
         }
     }
 
