@@ -111,15 +111,6 @@ export function describeAgentPhoneHandleShape(
   return "other";
 }
 
-/**
- * Legacy phone-only normalizer kept for the AgentPhone provider's own number
- * (always E.164) and for the in-app SMS verification flow on apps/api. New
- * call sites should prefer {@link normalizeAgentPhoneHandle}.
- */
-export function normalizePhoneHandle(handle: string): string {
-  return handle.trim().replace(/[^\d+]/gu, "");
-}
-
 async function touchAgentPhoneUserLink(
   userLink: AgentPhoneUserLink,
   phoneHandle: string,
@@ -472,7 +463,7 @@ export async function storeInboundAgentPhoneMessage(params: {
         params.event.fromNumber,
         params.event.channel,
       ),
-      toNumber: normalizePhoneHandle(params.event.toNumber),
+      toNumber: normalizeAgentPhoneHandle(params.event.toNumber, "sms"),
       direction: "inbound",
       channel: params.event.channel,
       body: params.event.body || null,
@@ -512,7 +503,7 @@ export async function storeOutboundAgentPhoneMessage(params: {
         params.phoneHandle,
         params.userChannel,
       ),
-      fromNumber: normalizePhoneHandle(params.fromNumber),
+      fromNumber: normalizeAgentPhoneHandle(params.fromNumber, "sms"),
       toNumber: normalizeAgentPhoneHandle(params.toNumber, params.userChannel),
       direction: "outbound",
       channel: params.channel ?? "unknown",

@@ -10,7 +10,7 @@ import {
   sendAgentPhoneMessage,
 } from "../../../../../../src/lib/zero/agentphone/client";
 import {
-  normalizePhoneHandle,
+  normalizeAgentPhoneHandle,
   resolveAgentPhoneAgentIdForUserLink,
   resolveAgentPhoneUserLinkForOwner,
   storeOutboundAgentPhoneMessage,
@@ -56,9 +56,12 @@ async function sendPhoneTextMessage(params: {
   userId: string;
   orgId: string;
 }): Promise<SendPhoneMessageResponse | RouteErrorResponse> {
-  const phoneHandle = normalizePhoneHandle(params.body.toNumber);
   // The in-app phone API only addresses E.164 phone handles (SMS-class).
   const userChannel: AgentPhoneChannel = "sms";
+  const phoneHandle = normalizeAgentPhoneHandle(
+    params.body.toNumber,
+    userChannel,
+  );
   const userLink = await resolveAgentPhoneUserLinkForOwner({
     phoneHandle,
     channel: userChannel,

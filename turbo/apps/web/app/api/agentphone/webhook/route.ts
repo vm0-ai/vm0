@@ -8,7 +8,6 @@ import {
   isAgentPhoneChannel,
   isValidAgentPhoneHandle,
   normalizeAgentPhoneHandle,
-  normalizePhoneHandle,
   resolveAgentPhoneUserLink,
   storeInboundAgentPhoneMessage,
   type AgentPhoneChannel,
@@ -162,8 +161,8 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   if (
-    normalizePhoneHandle(event.toNumber) !==
-    normalizePhoneHandle(AGENTPHONE_PHONE_NUMBER)
+    normalizeAgentPhoneHandle(event.toNumber, "sms") !==
+    normalizeAgentPhoneHandle(AGENTPHONE_PHONE_NUMBER, "sms")
   ) {
     return new Response("OK", { status: 200 });
   }

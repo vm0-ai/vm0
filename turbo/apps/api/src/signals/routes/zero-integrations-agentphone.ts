@@ -141,21 +141,12 @@ function agentPhoneCooldownKeys(params: {
   });
 }
 
-/**
- * Phone-only normalize for the in-app SMS verification flow (`startLink`).
- * The inbound iMessage webhook lives in apps/web and has its own channel-aware
- * `normalizeAgentPhoneHandle` that preserves email-form Apple ID handles.
- */
-function normalizePhoneHandle(value: string): string {
-  return value.trim().replace(/[^\d+]/gu, "");
-}
-
 function isValidPhoneHandle(value: string): boolean {
   return /^\+[1-9]\d{7,14}$/u.test(value);
 }
 
 function maskPhoneHandle(value: string): string {
-  const normalized = normalizePhoneHandle(value);
+  const normalized = value.trim().replace(/[^\d+]/gu, "");
   if (normalized.length <= 4) {
     return "[redacted]";
   }
@@ -410,7 +401,9 @@ const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
 
-  const phoneHandle = normalizePhoneHandle(bodyResult.data.phoneHandle);
+  const phoneHandle = bodyResult.data.phoneHandle
+    .trim()
+    .replace(/[^\d+]/gu, "");
   if (!isValidPhoneHandle(phoneHandle)) {
     return badRequestMessage(
       "Enter a phone number with country code, like +1 555 555 1212",
