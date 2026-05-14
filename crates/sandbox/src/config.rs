@@ -16,6 +16,10 @@ use serde::{Deserialize, Serialize};
 pub struct SandboxId(uuid::Uuid);
 
 impl SandboxId {
+    /// Allocate a fresh lifecycle identity for a newly created sandbox.
+    ///
+    /// This identifies the sandbox instance itself, not an individual runner
+    /// run or job. Reused sandboxes keep their original identity.
     pub fn new_v4() -> Self {
         Self(uuid::Uuid::new_v4())
     }
@@ -46,13 +50,28 @@ impl From<uuid::Uuid> for SandboxId {
     }
 }
 
+/// Requested resource limits for one sandbox instance.
+///
+/// Providers use these values when creating a sandbox. The exact enforcement
+/// mechanism is provider-specific, but the units are shared across providers.
 pub struct ResourceLimits {
+    /// Requested number of guest vCPUs.
     pub cpu_count: u32,
+    /// Requested guest memory in MiB.
     pub memory_mb: u32,
 }
 
+/// Per-sandbox creation configuration passed to [`crate::SandboxFactory::create`].
+///
+/// Factory-wide configuration belongs in [`FactoryConfig`]; these values are
+/// chosen for each individual sandbox lifecycle.
 pub struct SandboxConfig {
+    /// Sandbox lifecycle identity.
+    ///
+    /// This is distinct from runner-level run or job identifiers and can remain
+    /// stable across multiple jobs when a sandbox is reused.
     pub id: SandboxId,
+    /// Requested resource limits for this sandbox.
     pub resources: ResourceLimits,
 }
 
