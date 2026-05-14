@@ -216,6 +216,12 @@ impl DirtyReason {
     }
 }
 
+impl std::fmt::Display for DirtyReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct OperationId(u64);
 

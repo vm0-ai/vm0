@@ -33,7 +33,10 @@ use crate::guest_operations::{
 };
 use crate::leaked_resources::LeakedResources;
 use crate::network::{NetnsInfo, NetnsLease};
-use crate::park_coordinator::{OperationLease, OperationTransitionError, ParkCoordinator};
+use crate::park_coordinator::{
+    CoordinatorState, DirtyReason, OperationLease, OperationTransitionError, ParkAttempt,
+    ParkCoordinator, PrepareParkError, PrepareParkEvidence,
+};
 use crate::paths::{SandboxPaths, SockPaths};
 use crate::process::{kill_process_group, kill_process_group_by_pid};
 
@@ -48,6 +51,9 @@ const API_READY_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Short grace period for Firecracker stdout/stderr log readers after child exit.
 const PROCESS_LOG_READER_DRAIN_TIMEOUT: Duration = Duration::from_millis(100);
+
+/// Timeout for guest lifecycle acknowledgements during same-session park/unpark.
+const GUEST_PARK_LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Bash command run inside `unshare --mount` for snapshot restore.
 /// Positional args are documented at the spawn site.
@@ -1420,24 +1426,68 @@ impl Sandbox for FirecrackerSandbox {
     // skip the abort+respawn dance when park was a no-op.
 
     async fn park(&mut self) -> sandbox::Result<()> {
-        park_inner(
-            &mut self.is_parked,
-            self.config.resources.memory_mb,
-            self.runtime.balloon_mut(),
-            &self.sock_paths.api_sock(),
-            &self.id,
+        if self.is_parked {
+            return Ok(());
+        }
+
+        let coordinator = self.park_coordinator.clone();
+        let guest = Arc::clone(&self.guest);
+        let id = self.id.clone();
+        let api_sock = self.sock_paths.api_sock();
+        park_with_ready_for_park(
+            &coordinator,
+            || async move {
+                let guest = guest.lock().await.as_ref().cloned().ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::NotConnected,
+                        "guest connection missing during park quiesce",
+                    )
+                })?;
+                guest.quiesce_operations(GUEST_PARK_LIFECYCLE_TIMEOUT).await
+            },
+            || {
+                park_inner(
+                    &mut self.is_parked,
+                    self.config.resources.memory_mb,
+                    self.runtime.balloon_mut(),
+                    &api_sock,
+                    &id,
+                )
+            },
         )
         .await
     }
 
     async fn unpark(&mut self) -> sandbox::Result<()> {
-        unpark_inner(
-            &mut self.is_parked,
-            self.config.resources.memory_mb,
-            self.runtime.balloon_mut(),
-            &self.sock_paths.api_sock(),
-            self.state_tx.subscribe(),
-            &self.id,
+        if !self.is_parked {
+            return ensure_unpark_noop_state(&self.park_coordinator);
+        }
+
+        let coordinator = self.park_coordinator.clone();
+        let guest = Arc::clone(&self.guest);
+        let id = self.id.clone();
+        let api_sock = self.sock_paths.api_sock();
+        unpark_with_ready_for_operations(
+            &coordinator,
+            || {
+                unpark_inner(
+                    &mut self.is_parked,
+                    self.config.resources.memory_mb,
+                    self.runtime.balloon_mut(),
+                    &api_sock,
+                    self.state_tx.subscribe(),
+                    &id,
+                )
+            },
+            || async move {
+                let guest = guest.lock().await.as_ref().cloned().ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::NotConnected,
+                        "guest connection missing during unpark resume",
+                    )
+                })?;
+                guest.resume_operations(GUEST_PARK_LIFECYCLE_TIMEOUT).await
+            },
         )
         .await
     }
@@ -1622,6 +1672,275 @@ impl Sandbox for FirecrackerSandbox {
                 Err(Self::backend_crashed_error(operation))
             }
         }
+    }
+}
+
+enum ParkBoundaryGuardState {
+    Closing,
+    GuestQuiesceStarted,
+    ReadyForPark,
+    Disarmed,
+}
+
+struct ParkBoundaryGuard {
+    coordinator: ParkCoordinator,
+    attempt: ParkAttempt,
+    state: ParkBoundaryGuardState,
+}
+
+impl ParkBoundaryGuard {
+    fn new(coordinator: ParkCoordinator, attempt: ParkAttempt) -> Self {
+        Self {
+            coordinator,
+            attempt,
+            state: ParkBoundaryGuardState::Closing,
+        }
+    }
+
+    fn mark_guest_quiesce_started(&mut self) {
+        self.state = ParkBoundaryGuardState::GuestQuiesceStarted;
+    }
+
+    fn complete_prepare(&mut self) -> Result<(), PrepareParkError> {
+        self.coordinator
+            .complete_prepare_park(&self.attempt, PrepareParkEvidence::AgentQuiesced)?;
+        self.state = ParkBoundaryGuardState::ReadyForPark;
+        Ok(())
+    }
+
+    fn mark_dirty(mut self, reason: impl Into<String>) {
+        self.coordinator.mark_dirty(DirtyReason::new(reason));
+        self.state = ParkBoundaryGuardState::Disarmed;
+    }
+
+    fn mark_parked(mut self) -> sandbox::Result<()> {
+        match self.coordinator.mark_parked(&self.attempt) {
+            Ok(()) => {
+                self.state = ParkBoundaryGuardState::Disarmed;
+                Ok(())
+            }
+            Err(error) => {
+                let message = format!(
+                    "operation gate failed to mark parked after Firecracker park: {}",
+                    prepare_park_error_message(&error)
+                );
+                self.coordinator
+                    .mark_dirty(DirtyReason::new(message.clone()));
+                self.state = ParkBoundaryGuardState::Disarmed;
+                Err(idle_transition_error(SandboxIdleTransition::Park, message))
+            }
+        }
+    }
+}
+
+impl Drop for ParkBoundaryGuard {
+    fn drop(&mut self) {
+        match self.state {
+            ParkBoundaryGuardState::Closing => {
+                let _ = self.coordinator.abort_prepare_park(&self.attempt);
+            }
+            ParkBoundaryGuardState::GuestQuiesceStarted => {
+                self.coordinator.mark_dirty(DirtyReason::new(
+                    "park attempt dropped after guest quiesce started",
+                ));
+            }
+            ParkBoundaryGuardState::ReadyForPark => {
+                self.coordinator
+                    .mark_dirty(DirtyReason::new("park attempt dropped after ReadyForPark"));
+            }
+            ParkBoundaryGuardState::Disarmed => {}
+        }
+    }
+}
+
+struct UnparkReopenGuard {
+    coordinator: ParkCoordinator,
+    armed: bool,
+}
+
+impl UnparkReopenGuard {
+    fn new(coordinator: ParkCoordinator) -> Self {
+        Self {
+            coordinator,
+            armed: true,
+        }
+    }
+
+    fn mark_dirty(mut self, reason: impl Into<String>) {
+        self.coordinator.mark_dirty(DirtyReason::new(reason));
+        self.armed = false;
+    }
+
+    fn disarm(mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for UnparkReopenGuard {
+    fn drop(&mut self) {
+        if self.armed {
+            self.coordinator.mark_dirty(DirtyReason::new(
+                "unpark attempt dropped after Firecracker resume before guest operations reopened",
+            ));
+        }
+    }
+}
+
+async fn park_with_ready_for_park<Q, QF, P, PF>(
+    coordinator: &ParkCoordinator,
+    quiesce_guest: Q,
+    park_firecracker: P,
+) -> sandbox::Result<()>
+where
+    Q: FnOnce() -> QF,
+    QF: Future<Output = io::Result<()>>,
+    P: FnOnce() -> PF,
+    PF: Future<Output = sandbox::Result<()>>,
+{
+    let attempt = match coordinator.begin_prepare_park() {
+        Ok(attempt) => attempt,
+        Err(error) => {
+            if matches!(
+                error,
+                PrepareParkError::InvalidState { .. } | PrepareParkError::StaleAttempt { .. }
+            ) {
+                coordinator.mark_dirty(DirtyReason::new(format!(
+                    "operation gate failed to start park prepare: {}",
+                    prepare_park_error_message(&error)
+                )));
+            }
+            return Err(prepare_park_error(SandboxIdleTransition::Park, error));
+        }
+    };
+    let mut guard = ParkBoundaryGuard::new(coordinator.clone(), attempt);
+
+    guard.mark_guest_quiesce_started();
+    if let Err(error) = quiesce_guest().await {
+        let message = format!("guest quiesce failed during park: {error}");
+        guard.mark_dirty(message.clone());
+        return Err(idle_transition_error(SandboxIdleTransition::Park, message));
+    }
+
+    if let Err(error) = guard.complete_prepare() {
+        let message = format!(
+            "operation gate failed to enter ReadyForPark: {}",
+            prepare_park_error_message(&error)
+        );
+        guard.mark_dirty(message.clone());
+        return Err(idle_transition_error(SandboxIdleTransition::Park, message));
+    }
+
+    if let Err(error) = park_firecracker().await {
+        guard.mark_dirty(format!(
+            "Firecracker park failed after ReadyForPark: {error}"
+        ));
+        return Err(error);
+    }
+
+    guard.mark_parked()
+}
+
+async fn unpark_with_ready_for_operations<U, UF, R, RF>(
+    coordinator: &ParkCoordinator,
+    unpark_firecracker: U,
+    resume_guest: R,
+) -> sandbox::Result<()>
+where
+    U: FnOnce() -> UF,
+    UF: Future<Output = sandbox::Result<()>>,
+    R: FnOnce() -> RF,
+    RF: Future<Output = io::Result<()>>,
+{
+    ensure_parked_before_unpark(coordinator)?;
+
+    unpark_firecracker().await?;
+    let guard = UnparkReopenGuard::new(coordinator.clone());
+
+    if let Err(error) = resume_guest().await {
+        let message = format!("guest resume failed during unpark: {error}");
+        guard.mark_dirty(message.clone());
+        return Err(idle_transition_error(
+            SandboxIdleTransition::Unpark,
+            message,
+        ));
+    }
+
+    if let Err(error) = coordinator.reopen_after_unpark() {
+        let message = format!(
+            "operation gate failed to reopen after unpark: {}",
+            prepare_park_error_message(&error)
+        );
+        guard.mark_dirty(message.clone());
+        return Err(idle_transition_error(
+            SandboxIdleTransition::Unpark,
+            message,
+        ));
+    }
+
+    guard.disarm();
+    Ok(())
+}
+
+fn ensure_parked_before_unpark(coordinator: &ParkCoordinator) -> sandbox::Result<()> {
+    match coordinator.state() {
+        CoordinatorState::Parked => Ok(()),
+        CoordinatorState::Dirty { reason } => Err(idle_transition_error(
+            SandboxIdleTransition::Unpark,
+            format!("operation gate dirty while unpark is starting: {reason}"),
+        )),
+        state => {
+            let message = format!("operation gate is {state:?} while unpark is starting");
+            coordinator.mark_dirty(DirtyReason::new(message.clone()));
+            Err(idle_transition_error(
+                SandboxIdleTransition::Unpark,
+                message,
+            ))
+        }
+    }
+}
+
+fn ensure_unpark_noop_state(coordinator: &ParkCoordinator) -> sandbox::Result<()> {
+    match coordinator.state() {
+        CoordinatorState::Open => Ok(()),
+        CoordinatorState::Dirty { reason } => Err(idle_transition_error(
+            SandboxIdleTransition::Unpark,
+            format!("operation gate dirty while unpark is a no-op: {reason}"),
+        )),
+        state => {
+            let message = format!("operation gate is {state:?} while unpark is a no-op");
+            coordinator.mark_dirty(DirtyReason::new(message.clone()));
+            Err(idle_transition_error(
+                SandboxIdleTransition::Unpark,
+                message,
+            ))
+        }
+    }
+}
+
+fn prepare_park_error(transition: SandboxIdleTransition, error: PrepareParkError) -> SandboxError {
+    idle_transition_error(transition, prepare_park_error_message(&error))
+}
+
+fn prepare_park_error_message(error: &PrepareParkError) -> String {
+    match error {
+        PrepareParkError::Busy => "operation gate busy while preparing park".into(),
+        PrepareParkError::Dirty { reason } => format!("operation gate dirty: {reason}"),
+        PrepareParkError::InvalidState { state } => {
+            format!("operation gate state {state:?} cannot continue park lifecycle")
+        }
+        PrepareParkError::StaleAttempt { attempt_id, state } => {
+            format!("stale park attempt {attempt_id:?} while operation gate is {state:?}")
+        }
+    }
+}
+
+fn idle_transition_error(
+    transition: SandboxIdleTransition,
+    message: impl Into<String>,
+) -> SandboxError {
+    SandboxError::IdleTransition {
+        transition,
+        message: message.into(),
     }
 }
 
@@ -1877,7 +2196,6 @@ async fn unpark_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::park_coordinator::{CoordinatorState, PrepareParkError};
 
     fn monitored_cat_process() -> tokio::process::Child {
         tokio::process::Command::new("cat")
@@ -2093,6 +2411,434 @@ mod tests {
         lease.mark_writing().expect("mark writing");
         lease.mark_in_guest().expect("mark in guest");
         lease
+    }
+
+    fn mark_coordinator_parked(coordinator: &ParkCoordinator) {
+        let attempt = coordinator
+            .begin_prepare_park()
+            .expect("begin prepare park");
+        coordinator
+            .complete_prepare_park(&attempt, PrepareParkEvidence::AgentQuiesced)
+            .expect("complete prepare park");
+        coordinator.mark_parked(&attempt).expect("mark parked");
+    }
+
+    fn event_log() -> Arc<Mutex<Vec<&'static str>>> {
+        Arc::new(Mutex::new(Vec::new()))
+    }
+
+    fn logged_events(events: &Arc<Mutex<Vec<&'static str>>>) -> Vec<&'static str> {
+        events.lock().unwrap().clone()
+    }
+
+    #[tokio::test]
+    async fn ready_for_park_boundary_quiesces_before_firecracker_park() {
+        let coordinator = ParkCoordinator::new();
+        let events = event_log();
+        let quiesce_events = Arc::clone(&events);
+        let park_events = Arc::clone(&events);
+        let park_state = coordinator.clone();
+
+        park_with_ready_for_park(
+            &coordinator,
+            || async move {
+                quiesce_events.lock().unwrap().push("guest_quiesce");
+                Ok(())
+            },
+            || async move {
+                assert!(matches!(
+                    park_state.state(),
+                    CoordinatorState::ReadyForPark { .. }
+                ));
+                park_events.lock().unwrap().push("firecracker_park");
+                Ok(())
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            logged_events(&events),
+            vec!["guest_quiesce", "firecracker_park"]
+        );
+        assert!(matches!(coordinator.state(), CoordinatorState::Parked));
+    }
+
+    #[tokio::test]
+    async fn ready_for_park_boundary_busy_prevents_quiesce_and_pause() {
+        let coordinator = ParkCoordinator::new();
+        let _lease = active_spawn_watch_lease(&coordinator);
+        let events = event_log();
+        let quiesce_events = Arc::clone(&events);
+        let park_events = Arc::clone(&events);
+
+        let result = park_with_ready_for_park(
+            &coordinator,
+            || async move {
+                quiesce_events.lock().unwrap().push("guest_quiesce");
+                Ok(())
+            },
+            || async move {
+                park_events.lock().unwrap().push("firecracker_park");
+                Ok(())
+            },
+        )
+        .await;
+
+        assert_idle_transition(result, SandboxIdleTransition::Park);
+        assert!(matches!(coordinator.state(), CoordinatorState::Open));
+        assert!(logged_events(&events).is_empty());
+    }
+
+    #[tokio::test]
+    async fn ready_for_park_boundary_dirty_prevents_quiesce_and_pause() {
+        let coordinator = ParkCoordinator::new();
+        coordinator.mark_dirty(DirtyReason::new("test dirty"));
+        let events = event_log();
+        let quiesce_events = Arc::clone(&events);
+        let park_events = Arc::clone(&events);
+
+        let result = park_with_ready_for_park(
+            &coordinator,
+            || async move {
+                quiesce_events.lock().unwrap().push("guest_quiesce");
+                Ok(())
+            },
+            || async move {
+                park_events.lock().unwrap().push("firecracker_park");
+                Ok(())
+            },
+        )
+        .await;
+
+        assert_idle_transition(result, SandboxIdleTransition::Park);
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+        assert!(logged_events(&events).is_empty());
+    }
+
+    #[tokio::test]
+    async fn ready_for_park_boundary_invalid_state_marks_dirty() {
+        let coordinator = ParkCoordinator::new();
+        mark_coordinator_parked(&coordinator);
+        let events = event_log();
+        let quiesce_events = Arc::clone(&events);
+        let park_events = Arc::clone(&events);
+
+        let result = park_with_ready_for_park(
+            &coordinator,
+            || async move {
+                quiesce_events.lock().unwrap().push("guest_quiesce");
+                Ok(())
+            },
+            || async move {
+                park_events.lock().unwrap().push("firecracker_park");
+                Ok(())
+            },
+        )
+        .await;
+
+        assert_idle_transition(result, SandboxIdleTransition::Park);
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+        assert!(logged_events(&events).is_empty());
+    }
+
+    #[tokio::test]
+    async fn ready_for_park_boundary_quiesce_failure_marks_dirty_without_pause() {
+        let coordinator = ParkCoordinator::new();
+        let events = event_log();
+        let quiesce_events = Arc::clone(&events);
+        let park_events = Arc::clone(&events);
+
+        let result = park_with_ready_for_park(
+            &coordinator,
+            || async move {
+                quiesce_events.lock().unwrap().push("guest_quiesce");
+                Err(io::Error::new(io::ErrorKind::TimedOut, "quiesce timeout"))
+            },
+            || async move {
+                park_events.lock().unwrap().push("firecracker_park");
+                Ok(())
+            },
+        )
+        .await;
+
+        assert_idle_transition(result, SandboxIdleTransition::Park);
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+        assert_eq!(logged_events(&events), vec!["guest_quiesce"]);
+    }
+
+    #[tokio::test]
+    async fn ready_for_park_boundary_firecracker_failure_after_quiesce_marks_dirty() {
+        let coordinator = ParkCoordinator::new();
+        let events = event_log();
+        let quiesce_events = Arc::clone(&events);
+        let park_events = Arc::clone(&events);
+
+        let result = park_with_ready_for_park(
+            &coordinator,
+            || async move {
+                quiesce_events.lock().unwrap().push("guest_quiesce");
+                Ok(())
+            },
+            || async move {
+                park_events.lock().unwrap().push("firecracker_park");
+                Err(idle_transition_error(
+                    SandboxIdleTransition::Park,
+                    "pause failed",
+                ))
+            },
+        )
+        .await;
+
+        assert_idle_transition(result, SandboxIdleTransition::Park);
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+        assert_eq!(
+            logged_events(&events),
+            vec!["guest_quiesce", "firecracker_park"]
+        );
+    }
+
+    #[tokio::test]
+    async fn ready_for_operations_boundary_resumes_firecracker_before_guest_and_reopens() {
+        let coordinator = ParkCoordinator::new();
+        mark_coordinator_parked(&coordinator);
+        let events = event_log();
+        let firecracker_events = Arc::clone(&events);
+        let resume_events = Arc::clone(&events);
+        let resume_state = coordinator.clone();
+
+        unpark_with_ready_for_operations(
+            &coordinator,
+            || async move {
+                firecracker_events
+                    .lock()
+                    .unwrap()
+                    .push("firecracker_unpark");
+                Ok(())
+            },
+            || async move {
+                assert!(matches!(resume_state.state(), CoordinatorState::Parked));
+                resume_events.lock().unwrap().push("guest_resume");
+                Ok(())
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            logged_events(&events),
+            vec!["firecracker_unpark", "guest_resume"]
+        );
+        assert!(matches!(coordinator.state(), CoordinatorState::Open));
+    }
+
+    #[tokio::test]
+    async fn ready_for_operations_boundary_firecracker_failure_does_not_resume_guest() {
+        let coordinator = ParkCoordinator::new();
+        mark_coordinator_parked(&coordinator);
+        let events = event_log();
+        let firecracker_events = Arc::clone(&events);
+        let resume_events = Arc::clone(&events);
+
+        let result = unpark_with_ready_for_operations(
+            &coordinator,
+            || async move {
+                firecracker_events
+                    .lock()
+                    .unwrap()
+                    .push("firecracker_unpark");
+                Err(idle_transition_error(
+                    SandboxIdleTransition::Unpark,
+                    "resume failed",
+                ))
+            },
+            || async move {
+                resume_events.lock().unwrap().push("guest_resume");
+                Ok(())
+            },
+        )
+        .await;
+
+        assert_idle_transition(result, SandboxIdleTransition::Unpark);
+        assert_eq!(logged_events(&events), vec!["firecracker_unpark"]);
+        assert!(matches!(coordinator.state(), CoordinatorState::Parked));
+    }
+
+    #[tokio::test]
+    async fn ready_for_operations_boundary_guest_resume_failure_marks_dirty() {
+        let coordinator = ParkCoordinator::new();
+        mark_coordinator_parked(&coordinator);
+        let events = event_log();
+        let firecracker_events = Arc::clone(&events);
+        let resume_events = Arc::clone(&events);
+
+        let result = unpark_with_ready_for_operations(
+            &coordinator,
+            || async move {
+                firecracker_events
+                    .lock()
+                    .unwrap()
+                    .push("firecracker_unpark");
+                Ok(())
+            },
+            || async move {
+                resume_events.lock().unwrap().push("guest_resume");
+                Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "resume failed",
+                ))
+            },
+        )
+        .await;
+
+        assert_idle_transition(result, SandboxIdleTransition::Unpark);
+        assert_eq!(
+            logged_events(&events),
+            vec!["firecracker_unpark", "guest_resume"]
+        );
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn ready_for_operations_boundary_dirty_state_does_not_resume_firecracker() {
+        let coordinator = ParkCoordinator::new();
+        mark_coordinator_parked(&coordinator);
+        coordinator.mark_dirty(DirtyReason::new("park completion failed"));
+        let events = event_log();
+        let firecracker_events = Arc::clone(&events);
+        let resume_events = Arc::clone(&events);
+
+        let result = unpark_with_ready_for_operations(
+            &coordinator,
+            || async move {
+                firecracker_events
+                    .lock()
+                    .unwrap()
+                    .push("firecracker_unpark");
+                Ok(())
+            },
+            || async move {
+                resume_events.lock().unwrap().push("guest_resume");
+                Ok(())
+            },
+        )
+        .await;
+
+        assert_idle_transition(result, SandboxIdleTransition::Unpark);
+        assert!(logged_events(&events).is_empty());
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn ready_for_operations_boundary_invalid_state_marks_dirty_without_resume() {
+        let coordinator = ParkCoordinator::new();
+        let events = event_log();
+        let firecracker_events = Arc::clone(&events);
+        let resume_events = Arc::clone(&events);
+
+        let result = unpark_with_ready_for_operations(
+            &coordinator,
+            || async move {
+                firecracker_events
+                    .lock()
+                    .unwrap()
+                    .push("firecracker_unpark");
+                Ok(())
+            },
+            || async move {
+                resume_events.lock().unwrap().push("guest_resume");
+                Ok(())
+            },
+        )
+        .await;
+
+        assert_idle_transition(result, SandboxIdleTransition::Unpark);
+        assert!(logged_events(&events).is_empty());
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn ready_for_operations_boundary_reopen_failure_marks_dirty() {
+        let coordinator = ParkCoordinator::new();
+        mark_coordinator_parked(&coordinator);
+        let events = event_log();
+        let firecracker_events = Arc::clone(&events);
+        let resume_events = Arc::clone(&events);
+        let resume_state = coordinator.clone();
+
+        let result = unpark_with_ready_for_operations(
+            &coordinator,
+            || async move {
+                firecracker_events
+                    .lock()
+                    .unwrap()
+                    .push("firecracker_unpark");
+                Ok(())
+            },
+            || async move {
+                resume_events.lock().unwrap().push("guest_resume");
+                resume_state.mark_dirty(DirtyReason::new("reopen race"));
+                Ok(())
+            },
+        )
+        .await;
+
+        assert_idle_transition(result, SandboxIdleTransition::Unpark);
+        assert_eq!(
+            logged_events(&events),
+            vec!["firecracker_unpark", "guest_resume"]
+        );
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+    }
+
+    #[test]
+    fn unpark_noop_reports_dirty_gate_instead_of_succeeding() {
+        let coordinator = ParkCoordinator::new();
+        coordinator.mark_dirty(DirtyReason::new("resume failed"));
+
+        assert_idle_transition(
+            ensure_unpark_noop_state(&coordinator),
+            SandboxIdleTransition::Unpark,
+        );
+    }
+
+    #[test]
+    fn unpark_noop_with_closed_gate_marks_dirty() {
+        let coordinator = ParkCoordinator::new();
+        mark_coordinator_parked(&coordinator);
+
+        assert_idle_transition(
+            ensure_unpark_noop_state(&coordinator),
+            SandboxIdleTransition::Unpark,
+        );
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
     }
 
     #[test]
