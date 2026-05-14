@@ -176,6 +176,23 @@ async fn send_event_codex_ignores_empty_thread_id() {
 }
 
 #[tokio::test]
+async fn send_event_codex_ignores_malformed_thread_id() {
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let masker = SecretMasker::from_raw("");
+    let mut event = json!({"type": "thread.started", "thread_id": "abc"});
+    let result = guest_agent::events::send_event(&http_client!(), &mut event, 1, &masker).await;
+    assert!(result.is_ok());
+
+    assert!(
+        !Path::new(guest_agent::paths::session_id_file()).exists(),
+        "malformed thread_id must not be persisted"
+    );
+}
+
+#[tokio::test]
 async fn read_session_history_resolves_codex_marker_end_to_end() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
@@ -334,6 +351,35 @@ async fn read_session_history_codex_marker_rejects_dash_only_thread_id() {
 
     let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
         .expect_err("dash-only codex thread id must not match every history file");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Codex session file not found"),
+        "expected malformed thread id to fail fast, got: {msg}"
+    );
+}
+
+#[tokio::test]
+async fn read_session_history_codex_marker_rejects_short_thread_id() {
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions");
+    write_session_file(
+        &sessions_dir,
+        &["2026", "04", "27"],
+        "rollout-abc.jsonl",
+        b"unrelated\n",
+    )
+    .unwrap();
+
+    let path_file = tmp.path().join("path.txt");
+    let marker = format!("CODEX_SEARCH:{}:abc", sessions_dir.to_string_lossy());
+    std::fs::write(&path_file, marker.as_bytes()).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("short codex thread id must not match unrelated history files");
     let msg = err.to_string();
     assert!(
         msg.contains("Codex session file not found"),

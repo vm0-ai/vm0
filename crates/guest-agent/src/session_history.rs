@@ -74,11 +74,18 @@ fn read_codex_session_history(
     sessions_dir: &Path,
     thread_id: &str,
 ) -> Result<Option<Vec<u8>>, AgentError> {
-    let id_norm = thread_id.replace('-', "");
-    if id_norm.is_empty() {
+    let Some(id_norm) = normalize_codex_thread_id(thread_id) else {
         return Ok(None);
-    }
+    };
     read_codex_session_history_impl(sessions_dir, &id_norm)
+}
+
+pub(crate) fn normalize_codex_thread_id(thread_id: &str) -> Option<String> {
+    let id_norm = thread_id.replace('-', "");
+    if id_norm.len() != 32 || !id_norm.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(id_norm.to_ascii_lowercase())
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -190,7 +197,7 @@ fn codex_session_filename_matches(name: &OsStr, id_norm: &str) -> bool {
         return false;
     }
 
-    let name_norm = name.replace('-', "");
+    let name_norm = name.replace('-', "").to_ascii_lowercase();
     name_norm.contains(id_norm)
 }
 
