@@ -66,10 +66,15 @@ impl Dir {
 fn open_child(parent: &File, name: &OsStr, flags: i32) -> io::Result<File> {
     let name = CString::new(name.as_bytes())
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+    // SAFETY: `parent.as_raw_fd()` is an open directory fd owned by `Dir`,
+    // `name` is a NUL-terminated child basename produced by `CString`, and
+    // the flags do not request a mode argument.
     let fd = unsafe { libc::openat(parent.as_raw_fd(), name.as_ptr(), flags) };
     if fd < 0 {
         return Err(io::Error::last_os_error());
     }
+    // SAFETY: a non-negative `openat` result is a newly owned fd. Converting
+    // it into `File` transfers close responsibility to Rust.
     Ok(unsafe { File::from_raw_fd(fd) })
 }
 
