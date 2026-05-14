@@ -5,7 +5,6 @@ import {
   onboardingEagerInitialized$,
   zeroOnboardingStatus$,
   zeroNeedsOnboarding$,
-  zeroNeedsMemberOnboarding$,
 } from "./zero-onboarding.ts";
 
 const FORWARDED_ONBOARDING_PARAMS = ["prompt", "connector"] as const;
@@ -14,6 +13,9 @@ const FORWARDED_ONBOARDING_PARAMS = ["prompt", "connector"] as const;
  * Check whether the current user needs onboarding and redirect if so.
  * Returns `true` when a redirect was triggered (caller should bail out),
  * `false` otherwise.
+ *
+ * Onboarding is purely admin workspace setup — only an admin whose org has no
+ * default agent yet is sent to `/onboarding`. Non-admins never go through it.
  *
  * When the backend cannot resolve the current org (e.g. it was deleted) but the
  * user still belongs to other orgs, redirect to the web app's
@@ -31,10 +33,8 @@ export const onboardGuard$ = command(
 
     const needsOnboarding = await get(zeroNeedsOnboarding$);
     signal.throwIfAborted();
-    const needsMemberOnboarding = await get(zeroNeedsMemberOnboarding$);
-    signal.throwIfAborted();
 
-    if (!needsOnboarding && !needsMemberOnboarding) {
+    if (!needsOnboarding) {
       return false;
     }
 

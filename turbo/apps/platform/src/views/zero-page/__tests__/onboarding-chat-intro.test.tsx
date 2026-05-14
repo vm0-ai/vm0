@@ -14,14 +14,12 @@ import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   onboardingStatusContract,
   onboardingSetupContract,
-  onboardingCompleteContract,
 } from "@vm0/api-contracts/contracts/onboarding";
 
 const context = testContext();
 const mockApi = createMockApi(context);
 
 const MOCK_AGENT_ID = "d0000000-0000-4000-a000-000000000001";
-const MOCK_MEMBER_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 function mockAdminOnboarding() {
   server.use(
@@ -41,66 +39,24 @@ function mockAdminOnboarding() {
   );
 }
 
-function mockMemberOnboarding() {
-  server.use(
-    mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
-      return respond(200, {
-        needsOnboarding: true,
-        isAdmin: false,
-        hasOrg: true,
-        hasDefaultAgent: true,
-        defaultAgentId: MOCK_MEMBER_AGENT_ID,
-        defaultAgentMetadata: { displayName: "Zero" },
-      });
-    }),
-    mockApi(onboardingCompleteContract.complete, ({ respond }) => {
-      return respond(200, { ok: true });
-    }),
-  );
-}
+/** Walk admin onboarding: step 1 (name) → step 2 (choose tools, pick one). */
+async function walkAdminToContinue() {
+  await waitFor(() => {
+    expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
+  });
 
-/** Walk through onboarding steps up to the "Where would you like to work" step. */
-async function walkToWhereStep(isMember: boolean) {
-  if (isMember) {
-    // Member lands on step 2 (Choose your tools) under the unified flow
-    await waitFor(() => {
-      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
-    });
-    // Advance without selecting a connector — skips step 3, lands on step 4
-    click(screen.getByText("Next"));
+  const input = screen.getByPlaceholderText("e.g. Acme Corp");
+  await fill(input, "Test Workspace");
+  click(screen.getByText("Next"));
 
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Where would you like to work with/),
-      ).toBeInTheDocument();
-    });
-  } else {
-    await waitFor(() => {
-      expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
-    });
+  await waitFor(() => {
+    expect(screen.getByText("Choose your tools")).toBeInTheDocument();
+  });
+  click(screen.getByTestId("connector-card-github"));
 
-    const input = screen.getByPlaceholderText("e.g. Acme Corp");
-    await fill(input, "Test Workspace");
-    click(screen.getByText("Next"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
-    });
-    // Select a connector so step 3 is reachable (#9129)
-    click(screen.getByTestId("connector-card-github"));
-    click(screen.getByText("Next"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Connect your apps")).toBeInTheDocument();
-    });
-    click(screen.getByText("Next"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Where would you like to work with/),
-      ).toBeInTheDocument();
-    });
-  }
+  await waitFor(() => {
+    expect(screen.getByText(/Continue in web/)).toBeInTheDocument();
+  });
 }
 
 describe("onboarding → chat page (no auto-intro)", () => {
@@ -121,7 +77,7 @@ describe("onboarding → chat page (no auto-intro)", () => {
     ]);
 
     detachedSetupPage({ context, path: "/onboarding" });
-    await walkToWhereStep(false);
+    await walkAdminToContinue();
 
     // Switch onboarding status so post-navigate route doesn't redirect back
     server.use(
@@ -145,37 +101,6 @@ describe("onboarding → chat page (no auto-intro)", () => {
     });
 
     // Chat input should be ready for user to type (no auto-intro sent)
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-    });
-    expect(textarea).not.toBeDisabled();
-  });
-
-  it("should navigate to /agents/:id/chat after member completes onboarding", async () => {
-    mockMemberOnboarding();
-
-    detachedSetupPage({ context, path: "/onboarding" });
-    await walkToWhereStep(true);
-
-    server.use(
-      mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
-        return respond(200, {
-          needsOnboarding: false,
-          isAdmin: false,
-          hasOrg: true,
-          hasDefaultAgent: true,
-          defaultAgentId: MOCK_MEMBER_AGENT_ID,
-          defaultAgentMetadata: { displayName: "Zero" },
-        });
-      }),
-    );
-
-    click(screen.getByText(/Continue in web/));
-
-    await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${MOCK_MEMBER_AGENT_ID}/chat`);
-    });
-
     const textarea = await waitFor(() => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
     });

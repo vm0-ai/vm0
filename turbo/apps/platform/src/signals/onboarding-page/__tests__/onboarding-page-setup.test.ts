@@ -26,6 +26,49 @@ function mockAdminOnboarding() {
   );
 }
 
+// A user who doesn't need onboarding — a non-admin, or an admin whose
+// workspace is already set up. The backend reports needsOnboarding: false.
+function mockNoOnboardingNeeded() {
+  server.use(
+    mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+      return respond(200, {
+        needsOnboarding: false,
+        isAdmin: false,
+        hasOrg: true,
+        hasDefaultAgent: true,
+        defaultAgentId: "c0000000-0000-4000-a000-000000000001",
+        defaultAgentMetadata: { displayName: "Zero" },
+      });
+    }),
+  );
+}
+
+describe("setupOnboardingPage$ — redirect when onboarding is not needed", () => {
+  it("redirects to / when the user does not need onboarding and there is no use-case link", async () => {
+    mockNoOnboardingNeeded();
+
+    detachedSetupPage({ context, path: "/onboarding", withoutRender: true });
+
+    await context.store.set(setupOnboardingPage$, context.signal);
+
+    expect(pathname()).toBe("/");
+  });
+
+  it("stays on /onboarding for a use-case deep link even when onboarding is not needed", async () => {
+    mockNoOnboardingNeeded();
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?prompt=hello&connector=github",
+      withoutRender: true,
+    });
+
+    await context.store.set(setupOnboardingPage$, context.signal);
+
+    expect(pathname()).toBe("/onboarding");
+  });
+});
+
 describe("setupOnboardingPage$ — ?connector= consumption", () => {
   it("pre-selects valid connectors and preserves ?connector= on the URL", async () => {
     mockAdminOnboarding();

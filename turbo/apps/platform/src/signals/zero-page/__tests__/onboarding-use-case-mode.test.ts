@@ -8,7 +8,6 @@ import {
   onboardingIsUseCase$,
   onboardingPromptDraft$,
   setOnboardingPromptDraft$,
-  setZeroStep$,
   setZeroWorkspaceName$,
   zeroSelectedConnectors$,
 } from "../zero-onboarding.ts";
@@ -17,7 +16,6 @@ import {
   onboardingEffectiveStep$,
   onboardingNextLabel$,
   onboardingResolvedPrompt$,
-  onboardingShowBack$,
   onboardingShowDialog$,
   onboardingStepNext$,
   onboardingVisibleSteps$,
@@ -47,11 +45,13 @@ function mockAdminOnboarding() {
   );
 }
 
-function mockMemberOnboarding(defaultAgentId: string) {
+// A non-admin user. Non-admins never need onboarding, but a use-case deep
+// link still drops them into the condensed step-3 flow.
+function mockNonAdmin(defaultAgentId: string) {
   server.use(
     mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
       return respond(200, {
-        needsOnboarding: true,
+        needsOnboarding: false,
         isAdmin: false,
         hasOrg: true,
         hasDefaultAgent: true,
@@ -110,7 +110,7 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
     expect(context.store.get(onboardingIsUseCase$)).toBeFalsy();
   });
 
-  it("admin visible steps drop step 4 in use-case mode", async () => {
+  it("admin visible steps are step 1 + step 3 in use-case mode", async () => {
     mockAdminOnboarding();
 
     detachedSetupPage({
@@ -125,8 +125,8 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
     expect(visible).toStrictEqual(["1", "3"]);
   });
 
-  it("member visible steps reduce to just step 3 in use-case mode", async () => {
-    mockMemberOnboarding("a0000000-0000-4000-a000-000000000001");
+  it("non-admin visible steps reduce to just step 3 in use-case mode", async () => {
+    mockNonAdmin("a0000000-0000-4000-a000-000000000001");
 
     detachedSetupPage({
       context,
@@ -140,7 +140,7 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
     expect(visible).toStrictEqual(["3"]);
   });
 
-  it("admin visible steps keep step 4 outside use-case mode", async () => {
+  it("admin visible steps are the regular step 1 + step 2 outside use-case mode", async () => {
     mockAdminOnboarding();
 
     detachedSetupPage({
@@ -152,12 +152,12 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
     await context.store.set(setupOnboardingPage$, context.signal);
 
     const visible = await context.store.get(onboardingVisibleSteps$);
-    // No use-case → classic deep-link flow keeps step 4
-    expect(visible).toStrictEqual(["1", "3", "4"]);
+    // No use-case link → regular admin flow: name workspace, then pick tools.
+    expect(visible).toStrictEqual(["1", "2"]);
   });
 
   it("button label switches to 'Try It' on step 3 in use-case mode", async () => {
-    mockMemberOnboarding("a0000000-0000-4000-a000-000000000001");
+    mockNonAdmin("a0000000-0000-4000-a000-000000000001");
 
     detachedSetupPage({
       context,
@@ -172,7 +172,7 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
     );
   });
 
-  it("try it on step 3 in use-case mode triggers the setup API with the selected connectors", async () => {
+  it("eager-init forwards the URL connectors and Try It clears the deep-link params", async () => {
     let capturedBody: { selectedConnectors?: string[] } | null = null;
     const agentId = "d0000000-0000-4000-a000-000000000001";
 
@@ -201,20 +201,34 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
 
     await context.store.set(setupOnboardingPage$, context.signal);
 
-    // Advance from step 1 (workspace name) to step 3, simulating the user
-    // filling in a workspace name and clicking Next.
+    // Step 1 Next → eager-init runs setup with the URL connector authorized.
     context.store.set(setZeroWorkspaceName$, "Acme");
-    context.store.set(setZeroStep$, "3");
+    await context.store.set(onboardingStepNext$, context.signal);
+
+    expect(capturedBody).toBeTruthy();
+    expect(capturedBody!.selectedConnectors).toStrictEqual(["github"]);
     await expect(context.store.get(onboardingEffectiveStep$)).resolves.toBe(
       "3",
+    );
+
+    // After eager-init the backend reports the user as onboarded.
+    server.use(
+      mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+        return respond(200, {
+          needsOnboarding: false,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: true,
+          defaultAgentId: agentId,
+          defaultAgentMetadata: null,
+        });
+      }),
     );
 
     // User edits the prompt in the composer and clicks Try It.
     context.store.set(setOnboardingPromptDraft$, "edited prompt");
     await context.store.set(onboardingStepNext$, context.signal);
 
-    expect(capturedBody).toBeTruthy();
-    expect(capturedBody!.selectedConnectors).toStrictEqual(["github"]);
     // The onboarding deep-link params must be cleared before the optimistic
     // router forwards search params to /chats/:threadId — otherwise the new
     // chat URL still carries ?prompt= + ?connector=.
@@ -404,22 +418,6 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
       );
     });
 
-    it("hides the Back button after eager init", async () => {
-      setupAdminMocks();
-
-      detachedSetupPage({
-        context,
-        path: "/onboarding?prompt=hi&connector=github",
-        withoutRender: true,
-      });
-
-      await context.store.set(setupOnboardingPage$, context.signal);
-      context.store.set(setZeroWorkspaceName$, "Acme");
-      await context.store.set(onboardingStepNext$, context.signal);
-
-      await expect(context.store.get(onboardingShowBack$)).resolves.toBeFalsy();
-    });
-
     it("keeps the dialog visible after the server flips needsOnboarding false", async () => {
       setupAdminMocks();
 
@@ -534,7 +532,7 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
   });
 
   it("resolved prompt falls back to the URL when the draft is empty (classic deep link)", async () => {
-    mockMemberOnboarding("a0000000-0000-4000-a000-000000000001");
+    mockNonAdmin("a0000000-0000-4000-a000-000000000001");
 
     // Classic deep-link without ?prompt= → draft never seeded.
     detachedSetupPage({

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { waitFor } from "@testing-library/react";
-import { onboardingCompleteContract } from "@vm0/api-contracts/contracts/onboarding";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { server } from "../../mocks/server.ts";
 import { createMockApi } from "../../mocks/msw-contract.ts";
@@ -21,7 +20,6 @@ import {
 import { updateAgentSettings$ } from "../zero-page/job-detail/settings.ts";
 import { deleteAgent$ } from "../zero-page/job-detail/delete.ts";
 import { setActiveAgent$, agentDetail$ } from "../zero-page/zero-job-detail.ts";
-import { completeOnboarding$ } from "../zero-page/zero-onboarding-actions.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -203,40 +201,6 @@ describe("agent mutations trigger reloadAgentById$", () => {
     // The only guarantee we need from the fix: reloadAgentById$ was bumped so
     // any consumer still subscribed to agentById(deletedId) re-reads and sees
     // the server's post-delete state instead of the cached pre-delete body.
-    expect(counter.getCalls).toBeGreaterThan(callsBeforeMutation);
-  });
-
-  it("completeOnboarding$ invalidates agentById so a later read refetches", async () => {
-    // Use the member-onboarding path (needsOnboarding + hasDefaultAgent) so the
-    // test does not need to exercise the Clerk JWT-refresh logic from the admin
-    // path — the important assertion is that completeOnboarding$ bumps
-    // reloadAgentById$ regardless of which branch runs.
-    setMockOnboardingStatus({
-      needsOnboarding: true,
-      hasDefaultAgent: true,
-      defaultAgentId: AGENT_ID,
-    });
-    server.use(
-      mockApi(onboardingCompleteContract.complete, ({ respond }) => {
-        return respond(200, { ok: true });
-      }),
-    );
-
-    const state = { current: { displayName: "Before" } as AgentOverrides };
-    const counter = serveAgent(state);
-
-    detachedSetupPage({ context, path: "/", withoutRender: true });
-
-    // Prime the agentById cache so we can observe the invalidation.
-    const before = await context.store.get(agentById(AGENT_ID));
-    expect(before.displayName).toBe("Before");
-    const callsBeforeMutation = counter.getCalls;
-
-    state.current = { displayName: "After" };
-    await context.store.set(completeOnboarding$, context.signal);
-
-    const after = await context.store.get(agentById(AGENT_ID));
-    expect(after.displayName).toBe("After");
     expect(counter.getCalls).toBeGreaterThan(callsBeforeMutation);
   });
 });

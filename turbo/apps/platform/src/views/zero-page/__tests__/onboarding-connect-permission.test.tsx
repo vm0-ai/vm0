@@ -66,7 +66,12 @@ describe("onboarding connector permission dialog suppression", () => {
     const mockWindow = { closed: false, close: vi.fn() };
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
 
-    detachedSetupPage({ context, path: "/onboarding" });
+    // A use-case deep link drives the admin flow into the condensed step-3
+    // flow — the only place the per-connector Connect UI appears.
+    detachedSetupPage({
+      context,
+      path: "/onboarding?prompt=hello&connector=github",
+    });
 
     // Step 1: Workspace name
     await waitFor(() => {
@@ -76,14 +81,7 @@ describe("onboarding connector permission dialog suppression", () => {
     await fill(input, "Test Workspace");
     click(screen.getByText("Next"));
 
-    // Step 2: Choose your tools — select GitHub
-    await waitFor(() => {
-      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
-    });
-    click(screen.getByTestId("connector-card-github"));
-    click(screen.getByText("Next"));
-
-    // Step 3: Connect your apps
+    // Step 3: Connect your apps (github pre-selected from the deep link)
     await waitFor(() => {
       expect(screen.getByText("Connect your apps")).toBeInTheDocument();
     });

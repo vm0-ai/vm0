@@ -1,7 +1,6 @@
 import { command, computed, state } from "ccstate";
 import {
   onboardingStatusContract,
-  onboardingCompleteContract,
   onboardingSetupContract,
 } from "@vm0/api-contracts/contracts/onboarding";
 import type { ConnectorType } from "@vm0/connectors/connectors";
@@ -28,40 +27,23 @@ export const zeroOnboardingStatus$ = computed(async (get) => {
   return result.body;
 });
 
+/**
+ * Whether the current user needs onboarding. Onboarding is purely admin
+ * workspace setup — the backend only returns `needsOnboarding: true` for an
+ * admin whose org has no default agent yet.
+ */
 export const zeroNeedsOnboarding$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
-  return status.needsOnboarding && !status.hasDefaultAgent;
+  return status.needsOnboarding;
 });
 
-export const zeroNeedsMemberOnboarding$ = computed(async (get) => {
-  const status = await get(zeroOnboardingStatus$);
-  return status.needsOnboarding && status.hasDefaultAgent;
-});
-
-export const completeMemberOnboarding$ = command(
-  async ({ get, set }, _signal: AbortSignal): Promise<string | undefined> => {
-    const client = get(zeroClient$)(onboardingCompleteContract);
-    const selectedConnectors = get(internalSelectedConnectors$);
-    const body = selectedConnectors.length > 0 ? { selectedConnectors } : {};
-    await accept(client.complete({ body }), [200]);
-    set(internalReload$, (x) => {
-      return x + 1;
-    });
-    const status = await get(zeroOnboardingStatus$);
-    return status.defaultAgentId ?? undefined;
-  },
-);
-
-type ZeroOnboardingStep = "1" | "2" | "3" | "4" | "done";
+type ZeroOnboardingStep = "1" | "2" | "3" | "done";
 
 const userStep$ = state<ZeroOnboardingStep | null>(null);
 
 const initialOnboardingStep$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
-  if (!status.needsOnboarding) {
-    return "done" as const;
-  }
-  return (status.hasDefaultAgent ? "2" : "1") as ZeroOnboardingStep;
+  return status.needsOnboarding ? "1" : "done";
 });
 
 const internalAgentName$ = state("Zero");
@@ -70,26 +52,10 @@ const internalWorkspaceName$ = state("");
 const internalSelectedConnectors$ = state<ConnectorType[]>([]);
 
 /**
- * True when the current onboarding session received its connectors via the
- * `?connector=` URL param (deep link). When set, step 2 (the connector picker)
- * is skipped — the user already chose, so we jump straight to step 3 (connect).
- */
-const internalConnectorsFromUrl$ = state(false);
-
-export const connectorsFromUrl$ = computed((get) => {
-  return get(internalConnectorsFromUrl$);
-});
-
-export const markConnectorsFromUrl$ = command(({ set }) => {
-  set(internalConnectorsFromUrl$, true);
-});
-
-/**
  * True when the user arrived via a "use case" deep link carrying both
- * `?connector=` and `?prompt=`. In this mode the onboarding is condensed —
- * step 4 ("Where would you like to work?") is skipped and step 3 grows an
- * editable composer so the user can tweak the prompt before continuing
- * straight into the web chat with their default agent.
+ * `?connector=` and `?prompt=`. In this mode the onboarding is condensed to
+ * step 3, which grows an editable composer so the user can tweak the prompt
+ * before continuing straight into the web chat with their default agent.
  */
 const internalUseCaseMode$ = state(false);
 const internalPromptDraft$ = state("");
@@ -114,31 +80,17 @@ export const setOnboardingPromptDraft$ = command(({ set }, value: string) => {
 /**
  * True once an admin has clicked Next on step 1 and the workspace + default
  * agent have been provisioned. The dialog stays visible while the user
- * finishes picking/connecting connectors, and the Back button is hidden —
- * going back would be misleading now that the workspace exists.
- *
- * We also remember the agentId returned by the eager setup so the later
- * "Continue in web" / "Try It" step can navigate without re-reading the
- * onboarding status (which `zeroOnboardingStatus$` may still have cached
- * from before eager init).
+ * picks connectors in the (skippable) step 2.
  */
 const internalEagerInitialized$ = state(false);
-const internalEagerInitializedAgentId$ = state<string | null>(null);
 
 export const onboardingEagerInitialized$ = computed((get) => {
   return get(internalEagerInitialized$);
 });
 
-export const onboardingEagerInitializedAgentId$ = computed((get) => {
-  return get(internalEagerInitializedAgentId$);
+export const markEagerInitialized$ = command(({ set }) => {
+  set(internalEagerInitialized$, true);
 });
-
-export const markEagerInitialized$ = command(
-  ({ set }, agentId: string | null) => {
-    set(internalEagerInitialized$, true);
-    set(internalEagerInitializedAgentId$, agentId);
-  },
-);
 
 export const zeroOnboardingStep$ = computed(async (get) => {
   const userStep = get(userStep$);
@@ -146,10 +98,6 @@ export const zeroOnboardingStep$ = computed(async (get) => {
     return userStep;
   }
   return await get(initialOnboardingStep$);
-});
-
-export const zeroAgentName$ = computed((get) => {
-  return get(internalAgentName$);
 });
 
 export const zeroWorkspaceName$ = computed((get) => {
@@ -208,11 +156,9 @@ export const toggleZeroConnector$ = command(
  */
 export const resetOnboardingStep$ = command(({ set }) => {
   set(userStep$, null);
-  set(internalConnectorsFromUrl$, false);
   set(internalUseCaseMode$, false);
   set(internalPromptDraft$, "");
   set(internalEagerInitialized$, false);
-  set(internalEagerInitializedAgentId$, null);
 });
 
 /**

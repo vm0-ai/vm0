@@ -9,12 +9,10 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import {
-  markConnectorsFromUrl$,
   markUseCaseMode$,
   resetOnboardingStep$,
   toggleZeroConnector$,
   zeroNeedsOnboarding$,
-  zeroNeedsMemberOnboarding$,
   zeroSelectedConnectors$,
 } from "../zero-page/zero-onboarding.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
@@ -28,21 +26,20 @@ export const setupOnboardingPage$ = command(
     signal.throwIfAborted();
 
     // Detect use-case deep link early — `?prompt=...&connector=...` lets even
-    // already-onboarded users land here intentionally (to try a suggested
-    // task), so we must NOT auto-redirect them home in that case.
+    // already-onboarded users (including non-admins) land here intentionally
+    // to try a suggested task, so we must NOT auto-redirect them home then.
     const earlyParams = get(searchParams$);
     const hasUseCaseLink =
       (earlyParams.get("prompt")?.length ?? 0) > 0 &&
       earlyParams.get("connector") !== null;
 
-    // If onboarding is not needed and there's no use-case deep link, send the
-    // user home — the page has nothing to show.
+    // Onboarding is purely admin workspace setup. If onboarding is not needed
+    // (non-admins, or admins whose workspace is already set up) and there's no
+    // use-case deep link, send the user home — the page has nothing to show.
     const needsOnboarding = await get(zeroNeedsOnboarding$);
     signal.throwIfAborted();
-    const needsMemberOnboarding = await get(zeroNeedsMemberOnboarding$);
-    signal.throwIfAborted();
 
-    if (!needsOnboarding && !needsMemberOnboarding && !hasUseCaseLink) {
+    if (!needsOnboarding && !hasUseCaseLink) {
       set(detachedNavigateTo$, "/", { replace: true });
       return;
     }
@@ -55,8 +52,8 @@ export const setupOnboardingPage$ = command(
 
     // Consume ?connector= (comma-separated) to pre-select connectors. The
     // param is left on the URL so a refresh during onboarding still pre-fills
-    // the same selection; it gets dropped naturally when step 4 navigates
-    // away to /agents/.../chat or /works.
+    // the same selection; it gets dropped naturally when finishing onboarding
+    // navigates away to /agents/.../chat.
     const params = get(searchParams$);
     const connectorParam = params.get("connector");
     if (connectorParam !== null) {
@@ -79,18 +76,13 @@ export const setupOnboardingPage$ = command(
           alreadySelected.add(id);
         }
       }
-      // Mark the deep-link source so the picker step (step 2) is skipped —
-      // the user already chose connectors via the URL.
-      if (unique.length > 0) {
-        set(markConnectorsFromUrl$);
-      }
     }
 
     // "Use case" deep link: ?prompt=... + ?connector=... together signal that
     // the user came in from a specific suggested task. We seed an editable
-    // prompt draft and switch onboarding into condensed mode where step 4
-    // ("Where would you like to work?") is skipped and step 3 grows a
-    // composer + "Try It" CTA that goes straight to the web chat.
+    // prompt draft and switch onboarding into condensed mode where the flow
+    // collapses to step 3, which grows a composer + "Try It" CTA that goes
+    // straight to the web chat.
     const promptParam = params.get("prompt");
     if (
       promptParam !== null &&

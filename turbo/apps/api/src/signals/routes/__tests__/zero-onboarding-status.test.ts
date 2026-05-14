@@ -88,7 +88,6 @@ describe("GET /api/zero/onboarding/status", () => {
         seedOnboardingStatusOrg$,
         {
           defaultAgent: {},
-          onboardingDone: true,
         },
         context.signal,
       ),
@@ -123,7 +122,6 @@ describe("GET /api/zero/onboarding/status", () => {
             displayName: "My Agent",
             sound: "friendly",
           },
-          onboardingDone: true,
         },
         context.signal,
       ),
@@ -149,38 +147,7 @@ describe("GET /api/zero/onboarding/status", () => {
     });
   });
 
-  it("returns needsOnboarding=true for admin with default agent but onboarding not completed", async () => {
-    const fixture = await track(
-      store.set(
-        seedOnboardingStatusOrg$,
-        {
-          defaultAgent: {},
-        },
-        context.signal,
-      ),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-
-    const client = setupApp({ context })(onboardingStatusContract);
-
-    const response = await accept(
-      client.getStatus({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      needsOnboarding: true,
-      isAdmin: true,
-      hasOrg: true,
-      hasDefaultAgent: true,
-      defaultAgentId: fixture.composeId,
-      defaultAgentMetadata: null,
-    });
-  });
-
-  it("returns needsOnboarding=true for non-admin member who has not completed onboarding", async () => {
+  it("never reports needsOnboarding for a non-admin member", async () => {
     const fixture = await track(
       store.set(seedOnboardingStatusOrg$, {}, context.signal),
     );
@@ -196,7 +163,7 @@ describe("GET /api/zero/onboarding/status", () => {
     );
 
     expect(response.body).toStrictEqual({
-      needsOnboarding: true,
+      needsOnboarding: false,
       isAdmin: false,
       hasOrg: true,
       hasDefaultAgent: false,
@@ -248,35 +215,6 @@ describe("GET /api/zero/onboarding/status", () => {
     expect(response.body).toStrictEqual({
       needsOnboarding: true,
       isAdmin: true,
-      hasOrg: true,
-      hasDefaultAgent: false,
-      defaultAgentId: null,
-      defaultAgentMetadata: null,
-    });
-  });
-
-  it("returns needsOnboarding=false for non-admin member after completing onboarding", async () => {
-    const fixture = await track(
-      store.set(
-        seedOnboardingStatusOrg$,
-        { onboardingDone: true },
-        context.signal,
-      ),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-
-    const client = setupApp({ context })(onboardingStatusContract);
-
-    const response = await accept(
-      client.getStatus({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      needsOnboarding: false,
-      isAdmin: false,
       hasOrg: true,
       hasDefaultAgent: false,
       defaultAgentId: null,

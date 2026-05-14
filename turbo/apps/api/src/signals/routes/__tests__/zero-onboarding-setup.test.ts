@@ -143,7 +143,6 @@ async function readMemberMetadata(orgId: string, userId: string) {
   const db = store.set(writeDb$);
   const [row] = await db
     .select({
-      onboardingDone: orgMembersMetadata.onboardingDone,
       timezone: orgMembersMetadata.timezone,
     })
     .from(orgMembersMetadata)
@@ -304,7 +303,6 @@ describe("POST /api/zero/onboarding/setup", () => {
     await expect(
       readMemberMetadata(fixture.orgId, fixture.userId),
     ).resolves.toStrictEqual({
-      onboardingDone: true,
       timezone: "America/Los_Angeles",
     });
     await expect(readVm0Provider(fixture.orgId)).resolves.toMatchObject({
@@ -364,6 +362,40 @@ describe("POST /api/zero/onboarding/setup", () => {
 
     await expect(
       readConnectorTypes(fixture.orgId, fixture.userId, response.body.agentId),
+    ).resolves.toStrictEqual(["github", "slack"]);
+  });
+
+  it("authorizes connectors on a repeated setup call to an existing default agent", async () => {
+    const fixture = await track(createFixture());
+    mockAdminSession(fixture);
+
+    // First call: create the workspace + default agent, no connectors.
+    const first = await accept(
+      apiClient().setup({
+        headers: authHeaders(),
+        body: { displayName: "Zero" },
+      }),
+      [200],
+    );
+    const agentId = first.body.agentId;
+
+    // Second call (the skippable step 2): connectors get authorized to the
+    // existing default agent even though setup is idempotent on the agent.
+    const second = await accept(
+      apiClient().setup({
+        headers: authHeaders(),
+        body: {
+          displayName: "Zero",
+          selectedConnectors: ["slack", "github"],
+        },
+      }),
+      [200],
+    );
+
+    expect(second.body.agentId).toBe(agentId);
+    await expect(countAgents(fixture.orgId)).resolves.toBe(1);
+    await expect(
+      readConnectorTypes(fixture.orgId, fixture.userId, agentId),
     ).resolves.toStrictEqual(["github", "slack"]);
   });
 

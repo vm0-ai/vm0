@@ -81,6 +81,32 @@ describe("POST /api/zero/onboarding/setup", () => {
     expect(secondData.agentId).toBe(firstData.agentId);
   });
 
+  it("should authorize connectors when called again on an already-set-up workspace", async () => {
+    const { userId, orgId } = await context.setupUser();
+    mockClerk({ userId, orgId, orgRole: "org:admin" });
+
+    // First call: create the workspace + default agent, no connectors.
+    const first = await postSetup({ displayName: "Zero" });
+    expect(first.status).toBe(200);
+    const { agentId } = await first.json();
+
+    // Second call (the skippable step 2): connectors get authorized to the
+    // existing default agent even though setup is idempotent on the agent.
+    const second = await postSetup({
+      displayName: "Zero",
+      selectedConnectors: ["slack", "github"],
+    });
+    expect(second.status).toBe(200);
+    expect((await second.json()).agentId).toBe(agentId);
+
+    const connRes = await getUserConnectors(
+      createTestRequest(`${BASE}/agents/${agentId}/user-connectors`),
+    );
+    expect(connRes.status).toBe(200);
+    const connData = await connRes.json();
+    expect(connData.enabledTypes.sort()).toEqual(["github", "slack"]);
+  });
+
   it("should set user connectors when provided", async () => {
     const { userId, orgId } = await context.setupUser();
     mockClerk({ userId, orgId, orgRole: "org:admin" });

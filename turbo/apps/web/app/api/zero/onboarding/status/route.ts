@@ -7,25 +7,6 @@ import { isBadRequest, isNotFound } from "@vm0/api-services/errors";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { eq, and } from "drizzle-orm";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-
-async function isMemberOnboardingDone(
-  orgId: string,
-  userId: string,
-): Promise<boolean> {
-  const [row] = await globalThis.services.db
-    .select({ onboardingDone: orgMembersMetadata.onboardingDone })
-    .from(orgMembersMetadata)
-    .where(
-      and(
-        eq(orgMembersMetadata.orgId, orgId),
-        eq(orgMembersMetadata.userId, userId),
-      ),
-    )
-    .limit(1);
-
-  return row?.onboardingDone ?? false;
-}
 
 interface DefaultAgentInfo {
   name: string;
@@ -87,28 +68,20 @@ const router = tsr.router(onboardingStatusContract, {
     }
 
     let hasOrg = false;
-    let resolvedOrgId: string | null = null;
     let defaultAgent: DefaultAgentInfo | null = null;
     let isAdmin = false;
-    let memberOnboardingDone: boolean | null = null;
 
     try {
       const { org: resolvedOrg, member } = await resolveOrg(authCtx);
       hasOrg = true;
-      resolvedOrgId = resolvedOrg.orgId;
       isAdmin = member.role === "admin";
 
       const defaultAgentId = resolvedOrg.defaultAgentId;
       if (defaultAgentId) {
         // defaultAgentId IS the composeId (zero_agents.id = agent_composes.id).
-        [defaultAgent, memberOnboardingDone] = await Promise.all([
-          resolveDefaultAgent(resolvedOrg.orgId, defaultAgentId),
-          isMemberOnboardingDone(resolvedOrg.orgId, authCtx.userId),
-        ]);
-      } else if (!isAdmin) {
-        memberOnboardingDone = await isMemberOnboardingDone(
+        defaultAgent = await resolveDefaultAgent(
           resolvedOrg.orgId,
-          authCtx.userId,
+          defaultAgentId,
         );
       }
     } catch (error) {
@@ -117,22 +90,9 @@ const router = tsr.router(onboardingStatusContract, {
       }
     }
 
-    let needsOnboarding: boolean;
-    if (!hasOrg) {
-      needsOnboarding = true;
-    } else if (isAdmin && !defaultAgent) {
-      // Org needs initial setup — full admin onboarding
-      needsOnboarding = true;
-    } else {
-      // Org is set up — check personal onboarding (applies to both admins and members)
-      if (!resolvedOrgId) {
-        throw new Error("resolvedOrgId is null despite hasOrg being true");
-      }
-      const onboardingDone =
-        memberOnboardingDone ??
-        (await isMemberOnboardingDone(resolvedOrgId, authCtx.userId));
-      needsOnboarding = !onboardingDone;
-    }
+    // Onboarding is purely admin workspace setup: an admin enters it only when
+    // the org has no default agent yet. Non-admins never go through onboarding.
+    const needsOnboarding = !hasOrg || (isAdmin && !defaultAgent);
 
     return {
       status: 200 as const,

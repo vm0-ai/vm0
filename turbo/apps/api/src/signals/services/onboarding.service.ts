@@ -285,14 +285,13 @@ async function upsertSetupMemberMetadata(
     .values({
       orgId: args.orgId,
       userId: args.userId,
-      onboardingDone: true,
       timezone: args.timezone ?? null,
       createdAt: nowDate(),
       updatedAt: nowDate(),
     })
     .onConflictDoUpdate({
       target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
-      set: { onboardingDone: true, updatedAt: nowDate() },
+      set: { updatedAt: nowDate() },
     });
 }
 
@@ -329,27 +328,6 @@ async function replaceSelectedConnectors(
         };
       }),
     );
-  });
-}
-
-function memberOnboardingDone(
-  orgId: string,
-  userId: string,
-): Computed<Promise<boolean>> {
-  return computed(async (get): Promise<boolean> => {
-    const db = get(db$);
-    const [row] = await db
-      .select({ onboardingDone: orgMembersMetadata.onboardingDone })
-      .from(orgMembersMetadata)
-      .where(
-        and(
-          eq(orgMembersMetadata.orgId, orgId),
-          eq(orgMembersMetadata.userId, userId),
-        ),
-      )
-      .limit(1);
-
-    return row?.onboardingDone ?? false;
   });
 }
 
@@ -428,13 +406,10 @@ export function onboardingStatus(
       ? await get(defaultAgentInfo(auth.orgId, agentId))
       : null;
 
-    const shouldReadMemberOnboarding = Boolean(defaultAgent) || !isAdmin;
-    const onboardingDone = shouldReadMemberOnboarding
-      ? await get(memberOnboardingDone(auth.orgId, auth.userId))
-      : false;
-
+    // Onboarding is purely admin workspace setup: an admin enters it only when
+    // the org has no default agent yet. Non-admins never go through onboarding.
     return {
-      needsOnboarding: isAdmin && !defaultAgent ? true : !onboardingDone,
+      needsOnboarding: isAdmin && !defaultAgent,
       isAdmin,
       hasOrg: true,
       hasDefaultAgent: defaultAgent !== null,
@@ -443,85 +418,6 @@ export function onboardingStatus(
     };
   });
 }
-
-/**
- * Mark a member's onboarding as done and (if they picked connectors) bulk-
- * insert `user_connectors` rows for the org's default agent. Verbatim port
- * of apps/web/app/api/zero/onboarding/complete/route.ts.
- *
- * The composite-PK UPSERT runs outside any transaction; the conditional
- * DELETE+INSERT on `user_connectors` is the only transactional block. If
- * the transaction throws after the UPSERT commits, `onboardingDone` stays
- * set — same crash window as web.
- */
-export const completeOnboarding$ = command(
-  async (
-    { set },
-    args: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly selectedConnectors: readonly ConnectorType[];
-    },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const db = set(writeDb$);
-    const now = nowDate();
-
-    await db
-      .insert(orgMembersMetadata)
-      .values({
-        orgId: args.orgId,
-        userId: args.userId,
-        onboardingDone: true,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
-        set: { onboardingDone: true, updatedAt: now },
-      });
-    signal.throwIfAborted();
-
-    if (args.selectedConnectors.length === 0) {
-      return;
-    }
-
-    const [orgRow] = await db
-      .select({ defaultAgentId: orgMetadata.defaultAgentId })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, args.orgId))
-      .limit(1);
-    signal.throwIfAborted();
-
-    const agentId = orgRow?.defaultAgentId;
-    if (!agentId) {
-      return;
-    }
-
-    await db.transaction(async (tx) => {
-      await tx
-        .delete(userConnectors)
-        .where(
-          and(
-            eq(userConnectors.orgId, args.orgId),
-            eq(userConnectors.userId, args.userId),
-            eq(userConnectors.agentId, agentId),
-          ),
-        );
-      await tx.insert(userConnectors).values(
-        args.selectedConnectors.map((connectorType) => {
-          return {
-            orgId: args.orgId,
-            userId: args.userId,
-            agentId,
-            connectorType,
-          };
-        }),
-      );
-    });
-    signal.throwIfAborted();
-  },
-);
 
 export const setupOnboarding$ = command(
   async (
@@ -534,6 +430,15 @@ export const setupOnboarding$ = command(
     signal.throwIfAborted();
 
     if (existingAgentId) {
+      // Default agent already exists — onboarding step 1 is done. Still
+      // authorize any connectors the user picked in the (skippable) step 2.
+      await replaceSelectedConnectors(writeDb, {
+        orgId: args.orgId,
+        userId: args.userId,
+        agentId: existingAgentId,
+        selectedConnectors: args.selectedConnectors,
+      });
+      signal.throwIfAborted();
       return { status: 200 as const, body: { agentId: existingAgentId } };
     }
 

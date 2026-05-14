@@ -17,7 +17,6 @@ interface DefaultAgentValues {
 
 interface OnboardingSeedValues {
   readonly defaultAgent?: DefaultAgentValues;
-  readonly onboardingDone?: boolean;
 }
 
 export interface OnboardingStatusFixture {
@@ -62,15 +61,6 @@ export const seedOnboardingStatusOrg$ = command(
       defaultAgentId: composeId,
     });
     signal.throwIfAborted();
-
-    if (values.onboardingDone !== undefined) {
-      await writeDb.insert(orgMembersMetadata).values({
-        orgId,
-        userId,
-        onboardingDone: values.onboardingDone,
-      });
-      signal.throwIfAborted();
-    }
 
     return { orgId, userId, composeId };
   },

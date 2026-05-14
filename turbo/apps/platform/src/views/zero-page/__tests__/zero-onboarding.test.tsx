@@ -128,6 +128,25 @@ describe("zero onboarding - step 2: choose tools", () => {
       ).toBeInTheDocument();
     });
   });
+
+  it("step 2 is the terminal step — its primary button continues into web", async () => {
+    mockOnboardingNeeded();
+    await renderOnboardingPage();
+
+    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
+    await fill(input, "Acme");
+    click(screen.getByText("Next"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("onboarding-step-select-connectors"),
+      ).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Continue in web/)).toBeInTheDocument();
+    });
+  });
 });
 
 describe("zero onboarding - does not render when not needed", () => {
@@ -145,67 +164,11 @@ describe("zero onboarding - does not render when not needed", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Member Welcome (non-admin onboarding)
-// ---------------------------------------------------------------------------
-
-function mockMemberOnboardingNeeded() {
-  server.use(
-    mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
-      return respond(200, {
-        needsOnboarding: true,
-        isAdmin: false,
-        hasOrg: true,
-        hasDefaultAgent: true,
-        defaultAgentId: "c0000000-0000-4000-a000-000000000001",
-        defaultAgentMetadata: null,
-      });
-    }),
-  );
-}
-
-describe("member welcome - step navigation", () => {
-  it("should land on step 2 (choose tools) for member on entry", async () => {
-    mockMemberOnboardingNeeded();
-    await renderOnboardingPage();
-
-    // Unified flow: members skip step 1 and start on step 2 (#9129)
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("onboarding-step-select-connectors"),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("should skip to where-to-work when member advances with no connectors", async () => {
-    mockMemberOnboardingNeeded();
-    await renderOnboardingPage();
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("onboarding-step-select-connectors"),
-      ).toBeInTheDocument();
-    });
-
-    // With no connector selected, Next jumps over step 3 to step 4
-    click(screen.getByText("Next"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("onboarding-step-where-to-work"),
-      ).toBeInTheDocument();
-    });
-
-    expect(screen.getByText(/Add .+ to Slack/)).toBeInTheDocument();
-    expect(screen.getByText(/Continue in web/)).toBeInTheDocument();
-  });
-});
-
-// ---------------------------------------------------------------------------
 // AGENT-D-056: Onboarding step indicator renders
 // ---------------------------------------------------------------------------
 
 describe("onboarding step indicator renders (AGENT-D-056)", () => {
-  it("renders a progress bar with step segments for admin flow", async () => {
+  it("renders a two-segment progress bar for the admin flow", async () => {
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
@@ -215,10 +178,10 @@ describe("onboarding step indicator renders (AGENT-D-056)", () => {
       ).toBeInTheDocument();
     });
 
-    // With no connectors selected, step 3 is hidden — 3 visible segments
-    expect(screen.getAllByTestId("progress-step")).toHaveLength(3);
+    // The regular admin flow has exactly two steps: name workspace + pick tools.
+    expect(screen.getAllByTestId("progress-step")).toHaveLength(2);
 
-    // Reach step 2 and select a connector so step 3 is added back
+    // Selecting a connector on step 2 doesn't add steps — step 2 is terminal.
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Acme");
     click(screen.getByText("Next"));
@@ -232,8 +195,9 @@ describe("onboarding step indicator renders (AGENT-D-056)", () => {
     click(screen.getByTestId("connector-card-github"));
 
     await waitFor(() => {
-      expect(screen.getAllByTestId("progress-step")).toHaveLength(4);
+      expect(screen.getByTestId("connector-check-icon")).toBeInTheDocument();
     });
+    expect(screen.getAllByTestId("progress-step")).toHaveLength(2);
   });
 });
 
@@ -272,30 +236,6 @@ describe("step-specific content renders (AGENT-D-057)", () => {
       expect(
         screen.getByPlaceholderText("Find connectors..."),
       ).toBeInTheDocument();
-    });
-  });
-
-  it("renders connect step content after navigating to step 3", async () => {
-    mockOnboardingNeeded();
-    await renderOnboardingPage();
-
-    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
-    await fill(input, "Acme");
-    click(screen.getByText("Next"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("onboarding-step-select-connectors"),
-      ).toBeInTheDocument();
-    });
-
-    // Select a connector so step 3 becomes reachable (#9129: step 3 is
-    // conditional on having at least one selected connector)
-    click(screen.getByTestId("connector-card-github"));
-    click(screen.getByText("Next"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("onboarding-step-connect")).toBeInTheDocument();
     });
   });
 });
@@ -423,78 +363,7 @@ describe("connector search input filters list (AGENT-D-065)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// AGENT-D-066: Connect button in step 3
-// ---------------------------------------------------------------------------
-
-async function navigateToStep3() {
-  const input = await screen.findByPlaceholderText("e.g. Acme Corp");
-  await fill(input, "Acme");
-  click(screen.getByText("Next"));
-
-  await waitFor(() => {
-    expect(
-      screen.getByTestId("onboarding-step-select-connectors"),
-    ).toBeInTheDocument();
-  });
-
-  // Select GitHub connector
-  click(screen.getByTestId("connector-card-github"));
-
-  // Advance to step 3
-  click(screen.getByText("Next"));
-
-  await waitFor(() => {
-    expect(screen.getByTestId("onboarding-step-connect")).toBeInTheDocument();
-  });
-}
-
-describe("connect button is present in step 3 (AGENT-D-066)", () => {
-  it("connect button is rendered for selected connectors in step 3", async () => {
-    mockOnboardingNeeded();
-    await renderOnboardingPage();
-
-    await navigateToStep3();
-
-    expect(screen.getByText("Connect")).toBeInTheDocument();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// AGENT-D-059: Connector polling status shows
-// ---------------------------------------------------------------------------
-
-describe("connector polling status shows (AGENT-D-059)", () => {
-  it("skips step 3 entirely when step 2 is advanced without selections", async () => {
-    mockOnboardingNeeded();
-    await renderOnboardingPage();
-
-    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
-    await fill(input, "Acme");
-    click(screen.getByText("Next"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("onboarding-step-select-connectors"),
-      ).toBeInTheDocument();
-    });
-
-    // With no connector selected, Next from step 2 jumps straight to step 4
-    // (#9129 — step 3 is conditional on having at least one connector).
-    click(screen.getByText("Next"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("onboarding-step-where-to-work"),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.queryByTestId("onboarding-step-connect"),
-    ).not.toBeInTheDocument();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// AGENT-D-068: Back button returns to previous step
+// AGENT-D-068: Back button hidden after eager init
 // ---------------------------------------------------------------------------
 
 describe("back button hidden after eager init (AGENT-D-068)", () => {
@@ -520,36 +389,11 @@ describe("back button hidden after eager init (AGENT-D-068)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// AGENT-D-061: Slack/Web integration setup cards render
+// ?connector= deep link pre-selects connectors on step 2
 // ---------------------------------------------------------------------------
 
-describe("slack/web integration setup cards render (AGENT-D-061)", () => {
-  it("slack and web cards are displayed in step 4 for member", async () => {
-    mockMemberOnboardingNeeded();
-    await renderOnboardingPage();
-
-    // Member starts at step 2 under the unified flow; advance to step 4
-    // by clicking Next without selecting a connector.
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("onboarding-step-select-connectors"),
-      ).toBeInTheDocument();
-    });
-    click(screen.getByText("Next"));
-
-    await waitFor(() => {
-      expect(screen.getByText(/Add .+ to Slack/)).toBeInTheDocument();
-      expect(screen.getByText(/Continue in web/)).toBeInTheDocument();
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Skip step 2 when connectors arrive via ?connector= deep link
-// ---------------------------------------------------------------------------
-
-describe("connectors via URL skip step 2", () => {
-  it("admin: skips step 2 when connectors arrive via URL", async () => {
+describe("connectors via URL pre-select on step 2", () => {
+  it("admin: ?connector= pre-selects the connector on step 2", async () => {
     mockOnboardingNeeded();
     detachedSetupPage({ context, path: "/onboarding?connector=slack" });
 
@@ -560,49 +404,20 @@ describe("connectors via URL skip step 2", () => {
       ).toBeInTheDocument();
     });
 
-    // Fill step 1 and advance — should skip step 2 and land on step 3
+    // Fill step 1 and advance — lands on step 2 with slack pre-selected.
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Acme");
     click(screen.getByText("Next"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("onboarding-step-connect")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("onboarding-step-select-connectors"),
+      ).toBeInTheDocument();
     });
-
-    // Step 2 (choose tools) should NOT be shown
-    expect(
-      screen.queryByTestId("onboarding-step-select-connectors"),
-    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("connector-check-icon")).toBeInTheDocument();
   });
 
-  it("member: lands directly on step 3 when connectors arrive via URL", async () => {
-    mockMemberOnboardingNeeded();
-    detachedSetupPage({ context, path: "/onboarding?connector=github" });
-
-    // Member should skip step 2 and land on step 3 (connect)
-    await waitFor(() => {
-      expect(screen.getByTestId("onboarding-step-connect")).toBeInTheDocument();
-    });
-  });
-
-  it("admin: no Back button on step 3 when connectors via URL (eager init done)", async () => {
-    mockOnboardingNeeded();
-    detachedSetupPage({ context, path: "/onboarding?connector=slack" });
-
-    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
-    await fill(input, "Acme");
-    click(screen.getByText("Next"));
-
-    // On step 3
-    await waitFor(() => {
-      expect(screen.getByTestId("onboarding-step-connect")).toBeInTheDocument();
-    });
-
-    // Workspace provisioned at step 1; Back is hidden.
-    expect(screen.queryByText("Back")).not.toBeInTheDocument();
-  });
-
-  it("falls back to normal flow when no valid URL connectors", async () => {
+  it("falls back to an empty selection when no valid URL connectors", async () => {
     mockOnboardingNeeded();
     detachedSetupPage({
       context,
@@ -613,11 +428,14 @@ describe("connectors via URL skip step 2", () => {
     await fill(input, "Acme");
     click(screen.getByText("Next"));
 
-    // Should land on step 2 (choose tools) — normal flow
+    // Should land on step 2 (choose tools) — normal flow, nothing pre-selected
     await waitFor(() => {
       expect(
         screen.getByTestId("onboarding-step-select-connectors"),
       ).toBeInTheDocument();
     });
+    expect(
+      screen.queryByTestId("connector-check-icon"),
+    ).not.toBeInTheDocument();
   });
 });

@@ -13,13 +13,13 @@ import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   onboardingStatusContract,
   onboardingSetupContract,
-  onboardingCompleteContract,
 } from "@vm0/api-contracts/contracts/onboarding";
 
 const context = testContext();
 const mockApi = createMockApi(context);
 
 const MOCK_AGENT_ID = "d0000000-0000-4000-a000-000000000001";
+const MEMBER_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 function mockOnboardingNeededAdmin() {
   server.use(
@@ -33,30 +33,42 @@ function mockOnboardingNeededAdmin() {
         defaultAgentMetadata: null,
       });
     }),
-    // Single setup endpoint replaces all individual onboarding API calls
+    // Single setup endpoint provisions the workspace + default agent.
     mockApi(onboardingSetupContract.setup, ({ respond }) => {
       return respond(200, { agentId: MOCK_AGENT_ID });
     }),
   );
 }
 
-function mockOnboardingNeededMember() {
+// Non-admins (and admins whose workspace is already set up) never need
+// onboarding — the backend reports needsOnboarding: false for them.
+function mockNoOnboardingNeeded() {
   server.use(
     mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
       return respond(200, {
-        needsOnboarding: true,
+        needsOnboarding: false,
         isAdmin: false,
         hasOrg: true,
         hasDefaultAgent: true,
-        defaultAgentId: "c0000000-0000-4000-a000-000000000001",
+        defaultAgentId: MEMBER_AGENT_ID,
         defaultAgentMetadata: { displayName: "Zero" },
       });
     }),
-    // Mock complete member onboarding
-    mockApi(onboardingCompleteContract.complete, ({ respond }) => {
-      return respond(200, { ok: true });
-    }),
   );
+}
+
+function registerAgent(id: string) {
+  setMockTeam([
+    {
+      id,
+      displayName: null,
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ]);
 }
 
 describe("onboarding navigation", () => {
@@ -86,32 +98,18 @@ describe("onboarding navigation", () => {
       expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
     });
 
-    // Fill name and advance
+    // Fill name and advance — this eager-inits the workspace + default agent
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Test Workspace");
     click(screen.getByText("Next"));
 
-    // Step 2: Choose your tools — select a connector so step 3 is visible
+    // Step 2: Choose your tools — pick a connector to authorize
     await waitFor(() => {
       expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
     click(screen.getByTestId("connector-card-github"));
-    click(screen.getByText("Next"));
 
-    // Step 3: Connect your apps → Next
-    await waitFor(() => {
-      expect(screen.getByText("Connect your apps")).toBeInTheDocument();
-    });
-    click(screen.getByText("Next"));
-
-    // Step 4: Where to work
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Where would you like to work with/),
-      ).toBeInTheDocument();
-    });
-
-    // After completing onboarding, the API should report needsOnboarding: false
+    // After completing onboarding, the API reports needsOnboarding: false
     server.use(
       mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
         return respond(200, {
@@ -124,83 +122,29 @@ describe("onboarding navigation", () => {
         });
       }),
     );
-    // Register the new default agent in the team so the subsequent chat page
-    // setup can find it instead of treating it as missing and looping back.
-    setMockTeam([
-      {
-        id: MOCK_AGENT_ID,
-        displayName: null,
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        headVersionId: "version_1",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-    ]);
+    // Register the new default agent so the subsequent chat page setup can
+    // find it instead of treating it as missing and looping back.
+    registerAgent(MOCK_AGENT_ID);
 
-    // Click "Continue in web" to trigger handleContinueWithWeb -> navigate("/")
-    const continueButton = screen.getByText(/Continue in web/);
-    click(continueButton);
+    // "Continue in web" finishes onboarding (step 2 is the terminal step) and
+    // navigates into the web chat.
+    await waitFor(() => {
+      expect(screen.getByText(/Continue in web/)).toBeInTheDocument();
+    });
+    click(screen.getByText(/Continue in web/));
 
-    // Verify navigation to / (which then redirects to /talk/:name)
     await waitFor(() => {
       expect(pathname()).not.toBe("/onboarding");
     });
   });
 
-  it("should redirect to /onboarding when member needs onboarding", async () => {
-    mockOnboardingNeededMember();
-
-    detachedSetupPage({ context, path: "/" });
-
-    // The / route should redirect to /onboarding
-    await waitFor(() => {
-      expect(pathname()).toBe("/onboarding");
-    });
-
-    // Member lands on step 2 (Choose your tools) under the unified flow
-    await waitFor(() => {
-      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
-    });
-  });
-
-  it("should navigate to / after completing member onboarding via web", async () => {
-    mockOnboardingNeededMember();
+  it("should send users who don't need onboarding to / instead of /onboarding", async () => {
+    mockNoOnboardingNeeded();
+    registerAgent(MEMBER_AGENT_ID);
 
     detachedSetupPage({ context, path: "/onboarding" });
 
-    // Member starts on step 2 — advance without selecting connectors to land
-    // on step 4 (where-to-work).
-    await waitFor(() => {
-      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
-    });
-    click(screen.getByText("Next"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Where would you like to work with/),
-      ).toBeInTheDocument();
-    });
-
-    // After completing onboarding, the API should report needsOnboarding: false
-    server.use(
-      mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
-        return respond(200, {
-          needsOnboarding: false,
-          isAdmin: false,
-          hasOrg: true,
-          hasDefaultAgent: true,
-          defaultAgentId: "c0000000-0000-4000-a000-000000000001",
-          defaultAgentMetadata: { displayName: "Zero" },
-        });
-      }),
-    );
-
-    // Click "Continue in web" to trigger handleContinueWeb -> navigate("/")
-    const chatButton = screen.getByText(/Continue in web/);
-    click(chatButton);
-
-    // Verify navigation away from /onboarding (/ redirects to /talk/:name)
+    // The onboarding page has nothing to show — redirect home.
     await waitFor(() => {
       expect(pathname()).not.toBe("/onboarding");
     });

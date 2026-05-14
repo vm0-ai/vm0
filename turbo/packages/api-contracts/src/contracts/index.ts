@@ -824,11 +824,9 @@ export {
 } from "./org-members";
 export {
   onboardingStatusContract,
-  onboardingCompleteContract,
   onboardingSetupContract,
   onboardingStatusResponseSchema,
   type OnboardingStatusContract,
-  type OnboardingCompleteContract,
   type OnboardingSetupContract,
   type OnboardingStatusResponse,
 } from "./onboarding";

@@ -64,6 +64,35 @@ function isClerkSlugConflict(error: unknown): boolean {
 }
 
 /**
+ * Replace the user's connector authorizations for an agent with the given set.
+ * These rows mark connectors as authorized to the agent — the user still has
+ * to connect (OAuth) them later.
+ */
+async function upsertUserConnectors(
+  orgId: string,
+  userId: string,
+  agentId: string,
+  connectors: readonly string[],
+): Promise<void> {
+  await globalThis.services.db.transaction(async (tx) => {
+    await tx
+      .delete(userConnectors)
+      .where(
+        and(
+          eq(userConnectors.orgId, orgId),
+          eq(userConnectors.userId, userId),
+          eq(userConnectors.agentId, agentId),
+        ),
+      );
+    await tx.insert(userConnectors).values(
+      connectors.map((connectorType) => {
+        return { orgId, userId, agentId, connectorType };
+      }),
+    );
+  });
+}
+
+/**
  * Update org name and slug via a single Clerk call.
  * Retries once with a random suffix if the slug conflicts.
  */
@@ -148,6 +177,16 @@ const router = tsr.router(onboardingSetupContract, {
         .limit(1);
 
       if (existing) {
+        // Default agent already exists — onboarding step 1 is done. Still
+        // authorize any connectors the user picked in the (skippable) step 2.
+        if (body.selectedConnectors && body.selectedConnectors.length > 0) {
+          await upsertUserConnectors(
+            org.orgId,
+            userId,
+            existing.id,
+            body.selectedConnectors,
+          );
+        }
         return {
           status: 200 as const,
           body: { agentId: existing.id },
@@ -232,13 +271,12 @@ const router = tsr.router(onboardingSetupContract, {
             set: { defaultAgentId: agentId, updatedAt: new Date() },
           });
       }),
-      // Mark onboarding complete + set timezone from browser
+      // Set timezone from browser
       db
         .insert(orgMembersMetadata)
         .values({
           orgId: org.orgId,
           userId,
-          onboardingDone: true,
           timezone: body.timezone ?? null,
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -246,37 +284,20 @@ const router = tsr.router(onboardingSetupContract, {
         .onConflictDoUpdate({
           target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
           set: {
-            onboardingDone: true,
             updatedAt: new Date(),
           },
         }),
     ];
 
-    // Set user connectors if provided
+    // Authorize the connectors the user picked, if any
     if (body.selectedConnectors && body.selectedConnectors.length > 0) {
-      const connectors = body.selectedConnectors;
       parallelGroup2.push(
-        db.transaction(async (tx) => {
-          await tx
-            .delete(userConnectors)
-            .where(
-              and(
-                eq(userConnectors.orgId, org.orgId),
-                eq(userConnectors.userId, userId),
-                eq(userConnectors.agentId, agentId),
-              ),
-            );
-          await tx.insert(userConnectors).values(
-            connectors.map((connectorType) => {
-              return {
-                orgId: org.orgId,
-                userId,
-                agentId,
-                connectorType,
-              };
-            }),
-          );
-        }),
+        upsertUserConnectors(
+          org.orgId,
+          userId,
+          agentId,
+          body.selectedConnectors,
+        ),
       );
     }
 

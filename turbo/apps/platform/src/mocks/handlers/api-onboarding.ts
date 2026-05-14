@@ -1,7 +1,6 @@
 import {
   onboardingStatusContract,
   onboardingSetupContract,
-  onboardingCompleteContract,
   type OnboardingStatusResponse,
 } from "@vm0/api-contracts/contracts/onboarding";
 import { mockApi } from "../msw-contract.ts";
@@ -38,10 +37,5 @@ export const apiOnboardingHandlers = [
   // POST /api/zero/onboarding/setup
   mockApi(onboardingSetupContract.setup, ({ respond }) => {
     return respond(200, { agentId: "d0000000-0000-4000-a000-000000000001" });
-  }),
-
-  // POST /api/zero/onboarding/complete
-  mockApi(onboardingCompleteContract.complete, ({ respond }) => {
-    return respond(200, { ok: true });
   }),
 ];
