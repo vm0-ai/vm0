@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.15.6...vsock-proto-v0.16.0) (2026-05-14)
+
+
+### Features
+
+* add vsock operation quiesce protocol ([#13343](https://github.com/vm0-ai/vm0/issues/13343)) ([d1738c7](https://github.com/vm0-ai/vm0/commit/d1738c7d9665769411c2d99f4b3c116d6e132df9))
+
 ## [0.15.6](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.15.5...vsock-proto-v0.15.6) (2026-05-14)
 
 

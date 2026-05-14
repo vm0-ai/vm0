@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.47.0](https://github.com/vm0-ai/vm0/compare/api-v1.46.0...api-v1.47.0) (2026-05-14)
+
+
+### Features
+
+* **api:** support Stripe CLI auth modes ([#13344](https://github.com/vm0-ai/vm0/issues/13344)) ([45803c0](https://github.com/vm0-ai/vm0/commit/45803c02557b3f813766a4e6d597b0b7fae5bb19))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.24.0
+    * @vm0/core bumped to 8.276.2
+    * @vm0/db bumped to 1.11.1
+
 ## [1.46.0](https://github.com/vm0-ai/vm0/compare/api-v1.45.0...api-v1.46.0) (2026-05-14)
 
 
