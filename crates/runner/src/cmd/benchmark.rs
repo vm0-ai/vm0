@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use clap::Args;
 use sandbox::{
     EXEC_OUTPUT_LIMIT_7_MIB, ExecRequest, ExecResult, RuntimeProvider, SandboxConfig,
-    SandboxFactory, SandboxId,
+    SandboxFactory, SandboxId, SandboxRuntime,
 };
 use tracing::{info, warn};
 
@@ -119,13 +119,27 @@ pub async fn run_benchmark(
     let factory_config = runner_config.factory_config(profile_name, profile_config, &home);
 
     let t = Instant::now();
-    let mut runtime = runtime_provider
+    let mut runtime = match runtime_provider
         .create_runtime(sandbox::RuntimeConfig {
             proxy_port: Some(mitm.port()),
             dns_port: None, // benchmark does not use custom DNS proxy
         })
-        .await?;
-    let mut factory = runtime.create_factory(factory_config).await?;
+        .await
+    {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            stop_benchmark_proxy(&mut mitm, "runtime_create").await;
+            return Err(e.into());
+        }
+    };
+    let mut factory =
+        match create_factory_or_shutdown_runtime(runtime.as_mut(), factory_config).await {
+            Ok(factory) => factory,
+            Err(e) => {
+                stop_benchmark_proxy(&mut mitm, "factory_create").await;
+                return Err(e.into());
+            }
+        };
     let factory_ms = t.elapsed().as_millis();
     info!(factory_ms, "factory ready");
 
@@ -194,6 +208,25 @@ pub async fn run_benchmark(
         }
     };
     Ok(ExitCode::from(code))
+}
+
+async fn stop_benchmark_proxy(mitm: &mut proxy::MitmProxy, phase: &'static str) {
+    if let Err(e) = mitm.stop().await {
+        warn!(error = %e, phase, "proxy stop failed during benchmark cleanup");
+    }
+}
+
+async fn create_factory_or_shutdown_runtime(
+    runtime: &mut dyn SandboxRuntime,
+    factory_config: sandbox::FactoryConfig,
+) -> sandbox::Result<Box<dyn SandboxFactory>> {
+    match runtime.create_factory(factory_config).await {
+        Ok(factory) => Ok(factory),
+        Err(e) => {
+            runtime.shutdown().await;
+            Err(e)
+        }
+    }
 }
 
 /// Create, register, start, exec, stop, unregister, destroy.
@@ -301,6 +334,12 @@ async fn run_in_sandbox(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use async_trait::async_trait;
+    use sandbox::{SandboxError, SandboxInitializationPhase};
 
     #[test]
     fn parse_env_args_accepts_key_value_pairs() {
@@ -337,5 +376,56 @@ mod tests {
         let input = vec!["GOOD=ok".to_string(), "BAD".to_string()];
         let err = parse_env_args(&input).unwrap_err();
         assert!(err.to_string().contains("'BAD'"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn create_factory_or_shutdown_runtime_shuts_down_runtime_after_factory_error() {
+        let shutdowns = Arc::new(AtomicUsize::new(0));
+        let mut runtime = FailingFactoryRuntime {
+            shutdowns: Arc::clone(&shutdowns),
+        };
+
+        let result = create_factory_or_shutdown_runtime(&mut runtime, test_factory_config()).await;
+
+        assert!(matches!(
+            result,
+            Err(SandboxError::Initialization {
+                phase: SandboxInitializationPhase::Factory,
+                message,
+            }) if message == "factory failed"
+        ));
+        assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
+    }
+
+    struct FailingFactoryRuntime {
+        shutdowns: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl SandboxRuntime for FailingFactoryRuntime {
+        async fn create_factory(
+            &self,
+            _config: sandbox::FactoryConfig,
+        ) -> sandbox::Result<Box<dyn SandboxFactory>> {
+            Err(SandboxError::Initialization {
+                phase: SandboxInitializationPhase::Factory,
+                message: "factory failed".into(),
+            })
+        }
+
+        async fn shutdown(&mut self) {
+            self.shutdowns.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    fn test_factory_config() -> sandbox::FactoryConfig {
+        sandbox::FactoryConfig {
+            profile: "vm0/test".into(),
+            binary_path: PathBuf::from("/firecracker"),
+            kernel_path: PathBuf::from("/vmlinux"),
+            rootfs_path: PathBuf::from("/rootfs.ext4"),
+            base_dir: PathBuf::from("/tmp/vm0-test"),
+            snapshot: None,
+        }
     }
 }
