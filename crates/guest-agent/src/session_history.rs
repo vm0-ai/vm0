@@ -24,6 +24,8 @@
 //! `read_session_history` surfaces the failure instead.
 
 use crate::error::AgentError;
+#[cfg(target_os = "linux")]
+use crate::nofollow_fs::Dir;
 use std::ffi::OsStr;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -141,7 +143,7 @@ fn read_codex_session_history_impl(
     sessions_dir: &Path,
     id_norm: &str,
 ) -> Result<Option<Vec<u8>>, AgentError> {
-    let Ok(root) = open_codex_session_dir(sessions_dir) else {
+    let Ok(root) = Dir::open(sessions_dir) else {
         return Ok(None);
     };
     find_and_read_codex_session_file_recursive(&root, sessions_dir, id_norm)
@@ -149,11 +151,11 @@ fn read_codex_session_history_impl(
 
 #[cfg(target_os = "linux")]
 fn find_and_read_codex_session_file_recursive(
-    dir: &File,
+    dir: &Dir,
     dir_path: &Path,
     id_norm: &str,
 ) -> Result<Option<Vec<u8>>, AgentError> {
-    let Ok(entries) = read_dir_fd(dir) else {
+    let Ok(entries) = dir.read_dir() else {
         return Ok(None);
     };
 
@@ -164,7 +166,7 @@ fn find_and_read_codex_session_file_recursive(
         };
         let path = dir_path.join(&name);
         if file_type.is_dir() {
-            let Ok(child) = open_codex_child_dir(dir, &name) else {
+            let Ok(child) = dir.open_child_dir(&name) else {
                 continue;
             };
             if let Some(found) = find_and_read_codex_session_file_recursive(&child, &path, id_norm)?
@@ -172,7 +174,7 @@ fn find_and_read_codex_session_file_recursive(
                 return Ok(Some(found));
             }
         } else if file_type.is_file() && codex_session_filename_matches(&name, id_norm) {
-            let file = match open_codex_child_file(dir, &name) {
+            let file = match dir.open_child_file(&name) {
                 Ok(file) => file,
                 Err(e) if should_skip_raced_codex_entry(&e) => continue,
                 Err(e) => return Err(read_history_error(&path, e)),
@@ -199,57 +201,6 @@ fn codex_session_filename_matches(name: &OsStr, id_norm: &str) -> bool {
 
     let name_norm = name.replace('-', "").to_ascii_lowercase();
     name_norm.contains(id_norm)
-}
-
-#[cfg(target_os = "linux")]
-fn read_dir_fd(dir: &File) -> io::Result<std::fs::ReadDir> {
-    use std::os::fd::AsRawFd;
-
-    std::fs::read_dir(PathBuf::from(format!("/proc/self/fd/{}", dir.as_raw_fd())))
-}
-
-#[cfg(target_os = "linux")]
-fn open_codex_session_dir(path: &Path) -> io::Result<File> {
-    use std::fs::OpenOptions;
-    use std::os::unix::fs::OpenOptionsExt;
-
-    OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
-        .open(path)
-}
-
-#[cfg(target_os = "linux")]
-fn open_codex_child_dir(parent: &File, name: &OsStr) -> io::Result<File> {
-    open_codex_child(
-        parent,
-        name,
-        libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-    )
-}
-
-#[cfg(target_os = "linux")]
-fn open_codex_child_file(parent: &File, name: &OsStr) -> io::Result<File> {
-    open_codex_child(
-        parent,
-        name,
-        libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
-    )
-}
-
-#[cfg(target_os = "linux")]
-fn open_codex_child(parent: &File, name: &OsStr, flags: i32) -> io::Result<File> {
-    use std::ffi::CString;
-    use std::os::fd::{AsRawFd, FromRawFd};
-    use std::os::unix::ffi::OsStrExt;
-
-    let name = CString::new(name.as_bytes())
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-    let fd = unsafe { libc::openat(parent.as_raw_fd(), name.as_ptr(), flags) };
-    if fd < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(unsafe { File::from_raw_fd(fd) })
 }
 
 #[cfg(target_os = "linux")]

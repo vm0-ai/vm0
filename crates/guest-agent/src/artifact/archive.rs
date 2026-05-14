@@ -1,4 +1,6 @@
 use super::FileEntry;
+#[cfg(target_os = "linux")]
+use crate::nofollow_fs::Dir;
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use guest_common::log_warn;
@@ -11,10 +13,10 @@ use thiserror::Error;
 const LOG_TAG: &str = "sandbox:guest-agent";
 
 /// Walk directory and compute SHA-256 for each file, skipping `.git` and `.vm0`.
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 pub(super) fn collect_file_metadata(dir_path: &str) -> Vec<FileEntry> {
     let mut files = Vec::new();
-    let root = match open_archive_dir(Path::new(dir_path)) {
+    let root = match Dir::open(Path::new(dir_path)) {
         Ok(root) => root,
         Err(e) => {
             log_warn!(LOG_TAG, "Could not read artifact root {dir_path}: {e}");
@@ -25,18 +27,18 @@ pub(super) fn collect_file_metadata(dir_path: &str) -> Vec<FileEntry> {
     files
 }
 
-#[cfg(not(unix))]
+#[cfg(not(target_os = "linux"))]
 pub(super) fn collect_file_metadata(dir_path: &str) -> Vec<FileEntry> {
     log_warn!(
         LOG_TAG,
-        "Artifact metadata collection requires Unix no-follow path opening: {dir_path}"
+        "Artifact metadata collection requires Linux no-follow path opening: {dir_path}"
     );
     Vec::new()
 }
 
-#[cfg(unix)]
-fn walk_dir(current: &File, relative: &str, out: &mut Vec<FileEntry>) {
-    let entries = match read_dir_fd(current) {
+#[cfg(target_os = "linux")]
+fn walk_dir(current: &Dir, relative: &str, out: &mut Vec<FileEntry>) {
+    let entries = match current.read_dir() {
         Ok(e) => e,
         Err(_) => return,
     };
@@ -53,12 +55,12 @@ fn walk_dir(current: &File, relative: &str, out: &mut Vec<FileEntry>) {
             format!("{relative}/{name_str}")
         };
 
-        if let Ok(dir) = open_archive_child_dir(current, &name) {
+        if let Ok(dir) = current.open_child_dir(&name) {
             walk_dir(&dir, &rel, out);
             continue;
         }
 
-        let Ok(file) = open_archive_child_file(current, &name) else {
+        let Ok(file) = current.open_child_file(&name) else {
             continue;
         };
         let Ok(metadata) = file.metadata() else {
@@ -381,60 +383,9 @@ fn archive_mode(metadata: &Metadata) -> u32 {
     }
 }
 
-#[cfg(unix)]
-fn read_dir_fd(dir: &File) -> io::Result<fs::ReadDir> {
-    use std::os::fd::AsRawFd;
-
-    fs::read_dir(PathBuf::from(format!("/proc/self/fd/{}", dir.as_raw_fd())))
-}
-
-#[cfg(unix)]
-fn open_archive_dir(path: &Path) -> io::Result<File> {
-    use std::fs::OpenOptions;
-    use std::os::unix::fs::OpenOptionsExt;
-
-    OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
-        .open(path)
-}
-
-#[cfg(unix)]
-fn open_archive_child_dir(parent: &File, name: &std::ffi::OsStr) -> io::Result<File> {
-    open_archive_child(
-        parent,
-        name,
-        libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-    )
-}
-
-#[cfg(unix)]
-fn open_archive_child_file(parent: &File, name: &std::ffi::OsStr) -> io::Result<File> {
-    open_archive_child(
-        parent,
-        name,
-        libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
-    )
-}
-
-#[cfg(unix)]
-fn open_archive_child(parent: &File, name: &std::ffi::OsStr, flags: i32) -> io::Result<File> {
-    use std::ffi::CString;
-    use std::os::fd::{AsRawFd, FromRawFd};
-    use std::os::unix::ffi::OsStrExt;
-
-    let name = CString::new(name.as_bytes())
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-    let fd = unsafe { libc::openat(parent.as_raw_fd(), name.as_ptr(), flags) };
-    if fd < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(unsafe { File::from_raw_fd(fd) })
-}
-
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn open_archive_file(root: &Path, rel_path: &Path) -> io::Result<File> {
-    let mut dir = open_archive_dir(root)?;
+    let mut dir = Dir::open(root)?;
     let mut components = rel_path.components().peekable();
 
     while let Some(component) = components.next() {
@@ -446,9 +397,9 @@ fn open_archive_file(root: &Path, rel_path: &Path) -> io::Result<File> {
         };
         let is_last = components.peek().is_none();
         if is_last {
-            return open_archive_child_file(&dir, name);
+            return dir.open_child_file(name);
         } else {
-            dir = open_archive_child_dir(&dir, name)?;
+            dir = dir.open_child_dir(name)?;
         }
     }
 
@@ -458,15 +409,15 @@ fn open_archive_file(root: &Path, rel_path: &Path) -> io::Result<File> {
     ))
 }
 
-#[cfg(not(unix))]
+#[cfg(not(target_os = "linux"))]
 fn open_archive_file(_root: &Path, _rel_path: &Path) -> io::Result<File> {
     Err(io::Error::new(
         io::ErrorKind::Unsupported,
-        "artifact archive creation requires Unix no-follow path opening",
+        "artifact archive creation requires Linux no-follow path opening",
     ))
 }
 
-#[cfg(all(test, unix))]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
     use std::ffi::CString;
