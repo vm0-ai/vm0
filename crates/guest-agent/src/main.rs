@@ -705,7 +705,7 @@ mod tests {
         unsafe {
             std::env::set_var("VM0_API_URL", server.base_url());
             std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-final-telemetry");
+            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
         }
 
         let tmp = tempfile::tempdir().unwrap();
