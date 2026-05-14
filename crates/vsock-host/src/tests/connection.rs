@@ -198,6 +198,7 @@ async fn quiesce_operations_rejects_non_empty_ack_payload() {
 #[tokio::test]
 async fn quiesce_operations_times_out_and_late_ack_is_ignored() {
     let (host_stream, mut guest) = make_pair();
+    let (send_late_ack, receive_late_ack) = tokio::sync::oneshot::channel();
 
     tokio::spawn(async move {
         let mut decoder = Decoder::new();
@@ -208,7 +209,7 @@ async fn quiesce_operations_times_out_and_late_ack_is_ignored() {
         let msgs = decoder.decode(&buf[..n]).unwrap();
         assert_eq!(msgs[0].msg_type, MSG_QUIESCE_OPERATIONS);
 
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        receive_late_ack.await.unwrap();
         let late = vsock_proto::encode(MSG_OPERATIONS_QUIESCED, msgs[0].seq, &[]).unwrap();
         guest.write_all(&late).await.unwrap();
 
@@ -226,6 +227,7 @@ async fn quiesce_operations_times_out_and_late_ack_is_ignored() {
         .unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::TimedOut);
 
+    send_late_ack.send(()).unwrap();
     host.resume_operations(Duration::from_secs(2))
         .await
         .unwrap();

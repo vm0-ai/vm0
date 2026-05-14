@@ -130,8 +130,9 @@ where
                 format_env_diagnostics(request.command, request.env)
             ));
             let response = vsock_proto::encode(MSG_ERROR, seq, &payload).map_err(to_io_error)?;
-            operation_guard.release();
-            let result = writer.write_frame(&response);
+            let result = writer.write_frame_after_lock(&response, || {
+                operation_guard.release();
+            });
             result?;
             return Ok(());
         }
@@ -282,14 +283,14 @@ where
         }),
     );
     if let Err(e) = &result {
-        operation_guard.release();
-        send_process_exit(
+        send_process_exit_after_lock(
             seq,
             pid,
             1,
             &[],
             format!("Failed to spawn streaming monitor thread: {e}").as_bytes(),
             &exit_writer,
+            || operation_guard.release(),
         );
     }
     result.map(|_| ())
@@ -482,8 +483,9 @@ where
         ),
     );
 
-    operation_guard.release();
-    send_process_exit(seq, pid, exit_code, &[], &stderr, &writer);
+    send_process_exit_after_lock(seq, pid, exit_code, &[], &stderr, &writer, || {
+        operation_guard.release();
+    });
 }
 
 fn finish_streaming_setup_failure(failure: StreamingSetupFailure) {
@@ -510,8 +512,9 @@ fn finish_streaming_setup_failure(failure: StreamingSetupFailure) {
     if let Some(handle) = stdout_handle {
         let _ = handle.join();
     }
-    operation_guard.release();
-    send_process_exit(seq, pid, 1, &[], error.as_bytes(), &writer);
+    send_process_exit_after_lock(seq, pid, 1, &[], error.as_bytes(), &writer, || {
+        operation_guard.release();
+    });
 }
 
 /// Buffered monitor: waits for process exit while concurrently draining
@@ -564,34 +567,37 @@ where
                 ),
             );
 
-            monitor_operation_guard.release();
-            send_process_exit(seq, pid, exit_code, &stdout, &stderr, &writer);
+            send_process_exit_after_lock(seq, pid, exit_code, &stdout, &stderr, &writer, || {
+                monitor_operation_guard.release();
+            });
             drop(env_script);
         }),
     );
     if let Err(e) = &result {
-        operation_guard.release();
-        send_process_exit(
+        send_process_exit_after_lock(
             seq,
             pid,
             1,
             &[],
             format!("Failed to spawn buffered monitor thread: {e}").as_bytes(),
             &exit_writer,
+            || operation_guard.release(),
         );
     }
     result.map(|_| ())
 }
 
-/// Send a process_exit notification over vsock (best-effort).
-fn send_process_exit(
+fn send_process_exit_after_lock<F>(
     seq: u32,
     pid: u32,
     exit_code: i32,
     stdout: &[u8],
     stderr: &[u8],
     writer: &GuestWriter,
-) {
+    after_lock: F,
+) where
+    F: FnOnce(),
+{
     let payload = vsock_proto::encode_process_exit(pid, exit_code, stdout, stderr);
     let exit_msg = match vsock_proto::encode(MSG_PROCESS_EXIT, seq, &payload) {
         Ok(msg) => msg,
@@ -600,7 +606,7 @@ fn send_process_exit(
             return;
         }
     };
-    if let Err(e) = writer.write_frame(&exit_msg) {
+    if let Err(e) = writer.write_frame_after_lock(&exit_msg, after_lock) {
         log("ERROR", &format!("Failed to send process_exit: {}", e));
     }
 }

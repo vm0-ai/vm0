@@ -250,8 +250,7 @@ where
                 "ERROR",
                 &format!("command: worker spawn failed seq={seq}: {e}"),
             );
-            operation_guard.release();
-            send_command_result(
+            send_command_result_after_lock(
                 CommandResultFrame {
                     seq,
                     termination: CommandTermination::StartFailed,
@@ -261,6 +260,7 @@ where
                     diagnostic: &diagnostic,
                 },
                 &writer,
+                || operation_guard.release(),
             )
         }
     }
@@ -777,15 +777,21 @@ fn send_final_and_complete(
     writer: &GuestWriter,
     operation_guard: &OperationGuard,
 ) {
-    operation_guard.release();
-    let result = send_command_result(frame, writer);
+    let result = send_command_result_after_lock(frame, writer, || operation_guard.release());
     registration.complete();
     if let Err(e) = result {
         log("ERROR", &format!("Failed to send command_result: {e}"));
     }
 }
 
-fn send_command_result(frame: CommandResultFrame<'_>, writer: &GuestWriter) -> io::Result<()> {
+fn send_command_result_after_lock<F>(
+    frame: CommandResultFrame<'_>,
+    writer: &GuestWriter,
+    after_lock: F,
+) -> io::Result<()>
+where
+    F: FnOnce(),
+{
     let payload = vsock_proto::encode_command_result(
         frame.termination,
         frame.duration_ms,
@@ -796,7 +802,7 @@ fn send_command_result(frame: CommandResultFrame<'_>, writer: &GuestWriter) -> i
     .map_err(to_io_error)?;
     let encoded =
         vsock_proto::encode(MSG_COMMAND_RESULT, frame.seq, &payload).map_err(to_io_error)?;
-    writer.write_frame(&encoded)
+    writer.write_frame_after_lock(&encoded, after_lock)
 }
 
 fn captured_output(result: &BoundedDrainResult) -> CommandCapturedOutput<'_> {

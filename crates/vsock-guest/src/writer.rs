@@ -29,7 +29,33 @@ impl GuestWriter {
     }
 
     fn write_frame_with_deadline(&self, frame: &[u8], deadline: Duration) -> io::Result<()> {
+        self.write_frame_with_deadline_after_lock(frame, deadline, || {})
+    }
+
+    /// Run `after_lock` while holding the writer mutex, immediately before
+    /// sending `frame`.
+    ///
+    /// Guarded operations use this to mark themselves complete at the point
+    /// where no later lifecycle response can overtake their terminal frame on
+    /// the shared connection.
+    pub(crate) fn write_frame_after_lock<F>(&self, frame: &[u8], after_lock: F) -> io::Result<()>
+    where
+        F: FnOnce(),
+    {
+        self.write_frame_with_deadline_after_lock(frame, WRITE_DEADLINE, after_lock)
+    }
+
+    fn write_frame_with_deadline_after_lock<F>(
+        &self,
+        frame: &[u8],
+        deadline: Duration,
+        after_lock: F,
+    ) -> io::Result<()>
+    where
+        F: FnOnce(),
+    {
         let stream = self.stream.lock().unwrap_or_else(|e| e.into_inner());
+        after_lock();
         let result = send_frame(stream.as_raw_fd(), frame, deadline);
         if result.is_err() {
             // The protocol has no resync marker. After a timeout or partial
@@ -217,6 +243,42 @@ mod tests {
         drop(writer);
 
         assert_eq!(reader.join().unwrap(), expected);
+    }
+
+    #[test]
+    fn write_frame_after_lock_runs_hook_before_frame_and_blocks_other_writers() {
+        let (guest, mut peer) = UnixStream::pair().unwrap();
+        let writer = GuestWriter::new(guest);
+        let writer_a = writer.clone();
+        let writer_b = writer.clone();
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let (second_ready_tx, second_ready_rx) = std::sync::mpsc::channel();
+
+        let first = std::thread::spawn(move || {
+            writer_a
+                .write_frame_after_lock(b"first", || {
+                    entered_tx.send(()).unwrap();
+                    release_rx.recv().unwrap();
+                })
+                .unwrap();
+        });
+        entered_rx.recv().unwrap();
+
+        let second = std::thread::spawn(move || {
+            second_ready_tx.send(()).unwrap();
+            writer_b.write_frame(b"second").unwrap();
+        });
+
+        second_ready_rx.recv().unwrap();
+        release_tx.send(()).unwrap();
+        first.join().unwrap();
+        second.join().unwrap();
+        drop(writer);
+
+        let mut received = Vec::new();
+        peer.read_to_end(&mut received).unwrap();
+        assert_eq!(received, b"firstsecond");
     }
 
     #[test]

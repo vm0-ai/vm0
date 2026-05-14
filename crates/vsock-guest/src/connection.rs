@@ -299,8 +299,9 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                     continue;
                 };
                 let response = handle_decoded_write_file_message(msg.seq, decoded)?;
-                operation_guard.release();
-                let result = writer.write_frame(&response);
+                let result = writer.write_frame_after_lock(&response, || {
+                    operation_guard.release();
+                });
                 result?;
             } else if msg.msg_type == MSG_QUIESCE_OPERATIONS {
                 handle_quiesce_operations(msg.seq, &msg.payload, &operation_state, &writer)?;
