@@ -1811,6 +1811,29 @@ mod tests {
     }
 
     #[test]
+    fn conn_state_uses_default_idle_interval_without_connection_details() {
+        let timing = TimingConfig::default();
+        let token = TokenDetails {
+            token: "tok".to_string(),
+            expires: unix_now_ms() + 3_600_000,
+            issued: 0,
+            capability: None,
+            client_id: None,
+        };
+        let msg = ProtocolMessage {
+            action: action::CONNECTED,
+            connection_details: None,
+            ..Default::default()
+        };
+
+        let state = ConnState::from_connected(&msg, token, &timing);
+        assert_eq!(
+            state.max_idle_interval,
+            Some(timing.default_max_idle_interval)
+        );
+    }
+
+    #[test]
     fn conn_state_handles_huge_external_timing_values_without_panicking() {
         let msg = ProtocolMessage {
             action: action::CONNECTED,
@@ -1847,6 +1870,21 @@ mod tests {
 
         let renewal_at = ConnState::compute_renewal_at(&token, Duration::from_secs(300))
             .expect("expired tokens should still schedule renewal");
+        assert!(renewal_at <= Instant::now());
+    }
+
+    #[test]
+    fn token_inside_renewal_margin_is_scheduled_immediately() {
+        let token = TokenDetails {
+            token: "tok".to_string(),
+            expires: unix_now_ms() + 60_000,
+            issued: 0,
+            capability: None,
+            client_id: None,
+        };
+
+        let renewal_at = ConnState::compute_renewal_at(&token, Duration::from_secs(300))
+            .expect("tokens inside the renewal margin should schedule renewal");
         assert!(renewal_at <= Instant::now());
     }
 
