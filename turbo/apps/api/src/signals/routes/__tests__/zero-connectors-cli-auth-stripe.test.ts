@@ -274,7 +274,9 @@ describe("CLI auth for Stripe connector routes", () => {
     expect(startScript).toContain(
       "releases/download/v1.40.9/stripe_1.40.9_linux_x86_64.tar.gz",
     );
-    expect(startScript).toContain("sha256sum -c");
+    expect(startScript).toContain(
+      "(cd /tmp && sha256sum -c stripe-cli.sha256) >&2",
+    );
     expect(startScript).not.toContain("releases/latest");
     expect(calls.stop).toHaveLength(0);
   });

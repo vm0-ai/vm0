@@ -109,7 +109,7 @@ if [ ! -x "$BIN_DIR/stripe" ]; then
   curl -fsSL "${CLI_AUTH_STRIPE_RELEASE_URL}/${CLI_AUTH_STRIPE_ARCHIVE}" -o "/tmp/${CLI_AUTH_STRIPE_ARCHIVE}"
   curl -fsSL "${CLI_AUTH_STRIPE_RELEASE_URL}/stripe-linux-checksums.txt" -o /tmp/stripe-linux-checksums.txt
   grep " ${CLI_AUTH_STRIPE_ARCHIVE}$" /tmp/stripe-linux-checksums.txt > /tmp/stripe-cli.sha256
-  sha256sum -c /tmp/stripe-cli.sha256
+  (cd /tmp && sha256sum -c stripe-cli.sha256) >&2
   tar -xzf "/tmp/${CLI_AUTH_STRIPE_ARCHIVE}" -C "$BIN_DIR" stripe
   chmod +x "$BIN_DIR/stripe"
 fi
