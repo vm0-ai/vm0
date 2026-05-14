@@ -885,7 +885,15 @@ impl Sandbox for MockSandbox {
         ))
     }
 
-    async fn wait_exit(&self, handle: SpawnHandle, _timeout: Duration) -> Result<ProcessExit> {
+    async fn wait_exit(&self, mut handle: SpawnHandle, _timeout: Duration) -> Result<ProcessExit> {
+        let Some(_exit) = handle.take_exit_future() else {
+            return Err(SandboxError::Operation {
+                operation: SandboxOperation::WaitExit,
+                reason: SandboxOperationReason::Other,
+                message: "spawn_watch handle already consumed".to_string(),
+            });
+        };
+
         if let Some(overrides) = &self.overrides {
             // Block until the test signals (gives a window for cancellation).
             if let Some(gate) = &overrides.wait_exit_gate {
@@ -2216,6 +2224,40 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn wait_exit_rejects_consumed_spawn_handle() {
+        let runtime = MockSandboxRuntime::new();
+        let mut factory = runtime.create_factory(test_factory_config()).await.unwrap();
+        factory.startup().await.unwrap();
+        let sandbox = factory.create(test_sandbox_config()).await.unwrap();
+        let mut handle = sandbox
+            .spawn_watch(&SpawnWatchRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: SpawnOutputMode::Buffered,
+            })
+            .await
+            .unwrap();
+
+        let consumed = handle.take_exit_future();
+        assert!(consumed.is_some());
+        match sandbox.wait_exit(handle, Duration::from_secs(5)).await {
+            Ok(_) => panic!("wait_exit should reject an already consumed handle"),
+            Err(SandboxError::Operation {
+                operation,
+                reason,
+                message,
+            }) => {
+                assert_eq!(operation, SandboxOperation::WaitExit);
+                assert_eq!(reason, SandboxOperationReason::Other);
+                assert!(message.contains("already consumed"));
+            }
+            Err(other) => panic!("expected wait_exit operation error, got {other:?}"),
+        }
     }
 
     #[tokio::test]
