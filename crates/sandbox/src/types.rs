@@ -139,7 +139,8 @@ pub type SpawnExitFuture =
 ///
 /// The handle owns backend-specific exit state and must be consumed by
 /// [`Sandbox::wait_exit`](crate::Sandbox::wait_exit). When stdout streaming is
-/// enabled, callers may take [`stdout_rx`](Self::stdout_rx) before waiting.
+/// enabled, callers may take [`stdout_rx`](Self::stdout_rx) before waiting; if
+/// they do, they must drain it while the process runs.
 pub struct SpawnHandle {
     pub pid: u32,
     /// Receives stdout chunks in real-time when the guest streams them.

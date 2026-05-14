@@ -1292,8 +1292,8 @@ fn streaming_monitor_clean_exit_returns_before_long_timeout() {
 }
 
 /// `MSG_SPAWN_WATCH_RESULT` must arrive before stdout chunks for that request.
-/// The host only registers the stdout stream after processing the spawn
-/// result, so a chunk sent first would be dropped by older host code.
+/// The host records the pid from the result and rejects lifecycle frames for
+/// that request until the pid is known.
 #[test]
 fn streaming_spawn_watch_result_precedes_stdout_chunks() {
     use std::os::unix::net::UnixStream as StdUnixStream;

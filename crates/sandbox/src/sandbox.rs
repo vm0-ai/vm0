@@ -217,11 +217,14 @@ pub trait Sandbox: Send + Sync + Any {
     /// [`ProcessExit`] or streamed in real time through
     /// [`SpawnHandle::stdout_rx`], optionally
     /// teeing streamed chunks into a guest-side file.
+    /// Callers that take `stdout_rx` are responsible for draining it while the
+    /// process runs.
     async fn spawn_watch(&self, request: &SpawnWatchRequest<'_>) -> Result<SpawnHandle>;
     /// Wait for the process behind `handle` to exit, up to `timeout`.
     ///
-    /// Consumes the handle. Returns an error if the sandbox is not
-    /// running, if the backing process crashes, or if the timeout
-    /// elapses before the guest process exits.
+    /// Consumes the handle. If `stdout_rx` was not taken before waiting, the
+    /// stream is discarded instead of being buffered without a reader. Returns
+    /// an error if the sandbox is not running, if the backing process crashes,
+    /// or if the timeout elapses before the guest process exits.
     async fn wait_exit(&self, handle: SpawnHandle, timeout: Duration) -> Result<ProcessExit>;
 }

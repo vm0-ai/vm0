@@ -8,7 +8,9 @@
 //!
 //! - **length**: big-endian u32, size of (type + seq + payload)
 //! - **type**: u8 message type
-//! - **seq**: big-endian u32, sequence number (0 for unsolicited messages)
+//! - **seq**: big-endian u32, sequence number. Request-scoped replies and
+//!   lifecycle frames use the original request sequence; 0 is reserved for
+//!   unsolicited frames.
 //! - **payload**: type-specific binary data
 //!
 //! ## Message Types

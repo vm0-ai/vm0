@@ -75,8 +75,9 @@ pub(crate) struct SpawnWatchRequest<'a> {
 /// `MSG_STDOUT_CHUNK` messages. `stdout_log_path`, when present, additionally
 /// tees those chunks to a file path inside the VM.
 ///
-/// The result-before-monitor ordering is kept for readability, but lifecycle
-/// frames are routed by the original request sequence number.
+/// The result-before-monitor ordering is a protocol invariant: lifecycle frames
+/// are routed by the original request sequence number, but the host still
+/// validates their pid against the preceding `MSG_SPAWN_WATCH_RESULT`.
 pub(crate) fn handle_spawn_watch(
     request: SpawnWatchRequest<'_>,
     seq: u32,
