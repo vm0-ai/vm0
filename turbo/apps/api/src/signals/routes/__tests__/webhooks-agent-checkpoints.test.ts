@@ -365,6 +365,32 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     expect(blob?.refCount).toBe(1);
   });
 
+  it("normalizes empty artifact snapshots to a missing response field", async () => {
+    const fixture = await track(seedFixture());
+    const body = { ...checkpointBody(fixture), artifactSnapshots: [] };
+    const db = store.set(writeDb$);
+    await db
+      .insert(blobs)
+      .values({ hash: fixture.historyHash, size: 789, refCount: 0 });
+
+    const response = await accept(
+      checkpointClient().create({
+        body,
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.artifacts).toBeUndefined();
+
+    const [checkpoint] = await db
+      .select({ artifactSnapshots: checkpoints.artifactSnapshots })
+      .from(checkpoints)
+      .where(eq(checkpoints.id, response.body.checkpointId))
+      .limit(1);
+    expect(checkpoint?.artifactSnapshots).toBeNull();
+  });
+
   it("returns 404 when the sandbox run does not exist", async () => {
     const fixture = await track(seedFixture());
     const missingRunId = randomUUID();

@@ -86,6 +86,12 @@ function artifactSnapshotsForDb(
   });
 }
 
+function responseArtifacts(
+  snapshots: CheckpointCreateBody["artifactSnapshots"],
+): CheckpointCreateBody["artifactSnapshots"] | undefined {
+  return snapshots && snapshots.length > 0 ? snapshots : undefined;
+}
+
 function enrichVolumeSnapshot(args: {
   readonly request: CheckpointCreateBody["volumeVersionsSnapshot"];
   readonly additionalVolumes:
@@ -327,7 +333,7 @@ export const createAgentCheckpoint$ = command(
         checkpointId: checkpoint.id,
         agentSessionId: agentSession.id,
         conversationId: conversation.id,
-        artifacts: input.body.artifactSnapshots,
+        artifacts: responseArtifacts(input.body.artifactSnapshots),
         volumes: input.body.volumeVersionsSnapshot?.versions,
       },
     };
