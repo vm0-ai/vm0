@@ -162,7 +162,6 @@ fn build_claude_args(
     prompt: &str,
 ) -> Vec<String> {
     let mut args = vec![
-        "--print".to_string(),
         "--verbose".to_string(),
         "--output-format".to_string(),
         "stream-json".to_string(),
@@ -687,7 +686,7 @@ pub async fn execute_cli(
     tokio::pin!(drain_deadline);
 
     // Forced termination: some conditions require reaping the CLI process
-    // group before returning. For Claude Code --print mode, post-result
+    // group before returning. For Claude Code stream-json output, post-result
     // reap arms a delayed SIGTERM after `type=result`; fatal watchdog /
     // heartbeat paths send SIGTERM immediately. Both paths share the same
     // SIGKILL escalation deadline so no forced termination can fall through
@@ -1145,7 +1144,7 @@ mod tests {
     #[test]
     fn build_claude_args_basic() {
         let args = build_claude_args_for_test("", "", "", "", "", "hello world");
-        assert!(args.contains(&"--print".to_string()));
+        assert!(!args.contains(&"--print".to_string()));
         assert!(args.contains(&"--dangerously-skip-permissions".to_string()));
         assert_prompt_with_separator(&args, "hello world");
         assert!(!args.contains(&"--append-system-prompt".to_string()));
