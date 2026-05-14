@@ -12,13 +12,6 @@ import {
   type FirewallPolicyValue,
   type RawPermissionPolicies,
 } from "@vm0/connectors/firewall-types";
-import { isSupportedFramework, type SupportedFramework } from "@vm0/core";
-import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
-import {
-  getCustomSkillStorageName,
-  getSkillStorageName,
-} from "@vm0/core/storage-names";
-import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
@@ -102,13 +95,6 @@ interface ZeroAgentComposeContent {
   readonly agents?: Record<string, ZeroAgentConfig | undefined>;
 }
 
-interface AdditionalVolume {
-  readonly name: string;
-  readonly version?: string;
-  readonly mountPath: string;
-  readonly system?: boolean;
-}
-
 interface RunCallback {
   readonly url: string;
   readonly secret: string;
@@ -138,73 +124,6 @@ function apiUrl(): string {
 
 function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
-}
-
-function firstAgent(content: ZeroAgentComposeContent): ZeroAgentConfig | null {
-  if (content.agent) {
-    return content.agent;
-  }
-
-  const firstKey = Object.keys(content.agents ?? {})[0];
-  if (!firstKey) {
-    return null;
-  }
-  return content.agents?.[firstKey] ?? null;
-}
-
-function resolveAgentFramework(
-  content: ZeroAgentComposeContent,
-): SupportedFramework | null {
-  const framework = firstAgent(content)?.framework;
-  return isSupportedFramework(framework) ? framework : null;
-}
-
-function resolveFrameworkSkillsMountPath(
-  framework: SupportedFramework,
-): string {
-  return framework === "codex"
-    ? "/home/user/.codex/skills"
-    : "/home/user/.claude/skills";
-}
-
-function buildSkillMountPath(
-  framework: SupportedFramework,
-  skillName: string,
-): string {
-  return `${resolveFrameworkSkillsMountPath(framework)}/${skillName}`;
-}
-
-function buildSystemSkillVolumes(
-  connectorTypes: readonly ConnectorType[],
-  framework: SupportedFramework,
-): readonly AdditionalVolume[] {
-  const allSkillNames = [...new Set([...SEED_SKILLS, ...connectorTypes])];
-  return allSkillNames.flatMap((skillName) => {
-    const url = resolveSkillRef(skillName);
-    const parsed = parseGitHubTreeUrl(url);
-    if (!parsed) {
-      return [];
-    }
-    return [
-      {
-        name: getSkillStorageName(parsed.fullPath),
-        mountPath: buildSkillMountPath(framework, parsed.skillName),
-        system: true,
-      },
-    ];
-  });
-}
-
-function buildCustomSkillVolumes(
-  customSkills: readonly string[],
-  framework: SupportedFramework,
-): readonly AdditionalVolume[] {
-  return customSkills.map((name) => {
-    return {
-      name: getCustomSkillStorageName(name),
-      mountPath: buildSkillMountPath(framework, name),
-    };
-  });
 }
 
 function buildAgentIdentityPrompt(agent: ZeroAgentRunRecord): string | null {
@@ -609,18 +528,6 @@ export const createZeroIntegrationRun$ = command(
       [...allowedConnectorTypes],
     );
 
-    const framework = resolveAgentFramework(agent.content);
-    if (!framework) {
-      return badRequestMessage(
-        "Agent must have a supported framework configured",
-      );
-    }
-
-    const prependAdditionalVolumes = [
-      ...buildSystemSkillVolumes(allowedConnectorTypes, framework),
-      ...buildCustomSkillVolumes(agent.customSkills, framework),
-    ];
-
     return await set(
       createAgentRun$,
       {
@@ -643,7 +550,7 @@ export const createZeroIntegrationRun$ = command(
         includeZeroTokenSecret: true,
         enforceVm0Credits: true,
         queueOnConcurrencyLimit: true,
-        prependAdditionalVolumes,
+        injectSkillVolumes: { customSkills: agent.customSkills },
         allowedConnectorTypes,
         allowedCustomConnectorIds,
         validateEnvironmentReferences: false,
@@ -735,18 +642,6 @@ export const createZeroRun$ = command(
       [...allowedConnectorTypes],
     );
 
-    const framework = resolveAgentFramework(agent.content);
-    if (!framework) {
-      return badRequestMessage(
-        "Agent must have a supported framework configured",
-      );
-    }
-
-    const prependAdditionalVolumes = [
-      ...buildSystemSkillVolumes(allowedConnectorTypes, framework),
-      ...buildCustomSkillVolumes(agent.customSkills, framework),
-    ];
-
     return await set(
       createAgentRun$,
       {
@@ -774,7 +669,7 @@ export const createZeroRun$ = command(
         includeZeroTokenSecret: true,
         enforceVm0Credits: true,
         queueOnConcurrencyLimit: true,
-        prependAdditionalVolumes,
+        injectSkillVolumes: { customSkills: agent.customSkills },
         allowedConnectorTypes,
         allowedCustomConnectorIds,
         validateEnvironmentReferences: false,

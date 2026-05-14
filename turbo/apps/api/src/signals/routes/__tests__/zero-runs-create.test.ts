@@ -1408,6 +1408,62 @@ describe("POST /api/zero/runs", () => {
     expect(volumes[customIndex]?.system).toBeUndefined();
   });
 
+  it("mounts skills using the model provider framework, not the compose framework", async () => {
+    const fx = await fixture();
+    await trackModelProviders(Promise.resolve({ orgId: fx.orgId }));
+    // openai-api-key resolves to the codex framework.
+    const provider = await store.set(
+      seedOrgModelProvider$,
+      {
+        orgId: fx.orgId,
+        type: "openai-api-key",
+        isDefault: true,
+        selectedModel: "gpt-5.5",
+        secretName: "OPENAI_API_KEY",
+      },
+      context.signal,
+    );
+    // The compose declares the default claude-code framework, but the agent
+    // is pinned to a codex-framework model provider. Skill volume mount paths
+    // must follow the model provider's framework, not the compose's.
+    const agent = await seedRunnableZeroAgent({
+      fixture: fx,
+      environment: {},
+      modelProviderId: provider.id,
+      customSkills: ["research-kit"],
+    });
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "use skills", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const db = store.set(writeDb$);
+    const [run] = await db
+      .select({ additionalVolumes: agentRuns.additionalVolumes })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId));
+    const volumes = run?.additionalVolumes ?? [];
+    expect(
+      volumes.some((volume) => {
+        return volume.mountPath === "/home/user/.codex/skills/research-kit";
+      }),
+    ).toBeTruthy();
+    expect(
+      volumes.some((volume) => {
+        return volume.mountPath === "/home/user/.codex/skills/deep-dive";
+      }),
+    ).toBeTruthy();
+    expect(
+      volumes.some((volume) => {
+        return volume.mountPath.startsWith("/home/user/.claude/skills/");
+      }),
+    ).toBeFalsy();
+  });
+
   it("builds runner firewalls from stored zero agent permission policies", async () => {
     const fx = await fixture();
     const agent = await seedRunnableZeroAgent({
