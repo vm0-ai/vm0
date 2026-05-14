@@ -88,7 +88,7 @@ pub async fn run_benchmark(
     let snapshot_lock =
         lock::acquire_shared(home.snapshot_lock(&profile_config.snapshot_hash)).await?;
     config::validate_profile_image_artifacts(profile_name, profile_config, &home).await?;
-    let _resource_locks = (rootfs_lock, snapshot_lock);
+    let resource_locks = (rootfs_lock, snapshot_lock);
 
     // Block until memory.bin is in page cache so benchmark numbers are stable.
     {
@@ -128,6 +128,7 @@ pub async fn run_benchmark(
     {
         Ok(runtime) => runtime,
         Err(e) => {
+            drop(resource_locks);
             stop_benchmark_proxy(&mut mitm, "runtime_create").await;
             return Err(e.into());
         }
@@ -136,6 +137,7 @@ pub async fn run_benchmark(
         match create_factory_or_shutdown_runtime(runtime.as_mut(), factory_config).await {
             Ok(factory) => factory,
             Err(e) => {
+                drop(resource_locks);
                 stop_benchmark_proxy(&mut mitm, "factory_create").await;
                 return Err(e.into());
             }
