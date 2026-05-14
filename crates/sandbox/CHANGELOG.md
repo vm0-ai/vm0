@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.3](https://github.com/vm0-ai/vm0/compare/sandbox-v0.14.2...sandbox-v0.14.3) (2026-05-14)
+
+
+### Bug Fixes
+
+* **vsock:** route spawn_watch lifecycle by sequence ([#13220](https://github.com/vm0-ai/vm0/issues/13220)) ([373d2ab](https://github.com/vm0-ai/vm0/commit/373d2ab0c2312e9f888c2d9780bcef71386f42cd))
+
 ## [0.14.2](https://github.com/vm0-ai/vm0/compare/sandbox-v0.14.1...sandbox-v0.14.2) (2026-05-13)
 
 

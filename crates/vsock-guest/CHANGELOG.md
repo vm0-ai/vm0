@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.3](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.15.2...vsock-guest-v0.15.3) (2026-05-14)
+
+
+### Bug Fixes
+
+* suppress expected command exits ([#13270](https://github.com/vm0-ai/vm0/issues/13270)) ([2132288](https://github.com/vm0-ai/vm0/commit/213228850c442d9ba480acb31810a940687e572f))
+* **vsock:** route spawn_watch lifecycle by sequence ([#13220](https://github.com/vm0-ai/vm0/issues/13220)) ([373d2ab](https://github.com/vm0-ai/vm0/commit/373d2ab0c2312e9f888c2d9780bcef71386f42cd))
+
 ## [0.15.2](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.15.1...vsock-guest-v0.15.2) (2026-05-14)
 
 ## [0.15.1](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.15.0...vsock-guest-v0.15.1) (2026-05-13)

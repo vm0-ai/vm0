@@ -1247,7 +1247,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.31.0"
+version = "0.31.1"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1299,7 +1299,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.33"
+version = "0.16.34"
 dependencies = [
  "libc",
  "nix",
@@ -2529,7 +2529,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.100.39"
+version = "0.100.40"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2731,7 +2731,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.14.2"
+version = "0.14.3"
 dependencies = [
  "async-trait",
  "serde",
@@ -2743,7 +2743,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.30.2"
+version = "0.30.3"
 dependencies = [
  "async-trait",
  "base64",
@@ -2771,7 +2771,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "async-trait",
  "sandbox",
@@ -3640,7 +3640,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.15.2"
+version = "0.15.3"
 dependencies = [
  "libc",
  "vsock-proto",
@@ -3648,7 +3648,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.14.2"
+version = "0.14.3"
 dependencies = [
  "nix",
  "tokio",
@@ -3658,11 +3658,11 @@ dependencies = [
 
 [[package]]
 name = "vsock-proto"
-version = "0.15.4"
+version = "0.15.5"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.33"
+version = "0.9.34"
 dependencies = [
  "guest-write-file",
  "tokio",

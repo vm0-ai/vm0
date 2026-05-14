@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.31.0...guest-agent-v0.31.1) (2026-05-14)
+
+
+### Bug Fixes
+
+* handle claude zero-turn no-history runs ([#13246](https://github.com/vm0-ai/vm0/issues/13246)) ([41db91a](https://github.com/vm0-ai/vm0/commit/41db91ac41352fd0e7c2f8c5a77563d4dffd35d7))
+
 ## [0.31.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.30.4...guest-agent-v0.31.0) (2026-05-13)
 
 

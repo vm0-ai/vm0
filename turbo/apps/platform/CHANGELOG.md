@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.355.0](https://github.com/vm0-ai/vm0/compare/app-v0.354.0...app-v0.355.0) (2026-05-14)
+
+
+### Features
+
+* **model-providers:** add codex framework gateways for openrouter and vercel ([#13207](https://github.com/vm0-ai/vm0/issues/13207)) ([5c10a29](https://github.com/vm0-ai/vm0/commit/5c10a29ac035078697d6fb794db7c6754ea53533))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.21.0
+    * @vm0/core bumped to 8.275.4
+
 ## [0.354.0](https://github.com/vm0-ai/vm0/compare/app-v0.353.2...app-v0.354.0) (2026-05-14)
 
 

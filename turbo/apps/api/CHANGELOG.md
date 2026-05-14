@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.44.2](https://github.com/vm0-ai/vm0/compare/api-v1.44.1...api-v1.44.2) (2026-05-14)
+
+
+### Refactoring
+
+* **api:** migrate email outbox cron route ([#13269](https://github.com/vm0-ai/vm0/issues/13269)) ([bac00c1](https://github.com/vm0-ai/vm0/commit/bac00c1e1e69b4d0376387b59f871ec49b4a9fe3))
+* **api:** migrate voice chat cleanup cron route ([#13265](https://github.com/vm0-ai/vm0/issues/13265)) ([1820c4d](https://github.com/vm0-ai/vm0/commit/1820c4df0ea6d124c6dcd803885255308a268024))
+* migrate agent firewall auth webhook to api ([#13268](https://github.com/vm0-ai/vm0/issues/13268)) ([503491f](https://github.com/vm0-ai/vm0/commit/503491fecbe370abf4caa325f674814290db3ec2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.21.0
+    * @vm0/core bumped to 8.275.4
+    * @vm0/db bumped to 1.9.7
+
 ## [1.44.1](https://github.com/vm0-ai/vm0/compare/api-v1.44.0...api-v1.44.1) (2026-05-14)
 
 

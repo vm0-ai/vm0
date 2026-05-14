@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.34](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.33...vsock-test-v0.9.34) (2026-05-14)
+
+
+### Bug Fixes
+
+* **vsock:** route spawn_watch lifecycle by sequence ([#13220](https://github.com/vm0-ai/vm0/issues/13220)) ([373d2ab](https://github.com/vm0-ai/vm0/commit/373d2ab0c2312e9f888c2d9780bcef71386f42cd))
+
 ## [0.9.33](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.32...vsock-test-v0.9.33) (2026-05-14)
 
 ## [0.9.32](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.31...vsock-test-v0.9.32) (2026-05-13)

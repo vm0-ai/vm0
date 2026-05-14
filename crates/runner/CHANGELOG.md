@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.100.40](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.39...runner-rs-v0.100.40) (2026-05-14)
+
+
+### Bug Fixes
+
+* handle claude zero-turn no-history runs ([#13246](https://github.com/vm0-ai/vm0/issues/13246)) ([41db91a](https://github.com/vm0-ai/vm0/commit/41db91ac41352fd0e7c2f8c5a77563d4dffd35d7))
+
+
+### Refactoring
+
+* dedupe job spawn panic cleanup tests ([#13272](https://github.com/vm0-ai/vm0/issues/13272)) ([b7f600a](https://github.com/vm0-ai/vm0/commit/b7f600a142963e2b0bc237acef3a9aa1a1e9c916))
+* **runner:** dedupe finalization test setup ([#13271](https://github.com/vm0-ai/vm0/issues/13271)) ([e309a7b](https://github.com/vm0-ai/vm0/commit/e309a7b41601a26f1ced4be93ab6619762f1be18))
+
 ## [0.100.39](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.38...runner-rs-v0.100.39) (2026-05-14)
 
 
