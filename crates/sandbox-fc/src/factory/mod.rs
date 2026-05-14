@@ -188,6 +188,25 @@ impl FirecrackerFactory {
                 message: "factory shut down".into(),
             })
     }
+
+    fn netns_pool_for_destroy(&self, sandbox_id: &str) -> Option<NetnsPoolHandle> {
+        match self.resources.as_ref() {
+            Some(resources) => Some(resources.netns_pool.clone()),
+            None => match self.shutdown_netns_pool.clone() {
+                Some(netns_pool) => {
+                    warn!(
+                        id = %sandbox_id,
+                        "destroy called after factory shutdown; running best-effort cleanup"
+                    );
+                    Some(netns_pool)
+                }
+                None => {
+                    warn!(id = %sandbox_id, "destroy called after factory shutdown");
+                    None
+                }
+            },
+        }
+    }
 }
 
 #[async_trait]
@@ -322,21 +341,8 @@ impl SandboxFactory for FirecrackerFactory {
                 return;
             }
         };
-        let netns_pool = match self.resources.as_ref() {
-            Some(resources) => resources.netns_pool.clone(),
-            None => match self.shutdown_netns_pool.clone() {
-                Some(netns_pool) => {
-                    warn!(
-                        id = %sandbox.id,
-                        "destroy called after factory shutdown; running best-effort cleanup"
-                    );
-                    netns_pool
-                }
-                None => {
-                    warn!(id = %sandbox.id, "destroy called after factory shutdown");
-                    return;
-                }
-            },
+        let Some(netns_pool) = self.netns_pool_for_destroy(&sandbox.id) else {
+            return;
         };
         let sandbox_id = sandbox.id.clone();
 
@@ -603,6 +609,47 @@ mod tests {
         };
 
         assert_factory_invalid_state(err, "shutdown");
+    }
+
+    #[tokio::test]
+    async fn create_rejects_factory_after_shutdown_even_with_retained_destroy_pool() {
+        let mut factory = test_factory_with_resources(
+            NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test()),
+            NetnsPoolOwnership::Shared,
+            test_leak_cleaner(),
+        );
+        factory.shutdown().await;
+
+        let config = sandbox::SandboxConfig {
+            id: sandbox::SandboxId::new_v4(),
+            resources: sandbox::ResourceLimits {
+                cpu_count: 1,
+                memory_mb: 512,
+            },
+        };
+        let err = match factory.create(config).await {
+            Ok(_) => panic!("create should fail after shutdown"),
+            Err(err) => err,
+        };
+
+        assert_factory_invalid_state(err, "shutdown");
+    }
+
+    #[tokio::test]
+    async fn destroy_uses_retained_netns_pool_after_shutdown() {
+        let pool = NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test());
+        let mut factory = test_factory_with_resources(
+            pool.clone(),
+            NetnsPoolOwnership::Shared,
+            test_leak_cleaner(),
+        );
+        factory.shutdown().await;
+
+        let selected = factory
+            .netns_pool_for_destroy("sandbox")
+            .expect("shutdown factory should retain destroy netns pool");
+
+        assert_eq!(selected.strong_count_for_test(), 3);
     }
 
     #[tokio::test]
