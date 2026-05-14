@@ -73,7 +73,7 @@ export function createPresentationGenerateCommand(
     .option("--slides <count>", "Slide count: 4-20", parseSlideCount, 8)
     .option(
       "--images <count>",
-      "Generated image count: 0-4",
+      "Generated image count: 0-8",
       parseImageCount,
       2,
     )
