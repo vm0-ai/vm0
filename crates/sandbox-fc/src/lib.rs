@@ -32,6 +32,7 @@ mod cow_pool;
 mod factory;
 mod leaked_resources;
 mod network;
+mod park_coordinator;
 mod paths;
 mod prerequisites;
 mod process;

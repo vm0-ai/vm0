@@ -28,6 +28,7 @@ use crate::control;
 use crate::factory::InvariantConfig;
 use crate::leaked_resources::LeakedResources;
 use crate::network::{NetnsInfo, NetnsLease};
+use crate::park_coordinator::ParkCoordinator;
 use crate::paths::{SandboxPaths, SockPaths};
 use crate::process::{kill_process_group, kill_process_group_by_pid};
 
@@ -473,6 +474,9 @@ pub struct FirecrackerSandbox {
     /// Wrapped in `Arc` so operations can clone the handle and release the
     /// mutex immediately, allowing concurrent vsock operations.
     guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    /// Host-side park coordinator staged for same-session idle park safety.
+    /// #13275 routes production guest operations through this gate.
+    _park_coordinator: ParkCoordinator,
     /// Sender for leaked resource cleanup. When Drop fires without prior
     /// `factory.destroy()`, pool resources are sent here for async cleanup.
     leak_tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
@@ -547,6 +551,7 @@ impl FirecrackerSandbox {
             state_publish_lock: Arc::new(Mutex::new(())),
             state_tx: watch::channel(SandboxState::Created).0,
             guest: Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>)),
+            _park_coordinator: ParkCoordinator::new(),
             leak_tx,
             delete_workspace_on_leak_cleanup: true,
             destroyed: false,
