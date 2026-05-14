@@ -254,6 +254,80 @@ describe("GET /api/zero/runs/:id/context", () => {
     });
   });
 
+  it("omits sparse null Axiom fields before response validation", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const compose = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: compose.composeId,
+        status: "running",
+      },
+      context.signal,
+    );
+    context.mocks.axiom.query.mockResolvedValue([
+      {
+        ...makeSnapshot(runId),
+        environment: {
+          OPENAI_API_KEY: null,
+          ZERO_TOKEN: "***",
+        },
+        networkPolicies: {
+          github: {
+            allow: ["repo-read"],
+            deny: [],
+            ask: [],
+            unknownPolicy: "allow",
+          },
+          slack: {
+            allow: null,
+            deny: null,
+            ask: null,
+            unknownPolicy: null,
+          },
+        },
+        featureFlags: {
+          apiBackend: true,
+          voiceChat: null,
+        },
+      },
+    ]);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroRunContextContract);
+
+    const response = await accept(
+      client.getContext({
+        params: { id: runId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.environment).toStrictEqual({
+      ZERO_TOKEN: "***",
+    });
+    expect(response.body.networkPolicies).toStrictEqual({
+      github: {
+        allow: ["repo-read"],
+        deny: [],
+        ask: [],
+        unknownPolicy: "allow",
+      },
+    });
+    expect(response.body.featureFlags).toStrictEqual({
+      apiBackend: true,
+    });
+  });
+
   it("returns 403 for a sandbox token without agent-run:read capability", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;

@@ -219,6 +219,78 @@ describe("GET /api/zero/runs/:id/network", () => {
     expect(response.body.networkLogs[2]?.dns_serial).toBe("42");
   });
 
+  it("omits sparse null Axiom fields before response validation", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const compose = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: compose.composeId,
+        status: "completed",
+      },
+      context.signal,
+    );
+
+    context.mocks.axiom.query.mockResolvedValue([
+      makeAxiomEvent({
+        runId,
+        userId: fixture.userId,
+        auth_cache_hit: null,
+        auth_resolved_secrets: null,
+        firewall_params: {
+          owner: "vm0-ai",
+          repo: "vm0",
+          branch: null,
+        },
+        request_headers: {
+          accept: "application/json",
+          authorization: null,
+        },
+        response_headers: {
+          "content-type": "application/json",
+          server: null,
+        },
+        response_body_encoding: null,
+      }),
+    ]);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroRunNetworkLogsContract);
+
+    const response = await accept(
+      client.getNetworkLogs({
+        params: { id: runId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.networkLogs).toHaveLength(1);
+    expect(response.body.networkLogs[0]).toMatchObject({
+      firewall_params: {
+        owner: "vm0-ai",
+        repo: "vm0",
+      },
+      request_headers: {
+        accept: "application/json",
+      },
+      response_headers: {
+        "content-type": "application/json",
+      },
+    });
+    expect(response.body.networkLogs[0]?.auth_cache_hit).toBeUndefined();
+    expect(response.body.networkLogs[0]?.auth_resolved_secrets).toBeUndefined();
+    expect(response.body.networkLogs[0]?.response_body_encoding).toBeUndefined();
+  });
+
   it("returns empty array when no logs", async () => {
     const fixture = await track(
       store.set(seedUsageInsightFixture$, undefined, context.signal),

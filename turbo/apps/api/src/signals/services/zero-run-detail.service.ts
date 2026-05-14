@@ -3,6 +3,7 @@ import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs"
 import type {
   AgentEventsResponse,
   AxiomNetworkEvent,
+  NetworkLogEntry,
   NetworkLogsResponse,
   RunEvent,
 } from "@vm0/api-contracts/contracts/runs";
@@ -19,6 +20,8 @@ import {
 import { escapeAplString } from "../../lib/axiom-apl";
 
 type ServiceDb = Pick<Db, "select">;
+type UnknownRecord = Record<string, unknown>;
+type NetworkPolicyValue = "allow" | "deny" | "ask";
 
 interface AgentComposeContent {
   agents: Record<string, { framework: string }>;
@@ -66,6 +69,175 @@ type RunContextResult =
   | { readonly kind: "no-snapshot" }
   | { readonly kind: "ok"; readonly context: RunContextResponse };
 
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" ? value : undefined;
+}
+
+function booleanValue(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function stringArrayValue(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const strings = value.filter((item): item is string => {
+    return typeof item === "string";
+  });
+  return strings.length === value.length ? strings : undefined;
+}
+
+function stringRecordValue(value: unknown): Record<string, string> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const entries = Object.entries(value).filter(
+    (entry): entry is [string, string] => {
+      return typeof entry[1] === "string";
+    },
+  );
+  if (entries.length === 0) {
+    return undefined;
+  }
+  return Object.fromEntries(entries);
+}
+
+function booleanRecordValue(
+  value: unknown,
+): Record<string, boolean> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const entries = Object.entries(value).filter(
+    (entry): entry is [string, boolean] => {
+      return typeof entry[1] === "boolean";
+    },
+  );
+  if (entries.length === 0) {
+    return undefined;
+  }
+  return Object.fromEntries(entries);
+}
+
+function networkPolicyValue(value: unknown): NetworkPolicyValue | undefined {
+  return value === "allow" || value === "deny" || value === "ask"
+    ? value
+    : undefined;
+}
+
+function sanitizeNetworkPolicies(
+  value: unknown,
+): RunContextResponse["networkPolicies"] {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const policies: NonNullable<RunContextResponse["networkPolicies"]> = {};
+  for (const [name, rawPolicy] of Object.entries(value)) {
+    if (!isRecord(rawPolicy)) {
+      continue;
+    }
+    const unknownPolicy = networkPolicyValue(rawPolicy.unknownPolicy);
+    if (!unknownPolicy) {
+      continue;
+    }
+    policies[name] = {
+      allow: stringArrayValue(rawPolicy.allow) ?? [],
+      deny: stringArrayValue(rawPolicy.deny) ?? [],
+      ask: stringArrayValue(rawPolicy.ask) ?? [],
+      unknownPolicy,
+    };
+  }
+
+  return Object.keys(policies).length > 0 ? policies : null;
+}
+
+function networkActionValue(
+  value: unknown,
+): NetworkLogEntry["action"] | undefined {
+  return value === "ALLOW" || value === "DENY" ? value : undefined;
+}
+
+function networkBodyEncodingValue(
+  value: unknown,
+): NetworkLogEntry["request_body_encoding"] | undefined {
+  if (value !== "base64" && value !== "binary") {
+    if (
+      typeof value !== "string" ||
+      value.length !== 5 ||
+      value.slice(0, 3) !== "utf" ||
+      value[3] !== "-" ||
+      value[4] !== "8"
+    ) {
+      return undefined;
+    }
+  }
+  return value as NetworkLogEntry["request_body_encoding"];
+}
+
+function omitUndefined<T extends UnknownRecord>(record: T): UnknownRecord {
+  return Object.fromEntries(
+    Object.entries(record).filter((entry) => {
+      return entry[1] !== undefined;
+    }),
+  );
+}
+
+function sanitizeNetworkEvent(event: AxiomNetworkEvent): NetworkLogEntry {
+  return omitUndefined({
+    timestamp: event._time,
+    type: stringValue(event.type),
+    action: networkActionValue(event.action),
+    host: stringValue(event.host),
+    port: numberValue(event.port),
+    method: stringValue(event.method),
+    url: stringValue(event.url),
+    status: numberValue(event.status),
+    latency_ms: numberValue(event.latency_ms),
+    request_size: numberValue(event.request_size),
+    response_size: numberValue(event.response_size),
+    dns_event: stringValue(event.dns_event),
+    dns_query_type: stringValue(event.dns_query_type),
+    dns_result: stringValue(event.dns_result),
+    dns_serial: stringValue(event.dns_serial),
+    firewall_base: stringValue(event.firewall_base),
+    firewall_name: stringValue(event.firewall_name),
+    firewall_permission: stringValue(event.firewall_permission),
+    firewall_rule_match: stringValue(event.firewall_rule_match),
+    firewall_params: stringRecordValue(event.firewall_params),
+    firewall_billable: booleanValue(event.firewall_billable),
+    firewall_error: stringValue(event.firewall_error),
+    auth_resolved_secrets: stringArrayValue(event.auth_resolved_secrets),
+    auth_refreshed_connectors: stringArrayValue(
+      event.auth_refreshed_connectors,
+    ),
+    auth_refreshed_secrets: stringArrayValue(event.auth_refreshed_secrets),
+    auth_cache_hit: booleanValue(event.auth_cache_hit),
+    auth_url_rewrite: booleanValue(event.auth_url_rewrite),
+    error: stringValue(event.error),
+    request_headers: stringRecordValue(event.request_headers),
+    request_body: stringValue(event.request_body),
+    request_body_encoding: networkBodyEncodingValue(
+      event.request_body_encoding,
+    ),
+    request_body_truncated: booleanValue(event.request_body_truncated),
+    response_headers: stringRecordValue(event.response_headers),
+    response_body: stringValue(event.response_body),
+    response_body_encoding: networkBodyEncodingValue(
+      event.response_body_encoding,
+    ),
+    response_body_truncated: booleanValue(event.response_body_truncated),
+  }) as NetworkLogEntry;
+}
+
 export function zeroRunContext(
   runId: string,
   userId: string,
@@ -112,12 +284,12 @@ export function zeroRunContext(
           "vars" | "prompt" | "appendSystemPrompt" | "runId" | "secretNames"
         > & {
           sessionId?: string;
-          environment?: Record<string, string>;
+          environment?: UnknownRecord;
           firewalls?: RunContextResponse["firewalls"];
-          networkPolicies?: RunContextResponse["networkPolicies"];
+          networkPolicies?: unknown;
           volumes?: RunContextResponse["volumes"];
           artifact?: RunContextResponse["artifact"];
-          featureFlags?: RunContextResponse["featureFlags"];
+          featureFlags?: UnknownRecord;
         })
       | undefined;
 
@@ -134,16 +306,13 @@ export function zeroRunContext(
         sessionId: (snapshot.sessionId as string) ?? null,
         secretNames: (run.secretNames as string[]) ?? [],
         vars: (run.vars as Record<string, string> | undefined) ?? null,
-        environment: (snapshot.environment as Record<string, string>) ?? {},
+        environment: stringRecordValue(snapshot.environment) ?? {},
         firewalls:
           (snapshot.firewalls as RunContextResponse["firewalls"]) ?? [],
-        networkPolicies:
-          (snapshot.networkPolicies as RunContextResponse["networkPolicies"]) ??
-          null,
+        networkPolicies: sanitizeNetworkPolicies(snapshot.networkPolicies),
         volumes: (snapshot.volumes as RunContextResponse["volumes"]) ?? [],
         artifact: (snapshot.artifact as RunContextResponse["artifact"]) ?? null,
-        featureFlags:
-          (snapshot.featureFlags as RunContextResponse["featureFlags"]) ?? null,
+        featureFlags: booleanRecordValue(snapshot.featureFlags) ?? null,
       },
     };
   });
@@ -182,46 +351,7 @@ ${sinceFilter}
     const hasMore = events.length > limit;
     const records = hasMore ? events.slice(0, limit) : events;
 
-    const networkLogs = records.map((e) => {
-      return {
-        timestamp: e._time,
-        type: e.type,
-        action: e.action,
-        host: e.host,
-        port: e.port,
-        method: e.method,
-        url: e.url,
-        status: e.status,
-        latency_ms: e.latency_ms,
-        request_size: e.request_size,
-        response_size: e.response_size,
-        dns_event: e.dns_event,
-        dns_query_type: e.dns_query_type,
-        dns_result: e.dns_result,
-        dns_serial: e.dns_serial,
-        firewall_base: e.firewall_base,
-        firewall_name: e.firewall_name,
-        firewall_permission: e.firewall_permission,
-        firewall_rule_match: e.firewall_rule_match,
-        firewall_params: e.firewall_params,
-        firewall_billable: e.firewall_billable,
-        firewall_error: e.firewall_error,
-        auth_resolved_secrets: e.auth_resolved_secrets,
-        auth_refreshed_connectors: e.auth_refreshed_connectors,
-        auth_refreshed_secrets: e.auth_refreshed_secrets,
-        auth_cache_hit: e.auth_cache_hit,
-        auth_url_rewrite: e.auth_url_rewrite,
-        error: e.error,
-        request_headers: e.request_headers,
-        request_body: e.request_body,
-        request_body_encoding: e.request_body_encoding,
-        request_body_truncated: e.request_body_truncated,
-        response_headers: e.response_headers,
-        response_body: e.response_body,
-        response_body_encoding: e.response_body_encoding,
-        response_body_truncated: e.response_body_truncated,
-      };
-    });
+    const networkLogs = records.map(sanitizeNetworkEvent);
 
     return { networkLogs, hasMore };
   });
