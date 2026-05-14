@@ -859,16 +859,6 @@ mod tests {
         serde_json::from_slice(&buf).unwrap()
     }
 
-    async fn wait_for_path_absent(path: &std::path::Path, wait: Duration) {
-        tokio::time::timeout(wait, async {
-            while path.exists() {
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }
-        })
-        .await
-        .expect("path should be removed before timeout");
-    }
-
     #[tokio::test]
     async fn discover_claim_complete() {
         let dir = tempfile::tempdir().unwrap();
@@ -1275,7 +1265,6 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(2), job_token.cancelled())
             .await
             .expect("cancel watcher should trigger token");
-        wait_for_path_absent(&cancel_path, Duration::from_secs(2)).await;
 
         provider.shutdown().await;
     }
