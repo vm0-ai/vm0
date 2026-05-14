@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.43.4](https://github.com/vm0-ai/vm0/compare/api-v1.43.3...api-v1.43.4) (2026-05-14)
+
+
+### Bug Fixes
+
+* dispatch api run failure callbacks ([#13217](https://github.com/vm0-ai/vm0/issues/13217)) ([5908f79](https://github.com/vm0-ai/vm0/commit/5908f79c5dc7319b3953ea9110991026f434e553))
+
+
+### Refactoring
+
+* migrate agent health usage telemetry webhooks ([#13219](https://github.com/vm0-ai/vm0/issues/13219)) ([5130aa5](https://github.com/vm0-ai/vm0/commit/5130aa536b280a58a3ed9b4ef70c1574ef514644))
+
 ## [1.43.3](https://github.com/vm0-ai/vm0/compare/api-v1.43.2...api-v1.43.3) (2026-05-14)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.4](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.15.3...vsock-proto-v0.15.4) (2026-05-14)
+
+
+### Refactoring
+
+* clean up vsock proto command tests ([#13204](https://github.com/vm0-ai/vm0/issues/13204)) ([1e231b5](https://github.com/vm0-ai/vm0/commit/1e231b588f90906c58e23b418c70311be27b3d7f))
+
 ## [0.15.3](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.15.2...vsock-proto-v0.15.3) (2026-05-13)
 
 
