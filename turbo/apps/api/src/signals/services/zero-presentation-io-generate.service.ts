@@ -943,45 +943,7 @@ function renderSlide(
   )}</main><footer>${renderNote(slide.note)}</footer></section>`;
 }
 
-/* oxlint-disable-next-line eslint(max-lines-per-function) -- Static single-file HTML template. */
-function renderDeckHtml(
-  deck: DeckSpec,
-  options: PresentationOptions,
-  visuals: readonly PresentationVisual[],
-): string {
-  const theme = THEME_TOKENS[options.theme] ?? DEFAULT_THEME_TOKENS;
-  const visualBySlide = new Map(
-    visuals.map((visual) => {
-      return [visual.slideIndex, visual];
-    }),
-  );
-  const slidesHtml = deck.slides
-    .map((slide, index) => {
-      return renderSlide(
-        slide,
-        index,
-        deck.slides.length,
-        visualBySlide.get(index),
-      );
-    })
-    .join("");
-
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${htmlEscape(deck.title)}</title>
-  <style>
-    :root {
-      --bg: ${theme.background};
-      --text: ${theme.text};
-      --muted: ${theme.muted};
-      --accent: ${theme.accent};
-      --accent-text: ${theme.accentText};
-      --secondary: ${theme.secondary};
-      --line: ${theme.line};
-    }
+const DECK_BASE_STYLE = `
     * { box-sizing: border-box; }
     body {
       margin: 0;
@@ -1191,6 +1153,9 @@ function renderDeckHtml(
       background: var(--accent);
       transition: width 280ms ease;
     }
+`;
+
+const DECK_MOBILE_STYLE = `
     @media (max-width: 820px) {
       .slide {
         padding: 34px 28px 72px;
@@ -1229,23 +1194,28 @@ function renderDeckHtml(
         bottom: 14px;
       }
     }
-  </style>
-</head>
-<body>
-  <div class="viewport">
-    <div class="deck" id="deck">${slidesHtml}</div>
-  </div>
-  <div class="controls" aria-label="Presentation controls">
-    <button type="button" id="prev" aria-label="Previous slide">&lt;</button>
-    <span class="counter" id="counter">1 / ${deck.slides.length}</span>
-    <button type="button" id="next" aria-label="Next slide">&gt;</button>
-  </div>
-  <div class="progress" aria-hidden="true"><span id="progress"></span></div>
-  <script>
+`;
+
+function renderDeckStyles(theme: ThemeTokens): string {
+  return `<style>
+    :root {
+      --bg: ${theme.background};
+      --text: ${theme.text};
+      --muted: ${theme.muted};
+      --accent: ${theme.accent};
+      --accent-text: ${theme.accentText};
+      --secondary: ${theme.secondary};
+      --line: ${theme.line};
+    }${DECK_BASE_STYLE}${DECK_MOBILE_STYLE}
+  </style>`;
+}
+
+function renderDeckScript(totalSlides: number): string {
+  return `<script>
     const deck = document.getElementById("deck");
     const counter = document.getElementById("counter");
     const progress = document.getElementById("progress");
-    const total = ${deck.slides.length};
+    const total = ${totalSlides};
     let index = 0;
     function render() {
       deck.style.transform = "translateX(" + (-index * 100) + "vw)";
@@ -1276,7 +1246,50 @@ function renderDeckHtml(
       startX = null;
     }, { passive: true });
     render();
-  </script>
+  </script>`;
+}
+
+function renderDeckHtml(
+  deck: DeckSpec,
+  options: PresentationOptions,
+  visuals: readonly PresentationVisual[],
+): string {
+  const theme = THEME_TOKENS[options.theme] ?? DEFAULT_THEME_TOKENS;
+  const visualBySlide = new Map(
+    visuals.map((visual) => {
+      return [visual.slideIndex, visual];
+    }),
+  );
+  const slidesHtml = deck.slides
+    .map((slide, index) => {
+      return renderSlide(
+        slide,
+        index,
+        deck.slides.length,
+        visualBySlide.get(index),
+      );
+    })
+    .join("");
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${htmlEscape(deck.title)}</title>
+  ${renderDeckStyles(theme)}
+</head>
+<body>
+  <div class="viewport">
+    <div class="deck" id="deck">${slidesHtml}</div>
+  </div>
+  <div class="controls" aria-label="Presentation controls">
+    <button type="button" id="prev" aria-label="Previous slide">&lt;</button>
+    <span class="counter" id="counter">1 / ${deck.slides.length}</span>
+    <button type="button" id="next" aria-label="Next slide">&gt;</button>
+  </div>
+  <div class="progress" aria-hidden="true"><span id="progress"></span></div>
+  ${renderDeckScript(deck.slides.length)}
 </body>
 </html>`;
 }
