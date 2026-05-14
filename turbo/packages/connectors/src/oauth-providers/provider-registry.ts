@@ -192,6 +192,8 @@ import { servicenowHandler } from "./providers/servicenow-handler";
 import { testrailHandler } from "./providers/testrail-handler";
 import { twilioHandler } from "./providers/twilio-handler";
 import { squareHandler } from "./providers/square-handler";
+import { gongHandler } from "./providers/gong-handler";
+import { ironcladHandler } from "./providers/ironclad-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
 export type { ProviderEnv };
@@ -387,6 +389,8 @@ export const PROVIDER_HANDLERS: Record<
   testrail: testrailHandler,
   twilio: twilioHandler,
   square: squareHandler,
+  gong: gongHandler,
+  ironclad: ironcladHandler,
 };
 
 /**

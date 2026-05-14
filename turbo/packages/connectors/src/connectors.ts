@@ -187,6 +187,8 @@ import { servicenow } from "./connectors/servicenow";
 import { testrail } from "./connectors/testrail";
 import { twilio } from "./connectors/twilio";
 import { square } from "./connectors/square";
+import { gong } from "./connectors/gong";
+import { ironclad } from "./connectors/ironclad";
 
 /**
  * Secret field configuration for connector auth methods
@@ -565,6 +567,8 @@ const CONNECTOR_TYPES_DEF = {
   ...testrail,
   ...twilio,
   ...square,
+  ...gong,
+  ...ironclad,
 } as const satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;
