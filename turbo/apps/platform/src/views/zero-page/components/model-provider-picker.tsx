@@ -19,13 +19,17 @@ import {
 import {
   getCanonicalModelDisplayName,
   getProvidersForModel,
+  isSupportedRunModel,
   VM0_MODEL_TO_PROVIDER,
   type ModelProviderType,
   type OrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies";
 import { userModelPreference$ } from "../../../signals/external/user-model-preference";
-import { getVm0ModelMultiplier } from "./settings/provider-ui-config";
+import {
+  getModelBrandIconType,
+  getVm0ModelMultiplier,
+} from "./settings/provider-ui-config";
 import { ProviderIcon } from "./settings/provider-icons";
 
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
@@ -143,6 +147,9 @@ function stripInteractiveClasses(cls: string | undefined): string | undefined {
 }
 
 function getModelFirstIconType(model: string): ModelProviderType | undefined {
+  if (isSupportedRunModel(model)) {
+    return getModelBrandIconType(model);
+  }
   const vm0Entry = VM0_MODEL_TO_PROVIDER[model];
   if (vm0Entry) {
     return vm0Entry.concreteType as ModelProviderType;

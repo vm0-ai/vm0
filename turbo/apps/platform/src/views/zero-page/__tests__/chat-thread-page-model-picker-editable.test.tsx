@@ -168,9 +168,12 @@ describe("chat thread page — model picker editable", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    await waitFor(() => {
+    const trigger = await waitFor(() => {
       return screen.getByRole("combobox", { name: /GLM-5\.1/i });
     });
+    const icon = trigger.querySelector("img");
+    expect(icon?.getAttribute("src")).toContain("chatglm.svg");
+    expect(icon).toHaveClass("zero-icon-mono");
   });
 
   // CHAT-MODEL-EDIT-004: empty thread keeps the picker interactive.

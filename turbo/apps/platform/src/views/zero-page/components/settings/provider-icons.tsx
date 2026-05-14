@@ -37,6 +37,7 @@ const DARK_INVERT_PROVIDER_ICONS: Readonly<
   "openai-api-key": true,
   "codex-oauth-token": true,
   "moonshot-api-key": true,
+  "zai-api-key": true,
 });
 
 function providerIconNeedsDarkInvert(type: ModelProviderType): boolean {
