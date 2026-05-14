@@ -131,6 +131,7 @@ pub(crate) struct CommandWorkerRequest {
     label: String,
     stdout: CommandOutputPolicy,
     stderr: CommandOutputPolicy,
+    expected_exit_codes: Vec<i32>,
 }
 
 impl CommandWorkerRequest {
@@ -148,6 +149,7 @@ impl CommandWorkerRequest {
             label: decoded.label.to_owned(),
             stdout: decoded.stdout,
             stderr: decoded.stderr,
+            expected_exit_codes: decoded.expected_exit_codes,
         }
     }
 }
@@ -814,8 +816,15 @@ fn duration_ms(started: Instant) -> u32 {
     u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX)
 }
 
-fn command_termination_is_notable(termination: CommandTermination) -> bool {
-    !matches!(termination, CommandTermination::Exited { exit_code: 0 })
+fn command_termination_is_notable(
+    termination: CommandTermination,
+    expected_exit_codes: &[i32],
+) -> bool {
+    !matches!(
+        termination,
+        CommandTermination::Exited { exit_code }
+            if exit_code == 0 || expected_exit_codes.contains(&exit_code)
+    )
 }
 
 fn log_command_terminal_if_notable(
@@ -828,7 +837,7 @@ fn log_command_terminal_if_notable(
 ) {
     let elapsed = started.elapsed();
     let slow = elapsed >= COMMAND_STAGE_SLOW_THRESHOLD;
-    let notable = command_termination_is_notable(termination)
+    let notable = command_termination_is_notable(termination, &request.expected_exit_codes)
         || stdout_result.capture_truncated
         || stderr_result.capture_truncated
         || !diagnostic.is_empty();
@@ -894,6 +903,7 @@ mod tests {
             label: "test".to_string(),
             stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: CommandOutputPolicy::Capture { limit_bytes: 1024 },
+            expected_exit_codes: Vec::new(),
         }
     }
 
@@ -911,12 +921,21 @@ mod tests {
     #[test]
     fn command_termination_notable_tracks_nonzero_exit() {
         assert!(!command_termination_is_notable(
-            CommandTermination::Exited { exit_code: 0 }
+            CommandTermination::Exited { exit_code: 0 },
+            &[]
         ));
-        assert!(command_termination_is_notable(CommandTermination::Exited {
-            exit_code: 1
-        }));
-        assert!(command_termination_is_notable(CommandTermination::TimedOut));
+        assert!(command_termination_is_notable(
+            CommandTermination::Exited { exit_code: 1 },
+            &[]
+        ));
+        assert!(!command_termination_is_notable(
+            CommandTermination::Exited { exit_code: 66 },
+            &[66]
+        ));
+        assert!(command_termination_is_notable(
+            CommandTermination::TimedOut,
+            &[124]
+        ));
     }
 
     #[test]

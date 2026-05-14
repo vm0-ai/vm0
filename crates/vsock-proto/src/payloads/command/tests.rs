@@ -25,6 +25,7 @@ fn command_start_roundtrip_discard_policies() {
             label: "",
             stdout: CommandOutputPolicy::Discard,
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: Vec::new(),
         }
     );
 }
@@ -57,6 +58,8 @@ fn command_start_wire_layout_places_label_before_output_policies() {
             0,
             0,
             7,
+            0,
+            0,
         ]
     );
 }
@@ -118,6 +121,26 @@ fn command_start_roundtrip_stream_policy_allows_zero_stream_limit() {
         }
     );
     assert_eq!(decoded.stderr, CommandOutputPolicy::Discard);
+    assert!(decoded.expected_exit_codes.is_empty());
+}
+
+#[test]
+fn command_start_roundtrip_expected_exit_codes() {
+    let payload = encode_command_start_with_expected_exit_codes(CommandStartEncodeRequest {
+        timeout_ms: 1000,
+        command: "optional-file",
+        env: &[],
+        sudo: false,
+        label: "read-file",
+        stdout: CommandOutputPolicy::Capture { limit_bytes: 4096 },
+        stderr: CommandOutputPolicy::Discard,
+        expected_exit_codes: &[66, -9],
+    })
+    .unwrap();
+
+    let decoded = decode_command_start(&payload).unwrap();
+    assert_eq!(decoded.label, "read-file");
+    assert_eq!(decoded.expected_exit_codes, vec![66, -9]);
 }
 
 #[test]
@@ -612,6 +635,67 @@ fn command_start_rejects_zero_stream_chunk_limit() {
     assert!(matches!(
         err,
         ProtocolError::InvalidPayload("command output chunk limit must be non-zero")
+    ));
+}
+
+#[test]
+fn command_start_rejects_expected_exit_count_above_limit() {
+    let expected_exit_codes = vec![0; MAX_COMMAND_EXPECTED_EXIT_CODES + 1];
+    let err = encode_command_start_with_expected_exit_codes(CommandStartEncodeRequest {
+        timeout_ms: 1,
+        command: "cmd",
+        env: &[],
+        sudo: false,
+        label: "",
+        stdout: CommandOutputPolicy::Discard,
+        stderr: CommandOutputPolicy::Discard,
+        expected_exit_codes: &expected_exit_codes,
+    })
+    .unwrap_err();
+    assert!(matches!(
+        err,
+        ProtocolError::PayloadTooLarge("expected_exit_count", _)
+    ));
+
+    let mut payload = encode_command_start(
+        1,
+        "cmd",
+        &[],
+        false,
+        "",
+        CommandOutputPolicy::Discard,
+        CommandOutputPolicy::Discard,
+    )
+    .unwrap();
+    let count_offset = payload.len() - 2;
+    payload[count_offset..]
+        .copy_from_slice(&((MAX_COMMAND_EXPECTED_EXIT_CODES as u16) + 1).to_be_bytes());
+    let err = decode_command_start(&payload).unwrap_err();
+    assert!(matches!(
+        err,
+        ProtocolError::InvalidPayload("command start expected_exit_count too large")
+    ));
+}
+
+#[test]
+fn command_start_rejects_truncated_expected_exit_codes() {
+    let mut payload = encode_command_start_with_expected_exit_codes(CommandStartEncodeRequest {
+        timeout_ms: 1,
+        command: "cmd",
+        env: &[],
+        sudo: false,
+        label: "",
+        stdout: CommandOutputPolicy::Discard,
+        stderr: CommandOutputPolicy::Discard,
+        expected_exit_codes: &[66],
+    })
+    .unwrap();
+    payload.pop();
+
+    let err = decode_command_start(&payload).unwrap_err();
+    assert!(matches!(
+        err,
+        ProtocolError::InvalidPayload("command start expected exits truncated")
     ));
 }
 

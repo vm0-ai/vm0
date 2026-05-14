@@ -1352,6 +1352,7 @@ impl Sandbox for FirecrackerSandbox {
                     label: "sandbox-exec",
                     stdout_limit_bytes: limits.stdout_limit_bytes,
                     stderr_limit_bytes: limits.stderr_limit_bytes,
+                    expected_exit_codes: &[],
                     wait_timeout: Duration::from_millis(request.timeout_ms() as u64 + 5000),
                 }
             ) => {

@@ -2007,6 +2007,7 @@ async fn run_with_firecracker(
             label: "snapshot-prewarm",
             stdout_limit_bytes: PREWARM_EXEC_CAPTURE_LIMIT_BYTES,
             stderr_limit_bytes: PREWARM_EXEC_CAPTURE_LIMIT_BYTES,
+            expected_exit_codes: &[],
             wait_timeout: Duration::from_millis(35_000),
         })
         .await

@@ -28,6 +28,7 @@ async fn start_capture_operation(host: &crate::VsockHost, command: &str) -> Comm
         label: "test-command",
         stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
         stderr: CommandOutputPolicy::Capture { limit_bytes: 1024 },
+        expected_exit_codes: &[],
         stream_queue_capacity: None,
     })
     .await
@@ -49,6 +50,7 @@ async fn command_capture_sends_start_and_receives_result() {
                 label: "capture-test",
                 stdout_limit_bytes: 7,
                 stderr_limit_bytes: 9,
+                expected_exit_codes: &[],
                 wait_timeout: Duration::from_secs(5),
             })
             .await
@@ -71,6 +73,7 @@ async fn command_capture_sends_start_and_receives_result() {
         decoded.stderr,
         CommandOutputPolicy::Capture { limit_bytes: 9 }
     );
+    assert!(decoded.expected_exit_codes.is_empty());
 
     send_command_result(
         &mut guest,
@@ -104,6 +107,44 @@ async fn command_capture_sends_start_and_receives_result() {
 }
 
 #[tokio::test]
+async fn command_start_sends_expected_exit_codes() {
+    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+
+    let handle = host
+        .start_command_operation(CommandOperationRequest {
+            timeout_ms: 5000,
+            command: "optional",
+            env: &[],
+            sudo: false,
+            label: "expected-exit",
+            stdout: CommandOutputPolicy::Capture { limit_bytes: 16 },
+            stderr: CommandOutputPolicy::Capture { limit_bytes: 16 },
+            expected_exit_codes: &[66],
+            stream_queue_capacity: None,
+        })
+        .await
+        .unwrap();
+
+    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let decoded = vsock_proto::decode_command_start(&msg.payload).unwrap();
+    assert_eq!(decoded.expected_exit_codes, vec![66]);
+
+    send_command_result(
+        &mut guest,
+        msg.seq,
+        CommandTermination::Exited { exit_code: 66 },
+        b"",
+        b"",
+    )
+    .await;
+    let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+    assert_eq!(
+        result.termination,
+        CommandTermination::Exited { exit_code: 66 }
+    );
+}
+
+#[tokio::test]
 async fn command_capture_repeated_short_operations_soak() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let host = Arc::new(host);
@@ -119,6 +160,7 @@ async fn command_capture_repeated_short_operations_soak() {
                 label: &label,
                 stdout: CommandOutputPolicy::Capture { limit_bytes: 16 },
                 stderr: CommandOutputPolicy::Capture { limit_bytes: 16 },
+                expected_exit_codes: &[],
                 stream_queue_capacity: None,
             })
             .await
@@ -169,6 +211,7 @@ async fn command_capture_large_stdout_stderr_within_limits_soak() {
             stderr: CommandOutputPolicy::Capture {
                 limit_bytes: stderr.len() as u32,
             },
+            expected_exit_codes: &[],
             stream_queue_capacity: None,
         })
         .await
@@ -216,6 +259,7 @@ async fn command_result_preserves_non_default_metadata() {
             label: "metadata",
             stdout: CommandOutputPolicy::Discard,
             stderr: CommandOutputPolicy::Capture { limit_bytes: 1024 },
+            expected_exit_codes: &[],
             stream_queue_capacity: None,
         })
         .await
@@ -263,6 +307,7 @@ async fn command_result_capture_for_discard_policy_poisons_connection() {
             label: "discard-result",
             stdout: CommandOutputPolicy::Discard,
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: &[],
             stream_queue_capacity: None,
         })
         .await
@@ -301,6 +346,7 @@ async fn command_result_over_capture_limit_poisons_connection() {
             label: "capture-limit",
             stdout: CommandOutputPolicy::Capture { limit_bytes: 4 },
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: &[],
             stream_queue_capacity: None,
         })
         .await
@@ -339,6 +385,7 @@ async fn command_result_discard_for_capture_policy_poisons_connection() {
             label: "missing-capture",
             stdout: CommandOutputPolicy::Capture { limit_bytes: 4 },
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: &[],
             stream_queue_capacity: None,
         })
         .await
@@ -374,6 +421,7 @@ async fn command_result_zero_capture_limit_accepts_empty_capture() {
             label: "zero-capture",
             stdout: CommandOutputPolicy::Capture { limit_bytes: 0 },
             stderr: CommandOutputPolicy::Capture { limit_bytes: 0 },
+            expected_exit_codes: &[],
             stream_queue_capacity: None,
         })
         .await
@@ -431,6 +479,7 @@ async fn command_stream_rejects_zero_capacity_without_sending_frame() {
                 chunk_limit_bytes: 16,
             },
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: &[],
             stream_queue_capacity: Some(0),
         })
         .await
@@ -461,6 +510,7 @@ async fn command_stream_rejects_oversized_capacity_without_sending_frame() {
                 chunk_limit_bytes: 16,
             },
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: &[],
             stream_queue_capacity: Some(command_impl::test_support::MAX_STREAM_CAPACITY + 1),
         })
         .await
@@ -492,6 +542,7 @@ async fn command_start_stream_policy_uses_default_receiver() {
                 stream_limit_bytes: 1024,
                 chunk_limit_bytes: 16,
             },
+            expected_exit_codes: &[],
             stream_queue_capacity: None,
         })
         .await
@@ -538,6 +589,7 @@ async fn command_start_rejects_receiver_without_stream_policy() {
             label: "unexpected-receiver",
             stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: &[],
             stream_queue_capacity: Some(1),
         })
         .await
@@ -565,6 +617,7 @@ async fn command_stream_rejects_non_streaming_policy() {
             label: "non-streaming-helper",
             stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: &[],
             stream_queue_capacity: None,
         })
         .await
@@ -595,6 +648,7 @@ async fn command_start_encode_error_does_not_register_or_send_frame() {
                 chunk_limit_bytes: 0,
             },
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: &[],
             stream_queue_capacity: Some(1),
         })
         .await
@@ -622,6 +676,7 @@ async fn command_start_rejects_zero_timeout_without_sending_frame() {
             label: "zero-timeout",
             stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: CommandOutputPolicy::Capture { limit_bytes: 1024 },
+            expected_exit_codes: &[],
             stream_queue_capacity: None,
         })
         .await
@@ -708,6 +763,7 @@ async fn command_stream_dispatches_stdout_stderr_and_closes_on_result() {
                 limit_bytes: 1024,
                 chunk_limit_bytes: 16,
             },
+            expected_exit_codes: &[],
             stream_queue_capacity: None,
         })
         .await
@@ -773,6 +829,7 @@ async fn command_stream_full_channel_closes_stream_and_marks_result() {
                 chunk_limit_bytes: 16,
             },
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: &[],
             stream_queue_capacity: Some(1),
         })
         .await
@@ -829,6 +886,7 @@ async fn command_stream_many_chunks_soak_does_not_block_terminal_result() {
                 chunk_limit_bytes: 16,
             },
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: &[],
             stream_queue_capacity: Some(2),
         })
         .await
@@ -886,6 +944,7 @@ async fn command_output_for_non_streamed_side_poisons_connection() {
                 limit_bytes: 1024,
                 chunk_limit_bytes: 16,
             },
+            expected_exit_codes: &[],
             stream_queue_capacity: Some(1),
         })
         .await
@@ -924,6 +983,7 @@ async fn command_output_seq_gap_poisons_connection() {
                 chunk_limit_bytes: 16,
             },
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: &[],
             stream_queue_capacity: Some(1),
         })
         .await
@@ -962,6 +1022,7 @@ async fn command_output_zero_stream_limit_accepts_empty_truncation_marker() {
                 chunk_limit_bytes: 16,
             },
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: &[],
             stream_queue_capacity: Some(1),
         })
         .await
@@ -1008,6 +1069,7 @@ async fn command_output_empty_non_truncated_poisons_connection() {
                 chunk_limit_bytes: 16,
             },
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: &[],
             stream_queue_capacity: Some(1),
         })
         .await
@@ -1046,6 +1108,7 @@ async fn command_output_over_requested_chunk_limit_poisons_connection() {
                 chunk_limit_bytes: 3,
             },
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: &[],
             stream_queue_capacity: Some(4),
         })
         .await
@@ -1084,6 +1147,7 @@ async fn command_output_over_requested_stream_limit_poisons_connection() {
                 chunk_limit_bytes: 3,
             },
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: &[],
             stream_queue_capacity: Some(4),
         })
         .await
@@ -1131,6 +1195,7 @@ async fn command_output_after_truncation_poisons_connection() {
                 chunk_limit_bytes: 4,
             },
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: &[],
             stream_queue_capacity: Some(4),
         })
         .await
@@ -1178,6 +1243,7 @@ async fn command_stream_dropped_receiver_does_not_block_result() {
                 chunk_limit_bytes: 16,
             },
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: &[],
             stream_queue_capacity: Some(1),
         })
         .await
@@ -1271,6 +1337,7 @@ async fn command_connection_close_wakes_result_and_stream() {
                 chunk_limit_bytes: 16,
             },
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: &[],
             stream_queue_capacity: Some(1),
         })
         .await
@@ -1302,6 +1369,7 @@ async fn command_start_after_connection_close_returns_connection_reset() {
             label: "closed",
             stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: CommandOutputPolicy::Capture { limit_bytes: 1024 },
+            expected_exit_codes: &[],
             stream_queue_capacity: None,
         })
         .await
@@ -1328,6 +1396,7 @@ async fn host_drop_closes_active_command_result_and_stream() {
                 chunk_limit_bytes: 16,
             },
             stderr: CommandOutputPolicy::Discard,
+            expected_exit_codes: &[],
             stream_queue_capacity: Some(1),
         })
         .await

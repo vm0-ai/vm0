@@ -427,6 +427,7 @@ async fn execute(
             label: "runner-exec",
             stdout_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
             stderr_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
+            expected_exit_codes: &[],
             wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
         })
         .await

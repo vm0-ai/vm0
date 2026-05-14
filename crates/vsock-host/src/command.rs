@@ -68,6 +68,7 @@ pub struct CommandOperationRequest<'a> {
     pub label: &'a str,
     pub stdout: CommandOutputPolicy,
     pub stderr: CommandOutputPolicy,
+    pub expected_exit_codes: &'a [i32],
     /// Optional bounded host-side output event queue override.
     ///
     /// `None` uses the default queue capacity when either output policy
@@ -86,6 +87,7 @@ pub struct CommandCaptureRequest<'a> {
     pub label: &'a str,
     pub stdout_limit_bytes: u32,
     pub stderr_limit_bytes: u32,
+    pub expected_exit_codes: &'a [i32],
     pub wait_timeout: Duration,
 }
 
@@ -98,6 +100,7 @@ pub struct CommandStreamRequest<'a> {
     pub label: &'a str,
     pub stdout: CommandOutputPolicy,
     pub stderr: CommandOutputPolicy,
+    pub expected_exit_codes: &'a [i32],
     /// Optional host-side output event queue capacity override.
     ///
     /// `None` uses the default queue capacity. Zero and oversized capacities
@@ -178,6 +181,7 @@ struct CommandOperation {
 struct CommandOperationDiagnostic {
     seq: u32,
     label_log: String,
+    expected_exit_codes: Vec<i32>,
     registered_at: Instant,
     first_output_at: Option<Instant>,
 }
@@ -259,10 +263,11 @@ impl Drop for CommandFrameWriteGuard {
 }
 
 impl CommandOperationDiagnostic {
-    fn new(seq: u32, label: &str) -> Self {
+    fn new(seq: u32, label: &str, expected_exit_codes: &[i32]) -> Self {
         Self {
             seq,
             label_log: command_label_log(label),
+            expected_exit_codes: expected_exit_codes.to_vec(),
             registered_at: Instant::now(),
             first_output_at: None,
         }
@@ -313,7 +318,7 @@ impl CommandOperationDiagnostic {
     ) {
         let elapsed_ms = self.elapsed_ms();
         let slow = elapsed_ms >= COMMAND_STAGE_SLOW_THRESHOLD.as_millis();
-        let notable = command_termination_is_notable(result.termination)
+        let notable = command_termination_is_notable(result.termination, &self.expected_exit_codes)
             || command_result_has_truncation(result)
             || stream_overflowed
             || !result.diagnostic.is_empty();
@@ -575,8 +580,15 @@ fn command_protocol_error(error: impl ToString) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, error.to_string())
 }
 
-fn command_termination_is_notable(termination: CommandTermination) -> bool {
-    !matches!(termination, CommandTermination::Exited { exit_code: 0 })
+fn command_termination_is_notable(
+    termination: CommandTermination,
+    expected_exit_codes: &[i32],
+) -> bool {
+    !matches!(
+        termination,
+        CommandTermination::Exited { exit_code }
+            if exit_code == 0 || expected_exit_codes.contains(&exit_code)
+    )
 }
 
 fn command_label_log(label: &str) -> String {
@@ -1070,14 +1082,17 @@ pub(crate) async fn start_command_operation_on_shared(
         None
     };
 
-    let payload = vsock_proto::encode_command_start(
-        request.timeout_ms,
-        request.command,
-        request.env,
-        request.sudo,
-        request.label,
-        request.stdout,
-        request.stderr,
+    let payload = vsock_proto::encode_command_start_with_expected_exit_codes(
+        vsock_proto::CommandStartEncodeRequest {
+            timeout_ms: request.timeout_ms,
+            command: request.command,
+            env: request.env,
+            sudo: request.sudo,
+            label: request.label,
+            stdout: request.stdout,
+            stderr: request.stderr,
+            expected_exit_codes: request.expected_exit_codes,
+        },
     )
     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
 
@@ -1090,7 +1105,8 @@ pub(crate) async fn start_command_operation_on_shared(
     };
     let (result_tx, result_rx) = oneshot::channel();
     let seq = shared.next_seq();
-    let diagnostic = CommandOperationDiagnostic::new(seq, request.label);
+    let diagnostic =
+        CommandOperationDiagnostic::new(seq, request.label, request.expected_exit_codes);
     let operation = CommandOperation {
         diagnostic: diagnostic.clone(),
         result_tx,
@@ -1156,6 +1172,7 @@ pub(crate) async fn command_capture_on_shared(
             stderr: CommandOutputPolicy::Capture {
                 limit_bytes: request.stderr_limit_bytes,
             },
+            expected_exit_codes: request.expected_exit_codes,
             stream_queue_capacity: None,
         },
     )
@@ -1184,6 +1201,7 @@ pub(crate) async fn command_stream_on_shared(
             label: request.label,
             stdout: request.stdout,
             stderr: request.stderr,
+            expected_exit_codes: request.expected_exit_codes,
             stream_queue_capacity: request.stream_queue_capacity,
         },
     )
@@ -1208,6 +1226,7 @@ pub(crate) async fn exec_on_shared(
             label: "exec",
             stdout_limit_bytes: DEFAULT_COMMAND_CAPTURE_LIMIT_BYTES,
             stderr_limit_bytes: DEFAULT_COMMAND_CAPTURE_LIMIT_BYTES,
+            expected_exit_codes: &[],
             wait_timeout: request_timeout,
         },
     )
@@ -1231,6 +1250,7 @@ pub(crate) async fn exec_cleanup_on_shared(
             label: "exec-cleanup",
             stdout_limit_bytes: SMALL_COMMAND_CAPTURE_LIMIT_BYTES,
             stderr_limit_bytes: SMALL_COMMAND_CAPTURE_LIMIT_BYTES,
+            expected_exit_codes: &[],
             wait_timeout: Duration::from_millis(timeout_ms as u64),
         },
     )
@@ -1270,7 +1290,7 @@ mod tests {
     fn command_operation_for_snapshot(seq: u32, label: &str) -> CommandOperation {
         let (result_tx, _result_rx) = oneshot::channel();
         CommandOperation {
-            diagnostic: CommandOperationDiagnostic::new(seq, label),
+            diagnostic: CommandOperationDiagnostic::new(seq, label, &[]),
             result_tx,
             stream_tx: None,
             stdout_capture: CommandCaptureState::Discard,
@@ -1285,12 +1305,21 @@ mod tests {
     #[test]
     fn command_termination_notable_tracks_nonzero_exit() {
         assert!(!command_termination_is_notable(
-            CommandTermination::Exited { exit_code: 0 }
+            CommandTermination::Exited { exit_code: 0 },
+            &[]
         ));
-        assert!(command_termination_is_notable(CommandTermination::Exited {
-            exit_code: 1
-        }));
-        assert!(command_termination_is_notable(CommandTermination::TimedOut));
+        assert!(command_termination_is_notable(
+            CommandTermination::Exited { exit_code: 1 },
+            &[]
+        ));
+        assert!(!command_termination_is_notable(
+            CommandTermination::Exited { exit_code: 66 },
+            &[66]
+        ));
+        assert!(command_termination_is_notable(
+            CommandTermination::TimedOut,
+            &[124]
+        ));
     }
 
     #[test]
@@ -1332,7 +1361,7 @@ mod tests {
             "{}secret-tail",
             "a".repeat(COMMAND_LABEL_LOG_PREFIX_MAX_BYTES)
         );
-        let mut diagnostic = CommandOperationDiagnostic::new(7, &label);
+        let mut diagnostic = CommandOperationDiagnostic::new(7, &label, &[]);
         diagnostic.registered_at =
             Instant::now() - COMMAND_STAGE_SLOW_THRESHOLD - Duration::from_millis(1);
 
@@ -1354,6 +1383,7 @@ mod tests {
         let mut diagnostic = CommandOperationDiagnostic {
             seq: 9,
             label_log: "slow-first-output".to_string(),
+            expected_exit_codes: Vec::new(),
             registered_at: Instant::now() - COMMAND_STAGE_SLOW_THRESHOLD - Duration::from_millis(1),
             first_output_at: None,
         };

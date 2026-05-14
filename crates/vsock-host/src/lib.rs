@@ -589,6 +589,7 @@ impl VsockHost {
             label,
             stdout_limit_bytes: command::DEFAULT_COMMAND_CAPTURE_LIMIT_BYTES,
             stderr_limit_bytes: command::DEFAULT_COMMAND_CAPTURE_LIMIT_BYTES,
+            expected_exit_codes: &[],
             wait_timeout,
         })
         .await

@@ -25,6 +25,7 @@ const COMMAND_CAPTURED_OUTPUT_DISCARDED: u8 = 0x00;
 const COMMAND_CAPTURED_OUTPUT_CAPTURED: u8 = 0x01;
 
 const MAX_COMMAND_ENV_VARS: usize = 4096;
+const MAX_COMMAND_EXPECTED_EXIT_CODES: usize = 64;
 
 /// Command output stream selector.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,6 +79,18 @@ pub enum CommandCapturedOutput<'a> {
     Captured { bytes: &'a [u8], truncated: bool },
 }
 
+/// Parameters for encoding a command start payload with extended metadata.
+pub struct CommandStartEncodeRequest<'a> {
+    pub timeout_ms: u32,
+    pub command: &'a str,
+    pub env: &'a [(&'a str, &'a str)],
+    pub sudo: bool,
+    pub label: &'a str,
+    pub stdout: CommandOutputPolicy,
+    pub stderr: CommandOutputPolicy,
+    pub expected_exit_codes: &'a [i32],
+}
+
 /// Decoded command start payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecodedCommandStart<'a> {
@@ -88,6 +101,7 @@ pub struct DecodedCommandStart<'a> {
     pub label: &'a str,
     pub stdout: CommandOutputPolicy,
     pub stderr: CommandOutputPolicy,
+    pub expected_exit_codes: Vec<i32>,
 }
 
 /// Decoded command output payload.
@@ -167,10 +181,7 @@ fn append_command_output_policy(p: &mut Vec<u8>, policy: CommandOutputPolicy) {
     }
 }
 
-/// Encode command_start payload.
-///
-/// Wire format:
-/// `[4B timeout_ms][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy]`.
+/// Encode command_start payload with no expected non-zero exits.
 pub fn encode_command_start(
     timeout_ms: u32,
     command: &str,
@@ -180,22 +191,52 @@ pub fn encode_command_start(
     stdout: CommandOutputPolicy,
     stderr: CommandOutputPolicy,
 ) -> Result<Vec<u8>, ProtocolError> {
-    let cmd = command.as_bytes();
-    let label_bytes = label.as_bytes();
+    encode_command_start_with_expected_exit_codes(CommandStartEncodeRequest {
+        timeout_ms,
+        command,
+        env,
+        sudo,
+        label,
+        stdout,
+        stderr,
+        expected_exit_codes: &[],
+    })
+}
+
+/// Encode command_start payload.
+///
+/// Wire format:
+/// `[4B timeout_ms][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy][2B expected_exit_count][4B exit_code]...`.
+pub fn encode_command_start_with_expected_exit_codes(
+    request: CommandStartEncodeRequest<'_>,
+) -> Result<Vec<u8>, ProtocolError> {
+    let cmd = request.command.as_bytes();
+    let label_bytes = request.label.as_bytes();
     let cmd_len = ensure_u32_len("command", cmd.len())?;
-    let env_count = ensure_u32_len("env_count", env.len())?;
-    if env.len() > MAX_COMMAND_ENV_VARS {
-        return Err(ProtocolError::PayloadTooLarge("env_count", env.len()));
+    let env_count = ensure_u32_len("env_count", request.env.len())?;
+    if request.env.len() > MAX_COMMAND_ENV_VARS {
+        return Err(ProtocolError::PayloadTooLarge(
+            "env_count",
+            request.env.len(),
+        ));
     }
     let label_len = ensure_u16_len("label", label_bytes.len())?;
+    let expected_exit_count =
+        ensure_u16_len("expected_exit_count", request.expected_exit_codes.len())?;
+    if request.expected_exit_codes.len() > MAX_COMMAND_EXPECTED_EXIT_CODES {
+        return Err(ProtocolError::PayloadTooLarge(
+            "expected_exit_count",
+            request.expected_exit_codes.len(),
+        ));
+    }
 
-    let stdout_policy_len = command_output_policy_encoded_len(stdout)?;
-    let stderr_policy_len = command_output_policy_encoded_len(stderr)?;
+    let stdout_policy_len = command_output_policy_encoded_len(request.stdout)?;
+    let stderr_policy_len = command_output_policy_encoded_len(request.stderr)?;
 
     let mut payload_len = 4 + 1 + 4;
     payload_len = checked_payload_len_add(payload_len, cmd.len())?;
     payload_len = checked_payload_len_add(payload_len, 4)?;
-    for (key, val) in env {
+    for (key, val) in request.env {
         let key_bytes = key.as_bytes();
         let val_bytes = val.as_bytes();
         ensure_u32_len("env key", key_bytes.len())?;
@@ -208,15 +249,17 @@ pub fn encode_command_start(
     payload_len = checked_payload_len_add(payload_len, label_bytes.len())?;
     payload_len = checked_payload_len_add(payload_len, stdout_policy_len)?;
     payload_len = checked_payload_len_add(payload_len, stderr_policy_len)?;
+    payload_len = checked_payload_len_add(payload_len, 2)?;
+    payload_len = checked_payload_len_add(payload_len, request.expected_exit_codes.len() * 4)?;
     ensure_payload_fits_message(payload_len)?;
 
     let mut p = Vec::with_capacity(payload_len);
-    p.extend_from_slice(&timeout_ms.to_be_bytes());
-    p.push(if sudo { COMMAND_FLAG_SUDO } else { 0 });
+    p.extend_from_slice(&request.timeout_ms.to_be_bytes());
+    p.push(if request.sudo { COMMAND_FLAG_SUDO } else { 0 });
     p.extend_from_slice(&cmd_len.to_be_bytes());
     p.extend_from_slice(cmd);
     p.extend_from_slice(&env_count.to_be_bytes());
-    for (key, val) in env {
+    for (key, val) in request.env {
         let key_bytes = key.as_bytes();
         let val_bytes = val.as_bytes();
         p.extend_from_slice(&(key_bytes.len() as u32).to_be_bytes());
@@ -226,8 +269,12 @@ pub fn encode_command_start(
     }
     p.extend_from_slice(&label_len.to_be_bytes());
     p.extend_from_slice(label_bytes);
-    append_command_output_policy(&mut p, stdout);
-    append_command_output_policy(&mut p, stderr);
+    append_command_output_policy(&mut p, request.stdout);
+    append_command_output_policy(&mut p, request.stderr);
+    p.extend_from_slice(&expected_exit_count.to_be_bytes());
+    for exit_code in request.expected_exit_codes {
+        p.extend_from_slice(&exit_code.to_be_bytes());
+    }
     debug_assert_eq!(p.len(), payload_len);
     Ok(p)
 }
@@ -473,6 +520,35 @@ pub fn decode_command_start(payload: &[u8]) -> Result<DecodedCommandStart<'_>, P
     )?;
     let stdout = decode_command_output_policy(payload, &mut offset)?;
     let stderr = decode_command_output_policy(payload, &mut offset)?;
+    let expected_exit_count = read_u16(
+        payload,
+        &mut offset,
+        "command start expected_exit_count truncated",
+    )?;
+    if expected_exit_count as usize > MAX_COMMAND_EXPECTED_EXIT_CODES {
+        return Err(ProtocolError::InvalidPayload(
+            "command start expected_exit_count too large",
+        ));
+    }
+    let expected_exit_bytes =
+        (expected_exit_count as usize)
+            .checked_mul(4)
+            .ok_or(ProtocolError::InvalidPayload(
+                "command start expected exits truncated",
+            ))?;
+    if payload.len().saturating_sub(offset) < expected_exit_bytes {
+        return Err(ProtocolError::InvalidPayload(
+            "command start expected exits truncated",
+        ));
+    }
+    let mut expected_exit_codes = Vec::with_capacity(expected_exit_count as usize);
+    for _ in 0..expected_exit_count {
+        expected_exit_codes.push(read_i32(
+            payload,
+            &mut offset,
+            "command start expected exit truncated",
+        )?);
+    }
     expect_consumed(payload, offset, "command start trailing bytes")?;
     Ok(DecodedCommandStart {
         timeout_ms,
@@ -482,6 +558,7 @@ pub fn decode_command_start(payload: &[u8]) -> Result<DecodedCommandStart<'_>, P
         label,
         stdout,
         stderr,
+        expected_exit_codes,
     })
 }
 

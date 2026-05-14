@@ -431,6 +431,38 @@ fn command_capture_only_stdout_stderr_success() {
 }
 
 #[test]
+fn command_expected_nonzero_exit_still_returns_result() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let payload = vsock_proto::encode_command_start_with_expected_exit_codes(
+        vsock_proto::CommandStartEncodeRequest {
+            timeout_ms: 5000,
+            command: "exit 66",
+            env: &[],
+            sudo: false,
+            label: "test",
+            stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
+            stderr: CommandOutputPolicy::Capture { limit_bytes: 1024 },
+            expected_exit_codes: &[66],
+        },
+    );
+    let msg = vsock_proto::encode(MSG_COMMAND_START, 102, &payload.unwrap()).unwrap();
+    host_stream.write_all(&msg).unwrap();
+    let (chunks, result) = read_command_result(&mut host_stream, 102);
+
+    assert!(chunks.is_empty());
+    assert_eq!(
+        result.termination,
+        CommandTermination::Exited { exit_code: 66 }
+    );
+    assert_eq!(result.stdout, Some(Vec::new()));
+    assert_eq!(result.stderr, Some(Vec::new()));
+    assert!(result.diagnostic.is_empty());
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn command_large_env_payload_succeeds() {
     let values = large_env_values();
     let env = large_env_entries(&values);

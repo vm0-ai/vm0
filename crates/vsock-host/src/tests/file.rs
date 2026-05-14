@@ -52,6 +52,7 @@ async fn read_file_returns_content_and_missing() {
     let decoded = vsock_proto::decode_command_start(&msg.payload).unwrap();
     assert_eq!(decoded.label, "read-file");
     assert!(decoded.command.contains("cat -- '/tmp/session.txt'"));
+    assert_eq!(decoded.expected_exit_codes, vec![66]);
     send_command_result(
         &mut guest,
         msg.seq,
@@ -69,6 +70,8 @@ async fn read_file_returns_content_and_missing() {
     };
     let msg = read_guest_message(&mut guest, &mut decoder).await;
     assert_eq!(msg.msg_type, MSG_COMMAND_START);
+    let decoded = vsock_proto::decode_command_start(&msg.payload).unwrap();
+    assert_eq!(decoded.expected_exit_codes, vec![66]);
     send_command_result(
         &mut guest,
         msg.seq,
@@ -489,6 +492,8 @@ async fn copy_file_missing_ok_leaves_no_final_or_temp_file() {
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
     assert_eq!(msg.msg_type, MSG_COMMAND_START);
+    let decoded = vsock_proto::decode_command_start(&msg.payload).unwrap();
+    assert_eq!(decoded.expected_exit_codes, vec![66]);
     send_stream_command_result(
         &mut guest,
         msg.seq,
@@ -542,6 +547,8 @@ async fn copy_file_missing_without_missing_ok_preserves_existing_file_and_remove
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
     assert_eq!(msg.msg_type, MSG_COMMAND_START);
+    let decoded = vsock_proto::decode_command_start(&msg.payload).unwrap();
+    assert!(decoded.expected_exit_codes.is_empty());
     send_stream_command_result(
         &mut guest,
         msg.seq,

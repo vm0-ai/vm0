@@ -46,10 +46,11 @@ mod wire;
 pub use error::ProtocolError;
 pub use frame::{Decoder, RawMessage, encode};
 pub use payloads::command::{
-    CommandCapturedOutput, CommandOutputPolicy, CommandOutputStream, CommandTermination,
-    DecodedCommandOutput, DecodedCommandResult, DecodedCommandStart, decode_command_cancel,
-    decode_command_output, decode_command_result, decode_command_start, encode_command_cancel,
-    encode_command_output, encode_command_result, encode_command_start,
+    CommandCapturedOutput, CommandOutputPolicy, CommandOutputStream, CommandStartEncodeRequest,
+    CommandTermination, DecodedCommandOutput, DecodedCommandResult, DecodedCommandStart,
+    decode_command_cancel, decode_command_output, decode_command_result, decode_command_start,
+    encode_command_cancel, encode_command_output, encode_command_result, encode_command_start,
+    encode_command_start_with_expected_exit_codes,
 };
 pub use payloads::error::{decode_error, encode_error};
 pub use payloads::process::{

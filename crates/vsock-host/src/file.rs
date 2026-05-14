@@ -325,6 +325,7 @@ impl VsockHost {
                 label: "read-file",
                 stdout_limit_bytes,
                 stderr_limit_bytes: command::SMALL_COMMAND_CAPTURE_LIMIT_BYTES,
+                expected_exit_codes: &[MISSING_FILE_EXIT_CODE],
                 wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
             })
             .await?;
@@ -438,6 +439,11 @@ impl VsockHost {
             "if test -f {path}; then cat -- {path}; else exit {MISSING_FILE_EXIT_CODE}; fi",
             path = shell_quote(path)
         );
+        let expected_exit_codes: &[i32] = if missing_ok {
+            &[MISSING_FILE_EXIT_CODE]
+        } else {
+            &[]
+        };
         let mut handle = self
             .command_stream(CommandStreamRequest {
                 timeout_ms,
@@ -452,6 +458,7 @@ impl VsockHost {
                 stderr: CommandOutputPolicy::Capture {
                     limit_bytes: command::SMALL_COMMAND_CAPTURE_LIMIT_BYTES,
                 },
+                expected_exit_codes,
                 stream_queue_capacity: Some(COPY_FILE_STREAM_QUEUE_CAPACITY),
             })
             .await?;
@@ -560,6 +567,7 @@ impl VsockHost {
                 label: "write-file-rename",
                 stdout_limit_bytes: command::SMALL_COMMAND_CAPTURE_LIMIT_BYTES,
                 stderr_limit_bytes: command::SMALL_COMMAND_CAPTURE_LIMIT_BYTES,
+                expected_exit_codes: &[],
                 wait_timeout: Duration::from_millis(HELPER_EXEC_TIMEOUT_MS as u64 + 5000),
             })
             .await
