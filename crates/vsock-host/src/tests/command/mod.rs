@@ -22,4 +22,5 @@ mod cancel;
 mod capture;
 mod exec;
 mod lifecycle;
+mod malformed;
 mod stream;
