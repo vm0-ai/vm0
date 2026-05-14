@@ -470,13 +470,13 @@ mod tests {
     use super::*;
     use crate::factory::leak_cleaner::LeakCleaner;
     use crate::leaked_resources::LeakedResources;
-    use crate::network::NetnsPool;
+    use crate::network::{NetnsLease, NetnsPool};
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
 
     #[tokio::test]
     async fn shutdown_cleans_owned_netns_pool_with_extra_arc_refs() {
-        let pool = NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test());
+        let (pool, mut lease) = test_pool_with_lease("owned-test-ns");
         let _destroy_task_clone = pool.clone();
         let mut factory = test_factory_with_resources(
             pool.clone(),
@@ -487,13 +487,17 @@ mod tests {
         factory.shutdown().await;
 
         assert!(factory.resources.is_none());
-        assert!(factory.shutdown_netns_pool.is_some());
-        assert_eq!(pool.strong_count_for_test(), 3);
+        let retained = factory
+            .shutdown_netns_pool
+            .as_ref()
+            .expect("shutdown factory should retain netns release authority");
+        let _ = retained.release(&mut lease).await;
+        assert!(lease.is_none());
     }
 
     #[tokio::test]
     async fn shutdown_keeps_shared_netns_pool_for_runtime_shutdown() {
-        let pool = NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test());
+        let (pool, mut lease) = test_pool_with_lease("shared-test-ns");
         let mut factory = test_factory_with_resources(
             pool.clone(),
             NetnsPoolOwnership::Shared,
@@ -504,7 +508,8 @@ mod tests {
 
         assert!(factory.resources.is_none());
         assert!(factory.shutdown_netns_pool.is_some());
-        assert_eq!(pool.strong_count_for_test(), 2);
+        let _ = pool.release(&mut lease).await;
+        assert!(lease.is_none());
     }
 
     fn test_config(base_dir: PathBuf) -> FirecrackerConfig {
@@ -532,6 +537,13 @@ mod tests {
             resources: None,
             shutdown_netns_pool: None,
         }
+    }
+
+    fn test_pool_with_lease(name: &str) -> (NetnsPoolHandle, Option<NetnsLease>) {
+        let mut raw_pool = NetnsPool::inactive_for_test();
+        let lease = Some(raw_pool.lease_for_test(name));
+        raw_pool.track_lease_for_test(lease.as_ref().unwrap());
+        (NetnsPoolHandle::new_for_test(raw_pool), lease)
     }
 
     fn test_factory_with_resources(
@@ -659,10 +671,7 @@ mod tests {
 
     #[tokio::test]
     async fn destroy_uses_retained_netns_pool_after_shutdown() {
-        let mut raw_pool = NetnsPool::inactive_for_test();
-        let mut lease = Some(raw_pool.lease_for_test("test-ns"));
-        raw_pool.track_lease_for_test(lease.as_ref().unwrap());
-        let pool = NetnsPoolHandle::new_for_test(raw_pool);
+        let (pool, mut lease) = test_pool_with_lease("test-ns");
         let mut factory = test_factory_with_resources(
             pool.clone(),
             NetnsPoolOwnership::Shared,
