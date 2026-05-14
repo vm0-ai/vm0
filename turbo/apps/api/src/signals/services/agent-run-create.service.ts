@@ -89,6 +89,7 @@ import {
 import { writeDb$, type Db } from "../external/db";
 import {
   publishOrgSignal,
+  publishRunChangedForUserSafely,
   publishRunnerJobNotification,
 } from "../external/realtime";
 import { now, nowDate } from "../external/time";
@@ -105,6 +106,9 @@ import {
   queuedRunnerJobPayload,
 } from "./agent-run-queue-payload.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
+import { dispatchRunCallbacks } from "./agent-run-callback.service";
+import { drainOrgQueue$ } from "./zero-run-queue.service";
+import { logger } from "../../lib/log";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const QUEUED_RUN_TTL_MS = 2 * 60 * 60 * 1000;
@@ -125,6 +129,7 @@ const PLATFORM_ENV_SECRET_NAMES = [
   "GOOGLE_ADS_DEVELOPER_TOKEN",
   "GOOGLE_ADS_LOGIN_CUSTOMER_ID",
 ] as const;
+const L = logger("AgentRunCreate");
 
 type CreateRunBody = z.infer<typeof unifiedRunRequestSchema>;
 type ComputedGetter = Getter;
@@ -2242,9 +2247,9 @@ async function markRunFailed(
   db: Db,
   runId: string,
   error: unknown,
-): Promise<void> {
+): Promise<boolean> {
   const message = error instanceof Error ? error.message : "Run failed";
-  await db
+  const [updated] = await db
     .update(agentRuns)
     .set({
       status: "failed",
@@ -2260,7 +2265,24 @@ async function markRunFailed(
           eq(agentRuns.status, "running"),
         ),
       ),
-    );
+    )
+    .returning({
+      userId: agentRuns.userId,
+    });
+
+  if (!updated) {
+    return false;
+  }
+
+  await publishRunChangedForUserSafely(updated.userId, runId, {
+    status: "failed",
+  });
+  await dispatchRunCallbacks(db, runId, "failed", undefined, message).catch(
+    (error: unknown) => {
+      L.error("Failed to dispatch failed-run callbacks", { runId, error });
+    },
+  );
+  return true;
 }
 
 async function buildRunnerJobPayload(
@@ -2720,6 +2742,7 @@ async function completePendingRun(input: {
   readonly args: CreateAgentRunArgs;
   readonly context: PreparedRunContext;
   readonly run: RunRecord;
+  readonly drainOrgQueue: () => Promise<void>;
   readonly signal: AbortSignal;
 }): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> {
   const dispatchResult = await safeAsync(() => {
@@ -2746,8 +2769,21 @@ async function completePendingRun(input: {
     return createdRunResponse(input.run, dispatchResult.ok);
   }
 
-  await markRunFailed(input.db, input.run.id, dispatchResult.error);
+  const transitioned = await markRunFailed(
+    input.db,
+    input.run.id,
+    dispatchResult.error,
+  );
   input.signal.throwIfAborted();
+  if (transitioned) {
+    await input.drainOrgQueue().catch((error: unknown) => {
+      L.error("Failed to drain org queue after run dispatch failure", {
+        runId: input.run.id,
+        error,
+      });
+    });
+    input.signal.throwIfAborted();
+  }
   return failedRunResponse(input.run, dispatchResult.error);
 }
 
@@ -2798,6 +2834,9 @@ export const createAgentRun$ = command(
       args,
       context,
       run: transactionResult,
+      drainOrgQueue: async () => {
+        await set(drainOrgQueue$, { orgId: args.orgId }, signal);
+      },
       signal,
     });
   },

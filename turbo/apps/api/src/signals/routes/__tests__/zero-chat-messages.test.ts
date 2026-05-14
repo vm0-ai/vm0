@@ -25,6 +25,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
+import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
@@ -62,6 +63,23 @@ function client() {
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
+}
+
+function proxyChatCallbackToApp(): void {
+  server.use(
+    http.post(
+      "http://localhost:3000/api/internal/callbacks/chat",
+      async ({ request }) => {
+        const rawBody = await request.text();
+        const app = createApp({ signal: context.signal });
+        return await app.request("/api/internal/callbacks/chat", {
+          method: "POST",
+          headers: request.headers,
+          body: rawBody,
+        });
+      },
+    ),
+  );
 }
 
 function encryptedSecretsFromExecutionContext(value: unknown): string | null {
@@ -513,6 +531,72 @@ describe("POST /api/zero/chat/messages", () => {
     );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadRunCreated:${response.body.threadId}`,
+      null,
+    );
+  });
+
+  it("dispatches a terminal chat callback when run dispatch fails after insert", async () => {
+    const fixture = await track(seedFixture());
+    proxyChatCallbackToApp();
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", undefined);
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "fail before worker start",
+    });
+    await clearAllDetached();
+
+    expect(response.body.status).toBe("failed");
+    expect(response.body.runId).toStrictEqual(expect.any(String));
+
+    const writeDb = store.set(writeDb$);
+    const [run] = await writeDb
+      .select({
+        status: agentRuns.status,
+        error: agentRuns.error,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId!))
+      .limit(1);
+    expect(run).toStrictEqual({
+      status: "failed",
+      error: expect.stringContaining("RUNNER_DEFAULT_GROUP"),
+    });
+
+    const [callback] = await writeDb
+      .select({
+        status: agentRunCallbacks.status,
+        attempts: agentRunCallbacks.attempts,
+        deliveredAt: agentRunCallbacks.deliveredAt,
+      })
+      .from(agentRunCallbacks)
+      .where(eq(agentRunCallbacks.runId, response.body.runId!))
+      .limit(1);
+    expect(callback).toStrictEqual({
+      status: "delivered",
+      attempts: 1,
+      deliveredAt: expect.any(Date),
+    });
+
+    const messages = await writeDb
+      .select({
+        role: chatMessages.role,
+        runId: chatMessages.runId,
+        error: chatMessages.error,
+      })
+      .from(chatMessages)
+      .where(eq(chatMessages.chatThreadId, response.body.threadId));
+    expect(messages).toContainEqual({
+      role: "assistant",
+      runId: response.body.runId,
+      error: expect.any(String),
+    });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `run:changed:${response.body.runId}`,
+      { status: "failed" },
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadRunUpdated:${response.body.threadId}`,
       null,
     );
   });
